@@ -24,9 +24,17 @@ registerAppScheme();
 
 const isMac = process.platform === "darwin";
 const devServerUrl = app.isPackaged ? undefined : process.env["UNFOLD_UI_DEV_URL"];
+/** A `just dev` session: unpackaged, with the UI served by the Vite dev server. */
+const isDevSession = devServerUrl !== undefined;
 const ui: UiSource = devServerUrl
   ? { kind: "dev", url: devServerUrl }
   : { kind: "app", dir: uiDirectory(app.getAppPath(), app.isPackaged) };
+
+if (isDevSession) {
+  // A dev session keeps its own preferences, recent folders, and single-instance lock (Electron
+  // keys the lock on this folder), so it never hands its launch to an installed Unfold.
+  app.setPath("userData", join(app.getPath("appData"), "Unfold Dev"));
+}
 
 function isDirectory(path: string): boolean {
   try {
@@ -41,6 +49,12 @@ const hasAppPathArgument = process.defaultApp;
 
 if (!app.requestSingleInstanceLock()) {
   // Another copy is running; it receives our argv through `second-instance`.
+  if (isDevSession) {
+    // Otherwise `just dev` would just stop, with no hint that an earlier session's app is still up.
+    process.stderr.write(
+      "Unfold is already running (an earlier `just dev` session?). Quit it with ⌘Q or run `just dev-stop`, then try again.\n",
+    );
+  }
   app.quit();
 } else {
   // Folders the OS asks us to open before the app is ready (macOS `open-file`, e.g. a dock drop).
@@ -179,6 +193,14 @@ if (!app.requestSingleInstanceLock()) {
       folders.setQuitting();
     });
 
+    // Electron's main process ignores these by default; quitting gracefully lets the engine host save
+    // drafts first (Ctrl+C in a `just dev` terminal, `kill`, or a system shutdown).
+    for (const signal of ["SIGINT", "SIGTERM"] as const) {
+      process.on(signal, () => {
+        app.quit();
+      });
+    }
+
     let shutdownDone = false;
     app.on("will-quit", (event) => {
       if (shutdownDone) {
@@ -205,8 +227,10 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on("window-all-closed", () => {
-    // macOS apps keep running with no windows; Windows and Linux quit with the last one.
-    if (!isMac) {
+    // macOS apps keep running with no windows; Windows and Linux quit with the last one. A dev
+    // session always quits, so closing its last window ends `just dev` instead of leaving the app
+    // running in the background.
+    if (!isMac || isDevSession) {
       app.quit();
     }
   });

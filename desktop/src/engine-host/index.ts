@@ -13,6 +13,10 @@ import { EngineRouter } from "./router";
 
 let router: EngineRouter | null = null;
 
+// Ctrl+C in a terminal signals the whole process group. The main process answers it with a graceful
+// quit that shuts this host down (saving drafts); dying here first would only make it restart us.
+process.on("SIGINT", () => undefined);
+
 function log(message: string): void {
   console.error(`[engine-host] ${message}`);
 }

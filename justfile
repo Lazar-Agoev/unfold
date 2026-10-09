@@ -38,13 +38,32 @@ js-install:
     pnpm install
 
 # Build the engine addon, then run the app with hot reload for the UI (Vite dev server + electron-vite).
-dev: addon
+dev: addon dev-stop
     #!/usr/bin/env bash
     set -euo pipefail
+    electron="{{justfile_directory()}}/node_modules/.pnpm/electron@"
     pnpm --filter @unfold/ui dev &
     ui=$!
-    trap 'kill $ui' EXIT
+    # Ctrl+C or the app quitting ends the whole session. The app quits gracefully on Ctrl+C (saving
+    # drafts); anything still running after 8 s is stopped, so no Electron outlives the session.
+    stop_session() {
+        kill "$ui" 2>/dev/null || true
+        for _ in $(seq 80); do pgrep -f "$electron" >/dev/null || return 0; sleep 0.1; done
+        pkill -f "$electron" 2>/dev/null || true
+    }
+    trap stop_session EXIT
     UNFOLD_UI_DEV_URL=http://localhost:5173 pnpm --filter @unfold/desktop dev
+
+# A leftover dev app holds the single-instance lock, so a new session would exit at once.
+# Stop the Unfold dev app an earlier `just dev` left running (only this checkout's Electron).
+dev-stop:
+    #!/usr/bin/env bash
+    electron="{{justfile_directory()}}/node_modules/.pnpm/electron@"
+    pgrep -f "$electron" >/dev/null || exit 0
+    echo "Stopping the Unfold dev app left running by an earlier session…"
+    pkill -f "$electron" || true
+    for _ in $(seq 25); do pgrep -f "$electron" >/dev/null || exit 0; sleep 0.2; done
+    pkill -9 -f "$electron" || true
 
 # Typecheck, lint, and unit-test the desktop shell and the UI.
 js-check:
