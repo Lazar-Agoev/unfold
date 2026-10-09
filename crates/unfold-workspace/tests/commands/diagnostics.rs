@@ -22,7 +22,7 @@ fn has_absolute_path(text: &str) -> Option<&str> {
 #[test]
 fn diagnostics_are_redacted_counts() {
     let harness = Harness::compiled("ts-orders");
-    let report = harness.ok(1, "diagnostics", json!({}));
+    let report = harness.ok(1, "diagnostics", json!({ "project": harness.project }));
     let text = report["text"].as_str().expect("text");
     for expected in [
         "Unfold diagnostics",
@@ -68,10 +68,28 @@ fn diagnostics_are_redacted_counts() {
 }
 
 #[test]
-fn diagnostics_work_without_a_folder() {
+fn diagnostics_work_without_a_project() {
     let harness = Harness::new("ts-orders", false);
     let report = harness.ok(7, "diagnostics", json!({}));
     let text = report["text"].as_str().expect("text");
-    assert!(text.contains("Folder: none open"), "{text}");
+    assert!(text.contains("Project: none"), "{text}");
+    assert_eq!(has_absolute_path(text), None, "{text}");
+}
+
+#[test]
+fn a_resting_project_reports_only_its_last_known_state() {
+    let harness = Harness::new("ts-orders", false);
+    let report = harness.ok(7, "diagnostics", json!({ "project": harness.project }));
+    let text = report["text"].as_str().expect("text");
+    assert!(
+        text.contains("Project (resting)\n  State: last known state not compiled"),
+        "{text}"
+    );
+    assert!(!text.contains("Files:"), "{text}");
+    assert_eq!(
+        harness.row(&harness.project)["live"],
+        false,
+        "diagnostics never wake"
+    );
     assert_eq!(has_absolute_path(text), None, "{text}");
 }

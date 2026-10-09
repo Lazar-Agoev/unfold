@@ -2,40 +2,64 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://unfold.dev/schemas/unfold-board-1.schema.json",
   "title": "unfold-board version 1",
-  "description": "An Unfold board: cards that reference blocks and entrances by structural key, their positions and views, groups of consecutive sibling statements, attributed descriptions and Flow labels, and guards that keep references from reattaching to different code. Unknown fields are rejected.",
+  "description": "An Unfold board: titled pages of cards that reference blocks and entrances by structural key (in the board's own project, or in another project named by its shared name), their positions and views, groups of consecutive sibling statements, attributed descriptions and Flow labels, guards that keep references from reattaching to different code, and links drawn between cards. A changes copy of a published board (`.unfold/local/drafts/<name>.changes.json`) also names the board it publishes and the revision it started from. Unknown fields are rejected.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["cards", "defaultView", "format", "groups", "title", "version"],
+  "required": ["format", "pages", "projects", "title", "version"],
+  "dependentRequired": {
+    "publishes": ["baseRevision"],
+    "baseRevision": ["publishes"]
+  },
   "properties": {
     "format": { "const": "unfold-board" },
     "version": { "const": 1 },
     "title": { "$ref": "#/$defs/text", "description": "The board's title." },
-    "defaultView": { "$ref": "#/$defs/view", "description": "The view of cards without their own." },
-    "cards": {
+    "folder": {
+      "type": "string",
+      "description": "The board folder: 1 to 8 names joined by `/`, each 1 to 64 characters without leading or trailing whitespace, control characters, or `\\`, and not `.` or `..`. Absent at the top level.",
+      "pattern": "^(?!\\.\\.?(/|$))[^\\s/\\\\\\p{Cc}](?:[^/\\\\\\p{Cc}]{0,62}[^\\s/\\\\\\p{Cc}])?(?:/(?!\\.\\.?(/|$))[^\\s/\\\\\\p{Cc}](?:[^/\\\\\\p{Cc}]{0,62}[^\\s/\\\\\\p{Cc}])?){0,7}$"
+    },
+    "projects": {
       "type": "array",
-      "items": { "$ref": "#/$defs/card" }
+      "description": "The shared names of the other projects the cards come from: exactly the set of `ref.project` values, sorted.",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/projectName" }
     },
-    "groups": {
+    "pages": {
       "type": "array",
-      "items": { "$ref": "#/$defs/group" }
+      "description": "The pages, in order. Page ids are unique in the board.",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/page" }
     },
-    "labels": {
-      "type": "object",
-      "description": "Flow-node labels, keyed by block key.",
-      "propertyNames": { "$ref": "#/$defs/blockKey" },
-      "additionalProperties": { "$ref": "#/$defs/description" }
+    "publishes": {
+      "type": "string",
+      "description": "Only in a changes copy: `boards/<name>.json`, the published board it holds changes for (matching its file name).",
+      "pattern": "^boards/[A-Za-z0-9][A-Za-z0-9._-]*\\.json$"
     },
-    "guards": {
-      "type": "object",
-      "description": "What each reference was when it was saved, keyed by block or entrance key.",
-      "propertyNames": { "minLength": 1 },
-      "additionalProperties": { "$ref": "#/$defs/guard" }
+    "baseRevision": {
+      "type": "string",
+      "description": "Only in a changes copy: the SHA-256 of the published file it started from.",
+      "pattern": "^[0-9a-f]{64}$"
     }
   },
   "$defs": {
     "text": {
       "type": "string",
       "pattern": "\\S"
+    },
+    "id": {
+      "type": "string",
+      "description": "A page, card, group, or link id. Card, group, and link ids are unique together within their page.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
+    },
+    "projectName": {
+      "type": "string",
+      "description": "A project's shared name (`[project] name` in its `.unfold/config.toml`, or its default).",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+    "project": {
+      "$ref": "#/$defs/projectName",
+      "description": "The project the key is in; absent for the board's own project."
     },
     "view": {
       "enum": ["code", "flow"]
@@ -54,20 +78,55 @@
       "pattern": "^entrance:",
       "description": "A structural entrance key."
     },
+    "author": {
+      "type": "string",
+      "pattern": "^(person|agent):.*\\S",
+      "description": "`person:<username>` or `agent:<name>`."
+    },
+    "textSignature": {
+      "description": "`sha256:` and the hash of the exact selected source bytes; empty until a save signs it from verified source.",
+      "anyOf": [{ "$ref": "#/$defs/signature" }, { "const": "" }]
+    },
     "description": {
       "type": "object",
       "additionalProperties": false,
       "required": ["author", "text"],
       "properties": {
         "text": { "$ref": "#/$defs/text" },
-        "author": {
-          "type": "string",
-          "pattern": "^(person|agent):.*\\S",
-          "description": "`person:<username>` or `agent:<name>`."
+        "author": { "$ref": "#/$defs/author" },
+        "signature": { "$ref": "#/$defs/textSignature" }
+      }
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cards", "defaultView", "groups", "id", "title"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "$ref": "#/$defs/text", "description": "The page's title." },
+        "defaultView": { "$ref": "#/$defs/view", "description": "The view of cards without their own." },
+        "cards": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/card" }
         },
-        "signature": {
-          "description": "`sha256:` and the hash of the exact selected source bytes; empty until a save signs it from verified source.",
-          "anyOf": [{ "$ref": "#/$defs/signature" }, { "const": "" }]
+        "groups": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/group" }
+        },
+        "labels": {
+          "type": "array",
+          "description": "Flow-node labels, one per (project, key), sorted by project (the board's own first) and key.",
+          "items": { "$ref": "#/$defs/label" }
+        },
+        "guards": {
+          "type": "array",
+          "description": "What each reference was when it was saved, one per (project, key), sorted like labels.",
+          "items": { "$ref": "#/$defs/guard" }
+        },
+        "links": {
+          "type": "array",
+          "description": "Links drawn between two cards of the page.",
+          "items": { "$ref": "#/$defs/link" }
         }
       }
     },
@@ -76,16 +135,29 @@
       "additionalProperties": false,
       "required": ["at", "id", "ref"],
       "properties": {
-        "id": { "$ref": "#/$defs/text", "description": "Unique among cards and groups." },
+        "id": { "$ref": "#/$defs/id" },
         "ref": {
-          "type": "object",
-          "additionalProperties": false,
-          "minProperties": 1,
-          "maxProperties": 1,
-          "properties": {
-            "block": { "$ref": "#/$defs/blockKey" },
-            "entrance": { "$ref": "#/$defs/entranceKey" }
-          }
+          "description": "Exactly one block or entrance, and its project when it is not the board's own.",
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["block"],
+              "properties": {
+                "block": { "$ref": "#/$defs/blockKey" },
+                "project": { "$ref": "#/$defs/project" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["entrance"],
+              "properties": {
+                "entrance": { "$ref": "#/$defs/entranceKey" },
+                "project": { "$ref": "#/$defs/project" }
+              }
+            }
+          ]
         },
         "at": {
           "type": "array",
@@ -104,12 +176,12 @@
       "additionalProperties": false,
       "required": ["card", "collapsed", "id", "members", "title"],
       "properties": {
-        "id": { "$ref": "#/$defs/text", "description": "Unique among cards and groups." },
-        "card": { "$ref": "#/$defs/text", "description": "The id of the block card the group belongs to." },
+        "id": { "$ref": "#/$defs/id" },
+        "card": { "$ref": "#/$defs/id", "description": "The id of the block card of this page the group belongs to." },
         "title": { "$ref": "#/$defs/text" },
         "members": {
           "type": "array",
-          "description": "The keys of consecutive sibling statements with one parent and one body role.",
+          "description": "The keys (in the card's project) of consecutive sibling statements with one parent and one body role.",
           "minItems": 1,
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/blockKey" }
@@ -118,11 +190,25 @@
         "description": { "$ref": "#/$defs/description" }
       }
     },
+    "label": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["author", "key", "text"],
+      "properties": {
+        "key": { "$ref": "#/$defs/blockKey" },
+        "project": { "$ref": "#/$defs/project" },
+        "text": { "$ref": "#/$defs/text" },
+        "author": { "$ref": "#/$defs/author" },
+        "signature": { "$ref": "#/$defs/textSignature" }
+      }
+    },
     "guard": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "owner", "signature"],
+      "required": ["key", "kind", "owner", "signature"],
       "properties": {
+        "key": { "$ref": "#/$defs/text", "description": "A block or entrance key." },
+        "project": { "$ref": "#/$defs/project" },
         "kind": {
           "type": "string",
           "description": "The block kind, or `entrance:` and the entrance kind.",
@@ -130,6 +216,20 @@
         },
         "owner": { "type": "string", "description": "The owner's block key; empty for an entrance." },
         "signature": { "$ref": "#/$defs/signature" }
+      }
+    },
+    "link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "id", "to"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "from": { "$ref": "#/$defs/id", "description": "The card it starts at." },
+        "to": { "$ref": "#/$defs/id", "description": "The card it points at; another card than `from`." },
+        "label": {
+          "$ref": "#/$defs/description",
+          "description": "Its label, signed over the guard signatures of both ends."
+        }
       }
     }
   }

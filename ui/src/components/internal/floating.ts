@@ -12,6 +12,8 @@ export type Align = "start" | "center" | "end";
 export interface Placement {
   readonly side: Side;
   readonly align?: Align;
+  /** Moves the layer along its side, e.g. -5 so a submenu's first item lines up with its row. */
+  readonly shift?: number;
 }
 
 interface Rect {
@@ -32,16 +34,16 @@ function along(start: number, length: number, size: number, align: Align): numbe
   return align === "end" ? start + length - size : start + (length - size) / 2;
 }
 
-function place(anchor: Rect, size: { width: number; height: number }, side: Side, align: Align, gap: number) {
+function place(anchor: Rect, size: { width: number; height: number }, side: Side, align: Align, gap: number, shift: number) {
   switch (side) {
     case "top":
-      return { left: along(anchor.left, anchor.width, size.width, align), top: anchor.top - size.height - gap };
+      return { left: along(anchor.left, anchor.width, size.width, align) + shift, top: anchor.top - size.height - gap };
     case "bottom":
-      return { left: along(anchor.left, anchor.width, size.width, align), top: anchor.top + anchor.height + gap };
+      return { left: along(anchor.left, anchor.width, size.width, align) + shift, top: anchor.top + anchor.height + gap };
     case "left":
-      return { left: anchor.left - size.width - gap, top: along(anchor.top, anchor.height, size.height, align) };
+      return { left: anchor.left - size.width - gap, top: along(anchor.top, anchor.height, size.height, align) + shift };
     case "right":
-      return { left: anchor.left + anchor.width + gap, top: along(anchor.top, anchor.height, size.height, align) };
+      return { left: anchor.left + anchor.width + gap, top: along(anchor.top, anchor.height, size.height, align) + shift };
   }
 }
 
@@ -63,10 +65,11 @@ export function computePosition(
   gap = 6,
 ): { left: number; top: number; side: Side } {
   const align = placement.align ?? "center";
+  const shift = placement.shift ?? 0;
   let side = placement.side;
-  let position = place(anchor, size, side, align, gap);
+  let position = place(anchor, size, side, align, gap, shift);
   if (!fits(position, size, viewport)) {
-    const flipped = place(anchor, size, OPPOSITE[side], align, gap);
+    const flipped = place(anchor, size, OPPOSITE[side], align, gap, shift);
     if (fits(flipped, size, viewport)) {
       side = OPPOSITE[side];
       position = flipped;
@@ -93,16 +96,17 @@ function anchorRect(anchor: HTMLElement | Point): Rect {
 /**
  * Keeps a floating element positioned next to `anchor` while `open`. Attach the returned ref to the
  * floating element; the hook sets its `left`/`top` (CSSOM, which the content security policy allows)
- * and `data-side`.
+ * and `data-side`. With `follow` off, the layer stays where it opened when the page scrolls.
  */
 export function useFloatingPosition<E extends HTMLElement>(
   anchor: Anchor,
   placement: Placement,
   open: boolean,
   gap?: number,
+  follow = true,
 ): RefObject<E | null> {
   const floating = useRef<E>(null);
-  const { side, align } = placement;
+  const { side, align, shift } = placement;
   useLayoutEffect(() => {
     const element = floating.current;
     if (!open || !element || !anchor) {
@@ -112,7 +116,7 @@ export function useFloatingPosition<E extends HTMLElement>(
       const position = computePosition(
         anchorRect(anchor),
         { width: element.offsetWidth, height: element.offsetHeight },
-        { side, ...(align ? { align } : {}) },
+        { side, ...(align ? { align } : {}), ...(shift === undefined ? {} : { shift }) },
         { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight },
         gap,
       );
@@ -122,11 +126,13 @@ export function useFloatingPosition<E extends HTMLElement>(
     };
     update();
     window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, { capture: true, passive: true });
+    if (follow) {
+      window.addEventListener("scroll", update, { capture: true, passive: true });
+    }
     return () => {
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, { capture: true });
     };
-  }, [anchor, side, align, open, gap]);
+  }, [anchor, side, align, shift, open, gap, follow]);
   return floating;
 }

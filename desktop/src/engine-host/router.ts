@@ -1,23 +1,22 @@
 /**
  * Routes messages between window ports and the engine binding. This is all the engine host does:
- * it holds no graph logic (architecture §15.3 rule 5).
+ * it holds no graph logic and knows nothing about projects (architecture §15.3 rule 5).
  *
- * - Each window has one port. `invoke` becomes `dispatch` with a host-wide request id (the addon's
- *   `cancel` takes only a request id, so ids must be unique across windows).
- * - Sink messages go to windows: events by their `windows` list, broadcasts (app-wide events such
- *   as `preferences_changed`) to every attached window, including windows that show no folder (Rust
- *   cannot list those: they never open a workspace), and stream messages by window id and request id.
- * - Attaching a window with a folder calls `openWorkspace`; detaching calls `closeWorkspace`.
- *   Lifecycle calls for one window run in order, and its commands wait until its workspace is open.
+ * - Each window has one port. `invoke` becomes `dispatch` at once, with a host-wide request id (the
+ *   addon's `cancel` takes only a request id, so ids must be unique across windows). Every window
+ *   shows the whole workspace, so attaching opens nothing.
+ * - Sink messages go to windows: events by their `windows` list, broadcasts (every project event,
+ *   and app-wide ones such as `preferences_changed`) to every attached window, and stream messages
+ *   by window id and request id.
  * - Trusted commands: the main process's own requests ({@link EngineRouter.trusted}) are dispatched
  *   with `"trusted": true`. A window can never send one: its commands are rebuilt here from `command`
- *   and `args`, and a window message naming a main-process-only command or carrying `trusted` is
- *   refused with `untrusted` before it reaches Rust.
- * - Closing writes outlive their window: detaching never cancels a {@link CLOSING_WRITES} request
- *   (the window's own, or the main process's trusted bounds save), a queued one is still dispatched
- *   once the workspace is open, and `closeWorkspace` runs only after
- *   every such request has reached `dispatch`, so Rust's close waits for it (`host.rs`). Their
- *   results have nowhere to go, so failures are logged.
+ *   and `args`, and a window message naming a {@link MAIN_PROCESS_ONLY} command or carrying `trusted`
+ *   is refused with `untrusted` before it reaches Rust.
+ * - Closing writes outlive their window: detaching cancels the window's other requests but never a
+ *   {@link CLOSING_WRITES} one. Every request is dispatched the moment it arrives, so by the time
+ *   `detachWindow` is called each closing write the host has received (the window's own, and the
+ *   main process's trusted ones) has reached Rust, and Rust's detach waits for them (`host.rs`).
+ *   Their results have nowhere to go, so failures are logged. Detaches of one window run in order.
  */
 
 import type { HostToRenderer } from "../shared/transport";
@@ -40,44 +39,47 @@ export type TrustedResult =
   | { readonly ok: true; readonly value: unknown }
   | { readonly ok: false; readonly error: TransportError };
 
-/** Commands Rust accepts only with `"trusted": true`, which only the main process may send. */
-export const MAIN_PROCESS_ONLY: ReadonlySet<string> = new Set(["export_mermaid", "folder_windows"]);
+/**
+ * Commands Rust accepts only with `"trusted": true`, which only the main process may send: they take
+ * absolute paths from dialogs, drops, or the command line, or manage window lifecycle. Mirrors the
+ * trusted commands of `crates/unfold-workspace/src/host.rs`.
+ */
+export const MAIN_PROCESS_ONLY: ReadonlySet<string> = new Set([
+  "export_mermaid",
+  "add_project",
+  "saved_windows",
+  "save_window_bounds",
+  "forget_window",
+]);
 
 /**
- * Commands a closing window must not lose: board writes and the window's remembered state and
- * bounds (their final saves are sent as the window closes, e.g. when the app quits). Keep in sync with
- * `CLOSING_WRITES` in `crates/unfold-workspace/src/host.rs`, whose `close_workspace` waits for
- * exactly these.
+ * Commands a closing window must not lose: board and folder writes, and the window's remembered
+ * state and bounds (their final saves are sent as the window closes, e.g. when the app quits). Keep
+ * in sync with `CLOSING_WRITES` in `crates/unfold-workspace/src/host.rs`, whose `detach_window`
+ * waits for exactly these.
  */
 export const CLOSING_WRITES: ReadonlySet<string> = new Set([
   "save_board",
   "repair_board",
   "publish_board",
+  "discard_changes",
   "unpublish_board",
-  "rename_board",
   "delete_board",
+  "duplicate_board",
+  "set_board_folder",
+  "create_folder",
+  "rename_folder",
+  "delete_folder",
+  "save_board_view",
   "save_window_state",
   "save_window_bounds",
 ]);
 
-/** What the router tells the main process about. */
-export interface RouterEvents {
-  /** A window's attach settled: its workspace opened (`error` null), failed, or it shows no folder. */
-  attached?(windowId: number, folder: string | null, error: TransportError | null): void;
-}
-
 interface Connection {
   readonly windowId: number;
-  readonly folder: string | null;
   readonly port: WindowPort;
-  /** Settles (never rejects) once this window's workspace is open, or failed to open. */
-  readonly workspaceReady: Promise<void>;
-  /** Settles like `workspaceReady`, with why the workspace failed to open (null when it opened). */
-  readonly opened: Promise<TransportError | null>;
   /** Renderer request id -> host request id. */
   readonly inFlight: Map<number, number>;
-  /** The `sent` of each main-process (trusted) closing write for this window not yet dispatched. */
-  readonly trustedWrites: Set<Promise<void>>;
 }
 
 interface Request {
@@ -85,10 +87,6 @@ interface Request {
   readonly rendererId: number;
   /** Whether the command must land even if its window closes ({@link CLOSING_WRITES}). */
   readonly closingWrite: boolean;
-  /** Settles once the request reached `binding.dispatch`, or was dropped before it could. */
-  readonly sent: Promise<void>;
-  dispatched: boolean;
-  cancelRequested: boolean;
 }
 
 const COMMAND_NAME = /^[a-z][a-z0-9_]*$/;
@@ -96,7 +94,8 @@ const COMMAND_NAME = /^[a-z][a-z0-9_]*$/;
 export class EngineRouter {
   private readonly connections = new Map<number, Connection>();
   private readonly requests = new Map<number, Request>();
-  private readonly lifecycle = new Map<number, Promise<void>>();
+  /** Each window's latest detach, until it settles. */
+  private readonly detaches = new Map<number, Promise<void>>();
   private nextRequestId = 1;
 
   constructor(
@@ -104,54 +103,20 @@ export class EngineRouter {
     private readonly log: (message: string) => void = (message) => {
       console.error(`[engine-host] ${message}`);
     },
-    private readonly events: RouterEvents = {},
   ) {}
 
-  /** Attaches a window, replacing any earlier connection for the same window id. */
-  attach(windowId: number, folder: string | null, port: WindowPort): void {
+  /**
+   * Attaches a window. A re-attach of the same id (a reload) replaces the port: the old page's
+   * requests other than closing writes are cancelled, and Rust's state for the window (its board
+   * claims and selection) is kept.
+   */
+  attach(windowId: number, port: WindowPort): void {
     const previous = this.connections.get(windowId);
-    // A reload re-attaches with the same folder: keep the workspace and swap the port.
-    const reusedWorkspace = previous?.folder === folder ? previous.opened : null;
     if (previous) {
-      this.release(previous, { closeWorkspace: reusedWorkspace === null });
+      this.release(previous);
     }
-
-    let opened: Promise<TransportError | null>;
-    if (reusedWorkspace) {
-      opened = reusedWorkspace;
-    } else if ("binding" in this.engine && folder !== null) {
-      const binding = this.engine.binding;
-      opened = this.serialize(windowId, () => binding.openWorkspace(windowId, folder)).then(
-        () => null,
-        (error: unknown) => {
-          const reason = errorFromRejection(error);
-          this.postIfCurrent(windowId, port, {
-            kind: "event",
-            event: { type: "workspace_open_failed", folder, error: reason },
-          });
-          return reason;
-        },
-      );
-    } else {
-      opened = Promise.resolve("binding" in this.engine ? null : this.engine.unavailable);
-    }
-
-    const workspaceReady = opened.then(() => undefined);
-    const connection: Connection = {
-      windowId,
-      folder,
-      port,
-      workspaceReady,
-      opened,
-      inFlight: new Map(),
-      trustedWrites: new Set(),
-    };
+    const connection: Connection = { windowId, port, inFlight: new Map() };
     this.connections.set(windowId, connection);
-    void opened.then((error) => {
-      if (this.connections.get(windowId) === connection) {
-        this.events.attached?.(windowId, folder, error);
-      }
-    });
     port.onMessage((data) => {
       this.onPortMessage(connection, data);
     });
@@ -162,26 +127,49 @@ export class EngineRouter {
     );
   }
 
-  /** Detaches a closed window: cancels its requests (except closing writes) and closes its workspace. */
+  /**
+   * Detaches a closed window: cancels its requests except closing writes, closes its port, then
+   * has Rust release the window (`detachWindow`, which waits for those writes).
+   */
   detach(windowId: number): void {
     const connection = this.connections.get(windowId);
     if (connection) {
-      this.release(connection, { closeWorkspace: true });
+      this.release(connection);
     }
+    if (!("binding" in this.engine)) {
+      return;
+    }
+    const binding = this.engine.binding;
+    const previous = this.detaches.get(windowId) ?? Promise.resolve();
+    const detached = previous
+      .then(() => binding.detachWindow(windowId))
+      .catch((error: unknown) => {
+        this.log(`detaching window ${windowId} failed: ${errorFromRejection(error).message}`);
+      });
+    this.detaches.set(windowId, detached);
+    void detached.then(() => {
+      if (this.detaches.get(windowId) === detached) {
+        this.detaches.delete(windowId);
+      }
+    });
   }
 
-  /** Detaches every window and resolves once every workspace has closed. */
+  /** Detaches every window, waits for every detach, then closes every live project. Never rejects. */
   async shutdown(): Promise<void> {
     for (const windowId of [...this.connections.keys()]) {
       this.detach(windowId);
     }
-    await Promise.allSettled([...this.lifecycle.values()]);
+    await Promise.all(this.detaches.values());
+    if ("binding" in this.engine) {
+      try {
+        await this.engine.binding.shutdown();
+      } catch (error) {
+        this.log(`shutting the engine down failed: ${errorFromRejection(error).message}`);
+      }
+    }
   }
 
-  /**
-   * Runs a command the main process sent, with `"trusted": true`, on behalf of `windowId` (after
-   * that window's workspace is open, if it is attached). Never rejects.
-   */
+  /** Runs a command the main process sent, with `"trusted": true`, on behalf of `windowId`. Never rejects. */
   async trusted(windowId: number, command: string, args: Readonly<Record<string, unknown>>): Promise<TrustedResult> {
     if (!("binding" in this.engine)) {
       return { ok: false, error: this.engine.unavailable };
@@ -189,25 +177,14 @@ export class EngineRouter {
     if (!COMMAND_NAME.test(command)) {
       return { ok: false, error: transportError("invalid_message", `Malformed command name: ${command}.`) };
     }
-    const binding = this.engine.binding;
-    const connection = this.connections.get(windowId);
-    let markSent = (): void => undefined;
-    if (connection && CLOSING_WRITES.has(command)) {
-      // Like a window's own closing write: the window's detach waits until this reaches Rust.
-      const sent = new Promise<void>((resolve) => {
-        markSent = resolve;
-      });
-      connection.trustedWrites.add(sent);
-      void sent.then(() => connection.trustedWrites.delete(sent));
-    }
-    await connection?.workspaceReady;
     let json: string;
     try {
-      const result = binding.dispatch(windowId, this.nextRequestId++, JSON.stringify({ command, args, trusted: true }));
-      markSent();
-      json = await result;
+      json = await this.engine.binding.dispatch(
+        windowId,
+        this.nextRequestId++,
+        JSON.stringify({ command, args, trusted: true }),
+      );
     } catch (error) {
-      markSent();
       return { ok: false, error: errorFromRejection(error) };
     }
     try {
@@ -313,13 +290,8 @@ export class EngineRouter {
     command: string,
   ): void {
     const requestId = this.nextRequestId++;
-    let markSent!: () => void;
-    const sent = new Promise<void>((resolve) => {
-      markSent = resolve;
-    });
     const closingWrite = CLOSING_WRITES.has(name);
-    const request: Request = { connection, rendererId, closingWrite, sent, dispatched: false, cancelRequested: false };
-    this.requests.set(requestId, request);
+    this.requests.set(requestId, { connection, rendererId, closingWrite });
     connection.inFlight.set(rendererId, requestId);
 
     const finish = (message: HostToRenderer): void => {
@@ -334,97 +306,46 @@ export class EngineRouter {
       }
     };
 
-    void connection.workspaceReady
-      .then(() => {
-        if (!this.requests.has(requestId)) {
-          markSent();
-          return undefined; // Released while waiting for the workspace.
-        }
-        const result = binding.dispatch(connection.windowId, requestId, command);
-        request.dispatched = true;
-        markSent();
-        if (request.cancelRequested) {
-          binding.cancel(requestId);
-        }
-        return result;
-      })
-      .then(
-        (json) => {
-          if (json !== undefined) {
-            finish(parseResult(rendererId, json));
-          }
-        },
-        (error: unknown) => {
-          finish(failure(rendererId, errorFromRejection(error)));
-        },
-      );
+    dispatchNow(() => binding.dispatch(connection.windowId, requestId, command)).then(
+      (json) => {
+        finish(parseResult(rendererId, json));
+      },
+      (error: unknown) => {
+        finish(failure(rendererId, errorFromRejection(error)));
+      },
+    );
   }
 
   private cancel(connection: Connection, rendererId: number): void {
     const requestId = connection.inFlight.get(rendererId);
-    const request = requestId === undefined ? undefined : this.requests.get(requestId);
-    if (requestId === undefined || !request || !("binding" in this.engine)) {
-      return;
-    }
-    if (request.dispatched) {
+    if (requestId !== undefined && this.requests.has(requestId) && "binding" in this.engine) {
       this.engine.binding.cancel(requestId);
-    } else {
-      request.cancelRequested = true;
     }
   }
 
-  private release(connection: Connection, options: { closeWorkspace: boolean }): void {
+  /** Forgets a window's port: cancels its requests except closing writes, which still land. */
+  private release(connection: Connection): void {
     this.connections.delete(connection.windowId);
-    const closingWrites: Promise<void>[] = [];
     for (const requestId of connection.inFlight.values()) {
-      const request = this.requests.get(requestId);
-      if (request?.closingWrite) {
-        closingWrites.push(request.sent); // Kept: it still runs, and the close below waits for it.
+      if (this.requests.get(requestId)?.closingWrite) {
         continue;
       }
-      if (request?.dispatched && "binding" in this.engine) {
+      this.requests.delete(requestId);
+      if ("binding" in this.engine) {
         this.engine.binding.cancel(requestId);
       }
-      this.requests.delete(requestId);
     }
     connection.inFlight.clear();
-    closingWrites.push(...connection.trustedWrites);
     connection.port.close();
-
-    if (options.closeWorkspace && connection.folder !== null && "binding" in this.engine) {
-      const binding = this.engine.binding;
-      const windowId = connection.windowId;
-      const close = async (): Promise<void> => {
-        await Promise.all(closingWrites);
-        await binding.closeWorkspace(windowId);
-      };
-      void this.serialize(windowId, close).catch((error: unknown) => {
-        this.log(`closing the workspace of window ${windowId} failed: ${errorFromRejection(error).message}`);
-      });
-    }
   }
+}
 
-  /** Runs one lifecycle step for a window after the previous one settles. */
-  private serialize<T>(windowId: number, step: () => Promise<T>): Promise<T> {
-    const previous = this.lifecycle.get(windowId) ?? Promise.resolve();
-    const next = previous.then(step, step);
-    const settled = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.lifecycle.set(windowId, settled);
-    void settled.then(() => {
-      if (this.lifecycle.get(windowId) === settled) {
-        this.lifecycle.delete(windowId);
-      }
-    });
-    return next;
-  }
-
-  private postIfCurrent(windowId: number, port: WindowPort, message: HostToRenderer): void {
-    if (this.connections.get(windowId)?.port === port) {
-      port.post(message);
-    }
+/** Calls `binding.dispatch` now, turning a synchronous throw into a rejection. */
+function dispatchNow(dispatch: () => Promise<string>): Promise<string> {
+  try {
+    return dispatch();
+  } catch (error) {
+    return Promise.reject(error instanceof Error ? error : new Error(String(error)));
   }
 }
 

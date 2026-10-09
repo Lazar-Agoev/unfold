@@ -1,0 +1,373 @@
+{
+  "project": "<project>",
+  "applications": [
+    {
+      "startup": "src/cli.ts#",
+      "name": "cli",
+      "language": "typescript",
+      "path": "src/cli.ts",
+      "launches": [
+        {
+          "key": "entrance:[\"package.bin\",\"process\",\"\",\"orders\",\"dist/cli.js\"]",
+          "title": "process orders",
+          "trigger": "orders",
+          "detector": "package.bin",
+          "path": "package.json",
+          "startup": "dist/cli.js",
+          "note": null
+        },
+        {
+          "key": "entrance:[\"package.script\",\"process\",\"\",\"cli\",\"src/cli.ts\"]",
+          "title": "process cli",
+          "trigger": "cli",
+          "detector": "package.script",
+          "path": "package.json",
+          "startup": "src/cli.ts",
+          "note": null
+        }
+      ],
+      "total": 4,
+      "entrances": [
+        {
+          "key": "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/jobs/import-orders.ts#importOrders\"]",
+          "title": "command import",
+          "kind": "command",
+          "method": null,
+          "trigger": "import",
+          "triggerStatus": "exact",
+          "label": null,
+          "detector": "manual",
+          "path": ".unfold/config.toml",
+          "line": null,
+          "language": null,
+          "group": null,
+          "reaches": 7
+        },
+        {
+          "key": "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/jobs/retry-failed.ts#retryFailed\"]",
+          "title": "command replay",
+          "kind": "command",
+          "method": null,
+          "trigger": "replay",
+          "triggerStatus": "exact",
+          "label": null,
+          "detector": "manual",
+          "path": ".unfold/config.toml",
+          "line": null,
+          "language": null,
+          "group": null,
+          "reaches": 6
+        },
+        {
+          "key": "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]",
+          "title": "command report",
+          "kind": "command",
+          "method": null,
+          "trigger": "report",
+          "triggerStatus": "exact",
+          "label": null,
+          "detector": "manual",
+          "path": ".unfold/config.toml",
+          "line": null,
+          "language": null,
+          "group": null,
+          "reaches": 16
+        },
+        {
+          "key": "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/jobs/retry-failed.ts#retryFailed\"]",
+          "title": "command retry",
+          "kind": "command",
+          "method": null,
+          "trigger": "retry",
+          "triggerStatus": "exact",
+          "label": null,
+          "detector": "manual",
+          "path": ".unfold/config.toml",
+          "line": null,
+          "language": null,
+          "group": null,
+          "reaches": 6
+        }
+      ]
+    },
+    {
+      "startup": "src/scheduler.ts#",
+      "name": "scheduler",
+      "language": "typescript",
+      "path": "src/scheduler.ts",
+      "launches": [
+        {
+          "key": "entrance:[\"package.script\",\"process\",\"\",\"scheduler\",\"scheduler.ts\"]",
+          "title": "process scheduler",
+          "trigger": "scheduler",
+          "detector": "package.script",
+          "path": "package.json",
+          "startup": "scheduler.ts",
+          "note": null
+        }
+      ],
+      "total": 2,
+      "entrances": [
+        {
+          "key": "entrance:[\"node-cron.schedule\",\"schedule\",\"\",\"*/15 * * * *\",\"(…)\"]",
+          "title": "schedule */15 * * * *",
+          "kind": "schedule",
+          "method": null,
+          "trigger": "*/15 * * * *",
+          "triggerStatus": "exact",
+          "label": null,
+          "detector": "node-cron.schedule",
+          "path": "src/scheduler.ts",
+          "line": 7,
+          "language": "typescript",
+          "group": null,
+          "reaches": 5
+        },
+        {
+          "key": "entrance:[\"node-cron.schedule\",\"schedule\",\"\",\"0 2 * * *\",\"cleanupExpiredOrders\"]",
+          "title": "schedule 0 2 * * *",
+          "kind": "schedule",
+          "method": null,
+          "trigger": "0 2 * * *",
+          "triggerStatus": "exact",
+          "label": null,
+          "detector": "node-cron.schedule",
+          "path": "src/scheduler.ts",
+          "line": 6,
+          "language": "typescript",
+          "group": null,
+          "reaches": 9
+        }
+      ]
+    },
+    {
+      "startup": "src/server.ts#",
+      "name": "server",
+      "language": "typescript",
+      "path": "src/server.ts",
+      "launches": [
+        {
+          "key": "entrance:[\"package.script\",\"process\",\"\",\"start\",\"dist/server.js\"]",
+          "title": "process start",
+          "trigger": "start",
+          "detector": "package.script",
+          "path": "package.json",
+          "startup": "dist/server.js",
+          "note": null
+        },
+        {
+          "key": "entrance:[\"package.script\",\"process\",\"\",\"dev\",\"src/server.ts\"]",
+          "title": "process dev",
+          "trigger": "dev",
+          "detector": "package.script",
+          "path": "package.json",
+          "startup": "src/server.ts",
+          "note": null
+        }
+      ],
+      "total": 9,
+      "entrances": [
+        {
+          "key": "entrance:[\"express.route\",\"http\",\"GET\",\"/admin/stats\",\"adminStats\"]",
+          "title": "GET /admin/stats",
+          "kind": "http",
+          "method": "GET",
+          "trigger": "/admin/stats",
+          "triggerStatus": "exact",
+          "label": null,
+          "detector": "express.route",
+          "path": "src/routes/admin.ts",
+          "line": 13,
+          "language": "typescript",
+          "group": "admin",
+          "reaches": 3
+        },
+        {
+          "key": "entrance:[\"express.route\",\"http\",\"GET\",\"/health\",\"healthCheck\"]",
+          "title": "GET /health",
+          "kind": "http",
+          "method": "GET",
+          "trigger": "/health",
+          "triggerStatus": "exact",
+          "label": null,
+          "detector": "express.route",
+          "path": "src/server.ts",
+          "line": 12,
+          "language": "typescript",
+          "group": "health",
+          "reaches": 1
+        },
+        {
+          "key": "entrance:[\"express.route\",\"http\",\"GET\",\"/health/live\",\"(…)\"]",
+          "title": "GET /health/live",
+          "kind": "http",
+          "method": "GET",
+          "trigger": "/health/live",
+          "triggerStatus": "exact",
+          "label": null,
+          "detector": "express.route",
+          "path": "src/routes/health.ts",
+          "line": 5,
+          "language": "typescript",
+          "group": "health",
+          "reaches": 1
+        },
+        {
+          "key": "entrance:[\"express.route\",\"http\",\"GET\",\"/orders\",\"listOrders\"]",
+          "title": "GET /orders",
+          "kind": "http",
+          "method": "GET",
+          "trigger": "/orders",
+          "triggerStatus": "exact",
+          "label": null,
+          "detector": "express.route",
+          "path": "src/routes/orders.ts",
+          "line": 47,
+          "language": "typescript",
+          "group": "orders",
+          "reaches": 3
+        },
+        {
+          "key": "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]",
+          "title": "POST /orders",
+          "kind": "http",
+          "method": "POST",
+          "trigger": "/orders",
+          "triggerStatus": "exact",
+          "label": null,
+          "detector": "express.route",
+          "path": "src/routes/orders.ts",
+          "line": 49,
+          "language": "typescript",
+          "group": "orders",
+          "reaches": 9
+        },
+        {
+          "key": "entrance:[\"express.route\",\"http\",\"GET\",\"/orders/:id\",\"asyncHandler()\"]",
+          "title": "GET /orders/:id",
+          "kind": "http",
+          "method": "GET",
+          "trigger": "/orders/:id",
+          "triggerStatus": "exact",
+          "label": null,
+          "detector": "express.route",
+          "path": "src/routes/orders.ts",
+          "line": 48,
+          "language": "typescript",
+          "group": "orders",
+          "reaches": 0
+        },
+        {
+          "key": "entrance:[\"express.route\",\"http\",\"DELETE\",\"/orders/:id\",\"requireUser\"]",
+          "title": "DELETE /orders/:id",
+          "kind": "http",
+          "method": "DELETE",
+          "trigger": "/orders/:id",
+          "triggerStatus": "exact",
+          "label": null,
+          "detector": "express.route",
+          "path": "src/routes/orders.ts",
+          "line": 50,
+          "language": "typescript",
+          "group": "orders",
+          "reaches": 5
+        },
+        {
+          "key": "entrance:[\"express.route\",\"http\",\"GET\",\"\",\"status\"]",
+          "title": "GET unknown trigger",
+          "kind": "http",
+          "method": "GET",
+          "trigger": null,
+          "triggerStatus": "unknown",
+          "label": null,
+          "detector": "express.route",
+          "path": "src/server.ts",
+          "line": 13,
+          "language": "typescript",
+          "group": null,
+          "reaches": 1
+        }
+      ]
+    },
+    {
+      "startup": "src/worker.ts#",
+      "name": "worker",
+      "language": "typescript",
+      "path": "src/worker.ts",
+      "launches": [
+        {
+          "key": "entrance:[\"package.script\",\"process\",\"\",\"worker\",\"src/worker.ts\"]",
+          "title": "process worker",
+          "trigger": "worker",
+          "detector": "package.script",
+          "path": "package.json",
+          "startup": "src/worker.ts",
+          "note": null
+        }
+      ],
+      "total": 3,
+      "entrances": [
+        {
+          "key": "entrance:[\"bullmq.worker\",\"worker\",\"\",\"emails\",\"(…)\"]",
+          "title": "worker emails",
+          "kind": "worker",
+          "method": null,
+          "trigger": "emails",
+          "triggerStatus": "exact",
+          "label": null,
+          "detector": "bullmq.worker",
+          "path": "src/queues/email-worker.ts",
+          "line": 8,
+          "language": "typescript",
+          "group": null,
+          "reaches": 3
+        },
+        {
+          "key": "entrance:[\"bullmq.worker\",\"worker\",\"\",\"orders\",\"processOrder\"]",
+          "title": "worker orders",
+          "kind": "worker",
+          "method": null,
+          "trigger": "orders",
+          "triggerStatus": "exact",
+          "label": null,
+          "detector": "bullmq.worker",
+          "path": "src/queues/orders-worker.ts",
+          "line": 7,
+          "language": "typescript",
+          "group": null,
+          "reaches": 5
+        },
+        {
+          "key": "entrance:[\"bullmq.worker\",\"worker\",\"\",\"\",\"new URL(\\\"../../report-processor.js\\\", import.meta.url)\"]",
+          "title": "worker unknown trigger",
+          "kind": "worker",
+          "method": null,
+          "trigger": null,
+          "triggerStatus": "unknown",
+          "label": null,
+          "detector": "bullmq.worker",
+          "path": "src/queues/report-worker.ts",
+          "line": 6,
+          "language": "typescript",
+          "group": null,
+          "reaches": 0
+        }
+      ]
+    }
+  ],
+  "unreached": {
+    "total": 0,
+    "entrances": []
+  },
+  "unindexedLaunches": [
+    {
+      "key": "entrance:[\"package.script\",\"process\",\"\",\"legacy:export\",\"scripts/export.js\"]",
+      "title": "process legacy:export",
+      "trigger": "legacy:export",
+      "detector": "package.script",
+      "path": "package.json",
+      "startup": "scripts/export.js",
+      "note": "not indexed"
+    }
+  ]
+}

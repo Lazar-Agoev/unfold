@@ -1,10 +1,10 @@
-//! The engine thread of one folder (architecture §4.2): it owns the [`Engine`] and the store's
-//! [`Writer`], and runs one compile or update at a time.
+//! The engine thread of one live project (architecture §4.2): it owns the [`Engine`] and the
+//! store's [`Writer`], and runs one compile or update at a time.
 //!
 //! Each piece of work follows the same path: prepare the update (`Engine::prepare`), commit its
 //! outcome in one transaction ([`crate::commit`]), let the engine adopt it (`Engine::adopt`),
-//! install a fresh `ReaderIndex` built from the new graph, and tell the windows (`graph_updated`, `problems_changed`, `graph_status`). Work comes from the
-//! scheduler in [`crate::shared`]:
+//! //! install a fresh `ReaderIndex` built from the new graph, and tell the windows (`graph_updated`,
+//! `problems_changed`, `project_state`). Work comes from the scheduler in [`crate::shared`]:
 //!
 //! | Work | Request | Pool |
 //! | --- | --- | --- |
@@ -291,9 +291,9 @@ impl EngineThread {
         self.lock = Some(folder_lock);
         self.shared.set_readers(Some(readers));
         self.shared.reader_cache.invalidate();
-        // Under the state lock, like `Workspace::update_folder_state`, so this first write can't
+        // Under the state lock, like `Workspace::update_local_state`, so this first write can't
         // overwrite a newer state saved meanwhile.
-        let state = lock(&self.shared.folder_state);
+        let state = lock(&self.shared.local_state);
         let state_file = lock(&self.shared.layout).state_file();
         if !state_file.exists() {
             write_json(&state_file, &*state, "state.json")?;
@@ -489,7 +489,7 @@ impl EngineThread {
                 shared.update_status(|model| model.activity = Activity::Compiling { done, total });
             }
             shared.emit(&WorkspaceEvent::CompileProgress {
-                folder: shared.folder.clone(),
+                project: shared.project.clone(),
                 stage: report.stage,
                 done: report.done,
                 total: report.total,

@@ -7,11 +7,13 @@
 //!
 //! [`Settings::hash`] fingerprints everything that can change a compile; languages hash only the
 //! part that affects one file, such as [`Settings::python_hash`], so a settings edit re-extracts
-//! only the files it touches.
+//! only the files it touches. The project's shared name ([`Settings::project_name`]) changes no
+//! compile, so neither hash includes it.
 
 mod folder;
 mod hash;
 mod parse;
+mod project;
 mod scope;
 
 use std::path::Path;
@@ -23,6 +25,7 @@ use unfold_core::{ByteRange, RepoPath};
 pub use folder::{FolderPath, FolderPathError};
 pub use hash::{SettingsHash, SettingsHasher};
 pub use parse::SettingsError;
+pub use project::{MAX_PROJECT_NAME, default_project_name, is_project_name};
 pub use scope::{Scope, ScopePatternError, ScopeStatus};
 
 use crate::locator::Locator;
@@ -38,6 +41,12 @@ pub const SETTINGS_VERSION: u32 = 1;
 pub struct Settings {
     /// The settings format version; always [`SETTINGS_VERSION`] once parsed.
     pub version: u32,
+    /// `[project] name`: the shared name other projects' boards use for this one, always a
+    /// valid name ([`is_project_name`]). `None` means the default the workspace makes from the
+    /// folder ([`default_project_name`]). Not part of [`Settings::hash`]: a rename re-extracts
+    /// nothing.
+    #[serde(skip)]
+    pub project_name: Option<String>,
     /// The languages to graph, sorted and without duplicates. `None` means every supported
     /// language found in the folder.
     pub languages: Option<Vec<Language>>,
@@ -55,6 +64,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             version: SETTINGS_VERSION,
+            project_name: None,
             languages: None,
             scope: Scope::default(),
             disabled_detectors: Vec::new(),
@@ -218,8 +228,9 @@ impl Settings {
             .unwrap_or_default()
     }
 
-    /// The hash of everything in the settings that can change a compile. Spans are left out,
-    /// so editing comments or reordering whitespace doesn't change it.
+    /// The hash of everything in the settings that can change a compile. Spans and the project
+    /// name are left out, so editing comments, reordering whitespace, or renaming the project
+    /// doesn't change it.
     pub fn hash(&self) -> SettingsHash {
         let mut hasher = SettingsHasher::new("settings");
         hasher.add(self);

@@ -2974,6 +2974,7 @@ dependencies = [
  "toml",
  "unfold-core",
  "unicode-id-start",
+ "unicode-normalization",
 ]
 
 [[package]]
@@ -3020,7 +3021,6 @@ dependencies = [
  "serde_json",
  "smallvec",
  "tempfile",
- "thiserror",
  "toml",
  "unfold-core",
  "unfold-engine",
@@ -3071,6 +3071,7 @@ dependencies = [
  "grep-regex",
  "grep-searcher",
  "ignore",
+ "indexmap",
  "nix",
  "notify",
  "notify-debouncer-full",

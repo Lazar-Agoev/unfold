@@ -1,7 +1,7 @@
 /**
- * The window factory and registry. Every window gets a numeric id (used on the wire to the engine),
- * a stable key (its remembered state in the folder's `state.json` survives restarts), and shows at
- * most one folder (architecture §11.2, U-37).
+ * The window factory and registry. Every window gets a numeric id (used on the wire to the engine)
+ * and a stable key (its remembered state in `windows.json` survives restarts). Every window shows
+ * the whole workspace (architecture §11.2, U-37).
  */
 
 import { randomUUID } from "node:crypto";
@@ -17,10 +17,8 @@ import { debouncedSave, placeOnScreen } from "./window-placement";
 export interface WindowEntry {
   readonly id: number;
   readonly window: BrowserWindow;
-  /** The folder this window shows, or null on the welcome screen. */
-  folder: string | null;
-  /** The stable key the window's state is remembered by; it changes when the folder does. */
-  key: string;
+  /** The stable key the window's state is remembered by in `windows.json`. */
+  readonly key: string;
   /** True once the UI has loaded (and after each reload); only then can it receive an engine port. */
   loaded: boolean;
 }
@@ -35,17 +33,13 @@ export interface WindowPlacement {
 export interface WindowHooks {
   /** The UI finished loading (first load or a reload): hand it a fresh engine port. */
   onLoaded(entry: WindowEntry): void;
-  /** The window now shows another folder. */
-  onFolderChanged(entry: WindowEntry): void;
   /** The window closed. */
   onClosed(entry: WindowEntry): void;
-  /** The person moved, resized, maximized, or restored the window (debounced). */
+  /**
+   * The window was created, or the person moved, resized, maximized, or restored it (debounced), so
+   * it comes back where it is.
+   */
   onPlacementChanged(entry: WindowEntry): void;
-}
-
-/** A new window key. */
-export function newWindowKey(): string {
-  return randomUUID();
 }
 
 const CASCADE_OFFSET = 24;
@@ -65,11 +59,10 @@ export class WindowRegistry {
   ) {}
 
   /**
-   * Opens a window on `folder` (or the welcome screen). A restored window comes back with its key
-   * and bounds (moved onto a visible screen if its display is gone); a new one is cascaded from the
-   * focused window.
+   * Opens a window on the workspace. A restored window comes back with its key and bounds (moved
+   * onto a visible screen if its display is gone); a new one is cascaded from the focused window.
    */
-  create(folder: string | null, restore?: RestoredWindow): WindowEntry {
+  create(restore?: RestoredWindow): WindowEntry {
     const near = BrowserWindow.getFocusedWindow();
     const position = near ? near.getPosition() : undefined;
     const bounds = restore?.bounds ? visibleBounds(restore.bounds) : undefined;
@@ -103,7 +96,7 @@ export class WindowRegistry {
       },
     });
 
-    const entry: WindowEntry = { id: this.nextId++, window, folder, key: restore?.key ?? newWindowKey(), loaded: false };
+    const entry: WindowEntry = { id: this.nextId++, window, key: restore?.key ?? randomUUID(), loaded: false };
     this.entries.set(entry.id, entry);
 
     window.once("ready-to-show", () => {
@@ -148,6 +141,8 @@ export class WindowRegistry {
     });
 
     void window.loadURL(entryUrl(this.ui));
+    // Remember the window from the start, before it is ever moved.
+    this.hooks.onPlacementChanged(entry);
     return entry;
   }
 
@@ -172,37 +167,12 @@ export class WindowRegistry {
     return window ? this.all().find((entry) => entry.window === window) : undefined;
   }
 
-  /** The first window showing `folder`, if any. */
-  showing(folder: string): WindowEntry | undefined {
-    return this.all().find((entry) => entry.folder === folder);
-  }
-
-  /**
-   * Points a window at another folder (with the key it is remembered by there, and its saved bounds
-   * when restoring) and tells its UI.
-   */
-  setFolder(entry: WindowEntry, folder: string | null, restore?: RestoredWindow): void {
-    if (entry.folder === folder) {
-      return;
-    }
-    entry.folder = folder;
-    entry.key = restore?.key ?? newWindowKey();
-    if (restore?.bounds && !entry.window.isDestroyed()) {
-      entry.window.setBounds(visibleBounds(restore.bounds));
-      if (restore.maximized) {
-        entry.window.maximize();
-      }
-    }
-    this.hooks.onFolderChanged(entry);
-    this.send(entry, { type: "folder_changed", folder, windowKey: entry.key });
-  }
-
   /** Where the window is, for `save_window_bounds`: its normal (unmaximized) bounds. */
   placement(entry: WindowEntry): WindowPlacement {
     return { bounds: entry.window.getNormalBounds(), maximized: entry.window.isMaximized() };
   }
 
-  /** Sends a shell event (menu command, folder change) to one window's UI. */
+  /** Sends a shell event (a menu command) to one window's UI. */
   send(entry: WindowEntry, event: ShellEvent): void {
     if (!entry.window.isDestroyed()) {
       entry.window.webContents.send(IPC.shellEvent, event);

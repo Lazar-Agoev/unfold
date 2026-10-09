@@ -1,117 +1,142 @@
-//! Path confinement, trusted-only commands, malformed commands, and errors from Rust.
+//! Path confinement per project, trusted-only commands, malformed commands, and errors from
+//! Rust.
 
 use serde_json::json;
 
-use crate::common::Harness;
+use crate::common::{Harness, PATIENCE};
+
+const BAD_PATHS: [&str; 7] = [
+    "../",
+    "..",
+    "/etc/passwd",
+    "src/../../x",
+    "src//orders.ts",
+    "C:\\x",
+    "src\\routes",
+];
 
 #[test]
-fn every_path_a_window_names_stays_inside_the_folder() {
+fn every_path_a_window_names_stays_inside_its_project() {
     let harness = Harness::compiled("ts-orders");
-    for bad in [
-        "../",
-        "..",
-        "/etc/passwd",
-        "src/../../x",
-        "src//orders.ts",
-        "C:\\x",
-        "src\\routes",
-    ] {
-        assert_eq!(
-            harness.code(1, "list_dir", json!({ "path": bad })),
-            "invalid_path",
-            "{bad}"
-        );
-        assert_eq!(
-            harness.code(1, "file_view", json!({ "path": bad })),
-            "invalid_path",
-            "{bad}"
-        );
-        assert_eq!(
-            harness.code(1, "file_outline", json!({ "path": bad })),
-            "invalid_path",
-            "{bad}"
-        );
-        assert_eq!(
-            harness.code(1, "reveal_in_finder", json!({ "path": bad })),
-            "invalid_path",
-            "{bad}"
-        );
-        assert_eq!(
-            harness.code(1, "open_in_editor", json!({ "path": bad })),
-            "invalid_path",
-            "{bad}"
-        );
+    let project = &harness.project;
+    for bad in BAD_PATHS {
+        for command in ["file_view", "reveal_in_finder", "open_in_editor", "scope_dir"] {
+            assert_eq!(
+                harness.code(1, command, json!({ "project": project, "path": bad })),
+                "invalid_path",
+                "{command} {bad}"
+            );
+        }
     }
     #[cfg(unix)]
     {
         let outside = tempfile::tempdir().expect("outside");
-        std::fs::write(outside.path().join("secret.ts"), "export const s = 1;\n").expect("write");
+        std::fs::write(
+            outside.path().join("secret.ts"),
+            "export const secretValue42 = 1;\n",
+        )
+        .expect("write");
         std::os::unix::fs::symlink(outside.path(), harness.root.join("escape")).expect("link");
-        assert_eq!(
-            harness.code(1, "list_dir", json!({ "path": "escape" })),
-            "invalid_path"
-        );
-        assert_eq!(
-            harness.code(1, "file_view", json!({ "path": "escape/secret.ts" })),
-            "invalid_path"
-        );
-        // The link itself is listed, marked, and never followed.
-        let root = harness.ok(1, "list_dir", json!({ "path": "" }));
-        let link = root["entries"]
-            .as_array()
-            .expect("entries")
-            .iter()
-            .find(|entry| entry["name"] == "escape")
-            .expect("the link is listed");
-        assert_eq!(link["kind"], "symlink");
+        for command in ["file_view", "scope_dir"] {
+            assert_eq!(
+                harness.code(
+                    1,
+                    command,
+                    json!({ "project": project, "path": "escape/secret.ts" })
+                ),
+                "invalid_path",
+                "{command}"
+            );
+        }
+        // Text search never reads through it either.
+        let found = harness.ok(1, "search_text", json!({ "query": "secretValue42" }));
+        assert_eq!(found["matches"], 0);
     }
-    // Board IDs are paths too.
+}
+
+#[test]
+fn a_project_id_never_reaches_another_projects_files() {
+    let harness = Harness::compiled("ts-orders");
+    let (python, _) = harness.add("py-orders", "py-orders");
+    let python_file = "src/orders_playground/server.py";
+    // The path is relative to the project named, so it is checked against that folder.
     assert_eq!(
-        harness.code(1, "open_board", json!({ "id": ".unfold/boards/../../x.json" })),
-        "invalid_args"
+        harness.code(
+            1,
+            "file_view",
+            json!({ "project": harness.project, "path": format!("../py-orders/{python_file}") })
+        ),
+        "invalid_path"
+    );
+    assert_eq!(
+        harness.code(
+            1,
+            "file_view",
+            json!({ "project": harness.project, "path": python_file })
+        ),
+        "not_found"
+    );
+    let view = harness.ok(1, "file_view", json!({ "project": python, "path": python_file }));
+    assert_eq!(view["path"], python_file);
+}
+
+#[test]
+fn absolute_paths_and_window_lifecycle_need_the_main_process() {
+    let harness = Harness::new("ts-orders", false);
+    for (command, args) in [
+        ("add_project", json!({ "path": harness.root })),
+        ("saved_windows", json!({})),
+        ("forget_window", json!({ "key": "w" })),
+        (
+            "save_window_bounds",
+            json!({ "key": "w", "bounds": { "x": 0, "y": 0, "width": 1, "height": 1 }, "maximized": false }),
+        ),
+    ] {
+        assert_eq!(harness.code(1, command, args.clone()), "untrusted", "{command}");
+        assert!(harness.trusted(command, args).is_ok(), "{command}");
+    }
+    // A window can add back only a folder the workspace removed, never any path.
+    assert_eq!(
+        harness.code(1, "readd_project", json!({ "path": "/etc" })),
+        "not_found"
     );
 }
 
 #[test]
-fn absolute_paths_and_other_folders_need_the_main_process() {
+fn only_the_main_process_exports_to_a_file() {
     let harness = Harness::compiled("ts-orders");
-    let board = harness.ok(1, "new_board", json!({ "title": "Export me" }));
-    let target = harness.root.parent().expect("parent").join("export.mmd");
-    let args = json!({ "board": board["id"], "path": target });
-    assert_eq!(harness.code(1, "export_mermaid", args.clone()), "untrusted");
-    assert!(!target.exists());
-    let written = harness
-        .call_with(
-            1,
+    let board = harness.ok(
+        1,
+        "new_board",
+        json!({ "project": harness.project, "title": "Export" }),
+    );
+    let target = harness.base.join("export.mmd");
+    let export = json!({
+        "project": harness.project,
+        "board": { "id": board["id"], "page": "page-1" },
+        "path": target,
+    });
+    let trusted = |window: u32, args: &serde_json::Value| {
+        harness.call_with(
+            window,
             json!({ "command": "export_mermaid", "args": args, "trusted": true }),
         )
-        .expect("trusted export");
-    assert!(written["bytes"].as_u64().is_some_and(|bytes| bytes > 0));
-    let text = std::fs::read_to_string(&target).expect("exported");
-    assert!(text.starts_with("flowchart LR"));
-    let clipboard = harness.ok(1, "export_mermaid_text", json!({ "board": board["id"] }));
-    assert_eq!(clipboard["text"], text);
+    };
+    assert_eq!(harness.code(1, "export_mermaid", export.clone()), "untrusted");
+    assert!(!target.exists(), "a window never writes outside its projects");
+    // The main process exports for the window holding the board, to the path its dialog chose.
     assert_eq!(
-        harness.code(
-            1,
-            "export_mermaid_text",
-            json!({ "board": board["id"], "entrance": "x" })
-        ),
-        "invalid_args"
+        trusted(2, &export).expect_err("held by window 1").code,
+        "board_held"
     );
-
-    let root = harness.root.to_str().expect("utf-8");
-    assert_eq!(
-        harness.code(1, "folder_windows", json!({ "root": root })),
-        "untrusted"
-    );
-    let windows = harness
-        .call_with(
-            1,
-            json!({ "command": "folder_windows", "args": { "root": root }, "trusted": true }),
-        )
-        .expect("trusted");
-    assert_eq!(windows["folder"], root);
+    let written = trusted(1, &export).expect("export");
+    assert_eq!(written["path"], target.to_str().expect("utf-8"));
+    let text = std::fs::read_to_string(&target).expect("the export");
+    assert!(text.starts_with("flowchart LR"), "{text}");
+    assert_eq!(written["bytes"], text.len());
+    let mut relative = export;
+    relative["path"] = json!("export.mmd");
+    assert_eq!(trusted(1, &relative).expect_err("relative").code, "invalid_args");
 }
 
 #[test]
@@ -120,9 +145,11 @@ fn malformed_commands_are_rejected_with_codes() {
     for (command, code) in [
         ("not json", "invalid_command"),
         (r#"{"command":"drop_tables"}"#, "invalid_command"),
+        (r#"{"command":"graph_status"}"#, "invalid_command"),
         (r#"{"command":"card","args":{"key":1}}"#, "invalid_args"),
+        (r#"{"command":"card","args":{"key":"x"}}"#, "invalid_args"),
         (
-            r#"{"command":"list_dir","args":{"path":"","extra":true}}"#,
+            r#"{"command":"scope_dir","args":{"project":"p-x","path":"","extra":true}}"#,
             "invalid_args",
         ),
     ] {
@@ -140,31 +167,34 @@ fn malformed_commands_are_rejected_with_codes() {
         );
     }
     assert_eq!(
-        harness.code(1, "card", json!({ "key": "src/nope.ts#function:x" })),
+        harness.code(
+            1,
+            "card",
+            json!({ "project": harness.project, "key": "src/nope.ts#function:x" })
+        ),
         "not_found"
     );
-    assert_eq!(harness.code(2, "graph_status", json!({})), "not_attached");
 }
 
 #[test]
 fn async_dispatch_answers_through_its_callback() {
     // The addon resolves its promise from `done`, on the command thread. (A panic there becomes
     // an `internal` error: see `host::tests::spawned_panics_reach_done_as_internal_errors`.)
-    let harness = Harness::compiled("ts-orders");
+    let harness = Harness::new("ts-orders", false);
     let (sender, receiver) = std::sync::mpsc::channel();
     harness.host.dispatch_async(
         1,
         harness.request(),
-        r#"{"command":"graph_status"}"#.to_owned(),
+        r#"{"command":"workspace"}"#.to_owned(),
         move |result| {
             let _ = sender.send(result);
         },
     );
-    let status = receiver
-        .recv_timeout(crate::common::PATIENCE)
+    let workspace = receiver
+        .recv_timeout(PATIENCE)
         .expect("done is called")
-        .expect("graph_status");
-    assert!(status.contains("\"state\""));
+        .expect("workspace");
+    assert!(workspace.contains(&harness.project));
     let (sender, receiver) = std::sync::mpsc::channel();
     harness
         .host
@@ -172,7 +202,7 @@ fn async_dispatch_answers_through_its_callback() {
             let _ = sender.send(result);
         });
     let error = receiver
-        .recv_timeout(crate::common::PATIENCE)
+        .recv_timeout(PATIENCE)
         .expect("done is called")
         .expect_err("malformed");
     assert_eq!(error.code, "invalid_command");

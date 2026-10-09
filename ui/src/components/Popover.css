@@ -3,14 +3,15 @@
   left: 0;
   top: 0;
   z-index: var(--z-popover);
-  min-width: 200px;
+  min-width: 196px;
   max-width: min(480px, calc(100vw - 16px));
   max-height: calc(100vh - 16px);
   overflow: auto;
-  padding: 6px;
-  border-radius: var(--radius-large);
-  background: var(--color-popover);
-  box-shadow: var(--shadow-popover);
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-float);
   color: var(--color-text);
   animation: hover-layer-in var(--duration-fast) ease-out;
 }

@@ -1,26 +1,31 @@
-//! Graph commands for one card (architecture §10.2–10.4): `card` (an entrance or block card
-//! with its Code and Flow models) and `peek` (the hover over a call link).
+//! Graph commands for one card (contract §4.4, architecture §10.2–10.4): `card` (an entrance
+//! or block card with its Code and Flow models), `peek` (the hover over a call link), and
+//! `preview` (Add's preview pane and the map popover). Each wakes the card's project.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unfold_core::vocab::{
-    BlockKind, DetectorId, EntranceKind, FileState, HttpMethod, Language, Reason, Resolution, TargetRole,
-    TriggerStatus,
+    BlockKind, DetectorId, EdgeKind, EntranceKind, FileState, HttpMethod, Language, Reason, Resolution,
+    TargetRole, TriggerStatus,
 };
-use unfold_core::{Entrance, FileGraph, LineIndex, ModuleLabel};
-use unfold_reader::catalog;
-use unfold_reader::code::{CodeSource, CodeView, FoldPolicy, render};
+use unfold_core::{Entrance, FileGraph, LineIndex, ModuleLabel, RepoPath};
+use unfold_reader::code::{CodeLine, CodeSource, CodeSpan, CodeView, FoldPolicy, render};
 use unfold_reader::flow::{FlowContext, FlowModel, build_flow};
 use unfold_reader::mermaid::entrance_title;
 use unfold_reader::notes::note;
+use unfold_reader::relations::owned_edges;
 use unfold_reader::source::{SourceState, Verified, verify_file};
+use unfold_reader::{ReaderIndex, catalog, file_owners};
 use unfold_store::Reader;
 
-use super::{KeyArgs, key_arg};
+use super::file_view::render_page;
+use super::relations::{EntranceRef, distinct_callers, entrance_ref};
+use super::{LineRange, ProjectKeyArgs, count, key_arg};
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
+use crate::projects::ProjectId;
 use crate::workspace::Workspace;
 
 /// Which of a block card's models to build.
@@ -40,12 +45,10 @@ pub enum CardLens {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CardArgs {
+    /// The card's project.
+    pub project: ProjectId,
     /// The block or entrance key.
     pub key: String,
-    /// The open board whose Flow labels the card shows; the calling window must hold it.
-    #[serde(default)]
-    #[ts(optional)]
-    pub board: Option<String>,
     /// Which models to build for a block card (both when absent).
     #[serde(default)]
     #[ts(optional)]
@@ -178,15 +181,15 @@ pub enum CardView {
     },
 }
 
-/// Flow labels from a board, and names of targets in other files from the store.
+/// Names of targets in other files, from the store. A page's authored Flow labels are the UI's
+/// to apply (decision V-56), so one card serves every page.
 struct CardContext<'a> {
-    labels: BTreeMap<String, String>,
     reader: &'a Reader,
 }
 
 impl FlowContext for CardContext<'_> {
-    fn label(&self, key: &str) -> Option<&str> {
-        self.labels.get(key).map(String::as_str)
+    fn label(&self, _key: &str) -> Option<&str> {
+        None
     }
 
     fn target_name(&self, key: &str) -> Option<String> {
@@ -202,7 +205,7 @@ impl FlowContext for CardContext<'_> {
 /// any block key gives a block card.
 pub fn card(ctx: &Ctx<'_>, args: CardArgs) -> CommandResult<CardView> {
     let key = key_arg(&args.key)?;
-    let workspace = ctx.workspace()?;
+    let workspace = ctx.live(&args.project)?;
     let reader = workspace.readers()?.get()?;
     if key.starts_with("entrance:") {
         let entrance = reader
@@ -210,15 +213,8 @@ pub fn card(ctx: &Ctx<'_>, args: CardArgs) -> CommandResult<CardView> {
             .ok_or_else(|| CommandError::not_found(format!("no entrance `{key}`")))?;
         return entrance_card(&workspace, &reader, entrance);
     }
-    let labels = match &args.board {
-        Some(board) => super::boards::labels_for(ctx, &workspace, board)?,
-        None => BTreeMap::new(),
-    };
     let (file, local) = locate(&reader, key)?;
-    let context = CardContext {
-        labels,
-        reader: &reader,
-    };
+    let context = CardContext { reader: &reader };
     block_card(&workspace, &file, local, &context, args.lens.unwrap_or_default())
 }
 
@@ -236,6 +232,28 @@ pub(crate) fn locate(reader: &Reader, key: &str) -> CommandResult<(FileGraph, u3
     match found {
         Some((file, local)) if (local as usize) < file.blocks.len() => Ok((file, local)),
         _ => Err(CommandError::not_found(format!("no block `{key}`"))),
+    }
+}
+
+/// A block card's header, with the block's file verified against the graph.
+fn block_header(file: &FileGraph, local: u32, source: SourceState) -> BlockHeader {
+    let block = &file.blocks[local as usize];
+    let owner = file_owners(&file.blocks).get(local as usize).map_or_else(
+        || block.key.clone(),
+        |&owner| file.blocks[owner as usize].key.clone(),
+    );
+    BlockHeader {
+        key: block.key.as_str().to_owned(),
+        kind: block.kind,
+        name: catalog::label(file, local).unwrap_or_default(),
+        qualified_name: catalog::qualified_name(file, local).unwrap_or_default(),
+        path: file.file.path.as_str().to_owned(),
+        start_line: block.lines.start,
+        end_line: block.lines.end,
+        language: file.file.language,
+        file_state: file.file.state,
+        source,
+        owner: owner.as_str().to_owned(),
     }
 }
 
@@ -279,28 +297,28 @@ fn block_card(
     } else {
         Some(build_flow(file, local, text, state, context)?)
     };
-    let owner = unfold_reader::file_owners(&file.blocks)
-        .get(local as usize)
-        .map_or_else(
-            || block.key.clone(),
-            |&owner| file.blocks[owner as usize].key.clone(),
-        );
     Ok(CardView::Block {
-        header: BlockHeader {
-            key: block.key.as_str().to_owned(),
-            kind: block.kind,
-            name: catalog::label(file, local).unwrap_or_default(),
-            qualified_name: catalog::qualified_name(file, local).unwrap_or_default(),
-            path: file.file.path.as_str().to_owned(),
-            start_line: block.lines.start,
-            end_line: block.lines.end,
-            language: file.file.language,
-            file_state: file.file.state,
-            source: state,
-            owner: owner.as_str().to_owned(),
-        },
+        header: block_header(file, local, state),
         code,
         flow,
+    })
+}
+
+/// An entrance card's header.
+fn entrance_header(reader: &Reader, entrance: &Entrance) -> CommandResult<EntranceHeader> {
+    let language = reader
+        .file(entrance.evidence.path.as_str())?
+        .map(|row| row.language);
+    Ok(EntranceHeader {
+        key: entrance.key.as_str().to_owned(),
+        kind: entrance.kind,
+        title: entrance_title(entrance),
+        label: entrance.label.as_deref().map(str::to_owned),
+        method: entrance.method,
+        trigger: entrance.trigger.as_deref().map(str::to_owned),
+        trigger_status: entrance.trigger_status,
+        detector: entrance.detector,
+        language,
     })
 }
 
@@ -342,21 +360,8 @@ fn entrance_card(workspace: &Workspace, reader: &Reader, entrance: Entrance) -> 
         });
     }
     let applications = application_names(reader, entrance.key.as_str())?;
-    let language = reader
-        .file(entrance.evidence.path.as_str())?
-        .map(|row| row.language);
     Ok(CardView::Entrance {
-        header: EntranceHeader {
-            key: entrance.key.as_str().to_owned(),
-            kind: entrance.kind,
-            title: entrance_title(&entrance),
-            label: entrance.label.as_deref().map(str::to_owned),
-            method: entrance.method,
-            trigger: entrance.trigger.as_deref().map(str::to_owned),
-            trigger_status: entrance.trigger_status,
-            detector: entrance.detector,
-            language,
-        },
+        header: entrance_header(reader, &entrance)?,
         evidence,
         targets,
         applications,
@@ -393,16 +398,7 @@ fn evidence_view(workspace: &Workspace, reader: &Reader, entrance: &Entrance) ->
     if let Some(block) = &evidence.block
         && let Ok((file, local)) = locate(reader, block.as_str())
     {
-        let card = block_card(
-            workspace,
-            &file,
-            local,
-            &CardContext {
-                labels: BTreeMap::new(),
-                reader,
-            },
-            CardLens::Code,
-        )?;
+        let card = block_card(workspace, &file, local, &CardContext { reader }, CardLens::Code)?;
         if let CardView::Block { header, code, .. } = card {
             view.start_line = Some(header.start_line);
             view.end_line = Some(header.end_line);
@@ -460,9 +456,9 @@ pub struct Peek {
 const MAX_SIGNATURE: usize = 200;
 
 /// `peek`: a block's signature line and location, or an entrance's title and location.
-pub fn peek(ctx: &Ctx<'_>, args: KeyArgs) -> CommandResult<Peek> {
+pub fn peek(ctx: &Ctx<'_>, args: ProjectKeyArgs) -> CommandResult<Peek> {
     let key = key_arg(&args.key)?;
-    let workspace = ctx.workspace()?;
+    let workspace = ctx.live(&args.project)?;
     let reader = workspace.readers()?.get()?;
     if key.starts_with("entrance:") {
         let entrance = reader
@@ -501,5 +497,320 @@ pub fn peek(ctx: &Ctx<'_>, args: KeyArgs) -> CommandResult<Peek> {
         path: file.file.path.as_str().to_owned(),
         line: Some(block.lines.start),
         language: Some(file.file.language),
+    })
+}
+
+/// The most lines a block preview shows.
+pub const PREVIEW_LINES: u32 = 12;
+/// The most entrances a block preview lists under "Reached from".
+const PREVIEW_REACHED: usize = 5;
+/// The most calls a block preview lists.
+const PREVIEW_CALLS: usize = 8;
+/// The most callers a block preview lists.
+const PREVIEW_CALLERS: usize = 5;
+/// The most handlers an entrance preview lists.
+const PREVIEW_HANDLERS: usize = 8;
+/// The most external modules an entrance preview lists.
+const PREVIEW_MODULES: usize = 5;
+/// The most files of an entrance's closure whose external calls an entrance preview counts.
+const PREVIEW_MODULE_FILES: usize = 200;
+
+/// A count and the first few items.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Listed<T> {
+    /// How many there are.
+    pub total: u32,
+    /// The first few.
+    pub items: Vec<T>,
+}
+
+impl<T> Listed<T> {
+    fn first(items: Vec<T>, limit: usize) -> Self {
+        let total = count(items.len());
+        let mut items = items;
+        items.truncate(limit);
+        Self { total, items }
+    }
+}
+
+/// The first lines of a block, as the peek sheet's page model.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewCode {
+    /// The first line shown.
+    pub start_line: u32,
+    /// Where `text` begins in the file, in UTF-16 code units.
+    pub text_start: u32,
+    /// The text of the lines shown, terminators included.
+    pub text: String,
+    /// The lines shown.
+    pub lines: Vec<CodeLine>,
+    /// Syntax colors overlapping them.
+    pub spans: Vec<CodeSpan>,
+}
+
+/// One call a block makes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewCall {
+    /// The written callee.
+    pub name: String,
+    /// The target's key, when the call resolved.
+    pub key: Option<String>,
+    /// The module of an external target.
+    pub module: Option<String>,
+}
+
+/// One definition that calls a block.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewCaller {
+    /// The calling definition's key.
+    pub key: String,
+    /// Its qualified name (its file's path for a file-level call).
+    pub name: String,
+    /// Its file.
+    pub path: String,
+    /// Its first line.
+    pub line: u32,
+}
+
+/// One handler an entrance runs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewHandler {
+    /// Its qualified name, or the handler as written when it didn't resolve.
+    pub name: String,
+    /// Its key, when it resolved.
+    pub key: Option<String>,
+    /// Its file, when it resolved.
+    pub path: Option<String>,
+    /// Its first line, when it resolved.
+    pub line: Option<u32>,
+}
+
+/// Where an entrance is declared.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Declared {
+    /// The source file or configuration input.
+    pub path: String,
+    /// The declaration's first line, when known.
+    pub line: Option<u32>,
+}
+
+/// What Add's preview pane and the map popover show for one result.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum Preview {
+    /// A block.
+    Block {
+        /// Its project.
+        project: ProjectId,
+        /// Its card header.
+        header: BlockHeader,
+        /// Its first lines (at most 12).
+        code: PreviewCode,
+        /// The entrances it is reached from (at most 5 listed).
+        reached_from: Listed<EntranceRef>,
+        /// The calls it makes, in source order (at most 8 listed).
+        calls: Listed<PreviewCall>,
+        /// The definitions that call it, by path and line (at most 5 listed).
+        called_by: Listed<PreviewCaller>,
+    },
+    /// An entrance.
+    Entrance {
+        /// Its project.
+        project: ProjectId,
+        /// Its card header.
+        header: EntranceHeader,
+        /// The handlers it runs, in registration order (at most 8).
+        handlers: Vec<PreviewHandler>,
+        /// Where it is declared.
+        declared: Declared,
+        /// The definitions in its activation closure.
+        reaches: u32,
+        /// The external modules its closure calls, most called first (at most 5).
+        external_modules: Vec<String>,
+    },
+}
+
+/// `preview`: a block's header, first lines, reached-from, calls, and callers; or an entrance's
+/// header, handlers, declaration, reach, and external modules.
+pub fn preview(ctx: &Ctx<'_>, args: ProjectKeyArgs) -> CommandResult<Preview> {
+    let key = key_arg(&args.key)?;
+    let project = ctx.project(&args.project)?;
+    let workspace = project.wake()?;
+    let reader = workspace.readers()?.get()?;
+    let index = workspace.reader_index()?;
+    if key.starts_with("entrance:") {
+        let entrance = reader
+            .entrance(key)?
+            .ok_or_else(|| CommandError::not_found(format!("no entrance `{key}`")))?;
+        return entrance_preview(&workspace, &reader, &index, args.project, &entrance);
+    }
+    let (file, local) = locate(&reader, key)?;
+    let block = &file.blocks[local as usize];
+    let verified = verify_file(workspace.root(), &file.file.path, file.file.hash);
+    let header = block_header(&file, local, verified.state());
+    let lines = LineRange {
+        start_line: block.lines.start,
+        end_line: block
+            .lines
+            .end
+            .min(block.lines.start.saturating_add(PREVIEW_LINES - 1)),
+    };
+    let page = render_page(
+        &workspace,
+        &project.extras(),
+        file.file.path.as_str(),
+        Some(lines),
+    )?;
+    ctx.check_cancelled()?;
+    let reached = index.reached_from(key).unwrap_or_default();
+    let reached_total = count(reached.len());
+    let mut reached_items = Vec::new();
+    for entrance in reached.iter().take(PREVIEW_REACHED) {
+        if let Some(entrance) = reader.entrance(entrance.as_str())? {
+            reached_items.push(entrance_ref(&entrance));
+        }
+    }
+    let mut seen = BTreeSet::new();
+    let calls: Vec<PreviewCall> = owned_edges(&file, local)
+        .into_iter()
+        .filter(|edge| matches!(edge.kind, EdgeKind::Calls | EdgeKind::Constructs))
+        .filter(|edge| seen.insert((edge.text.clone(), edge.target.clone())))
+        .map(|edge| PreviewCall {
+            name: edge.text.to_string(),
+            key: edge.target.as_ref().map(|target| target.as_str().to_owned()),
+            module: edge.module.as_ref().map(|module| module.as_str().to_owned()),
+        })
+        .collect();
+    let (called_total, callers) = distinct_callers(&reader, &index, key, PREVIEW_CALLERS)?;
+    let called_items = callers
+        .into_iter()
+        .map(|caller| PreviewCaller {
+            name: caller.qualified_name,
+            key: caller.key,
+            path: caller.path,
+            line: caller.line,
+        })
+        .collect();
+    Ok(Preview::Block {
+        project: args.project,
+        header,
+        code: PreviewCode {
+            start_line: page.start_line,
+            text_start: page.text_start,
+            text: page.text,
+            lines: page.lines,
+            spans: page.spans,
+        },
+        reached_from: Listed {
+            total: reached_total,
+            items: reached_items,
+        },
+        calls: Listed::first(calls, PREVIEW_CALLS),
+        called_by: Listed {
+            total: called_total,
+            items: called_items,
+        },
+    })
+}
+
+fn entrance_preview(
+    workspace: &Workspace,
+    reader: &Reader,
+    index: &ReaderIndex,
+    project: ProjectId,
+    entrance: &Entrance,
+) -> CommandResult<Preview> {
+    let mut handlers = Vec::new();
+    for target in entrance.targets.iter().take(PREVIEW_HANDLERS) {
+        let resolved = match target
+            .target
+            .as_ref()
+            .filter(|_| target.resolution == Resolution::Resolved)
+        {
+            Some(key) => reader.block(key.as_str())?.map(|located| (key, located)),
+            None => None,
+        };
+        handlers.push(match resolved {
+            Some((key, located)) => PreviewHandler {
+                name: reader.definition(key.as_str())?.map_or_else(
+                    || target.text.to_string(),
+                    |definition| definition.qualified_name.to_string(),
+                ),
+                key: Some(key.as_str().to_owned()),
+                path: Some(located.path.as_str().to_owned()),
+                line: Some(located.block.lines.start),
+            },
+            None => PreviewHandler {
+                name: target.text.to_string(),
+                key: None,
+                path: None,
+                line: None,
+            },
+        });
+    }
+    let line = match &entrance.evidence.block {
+        Some(block) => reader
+            .block(block.as_str())?
+            .map(|located| located.block.lines.start),
+        None => evidence_view(workspace, reader, entrance)?.start_line,
+    };
+    let closure = index.entrance_closure(entrance.key.as_str()).unwrap_or_default();
+    let graph = index.index();
+    let ids: Vec<_> = closure.iter().filter_map(|key| graph.id(key.as_str())).collect();
+    let reaches = count(
+        ids.iter()
+            .filter(|&&id| {
+                let kind = graph.kind(id);
+                kind.is_function_like() || kind == BlockKind::Class
+            })
+            .count(),
+    );
+    // External calls owned by the closure's blocks, counted per module, file by file.
+    let mut by_file: BTreeMap<&RepoPath, BTreeSet<u32>> = BTreeMap::new();
+    for &id in &ids {
+        by_file
+            .entry(graph.path(id))
+            .or_default()
+            .insert(graph.local_id(id));
+    }
+    let mut modules: BTreeMap<String, u32> = BTreeMap::new();
+    for (path, owners) in by_file.into_iter().take(PREVIEW_MODULE_FILES) {
+        let Some(file) = reader.file_graph(path.as_str())? else {
+            continue;
+        };
+        let owned_by = file_owners(&file.blocks);
+        for edge in &file.edges {
+            if edge.resolution == Resolution::External
+                && owned_by
+                    .get(edge.source as usize)
+                    .is_some_and(|owner| owners.contains(owner))
+                && let Some(module) = &edge.module
+            {
+                *modules.entry(module.as_str().to_owned()).or_default() += 1;
+            }
+        }
+    }
+    let mut modules: Vec<(String, u32)> = modules.into_iter().collect();
+    modules.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    Ok(Preview::Entrance {
+        project,
+        header: entrance_header(reader, entrance)?,
+        handlers,
+        declared: Declared {
+            path: entrance.evidence.path.as_str().to_owned(),
+            line,
+        },
+        reaches,
+        external_modules: modules
+            .into_iter()
+            .take(PREVIEW_MODULES)
+            .map(|(module, _)| module)
+            .collect(),
     })
 }

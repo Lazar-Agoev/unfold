@@ -1,5 +1,5 @@
-//! The state one folder's threads share: the scheduler queue, the status model, problems, the
-//! Index log, the reader pool, windows, remembered state, and the event sink.
+//! The state one project's threads share: the scheduler queue, the status model, problems, the
+//! Index log, the reader pool, remembered state, and the event sink.
 //!
 //! # Scheduling (architecture §7.5)
 //!
@@ -29,19 +29,19 @@ use std::time::{Duration, Instant};
 
 use notify::RecommendedWatcher;
 use notify_debouncer_full::{Debouncer, NoCache};
-use unfold_core::RepoPath;
+use unfold_core::{ContentHash, RepoPath};
 use unfold_engine::CancelToken;
 use unfold_reader::ReaderCache;
 use unfold_store::ReadPool;
 
-use crate::claims::BoardClaims;
 use crate::compile::CompileJob;
-use crate::events::{EventSink, WindowId, WorkspaceEvent};
+use crate::events::{EventSink, WorkspaceEvent};
 use crate::layout::Layout;
 use crate::options::WorkspaceOptions;
 use crate::problems::{IndexLog, ProblemItem, Problems};
-use crate::state::FolderState;
-use crate::status::{GraphStatus, StatusModel, WatchMode, differs_in_kind};
+use crate::projects::ProjectId;
+use crate::state::LocalState;
+use crate::status::{GraphStatus, ProjectState, StatusModel, WatchMode};
 
 /// Locks a mutex, recovering the data from a panicked holder: every structure behind these
 /// mutexes stays consistent between statements.
@@ -100,42 +100,52 @@ impl Sched {
     }
 }
 
-/// Writes the app made itself, so the watcher doesn't report them as outside edits.
+/// Writes the app made itself, so the watcher doesn't report them as outside edits. A write
+/// counts as the app's own only while the file still holds what the app wrote (or is still gone,
+/// after the app deleted it): an outside edit that lands moments later is still reported.
 #[derive(Debug, Default)]
 pub(crate) struct OwnWrites {
-    recent: Mutex<Vec<(PathBuf, Instant)>>,
+    recent: Mutex<Vec<(PathBuf, Option<ContentHash>, Instant)>>,
 }
 
 impl OwnWrites {
     const WINDOW: Duration = Duration::from_secs(2);
 
-    pub(crate) fn note(&self, path: PathBuf) {
+    /// Notes that the app is about to write `bytes` to `path` (`None`: delete it).
+    pub(crate) fn note(&self, path: PathBuf, bytes: Option<&[u8]>) {
         let mut recent = lock(&self.recent);
-        recent.retain(|(_, at)| at.elapsed() < Self::WINDOW);
-        recent.push((path, Instant::now()));
+        recent.retain(|(_, _, at)| at.elapsed() < Self::WINDOW);
+        recent.push((path, bytes.map(ContentHash::of), Instant::now()));
     }
 
+    /// Whether `path` holds what the app recently wrote to it (or is gone after the app deleted
+    /// it).
     pub(crate) fn contains(&self, path: &std::path::Path) -> bool {
-        lock(&self.recent)
+        let written: Vec<Option<ContentHash>> = lock(&self.recent)
             .iter()
-            .any(|(written, at)| written == path && at.elapsed() < Self::WINDOW)
+            .filter(|(noted, _, at)| noted == path && at.elapsed() < Self::WINDOW)
+            .map(|(_, hash, _)| *hash)
+            .collect();
+        if written.is_empty() {
+            return false;
+        }
+        let now = std::fs::read(path).ok().map(|bytes| ContentHash::of(&bytes));
+        written.contains(&now)
     }
 }
 
-/// The status model and the last status sent.
+/// The status model and the last row state sent.
 pub(crate) struct StatusCell {
     pub(crate) model: StatusModel,
-    sent: Option<GraphStatus>,
+    sent: Option<ProjectState>,
 }
 
-/// Everything one folder's threads share.
+/// Everything one project's threads share.
 pub(crate) struct Shared {
+    pub(crate) project: ProjectId,
     pub(crate) root: PathBuf,
-    pub(crate) folder: String,
-    pub(crate) name: String,
     pub(crate) options: WorkspaceOptions,
     pub(crate) sink: Arc<dyn EventSink>,
-    pub(crate) windows: Mutex<BTreeSet<WindowId>>,
     pub(crate) layout: Mutex<Layout>,
     pub(crate) sched: Mutex<Sched>,
     pub(crate) wake: Condvar,
@@ -144,41 +154,36 @@ pub(crate) struct Shared {
     pub(crate) index_log: Mutex<IndexLog>,
     pub(crate) readers: RwLock<Option<ReadPool>>,
     pub(crate) reader_cache: ReaderCache,
-    pub(crate) folder_state: Mutex<FolderState>,
+    pub(crate) local_state: Mutex<LocalState>,
     /// Held across a settings edit's read, edit, and write, so concurrent edits (two windows)
     /// apply one after the other instead of the later write dropping the earlier edit.
     pub(crate) settings_edit: Mutex<()>,
-    pub(crate) claims: BoardClaims,
     pub(crate) own_writes: OwnWrites,
     pub(crate) watcher: Mutex<Option<Debouncer<RecommendedWatcher, NoCache>>>,
 }
 
 impl Shared {
     pub(crate) fn new(
+        project: ProjectId,
         root: PathBuf,
         options: WorkspaceOptions,
         sink: Arc<dyn EventSink>,
         layout: Layout,
-        folder_state: FolderState,
+        local_state: LocalState,
         compiled: bool,
-        watch: WatchMode,
     ) -> Self {
-        let folder = root.to_string_lossy().into_owned();
-        let name = root
-            .file_name()
-            .map_or_else(|| folder.clone(), |name| name.to_string_lossy().into_owned());
-        let paused = !folder_state.background_updates;
+        // Not watched until the workspace starts its watcher.
+        let watch = WatchMode::Off;
+        let paused = !local_state.background_updates;
         let mut model = StatusModel::new(watch);
         model.compiled = compiled;
         model.paused = paused;
         model.fallback = fallback_of(&layout);
         Self {
+            project,
             root,
-            folder,
-            name,
             options,
             sink,
-            windows: Mutex::new(BTreeSet::new()),
             layout: Mutex::new(layout),
             sched: Mutex::new(Sched {
                 jobs: VecDeque::new(),
@@ -199,20 +204,16 @@ impl Shared {
             index_log: Mutex::new(IndexLog::default()),
             readers: RwLock::new(None),
             reader_cache: ReaderCache::new(),
-            folder_state: Mutex::new(folder_state),
+            local_state: Mutex::new(local_state),
             settings_edit: Mutex::new(()),
-            claims: BoardClaims::new(),
             own_writes: OwnWrites::default(),
             watcher: Mutex::new(None),
         }
     }
 
-    /// Sends `event` to every window attached to the folder.
+    /// Sends `event` to every window.
     pub(crate) fn emit(&self, event: &WorkspaceEvent) {
-        let windows: Vec<WindowId> = lock(&self.windows).iter().copied().collect();
-        if !windows.is_empty() {
-            self.sink.deliver(&windows, event);
-        }
+        self.sink.emit(event);
     }
 
     /// The current status.
@@ -220,36 +221,42 @@ impl Shared {
         lock(&self.status).model.status()
     }
 
-    /// Changes the status model and sends `graph_status` when the status changed kind. The
-    /// event is sent while the model is locked, so windows see statuses in order.
+    /// The row state now, and the one a project going to rest remembers.
+    pub(crate) fn project_states(&self) -> (ProjectState, ProjectState) {
+        let cell = lock(&self.status);
+        (cell.model.project_state(), cell.model.settled_state())
+    }
+
+    /// Changes the status model and sends `project_state` when the row state changed kind. The
+    /// event is sent while the model is locked, so windows see states in order.
     pub(crate) fn update_status(&self, change: impl FnOnce(&mut StatusModel)) {
         let mut cell = lock(&self.status);
         change(&mut cell.model);
-        let status = cell.model.status();
-        if cell
-            .sent
-            .as_ref()
-            .is_none_or(|sent| differs_in_kind(sent, &status))
-        {
-            cell.sent = Some(status.clone());
-            self.emit(&WorkspaceEvent::GraphStatus {
-                folder: self.folder.clone(),
-                status,
+        let state = cell.model.project_state();
+        if cell.sent.as_ref().is_none_or(|sent| sent.differs_in_kind(&state)) {
+            cell.sent = Some(state.clone());
+            self.emit(&WorkspaceEvent::ProjectState {
+                project: self.project.clone(),
+                state,
             });
         }
     }
 
-    /// Changes the problems and sends `problems_changed` when the list changed.
+    /// Changes the problems and sends `problems_changed` when the list changed (and
+    /// `project_state` when the count changes the row's state).
     pub(crate) fn update_problems(&self, change: impl FnOnce(&mut Problems)) {
         let mut problems = lock(&self.problems);
         let before = problems.all();
         change(&mut problems);
         let after = problems.all();
         if before != after {
+            let count = u32::try_from(after.len()).unwrap_or(u32::MAX);
             self.emit(&WorkspaceEvent::ProblemsChanged {
-                folder: self.folder.clone(),
-                count: u32::try_from(after.len()).unwrap_or(u32::MAX),
+                project: self.project.clone(),
+                count,
             });
+            // Still under the problems lock, so the row's count follows the list's order.
+            self.update_status(|model| model.problems = count);
         }
     }
 
@@ -323,6 +330,12 @@ impl Shared {
         self.update_status(|model| model.watching = WatchMode::Scanning);
     }
 
+    /// Whether the engine thread has nothing running, queued, or due (or is shut down).
+    pub(crate) fn is_idle(&self) -> bool {
+        let sched = lock(&self.sched);
+        sched.is_idle() || sched.shutdown
+    }
+
     /// Waits until the engine thread has nothing running, queued, or due, or `timeout` passes.
     pub(crate) fn wait_idle(&self, timeout: Duration) -> bool {
         let deadline = Instant::now() + timeout;
@@ -368,10 +381,27 @@ pub(crate) fn fallback_of(layout: &Layout) -> Option<crate::layout::FallbackReas
 mod tests {
     use super::*;
 
+    #[test]
+    fn own_writes_are_the_bytes_the_app_wrote() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("board.json");
+        let writes = OwnWrites::default();
+        assert!(!writes.contains(&path), "nothing noted");
+        writes.note(path.clone(), Some(b"mine"));
+        std::fs::write(&path, "mine").expect("write");
+        assert!(writes.contains(&path));
+        std::fs::write(&path, "theirs").expect("write");
+        assert!(!writes.contains(&path), "an outside edit right after is reported");
+        writes.note(path.clone(), None);
+        assert!(!writes.contains(&path), "not deleted yet");
+        std::fs::remove_file(&path).expect("delete");
+        assert!(writes.contains(&path));
+    }
+
     struct Silent;
 
     impl EventSink for Silent {
-        fn deliver(&self, _windows: &[WindowId], _event: &WorkspaceEvent) {}
+        fn emit(&self, _event: &WorkspaceEvent) {}
     }
 
     fn shared(compiled: bool) -> (tempfile::TempDir, Shared) {
@@ -379,13 +409,13 @@ mod tests {
         let root = std::fs::canonicalize(dir.path()).expect("canonical");
         let layout = Layout::discover(&root, &root.join("fallback"));
         let shared = Shared::new(
+            ProjectId::new_unchecked("p-aaaaaaaaaa"),
             root,
             WorkspaceOptions::default(),
             Arc::new(Silent),
             layout,
-            FolderState::default(),
+            LocalState::default(),
             compiled,
-            WatchMode::Off,
         );
         (dir, shared)
     }
@@ -441,7 +471,9 @@ mod tests {
     fn idleness_waits_for_due_work_but_not_for_paused_work() {
         let (_dir, shared) = shared(true);
         assert!(shared.wait_idle(Duration::from_millis(10)));
+        assert!(shared.is_idle());
         shared.add_changes([path("a.ts")]);
+        assert!(!shared.is_idle());
         // Nobody runs the queue here, so pending work keeps the folder busy.
         assert!(!shared.wait_idle(Duration::from_millis(20)));
         lock(&shared.sched).paused = true;

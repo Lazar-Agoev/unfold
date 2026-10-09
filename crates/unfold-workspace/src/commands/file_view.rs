@@ -1,8 +1,8 @@
-//! `file_view`: what a source tab renders (architecture §11.4).
+//! `file_view`: what the peek sheet renders (contract §4.4, architecture §11.4).
 //!
-//! A source tab shows the whole file, read-only, through the same render model as Code cards:
+//! The peek sheet shows a whole file, read-only, through the same render model as Code cards:
 //! syntax colors, the statement outline with its folds, and calls as links. Long files are
-//! virtualized by line, so the tab asks for pages: with `range`, only those lines' text, spans,
+//! virtualized by line, so the sheet asks for pages: with `range`, only those lines' text, spans,
 //! outline items, and links come back. Every offset in a page is a UTF-16 offset from the start
 //! of the **file**; `textStart` says where the page's `text` begins.
 //!
@@ -14,9 +14,9 @@
 //!
 //! A file that isn't UTF-8 text, or is larger than [`MAX_FILE_BYTES`], comes back without text.
 //!
-//! A virtualized tab asks for many pages of one file, so the whole-file model is rendered once
-//! and kept in a small per-folder cache ([`RenderCache`]) keyed by the path, the hash of the bytes
-//! read for this request, and the folder's change generation (bumped by every graph update and
+//! A virtualized sheet asks for many pages of one file, so the whole-file model is rendered once
+//! and kept in a small per-project cache ([`RenderCache`]) keyed by the path, the hash of the bytes
+//! read for this request, and the project's change generation (bumped by every graph update and
 //! file change). Each request still reads and hashes the file, so a page is never cut from a model
 //! of other bytes or another graph; a hit only skips highlighting and rendering. Pages are cut by
 //! binary search over the model's sorted lines, spans, and links.
@@ -30,19 +30,23 @@ use unfold_core::vocab::{FileState, Language};
 use unfold_core::{ByteRange, ContentHash, FileGraph, RepoPath, Snapshot, Utf16Index};
 use unfold_reader::code::{CallLink, CodeLine, CodeSpan, CodeText, FoldPolicy, OutlineItem, render};
 
-use super::{LineRange, count};
+use super::{LineRange, ProjectExtras, count};
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
+use crate::projects::ProjectId;
 use crate::shared::lock;
+use crate::workspace::Workspace;
 
-/// The largest file a source tab shows.
+/// The largest file the peek sheet shows.
 pub const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
 
 /// The arguments of `file_view`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FileViewArgs {
-    /// The folder-relative file.
+    /// The project.
+    pub project: ProjectId,
+    /// The file, relative to the project's folder.
     pub path: String,
     /// Only these lines (a page of a virtualized tab); the whole file when absent.
     #[serde(default)]
@@ -72,7 +76,7 @@ pub enum Unshowable {
     TooLarge,
 }
 
-/// A source tab's render model, or one page of it.
+/// The peek sheet's render model of a file, or one page of it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct FileView {
@@ -116,12 +120,12 @@ pub(crate) struct RenderedFile {
     utf16: Utf16Index,
 }
 
-/// The most rendered files one folder keeps.
+/// The most rendered files one project keeps.
 const CACHED_FILES: usize = 8;
 /// The most text the kept files may hold together, in bytes.
 const CACHED_BYTES: usize = 32 * 1024 * 1024;
 
-/// Recently rendered files of one folder, most recently used last. See the
+/// Recently rendered files of one project, most recently used last. See the
 /// [module documentation](self).
 #[derive(Debug, Default)]
 pub(crate) struct RenderCache {
@@ -167,20 +171,29 @@ impl RenderCache {
 
 /// `file_view`: the render model of a whole file, or of a range of its lines.
 pub fn file_view(ctx: &Ctx<'_>, args: FileViewArgs) -> CommandResult<FileView> {
-    let workspace = ctx.workspace()?;
-    let extras = ctx.extras(&workspace);
-    let confined = workspace.confine(&args.path)?;
+    let project = ctx.project(&args.project)?;
+    let workspace = project.wake()?;
+    render_page(&workspace, &project.extras(), &args.path, args.range)
+}
+
+/// The render model of the live project's file at `path` (relative to its folder), or of a
+/// range of its lines.
+pub(crate) fn render_page(
+    workspace: &Workspace,
+    extras: &ProjectExtras,
+    path: &str,
+    range: Option<LineRange>,
+) -> CommandResult<FileView> {
+    let confined = workspace.confine(path)?;
+    let shown = path;
     let path = confined
         .relative()
         .cloned()
         .ok_or_else(|| CommandError::invalid_args("`file_view` needs a file path"))?;
     let metadata = std::fs::metadata(confined.absolute())
-        .map_err(|error| CommandError::not_found(format!("cannot read `{}`: {error}", args.path)))?;
+        .map_err(|error| CommandError::not_found(format!("cannot read `{shown}`: {error}")))?;
     if !metadata.is_file() {
-        return Err(CommandError::invalid_args(format!(
-            "`{}` is not a file",
-            args.path
-        )));
+        return Err(CommandError::invalid_args(format!("`{shown}` is not a file")));
     }
     // Read before the graph: a graph update after this point bumps the generation, so a model
     // rendered from an older graph is never stored under a newer generation.
@@ -221,7 +234,7 @@ pub fn file_view(ctx: &Ctx<'_>, args: FileViewArgs) -> CommandResult<FileView> {
         return unshowable(Unshowable::TooLarge);
     }
     let bytes = std::fs::read(confined.absolute())
-        .map_err(|error| CommandError::not_found(format!("cannot read `{}`: {error}", args.path)))?;
+        .map_err(|error| CommandError::not_found(format!("cannot read `{shown}`: {error}")))?;
     let Ok(snapshot) = Snapshot::new(path.clone(), bytes) else {
         return unshowable(Unshowable::Binary);
     };
@@ -270,7 +283,7 @@ pub fn file_view(ctx: &Ctx<'_>, args: FileViewArgs) -> CommandResult<FileView> {
             rendered
         }
     };
-    Ok(page(&path, &rendered, args.range))
+    Ok(page(&path, &rendered, range))
 }
 
 /// The language whose highlighter colors a file outside the graph, by extension. JavaScript is

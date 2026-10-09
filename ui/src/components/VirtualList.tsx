@@ -1,6 +1,6 @@
 /**
- * A virtualized, grouped list (search results): each group has a header that sticks to the top
- * while its items scroll. A listbox: focus stays on the list, ↑/↓ PageUp/PageDown Home/End move the
+ * A virtualized, grouped list (Add's results, the Health list): each group has a caps header that
+ * sticks to the top while its items scroll. A listbox: focus stays on the list, ↑/↓ PageUp/PageDown Home/End move the
  * active item (`aria-activedescendant`), Enter or a click activates it, Shift+F10 and the Menu key
  * open its context menu.
  */
@@ -12,7 +12,7 @@ import "./VirtualList.css";
 
 export interface ListGroup<T> {
   readonly id: string;
-  /** Header text, e.g. "Definitions". */
+  /** Header text, e.g. "Functions". */
   readonly label: ReactNode;
   /** Shown after the label, e.g. `2` or "12 matches in 5 files". */
   readonly count?: ReactNode;
@@ -32,8 +32,11 @@ export interface VirtualListProps<T> {
   readonly renderItem: (item: T, state: ListItemState) => ReactNode;
   /** Plain text of an item, its accessible name when `renderItem` isn't plain text. */
   readonly getText?: (item: T) => string;
-  /** Fixed per item (rows aren't measured). Default 22. */
+  /** Every item's height in px (rows aren't measured). Default 28; Add's results are 32. */
+  readonly rowHeight?: number;
+  /** For lists whose items differ in height; overrides `rowHeight`. */
   readonly getItemHeight?: (item: T) => number;
+  /** Default 24. */
   readonly headerHeight?: number;
   readonly selectedId?: string | null;
   /** Click or Enter. */
@@ -58,8 +61,9 @@ export function VirtualList<T>({
   getId,
   renderItem,
   getText,
+  rowHeight = 28,
   getItemHeight,
-  headerHeight = 26,
+  headerHeight = 24,
   selectedId = null,
   onActivate,
   onActiveChange,
@@ -105,7 +109,7 @@ export function VirtualList<T>({
     getScrollElement: () => scroller.current,
     estimateSize: (index) => {
       const row = rows[index];
-      return row?.kind === "item" ? (getItemHeight?.(row.item) ?? 22) : headerHeight;
+      return row?.kind === "item" ? (getItemHeight?.(row.item) ?? rowHeight) : headerHeight;
     },
     getItemKey: (index) => {
       const row = rows[index];
@@ -165,7 +169,7 @@ export function VirtualList<T>({
       }
       return;
     }
-    const page = Math.max(1, Math.floor((scroller.current?.clientHeight ?? 220) / 22) - 1);
+    const page = Math.max(1, Math.floor((scroller.current?.clientHeight ?? rowHeight * 10) / rowHeight) - 1);
     switch (event.key) {
       case "ArrowDown":
         moveBy(1);

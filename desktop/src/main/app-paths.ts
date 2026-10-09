@@ -17,7 +17,7 @@ export interface BasePaths {
 
 /**
  * The app folders Rust receives in `addon.init` (architecture §8.2):
- * - app data (preferences, recent folders) is Electron's user-data folder;
+ * - app data (preferences, the workspace, remembered windows) is Electron's user-data folder;
  * - logs are `~/Library/Logs/Unfold` on macOS and `<user data>/logs` elsewhere;
  * - fallback caches for folders Unfold can't write to sit under the platform's cache folder.
  */
@@ -69,7 +69,7 @@ export function addonPath(appPath: string, resourcesPath: string, isPackaged: bo
 /**
  * The folder named on a command line, if any: the last non-flag argument that is a directory.
  * `argv` is a process's full argv. When Electron runs an unpackaged app (`electron <app> ...`), the
- * first non-flag argument after the executable is the app path, not a folder to open.
+ * first non-flag argument after the executable is the app path, not a folder to add.
  */
 export function folderArgument(
   argv: readonly string[],

@@ -4,7 +4,10 @@
   justify-content: center;
   gap: 6px;
   flex-shrink: 0;
-  border-radius: var(--radius);
+  padding: 0 12px;
+  border-radius: var(--radius-control);
+  font-size: var(--text-13);
+  line-height: var(--leading-16);
   font-weight: 500;
   white-space: nowrap;
   transition:
@@ -12,51 +15,80 @@
     box-shadow var(--duration-fast) ease;
 }
 
-.button-small {
-  height: 24px;
-  padding: 0 8px;
-  font-size: var(--font-size-small);
+.button-md {
+  height: 30px;
 }
 
-.button-medium {
+.button-sm {
   height: 28px;
-  padding: 0 12px;
-  font-size: var(--font-size-small);
 }
 
-.button-large {
-  height: 38px;
-  padding: 0 14px 0 16px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 550;
+.button-with-icon {
+  padding-left: 10px;
+}
+
+.button-with-shortcut {
+  padding-right: 10px;
+}
+
+.button-with-trailing {
+  padding-right: 8px;
+}
+
+.button-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 10px between the label and its shortcut, 4px before a trailing chevron. */
+.button-shortcut {
+  margin-left: 4px;
+  font-family: var(--font-ui);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+.button-trailing {
+  margin-left: -2px;
+  color: var(--color-muted);
 }
 
 .button-primary {
   background: var(--color-accent);
   color: var(--color-on-accent);
-  box-shadow: 0 1px 2px rgb(32 33 38 / 0.12);
 }
 
 .button-primary:not(:disabled):hover {
-  background: var(--color-accent-strong);
+  background: color-mix(in srgb, var(--color-accent) 90%, var(--color-text));
+}
+
+.button-primary .button-shortcut {
+  color: var(--color-on-accent-soft);
 }
 
 .button-secondary {
-  background: var(--color-surface);
-  color: var(--color-text);
+  background: var(--color-control);
   box-shadow: inset 0 0 0 1px var(--color-border);
+  color: var(--color-text);
 }
 
 .button-secondary:not(:disabled):hover {
-  box-shadow: inset 0 0 0 1px var(--color-contour);
+  background: var(--color-hover);
 }
 
-.button-quiet {
+.button-ghost {
+  height: 28px;
+  padding: 0 8px;
   color: var(--color-text);
 }
 
-.button-quiet:not(:disabled):hover {
+.button-ghost .icon {
+  color: var(--color-muted);
+}
+
+.button-ghost:not(:disabled):hover {
   background: var(--color-hover);
 }
 
@@ -66,14 +98,37 @@
 }
 
 .button-danger:not(:disabled):hover {
-  background: var(--color-danger-strong);
+  background: color-mix(in srgb, var(--color-danger) 90%, var(--color-text));
 }
 
-.button-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* On a filled button the busy ring's track is the label color, faded. */
+.button-primary .state-glyph-track,
+.button-danger .state-glyph-track {
+  stroke: currentColor;
+  opacity: 0.3;
 }
 
-.button .kbd {
-  margin-left: 4px;
+.text-button {
+  display: inline;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.text-button-regular {
+  font-weight: 400;
+}
+
+.text-button-accent {
+  color: var(--color-accent-text);
+}
+
+.text-button-muted {
+  color: var(--color-muted);
+}
+
+.text-button:not(:disabled):hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }

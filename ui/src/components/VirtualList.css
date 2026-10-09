@@ -1,3 +1,4 @@
+/* Sticky headers paint `--vlist-background` (the surface by default) over the rows passing under them. */
 .vlist {
   position: relative;
   height: 100%;
@@ -29,13 +30,14 @@
 
 .vlist-header {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 6px;
-  padding: 0 12px;
-  background: var(--color-sidebar);
-  font-size: var(--font-size-tiny);
+  padding: 0 12px 4px;
+  background: var(--vlist-background, var(--color-surface));
+  font-size: var(--text-11);
+  line-height: var(--leading-16);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   color: var(--color-muted);
 }
@@ -56,6 +58,7 @@
   display: flex;
   align-items: center;
   padding: 0 12px;
+  border-radius: var(--radius-control);
   overflow: hidden;
   white-space: nowrap;
   cursor: default;
@@ -71,7 +74,8 @@
 }
 
 .vlist-item-selected,
-.vlist-item-selected:hover {
+.vlist-item-selected:hover,
+.vlist-item[data-active] {
   background: var(--color-selection);
 }
 

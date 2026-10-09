@@ -17,7 +17,6 @@ use crate::events::WorkspaceEvent;
 use crate::host::SinkMessage;
 use crate::ipc::error::CommandError;
 use crate::ipc::table::specs;
-use crate::registry::OpenedFolder;
 
 /// The generated module's path, relative to the repository root.
 pub const OUTPUT_PATH: &str = "ui/src/ipc/generated/index.ts";
@@ -107,7 +106,6 @@ pub fn generate() -> Result<String, String> {
     for spec in &specs {
         (spec.visit)(&mut collector);
     }
-    collector.add::<OpenedFolder>();
     collector.add::<WorkspaceEvent>();
     collector.add::<SinkMessage>();
     collector.add::<CommandError>();

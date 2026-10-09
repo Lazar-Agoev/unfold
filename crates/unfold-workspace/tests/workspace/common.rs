@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use tempfile::TempDir;
 use unfold_workspace::{
-    EventSink, OpenContext, WindowId, Workspace, WorkspaceEvent, WorkspaceOptions, default_languages,
+    EventSink, OpenContext, ProjectId, Workspace, WorkspaceEvent, WorkspaceOptions, default_languages,
 };
 
 /// The longest any test waits for something asynchronous. Generous on purpose: waits end as
@@ -55,6 +55,7 @@ impl Playground {
 
     pub fn context(&self, sink: Arc<RecordingSink>, watch: bool) -> OpenContext {
         OpenContext {
+            project: project(),
             fallback_cache_dir: self.fallback.clone(),
             options: options(watch),
             sink,
@@ -62,12 +63,15 @@ impl Playground {
         }
     }
 
-    /// Opens the playground with watching on or off, with window 1 attached.
+    /// Opens the playground with watching on or off.
     pub fn open(&self, sink: &Arc<RecordingSink>, watch: bool) -> Arc<Workspace> {
-        let workspace = Workspace::open(&self.root, self.context(Arc::clone(sink), watch)).expect("open");
-        workspace.attach(1);
-        workspace
+        Workspace::open(&self.root, self.context(Arc::clone(sink), watch)).expect("open")
     }
+}
+
+/// The project id the tests open playgrounds for.
+pub fn project() -> ProjectId {
+    serde_json::from_value(serde_json::json!("p-testtesttt")).expect("a project id")
 }
 
 pub fn options(watch: bool) -> WorkspaceOptions {
@@ -95,19 +99,16 @@ pub fn copy_dir(from: &Path, to: &Path) {
     }
 }
 
-/// Records every delivery, and lets tests wait for one.
+/// Records every event, and lets tests wait for one.
 #[derive(Default)]
 pub struct RecordingSink {
-    events: Mutex<Vec<(Vec<WindowId>, WorkspaceEvent)>>,
+    events: Mutex<Vec<WorkspaceEvent>>,
     arrived: Condvar,
 }
 
 impl EventSink for RecordingSink {
-    fn deliver(&self, windows: &[WindowId], event: &WorkspaceEvent) {
-        self.events
-            .lock()
-            .expect("events")
-            .push((windows.to_vec(), event.clone()));
+    fn emit(&self, event: &WorkspaceEvent) {
+        self.events.lock().expect("events").push(event.clone());
         self.arrived.notify_all();
     }
 }
@@ -117,25 +118,21 @@ impl RecordingSink {
         Arc::new(Self::default())
     }
 
-    /// How many deliveries so far: pass it to [`RecordingSink::wait_for`] to wait for a later one.
+    /// How many events so far: pass it to [`RecordingSink::wait_for`] to wait for a later one.
     pub fn mark(&self) -> usize {
         self.events.lock().expect("events").len()
     }
 
-    /// Waits for a delivery after `after` that `matches`, and returns it.
+    /// Waits for an event after `after` that `matches`, and returns it.
     pub fn wait_for(
         &self,
         after: usize,
-        matches: impl Fn(&[WindowId], &WorkspaceEvent) -> bool,
-    ) -> Option<(Vec<WindowId>, WorkspaceEvent)> {
+        matches: impl Fn(&WorkspaceEvent) -> bool,
+    ) -> Option<WorkspaceEvent> {
         let deadline = Instant::now() + PATIENCE;
         let mut events = self.events.lock().expect("events");
         loop {
-            if let Some(found) = events
-                .iter()
-                .skip(after)
-                .find(|(windows, event)| matches(windows, event))
-            {
+            if let Some(found) = events.iter().skip(after).find(|event| matches(event)) {
                 return Some(found.clone());
             }
             let now = Instant::now();
@@ -146,14 +143,14 @@ impl RecordingSink {
         }
     }
 
-    /// Every delivery of `kind` after `after`.
-    pub fn of_kind(&self, after: usize, kind: &str) -> Vec<(Vec<WindowId>, WorkspaceEvent)> {
+    /// Every event of `kind` after `after`.
+    pub fn of_kind(&self, after: usize, kind: &str) -> Vec<WorkspaceEvent> {
         self.events
             .lock()
             .expect("events")
             .iter()
             .skip(after)
-            .filter(|(_, event)| event.kind() == kind)
+            .filter(|event| event.kind() == kind)
             .cloned()
             .collect()
     }

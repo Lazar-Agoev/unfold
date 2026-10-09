@@ -1,11 +1,11 @@
 /**
- * Text inputs: `TextField` (a labeled field with hint and error) and `SearchField` (a search box with
+ * Text inputs: `TextField` (a labeled field with hint and error) and `SearchField` (a filter box with
  * a clear button; Escape clears it). A SearchField with a `focusKey` is the target of actions such as
  * "Focus search" (`/`), even if it mounts after the action runs.
  */
 
-import { Search, X } from "lucide-react";
 import { useId, useRef, type ChangeEvent, type InputHTMLAttributes, type KeyboardEvent, type Ref } from "react";
+import { Icon } from "../icons";
 import { useFocusTarget } from "../keyboard";
 import { assignRef, cx } from "./internal/dom";
 import "./TextField.css";
@@ -75,7 +75,7 @@ export function SearchField({ value, onChange, label, focusKey, className, onKey
 
   return (
     <div className={cx("search-field", className)}>
-      <Search className="search-field-icon" size={14} aria-hidden="true" />
+      <Icon name="search" size={14} className="search-field-icon" />
       <input
         {...rest}
         ref={setRefs}
@@ -115,7 +115,7 @@ export function SearchField({ value, onChange, label, focusKey, className, onKey
             input.current?.focus();
           }}
         >
-          <X size={12} aria-hidden="true" />
+          <Icon name="close" size={12} />
         </button>
       )}
     </div>

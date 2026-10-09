@@ -94,3 +94,82 @@ describe("MenuButton", () => {
     expect(document.activeElement).toBe(button);
   });
 });
+
+describe("Submenus", () => {
+  const boardMenu = (onExport: () => void, onDelete: () => void): MenuEntry[] => [
+    { id: "rename", label: "Rename…", onSelect: vi.fn() },
+    {
+      id: "share",
+      label: "Share",
+      submenu: [
+        { id: "export", label: "Export Mermaid…", onSelect: onExport },
+        { id: "copy", label: "Copy Mermaid", onSelect: vi.fn() },
+      ],
+    },
+    { kind: "separator", id: "s1" },
+    { id: "delete", label: "Delete…", danger: true, onSelect: onDelete },
+  ];
+
+  it("opens with → or Enter, leaves with ← or Escape, and chooses inside", () => {
+    const onExport = vi.fn();
+    render(<MenuButton variant="icon" icon="dots" label="Board menu" width={220} entries={boardMenu(onExport, vi.fn())} />);
+    const button = screen.getByRole("button", { name: "Board menu" });
+    button.focus();
+    fireEvent.click(button);
+    const menu = screen.getByRole("menu", { name: "Board menu" });
+    expect(menu.style.width).toBe("220px");
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    const share = screen.getByRole("menuitem", { name: "Share" });
+    expect(document.activeElement).toBe(share);
+    expect(share.getAttribute("aria-haspopup")).toBe("menu");
+
+    fireEvent.keyDown(share, { key: "ArrowRight" });
+    expect(share.getAttribute("aria-expanded")).toBe("true");
+    const submenu = screen.getByRole("menu", { name: "Share" });
+    expect(document.activeElement?.textContent).toBe("Export Mermaid…");
+    fireEvent.keyDown(submenu, { key: "ArrowLeft" });
+    expect(screen.queryByRole("menu", { name: "Share" })).toBeNull();
+    expect(document.activeElement).toBe(share);
+    expect(screen.getByRole("menu", { name: "Board menu" })).toBeTruthy();
+
+    fireEvent.keyDown(share, { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("menu", { name: "Share" }), { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "Share" })).toBeNull();
+    expect(screen.getByRole("menu", { name: "Board menu" })).toBeTruthy();
+
+    fireEvent.click(share);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Export Mermaid…" }));
+    expect(onExport).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(button);
+  });
+
+  it("opens on hover, closes when another row is hovered, and survives presses inside", () => {
+    const onDelete = vi.fn();
+    render(<MenuButton variant="icon" icon="dots" label="Board menu" entries={boardMenu(vi.fn(), onDelete)} />);
+    fireEvent.click(screen.getByRole("button", { name: "Board menu" }));
+    const share = screen.getByRole("menuitem", { name: "Share" });
+    fireEvent.pointerMove(share);
+    expect(document.activeElement).toBe(share);
+    const copy = screen.getByRole("menuitem", { name: "Copy Mermaid" });
+    act(() => {
+      copy.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    });
+    expect(screen.getByRole("menu", { name: "Share" })).toBeTruthy();
+    fireEvent.pointerMove(screen.getByRole("menuitem", { name: "Rename…" }));
+    expect(screen.queryByRole("menu", { name: "Share" })).toBeNull();
+    const remove = screen.getByRole("menuitem", { name: "Delete…" });
+    expect(remove.classList.contains("menu-item-danger")).toBe(true);
+    fireEvent.click(remove);
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it("lines up labels: an icon column only when an item has an icon, a trailing column for chevrons", () => {
+    render(<MenuButton variant="icon" icon="dots" label="Board menu" entries={boardMenu(vi.fn(), vi.fn())} />);
+    fireEvent.click(screen.getByRole("button", { name: "Board menu" }));
+    const rename = screen.getByRole("menuitem", { name: "Rename…" });
+    expect(rename.querySelector(".menu-item-icon")).toBeNull();
+    expect(rename.querySelector(".menu-item-trailing")).not.toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Share" }).querySelector(".menu-item-trailing [data-icon='chevron-right']")).not.toBeNull();
+  });
+});

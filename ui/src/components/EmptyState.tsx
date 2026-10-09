@@ -1,28 +1,22 @@
-/** A quiet, centered message for a view with nothing to show yet, with optional actions. */
+/** A quiet, centered message for a view with nothing to show yet ("No boards yet"), with an optional action. */
 
-import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 import { cx } from "./internal/dom";
 import "./EmptyState.css";
 
-export interface EmptyStateProps {
+export interface EmptyStateProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
   readonly title: string;
-  readonly hint?: ReactNode;
-  readonly icon?: LucideIcon;
-  /** Buttons, usually one. */
-  readonly actions?: ReactNode;
-  /** `compact` for sidebars and panels; `page` for the editor area. */
-  readonly size?: "compact" | "page";
-  readonly className?: string;
+  readonly body?: ReactNode;
+  /** A button, usually one. */
+  readonly action?: ReactNode;
 }
 
-export function EmptyState({ title, hint, icon: Icon, actions, size = "page", className }: EmptyStateProps) {
+export function EmptyState({ title, body, action, className, ...rest }: EmptyStateProps) {
   return (
-    <div className={cx("empty-state", `empty-state-${size}`, className)}>
-      {Icon ? <Icon className="empty-state-icon" size={size === "page" ? 28 : 20} aria-hidden="true" /> : null}
+    <div {...rest} className={cx("empty-state", className)}>
       <p className="empty-state-title">{title}</p>
-      {hint === undefined ? null : <p className="empty-state-hint">{hint}</p>}
-      {actions === undefined ? null : <div className="empty-state-actions">{actions}</div>}
+      {body === undefined ? null : <p className="empty-state-body">{body}</p>}
+      {action === undefined ? null : <div className="empty-state-action">{action}</div>}
     </div>
   );
 }

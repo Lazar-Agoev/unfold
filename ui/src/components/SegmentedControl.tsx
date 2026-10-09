@@ -1,9 +1,9 @@
 /**
- * A small set of mutually exclusive options shown side by side, e.g. the Code | Flow lens. It is a
- * radio group: Tab reaches the chosen option, and the arrow keys move and choose.
+ * Mutually exclusive options side by side: the window's Code | Flow lens (`lens`, components §7.5),
+ * a card's mini lens (`mini`, 02 §4.1), and Health | Activity (`switch`, 11). It is a radio group:
+ * Tab reaches the chosen option, and the arrow keys move and choose.
  */
 
-import type { LucideIcon } from "lucide-react";
 import { useRef, type KeyboardEvent } from "react";
 import { cx } from "./internal/dom";
 import "./SegmentedControl.css";
@@ -11,10 +11,8 @@ import "./SegmentedControl.css";
 export interface SegmentedOption<V extends string> {
   readonly value: V;
   readonly label: string;
-  readonly icon?: LucideIcon;
-  /** Shows only the icon (the label stays the accessible name). */
-  readonly iconOnly?: boolean;
-  readonly disabled?: boolean;
+  /** Shown after the label in the `switch` variant (Health's problem count). */
+  readonly count?: number;
 }
 
 export interface SegmentedControlProps<V extends string> {
@@ -23,29 +21,21 @@ export interface SegmentedControlProps<V extends string> {
   readonly onChange: (value: V) => void;
   /** The group's accessible name, e.g. "Lens". */
   readonly label: string;
-  readonly size?: "small" | "medium";
+  readonly variant: "lens" | "mini" | "switch";
   readonly className?: string;
 }
 
-export function SegmentedControl<V extends string>({
-  options,
-  value,
-  onChange,
-  label,
-  size = "medium",
-  className,
-}: SegmentedControlProps<V>) {
+export function SegmentedControl<V extends string>({ options, value, onChange, label, variant, className }: SegmentedControlProps<V>) {
   const group = useRef<HTMLDivElement>(null);
-  const enabled = options.filter((option) => !option.disabled);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
-    if (step === undefined || enabled.length === 0) {
+    if (step === undefined || options.length === 0) {
       return;
     }
     event.preventDefault();
-    const index = enabled.findIndex((option) => option.value === value);
-    const next = enabled[(index + step + enabled.length) % enabled.length];
+    const index = options.findIndex((option) => option.value === value);
+    const next = options[(index + step + options.length) % options.length];
     if (next) {
       onChange(next.value);
       group.current?.querySelector<HTMLElement>(`[data-value="${CSS.escape(next.value)}"]`)?.focus();
@@ -53,34 +43,25 @@ export function SegmentedControl<V extends string>({
   };
 
   return (
-    <div
-      ref={group}
-      role="radiogroup"
-      aria-label={label}
-      className={cx("segmented", `segmented-${size}`, className)}
-      onKeyDown={onKeyDown}
-    >
+    <div ref={group} role="radiogroup" aria-label={label} className={cx("segmented", `segmented-${variant}`, className)} onKeyDown={onKeyDown}>
       {options.map((option) => {
         const checked = option.value === value;
-        const Icon = option.icon;
         return (
           <button
             key={option.value}
             type="button"
             role="radio"
             aria-checked={checked}
-            aria-label={option.iconOnly ? option.label : undefined}
-            title={option.iconOnly ? option.label : undefined}
+            aria-label={option.count === undefined ? undefined : `${option.label} ${option.count.toLocaleString("en-US")}`}
             data-value={option.value}
             tabIndex={checked ? 0 : -1}
-            disabled={option.disabled}
             className="segmented-option"
             onClick={() => {
               onChange(option.value);
             }}
           >
-            {Icon ? <Icon size={14} aria-hidden="true" /> : null}
-            {option.iconOnly ? null : <span>{option.label}</span>}
+            <span>{option.label}</span>
+            {option.count === undefined ? null : <span className="segmented-count">{option.count.toLocaleString("en-US")}</span>}
           </button>
         );
       })}

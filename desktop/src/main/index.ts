@@ -10,7 +10,6 @@ import { addonPath, appFolders, folderArgument, uiDirectory } from "./app-paths"
 import type { UiSource } from "./app-url";
 import { chooseFolder } from "./dialogs";
 import { EngineHost } from "./engine-host";
-import { Folders } from "./folders";
 import { registerWindowCommands } from "./ipc";
 import { buildMenu } from "./menu";
 import { registerAppScheme, serveUi } from "./protocol";
@@ -18,6 +17,7 @@ import { hardenApp } from "./security";
 import { updateMode, updatesEnabled } from "./update-policy";
 import { currentUpdateEnvironment, startUpdater } from "./updater";
 import { WindowRegistry } from "./windows";
+import { Workspace } from "./workspace";
 
 app.setName("Unfold");
 registerAppScheme();
@@ -31,7 +31,7 @@ const ui: UiSource = devServerUrl
   : { kind: "app", dir: uiDirectory(app.getAppPath(), app.isPackaged) };
 
 if (isDevSession) {
-  // A dev session keeps its own preferences, recent folders, and single-instance lock (Electron
+  // A dev session keeps its own preferences, workspace, and single-instance lock (Electron
   // keys the lock on this folder), so it never hands its launch to an installed Unfold.
   app.setPath("userData", join(app.getPath("appData"), "Unfold Dev"));
 }
@@ -57,16 +57,16 @@ if (!app.requestSingleInstanceLock()) {
   }
   app.quit();
 } else {
-  // Folders the OS asks us to open before the app is ready (macOS `open-file`, e.g. a dock drop).
+  // Folders the OS asks us to add before the app is ready (macOS `open-file`, e.g. a dock drop).
   const pendingFolders: string[] = [];
-  let openFolderRequest = (folder: string): void => {
+  let addProjectRequest = (folder: string): void => {
     pendingFolders.push(folder);
   };
 
   app.on("open-file", (event, path) => {
     event.preventDefault();
     if (isDirectory(path)) {
-      openFolderRequest(path);
+      addProjectRequest(path);
     }
   });
 
@@ -84,13 +84,6 @@ if (!app.requestSingleInstanceLock()) {
         process.env,
       ),
       windows: () => registry.all(),
-      onAttached: (windowId, folder, error) => {
-        const entry = registry.get(windowId);
-        if (entry && error === null && entry.folder === folder) {
-          // Remember every window as soon as it shows its folder, before it is ever moved.
-          folders.savePlacement(entry);
-        }
-      },
     });
     const registry = new WindowRegistry(
       ui,
@@ -98,66 +91,50 @@ if (!app.requestSingleInstanceLock()) {
         onLoaded: (entry) => {
           engine.attach(entry);
         },
-        onFolderChanged: (entry) => {
-          engine.attach(entry);
-        },
         onClosed: (entry) => {
-          // Forget the window first (it must still be attached), then detach it.
-          void folders.windowClosed(entry).finally(() => {
+          // Forget the window first (its bounds save lands before), then detach it.
+          void workspace.windowClosed(entry).finally(() => {
             engine.detach(entry);
           });
         },
         onPlacementChanged: (entry) => {
-          folders.savePlacement(entry);
+          workspace.savePlacement(entry);
         },
       },
       devTools,
     );
-    const folders = new Folders(registry, engine);
+    const workspace = new Workspace(registry, engine);
     engine.start();
     startUpdater(updateMode(currentUpdateEnvironment()), {
       enabled: () => engine.request(0, "get_preferences", {}).then(updatesEnabled, () => null),
       parentWindow: () => registry.focused()?.window ?? null,
     });
 
-    const logOpenFailure = (folder: string) => (error: unknown) => {
-      console.error(`[main] opening ${folder} failed:`, error);
+    addProjectRequest = (folder: string) => {
+      void workspace.addProject(folder);
     };
-
-    /** Focuses a window already showing `folder`, or brings back its windows. */
-    openFolderRequest = (folder: string) => {
-      folders.open(folder).catch(logOpenFailure(folder));
-    };
-
-    const openFolderFromMenu = async (inNewWindow: boolean): Promise<void> => {
-      const focused = registry.focused();
-      const folder = await chooseFolder(focused?.window ?? null);
-      if (folder !== null) {
-        await folders.open(folder, inNewWindow ? undefined : focused);
-      }
-    };
-    const openWelcome = (): void => {
-      folders.openWelcome().catch((error: unknown) => {
-        console.error("[main] opening a window failed:", error);
+    const restore = (): void => {
+      workspace.restore().catch((error: unknown) => {
+        console.error("[main] opening windows failed:", error);
       });
     };
 
-    registerWindowCommands({ registry, folders, engine, ui });
+    registerWindowCommands({ registry, workspace, engine, ui });
     Menu.setApplicationMenu(
       buildMenu(
         {
-          openFolder: (window) => {
-            // The window opens the picker itself, so it can save its boards before its folder is
-            // replaced; with no window there is nothing to save.
-            const target = (window ? registry.forWindow(window) : undefined) ?? registry.focused();
-            if (target?.loaded) {
-              registry.send(target, { type: "menu_command", command: "open_folder" });
-            } else {
-              void openFolderFromMenu(false).catch(logOpenFailure("a folder"));
-            }
+          addProject: () => {
+            chooseFolder(registry.focused()?.window ?? null)
+              .then((folder) => {
+                if (folder !== null) {
+                  addProjectRequest(folder);
+                }
+              })
+              .catch((error: unknown) => {
+                console.error("[main] the folder picker failed:", error);
+              });
           },
-          openFolderInNewWindow: () => void openFolderFromMenu(true).catch(logOpenFailure("a folder")),
-          newWindow: () => registry.create(registry.focused()?.folder ?? null),
+          newWindow: () => registry.create(),
           forward: (command, window) => {
             const target = (window ? registry.forWindow(window) : undefined) ?? registry.focused();
             if (target) {
@@ -172,29 +149,29 @@ if (!app.requestSingleInstanceLock()) {
     app.on("second-instance", (_event, argv, workingDirectory) => {
       const folder = folderArgument(argv, hasAppPathArgument, workingDirectory, isDirectory);
       if (folder) {
-        openFolderRequest(folder);
+        addProjectRequest(folder);
         return;
       }
       const [first] = registry.all();
       if (first) {
         registry.focus(first);
       } else {
-        openWelcome();
+        restore();
       }
     });
 
     app.on("activate", () => {
       if (registry.all().length === 0) {
-        openWelcome();
+        restore();
       }
     });
 
     app.on("before-quit", () => {
-      folders.setQuitting();
+      workspace.setQuitting();
     });
 
-    // Electron's main process ignores these by default; quitting gracefully lets the engine host save
-    // drafts first (Ctrl+C in a `just dev` terminal, `kill`, or a system shutdown).
+    // Electron's main process ignores these by default; quitting gracefully lets the engine host land
+    // board writes first (Ctrl+C in a `just dev` terminal, `kill`, or a system shutdown).
     for (const signal of ["SIGINT", "SIGTERM"] as const) {
       process.on(signal, () => {
         app.quit();
@@ -206,7 +183,7 @@ if (!app.requestSingleInstanceLock()) {
       if (shutdownDone) {
         return;
       }
-      // Let the engine host close every workspace (saving drafts) before the app exits.
+      // Let the engine host detach every window and close every live project before the app exits.
       event.preventDefault();
       void engine.shutdown().finally(() => {
         shutdownDone = true;
@@ -214,15 +191,10 @@ if (!app.requestSingleInstanceLock()) {
       });
     });
 
-    const initial = [
-      ...pendingFolders.splice(0),
-      ...[folderArgument(process.argv, hasAppPathArgument, process.cwd(), isDirectory)].filter((f) => f !== null),
-    ];
-    if (initial.length === 0) {
-      openWelcome();
-    }
-    for (const folder of initial) {
-      openFolderRequest(folder);
+    restore();
+    const argvFolder = folderArgument(process.argv, hasAppPathArgument, process.cwd(), isDirectory);
+    for (const folder of [...pendingFolders.splice(0), ...(argvFolder ? [argvFolder] : [])]) {
+      addProjectRequest(folder);
     }
   });
 

@@ -3,7 +3,8 @@
 //! [`ReadPool`] is cheap to clone and shareable across threads. [`ReadPool::get`] hands out a
 //! [`Reader`], a `Send` handle over one read-only connection that returns to the pool when
 //! dropped. The pool never blocks: when every pooled connection is in use it opens another, and
-//! it keeps at most a few idle ones.
+//! it keeps at most a few idle ones. [`ReadPool::open_existing`] opens a pool on its own, with
+//! no writer, for a folder whose engine isn't running.
 //!
 //! Under write-ahead logging a reader always sees the last committed graph, even while the
 //! writer is in the middle of a commit. Each query sees one snapshot; queries that combine
@@ -21,13 +22,14 @@ pub mod info;
 pub mod rows;
 pub mod search;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rusqlite::{Connection, OpenFlags};
+use rusqlite::{Connection, ErrorCode, OpenFlags};
 
-use crate::error::Result;
+use crate::error::{Result, StoreError};
 use crate::schema::{READER_PRAGMAS, STATEMENT_CACHE_CAPACITY};
+use crate::store::{Found, inspect};
 
 /// A pool of read-only connections to one database.
 #[derive(Debug, Clone)]
@@ -53,6 +55,41 @@ impl ReadPool {
         }
     }
 
+    /// Opens the existing database at `path` for reading only, without a [`crate::Store`]: for
+    /// a folder whose engine isn't running. `None` when there is no usable graph: the file is
+    /// missing, empty, damaged, not an Unfold database, or has another schema or engine version.
+    ///
+    /// Nothing is created, rebuilt, or checkpointed, and the database file is never written:
+    /// every connection is opened read-only (`SQLITE_OPEN_READONLY`) and the versions are only
+    /// read. SQLite still needs the write-ahead log's `-wal` and `-shm` files to read a WAL
+    /// database: when they are absent (no connection has it open) it creates them, empty, next
+    /// to the database, and a read-only connection can't remove them; the next writer to close
+    /// last does. A writer may open the database at any time; these readers then see its
+    /// commits as any reader does.
+    ///
+    /// The pool keeps one idle reader.
+    pub fn open_existing(path: &Path, engine_version: &str) -> Result<Option<Self>> {
+        let opened = connect_reader(path).and_then(|conn| Ok((inspect(&conn, engine_version)?, conn)));
+        let conn = match opened {
+            Ok((Found::Current, conn)) => conn,
+            Ok((Found::Empty | Found::Stale(_), _)) => return Ok(None),
+            Err(error) if error.is_corrupt() => return Ok(None),
+            Err(StoreError::Sqlite(error))
+                if error.sqlite_error_code() == Some(ErrorCode::CannotOpen) && !path.exists() =>
+            {
+                return Ok(None);
+            }
+            Err(error) => return Err(error),
+        };
+        let pool = Self::new(path.to_path_buf(), 1);
+        pool.inner
+            .idle
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(conn);
+        Ok(Some(pool))
+    }
+
     /// A reader: a pooled connection, or a new one when none is idle.
     pub fn get(&self) -> Result<Reader> {
         // The vector stays consistent even if a holder panicked, so a poisoned lock is usable.
@@ -73,7 +110,7 @@ impl ReadPool {
     }
 }
 
-fn connect_reader(path: &std::path::Path) -> Result<Connection> {
+fn connect_reader(path: &Path) -> Result<Connection> {
     let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
     let conn = Connection::open_with_flags(path, flags)?;
     conn.set_prepared_statement_cache_capacity(STATEMENT_CACHE_CAPACITY);

@@ -1,4 +1,4 @@
-//! `set_preferences` tells every window: windows on a folder and windows that show none.
+//! `set_preferences` tells every window, whichever project it shows.
 
 use serde_json::{Value, json};
 
@@ -16,8 +16,8 @@ fn preference_messages(harness: &Harness) -> Vec<Value> {
 #[test]
 fn saved_preferences_reach_every_window_with_the_new_values() {
     let harness = Harness::new("ts-orders", false);
-    // Window 1 shows the folder; window 2 is a welcome window, attached to nothing.
-    harness.open(1);
+    // Window 1 shows the project on Home; window 2 shows nothing yet.
+    harness.ok(1, "select_project", json!({ "project": harness.project }));
     let mut preferences = harness.ok(2, "get_preferences", json!({}));
     preferences["theme"] = json!("dark");
     preferences["keyBindings"] = json!({"palette.open": "Mod+Shift+K"});
@@ -25,7 +25,7 @@ fn saved_preferences_reach_every_window_with_the_new_values() {
     let saved = harness.ok(2, "set_preferences", json!({ "preferences": preferences }));
     assert_eq!(saved, preferences);
 
-    // One broadcast, which the engine host delivers to every window it has, folder or not.
+    // One broadcast, which the engine host delivers to every window it has.
     let messages = preference_messages(&harness);
     assert_eq!(
         messages,
@@ -35,7 +35,7 @@ fn saved_preferences_reach_every_window_with_the_new_values() {
         })]
     );
 
-    // A window on a folder saving reaches the welcome window the same way.
+    // A window showing a project saving reaches the other window the same way.
     preferences["theme"] = json!("light");
     harness.ok(1, "set_preferences", json!({ "preferences": preferences }));
     let messages = preference_messages(&harness);

@@ -9,7 +9,7 @@
 //!     ├── .gitignore
 //!     ├── cache/         disposable: graph.sqlite and the lock
 //!     ├── drafts/        unpublished boards
-//!     └── state.json     windows and the background-update switch
+//!     └── state.json     background updates, empty board folders, board view state
 //! ```
 //!
 //! [`Layout::discover`] decides where `local/` is **without writing anything**: opening and

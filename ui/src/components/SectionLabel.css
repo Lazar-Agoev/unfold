@@ -1,0 +1,36 @@
+.section-label {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  height: var(--row);
+  padding: 0 8px;
+}
+
+.section-label-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-11);
+  line-height: var(--leading-14);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+/* An icon button sits 4px from the edge; a note keeps the row's 8px. */
+.section-label-trailing {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+.section-label-trailing:has(> .icon-button) {
+  margin-right: -4px;
+}

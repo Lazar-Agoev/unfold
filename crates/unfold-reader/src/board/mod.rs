@@ -1,15 +1,19 @@
-//! Boards (architecture §9.1, §10.5; decision U-22): the `unfold-board` version 1 format, its
-//! JSON Schema, strict parsing, deterministic serialization, signatures, guards, groups,
-//! health with repairs, the board outline, and the board files of a workspace.
+//! Boards (architecture §9.1, §10.5; decision U-22; contract §6): the `unfold-board`
+//! version 1 format with pages, its JSON Schema, strict parsing, deterministic serialization,
+//! signatures, guards, groups, drawn links, health with repairs per page and per project, page
+//! outlines, the unpublished-changes count, and the board files of a project.
 //!
 //! ```text
-//! text ─parse─► Board ─check/health(BoardGraph)─► Health, repairs
-//!                 │ └─prepare_save(previous, BoardGraph)─► signed Board ─serialize─► text ─files::save─► disk
-//!                 └─outline(BoardGraph), mermaid::board(BoardGraph)
+//! text ─parse─► Board ─health(Page, PageGraphs)─► Health, repairs
+//!   edit ─parse_edit─┘ └─prepare_save(previous, PageGraphs)─► signed Board ─serialize─► text ─BoardDirs─► disk
+//!                      └─outline(Page, PageGraphs), changes(working, published), mermaid::page
 //! ```
 //!
-//! Everything except [`files`] and [`BoardGraph::load`] is pure.
+//! A page's cards can come from several projects: each project's references are read through
+//! its own [`BoardGraph`] ([`BoardGraph::load`] with [`Board::references`] of that project),
+//! gathered in [`PageGraphs`]. Everything except [`files`] and [`BoardGraph::load`] is pure.
 
+mod changes;
 mod check;
 pub mod files;
 mod graph;
@@ -19,19 +23,20 @@ mod outline;
 mod parse;
 mod save;
 
+pub use changes::changes;
 pub use check::{
-    Health, HealthItem, HealthKind, Repair, RepairKind, Target, apply_repair, check, current_guard,
-    group_problem, guard_problem, health,
+    Health, HealthItem, HealthKind, ProjectKey, Repair, RepairKind, Target, apply_repair, board_health,
+    current_guard, health,
 };
-pub use graph::{BlockAt, BoardGraph};
-pub use json::serialize;
+pub use graph::{BlockAt, BoardGraph, PageGraphs};
+pub use json::{serialize, serialize_changes};
 pub use model::{
-    Author, AuthorKind, Board, Card, CardRef, Description, FORMAT, Group, Guard, SCHEMA, Signature, VERSION,
-    View, is_ordinal,
+    Author, AuthorKind, Board, Card, CardRef, Description, FORMAT, Group, GuardEntry, LabelEntry, Link, Page,
+    ProjectName, SCHEMA, Signature, VERSION, View, is_folder_path,
 };
-pub use outline::{BoardOutline, CardLink, OutlineRow, Unlabeled, card_links, outline};
-pub use parse::parse;
-pub use save::{describe_card, describe_group, prepare_save, set_label, sign};
+pub use outline::{CardLink, OutlineRow, PageOutline, Unlabeled, card_links, outline};
+pub use parse::{parse, parse_edit};
+pub use save::prepare_save;
 
 /// Why a board could not be read, checked, or written.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -54,9 +59,11 @@ pub enum BoardError {
         /// What is wrong.
         message: String,
     },
-    /// A reference or group breaks a rule against the current graph.
-    #[error("{target:?}: {message}")]
+    /// A reference, group, label, or link breaks a rule against the current graphs.
+    #[error("page `{page}`, {target}: {message}")]
     Problem {
+        /// The page it is on.
+        page: String,
         /// What it is about.
         target: Target,
         /// What is wrong.
@@ -65,7 +72,7 @@ pub enum BoardError {
     /// Text cannot be signed: the source is missing, changed, or unreadable.
     #[error("cannot sign {what}: its source is missing or changed; compile first")]
     Unverified {
-        /// The card, group, or key.
+        /// The card, group, key, or link.
         what: String,
     },
     /// A board file name is not a plain stem.
@@ -76,7 +83,7 @@ pub enum BoardError {
         /// The refused name.
         name: String,
     },
-    /// A file with that name exists; boards are never overwritten by Publish or Rename.
+    /// A file with that name exists; a draft's first Publish never overwrites a board.
     #[error("{path} already exists; choose another name (for example {suggestion})")]
     NameTaken {
         /// The existing file, relative to the folder.

@@ -20,8 +20,7 @@ use proptest::test_runner::{Config, TestCaseError, TestRunner};
 use unfold_core::RepoPath;
 use unfold_engine::{Engine, MemoryFactsCache, UpdateRequest};
 use unfold_workspace::{
-    CompileMode, EventSink, OpenContext, WindowId, Workspace, WorkspaceEvent, WorkspaceOptions,
-    default_languages,
+    CompileMode, EventSink, OpenContext, Workspace, WorkspaceEvent, WorkspaceOptions, default_languages,
 };
 
 /// The longest a step may take to settle; it ends as soon as the workspace is idle.
@@ -33,7 +32,7 @@ const DEFAULT_CASES: u32 = 6;
 struct Quiet;
 
 impl EventSink for Quiet {
-    fn deliver(&self, _windows: &[WindowId], _event: &WorkspaceEvent) {}
+    fn emit(&self, _event: &WorkspaceEvent) {}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -406,6 +405,7 @@ impl Folder {
         options.engine.discover.global_ignore = false;
         options.engine.compile_threads = 2;
         OpenContext {
+            project: serde_json::from_value(serde_json::json!("p-incrementl")).expect("a project id"),
             fallback_cache_dir: self.fallback.clone(),
             options,
             sink: Arc::new(Quiet),
@@ -518,7 +518,6 @@ fn first_difference(left: &str, right: &str) -> String {
 fn check(playground: &str, lang: Lang, steps: &[Step]) -> Result<(), TestCaseError> {
     let mut folder = Folder::new(playground, lang);
     let workspace = Workspace::open(&folder.root, folder.context()).expect("open the workspace");
-    workspace.attach(1);
     workspace
         .compile(CompileMode::Check, None)
         .wait()

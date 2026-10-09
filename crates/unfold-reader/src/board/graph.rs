@@ -1,11 +1,14 @@
-//! The slice of the graph a board needs: the files its references live in (with their bytes
-//! verified against the facts' hash), the entrances it shows, and the qualified names of the
-//! targets its cards call. Board checks, signatures, guards, health, Mermaid export, and the
-//! outline all read through it, so they are pure functions of a [`BoardGraph`].
+//! The slice of one project's graph a board needs: the files its references live in (with
+//! their bytes verified against the facts' hash), the entrances it shows, and the qualified
+//! names of the targets its cards call. A page's cards can come from several projects, so a
+//! page reads through [`PageGraphs`]: one [`BoardGraph`] per connected project. Board checks,
+//! signatures, guards, health, Mermaid export, and the outline all read through them, so they
+//! are pure functions of the graphs.
 //!
-//! Build one with [`BoardGraph::load`] from a store snapshot (only the files a board touches),
-//! with [`BoardGraph::from_graph`] from a whole in-memory graph, or piece by piece.
+//! Build a [`BoardGraph`] with [`BoardGraph::load`] from a store snapshot (only the files some
+//! keys touch), with [`BoardGraph::from_graph`] from a whole in-memory graph, or piece by piece.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use rustc_hash::FxHashMap;
@@ -13,7 +16,7 @@ use unfold_core::vocab::{Resolution, Role};
 use unfold_core::{Block, ByteRange, Entrance, FileGraph, Graph, Key, RepoPath};
 use unfold_store::Reader;
 
-use super::model::{Board, Signature};
+use super::model::{ProjectName, Signature};
 use crate::catalog;
 use crate::error::Result;
 use crate::flow::{FlowContext, FlowModel, build_flow};
@@ -170,15 +173,15 @@ impl BoardGraph {
         loaded
     }
 
-    /// What `board` needs from a store snapshot: the files of its block references and of its
-    /// entrances' evidence, its entrances, the inputs holding configuration evidence, and the
-    /// qualified names of targets outside those files. Sources are verified under `root`.
-    pub fn load(reader: &Reader, root: &Path, board: &Board) -> Result<Self> {
+    /// What references `keys` (block and entrance keys of one project, as
+    /// [`super::Board::references`] or [`super::Page::references`] lists them) need from that
+    /// project's store snapshot: the files of the blocks and of the entrances' evidence, the
+    /// entrances, the inputs holding configuration evidence, and the qualified names of targets
+    /// outside those files. Sources are verified under `root`, the project's folder.
+    pub fn load(reader: &Reader, root: &Path, keys: &[&str]) -> Result<Self> {
         let mut loaded = Self::new();
-        let mut keys: Vec<&str> = board.references();
-        keys.extend(board.guards.keys().map(String::as_str));
         let mut evidence: Vec<RepoPath> = Vec::new();
-        for key in keys {
+        for &key in keys {
             if key.starts_with("entrance:") {
                 if let Some(entrance) = reader.entrance(key)? {
                     evidence.push(entrance.evidence.path.clone());
@@ -352,5 +355,38 @@ impl BoardGraph {
             role,
             Some(Role::Body | Role::Then | Role::Else | Role::Catch | Role::Finally)
         )
+    }
+}
+
+/// The graphs a page reads: the board's own project's, and one per other connected project by
+/// shared name. A project a card names that has no graph here is **not connected**: its cards
+/// are placeholders, and its labels, groups, and guards are kept unchecked.
+#[derive(Debug, Clone, Copy)]
+pub struct PageGraphs<'a> {
+    own: &'a BoardGraph,
+    others: &'a BTreeMap<ProjectName, BoardGraph>,
+}
+
+/// No other project.
+static NONE: BTreeMap<ProjectName, BoardGraph> = BTreeMap::new();
+
+impl<'a> PageGraphs<'a> {
+    /// The board's own project's graph and the graphs of the other connected projects (those
+    /// absent from `others` are not connected).
+    pub fn new(own: &'a BoardGraph, others: &'a BTreeMap<ProjectName, BoardGraph>) -> Self {
+        Self { own, others }
+    }
+
+    /// Only the board's own project.
+    pub fn own_only(own: &'a BoardGraph) -> Self {
+        Self::new(own, &NONE)
+    }
+
+    /// The graph of `project` (`None`: the board's own), when it is connected.
+    pub fn get(&self, project: Option<&ProjectName>) -> Option<&'a BoardGraph> {
+        match project {
+            None => Some(self.own),
+            Some(name) => self.others.get(name),
+        }
     }
 }

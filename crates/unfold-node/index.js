@@ -779,8 +779,8 @@ function __napiStampBindingTarget(exportsObject, target) {
 module.exports.__napiBindingTarget = __napiStampBindingTarget(nativeBinding, __napiLoadedBindingTarget)
 module.exports = nativeBinding
 module.exports.cancel = nativeBinding.cancel
-module.exports.closeWorkspace = nativeBinding.closeWorkspace
+module.exports.detachWindow = nativeBinding.detachWindow
 module.exports.dispatch = nativeBinding.dispatch
 module.exports.init = nativeBinding.init
-module.exports.openWorkspace = nativeBinding.openWorkspace
+module.exports.shutdown = nativeBinding.shutdown
 module.exports.subscribe = nativeBinding.subscribe

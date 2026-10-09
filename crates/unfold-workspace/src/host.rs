@@ -1,44 +1,45 @@
-//! [`Host`]: the facade the napi-rs addon wraps, one per engine-host process (brief §6,
+//! [`Host`]: the facade the napi-rs addon wraps, one per engine-host process (contract §3.1,
 //! architecture §12).
 //!
 //! | Addon function | Host |
 //! | --- | --- |
-//! | `init(options)` | [`Host::init`] with the JSON `{"appDataDir","logsDir","fallbackCacheDir"}` |
+//! | `init(options)` | [`Host::init`] with the JSON `{"appDataDir","logsDir","fallbackCacheDir"}`: loads `workspace.json` (every project resting) and starts the liveness reaper |
 //! | `subscribe(sink)` | [`Host::subscribe`]: every event and stream message, as one JSON string each |
-//! | `openWorkspace(windowId, root)` | [`Host::open_workspace_async`] (or the blocking [`Host::open_workspace`]) |
-//! | `closeWorkspace(windowId)` | [`Host::close_workspace_async`] (or [`Host::close_workspace`]) |
 //! | `dispatch(windowId, requestId, command)` | [`Host::dispatch_async`] (or [`Host::dispatch`]) |
 //! | `cancel(requestId)` | [`Host::cancel`] |
+//! | `detachWindow(windowId)` | [`Host::detach_window_async`] (or [`Host::detach_window`]) |
+//! | `shutdown()` | [`Host::shutdown_async`] (or [`Host::shutdown`]) |
 //!
 //! The `_async` entry points return at once and run the work on a new Rust thread, calling
 //! `done` there with the result, so the addon can resolve a promise through a thread-safe
 //! function and never blocks the JavaScript thread. Results are JSON strings; errors are
 //! [`CommandError`]s whose [`CommandError::to_json`] is the rejected promise's message.
 //!
-//! A command is `{"command": "<name>", "args": {…}}` (the [`Request`] table). The engine host may
-//! add `"trusted": true` to a command **the main process** sent (never to one a window sent):
-//! commands that write outside the folder (`export_mermaid`) or read another folder
-//! (`folder_windows`) require it.
+//! Windows attach to nothing here: a window is known by the id its commands carry, and every
+//! command that concerns a project names it ([`crate::projects`]). A command is
+//! `{"command": "<name>", "args": {…}}` (the [`Request`] table). The engine host may add
+//! `"trusted": true` to a command **the main process** sent (never to one a window sent):
+//! commands that take an absolute path or manage windows (`add_project`, `export_mermaid`,
+//! `saved_windows`, `save_window_bounds`, `forget_window`) require it.
 //!
 //! **Closing while a board is saved.** A window's final saves (its boards, its remembered state)
 //! and its detach travel on different channels (the window's port and the main process's
-//! lifecycle message), so `closeWorkspace` can arrive while a save it should follow is still
+//! lifecycle message), so `detachWindow` can arrive while a save it should follow is still
 //! running, or just after the save was dispatched. [`CLOSING_WRITES`] are counted per window from
-//! the moment `dispatch` is called; [`Host::close_workspace`] waits (up to [`CLOSE_WAIT`]) until the
-//! window has none in flight, so those saves land while the window is still attached.
+//! the moment `dispatch` is called; [`Host::detach_window`] waits (up to [`CLOSE_WAIT`]) until the
+//! window has none in flight, so those saves land while the window still holds its boards. Then
+//! it releases the window's board claims and sessions and its Home selection.
 //!
-//! Sink messages are `{"kind":"event","windows":[…],"event":{…}}`,
-//! `{"kind":"broadcast","event":{…}}` (an app-wide event for every window the engine host has,
-//! including windows that show no folder and so never attach to a workspace here), and
-//! `{"kind":"stream","windowId":…,"requestId":…,"message":{…}}` ([`SinkMessage`]). A panic in a
-//! command is caught and becomes an `internal` error; the process keeps running.
+//! Sink messages are `{"kind":"broadcast","event":{…}}` (every event but one is for every window),
+//! `{"kind":"event","windows":[w],"event":{…}}` (`board_conflict`, for the window holding the
+//! board), and `{"kind":"stream","windowId":…,"requestId":…,"message":{…}}` ([`SinkMessage`]). A
+//! panic in a command is caught and becomes an `internal` error; the process keeps running.
 
 use std::any::Any;
 use std::borrow::Cow;
-use std::collections::BTreeMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::path::Path;
 use std::sync::{Arc, Condvar, Mutex, OnceLock, PoisonError, RwLock, Weak};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use rustc_hash::FxHashMap;
@@ -46,33 +47,38 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unfold_engine::CancelToken;
 
-use crate::commands::{FolderExtras, boards};
+use crate::commands::board_hooks;
 use crate::events::{EventSink, WindowId, WorkspaceEvent};
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::ipc::table::Request;
 use crate::options::{AppConfig, WorkspaceOptions};
-use crate::registry::Registry;
+use crate::projects::{ProjectId, Projects};
 use crate::shared::lock;
-use crate::workspace::Workspace;
 
 /// Where every sink message goes: the addon's thread-safe JavaScript callback.
 pub type MessageSink = Arc<dyn Fn(String) + Send + Sync>;
 
-/// The longest [`Host::close_workspace`] waits for the window's closing writes to finish. A save
-/// takes milliseconds; the bound only keeps a stuck write from blocking a close forever.
+/// The longest [`Host::detach_window`] waits for the window's closing writes to finish. A save
+/// takes milliseconds; the bound only keeps a stuck write from blocking a detach forever.
 pub const CLOSE_WAIT: Duration = Duration::from_secs(15);
 
-/// Commands a closing window's detach waits for: board writes, and the window's remembered state
-/// and bounds (saved one last time as the window closes, e.g. when the app quits). Keep in sync with
-/// `CLOSING_WRITES` in `desktop/src/engine-host/router.ts`.
+/// Commands a closing window's detach waits for: board and board-folder writes, and the window's
+/// remembered state and bounds (saved one last time as the window closes, e.g. when the app
+/// quits). Keep in sync with `CLOSING_WRITES` in `desktop/src/engine-host/router.ts`.
 const CLOSING_WRITES: &[&str] = &[
     "save_board",
     "repair_board",
     "publish_board",
+    "discard_changes",
     "unpublish_board",
-    "rename_board",
     "delete_board",
+    "duplicate_board",
+    "set_board_folder",
+    "create_folder",
+    "rename_folder",
+    "delete_folder",
+    "save_board_view",
     "save_window_state",
     "save_window_bounds",
 ];
@@ -81,15 +87,15 @@ const CLOSING_WRITES: &[&str] = &[
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum SinkMessage {
-    /// An event for the windows attached to its folder.
+    /// An event for some windows only (`board_conflict`, for the window holding the board).
     Event {
         /// The windows to deliver it to.
         windows: Vec<WindowId>,
         /// The event.
         event: WorkspaceEvent,
     },
-    /// An app-wide event (`preferences_changed`) for every window. Only the engine host knows
-    /// every window: one showing no folder never attaches to a workspace, so Rust cannot list it.
+    /// An event for every window. Only the engine host knows every window, so it posts the
+    /// event to each window port it has.
     Broadcast {
         /// The event.
         event: WorkspaceEvent,
@@ -148,11 +154,17 @@ impl Default for Host {
 /// The shared state behind a [`Host`].
 pub(crate) struct HostState {
     options: WorkspaceOptions,
-    registry: OnceLock<Registry>,
+    projects: OnceLock<Projects>,
     sink: RwLock<Option<MessageSink>>,
     requests: Mutex<FxHashMap<u64, CancelToken>>,
-    folders: Mutex<BTreeMap<String, Arc<FolderExtras>>>,
     writes: Arc<ClosingWrites>,
+    reaper: Mutex<Option<Reaper>>,
+}
+
+/// The liveness reaper thread ("unfold-liveness"), which rests projects nothing keeps live.
+struct Reaper {
+    stop: Arc<(Mutex<bool>, Condvar)>,
+    thread: JoinHandle<()>,
 }
 
 /// [`CLOSING_WRITES`] in flight, per window.
@@ -222,57 +234,63 @@ impl Drop for ClosingWrite {
     }
 }
 
-/// Delivers workspace events to the host's sink and lets the host react to them.
+/// Sends projects' events to every window, and lets the host react to them first.
 struct HostSink(Weak<HostState>);
 
 impl EventSink for HostSink {
-    fn deliver(&self, windows: &[WindowId], event: &WorkspaceEvent) {
+    fn emit(&self, event: &WorkspaceEvent) {
         if let Some(state) = self.0.upgrade() {
             // Observe first: the windows react to the event with new requests, which must find
             // the command-side caches already marked stale.
             HostState::observe(&state, event);
-            state.deliver(windows, event);
+            state.broadcast(event);
         }
     }
 }
 
 impl Host {
-    /// A host whose workspaces use the default options.
+    /// A host whose projects use the default options.
     pub fn new() -> Self {
         Self::with_options(WorkspaceOptions::default())
     }
 
-    /// A host whose workspaces use `options` (tests turn watching off and shorten timings).
+    /// A host whose projects use `options` (tests turn watching off and shorten timings).
     pub fn with_options(options: WorkspaceOptions) -> Self {
         Self {
             state: Arc::new(HostState {
                 options,
-                registry: OnceLock::new(),
+                projects: OnceLock::new(),
                 sink: RwLock::new(None),
                 requests: Mutex::new(FxHashMap::default()),
-                folders: Mutex::new(BTreeMap::new()),
                 writes: Arc::default(),
+                reaper: Mutex::new(None),
             }),
         }
     }
 
-    /// Sets the app folders from the JSON the main process chose. Call once, before anything
-    /// else.
+    /// Sets the app folders from the JSON the main process chose, loads the workspace (every
+    /// project resting), and starts the liveness reaper. Call once, before anything else.
     pub fn init(&self, options_json: &str) -> CommandResult<()> {
         let config: AppConfig = serde_json::from_str(options_json)
             .map_err(|error| CommandError::invalid_args(format!("invalid init options: {error}")))?;
         let sink = Arc::new(HostSink(Arc::downgrade(&self.state)));
-        let registry = Registry::with_options(config, sink, self.state.options.clone());
         let weak = Arc::downgrade(&self.state);
-        registry.set_close_hook(Arc::new(move |workspace: &Workspace| {
-            if let Some(state) = weak.upgrade() {
-                lock(&state.folders).remove(workspace.folder());
-            }
-        }));
+        let projects = Projects::new(
+            config,
+            sink,
+            self.state.options.clone(),
+            Box::new(move |project: &ProjectId| {
+                if let Some(state) = weak.upgrade() {
+                    state.refresh_health(project);
+                }
+            }),
+        );
         self.state
-            .registry
-            .set(registry)
-            .map_err(|_| CommandError::new("already_initialized", "the engine is already initialized"))
+            .projects
+            .set(projects)
+            .map_err(|_| CommandError::new("already_initialized", "the engine is already initialized"))?;
+        HostState::start_reaper(&self.state);
+        Ok(())
     }
 
     /// Registers the sink that receives every event and stream message (replacing any earlier
@@ -281,50 +299,29 @@ impl Host {
         *self.state.sink.write().unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(sink));
     }
 
-    /// Attaches `window` to the folder at `root` (opening its workspace if no window has it) and
-    /// returns the `OpenedFolder` JSON. Blocks while the folder opens.
-    pub fn open_workspace(&self, window: WindowId, root: &str) -> CommandResult<String> {
-        let registry = self.state.registry()?;
-        guarded(|| {
-            let opened = registry.open(window, Path::new(root))?;
-            encode(&opened)
-        })
-    }
-
-    /// [`Host::open_workspace`] on a new thread; `done` runs there.
-    pub fn open_workspace_async(
-        &self,
-        window: WindowId,
-        root: String,
-        done: impl FnOnce(CommandResult<String>) + Send + 'static,
-    ) {
-        let host = self.clone();
-        spawn("unfold-open", done, move || host.open_workspace(window, &root));
-    }
-
-    /// Detaches `window`, after its closing writes in flight finish (see the
-    /// [module documentation](self)). The folder's last window closes its workspace.
-    pub fn close_workspace(&self, window: WindowId) -> CommandResult<()> {
-        let registry = self.state.registry()?;
-        // A write still running after the wait fails cleanly once the window is detached.
+    /// Forgets `window` (it closed), after its closing writes in flight finish (see the
+    /// [module documentation](self)): releases its board claims and sessions and its Home
+    /// selection. Projects losing interest start their lease.
+    pub fn detach_window(&self, window: WindowId) -> CommandResult<()> {
+        let projects = self.state.projects()?;
+        // A write still running after the wait fails cleanly once the window's claims are gone.
         let _ = self.state.writes.wait_idle(window, CLOSE_WAIT);
         guarded(|| {
-            if let Ok(workspace) = registry.workspace(window) {
-                boards::release_window(&self.state, &workspace, window);
-            }
-            registry.close(window);
+            projects.detach_window(window, |project, boards| {
+                board_hooks::released(&self.state, project, boards);
+            });
             Ok(())
         })
     }
 
-    /// [`Host::close_workspace`] on a new thread; `done` runs there.
-    pub fn close_workspace_async(
+    /// [`Host::detach_window`] on a new thread; `done` runs there.
+    pub fn detach_window_async(
         &self,
         window: WindowId,
         done: impl FnOnce(CommandResult<()>) + Send + 'static,
     ) {
         let host = self.clone();
-        spawn("unfold-close", done, move || host.close_workspace(window));
+        spawn("unfold-detach", done, move || host.detach_window(window));
     }
 
     /// Runs one command for `window` and returns its result JSON. Blocks until it finishes;
@@ -364,16 +361,32 @@ impl Host {
         }
     }
 
-    /// Closes every workspace (the app is quitting).
-    pub fn shutdown(&self) {
-        if let Some(registry) = self.state.registry.get() {
-            registry.shutdown();
+    /// Stops the reaper and closes every live project, remembering each one's state in
+    /// `workspace.json` (the app is quitting; called once, after every window detached).
+    pub fn shutdown(&self) -> CommandResult<()> {
+        let reaper = lock(&self.state.reaper).take();
+        if let Some(reaper) = reaper {
+            let (stopped, wake) = &*reaper.stop;
+            *lock(stopped) = true;
+            wake.notify_all();
+            let _ = reaper.thread.join();
         }
+        let projects = self.state.projects()?;
+        guarded(|| {
+            projects.shutdown();
+            Ok(())
+        })
     }
 
-    /// The registry, once initialized.
-    pub fn registry(&self) -> Option<&Registry> {
-        self.state.registry.get()
+    /// [`Host::shutdown`] on a new thread; `done` runs there.
+    pub fn shutdown_async(&self, done: impl FnOnce(CommandResult<()>) + Send + 'static) {
+        let host = self.clone();
+        spawn("unfold-shutdown", done, move || host.shutdown());
+    }
+
+    /// The workspace's projects, once initialized.
+    pub fn projects(&self) -> Option<&Projects> {
+        self.state.projects.get()
     }
 }
 
@@ -423,8 +436,9 @@ pub(crate) fn encode<T: Serialize>(value: &T) -> CommandResult<String> {
 }
 
 impl HostState {
-    fn registry(&self) -> CommandResult<&Registry> {
-        self.registry
+    /// The workspace's projects, once initialized.
+    pub(crate) fn projects(&self) -> CommandResult<&Projects> {
+        self.projects
             .get()
             .ok_or_else(|| CommandError::new("not_initialized", "the engine is not initialized"))
     }
@@ -446,12 +460,12 @@ impl HostState {
         command: &str,
         cancel: CancelToken,
     ) -> CommandResult<String> {
-        let registry = self.registry()?;
+        let projects = self.projects()?;
         guarded(|| {
             let (parsed, trusted) = parse_command(command)?;
             let ctx = Ctx {
                 host: self,
-                registry,
+                projects,
                 window,
                 request,
                 cancel,
@@ -461,23 +475,40 @@ impl HostState {
         })
     }
 
-    /// The command-side state of `folder`, created on first use; dropped when the folder's
-    /// workspace closes.
-    pub(crate) fn extras(&self, folder: &str) -> Arc<FolderExtras> {
-        Arc::clone(lock(&self.folders).entry(folder.to_owned()).or_default())
-    }
-
-    fn existing_extras(&self, folder: &str) -> Option<Arc<FolderExtras>> {
-        lock(&self.folders).get(folder).cloned()
-    }
-
-    /// The open workspace of `folder`.
-    pub(crate) fn workspace_of(&self, folder: &str) -> Option<Arc<Workspace>> {
-        self.registry
-            .get()?
-            .workspaces()
-            .into_iter()
-            .find(|workspace| workspace.folder() == folder)
+    /// Starts the reaper: every `reap_interval` it rests the projects nothing keeps live. It
+    /// holds the host weakly, so it ends with the host even without [`Host::shutdown`].
+    fn start_reaper(state: &Arc<Self>) {
+        let stop = Arc::new((Mutex::new(false), Condvar::new()));
+        let signal = Arc::clone(&stop);
+        let weak = Arc::downgrade(state);
+        let interval = state.options.reap_interval;
+        let thread = std::thread::Builder::new()
+            .name("unfold-liveness".to_owned())
+            .spawn(move || {
+                loop {
+                    {
+                        let (stopped, wake) = &*signal;
+                        let guard = wake
+                            .wait_timeout_while(lock(stopped), interval, |stopped| !*stopped)
+                            .unwrap_or_else(PoisonError::into_inner)
+                            .0;
+                        if *guard {
+                            return;
+                        }
+                    }
+                    let Some(state) = weak.upgrade() else {
+                        return;
+                    };
+                    if let Some(projects) = state.projects.get() {
+                        // A panic here must not end liveness for the rest of the session.
+                        let _ = catch_unwind(AssertUnwindSafe(|| projects.reap()));
+                    }
+                }
+            });
+        // Without the thread nothing rests, which costs memory but loses nothing.
+        if let Ok(thread) = thread {
+            *lock(&state.reaper) = Some(Reaper { stop, thread });
+        }
     }
 
     fn send<T: Serialize>(&self, message: &Outgoing<'_, T>) {
@@ -487,7 +518,7 @@ impl HostState {
         }
     }
 
-    /// Sends `event` to `windows`.
+    /// Sends `event` to `windows` only (`board_conflict`, to the window holding the board).
     pub(crate) fn deliver(&self, windows: &[WindowId], event: &WorkspaceEvent) {
         if windows.is_empty() {
             return;
@@ -495,7 +526,7 @@ impl HostState {
         self.send(&Outgoing::<()>::Event { windows, event });
     }
 
-    /// Sends an app-wide `event` to every window.
+    /// Sends `event` to every window.
     pub(crate) fn broadcast(&self, event: &WorkspaceEvent) {
         self.send(&Outgoing::<()>::Broadcast { event });
     }
@@ -509,62 +540,102 @@ impl HostState {
         });
     }
 
-    /// Keeps command-side state in step with the folder: the file list goes stale when files
-    /// change, open boards are checked when board files change on disk, and board health is
-    /// recomputed after the graph changes. Board work runs on its own thread: events arrive on
-    /// the engine and watcher threads, which must not wait for it.
+    /// Keeps command-side state in step with a project: its file list goes stale when files
+    /// change, its shared name is read again when its settings change, its boards' health (and
+    /// that of the projects whose boards reference it) is recomputed after its graph changes, and
+    /// open boards are checked when board files change on disk. Board work runs on its own
+    /// threads: events arrive on the engine and watcher threads, which must not wait for it.
     fn observe(state: &Arc<Self>, event: &WorkspaceEvent) {
-        let Some(folder) = event.folder() else {
+        let (Some(project), Some(projects)) = (event.project(), state.projects.get()) else {
             return;
         };
+        let extras = || projects.handle(project).ok().map(|handle| handle.extras());
         match event {
-            WorkspaceEvent::FilesChanged { .. } | WorkspaceEvent::ConfigChanged { .. } => {
-                if let Some(extras) = state.existing_extras(folder) {
+            WorkspaceEvent::FilesChanged { .. } => {
+                if let Some(extras) = extras() {
                     extras.files_changed();
                 }
+            }
+            WorkspaceEvent::ConfigChanged { .. } => {
+                if let Some(extras) = extras() {
+                    extras.files_changed();
+                }
+                projects.refresh_name(project);
             }
             WorkspaceEvent::GraphUpdated { .. } => {
-                if let Some(extras) = state.existing_extras(folder) {
+                if let Some(extras) = extras() {
                     extras.files_changed();
-                    if extras.has_open_boards()
-                        && extras.health.request()
-                        && !Self::in_background(state, folder, boards::refresh_health)
-                    {
-                        extras.health.release();
-                    }
+                }
+                state.refresh_health(project);
+                for dependent in board_hooks::dependents(state, project) {
+                    state.refresh_health(&dependent);
                 }
             }
-            WorkspaceEvent::BoardsChanged { .. }
-                if state
-                    .existing_extras(folder)
-                    .is_some_and(|extras| extras.has_open_boards()) =>
-            {
-                let _ = Self::in_background(state, folder, boards::check_disk);
-            }
+            WorkspaceEvent::BoardsChanged { boards, .. } => state.boards_changed(project, boards.clone()),
             _ => {}
         }
     }
 
-    /// Runs board work for `folder` on a new thread; whether the thread started.
-    fn in_background(
-        state: &Arc<Self>,
-        folder: &str,
-        work: fn(&Arc<HostState>, &Workspace, &FolderExtras),
-    ) -> bool {
-        let state = Arc::clone(state);
-        let folder = folder.to_owned();
-        std::thread::Builder::new()
+    /// Recomputes the health of a live project's boards on its own thread, coalescing requests
+    /// (at most one refresh runs per project; one made meanwhile runs it once more).
+    pub(crate) fn refresh_health(self: &Arc<Self>, project: &ProjectId) {
+        let Some(projects) = self.projects.get() else {
+            return;
+        };
+        let Ok(handle) = projects.handle(project) else {
+            return;
+        };
+        let Some(workspace) = handle.live() else {
+            return;
+        };
+        let extras = handle.extras();
+        if !extras.health.request() {
+            return;
+        }
+        let state = Arc::clone(self);
+        let worker = Arc::clone(&extras);
+        let started = std::thread::Builder::new()
             .name("unfold-boards".to_owned())
             .spawn(move || {
-                let workspace = state.workspace_of(&folder);
-                let extras = state.existing_extras(&folder);
-                if let (Some(workspace), Some(extras)) = (workspace, extras) {
-                    // A failure here only leaves health or conflicts unreported until the next
-                    // board command; it must not take the process down.
-                    let _ = catch_unwind(AssertUnwindSafe(|| work(&state, &workspace, &extras)));
+                loop {
+                    worker.health.begin();
+                    // A failure only leaves health stale until the next refresh; it must not take
+                    // the process down, nor keep later refreshes from starting.
+                    let _ = catch_unwind(AssertUnwindSafe(|| {
+                        board_hooks::refresh_health(&state, &workspace, &worker);
+                    }));
+                    if !worker.health.again() {
+                        break;
+                    }
                 }
-            })
-            .is_ok()
+            });
+        if started.is_err() {
+            extras.health.release();
+        }
+    }
+
+    /// Lets the board commands check a live project's open boards against the disk, on its own
+    /// thread.
+    fn boards_changed(self: &Arc<Self>, project: &ProjectId, boards: Vec<String>) {
+        let Some(projects) = self.projects.get() else {
+            return;
+        };
+        let Ok(handle) = projects.handle(project) else {
+            return;
+        };
+        let Some(workspace) = handle.live() else {
+            return;
+        };
+        let extras = handle.extras();
+        let state = Arc::clone(self);
+        // Without a thread, conflicts surface at the next save (`board_conflict` from it).
+        let _ = std::thread::Builder::new()
+            .name("unfold-boards".to_owned())
+            .spawn(move || {
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    board_hooks::boards_changed(&state, &workspace, &extras, &boards);
+                }));
+            });
     }
 }
 
@@ -602,19 +673,20 @@ mod tests {
 
     #[test]
     fn parses_commands_and_rejects_bad_ones() {
-        let (request, trusted) = parse_command(r#"{"command":"graph_status"}"#).expect("parse");
-        assert_eq!(request.name(), "graph_status");
+        let (request, trusted) = parse_command(r#"{"command":"app_info"}"#).expect("parse");
+        assert_eq!(request.name(), "app_info");
         assert!(!trusted);
         let (_, trusted) =
-            parse_command(r#"{"command":"graph_status","args":{},"trusted":true}"#).expect("parse");
+            parse_command(r#"{"command":"app_info","args":{},"trusted":true}"#).expect("parse");
         assert!(trusted);
         for (bad, code) in [
             ("nope", "invalid_command"),
             ("[]", "invalid_command"),
             (r#"{"command":"no_such_command"}"#, "invalid_command"),
-            (r#"{"command":"graph_status","trusted":"yes"}"#, "invalid_command"),
+            (r#"{"command":"app_info","trusted":"yes"}"#, "invalid_command"),
             (r#"{"command":"card","args":{}}"#, "invalid_args"),
-            (r#"{"command":"graph_status","args":{"extra":1}}"#, "invalid_args"),
+            (r#"{"command":"app_info","args":{"extra":1}}"#, "invalid_args"),
+            (r#"{"command":"problems","args":{}}"#, "invalid_args"),
         ] {
             let error = parse_command(bad).expect_err(bad);
             assert_eq!(error.code, code, "{bad}");
@@ -624,7 +696,7 @@ mod tests {
     #[test]
     fn outgoing_messages_serialize_like_sink_messages() {
         let event = WorkspaceEvent::ConfigChanged {
-            folder: "/repo".into(),
+            project: ProjectId::new_unchecked("p-aaaaaaaaaa"),
         };
         let borrowed = serde_json::to_value(Outgoing::<()>::Event {
             windows: &[1, 2],
@@ -692,8 +764,23 @@ mod tests {
     fn commands_before_init_are_refused() {
         let host = Host::new();
         let error = host
-            .dispatch(1, 1, r#"{"command":"graph_status"}"#)
+            .dispatch(1, 1, r#"{"command":"app_info"}"#)
             .expect_err("not initialized");
         assert_eq!(error.code, "not_initialized");
+    }
+
+    #[test]
+    fn closing_writes_match_the_routers() {
+        let router = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../desktop/src/engine-host/router.ts"),
+        )
+        .expect("router.ts");
+        let start = router
+            .find("export const CLOSING_WRITES")
+            .expect("CLOSING_WRITES in router.ts");
+        let list = &router[start..];
+        let list = &list[..list.find("]);").expect("the end of the list")];
+        let names: Vec<&str> = list.split('"').skip(1).step_by(2).collect();
+        assert_eq!(names, CLOSING_WRITES);
     }
 }

@@ -1,5 +1,5 @@
-//! The Node-API addon that the Electron engine host loads (brief §6, architecture §12). It exposes
-//! `init`, `subscribe`, `openWorkspace`, `closeWorkspace`, `dispatch`, and `cancel` over one
+//! The Node-API addon that the Electron engine host loads (contract §3.1, architecture §12). It
+//! exposes `init`, `subscribe`, `dispatch`, `cancel`, `detachWindow`, and `shutdown` over one
 //! process-wide [`Host`], and holds no graph logic of its own.
 //!
 //! - Every value crossing the boundary is a JSON string (or a number for window and request IDs).
@@ -20,7 +20,7 @@ use napi::{Env, Error, JsDeferred, Result};
 use napi_derive::napi;
 use unfold_workspace::{CommandError, CommandResult, Host};
 
-/// The one host of this process: every window's workspace lives behind it.
+/// The one host of this process: the workspace and its projects live behind it.
 static HOST: LazyLock<Host> = LazyLock::new(Host::new);
 
 /// How a deferred promise gets its value on the JavaScript thread.
@@ -37,7 +37,7 @@ pub fn init(options: String) -> Result<()> {
 }
 
 /// Registers the single sink. Rust calls it from any thread with one JSON message: an event for
-/// some windows, or a stream message of a running command. Replaces any earlier sink.
+/// every window or for some, or a stream message of a running command. Replaces any earlier sink.
 #[napi(catch_unwind, ts_args_type = "sink: (message: string) => void")]
 pub fn subscribe(sink: Function<String, ()>) -> Result<()> {
     let sink = sink
@@ -52,25 +52,9 @@ pub fn subscribe(sink: Function<String, ()>) -> Result<()> {
     Ok(())
 }
 
-/// Attaches a window to the folder at `root` (opening its workspace if no window has it).
-/// Resolves with the `OpenedFolder` JSON.
-#[napi(catch_unwind, ts_return_type = "Promise<string>")]
-pub fn open_workspace(env: &Env, window_id: u32, root: String) -> Result<Object<'_>> {
-    promise(env, move |done| {
-        HOST.open_workspace_async(window_id, root, done);
-    })
-}
-
-/// Detaches a window. The folder's last window saves its drafts and closes its workspace.
-#[napi(catch_unwind, ts_return_type = "Promise<void>")]
-pub fn close_workspace(env: &Env, window_id: u32) -> Result<Object<'_>> {
-    promise(env, move |done| {
-        HOST.close_workspace_async(window_id, done);
-    })
-}
-
-/// Runs one command (`{"command","args"}` JSON) for one window. Resolves with the result JSON;
-/// stream messages go to the sink first. `requestId` must be unique among running requests.
+/// Runs one command (`{"command","args"}` JSON) for one window (any window id: windows need no
+/// attach). Resolves with the result JSON; stream messages go to the sink first. `requestId` must
+/// be unique among running requests.
 #[napi(catch_unwind, ts_return_type = "Promise<string>")]
 pub fn dispatch(env: &Env, window_id: u32, request_id: i64, command: String) -> Result<Object<'_>> {
     let request = request_number(request_id);
@@ -86,6 +70,23 @@ pub fn cancel(request_id: i64) {
     if let Ok(request) = request_number(request_id) {
         HOST.cancel(request);
     }
+}
+
+/// A window closed: waits (at most 15 s) for its closing writes in flight, then releases its board
+/// claims and sessions and its Home selection.
+#[napi(catch_unwind, ts_return_type = "Promise<void>")]
+pub fn detach_window(env: &Env, window_id: u32) -> Result<Object<'_>> {
+    promise(env, move |done| {
+        HOST.detach_window_async(window_id, done);
+    })
+}
+
+/// The app is quitting: closes every live project, remembering each one's state. Called once.
+#[napi(catch_unwind, ts_return_type = "Promise<void>")]
+pub fn shutdown(env: &Env) -> Result<Object<'_>> {
+    promise(env, move |done| {
+        HOST.shutdown_async(done);
+    })
 }
 
 /// A request ID from JavaScript: a non-negative safe integer.

@@ -18,8 +18,8 @@ body {
   background: var(--color-canvas);
   color: var(--color-text);
   font-family: var(--font-ui);
-  font-size: var(--font-size-ui);
-  line-height: 1.4;
+  font-size: var(--text-13);
+  line-height: var(--leading-20);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -32,6 +32,7 @@ h3,
 h4,
 p {
   margin: 0;
+  font: inherit;
 }
 
 button,
@@ -62,15 +63,13 @@ button:disabled {
   outline: none;
 }
 
-kbd {
-  font-family: var(--font-ui);
-  font-size: var(--font-size-tiny);
-  color: var(--color-muted);
-}
-
+/* Code never ligates: `===` and `=>` show the characters that are in the file. */
 code,
 pre {
   font-family: var(--font-code);
+  font-feature-settings:
+    "calt" 0,
+    "liga" 0;
 }
 
 ::selection {
@@ -82,12 +81,15 @@ pre {
   height: 8px;
 }
 
+/* A 6px thumb inside the 8px track. */
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: var(--color-scroll-thumb) padding-box;
 }
 
-::-webkit-scrollbar-track {
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
   background: transparent;
 }
 
@@ -112,7 +114,7 @@ body[data-resizing="row"] * {
   cursor: row-resize !important;
 }
 
-/* Floating layers (tooltips, menus, popovers, dialogs, the palette) fade in with this. */
+/* Floating layers (tooltips, menus, popovers, dialogs) fade in with this. */
 @keyframes hover-layer-in {
   from {
     opacity: 0;

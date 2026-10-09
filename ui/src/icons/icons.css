@@ -1,0 +1,43 @@
+.icon,
+.state-glyph {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* The ring's arc takes the surrounding text color; its track is a hairline. */
+.state-glyph-track {
+  stroke: var(--color-border);
+}
+
+.state-glyph-arc {
+  stroke: currentColor;
+}
+
+.state-glyph-paused {
+  fill: var(--color-muted);
+}
+
+.state-glyph-not-compiled {
+  stroke: var(--color-muted);
+}
+
+.state-glyph-failed .state-glyph-fill {
+  fill: var(--color-danger);
+}
+
+.state-glyph-failed .state-glyph-mark {
+  stroke: var(--color-on-danger);
+}
+
+.state-glyph-failed .state-glyph-dot {
+  fill: var(--color-on-danger);
+}
+
+/* The moon is faint in the sidebar row (V-20) and muted in the Home state line (07). */
+.state-glyph-resting {
+  stroke: var(--color-faint);
+}
+
+.state-glyph-resting[data-variant="line"] {
+  stroke: var(--color-muted);
+}

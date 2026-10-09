@@ -1,0 +1,38 @@
+{
+  "project": "<project>",
+  "name": "ts-orders",
+  "path": "<folder>",
+  "state": {
+    "kind": "current"
+  },
+  "status": {
+    "state": {
+      "kind": "current",
+      "files": 34,
+      "languages": [
+        "typescript"
+      ]
+    },
+    "fallback": null,
+    "watching": "off",
+    "backgroundUpdates": true,
+    "complete": true
+  },
+  "updatedAtMs": 0,
+  "files": 34,
+  "languages": [
+    "typescript"
+  ],
+  "applications": 4,
+  "entrances": 18,
+  "health": {
+    "problems": 0,
+    "doesntParse": 0,
+    "settingsError": null,
+    "unreachedEntrances": 0,
+    "unindexedLaunches": 1,
+    "boardsNeedingReview": 0,
+    "boards": []
+  },
+  "git": null
+}

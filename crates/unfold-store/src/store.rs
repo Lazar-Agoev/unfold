@@ -115,7 +115,7 @@ impl Store {
 }
 
 /// What an existing file holds.
-enum Found {
+pub(crate) enum Found {
     /// No tables: a new file.
     Empty,
     /// This schema and engine.
@@ -130,8 +130,9 @@ fn open_existing(path: &Path, engine_version: &str) -> Result<(Connection, Found
     Ok((conn, found))
 }
 
-/// Reads the versions an existing database records.
-fn inspect(conn: &Connection, engine_version: &str) -> Result<Found> {
+/// Reads the versions an existing database records. Only reads, so it also serves read-only
+/// connections ([`ReadPool::open_existing`]).
+pub(crate) fn inspect(conn: &Connection, engine_version: &str) -> Result<Found> {
     let objects: i64 = conn.query_row("SELECT count(*) FROM sqlite_schema", [], |row| row.get(0))?;
     if objects == 0 {
         return Ok(Found::Empty);

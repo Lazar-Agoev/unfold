@@ -1,11 +1,13 @@
-//! `search_text`: text matches across the folder with ripgrep's libraries (`grep-searcher`,
-//! `grep-regex`), streamed file by file (decision U-30).
+//! `search_text`: text matches across the workspace's projects with ripgrep's libraries
+//! (`grep-searcher`, `grep-regex`), streamed file by file (contract §4.5, decisions U-30, D-9).
 //!
-//! It searches the folder's file list (discovery's ignore rules; never `.unfold/`), skipping
-//! binary files and files larger than [`MAX_FILE_BYTES`]. Files are searched in parallel in
-//! chunks and streamed in path order, so the stream is deterministic. It stops after
-//! [`MAX_MATCHES`] matches (the result says there were more) and between files or lines when the
-//! request is cancelled.
+//! It searches each project's file list: a live project's files under discovery's ignore rules
+//! (never `.unfold/`), or a resting project's indexed files from its stored graph. It skips
+//! binary files and files larger than [`MAX_FILE_BYTES`]. Projects are searched in workspace
+//! order; within one, files are searched in parallel in chunks and streamed in path order, so
+//! the stream is deterministic. It stops after [`MAX_MATCHES`] matches in all (the result says
+//! there were more) and between files or lines when the request is cancelled (the UI cancels on
+//! each new query). Searching never wakes a project.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -17,10 +19,13 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::count;
+use super::search::{file_list, look_in};
+use crate::confine::confine;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
+use crate::projects::ProjectId;
 
-/// The most matches one search returns.
+/// The most matches one search returns, across every project.
 pub const MAX_MATCHES: usize = 2_000;
 /// Files larger than this are not searched.
 pub const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
@@ -39,14 +44,20 @@ pub struct TextSearchArgs {
     pub query: String,
     /// Treat `query` as a regular expression (Rust `regex` syntax).
     #[serde(default)]
-    pub regex: bool,
+    #[ts(optional)]
+    pub regex: Option<bool>,
     /// Match case exactly.
     #[serde(default)]
-    pub case_sensitive: bool,
+    #[ts(optional)]
+    pub case_sensitive: Option<bool>,
     /// Match whole words only.
     #[serde(default)]
     #[ts(optional)]
     pub whole_word: Option<bool>,
+    /// The projects to look in (every project when absent).
+    #[serde(default)]
+    #[ts(optional)]
+    pub projects: Option<Vec<ProjectId>>,
 }
 
 /// One matching line.
@@ -67,14 +78,28 @@ pub struct TextMatch {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct TextSearchFile {
-    /// The folder-relative file.
+    /// The file's project.
+    pub project: ProjectId,
+    /// The file, relative to the project's folder.
     pub path: String,
     /// Its matching lines, in order.
     pub matches: Vec<TextMatch>,
 }
 
+/// What a finished text search found in one project.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectTextMatches {
+    /// The project.
+    pub project: ProjectId,
+    /// Its files with matches.
+    pub files: u32,
+    /// Its matching lines streamed.
+    pub matches: u32,
+}
+
 /// What a finished text search found.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct TextSearchSummary {
     /// Files with matches.
@@ -85,8 +110,10 @@ pub struct TextSearchSummary {
     pub searched: u32,
     /// The search stopped at the match limit; there are more.
     pub truncated: bool,
-    /// The folder has more files than the file list holds; some weren't searched.
+    /// A project has more files than its file list holds; some weren't searched.
     pub files_truncated: bool,
+    /// Each searched project's counts, in workspace order.
+    pub projects: Vec<ProjectTextMatches>,
 }
 
 /// `search_text`: streams `TextSearchFile` messages and resolves with a summary.
@@ -95,55 +122,73 @@ pub fn search_text(ctx: &Ctx<'_>, args: TextSearchArgs) -> CommandResult<TextSea
         return Err(CommandError::invalid_args("the search text is empty"));
     }
     let matcher = RegexMatcherBuilder::new()
-        .case_insensitive(!args.case_sensitive)
-        .fixed_strings(!args.regex)
+        .case_insensitive(!args.case_sensitive.unwrap_or(false))
+        .fixed_strings(!args.regex.unwrap_or(false))
         .word(args.whole_word.unwrap_or(false))
         .build(&args.query)
         .map_err(|error| CommandError::invalid_args(format!("invalid search: {error}")))?;
-    let workspace = ctx.workspace()?;
-    let files = ctx.extras(&workspace).file_set(&workspace)?;
-    let root = workspace.root();
+    let projects = look_in(ctx, args.projects.as_deref())?;
     let mut summary = TextSearchSummary {
         files: 0,
         matches: 0,
         searched: 0,
         truncated: false,
-        files_truncated: files.truncated,
+        files_truncated: false,
+        projects: Vec::with_capacity(projects.len()),
     };
     let stop = AtomicBool::new(false);
-    for chunk in files.paths.chunks(CHUNK) {
-        ctx.check_cancelled()?;
-        let found: Vec<Option<TextSearchFile>> = chunk
-            .par_iter()
-            .map(|path| {
-                if stop.load(Ordering::Relaxed) || ctx.cancel.is_cancelled() {
-                    return None;
+    for project in &projects {
+        let mut counts = ProjectTextMatches {
+            project: project.id().clone(),
+            files: 0,
+            matches: 0,
+        };
+        if !summary.truncated {
+            ctx.check_cancelled()?;
+            let files = file_list(project, project.readers()?.as_ref())?;
+            summary.files_truncated |= files.truncated;
+            let root = project.root();
+            for chunk in files.paths.chunks(CHUNK) {
+                ctx.check_cancelled()?;
+                let found: Vec<Option<TextSearchFile>> = chunk
+                    .par_iter()
+                    .map(|path| {
+                        if stop.load(Ordering::Relaxed) || ctx.cancel.is_cancelled() {
+                            return None;
+                        }
+                        // Stored paths may predate a link swapped in since: read only what
+                        // stays inside the project's folder.
+                        let confined = confine(root, path).ok()?;
+                        search_file(&matcher, confined.absolute(), project.id(), path, &ctx.cancel)
+                    })
+                    .collect();
+                summary.searched += count(chunk.len());
+                for mut file in found.into_iter().flatten() {
+                    let room = MAX_MATCHES - summary.matches as usize;
+                    if room == 0 {
+                        summary.truncated = true;
+                        break;
+                    }
+                    if file.matches.len() > room {
+                        file.matches.truncate(room);
+                        summary.truncated = true;
+                    }
+                    summary.files += 1;
+                    summary.matches += count(file.matches.len());
+                    counts.files += 1;
+                    counts.matches += count(file.matches.len());
+                    ctx.stream(&file);
+                    if summary.truncated {
+                        break;
+                    }
                 }
-                search_file(&matcher, &root.join(path.as_ref()), path, &ctx.cancel)
-            })
-            .collect();
-        summary.searched += count(chunk.len());
-        for mut file in found.into_iter().flatten() {
-            let room = MAX_MATCHES - summary.matches as usize;
-            if room == 0 {
-                summary.truncated = true;
-                break;
-            }
-            if file.matches.len() > room {
-                file.matches.truncate(room);
-                summary.truncated = true;
-            }
-            summary.files += 1;
-            summary.matches += count(file.matches.len());
-            ctx.stream(&file);
-            if summary.truncated {
-                break;
+                if summary.truncated {
+                    stop.store(true, Ordering::Relaxed);
+                    break;
+                }
             }
         }
-        if summary.truncated {
-            stop.store(true, Ordering::Relaxed);
-            break;
-        }
+        summary.projects.push(counts);
     }
     ctx.check_cancelled()?;
     Ok(summary)
@@ -154,6 +199,7 @@ pub fn search_text(ctx: &Ctx<'_>, args: TextSearchArgs) -> CommandResult<TextSea
 fn search_file(
     matcher: &RegexMatcher,
     absolute: &std::path::Path,
+    project: &ProjectId,
     path: &str,
     cancel: &unfold_engine::CancelToken,
 ) -> Option<TextSearchFile> {
@@ -171,6 +217,7 @@ fn search_file(
     };
     searcher.search_path(matcher, absolute, &mut sink).ok()?;
     (!sink.matches.is_empty()).then(|| TextSearchFile {
+        project: project.clone(),
         path: path.to_owned(),
         matches: sink.matches,
     })

@@ -1,27 +1,28 @@
+/* Bottom right, 24px from the edges, 10px apart, newest at the bottom (V-67). */
 .toaster {
   position: fixed;
-  right: 16px;
-  bottom: 36px;
+  right: 24px;
+  bottom: 24px;
   z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8px;
+  gap: 10px;
   pointer-events: none;
 }
 
 .toast {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  width: max-content;
-  max-width: 380px;
-  padding: 9px 8px 9px 12px;
-  border-radius: var(--radius-large);
-  background: var(--color-popover);
-  box-shadow: var(--shadow-popover);
+  gap: 10px;
+  width: 380px;
+  max-width: calc(100vw - 48px);
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-dialog);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-float);
   color: var(--color-text);
-  font-size: var(--font-size-small);
   pointer-events: auto;
   user-select: text;
   animation: toast-in var(--duration) ease-out;
@@ -34,50 +35,54 @@
   }
 }
 
-.toast-icon {
+.toast-leading {
+  display: grid;
   flex-shrink: 0;
-  margin-top: 1px;
-  color: var(--color-accent-text);
+  place-items: center;
+  min-width: 16px;
+  height: 20px;
+  color: var(--color-muted);
 }
 
-.toast-success .toast-icon {
-  color: var(--color-success);
+.toast-danger-icon {
+  color: var(--color-danger);
 }
 
-.toast-danger .toast-icon {
-  color: var(--color-failure);
-}
-
-.toast-message {
+.toast-text {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
-  padding-top: 1px;
   overflow-wrap: anywhere;
+}
+
+.toast-title {
+  font-size: var(--text-13);
+  line-height: var(--leading-20);
+  font-weight: 500;
+}
+
+.toast-body {
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
 }
 
 .toast-action {
   flex-shrink: 0;
-  padding: 1px 6px;
-  border-radius: var(--radius-small);
-  font-weight: 600;
-  color: var(--color-accent-text);
-}
-
-.toast-action:hover {
-  background: var(--color-hover);
-}
-
-.toast-close {
-  display: grid;
-  flex-shrink: 0;
-  place-items: center;
-  width: 20px;
   height: 20px;
-  border-radius: var(--radius-small);
-  color: var(--color-muted);
+  font-size: var(--text-13);
+  line-height: var(--leading-16);
 }
 
-.toast-close:hover {
-  background: var(--color-hover);
-  color: var(--color-text);
+/* × shows on hover and while the toast holds focus (V-67). */
+.toast-close {
+  margin: 0 -6px 0 -4px;
+  opacity: 0;
+}
+
+.toast:hover .toast-close,
+.toast:focus-within .toast-close {
+  opacity: 1;
 }

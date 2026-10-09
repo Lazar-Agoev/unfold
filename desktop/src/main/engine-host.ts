@@ -4,8 +4,8 @@
  * host exits, it is restarted and every window is re-attached with fresh ports.
  *
  * The main process also sends the engine a few requests of its own ({@link EngineHost.request}),
- * which the engine host dispatches with `"trusted": true`: exporting to a path from a save dialog,
- * reading a folder's saved windows, and saving window bounds.
+ * which the engine host dispatches with `"trusted": true`: adding a project from a dialog, a drop,
+ * or the command line, exporting to a path from a save dialog, and remembering windows.
  */
 
 import type { UtilityProcess } from "electron";
@@ -27,11 +27,6 @@ interface PendingRequest {
   readonly reject: (error: EngineRequestError) => void;
 }
 
-interface AttachWaiter {
-  readonly folder: string | null;
-  readonly resolve: (error: TransportError | null) => void;
-}
-
 export interface EngineHostOptions {
   /** The built engine-host entry (`out/main/engine-host.js`). */
   readonly modulePath: string;
@@ -39,8 +34,6 @@ export interface EngineHostOptions {
   readonly folders: AppFolders;
   /** Every open window, for re-attaching after a restart. */
   readonly windows: () => readonly WindowEntry[];
-  /** A window's attach settled in the engine host (see `HostToMain` `attached`). */
-  readonly onAttached?: (windowId: number, folder: string | null, error: TransportError | null) => void;
 }
 
 /** More exits than this within {@link RESTART_WINDOW_MS} and the main process stops restarting. */
@@ -55,7 +48,6 @@ export class EngineHost {
   private stopping = false;
   private nextRequestId = 1;
   private readonly requests = new Map<number, PendingRequest>();
-  private readonly attachWaiters = new Map<number, AttachWaiter[]>();
 
   constructor(private readonly options: EngineHostOptions) {}
 
@@ -90,7 +82,7 @@ export class EngineHost {
       return; // Restarting: start() attaches every loaded window.
     }
     const { port1, port2 } = new MessageChannelMain();
-    this.child.postMessage({ type: "attach", windowId: entry.id, folder: entry.folder } satisfies MainToHost, [port1]);
+    this.child.postMessage({ type: "attach", windowId: entry.id } satisfies MainToHost, [port1]);
     entry.window.webContents.postMessage(IPC.enginePort, null, [port2]);
   }
 
@@ -98,7 +90,10 @@ export class EngineHost {
     this.post({ type: "detach", windowId: entry.id });
   }
 
-  /** Asks the engine host to close every workspace (saving drafts) and exit. Never rejects. */
+  /**
+   * Asks the engine host to detach every window (landing their closing writes), close every live
+   * project, and exit. Never rejects.
+   */
   async shutdown(): Promise<void> {
     this.stopping = true;
     const child = this.child;
@@ -137,59 +132,17 @@ export class EngineHost {
     });
   }
 
-  /**
-   * Resolves once window `windowId` is attached to `folder` in the engine (its workspace is open):
-   * with null, or with the error it failed with. Resolves with a `timeout` error after `timeoutMs`.
-   */
-  whenAttached(windowId: number, folder: string | null, timeoutMs: number): Promise<TransportError | null> {
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        settle(transportError("disconnected", "The window did not connect to the engine in time."));
-      }, timeoutMs);
-      const waiter: AttachWaiter = { folder, resolve: (error) => { settle(error); } };
-      const settle = (error: TransportError | null): void => {
-        clearTimeout(timer);
-        const waiters = this.attachWaiters.get(windowId)?.filter((w) => w !== waiter) ?? [];
-        if (waiters.length > 0) {
-          this.attachWaiters.set(windowId, waiters);
-        } else {
-          this.attachWaiters.delete(windowId);
-        }
-        resolve(error);
-      };
-      this.attachWaiters.set(windowId, [...(this.attachWaiters.get(windowId) ?? []), waiter]);
-    });
-  }
-
-  /** The engine host's process id, while it runs. */
-  get pid(): number | undefined {
-    return this.child?.pid;
-  }
-
   private post(message: MainToHost): void {
     this.child?.postMessage(message);
   }
 
   private onHostMessage(message: HostToMain): void {
-    switch (message.type) {
-      case "result": {
-        const request = this.requests.get(message.id);
-        this.requests.delete(message.id);
-        if (message.ok) {
-          request?.resolve(message.value);
-        } else {
-          request?.reject(new EngineRequestError(message.error));
-        }
-        return;
-      }
-      case "attached":
-        this.options.onAttached?.(message.windowId, message.folder, message.error ?? null);
-        for (const waiter of this.attachWaiters.get(message.windowId) ?? []) {
-          if (waiter.folder === message.folder) {
-            waiter.resolve(message.error ?? null);
-          }
-        }
-        return;
+    const request = this.requests.get(message.id);
+    this.requests.delete(message.id);
+    if (message.ok) {
+      request?.resolve(message.value);
+    } else {
+      request?.reject(new EngineRequestError(message.error));
     }
   }
 

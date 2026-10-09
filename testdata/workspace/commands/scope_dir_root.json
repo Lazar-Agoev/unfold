@@ -1,0 +1,24 @@
+{
+  "path": "",
+  "folders": [
+    {
+      "name": ".unfold",
+      "path": ".unfold",
+      "skipped": "default",
+      "sources": 0
+    },
+    {
+      "name": "scripts",
+      "path": "scripts",
+      "skipped": null,
+      "sources": 0
+    },
+    {
+      "name": "src",
+      "path": "src",
+      "skipped": null,
+      "sources": 34
+    }
+  ],
+  "truncated": false
+}

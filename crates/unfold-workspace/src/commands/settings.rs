@@ -1,23 +1,26 @@
-//! Settings commands (architecture §9.2, decision U-23): the app preferences, the folder's
-//! `.unfold/config.toml` (read, and changed through validated edits that keep its comments),
-//! and what the UI needs to sign its edits.
+//! Settings commands (contract §4.3, architecture §9.2, decision U-23): the app preferences, a
+//! project's `.unfold/config.toml` with its shared name (read, and changed through validated
+//! edits that keep its comments), and what the UI needs to sign its edits.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unfold_core::vocab::{DetectorId, EntranceKind, HttpMethod, Language};
 use unfold_engine::settings::{ManualTargets, Settings};
 
-use super::NoArgs;
+use super::{NoArgs, ProjectArgs};
 use crate::error::WorkspaceError;
 use crate::events::WorkspaceEvent;
+use crate::git;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
+use crate::projects::ProjectId;
 use crate::settings_edit::SettingsEdit;
 use crate::state::Preferences;
+use crate::workspace::{load_settings, settings_text};
 
 /// `get_preferences`: the app preferences (defaults when none are saved).
 pub fn get_preferences(ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<Preferences> {
-    Ok(ctx.registry().app().preferences())
+    Ok(ctx.projects().app().preferences())
 }
 
 /// The arguments of `set_preferences`.
@@ -33,7 +36,7 @@ const MAX_THREADS: u32 = 256;
 
 /// `set_preferences`: saves the preferences and sends `preferences_changed` (with them) to every
 /// window, so other windows apply a new theme or key bindings at once. The thread limit and
-/// background-update default apply to folders opened afterwards.
+/// background-update default apply to projects opened afterwards.
 pub fn set_preferences(ctx: &Ctx<'_>, args: SetPreferencesArgs) -> CommandResult<Preferences> {
     let preferences = args.preferences;
     if preferences
@@ -53,7 +56,7 @@ pub fn set_preferences(ctx: &Ctx<'_>, args: SetPreferencesArgs) -> CommandResult
             "the editor command contains a NUL character",
         ));
     }
-    ctx.registry().app().set_preferences(&preferences)?;
+    ctx.projects().app().set_preferences(&preferences)?;
     ctx.broadcast(&WorkspaceEvent::PreferencesChanged {
         preferences: preferences.clone(),
     });
@@ -76,9 +79,9 @@ pub struct SettingsProblem {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct PythonProjectView {
-    /// The project folder (`""` is the open folder).
+    /// The Python project's folder (`""` is the project's folder).
     pub root: String,
-    /// Import roots relative to the open folder; absent means the front end's default.
+    /// Import roots relative to the project's folder; absent means the front end's default.
     pub source_roots: Option<Vec<String>>,
     /// The grammar version, such as `3.14`.
     pub version: String,
@@ -179,10 +182,20 @@ impl From<&Settings> for SettingsView {
     }
 }
 
-/// `.unfold/config.toml` as the settings editor sees it.
+/// A project's shared name, as Project settings shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
-pub struct FolderConfig {
+pub struct SharedName {
+    /// The name other projects' boards use for this one.
+    pub value: String,
+    /// Whether it is the default made from the folder (no `[project] name`).
+    pub is_default: bool,
+}
+
+/// `.unfold/config.toml` as Project settings sees it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectConfig {
     /// Whether the file exists (absent means every default).
     pub exists: bool,
     /// The file's text.
@@ -191,9 +204,29 @@ pub struct FolderConfig {
     pub settings: Option<SettingsView>,
     /// Why the file is invalid, with its position.
     pub error: Option<SettingsProblem>,
+    /// The project's shared name (the default while the file is invalid).
+    pub name: SharedName,
 }
 
-fn folder_config(text: Option<String>, settings: Result<Settings, WorkspaceError>) -> FolderConfig {
+fn project_config_of(
+    root: &std::path::Path,
+    text: Option<String>,
+    settings: Result<Settings, WorkspaceError>,
+) -> ProjectConfig {
+    let name = match settings
+        .as_ref()
+        .ok()
+        .and_then(|settings| settings.project_name.clone())
+    {
+        Some(value) => SharedName {
+            value,
+            is_default: false,
+        },
+        None => SharedName {
+            value: git::default_name(root),
+            is_default: true,
+        },
+    };
     let (settings, error) = match settings {
         Ok(settings) => (Some(SettingsView::from(&settings)), None),
         Err(WorkspaceError::InvalidSettings {
@@ -217,37 +250,43 @@ fn folder_config(text: Option<String>, settings: Result<Settings, WorkspaceError
             }),
         ),
     };
-    FolderConfig {
+    ProjectConfig {
         exists: text.is_some(),
         text,
         settings,
         error,
+        name,
     }
 }
 
-/// `get_folder_config`: the settings file's text, its validated settings, or why it is invalid.
-pub fn get_folder_config(ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<FolderConfig> {
-    let workspace = ctx.workspace()?;
-    let text = workspace.settings_text()?;
-    Ok(folder_config(text, workspace.settings()))
+/// `project_config`: the settings file's text, its validated settings or why it is invalid,
+/// and the project's shared name. Read from disk; never wakes the project.
+pub fn project_config(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<ProjectConfig> {
+    let project = ctx.project(&args.project)?;
+    let root = project.root();
+    Ok(project_config_of(root, settings_text(root)?, load_settings(root)))
 }
 
-/// The arguments of `update_folder_config`.
+/// The arguments of `update_project_config`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
-pub struct UpdateFolderConfigArgs {
+pub struct UpdateProjectConfigArgs {
+    /// The project.
+    pub project: ProjectId,
     /// The edits, applied in order; all or nothing.
     pub edits: Vec<SettingsEdit>,
 }
 
-/// `update_folder_config`: applies validated edits (scope, manual entrances, Python projects,
-/// detector toggles), keeping comments and formatting; an edit that would make the file invalid
-/// is refused with `invalid_settings` and nothing is written. Sends `config_changed`.
-pub fn update_folder_config(ctx: &Ctx<'_>, args: UpdateFolderConfigArgs) -> CommandResult<FolderConfig> {
-    let workspace = ctx.workspace()?;
+/// `update_project_config`: applies validated edits (scope, manual entrances, Python projects,
+/// detector toggles, the shared name), keeping comments and formatting; an edit that would make
+/// the file invalid is refused with `invalid_settings` and nothing is written. Sends
+/// `config_changed`; a new shared name reaches `workspace.json` and every window
+/// (`workspace_changed`) as the host observes it.
+pub fn update_project_config(ctx: &Ctx<'_>, args: UpdateProjectConfigArgs) -> CommandResult<ProjectConfig> {
+    let workspace = ctx.live(&args.project)?;
     let outcome = workspace.edit_settings(&args.edits)?;
     let text = workspace.settings_text()?;
-    Ok(folder_config(text, Ok(outcome.settings)))
+    Ok(project_config_of(workspace.root(), text, Ok(outcome.settings)))
 }
 
 /// Facts about the app the UI can't get itself (it has no Node APIs).

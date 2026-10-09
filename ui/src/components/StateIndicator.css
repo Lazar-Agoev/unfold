@@ -1,0 +1,30 @@
+.state-indicator {
+  display: inline-grid;
+  flex-shrink: 0;
+  place-items: center;
+  color: var(--color-muted);
+}
+
+.state-indicator-row {
+  width: 16px;
+  height: 16px;
+}
+
+.state-indicator-line {
+  width: 12px;
+  height: 12px;
+}
+
+.state-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+}
+
+.state-dot-current {
+  background: var(--color-success);
+}
+
+.state-dot-problems {
+  background: var(--color-review);
+}

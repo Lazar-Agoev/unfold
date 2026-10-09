@@ -1,19 +1,36 @@
-//! Remembered windows (architecture §11.2): each window's tabs, layout, and open boards in the
-//! folder's `state.json`, the saved windows the main process restores when a folder opens, and
-//! window bounds.
+//! Remembered windows (contract §2.2, §4.8): `windows.json` in the app-data folder holds the
+//! windows that come back at launch: each one's Home selection, board tabs, active tab, and
+//! layout (which the UI saves), and its position and size (which the main process saves).
 //!
-//! Window IDs change every run, so windows are remembered by a stable `key` the main process
-//! assigns (and hands its window through `window_info`).
-
-use std::path::Path;
+//! Window ids change every run, so windows are remembered by a stable `key` the main process
+//! assigns (and hands its window through `window_info`). The main process restores the saved
+//! windows at launch (`saved_windows`), saves bounds as windows move (`save_window_bounds`), and
+//! forgets a window the person closed (`forget_window`); those three are trusted-only.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use super::NoArgs;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
-use crate::layout::Layout;
-use crate::state::{FolderState, WindowBounds, WindowState, read_json};
+use crate::projects::ProjectId;
+use crate::state::{SavedWindow, WindowBounds, WindowTab};
+
+/// The longest window key accepted.
+const MAX_KEY: usize = 200;
+/// The most tabs a window remembers.
+pub const MAX_TABS: usize = 100;
+/// The most bytes a window's layout may take, serialized.
+pub const MAX_LAYOUT_BYTES: usize = 64 * 1024;
+
+fn check_key(key: &str) -> CommandResult<()> {
+    if key.is_empty() || key.chars().count() > MAX_KEY {
+        return Err(CommandError::invalid_args(
+            "a window key must have 1 to 200 characters",
+        ));
+    }
+    Ok(())
+}
 
 /// The arguments of a command about one remembered window.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
@@ -23,159 +40,114 @@ pub struct WindowKeyArgs {
     pub key: String,
 }
 
-/// `window_state`: what the window with `key` remembered (tabs, layout, open boards), if
-/// anything.
-pub fn window_state(ctx: &Ctx<'_>, args: WindowKeyArgs) -> CommandResult<Option<WindowState>> {
-    let workspace = ctx.workspace()?;
-    Ok(workspace
-        .folder_state()
+/// `window_state`: what the window with `key` remembered, if anything.
+pub fn window_state(ctx: &Ctx<'_>, args: WindowKeyArgs) -> CommandResult<Option<SavedWindow>> {
+    Ok(ctx
+        .projects()
+        .app()
+        .windows()
         .windows
         .into_iter()
         .find(|window| window.key == args.key))
+}
+
+/// What the UI saves about its window.
+#[derive(Debug, Clone, PartialEq, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowStateInput {
+    /// The window's stable key.
+    pub key: String,
+    /// The project its Home shows.
+    pub selected_project: Option<ProjectId>,
+    /// Its board tabs, in order (at most 100).
+    pub tabs: Vec<WindowTab>,
+    /// The active tab's position in `tabs`, or `None` for Home.
+    pub active_tab: Option<u32>,
+    /// Its layout, as the UI describes it (at most 64 KiB serialized).
+    pub layout: serde_json::Value,
 }
 
 /// The arguments of `save_window_state`.
 #[derive(Debug, Clone, PartialEq, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 pub struct SaveWindowStateArgs {
-    /// The window's state; `key` names it. Bounds already saved by `save_window_bounds` are
-    /// kept when `bounds` is absent.
-    pub state: WindowState,
+    /// The window's state; `key` names it.
+    pub state: WindowStateInput,
 }
 
-/// The longest window key accepted.
-const MAX_KEY: usize = 200;
-
-fn check_key(key: &str) -> CommandResult<()> {
-    if key.is_empty() || key.len() > MAX_KEY {
+/// `save_window_state`: remembers the calling window's Home selection, tabs, active tab, and
+/// layout, keeping its saved bounds.
+pub fn save_window_state(ctx: &Ctx<'_>, args: SaveWindowStateArgs) -> CommandResult<()> {
+    let state = args.state;
+    check_key(&state.key)?;
+    if state.tabs.len() > MAX_TABS {
+        return Err(CommandError::invalid_args(format!(
+            "a window remembers at most {MAX_TABS} tabs"
+        )));
+    }
+    let layout_bytes = serde_json::to_vec(&state.layout).map_or(usize::MAX, |bytes| bytes.len());
+    if layout_bytes > MAX_LAYOUT_BYTES {
         return Err(CommandError::invalid_args(
-            "a window key must have 1 to 200 characters",
+            "a window's layout must take at most 64 KiB",
         ));
     }
-    Ok(())
-}
-
-/// `save_window_state`: remembers the calling window's tabs, layout, and open boards in
-/// `state.json` (kept in memory until the first Compile creates `local/`).
-pub fn save_window_state(ctx: &Ctx<'_>, args: SaveWindowStateArgs) -> CommandResult<()> {
-    check_key(&args.state.key)?;
-    let workspace = ctx.workspace()?;
-    let mut state = args.state;
-    workspace.update_folder_state(|folder| {
-        if state.bounds.is_none()
-            && let Some(saved) = folder.windows.iter().find(|window| window.key == state.key)
-        {
-            state.bounds = saved.bounds;
-            state.maximized = saved.maximized;
-        }
-        folder.put_window(state);
+    ctx.projects().app().update_windows(|file| {
+        let window = file.entry(&state.key);
+        window.selected_project = state.selected_project;
+        window.tabs = state.tabs;
+        window.active_tab = state.active_tab;
+        window.layout = state.layout;
     })?;
     Ok(())
 }
 
-/// `forget_window_state`: forgets a window the person closed, so it doesn't come back.
-pub fn forget_window_state(ctx: &Ctx<'_>, args: WindowKeyArgs) -> CommandResult<()> {
-    let workspace = ctx.workspace()?;
-    workspace.update_folder_state(|folder| {
-        folder.remove_window(&args.key);
-    })?;
-    Ok(())
-}
-
-/// The arguments of `folder_windows`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
-#[serde(deny_unknown_fields)]
-pub struct FolderWindowsArgs {
-    /// The folder's absolute path (from the folder picker or the recent list).
-    pub root: String,
-}
-
-/// A folder's remembered windows.
+/// The windows that come back at launch.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
-pub struct FolderWindows {
-    /// The folder's canonical path.
-    pub folder: String,
-    /// Its windows, as they should come back.
-    pub windows: Vec<WindowState>,
+pub struct SavedWindows {
+    /// Oldest first.
+    pub windows: Vec<SavedWindow>,
 }
 
-/// `folder_windows`: the saved windows of a folder, so the main process can restore them before
-/// any window opens it. Main process only (`trusted`): it reads another folder's state.
-pub fn folder_windows(ctx: &Ctx<'_>, args: FolderWindowsArgs) -> CommandResult<FolderWindows> {
-    ctx.require_trusted("folder_windows")?;
-    let root = std::fs::canonicalize(Path::new(&args.root))
-        .map_err(|error| CommandError::new("not_a_folder", format!("{}: {error}", args.root)))?;
-    if !root.is_dir() {
-        return Err(CommandError::new(
-            "not_a_folder",
-            format!("{} is not a folder", args.root),
-        ));
-    }
-    let folder = root.to_string_lossy().into_owned();
-    // An open folder's state may not be written yet (before its first Compile).
-    let open = ctx
-        .registry()
-        .workspaces()
-        .into_iter()
-        .find(|workspace| workspace.folder() == folder);
-    let state: FolderState = match open {
-        Some(workspace) => workspace.folder_state(),
-        None => {
-            let layout = Layout::discover(&root, &ctx.registry().config().fallback_cache_dir);
-            read_json(&layout.state_file())
-        }
-    };
-    Ok(FolderWindows {
-        folder,
-        windows: state.windows,
+/// `saved_windows`: every remembered window, for restoring them at launch (main process only).
+pub fn saved_windows(ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<SavedWindows> {
+    ctx.require_trusted("saved_windows")?;
+    Ok(SavedWindows {
+        windows: ctx.projects().app().windows().windows,
     })
 }
 
-/// The arguments of `save_window_bounds`, with the window's key.
+/// The arguments of `save_window_bounds`.
 #[derive(Debug, Clone, PartialEq, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 pub struct WindowBoundsArgs {
-    /// The window's stable key; absent for the welcome window.
-    #[serde(default)]
-    #[ts(optional)]
-    pub key: Option<String>,
-    /// The bounds.
+    /// The window's stable key.
+    pub key: String,
+    /// Its position and size.
     pub bounds: WindowBounds,
     /// Whether it is maximized.
-    #[serde(default)]
     pub maximized: bool,
 }
 
-/// `save_window_bounds`: remembers a window's position and size: in its folder's `state.json`,
-/// or, for the welcome window (no folder, no key), in `recent.json`.
+/// `save_window_bounds`: remembers a window's position and size, remembering the window if it
+/// wasn't yet (main process only).
 pub fn save_window_bounds(ctx: &Ctx<'_>, args: WindowBoundsArgs) -> CommandResult<()> {
-    match (&args.key, ctx.workspace()) {
-        (Some(key), Ok(workspace)) => {
-            check_key(key)?;
-            workspace.update_folder_state(|folder| {
-                let mut window = folder
-                    .windows
-                    .iter()
-                    .find(|window| &window.key == key)
-                    .cloned()
-                    .unwrap_or_else(|| WindowState {
-                        key: key.clone(),
-                        ..WindowState::default()
-                    });
-                window.bounds = Some(args.bounds);
-                window.maximized = args.maximized;
-                folder.put_window(window);
-            })?;
-            Ok(())
-        }
-        (None, _) => {
-            ctx.registry().app().set_welcome_bounds(Some(args.bounds))?;
-            Ok(())
-        }
-        (Some(_), Err(_)) => Err(CommandError::new(
-            "no_window_folder",
-            "the window shows no folder; save the welcome window's bounds without a key",
-        )),
-    }
+    ctx.require_trusted("save_window_bounds")?;
+    check_key(&args.key)?;
+    ctx.projects().app().update_windows(|file| {
+        let window = file.entry(&args.key);
+        window.bounds = Some(args.bounds);
+        window.maximized = args.maximized;
+    })?;
+    Ok(())
+}
+
+/// `forget_window`: forgets a window the person closed, so it doesn't come back (main process
+/// only).
+pub fn forget_window(ctx: &Ctx<'_>, args: WindowKeyArgs) -> CommandResult<()> {
+    ctx.require_trusted("forget_window")?;
+    ctx.projects()
+        .app()
+        .update_windows(|file| file.windows.retain(|window| window.key != args.key))?;
+    Ok(())
 }

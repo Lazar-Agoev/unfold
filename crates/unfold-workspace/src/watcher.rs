@@ -8,8 +8,9 @@
 //!   set (the background update) and a `files_changed` event (the Files view);
 //! - **`.unfold/config.toml`**: `config_changed`, and a pending path so the next update reloads
 //!   the settings;
-//! - **`.unfold/boards/`** and **`local/drafts/`**: `boards_changed`, for edits made outside the
-//!   app (writes the app noted itself are not reported);
+//! - **`.unfold/boards/`** and **`local/drafts/`**: `boards_changed` with the board ids, for
+//!   edits made outside the app (writes the app noted itself are not reported). A changes copy
+//!   (`drafts/<name>.changes.json`) is reported under its published board's id;
 //! - **`local/cache/` disappearing**: a cache check, which recreates it and recompiles.
 //!
 //! `.git/` and everything else under `.unfold/` are dropped on arrival. (Recursive watching
@@ -27,6 +28,7 @@ use notify::{EventKind, RecommendedWatcher, RecursiveMode};
 use notify_debouncer_full::{DebounceEventResult, NoCache, new_debouncer_opt};
 use unfold_core::RepoPath;
 use unfold_engine::discovery::IgnoreRules;
+use unfold_reader::board::files::{BoardFile, Place};
 
 use crate::events::{MAX_LISTED, WorkspaceEvent};
 use crate::layout::{BOARDS_PATH, CONFIG_PATH, Layout, UNFOLD_DIR};
@@ -100,7 +102,7 @@ pub(crate) fn emit_files_changed(shared: &Shared, mut paths: Vec<String>) {
     let truncated = paths.len() > MAX_LISTED;
     paths.truncate(MAX_LISTED);
     shared.emit(&WorkspaceEvent::FilesChanged {
-        folder: shared.folder.clone(),
+        project: shared.project.clone(),
         paths,
         truncated,
     });
@@ -111,8 +113,7 @@ pub(crate) fn emit_files_changed(shared: &Shared, mut paths: Vec<String>) {
 struct Batch {
     pending: BTreeSet<RepoPath>,
     files: BTreeSet<String>,
-    published: BTreeSet<String>,
-    drafts: BTreeSet<String>,
+    boards: BTreeSet<String>,
     config: bool,
     ignore_changed: bool,
     cache_gone: bool,
@@ -176,14 +177,15 @@ impl Filter {
         emit_files_changed(shared, batch.files.into_iter().collect());
         if batch.config {
             shared.emit(&WorkspaceEvent::ConfigChanged {
-                folder: shared.folder.clone(),
+                project: shared.project.clone(),
             });
         }
-        if !batch.published.is_empty() || !batch.drafts.is_empty() {
+        if !batch.boards.is_empty() {
+            // An outside edit can move boards between folders, or add and remove them.
             shared.emit(&WorkspaceEvent::BoardsChanged {
-                folder: shared.folder.clone(),
-                published: batch.published.into_iter().collect(),
-                drafts: batch.drafts.into_iter().collect(),
+                project: shared.project.clone(),
+                boards: batch.boards.into_iter().collect(),
+                folders: true,
             });
         }
     }
@@ -198,8 +200,10 @@ impl Filter {
         let own = || temporary || shared.own_writes.contains(path);
         let drafts = layout.drafts();
         if let Ok(rest) = path.strip_prefix(&drafts) {
-            if !own() && !rest.as_os_str().is_empty() {
-                batch.drafts.insert(rest.to_string_lossy().replace('\\', "/"));
+            if !own()
+                && let Some(board) = rest.to_str().and_then(|name| board_id(Place::Draft, name))
+            {
+                batch.boards.insert(board);
             }
             return;
         }
@@ -226,9 +230,14 @@ impl Filter {
             batch.pending.insert(relative);
             return;
         }
-        if text.starts_with(BOARDS_PATH) && text[BOARDS_PATH.len()..].starts_with('/') {
-            if !own() {
-                batch.published.insert(text);
+        if let Some(name) = text
+            .strip_prefix(BOARDS_PATH)
+            .and_then(|rest| rest.strip_prefix('/'))
+        {
+            if !own()
+                && let Some(board) = board_id(Place::Published, name)
+            {
+                batch.boards.insert(board);
             }
             return;
         }
@@ -251,5 +260,49 @@ impl Filter {
         }
         batch.files.insert(text);
         batch.pending.insert(relative);
+    }
+}
+
+/// The id of the board whose file is `name` (a file name in `place`'s directory): the file's own
+/// id, or for a changes copy its published board's. `None` for anything that isn't a board file.
+fn board_id(place: Place, name: &str) -> Option<String> {
+    let stem = name.strip_suffix(".json")?;
+    let file = match place {
+        Place::Published => BoardFile::published(stem).ok()?,
+        Place::Draft => match BoardFile::draft(stem) {
+            Ok(draft) => draft,
+            Err(_) => BoardFile {
+                place: Place::Draft,
+                name: stem.to_owned(),
+            }
+            .publishes()?,
+        },
+    };
+    Some(file.relative())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn board_files_map_to_board_ids() {
+        assert_eq!(
+            board_id(Place::Published, "orders.json").as_deref(),
+            Some(".unfold/boards/orders.json")
+        );
+        assert_eq!(
+            board_id(Place::Draft, "board-1.json").as_deref(),
+            Some(".unfold/local/drafts/board-1.json")
+        );
+        assert_eq!(
+            board_id(Place::Draft, "orders.changes.json").as_deref(),
+            Some(".unfold/boards/orders.json"),
+            "a changes copy is reported under its published board"
+        );
+        for other in ["notes.txt", "sub/x.json", ".x.json.tmp", "../x.json"] {
+            assert_eq!(board_id(Place::Draft, other), None, "{other}");
+            assert_eq!(board_id(Place::Published, other), None, "{other}");
+        }
     }
 }

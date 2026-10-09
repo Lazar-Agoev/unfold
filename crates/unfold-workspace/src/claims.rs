@@ -1,23 +1,34 @@
-//! Board claims per window (decision U-37, architecture §8.7, §11.2): a board is open in one
-//! window at a time, so two windows never edit the same board and no merge logic exists.
+//! Board claims of one project (contract §3.5, decision U-37): a board is open in one window at
+//! a time, so two windows never edit the same board and no merge logic exists.
 //!
-//! [`BoardClaims`] maps each open board (by ID: a draft ID or a published path) to the window
-//! holding it. Opening a board claims it; a board another window holds is refused with that
-//! window's ID, so the UI can focus it instead. **Move to New Window** transfers the claim, and a
-//! window that closes releases everything it held. Board commands check
-//! [`BoardClaims::check`] before touching a board. The board logic itself lives in
-//! `unfold-reader`.
+//! [`BoardClaims`] maps each open board of a project (by `BoardId`) to the window holding it.
+//! Opening a board claims it; a board another window holds is refused with that window's id, so
+//! the UI can focus it instead. **Open in New Window** transfers the claim, a board id change
+//! (first Publish, Move back to drafts) renames it, and a window that closes releases everything
+//! it held. Board commands check [`BoardClaims::check`] before touching a board.
+//!
+//! Each claim also records the other projects the board's cards resolve to
+//! ([`BoardClaims::set_references`]): an open board keeps those projects live too (contract
+//! §3.3), so the cards it shows from them stay current.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use crate::error::{Result, WorkspaceError};
 use crate::events::WindowId;
+use crate::projects::ProjectId;
 
-/// Which window holds each open board of one folder. See the [module documentation](self).
+/// One open board.
+#[derive(Debug, Clone)]
+struct Claim {
+    window: WindowId,
+    references: BTreeSet<ProjectId>,
+}
+
+/// Which window holds each open board of one project. See the [module documentation](self).
 #[derive(Debug, Default)]
 pub struct BoardClaims {
-    held: Mutex<BTreeMap<String, WindowId>>,
+    held: Mutex<BTreeMap<String, Claim>>,
 }
 
 impl BoardClaims {
@@ -26,7 +37,7 @@ impl BoardClaims {
         Self::default()
     }
 
-    fn lock(&self) -> MutexGuard<'_, BTreeMap<String, WindowId>> {
+    fn lock(&self) -> MutexGuard<'_, BTreeMap<String, Claim>> {
         self.held.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
@@ -35,13 +46,19 @@ impl BoardClaims {
     pub fn claim(&self, board: &str, window: WindowId) -> Result<()> {
         let mut held = self.lock();
         match held.get(board) {
-            Some(&holder) if holder != window => Err(WorkspaceError::BoardHeld {
+            Some(claim) if claim.window != window => Err(WorkspaceError::BoardHeld {
                 board: board.to_owned(),
-                window: holder,
+                window: claim.window,
             }),
             Some(_) => Ok(()),
             None => {
-                held.insert(board.to_owned(), window);
+                held.insert(
+                    board.to_owned(),
+                    Claim {
+                        window,
+                        references: BTreeSet::new(),
+                    },
+                );
                 Ok(())
             }
         }
@@ -50,7 +67,7 @@ impl BoardClaims {
     /// Releases `board` if `window` holds it; whether it did.
     pub fn release(&self, board: &str, window: WindowId) -> bool {
         let mut held = self.lock();
-        if held.get(board) == Some(&window) {
+        if held.get(board).is_some_and(|claim| claim.window == window) {
             held.remove(board);
             true
         } else {
@@ -62,29 +79,37 @@ impl BoardClaims {
     pub fn transfer(&self, board: &str, from: WindowId, to: WindowId) -> Result<()> {
         let mut held = self.lock();
         match held.get_mut(board) {
-            Some(holder) if *holder == from => {
-                *holder = to;
+            Some(claim) if claim.window == from => {
+                claim.window = to;
                 Ok(())
             }
-            Some(&mut holder) => Err(WorkspaceError::BoardHeld {
+            Some(claim) => Err(WorkspaceError::BoardHeld {
                 board: board.to_owned(),
-                window: holder,
+                window: claim.window,
             }),
             None => Err(WorkspaceError::BoardNotHeld(board.to_owned())),
         }
     }
 
-    /// Renames a claimed board, such as a draft that was published, keeping its holder.
+    /// Renames a claimed board (its id changed), keeping its holder and references.
     pub fn rename(&self, from: &str, to: &str) {
         let mut held = self.lock();
-        if let Some(window) = held.remove(from) {
-            held.insert(to.to_owned(), window);
+        if let Some(claim) = held.remove(from) {
+            held.insert(to.to_owned(), claim);
+        }
+    }
+
+    /// Records the other projects `board`'s cards resolve to (an open board keeps them live).
+    /// Does nothing when the board isn't claimed.
+    pub fn set_references(&self, board: &str, references: BTreeSet<ProjectId>) {
+        if let Some(claim) = self.lock().get_mut(board) {
+            claim.references = references;
         }
     }
 
     /// The window holding `board`.
     pub fn holder(&self, board: &str) -> Option<WindowId> {
-        self.lock().get(board).copied()
+        self.lock().get(board).map(|claim| claim.window)
     }
 
     /// `Ok` when `window` holds `board`: the check every board command makes.
@@ -99,13 +124,16 @@ impl BoardClaims {
         }
     }
 
-    /// The boards `window` holds, sorted.
-    pub fn boards_of(&self, window: WindowId) -> Vec<String> {
+    /// Whether no board of the project is open.
+    pub fn is_empty(&self) -> bool {
+        self.lock().is_empty()
+    }
+
+    /// Whether an open board has cards from `project`.
+    pub fn references(&self, project: &ProjectId) -> bool {
         self.lock()
-            .iter()
-            .filter(|(_, holder)| **holder == window)
-            .map(|(board, _)| board.clone())
-            .collect()
+            .values()
+            .any(|claim| claim.references.contains(project))
     }
 
     /// Releases every board `window` holds and returns them, sorted.
@@ -113,7 +141,7 @@ impl BoardClaims {
         let mut held = self.lock();
         let boards: Vec<String> = held
             .iter()
-            .filter(|(_, holder)| **holder == window)
+            .filter(|(_, claim)| claim.window == window)
             .map(|(board, _)| board.clone())
             .collect();
         for board in &boards {
@@ -130,6 +158,7 @@ mod tests {
     #[test]
     fn one_window_per_board() {
         let claims = BoardClaims::new();
+        assert!(claims.is_empty());
         claims.claim("orders", 1).expect("claim");
         claims.claim("orders", 1).expect("again");
         let held = claims.claim("orders", 2).expect_err("held");
@@ -141,11 +170,16 @@ mod tests {
         claims.transfer("orders", 1, 3).expect("transfer");
         assert_eq!(claims.holder("orders"), Some(3));
         assert!(claims.transfer("orders", 1, 2).is_err());
+        assert!(claims.transfer("nothing", 1, 2).is_err());
+        let web = ProjectId::new_unchecked("p-webwebwebw");
+        claims.set_references("orders", BTreeSet::from([web.clone()]));
         claims.rename("orders", ".unfold/boards/orders.json");
-        assert_eq!(claims.boards_of(3), [".unfold/boards/orders.json"]);
+        assert!(claims.references(&web), "references move with the claim");
         claims.claim("b", 3).expect("claim");
         assert_eq!(claims.release_window(3).len(), 2);
         assert_eq!(claims.holder("b"), None);
+        assert!(!claims.references(&web));
         assert!(!claims.release("x", 1));
+        assert!(claims.is_empty());
     }
 }

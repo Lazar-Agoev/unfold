@@ -1,26 +1,28 @@
 //! `diagnostics`: the redacted summary **Copy Diagnostics** puts on the clipboard for bug reports
-//! (architecture §13).
+//! (contract §4.3, architecture §13).
 //!
 //! The summary is built only from versions, platform names, vocabulary words (languages, file
 //! states, detector IDs, problem kinds, watch modes), and counts. It never holds source, file
 //! contents, or paths: not even folder-relative ones, which name a person's code. As a second
-//! line of defense, the finished text goes through a [`Redactor`] that replaces the open folder's
+//! line of defense, the finished text goes through a [`Redactor`] that replaces the project's
 //! path, the home folder, and the username with placeholders, should any of them ever slip in.
-//! The UI adds what only it knows (the app, Electron, and Chromium versions).
+//! The app part is always there; the project part covers the project named, in full while it is
+//! live and only its last known state while it rests. The UI adds what only it knows (the app,
+//! Electron, and Chromium versions).
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unfold_core::vocab::FileState;
 
-use super::NoArgs;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::CommandResult;
 use crate::options::default_languages;
 use crate::problems::ProblemCategory;
-use crate::status::{GraphState, WatchMode};
+use crate::projects::ProjectId;
+use crate::status::{GraphState, ProjectState, WatchMode};
 use crate::workspace::Workspace;
 
 /// What `diagnostics` returns.
@@ -31,20 +33,34 @@ pub struct DiagnosticsReport {
     pub text: String,
 }
 
-/// `diagnostics`: versions, platform, and, for the calling window's folder, counts and states
-/// (files by language and state, graph completeness, the last update's statistics, problems by
-/// kind, watching, fallback location, lock), with no source and no paths.
-pub fn diagnostics(ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<DiagnosticsReport> {
-    let workspace = ctx.workspace().ok();
+/// The arguments of `diagnostics`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct DiagnosticsArgs {
+    /// The project to describe as well, if any.
+    #[serde(default)]
+    #[ts(optional)]
+    pub project: Option<ProjectId>,
+}
+
+/// `diagnostics`: versions, platform, and, for the project named, counts and states (files by
+/// language and state, graph completeness, the last update's statistics, problems by kind,
+/// watching, fallback location, lock; only its last known state while it rests), with no source
+/// and no paths. Never wakes the project.
+pub fn diagnostics(ctx: &Ctx<'_>, args: DiagnosticsArgs) -> CommandResult<DiagnosticsReport> {
     let mut text = String::new();
     write_app(&mut text);
-    match &workspace {
-        Some(workspace) => write_folder(&mut text, workspace)?,
-        None => text.push_str("\nFolder: none open\n"),
-    }
     let mut redactor = Redactor::default();
-    if let Some(workspace) = &workspace {
-        redactor.path(workspace.folder(), "<folder>");
+    match &args.project {
+        Some(id) => {
+            let project = ctx.project(id)?;
+            redactor.path(&project.root().to_string_lossy(), "<folder>");
+            match project.live() {
+                Some(workspace) => write_project(&mut text, &workspace)?,
+                None => write_resting(&mut text, &project.state()),
+            }
+        }
+        None => text.push_str("\nProject: none\n"),
     }
     if let Some(home) = home_dir() {
         redactor.path(&home, "<home>");
@@ -92,10 +108,36 @@ fn write_app(text: &mut String) {
     );
 }
 
-fn write_folder(text: &mut String, workspace: &Workspace) -> CommandResult<()> {
+/// A resting project's part: only the state it had when it went to rest (its kind: a failure's
+/// message could name a path).
+fn write_resting(text: &mut String, state: &ProjectState) {
+    let _ = writeln!(text, "\nProject (resting)");
+    let line = match state {
+        ProjectState::Resting { last, .. } => format!("last known state {}", project_state_name(last)),
+        other => project_state_name(other).to_owned(),
+    };
+    let _ = writeln!(text, "  State: {line}");
+}
+
+/// A row state's kind in words.
+fn project_state_name(state: &ProjectState) -> &'static str {
+    match state {
+        ProjectState::Current => "current",
+        ProjectState::Compiling { .. } => "compiling",
+        ProjectState::Updating { .. } => "updating",
+        ProjectState::Problems { .. } => "problems",
+        ProjectState::Paused { .. } => "background updates paused",
+        ProjectState::NotCompiled => "not compiled",
+        ProjectState::Failed { .. } => "last compile failed",
+        ProjectState::Resting { .. } => "resting",
+        ProjectState::Unavailable { .. } => "unavailable",
+    }
+}
+
+fn write_project(text: &mut String, workspace: &Workspace) -> CommandResult<()> {
     let status = workspace.status();
     let layout = workspace.layout();
-    let _ = writeln!(text, "\nFolder");
+    let _ = writeln!(text, "\nProject");
     let _ = writeln!(
         text,
         "  Graph: {} · {}",

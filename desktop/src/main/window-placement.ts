@@ -1,5 +1,5 @@
 /**
- * Restoring windows (architecture §11.2): reading a folder's saved windows, and where each one goes:
+ * Restoring windows (architecture §11.2): reading the saved windows, and where each one goes:
  * back where it was, unless no screen shows it any more (a display was unplugged or rearranged), in
  * which case it moves onto the primary screen. Pure functions, so they are tested without Electron.
  */
@@ -18,7 +18,7 @@ export interface RestoredWindow {
   readonly maximized: boolean;
 }
 
-/** The windows of a `folder_windows` result, skipping malformed entries. */
+/** The windows of a `saved_windows` result, skipping malformed entries. */
 export function savedWindowList(result: unknown): RestoredWindow[] {
   if (!isRecord(result) || !Array.isArray(result["windows"])) {
     return [];
@@ -32,7 +32,7 @@ export function savedWindowList(result: unknown): RestoredWindow[] {
 }
 
 /** Saved `{x, y, width, height}` as whole pixels, or null unless it is a nonempty rectangle. */
-export function rectangle(value: unknown): Rect | null {
+function rectangle(value: unknown): Rect | null {
   if (!isRecord(value)) {
     return null;
   }

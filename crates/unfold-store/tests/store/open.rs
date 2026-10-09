@@ -1,12 +1,14 @@
-//! Opening: creation, reuse, and rebuilding on version changes and damage.
+//! Opening: creation, reuse, and rebuilding on version changes and damage; read-only opening
+//! without a writer.
 
 use std::path::Path;
+use std::time::SystemTime;
 
 use rusqlite::Connection;
 use unfold_core::testkit::sample::sample;
-use unfold_store::{Opened, RecreateReason, Store, StoreConfig};
+use unfold_store::{Opened, ReadPool, RecreateReason, Store, StoreConfig};
 
-use crate::common::{ENGINE, Prepared};
+use crate::common::{ENGINE, Prepared, dump};
 
 fn open(path: &Path, engine: &str) -> Store {
     Store::open(path, &StoreConfig::new(engine)).expect("open")
@@ -179,4 +181,132 @@ fn a_foreign_database_with_a_meta_table_is_replaced() {
         let store = open(&path, ENGINE);
         assert_eq!(store.opened, Opened::Recreated(RecreateReason::Corrupt), "{ddl}");
     }
+}
+
+/// A closed database at `path` holding the sample's first compile.
+fn compiled(path: &Path) {
+    let mut store = open(path, ENGINE);
+    store
+        .writer
+        .commit(&Prepared::new(sample().build()).first_compile())
+        .expect("commit");
+}
+
+/// Every file in `dir`, by name, with its bytes and modification time.
+fn snapshot(dir: &Path) -> Vec<(String, Vec<u8>, SystemTime)> {
+    let mut files: Vec<_> = std::fs::read_dir(dir)
+        .expect("list the directory")
+        .map(|entry| {
+            let entry = entry.expect("a directory entry");
+            let modified = entry
+                .metadata()
+                .and_then(|metadata| metadata.modified())
+                .expect("a modification time");
+            (
+                entry.file_name().to_string_lossy().into_owned(),
+                std::fs::read(entry.path()).expect("read the file"),
+                modified,
+            )
+        })
+        .collect();
+    files.sort();
+    files
+}
+
+#[test]
+fn open_existing_finds_no_graph_in_a_missing_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("graph.sqlite");
+    assert!(ReadPool::open_existing(&path, ENGINE).unwrap().is_none());
+    assert!(snapshot(dir.path()).is_empty(), "nothing is created");
+}
+
+#[test]
+fn open_existing_finds_no_graph_in_a_stale_or_foreign_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("graph.sqlite");
+    compiled(&path);
+    let before = snapshot(dir.path());
+    assert!(ReadPool::open_existing(&path, "engine-2").unwrap().is_none());
+    assert_eq!(
+        snapshot(dir.path())[0],
+        before[0],
+        "the database is left as it was"
+    );
+
+    Connection::open(&path)
+        .unwrap()
+        .execute("UPDATE meta SET value = '0' WHERE key = 'schema_version'", [])
+        .unwrap();
+    assert!(ReadPool::open_existing(&path, ENGINE).unwrap().is_none());
+
+    for bytes in [Vec::new(), vec![0x5a; 8192]] {
+        std::fs::write(&path, &bytes).unwrap();
+        assert!(ReadPool::open_existing(&path, ENGINE).unwrap().is_none());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+    std::fs::remove_file(&path).unwrap();
+    Connection::open(&path)
+        .unwrap()
+        .execute_batch("CREATE TABLE notes (body TEXT);")
+        .unwrap();
+    assert!(ReadPool::open_existing(&path, ENGINE).unwrap().is_none());
+}
+
+#[test]
+fn open_existing_reads_a_current_graph_without_writing_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("graph.sqlite");
+    compiled(&path);
+    let before = snapshot(dir.path());
+    assert_eq!(before.len(), 1, "a closed writer leaves only the database");
+
+    let pool = ReadPool::open_existing(&path, ENGINE)
+        .unwrap()
+        .expect("a current graph");
+    let reader = pool.get().unwrap();
+    let read = dump(&reader);
+    assert!(read.contains("src/orders.ts"), "{read}");
+    // A second reader while the first is in use: the pool opens another connection.
+    assert_eq!(dump(&pool.get().unwrap()), read);
+    drop(reader);
+    drop(pool);
+
+    // The database's bytes and time are untouched. SQLite needs the write-ahead log's files to
+    // read a WAL database, so it created them, empty, and left them.
+    let after = snapshot(dir.path());
+    assert_eq!(after[0], before[0]);
+    let names: Vec<&str> = after.iter().map(|(name, ..)| name.as_str()).collect();
+    assert_eq!(names, ["graph.sqlite", "graph.sqlite-shm", "graph.sqlite-wal"]);
+    assert!(after[2].1.is_empty(), "the log holds nothing");
+
+    // A writer reuses the graph over them, and removes them when it closes last.
+    let store = open(&path, ENGINE);
+    assert_eq!(store.opened, Opened::Reused);
+    assert_eq!(dump(&store.readers.get().unwrap()), read);
+    drop(store);
+    drop(open(&path, ENGINE));
+    assert_eq!(snapshot(dir.path()).len(), 1);
+}
+
+#[test]
+fn open_existing_reads_alongside_a_live_writer() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("graph.sqlite");
+    let mut store = open(&path, ENGINE);
+    let prepared = Prepared::new(sample().build());
+    store.writer.commit(&prepared.first_compile()).unwrap();
+
+    let pool = ReadPool::open_existing(&path, ENGINE)
+        .unwrap()
+        .expect("a current graph");
+    assert_eq!(pool.get().unwrap().files().unwrap().len(), 4);
+    store.writer.clear().unwrap();
+    assert!(
+        pool.get().unwrap().files().unwrap().is_empty(),
+        "sees the writer's commits"
+    );
+    store.writer.commit(&prepared.first_compile()).unwrap();
+    drop(store);
+    assert_eq!(pool.get().unwrap().files().unwrap().len(), 4);
 }

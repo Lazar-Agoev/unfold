@@ -1,15 +1,16 @@
 /**
- * Native dialogs. Paths outside the open folder come only from here: the main process shows the
- * dialog, and only the path the person chose leaves this process (architecture §13).
+ * Native dialogs. Paths outside a project come only from here (or from a drop or the command line):
+ * the main process shows the dialog, and only the path the person chose leaves this process
+ * (architecture §13).
  */
 
 import { basename, join } from "node:path";
-import type { BrowserWindow, OpenDialogOptions, SaveDialogOptions } from "electron";
+import type { BrowserWindow, MessageBoxOptions, OpenDialogOptions, SaveDialogOptions } from "electron";
 import { app, dialog } from "electron";
 
-/** Shows the folder picker. Resolves with the chosen folder, or null if cancelled. */
+/** Shows the folder picker for Add Project. Resolves with the chosen folder, or null if cancelled. */
 export async function chooseFolder(parent: BrowserWindow | null): Promise<string | null> {
-  const options: OpenDialogOptions = { title: "Open Folder", buttonLabel: "Open", properties: ["openDirectory"] };
+  const options: OpenDialogOptions = { title: "Add Project", buttonLabel: "Add", properties: ["openDirectory"] };
   const result = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options);
   return result.canceled ? null : (result.filePaths[0] ?? null);
 }
@@ -25,4 +26,18 @@ export async function chooseExportPath(parent: BrowserWindow, defaultName: strin
   };
   const result = await dialog.showSaveDialog(parent, options);
   return result.canceled || !result.filePath ? null : result.filePath;
+}
+
+/** Asks to confirm removing a project from the workspace. Resolves with whether the person did. */
+export async function confirmRemoveProject(parent: BrowserWindow, name: string): Promise<boolean> {
+  const options: MessageBoxOptions = {
+    type: "question",
+    message: `Remove ${name} from the workspace?`,
+    detail: "Its .unfold folder stays.",
+    buttons: ["Remove", "Cancel"],
+    defaultId: 0,
+    cancelId: 1,
+  };
+  const result = await dialog.showMessageBox(parent, options);
+  return result.response === 0;
 }

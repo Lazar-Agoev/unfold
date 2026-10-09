@@ -1,0 +1,54 @@
+.key-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: var(--radius-chip);
+  font-family: var(--font-ui);
+  font-size: var(--text-11);
+  line-height: var(--leading-14);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.key-chip-filled {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  background: var(--color-on-accent-chip);
+  color: var(--color-on-accent);
+}
+
+.key-chip-outlined {
+  height: 18px;
+  padding: 0 5px;
+  box-shadow: inset 0 0 0 1px var(--color-border);
+  color: var(--color-muted);
+}
+
+.key-chip-keycap {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  background: var(--color-surface);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+  color: var(--color-muted);
+}
+
+.key-chip-selected {
+  box-shadow: inset 0 0 0 1px var(--color-selection-line);
+}
+
+/* Add's `>` keycap is set in the code face. */
+.key-chip-code {
+  font-family: var(--font-code);
+}
+
+.key-caps {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.key-caps .key-chip-keycap {
+  padding: 0 4px;
+}

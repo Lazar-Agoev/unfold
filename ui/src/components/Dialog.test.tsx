@@ -13,6 +13,7 @@ function Harness({ onClose }: { onClose?: () => void }) {
   return (
     <>
       <Button
+        variant="secondary"
         onClick={() => {
           setOpen(true);
         }}
@@ -21,6 +22,8 @@ function Harness({ onClose }: { onClose?: () => void }) {
       </Button>
       <Dialog
         open={open}
+        width={400}
+        placement="window"
         title="Delete “Order placement”?"
         description="The board file is removed from .unfold/boards."
         onClose={() => {
@@ -29,7 +32,7 @@ function Harness({ onClose }: { onClose?: () => void }) {
         }}
         footer={
           <>
-            <Button>Cancel</Button>
+            <Button variant="secondary">Cancel</Button>
             <Button variant="danger">Delete</Button>
           </>
         }
@@ -78,11 +81,49 @@ describe("Dialog", () => {
   });
 });
 
+describe("Dialog placement", () => {
+  it("centers a canvas dialog over #content-area, with the scrim over just that area", () => {
+    const area = document.createElement("div");
+    area.id = "content-area";
+    area.getBoundingClientRect = () => DOMRect.fromRect({ x: 264, y: 38, width: 1176, height: 862 });
+    document.body.append(area);
+    render(
+      <Dialog open width={520} placement="canvas" title="Publish changes to Order lifecycle" onClose={vi.fn()}>
+        <p>2 changes</p>
+      </Dialog>,
+    );
+    const scrim = screen.getByRole("dialog").parentElement;
+    expect(scrim?.classList.contains("dialog-scrim-canvas")).toBe(true);
+    expect([scrim?.style.left, scrim?.style.top, scrim?.style.width, scrim?.style.height]).toEqual(["264px", "38px", "1176px", "862px"]);
+    expect(screen.getByRole("dialog").classList.contains("dialog-520")).toBe(true);
+    area.remove();
+  });
+
+  it("covers the window for window dialogs, and gives the large dialog a close button", () => {
+    const onClose = vi.fn();
+    render(<Dialog open width={880} height={700} placement="window" title="storefront-api settings" onClose={onClose} />);
+    const dialog = screen.getByRole("dialog", { name: "storefront-api settings" });
+    expect(dialog.parentElement?.classList.contains("dialog-scrim-window")).toBe(true);
+    expect(dialog.style.height).toBe("700px");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("ConfirmDialog", () => {
   it("starts on Cancel for destructive confirmations", () => {
     const onConfirm = vi.fn();
     render(
-      <ConfirmDialog open title="Delete board?" message="This can't be undone." confirmLabel="Delete" danger onConfirm={onConfirm} onCancel={vi.fn()} />,
+      <ConfirmDialog
+        open
+        title="Delete board?"
+        message="This can't be undone."
+        confirmLabel="Delete"
+        danger
+        placement="canvas"
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+      />,
     );
     expect(screen.getByRole("alertdialog", { name: "Delete board?" })).toBeTruthy();
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" }));
@@ -101,6 +142,7 @@ describe("PromptDialog", () => {
         label="Name"
         defaultValue="Order placement"
         confirmLabel="Publish"
+        placement="window"
         validate={(value) => (value === "Order placement" ? "A board with this name exists." : null)}
         onSubmit={onSubmit}
         onCancel={vi.fn()}

@@ -12,8 +12,8 @@ use unfold_core::ByteRange;
 use unfold_core::vocab::{DetectorId, EntranceKind, HttpMethod, Language};
 
 use super::{
-    FolderPath, ManualEntrance, ManualTargets, PythonProject, PythonVersion, SETTINGS_PATH, SETTINGS_VERSION,
-    Scope, Settings,
+    FolderPath, MAX_PROJECT_NAME, ManualEntrance, ManualTargets, PythonProject, PythonVersion, SETTINGS_PATH,
+    SETTINGS_VERSION, Scope, Settings, is_project_name,
 };
 use crate::locator::Locator;
 
@@ -53,11 +53,19 @@ pub enum SettingsError {
 #[serde(deny_unknown_fields)]
 struct RawSettings {
     version: Option<Spanned<i64>>,
+    project: Option<RawProjectTable>,
     languages: Option<Spanned<Vec<Spanned<String>>>>,
     scope: Option<RawScope>,
     detectors: Option<RawDetectors>,
     python: Option<RawPython>,
     entrance: Option<Vec<Spanned<RawEntrance>>>,
+}
+
+/// `[project]`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawProjectTable {
+    name: Option<Spanned<String>>,
 }
 
 #[derive(Deserialize)]
@@ -206,6 +214,11 @@ fn validate(raw: RawSettings, source: &Source<'_>) -> Result<Settings, SettingsE
             ),
         ));
     }
+    let project_name = raw
+        .project
+        .and_then(|project| project.name)
+        .map(|name| project_name(name, source))
+        .transpose()?;
     let languages = raw.languages.map(|list| languages(list, source)).transpose()?;
     let scope = match raw.scope {
         Some(scope) => self::scope(scope, source)?,
@@ -228,12 +241,26 @@ fn validate(raw: RawSettings, source: &Source<'_>) -> Result<Settings, SettingsE
         .collect::<Result<_, _>>()?;
     Ok(Settings {
         version: SETTINGS_VERSION,
+        project_name,
         languages,
         scope,
         disabled_detectors,
         python_projects,
         entrances,
     })
+}
+
+fn project_name(name: Spanned<String>, source: &Source<'_>) -> Result<String, SettingsError> {
+    if is_project_name(name.get_ref()) {
+        return Ok(name.into_inner());
+    }
+    Err(source.error(
+        name.span(),
+        format!(
+            "invalid project name \"{}\"; use 1 to {MAX_PROJECT_NAME} ASCII letters, digits, `.`, `_`, or `-`, starting with a letter or digit",
+            name.get_ref()
+        ),
+    ))
 }
 
 fn languages(

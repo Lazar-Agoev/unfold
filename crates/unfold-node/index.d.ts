@@ -12,12 +12,16 @@ export declare const __napiBindingTarget: 'native' | 'wasm32-wasi' | 'wasm32-was
 /** Cancels a running command or stream; does nothing when it already finished. */
 export declare function cancel(requestId: number): void
 
-/** Detaches a window. The folder's last window saves its drafts and closes its workspace. */
-export declare function closeWorkspace(windowId: number): Promise<void>
+/**
+ * A window closed: waits (at most 15 s) for its closing writes in flight, then releases its board
+ * claims and sessions and its Home selection.
+ */
+export declare function detachWindow(windowId: number): Promise<void>
 
 /**
- * Runs one command (`{"command","args"}` JSON) for one window. Resolves with the result JSON;
- * stream messages go to the sink first. `requestId` must be unique among running requests.
+ * Runs one command (`{"command","args"}` JSON) for one window (any window id: windows need no
+ * attach). Resolves with the result JSON; stream messages go to the sink first. `requestId` must
+ * be unique among running requests.
  */
 export declare function dispatch(windowId: number, requestId: number, command: string): Promise<string>
 
@@ -27,14 +31,11 @@ export declare function dispatch(windowId: number, requestId: number, command: s
  */
 export declare function init(options: string): void
 
-/**
- * Attaches a window to the folder at `root` (opening its workspace if no window has it).
- * Resolves with the `OpenedFolder` JSON.
- */
-export declare function openWorkspace(windowId: number, root: string): Promise<string>
+/** The app is quitting: closes every live project, remembering each one's state. Called once. */
+export declare function shutdown(): Promise<void>
 
 /**
  * Registers the single sink. Rust calls it from any thread with one JSON message: an event for
- * some windows, or a stream message of a running command. Replaces any earlier sink.
+ * every window or for some, or a stream message of a running command. Replaces any earlier sink.
  */
 export declare function subscribe(sink: (message: string) => void): void

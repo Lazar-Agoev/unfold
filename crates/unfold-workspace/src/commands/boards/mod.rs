@@ -1,589 +1,783 @@
-//! Board commands (architecture §8.7, §10.5, §11.2; decisions U-22, U-37).
+//! Board commands (contract §3.5, §4.6, §6; redesign R-5, R-6, R-7, R-10, R-14).
 //!
-//! A board is open in one window at a time: `open_board` claims it for the calling window (or
-//! answers `held` with the window that has it, so the UI asks the main process to focus that
-//! window), `move_board` hands the claim to another window, and closing a window releases its
-//! boards. Every other board command checks that the calling window holds the board.
+//! A board belongs to a project and is addressed as `{project, id}`, its id being its public
+//! file's path ([`files`]). It is open in one window at a time: `open_board` and `new_board`
+//! claim it for the calling window (a board another window holds answers `held` with that
+//! window, so the UI can focus it), `move_board` hands the claim over, and `close_board`,
+//! `delete_board`, and a closing window release it. Every other command about one board checks
+//! that the calling window holds it, except the folder commands: a board's folder is metadata
+//! Rust owns (decision D-12), never part of what a window saves, so they work on any board.
 //!
-//! The workspace keeps the version of each open board last loaded or saved (a
-//! [`BoardSession`]). The UI edits its own copy and autosaves it with `save_board`, which
-//! validates it against the graph (`prepare_save`: no new missing references, broken groups, or
-//! held references), signs new descriptions from verified source, and writes it atomically.
-//! A save is refused with `board_conflict` when the file changed on disk since the session's
-//! revision (an agent or a teammate wrote it), unless `force` is set; the holding window also
-//! gets a `board_conflict` event as soon as the watcher sees such a change. Open boards' health
-//! feeds the Problems list and is recomputed after every graph update.
+//! The project keeps a **session** per open board ([`session`]): the working version last
+//! loaded or saved. A window autosaves its edits (`save_board`, a [`BoardEdit`]): Rust checks
+//! them against the graphs of every project the cards come from ([`graphs`]: no new missing
+//! reference, broken group, held reference, or broken link), signs new descriptions, labels, and
+//! link labels, and writes the board's **working file**: a draft; or, for a published board, its
+//! changes copy, so teammates see nothing until Publish (R-6). A save is refused with
+//! `board_conflict` when the working file changed on disk since the session's revision, unless
+//! `force`; the holding window also gets a `board_conflict` event as soon as the watcher sees the
+//! change ([`health::check_disk`]).
 //!
-//! Board IDs are folder-relative file paths ([`store::parse_id`]).
+//! | | Draft | Published, no copy | Published, with copy |
+//! | --- | --- | --- | --- |
+//! | `save_board` | Writes the draft | Writes a new copy (based on the published revision loaded) | Writes the copy; deletes it when equal to the published version |
+//! | `publish_board` | Creates `boards/<name>.json` (never overwriting: `name_taken`), deletes the draft; new id | Nothing to do | Copy over the published file, unless it changed since the copy's base (`conflict`; `keep_mine` writes anyway) |
+//! | `discard_changes` | `invalid_args` | Reloads the published file | Deletes the copy, reloads the published file |
+//! | `unpublish_board` | `invalid_args` | The published version becomes a draft; new id | The copy's version becomes a draft; new id |
+//! | `delete_board` | Deletes the draft | Deletes the published file | Deletes both |
+//!
+//! When a board's id changes (first Publish, Move back to drafts), its claim, session, view
+//! state, health, and recent-board entry follow it. Every board's health is cached per board
+//! ([`session::BoardExtras`]) and feeds the Problems list and Home's Health line; it is
+//! refreshed after the graphs of the project or of a project its cards come from change.
 
+mod files;
+mod folders;
+mod graphs;
+mod health;
+mod lists;
 mod session;
-mod store;
 mod types;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use unfold_reader::board::files::{BoardFile, Change, Place, slug};
+use unfold_reader::board::files::{BoardFile, Change, Loaded, Place, slug};
 use unfold_reader::board::{
-    Board, BoardError, BoardGraph, Health, apply_repair, health, outline, parse, prepare_save, serialize,
+    Board, BoardError, Health, ProjectName, Repair, apply_repair, outline, parse_edit, prepare_save,
+    serialize,
+};
+use unfold_reader::mermaid;
+
+pub use self::folders::{create_folder, delete_folder, rename_folder, set_board_folder};
+pub(crate) use self::health::{check_disk, refresh};
+pub use self::lists::{board_refs, board_thumbnails, drafts, list_boards};
+pub use self::session::BoardExtras;
+pub use self::types::{
+    BoardDocument, BoardEdit, BoardHealthView, BoardIdArgs, BoardList, BoardRefHit, BoardRefs, BoardState,
+    BoardSummary, CardKind, Drafts, LabelSpec, MoveBoardArgs, NewBoardArgs, OpenBoardResult,
+    PublishBoardArgs, PublishOutcome, PublishedState, RenameFolderArgs, RenamedFolder, RepairBoardArgs,
+    RepairKindSpec, RepairSpec, Resolve, SaveBoardArgs, SaveBoardViewArgs, SetBoardFolderArgs, TargetSpec,
+    Thumbnail, ThumbnailCard, ThumbnailPage, Thumbnails, ThumbnailsArgs,
 };
 
-pub use session::{BoardSession, HealthRefresh};
-pub(crate) use session::{check_disk, load_graph, refresh_health};
-pub use store::{board_id, parse_id};
-pub use types::{
-    BoardDocument, BoardHealthView, BoardIdArgs, BoardList, BoardState, BoardSummary, BoardWriteOutcome,
-    MoveBoardArgs, NewBoardArgs, OpenBoardResult, PublishBoardArgs, RenameBoardArgs, RepairBoardArgs,
-    RepairSpec, SaveBoardArgs, TargetSpec,
-};
-
-use self::session::{health_label, publish_problems};
-use self::store::BoardStore;
-use super::{FolderExtras, NoArgs, count};
-use crate::events::{WindowId, WorkspaceEvent};
-use crate::host::HostState;
+use self::files::{Files, Working, parse_id};
+use self::folders::{folder_arg, folder_left, folder_used};
+use self::graphs::{Graphs, Resolver};
+use self::session::{Session, health_of, publish_problems};
+use super::ProjectExtras;
+use crate::error::WorkspaceError;
+use crate::events::{WorkingFile, WorkspaceEvent};
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
-use crate::shared::lock;
+use crate::projects::{ProjectHandle, ProjectId};
 use crate::workspace::Workspace;
 
-/// What a board command works with.
-struct Opened {
+/// A board the calling window holds, in its (woken) project.
+struct Held<'c> {
+    project: ProjectHandle<'c>,
     workspace: Arc<Workspace>,
-    extras: Arc<FolderExtras>,
+    extras: Arc<ProjectExtras>,
     file: BoardFile,
     id: String,
 }
 
-/// Resolves a board command's ID and checks that the calling window holds the board.
-fn held(ctx: &Ctx<'_>, id: &str) -> CommandResult<Opened> {
-    let workspace = ctx.workspace()?;
+/// Board `id` of `project`, which the calling window must hold; wakes the project.
+fn held<'c>(ctx: &'c Ctx<'_>, project: &ProjectId, id: &str) -> CommandResult<Held<'c>> {
+    let handle = ctx.project(project)?;
     let file = parse_id(id)?;
-    workspace.claims().check(id, ctx.window)?;
-    Ok(Opened {
-        extras: ctx.extras(&workspace),
+    handle.claims().check(id, ctx.window)?;
+    let workspace = handle.wake()?;
+    Ok(Held {
+        extras: handle.extras(),
         workspace,
+        project: handle,
         file,
         id: id.to_owned(),
     })
 }
 
-/// The view of an open board.
-fn state_of(id: &str, session: &BoardSession, graph: &BoardGraph) -> BoardState {
-    BoardState {
-        id: id.to_owned(),
-        place: session.file.place,
-        name: session.file.name.clone(),
-        document: BoardDocument::new(session.board.clone()),
-        revision: session.revision.0.to_string(),
-        health: session.health.clone(),
-        outline: outline(&session.board, graph),
-        label: health_label(&session.health),
+/// A session the board must have (a claim without one is a broken invariant).
+fn session_mut<'s>(sessions: &'s mut BTreeMap<String, Session>, id: &str) -> CommandResult<&'s mut Session> {
+    sessions
+        .get_mut(id)
+        .ok_or_else(|| CommandError::internal(format!("board `{id}` has no session")))
+}
+
+/// Reads board `file`'s working version into a new session, with its health (cached) and the
+/// graphs it was checked against.
+fn load_session(
+    files: &Files<'_>,
+    extras: &BoardExtras,
+    resolver: &mut Resolver<'_>,
+    id: &str,
+    file: &BoardFile,
+) -> CommandResult<(Session, Graphs)> {
+    let working = files.working(file)?;
+    let board = &working.loaded.board;
+    let graphs = resolver.board_graphs(board)?;
+    let health = board_health_of(board, &graphs);
+    extras.cache(resolver, id, board, working.loaded.revision, &health);
+    let published = files.published_state(file, board, working.kind, working.loaded.base);
+    Ok((Session::new(file.clone(), working, health, published), graphs))
+}
+
+impl Held<'_> {
+    fn files(&self) -> Files<'_> {
+        Files::live(&self.workspace)
     }
-}
 
-/// Parses a document the UI sent with the strict `unfold-board` parser.
-fn parse_document(value: &serde_json::Value) -> CommandResult<Board> {
-    Ok(parse(&value.to_string())?)
-}
+    fn boards(&self) -> &BoardExtras {
+        &self.extras.boards
+    }
 
-/// Tells every window of the folder that board files changed, without waiting for the watcher
-/// (which may be off, or scanning periodically).
-fn announce(workspace: &Workspace, files: &[&BoardFile]) {
-    let mut published = Vec::new();
-    let mut drafts = Vec::new();
-    for file in files {
-        match file.place {
-            Place::Published => published.push(file.relative()),
-            Place::Draft => drafts.push(format!("{}.json", file.name)),
+    fn resolver<'p>(&self, ctx: &'p Ctx<'_>) -> CommandResult<Resolver<'p>> {
+        Resolver::live(ctx.projects(), &self.workspace)
+    }
+
+    /// The board's session, read from disk when it has none (with the graphs it was read with).
+    fn session<'s>(
+        &self,
+        sessions: &'s mut BTreeMap<String, Session>,
+        resolver: &mut Resolver<'_>,
+    ) -> CommandResult<(&'s mut Session, Option<Graphs>)> {
+        let mut graphs = None;
+        if !sessions.contains_key(&self.id) {
+            let (session, read) = load_session(&self.files(), self.boards(), resolver, &self.id, &self.file)?;
+            sessions.insert(self.id.clone(), session);
+            graphs = Some(read);
+        }
+        Ok((session_mut(sessions, &self.id)?, graphs))
+    }
+
+    /// Board `id` as the window shows it.
+    fn state(&self, id: &str, session: &Session, graphs: &Graphs) -> BoardState {
+        let graphs = graphs.page();
+        BoardState {
+            project: self.project.id().clone(),
+            id: id.to_owned(),
+            place: session.file.place,
+            name: session.file.name.clone(),
+            document: BoardDocument::new(session.board.clone()),
+            revision: session.revision.0.to_string(),
+            published: session.published.clone(),
+            outlines: session
+                .board
+                .pages
+                .iter()
+                .map(|page| outline(page, &graphs))
+                .collect(),
+            label: session.health.label(),
+            health: session.health.clone(),
+            view: self.workspace.local_state().board_view(id).cloned(),
         }
     }
+
+    /// Keeps the projects the board's cards come from live while it is open.
+    fn reference(&self, id: &str, resolver: &mut Resolver<'_>, board: &Board) {
+        self.project
+            .claims()
+            .set_references(id, resolver.references(board));
+    }
+
+    /// Validates, signs, and writes `board` as the session's working version, refusing outside
+    /// changes to the working file unless `force`.
+    fn save(
+        &self,
+        session: &mut Session,
+        resolver: &mut Resolver<'_>,
+        board: Board,
+        force: bool,
+    ) -> CommandResult<BoardState> {
+        let files = self.files();
+        let change = files.dirs.change(&session.working_file(), session.revision)?;
+        if !force && change != Change::Unchanged {
+            return Err(CommandError::new(
+                "board_conflict",
+                format!(
+                    "`{}` changed on disk since it was loaded; reload it or save with force",
+                    self.id
+                ),
+            ));
+        }
+        // Keeping mine over a published file that changed starts the copy from what is there now.
+        let base = match (session.kind, change) {
+            (WorkingFile::Published, Change::Changed(now)) => Some(now),
+            _ => session.base(),
+        };
+        let graphs = resolver.board_graphs(&board)?;
+        let (signed, health) = prepare_save(board, Some((&session.board, &session.health)), &graphs.page())?;
+        let written = files.write(&self.file, signed, base)?;
+        // Back on the published file: its own health (its guards may differ).
+        let health = if written.kind == WorkingFile::Published {
+            board_health_of(&written.board, &graphs)
+        } else {
+            health
+        };
+        self.boards()
+            .cache(resolver, &self.id, &written.board, written.revision, &health);
+        session.wrote(written, health);
+        self.reference(&self.id, resolver, &session.board);
+        Ok(self.state(&self.id, session, &graphs))
+    }
+
+    /// Opens the board in its session (read from disk when it has none) and returns it.
+    fn open(&self, ctx: &Ctx<'_>) -> CommandResult<BoardState> {
+        let mut resolver = self.resolver(ctx)?;
+        let mut sessions = self.boards().sessions();
+        let (session, graphs) = self.session(&mut sessions, &mut resolver)?;
+        let graphs = match graphs {
+            Some(graphs) => graphs,
+            None => resolver.board_graphs(&session.board)?,
+        };
+        self.reference(&self.id, &mut resolver, &session.board);
+        Ok(self.state(&self.id, session, &graphs))
+    }
+
+    /// Writes new draft `board` (empty, so healthy) and opens a session on it.
+    fn create(&self, ctx: &Ctx<'_>, files: &Files<'_>, board: Board) -> CommandResult<BoardState> {
+        let written = files.write(&self.file, board, None)?;
+        let mut resolver = self.resolver(ctx)?;
+        self.boards().cache(
+            &mut resolver,
+            &self.id,
+            &written.board,
+            written.revision,
+            &Health::default(),
+        );
+        let working = Working {
+            kind: WorkingFile::Draft,
+            loaded: Loaded {
+                board: written.board,
+                revision: written.revision,
+                base: None,
+            },
+        };
+        let session = Session::new(self.file.clone(), working, Health::default(), None);
+        let state = self.state(&self.id, &session, &Graphs::default());
+        self.boards().sessions().insert(self.id.clone(), session);
+        Ok(state)
+    }
+
+    /// Tells every window that boards of the project changed (the watcher doesn't report the
+    /// app's own writes).
+    fn announce(&self, mut boards: Vec<String>, folders: bool) {
+        announce(&self.workspace, &mut boards, folders);
+    }
+
+    /// The board's id became `to` (first Publish, Move back to drafts): its claim, view state,
+    /// and recent-board entry follow it.
+    fn moved(&self, ctx: &Ctx<'_>, to: &str) {
+        // Remembered state is a convenience: a failed write never undoes the move.
+        let _ = self.workspace.update_local_state(|state| {
+            state.move_board_view(&self.id, to);
+        });
+        let _ = ctx.projects().move_recent_board(self.project.id(), &self.id, to);
+    }
+}
+
+/// Sends `boards_changed` for `boards` of live project `workspace`.
+fn announce(workspace: &Workspace, boards: &mut Vec<String>, folders: bool) {
+    boards.sort();
+    boards.dedup();
     workspace.emit(&WorkspaceEvent::BoardsChanged {
-        folder: workspace.folder().to_owned(),
-        published,
-        drafts,
+        project: workspace.project().clone(),
+        boards: std::mem::take(boards),
+        folders,
     });
 }
 
-/// Validates, signs, and writes `board` over the session's file, refusing outside changes
-/// unless `force`.
-fn save_session(
-    workspace: &Workspace,
-    id: &str,
-    session: &mut BoardSession,
-    board: Board,
-    force: bool,
-) -> CommandResult<BoardState> {
-    let store = BoardStore::new(workspace);
-    if !force {
-        match store.change(&session.file, session.revision)? {
-            Change::Unchanged => {}
-            Change::Changed(_) | Change::Missing => {
-                return Err(CommandError::new(
-                    "board_conflict",
-                    format!("`{id}` changed on disk since it was loaded; reload it or save with force"),
-                ));
-            }
-        }
-    }
-    let graph = load_graph(workspace, &board)?;
-    let (signed, checked) = prepare_save(board, Some((&session.board, &session.health)), &graph)?;
-    let revision = store.save(&session.file, &serialize(&signed))?;
-    session.board = signed;
-    session.revision = revision;
-    session.health = checked;
-    session.reported = None;
-    Ok(state_of(id, session, &graph))
+/// The health of every page of `board` against `graphs`.
+fn board_health_of(board: &Board, graphs: &Graphs) -> Health {
+    unfold_reader::board::board_health(board, &graphs.page())
 }
 
-/// `list_boards`: published boards and drafts, with titles, card counts, and a label only when
-/// something is wrong.
-pub fn list_boards(ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<BoardList> {
-    let workspace = ctx.workspace()?;
-    let extras = ctx.extras(&workspace);
-    let store = BoardStore::new(&workspace);
-    let open: BTreeMap<String, BoardSession> = lock(&extras.boards).clone();
-    let summarize = |file: BoardFile| -> CommandResult<BoardSummary> {
-        let id = board_id(&file);
-        let held_by = workspace.claims().holder(&id);
-        let mut summary = BoardSummary {
-            id: id.clone(),
-            place: file.place,
-            name: file.name.clone(),
-            title: None,
-            cards: 0,
-            label: None,
-            held_by,
-            error: None,
-        };
-        let (board, board_health) = match open.get(&id) {
-            Some(session) => (session.board.clone(), session.health.clone()),
-            None => match store.load(&file) {
-                Ok(loaded) => match load_graph(&workspace, &loaded.board) {
-                    Ok(graph) => {
-                        let checked = health(&loaded.board, &graph);
-                        (loaded.board, checked)
-                    }
-                    Err(error) => {
-                        summary.error = Some(error.message);
-                        return Ok(summary);
-                    }
-                },
-                Err(error) => {
-                    summary.error = Some(error.message);
-                    return Ok(summary);
-                }
-            },
-        };
-        summary.title = Some(board.title.clone());
-        summary.cards = count(board.cards.len());
-        summary.label = health_label(&board_health);
-        Ok(summary)
-    };
-    let mut list = BoardList {
-        published: Vec::new(),
-        drafts: Vec::new(),
-    };
-    for file in store.list(Place::Published)? {
-        ctx.check_cancelled()?;
-        list.published.push(summarize(file)?);
-    }
-    for file in store.list(Place::Draft)? {
-        ctx.check_cancelled()?;
-        list.drafts.push(summarize(file)?);
-    }
-    Ok(list)
+/// `text`, or `fallback` when absent or blank.
+fn nonblank(text: Option<String>, fallback: &str) -> String {
+    text.filter(|text| !text.trim().is_empty())
+        .unwrap_or_else(|| fallback.to_owned())
 }
 
-/// `open_board`: claims the board for the calling window and returns it with its health and
-/// outline, or answers `held` with the window that has it.
+/// `open_board`: claims the board for the calling window and returns it, or answers `held`
+/// with the window that has it. Records it as a recent board.
 pub fn open_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<OpenBoardResult> {
-    let workspace = ctx.workspace()?;
+    let project = ctx.project(&args.project)?;
     let file = parse_id(&args.id)?;
-    match workspace.claims().claim(&args.id, ctx.window) {
+    // A board the window already holds stays held whatever happens here.
+    let reopened = project.claims().holder(&args.id) == Some(ctx.window);
+    match project.claims().claim(&args.id, ctx.window) {
         Ok(()) => {}
-        Err(crate::error::WorkspaceError::BoardHeld { window, .. }) => {
+        Err(WorkspaceError::BoardHeld { window, .. }) => {
             return Ok(OpenBoardResult::Held { held_by: window });
         }
         Err(other) => return Err(other.into()),
     }
-    let extras = ctx.extras(&workspace);
-    let opened = load_into_session(&workspace, &extras, &args.id, &file, false);
-    if opened.is_err() {
-        workspace.claims().release(&args.id, ctx.window);
-    }
-    let board = opened?;
-    publish_problems(&workspace, &extras);
+    let release = |project: &ProjectHandle<'_>| {
+        if !reopened {
+            project.claims().release(&args.id, ctx.window);
+        }
+    };
+    let workspace = match project.wake() {
+        Ok(workspace) => workspace,
+        Err(error) => {
+            release(&project);
+            return Err(error.into());
+        }
+    };
+    let held = Held {
+        extras: project.extras(),
+        workspace,
+        project,
+        file,
+        id: args.id.clone(),
+    };
+    let board = match held.open(ctx) {
+        Ok(board) => board,
+        Err(error) => {
+            release(&held.project);
+            return Err(error);
+        }
+    };
+    // Recents are a convenience: a failed write never fails the open.
+    let _ = ctx
+        .projects()
+        .record_recent_board(held.project.id(), &held.id, &board.document.board.title);
     Ok(OpenBoardResult::Opened {
         board: Box::new(board),
     })
 }
 
-/// Loads a board into its session (reusing an existing session unless `reload`).
-fn load_into_session(
-    workspace: &Workspace,
-    extras: &FolderExtras,
-    id: &str,
-    file: &BoardFile,
-    reload: bool,
-) -> CommandResult<BoardState> {
-    let mut sessions = lock(&extras.boards);
-    if !reload && let Some(session) = sessions.get(id) {
-        let graph = load_graph(workspace, &session.board)?;
-        return Ok(state_of(id, session, &graph));
-    }
-    let loaded = BoardStore::new(workspace).load(file)?;
-    let graph = load_graph(workspace, &loaded.board)?;
-    let session = BoardSession {
-        file: file.clone(),
-        health: health(&loaded.board, &graph),
-        board: loaded.board,
-        revision: loaded.revision,
-        reported: None,
-    };
-    let state = state_of(id, &session, &graph);
-    sessions.insert(id.to_owned(), session);
-    Ok(state)
-}
-
-/// `reload_board`: reads the board from disk again (after an outside edit) and returns it.
-pub fn reload_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardState> {
-    let opened = held(ctx, &args.id)?;
-    let state = load_into_session(&opened.workspace, &opened.extras, &opened.id, &opened.file, true)?;
-    publish_problems(&opened.workspace, &opened.extras);
-    Ok(state)
-}
-
-/// `new_board`: creates an empty draft, opens it in the calling window, and returns it.
+/// `new_board`: creates an empty draft with one page, opens it in the calling window, and
+/// returns it. `not_compiled` before the project's first Compile (drafts live in `local/`).
 pub fn new_board(ctx: &Ctx<'_>, args: NewBoardArgs) -> CommandResult<BoardState> {
-    let workspace = ctx.workspace()?;
+    let project = ctx.project(&args.project)?;
+    let workspace = project.wake()?;
     if !workspace.layout().is_compiled() {
-        return Err(crate::error::WorkspaceError::NotCompiled.into());
+        return Err(WorkspaceError::NotCompiled.into());
     }
-    let title = args
-        .title
-        .filter(|title| !title.trim().is_empty())
-        .unwrap_or_else(|| "Untitled board".to_owned());
-    let store = BoardStore::new(&workspace);
-    let file = store.free_draft(&format!("board-{}", crate::commit::now_ms()))?;
-    let board = Board::new(&title);
-    let revision = store.save(&file, &serialize(&board))?;
-    let id = board_id(&file);
-    workspace.claims().claim(&id, ctx.window)?;
-    let graph = BoardGraph::new();
-    let session = BoardSession {
-        file: file.clone(),
-        health: Health::default(),
-        board,
-        revision,
-        reported: None,
+    let folder = args.folder.map(folder_arg).transpose()?;
+    let mut board = Board::new(&nonblank(args.title, "Untitled board"));
+    board.folder.clone_from(&folder);
+    if let Some(page) = board.pages.first_mut() {
+        page.title = nonblank(args.page_title, "Page 1");
+    }
+    let files = Files::live(&workspace);
+    let file = files.new_draft()?;
+    let id = file.relative();
+    project.claims().claim(&id, ctx.window)?;
+    let held = Held {
+        extras: project.extras(),
+        workspace: Arc::clone(&workspace),
+        project,
+        file,
+        id,
     };
-    let state = state_of(&id, &session, &graph);
-    lock(&ctx.extras(&workspace).boards).insert(id, session);
-    announce(&workspace, &[&file]);
+    let created = held.create(ctx, &files, board);
+    if created.is_err() {
+        held.project.claims().release(&held.id, ctx.window);
+    }
+    let state = created?;
+    if let Some(folder) = &folder {
+        folder_used(&workspace, folder);
+    }
+    held.announce(vec![held.id.clone()], folder.is_some());
     Ok(state)
 }
 
-/// `close_board`: releases the calling window's claim (save first; unsaved edits are the UI's).
-pub fn close_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<()> {
-    let opened = held(ctx, &args.id)?;
-    opened.workspace.claims().release(&opened.id, ctx.window);
-    lock(&opened.extras.boards).remove(&opened.id);
-    publish_problems(&opened.workspace, &opened.extras);
-    Ok(())
-}
-
-/// `move_board`: moves the claim to another window of the folder (Move to New Window).
-pub fn move_board(ctx: &Ctx<'_>, args: MoveBoardArgs) -> CommandResult<()> {
-    let opened = held(ctx, &args.id)?;
-    opened
-        .workspace
-        .transfer_board(&opened.id, ctx.window, args.to_window)?;
-    Ok(())
-}
-
-/// `save_board`: validates, signs, and atomically writes the edited board (drafts autosave
-/// here), and returns it as saved.
-pub fn save_board(ctx: &Ctx<'_>, args: SaveBoardArgs) -> CommandResult<BoardState> {
-    let opened = held(ctx, &args.id)?;
-    let board = parse_document(&args.board)?;
+/// `reload_board`: reads the board's working file again (after `board_conflict`, or "take
+/// theirs") and returns it.
+pub fn reload_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardState> {
+    let held = held(ctx, &args.project, &args.id)?;
+    let mut resolver = held.resolver(ctx)?;
     let state = {
-        let mut sessions = lock(&opened.extras.boards);
-        let session = sessions.get_mut(&opened.id).ok_or_else(|| {
-            CommandError::from(crate::error::WorkspaceError::BoardNotHeld(opened.id.clone()))
-        })?;
-        save_session(
-            &opened.workspace,
-            &opened.id,
-            session,
-            board,
-            args.force.unwrap_or(false),
-        )?
+        let mut sessions = held.boards().sessions();
+        let (session, graphs) =
+            load_session(&held.files(), held.boards(), &mut resolver, &held.id, &held.file)?;
+        held.reference(&held.id, &mut resolver, &session.board);
+        let state = held.state(&held.id, &session, &graphs);
+        sessions.insert(held.id.clone(), session);
+        state
     };
-    publish_problems(&opened.workspace, &opened.extras);
-    announce(&opened.workspace, &[&opened.file]);
+    publish_problems(&held.workspace, held.boards());
     Ok(state)
 }
 
-/// `publish_board`: writes the draft to `.unfold/boards/<name>.json` (never overwriting; a
-/// taken name answers `name_taken` with a free one) and removes the draft.
-pub fn publish_board(ctx: &Ctx<'_>, args: PublishBoardArgs) -> CommandResult<BoardWriteOutcome> {
-    let opened = held(ctx, &args.id)?;
-    if opened.file.place != Place::Draft {
-        return Err(CommandError::invalid_args(format!(
-            "`{}` is already published",
-            opened.id
-        )));
-    }
-    let store = BoardStore::new(&opened.workspace);
-    let (outcome, published) = {
-        let mut sessions = lock(&opened.extras.boards);
-        let Some(session) = sessions.get(&opened.id) else {
-            return Err(crate::error::WorkspaceError::BoardNotHeld(opened.id.clone()).into());
-        };
-        let graph = load_graph(&opened.workspace, &session.board)?;
-        let (signed, checked) = prepare_save(
-            session.board.clone(),
-            Some((&session.board, &session.health)),
-            &graph,
-        )?;
-        let name = args.name.unwrap_or_else(|| slug(&signed.title));
-        let (file, revision) = match store.create_published(&name, &serialize(&signed)) {
-            Ok(created) => created,
-            Err(BoardError::NameTaken { path, suggestion }) => {
-                return Ok(BoardWriteOutcome::NameTaken { path, suggestion });
-            }
-            Err(other) => return Err(other.into()),
-        };
-        store.remove(&opened.file)?;
-        let id = board_id(&file);
-        opened.workspace.claims().rename(&opened.id, &id);
-        sessions.remove(&opened.id);
-        let session = BoardSession {
-            file: file.clone(),
-            board: signed,
-            revision,
-            health: checked,
-            reported: None,
-        };
-        let state = state_of(&id, &session, &graph);
-        sessions.insert(id, session);
-        (
-            BoardWriteOutcome::Done {
-                board: Box::new(state),
-            },
-            file,
-        )
-    };
-    publish_problems(&opened.workspace, &opened.extras);
-    announce(&opened.workspace, &[&opened.file, &published]);
-    Ok(outcome)
-}
-
-/// `unpublish_board`: moves a published board back to drafts.
-pub fn unpublish_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardState> {
-    let opened = held(ctx, &args.id)?;
-    if opened.file.place != Place::Published {
-        return Err(CommandError::invalid_args(format!("`{}` is a draft", opened.id)));
-    }
-    let store = BoardStore::new(&opened.workspace);
-    let (state, draft) = {
-        let mut sessions = lock(&opened.extras.boards);
-        let Some(mut session) = sessions.remove(&opened.id) else {
-            return Err(crate::error::WorkspaceError::BoardNotHeld(opened.id.clone()).into());
-        };
-        let draft = store.free_draft(&opened.file.name)?;
-        let written = store
-            .save(&draft, &serialize(&session.board))
-            .and_then(|revision| store.remove(&opened.file).map(|()| revision));
-        let revision = match written {
-            Ok(revision) => revision,
-            Err(error) => {
-                sessions.insert(opened.id.clone(), session);
-                return Err(error);
-            }
-        };
-        let id = board_id(&draft);
-        opened.workspace.claims().rename(&opened.id, &id);
-        session.file = draft.clone();
-        session.revision = revision;
-        session.reported = None;
-        let graph = load_graph(&opened.workspace, &session.board)?;
-        let state = state_of(&id, &session, &graph);
-        sessions.insert(id, session);
-        (state, draft)
-    };
-    publish_problems(&opened.workspace, &opened.extras);
-    announce(&opened.workspace, &[&opened.file, &draft]);
-    Ok(state)
-}
-
-/// `rename_board`: changes the title (saved like an edit) and, for a published board, the file
-/// name (never overwriting another board).
-pub fn rename_board(ctx: &Ctx<'_>, args: RenameBoardArgs) -> CommandResult<BoardWriteOutcome> {
-    let opened = held(ctx, &args.id)?;
-    if args.name.is_some() && opened.file.place != Place::Published {
-        return Err(CommandError::invalid_args(
-            "only a published board's file can be renamed; a draft's name is internal",
-        ));
-    }
-    let mut touched = vec![opened.file.clone()];
-    let outcome = {
-        let mut sessions = lock(&opened.extras.boards);
-        let Some(session) = sessions.get_mut(&opened.id) else {
-            return Err(crate::error::WorkspaceError::BoardNotHeld(opened.id.clone()).into());
-        };
-        let mut state = None;
-        if let Some(title) = &args.title {
-            if title.trim().is_empty() {
-                return Err(CommandError::invalid_args("the title is empty"));
-            }
-            let mut board = session.board.clone();
-            board.title.clone_from(title);
-            state = Some(save_session(
-                &opened.workspace,
-                &opened.id,
-                session,
-                board,
-                false,
-            )?);
-        }
-        if let Some(name) = &args.name {
-            let store = BoardStore::new(&opened.workspace);
-            let file = match store.rename_published(&opened.file, name) {
-                Ok(file) => file,
-                Err(BoardError::NameTaken { path, suggestion }) => {
-                    return Ok(BoardWriteOutcome::NameTaken { path, suggestion });
-                }
-                Err(other) => return Err(other.into()),
-            };
-            let id = board_id(&file);
-            if let Some(mut moved) = sessions.remove(&opened.id) {
-                opened.workspace.claims().rename(&opened.id, &id);
-                moved.file = file.clone();
-                let graph = load_graph(&opened.workspace, &moved.board)?;
-                state = Some(state_of(&id, &moved, &graph));
-                sessions.insert(id, moved);
-            }
-            touched.push(file);
-        }
-        match state {
-            Some(board) => BoardWriteOutcome::Done {
-                board: Box::new(board),
-            },
-            None => {
-                let session = sessions
-                    .get(&opened.id)
-                    .ok_or_else(|| CommandError::internal("the board's session disappeared"))?;
-                let graph = load_graph(&opened.workspace, &session.board)?;
-                BoardWriteOutcome::Done {
-                    board: Box::new(state_of(&opened.id, session, &graph)),
-                }
-            }
-        }
-    };
-    publish_problems(&opened.workspace, &opened.extras);
-    announce(&opened.workspace, &touched.iter().collect::<Vec<_>>());
-    Ok(outcome)
-}
-
-/// `delete_board`: deletes the board's file (the UI asks first) and closes it.
-pub fn delete_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<()> {
-    let opened = held(ctx, &args.id)?;
-    BoardStore::new(&opened.workspace).remove(&opened.file)?;
-    opened.workspace.claims().release(&opened.id, ctx.window);
-    lock(&opened.extras.boards).remove(&opened.id);
-    publish_problems(&opened.workspace, &opened.extras);
-    announce(&opened.workspace, &[&opened.file]);
+/// `close_board`: releases the calling window's claim (the window saves first).
+pub fn close_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<()> {
+    let project = ctx.project(&args.project)?;
+    parse_id(&args.id)?;
+    project.claims().check(&args.id, ctx.window)?;
+    project.claims().release(&args.id, ctx.window);
+    project.extras().boards.forget_sessions(&[args.id]);
     Ok(())
 }
 
-/// `board_health`: the board's health and outline against the current graph.
+/// `move_board`: hands the claim to another window (Open in New Window).
+pub fn move_board(ctx: &Ctx<'_>, args: MoveBoardArgs) -> CommandResult<()> {
+    let project = ctx.project(&args.project)?;
+    parse_id(&args.id)?;
+    Ok(project.claims().transfer(&args.id, ctx.window, args.to_window)?)
+}
+
+/// `save_board`: validates, signs, and writes the edited board as its working version (drafts
+/// and unpublished changes autosave here), and returns it as saved.
+pub fn save_board(ctx: &Ctx<'_>, args: SaveBoardArgs) -> CommandResult<BoardState> {
+    let held = held(ctx, &args.project, &args.id)?;
+    let mut resolver = held.resolver(ctx)?;
+    let state = {
+        let mut sessions = held.boards().sessions();
+        let (session, _) = held.session(&mut sessions, &mut resolver)?;
+        let board = parse_edit(&args.board.0.to_string(), session.board.folder.clone())?;
+        if ProjectName::parse(held.project.name()).is_some_and(|own| board.projects.contains(&own)) {
+            return Err(CommandError::invalid_args(format!(
+                "a card names `{}`, this board's own project: omit project for the board's own project",
+                held.project.name()
+            )));
+        }
+        held.save(session, &mut resolver, board, args.force.unwrap_or(false))?
+    };
+    publish_problems(&held.workspace, held.boards());
+    held.announce(vec![held.id.clone()], false);
+    Ok(state)
+}
+
+/// `save_board_view`: remembers the board's active page and each page's camera and lens in
+/// `state.json`.
+pub fn save_board_view(ctx: &Ctx<'_>, args: SaveBoardViewArgs) -> CommandResult<()> {
+    let held = held(ctx, &args.project, &args.id)?;
+    held.workspace
+        .update_local_state(|state| state.put_board_view(&held.id, args.view))?;
+    Ok(())
+}
+
+/// `board_health`: the board's health and outlines against the graphs now.
 pub fn board_health(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardHealthView> {
-    let opened = held(ctx, &args.id)?;
+    let held = held(ctx, &args.project, &args.id)?;
+    let mut resolver = held.resolver(ctx)?;
     let view = {
-        let mut sessions = lock(&opened.extras.boards);
-        let session = sessions.get_mut(&opened.id).ok_or_else(|| {
-            CommandError::from(crate::error::WorkspaceError::BoardNotHeld(opened.id.clone()))
-        })?;
-        let graph = load_graph(&opened.workspace, &session.board)?;
-        session.health = health(&session.board, &graph);
+        let mut sessions = held.boards().sessions();
+        let (session, _) = held.session(&mut sessions, &mut resolver)?;
+        let graphs = resolver.board_graphs(&session.board)?;
+        session.health = board_health_of(&session.board, &graphs);
+        held.boards().cache(
+            &mut resolver,
+            &held.id,
+            &session.board,
+            session.revision,
+            &session.health,
+        );
+        let graphs = graphs.page();
         BoardHealthView {
-            outline: outline(&session.board, &graph),
-            label: health_label(&session.health),
+            outlines: session
+                .board
+                .pages
+                .iter()
+                .map(|page| outline(page, &graphs))
+                .collect(),
+            label: session.health.label(),
             health: session.health.clone(),
         }
     };
-    publish_problems(&opened.workspace, &opened.extras);
+    publish_problems(&held.workspace, held.boards());
     Ok(view)
 }
 
-/// `repair_board`: applies one repair a health item offers and saves the board.
+/// `repair_board`: applies one repair a health item offers, on its page, and saves the board.
 pub fn repair_board(ctx: &Ctx<'_>, args: RepairBoardArgs) -> CommandResult<BoardState> {
-    let opened = held(ctx, &args.id)?;
+    let held = held(ctx, &args.project, &args.id)?;
+    let page_id = args.repair.page;
+    let repair = args.repair.repair.into_repair()?;
+    let mut resolver = held.resolver(ctx)?;
     let state = {
-        let mut sessions = lock(&opened.extras.boards);
-        let session = sessions.get_mut(&opened.id).ok_or_else(|| {
-            CommandError::from(crate::error::WorkspaceError::BoardNotHeld(opened.id.clone()))
-        })?;
+        let mut sessions = held.boards().sessions();
+        let (session, _) = held.session(&mut sessions, &mut resolver)?;
         let mut board = session.board.clone();
-        let graph = load_graph(&opened.workspace, &board)?;
-        apply_repair(&mut board, &graph, &args.repair.into())?;
-        save_session(&opened.workspace, &opened.id, session, board, false)?
+        // Reconnecting reads the new key from its project's graph too.
+        let reconnect = match &repair {
+            Repair::Reconnect { project, to, .. } => Some((project.clone(), to.as_str())),
+            _ => None,
+        };
+        let graphs = resolver.graphs(&board.projects, |project| {
+            let mut keys = board.references(project);
+            if let Some((reconnected, to)) = &reconnect
+                && reconnected.as_ref() == project
+            {
+                keys.push(to);
+            }
+            keys
+        })?;
+        let page = board
+            .page_mut(&page_id)
+            .ok_or_else(|| CommandError::invalid_args(format!("the board has no page `{page_id}`")))?;
+        apply_repair(page, &graphs.page(), &repair)?;
+        held.save(session, &mut resolver, board, false)?
     };
-    publish_problems(&opened.workspace, &opened.extras);
-    announce(&opened.workspace, &[&opened.file]);
+    publish_problems(&held.workspace, held.boards());
+    held.announce(vec![held.id.clone()], false);
     Ok(state)
 }
 
-/// The authored Flow labels of a board the calling window holds, for its cards.
-pub(crate) fn labels_for(
-    ctx: &Ctx<'_>,
-    workspace: &Workspace,
-    id: &str,
-) -> CommandResult<BTreeMap<String, String>> {
-    workspace.claims().check(id, ctx.window)?;
-    let extras = ctx.extras(workspace);
-    let sessions = lock(&extras.boards);
-    let session = sessions
-        .get(id)
-        .ok_or_else(|| CommandError::from(crate::error::WorkspaceError::BoardNotHeld(id.to_owned())))?;
-    Ok(session
-        .board
-        .labels
-        .keys()
-        .filter_map(|key| {
-            session
-                .board
-                .label(key)
-                .map(|text| (key.clone(), text.to_owned()))
-        })
-        .collect())
-}
-
-/// The last saved version of a board the calling window holds.
-pub(crate) fn held_board(ctx: &Ctx<'_>, id: &str) -> CommandResult<(Arc<Workspace>, Board)> {
-    let opened = held(ctx, id)?;
-    let board = lock(&opened.extras.boards)
-        .get(id)
-        .map(|session| session.board.clone())
-        .ok_or_else(|| CommandError::from(crate::error::WorkspaceError::BoardNotHeld(id.to_owned())))?;
-    Ok((opened.workspace, board))
-}
-
-/// Forgets the sessions of the boards `window` holds (the window is closing or leaving the
-/// folder; their claims go with it).
-pub(crate) fn release_window(host: &HostState, workspace: &Workspace, window: WindowId) {
-    let boards = workspace.claims().boards_of(window);
-    if boards.is_empty() {
-        return;
+/// `publish_board`: a draft's first Publish writes `.unfold/boards/<name>.json` (never
+/// overwriting: `name_taken` with a free name) and deletes the draft (the board's id changes); a
+/// published board's unpublished changes are written over its published file, unless that file
+/// changed since the changes started from it (`conflict`, settled with `resolve: "keep_mine"`).
+pub fn publish_board(ctx: &Ctx<'_>, args: PublishBoardArgs) -> CommandResult<PublishOutcome> {
+    let held = held(ctx, &args.project, &args.id)?;
+    if args.name.is_some() && held.file.place != Place::Draft {
+        return Err(CommandError::invalid_args(
+            "a file name is chosen only at a draft's first Publish",
+        ));
     }
-    let extras = host.extras(workspace.folder());
-    {
-        let mut sessions = lock(&extras.boards);
-        for board in &boards {
+    let mut resolver = held.resolver(ctx)?;
+    let files = held.files();
+    let (outcome, moved) = {
+        let mut sessions = held.boards().sessions();
+        let (session, _) = held.session(&mut sessions, &mut resolver)?;
+        if held.file.place == Place::Draft {
+            let graphs = resolver.board_graphs(&session.board)?;
+            let (signed, health) = prepare_save(
+                session.board.clone(),
+                Some((&session.board, &session.health)),
+                &graphs.page(),
+            )?;
+            let name = args.name.unwrap_or_else(|| slug(&signed.title));
+            let (file, revision) = match files.create_published(&name, &serialize(&signed)) {
+                Ok(created) => created,
+                Err(BoardError::NameTaken { path, suggestion }) => {
+                    return Ok(PublishOutcome::NameTaken { path, suggestion });
+                }
+                Err(other) => return Err(other.into()),
+            };
+            files.remove(&held.file)?;
+            let id = file.relative();
+            held.project.claims().rename(&held.id, &id);
+            let mut session = sessions
+                .remove(&held.id)
+                .ok_or_else(|| CommandError::internal("the published draft lost its session"))?;
+            session.file = file;
+            session.kind = WorkingFile::Published;
+            session.board = signed;
+            session.revision = revision;
+            session.base = None;
+            session.health = health;
+            session.published = Some(PublishedState::current(revision));
+            session.reported = None;
+            held.boards().forget(&held.id);
+            held.boards()
+                .cache(&mut resolver, &id, &session.board, revision, &session.health);
+            held.reference(&id, &mut resolver, &session.board);
+            held.moved(ctx, &id);
+            let state = held.state(&id, &session, &graphs);
+            sessions.insert(id.clone(), session);
+            (
+                PublishOutcome::Done {
+                    board: Box::new(state),
+                },
+                Some(id),
+            )
+        } else {
+            if session.kind == WorkingFile::Changes {
+                let base = session
+                    .base
+                    .ok_or_else(|| CommandError::internal("a changes copy without its base revision"))?;
+                let theirs = files.dirs.change(&held.file, base)?;
+                if theirs != Change::Unchanged && args.resolve != Some(Resolve::KeepMine) {
+                    let theirs_revision = match theirs {
+                        Change::Changed(revision) => Some(revision.0.to_string()),
+                        Change::Missing | Change::Unchanged => None,
+                    };
+                    return Ok(PublishOutcome::Conflict { theirs_revision });
+                }
+                let revision = files.overwrite_published(&held.file, &serialize(&session.board))?;
+                files.remove(&session.working_file())?;
+                held.boards().rekey(&held.id, session.revision, revision);
+                session.kind = WorkingFile::Published;
+                session.revision = revision;
+                session.base = None;
+                session.published = Some(PublishedState::current(revision));
+                session.reported = None;
+            }
+            let graphs = resolver.board_graphs(&session.board)?;
+            (
+                PublishOutcome::Done {
+                    board: Box::new(held.state(&held.id, session, &graphs)),
+                },
+                None,
+            )
+        }
+    };
+    publish_problems(&held.workspace, held.boards());
+    held.announce(std::iter::once(held.id.clone()).chain(moved).collect(), false);
+    Ok(outcome)
+}
+
+/// `discard_changes`: deletes a published board's changes copy and reads its published file
+/// again ("take theirs" after a conflict, too).
+pub fn discard_changes(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardState> {
+    let held = held(ctx, &args.project, &args.id)?;
+    let Some(copy) = BoardFile::changes_of(&held.file) else {
+        return Err(CommandError::invalid_args(format!(
+            "`{}` is a draft: it has no unpublished changes",
+            held.id
+        )));
+    };
+    let mut resolver = held.resolver(ctx)?;
+    let files = held.files();
+    let state = {
+        let mut sessions = held.boards().sessions();
+        files.remove(&copy)?;
+        let (session, graphs) = load_session(&files, held.boards(), &mut resolver, &held.id, &held.file)?;
+        held.reference(&held.id, &mut resolver, &session.board);
+        let state = held.state(&held.id, &session, &graphs);
+        sessions.insert(held.id.clone(), session);
+        state
+    };
+    publish_problems(&held.workspace, held.boards());
+    held.announce(vec![held.id.clone()], false);
+    Ok(state)
+}
+
+/// `unpublish_board`: Move back to drafts. The working version becomes a draft; the published
+/// file and its changes copy are deleted; the board's id changes.
+pub fn unpublish_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardState> {
+    let held = held(ctx, &args.project, &args.id)?;
+    let Some(copy) = BoardFile::changes_of(&held.file) else {
+        return Err(CommandError::invalid_args(format!("`{}` is a draft", held.id)));
+    };
+    let mut resolver = held.resolver(ctx)?;
+    let files = held.files();
+    let (state, id) = {
+        let mut sessions = held.boards().sessions();
+        let (session, _) = held.session(&mut sessions, &mut resolver)?;
+        let draft = files.dirs.free_draft(&held.file.name)?;
+        let written = files.write(&draft, session.board.clone(), None)?;
+        files.remove(&held.file)?;
+        files.remove(&copy)?;
+        let id = draft.relative();
+        held.project.claims().rename(&held.id, &id);
+        let mut session = sessions
+            .remove(&held.id)
+            .ok_or_else(|| CommandError::internal("the unpublished board lost its session"))?;
+        session.file = draft;
+        let health = std::mem::take(&mut session.health);
+        session.wrote(written, health);
+        held.boards().forget(&held.id);
+        held.boards().cache(
+            &mut resolver,
+            &id,
+            &session.board,
+            session.revision,
+            &session.health,
+        );
+        held.reference(&id, &mut resolver, &session.board);
+        held.moved(ctx, &id);
+        let graphs = resolver.board_graphs(&session.board)?;
+        let state = held.state(&id, &session, &graphs);
+        sessions.insert(id.clone(), session);
+        (state, id)
+    };
+    publish_problems(&held.workspace, held.boards());
+    held.announce(vec![held.id.clone(), id], false);
+    Ok(state)
+}
+
+/// `delete_board`: deletes the board's files (the UI asks first), closes it, and forgets its
+/// view state and recent-board entry. Its folder stays, empty, when no other board is in it.
+pub fn delete_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<()> {
+    let held = held(ctx, &args.project, &args.id)?;
+    let files = held.files();
+    let folder = {
+        let mut sessions = held.boards().sessions();
+        let folder = match sessions.get(&held.id) {
+            Some(session) => session.board.folder.clone(),
+            None => files
+                .working(&held.file)
+                .ok()
+                .and_then(|working| working.loaded.board.folder),
+        };
+        if let Some(copy) = BoardFile::changes_of(&held.file) {
+            files.remove(&copy)?;
+        }
+        files.remove(&held.file)?;
+        held.project.claims().release(&held.id, ctx.window);
+        sessions.remove(&held.id);
+        held.boards().forget(&held.id);
+        folder
+    };
+    let _ = held.workspace.update_local_state(|state| {
+        state.remove_board_view(&held.id);
+    });
+    let _ = ctx.projects().forget_recent_board(held.project.id(), &held.id);
+    if let Some(folder) = &folder {
+        folder_left(&files, &held.workspace, folder);
+    }
+    publish_problems(&held.workspace, held.boards());
+    held.announce(vec![held.id.clone()], folder.is_some());
+    Ok(())
+}
+
+/// `duplicate_board`: a new draft "<title> copy" in the same folder, from the board's working
+/// version. The copy is not opened.
+pub fn duplicate_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardSummary> {
+    let held = held(ctx, &args.project, &args.id)?;
+    let mut resolver = held.resolver(ctx)?;
+    let files = held.files();
+    let mut board = {
+        let mut sessions = held.boards().sessions();
+        held.session(&mut sessions, &mut resolver)?.0.board.clone()
+    };
+    board.title = format!("{} copy", board.title);
+    let draft = files.new_draft()?;
+    let written = files.write(&draft, board, None)?;
+    let id = draft.relative();
+    let loaded = Loaded {
+        board: written.board,
+        revision: written.revision,
+        base: None,
+    };
+    let label = health_of(held.boards(), &mut resolver, &id, &loaded)?.and_then(|health| health.label());
+    let summary = lists::summary(
+        held.project.id(),
+        &files,
+        None,
+        &draft,
+        Ok(Working {
+            kind: WorkingFile::Draft,
+            loaded,
+        }),
+        label,
+    );
+    publish_problems(&held.workspace, held.boards());
+    held.announce(vec![id], false);
+    Ok(summary)
+}
+
+/// The Mermaid text of page `page` of board `id`, which the calling window holds (its last
+/// saved version).
+pub(crate) fn page_mermaid(
+    ctx: &Ctx<'_>,
+    project: &ProjectId,
+    id: &str,
+    page: &str,
+) -> CommandResult<String> {
+    let held = held(ctx, project, id)?;
+    let mut resolver = held.resolver(ctx)?;
+    let mut sessions = held.boards().sessions();
+    let (session, graphs) = held.session(&mut sessions, &mut resolver)?;
+    let graphs = match graphs {
+        Some(graphs) => graphs,
+        None => resolver.board_graphs(&session.board)?,
+    };
+    mermaid::page(&session.board, page, &graphs.page())
+        .ok_or_else(|| CommandError::not_found(format!("board `{id}` has no page `{page}`")))
+}
+
+impl BoardExtras {
+    /// Forgets the sessions of `boards` (their claims were released).
+    pub(crate) fn forget_sessions(&self, boards: &[String]) {
+        let mut sessions = self.sessions();
+        for board in boards {
             sessions.remove(board);
         }
     }
-    publish_problems(workspace, &extras);
 }

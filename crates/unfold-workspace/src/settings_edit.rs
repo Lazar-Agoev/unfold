@@ -17,6 +17,7 @@
 //! | Manual entrances | Adds, replaces, or removes one `[[entrance]]` table by its position |
 //! | Python project | Adds or replaces the `[[python.project]]` table with that root, or removes it |
 //! | Detector toggle | Adds the detector to, or removes it from, `[detectors] disabled` |
+//! | Project name | Sets `[project] name`, keeping the value's comments; no name removes the `[project]` table |
 
 use serde::Deserialize;
 use toml_edit::{Array, ArrayOfTables, DocumentMut, Item, Table, Value};
@@ -84,6 +85,11 @@ pub enum SettingsEdit {
         detector: String,
         /// Whether it runs.
         enabled: bool,
+    },
+    /// Set the project's shared name, or remove it (`null`) for the default.
+    SetProjectName {
+        /// The name; it must match `/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/`.
+        name: Option<String>,
     },
 }
 
@@ -248,7 +254,31 @@ fn apply(doc: &mut DocumentMut, edit: &SettingsEdit) -> Result<()> {
             }
             Ok(())
         }
+        SettingsEdit::SetProjectName { name } => set_project_name(doc, name.as_deref()),
     }
+}
+
+/// Sets `[project] name`, or removes the `[project]` table (which holds only the name). A value
+/// that is already the name is left as written.
+fn set_project_name(doc: &mut DocumentMut, name: Option<&str>) -> Result<()> {
+    let Some(name) = name else {
+        doc.remove("project");
+        return Ok(());
+    };
+    let project = table(doc, "project")?;
+    match project.get_mut("name").and_then(Item::as_value_mut) {
+        Some(value) if value.as_str() == Some(name) => {}
+        Some(value) => {
+            // Keep the comments around the value.
+            let decor = value.decor().clone();
+            *value = Value::from(name);
+            *value.decor_mut() = decor;
+        }
+        None => {
+            project.insert("name", toml_edit::value(name));
+        }
+    }
+    Ok(())
 }
 
 fn no_entrance(index: usize) -> WorkspaceError {
@@ -635,6 +665,49 @@ mod tests {
         )
         .expect_err("not listed");
         assert_eq!(missing.code(), "settings_conflict");
+    }
+
+    #[test]
+    fn the_project_name_is_set_renamed_and_removed() {
+        let name = |name: Option<&str>| SettingsEdit::SetProjectName {
+            name: name.map(str::to_owned),
+        };
+        let fresh = apply_edits(None, &[name(Some("orders"))]).expect("set");
+        assert_eq!(fresh.text, "version = 1\n\n[project]\nname = \"orders\"\n");
+        assert_eq!(fresh.settings.project_name.as_deref(), Some("orders"));
+
+        let named = apply_edits(Some(COMMENTED), &[name(Some("orders"))]).expect("set");
+        assert!(named.text.starts_with(COMMENTED), "{}", named.text);
+        let commented = named
+            .text
+            .replace("name = \"orders\"", "# shared\nname = \"orders\" # keep");
+        let renamed = apply_edits(Some(&commented), &[name(Some("shop"))]).expect("rename");
+        assert!(
+            renamed.text.contains("# shared\nname = \"shop\" # keep\n"),
+            "{}",
+            renamed.text
+        );
+        assert_eq!(renamed.settings.project_name.as_deref(), Some("shop"));
+        let same = apply_edits(Some(&commented), &[name(Some("orders"))]).expect("same");
+        assert_eq!(
+            same.text, commented,
+            "an unchanged name leaves the text as it was"
+        );
+
+        let removed = apply_edits(Some(&renamed.text), &[name(None)]).expect("remove");
+        assert_eq!(removed.text, COMMENTED);
+        assert_eq!(removed.settings.project_name, None);
+        let absent = apply_edits(Some(COMMENTED), &[name(None)]).expect("remove");
+        assert_eq!(absent.text, COMMENTED);
+
+        let invalid = apply_edits(Some(COMMENTED), &[name(Some("my orders"))]).expect_err("invalid");
+        assert!(matches!(
+            invalid,
+            WorkspaceError::InvalidSettings { line: Some(_), .. }
+        ));
+        let edit: SettingsEdit =
+            serde_json::from_str(r#"{"op": "set_project_name", "name": null}"#).expect("deserialize");
+        assert_eq!(edit, name(None));
     }
 
     #[test]

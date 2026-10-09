@@ -1,12 +1,12 @@
 /**
- * Resizable panes. `ResizeHandle` is a WAI-ARIA window splitter on one edge of a pane: drag it,
- * use the arrow keys (Shift for bigger steps), Home/End for the minimum/maximum, and double-click or
- * Enter to reset. `ResizablePane` wraps a pane with its handle and applies the size.
+ * `ResizeHandle`: a WAI-ARIA window splitter on one edge of a pane (the sidebar's, 220–360px). Drag
+ * it, use the arrow keys (Shift for bigger steps), Home/End for the minimum/maximum, and double-click
+ * or Enter to reset.
  *
  * Sizes are owned by the caller (the layout store), so they can be persisted.
  */
 
-import { useRef, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { useRef, type KeyboardEvent, type PointerEvent } from "react";
 import { cx } from "./internal/dom";
 import "./Resizable.css";
 
@@ -20,7 +20,7 @@ export interface SizeBounds {
   readonly initial: number;
 }
 
-export function clampSize(size: number, bounds: Pick<SizeBounds, "min" | "max">): number {
+function clampSize(size: number, bounds: Pick<SizeBounds, "min" | "max">): number {
   return Math.round(Math.max(bounds.min, Math.min(bounds.max, size)));
 }
 
@@ -123,23 +123,5 @@ export function ResizeHandle({ edge, size, bounds, onResize, onResizeEnd, label,
       }}
       onKeyDown={onKeyDown}
     />
-  );
-}
-
-export interface ResizablePaneProps extends Omit<ResizeHandleProps, "controls" | "className"> {
-  /** The pane's DOM id (the handle's `aria-controls`). */
-  readonly id: string;
-  readonly className?: string;
-  readonly children: ReactNode;
-}
-
-/** A pane with its size applied (width for left/right edges, height for top/bottom) and a handle. */
-export function ResizablePane({ id, edge, size, className, children, ...handle }: ResizablePaneProps) {
-  const vertical = edge === "left" || edge === "right";
-  return (
-    <div id={id} className={cx("resizable-pane", className)} style={vertical ? { width: size } : { height: size }}>
-      {children}
-      <ResizeHandle edge={edge} size={size} controls={id} {...handle} />
-    </div>
   );
 }

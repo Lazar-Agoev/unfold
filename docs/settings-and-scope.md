@@ -19,6 +19,9 @@ preserving comments is the workspace's job; this section describes what the engi
 version = 1
 languages = ["typescript", "python"]     # optional; default: every supported language found
 
+[project]
+name = "orders"                           # optional; the shared name other projects' boards use
+
 [scope]
 include = []                              # optional; when set, only these folders or globs are graphed
 exclude = ["**/generated/**"]
@@ -41,6 +44,7 @@ handler = "src/server.ts#shutdown"
 | --- | --- | --- | --- |
 | `version` | integer | `1` | Must be `1` |
 | `languages` | array of strings | every language | `typescript` and/or `python`; nonempty; duplicates are ignored |
+| `project.name` | string | from the folder's name | See [Project name](#project-name) |
 | `scope.include` | array of globs | `[]` (everything) | See [Scope](#scope) |
 | `scope.exclude` | array of globs | `[]` | See [Scope](#scope) |
 | `detectors.disabled` | array of detector IDs | `[]` | Known IDs only ([graph model](graph-model.md)); `manual` can't be disabled |
@@ -49,7 +53,7 @@ handler = "src/server.ts#shutdown"
 
 ### Strictness and errors
 
-Parsing is strict. Unknown keys anywhere (including inside `[scope]`, `[detectors]`, `[python]`,
+Parsing is strict. Unknown keys anywhere (including inside `[project]`, `[scope]`, `[detectors]`, `[python]`,
 `[[python.project]]`, and `[[entrance]]`), wrong types, malformed TOML, and invalid values are
 errors. Every error names the file, a one-based line, and a one-based column counted in
 characters, and carries the byte span of the offending key or value:
@@ -60,6 +64,20 @@ characters, and carries the byte span of the offending key or value:
 
 The file must be UTF-8; a leading byte-order mark is skipped (spans still count its bytes). Settings
 errors are never partially applied: the folder's compile reports the error instead.
+
+### Project name
+
+`[project] name` is the project's shared name: other projects' boards name this one by it, so it is
+committed with the folder. It is 1 to 64 ASCII letters, digits, `.`, `_`, or `-`, starting with a letter
+or digit (`/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/`); anything else is an error at the value.
+
+Without it, the workspace uses a default made from a folder's name (for a repository's root, the main
+worktree's folder, so every worktree of a repository shares it). A folder name that isn't a valid project
+name is slugged the way a board's file name is (`My Repo` becomes `my-repo`, `Café` becomes `cafe`,
+nothing left becomes `project`): `settings::default_project_name`. Setting the name to nothing from the
+app removes the `[project]` table.
+
+The name changes no compile, so it is in neither settings hash ([Settings hashing](#settings-hashing)).
 
 ### Python projects
 
@@ -198,7 +216,8 @@ they depend only on values: comments, whitespace, key order, and the byte positi
 matter.
 
 - `Settings::hash()` covers everything that can change a compile: languages, scope, disabled
-  detectors, Python projects, and manual entrances (without their byte spans).
+  detectors, Python projects, and manual entrances (without their byte spans). The project name is
+  left out: renaming the project re-extracts nothing.
 - Languages hash only what affects extracting one file, so a settings edit re-extracts only the files it
   touches. `Settings::python_hash(path)` covers the owning Python project (root, source roots, grammar
   version) or its absence: changing one project's grammar re-extracts that project's files only, and

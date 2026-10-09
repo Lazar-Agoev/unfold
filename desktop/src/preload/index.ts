@@ -2,24 +2,24 @@
  * The preload script: exposes `window.unfold` and nothing else (architecture §13).
  *
  * Engine commands travel over a MessagePort to the engine host, which the main process hands over
- * (again after every engine-host restart, folder change, or reload). Invokes made before a port
+ * (again after every engine-host restart or reload). Invokes made before a port
  * arrives are queued; requests in flight when a connection drops are rejected with `disconnected`.
  * Window commands go to the main process over IPC.
  *
  * Two pieces of window behavior live here because they need the DOM and the person's gesture:
  * - Edit > Undo / Redo arrive as `menu_command`s. With focus in a text field, the field's native
  *   undo runs instead, so the UI's board undo never swallows typing undo.
- * - Dropping a folder on the window opens it. Only paths of the latest real drop are accepted
- *   (from `webUtils.getPathForFile`); the main process checks the path is a directory.
+ * - Dropping a folder on the window adds it to the workspace as a project. Only paths of the latest
+ *   real drop are accepted (from `webUtils.getPathForFile`); the engine checks the path is a folder.
  */
 
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { EngineLost, HostToRenderer, RendererToHost, WindowReply } from "../shared/transport";
 import { IPC, PRELOAD_COMMANDS, transportError } from "../shared/transport";
 import type {
+  AddedProject,
   ConnectionState,
   DroppedFile,
-  OpenedIn,
   ShellEvent,
   StreamHandle,
   TransportError,
@@ -163,7 +163,7 @@ ipcRenderer.on(IPC.shellEvent, (_event, shellEvent: ShellEvent) => {
   emit(shellEvent);
 });
 
-/** Paths of the items in the latest drop on this window: the only ones `openDroppedFolder` accepts. */
+/** Paths of the items in the latest drop on this window: the only ones `addDroppedFolder` accepts. */
 let droppedPaths = new Set<string>();
 
 function pathsOf(event: DragEvent): Set<string> {
@@ -181,7 +181,7 @@ function hasFiles(event: DragEvent): boolean {
   return event.dataTransfer?.types.includes("Files") ?? false;
 }
 
-// Capture: record what was dropped before any UI handler asks to open it.
+// Capture: record what was dropped before any UI handler asks to add it.
 window.addEventListener(
   "drop",
   (event) => {
@@ -195,7 +195,7 @@ window.addEventListener("dragover", (event) => {
     event.preventDefault();
   }
 });
-// Bubble: a drop the UI didn't handle opens the dropped folder in this window.
+// Bubble: a drop the UI didn't handle adds the dropped folder, and the UI selects it.
 window.addEventListener("drop", (event) => {
   if (event.defaultPrevented || !hasFiles(event)) {
     return;
@@ -203,16 +203,18 @@ window.addEventListener("drop", (event) => {
   event.preventDefault();
   const [path, ...more] = droppedPaths;
   if (path !== undefined && more.length === 0) {
-    sendWindowCommand(PRELOAD_COMMANDS.openDroppedFolder, { path }).catch(() => {
-      // Not a folder (a file was dropped): nothing to open.
-    });
+    sendWindowCommand(PRELOAD_COMMANDS.addDroppedFolder, { path }).then(
+      (added) => {
+        emit({ type: "project_added", project: (added as AddedProject).project } satisfies ShellEvent);
+      },
+      () => {
+        // Not a folder (a file was dropped), or the workspace is full: nothing to add.
+      },
+    );
   }
 });
 
-async function openDroppedFolder(
-  file: DroppedFile,
-  options?: { target?: "this_window" | "new_window" },
-): Promise<OpenedIn> {
+async function addDroppedFolder(file: DroppedFile): Promise<AddedProject> {
   let path = "";
   try {
     path = webUtils.getPathForFile(file as File);
@@ -221,12 +223,9 @@ async function openDroppedFolder(
   }
   if (!path || !droppedPaths.has(path)) {
     // eslint-disable-next-line @typescript-eslint/only-throw-error -- plain data survives the bridge
-    throw transportError("invalid_command", "Only a folder dropped on this window can be opened.");
+    throw transportError("invalid_command", "Only a folder dropped on this window can be added.");
   }
-  return (await sendWindowCommand(PRELOAD_COMMANDS.openDroppedFolder, {
-    path,
-    ...(options?.target ? { target: options.target } : {}),
-  })) as OpenedIn;
+  return (await sendWindowCommand(PRELOAD_COMMANDS.addDroppedFolder, { path })) as AddedProject;
 }
 
 /** Starts one request. Its message is posted now if a port is present, or queued until one is. */
@@ -320,7 +319,7 @@ const api: UnfoldApi = {
     };
   },
   window: windowCommand,
-  openDroppedFolder,
+  addDroppedFolder,
 };
 
 contextBridge.exposeInMainWorld("unfold", api);

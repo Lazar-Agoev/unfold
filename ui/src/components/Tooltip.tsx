@@ -1,7 +1,8 @@
 /**
- * Hover layers. A Tooltip names a control (with its shortcut); a HoverCard shows richer, delayed
- * detail, such as a call link's signature and location. Both open on hover after a delay and on
- * keyboard focus, close on Escape, and wrap their trigger without adding a box to the layout.
+ * Hover layers in the popover style (V-17). A Tooltip names a control (with its shortcut) or explains
+ * a mark (the problems dot's count, the state line's notes); a HoverCard shows richer, delayed detail,
+ * such as a call link's signature and location. Both open on hover after a delay and on keyboard
+ * focus, close on Escape, and wrap their trigger without adding a box to the layout.
  */
 
 import {
@@ -19,7 +20,7 @@ import {
 import { cx } from "./internal/dom";
 import { useFloatingPosition, type Align, type Side } from "./internal/floating";
 import { Portal } from "./internal/layers";
-import { Kbd } from "./Kbd";
+import { ShortcutText } from "./internal/shortcut";
 import "./Tooltip.css";
 
 interface HoverLayerOptions {
@@ -191,7 +192,7 @@ export function Tooltip({ content, shortcut, side = "bottom", align, describe = 
         <Portal>
           <div ref={layer} className="tooltip" role="tooltip" aria-hidden="true">
             <span>{content}</span>
-            {shortcut ? <Kbd shortcut={shortcut} tone="plain" className="tooltip-kbd" /> : null}
+            {shortcut ? <ShortcutText shortcut={shortcut} className="tooltip-shortcut" /> : null}
           </div>
         </Portal>
       ) : null}

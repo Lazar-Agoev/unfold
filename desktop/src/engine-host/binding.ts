@@ -10,23 +10,29 @@ export interface EngineBinding {
   init(options: string): void;
   /** Register the single sink; Rust calls it from any thread with one JSON message string. */
   subscribe(sink: (message: string) => void): void;
-  /** Attach a window to a folder's shared workspace. Resolves with JSON. */
-  openWorkspace(windowId: number, root: string): Promise<string>;
-  /** Detach a window. The folder's last detach saves drafts and closes its workspace. */
-  closeWorkspace(windowId: number): Promise<void>;
-  /** Run one command for one window. Rejects with an Error whose message is JSON `{code, message}`. */
+  /**
+   * Run one command for one window (any window id: windows need no attach). Rejects with an Error
+   * whose message is JSON `{code, message}`.
+   */
   dispatch(windowId: number, requestId: number, command: string): Promise<string>;
   /** Cancel a running command or stream (no-op if finished). */
   cancel(requestId: number): void;
+  /**
+   * A window closed: waits (at most 15 s) for its closing writes in flight, then releases its board
+   * claims, sessions, and Home selection.
+   */
+  detachWindow(windowId: number): Promise<void>;
+  /** The app is quitting: closes every live project. Called once. */
+  shutdown(): Promise<void>;
 }
 
 const BINDING_FUNCTIONS = [
   "init",
   "subscribe",
-  "openWorkspace",
-  "closeWorkspace",
   "dispatch",
   "cancel",
+  "detachWindow",
+  "shutdown",
 ] as const satisfies readonly (keyof EngineBinding)[];
 
 /** Checks that a loaded module exposes every addon function, and returns it typed. */

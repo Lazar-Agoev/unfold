@@ -1,34 +1,68 @@
 /**
- * Modal dialogs: `Dialog` (the frame), `ConfirmDialog` (Delete board, conflict prompts), and
- * `PromptDialog` (a name, e.g. Publish when the name is taken).
+ * Modal dialogs: `Dialog` (the frame), `ConfirmDialog` (Discard changes, Delete), and `PromptDialog`
+ * (a name, e.g. New folder).
  *
- * While open, a dialog traps Tab inside itself, makes the app behind it inert, silences window
- * shortcuts, closes on Escape, and returns focus to where it was when it closes.
+ * A dialog is placed on the window (Add, Preferences, Project settings) or on the canvas area
+ * (`#content-area`: Publish, Discard, Delete, Rename), with its scrim over just that area (V-9).
+ * While open, it traps Tab inside itself, makes the app behind it inert, silences window shortcuts,
+ * closes on Escape, and returns focus to where it was when it closes.
  */
 
-import { useEffect, useId, useRef, useState, type SyntheticEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject, type SyntheticEvent } from "react";
 import { Button } from "./Button";
+import { IconButton } from "./IconButton";
 import { cx, tabbableElements, trapTab } from "./internal/dom";
 import { Portal, useModal } from "./internal/layers";
 import { TextField } from "./TextField";
 import "./Dialog.css";
 
+/** The canvas area's element id; the frame (app/) gives it to the area beside the sidebar. */
+const CANVAS_AREA = "content-area";
+
 export interface DialogProps {
   readonly open: boolean;
-  /** Escape, the backdrop, and Cancel buttons call this. */
+  /** Escape, the scrim, the close button, and Cancel buttons call this. */
   readonly onClose: () => void;
   readonly title: string;
-  /** A sentence under the title; it becomes the dialog's accessible description. */
+  /** Under the title; it becomes the dialog's accessible description. */
   readonly description?: ReactNode;
-  /** `alertdialog` for confirmations that interrupt. */
-  readonly role?: "dialog" | "alertdialog";
-  /** What takes focus when the dialog opens; defaults to the first focusable element. */
-  readonly initialFocus?: RefObject<HTMLElement | null>;
+  /** 400 for confirmations, 520 for Publish, 880 for Project settings (with a close button and ruled header and footer). */
+  readonly width: 400 | 520 | 880;
+  /** A fixed height in px (Project settings: 700); otherwise it fits its content. */
+  readonly height?: number;
+  /** `window`: centered on the window, scrim over everything. `canvas`: centered on the canvas area, scrim over it alone. */
+  readonly placement: "window" | "canvas";
   /** Buttons, right-aligned at the bottom. */
   readonly footer?: ReactNode;
-  readonly width?: "small" | "medium";
+  /** What takes focus when the dialog opens; defaults to the first focusable element. */
+  readonly initialFocus?: RefObject<HTMLElement | null>;
+  /** `alertdialog` for confirmations that interrupt. */
+  readonly role?: "dialog" | "alertdialog";
   readonly className?: string;
   readonly children?: ReactNode;
+}
+
+/** Keeps a canvas-placed scrim over `#content-area` (the whole window when there is none). */
+function useCanvasArea(scrim: RefObject<HTMLDivElement | null>, active: boolean): void {
+  useLayoutEffect(() => {
+    const element = scrim.current;
+    const area = document.getElementById(CANVAS_AREA);
+    if (!active || !element || !area) {
+      return undefined;
+    }
+    const update = () => {
+      const rect = area.getBoundingClientRect();
+      Object.assign(element.style, { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` });
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(area);
+    window.addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [scrim, active]);
 }
 
 export function Dialog({
@@ -36,16 +70,20 @@ export function Dialog({
   onClose,
   title,
   description,
-  role = "dialog",
-  initialFocus,
+  width,
+  height,
+  placement,
   footer,
-  width = "small",
+  initialFocus,
+  role = "dialog",
   className,
   children,
 }: DialogProps) {
   const id = useId();
+  const scrim = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   useModal(open);
+  useCanvasArea(scrim, open && placement === "canvas");
 
   useEffect(() => {
     const element = panel.current;
@@ -57,12 +95,14 @@ export function Dialog({
   if (!open) {
     return null;
   }
+  const large = width === 880;
   return (
     <Portal>
       <div
-        className="dialog-backdrop"
+        ref={scrim}
+        className={cx("dialog-scrim", `dialog-scrim-${placement}`)}
         onPointerDown={(event) => {
-          // Only a press on the backdrop itself, not one that started inside the panel.
+          // Only a press on the scrim itself, not one that started inside the panel.
           if (event.target === event.currentTarget) {
             onClose();
           }
@@ -76,6 +116,7 @@ export function Dialog({
           aria-describedby={description === undefined ? undefined : `${id}-description`}
           tabIndex={-1}
           className={cx("dialog", `dialog-${width}`, className)}
+          style={height === undefined ? undefined : { height }}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.preventDefault();
@@ -86,14 +127,19 @@ export function Dialog({
             trapTab(event, event.currentTarget);
           }}
         >
-          <h2 id={`${id}-title`} className="dialog-title">
-            {title}
-          </h2>
-          {description === undefined ? null : (
-            <div id={`${id}-description`} className="dialog-description">
-              {description}
+          <div className="dialog-header">
+            <div className="dialog-heading">
+              <h2 id={`${id}-title`} className="dialog-title">
+                {title}
+              </h2>
+              {description === undefined ? null : (
+                <div id={`${id}-description`} className="dialog-description">
+                  {description}
+                </div>
+              )}
             </div>
-          )}
+            {large ? <IconButton icon="close" label="Close" onClick={onClose} /> : null}
+          </div>
           {children === undefined ? null : <div className="dialog-body">{children}</div>}
           {footer === undefined ? null : <div className="dialog-footer">{footer}</div>}
         </div>
@@ -110,11 +156,12 @@ export interface ConfirmDialogProps {
   readonly cancelLabel?: string;
   /** Destructive confirmations get a danger button, and focus starts on Cancel. */
   readonly danger?: boolean;
+  readonly placement: "window" | "canvas";
   readonly onConfirm: () => void;
   readonly onCancel: () => void;
 }
 
-/** Asks one yes-or-no question. */
+/** Asks one yes-or-no question, 400 wide. */
 export function ConfirmDialog({
   open,
   title,
@@ -122,6 +169,7 @@ export function ConfirmDialog({
   confirmLabel,
   cancelLabel = "Cancel",
   danger = false,
+  placement,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -133,11 +181,13 @@ export function ConfirmDialog({
       onClose={onCancel}
       title={title}
       description={message}
+      width={400}
+      placement={placement}
       role="alertdialog"
       initialFocus={danger ? cancel : confirm}
       footer={
         <>
-          <Button ref={cancel} onClick={onCancel}>
+          <Button ref={cancel} variant="secondary" onClick={onCancel}>
             {cancelLabel}
           </Button>
           <Button ref={confirm} variant={danger ? "danger" : "primary"} onClick={onConfirm}>
@@ -160,6 +210,7 @@ export interface PromptDialogProps {
   readonly cancelLabel?: string;
   /** Returns a message when the value can't be used; the confirm button stays enabled. */
   readonly validate?: (value: string) => string | null;
+  readonly placement: "window" | "canvas";
   readonly onSubmit: (value: string) => void;
   readonly onCancel: () => void;
 }
@@ -206,7 +257,7 @@ function PromptBody({ formId, field, label, defaultValue, validate, onSubmit }: 
   );
 }
 
-/** Asks for one line of text. The text starts selected; Enter submits. */
+/** Asks for one line of text, 400 wide. The text starts selected; Enter submits. */
 export function PromptDialog({
   open,
   title,
@@ -216,6 +267,7 @@ export function PromptDialog({
   confirmLabel,
   cancelLabel = "Cancel",
   validate,
+  placement,
   onSubmit,
   onCancel,
 }: PromptDialogProps) {
@@ -227,10 +279,14 @@ export function PromptDialog({
       onClose={onCancel}
       title={title}
       {...(description === undefined ? {} : { description })}
+      width={400}
+      placement={placement}
       initialFocus={field}
       footer={
         <>
-          <Button onClick={onCancel}>{cancelLabel}</Button>
+          <Button variant="secondary" onClick={onCancel}>
+            {cancelLabel}
+          </Button>
           <Button variant="primary" type="submit" form={formId}>
             {confirmLabel}
           </Button>

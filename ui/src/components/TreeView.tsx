@@ -1,5 +1,5 @@
 /**
- * A virtualized tree (the Files view, References trees). Data-independent: it asks for each item's
+ * A virtualized tree (Project settings' scope tree). Data-independent: it asks for each item's
  * id, text, and children, and renders rows from slots (icon, label, description, right-aligned quiet
  * marks). Children load lazily: when an expanded item has no children yet, the tree shows a loading
  * row and calls `onLoadChildren` once.
@@ -12,8 +12,8 @@
  */
 
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronRight } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Icon } from "../icons";
 import { cx, isContextMenuKey, pointBelow, type Point } from "./internal/dom";
 import "./TreeView.css";
 
@@ -27,11 +27,11 @@ export type TreeChildren<T> =
 export interface TreeRowContent {
   readonly label: ReactNode;
   readonly icon?: ReactNode;
-  /** Quiet text right after the label ("shared settings"). */
+  /** Quiet text right after the label ("skipped by default"). */
   readonly description?: ReactNode;
-  /** Right-aligned marks; see `TreeMarks`. */
+  /** Right-aligned marks (a file count). */
   readonly marks?: ReactNode;
-  /** Drawn faded (ignored folders). */
+  /** Drawn muted (ignored folders). */
   readonly dimmed?: boolean;
   /** Native tooltip, e.g. a full path. */
   readonly title?: string;
@@ -105,7 +105,7 @@ interface FlattenInput<T> {
 }
 
 /** The visible rows, in order. Iterative, so deep trees can't overflow the stack. */
-export function flattenTree<T>({ roots, expanded, getId, isExpandable, getChildren }: FlattenInput<T>): Row<T>[] {
+function flattenTree<T>({ roots, expanded, getId, isExpandable, getChildren }: FlattenInput<T>): Row<T>[] {
   const rows: Row<T>[] = [];
   const stack: { items: readonly T[]; index: number; depth: number; parentId: string | null }[] = [
     { items: roots, index: 0, depth: 0, parentId: null },
@@ -174,8 +174,8 @@ export function TreeView<T>({
   onOpen,
   onContextMenu,
   toggleOnClick = true,
-  rowHeight = 22,
-  indent = 12,
+  rowHeight = 28,
+  indent = 24,
   className,
 }: TreeViewProps<T>) {
   const domId = useId();
@@ -408,7 +408,7 @@ export function TreeView<T>({
             return null;
           }
           const style = { height: rowHeight, transform: `translateY(${virtual.start}px)` };
-          const padding = { paddingLeft: 6 + row.depth * indent };
+          const padding = { paddingLeft: 12 + row.depth * indent };
           if (row.kind === "status") {
             return (
               <div
@@ -475,7 +475,7 @@ export function TreeView<T>({
                   }}
                 >
                   {row.expandable ? (
-                    <ChevronRight size={14} className={cx("tree-chevron", row.expanded && "tree-chevron-open")} aria-hidden="true" />
+                    <Icon name="chevron-right" size={14} className={cx("tree-chevron", row.expanded && "tree-chevron-open")} />
                   ) : null}
                 </span>
                 {content.icon === undefined ? null : (

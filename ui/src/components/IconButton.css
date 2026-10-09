@@ -2,25 +2,24 @@
   display: inline-grid;
   flex-shrink: 0;
   place-items: center;
-  border-radius: var(--radius);
+  border-radius: var(--radius-control);
   color: var(--color-muted);
   transition: background-color var(--duration-fast) ease;
 }
 
-.icon-button-small {
-  width: 22px;
-  height: 22px;
-  border-radius: var(--radius-small);
-}
-
-.icon-button-medium {
+.icon-button-28 {
   width: 28px;
   height: 28px;
 }
 
-.icon-button-large {
-  width: 36px;
-  height: 36px;
+.icon-button-24 {
+  width: 24px;
+  height: 24px;
+}
+
+.icon-button-20 {
+  width: 20px;
+  height: 20px;
 }
 
 .icon-button:not(:disabled):hover {
@@ -28,6 +27,15 @@
   color: var(--color-text);
 }
 
-.icon-button[aria-pressed="true"] {
-  color: var(--color-accent-text);
+/* Pressed toggles and open menus (09's `⋯`, 07's project menu trigger). */
+.icon-button[aria-pressed="true"],
+.icon-button[aria-expanded="true"],
+.icon-button[aria-expanded="true"]:hover {
+  background: var(--color-pressed);
+  color: var(--color-text);
+}
+
+.icon-button:disabled {
+  opacity: 1;
+  color: var(--color-faint);
 }

@@ -4,10 +4,23 @@
 use std::path::PathBuf;
 
 use crate::events::WindowId;
+use crate::projects::ProjectId;
 
 /// Why a workspace operation failed.
 #[derive(Debug, thiserror::Error)]
 pub enum WorkspaceError {
+    /// No project with that id is in the workspace.
+    #[error("no project `{0}` in the workspace")]
+    UnknownProject(ProjectId),
+    /// A window holds a board of the project, so it can't be removed or switched.
+    #[error("a board of this project is open in a window")]
+    BoardsOpen,
+    /// `switch_worktree` named a path that isn't an available worktree of the project.
+    #[error("`{0}` is not an available worktree of this project")]
+    NotAWorktree(String),
+    /// The workspace has as many projects as it can hold.
+    #[error("the workspace already has {0} projects")]
+    TooManyProjects(usize),
     /// The path to open is not a folder, or can't be resolved.
     #[error("{} is not a folder Unfold can open: {reason}", path.display())]
     NotAFolder {
@@ -42,8 +55,8 @@ pub enum WorkspaceError {
     /// The compile was cancelled.
     #[error("the compile was cancelled")]
     Cancelled,
-    /// A command named a path that is not inside the open folder.
-    #[error("`{path}` is not a path inside the folder: {reason}")]
+    /// A command named a path that is not inside the project's folder.
+    #[error("`{path}` is not a path inside the project's folder: {reason}")]
     InvalidPath {
         /// The path as given.
         path: String,
@@ -63,9 +76,6 @@ pub enum WorkspaceError {
     /// A settings edit can't be expressed without changing a broader rule.
     #[error("{0}")]
     SettingsConflict(String),
-    /// The window is not attached to a folder.
-    #[error("window {0} has no open folder")]
-    NotAttached(WindowId),
     /// Another window holds the board.
     #[error("board `{board}` is open in window {window}")]
     BoardHeld {
@@ -77,11 +87,11 @@ pub enum WorkspaceError {
     /// The calling window doesn't hold the board.
     #[error("board `{0}` is not open in this window")]
     BoardNotHeld(String),
-    /// The folder has no graph yet.
-    #[error("the folder has not been compiled yet")]
+    /// The project has no graph yet.
+    #[error("the project has not been compiled yet")]
     NotCompiled,
-    /// The workspace is closing or closed.
-    #[error("the folder is closed")]
+    /// The project's workspace is closing or closed.
+    #[error("the project is closed")]
     Closed,
     /// A JSON state file could not be written.
     #[error("cannot encode {what}: {message}")]
@@ -100,6 +110,10 @@ impl WorkspaceError {
     /// The stable snake_case code the addon reports with the message.
     pub fn code(&self) -> &'static str {
         match self {
+            Self::UnknownProject(_) => "unknown_project",
+            Self::BoardsOpen => "boards_open",
+            Self::NotAWorktree(_) => "not_a_worktree",
+            Self::TooManyProjects(_) => "too_many_projects",
             Self::NotAFolder { .. } => "not_a_folder",
             Self::OpenElsewhere { .. } => "open_elsewhere",
             Self::Io { .. } => "io",
@@ -110,7 +124,6 @@ impl WorkspaceError {
             Self::InvalidPath { .. } => "invalid_path",
             Self::InvalidSettings { .. } => "invalid_settings",
             Self::SettingsConflict(_) => "settings_conflict",
-            Self::NotAttached(_) => "not_attached",
             Self::BoardHeld { .. } => "board_held",
             Self::BoardNotHeld(_) => "board_not_held",
             Self::NotCompiled => "not_compiled",
@@ -141,6 +154,10 @@ mod tests {
             WorkspaceError::NotCompiled,
             WorkspaceError::OpenElsewhere { path: "/x".into() },
             WorkspaceError::BoardNotHeld("b".into()),
+            WorkspaceError::UnknownProject(ProjectId::new_unchecked("p-aaaaaaaaaa")),
+            WorkspaceError::BoardsOpen,
+            WorkspaceError::NotAWorktree("/x".into()),
+            WorkspaceError::TooManyProjects(64),
         ];
         for error in errors {
             assert!(error.code().chars().all(|c| c.is_ascii_lowercase() || c == '_'));

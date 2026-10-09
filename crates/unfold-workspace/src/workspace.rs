@@ -1,4 +1,7 @@
-//! One open folder: [`Workspace`], the object every command for that folder goes through.
+//! One live project: [`Workspace`], the open engine, watcher, store writer, and reader cache of a
+//! project's current folder, which every command for that project goes through. The workspace
+//! knows nothing of windows: [`crate::projects::Projects`] opens and closes it as the project
+//! wakes and rests, and its events go to every window.
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -14,25 +17,27 @@ use unfold_engine::{CancelToken, Language};
 use unfold_reader::ReaderIndex;
 use unfold_store::{Opened, ReadPool};
 
-use crate::claims::BoardClaims;
 use crate::compile::{CompileJob, CompileMode, CompileTicket, ProgressFn};
 use crate::confine::{ConfinedPath, confine};
 use crate::engine_thread::EngineThread;
 use crate::error::{Result, WorkspaceError};
-use crate::events::{EventSink, WindowId, WorkspaceEvent};
+use crate::events::{EventSink, WorkspaceEvent};
 use crate::layout::Layout;
 use crate::options::{WorkspaceOptions, store_version};
 use crate::problems::{IndexLogEntry, ProblemItem};
+use crate::projects::ProjectId;
 use crate::settings_edit::{SettingsEdit, apply_edits};
 use crate::shared::{Job, Shared, lock};
-use crate::state::{FolderState, read_json, write_atomically, write_json};
-use crate::status::{Activity, GraphCounts, GraphStatus, WatchMode};
+use crate::state::{LocalState, read_json, write_atomically, write_json};
+use crate::status::{Activity, GraphCounts, GraphStatus, ProjectState};
 use crate::storage::open_store;
 use crate::watcher;
 
-/// What opening a folder needs besides its path.
+/// What opening a project's folder needs besides its path.
 #[derive(Clone)]
 pub struct OpenContext {
+    /// The project the folder is opened for: its events name it.
+    pub project: ProjectId,
     /// The parent of fallback `local/` folders.
     pub fallback_cache_dir: PathBuf,
     /// Timings and engine settings.
@@ -55,8 +60,8 @@ pub struct SettingsEditOutcome {
     pub settings: Settings,
 }
 
-/// One open folder, shared by every window showing it (decision U-37). See the crate
-/// documentation for the lifecycle.
+/// One live project's folder. See the [module documentation](self) and the crate documentation
+/// for the lifecycle.
 pub struct Workspace {
     shared: Arc<Shared>,
     languages: Vec<Arc<dyn Language>>,
@@ -66,7 +71,8 @@ pub struct Workspace {
 impl std::fmt::Debug for Workspace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Workspace")
-            .field("folder", &self.shared.folder)
+            .field("project", &self.shared.project)
+            .field("root", &self.shared.root)
             .finish_non_exhaustive()
     }
 }
@@ -93,6 +99,7 @@ impl Workspace {
     pub fn open(root: &Path, context: OpenContext) -> Result<Arc<Self>> {
         let root = canonical_folder(root)?;
         let OpenContext {
+            project,
             fallback_cache_dir,
             options,
             sink,
@@ -117,22 +124,22 @@ impl Workspace {
             store = Some((opened, folder_lock));
         }
         let state_file = layout.state_file();
-        let folder_state = if state_file.exists() {
+        let local_state = if state_file.exists() {
             read_json(&state_file)
         } else {
-            FolderState {
+            LocalState {
                 background_updates: options.background_updates_default,
-                ..FolderState::default()
+                ..LocalState::default()
             }
         };
         let shared = Arc::new(Shared::new(
+            project,
             root,
             options,
             sink,
             layout,
-            folder_state,
+            local_state,
             compiled,
-            WatchMode::Off,
         ));
         shared.update_status(|model| {
             if let Some(counts) = counts.take() {
@@ -162,19 +169,14 @@ impl Workspace {
         }))
     }
 
+    /// The project this folder is open for.
+    pub fn project(&self) -> &ProjectId {
+        &self.shared.project
+    }
+
     /// The folder's canonical path.
     pub fn root(&self) -> &Path {
         &self.shared.root
-    }
-
-    /// The folder's canonical path as text: how events name it.
-    pub fn folder(&self) -> &str {
-        &self.shared.folder
-    }
-
-    /// The folder's name.
-    pub fn name(&self) -> &str {
-        &self.shared.name
     }
 
     /// The folder's `.unfold/` layout (where `local/` is right now).
@@ -187,28 +189,27 @@ impl Workspace {
         lock(&self.shared.sched).compiled
     }
 
-    /// The windows attached to the folder, sorted.
-    pub fn windows(&self) -> Vec<WindowId> {
-        lock(&self.shared.windows).iter().copied().collect()
-    }
-
-    /// Attaches `window`, so it receives the folder's events. The [`crate::Registry`] does this;
-    /// call it directly only when using a workspace without one.
-    pub fn attach(&self, window: WindowId) {
-        lock(&self.shared.windows).insert(window);
-    }
-
-    /// Detaches `window`, releasing its boards; returns how many windows remain.
-    pub fn detach(&self, window: WindowId) -> usize {
-        self.shared.claims.release_window(window);
-        let mut windows = lock(&self.shared.windows);
-        windows.remove(&window);
-        windows.len()
-    }
-
-    /// The status bar's state.
+    /// The graph's status (Home's state line, Project settings).
     pub fn status(&self) -> GraphStatus {
         self.shared.status()
+    }
+
+    /// The project's row state now (contract §4.1).
+    pub fn project_state(&self) -> ProjectState {
+        self.shared.project_states().0
+    }
+
+    /// The row state with no compile or update running: what the project remembers when it goes
+    /// to rest (`lastKnown`).
+    pub fn settled_state(&self) -> ProjectState {
+        self.shared.project_states().1
+    }
+
+    /// The committed graph's file count, the files that don't parse, and its languages, as the
+    /// status counts them.
+    pub fn graph_counts(&self) -> (u32, u32, Vec<LanguageId>) {
+        let counts = lock(&self.shared.status).model.counts.clone();
+        (counts.files, counts.not_current, counts.languages)
     }
 
     /// Queues a Compile. The first Compile creates `.unfold/` (or the fallback location).
@@ -246,10 +247,10 @@ impl Workspace {
         found
     }
 
-    /// Turns background updates on or off for this folder, and remembers it in `state.json`.
+    /// Turns background updates on or off for this project, and remembers it in `state.json`.
     pub fn set_background_updates(&self, on: bool) -> Result<()> {
         self.apply_paused(!on);
-        self.update_folder_state(|state| state.background_updates = on)
+        self.update_local_state(|state| state.background_updates = on)
             .map(|_| ())
     }
 
@@ -262,24 +263,6 @@ impl Workspace {
     /// among them, which the Files view and text search share).
     pub fn options(&self) -> &WorkspaceOptions {
         &self.shared.options
-    }
-
-    /// The changed paths not yet in the graph (waiting for, or paused before, a background
-    /// update) at or under the folder-relative `folder` (`""` for everything), sorted.
-    pub fn pending_under(&self, folder: &str) -> Vec<String> {
-        let sched = lock(&self.shared.sched);
-        sched
-            .pending
-            .iter()
-            .map(RepoPath::as_str)
-            .filter(|path| {
-                folder.is_empty()
-                    || path
-                        .strip_prefix(folder)
-                        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
-            })
-            .map(str::to_owned)
-            .collect()
     }
 
     fn apply_paused(&self, paused: bool) {
@@ -311,6 +294,11 @@ impl Workspace {
         self.shared.request_rescan();
     }
 
+    /// Whether nothing is running, queued, or due: a project may rest only then.
+    pub fn is_idle(&self) -> bool {
+        self.shared.is_idle()
+    }
+
     /// Waits until nothing is running, queued, or due (pending changes wait for their quiet
     /// period first), or `timeout` passes; whether it got there.
     pub fn wait_idle(&self, timeout: Duration) -> bool {
@@ -333,7 +321,8 @@ impl Workspace {
         self.shared.problems()
     }
 
-    /// Replaces the board-health problems (from the board commands).
+    /// Replaces the board-health problems (from the board commands' health refresh): the
+    /// Problems list and the row's problem count include them.
     pub fn set_board_problems(&self, problems: Vec<ProblemItem>) {
         self.shared.update_problems(|all| all.boards = problems);
     }
@@ -345,33 +334,12 @@ impl Workspace {
 
     /// The text of `.unfold/config.toml`, or `None` when it doesn't exist.
     pub fn settings_text(&self) -> Result<Option<String>> {
-        let path = lock(&self.shared.layout).config();
-        match std::fs::read_to_string(&path) {
-            Ok(text) => Ok(Some(text)),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(WorkspaceError::io(path, error)),
-        }
+        settings_text(&self.shared.root)
     }
 
     /// The settings on disk now, validated.
     pub fn settings(&self) -> Result<Settings> {
-        Settings::load(&self.shared.root).map_err(|error| match error {
-            SettingsError::Invalid {
-                message,
-                line,
-                column,
-                ..
-            } => WorkspaceError::InvalidSettings {
-                message: format!("{SETTINGS_PATH}:{line}:{column}: {message}"),
-                line: Some(line),
-                column: Some(column),
-            },
-            other => WorkspaceError::InvalidSettings {
-                message: other.to_string(),
-                line: None,
-                column: None,
-            },
-        })
+        load_settings(&self.shared.root)
     }
 
     /// Applies validated settings edits, preserving comments and formatting, and writes the file
@@ -387,10 +355,12 @@ impl Workspace {
             // A `.unfold` link that leaves the folder must never be written through.
             confine(&self.shared.root, crate::layout::CONFIG_PATH)?;
             let path = lock(&self.shared.layout).config();
-            self.shared.own_writes.note(path.clone());
+            self.shared
+                .own_writes
+                .note(path.clone(), Some(edited.text.as_bytes()));
             write_atomically(&path, edited.text.as_bytes())?;
             self.shared.emit(&WorkspaceEvent::ConfigChanged {
-                folder: self.shared.folder.clone(),
+                project: self.shared.project.clone(),
             });
             if let Ok(settings_path) = RepoPath::new(SETTINGS_PATH) {
                 self.shared.add_changes([settings_path]);
@@ -403,18 +373,18 @@ impl Workspace {
         })
     }
 
-    /// The folder's remembered state.
-    pub fn folder_state(&self) -> FolderState {
-        lock(&self.shared.folder_state).clone()
+    /// The project's remembered state (`.unfold/local/state.json`).
+    pub fn local_state(&self) -> LocalState {
+        lock(&self.shared.local_state).clone()
     }
 
     /// Changes the remembered state and saves it to `.unfold/local/state.json`, or keeps it in
     /// memory until the first Compile creates `local/`.
-    pub fn update_folder_state(&self, change: impl FnOnce(&mut FolderState)) -> Result<FolderState> {
+    pub fn update_local_state(&self, change: impl FnOnce(&mut LocalState)) -> Result<LocalState> {
         // The file is written while the state is locked, so writes land in the order the changes
         // were made: an older state can never overwrite a newer one.
         let (state, written) = {
-            let mut state = lock(&self.shared.folder_state);
+            let mut state = lock(&self.shared.local_state);
             change(&mut state);
             let layout = lock(&self.shared.layout).clone();
             let written = if layout.is_compiled() {
@@ -429,23 +399,9 @@ impl Workspace {
         Ok(state)
     }
 
-    /// Checks a path a command named against the folder (architecture §13).
+    /// Checks a path a command named against the project's folder (architecture §13).
     pub fn confine(&self, path: &str) -> Result<ConfinedPath> {
         confine(&self.shared.root, path)
-    }
-
-    /// Which window holds each open board.
-    pub fn claims(&self) -> &BoardClaims {
-        &self.shared.claims
-    }
-
-    /// Moves `board` from window `from` to window `to` (Move to New Window); `to` must show
-    /// this folder.
-    pub fn transfer_board(&self, board: &str, from: WindowId, to: WindowId) -> Result<()> {
-        if !lock(&self.shared.windows).contains(&to) {
-            return Err(WorkspaceError::NotAttached(to));
-        }
-        self.shared.claims.transfer(board, from, to)
     }
 
     /// The registered language with `id`.
@@ -458,13 +414,14 @@ impl Workspace {
         self.language(id).map(|language| language.highlighter())
     }
 
-    /// Notes that the app is about to write `path`, so the watcher doesn't report the write as
-    /// an outside edit (for drafts and published boards).
-    pub fn note_own_write(&self, path: &Path) {
-        self.shared.own_writes.note(path.to_path_buf());
+    /// Notes that the app is about to write `bytes` to `path` (`None`: delete it), so the
+    /// watcher doesn't report that write as an outside edit (for drafts and published boards).
+    /// A different change to the file soon after is still reported.
+    pub fn note_own_write(&self, path: &Path, bytes: Option<&[u8]>) {
+        self.shared.own_writes.note(path.to_path_buf(), bytes);
     }
 
-    /// Sends an event to every window of the folder (for commands that change boards).
+    /// Sends an event to every window (for commands that change boards).
     pub fn emit(&self, event: &WorkspaceEvent) {
         self.shared.emit(event);
     }
@@ -491,6 +448,37 @@ impl Drop for Workspace {
     fn drop(&mut self) {
         self.close();
     }
+}
+
+/// The text of `<root>/.unfold/config.toml`, or `None` when it doesn't exist.
+pub(crate) fn settings_text(root: &Path) -> Result<Option<String>> {
+    let path = root.join(crate::layout::CONFIG_PATH);
+    match std::fs::read_to_string(&path) {
+        Ok(text) => Ok(Some(text)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(WorkspaceError::io(path, error)),
+    }
+}
+
+/// The settings of the folder at `root` on disk now, validated.
+pub(crate) fn load_settings(root: &Path) -> Result<Settings> {
+    Settings::load(root).map_err(|error| match error {
+        SettingsError::Invalid {
+            message,
+            line,
+            column,
+            ..
+        } => WorkspaceError::InvalidSettings {
+            message: format!("{SETTINGS_PATH}:{line}:{column}: {message}"),
+            line: Some(line),
+            column: Some(column),
+        },
+        other => WorkspaceError::InvalidSettings {
+            message: other.to_string(),
+            line: None,
+            column: None,
+        },
+    })
 }
 
 /// Counts for the status bar from the stored graph's files.

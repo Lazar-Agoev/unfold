@@ -11,11 +11,12 @@
 //!
 //! Besides the state, the status says whether `local/` is in the fallback location and how the
 //! folder is watched (events, or a periodic scan). The workspace keeps a status model of the
-//! facts behind it and derives the [`GraphStatus`] from them; a `graph_status` event goes out
-//! when the derived status changes, ignoring progress counts (those travel in
-//! `compile_progress`).
+//! facts behind it (with the Problems count) and derives two views from them: the
+//! [`GraphStatus`] Home's state line and Project settings show, and the [`ProjectState`] the
+//! project's row shows. A `project_state` event goes out when the derived row state changes,
+//! ignoring progress counts (those travel in `compile_progress`).
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unfold_core::vocab::Language;
 
@@ -66,6 +67,70 @@ pub enum GraphState {
         /// Why.
         message: String,
     },
+}
+
+/// A project's state, as its row shows it (contract §4.1): one indicator per row.
+///
+/// A live project's state is derived from its [`GraphStatus`] and its Problems count, first match
+/// wins: `failed` > `compiling` > `updating` > `paused` > `not_compiled` > `problems` (a nonzero
+/// count) > `current`. A resting project shows the last state it had while live.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum ProjectState {
+    /// The graph matches the folder and nothing is wrong.
+    Current,
+    /// A Compile or Rebuild is running.
+    Compiling {
+        /// Files finished.
+        done: u32,
+        /// Files to process (0 until discovery finishes).
+        total: u32,
+    },
+    /// A background update is running.
+    Updating {
+        /// How many files changed, or `None` while checking the whole folder.
+        files: Option<u32>,
+    },
+    /// The Problems list isn't empty.
+    Problems {
+        /// How many problems (the length of `problems`).
+        count: u32,
+    },
+    /// Background updates are paused.
+    Paused {
+        /// Paths changed since the last compile or update.
+        changed: u32,
+    },
+    /// The project has never been compiled on this machine.
+    NotCompiled,
+    /// The last compile or update failed.
+    Failed {
+        /// Why.
+        message: String,
+    },
+    /// The project rests: no engine, no watcher. It shows the last state it had while live.
+    Resting {
+        /// `current`, `problems`, `paused`, `not_compiled`, or `failed`.
+        last: Box<ProjectState>,
+        /// When that state was last seen, in milliseconds since the Unix epoch.
+        at_ms: i64,
+    },
+    /// The project can't be opened: its folder is gone, or another copy of Unfold has it open.
+    Unavailable {
+        /// Why, in words.
+        reason: String,
+    },
+}
+
+impl ProjectState {
+    /// Whether two states differ in more than progress counts (a `project_state` event goes out
+    /// only then).
+    pub(crate) fn differs_in_kind(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Compiling { .. }, Self::Compiling { .. }) => false,
+            (a, b) => a != b,
+        }
+    }
 }
 
 /// How the folder is watched for changes.
@@ -120,6 +185,8 @@ pub(crate) struct GraphCounts {
 #[derive(Debug, Clone)]
 pub(crate) struct StatusModel {
     pub(crate) compiled: bool,
+    /// The Problems count.
+    pub(crate) problems: u32,
     pub(crate) activity: Activity,
     pub(crate) failure: Option<String>,
     pub(crate) paused: bool,
@@ -134,6 +201,7 @@ impl StatusModel {
     pub(crate) fn new(watching: WatchMode) -> Self {
         Self {
             compiled: false,
+            problems: 0,
             activity: Activity::Idle,
             failure: None,
             paused: false,
@@ -158,6 +226,32 @@ impl StatusModel {
             watching: self.watching,
             background_updates: !self.paused,
             complete: self.complete,
+        }
+    }
+
+    /// The row state this model shows (see [`ProjectState`]).
+    pub(crate) fn project_state(&self) -> ProjectState {
+        if let Some(message) = &self.failure {
+            return ProjectState::Failed {
+                message: message.clone(),
+            };
+        }
+        match self.activity {
+            Activity::Compiling { done, total } => ProjectState::Compiling { done, total },
+            Activity::Updating { files } => ProjectState::Updating { files },
+            Activity::Idle => self.settled_state(),
+        }
+    }
+
+    /// The row state with no compile or update running: what a project that goes to rest
+    /// remembers (never `compiling` or `updating`).
+    pub(crate) fn settled_state(&self) -> ProjectState {
+        match self.idle_state() {
+            GraphState::Failed { message } => ProjectState::Failed { message },
+            GraphState::NotCompiled => ProjectState::NotCompiled,
+            GraphState::Paused { changed } => ProjectState::Paused { changed },
+            _ if self.problems > 0 => ProjectState::Problems { count: self.problems },
+            _ => ProjectState::Current,
         }
     }
 
@@ -187,21 +281,6 @@ impl StatusModel {
             languages: self.counts.languages.clone(),
         }
     }
-}
-
-/// Whether two statuses differ in more than progress counts.
-pub(crate) fn differs_in_kind(a: &GraphStatus, b: &GraphStatus) -> bool {
-    let progress = |status: &GraphStatus| matches!(status.state, GraphState::Compiling { .. });
-    if progress(a) && progress(b) {
-        return GraphStatus {
-            state: GraphState::NotCompiled,
-            ..a.clone()
-        } != GraphStatus {
-            state: GraphState::NotCompiled,
-            ..b.clone()
-        };
-    }
-    a != b
 }
 
 #[cfg(test)]
@@ -238,13 +317,47 @@ mod tests {
     }
 
     #[test]
-    fn progress_ticks_are_not_a_change_of_kind() {
+    fn derives_the_row_state_first_match_wins() {
         let mut model = StatusModel::new(WatchMode::Events);
+        assert_eq!(model.project_state(), ProjectState::NotCompiled);
+        model.compiled = true;
+        assert_eq!(model.project_state(), ProjectState::Current);
+        model.counts.not_current = 1;
+        model.problems = 2;
+        assert_eq!(model.project_state(), ProjectState::Problems { count: 2 });
+        model.paused = true;
+        model.changed = 3;
+        assert_eq!(model.project_state(), ProjectState::Paused { changed: 3 });
+        model.activity = Activity::Updating { files: Some(1) };
+        assert_eq!(model.project_state(), ProjectState::Updating { files: Some(1) });
+        assert_eq!(model.settled_state(), ProjectState::Paused { changed: 3 });
         model.activity = Activity::Compiling { done: 1, total: 9 };
-        let a = model.status();
-        model.activity = Activity::Compiling { done: 5, total: 9 };
-        assert!(!differs_in_kind(&a, &model.status()));
-        model.activity = Activity::Idle;
-        assert!(differs_in_kind(&a, &model.status()));
+        assert_eq!(
+            model.project_state(),
+            ProjectState::Compiling { done: 1, total: 9 }
+        );
+        model.failure = Some("boom".into());
+        assert!(matches!(model.project_state(), ProjectState::Failed { .. }));
+        let resting = ProjectState::Resting {
+            last: Box::new(ProjectState::Problems { count: 2 }),
+            at_ms: 5,
+        };
+        let json = serde_json::to_value(&resting).expect("json");
+        assert_eq!(
+            json,
+            serde_json::json!({"kind": "resting", "last": {"kind": "problems", "count": 2}, "atMs": 5})
+        );
+        assert_eq!(
+            serde_json::from_value::<ProjectState>(json).expect("parse"),
+            resting
+        );
+    }
+
+    #[test]
+    fn progress_ticks_are_not_a_change_of_kind() {
+        let a = ProjectState::Compiling { done: 1, total: 9 };
+        assert!(!a.differs_in_kind(&ProjectState::Compiling { done: 5, total: 9 }));
+        assert!(a.differs_in_kind(&ProjectState::Current));
+        assert!(ProjectState::Problems { count: 1 }.differs_in_kind(&ProjectState::Problems { count: 2 }));
     }
 }

@@ -1,20 +1,22 @@
-//! The board's outline (the Boards view): its cards in the order you followed them, callers
-//! before callees, indented by call depth, and the Flow nodes that still show names from the
-//! code instead of authored labels.
+//! A page's outline ("On this page"): its cards in the order you followed them, callers before
+//! callees, indented by call depth, and the Flow nodes that still show names from the code
+//! instead of authored labels.
 //!
-//! A *link* is an opened call between two cards: an entrance card to the cards of its resolved
-//! targets (in registration order), or a block card to the cards of the resolved targets of the
-//! occurrences its block owns (in source order). Roots are the cards nothing on the board links
-//! to, entrance cards first, then left to right and top to bottom; each is followed depth
-//! first. Cards only reachable through a cycle come last, in the same order.
+//! A *card link* is an opened call between two cards of one project: an entrance card to the
+//! cards of its resolved targets (in registration order), or a block card to the cards of the
+//! resolved targets of the occurrences its block owns (in source order). The outline follows
+//! card links and then the page's drawn links (in id order), which join cards across projects.
+//! Roots are the cards nothing on the page links to, entrance cards first, then left to right
+//! and top to bottom; each is followed depth first. Cards only reachable through a cycle come
+//! last, in the same order.
 
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::Serialize;
 use unfold_core::Key;
 use unfold_core::vocab::Resolution;
 
-use super::graph::BoardGraph;
-use super::model::{Board, Card, CardRef};
+use super::graph::PageGraphs;
+use super::model::{Card, CardRef, Page, ProjectName};
 use crate::flow::{FlowContext, FlowNodeKind};
 use crate::source::SourceState;
 
@@ -40,11 +42,13 @@ pub struct Unlabeled {
     pub key: Key,
 }
 
-/// The board's outline.
+/// A page's outline.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-pub struct BoardOutline {
+pub struct PageOutline {
+    /// The page.
+    pub page: String,
     /// Every card once, in follow order.
     pub rows: Vec<OutlineRow>,
     /// The Flow nodes without authored labels, in outline order ("N Flow nodes still show code
@@ -52,7 +56,7 @@ pub struct BoardOutline {
     pub unlabeled: Vec<Unlabeled>,
 }
 
-/// One link between cards.
+/// One call between two cards of a project.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CardLink {
     /// The calling card.
@@ -63,20 +67,26 @@ pub struct CardLink {
     pub order: u32,
 }
 
-/// The links between the board's cards, by source card in board order.
-pub fn card_links(board: &Board, graph: &BoardGraph) -> Vec<CardLink> {
-    // The first card showing each block, as `Board::card_for_block` finds it.
-    let mut by_block: FxHashMap<&str, &Card> = FxHashMap::default();
-    for card in &board.cards {
-        if let Some(key) = card.reference.block() {
-            by_block.entry(key.as_str()).or_insert(card);
+/// The calls between the page's cards of each connected project, by source card in page order.
+pub fn card_links(page: &Page, graphs: &PageGraphs<'_>) -> Vec<CardLink> {
+    // The first card showing each block of each project.
+    let mut by_block: FxHashMap<(Option<&ProjectName>, &str), &Card> = FxHashMap::default();
+    for card in &page.cards {
+        if let Some(key) = card.reference.block_key() {
+            by_block
+                .entry((card.reference.project(), key.as_str()))
+                .or_insert(card);
         }
     }
     let mut links = Vec::new();
-    for card in &board.cards {
+    for card in &page.cards {
+        let project = card.reference.project();
+        let Some(graph) = graphs.get(project) else {
+            continue;
+        };
         let targets: Vec<&Key> = match &card.reference {
-            CardRef::Entrance(key) => graph
-                .entrance(key.as_str())
+            CardRef::Entrance { entrance, .. } => graph
+                .entrance(entrance.as_str())
                 .map(|entrance| {
                     entrance
                         .targets
@@ -86,8 +96,8 @@ pub fn card_links(board: &Board, graph: &BoardGraph) -> Vec<CardLink> {
                         .collect()
                 })
                 .unwrap_or_default(),
-            CardRef::Block(key) => graph
-                .owned_edges(key.as_str())
+            CardRef::Block { block, .. } => graph
+                .owned_edges(block.as_str())
                 .into_iter()
                 .filter(|(_, edge)| edge.resolution == Resolution::Resolved)
                 .filter_map(|(_, edge)| edge.target.as_ref())
@@ -95,7 +105,7 @@ pub fn card_links(board: &Board, graph: &BoardGraph) -> Vec<CardLink> {
         };
         let mut order = 0;
         for target in targets {
-            let Some(called) = by_block.get(target.as_str()) else {
+            let Some(called) = by_block.get(&(project, target.as_str())) else {
                 continue;
             };
             if called.id == card.id {
@@ -112,18 +122,36 @@ pub fn card_links(board: &Board, graph: &BoardGraph) -> Vec<CardLink> {
     links
 }
 
-/// Labels from the board, for building Flows.
-struct Labels<'a>(&'a Board);
+/// Labels of one project's blocks on a page, for building Flows.
+struct Labels<'a> {
+    page: &'a Page,
+    project: Option<&'a ProjectName>,
+}
 
 impl FlowContext for Labels<'_> {
     fn label(&self, key: &str) -> Option<&str> {
-        self.0.label(key)
+        self.page.label(self.project, key)
     }
 }
 
-/// The outline of `board`.
-pub fn outline(board: &Board, graph: &BoardGraph) -> BoardOutline {
-    let links = card_links(board, graph);
+/// The outline of `page`.
+pub fn outline(page: &Page, graphs: &PageGraphs<'_>) -> PageOutline {
+    let mut links = card_links(page, graphs);
+    let mut drawn: Vec<_> = page.links.iter().collect();
+    drawn.sort_by(|a, b| a.id.cmp(&b.id));
+    for link in drawn {
+        let order = links
+            .iter()
+            .filter(|known| known.source == link.from)
+            .map(|known| known.order + 1)
+            .max()
+            .unwrap_or(0);
+        links.push(CardLink {
+            source: link.from.clone(),
+            target: link.to.clone(),
+            order,
+        });
+    }
     let mut children: FxHashMap<&str, Vec<&CardLink>> = FxHashMap::default();
     let mut called: FxHashSet<&str> = FxHashSet::default();
     for link in &links {
@@ -133,15 +161,15 @@ pub fn outline(board: &Board, graph: &BoardGraph) -> BoardOutline {
     for list in children.values_mut() {
         list.sort_by_key(|link| link.order);
     }
-    let mut by_place: Vec<&Card> = board.cards.iter().collect();
+    let mut by_place: Vec<&Card> = page.cards.iter().collect();
     by_place.sort_by(|a, b| {
-        let block = |card: &Card| matches!(card.reference, CardRef::Block(_));
+        let block = |card: &Card| matches!(card.reference, CardRef::Block { .. });
         block(a)
             .cmp(&block(b))
             .then(a.at[0].total_cmp(&b.at[0]))
             .then(a.at[1].total_cmp(&b.at[1]))
     });
-    let mut rows = Vec::with_capacity(board.cards.len());
+    let mut rows = Vec::with_capacity(page.cards.len());
     let mut seen: FxHashSet<&str> = FxHashSet::default();
     let roots = by_place
         .iter()
@@ -165,16 +193,22 @@ pub fn outline(board: &Board, graph: &BoardGraph) -> BoardOutline {
             }
         }
     }
-    let labels = Labels(board);
     let mut by_id: FxHashMap<&str, &Card> = FxHashMap::default();
-    for card in &board.cards {
+    for card in &page.cards {
         by_id.entry(card.id.as_str()).or_insert(card);
     }
     let mut unlabeled = Vec::new();
     for row in &rows {
-        let Some(CardRef::Block(key)) = by_id.get(row.card.as_str()).map(|card| &card.reference) else {
+        let Some(card) = by_id.get(row.card.as_str()) else {
             continue;
         };
+        let (Some(key), project) = (card.reference.block_key(), card.reference.project()) else {
+            continue;
+        };
+        let Some(graph) = graphs.get(project) else {
+            continue;
+        };
+        let labels = Labels { page, project };
         let Some(flow) = graph.flow(key.as_str(), &labels) else {
             continue;
         };
@@ -184,7 +218,7 @@ pub fn outline(board: &Board, graph: &BoardGraph) -> BoardOutline {
         for node in &flow.nodes {
             if let Some(key) = &node.key
                 && !matches!(node.kind, FlowNodeKind::Start | FlowNodeKind::End)
-                && board.label(key.as_str()).is_none()
+                && page.label(project, key.as_str()).is_none()
             {
                 unlabeled.push(Unlabeled {
                     card: row.card.clone(),
@@ -193,5 +227,9 @@ pub fn outline(board: &Board, graph: &BoardGraph) -> BoardOutline {
             }
         }
     }
-    BoardOutline { rows, unlabeled }
+    PageOutline {
+        page: page.id.clone(),
+        rows,
+        unlabeled,
+    }
 }

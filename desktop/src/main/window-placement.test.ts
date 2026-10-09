@@ -36,9 +36,8 @@ describe("placeOnScreen", () => {
 describe("savedWindowList", () => {
   it("reads saved windows and skips malformed ones", () => {
     const result = {
-      folder: "/repo",
       windows: [
-        { key: "a", bounds: { x: 10.4, y: 20, width: 800, height: 600 }, maximized: true, tabs: [] },
+        { key: "a", bounds: { x: 10.4, y: 20, width: 800, height: 600 }, maximized: true, selectedProject: null, tabs: [], activeTab: null, layout: {} },
         { key: "b", bounds: null, maximized: false },
         { key: "c", bounds: { x: 0, y: 0, width: 0, height: 600 } },
         { key: "", bounds: null },

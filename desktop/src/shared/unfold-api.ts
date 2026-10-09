@@ -26,7 +26,7 @@ export type TransportErrorCode =
   | "invalid_message"
   /** A window command the main process does not know, or one it refused. */
   | "invalid_command"
-  /** A window sent a command only the main process may send (`export_mermaid`, `folder_windows`). */
+  /** A window sent a command only the main process may send (`add_project`, `export_mermaid`, …). */
   | "untrusted"
   /** Rust rejected without a well-formed `{code, message}` payload. */
   | "internal";
@@ -48,26 +48,24 @@ export interface UnfoldEvent {
 
 /** Commands the application menu forwards to the focused window's UI. */
 export type MenuCommand =
-  /**
-   * File > Open Folder… while a window has focus: the window shows the picker itself, so it can
-   * write its unsaved board edits before its folder is replaced.
-   */
-  | "open_folder"
-  /**
-   * File > Close Folder: the window writes its unsaved board edits, then runs the `close_folder`
-   * window command.
-   */
-  | "close_folder"
+  /** File > Remove Project: the window asks to confirm (`confirm_remove_project`), then removes it. */
+  | "remove_project"
+  | "new_board"
+  | "new_page"
   | "compile"
+  | "publish"
   | "close_tab"
-  | "command_palette"
+  /** View > Home. */
+  | "show_home"
   | "toggle_sidebar"
-  | "toggle_inspector"
-  | "toggle_panel"
-  | "show_files"
-  | "show_entrances"
-  | "show_search"
-  | "show_boards"
+  /** View > Code / Flow: the board's lens. */
+  | "lens_code"
+  | "lens_flow"
+  /** Go > Add, Go to File, Go to Function, Commands: Add opened as is, on Files, on Functions, or with `>`. */
+  | "add"
+  | "add_files"
+  | "add_functions"
+  | "commands"
   /**
    * Edit > Undo / Redo. Sent only when focus is outside a text field: inside one, the preload runs
    * the field's native undo instead, so these reach the focused board.
@@ -83,14 +81,18 @@ export type MenuCommand =
  */
 export type ShellEvent =
   | { readonly type: "menu_command"; readonly command: MenuCommand }
-  /** The window now shows another folder (or welcome). `windowKey` is its stable key from now on. */
-  | { readonly type: "folder_changed"; readonly folder: string | null; readonly windowKey: string }
-  | { readonly type: "workspace_open_failed"; readonly folder: string; readonly error: TransportError }
   /**
-   * Another window of the folder handed this window a board's state (its undo history) with
+   * Another window handed this window a board's state (its undo history) with
    * `transfer_board_state`, after moving the board's claim here with `move_board`.
    */
-  | { readonly type: "board_state_transferred"; readonly fromWindow: number; readonly payload: unknown };
+  | { readonly type: "board_state_transferred"; readonly fromWindow: number; readonly payload: unknown }
+  /** `focus_window` named a board this window holds: show its tab. */
+  | { readonly type: "focus_board"; readonly project: string; readonly board: string }
+  /**
+   * A project was added from the menu, the command line, the OS (`open-file`), a second launch, or a
+   * drop the UI didn't handle: select it. Sent to the focused window.
+   */
+  | { readonly type: "project_added"; readonly project: string };
 
 /** A running streamed command. */
 export interface StreamHandle {
@@ -104,13 +106,10 @@ export interface StreamHandle {
 export interface WindowInfo {
   readonly windowId: number;
   /**
-   * The window's stable key for `window_state` / `save_window_state` / `forget_window_state`. A
-   * restored window gets its saved key back; the key changes when the window switches folders
-   * (see the `folder_changed` event).
+   * The window's stable key for `window_state` / `save_window_state`. A restored window gets its
+   * saved key back.
    */
   readonly key: string;
-  /** The folder this window shows, or null on the welcome screen. */
-  readonly folder: string | null;
   readonly platform: "darwin" | "win32" | "linux";
 }
 
@@ -120,10 +119,11 @@ export interface ExportedFile {
   readonly bytes: number;
 }
 
-/** Where a folder opened. */
-export interface OpenedIn {
-  readonly windowId: number;
-  readonly folder: string;
+/** A project added to the workspace (`exists`: the folder, or its repository, already was one). */
+export interface AddedProject {
+  readonly status: "added" | "exists";
+  /** The project's `ProjectId`. */
+  readonly project: string;
 }
 
 /** A dropped item, as the UI receives it in a `drop` event (a DOM `File`). */
@@ -133,60 +133,49 @@ export interface DroppedFile {
 
 /** Window and dialog commands, handled by the main process. */
 export interface WindowCommands {
-  /** Open another window. `folder: "same"` (default) shows this window's folder; `"none"` shows welcome. */
-  new_window: { args: { folder?: "same" | "none" }; result: { windowId: number } };
-  /** Bring a window to the front (e.g. the one `open_board` reports in `heldBy`). */
-  focus_window: { args: { windowId: number }; result: null };
+  /** Open another window on the workspace (it shows the workspace's selected project). */
+  new_window: { args: Record<string, never>; result: { windowId: number } };
+  /**
+   * Bring a window to the front (e.g. the one `open_board` reports in `heldBy`). With `board`, that
+   * window also receives a `focus_board` event, so it shows the board's tab.
+   */
+  focus_window: {
+    args: { windowId: number; board?: { project: string; board: string } };
+    result: null;
+  };
   /** Close the calling window. */
   close_window: { args: Record<string, never>; result: null };
   /**
-   * Close the calling window's folder: the window detaches from the folder's workspace (the
-   * folder's last window closes it) and shows the welcome screen. The window stays open (on every
-   * platform), and other windows on the folder are unaffected. Write unsaved board edits first.
-   * Resolves with the window's key from now on (null and a no-op when it shows no folder); a
-   * `folder_changed` event follows as for any folder change.
+   * Show the folder picker and add the chosen folder to the workspace as a project. Resolves with
+   * null when the picker is cancelled; rejects with the engine's error (`not_a_folder`,
+   * `too_many_projects`).
    */
-  close_folder: { args: Record<string, never>; result: { windowKey: string } | null };
+  add_project: { args: Record<string, never>; result: AddedProject | null };
   /**
-   * Show the folder picker. The chosen folder opens in this window (default) or a new one, and its
-   * saved windows come back. If a window already shows it, that window is focused instead.
-   * Resolves with null when the picker is cancelled.
+   * Ask the person to confirm removing a project ("Remove <name> from the workspace? Its .unfold
+   * folder stays."). The UI then calls the engine's `remove_project`.
    */
-  choose_folder: {
-    args: { target?: "this_window" | "new_window" };
-    result: OpenedIn | null;
-  };
+  confirm_remove_project: { args: { name: string }; result: { confirmed: boolean } };
   /**
-   * Open a folder from the recent list (the welcome screen) here or in a new window (`target:
-   * "new_window"` or `newWindow: true`), like
-   * `choose_folder` after the picker. Only a path the engine lists in `recent_folders` that is still a
-   * directory is accepted (`not_recent` / `not_a_folder` otherwise): paths outside a folder come only
-   * from dialogs, the recent list, or a drop.
-   */
-  open_folder: {
-    args: { path: string; target?: "this_window" | "new_window"; newWindow?: boolean };
-    result: OpenedIn;
-  };
-  /** Show the export save dialog. Resolves with null when cancelled. */
-  choose_export_path: { args: { defaultName?: string }; result: { path: string } | null };
-  /**
-   * Export a board this window holds (`boardId`, its last saved version) or an entrance (`entrance`)
-   * as Mermaid: the main process shows the save dialog (default name from `title`, `.mmd`) and has
-   * the engine write the file. Resolves with null when the dialog is cancelled; rejects with the
-   * engine's error (`board_not_held`, `io`, …).
+   * Export a page of a board this window holds (its last saved version) or an entrance as Mermaid:
+   * the main process shows the save dialog (default name from `title`, `.mmd`) and has the engine
+   * write the file. Resolves with null when the dialog is cancelled; rejects with the engine's error
+   * (`board_not_held`, `io`, …).
    */
   export_mermaid: {
-    args: { boardId: string; title?: string } | { entrance: string; title?: string };
+    args:
+      | { project: string; board: string; page: string; title?: string }
+      | { project: string; entrance: string; title?: string };
     result: ExportedFile | null;
   };
   /**
-   * Open a new window on this window's folder for a tab. Resolves once the new window is attached
-   * to the folder, so `move_board` to its `windowId` can follow at once.
+   * Open a new window for a tab. Resolves with its id at once: the UI then calls `move_board` to it
+   * and `transfer_board_state`.
    */
   move_tab_to_new_window: { args: Record<string, never>; result: { windowId: number } };
   /**
-   * Hand a board's window-side state (its undo history) to another window of the same folder. The
-   * target receives a `board_state_transferred` event. Call after `move_board`.
+   * Hand a board's window-side state (its undo history) to another window. The target receives a
+   * `board_state_transferred` event (held until its UI has loaded). Call after `move_board`.
    */
   transfer_board_state: { args: { toWindow: number; payload: unknown }; result: null };
   /**
@@ -227,10 +216,10 @@ export interface UnfoldApi {
     ...args: WindowCommandArgs<C>
   ): Promise<WindowCommands[C]["result"]>;
   /**
-   * Open a folder the person just dropped on this window, from the `drop` event's `File`. Only an
-   * item of the latest drop is accepted, and the main process checks it is a directory (else it
-   * rejects with `not_a_folder`). Without a handler in the UI, the preload opens a folder dropped
-   * anywhere in the window in this window.
+   * Add a folder the person just dropped on this window as a project, from the `drop` event's
+   * `File`. Only an item of the latest drop is accepted, and the engine checks it is a folder (else
+   * it rejects with `not_a_folder`). Without a handler in the UI, the preload adds a single folder
+   * dropped anywhere in the window by itself and emits `project_added`.
    */
-  openDroppedFolder(file: DroppedFile, options?: { target?: "this_window" | "new_window" }): Promise<OpenedIn>;
+  addDroppedFolder(file: DroppedFile): Promise<AddedProject>;
 }

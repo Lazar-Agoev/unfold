@@ -6,9 +6,9 @@
  * 2. Launches the packaged app with an empty PATH (no Node, no Python), a throwaway home and
  *    user-data folder, `ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS` and `--inspect`, which the fuses must
  *    all ignore, on a copy of the TypeScript playground in a path with spaces and non-ASCII letters.
- *    Playwright attaches over the Chrome DevTools protocol (the only door the fuses leave), compiles
- *    through `window.unfold`, waits for `graph_status` to be current, and checks the window's
- *    sandbox from the inside: no Node globals, only `window.unfold`, inline scripts and the network
+ *    Playwright attaches over the Chrome DevTools protocol (the only door the fuses leave), finds the
+ *    folder added as a project, compiles it through `window.unfold`, waits for it to be current,
+ *    and checks the window's sandbox from the inside: no Node globals, only `window.unfold`, inline scripts and the network
  *    blocked.
  * 3. Checks that nothing in the folder changed outside `.unfold/`, and that no execution sentinel
  *    planted in it ran.
@@ -63,7 +63,7 @@ const EXPECTED_PREFERENCES: Readonly<Record<string, boolean>> = {
 };
 
 /** What the preload exposes, and nothing more (architecture §13). */
-const UNFOLD_KEYS = ["invoke", "on", "onConnection", "openDroppedFolder", "stream", "window"];
+const UNFOLD_KEYS = ["addDroppedFolder", "invoke", "on", "onConnection", "stream", "window"];
 
 // --- Reporting ---------------------------------------------------------------------------------
 
@@ -296,8 +296,14 @@ async function checkRunAsNodeIgnored(app: PackagedApp, work: string): Promise<vo
   check("ELECTRON_RUN_AS_NODE is ignored", !launched.output().includes(marker));
 }
 
-interface GraphStatusLike {
-  readonly state: { readonly kind: string; readonly files?: number; readonly languages?: readonly string[] };
+interface WorkspaceLike {
+  readonly projects: readonly { readonly id: string }[];
+}
+
+interface ProjectSummaryLike {
+  readonly state: { readonly kind: string };
+  readonly files: number;
+  readonly languages: readonly string[];
 }
 
 interface SmokeWindow {
@@ -335,25 +341,33 @@ async function journey(app: PackagedApp, work: string, folder: string): Promise<
     const page = await unfoldPage(browser);
     await page.waitForFunction(() => typeof (window as unknown as Partial<SmokeWindow>).unfold === "object");
 
+    const project = await poll("the folder added as a project", 30_000, async () => {
+      const value = (await page.evaluate(() => (window as unknown as SmokeWindow).unfold.invoke("workspace", {}))) as WorkspaceLike;
+      return value.projects[0]?.id ?? null;
+    });
+
     const started = Date.now();
-    const compile = await page.evaluate(async () => {
+    const compile = await page.evaluate(async (id) => {
       const unfold = (window as unknown as SmokeWindow).unfold;
       let progress = 0;
-      const outcome = await unfold.stream("compile", {}, () => {
+      const outcome = await unfold.stream("compile", { project: id }, () => {
         progress += 1;
       }).result;
       return { outcome, progress };
-    });
+    }, project);
     check("compile finishes", compile.outcome !== null, `${compile.progress} progress messages, ${Date.now() - started} ms`);
 
-    const status = await poll("graph_status current", 60_000, async () => {
-      const value = (await page.evaluate(() => (window as unknown as SmokeWindow).unfold.invoke("graph_status", {}))) as GraphStatusLike;
+    const summary = await poll("the project current", 60_000, async () => {
+      const value = (await page.evaluate(
+        (id) => (window as unknown as SmokeWindow).unfold.invoke("project_summary", { project: id }),
+        project,
+      )) as ProjectSummaryLike;
       return value.state.kind === "current" ? value : null;
     });
     check(
-      "graph_status is current",
-      status.state.kind === "current" && (status.state.files ?? 0) > 0 && (status.state.languages ?? []).includes("typescript"),
-      `${status.state.files ?? 0} files, ${(status.state.languages ?? []).join(", ")}`,
+      "the project is current",
+      summary.state.kind === "current" && summary.files > 0 && summary.languages.includes("typescript"),
+      `${summary.files} files, ${summary.languages.join(", ")}`,
     );
 
     const inside = await page.evaluate(async () => {
@@ -415,7 +429,7 @@ async function checkWindowPreferences(app: PackagedApp, work: string, folder: st
   try {
     const page = await electronApp.firstWindow();
     await page.waitForFunction(() => typeof (window as unknown as Partial<SmokeWindow>).unfold === "object");
-    await page.evaluate(() => (window as unknown as SmokeWindow).unfold.window("new_window", { folder: "same" }));
+    await page.evaluate(() => (window as unknown as SmokeWindow).unfold.window("new_window"));
     await poll("a second window", 30_000, () => Promise.resolve(electronApp.windows().length >= 2 ? true : null));
 
     const report = await electronApp.evaluate(({ app: electronAppModule, BrowserWindow }) => ({

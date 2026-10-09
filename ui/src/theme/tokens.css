@@ -1,57 +1,96 @@
 /*
- * Design tokens: the Paper "Code Graph - v7" palette (architecture §10.7), in light and dark sets.
+ * Design tokens: the studio chrome (docs/redesign/build/design/, decisions V-13, V-14, V-24, V-28..V-31,
+ * V-40..V-42) and the reader's card, syntax, and Flow colors, in light and dark sets.
  *
- * The light set is the v7 reader's palette. The dark set is its counterpart: the same hues, lifted
- * for contrast on dark surfaces. The theme follows the OS; `data-theme="light" | "dark"` on <html>
- * overrides it.
+ * The dark set is artboard v2 · 13's (designed, not inverted). Syntax and Flow node colors keep the
+ * reader's values in both sets (V-28, V-40). The theme follows the OS; `data-theme="light" | "dark"`
+ * on <html> overrides it.
  *
- * Text pairs meet WCAG AA (4.5:1) in both sets, and focus rings and icons meet 3:1;
- * `src/theme/contrast.test.ts` checks the pairs the components use.
+ * `src/theme/contrast.test.ts` checks that text meets WCAG AA (4.5:1) and that focus rings and marks
+ * meet 3:1 on the surfaces they sit on.
  */
 
 :root {
   color-scheme: light;
 
-  /* Surfaces and text */
+  /* Grounds: window, Home, sidebar, top bar and active tab, tab strip, floating surfaces, controls */
   --color-canvas: #f7f8fa;
+  --color-home: #ffffff;
+  --color-sidebar: #f7f8fa;
+  --color-chrome: #ffffff;
+  --color-tabstrip: #f0f1f4;
   --color-surface: #ffffff;
-  /* Floating layers (menus, popovers, dialogs, the palette): lifted above surfaces in the dark set. */
-  --color-popover: #ffffff;
-  --color-sidebar: #f3f4f6;
-  --color-chrome: #f3f4f6;
+  --color-control: #ffffff;
+  --color-track: #ecedf0;
+  --color-track-soft: #f3f4f6;
+  --color-pressed: #eef0f3;
+
+  /* Rows: hover is one step lighter than selection (V-41) */
+  --color-hover: #f3f5fd;
+  --color-selection: #edf0fc;
+  --color-selection-strong: #dce1f5;
+  --color-selection-line: #d5d9f2;
+  --color-match: #dde1f7;
+
+  /* Text and icons */
   --color-text: #202126;
   --color-muted: #656974;
-  --color-border: #e0e2e7;
-  --color-contour: #8b93a1;
-  --color-hover: rgb(32 33 38 / 0.06);
-  --color-step: #f4f5f8;
+  --color-subtle: #64748b;
+  --color-faint: #94a3b8;
 
-  /* Accent: indigo */
+  /* Hairlines (V-31) and placeholders */
+  --color-border: #e0e2e7;
+  --color-border-shell: #e0e2e7;
+  --color-card-rule: #e0e2e7;
+  --color-card-rule-soft: #f0f1f4;
+  --color-placeholder: #f1f2f5;
+  --color-placeholder-line: #b6bcc8;
+  --color-dashed: #c9cdd6;
+
+  /* Accent: indigo (V-30) */
   --color-accent: #5862c0;
-  --color-accent-strong: #4a53a8;
   --color-accent-text: #5862c0;
   --color-on-accent: #ffffff;
-  --color-selection: #edf0fc;
+  --color-on-accent-soft: #d9dcf5;
+  --color-on-accent-chip: rgb(255 255 255 / 0.18);
+  --color-accent-ring: rgb(88 98 192 / 0.12);
+  --color-accent-soft: #a0a8e0;
+  --color-match-current: rgb(88 98 192 / 0.22);
+  --color-arrow: #5862c0;
   --color-focus-ring: #5862c0;
+
+  /* Meaning (V-11, V-27, V-28, V-39) */
+  --color-review: #d97706;
+  --color-warn: #8a5a00;
+  --color-warn-fill: #fff3d6;
+  --color-success: #16a34a;
+  --color-danger: #dc2626;
+  --color-on-danger: #ffffff;
 
   /* Authored text (descriptions, labels): magenta */
   --color-authored: #a8346f;
   --color-authored-tint: #fbeff5;
   --color-authored-line: #e7b1cc;
 
-  /* States */
-  --color-warn: #8a5a00;
-  --color-warn-fill: #fff3d6;
-  --color-success: #15803d;
-  /* Changed or pending (the amber dot): a darker amber than Flow's decision color, for 3:1 on chrome. */
-  --color-pending: #c26a0a;
-  --color-failure: #c42020;
-  --color-failure-fill: #fee2e2;
-  --color-danger: #c42020;
-  --color-danger-strong: #a81b1b;
-  --color-on-danger: #ffffff;
+  /* Cards and arrows */
+  --color-step: #f4f5f8;
+  --color-contour: #8b93a1;
+  --color-unresolved: #8b93a1;
 
-  /* Syntax (v7) */
+  /* Monograms (V-24) */
+  --color-monogram: #e6e8ec;
+  --color-monogram-ink: #3f4451;
+  --color-workspace-mark: #202126;
+  --color-workspace-mark-ink: #ffffff;
+
+  /* Layers behind and around floating things */
+  --color-scrim: rgb(15 23 42 / 0.18);
+  --color-scroll-thumb: rgb(15 23 42 / 0.14);
+  --shadow-float: 0 1px 2px rgb(15 23 42 / 0.06), 0 8px 24px rgb(15 23 42 / 0.1);
+  --shadow-segment: 0 1px 2px rgb(15 23 42 / 0.08);
+  --shadow-ring: 0 0 0 3px var(--color-accent-ring);
+
+  /* Syntax (v7 reader) */
   --color-syntax-plain: #202126;
   --color-syntax-keyword: #0033b3;
   --color-syntax-function: #00627a;
@@ -60,6 +99,7 @@
   --color-syntax-type: #7a5c14;
   --color-syntax-number: #b4530a;
   --color-syntax-comment: #8c8c8c;
+  --color-syntax-external: #db2777;
 
   /* Flow diagram */
   --color-decision: #d97706;
@@ -70,27 +110,53 @@
   --color-guard-fill: #ffedd5;
   --color-loop: #4f46e5;
   --color-loop-line: #a5b4fc;
+  --color-failure: #c42020;
+  --color-failure-fill: #fee2e2;
 
-  /* Typography: bundled fonts (see fonts in main.tsx), so text measures the same everywhere. */
+  /* Typography: bundled fonts (imported in theme.ts), so text measures the same everywhere.
+     Sizes pair with a leading: `font-size: var(--text-13); line-height: var(--leading-20)`. */
   --font-ui: "Inter Variable", system-ui, sans-serif;
   --font-code: "JetBrains Mono Variable", ui-monospace, monospace;
-  --font-size-ui: 13px;
-  --font-size-small: 12px;
-  --font-size-tiny: 11px;
+  --text-11: 11px;
+  --text-12: 12px;
+  --text-13: 13px;
+  --text-15: 15px;
+  --text-16: 16px;
+  --text-17: 17px;
+  --text-32: 32px;
+  --leading-14: 14px;
+  --leading-16: 16px;
+  --leading-20: 20px;
+  --leading-22: 22px;
+  --leading-24: 24px;
+  --leading-40: 40px;
+  --tracking-caps: 0.06em;
+  --tracking-title: -0.01em;
+  --tracking-display: -0.03em;
 
   /* Shape */
-  --radius-small: 4px;
-  --radius: 6px;
-  --radius-large: 10px;
-  --shadow-raised: 0 1px 2px rgb(32 33 38 / 0.06), 0 0 0 1px var(--color-border);
-  --shadow-popover: 0 8px 24px rgb(32 33 38 / 0.14), 0 0 0 1px var(--color-border);
-  --color-overlay: rgb(20 21 26 / 0.28);
-  --color-tooltip: #2b2d33;
-  --color-on-tooltip: #f4f5f8;
-  --color-muted-on-tooltip: #a8acb6;
+  --radius-chip: 4px;
+  --radius-mono: 5px;
+  --radius-control: 6px;
+  --radius-tab: 8px;
+  --radius-card: 10px;
+  --radius-dialog: 12px;
+  --radius-full: 999px;
+
+  /* Sizes */
+  --row: 28px;
+  --row-result: 32px;
+  --tabstrip: 38px;
+  --tab: 30px;
+  --topbar: 48px;
+  --sidebar-default: 264px;
+  --sidebar-min: 220px;
+  --sidebar-max: 360px;
+  --peek-width: 640px;
 
   /* Layers: floating surfaces stack in this order. */
   --z-resize: 5;
+  --z-sheet: 30;
   --z-popover: 40;
   --z-dialog: 50;
   --z-menu: 60;
@@ -106,38 +172,71 @@
   :root:not([data-theme="light"]) {
     color-scheme: dark;
 
-    --color-canvas: #15161a;
-    --color-surface: #1c1d22;
-    --color-popover: #25272d;
-    --color-sidebar: #18191d;
-    --color-chrome: #18191d;
-    --color-text: #e4e5ea;
-    --color-muted: #9a9ea9;
-    --color-border: #2d2f36;
-    --color-contour: #6f7682;
-    --color-hover: rgb(228 229 234 / 0.07);
-    --color-step: #202127;
+    --color-canvas: #151619;
+    --color-home: #151619;
+    --color-sidebar: #191b1f;
+    --color-chrome: #191b1f;
+    --color-tabstrip: #111214;
+    --color-surface: #1d1f23;
+    --color-control: #2d3036;
+    --color-track: #111214;
+    --color-track-soft: #151619;
+    --color-pressed: #2d3036;
 
-    --color-accent: #5862c0;
-    --color-accent-strong: #636cc9;
-    --color-accent-text: #949be9;
-    --color-on-accent: #ffffff;
-    --color-selection: #262a45;
-    --color-focus-ring: #8d95e8;
+    --color-hover: #22263a;
+    --color-selection: #2a304b;
+    --color-selection-strong: #353b5c;
+    --color-selection-line: #3b4166;
+    --color-match: #353c66;
 
-    --color-authored: #e07bae;
-    --color-authored-tint: #3a2230;
+    --color-text: #edeef2;
+    --color-muted: #a4a8b3;
+    --color-subtle: #8b8f99;
+    --color-faint: #5f636d;
+
+    --color-border: #353840;
+    --color-border-shell: #2b2e34;
+    --color-card-rule: #2e3138;
+    --color-card-rule-soft: #2a2c32;
+    --color-placeholder: #1a1c20;
+    --color-placeholder-line: #4a4e57;
+    --color-dashed: #3a3d45;
+
+    --color-accent: #a0aaff;
+    --color-accent-text: #a0aaff;
+    --color-on-accent: #151619;
+    --color-on-accent-soft: rgb(21 22 25 / 0.62);
+    --color-on-accent-chip: rgb(21 22 25 / 0.14);
+    --color-accent-ring: rgb(160 170 255 / 0.16);
+    --color-accent-soft: #5a62a8;
+    --color-match-current: rgb(160 170 255 / 0.22);
+    --color-arrow: rgb(160 170 255 / 0.7);
+    --color-focus-ring: #a0aaff;
+
+    --color-review: #f59e0b;
+    --color-warn: #f5c66a;
+    --color-warn-fill: rgb(217 119 6 / 0.16);
+    --color-success: #4ade80;
+    --color-danger: #f87171;
+    --color-on-danger: #151619;
+
+    --color-authored: #f2a9cc;
+    --color-authored-tint: rgb(168 52 111 / 0.18);
     --color-authored-line: #7a3d5c;
 
-    --color-warn: #e8b65a;
-    --color-warn-fill: #3a2e14;
-    --color-success: #4ade80;
-    --color-pending: #f59e0b;
-    --color-failure: #f87171;
-    --color-failure-fill: #3f1d1d;
-    --color-danger: #c93c3c;
-    --color-danger-strong: #b83232;
-    --color-on-danger: #ffffff;
+    --color-step: #24262c;
+    --color-contour: #5f636d;
+    --color-unresolved: #6b6f7a;
+
+    --color-monogram: #2d3036;
+    --color-monogram-ink: #c9ccd4;
+    --color-workspace-mark: #edeef2;
+    --color-workspace-mark-ink: #151619;
+
+    --color-scrim: rgb(0 0 0 / 0.45);
+    --color-scroll-thumb: rgb(255 255 255 / 0.16);
+    --shadow-float: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px rgb(0 0 0 / 0.55);
+    --shadow-segment: 0 1px 2px rgb(0 0 0 / 0.4);
 
     --color-syntax-plain: #e4e5ea;
     --color-syntax-keyword: #7f9cf5;
@@ -147,6 +246,7 @@
     --color-syntax-type: #d5b778;
     --color-syntax-number: #e0955a;
     --color-syntax-comment: #7a7e85;
+    --color-syntax-external: #d59be8;
 
     --color-decision: #f59e0b;
     --color-decision-fill: #3b2a0b;
@@ -156,13 +256,8 @@
     --color-guard-fill: #3b2313;
     --color-loop: #818cf8;
     --color-loop-line: #4c51a0;
-
-    --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.3), 0 0 0 1px var(--color-border);
-    --shadow-popover: 0 8px 28px rgb(0 0 0 / 0.5), 0 0 0 1px var(--color-border);
-    --color-overlay: rgb(0 0 0 / 0.5);
-    --color-tooltip: #34363e;
-    --color-on-tooltip: #eceef3;
-    --color-muted-on-tooltip: #a8acb6;
+    --color-failure: #f87171;
+    --color-failure-fill: #3f1d1d;
   }
 }
 
@@ -170,38 +265,71 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --color-canvas: #15161a;
-  --color-surface: #1c1d22;
-  --color-popover: #25272d;
-  --color-sidebar: #18191d;
-  --color-chrome: #18191d;
-  --color-text: #e4e5ea;
-  --color-muted: #9a9ea9;
-  --color-border: #2d2f36;
-  --color-contour: #6f7682;
-  --color-hover: rgb(228 229 234 / 0.07);
-  --color-step: #202127;
+  --color-canvas: #151619;
+  --color-home: #151619;
+  --color-sidebar: #191b1f;
+  --color-chrome: #191b1f;
+  --color-tabstrip: #111214;
+  --color-surface: #1d1f23;
+  --color-control: #2d3036;
+  --color-track: #111214;
+  --color-track-soft: #151619;
+  --color-pressed: #2d3036;
 
-  --color-accent: #5862c0;
-  --color-accent-strong: #636cc9;
-  --color-accent-text: #949be9;
-  --color-on-accent: #ffffff;
-  --color-selection: #262a45;
-  --color-focus-ring: #8d95e8;
+  --color-hover: #22263a;
+  --color-selection: #2a304b;
+  --color-selection-strong: #353b5c;
+  --color-selection-line: #3b4166;
+  --color-match: #353c66;
 
-  --color-authored: #e07bae;
-  --color-authored-tint: #3a2230;
+  --color-text: #edeef2;
+  --color-muted: #a4a8b3;
+  --color-subtle: #8b8f99;
+  --color-faint: #5f636d;
+
+  --color-border: #353840;
+  --color-border-shell: #2b2e34;
+  --color-card-rule: #2e3138;
+  --color-card-rule-soft: #2a2c32;
+  --color-placeholder: #1a1c20;
+  --color-placeholder-line: #4a4e57;
+  --color-dashed: #3a3d45;
+
+  --color-accent: #a0aaff;
+  --color-accent-text: #a0aaff;
+  --color-on-accent: #151619;
+  --color-on-accent-soft: rgb(21 22 25 / 0.62);
+  --color-on-accent-chip: rgb(21 22 25 / 0.14);
+  --color-accent-ring: rgb(160 170 255 / 0.16);
+  --color-accent-soft: #5a62a8;
+  --color-match-current: rgb(160 170 255 / 0.22);
+  --color-arrow: rgb(160 170 255 / 0.7);
+  --color-focus-ring: #a0aaff;
+
+  --color-review: #f59e0b;
+  --color-warn: #f5c66a;
+  --color-warn-fill: rgb(217 119 6 / 0.16);
+  --color-success: #4ade80;
+  --color-danger: #f87171;
+  --color-on-danger: #151619;
+
+  --color-authored: #f2a9cc;
+  --color-authored-tint: rgb(168 52 111 / 0.18);
   --color-authored-line: #7a3d5c;
 
-  --color-warn: #e8b65a;
-  --color-warn-fill: #3a2e14;
-  --color-success: #4ade80;
-  --color-pending: #f59e0b;
-  --color-failure: #f87171;
-  --color-failure-fill: #3f1d1d;
-  --color-danger: #c93c3c;
-  --color-danger-strong: #b83232;
-  --color-on-danger: #ffffff;
+  --color-step: #24262c;
+  --color-contour: #5f636d;
+  --color-unresolved: #6b6f7a;
+
+  --color-monogram: #2d3036;
+  --color-monogram-ink: #c9ccd4;
+  --color-workspace-mark: #edeef2;
+  --color-workspace-mark-ink: #151619;
+
+  --color-scrim: rgb(0 0 0 / 0.45);
+  --color-scroll-thumb: rgb(255 255 255 / 0.16);
+  --shadow-float: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px rgb(0 0 0 / 0.55);
+  --shadow-segment: 0 1px 2px rgb(0 0 0 / 0.4);
 
   --color-syntax-plain: #e4e5ea;
   --color-syntax-keyword: #7f9cf5;
@@ -211,6 +339,7 @@
   --color-syntax-type: #d5b778;
   --color-syntax-number: #e0955a;
   --color-syntax-comment: #7a7e85;
+  --color-syntax-external: #d59be8;
 
   --color-decision: #f59e0b;
   --color-decision-fill: #3b2a0b;
@@ -220,11 +349,6 @@
   --color-guard-fill: #3b2313;
   --color-loop: #818cf8;
   --color-loop-line: #4c51a0;
-
-  --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.3), 0 0 0 1px var(--color-border);
-  --shadow-popover: 0 8px 28px rgb(0 0 0 / 0.5), 0 0 0 1px var(--color-border);
-  --color-overlay: rgb(0 0 0 / 0.5);
-  --color-tooltip: #34363e;
-  --color-on-tooltip: #eceef3;
-  --color-muted-on-tooltip: #a8acb6;
+  --color-failure: #f87171;
+  --color-failure-fill: #3f1d1d;
 }

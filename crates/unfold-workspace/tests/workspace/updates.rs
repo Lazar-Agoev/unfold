@@ -23,12 +23,12 @@ fn a_save_updates_the_graph_through_the_watcher() {
         "src/lib/added.ts",
         "export function savedJustNow() {\n  return 2;\n}\n",
     );
-    let (windows, _) = sink
-        .wait_for(mark, |_, event| updates(event, "src/lib/added.ts"))
+    let updated = sink
+        .wait_for(mark, |event| updates(event, "src/lib/added.ts"))
         .expect("graph_updated for the saved file");
-    assert_eq!(windows, [1]);
+    assert_eq!(updated.project(), Some(&crate::common::project()));
     assert!(
-        sink.wait_for(mark, |_, event| matches!(event, WorkspaceEvent::FilesChanged { paths, .. } if paths.iter().any(|p| p == "src/lib/added.ts")))
+        sink.wait_for(mark, |event| matches!(event, WorkspaceEvent::FilesChanged { paths, .. } if paths.iter().any(|p| p == "src/lib/added.ts")))
             .is_some()
     );
     settle(&workspace);
@@ -191,8 +191,8 @@ fn deleting_a_file_removes_it() {
     let mark = sink.mark();
     std::fs::remove_file(playground.path("src/lib/calendar.ts")).expect("delete");
     workspace.notify_changes([path("src/lib/calendar.ts")]);
-    let (_, event) = sink
-        .wait_for(mark, |_, event| event.kind() == "graph_updated")
+    let event = sink
+        .wait_for(mark, |event| event.kind() == "graph_updated")
         .expect("graph_updated");
     assert!(
         matches!(event, WorkspaceEvent::GraphUpdated { removed_files, .. } if removed_files == ["src/lib/calendar.ts"])

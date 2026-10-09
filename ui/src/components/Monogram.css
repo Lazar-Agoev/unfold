@@ -1,0 +1,34 @@
+.monogram {
+  display: inline-grid;
+  flex-shrink: 0;
+  place-items: center;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  background: var(--color-monogram);
+  color: var(--color-monogram-ink);
+}
+
+.monogram-14 {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-chip);
+  font-size: 9px;
+  line-height: 12px;
+}
+
+.monogram-20 {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-mono);
+  font-size: var(--text-11);
+  line-height: var(--leading-14);
+}
+
+.monogram-selected {
+  background: var(--color-selection-strong);
+}
+
+.monogram-workspace {
+  background: var(--color-workspace-mark);
+  color: var(--color-workspace-mark-ink);
+}

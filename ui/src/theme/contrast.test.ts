@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import tokens from "./tokens.css?raw";
 
-/** The `--color-*` hex values declared in the first block matching `selector`. */
+/** The `--color-*` values declared in the first block matching `selector`. */
 function colors(selector: string): Map<string, string> {
   const start = tokens.indexOf(selector);
   const open = tokens.indexOf("{", start);
@@ -18,7 +18,7 @@ function colors(selector: string): Map<string, string> {
     }
   }
   const block = tokens.slice(open, end);
-  return new Map([...block.matchAll(/--color-([\w-]+):\s*(#[0-9a-f]{6})\b/gi)].map((match) => [match[1] ?? "", match[2] ?? ""]));
+  return new Map([...block.matchAll(/--color-([\w-]+):\s*([^;]+);/g)].map((match) => [match[1] ?? "", (match[2] ?? "").trim()]));
 }
 
 function luminance(hex: string): number {
@@ -32,46 +32,63 @@ function contrast(a: string, b: string): number {
   return (light + 0.05) / (dark + 0.05);
 }
 
-/** Text on its surfaces: WCAG AA, 4.5:1. */
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/**
+ * Text on the grounds it sits on: WCAG AA, 4.5:1, the floor of the redesign's §7 ("no text lighter
+ * than `--color-subtle` on white"). Pairs with a translucent value in a theme (dark warn and
+ * authored tints) are checked only where both are opaque.
+ */
 const TEXT_PAIRS: readonly (readonly [string, string])[] = [
-  ["text", "canvas"],
-  ["text", "surface"],
-  ["text", "sidebar"],
-  ["text", "selection"],
-  ["text", "popover"],
-  ["muted", "popover"],
-  ["muted", "canvas"],
-  ["muted", "surface"],
-  ["muted", "sidebar"],
-  ["muted", "step"],
-  ["muted", "selection"],
-  ["accent-text", "surface"],
-  ["accent-text", "sidebar"],
-  ["accent-text", "selection"],
+  ...["canvas", "home", "sidebar", "chrome", "tabstrip", "surface", "control", "track", "pressed", "hover", "selection", "match", "step"].map(
+    (ground) => ["text", ground] as const,
+  ),
+  ...[
+    "canvas",
+    "home",
+    "sidebar",
+    "chrome",
+    "tabstrip",
+    "surface",
+    "control",
+    "track",
+    "track-soft",
+    "pressed",
+    "hover",
+    "selection",
+    "step",
+    "placeholder",
+  ].map((ground) => ["muted", ground] as const),
+  ["subtle", "surface"],
+  ...["home", "chrome", "sidebar", "surface", "selection", "hover"].map((ground) => ["accent-text", ground] as const),
   ["on-accent", "accent"],
-  ["on-accent", "accent-strong"],
   ["on-danger", "danger"],
-  ["on-danger", "danger-strong"],
+  ["danger", "surface"],
+  ["danger", "home"],
+  ["warn", "warn-fill"],
+  ["warn", "home"],
   ["authored", "surface"],
   ["authored", "authored-tint"],
-  ["warn", "surface"],
-  ["warn", "warn-fill"],
-  ["failure", "surface"],
-  ["failure", "chrome"],
-  ["failure", "failure-fill"],
-  ["on-tooltip", "tooltip"],
-  ["muted-on-tooltip", "tooltip"],
+  ["monogram-ink", "monogram"],
+  ["monogram-ink", "selection-strong"],
+  ["workspace-mark-ink", "workspace-mark"],
 ];
 
-/** Focus rings, icons, and marks against their surfaces: 3:1. */
-const UI_PAIRS: readonly (readonly [string, string])[] = [
-  ["focus-ring", "surface"],
-  ["focus-ring", "sidebar"],
-  ["focus-ring", "canvas"],
+/**
+ * Focus rings, state dots, and marks against their grounds: 3:1. `--color-faint` isn't held to it:
+ * the redesign (§7) keeps it for rules, icons, and disabled states, and the designs' value is below
+ * 3:1 (2.56:1 light, 2.74:1 dark on the surface).
+ */
+const MARK_PAIRS: readonly (readonly [string, string])[] = [
+  ...["surface", "sidebar", "canvas", "home", "chrome"].map((ground) => ["focus-ring", ground] as const),
   ["accent", "chrome"],
-  ["pending", "sidebar"],
-  ["pending", "selection"],
-  ["success", "chrome"],
+  ["accent", "canvas"],
+  // Review amber is #D97706 everywhere (V-39); on the light sidebar it is 2.98:1, so that pair isn't held.
+  ["review", "surface"],
+  ["review", "home"],
+  ["success", "home"],
+  // The primary button's shortcut hint (06's "⇧⌘B", 05's "⌘O") repeats the label's key, as drawn.
+  ["on-accent-soft", "accent"],
 ];
 
 const THEMES = {
@@ -87,12 +104,14 @@ describe.each(Object.entries(THEMES))("%s tokens", (_name, theme) => {
     }
     return value;
   };
+  const opaque = (pairs: readonly (readonly [string, string])[]) =>
+    pairs.filter(([foreground, background]) => HEX.test(color(foreground)) && HEX.test(color(background)));
 
-  it.each(TEXT_PAIRS)("%s on %s reads at 4.5:1", (foreground, background) => {
+  it.each(opaque(TEXT_PAIRS))("%s on %s reads at 4.5:1", (foreground, background) => {
     expect(contrast(color(foreground), color(background))).toBeGreaterThanOrEqual(4.5);
   });
 
-  it.each(UI_PAIRS)("%s on %s shows at 3:1", (foreground, background) => {
+  it.each(opaque(MARK_PAIRS))("%s on %s shows at 3:1", (foreground, background) => {
     expect(contrast(color(foreground), color(background))).toBeGreaterThanOrEqual(3);
   });
 });
@@ -100,7 +119,13 @@ describe.each(Object.entries(THEMES))("%s tokens", (_name, theme) => {
 describe("dark set", () => {
   it("is the same in the OS media query and the explicit override", () => {
     const fromMedia = colors(':root:not([data-theme="light"])');
-    expect(fromMedia.size).toBeGreaterThan(30);
+    expect(fromMedia.size).toBeGreaterThan(60);
     expect(fromMedia).toEqual(colors(':root[data-theme="dark"]'));
+  });
+
+  it("gives every light color a dark value", () => {
+    const light = [...colors(":root {").keys()];
+    const dark = colors(':root[data-theme="dark"]');
+    expect(light.filter((name) => !dark.has(name))).toEqual([]);
   });
 });

@@ -1,10 +1,10 @@
-// Tests of the built addon through its JavaScript surface (brief §6): the dispatch round trip,
-// events and stream messages from Rust threads reaching the sink, cancelling, errors, and opening
-// and closing workspaces. Build the addon first (`just addon`); the tests run in one process
-// because the addon holds one process-wide host.
+// Tests of the built addon through its JavaScript surface (contract §3.1): the dispatch round
+// trip, broadcast events and stream messages from Rust threads reaching the sink, trusted
+// commands, cancelling, errors, detaching windows, and shutting down. Build the addon first
+// (`just addon`); the tests run in one process because the addon holds one process-wide host.
 
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -32,6 +32,7 @@ describe("unfold-node addon", { skip: built ? false : "the addon is not built: r
   const waiters = [];
   let scratch;
   let folder;
+  let project;
   let nextRequest = 1;
 
   /** Resolves with the first sink message (past or future) matching `predicate`. */
@@ -56,6 +57,14 @@ describe("unfold-node addon", { skip: built ? false : "the addon is not built: r
   async function dispatch(windowId, command, args = {}) {
     return JSON.parse(await addon.dispatch(windowId, nextRequest++, JSON.stringify({ command, args })));
   }
+
+  async function trusted(command, args = {}) {
+    return JSON.parse(await addon.dispatch(0, nextRequest++, JSON.stringify({ command, args, trusted: true })));
+  }
+
+  /** Whether `message` is a broadcast event of `type` about the test's project. */
+  const broadcast = (message, type) =>
+    message.kind === "broadcast" && message.event.type === type && message.event.project === project;
 
   before(() => {
     scratch = mkdtempSync(join(tmpdir(), "unfold-node-test-"));
@@ -87,14 +96,7 @@ describe("unfold-node addon", { skip: built ? false : "the addon is not built: r
 
   it("exports exactly the transport functions", () => {
     const functions = Object.keys(addon).filter((name) => typeof addon[name] === "function");
-    assert.deepEqual(functions.sort(), [
-      "cancel",
-      "closeWorkspace",
-      "dispatch",
-      "init",
-      "openWorkspace",
-      "subscribe",
-    ]);
+    assert.deepEqual(functions.sort(), ["cancel", "detachWindow", "dispatch", "init", "shutdown", "subscribe"]);
   });
 
   it("throws the error JSON when initialized twice", () => {
@@ -102,66 +104,78 @@ describe("unfold-node addon", { skip: built ? false : "the addon is not built: r
     assert.throws(() => addon.init(options), (error) => JSON.parse(error.message).code === "already_initialized");
   });
 
-  it("rejects malformed commands and commands for windows without a folder", async () => {
+  it("rejects malformed commands and unknown projects", async () => {
     assert.equal((await rejection(addon.dispatch(9, nextRequest++, "not json"))).code, "invalid_command");
     assert.equal((await rejection(addon.dispatch(9, nextRequest++, '{"command":"nope"}'))).code, "invalid_command");
-    assert.equal((await rejection(addon.dispatch(9, -1, '{"command":"graph_status"}'))).code, "invalid_args");
-    const notAttached = await rejection(dispatch(9, "graph_status"));
-    assert.equal(notAttached.code, "not_attached");
-    assert.equal(typeof notAttached.message, "string");
+    assert.equal((await rejection(addon.dispatch(9, -1, '{"command":"workspace"}'))).code, "invalid_args");
+    const unknown = await rejection(dispatch(9, "project_summary", { project: "p-nonenonen" }));
+    assert.equal(unknown.code, "unknown_project");
+    assert.equal(typeof unknown.message, "string");
   });
 
   it("refuses trusted-only commands without trusted, and runs them with it", async () => {
-    assert.equal((await rejection(dispatch(0, "folder_windows", { root: folder }))).code, "untrusted");
-    const windows = JSON.parse(
-      await addon.dispatch(0, nextRequest++, JSON.stringify({ command: "folder_windows", args: { root: folder }, trusted: true })),
-    );
-    assert.deepEqual(windows.windows, []);
+    assert.equal((await rejection(dispatch(1, "add_project", { path: folder }))).code, "untrusted");
+    const added = await trusted("add_project", { path: folder });
+    assert.equal(added.status, "added");
+    assert.equal(added.project.name, "ts-orders");
+    project = added.project.id;
+    const changed = await sinkMessage((m) => m.kind === "broadcast" && m.event.type === "workspace_changed");
+    assert.equal(changed.event.workspace.projects[0].id, project);
+    assert.deepEqual((await trusted("saved_windows")).windows, []);
   });
 
-  it("opens a workspace, and its event reaches the sink from a Rust thread", async () => {
-    const opened = JSON.parse(await addon.openWorkspace(1, folder));
-    assert.equal(opened.name, "ts-orders");
-    const event = await sinkMessage((m) => m.kind === "event" && m.event.type === "folder_opened");
-    assert.deepEqual(event.windows, [1]);
+  it("wakes a selected project, and its events reach the sink from Rust threads", async () => {
+    assert.equal(await dispatch(1, "select_project", { project }), null);
+    const state = await sinkMessage((m) => broadcast(m, "project_state"));
+    assert.equal(state.event.state.kind, "not_compiled");
+    const workspace = await dispatch(2, "workspace");
+    assert.equal(workspace.projects[0].live, true);
   });
 
-  it("compiles with streamed progress and a graph_updated event, then serves entrances and cards", async () => {
+  it("compiles with streamed progress and a graph_updated broadcast, then serves entrances and cards", async () => {
     const requestId = nextRequest++;
-    const outcome = JSON.parse(await addon.dispatch(1, requestId, JSON.stringify({ command: "compile", args: {} })));
+    const outcome = JSON.parse(
+      await addon.dispatch(1, requestId, JSON.stringify({ command: "compile", args: { project } })),
+    );
     assert.equal(typeof outcome, "object");
     await sinkMessage((m) => m.kind === "stream" && m.windowId === 1 && m.requestId === requestId);
-    const updated = await sinkMessage((m) => m.kind === "event" && m.event.type === "graph_updated");
-    assert.deepEqual(updated.windows, [1]);
+    await sinkMessage((m) => broadcast(m, "graph_updated"));
 
-    const tree = await dispatch(1, "entrance_tree");
-    const entrance = [...tree.applications.flatMap((app) => app.entrances), ...tree.unreached][0];
+    const map = await dispatch(2, "entrances", { project });
+    const entrance = [...map.applications.flatMap((app) => app.entrances), ...map.unreached.entrances][0];
     assert.ok(entrance, "ts-orders has entrances");
-    const card = await dispatch(1, "card", { key: entrance.key });
+    const card = await dispatch(2, "card", { project, key: entrance.key });
     assert.equal(typeof card.type, "string");
-  });
-
-  it("sends a folder's events to every window attached to it", async () => {
-    await addon.openWorkspace(2, folder);
-    const before = messages.length;
-    await dispatch(2, "compile", { mode: "from_scratch" });
-    const updated = await sinkMessage((m) => messages.indexOf(m) >= before && m.kind === "event" && m.event.type === "graph_updated");
-    assert.deepEqual([...updated.windows].sort(), [1, 2]);
   });
 
   it("cancels a running command", async () => {
     const requestId = nextRequest++;
-    const running = addon.dispatch(1, requestId, JSON.stringify({ command: "compile", args: { mode: "from_scratch" } }));
+    const running = addon.dispatch(
+      1,
+      requestId,
+      JSON.stringify({ command: "compile", args: { project, mode: "from_scratch" } }),
+    );
     addon.cancel(requestId);
     assert.equal((await rejection(running)).code, "cancelled");
     addon.cancel(requestId); // Finished: a no-op.
     addon.cancel(-5); // Not a request id: ignored.
-    assert.equal(typeof (await dispatch(1, "graph_status")), "object");
+    assert.equal(typeof (await dispatch(1, "project_summary", { project })), "object");
   });
 
-  it("closes workspaces", async () => {
-    assert.equal(await addon.closeWorkspace(2), undefined);
-    assert.equal(await addon.closeWorkspace(1), undefined);
-    assert.equal((await rejection(dispatch(1, "graph_status"))).code, "not_attached");
+  it("detaches windows, waiting for their closing writes", async () => {
+    const state = { key: "w1", selectedProject: project, tabs: [], activeTab: null, layout: {} };
+    const saving = dispatch(1, "save_window_state", { state });
+    assert.equal(await addon.detachWindow(1), undefined);
+    assert.equal(await saving, null);
+    assert.equal((await dispatch(3, "window_state", { key: "w1" })).selectedProject, project);
+    assert.equal(await addon.detachWindow(2), undefined);
+    assert.equal(await addon.detachWindow(42), undefined, "an unknown window is fine");
+  });
+
+  it("shuts down, remembering each project's state", async () => {
+    assert.equal(await addon.shutdown(), undefined);
+    const saved = JSON.parse(readFileSync(join(scratch, "app-data", "workspace.json"), "utf8"));
+    assert.equal(saved.projects[0].lastKnown.state.kind, "current");
+    assert.equal((await rejection(dispatch(1, "project_summary", { project }))).code, "closed");
   });
 });

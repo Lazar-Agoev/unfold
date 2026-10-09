@@ -1,15 +1,16 @@
 //! Opening, the first Compile, reopening, the lock, the fallback location, losing the cache,
-//! Rebuild from scratch, and several windows on one folder.
+//! Rebuild from scratch, confinement, and remembered state.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use unfold_core::vocab::Language;
 use unfold_workspace::{
-    AppConfig, CompileMode, FallbackReason, GraphState, Registry, Workspace, WorkspaceError, WorkspaceEvent,
+    BoardView, CompileMode, FallbackReason, GraphState, LocalState, ProjectState, Workspace, WorkspaceError,
+    WorkspaceEvent,
 };
 
-use crate::common::{Playground, RecordingSink, compile, has_block, options, settle, updates};
+use crate::common::{Playground, RecordingSink, compile, has_block, project, settle, updates};
 
 #[test]
 fn opening_writes_nothing_and_the_first_compile_creates_local() {
@@ -17,9 +18,11 @@ fn opening_writes_nothing_and_the_first_compile_creates_local() {
     let sink = RecordingSink::new();
     let workspace = playground.open(&sink, false);
     assert_eq!(workspace.status().state, GraphState::NotCompiled);
+    assert_eq!(workspace.project_state(), ProjectState::NotCompiled);
+    assert_eq!(workspace.project(), &project());
     assert!(matches!(workspace.readers(), Err(WorkspaceError::NotCompiled)));
     workspace
-        .update_folder_state(|state| state.windows.clear())
+        .update_local_state(|state| state.empty_folders.push("Later".into()))
         .expect("state in memory");
     settle(&workspace);
     assert!(
@@ -43,6 +46,15 @@ fn opening_writes_nothing_and_the_first_compile_creates_local() {
         assert!(playground.path(path).exists(), "{path} is missing");
     }
     assert!(!playground.path(".unfold/config.toml").exists());
+    let saved: LocalState = serde_json::from_slice(
+        &std::fs::read(playground.path(".unfold/local/state.json")).expect("state.json"),
+    )
+    .expect("state.json parses");
+    assert_eq!(
+        saved.empty_folders,
+        ["Later"],
+        "the state kept in memory was written"
+    );
     match workspace.status().state {
         GraphState::Current { files, languages }
         | GraphState::DoesntParse {
@@ -55,8 +67,8 @@ fn opening_writes_nothing_and_the_first_compile_creates_local() {
         }
         other => panic!("unexpected status {other:?}"),
     }
-    let (_, updated) = sink
-        .wait_for(mark, |_, event| event.kind() == "graph_updated")
+    let updated = sink
+        .wait_for(mark, |event| event.kind() == "graph_updated")
         .expect("graph_updated");
     assert!(matches!(
         updated,
@@ -93,7 +105,7 @@ fn reopening_is_readable_at_once_then_catches_up() {
     let reader = workspace.readers().expect("readers").get().expect("reader");
     assert!(reader.files().expect("files").len() > 20);
     drop(reader);
-    sink.wait_for(mark, |_, event| updates(event, "src/added.ts"))
+    sink.wait_for(mark, |event| updates(event, "src/added.ts"))
         .expect("the reopen check found the new file");
     settle(&workspace);
     assert!(has_block(&workspace, "src/added.ts", "addedWhileClosed"));
@@ -120,7 +132,7 @@ fn an_engine_version_change_recompiles_in_the_background() {
 
     let mark = sink.mark();
     let workspace = playground.open(&sink, false);
-    sink.wait_for(mark, |_, event| event.kind() == "graph_updated")
+    sink.wait_for(mark, |event| event.kind() == "graph_updated")
         .expect("the recompile committed");
     settle(&workspace);
     assert!(has_block(&workspace, "src/services/order-service.ts", "place"));
@@ -182,7 +194,7 @@ fn deleting_the_cache_while_open_recreates_it() {
     std::fs::remove_dir_all(playground.path(".unfold/local/cache")).expect("delete cache");
     let mark = sink.mark();
     workspace.rescan();
-    sink.wait_for(mark, |_, event| event.kind() == "graph_updated")
+    sink.wait_for(mark, |event| event.kind() == "graph_updated")
         .expect("recompiled");
     settle(&workspace);
     assert!(playground.path(".unfold/local/cache/graph.sqlite").exists());
@@ -199,7 +211,7 @@ fn deleting_the_cache_is_noticed_by_the_watcher() {
     compile(&workspace);
     let mark = sink.mark();
     std::fs::remove_dir_all(playground.path(".unfold/local/cache")).expect("delete cache");
-    sink.wait_for(mark, |_, event| event.kind() == "graph_updated")
+    sink.wait_for(mark, |event| event.kind() == "graph_updated")
         .expect("recompiled after the watcher saw the cache go");
     settle(&workspace);
     assert!(playground.path(".unfold/local/cache/graph.sqlite").exists());
@@ -288,66 +300,6 @@ fn a_cancelled_rebuild_keeps_the_previous_graph() {
 }
 
 #[test]
-fn two_windows_share_one_workspace() {
-    let playground = Playground::new("ts-orders", true);
-    let sink = RecordingSink::new();
-    let config = AppConfig {
-        app_data_dir: playground.fallback.join("app"),
-        logs_dir: playground.fallback.join("logs"),
-        fallback_cache_dir: playground.fallback.clone(),
-    };
-    let registry = Registry::with_options(config, Arc::clone(&sink) as _, options(false));
-    let closed = Arc::new(AtomicUsize::new(0));
-    let hook_count = Arc::clone(&closed);
-    registry.set_close_hook(Arc::new(move |_| {
-        hook_count.fetch_add(1, Ordering::Relaxed);
-    }));
-    let first = registry.open(1, &playground.root).expect("open 1");
-    let second = registry.open(2, &playground.root.join("src/..")).expect("open 2");
-    assert_eq!(first.folder, second.folder);
-    assert_eq!(second.windows, [1, 2]);
-    let one = registry.workspace(1).expect("window 1");
-    let two = registry.workspace(2).expect("window 2");
-    assert!(Arc::ptr_eq(&one, &two));
-    assert_eq!(registry.workspaces().len(), 1);
-    assert_eq!(registry.app().recent().folders[0].path, first.folder);
-    assert!(
-        sink.of_kind(0, "folder_opened")
-            .iter()
-            .any(|(windows, _)| windows == &[2])
-    );
-
-    let mark = sink.mark();
-    compile(&one);
-    let (windows, _) = sink
-        .wait_for(mark, |_, event| event.kind() == "graph_updated")
-        .expect("graph_updated");
-    assert_eq!(windows, [1, 2]);
-
-    one.claims().claim("orders", 1).expect("claim");
-    assert!(matches!(
-        two.claims().claim("orders", 2),
-        Err(WorkspaceError::BoardHeld { window: 1, .. })
-    ));
-    one.transfer_board("orders", 1, 2).expect("move to window 2");
-    assert!(one.transfer_board("orders", 2, 9).is_err());
-
-    drop((one, two));
-    registry.close(1);
-    assert_eq!(closed.load(Ordering::Relaxed), 0);
-    assert!(registry.workspace(2).is_ok());
-    assert!(registry.workspace(1).is_err());
-    registry.close(2);
-    assert_eq!(closed.load(Ordering::Relaxed), 1);
-    assert!(registry.workspaces().is_empty());
-    // The lock went with the workspace.
-    let again = registry.open(3, &playground.root).expect("reopen");
-    assert!(again.compiled);
-    registry.shutdown();
-    assert_eq!(closed.load(Ordering::Relaxed), 2);
-}
-
-#[test]
 fn paths_are_confined_to_the_folder() {
     let playground = Playground::new("ts-orders", true);
     let sink = RecordingSink::new();
@@ -365,7 +317,7 @@ fn paths_are_confined_to_the_folder() {
 }
 
 #[test]
-fn concurrent_folder_state_updates_leave_the_file_equal_to_the_final_state() {
+fn concurrent_local_state_updates_leave_the_file_equal_to_the_final_state() {
     let playground = Playground::new("ts-orders", false);
     let sink = RecordingSink::new();
     let workspace = playground.open(&sink, false);
@@ -380,17 +332,14 @@ fn concurrent_folder_state_updates_leave_the_file_equal_to_the_final_state() {
             scope.spawn(move || {
                 for update in 0..UPDATES {
                     workspace
-                        .update_folder_state(|state| {
-                            state.put_window(unfold_workspace::WindowState {
-                                key: format!("window-{thread}"),
-                                bounds: Some(unfold_workspace::WindowBounds {
-                                    x: update,
-                                    y: thread,
-                                    width: 800,
-                                    height: 600,
-                                }),
-                                ..unfold_workspace::WindowState::default()
-                            });
+                        .update_local_state(|state| {
+                            state.put_board_view(
+                                &format!(".unfold/boards/b{thread}.json"),
+                                BoardView {
+                                    page: Some(format!("page-{update}")),
+                                    ..BoardView::default()
+                                },
+                            );
                         })
                         .expect("concurrent writes all succeed");
                 }
@@ -398,18 +347,19 @@ fn concurrent_folder_state_updates_leave_the_file_equal_to_the_final_state() {
         }
     });
 
-    let on_disk: unfold_workspace::FolderState = serde_json::from_slice(
+    let on_disk: LocalState = serde_json::from_slice(
         &std::fs::read(playground.path(".unfold/local/state.json")).expect("state.json"),
     )
     .expect("state.json parses");
-    let in_memory = workspace.folder_state();
+    let in_memory = workspace.local_state();
     assert_eq!(on_disk, in_memory);
-    assert_eq!(in_memory.windows.len(), THREADS as usize);
+    assert_eq!(in_memory.boards.len(), THREADS as usize);
+    let last = format!("page-{}", UPDATES - 1);
     assert!(
         in_memory
-            .windows
-            .iter()
-            .all(|window| window.bounds.is_some_and(|bounds| bounds.x == UPDATES - 1))
+            .boards
+            .values()
+            .all(|view| view.page.as_deref() == Some(last.as_str()))
     );
     let leftovers: Vec<_> = std::fs::read_dir(playground.path(".unfold/local"))
         .expect("local/")

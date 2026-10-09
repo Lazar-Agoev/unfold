@@ -2,38 +2,30 @@
  * Window and dialog commands, the only IPC the main process answers (architecture §12). Engine
  * commands never come here: they travel over each window's port to the engine host. A few window
  * commands end in an engine request the main process sends itself, with `"trusted": true`
- * (`export_mermaid`), because they involve a path only the main process may choose.
+ * (`add_project`, `export_mermaid`), because they involve a path only the main process may choose.
  */
 
 import { clipboard, ipcMain } from "electron";
-import type {
-  ExportedFile,
-  OpenedIn,
-  TransportError,
-  WindowCommand,
-  WindowCommands,
-  WindowInfo,
-} from "../shared/unfold-api";
+import type { ExportedFile, TransportError, WindowCommand, WindowCommands, WindowInfo } from "../shared/unfold-api";
 import { IPC, PRELOAD_COMMANDS, transportError, type WindowReply } from "../shared/transport";
 import type { UiSource } from "./app-url";
-import { chooseExportPath, chooseFolder } from "./dialogs";
+import { chooseExportPath, chooseFolder, confirmRemoveProject } from "./dialogs";
 import type { EngineHost } from "./engine-host";
 import { EngineRequestError } from "./engine-host";
 import { exportFileName } from "./export-name";
-import { canonicalFolder, isDirectoryPath, type Folders } from "./folders";
-import { isRecentFolder, openFolderTarget } from "./recent";
 import { trustedSender } from "./security";
 import type { WindowEntry, WindowRegistry } from "./windows";
+import type { Workspace } from "./workspace";
 
 type Handler<C extends WindowCommand> = (
   entry: WindowEntry,
   args: Readonly<Record<string, unknown>>,
 ) => Promise<WindowCommands[C]["result"]> | WindowCommands[C]["result"];
 
-/** How long `move_tab_to_new_window` waits for the new window to attach to the folder. */
-const ATTACH_TIMEOUT_MS = 20_000;
 /** The most text `copy_to_clipboard` accepts (a large board's Mermaid is well under this). */
 const MAX_CLIPBOARD_CHARS = 8_000_000;
+/** The longest project name `confirm_remove_project` shows (a shared name is at most 64 characters). */
+const MAX_PROJECT_NAME = 64;
 
 class CommandError extends Error {
   constructor(readonly error: TransportError) {
@@ -47,112 +39,64 @@ function invalid(message: string): CommandError {
 
 export interface WindowCommandServices {
   readonly registry: WindowRegistry;
-  readonly folders: Folders;
-  readonly engine: Pick<EngineHost, "request" | "whenAttached">;
+  readonly workspace: Pick<Workspace, "add">;
+  readonly engine: Pick<EngineHost, "request">;
   readonly ui: UiSource;
 }
 
-export function registerWindowCommands({ registry, folders, engine, ui }: WindowCommandServices): void {
-  const opened = (entry: WindowEntry): OpenedIn => ({ windowId: entry.id, folder: entry.folder ?? "" });
-
+export function registerWindowCommands({ registry, workspace, engine, ui }: WindowCommandServices): void {
   const handlers: { [C in WindowCommand]: Handler<C> } = {
-    new_window: (entry, args) => {
-      const folder = args["folder"] ?? "same";
-      if (folder !== "same" && folder !== "none") {
-        throw invalid('new_window: folder must be "same" or "none".');
-      }
-      return { windowId: registry.create(folder === "same" ? entry.folder : null).id };
-    },
+    new_window: () => ({ windowId: registry.create().id }),
     focus_window: (_entry, args) => {
-      const windowId = args["windowId"];
+      const { windowId, board } = args;
       const target = typeof windowId === "number" ? registry.get(windowId) : undefined;
       if (!target) {
         throw invalid("focus_window: no such window.");
       }
+      const focusBoard = board === undefined ? null : boardRef(board);
+      if (focusBoard === undefined) {
+        throw invalid("focus_window: board must be {project, board} (strings).");
+      }
       registry.focus(target);
+      if (focusBoard) {
+        registry.deliver(target, { type: "focus_board", ...focusBoard });
+      }
       return null;
     },
     close_window: (entry) => {
       entry.window.close();
       return null;
     },
-    close_folder: async (entry) => {
-      if (entry.folder === null) {
-        return null;
-      }
-      await folders.close(entry);
-      return { windowKey: entry.key };
+    add_project: async (entry) => {
+      const path = await chooseFolder(entry.window);
+      return path === null ? null : await addProject(entry, path);
     },
-    choose_folder: async (entry, args) => {
-      const target = args["target"] ?? "this_window";
-      if (target !== "this_window" && target !== "new_window") {
-        throw invalid('choose_folder: target must be "this_window" or "new_window".');
+    confirm_remove_project: async (entry, args) => {
+      const { name } = args;
+      if (typeof name !== "string" || name.length === 0 || name.length > MAX_PROJECT_NAME) {
+        throw invalid("confirm_remove_project: name must be a project name.");
       }
-      const folder = await chooseFolder(entry.window);
-      if (folder === null) {
-        return null;
-      }
-      return opened(await folders.open(folder, target === "this_window" ? entry : undefined));
-    },
-    open_folder: async (entry, args) => {
-      const { path } = args;
-      const target = openFolderTarget(args);
-      if (typeof path !== "string" || target === null) {
-        throw invalid('open_folder: path must be a string, target "this_window" or "new_window", newWindow a boolean.');
-      }
-      const recent = await engineRequest(0, "recent_folders", {});
-      if (!isRecentFolder(recent, path, canonicalFolder)) {
-        throw new CommandError({ code: "not_recent", message: "Only a folder from the recent list can be opened by path." });
-      }
-      const folder = canonicalFolder(path);
-      if (!isDirectoryPath(folder)) {
-        throw new CommandError({ code: "not_a_folder", message: `${path} is no longer a folder.` });
-      }
-      return opened(await folders.open(folder, target === "this_window" ? entry : undefined));
-    },
-    choose_export_path: async (entry, args) => {
-      const defaultName = args["defaultName"] ?? "board.mmd";
-      if (typeof defaultName !== "string") {
-        throw invalid("choose_export_path: defaultName must be a string.");
-      }
-      const path = await chooseExportPath(entry.window, defaultName);
-      return path === null ? null : { path };
+      return { confirmed: await confirmRemoveProject(entry.window, name) };
     },
     export_mermaid: async (entry, args) => {
-      const { boardId, entrance, title } = args;
-      const source =
-        typeof boardId === "string" && entrance === undefined
-          ? { board: boardId }
-          : typeof entrance === "string" && boardId === undefined
-            ? { entrance }
-            : null;
-      if (!source || (title !== undefined && typeof title !== "string")) {
-        throw invalid("export_mermaid: pass exactly one of boardId and entrance (strings), and an optional title.");
+      const source = exportSource(args);
+      if (!source) {
+        throw invalid(
+          "export_mermaid: pass {project, board, page} or {project, entrance} (strings), and an optional title.",
+        );
       }
-      const path = await chooseExportPath(entry.window, exportFileName(title ?? source.board ?? source.entrance));
+      const path = await chooseExportPath(entry.window, exportFileName(source.title));
       if (path === null) {
         return null;
       }
-      return (await engineRequest(entry.id, "export_mermaid", { ...source, path })) as ExportedFile;
+      return (await engineRequest(entry.id, "export_mermaid", { ...source.args, path })) as ExportedFile;
     },
-    move_tab_to_new_window: async (entry) => {
-      const created = registry.create(entry.folder);
-      if (entry.folder !== null) {
-        const error = await engine.whenAttached(created.id, entry.folder, ATTACH_TIMEOUT_MS);
-        if (error) {
-          throw new CommandError(error);
-        }
-      }
-      return { windowId: created.id };
-    },
+    move_tab_to_new_window: () => ({ windowId: registry.create().id }),
     transfer_board_state: (entry, args) => {
       const toWindow = args["toWindow"];
       const target = typeof toWindow === "number" ? registry.get(toWindow) : undefined;
       if (!target || target === entry) {
         throw invalid("transfer_board_state: no such other window.");
-      }
-      if (entry.folder === null || target.folder !== entry.folder) {
-        throw invalid("transfer_board_state: the target window shows another folder.");
       }
       registry.deliver(target, { type: "board_state_transferred", fromWindow: entry.id, payload: args["payload"] });
       return null;
@@ -168,24 +112,28 @@ export function registerWindowCommands({ registry, folders, engine, ui }: Window
     window_info: (entry): WindowInfo => ({
       windowId: entry.id,
       key: entry.key,
-      folder: entry.folder,
       platform: process.platform === "darwin" || process.platform === "win32" ? process.platform : "linux",
     }),
   };
 
   /** Commands the preload sends on the person's behalf, outside `window.unfold.window`. */
   const preloadHandlers: Readonly<Record<string, Handler<WindowCommand>>> = {
-    [PRELOAD_COMMANDS.openDroppedFolder]: async (entry, args) => {
-      const { path, target = "this_window" } = args;
-      if (typeof path !== "string" || (target !== "this_window" && target !== "new_window")) {
-        throw invalid("open_dropped_folder: path must be a string and target this_window or new_window.");
+    [PRELOAD_COMMANDS.addDroppedFolder]: async (entry, args) => {
+      const { path } = args;
+      if (typeof path !== "string" || path.length === 0) {
+        throw invalid("add_dropped_folder: path must be a string.");
       }
-      if (!isDirectoryPath(path)) {
-        throw new CommandError({ code: "not_a_folder", message: "Only a folder can be opened." });
-      }
-      return opened(await folders.open(path, target === "this_window" ? entry : undefined));
+      return addProject(entry, path);
     },
   };
+
+  async function addProject(entry: WindowEntry, path: string) {
+    try {
+      return await workspace.add(entry.id, path);
+    } catch (error) {
+      throw error instanceof EngineRequestError ? new CommandError(error.error) : error;
+    }
+  }
 
   async function engineRequest(windowId: number, command: string, args: Readonly<Record<string, unknown>>) {
     try {
@@ -227,4 +175,37 @@ export function registerWindowCommands({ registry, folders, engine, ui }: Window
       return { ok: false, error: transportError("internal", `${String(command)} failed.`) };
     }
   });
+}
+
+/** `focus_window`'s `board`: `{project, board}`, or undefined when malformed. */
+function boardRef(value: unknown): { project: string; board: string } | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const { project, board } = value;
+  return typeof project === "string" && typeof board === "string" ? { project, board } : undefined;
+}
+
+/**
+ * `export_mermaid`'s source as the engine takes it (`{project, board: {id, page}}` or `{project,
+ * entrance}`), and the title the default file name comes from; null when malformed.
+ */
+function exportSource(
+  args: Readonly<Record<string, unknown>>,
+): { args: Readonly<Record<string, unknown>>; title: string } | null {
+  const { project, board, page, entrance, title } = args;
+  if (typeof project !== "string" || (title !== undefined && typeof title !== "string")) {
+    return null;
+  }
+  if (typeof board === "string" && typeof page === "string" && entrance === undefined) {
+    return { args: { project, board: { id: board, page } }, title: title ?? board };
+  }
+  if (typeof entrance === "string" && board === undefined && page === undefined) {
+    return { args: { project, entrance }, title: title ?? entrance };
+  }
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

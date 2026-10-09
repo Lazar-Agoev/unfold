@@ -1,0 +1,33 @@
+{
+  "kind": "entrance",
+  "project": "<project>",
+  "header": {
+    "key": "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/jobs/import-orders.ts#importOrders\"]",
+    "kind": "command",
+    "title": "command import",
+    "label": null,
+    "method": null,
+    "trigger": "import",
+    "triggerStatus": "exact",
+    "detector": "manual",
+    "language": null
+  },
+  "handlers": [
+    {
+      "name": "importOrders",
+      "key": "src/jobs/import-orders.ts#function:importOrders",
+      "path": "src/jobs/import-orders.ts",
+      "line": 6
+    }
+  ],
+  "declared": {
+    "path": ".unfold/config.toml",
+    "line": 6
+  },
+  "reaches": 7,
+  "externalModules": [
+    "global",
+    "node:crypto",
+    "node:fs/promises"
+  ]
+}

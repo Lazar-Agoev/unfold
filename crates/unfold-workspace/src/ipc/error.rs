@@ -5,16 +5,22 @@
 //! | --- | --- |
 //! | `invalid_command` | The command JSON is malformed or names no command |
 //! | `invalid_args` | The arguments don't fit the command |
-//! | `untrusted` | The command needs the main process (a path chosen in a dialog) |
-//! | `not_found` | The key, path, or board doesn't exist |
+//! | `untrusted` | The command needs the main process (a path chosen in a dialog, window lifecycle) |
+//! | `not_found` | The key, path, board, or removed folder doesn't exist |
+//! | `unknown_project` | No project with that id is in the workspace |
+//! | `boards_open` | A window holds a board of the project (remove, switch worktree) |
+//! | `not_a_worktree` | `switch_worktree` to a path that isn't an available worktree of the project |
+//! | `too_many_projects` | The workspace has 64 projects |
+//! | `invalid_folder` | A board folder path breaks the folder rules |
+//! | `folder_exists` / `folder_not_empty` | A board folder rename's target is taken / a deleted board folder has boards |
 //! | `board_invalid` | A board file or document breaks the `unfold-board` format |
 //! | `board_problem` | A save would introduce a missing reference, broken group, or held reference |
 //! | `board_conflict` | The board changed on disk since the revision the edit is based on |
-//! | `no_window_folder` | A window command for a window that shows no folder |
+//! | `name_taken` | A published board's file name is taken |
 //! | `no_editor` | `open_in_editor` has no editor command and opening the file could run it |
 //! | `cancelled` | The request was cancelled |
 //! | `internal` | A bug: a panic or a broken invariant |
-//! | everything else | [`WorkspaceError::code`] (`not_compiled`, `invalid_path`, `board_held`, ...) |
+//! | everything else | [`WorkspaceError::code`] (`not_compiled`, `invalid_path`, `board_held`, `not_a_folder`, `open_elsewhere`, ...) |
 
 use serde::Serialize;
 use ts_rs::TS;
@@ -121,7 +127,7 @@ mod tests {
         assert_eq!(error.code, "not_compiled");
         assert_eq!(
             error.to_json(),
-            r#"{"code":"not_compiled","message":"the folder has not been compiled yet"}"#
+            r#"{"code":"not_compiled","message":"the project has not been compiled yet"}"#
         );
         let board = CommandError::from(BoardError::InvalidName { name: "../x".into() });
         assert_eq!(board.code, "invalid_args");

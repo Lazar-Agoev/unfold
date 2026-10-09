@@ -1,23 +1,22 @@
-//! What a command handler gets: the calling window, its workspace, the request's cancellation
-//! token and stream, and whether the main process sent it.
+//! What a command handler gets: the workspace's projects, the calling window, the request's
+//! cancellation token and stream, and whether the main process sent it.
 
 use std::sync::Arc;
 
 use serde::Serialize;
 use unfold_engine::CancelToken;
 
-use crate::commands::FolderExtras;
-use crate::events::WindowId;
+use crate::events::{WindowId, WorkspaceEvent};
 use crate::host::HostState;
 use crate::ipc::error::{CommandError, CommandResult};
-use crate::registry::Registry;
+use crate::projects::{ProjectHandle, ProjectId, Projects};
 use crate::workspace::Workspace;
 
 /// One running command. Cheap to pass by reference to every handler.
 pub struct Ctx<'a> {
     pub(crate) host: &'a Arc<HostState>,
-    pub(crate) registry: &'a Registry,
-    /// The window the command runs for.
+    pub(crate) projects: &'a Projects,
+    /// The window the command runs for (`0` for the main process's own requests).
     pub window: WindowId,
     /// The request's ID, which `cancel` names.
     pub request: u64,
@@ -29,19 +28,20 @@ pub struct Ctx<'a> {
 }
 
 impl Ctx<'_> {
-    /// The registry: app data and every open folder.
-    pub fn registry(&self) -> &Registry {
-        self.registry
+    /// The workspace's projects, app data, and recent boards.
+    pub fn projects(&self) -> &Projects {
+        self.projects
     }
 
-    /// The workspace of the calling window's folder.
-    pub fn workspace(&self) -> CommandResult<Arc<Workspace>> {
-        Ok(self.registry.workspace(self.window)?)
+    /// Project `id`, without waking it (`unknown_project` when the workspace has no such
+    /// project).
+    pub fn project(&self, id: &ProjectId) -> CommandResult<ProjectHandle<'_>> {
+        Ok(self.projects.handle(id)?)
     }
 
-    /// The command-side state of a folder (board sessions, the file list).
-    pub fn extras(&self, workspace: &Workspace) -> Arc<FolderExtras> {
-        self.host.extras(workspace.folder())
+    /// Project `id`'s live workspace: wakes the project if it rests, and extends its lease.
+    pub fn live(&self, id: &ProjectId) -> CommandResult<Arc<Workspace>> {
+        Ok(self.project(id)?.wake()?)
     }
 
     /// Sends one stream message for this request.
@@ -70,13 +70,13 @@ impl Ctx<'_> {
         }
     }
 
-    /// Sends an event to some windows, as the workspace does.
-    pub fn deliver(&self, windows: &[WindowId], event: &crate::events::WorkspaceEvent) {
+    /// Sends an event to some windows only (`board_conflict`, to the window holding the board).
+    pub fn deliver(&self, windows: &[WindowId], event: &WorkspaceEvent) {
         self.host.deliver(windows, event);
     }
 
-    /// Sends an app-wide event to every window, including windows that show no folder.
-    pub fn broadcast(&self, event: &crate::events::WorkspaceEvent) {
+    /// Sends an event to every window.
+    pub fn broadcast(&self, event: &WorkspaceEvent) {
         self.host.broadcast(event);
     }
 }

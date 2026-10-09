@@ -1,13 +1,15 @@
-//! The `unfold-board` version 1 document (architecture §9.1, decision U-22).
+//! The `unfold-board` version 1 document (architecture §9.1, decision U-22; redesign R-5, R-7).
 //!
-//! A board holds authored choices only: references to blocks and entrances by structural key,
-//! canvas positions, each card's saved view and fold, groups, descriptions, Flow labels, and the
-//! guards that keep references from silently reattaching to different code. It never holds
-//! copied source or compiled arrows.
+//! A board is a titled list of **pages**, optionally filed in a folder. Each page holds authored
+//! choices only: references to blocks and entrances by structural key (in the board's own
+//! project or in another project named by its shared name), canvas positions, each card's saved
+//! view and fold, groups, descriptions, Flow labels, the guards that keep references from
+//! silently reattaching to different code, and links drawn between cards. It never holds copied
+//! source or compiled arrows.
 
-use std::collections::BTreeMap;
 use std::fmt;
 
+use rustc_hash::FxHashSet;
 use serde::Serialize;
 use unfold_core::{ContentHash, Key};
 
@@ -19,6 +21,9 @@ pub const VERSION: u32 = 1;
 
 /// The JSON Schema of the format.
 pub const SCHEMA: &str = include_str!("../../schema/unfold-board.schema.json");
+
+/// The id of the page a new board starts with.
+const FIRST_PAGE: &str = "page-1";
 
 /// A card's view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
@@ -47,6 +52,69 @@ impl View {
             _ => None,
         }
     }
+}
+
+/// A project's shared name (`[project] name` in its `.unfold/config.toml`, or its default):
+/// a letter or digit, then up to 63 letters, digits, `.`, `_`, or `-`. Boards name other
+/// projects by it.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(type = "string"))]
+#[serde(transparent)]
+pub struct ProjectName(Box<str>);
+
+impl ProjectName {
+    /// The name, when `text` is a valid shared name.
+    pub fn parse(text: &str) -> Option<Self> {
+        is_slug(text, 64).then(|| Self(text.into()))
+    }
+
+    /// The name.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for ProjectName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Whether `text` is a letter or digit followed by letters, digits, `.`, `_`, or `-`, with at
+/// most `max` characters in all.
+fn is_slug(text: &str, max: usize) -> bool {
+    text.len() <= max
+        && text
+            .chars()
+            .next()
+            .is_some_and(|first| first.is_ascii_alphanumeric())
+        && text
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-'))
+}
+
+/// Whether `id` is a valid page, card, group, or link id: a letter or digit, then up to 99
+/// letters, digits, `_`, `.`, or `-`.
+pub(crate) fn is_id(id: &str) -> bool {
+    is_slug(id, 100)
+}
+
+/// Whether `path` is a valid board folder path: 1 to 8 segments joined by `/`, each 1 to 64
+/// characters without leading or trailing whitespace, control characters, `/`, or `\`, and not
+/// `.` or `..`. Folder names compare exactly.
+pub fn is_folder_path(path: &str) -> bool {
+    let segments: Vec<&str> = path.split('/').collect();
+    (1..=8).contains(&segments.len())
+        && segments.iter().all(|segment| {
+            let length = segment.chars().count();
+            (1..=64).contains(&length)
+                && segment.trim() == *segment
+                && !segment
+                    .chars()
+                    .any(|character| character.is_control() || character == '\\')
+                && *segment != "."
+                && *segment != ".."
+        })
 }
 
 /// Who wrote a description or label: `person:<name>` or `agent:<name>`.
@@ -153,7 +221,7 @@ impl From<Signature> for String {
     }
 }
 
-/// A card or group description, or a Flow label.
+/// A card or group description, a Flow label's text, or a drawn link's label.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Description {
@@ -178,47 +246,90 @@ fn signature_or_empty<S: serde::Serializer>(
     }
 }
 
-/// What a card shows: exactly one block or entrance, by structural key.
+/// What a card shows: exactly one block or entrance, by structural key, in the board's own
+/// project (`project` absent) or in the project with that shared name.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[serde(rename_all = "camelCase")]
+#[serde(untagged)]
 pub enum CardRef {
     /// A block (a definition or another indexed block).
-    Block(Key),
+    Block {
+        /// The block's key.
+        block: Key,
+        /// Its project; absent for the board's own.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional))]
+        project: Option<ProjectName>,
+    },
     /// A declared entrance.
-    Entrance(Key),
+    Entrance {
+        /// The entrance's key.
+        entrance: Key,
+        /// Its project; absent for the board's own.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional))]
+        project: Option<ProjectName>,
+    },
 }
 
 impl CardRef {
+    /// A block in `project` (`None`: the board's own).
+    pub fn block(key: Key, project: Option<ProjectName>) -> Self {
+        Self::Block { block: key, project }
+    }
+
+    /// An entrance in `project` (`None`: the board's own).
+    pub fn entrance(key: Key, project: Option<ProjectName>) -> Self {
+        Self::Entrance {
+            entrance: key,
+            project,
+        }
+    }
+
     /// The referenced key.
     pub fn key(&self) -> &Key {
         match self {
-            Self::Block(key) | Self::Entrance(key) => key,
+            Self::Block { block: key, .. } | Self::Entrance { entrance: key, .. } => key,
         }
     }
 
     /// The block key, for a block card.
-    pub fn block(&self) -> Option<&Key> {
+    pub fn block_key(&self) -> Option<&Key> {
         match self {
-            Self::Block(key) => Some(key),
-            Self::Entrance(_) => None,
+            Self::Block { block, .. } => Some(block),
+            Self::Entrance { .. } => None,
+        }
+    }
+
+    /// The project; `None` for the board's own.
+    pub fn project(&self) -> Option<&ProjectName> {
+        match self {
+            Self::Block { project, .. } | Self::Entrance { project, .. } => project.as_ref(),
+        }
+    }
+
+    /// The same kind of reference to `key` in the same project.
+    pub(crate) fn with_key(&self, key: Key) -> Self {
+        match self {
+            Self::Block { project, .. } => Self::block(key, project.clone()),
+            Self::Entrance { project, .. } => Self::entrance(key, project.clone()),
         }
     }
 }
 
-/// One card on the canvas.
+/// One card on a page.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Card {
-    /// Unique among cards and groups.
+    /// Unique among the page's cards, groups, and links.
     pub id: String,
     /// What it shows.
     #[serde(rename = "ref")]
     pub reference: CardRef,
     /// The canvas position: finite numbers.
     pub at: [f64; 2],
-    /// The card's own Code/Flow switch; the board's default when absent.
+    /// The card's own Code/Flow switch; the page's default when absent.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub view: Option<View>,
@@ -232,14 +343,14 @@ pub struct Card {
     pub description: Option<Description>,
 }
 
-/// A run of consecutive sibling statements inside one card.
+/// A run of consecutive sibling statements inside one block card.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Group {
-    /// Unique among cards and groups.
+    /// Unique among the page's cards, groups, and links.
     pub id: String,
-    /// The card it belongs to.
+    /// The card it belongs to; its members are keys of that card's project.
     pub card: String,
     /// Its title on the rail.
     pub title: String,
@@ -253,10 +364,33 @@ pub struct Group {
     pub description: Option<Description>,
 }
 
-/// What a reference was when it was saved, so it can reconnect safely.
+/// A Flow-node label: the authored name of a block inside a card, in that card's project.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-pub struct Guard {
+pub struct LabelEntry {
+    /// The labeled block's project; absent for the board's own.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub project: Option<ProjectName>,
+    /// The labeled block's key.
+    pub key: Key,
+    /// The text, author, and signature (of the block's source).
+    #[serde(flatten)]
+    #[cfg_attr(feature = "ts", ts(flatten))]
+    pub label: Description,
+}
+
+/// What a reference was when it was saved, so it can reconnect safely: one per referenced
+/// (project, key).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+pub struct GuardEntry {
+    /// The reference's project; absent for the board's own.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub project: Option<ProjectName>,
+    /// The referenced key.
+    pub key: Key,
     /// The block kind, or `entrance:<kind>`.
     pub kind: String,
     /// The owner's key for a block; empty for an entrance.
@@ -265,11 +399,30 @@ pub struct Guard {
     pub signature: Signature,
 }
 
-/// An `unfold-board` version 1 document.
+/// A link drawn between two cards of a page (redesign R-7): the graph does not join code
+/// across projects, so people do, with an optional signed label ("calls over HTTP").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+pub struct Link {
+    /// Unique among the page's cards, groups, and links.
+    pub id: String,
+    /// The card it starts at.
+    pub from: String,
+    /// The card it points at; never `from`.
+    pub to: String,
+    /// Its label, signed over both ends' guard signatures (informational: never outdated).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub label: Option<Description>,
+}
+
+/// One page of a board.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-pub struct Board {
+pub struct Page {
+    /// Unique in the board.
+    pub id: String,
     /// The title; never blank.
     pub title: String,
     /// The view of cards without their own.
@@ -278,22 +431,26 @@ pub struct Board {
     pub cards: Vec<Card>,
     /// The groups.
     pub groups: Vec<Group>,
-    /// Flow-node labels by block key.
-    pub labels: BTreeMap<String, Description>,
-    /// Guards by referenced key.
-    pub guards: BTreeMap<String, Guard>,
+    /// Flow-node labels, one per (project, key).
+    pub labels: Vec<LabelEntry>,
+    /// Guards, one per referenced (project, key).
+    pub guards: Vec<GuardEntry>,
+    /// Drawn links.
+    pub links: Vec<Link>,
 }
 
-impl Board {
-    /// An empty board.
-    pub fn new(title: &str) -> Self {
+impl Page {
+    /// An empty page.
+    pub fn new(id: &str, title: &str) -> Self {
         Self {
+            id: id.to_owned(),
             title: title.to_owned(),
             default_view: View::Code,
             cards: Vec::new(),
             groups: Vec::new(),
-            labels: BTreeMap::new(),
-            guards: BTreeMap::new(),
+            labels: Vec::new(),
+            guards: Vec::new(),
+            links: Vec::new(),
         }
     }
 
@@ -307,47 +464,149 @@ impl Board {
         self.groups.iter().find(|group| group.id == id)
     }
 
+    /// The link with `id`.
+    pub fn link(&self, id: &str) -> Option<&Link> {
+        self.links.iter().find(|link| link.id == id)
+    }
+
     /// A card's effective view.
     pub fn view_of(&self, card: &Card) -> View {
         card.view.unwrap_or(self.default_view)
     }
 
-    /// The first card that shows block `key`.
-    pub fn card_for_block(&self, key: &str) -> Option<&Card> {
-        self.cards
-            .iter()
-            .find(|card| card.reference.block().is_some_and(|block| block.as_str() == key))
+    /// The project of group `group`'s members: its card's project (`None`: the board's own,
+    /// also when the card is gone).
+    pub fn group_project(&self, group: &Group) -> Option<&ProjectName> {
+        self.card(&group.card).and_then(|card| card.reference.project())
     }
 
-    /// Every key the board references (cards, group members, labels), in that order, without
-    /// duplicates.
-    pub fn references(&self) -> Vec<&str> {
-        let mut seen = rustc_hash::FxHashSet::default();
+    /// The label of (`project`, `key`).
+    pub fn label_entry(&self, project: Option<&ProjectName>, key: &str) -> Option<&LabelEntry> {
+        self.labels
+            .iter()
+            .find(|entry| entry.project.as_ref() == project && entry.key.as_str() == key)
+    }
+
+    /// The authored label text of block (`project`, `key`), when it has text.
+    pub fn label(&self, project: Option<&ProjectName>, key: &str) -> Option<&str> {
+        self.label_entry(project, key)
+            .map(|entry| entry.label.text.trim())
+            .filter(|text| !text.is_empty())
+    }
+
+    /// The guard of (`project`, `key`).
+    pub fn guard(&self, project: Option<&ProjectName>, key: &str) -> Option<&GuardEntry> {
+        self.guards
+            .iter()
+            .find(|entry| entry.project.as_ref() == project && entry.key.as_str() == key)
+    }
+
+    /// Every key the page references in `project` (`None`: the board's own): cards, group
+    /// members, and labels, in that order, without duplicates.
+    pub fn references(&self, project: Option<&ProjectName>) -> Vec<&str> {
+        let mut seen = FxHashSet::default();
         self.cards
             .iter()
+            .filter(|card| card.reference.project() == project)
             .map(|card| card.reference.key().as_str())
             .chain(
                 self.groups
                     .iter()
+                    .filter(|group| self.group_project(group) == project)
                     .flat_map(|group| group.members.iter().map(Key::as_str)),
             )
-            .chain(self.labels.keys().map(String::as_str))
+            .chain(
+                self.labels
+                    .iter()
+                    .filter(|entry| entry.project.as_ref() == project)
+                    .map(|entry| entry.key.as_str()),
+            )
             .filter(|key| seen.insert(*key))
             .collect()
     }
+}
 
-    /// The authored label of block `key`, when it has text.
-    pub fn label(&self, key: &str) -> Option<&str> {
-        self.labels
-            .get(key)
-            .map(|label| label.text.trim())
-            .filter(|text| !text.is_empty())
+/// An `unfold-board` version 1 document (without the framing a changes copy adds).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct Board {
+    /// The title; never blank.
+    pub title: String,
+    /// The board folder it is filed in (a `/`-separated path); `None` at the top level.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub folder: Option<String>,
+    /// The other projects its cards come from, sorted: [`Board::used_projects`]. The
+    /// constructors, [`super::parse`], [`super::parse_edit`], and [`super::prepare_save`] set
+    /// it; after editing cards in place, call [`Board::refresh_projects`]. The writer always
+    /// writes the derived set.
+    pub projects: Vec<ProjectName>,
+    /// The pages, in order; at least one.
+    pub pages: Vec<Page>,
+}
+
+impl Board {
+    /// A board with one empty page, `page-1` titled "Page 1".
+    pub fn new(title: &str) -> Self {
+        Self::with_pages(title, None, vec![Page::new(FIRST_PAGE, "Page 1")])
+    }
+
+    /// A board of `pages`, with its projects derived from them.
+    pub fn with_pages(title: &str, folder: Option<String>, pages: Vec<Page>) -> Self {
+        let mut board = Self {
+            title: title.to_owned(),
+            folder,
+            projects: Vec::new(),
+            pages,
+        };
+        board.refresh_projects();
+        board
+    }
+
+    /// The page with `id`.
+    pub fn page(&self, id: &str) -> Option<&Page> {
+        self.pages.iter().find(|page| page.id == id)
+    }
+
+    /// The page with `id`, to edit (call [`Board::refresh_projects`] after changing its cards).
+    pub fn page_mut(&mut self, id: &str) -> Option<&mut Page> {
+        self.pages.iter_mut().find(|page| page.id == id)
+    }
+
+    /// The other projects every page's cards come from, sorted, without duplicates.
+    pub fn used_projects(&self) -> Vec<ProjectName> {
+        let mut projects: Vec<ProjectName> = self
+            .pages
+            .iter()
+            .flat_map(|page| page.cards.iter().filter_map(|card| card.reference.project()))
+            .cloned()
+            .collect();
+        projects.sort();
+        projects.dedup();
+        projects
+    }
+
+    /// Sets [`Board::projects`] from the cards.
+    pub fn refresh_projects(&mut self) {
+        self.projects = self.used_projects();
+    }
+
+    /// Every key any page references in `project` (`None`: the board's own), without
+    /// duplicates: what [`super::BoardGraph::load`] needs to check the whole board.
+    pub fn references(&self, project: Option<&ProjectName>) -> Vec<&str> {
+        let mut seen = FxHashSet::default();
+        self.pages
+            .iter()
+            .flat_map(|page| page.references(project))
+            .filter(|key| seen.insert(*key))
+            .collect()
     }
 }
 
 /// Whether a key is position-based: it contains an ordinal step (`if[0]`, `function:f[1]`),
 /// which shifts when code is inserted before it.
-pub fn is_ordinal(key: &str) -> bool {
+pub(crate) fn is_ordinal(key: &str) -> bool {
     let bytes = key.as_bytes();
     let mut at = 0;
     while let Some(open) = bytes[at..].iter().position(|&byte| byte == b'[') {
@@ -374,6 +633,7 @@ mod tests {
     fn authors_and_signatures_parse_strictly() {
         assert_eq!(Author::parse("person:ada").unwrap().to_string(), "person:ada");
         assert_eq!(Author::parse("agent:codex").unwrap().kind(), AuthorKind::Agent);
+        assert_eq!(Author::person("ada").unwrap().name(), "ada");
         for bad in ["person:", "agent: ", "ada", "robot:x", "person:a\nb"] {
             assert!(Author::parse(bad).is_none(), "{bad}");
         }
@@ -391,5 +651,42 @@ mod tests {
         assert!(!is_ordinal("a.ts#function:f"));
         assert!(!is_ordinal("a.ts#variable:a%5B0%5D"));
         assert!(!is_ordinal("a.ts#function:f/variable:x[y]"));
+    }
+
+    #[test]
+    fn names_ids_and_folders() {
+        for good in ["storefront-api", "a", "A.b_c-9", &"x".repeat(64)] {
+            assert!(ProjectName::parse(good).is_some(), "{good}");
+        }
+        for bad in ["", "-a", ".a", "a b", "a/b", "é", &"x".repeat(65)] {
+            assert!(ProjectName::parse(bad).is_none(), "{bad}");
+        }
+        assert!(is_id("page-1") && is_id(&"p".repeat(100)) && is_id("a.b_c"));
+        assert!(!is_id("") && !is_id("_a") && !is_id("a b") && !is_id(&"p".repeat(101)));
+        for good in [
+            "Checkout",
+            "Checkout/Refunds",
+            "a/b/c/d/e/f/g/h",
+            "Café crème",
+            &"x".repeat(64),
+        ] {
+            assert!(is_folder_path(good), "{good}");
+        }
+        for bad in [
+            "",
+            "/a",
+            "a/",
+            "a//b",
+            " a",
+            "a ",
+            ".",
+            "a/..",
+            "a\\b",
+            "a\tb",
+            "a/b/c/d/e/f/g/h/i",
+            &"x".repeat(65),
+        ] {
+            assert!(!is_folder_path(bad), "{bad:?}");
+        }
     }
 }

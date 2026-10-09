@@ -1,4 +1,5 @@
-//! Source tabs (`file_view`) and cards (`card`, `relations`): paging, freshness, and latency.
+//! The peek sheet (`file_view`), cards (`card`, `peek`, `relations`, `callers`), and Add's
+//! previews (`preview`), each naming its project: paging, freshness, shapes, and latency.
 
 use std::time::{Duration, Instant};
 
@@ -22,18 +23,21 @@ fn page(harness: &Harness, path: &str, start: u32, end: u32) -> Value {
     harness.ok(
         1,
         "file_view",
-        json!({ "path": path, "range": { "startLine": start, "endLine": end } }),
+        json!({ "project": harness.project, "path": path, "range": { "startLine": start, "endLine": end } }),
     )
 }
 
 #[test]
 fn pages_are_slices_of_the_whole_file() {
-    let harness = Harness::new("ts-orders", false);
-    harness.open(1);
+    let harness = Harness::compiled("ts-orders");
     harness.write("src/generated.ts", &generated(40));
-    harness.ok(1, "compile", json!({}));
+    harness.ok(1, "compile", json!({ "project": harness.project }));
     let path = "src/generated.ts";
-    let whole = harness.ok(1, "file_view", json!({ "path": path }));
+    let whole = harness.ok(
+        1,
+        "file_view",
+        json!({ "project": harness.project, "path": path }),
+    );
     assert_eq!(whole["graph"], "current");
     let line_count = whole["lineCount"].as_u64().expect("line count") as u32;
     let text: Vec<u16> = whole["text"].as_str().expect("text").encode_utf16().collect();
@@ -77,10 +81,126 @@ fn pages_are_slices_of_the_whole_file() {
     assert_eq!(changed["graph"], "not_compiled");
     assert_eq!(changed["links"], json!([]));
     assert!(changed["text"].as_str().expect("text").starts_with("// edited"));
-    harness.ok(1, "compile", json!({}));
+    harness.ok(1, "compile", json!({ "project": harness.project }));
     let compiled = page(&harness, path, 1, 20);
     assert_eq!(compiled["graph"], "current");
     assert!(!compiled["links"].as_array().expect("links").is_empty());
+}
+
+#[test]
+fn cards_peeks_relations_callers_and_previews_name_their_project() {
+    let harness = Harness::compiled("ts-orders");
+    harness.write("src/generated.ts", &generated(6));
+    harness.ok(1, "compile", json!({ "project": harness.project }));
+    let key = "src/generated.ts#function:step1";
+    let at = |command: &str, extra: Value| {
+        let mut args = json!({ "project": harness.project, "key": key });
+        if let (Some(args), Some(extra)) = (args.as_object_mut(), extra.as_object()) {
+            args.extend(extra.clone());
+        }
+        harness.ok(1, command, args)
+    };
+    let card = at("card", json!({ "lens": "code" }));
+    assert_eq!(card["type"], "block");
+    assert!(card["flow"].is_null() && card["code"].is_object());
+    assert_eq!(
+        harness.code(
+            1,
+            "card",
+            json!({ "project": harness.project, "key": key, "board": { "project": harness.project, "id": "x", "page": "p" } })
+        ),
+        "invalid_args",
+        "a card takes no board (labels are the UI's)"
+    );
+    let peek = at("peek", json!({}));
+    assert_eq!(peek["name"], "step1");
+    assert!(
+        peek["signature"]
+            .as_str()
+            .is_some_and(|line| line.starts_with("export function step1"))
+    );
+
+    let relations = at(
+        "relations",
+        json!({ "onPage": ["src/generated.ts#function:step2"] }),
+    );
+    assert_eq!(relations["callersTotal"], 1);
+    assert_eq!(
+        relations["outgoing"]["onBoard"][0]["target"],
+        "src/generated.ts#function:step2"
+    );
+    let too_many: Vec<String> = (0..2_001).map(|index| format!("k{index}")).collect();
+    assert_eq!(
+        harness.code(
+            1,
+            "relations",
+            json!({ "project": harness.project, "key": key, "onPage": too_many })
+        ),
+        "invalid_args"
+    );
+
+    let callers = at("callers", json!({}));
+    assert_eq!(callers["project"], harness.project);
+    assert_eq!(callers["total"], 1);
+    assert_eq!(
+        callers["callers"][0],
+        json!({
+            "key": "src/generated.ts#function:step0", "name": "step0", "qualifiedName": "step0",
+            "path": "src/generated.ts", "line": 1, "sites": 1,
+        })
+    );
+    assert_eq!(
+        harness.code(
+            1,
+            "callers",
+            json!({ "project": harness.project, "key": "src/generated.ts#function:nope" })
+        ),
+        "not_found"
+    );
+
+    let preview = at("preview", json!({}));
+    assert_eq!(preview["kind"], "block");
+    assert_eq!(preview["project"], harness.project);
+    assert_eq!(preview["header"]["name"], "step1");
+    let code = &preview["code"];
+    assert_eq!(code["startLine"], 9);
+    let lines = code["lines"].as_array().expect("lines");
+    assert!(!lines.is_empty() && lines.len() <= 12);
+    assert!(
+        code["text"]
+            .as_str()
+            .is_some_and(|text| text.starts_with("export function step1"))
+    );
+    assert_eq!(
+        preview["calls"]["items"],
+        json!([{ "name": "step2", "key": "src/generated.ts#function:step2", "module": null }])
+    );
+    assert_eq!(preview["calledBy"]["total"], 1);
+    assert_eq!(
+        preview["calledBy"]["items"][0]["key"],
+        "src/generated.ts#function:step0"
+    );
+
+    let map = harness.ok(1, "entrances", json!({ "project": harness.project }));
+    let entrance = map["applications"][0]["entrances"][0]["key"].clone();
+    let preview = harness.ok(
+        1,
+        "preview",
+        json!({ "project": harness.project, "key": entrance }),
+    );
+    assert_eq!(preview["kind"], "entrance");
+    assert!(
+        preview["handlers"]
+            .as_array()
+            .is_some_and(|handlers| handlers.len() <= 8)
+    );
+    assert!(preview["declared"]["path"].is_string());
+    assert!(preview["reaches"].is_u64());
+    assert!(
+        preview["externalModules"]
+            .as_array()
+            .is_some_and(|modules| modules.len() <= 5)
+    );
 }
 
 fn percentile(mut timings: Vec<Duration>, percent: usize) -> Duration {
@@ -93,10 +213,9 @@ fn percentile(mut timings: Vec<Duration>, percent: usize) -> Duration {
 #[test]
 #[ignore = "a benchmark"]
 fn view_latency() {
-    let harness = Harness::new("ts-orders", false);
-    harness.open(1);
+    let harness = Harness::compiled("ts-orders");
     harness.write("src/generated.ts", &generated(3_000));
-    harness.ok(1, "compile", json!({}));
+    harness.ok(1, "compile", json!({ "project": harness.project }));
     let path = "src/generated.ts";
     let mut pages = Vec::new();
     for start in (1..20_000).step_by(400) {
@@ -109,10 +228,10 @@ fn view_latency() {
     for index in (0..3_000).step_by(60) {
         let key = format!("{path}#function:step{index}");
         let started = Instant::now();
-        harness.ok(1, "card", json!({ "key": key }));
+        harness.ok(1, "card", json!({ "project": harness.project, "key": key }));
         cards.push(started.elapsed());
         let started = Instant::now();
-        harness.ok(1, "relations", json!({ "key": key }));
+        harness.ok(1, "relations", json!({ "project": harness.project, "key": key }));
         relations.push(started.elapsed());
     }
     let mut searches = Vec::new();

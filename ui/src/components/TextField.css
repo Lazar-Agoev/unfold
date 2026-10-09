@@ -5,7 +5,8 @@
 }
 
 .text-field-label {
-  font-size: var(--font-size-small);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
   font-weight: 500;
   color: var(--color-text);
 }
@@ -14,10 +15,12 @@
 .search-field-input {
   width: 100%;
   border: none;
-  border-radius: var(--radius);
-  background: var(--color-surface);
+  border-radius: var(--radius-control);
+  background: var(--color-control);
   box-shadow: inset 0 0 0 1px var(--color-border);
   color: var(--color-text);
+  font-size: var(--text-13);
+  line-height: var(--leading-20);
   user-select: text;
 }
 
@@ -38,7 +41,7 @@
 }
 
 .text-field-input[aria-invalid="true"] {
-  box-shadow: inset 0 0 0 1.5px var(--color-failure);
+  box-shadow: inset 0 0 0 1.5px var(--color-danger);
 }
 
 .text-field-input::placeholder,
@@ -46,13 +49,17 @@
   color: var(--color-muted);
 }
 
+.text-field-error,
+.text-field-hint {
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+}
+
 .text-field-error {
-  font-size: var(--font-size-small);
-  color: var(--color-failure);
+  color: var(--color-danger);
 }
 
 .text-field-hint {
-  font-size: var(--font-size-small);
   color: var(--color-muted);
 }
 
@@ -64,15 +71,16 @@
 
 .search-field-icon {
   position: absolute;
-  left: 9px;
+  left: 8px;
   color: var(--color-muted);
   pointer-events: none;
 }
 
 .search-field-input {
-  height: 28px;
-  padding: 0 28px 0 28px;
-  font-size: var(--font-size-small);
+  height: var(--row);
+  padding: 0 28px;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
 }
 
 .search-field-clear {
@@ -82,7 +90,7 @@
   place-items: center;
   width: 18px;
   height: 18px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   color: var(--color-muted);
 }
 

@@ -1,0 +1,361 @@
+{
+  "kind": "block",
+  "project": "<project>",
+  "header": {
+    "key": "src/routes/orders.ts#function:createOrder",
+    "kind": "function",
+    "name": "createOrder",
+    "qualifiedName": "createOrder",
+    "path": "src/routes/orders.ts",
+    "startLine": 25,
+    "endLine": 35,
+    "language": "typescript",
+    "fileState": "current",
+    "source": "current",
+    "owner": "src/routes/orders.ts#"
+  },
+  "code": {
+    "startLine": 25,
+    "textStart": 854,
+    "text": "export async function createOrder(req: Request, res: Response): Promise<void> {\n  const draft: OrderDraft = req.body;\n  if (req.header(\"prefer\") === \"respond-async\") {\n    const job = await ordersQueue.add(\"place-order\", { order: draft });\n    res.status(202).json({ jobId: job.id });\n    return;\n  }\n  const order = orderService.place(draft);\n  slack.post(\"#orders\", `Order ${order.id} placed for ${order.customerId}`);\n  res.status(201).json(order);\n}\n",
+    "lines": [
+      {
+        "number": 25,
+        "start": 854,
+        "end": 933,
+        "indent": 0
+      },
+      {
+        "number": 26,
+        "start": 934,
+        "end": 971,
+        "indent": 2
+      },
+      {
+        "number": 27,
+        "start": 972,
+        "end": 1021,
+        "indent": 2
+      },
+      {
+        "number": 28,
+        "start": 1022,
+        "end": 1093,
+        "indent": 4
+      },
+      {
+        "number": 29,
+        "start": 1094,
+        "end": 1138,
+        "indent": 4
+      },
+      {
+        "number": 30,
+        "start": 1139,
+        "end": 1150,
+        "indent": 4
+      },
+      {
+        "number": 31,
+        "start": 1151,
+        "end": 1154,
+        "indent": 2
+      },
+      {
+        "number": 32,
+        "start": 1155,
+        "end": 1197,
+        "indent": 2
+      },
+      {
+        "number": 33,
+        "start": 1198,
+        "end": 1274,
+        "indent": 2
+      },
+      {
+        "number": 34,
+        "start": 1275,
+        "end": 1305,
+        "indent": 2
+      },
+      {
+        "number": 35,
+        "start": 1306,
+        "end": 1307,
+        "indent": 0
+      }
+    ],
+    "spans": [
+      [
+        854,
+        860,
+        "keyword"
+      ],
+      [
+        861,
+        866,
+        "keyword"
+      ],
+      [
+        867,
+        875,
+        "keyword"
+      ],
+      [
+        876,
+        887,
+        "function"
+      ],
+      [
+        893,
+        900,
+        "type"
+      ],
+      [
+        907,
+        915,
+        "type"
+      ],
+      [
+        918,
+        925,
+        "type"
+      ],
+      [
+        926,
+        930,
+        "keyword"
+      ],
+      [
+        936,
+        941,
+        "keyword"
+      ],
+      [
+        949,
+        959,
+        "type"
+      ],
+      [
+        966,
+        970,
+        "property"
+      ],
+      [
+        974,
+        976,
+        "keyword"
+      ],
+      [
+        982,
+        988,
+        "function"
+      ],
+      [
+        989,
+        997,
+        "string"
+      ],
+      [
+        1003,
+        1018,
+        "string"
+      ],
+      [
+        1026,
+        1031,
+        "keyword"
+      ],
+      [
+        1038,
+        1043,
+        "keyword"
+      ],
+      [
+        1056,
+        1059,
+        "function"
+      ],
+      [
+        1060,
+        1073,
+        "string"
+      ],
+      [
+        1077,
+        1082,
+        "property"
+      ],
+      [
+        1102,
+        1108,
+        "function"
+      ],
+      [
+        1109,
+        1112,
+        "number"
+      ],
+      [
+        1114,
+        1118,
+        "function"
+      ],
+      [
+        1121,
+        1126,
+        "property"
+      ],
+      [
+        1132,
+        1134,
+        "property"
+      ],
+      [
+        1143,
+        1149,
+        "keyword"
+      ],
+      [
+        1157,
+        1162,
+        "keyword"
+      ],
+      [
+        1184,
+        1189,
+        "function"
+      ],
+      [
+        1206,
+        1210,
+        "function"
+      ],
+      [
+        1211,
+        1220,
+        "string"
+      ],
+      [
+        1222,
+        1229,
+        "string"
+      ],
+      [
+        1229,
+        1231,
+        "keyword"
+      ],
+      [
+        1237,
+        1239,
+        "property"
+      ],
+      [
+        1239,
+        1240,
+        "keyword"
+      ],
+      [
+        1240,
+        1252,
+        "string"
+      ],
+      [
+        1252,
+        1254,
+        "keyword"
+      ],
+      [
+        1260,
+        1270,
+        "property"
+      ],
+      [
+        1270,
+        1271,
+        "keyword"
+      ],
+      [
+        1271,
+        1272,
+        "string"
+      ],
+      [
+        1281,
+        1287,
+        "function"
+      ],
+      [
+        1288,
+        1291,
+        "number"
+      ],
+      [
+        1293,
+        1297,
+        "function"
+      ]
+    ]
+  },
+  "reachedFrom": {
+    "total": 1,
+    "items": [
+      {
+        "key": "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]",
+        "title": "POST /orders",
+        "kind": "http",
+        "method": "POST",
+        "trigger": "/orders",
+        "path": "src/routes/orders.ts"
+      }
+    ]
+  },
+  "calls": {
+    "total": 6,
+    "items": [
+      {
+        "name": "req.header",
+        "key": null,
+        "module": "express"
+      },
+      {
+        "name": "ordersQueue.add",
+        "key": null,
+        "module": "bullmq"
+      },
+      {
+        "name": "res.status().json",
+        "key": null,
+        "module": null
+      },
+      {
+        "name": "res.status",
+        "key": null,
+        "module": "express"
+      },
+      {
+        "name": "orderService.place",
+        "key": "src/services/order-service.ts#class:OrderService/method:place",
+        "module": null
+      },
+      {
+        "name": "slack.post",
+        "key": "src/lib/slack.ts#variable:slack/method:post",
+        "module": null
+      }
+    ]
+  },
+  "calledBy": {
+    "total": 1,
+    "items": [
+      {
+        "key": "src/routes/orders.ts#",
+        "name": "src/routes/orders.ts",
+        "path": "src/routes/orders.ts",
+        "line": 1
+      }
+    ]
+  }
+}

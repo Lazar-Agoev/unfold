@@ -4,8 +4,9 @@
  * - renderer -> host, over the window's MessagePort: {@link RendererToHost}
  * - host -> renderer, over the same port: {@link HostToRenderer}
  * - main <-> host, over the utility process's parent port: {@link MainToHost} and
- *   {@link HostToMain} (lifecycle, plus the main process's own trusted requests: export to a path
- *   from a save dialog, and window restore; the main process never reads graph data)
+ *   {@link HostToMain} (lifecycle, plus the main process's own trusted requests: adding a project
+ *   from a dialog, a drop, or the command line, export to a path from a save dialog, and window
+ *   restore; the main process never reads graph data)
  * - main <-> preload, over Electron IPC: the {@link IPC} channels
  */
 
@@ -44,13 +45,17 @@ export interface AppFolders {
 export type MainToHost =
   /** First message after every (re)start. `addonPath` is the module to `require`. */
   | { readonly type: "init"; readonly addonPath: string; readonly folders: AppFolders }
-  /** Attach a window (its port is transferred with this message). Replaces any earlier attach. */
-  | { readonly type: "attach"; readonly windowId: number; readonly folder: string | null }
-  /** The window closed. */
+  /**
+   * Attach a window (its port is transferred with this message). Its commands dispatch at once:
+   * every window shows the whole workspace. A re-attach of the same id (a reload) swaps the port.
+   */
+  | { readonly type: "attach"; readonly windowId: number }
+  /** The window closed: its closing writes land, then Rust releases its claims and selection. */
   | { readonly type: "detach"; readonly windowId: number }
   /**
    * A command the main process itself originates, run on behalf of window `windowId` (`0` for
-   * none) with `"trusted": true`: the only way `export_mermaid` and `folder_windows` reach Rust.
+   * none) with `"trusted": true`: the only way the main-process-only commands (`add_project`,
+   * `export_mermaid`, `saved_windows`, `save_window_bounds`, `forget_window`) reach Rust.
    * Answered with a {@link HostToMain} `result` carrying the same `id`.
    */
   | {
@@ -60,24 +65,16 @@ export type MainToHost =
       readonly command: string;
       readonly args: Readonly<Record<string, unknown>>;
     }
-  /** The app is quitting: close every workspace (saving drafts), then exit. */
+  /** The app is quitting: detach every window, close every live project, then exit. */
   | { readonly type: "shutdown" };
 
-/** Messages from the engine host to the main process, over the utility process's parent port. */
+/**
+ * Messages from the engine host to the main process, over the utility process's parent port: the
+ * outcome of a main-process {@link MainToHost} `request`.
+ */
 export type HostToMain =
-  /** The outcome of a main-process {@link MainToHost} `request`. */
   | { readonly type: "result"; readonly id: number; readonly ok: true; readonly value: unknown }
-  | { readonly type: "result"; readonly id: number; readonly ok: false; readonly error: TransportError }
-  /**
-   * A window's attach settled: its workspace is open (`error` absent), failed to open, or the
-   * window shows no folder. Sent once per attach.
-   */
-  | {
-      readonly type: "attached";
-      readonly windowId: number;
-      readonly folder: string | null;
-      readonly error?: TransportError;
-    };
+  | { readonly type: "result"; readonly id: number; readonly ok: false; readonly error: TransportError };
 
 /** Electron IPC channels between the main process and the preload script. */
 export const IPC = {
@@ -85,7 +82,7 @@ export const IPC = {
   enginePort: "unfold:engine-port",
   /** main -> preload: the engine host stopped. Payload {@link EngineLost}. */
   engineLost: "unfold:engine-lost",
-  /** main -> preload: a shell event (menu command, folder change). Payload is a `ShellEvent`. */
+  /** main -> preload: a shell event (menu command, project added, …). Payload is a `ShellEvent`. */
   shellEvent: "unfold:shell-event",
   /** preload -> main (invoke): a window command. Reply is a {@link WindowReply}. */
   windowCommand: "unfold:window-command",
@@ -96,8 +93,8 @@ export const IPC = {
  * {@link IPC.windowCommand}; `window.unfold.window(...)` refuses them.
  */
 export const PRELOAD_COMMANDS = {
-  /** `{path, target?}`: a folder dropped on the window (the path comes from the drop's `File`). */
-  openDroppedFolder: "open_dropped_folder",
+  /** `{path}`: a folder dropped on the window, added as a project (the path comes from the drop's `File`). */
+  addDroppedFolder: "add_dropped_folder",
 } as const;
 
 /** Payload of {@link IPC.engineLost}. `restarting: false` means the main process gave up. */

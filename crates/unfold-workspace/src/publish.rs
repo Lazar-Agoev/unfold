@@ -16,7 +16,7 @@ use crate::status::{Activity, GraphCounts, WatchMode};
 use crate::watcher;
 
 /// Installs the new reader index and tells the windows what changed: `graph_updated` (with
-/// everything changed after a full commit), `problems_changed`, `graph_status`, the Index log,
+/// everything changed after a full commit), `problems_changed`, `project_state`, the Index log,
 /// and, for a periodic scan, `files_changed`.
 pub(crate) fn committed(
     shared: &Shared,
@@ -70,7 +70,7 @@ pub(crate) fn committed(
         let everything = first || listed > MAX_LISTED;
         let list = |items: Vec<String>| if everything { Vec::new() } else { items };
         shared.emit(&WorkspaceEvent::GraphUpdated {
-            folder: shared.folder.clone(),
+            project: shared.project.clone(),
             changed_files: list(strings(&summary.changed_files)),
             removed_files: list(strings(&summary.removed_files)),
             changed_keys: list(keys(&summary.changed_keys)),

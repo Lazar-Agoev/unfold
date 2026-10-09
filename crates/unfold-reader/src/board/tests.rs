@@ -1,14 +1,17 @@
-//! Board tests: strict parsing, deterministic serialization, signatures, guards, groups,
-//! health and repairs, saving, and board files, on a small hand-built graph whose source is
-//! written to a temporary folder.
+//! Board tests: strict parsing, deterministic serialization, signatures, guards, groups, drawn
+//! links, health and repairs across projects, saving, the unpublished-changes count, and board
+//! files, on a small hand-built graph whose source is written to a temporary folder (a second
+//! folder with the same source plays another project).
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use unfold_core::testkit::{GraphBuilder, Outcome};
 use unfold_core::vocab::{BlockKind, EdgeKind, Language, Role, SlotName};
 use unfold_core::{ByteRange, Graph, Key};
 
-use super::files::{self, BoardFile, Change, Place, Revision};
+use super::check::group_problem;
+use super::files::{BoardDirs, BoardFile, Change, DRAFTS_DIR, MAX_BOARD_BYTES, Place, Revision, slug};
 use super::*;
 
 const SOURCE: &str = "export function run() {\n  const first = 1;\n  if (first) { console.log(first); }\n  console.log('done');\n  return first;\n}\n";
@@ -143,17 +146,55 @@ fn author() -> Author {
     Author::agent("test").unwrap()
 }
 
-fn sample_board() -> Board {
-    let mut board = Board::new("Run explanation");
-    board.default_view = View::Flow;
-    board.cards.push(Card {
-        id: "run".to_owned(),
-        reference: CardRef::Block(Key::from_text(RUN)),
+fn web() -> ProjectName {
+    ProjectName::parse("web").unwrap()
+}
+
+fn unsigned(text: &str) -> Description {
+    Description {
+        text: text.to_owned(),
+        author: author(),
+        signature: None,
+    }
+}
+
+fn card(id: &str, reference: CardRef) -> Card {
+    Card {
+        id: id.to_owned(),
+        reference,
         at: [10.0, 20.0],
         view: None,
         folded: false,
         description: None,
-    });
+    }
+}
+
+fn run_card(id: &str, project: Option<ProjectName>) -> Card {
+    card(id, CardRef::block(Key::from_text(RUN), project))
+}
+
+fn label(project: Option<ProjectName>, key: &str, text: &str) -> LabelEntry {
+    LabelEntry {
+        project,
+        key: Key::from_text(key),
+        label: unsigned(text),
+    }
+}
+
+fn link(id: &str, from: &str, to: &str, text: Option<&str>) -> Link {
+    Link {
+        id: id.to_owned(),
+        from: from.to_owned(),
+        to: to.to_owned(),
+        label: text.map(unsigned),
+    }
+}
+
+/// A board with one Flow page holding card `run`.
+fn sample_board() -> Board {
+    let mut board = Board::new("Run explanation");
+    board.pages[0].default_view = View::Flow;
+    board.pages[0].cards.push(run_card("run", None));
     board
 }
 
@@ -168,6 +209,27 @@ fn group(members: &[&str]) -> Group {
     }
 }
 
+/// Saves `board` (over `previous`) against the own graph only.
+fn save(
+    board: Board,
+    previous: Option<(&Board, &Health)>,
+    graph: &BoardGraph,
+) -> Result<(Board, Health), BoardError> {
+    prepare_save(board, previous, &PageGraphs::own_only(graph))
+}
+
+fn page_health(board: &Board, graph: &BoardGraph) -> Health {
+    board_health(board, &PageGraphs::own_only(graph))
+}
+
+fn repair(board: &mut Board, graph: &BoardGraph, repair: &Repair) -> Result<(), BoardError> {
+    apply_repair(&mut board.pages[0], &PageGraphs::own_only(graph), repair)
+}
+
+fn own_label(key: &str) -> Target {
+    Target::Label(ProjectKey::new(None, key))
+}
+
 fn invalid(text: &str) -> (String, String) {
     match parse(text) {
         Err(BoardError::Invalid { path, message }) => (path, message),
@@ -175,61 +237,233 @@ fn invalid(text: &str) -> (String, String) {
     }
 }
 
-const MINIMAL: &str = r#"{"cards":[{"at":[0,0],"id":"run","ref":{"block":"main.ts#function:run"}}],"defaultView":"code","format":"unfold-board","groups":[],"title":"T","version":1}"#;
+const MINIMAL: &str = r#"{"format":"unfold-board","pages":[{"cards":[{"at":[0,0],"id":"run","ref":{"block":"main.ts#function:run"}}],"defaultView":"code","groups":[],"id":"page-1","title":"P"}],"projects":[],"title":"T","version":1}"#;
+
+/// `MINIMAL` with `"groups":[]` replaced by `groups` (and whatever follows it in the page).
+fn with_page_fields(fields: &str) -> String {
+    MINIMAL.replace("\"groups\":[]", fields)
+}
 
 #[test]
 fn parsing_rejects_everything_outside_the_format_with_a_path() {
     assert!(parse(MINIMAL).is_ok());
+    let card_ref = r#"{"block":"main.ts#function:run"}"#;
+    let web_card = r#"{"at":[0,0],"id":"web","ref":{"block":"main.ts#function:run","project":"web"}}"#;
+    let signature = format!("sha256:{}", "0".repeat(64));
     let cases = [
-        (MINIMAL.replace("\"title\"", "\"extra\":1,\"title\""), "/extra", "unknown field"),
-        (MINIMAL.replace("\"id\":\"run\"", "\"id\":\"run\",\"state\":\"code\""), "/cards/0/state", "unknown field"),
         (
-            MINIMAL.replace(r#"{"block":"main.ts#function:run"}"#, r#"{"block":"main.ts#function:run","entrance":"entrance:x"}"#),
-            "/cards/0/ref",
+            MINIMAL.replace("\"title\":\"T\"", "\"extra\":1,\"title\":\"T\""),
+            "/extra",
+            "unknown field",
+        ),
+        (
+            MINIMAL.replace("\"id\":\"run\"", "\"id\":\"run\",\"state\":\"code\""),
+            "/pages/0/cards/0/state",
+            "unknown field",
+        ),
+        (
+            MINIMAL.replace(
+                card_ref,
+                r#"{"block":"main.ts#function:run","entrance":"entrance:x"}"#,
+            ),
+            "/pages/0/cards/0/ref",
             "exactly one",
         ),
-        (MINIMAL.replace(r#"{"block":"main.ts#function:run"}"#, r#"{"block":"entrance:x"}"#), "/cards/0/ref/block", "block key"),
-        (MINIMAL.replace("[0,0]", "[0]"), "/cards/0/at", "two numbers"),
-        (MINIMAL.replace("[0,0]", "[0,\"1\"]"), "/cards/0/at/1", "finite number"),
-        (MINIMAL.replace("\"version\":1", "\"version\":3"), "/version", "unsupported version"),
-        (MINIMAL.replace("unfold-board", "codegraph-board"), "/format", "unfold-board"),
-        (MINIMAL.replace("\"code\"", "\"canvas\""), "/defaultView", "\"code\" or \"flow\""),
-        (MINIMAL.replace("\"T\"", "\"  \""), "/title", "must not be empty"),
-        (MINIMAL.replace(",\"groups\":[]", ""), "/", "missing field `groups`"),
         (
-            MINIMAL.replace("\"id\":\"run\"", r#""id":"run","description":{"author":"you","text":"x"}"#),
-            "/cards/0/description/author",
+            MINIMAL.replace(card_ref, r#"{"block":"entrance:x"}"#),
+            "/pages/0/cards/0/ref/block",
+            "block key",
+        ),
+        (
+            MINIMAL.replace(card_ref, r#"{"block":"main.ts#function:run","project":"no way"}"#),
+            "/pages/0/cards/0/ref/project",
+            "shared name",
+        ),
+        (
+            MINIMAL.replace("[0,0]", "[0]"),
+            "/pages/0/cards/0/at",
+            "two numbers",
+        ),
+        (
+            MINIMAL.replace("[0,0]", "[0,\"1\"]"),
+            "/pages/0/cards/0/at/1",
+            "finite number",
+        ),
+        (
+            MINIMAL.replace("\"version\":1", "\"version\":3"),
+            "/version",
+            "unsupported version",
+        ),
+        (
+            MINIMAL.replace("unfold-board", "codegraph-board"),
+            "/format",
+            "unfold-board",
+        ),
+        (
+            MINIMAL.replace("\"code\"", "\"canvas\""),
+            "/pages/0/defaultView",
+            "\"code\" or \"flow\"",
+        ),
+        (MINIMAL.replace("\"T\"", "\"  \""), "/title", "must not be empty"),
+        (
+            MINIMAL.replace("\"P\"", "\"\""),
+            "/pages/0/title",
+            "must not be empty",
+        ),
+        (
+            MINIMAL.replace(",\"groups\":[]", ""),
+            "/pages/0",
+            "missing field `groups`",
+        ),
+        (
+            MINIMAL.replace("\"projects\":[],", ""),
+            "/",
+            "missing field `projects`",
+        ),
+        (
+            MINIMAL.replace(
+                &MINIMAL[MINIMAL.find('[').unwrap()..MINIMAL.find(",\"projects\"").unwrap()],
+                "[]",
+            ),
+            "/pages",
+            "at least one page",
+        ),
+        (
+            MINIMAL.replace(
+                "\"projects\":[]",
+                "\"projects\":[],\"publishes\":\"boards/x.json\"",
+            ),
+            "/publishes",
+            "unknown field",
+        ),
+        (
+            MINIMAL.replace("\"id\":\"run\"", "\"id\":\"run card\""),
+            "/pages/0/cards/0/id",
+            "letter or digit",
+        ),
+        (
+            MINIMAL.replace("\"page-1\"", "\"-1\""),
+            "/pages/0/id",
+            "letter or digit",
+        ),
+        (
+            MINIMAL.replace("\"projects\":[]", "\"projects\":[\"web\"]"),
+            "/projects",
+            "exactly the other projects",
+        ),
+        (
+            MINIMAL.replace("\"projects\":[]", "\"projects\":[\"-\"]"),
+            "/projects/0",
+            "shared name",
+        ),
+        (
+            MINIMAL.replace("\"cards\":[", &format!("\"cards\":[{web_card},")),
+            "/projects",
+            "[\"web\"]",
+        ),
+        (
+            MINIMAL.replace("\"format\"", "\"folder\":\"\",\"format\""),
+            "/folder",
+            "folder path",
+        ),
+        (
+            MINIMAL.replace("\"format\"", "\"folder\":\"a//b\",\"format\""),
+            "/folder",
+            "folder path",
+        ),
+        (
+            MINIMAL.replace(
+                "\"id\":\"run\"",
+                r#""id":"run","description":{"author":"you","text":"x"}"#,
+            ),
+            "/pages/0/cards/0/description/author",
             "person:<name>",
         ),
         (
-            MINIMAL.replace("\"id\":\"run\"", r#""id":"run","description":{"author":"person:a","text":"x","signature":"sha256:XYZ"}"#),
-            "/cards/0/description/signature",
+            MINIMAL.replace(
+                "\"id\":\"run\"",
+                r#""id":"run","description":{"author":"person:a","text":"x","signature":"sha256:XYZ"}"#,
+            ),
+            "/pages/0/cards/0/description/signature",
             "sha256",
         ),
         (
-            MINIMAL.replace("\"groups\":[]", r#""groups":[{"card":"nope","collapsed":false,"id":"g","members":["main.ts#function:run/if[0]"],"title":"G"}]"#),
-            "/groups/0/card",
+            with_page_fields(
+                r#""groups":[{"card":"nope","collapsed":false,"id":"g","members":["main.ts#function:run/if[0]"],"title":"G"}]"#,
+            ),
+            "/pages/0/groups/0/card",
             "unknown card",
         ),
         (
-            MINIMAL.replace("\"groups\":[]", r#""groups":[{"card":"run","collapsed":false,"id":"run","members":["main.ts#a"],"title":"G"}]"#),
-            "/groups/0/id",
+            with_page_fields(
+                r#""groups":[{"card":"run","collapsed":false,"id":"run","members":["main.ts#a"],"title":"G"}]"#,
+            ),
+            "/pages/0/groups/0/id",
             "duplicate id",
         ),
         (
-            MINIMAL.replace("\"groups\":[]", r#""groups":[{"card":"run","collapsed":false,"id":"g","members":["main.ts#a","main.ts#a"],"title":"G"}]"#),
-            "/groups/0/members/1",
+            with_page_fields(
+                r#""groups":[{"card":"run","collapsed":false,"id":"g","members":["main.ts#a","main.ts#a"],"title":"G"}]"#,
+            ),
+            "/pages/0/groups/0/members/1",
             "repeats",
         ),
         (
-            MINIMAL.replace("\"groups\":[]", r#""groups":[],"guards":{"main.ts#a":{"kind":"lambda","owner":"","signature":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}"#),
-            "/guards/main.ts#a/kind",
+            with_page_fields(&format!(
+                r#""groups":[],"guards":[{{"key":"main.ts#a","kind":"lambda","owner":"","signature":"{signature}"}}]"#
+            )),
+            "/pages/0/guards/0/kind",
             "block kind",
         ),
         (
-            MINIMAL.replace("\"groups\":[]", r#""groups":[],"labels":{"a/b#c":{"author":"agent:x","text":"t","extra":1}}"#),
-            "/labels/a~1b#c/extra",
+            with_page_fields(&format!(
+                r#""groups":[],"guards":[{{"key":"main.ts#a","kind":"if","owner":"","signature":"{signature}"}},{{"key":"main.ts#a","kind":"if","owner":"","signature":"{signature}"}}]"#
+            )),
+            "/pages/0/guards/1",
+            "repeats the guard",
+        ),
+        (
+            with_page_fields(
+                r#""groups":[],"labels":[{"author":"agent:x","key":"a/b#c","text":"t","extra":1}]"#,
+            ),
+            "/pages/0/labels/0/extra",
             "unknown field",
+        ),
+        (
+            with_page_fields(
+                r##""groups":[],"labels":[{"author":"agent:x","key":"a#c","text":"t"},{"author":"agent:x","key":"a#c","text":"u"}]"##,
+            ),
+            "/pages/0/labels/1",
+            "repeats the label",
+        ),
+        (
+            with_page_fields(
+                r##""groups":[],"labels":[{"author":"agent:x","key":"entrance:x","text":"t"}]"##,
+            ),
+            "/pages/0/labels/0/key",
+            "block key",
+        ),
+        (
+            with_page_fields(r#""groups":[],"links":[{"from":"run","id":"l","to":"run"}]"#),
+            "/pages/0/links/0/to",
+            "another card",
+        ),
+        (
+            with_page_fields(r#""groups":[],"links":[{"from":"nope","id":"l","to":"run"}]"#),
+            "/pages/0/links/0/from",
+            "unknown card",
+        ),
+        (
+            with_page_fields(r#""groups":[],"links":[{"from":"run","id":"run","to":"run"}]"#),
+            "/pages/0/links/0/id",
+            "duplicate id",
+        ),
+        (
+            with_page_fields(
+                r#""groups":[],"links":[{"from":"run","id":"l","to":"x","label":{"author":"agent:x","text":" "}}]"#,
+            ),
+            "/pages/0/links/0/label/text",
+            "must not be empty",
         ),
     ];
     for (text, path, message) in cases {
@@ -240,6 +474,17 @@ fn parsing_rejects_everything_outside_the_format_with_a_path() {
             "{actual_message} lacks {message}"
         );
     }
+    // Two pages with one id.
+    let page = &MINIMAL[MINIMAL.find("[{\"cards\"").unwrap() + 1..MINIMAL.find("],\"projects\"").unwrap()];
+    assert_eq!(
+        invalid(&MINIMAL.replace(page, &format!("{page},{page}"))),
+        ("/pages/1/id".to_owned(), "duplicate page id `page-1`".to_owned())
+    );
+    // The same key may be labeled once per project.
+    let both = with_page_fields(
+        r##""groups":[],"labels":[{"author":"agent:x","key":"a#c","text":"t"},{"author":"agent:x","key":"a#c","project":"web","text":"u"}]"##,
+    );
+    assert_eq!(parse(&both).unwrap().pages[0].labels.len(), 2);
     assert!(
         matches!(parse("{\"a\":1,\"a\":2}"), Err(BoardError::Syntax { .. })),
         "duplicate keys"
@@ -248,32 +493,185 @@ fn parsing_rejects_everything_outside_the_format_with_a_path() {
     assert_eq!(invalid("[]").0, "/");
 }
 
+/// A board using every part of the format: a folder, two pages, a card from another project,
+/// labels and guards in both projects, a group, and a labeled link.
+fn full_board() -> Board {
+    let signature = Signature::of(b"x");
+    let mut first = Page::new("page-1", "Placing an order");
+    first.default_view = View::Flow;
+    first.cards.push(Card {
+        at: [-0.5, 1e21],
+        view: Some(View::Code),
+        folded: true,
+        description: Some(unsigned("Quote \" and\nnewline")),
+        ..card(
+            "z-last",
+            CardRef::entrance(
+                Key::from_text("entrance:[\"manual\",\"worker\",\"\",\"\",\"x\"]"),
+                Some(web()),
+            ),
+        )
+    });
+    first.cards.push(Card {
+        at: [0.0, 0.0],
+        ..run_card("run", None)
+    });
+    first.groups.push(group(&[IF0]));
+    first.labels.push(label(Some(web()), IF0, "Web"));
+    first.labels.push(label(None, IF0, "Own"));
+    first.guards.push(GuardEntry {
+        project: Some(web()),
+        key: Key::from_text("entrance:[\"manual\",\"worker\",\"\",\"\",\"x\"]"),
+        kind: "entrance:worker".to_owned(),
+        owner: String::new(),
+        signature,
+    });
+    first.guards.push(GuardEntry {
+        project: None,
+        key: Key::from_text(RUN),
+        kind: "function".to_owned(),
+        owner: RUN.to_owned(),
+        signature,
+    });
+    first
+        .links
+        .push(link("calls", "z-last", "run", Some("calls over HTTP")));
+    let second = Page::new("a-second", "Second");
+    Board::with_pages("T", Some("Checkout/Orders".to_owned()), vec![first, second])
+}
+
 #[test]
 fn serialization_is_canonical_and_round_trips() {
-    let mut board = parse(MINIMAL).unwrap();
-    board.cards.insert(
-        0,
-        Card {
-            id: "z-last".to_owned(),
-            reference: CardRef::Entrance(Key::from_text("entrance:[\"manual\",\"worker\",\"\",\"\",\"x\"]")),
-            at: [-0.5, 1e21],
-            view: Some(View::Code),
-            folded: true,
-            description: Some(Description {
-                text: "Quote \" and\nnewline".to_owned(),
-                author: author(),
-                signature: None,
-            }),
-        },
-    );
+    let board = full_board();
+    assert_eq!(board.projects, [web()]);
     let text = serialize(&board);
-    let expected = "{\n  \"cards\": [\n    {\n      \"at\": [\n        0,\n        0\n      ],\n      \"id\": \"run\",\n      \"ref\": {\n        \"block\": \"main.ts#function:run\"\n      }\n    },\n    {\n      \"at\": [\n        -0.5,\n        1e+21\n      ],\n      \"description\": {\n        \"author\": \"agent:test\",\n        \"signature\": \"\",\n        \"text\": \"Quote \\\" and\\nnewline\"\n      },\n      \"folded\": true,\n      \"id\": \"z-last\",\n      \"ref\": {\n        \"entrance\": \"entrance:[\\\"manual\\\",\\\"worker\\\",\\\"\\\",\\\"\\\",\\\"x\\\"]\"\n      },\n      \"view\": \"code\"\n    }\n  ],\n  \"defaultView\": \"code\",\n  \"format\": \"unfold-board\",\n  \"groups\": [],\n  \"guards\": {},\n  \"labels\": {},\n  \"title\": \"T\",\n  \"version\": 1\n}\n";
+    let signature = format!("sha256:{}", Signature::of(b"x").0);
+    let expected = format!(
+        r#"{{
+  "folder": "Checkout/Orders",
+  "format": "unfold-board",
+  "pages": [
+    {{
+      "cards": [
+        {{
+          "at": [
+            0,
+            0
+          ],
+          "id": "run",
+          "ref": {{
+            "block": "main.ts#function:run"
+          }}
+        }},
+        {{
+          "at": [
+            -0.5,
+            1e+21
+          ],
+          "description": {{
+            "author": "agent:test",
+            "signature": "",
+            "text": "Quote \" and\nnewline"
+          }},
+          "folded": true,
+          "id": "z-last",
+          "ref": {{
+            "entrance": "entrance:[\"manual\",\"worker\",\"\",\"\",\"x\"]",
+            "project": "web"
+          }},
+          "view": "code"
+        }}
+      ],
+      "defaultView": "flow",
+      "groups": [
+        {{
+          "card": "run",
+          "collapsed": false,
+          "id": "steps",
+          "members": [
+            "main.ts#function:run/if[0]"
+          ],
+          "title": "Steps"
+        }}
+      ],
+      "guards": [
+        {{
+          "key": "main.ts#function:run",
+          "kind": "function",
+          "owner": "main.ts#function:run",
+          "signature": "{signature}"
+        }},
+        {{
+          "key": "entrance:[\"manual\",\"worker\",\"\",\"\",\"x\"]",
+          "kind": "entrance:worker",
+          "owner": "",
+          "project": "web",
+          "signature": "{signature}"
+        }}
+      ],
+      "id": "page-1",
+      "labels": [
+        {{
+          "author": "agent:test",
+          "key": "main.ts#function:run/if[0]",
+          "signature": "",
+          "text": "Own"
+        }},
+        {{
+          "author": "agent:test",
+          "key": "main.ts#function:run/if[0]",
+          "project": "web",
+          "signature": "",
+          "text": "Web"
+        }}
+      ],
+      "links": [
+        {{
+          "from": "z-last",
+          "id": "calls",
+          "label": {{
+            "author": "agent:test",
+            "signature": "",
+            "text": "calls over HTTP"
+          }},
+          "to": "run"
+        }}
+      ],
+      "title": "Placing an order"
+    }},
+    {{
+      "cards": [],
+      "defaultView": "code",
+      "groups": [],
+      "guards": [],
+      "id": "a-second",
+      "labels": [],
+      "links": [],
+      "title": "Second"
+    }}
+  ],
+  "projects": [
+    "web"
+  ],
+  "title": "T",
+  "version": 1
+}}
+"#
+    );
     assert_eq!(text, expected);
     let reparsed = parse(&text).unwrap();
     assert_eq!(serialize(&reparsed), text);
+    assert_eq!(reparsed.pages[0].card("z-last"), board.pages[0].card("z-last"));
+    // The writer derives `projects` from the cards, whatever the field holds.
+    let mut stale = reparsed.clone();
+    stale.projects.clear();
+    assert_eq!(serialize(&stale), text);
     // A false fold is the default and is never written.
     let mut unfolded = reparsed;
-    unfolded.cards.iter_mut().for_each(|card| card.folded = false);
+    unfolded.pages[0]
+        .cards
+        .iter_mut()
+        .for_each(|card| card.folded = false);
     assert!(!serialize(&unfolded).contains("folded"));
     // The schema is the documented one and is valid JSON.
     let schema: serde_json::Value = serde_json::from_str(SCHEMA).unwrap();
@@ -286,18 +684,65 @@ fn serialization_is_canonical_and_round_trips() {
 }
 
 #[test]
+fn edits_and_changes_copies_have_their_own_framing() {
+    let board = full_board();
+    // An edit holds the title and pages only; the folder is the caller's, projects derived.
+    let edit = serde_json::json!({ "title": board.title, "pages": board.pages }).to_string();
+    let edited = parse_edit(&edit, board.folder.clone()).unwrap();
+    assert_eq!(edited, board);
+    assert_eq!(parse_edit(&edit, None).unwrap().folder, None);
+    let framed = edit.replacen('{', "{\"format\":\"unfold-board\",", 1);
+    assert_eq!(
+        match parse_edit(&framed, None) {
+            Err(BoardError::Invalid { path, .. }) => path,
+            other => panic!("{other:?}"),
+        },
+        "/format"
+    );
+
+    // A changes copy names its published board and the revision it started from.
+    let dir = tempfile::tempdir().unwrap();
+    let dirs = BoardDirs::new(dir.path(), &dir.path().join(DRAFTS_DIR));
+    let published = BoardFile::published("orders").unwrap();
+    let copy = BoardFile::changes_of(&published).unwrap();
+    assert_eq!(copy.relative(), ".unfold/local/drafts/orders.changes.json");
+    assert_eq!(copy.publishes(), Some(published));
+    let base = Revision::of(b"published");
+    let text = serialize_changes(&board, "orders", base);
+    assert!(text.contains(&format!("\"baseRevision\": \"{}\"", base.0)));
+    assert!(text.contains("\"publishes\": \"boards/orders.json\""));
+    let revision = dirs.save_draft(&copy, &text).unwrap();
+    let loaded = dirs.load(&copy).unwrap();
+    let canonical = parse(&serialize(&board)).unwrap();
+    assert_eq!(
+        (loaded.board, loaded.revision, loaded.base),
+        (canonical, revision, Some(base))
+    );
+    // The framing belongs to the copy alone.
+    assert!(matches!(parse(&text), Err(BoardError::Invalid { path, .. }) if path == "/baseRevision"));
+    let other = BoardFile::changes_of(&BoardFile::published("other").unwrap()).unwrap();
+    dirs.save_draft(&other, &text).unwrap();
+    assert!(matches!(dirs.load(&other), Err(BoardError::Invalid { path, .. }) if path == "/publishes"));
+    dirs.save_draft(&other, &serialize(&board)).unwrap();
+    assert!(
+        matches!(dirs.load(&other), Err(BoardError::Invalid { path, message }) if path == "/" && message.contains("baseRevision"))
+    );
+    dirs.save_draft(&copy, &text.replace(&base.0.to_string(), "abc"))
+        .unwrap();
+    assert!(matches!(dirs.load(&copy), Err(BoardError::Invalid { path, .. }) if path == "/baseRevision"));
+}
+
+#[test]
 fn descriptions_are_signed_from_verified_source_and_go_outdated() {
     let (dir, graph) = folder(SOURCE);
     let mut board = sample_board();
-    describe_card(&mut board, &graph, "run", "Explains run", &author()).unwrap();
-    set_label(&mut board, &graph, FIRST, "Start with one", &author()).unwrap();
-    let card_signature = board.cards[0].description.as_ref().unwrap().signature.unwrap();
-    assert_eq!(Some(card_signature), graph.signature(RUN));
-    assert!(health(&board, &graph).is_healthy());
-    assert!(
-        set_label(&mut board, &graph, RUN, "The card itself", &author()).is_err(),
-        "a card is not its own node"
-    );
+    board.pages[0].cards[0].description = Some(unsigned("Explains run"));
+    board.pages[0].labels.push(label(None, FIRST, "Start with one"));
+    let (mut board, report) = save(board, None, &graph).unwrap();
+    assert!(report.is_healthy());
+    let card_signature = board.pages[0].cards[0].description.as_ref().unwrap().signature;
+    assert_eq!(card_signature, graph.signature(RUN));
+    assert_eq!(board.pages[0].labels[0].label.signature, graph.signature(FIRST));
 
     // The file changes on disk but is not compiled yet: nothing can be signed against it.
     std::fs::write(
@@ -306,63 +751,56 @@ fn descriptions_are_signed_from_verified_source_and_go_outdated() {
     )
     .unwrap();
     let stale = BoardGraph::from_graph(&graph_of(SOURCE), dir.path());
-    assert_eq!(health(&board, &stale).outdated, 2);
+    assert_eq!(page_health(&board, &stale).outdated, 2);
+    let mut unsigned_card = board.clone();
+    unsigned_card.pages[0].cards[0].description = Some(unsigned("x"));
     assert!(matches!(
-        describe_card(&mut board.clone(), &stale, "run", "x", &author()),
+        save(unsigned_card, Some((&board, &report)), &stale),
         Err(BoardError::Unverified { .. })
     ));
 
     // After the compile, the named references reconnect and their text is outdated.
     let updated = recompiled(dir.path(), &SOURCE.replace("first = 1", "first = 2"));
-    let report = health(&board, &updated);
+    let report = page_health(&board, &updated);
     assert_eq!((report.outdated, report.review, report.missing), (2, 0, 0));
-    assert!(
-        report
-            .items
-            .iter()
-            .all(|item| item.repairs.contains(&RepairKind::Resign))
-    );
-    apply_repair(
+    assert_eq!(report.label().as_deref(), Some("2 outdated"));
+    assert!(report.items.iter().all(|item| item.page == "page-1"
+        && item.project.is_none()
+        && item.repairs.contains(&RepairKind::Resign)));
+    // Outdated text never refuses a save.
+    assert!(save(board.clone(), Some((&board, &report)), &updated).is_ok());
+    repair(
         &mut board,
         &updated,
         &Repair::Resign(Target::Card("run".to_owned())),
     )
     .unwrap();
-    apply_repair(
-        &mut board,
-        &updated,
-        &Repair::Resign(Target::Label(FIRST.to_owned())),
-    )
-    .unwrap();
-    assert!(health(&board, &updated).is_healthy());
-    // Blank text removes a label.
-    set_label(&mut board, &updated, FIRST, "  ", &author()).unwrap();
-    assert!(board.labels.is_empty());
+    repair(&mut board, &updated, &Repair::Resign(own_label(FIRST))).unwrap();
+    assert!(page_health(&board, &updated).is_healthy());
+    repair(&mut board, &updated, &Repair::RemoveDescription(own_label(FIRST))).unwrap();
+    assert!(board.pages[0].labels.is_empty());
 }
 
 #[test]
 fn an_ordinal_reference_whose_code_changed_is_held_for_review() {
     let (dir, graph) = folder(SOURCE);
     let mut board = sample_board();
-    board.groups.push(group(&[IF0]));
-    set_label(&mut board, &graph, IF0, "Log when set", &author()).unwrap();
-    set_label(&mut board, &graph, FIRST, "Start with one", &author()).unwrap();
-    let (saved, report) = prepare_save(board, None, &graph).unwrap();
+    board.pages[0].groups.push(group(&[IF0]));
+    board.pages[0].labels.push(label(None, IF0, "Log when set"));
+    board.pages[0].labels.push(label(None, FIRST, "Start with one"));
+    let (saved, report) = save(board, None, &graph).unwrap();
     assert!(report.is_healthy());
-    assert_eq!(saved.guards[IF0].kind, "if");
-    assert_eq!(saved.guards[IF0].owner, RUN);
-    assert_eq!(
-        saved.guards.len(),
-        3,
-        "the card, the group member, and the labels"
-    );
+    let page = &saved.pages[0];
+    assert_eq!(page.guard(None, IF0).unwrap().kind, "if");
+    assert_eq!(page.guard(None, IF0).unwrap().owner, RUN);
+    assert_eq!(page.guards.len(), 3, "the card, the group member, and the labels");
 
     let inserted = SOURCE.replace(
         "  if (first)",
         "  if (!first) { console.log('inserted'); }\n  if (first)",
     );
     let updated = recompiled(dir.path(), &inserted);
-    let report = health(&saved, &updated);
+    let report = page_health(&saved, &updated);
     let held: Vec<&HealthItem> = report
         .items
         .iter()
@@ -374,29 +812,34 @@ fn an_ordinal_reference_whose_code_changed_is_held_for_review() {
             .all(|item| item.message.contains("Position-based reference changed"))
     );
     assert!(
-        report
-            .items
-            .iter()
-            .all(|item| item.target != Target::Label(FIRST.to_owned())),
+        report.items.iter().all(|item| item.target != own_label(FIRST)),
         "a named, unchanged reference stays healthy"
     );
-    assert!(describe_group(&mut saved.clone(), &updated, "steps", "New text", &author()).is_err());
+    let mut described = saved.clone();
+    described.pages[0].groups[0].description = Some(unsigned("New text"));
+    assert!(save(described, Some((&saved, &report)), &updated).is_err());
     // Mermaid never applies the held group or label to the new code.
-    let output = crate::mermaid::board(&saved, &updated);
+    let output = crate::mermaid::page(&saved, "page-1", &PageGraphs::own_only(&updated)).unwrap();
     assert!(output.contains("Group needs review: Steps"));
     assert!(!output.contains("Log when set"));
     // Saving with the problem carried over unchanged is allowed; accepting clears it.
     let mut moved = saved.clone();
-    moved.cards[0].at = [99.0, 99.0];
-    let (moved, moved_report) = prepare_save(moved, Some((&saved, &report)), &updated).unwrap();
+    moved.pages[0].cards[0].at = [99.0, 99.0];
+    let (moved, moved_report) = save(moved, Some((&saved, &report)), &updated).unwrap();
     assert_eq!(moved_report.review, 2);
     assert_eq!(
-        moved.guards[IF0], saved.guards[IF0],
+        moved.pages[0].guard(None, IF0),
+        saved.pages[0].guard(None, IF0),
         "guards survive until accepted"
     );
     let mut accepted = moved;
-    apply_repair(&mut accepted, &updated, &Repair::Accept(IF0.to_owned())).unwrap();
-    let after = health(&accepted, &updated);
+    repair(
+        &mut accepted,
+        &updated,
+        &Repair::Accept(ProjectKey::new(None, IF0)),
+    )
+    .unwrap();
+    let after = page_health(&accepted, &updated);
     assert_eq!(after.review, 0);
     assert_eq!(after.outdated, 1, "the accepted label must still be re-signed");
 }
@@ -415,8 +858,9 @@ fn groups_are_consecutive_siblings_in_one_body() {
         (&["main.ts#function:run/nope[0]"], Some("missing block")),
     ];
     for (members, problem) in cases {
-        board.groups = vec![group(members)];
-        let found = group_problem(&board, &graph, &board.groups[0]);
+        board.pages[0].groups = vec![group(members)];
+        let page = &board.pages[0];
+        let found = group_problem(page, &graph, &page.groups[0]);
         match problem {
             Some(expected) => assert!(
                 found.is_some_and(|text| text.contains(expected)),
@@ -425,34 +869,32 @@ fn groups_are_consecutive_siblings_in_one_body() {
             None => assert_eq!(found, None, "{members:?}"),
         }
     }
-    // Overlapping and nested groups are broken.
-    board.groups = vec![
+    // Overlapping and nested groups are broken, and a save that adds them is refused.
+    board.pages[0].groups = vec![
         group(&[FIRST, IF0]),
         Group {
             id: "inner".to_owned(),
             ..group(&[then_statement])
         },
     ];
-    assert!(check(&board, &graph).is_err());
-    let report = health(&board, &graph);
-    assert_eq!(report.broken_groups, 2);
-    apply_repair(&mut board, &graph, &Repair::Ungroup("inner".to_owned())).unwrap();
-    assert!(check(&board, &graph).is_ok());
+    assert_eq!(page_health(&board, &graph).broken_groups, 2);
+    assert!(matches!(
+        save(board.clone(), None, &graph),
+        Err(BoardError::Problem { page, target: Target::Group(_), .. }) if page == "page-1"
+    ));
+    repair(&mut board, &graph, &Repair::Ungroup("inner".to_owned())).unwrap();
+    assert!(page_health(&board, &graph).is_healthy());
     // A group on an entrance card is broken.
-    board.cards.push(Card {
-        id: "entrance".to_owned(),
-        reference: CardRef::Entrance(Key::from_text("entrance:none")),
-        at: [0.0, 0.0],
-        view: None,
-        folded: false,
-        description: None,
-    });
+    board.pages[0].cards.push(card(
+        "entrance",
+        CardRef::entrance(Key::from_text("entrance:none"), None),
+    ));
     let entrance_group = Group {
         card: "entrance".to_owned(),
         ..group(&[FIRST])
     };
     assert_eq!(
-        group_problem(&board, &graph, &entrance_group),
+        group_problem(&board.pages[0], &graph, &entrance_group),
         Some("Group must belong to a block card")
     );
 }
@@ -461,85 +903,96 @@ fn groups_are_consecutive_siblings_in_one_body() {
 fn missing_references_are_placeholders_with_repairs() {
     let (dir, graph) = folder(SOURCE);
     let mut board = sample_board();
-    set_label(&mut board, &graph, RETURN0, "Hand back first", &author()).unwrap();
-    let (saved, _) = prepare_save(board, None, &graph).unwrap();
+    board.pages[0]
+        .labels
+        .push(label(None, RETURN0, "Hand back first"));
+    let (saved, _) = save(board, None, &graph).unwrap();
     let renamed = SOURCE.replace("function run", "function start");
     let updated = recompiled(dir.path(), &renamed);
-    let report = health(&saved, &updated);
+    let report = page_health(&saved, &updated);
     assert_eq!(report.missing, 2);
-    let card = report
+    let card_item = report
         .items
         .iter()
         .find(|item| item.target == Target::Card("run".to_owned()))
         .unwrap();
-    assert_eq!(card.repairs, [RepairKind::Reconnect, RepairKind::RemoveCard]);
+    assert_eq!(card_item.repairs, [RepairKind::Reconnect, RepairKind::RemoveCard]);
     // A position update keeps the placeholder; a new missing reference is refused.
     let mut moved = saved.clone();
-    moved.cards[0].at = [1.0, 2.0];
-    assert!(prepare_save(moved.clone(), Some((&saved, &report)), &updated).is_ok());
-    moved.cards.push(Card {
+    moved.pages[0].cards[0].at = [1.0, 2.0];
+    assert!(save(moved.clone(), Some((&saved, &report)), &updated).is_ok());
+    let new = Card {
         id: "new".to_owned(),
-        reference: CardRef::Block(Key::from_text("main.ts#function:nope")),
-        ..moved.cards[0].clone()
-    });
+        reference: CardRef::block(Key::from_text("main.ts#function:nope"), None),
+        ..moved.pages[0].cards[0].clone()
+    };
+    moved.pages[0].cards.push(new);
     assert!(matches!(
-        prepare_save(moved, Some((&saved, &report)), &updated),
+        save(moved, Some((&saved, &report)), &updated),
         Err(BoardError::Problem { target: Target::Card(id), .. }) if id == "new"
     ));
     // The manual repair after a rename.
     let mut repaired = saved;
-    apply_repair(
-        &mut repaired,
-        &updated,
-        &Repair::Reconnect {
-            from: RUN.to_owned(),
-            to: "main.ts#function:start".to_owned(),
-        },
-    )
-    .unwrap();
-    apply_repair(
-        &mut repaired,
-        &updated,
-        &Repair::Reconnect {
-            from: RETURN0.to_owned(),
-            to: "main.ts#function:start/return[0]".to_owned(),
-        },
-    )
-    .unwrap();
-    let report = health(&repaired, &updated);
-    assert_eq!(report.missing, 0, "{:#?}", report.items);
-    assert!(repaired.guards.contains_key("main.ts#function:start"));
-    assert!(!repaired.guards.contains_key(RUN));
-    assert!(
-        apply_repair(
+    for (from, to) in [
+        (RUN, "main.ts#function:start"),
+        (RETURN0, "main.ts#function:start/return[0]"),
+    ] {
+        repair(
             &mut repaired,
             &updated,
             &Repair::Reconnect {
+                project: None,
+                from: from.to_owned(),
+                to: to.to_owned(),
+            },
+        )
+        .unwrap();
+    }
+    let report = page_health(&repaired, &updated);
+    assert_eq!(report.missing, 0, "{:#?}", report.items);
+    let page = &repaired.pages[0];
+    assert!(page.guard(None, "main.ts#function:start").is_some());
+    assert!(page.guard(None, RUN).is_none());
+    assert_eq!(
+        page.label(None, "main.ts#function:start/return[0]"),
+        Some("Hand back first")
+    );
+    assert!(
+        repair(
+            &mut repaired,
+            &updated,
+            &Repair::Reconnect {
+                project: None,
                 from: "a".to_owned(),
                 to: "main.ts#nope".to_owned()
             }
         )
         .is_err()
     );
-    apply_repair(&mut repaired, &updated, &Repair::RemoveCard("run".to_owned())).unwrap();
-    assert!(repaired.cards.is_empty());
+    repair(&mut repaired, &updated, &Repair::RemoveCard("run".to_owned())).unwrap();
+    assert!(repaired.pages[0].cards.is_empty());
 }
 
 #[test]
 fn reconnecting_onto_a_member_never_repeats_it() {
     let (_dir, graph) = folder(SOURCE);
     let mut board = sample_board();
-    board.groups.push(group(&[FIRST, IF0]));
-    apply_repair(
+    board.pages[0].groups.push(group(&[FIRST, IF0]));
+    board.pages[0].labels.push(label(None, FIRST, "From"));
+    board.pages[0].labels.push(label(None, IF0, "To"));
+    repair(
         &mut board,
         &graph,
         &Repair::Reconnect {
+            project: None,
             from: FIRST.to_owned(),
             to: IF0.to_owned(),
         },
     )
     .unwrap();
-    assert_eq!(board.groups[0].members, [Key::from_text(IF0)]);
+    assert_eq!(board.pages[0].groups[0].members, [Key::from_text(IF0)]);
+    assert_eq!(board.pages[0].labels.len(), 1, "labels stay unique per key");
+    assert_eq!(board.pages[0].label(None, IF0), Some("From"));
     assert_eq!(
         parse(&serialize(&board)).unwrap(),
         board,
@@ -551,47 +1004,354 @@ fn reconnecting_onto_a_member_never_repeats_it() {
 fn saving_signs_restores_dropped_guards_and_drops_unused_ones() {
     let (_dir, graph) = folder(SOURCE);
     let mut board = sample_board();
-    board.cards[0].description = Some(Description {
-        text: "Unsigned until saved".to_owned(),
-        author: author(),
-        signature: None,
-    });
-    board.groups.push(group(&[FIRST, IF0]));
-    board.groups[0].description = Some(Description {
-        text: "Set up".to_owned(),
-        author: author(),
-        signature: None,
-    });
-    let (saved, report) = prepare_save(board, None, &graph).unwrap();
+    board.pages[0].cards[0].description = Some(unsigned("Unsigned until saved"));
+    board.pages[0].groups.push(group(&[FIRST, IF0]));
+    board.pages[0].groups[0].description = Some(unsigned("Set up"));
+    let (saved, report) = save(board, None, &graph).unwrap();
     assert!(report.is_healthy());
+    let page = &saved.pages[0];
     assert_eq!(
-        saved.cards[0].description.as_ref().unwrap().signature,
+        page.cards[0].description.as_ref().unwrap().signature,
         graph.signature(RUN)
     );
     assert_eq!(
-        saved.groups[0].description.as_ref().unwrap().signature,
+        page.groups[0].description.as_ref().unwrap().signature,
         graph.span_signature(FIRST, IF0)
     );
     let mut edited = saved.clone();
-    edited.guards.clear();
-    edited.guards.insert(
-        "main.ts#unused".to_owned(),
-        Guard {
-            kind: "if".to_owned(),
-            owner: String::new(),
-            signature: Signature::of(b"x"),
-        },
+    edited.pages[0].guards = vec![GuardEntry {
+        project: None,
+        key: Key::from_text("main.ts#unused"),
+        kind: "if".to_owned(),
+        owner: String::new(),
+        signature: Signature::of(b"x"),
+    }];
+    edited.pages[0].title = "Retitled".to_owned();
+    let (again, _) = save(edited, Some((&saved, &report)), &graph).unwrap();
+    assert_eq!(again.pages[0].guards, saved.pages[0].guards);
+    assert_eq!(
+        serialize(&again),
+        serialize(&saved).replace("\"Page 1\"", "\"Retitled\"")
     );
-    let (again, _) = prepare_save(edited, Some((&saved, &report)), &graph).unwrap();
-    assert_eq!(again.guards, saved.guards);
-    assert_eq!(serialize(&again), serialize(&saved));
+}
+
+#[test]
+fn saving_reuses_unchanged_pages_and_refreshes_projects() {
+    let (_dir, graph) = folder(SOURCE);
+    let mut board = sample_board();
+    board.pages.push(Page::new("page-2", "Second"));
+    let (saved, report) = save(board, None, &graph).unwrap();
+    // An unchanged page is not checked again: its health (even a stale one) is kept as is.
+    let mut stale = report;
+    stale.append(Health {
+        items: vec![HealthItem {
+            page: "page-1".to_owned(),
+            kind: HealthKind::Outdated,
+            target: Target::Card("run".to_owned()),
+            project: None,
+            key: None,
+            message: "kept".to_owned(),
+            repairs: Vec::new(),
+        }],
+        ..Health::default()
+    });
+    let mut edited = saved.clone();
+    edited.pages[1].title = "Second, retitled".to_owned();
+    edited.pages[1].cards.push(run_card("web-run", Some(web())));
+    edited.projects.clear();
+    let (again, again_report) = save(edited, Some((&saved, &stale)), &graph).unwrap();
+    assert_eq!(again.projects, [web()], "projects are derived again");
+    assert_eq!(again_report.outdated, 1, "page-1's health was reused");
+    assert_eq!(again_report.not_connected, 1, "page-2 was checked");
+    assert_eq!(again_report.of_page("page-2").items.len(), 1);
+    assert_eq!(
+        again_report.label().as_deref(),
+        Some("1 outdated · 1 not connected")
+    );
+}
+
+/// Two projects: the board's own (`main.ts` in one folder) and `web` (the same source in
+/// another folder, so the same keys exist in both).
+struct TwoProjects {
+    _own_dir: tempfile::TempDir,
+    web_dir: tempfile::TempDir,
+    own: BoardGraph,
+    others: BTreeMap<ProjectName, BoardGraph>,
+}
+
+impl TwoProjects {
+    fn new() -> Self {
+        let (own_dir, own) = folder(SOURCE);
+        let (web_dir, web_graph) = folder(SOURCE);
+        Self {
+            _own_dir: own_dir,
+            web_dir,
+            own,
+            others: BTreeMap::from([(web(), web_graph)]),
+        }
+    }
+
+    fn graphs(&self) -> PageGraphs<'_> {
+        PageGraphs::new(&self.own, &self.others)
+    }
+}
+
+#[test]
+fn cards_from_other_projects_are_checked_against_their_own_graph() {
+    let mut projects = TwoProjects::new();
+    let gone = ProjectName::parse("gone").unwrap();
+    let mut board = sample_board();
+    let page = &mut board.pages[0];
+    page.cards.push(run_card("web-run", Some(web())));
+    page.cards.push(Card {
+        description: Some(unsigned("Cannot be signed yet")),
+        ..run_card("gone-run", Some(gone.clone()))
+    });
+    page.groups.push(Group {
+        id: "gone-steps".to_owned(),
+        card: "gone-run".to_owned(),
+        ..group(&[RUN])
+    });
+    page.labels.push(label(Some(web()), FIRST, "Web first"));
+    page.labels.push(label(Some(gone.clone()), FIRST, "Gone first"));
+    page.guards.push(GuardEntry {
+        project: Some(gone.clone()),
+        key: Key::from_text(RUN),
+        kind: "function".to_owned(),
+        owner: RUN.to_owned(),
+        signature: Signature::of(b"elsewhere"),
+    });
+    board.refresh_projects();
+    assert_eq!(board.projects, [gone.clone(), web()]);
+    assert_eq!(board.references(Some(&web())), [RUN, FIRST]);
+    assert_eq!(board.references(None), [RUN]);
+
+    // A project that is not connected is never a save error: its cards are placeholders, and
+    // its text, groups, and guards are kept unchecked.
+    let (saved, report) = prepare_save(board, None, &projects.graphs()).unwrap();
+    assert_eq!(report.not_connected, 1, "{:#?}", report.items);
+    assert_eq!(report.items.len(), 1);
+    let item = &report.items[0];
+    assert_eq!(
+        (
+            item.page.as_str(),
+            &item.target,
+            item.project.as_ref(),
+            item.message.as_str()
+        ),
+        (
+            "page-1",
+            &Target::Card("gone-run".to_owned()),
+            Some(&gone),
+            "From gone, not connected"
+        )
+    );
+    assert_eq!(item.repairs, [RepairKind::RemoveCard]);
+    assert_eq!(report.label().as_deref(), Some("1 not connected"));
+    let page = &saved.pages[0];
+    assert_eq!(page.guards.len(), 4, "own run, web run and first, gone run");
+    assert_eq!(
+        page.guard(Some(&gone), RUN).unwrap().signature,
+        Signature::of(b"elsewhere"),
+        "a not-connected project's guard is kept as it is"
+    );
+    assert_eq!(
+        page.label_entry(Some(&web()), FIRST).unwrap().label.signature,
+        projects.others[&web()].signature(FIRST)
+    );
+    assert_eq!(
+        page.label_entry(Some(&gone), FIRST).unwrap().label.signature,
+        None
+    );
+    assert_eq!(
+        page.card("gone-run")
+            .unwrap()
+            .description
+            .as_ref()
+            .unwrap()
+            .signature,
+        None
+    );
+
+    // A change in `web` outdates web's text only; the board's own project is unaffected.
+    let changed = SOURCE.replace("first = 1", "first = 2");
+    projects
+        .others
+        .insert(web(), recompiled(projects.web_dir.path(), &changed));
+    let report = health(&saved.pages[0], &projects.graphs());
+    let outdated: Vec<(&Target, Option<&ProjectName>)> = report
+        .items
+        .iter()
+        .filter(|item| item.kind == HealthKind::Outdated)
+        .map(|item| (&item.target, item.project.as_ref()))
+        .collect();
+    let web_label = Target::Label(ProjectKey::new(Some(&web()), FIRST));
+    assert_eq!(outdated, [(&web_label, Some(&web()))]);
+
+    // A new missing reference in a connected project is refused like the board's own.
+    let mut edited = saved.clone();
+    edited.pages[0].cards.push(card(
+        "web-nope",
+        CardRef::block(Key::from_text("main.ts#function:nope"), Some(web())),
+    ));
+    assert!(matches!(
+        prepare_save(edited, Some((&saved, &report)), &projects.graphs()),
+        Err(BoardError::Problem { target: Target::Card(id), .. }) if id == "web-nope"
+    ));
+    // Reconnecting needs the project connected.
+    let mut board = saved.clone();
+    let page = board.page_mut("page-1").unwrap();
+    assert!(
+        apply_repair(
+            page,
+            &projects.graphs(),
+            &Repair::Reconnect {
+                project: Some(gone.clone()),
+                from: RUN.to_owned(),
+                to: FIRST.to_owned(),
+            }
+        )
+        .is_err()
+    );
+    // Removing the placeholder drops the project from the board.
+    apply_repair(
+        page,
+        &projects.graphs(),
+        &Repair::RemoveCard("gone-run".to_owned()),
+    )
+    .unwrap();
+    assert!(page.groups.iter().all(|group| group.card != "gone-run"));
+    let (board, _) = prepare_save(board, Some((&saved, &report)), &projects.graphs()).unwrap();
+    assert_eq!(board.projects, [web()]);
+    assert!(
+        board.pages[0].guard(Some(&gone), RUN).is_none(),
+        "nothing references it any more"
+    );
+
+    // Mermaid draws the placeholder.
+    let output = crate::mermaid::page(&saved, "page-1", &projects.graphs()).unwrap();
+    assert!(
+        output.contains("c2[\"From gone, not connected\"]\n  class c2 opaque"),
+        "{output}"
+    );
+    assert!(output.contains("%% notConnected: From gone, not connected"));
+    assert!(crate::mermaid::page(&saved, "nope", &projects.graphs()).is_none());
+}
+
+#[test]
+fn drawn_links_are_signed_over_their_ends_and_break_with_them() {
+    let projects = TwoProjects::new();
+    let mut board = sample_board();
+    let page = &mut board.pages[0];
+    page.default_view = View::Code;
+    page.cards.push(run_card("web-run", Some(web())));
+    page.cards
+        .push(run_card("gone-run", Some(ProjectName::parse("gone").unwrap())));
+    page.links
+        .push(link("calls", "web-run", "run", Some("calls over HTTP")));
+    page.links
+        .push(link("to-gone", "run", "gone-run", Some("hands off")));
+    page.links.push(link("plain", "run", "web-run", None));
+    board.refresh_projects();
+    let (saved, report) = prepare_save(board, None, &projects.graphs()).unwrap();
+    assert_eq!(report.broken_links, 0, "a not-connected end is not missing");
+    let page = &saved.pages[0];
+    let hex = |project: Option<&ProjectName>| page.guard(project, RUN).unwrap().signature.0;
+    let expected = Signature::of(format!("{}\n{}", hex(Some(&web())), hex(None)).as_bytes());
+    assert_eq!(
+        page.link("calls").unwrap().label.as_ref().unwrap().signature,
+        Some(expected)
+    );
+    assert_eq!(
+        page.link("to-gone").unwrap().label.as_ref().unwrap().signature,
+        None,
+        "an end without a guard leaves the label unsigned"
+    );
+
+    // Mermaid draws drawn links as dashed arrows with their label.
+    let output = crate::mermaid::page(&saved, "page-1", &projects.graphs()).unwrap();
+    assert!(output.contains("  c1 -.->|\"calls over HTTP\"| c0\n"), "{output}");
+    assert!(output.contains("  c0 -.-> c1\n"), "{output}");
+    assert!(output.contains("  c0 -.->|\"hands off\"| c2\n"), "{output}");
+
+    // The outline follows drawn links across projects.
+    let rows: Vec<(String, u32)> = outline(page, &projects.graphs())
+        .rows
+        .into_iter()
+        .map(|row| (row.card, row.depth))
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            ("run".to_owned(), 0),
+            ("web-run".to_owned(), 1),
+            ("gone-run".to_owned(), 1)
+        ]
+    );
+
+    // A code change never outdates a link label; a missing end breaks the link.
+    let renamed = SOURCE.replace("function run", "function start");
+    let others = BTreeMap::from([(web(), recompiled(projects.web_dir.path(), &renamed))]);
+    let graphs = PageGraphs::new(&projects.own, &others);
+    let report = health(page, &graphs);
+    assert_eq!(
+        (report.missing, report.broken_links, report.outdated),
+        (1, 2, 0),
+        "{:#?}",
+        report.items
+    );
+    let broken = report
+        .items
+        .iter()
+        .find(|item| item.target == Target::Link("calls".to_owned()))
+        .unwrap();
+    assert_eq!(broken.message, "Linked card web-run is missing");
+    assert_eq!(broken.repairs, [RepairKind::RemoveLink]);
+    assert_eq!(
+        report.label().as_deref(),
+        Some("1 missing · 1 not connected · 2 broken links")
+    );
+    // A new link to the missing card is refused; carried broken links are kept.
+    let mut edited = saved.clone();
+    edited.pages[0]
+        .links
+        .push(link("again", "web-run", "gone-run", None));
+    assert!(matches!(
+        prepare_save(edited, Some((&saved, &report)), &graphs),
+        Err(BoardError::Problem { target: Target::Link(id), .. }) if id == "again"
+    ));
+    let mut moved = saved.clone();
+    moved.pages[0].cards[0].at = [5.0, 5.0];
+    assert!(prepare_save(moved, Some((&saved, &report)), &graphs).is_ok());
+    // Link repairs.
+    let mut page = saved.pages[0].clone();
+    apply_repair(&mut page, &graphs, &Repair::RemoveLink("calls".to_owned())).unwrap();
+    apply_repair(
+        &mut page,
+        &graphs,
+        &Repair::RemoveDescription(Target::Link("to-gone".to_owned())),
+    )
+    .unwrap();
+    assert_eq!(page.link("to-gone").unwrap().label, None);
+    apply_repair(&mut page, &graphs, &Repair::RemoveCard("web-run".to_owned())).unwrap();
+    assert_eq!(
+        page.links.iter().map(|link| link.id.as_str()).collect::<Vec<_>>(),
+        ["to-gone"]
+    );
+    let mut resigned = saved.pages[0].clone();
+    resigned.links[0].label.as_mut().unwrap().signature = None;
+    let target = Target::Link(resigned.links[0].id.clone());
+    apply_repair(&mut resigned, &projects.graphs(), &Repair::Resign(target)).unwrap();
+    assert_eq!(resigned, saved.pages[0]);
 }
 
 #[test]
 fn the_outline_follows_calls_and_counts_unlabeled_nodes() {
     let (_dir, graph) = folder(SOURCE);
     let mut board = sample_board();
-    let empty = outline(&board, &graph);
+    let graphs = PageGraphs::own_only(&graph);
+    let empty = outline(&board.pages[0], &graphs);
+    assert_eq!(empty.page, "page-1");
     assert_eq!(
         empty.rows,
         [OutlineRow {
@@ -601,55 +1361,94 @@ fn the_outline_follows_calls_and_counts_unlabeled_nodes() {
     );
     let unlabeled = empty.unlabeled.len();
     assert_eq!(unlabeled, 5, "first, if, its then statement, the log, the return");
-    set_label(&mut board, &graph, FIRST, "Start with one", &author()).unwrap();
-    assert_eq!(outline(&board, &graph).unlabeled.len(), unlabeled - 1);
+    board.pages[0].labels.push(label(None, FIRST, "Start with one"));
+    assert_eq!(outline(&board.pages[0], &graphs).unlabeled.len(), unlabeled - 1);
+    // A label in another project never names this project's node.
+    board.pages[0].labels.push(label(Some(web()), IF0, "Elsewhere"));
+    assert_eq!(outline(&board.pages[0], &graphs).unlabeled.len(), unlabeled - 1);
+    assert!(card_links(&board.pages[0], &graphs).is_empty());
+}
+
+#[test]
+fn changes_count_structural_differences() {
+    let published = full_board();
+    assert_eq!(changes(&published, &published), 0);
+    let mut working = published.clone();
+    working.title = "Retitled".to_owned();
+    working.folder = None;
+    assert_eq!(changes(&working, &published), 2);
+
+    let mut working = published.clone();
+    working.pages.reverse();
+    assert_eq!(changes(&working, &published), 1, "page order");
+    working.pages.push(Page::new("page-3", "Third"));
+    working.pages.retain(|page| page.id != "a-second");
+    assert_eq!(
+        changes(&working, &published),
+        2,
+        "one added, one removed; order alone is equal"
+    );
+
+    let mut working = published.clone();
+    let page = &mut working.pages[0];
+    page.title = "New title".to_owned();
+    page.default_view = View::Code;
+    page.cards[1].at = [1.0, 1.0];
+    page.cards.push(run_card("added", None));
+    page.groups.clear();
+    page.links[0].label = None;
+    page.labels[0].label.text = "Changed".to_owned();
+    page.labels.push(label(Some(web()), FIRST, "New label"));
+    page.guards.clear();
+    page.cards[0].description.as_mut().unwrap().signature = Some(Signature::of(b"new"));
+    // title, view, card changed, card added, signature on a card (a changed card), group
+    // removed, link changed, label changed, label added; guards don't count.
+    assert_eq!(changes(&working, &published), 9);
+    assert_eq!(changes(&published, &working), 9, "symmetric");
 }
 
 #[test]
 fn board_files_publish_once_and_write_atomically() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
+    let dirs = BoardDirs::new(root, &root.join(DRAFTS_DIR));
     let board = parse(MINIMAL).unwrap();
     let text = serialize(&board);
 
     let draft = BoardFile::draft("7f3c2a").unwrap();
     assert_eq!(draft.relative(), ".unfold/local/drafts/7f3c2a.json");
-    let revision = files::save(root, &draft, &text).unwrap();
-    assert_eq!(
-        std::fs::read_to_string(root.join(".unfold/local/.gitignore")).unwrap(),
-        "*\n"
-    );
+    let revision = dirs.save_draft(&draft, &text).unwrap();
     assert!(
         !root.join(".unfold/boards").exists(),
         "a draft writes nothing to share"
     );
-    let loaded = files::load(root, &draft).unwrap();
-    assert_eq!((loaded.board.clone(), loaded.revision), (board, revision));
-    assert_eq!(files::change(root, &draft, revision).unwrap(), Change::Unchanged);
+    let loaded = dirs.load(&draft).unwrap();
+    assert_eq!(
+        (loaded.board.clone(), loaded.revision, loaded.base),
+        (board, revision, None)
+    );
+    assert_eq!(dirs.change(&draft, revision).unwrap(), Change::Unchanged);
 
     // An external edit is detected.
-    std::fs::write(draft.path(root), text.replace("\"T\"", "\"Edited\"")).unwrap();
+    std::fs::write(dirs.path(&draft), text.replace("\"T\"", "\"Edited\"")).unwrap();
     assert!(matches!(
-        files::change(root, &draft, revision).unwrap(),
+        dirs.change(&draft, revision).unwrap(),
         Change::Changed(_)
     ));
 
-    let name = files::slug("  Order placement: v2!  ");
+    let name = slug("  Order placement: v2!  ");
     assert_eq!(name, "order-placement-v2");
-    let (published, _) = files::publish(root, &draft, &name, &text).unwrap();
+    let (published, published_revision) = dirs.create_published(&name, &text).unwrap();
     assert_eq!(published.relative(), ".unfold/boards/order-placement-v2.json");
-    assert_eq!(std::fs::read_to_string(published.path(root)).unwrap(), text);
-    assert_eq!(
-        files::change(root, &draft, revision).unwrap(),
-        Change::Missing,
-        "publishing removes the draft"
+    assert_eq!(std::fs::read_to_string(dirs.path(&published)).unwrap(), text);
+    assert!(
+        dirs.save_draft(&published, &text).is_err(),
+        "published files are written only by Publish"
     );
 
     // Publish never overwrites; the collision names the file and offers a free name.
-    let second = BoardFile::draft("second").unwrap();
-    files::save(root, &second, &text).unwrap();
     let other = text.replace("\"T\"", "\"Other\"");
-    match files::publish(root, &second, &name, &other) {
+    match dirs.create_published(&name, &other) {
         Err(BoardError::NameTaken { path, suggestion }) => {
             assert_eq!(path, ".unfold/boards/order-placement-v2.json");
             assert_eq!(suggestion, "order-placement-v2-2");
@@ -657,33 +1456,41 @@ fn board_files_publish_once_and_write_atomically() {
         result => panic!("expected a collision, got {result:?}"),
     }
     assert_eq!(
-        std::fs::read_to_string(published.path(root)).unwrap(),
-        text,
-        "the existing board is untouched"
+        dirs.change(&published, published_revision).unwrap(),
+        Change::Unchanged
     );
-    assert!(second.path(root).exists(), "the draft stays");
 
-    // Rename never overwrites either; move back to drafts; delete.
-    let renamed = files::rename(root, &published, "order-placement").unwrap();
-    assert!(!published.path(root).exists());
+    // A changes copy is published over the file on purpose, and recreates a deleted one.
+    let copy = BoardFile::changes_of(&published).unwrap();
+    assert_eq!(BoardFile::changes_of(&draft), None);
+    dirs.save_draft(
+        &copy,
+        &serialize_changes(&parse(&other).unwrap(), &name, published_revision),
+    )
+    .unwrap();
+    assert_eq!(dirs.changed().unwrap(), std::slice::from_ref(&published));
+    let overwritten = dirs.overwrite_published(&published, &other).unwrap();
+    assert_eq!(overwritten, Revision::of(other.as_bytes()));
+    assert_eq!(std::fs::read_to_string(dirs.path(&published)).unwrap(), other);
+    dirs.remove(&published).unwrap();
+    dirs.overwrite_published(&published, &text).unwrap();
+    assert_eq!(dirs.list(Place::Published).unwrap(), [published]);
+    assert!(dirs.overwrite_published(&draft, &text).is_err());
+
+    // Drafts never list changes copies, and never take a copy's name.
+    assert_eq!(dirs.list(Place::Draft).unwrap(), std::slice::from_ref(&draft));
     assert!(matches!(
-        files::rename(root, &renamed, "order-placement"),
-        Err(BoardError::NameTaken { .. })
+        BoardFile::draft("orders.changes"),
+        Err(BoardError::InvalidName { .. })
     ));
-    let back = BoardFile::draft("back").unwrap();
-    files::unpublish(root, &renamed, &back, &text).unwrap();
-    assert!(!renamed.path(root).exists());
-    assert_eq!(
-        files::list(root, Place::Draft)
-            .unwrap()
-            .iter()
-            .map(|file| file.name.as_str())
-            .collect::<Vec<_>>(),
-        ["back", "second"]
-    );
-    files::remove(root, &back).unwrap();
-    files::remove(root, &back).unwrap();
-    assert!(files::list(root, Place::Published).unwrap().is_empty());
+    assert_eq!(dirs.free_draft("7f3c2a").unwrap().name, "7f3c2a-2");
+    assert_eq!(dirs.free_draft("x.changes").unwrap().name, "x");
+    assert_eq!(BoardFile::draft("x").unwrap().publishes(), None);
+    dirs.remove(&copy).unwrap();
+    assert!(dirs.changed().unwrap().is_empty());
+    dirs.remove(&draft).unwrap();
+    dirs.remove(&draft).unwrap();
+    assert!(dirs.list(Place::Draft).unwrap().is_empty());
 
     // Atomic replacement leaves no temporary files behind.
     let target = root.join("atomic.json");
@@ -710,8 +1517,8 @@ fn board_files_publish_once_and_write_atomically() {
             "{bad}"
         );
     }
-    assert_eq!(files::slug("¿¿"), "board");
-    assert_eq!(files::slug("Café Crème"), "cafe-creme");
+    assert_eq!(slug("¿¿"), "board");
+    assert_eq!(slug("Café Crème"), "cafe-creme");
 }
 
 #[cfg(unix)]
@@ -719,58 +1526,69 @@ fn board_files_publish_once_and_write_atomically() {
 fn board_directories_must_not_be_links() {
     let dir = tempfile::tempdir().unwrap();
     let outside = tempfile::tempdir().unwrap();
+    let dirs = BoardDirs::new(dir.path(), &dir.path().join(DRAFTS_DIR));
     std::fs::create_dir(dir.path().join(".unfold")).unwrap();
     std::os::unix::fs::symlink(outside.path(), dir.path().join(".unfold/boards")).unwrap();
     let text = serialize(&parse(MINIMAL).unwrap());
     assert!(matches!(
-        files::create_published(dir.path(), "x", &text),
+        dirs.create_published("x", &text),
+        Err(BoardError::Io { .. })
+    ));
+    let file = BoardFile::published("x").unwrap();
+    assert!(matches!(
+        dirs.overwrite_published(&file, &text),
         Err(BoardError::Io { .. })
     ));
     assert!(std::fs::read_dir(outside.path()).unwrap().next().is_none());
 
-    // A board-looking file outside the folder is never read, listed, renamed, or deleted
-    // through the link (a cloned repository can commit `.unfold/boards` as a link).
+    // A board-looking file outside the folder is never read, listed, or deleted through the
+    // link (a cloned repository can commit `.unfold/boards` as a link).
     let victim = outside.path().join("x.json");
     std::fs::write(&victim, &text).unwrap();
-    let file = BoardFile::published("x").unwrap();
     let refused = |result: Result<(), BoardError>| matches!(result, Err(BoardError::Io { .. }));
-    assert!(refused(files::remove(dir.path(), &file)));
-    assert!(refused(files::load(dir.path(), &file).map(drop)));
-    assert!(refused(
-        files::change(dir.path(), &file, Revision::of(b"")).map(drop)
-    ));
-    assert!(refused(files::list(dir.path(), Place::Published).map(drop)));
-    assert!(refused(files::rename(dir.path(), &file, "y").map(drop)));
+    assert!(refused(dirs.remove(&file)));
+    assert!(refused(dirs.load(&file).map(drop)));
+    assert!(refused(dirs.change(&file, Revision::of(b"")).map(drop)));
+    assert!(refused(dirs.list(Place::Published).map(drop)));
     assert_eq!(std::fs::read_to_string(&victim).unwrap(), text);
 
     // A board file that is itself a link is refused for reading; removing it removes the link.
     std::fs::remove_file(dir.path().join(".unfold/boards")).unwrap();
     std::fs::create_dir(dir.path().join(".unfold/boards")).unwrap();
-    std::os::unix::fs::symlink(&victim, file.path(dir.path())).unwrap();
-    assert!(refused(files::load(dir.path(), &file).map(drop)));
-    assert!(refused(
-        files::change(dir.path(), &file, Revision::of(b"")).map(drop)
-    ));
-    files::remove(dir.path(), &file).unwrap();
+    std::os::unix::fs::symlink(&victim, dirs.path(&file)).unwrap();
+    assert!(refused(dirs.load(&file).map(drop)));
+    assert!(refused(dirs.change(&file, Revision::of(b"")).map(drop)));
+    dirs.remove(&file).unwrap();
     assert_eq!(std::fs::read_to_string(&victim).unwrap(), text);
+
+    // The drafts directory must be a real directory too.
+    let linked = BoardDirs::new(dir.path(), &dir.path().join("drafts-link"));
+    std::os::unix::fs::symlink(outside.path(), dir.path().join("drafts-link")).unwrap();
+    let draft = BoardFile::draft("d").unwrap();
+    assert!(matches!(
+        linked.save_draft(&draft, &text),
+        Err(BoardError::Io { .. })
+    ));
+    assert!(refused(linked.list(Place::Draft).map(drop)));
 }
 
 #[test]
 fn free_names_stay_valid_and_bounded() {
     let dir = tempfile::tempdir().unwrap();
+    let dirs = BoardDirs::new(dir.path(), &dir.path().join(DRAFTS_DIR));
     let text = serialize(&parse(MINIMAL).unwrap());
     // A taken name at the length limit still gets a valid alternative (this used to loop
     // forever, because every suffixed candidate was too long).
     let long = "a".repeat(100);
-    files::create_published(dir.path(), &long, &text).unwrap();
-    match files::create_published(dir.path(), &long, &text) {
+    dirs.create_published(&long, &text).unwrap();
+    match dirs.create_published(&long, &text) {
         Err(BoardError::NameTaken { suggestion, .. }) => {
             assert_eq!(suggestion, format!("{}-2", "a".repeat(98)));
             assert!(BoardFile::published(&suggestion).is_ok());
         }
         result => panic!("expected a collision, got {result:?}"),
     }
-    assert_eq!(files::free_name(dir.path(), "fresh"), "fresh");
+    assert_eq!(dirs.free_name("fresh"), "fresh");
 }
 
 #[test]
@@ -787,22 +1605,56 @@ fn board_names_avoid_reserved_device_names() {
     for fine in ["console", "com0", "com10", "auxiliary", "board"] {
         assert!(BoardFile::published(fine).is_ok(), "{fine}");
     }
-    assert_eq!(files::slug("Con"), "con-board");
-    assert!(BoardFile::published(&files::slug("AUX")).is_ok());
+    assert_eq!(slug("Con"), "con-board");
+    assert!(BoardFile::published(&slug("AUX")).is_ok());
 }
 
 #[test]
 fn oversized_board_files_are_refused_before_reading() {
     let dir = tempfile::tempdir().unwrap();
+    let dirs = BoardDirs::new(dir.path(), &dir.path().join(DRAFTS_DIR));
     let file = BoardFile::draft("big").unwrap();
-    files::save(dir.path(), &file, &serialize(&parse(MINIMAL).unwrap())).unwrap();
+    dirs.save_draft(&file, &serialize(&parse(MINIMAL).unwrap()))
+        .unwrap();
     let handle = std::fs::OpenOptions::new()
         .write(true)
-        .open(file.path(dir.path()))
+        .open(dirs.path(&file))
         .unwrap();
-    handle.set_len(files::MAX_BOARD_BYTES + 1).unwrap();
-    assert!(matches!(
-        files::load(dir.path(), &file),
-        Err(BoardError::Io { .. })
-    ));
+    handle.set_len(MAX_BOARD_BYTES + 1).unwrap();
+    assert!(matches!(dirs.load(&file), Err(BoardError::Io { .. })));
+}
+
+#[test]
+fn health_labels_name_every_kind() {
+    let mut health = Health::default();
+    assert_eq!(health.label(), None);
+    for (kind, count) in [
+        (HealthKind::Missing, 1),
+        (HealthKind::Outdated, 2),
+        (HealthKind::BrokenGroup, 1),
+        (HealthKind::Review, 3),
+        (HealthKind::NotConnected, 2),
+        (HealthKind::BrokenLink, 1),
+    ] {
+        for index in 0..count {
+            health.append(Health {
+                items: vec![HealthItem {
+                    page: "p".to_owned(),
+                    kind,
+                    target: Target::Card(format!("{kind:?}-{index}")),
+                    project: None,
+                    key: None,
+                    message: String::new(),
+                    repairs: Vec::new(),
+                }],
+                ..Health::default()
+            });
+        }
+    }
+    assert_eq!(
+        health.label().as_deref(),
+        Some("1 missing · 2 outdated · 1 broken group · 3 to review · 2 not connected · 1 broken link")
+    );
+    assert_eq!(health.of_page("p"), health);
+    assert!(health.of_page("q").is_healthy());
 }

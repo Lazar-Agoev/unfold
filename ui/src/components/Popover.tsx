@@ -1,7 +1,6 @@
 /**
- * A non-modal floating panel anchored to an element (the folder switcher's recent folders, a filter
- * menu with checkboxes). It takes focus when it opens, closes on Escape or a press outside, and returns
- * focus to where it was.
+ * A non-modal floating panel anchored to an element (the worktree switcher, a repair list). It takes
+ * focus when it opens, closes on Escape or a press outside, and returns focus to where it was.
  */
 
 import { useEffect, useRef, type ReactNode } from "react";
@@ -19,12 +18,33 @@ export interface PopoverProps {
   readonly label: string;
   readonly side?: Side;
   readonly align?: Align;
+  /** The gap to the anchor in px. Default 4. */
+  readonly offset?: number;
+  /** A fixed width in px; otherwise it fits its content. */
+  readonly width?: number;
+  /**
+   * `anchor` (default) keeps it beside its anchor while the page scrolls; `fixed` leaves it where it
+   * opened.
+   */
+  readonly placement?: "anchor" | "fixed";
   readonly className?: string;
   readonly children: ReactNode;
 }
 
-export function Popover({ open, onClose, anchor, label, side = "bottom", align = "start", className, children }: PopoverProps) {
-  const layer = useFloatingPosition<HTMLDivElement>(anchor, { side, align }, open, 4);
+export function Popover({
+  open,
+  onClose,
+  anchor,
+  label,
+  side = "bottom",
+  align = "start",
+  offset = 4,
+  width,
+  placement = "anchor",
+  className,
+  children,
+}: PopoverProps) {
+  const layer = useFloatingPosition<HTMLDivElement>(anchor, { side, align }, open, offset, placement === "anchor");
   const anchorRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     anchorRef.current = anchor;
@@ -49,6 +69,7 @@ export function Popover({ open, onClose, anchor, label, side = "bottom", align =
         aria-label={label}
         tabIndex={-1}
         className={cx("popover", className)}
+        style={width === undefined ? undefined : { width }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             event.preventDefault();

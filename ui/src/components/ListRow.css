@@ -1,0 +1,80 @@
+/* Set `--list-row-inline` and `--list-row-gap` (both 8px) to 6px for the Home sidebar's rhythm. */
+.list-row {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--list-row-gap, 8px);
+  height: var(--row);
+  padding: 0 var(--list-row-inline, 8px);
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+  font-size: var(--text-13);
+  line-height: var(--leading-20);
+  white-space: nowrap;
+  cursor: default;
+}
+
+.list-row:hover {
+  background: var(--color-hover);
+}
+
+.list-row-selected,
+.list-row-selected:hover {
+  background: var(--color-selection);
+}
+
+.list-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px var(--color-focus-ring);
+}
+
+.list-row-leading,
+.list-row-trailing {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--color-muted);
+}
+
+.list-row-selected .list-row-leading {
+  color: var(--color-accent-text);
+}
+
+.list-row-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.list-row-selected .list-row-label {
+  font-weight: 500;
+}
+
+.list-row-muted .list-row-label {
+  color: var(--color-muted);
+}
+
+.list-row-trailing-filled {
+  width: auto;
+  min-width: 16px;
+  height: auto;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+}
+
+.list-row-menu {
+  display: flex;
+  flex-shrink: 0;
+  margin-right: -4px;
+  opacity: 0;
+}
+
+.list-row:hover .list-row-menu,
+.list-row:focus-within .list-row-menu,
+.list-row-selected .list-row-menu,
+.list-row-menu:has([aria-expanded="true"]) {
+  opacity: 1;
+}

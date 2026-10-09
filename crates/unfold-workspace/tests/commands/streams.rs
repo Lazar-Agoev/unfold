@@ -1,12 +1,13 @@
-//! Streamed commands: compile progress and text-search matches arrive as stream messages tagged
-//! with their window and request, the result resolves the request, and `cancel` stops them.
+//! Streamed commands: compile progress and text-search matches (across the projects) arrive as
+//! stream messages tagged with their window and request, the result resolves the request, and
+//! `cancel` stops them.
 
 use std::sync::mpsc;
 
 use serde_json::{Value, json};
 use unfold_workspace::CommandError;
 
-use crate::common::{Harness, PATIENCE};
+use crate::common::{Harness, PATIENCE, is_event};
 
 /// Dispatches on a command thread, as the addon does; returns the request ID and the result.
 fn start(
@@ -49,11 +50,10 @@ fn stream_messages(harness: &Harness, request: u64) -> Vec<Value> {
 #[test]
 fn compile_streams_progress_and_resolves_with_its_outcome() {
     let harness = Harness::new("ts-orders", false);
-    harness.open(1);
     let (request, result) = start(
         &harness,
         1,
-        json!({ "command": "compile", "args": { "mode": "check" } }),
+        json!({ "command": "compile", "args": { "project": harness.project, "mode": "check" } }),
     );
     let outcome: Value =
         serde_json::from_str(&result.recv_timeout(PATIENCE).expect("done").expect("compile")).expect("json");
@@ -68,13 +68,20 @@ fn compile_streams_progress_and_resolves_with_its_outcome() {
         assert!(message["message"]["stage"].is_string());
         assert!(message["message"]["done"].is_u64());
     }
-    // Events went to the window too.
+    // Events went to every window, naming the project.
     assert!(
         harness
             .sink
             .all()
             .iter()
-            .any(|message| message["kind"] == "event" && message["event"]["type"] == "graph_updated")
+            .any(|message| is_event(message, "graph_updated", &harness.project))
+    );
+    assert!(
+        harness
+            .sink
+            .all()
+            .iter()
+            .any(|message| is_event(message, "compile_progress", &harness.project))
     );
 }
 
@@ -82,8 +89,11 @@ fn compile_streams_progress_and_resolves_with_its_outcome() {
 fn cancelling_a_compile_rejects_it_with_cancelled() {
     let harness = Harness::new("ts-orders", false);
     add_files(&harness, 400, "padding");
-    harness.open(1);
-    let (request, result) = start(&harness, 1, json!({ "command": "compile", "args": {} }));
+    let (request, result) = start(
+        &harness,
+        1,
+        json!({ "command": "compile", "args": { "project": harness.project } }),
+    );
     harness.host.cancel(request);
     let error = result
         .recv_timeout(PATIENCE)
@@ -91,13 +101,20 @@ fn cancelling_a_compile_rejects_it_with_cancelled() {
         .expect_err("the compile was cancelled");
     assert_eq!(error.code, "cancelled");
     // Nothing was committed; a later compile works.
-    harness.ok(1, "compile", json!({}));
+    harness.ok(1, "compile", json!({ "project": harness.project }));
 }
 
 #[test]
-fn text_search_streams_utf16_matches_in_path_order() {
+fn text_search_streams_utf16_matches_in_project_then_path_order() {
     let harness = Harness::compiled("ts-orders");
+    let (python, _) = harness.add("py-orders", "py-orders");
+    harness.ok(2, "select_project", json!({ "project": python }));
     harness.write("src/unicode.ts", "// é orderService ünd orderService\n");
+    std::fs::write(
+        harness.base.join("py-orders/notes.txt"),
+        "orderService in python too\n",
+    )
+    .expect("write");
     let (request, result) = start(
         &harness,
         1,
@@ -108,13 +125,28 @@ fn text_search_streams_utf16_matches_in_path_order() {
     let files = stream_messages(&harness, request);
     assert_eq!(summary["files"].as_u64(), Some(files.len() as u64));
     assert_eq!(summary["truncated"], false);
-    let paths: Vec<&str> = files
+    let order: Vec<(usize, &str)> = files
         .iter()
-        .map(|message| message["message"]["path"].as_str().expect("path"))
+        .map(|message| {
+            (
+                usize::from(message["message"]["project"] == python),
+                message["message"]["path"].as_str().expect("path"),
+            )
+        })
         .collect();
-    let mut sorted = paths.clone();
+    let mut sorted = order.clone();
     sorted.sort_unstable();
-    assert_eq!(paths, sorted, "files stream in path order");
+    assert_eq!(order, sorted, "projects in workspace order, files in path order");
+    assert!(
+        order
+            .iter()
+            .any(|(project, path)| *project == 1 && *path == "notes.txt")
+    );
+    let paths: Vec<&str> = order.iter().map(|(_, path)| *path).collect();
+    let projects = summary["projects"].as_array().expect("projects");
+    assert_eq!(projects[0]["project"], harness.project);
+    assert_eq!(projects[1]["project"], python);
+    assert_eq!(projects[1]["files"], 1);
     assert!(paths.iter().all(|path| !path.starts_with(".unfold/")));
     let unicode = files
         .iter()
@@ -129,9 +161,10 @@ fn text_search_streams_utf16_matches_in_path_order() {
     let regex = harness.ok(
         1,
         "search_text",
-        json!({ "query": "order(Service|Repo)", "regex": true, "caseSensitive": false }),
+        json!({ "query": "order(Service|Repo)", "regex": true, "projects": [harness.project] }),
     );
     assert!(regex["matches"].as_u64().is_some_and(|matches| matches > 0));
+    assert_eq!(regex["projects"].as_array().map(Vec::len), Some(1));
     assert_eq!(
         harness.code(
             1,
@@ -146,7 +179,7 @@ fn text_search_streams_utf16_matches_in_path_order() {
 fn text_search_stops_at_its_limit_and_when_cancelled() {
     let harness = Harness::new("ts-orders", false);
     add_files(&harness, 2_000, "needle");
-    harness.open(1);
+    harness.ok(1, "select_project", json!({ "project": harness.project }));
     let summary = harness.ok(
         1,
         "search_text",

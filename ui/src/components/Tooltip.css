@@ -8,6 +8,12 @@
   position: fixed;
   left: 0;
   top: 0;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-float);
+  color: var(--color-text);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
   animation: hover-layer-in var(--duration-fast) ease-out;
 }
 
@@ -18,27 +24,20 @@
   gap: 8px;
   max-width: 320px;
   padding: 4px 8px;
-  border-radius: var(--radius-small);
-  background: var(--color-tooltip);
-  color: var(--color-on-tooltip);
-  font-size: var(--font-size-small);
-  line-height: 16px;
+  border-radius: var(--radius-control);
   pointer-events: none;
-  white-space: nowrap;
 }
 
-.tooltip .tooltip-kbd {
-  color: var(--color-muted-on-tooltip);
+.tooltip-shortcut {
+  font-family: var(--font-ui);
+  color: var(--color-muted);
+  white-space: nowrap;
 }
 
 .hovercard {
   z-index: var(--z-popover);
   max-width: 440px;
   padding: 10px 12px;
-  border-radius: var(--radius-large);
-  background: var(--color-popover);
-  box-shadow: var(--shadow-popover);
-  color: var(--color-text);
-  font-size: var(--font-size-small);
+  border-radius: var(--radius-dialog);
   user-select: text;
 }

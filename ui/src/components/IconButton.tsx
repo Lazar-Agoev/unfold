@@ -1,33 +1,35 @@
-/** An icon-only button with an accessible label and a tooltip that shows the label and shortcut. */
+/**
+ * An icon-only button (components §7.4) with an accessible label and a tooltip that shows the label
+ * and shortcut. Pressed (a toggle that is on, or a menu that is open) shows the pressed fill.
+ */
 
-import type { LucideIcon } from "lucide-react";
 import type { ButtonHTMLAttributes, Ref } from "react";
+import { Icon, type IconName } from "../icons";
 import { cx } from "./internal/dom";
 import type { Side } from "./internal/floating";
 import { Tooltip } from "./Tooltip";
 import "./IconButton.css";
 
 export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-label" | "children"> {
-  readonly icon: LucideIcon;
+  readonly icon: IconName;
   /** The accessible name, also shown as the tooltip. */
   readonly label: string;
+  /** 28 (default), 24 in section headers, 20 in the breadcrumb; the icon is 16 in each. */
+  readonly size?: 28 | 24 | 20;
+  /** For toggles: rendered as `aria-pressed` and the pressed fill. */
+  readonly pressed?: boolean;
   /** Shown in the tooltip, e.g. `Mod+B`. */
   readonly shortcut?: string;
-  /** For toggles: rendered as `aria-pressed` and highlighted. */
-  readonly pressed?: boolean;
-  readonly size?: "small" | "medium" | "large";
   readonly tooltipSide?: Side;
   readonly ref?: Ref<HTMLButtonElement>;
 }
 
-const ICON_SIZES = { small: 14, medium: 16, large: 20 } as const;
-
 export function IconButton({
-  icon: Icon,
+  icon,
   label,
-  shortcut,
+  size = 28,
   pressed,
-  size = "medium",
+  shortcut,
   tooltipSide = "bottom",
   className,
   type = "button",
@@ -42,7 +44,7 @@ export function IconButton({
         aria-label={label}
         aria-pressed={pressed}
       >
-        <Icon size={ICON_SIZES[size]} strokeWidth={size === "large" ? 1.75 : 2} aria-hidden="true" />
+        <Icon name={icon} />
       </button>
     </Tooltip>
   );
