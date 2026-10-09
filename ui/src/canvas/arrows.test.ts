@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CallLink, CardView } from "../ipc/generated";
+import { cardRefKey } from "../state/boards/keys";
 import { computeArrows, portsByCard } from "./arrows";
 
 function link(source: string, target: string | undefined, kind: CallLink["kind"] = "calls", line = 1): CallLink {
@@ -34,16 +35,20 @@ function block(key: string, links: CallLink[]): CardView {
 const A = "src/a.ts#function:a";
 const B = "src/b.ts#function:b";
 const C = "src/c.ts#function:c";
+const P = "p-orders0000";
+const Q = "p-payments00";
+/** A model map keyed as the canvas keys it: by project and key. */
+const inP = (entries: readonly (readonly [string, CardView])[]) => new Map(entries.map(([key, view]) => [cardRefKey(P, key), view]));
 
 describe("arrows", () => {
   it("draws one arrow per opened occurrence, even when several calls go to one card", () => {
-    const models = new Map<string, CardView>([
+    const models = inP([
       [A, block(A, [link(`${A}/call[0]`, B, "calls", 2), link(`${A}/call[1]`, B, "calls", 5), link(`${A}/call[2]`, C, "imports", 1), link(`${A}/call[3]`, undefined), link(`${A}/call[4]`, A)])],
       [B, block(B, [])],
     ]);
     const cards = [
-      { id: "a", key: A, entrance: false },
-      { id: "b", key: B, entrance: false },
+      { id: "a", key: A, project: P, entrance: false },
+      { id: "b", key: B, project: P, entrance: false },
     ];
     const arrows = computeArrows(cards, models);
     expect(arrows.map((arrow) => [arrow.sourceHandle, arrow.target])).toEqual([
@@ -52,7 +57,7 @@ describe("arrows", () => {
     ]);
     expect(portsByCard(arrows).get("a")).toEqual([`${A}/call[0]`, `${A}/call[1]`]);
 
-    const withC = computeArrows([...cards, { id: "c", key: C, entrance: false }], models);
+    const withC = computeArrows([...cards, { id: "c", key: C, project: P, entrance: false }], models);
     const imported = withC.find((arrow) => arrow.target === "c");
     expect(imported?.dashed).toBe(true);
     expect(withC.filter((arrow) => arrow.target === "b").every((arrow) => !arrow.dashed)).toBe(true);
@@ -71,11 +76,24 @@ describe("arrows", () => {
     };
     const arrows = computeArrows(
       [
-        { id: "e", key: "entrance:e", entrance: true },
-        { id: "a", key: A, entrance: false },
+        { id: "e", key: "entrance:e", project: P, entrance: true },
+        { id: "a", key: A, project: P, entrance: false },
       ],
-      new Map([["entrance:e", entrance]]),
+      inP([["entrance:e", entrance]]),
     );
     expect(arrows).toEqual([expect.objectContaining({ source: "e", sourceHandle: "target:0", target: "a", kind: "handler", dashed: false })]);
+  });
+
+  it("joins only cards of the same project, and none to a card that isn't connected", () => {
+    const models = inP([[A, block(A, [link(`${A}/call[0]`, B, "calls", 2)])]]);
+    const cards = [
+      { id: "a", key: A, project: P, entrance: false },
+      // The same key in another project, and a card whose project isn't connected.
+      { id: "b-elsewhere", key: B, project: Q, entrance: false },
+      { id: "b-gone", key: B, project: null, entrance: false },
+    ];
+    expect(computeArrows(cards, models)).toEqual([]);
+    const arrows = computeArrows([...cards, { id: "b", key: B, project: P, entrance: false }], models);
+    expect(arrows.map((arrow) => arrow.target)).toEqual(["b"]);
   });
 });

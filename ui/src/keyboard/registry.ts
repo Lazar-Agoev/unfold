@@ -1,25 +1,30 @@
 /**
- * The action registry: every command a person can run (by shortcut, menu, or palette) is an action
- * registered here. Views register actions while they are mounted; registering an id that is already
+ * The action registry: every command a person can run (by shortcut, menu, or Add's `>` commands) is an
+ * action registered here. Views register actions while they are mounted; registering an id that is already
  * registered stacks on top of it until unregistered, so a focused view can take over `⌘W` or `⌘Z`.
  *
  * An action's shortcuts resolve as: the person's key binding for its id (see `bindings.ts`), else
  * the spec's own `shortcuts`, else the keymap's defaults. They re-resolve when the bindings change.
  */
 
+import type { IconName } from "../icons";
 import { keyBindings as windowBindings, type KeyBindings } from "./bindings";
 import { defaultShortcuts } from "./keymap";
 
 export interface ActionSpec {
   /** A stable dotted id, e.g. `view.toggleSidebar`. Well-known ids live in `ActionIds`. */
   readonly id: string;
-  /** Title-case, shown in the palette: "Toggle Sidebar". */
+  /** Title-case, shown in Add's commands and menus: "Toggle Sidebar". */
   readonly title: string;
-  /** Shown before the title in the palette: "View". */
+  /** Where Preferences → Keyboard lists it: "View". */
   readonly category: string;
+  /** The group Add's commands show it under ("Board ›"); defaults to the category. See `ADD_GROUPS`. */
+  readonly group?: string;
+  /** The icon Add's commands show beside it. */
+  readonly icon?: IconName;
   /** Overrides the keymap's default shortcuts for this id; `[]` means none. A key binding still wins. */
   readonly shortcuts?: readonly string[];
-  /** Extra words the palette matches. */
+  /** Extra words Add's commands match. */
   readonly keywords?: readonly string[];
   /**
    * Whether the shortcut fires while typing in a text field. Defaults to true for ⌘/Ctrl shortcuts
@@ -28,8 +33,8 @@ export interface ActionSpec {
   readonly allowInInput?: boolean;
   /** Whether holding the keys repeats the action (zoom does; toggles don't). */
   readonly repeatable?: boolean;
-  /** Hidden from the palette when false (default true). */
-  readonly showInPalette?: boolean;
+  /** Hidden from Add's commands when false (default true). */
+  readonly showInAdd?: boolean;
   /** Checked before every run; a disabled action lets its key through. */
   readonly enabled?: () => boolean;
   readonly run: () => void | Promise<void>;

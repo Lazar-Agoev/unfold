@@ -7,7 +7,7 @@
  * - Only the keymap's actions (`ActionIds`) can be rebound. Entries for other ids and shortcuts that
  *   don't parse are ignored, so a hand-edited preferences file never breaks the keyboard.
  *
- * The window's registry reads the bindings store, so the dispatcher, the palette, and tooltips
+ * The window's registry reads the bindings store, so the dispatcher, Add's commands, and tooltips
  * all follow the effective shortcut.
  */
 

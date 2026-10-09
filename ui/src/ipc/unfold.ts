@@ -3,11 +3,15 @@
  *
  * This is the transport level: engine commands take and return `unknown` here. Command, event, and
  * payload types are generated from Rust into `src/ipc/generated/` (`cargo xtask gen-ipc`) and layered
- * on top of these functions.
+ * on top of these functions (`./commands`). Window commands and shell events are typed by the desktop
+ * shell (`@unfold/desktop/unfold-api`).
  */
 
 import type {
+  AddedProject,
   ConnectionState,
+  DroppedFile,
+  ShellEvent,
   StreamHandle,
   TransportError,
   UnfoldApi,
@@ -17,7 +21,14 @@ import type {
   WindowCommands,
 } from "@unfold/desktop/unfold-api";
 
-export type { ConnectionState, MenuCommand, ShellEvent, UnfoldEvent, WindowInfo } from "@unfold/desktop/unfold-api";
+export type {
+  ConnectionState,
+  DroppedFile,
+  MenuCommand,
+  ShellEvent,
+  UnfoldEvent,
+  WindowInfo,
+} from "@unfold/desktop/unfold-api";
 
 declare global {
   interface Window {
@@ -43,7 +54,7 @@ const NO_BRIDGE: TransportError = {
 };
 
 /** The bridge, or null when the UI runs outside the app (e.g. a plain browser). */
-export function bridge(): UnfoldApi | null {
+function bridge(): UnfoldApi | null {
   return window.unfold ?? null;
 }
 
@@ -95,7 +106,7 @@ export function stream(
   };
 }
 
-/** Runs a window or dialog command in the main process. */
+/** Runs a window or dialog command in the main process (contract §7.3). */
 export async function windowCommand<C extends WindowCommand>(
   command: C,
   ...args: WindowCommandArgs<C>
@@ -111,9 +122,35 @@ export async function windowCommand<C extends WindowCommand>(
   }
 }
 
+/**
+ * Adds a folder the person dropped on the window as a project (the drop event's `File`). Rejects
+ * with `not_a_folder` when it isn't one.
+ */
+export async function addDroppedFolder(file: DroppedFile): Promise<AddedProject> {
+  const api = bridge();
+  if (!api) {
+    throw new UnfoldError(NO_BRIDGE);
+  }
+  try {
+    return await api.addDroppedFolder(file);
+  } catch (error) {
+    throw toUnfoldError(error);
+  }
+}
+
 /** Subscribes to events of one type. Returns an unsubscribe function (a no-op outside the app). */
 export function onEvent(eventType: string, handler: (event: UnfoldEvent) => void): () => void {
   return bridge()?.on(eventType, handler) ?? (() => undefined);
+}
+
+/** Subscribes to one shell event type (events the desktop shell sends, not Rust). */
+export function onShellEvent<T extends ShellEvent["type"]>(
+  type: T,
+  handler: (event: Extract<ShellEvent, { readonly type: T }>) => void,
+): () => void {
+  return onEvent(type, (event) => {
+    handler(event as unknown as Extract<ShellEvent, { readonly type: T }>);
+  });
 }
 
 /** Observes the engine connection. Outside the app the state is always `unavailable`. */

@@ -1,6 +1,29 @@
-/** Types of the window's open boards: the document as its file holds it, plus view state that never goes into the file. */
+/**
+ * Types of the window's open boards (UI plan §3.4): the document as its file holds it, plus view state
+ * per page that never goes into the file (only each page's camera and lens are remembered, through
+ * `save_board_view`).
+ */
 
-import type { BoardDocument, BoardOutline, BoardState, Health, Place, View } from "../../ipc/generated";
+import type { BoardDocument, BoardState, Health, Key, PageOutline, Place, ProjectId, PublishedState, View } from "../../ipc/generated";
+
+/** A board's id: the folder-relative path of its public file (contract §1.3). */
+export type BoardId = string;
+/** A page's id, unique in its board (`page-1`). */
+export type PageId = string;
+/** A window's id, as the main process numbers them. */
+export type WindowId = number;
+
+/** A board: its project and its id (the folder-relative path of its public file). */
+export interface BoardRef {
+  readonly project: ProjectId;
+  readonly id: BoardId;
+}
+
+/** One page of a board. */
+export interface PageTarget {
+  readonly board: BoardRef;
+  readonly page: PageId;
+}
 
 /** The canvas camera (React Flow's viewport). */
 export interface Camera {
@@ -14,6 +37,14 @@ export interface CardSize {
   readonly height: number;
 }
 
+/** What is selected on a page. */
+export type Selection =
+  | { readonly kind: "none" }
+  /** A card, or a Flow node or statement inside it (`key`). */
+  | { readonly kind: "card"; readonly cardId: string; readonly key: Key | null }
+  | { readonly kind: "group"; readonly groupId: string }
+  | { readonly kind: "link"; readonly linkId: string };
+
 /** One step of the breadcrumb trail ("POST /orders › createOrder"). */
 export interface TrailItem {
   readonly cardId: string;
@@ -25,7 +56,7 @@ export interface TrailItem {
 /** Where the person was before a focus move, for Back and Forward. */
 export interface FocusMove {
   readonly camera: Camera | null;
-  readonly selectedCardId: string | null;
+  readonly selection: Selection;
   readonly trail: readonly TrailItem[];
 }
 
@@ -45,33 +76,28 @@ export interface PendingGroup {
 }
 
 /**
- * Handler cards an entrance just opened, waiting for the entrance card to be measured so each
- * can be placed level with its handler row (architecture §10.2).
+ * Handler cards an entrance just opened, waiting for the entrance card to be measured so each can be
+ * placed level with its handler row.
  */
 export interface PendingPlacement {
   readonly entranceId: string;
   /** The handler cards, in registration order, with the keys their rows resolve to. */
-  readonly handlers: readonly { readonly cardId: string; readonly key: string }[];
+  readonly handlers: readonly { readonly cardId: string; readonly key: Key }[];
 }
 
-/** View state: the lens exceptions, folds, peeks, camera, and trail. Never saved into the board file. */
-export interface BoardViewState {
-  /**
-   * The window lens as it applies to this board: null until the person uses the top Code/Flow
-   * switch, then that view for every card (a lens, never an edit of the board).
-   */
+/** View state of one page (created when the page is first shown). Survives unmounting (V-46). */
+export interface PageView {
+  /** The page's lens (V-55): null until the person uses the top Code/Flow switch on this page. */
   lens: View | null;
   camera: Camera | null;
-  selectedCardId: string | null;
-  /** The block selected inside the selected card (a statement or Flow node), if any. */
-  selectedKey: string | null;
+  selection: Selection;
   /** Folded outline keys per card, once the person changed them; until then the model's defaults apply. */
   codeFolds: Record<string, string[]>;
   /** Callee occurrences expanded inline (⌥-click) per card. */
   expanded: Record<string, string[]>;
   /** "▸ N checks" chains opened per card, by the chain head's key. */
   flowChains: Record<string, string[]>;
-  /** Cards whose own switch was used while the window lens was on: they show their own view. */
+  /** Cards whose own switch was used while the lens was on: they show their own view. */
   lensExceptions: string[];
   trail: TrailItem[];
   back: FocusMove[];
@@ -81,6 +107,22 @@ export interface BoardViewState {
   focus: FocusRequest | null;
   pendingGroup: PendingGroup | null;
   placement: PendingPlacement | null;
+  /** Link drawing mode (V-58): the next card clicked becomes the link's other end. */
+  linking: { readonly from: string } | null;
+}
+
+/** One undo step: the whole document before it, and the page it changed (V-54: undo shows that page). */
+export interface HistoryEntry {
+  readonly document: BoardDocument;
+  readonly page: PageId;
+}
+
+/** Undo and redo for one board across its pages: whole documents, so the history is plain JSON. */
+export interface BoardHistory {
+  past: HistoryEntry[];
+  future: HistoryEntry[];
+  /** The last coalescing edit (a drag, typing), so a burst becomes one step. */
+  coalesce: { readonly key: string; readonly at: number } | null;
 }
 
 /** An outside change to a board with unsaved edits, waiting for the person to choose. */
@@ -89,23 +131,20 @@ export interface BoardConflict {
   readonly diskRevision: string | null;
 }
 
-/** Undo and redo for one board: whole documents, so the history is plain JSON (Move to New Window). */
-export interface BoardHistory {
-  past: BoardDocument[];
-  future: BoardDocument[];
-  /** The last coalescing edit (a drag, typing), so a burst becomes one step. */
-  coalesce: { readonly key: string; readonly at: number } | null;
-}
-
 export interface OpenBoard {
-  readonly id: string;
+  readonly ref: BoardRef;
   place: Place;
   name: string;
+  /** The working version. Its `folder` and `projects` are Rust's (never edited or sent by the UI). */
   document: BoardDocument;
-  /** The file revision this window last loaded or saved. */
+  /** The version this window last loaded or saved (what Move to New Window reports as saved). */
+  savedDocument: BoardDocument;
+  /** The revision of the file this window last loaded or saved. */
   revision: string;
+  /** The publish state at the last open, save, or publish (the header reads `list_boards`). */
+  published: PublishedState | null;
   health: Health;
-  outline: BoardOutline;
+  outlines: Record<PageId, PageOutline>;
   label: string | null;
   /** Edits made in this window; `savedEdits` is the count the last finished save covered. */
   edits: number;
@@ -114,12 +153,17 @@ export interface OpenBoard {
   saveError: string | null;
   conflict: BoardConflict | null;
   history: BoardHistory;
-  view: BoardViewState;
+  activePage: PageId;
+  pages: Record<PageId, PageView>;
+  /** The page, a camera, or a lens changed since the last `save_board_view`. */
+  viewDirty: boolean;
 }
 
-/** What Move to New Window carries: the board as saved, its unsaved document, and its undo history. */
+/** What Move to New Window carries (plain JSON): the board as saved, its unsaved document, its history and view. */
 export interface BoardSession {
   readonly state: BoardState;
   readonly document: BoardDocument;
-  readonly history: { readonly past: readonly BoardDocument[]; readonly future: readonly BoardDocument[] };
+  readonly history: { readonly past: readonly HistoryEntry[]; readonly future: readonly HistoryEntry[] };
+  readonly activePage: PageId;
+  readonly pages: Readonly<Record<PageId, { readonly camera: Camera | null; readonly lens: View | null }>>;
 }

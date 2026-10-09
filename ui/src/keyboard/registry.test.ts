@@ -5,8 +5,8 @@ import { createActionRegistry } from "./registry";
 describe("action registry", () => {
   it("fills in the keymap's default shortcuts", () => {
     const registry = createActionRegistry();
-    registry.register({ id: ActionIds.toggleInspector, title: "Toggle Inspector", category: "View", run: () => undefined });
-    expect(registry.get(ActionIds.toggleInspector)?.shortcuts).toEqual(["Alt+Mod+B", "]"]);
+    registry.register({ id: ActionIds.add, title: "Add…", category: "Go", run: () => undefined });
+    expect(registry.get(ActionIds.add)?.shortcuts).toEqual(["A", "Mod+K", "/"]);
     registry.register({ id: "custom.thing", title: "Thing", category: "X", run: () => undefined });
     expect(registry.get("custom.thing")?.shortcuts).toEqual([]);
   });
@@ -16,7 +16,7 @@ describe("action registry", () => {
     const shell = vi.fn();
     const editor = vi.fn();
     registry.register({ id: ActionIds.closeTab, title: "Close Tab", category: "File", run: shell });
-    const unregister = registry.register({ id: ActionIds.closeTab, title: "Close Editor Tab", category: "File", run: editor });
+    const unregister = registry.register({ id: ActionIds.closeTab, title: "Close Board Tab", category: "File", run: editor });
     registry.run(ActionIds.closeTab);
     expect(editor).toHaveBeenCalledTimes(1);
     expect(registry.list()).toHaveLength(1);

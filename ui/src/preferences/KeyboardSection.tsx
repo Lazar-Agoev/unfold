@@ -8,7 +8,7 @@
  */
 
 import { useState, type KeyboardEvent } from "react";
-import { Button, Kbd } from "../components";
+import { Button, KeyChip } from "../components";
 import {
   ACTION_INFO,
   DEFAULT_SHORTCUTS,
@@ -94,8 +94,8 @@ export function KeyboardSection({ overrides, conflicts, platform, onChange }: Ke
           Keyboard
         </h3>
         <Button
-          size="small"
-          variant="quiet"
+          size="sm"
+          variant="ghost"
           disabled={overrides.size === 0}
           onClick={() => {
             onChange(new Map());
@@ -148,12 +148,12 @@ export function KeyboardSection({ overrides, conflicts, platform, onChange }: Ke
                     ) : shortcuts.length === 0 ? (
                       <span className="preferences-key-none">None</span>
                     ) : (
-                      shortcuts.map((shortcut) => <Kbd key={shortcut} shortcut={shortcut} />)
+                      shortcuts.map((shortcut) => <KeyChip key={shortcut} shortcut={shortcut} variant="outlined" />)
                     )}
                   </button>
                   <Button
-                    size="small"
-                    variant="quiet"
+                    size="sm"
+                    variant="ghost"
                     aria-label={`Reset ${title}`}
                     disabled={!overrides.has(id)}
                     onClick={() => {

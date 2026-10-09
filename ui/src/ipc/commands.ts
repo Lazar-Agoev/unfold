@@ -1,6 +1,6 @@
 /**
  * Typed engine commands and events: the generated types (`./generated`) laid over the transport
- * client (`./unfold`). Views call `call("list_dir", { path })` and get a `DirListing` back.
+ * client (`./unfold`). `call("list_boards", { project })` resolves with a `BoardList`.
  *
  * The casts here are the trust boundary: Rust produced the JSON from the same types the generated
  * module was made from, so the shapes are checked once, at build time, on both sides.

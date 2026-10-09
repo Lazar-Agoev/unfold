@@ -4,9 +4,9 @@
  *
  * - Components that handle a key themselves (tree arrows, menu navigation) call `preventDefault`, and
  *   the dispatcher leaves such events alone.
- * - Plain-key shortcuts (`/`, `]`, `Shift+1`) never fire while typing in a text field; ⌘/Ctrl ones do
+ * - Plain-key shortcuts (`A`, `/`, `Shift+1`) never fire while typing in a text field; ⌘/Ctrl ones do
  *   unless the action opts out (undo and redo, so text fields keep their native undo).
- * - While a modal is open, nothing fires.
+ * - While a modal layer is open (Add, a dialog), nothing fires.
  * - A handled key is `preventDefault`ed, which also stops Electron from running the application
  *   menu's accelerator for it, so a key runs its action once.
  */

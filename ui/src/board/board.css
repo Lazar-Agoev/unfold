@@ -1,0 +1,49 @@
+/* Placeholder board screen (U1c); U2 replaces it. */
+
+.board-stub-sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 8px 16px;
+}
+
+.board-stub-crumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--row);
+  padding: 0 8px 0 6px;
+  color: var(--color-muted);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+}
+
+.board-stub-title {
+  padding: 6px 8px 16px;
+  font-size: var(--text-15);
+  font-weight: 600;
+  letter-spacing: var(--tracking-title);
+}
+
+.board-stub {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.board-stub-topbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: var(--topbar);
+  padding: 0 12px 0 20px;
+  border-bottom: 1px solid var(--color-border-shell);
+  background: var(--color-chrome);
+  font-weight: 600;
+}
+
+.board-stub-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}

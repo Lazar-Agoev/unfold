@@ -7,7 +7,6 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { create } from "zustand";
 import { Button, Dialog, SegmentedControl, TextField, showToast } from "../components";
 import { call } from "../ipc/commands";
 import type { Preferences, Theme } from "../ipc/generated";
@@ -26,16 +25,6 @@ import {
 import { applyThemeOverride } from "../theme/theme";
 import { KeyboardSection } from "./KeyboardSection";
 import "./PreferencesDialog.css";
-
-const usePreferencesDialog = create<{ readonly open: boolean }>()(() => ({ open: false }));
-
-export function openPreferences(): void {
-  usePreferencesDialog.setState({ open: true });
-}
-
-function closePreferences(): void {
-  usePreferencesDialog.setState({ open: false });
-}
 
 /** Applies a theme preference to the document. */
 export function applyTheme(theme: Theme): void {
@@ -128,7 +117,7 @@ function PreferencesForm({ saved, onDone }: { readonly saved: Preferences; reado
       client.setQueryData(engineKey("get_preferences", {}), stored);
       onDone();
     } catch (error) {
-      showToast({ message: `Couldn't save preferences: ${toUnfoldError(error).message}`, tone: "danger" });
+      showToast({ title: "Couldn't save preferences", body: toUnfoldError(error).message, tone: "danger" });
     } finally {
       setSaving(false);
     }
@@ -144,10 +133,11 @@ function PreferencesForm({ saved, onDone }: { readonly saved: Preferences; reado
       open
       onClose={cancel}
       title="Preferences"
-      width="medium"
+      width={520}
+      placement="window"
       footer={
         <>
-          <Button variant="quiet" onClick={cancel}>
+          <Button variant="secondary" onClick={cancel}>
             Cancel
           </Button>
           <Button variant="primary" busy={saving} disabled={!canSave || saving} onClick={() => void save()}>
@@ -163,6 +153,7 @@ function PreferencesForm({ saved, onDone }: { readonly saved: Preferences; reado
           </span>
           <SegmentedControl<Theme>
             label="Theme"
+            variant="switch"
             options={THEMES}
             value={theme}
             onChange={(next) => {
@@ -224,18 +215,14 @@ function PreferencesForm({ saved, onDone }: { readonly saved: Preferences; reado
 }
 
 /**
- * Re-reads the preferences each time the dialog opens, so it never edits a stale copy (another window
- * may have saved since); the refreshed data also re-applies this window's theme and key bindings.
+ * The open dialog. It re-reads the preferences each time it opens, so it never edits a stale copy
+ * (another window may have saved since); the refreshed data also re-applies this window's theme and
+ * key bindings.
  */
-function FreshPreferences() {
+export function PreferencesDialog({ onClose }: { readonly onClose: () => void }) {
   const preferences = useQuery({ ...engineQueryOptions("get_preferences", {}), refetchOnMount: "always" });
   if (!preferences.isFetchedAfterMount || !preferences.data) {
     return null;
   }
-  return <PreferencesForm saved={preferences.data} onDone={closePreferences} />;
-}
-
-export function PreferencesDialog() {
-  const open = usePreferencesDialog((state) => state.open);
-  return open ? <FreshPreferences /> : null;
+  return <PreferencesForm saved={preferences.data} onDone={onClose} />;
 }

@@ -7,11 +7,20 @@
  */
 
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, Plus, X } from "lucide-react";
 import { useId, useRef, useState, type SyntheticEvent } from "react";
 import { Button, ConfirmDialog, Dialog, IconButton, SegmentedControl, TextField, showToast } from "../components";
-import type { EntranceKind, FolderConfig, HttpMethod, ManualEntranceView, SettingsEdit } from "../ipc/generated";
-import { engineKey, useEngineQuery } from "../ipc/queries";
+import {
+  engineKey,
+  useEngineQuery,
+  type EntranceKind,
+  type HttpMethod,
+  type ManualEntranceView,
+  type ProjectConfig,
+  type ProjectId,
+  type SettingsEdit,
+} from "../ipc";
+import type { DialogRequest } from "../state/overlays";
+import { applySettingsEdits, removeManualEntrance, type SettingsProblemText } from "./edits";
 import {
   ENTRANCE_KINDS,
   HTTP_METHODS,
@@ -23,23 +32,14 @@ import {
   validateDraft,
   type EntranceDraft,
 } from "./entrance";
-import { LOCATOR_FORMS } from "./locators";
+import { LOCATOR_FORMS, locatorFor } from "./locators";
 import { SettingsProblemBox } from "./SettingsProblemBox";
-import {
-  applySettingsEdits,
-  closeEntranceEditor,
-  closeRemoveEntrance,
-  removeManualEntrance,
-  useSettingsDialogs,
-  type EditorTarget,
-  type SettingsProblemText,
-} from "./store";
 import "./settings.css";
 
 const KIND_OPTIONS = ENTRANCE_KINDS.map(({ value, label }) => ({ value, label }));
 
 /** The locator forms, for the help under the handler fields. */
-export function LocatorHelp() {
+function LocatorHelp() {
   return (
     <details className="settings-help">
       <summary>Locator forms</summary>
@@ -58,7 +58,11 @@ export function LocatorHelp() {
   );
 }
 
+type EditorRequest = Extract<DialogRequest, { readonly kind: "entranceEditor" }>;
+type RemoveRequest = Extract<DialogRequest, { readonly kind: "removeEntrance" }>;
+
 interface FormProps {
+  readonly project: ProjectId;
   readonly initial: EntranceDraft;
   /** The table being edited, or null for a new one. */
   readonly index: number | null;
@@ -66,9 +70,9 @@ interface FormProps {
   readonly onDone: () => void;
 }
 
-function EntranceForm({ initial, index, blocked, onDone }: FormProps) {
+function EntranceForm({ project, initial, index, blocked, onDone }: FormProps) {
   const client = useQueryClient();
-  const status = useEngineQuery("graph_status", {});
+  const summary = useEngineQuery("project_summary", { project });
   const formId = useId();
   const firstField = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState<EntranceDraft>(initial);
@@ -99,19 +103,17 @@ function EntranceForm({ initial, index, blocked, onDone }: FormProps) {
     setSaving(true);
     const entrance = specOf(draft);
     const edit: SettingsEdit = index === null ? { op: "add_entrance", entrance } : { op: "replace_entrance", index, entrance };
-    const outcome = await applySettingsEdits([edit]);
+    const outcome = await applySettingsEdits(project, [edit]);
     setSaving(false);
     if (!outcome.ok) {
       setProblem(outcome.problem);
       return;
     }
-    client.setQueryData<FolderConfig>(engineKey("get_folder_config", {}), outcome.config);
-    const paused = status.data?.backgroundUpdates === false;
+    client.setQueryData<ProjectConfig>(engineKey("project_config", { project }), outcome.config);
+    const paused = summary.data?.status.backgroundUpdates === false;
     showToast({
-      message: `${index === null ? "Added" : "Saved"} the entrance in .unfold/config.toml. ${
-        paused ? "Background updates are paused: compile to see it in the graph." : "The graph updates in the background."
-      }`,
-      tone: "success",
+      title: `${index === null ? "Added" : "Saved"} the entrance in .unfold/config.toml`,
+      body: paused ? "Background updates are paused: compile to see it in the graph." : "The graph updates in the background.",
     });
     onDone();
   };
@@ -122,11 +124,12 @@ function EntranceForm({ initial, index, blocked, onDone }: FormProps) {
       onClose={onDone}
       title={index === null ? "Add Entrance" : "Edit Entrance"}
       description="For entrances the detectors can't see, such as CLI dispatch or a signal handler. Saved in .unfold/config.toml, keeping its comments and formatting."
-      width="medium"
+      width={520}
+      placement="window"
       initialFocus={firstField}
       footer={
         <>
-          <Button variant="quiet" onClick={onDone}>
+          <Button variant="secondary" onClick={onDone}>
             Cancel
           </Button>
           <Button variant="primary" type="submit" form={formId} busy={saving} disabled={saving || blocked !== null}>
@@ -142,7 +145,7 @@ function EntranceForm({ initial, index, blocked, onDone }: FormProps) {
           </span>
           <SegmentedControl<EntranceKind>
             label="Kind"
-            size="small"
+            variant="switch"
             options={KIND_OPTIONS}
             value={draft.kind}
             onChange={(kind) => {
@@ -224,9 +227,10 @@ function EntranceForm({ initial, index, blocked, onDone }: FormProps) {
                   }}
                 />
                 <IconButton
-                  icon={ArrowUp}
+                  icon="back"
+                  className="settings-handler-earlier"
                   label={`Run handler ${position + 1} earlier`}
-                  size="small"
+                  size={24}
                   disabled={position === 0}
                   onClick={() => {
                     const next = [...draft.handlers];
@@ -235,9 +239,9 @@ function EntranceForm({ initial, index, blocked, onDone }: FormProps) {
                   }}
                 />
                 <IconButton
-                  icon={X}
+                  icon="close"
                   label={`Remove handler ${position + 1}`}
-                  size="small"
+                  size={24}
                   disabled={draft.handlers.length === 1}
                   onClick={() => {
                     change({ handlers: draft.handlers.filter((_, at) => at !== position) });
@@ -247,9 +251,9 @@ function EntranceForm({ initial, index, blocked, onDone }: FormProps) {
             ))}
             {submitted && problems.handlerList ? <p className="text-field-error">{problems.handlerList}</p> : null}
             <Button
-              size="small"
-              variant="quiet"
-              icon={Plus}
+              size="sm"
+              variant="ghost"
+              icon="plus"
               onClick={() => {
                 change({ handlers: [...draft.handlers, ""] });
               }}
@@ -265,68 +269,59 @@ function EntranceForm({ initial, index, blocked, onDone }: FormProps) {
   );
 }
 
-/** The table a target edits, once the settings are loaded. */
-function resolveTarget(target: EditorTarget, config: FolderConfig): { draft: EntranceDraft; index: number | null } | null {
-  if (target.mode === "add") {
-    return { draft: emptyDraft(target.handler), index: null };
+/** The table a request edits, once the settings are loaded. */
+function resolveTarget(request: EditorRequest, config: ProjectConfig): { draft: EntranceDraft; index: number | null } | null {
+  if (request.mode === "add") {
+    return { draft: emptyDraft(request.handler ? locatorFor(request.handler) : undefined), index: null };
   }
-  const table: ManualEntranceView | null = manualTableOf(target.row, config.settings?.entrances ?? []);
+  const table: ManualEntranceView | null = manualTableOf(request.entrance, config.settings?.entrances ?? []);
   return table ? { draft: draftOf(table), index: table.index } : null;
 }
 
-function blockedBy(config: FolderConfig): SettingsProblemText | null {
+function blockedBy(config: ProjectConfig): SettingsProblemText | null {
   return config.error
     ? { code: "invalid_settings", message: `Fix .unfold/config.toml first: ${config.error.message}`, line: null, column: null }
     : null;
 }
 
-/** The editor and the remove confirmation; mounted once per window. */
-export function EntranceDialogs() {
-  const target = useSettingsDialogs((state) => state.editor);
-  const removing = useSettingsDialogs((state) => state.removing);
-  const config = useEngineQuery("get_folder_config", {}, { enabled: target !== null || removing !== null });
-
-  let editor = null;
-  if (target && config.data) {
-    const resolved = resolveTarget(target, config.data);
-    editor = resolved ? (
-      <EntranceForm
-        // A fresh form for each target.
-        key={target.mode === "add" ? `add:${target.handler ?? ""}` : `edit:${target.row.key}`}
-        initial={resolved.draft}
-        index={resolved.index}
-        blocked={blockedBy(config.data)}
-        onDone={closeEntranceEditor}
-      />
-    ) : (
-      <ConfirmDialog
-        open
-        title="Entrance not found"
-        message="This entrance isn't in .unfold/config.toml any more. The graph may not have caught up with an edit yet."
-        confirmLabel="OK"
-        onConfirm={closeEntranceEditor}
-        onCancel={closeEntranceEditor}
-      />
-    );
+/** The manual entrance editor for a project: a new entrance, or one of its `[[entrance]]` tables. */
+export function EntranceEditorDialog({ request, onClose }: { readonly request: EditorRequest; readonly onClose: () => void }) {
+  const config = useEngineQuery("project_config", { project: request.project });
+  if (!config.data) {
+    return null;
   }
+  const resolved = resolveTarget(request, config.data);
+  return resolved ? (
+    <EntranceForm project={request.project} initial={resolved.draft} index={resolved.index} blocked={blockedBy(config.data)} onDone={onClose} />
+  ) : (
+    <ConfirmDialog
+      open
+      title="Entrance not found"
+      message="This entrance isn't in .unfold/config.toml any more. The graph may not have caught up with an edit yet."
+      confirmLabel="OK"
+      placement="window"
+      onConfirm={onClose}
+      onCancel={onClose}
+    />
+  );
+}
 
+/** Asks before removing a manual entrance from a project's `.unfold/config.toml`. */
+export function RemoveEntranceDialog({ request, onClose }: { readonly request: RemoveRequest; readonly onClose: () => void }) {
+  const { project, entrance } = request;
   return (
-    <>
-      {editor}
-      {removing ? (
-        <ConfirmDialog
-          open
-          danger
-          title="Remove Entrance"
-          message={`Remove ${removing.title} from .unfold/config.toml? Everyone who shares the repository loses it too.`}
-          confirmLabel="Remove"
-          onCancel={closeRemoveEntrance}
-          onConfirm={() => {
-            closeRemoveEntrance();
-            void removeManualEntrance(removing, (loaded) => manualTableOf(removing, loaded.settings?.entrances ?? [])?.index ?? null);
-          }}
-        />
-      ) : null}
-    </>
+    <ConfirmDialog
+      open
+      danger
+      title="Remove Entrance"
+      message={`Remove ${entrance.title} from .unfold/config.toml? Everyone who shares the repository loses it too.`}
+      confirmLabel="Remove"
+      placement="window"
+      onCancel={onClose}
+      onConfirm={() => {
+        onClose();
+        void removeManualEntrance(project, entrance, (loaded) => manualTableOf(entrance, loaded.settings?.entrances ?? [])?.index ?? null);
+      }}
+    />
   );
 }

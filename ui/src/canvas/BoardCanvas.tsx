@@ -1,8 +1,7 @@
 /**
- * The board's canvas (React Flow): cards as custom nodes at their reflowed positions, one memoized
- * arrow per opened call occurrence, and a camera that pans and zooms without changing what any card
- * shows. No minimap and nothing over the canvas (architecture §10.7). Large boards render only the
- * cards in view.
+ * A page's canvas (React Flow): cards as custom nodes at their reflowed positions, one memoized arrow
+ * per opened call occurrence, and a camera that pans and zooms without changing what any card shows.
+ * No minimap and nothing over the canvas. Large pages render only the cards in view.
  */
 
 import {
@@ -18,9 +17,20 @@ import "@xyflow/react/dist/style.css";
 import type { Card } from "../ipc/generated";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useContextMenu } from "../components";
-import { displayedRects, foldAllCards } from "../state/boards/api";
-import { moveCards } from "../state/boards/document";
-import { editBoard, getBoard, requestFocus, setCamera, updateView, useBoards } from "../state/boards/store";
+import {
+  displayedRects,
+  editPage,
+  foldAll,
+  getOpenBoard,
+  getPageView,
+  moveCards,
+  requestCardFocus,
+  select,
+  setCamera,
+  updatePageView,
+  usePageView,
+  type PageTarget,
+} from "../state/boards";
 import { ArrowEdge, type ArrowEdgeType } from "./ArrowEdge";
 import type { BoardArrows } from "./useBoardArrows";
 import { CardNode, type CardNodeType } from "./cards/CardNode";
@@ -31,7 +41,6 @@ import "./canvas.css";
 
 const nodeTypes = { card: CardNode };
 const edgeTypes = { arrow: ArrowEdge };
-const EMPTY_SIZES: Readonly<Record<string, { width: number; height: number }>> = {};
 const NO_PORTS: readonly string[] = [];
 /** Fit leaves room for the bottom bar, so nothing covers a card. */
 export const FIT_PADDING = { top: "32px", right: "40px", bottom: "72px", left: "40px" } as const;
@@ -49,22 +58,23 @@ function onFlowError(code: string, message: string): void {
 }
 
 export interface BoardCanvasProps {
-  readonly boardId: string;
+  /** The page shown (a stable object while it is the same page). */
+  readonly target: PageTarget;
   readonly active: boolean;
-  /** The board's cards (the document's list). */
+  /** The page's cards (the document's list). */
   readonly cards: readonly Card[];
   /** The arrows and ports derived from the cards' models (`useBoardArrows`, computed by the tab). */
   readonly boardArrows: BoardArrows;
 }
 
-export function BoardCanvas({ boardId, active, cards, boardArrows }: BoardCanvasProps) {
+export function BoardCanvas({ target, active, cards, boardArrows }: BoardCanvasProps) {
   const flow = useReactFlow<CardNodeType, ArrowEdgeType>();
-  const sizes = useBoards((state) => state.boards[boardId]?.view.sizes ?? EMPTY_SIZES);
-  const focus = useBoards((state) => state.boards[boardId]?.view.focus ?? null);
-  const [initialCamera] = useState(() => getBoard(boardId)?.view.camera ?? null);
+  const sizes = usePageView(target, (view) => view.sizes);
+  const focus = usePageView(target, (view) => view.focus);
+  const [initialCamera] = useState(() => getPageView(target).camera);
 
   const { arrows, ports, settled } = boardArrows;
-  usePendingPlacement(boardId, active);
+  usePendingPlacement(target, active);
   const paneMenu = useContextMenu("Board actions");
 
   // Positions: saved positions reflowed by measured sizes; a dragged card follows the pointer.
@@ -99,7 +109,7 @@ export function BoardCanvas({ boardId, active, cards, boardArrows }: BoardCanvas
               type: "card",
               position: at,
               dragHandle: ".card-drag",
-              data: { boardId, ports: keptPorts ?? cardPorts },
+              data: { target, ports: keptPorts ?? cardPorts },
             };
       nodeCache.set(card.id, node);
       live.add(card.id);
@@ -111,7 +121,7 @@ export function BoardCanvas({ boardId, active, cards, boardArrows }: BoardCanvas
       }
     }
     return list;
-  }, [cards, display, drag, ports, boardId, nodeCache]);
+  }, [cards, display, drag, ports, target, nodeCache]);
 
   const [edgeCache] = useState(() => new Map<string, ArrowEdgeType>());
   const edges = useMemo(() => {
@@ -147,7 +157,7 @@ export function BoardCanvas({ boardId, active, cards, boardArrows }: BoardCanvas
       const measured: Record<string, { width: number; height: number }> = {};
       for (const change of changes) {
         if (change.type === "dimensions" && change.dimensions) {
-          const old = getBoard(boardId)?.view.sizes[change.id];
+          const old = getPageView(target).sizes[change.id];
           if (!old || Math.abs(old.width - change.dimensions.width) > 0.5 || Math.abs(old.height - change.dimensions.height) > 0.5) {
             measured[change.id] = { width: change.dimensions.width, height: change.dimensions.height };
           }
@@ -156,29 +166,29 @@ export function BoardCanvas({ boardId, active, cards, boardArrows }: BoardCanvas
         }
       }
       if (Object.keys(measured).length > 0) {
-        updateView(boardId, (view) => {
+        updatePageView(target, (view) => {
           Object.assign(view.sizes, measured);
         });
       }
     },
-    [boardId],
+    [target],
   );
 
   const onNodeDragStop = useCallback(
     (_event: unknown, node: CardNodeType) => {
-      editBoard(boardId, (document) => {
-        moveCards(document, { [node.id]: [node.position.x, node.position.y] });
+      editPage(target, (page) => {
+        moveCards(page, { [node.id]: [node.position.x, node.position.y] });
       });
       setDrag(null);
     },
-    [boardId],
+    [target],
   );
 
   const onMoveEnd: OnMove = useCallback(
     (_event, viewport) => {
-      setCamera(boardId, viewport);
+      setCamera(target, viewport);
     },
-    [boardId],
+    [target],
   );
 
   const width = useStore((state) => state.width);
@@ -194,12 +204,12 @@ export function BoardCanvas({ boardId, active, cards, boardArrows }: BoardCanvas
     const measuredIds = focus.cardIds.length > 0 ? focus.cardIds : cards.map((card) => card.id);
     const ready = settled && measuredIds.every((id) => sizes[id] !== undefined);
     const run = () => {
-      const board = getBoard(boardId);
+      const board = getOpenBoard(target.board);
       if (!board || handled.current === focus.seq) {
         return;
       }
       handled.current = focus.seq;
-      const rects = displayedRects(board);
+      const rects = displayedRects(board, target.page);
       const wanted = focus.cardIds.length > 0 ? focus.cardIds.map((id) => rects.get(id)).filter((rect): rect is Rect => rect !== undefined) : [...rects.values()];
       if (focus.mode === "fit" || wanted.length !== 1) {
         const bounds = boundsOf(wanted);
@@ -220,7 +230,7 @@ export function BoardCanvas({ boardId, active, cards, boardArrows }: BoardCanvas
     return () => {
       clearTimeout(timer);
     };
-  }, [focus, active, width, height, settled, sizes, boardId, flow, cards]);
+  }, [focus, active, width, height, settled, sizes, target, flow, cards]);
 
   return (
     <>
@@ -233,19 +243,16 @@ export function BoardCanvas({ boardId, active, cards, boardArrows }: BoardCanvas
       onNodeDragStop={onNodeDragStop}
       onMoveEnd={onMoveEnd}
       onPaneClick={() => {
-        updateView(boardId, (view) => {
-          view.selectedCardId = null;
-          view.selectedKey = null;
-        });
+        select(target, { kind: "none" });
       }}
       onPaneContextMenu={(event) => {
         event.preventDefault();
         const hasCards = cards.length > 0;
         paneMenu.open({ x: event.clientX, y: event.clientY }, [
-          { id: "fit", label: "Fit Board", shortcut: "Shift+1", disabled: !hasCards, onSelect: () => { requestFocus(boardId, [], "fit"); } },
+          { id: "fit", label: "Fit Board", shortcut: "Shift+1", disabled: !hasCards, onSelect: () => { requestCardFocus(target, [], "fit"); } },
           { kind: "separator", id: "s1" },
-          { id: "fold", label: "Fold All Cards", disabled: !hasCards, onSelect: () => { foldAllCards(boardId, true); } },
-          { id: "unfold", label: "Unfold All Cards", disabled: !hasCards, onSelect: () => { foldAllCards(boardId, false); } },
+          { id: "fold", label: "Fold All Cards", disabled: !hasCards, onSelect: () => { foldAll(target, true); } },
+          { id: "unfold", label: "Unfold All Cards", disabled: !hasCards, onSelect: () => { foldAll(target, false); } },
         ]);
       }}
       onError={onFlowError}

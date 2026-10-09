@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import "../test/dom";
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Preferences } from "../ipc/generated";
 import { ActionIds, createKeyBindings } from "../keyboard";
 import { installFakeEngine, type FakeEngine } from "../test/engine";
 import { renderWithClient } from "../test/render";
-import { mergeKeyBindings, openPreferences, PreferencesDialog, usePreferencesKeyBindings } from "./PreferencesDialog";
+import { mergeKeyBindings, PreferencesDialog, usePreferencesKeyBindings } from "./PreferencesDialog";
 
 const PREFERENCES: Preferences = {
   theme: "system",
@@ -33,10 +33,7 @@ async function open(keyBindings: Record<string, string> = {}) {
     },
   });
   engine = fake;
-  renderWithClient(<PreferencesDialog />);
-  act(() => {
-    openPreferences();
-  });
+  renderWithClient(<PreferencesDialog onClose={() => undefined} />);
   const dialog = await screen.findByRole("dialog");
   return { fake, dialog, user: userEvent.setup() };
 }
@@ -49,7 +46,7 @@ describe("Preferences → Keyboard", () => {
     const { dialog } = await open({ [ActionIds.toggleSidebar]: "Mod+K", "future.action": "Mod+Q" });
     const view = within(dialog).getByRole("group", { name: "View" });
     expect(within(view).getByRole("button", { name: "Shortcut for Toggle Sidebar" }).textContent).toBe("Ctrl+K");
-    expect(shortcutButton(dialog, "Toggle Inspector").textContent).toBe("Ctrl+Alt+B]");
+    expect(shortcutButton(dialog, "Next Tab").textContent).toBe("Ctrl+TabCtrl+Shift+]");
     expect(shortcutButton(dialog, "Copy Diagnostics").textContent).toBe("None");
     expect(within(dialog).getByRole("button", { name: "Reset Toggle Sidebar" })).toHaveProperty("disabled", false);
     expect(within(dialog).getByRole("button", { name: "Reset Compile" })).toHaveProperty("disabled", true);
@@ -75,20 +72,20 @@ describe("Preferences → Keyboard", () => {
 
   it("cancels recording on Escape without closing the dialog, and clears with Backspace", async () => {
     const { dialog, user } = await open();
-    await user.click(shortcutButton(dialog, "Toggle Panel"));
+    await user.click(shortcutButton(dialog, "Home"));
     await user.keyboard("{Escape}");
     expect(screen.getByRole("dialog")).toBe(dialog);
-    expect(shortcutButton(dialog, "Toggle Panel").textContent).toBe("Ctrl+J");
-    await user.click(shortcutButton(dialog, "Toggle Panel"));
+    expect(shortcutButton(dialog, "Home").textContent).toBe("Ctrl+0");
+    await user.click(shortcutButton(dialog, "Home"));
     await user.keyboard("{Backspace}");
-    expect(shortcutButton(dialog, "Toggle Panel").textContent).toBe("None");
+    expect(shortcutButton(dialog, "Home").textContent).toBe("None");
   });
 
   it("flags a combination used twice and won't save until it's resolved", async () => {
     const { dialog, user } = await open();
     await user.click(shortcutButton(dialog, "Compile"));
     await user.keyboard("{Control>}b{/Control}");
-    // Toggle Sidebar (View) is listed before Compile (Graph).
+    // Toggle Sidebar (View) is listed before Compile (Project).
     expect(within(dialog).getAllByRole("alert").map((alert) => alert.textContent)).toEqual([
       "Also used by Compile",
       "Also used by Toggle Sidebar",

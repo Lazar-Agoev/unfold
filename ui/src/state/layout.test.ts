@@ -1,97 +1,73 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  SIDEBAR_WIDTH,
   applyLayoutSnapshot,
-  createLayoutStore,
+  folderKey,
   initialLayout,
   layoutSnapshot,
-  PANE_BOUNDS,
+  setFolderExpanded,
+  setHomeView,
+  setSidebarWidth,
   subscribeToLayout,
-  type LayoutSnapshot,
+  toggleSidebar,
+  useLayout,
 } from "./layout";
 
-describe("layout store", () => {
-  it("starts with the inspector closed", () => {
-    expect(createLayoutStore().getState().inspectorOpen).toBe(false);
-  });
-
-  it("shows a view, and hides the sidebar when its active icon is clicked again", () => {
-    const store = createLayoutStore();
-    store.getState().showView("search");
-    expect(store.getState()).toMatchObject({ view: "search", sidebarVisible: true });
-    store.getState().showView("search", { toggle: true });
-    expect(store.getState().sidebarVisible).toBe(false);
-    store.getState().showView("search", { toggle: true });
-    expect(store.getState().sidebarVisible).toBe(true);
-  });
-
-  it("keyboard view switches always show the sidebar", () => {
-    const store = createLayoutStore({ ...initialLayout, sidebarVisible: false });
-    store.getState().showView("files");
-    expect(store.getState().sidebarVisible).toBe(true);
-    store.getState().showView("files");
-    expect(store.getState().sidebarVisible).toBe(true);
-  });
-
-  it("toggles panes, and choosing a panel tab opens the panel", () => {
-    const store = createLayoutStore();
-    store.getState().toggleInspector();
-    store.getState().togglePanel();
-    expect(store.getState()).toMatchObject({ inspectorOpen: true, panelOpen: false });
-    store.getState().showPanelTab("references");
-    expect(store.getState()).toMatchObject({ panelOpen: true, panelTab: "references" });
-  });
+beforeEach(() => {
+  useLayout.setState(initialLayout);
 });
 
-describe("pane sizes", () => {
-  it("clamps sizes to each pane's bounds and resets to the initial size", () => {
-    const store = createLayoutStore();
-    store.getState().setPaneSize("sidebar", 5000);
-    expect(store.getState().sizes.sidebar).toBe(PANE_BOUNDS.sidebar.max);
-    store.getState().setPaneSize("panel", 10);
-    expect(store.getState().sizes.panel).toBe(PANE_BOUNDS.panel.min);
-    store.getState().setPaneSize("inspector", 333.6);
-    expect(store.getState().sizes.inspector).toBe(334);
-    store.getState().resetPaneSize("sidebar");
-    expect(store.getState().sizes.sidebar).toBe(PANE_BOUNDS.sidebar.initial);
-  });
-});
-
-describe("layout snapshots", () => {
-  it("round-trips the persisted fields", () => {
-    const store = createLayoutStore();
-    store.getState().showView("boards");
-    store.getState().toggleInspector();
-    store.getState().setPaneSize("panel", 320);
-    const saved: unknown = JSON.parse(JSON.stringify(layoutSnapshot(store)));
-    const restored = createLayoutStore();
-    applyLayoutSnapshot(saved, restored);
-    expect(layoutSnapshot(restored)).toEqual(layoutSnapshot(store));
+describe("window layout", () => {
+  it("clamps the sidebar width and toggles its visibility", () => {
+    setSidebarWidth(1000);
+    expect(layoutSnapshot().sidebar.width).toBe(SIDEBAR_WIDTH.max);
+    setSidebarWidth(10);
+    expect(layoutSnapshot().sidebar.width).toBe(SIDEBAR_WIDTH.min);
+    toggleSidebar();
+    expect(layoutSnapshot().sidebar.visible).toBe(false);
   });
 
-  it("ignores malformed fields from disk and clamps sizes", () => {
-    const store = createLayoutStore();
-    applyLayoutSnapshot({ view: "graph", panelTab: 3, inspectorOpen: "yes", panelOpen: false, sizes: { sidebar: 9999, panel: "big" } }, store);
-    expect(store.getState()).toMatchObject({
-      view: "files",
-      panelTab: "problems",
-      inspectorOpen: false,
-      panelOpen: false,
-      sizes: { sidebar: PANE_BOUNDS.sidebar.max, panel: PANE_BOUNDS.panel.initial },
+  it("remembers expanded folders per project, without duplicates", () => {
+    setFolderExpanded("p-a", "Checkout", true);
+    setFolderExpanded("p-b", "Checkout", true);
+    setFolderExpanded("p-a", "Checkout", true);
+    expect(layoutSnapshot().folders).toEqual([folderKey("p-b", "Checkout"), folderKey("p-a", "Checkout")]);
+    setFolderExpanded("p-b", "Checkout", false);
+    expect(layoutSnapshot().folders).toEqual([folderKey("p-a", "Checkout")]);
+  });
+
+  it("round-trips through JSON and notifies on change", () => {
+    const changed = vi.fn();
+    const stop = subscribeToLayout(changed);
+    setHomeView("health");
+    expect(changed).toHaveBeenCalledTimes(1);
+    stop();
+    const saved: unknown = JSON.parse(JSON.stringify(layoutSnapshot()));
+    useLayout.setState(initialLayout);
+    applyLayoutSnapshot(saved);
+    expect(layoutSnapshot().home.view).toBe("health");
+  });
+
+  it("validates a saved layout field by field, falling back to defaults", () => {
+    applyLayoutSnapshot({
+      sidebar: { width: 9999, visible: "no" },
+      selectedCollapsed: true,
+      peek: { pinned: 1 },
+      home: { view: "files", boardsFilter: "drafts", boardsSort: "title" },
+      folders: ["p-a\u0000X", 3, "p-a\u0000X"],
+      lens: "flow",
     });
-    applyLayoutSnapshot(null, store);
-    applyLayoutSnapshot("nonsense", store);
-    expect(store.getState().view).toBe("files");
-  });
-
-  it("notifies only when the persisted part changes", () => {
-    const store = createLayoutStore();
-    const onChange = vi.fn<(snapshot: LayoutSnapshot) => void>();
-    const unsubscribe = subscribeToLayout(onChange, store);
-    store.getState().showView("files");
-    expect(onChange).not.toHaveBeenCalled();
-    store.getState().setPaneSize("sidebar", 300);
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange.mock.lastCall?.[0].sizes.sidebar).toBe(300);
-    unsubscribe();
+    expect(layoutSnapshot()).toEqual({
+      v: 1,
+      sidebar: { width: SIDEBAR_WIDTH.max, visible: true },
+      selectedCollapsed: true,
+      peek: { pinned: false },
+      home: { view: "overview", boardsFilter: "drafts", boardsSort: "title" },
+      folders: ["p-a\u0000X"],
+    });
+    for (const junk of [null, 42, "layout", []]) {
+      applyLayoutSnapshot(junk);
+      expect(layoutSnapshot()).toEqual(initialLayout);
+    }
   });
 });

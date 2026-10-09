@@ -1,46 +1,72 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BoardDocument, BoardState, CardView } from "../../ipc/generated";
+import { queryClient } from "../../ipc/client";
+import type { BoardDocument, Card, CardView } from "../../ipc/generated";
+import { engineKey } from "../../ipc/queries";
+import { boardDocument, boardState, page, projectRow, workspaceView } from "../../test/workspace";
 
-const engine = vi.hoisted(() => ({ call: vi.fn(), onEngineEvent: vi.fn(() => () => undefined) }));
+const engine = vi.hoisted(() => ({
+  call: vi.fn(),
+  onEngineEvent: vi.fn(() => () => undefined),
+  windowCommand: vi.fn(() => Promise.resolve(null)),
+}));
+const toast = vi.hoisted(() => ({ showToast: vi.fn() }));
 vi.mock("./engine", () => engine);
-vi.mock("../../components/Toast", () => ({ showToast: vi.fn() }));
+vi.mock("../../components/Toast", () => toast);
 
 const store = await import("./store");
 const { followCall, extendTrail } = await import("./navigation");
-const { openEntrance, openBlockCard } = await import("./api");
+const { addBlock, addLink, labelNode, openEntrance, removeCard, traceEntrance } = await import("./api");
 const { arrangeBoard } = await import("../../canvas/arrangeBoard");
 const { FOLLOW_GAP, HEADER_PORT } = await import("../../canvas/layout");
+const tabs = await import("../tabStore");
 
+const P = "p-orders0000";
+const Q = "p-payments00";
+const SAME = "p-orders2000";
 const ID = ".unfold/local/drafts/b.json";
+const REF = { project: P, id: ID };
+const PAGE = { board: REF, page: "page-1" };
 
-function state(cards: BoardDocument["cards"]): BoardState {
-  return {
-    id: ID,
-    place: "draft",
-    name: "b",
-    document: { format: "unfold-board", version: 1, title: "B", defaultView: "code", cards, groups: [], labels: {}, guards: {} },
-    revision: "r1",
-    health: { items: [], missing: 0, outdated: 0, brokenGroups: 0, review: 0 },
-    outline: { rows: [], unlabeled: [] },
-    label: null,
-  };
+function open(cards: Card[] = [], document?: BoardDocument): void {
+  store.adoptBoardState(boardState(P, ID, document ?? boardDocument([page("page-1", cards)])));
 }
+
+function cards(): readonly Card[] {
+  return store.getOpenBoard(REF)?.document.pages[0]?.cards ?? [];
+}
+
+const entrance: CardView = {
+  type: "entrance",
+  header: { key: "entrance:x", kind: "http", title: "POST /orders", label: null, method: "POST", trigger: "/orders", triggerStatus: "exact", detector: "express.route", language: "typescript" },
+  evidence: { path: "src/server.ts", startLine: 3, endLine: 3, pointer: null, source: "current", code: null, text: null },
+  targets: [
+    { position: 0, role: "handler", text: "requireUser", resolution: "resolved", target: "src/m.ts#function:requireUser", name: "requireUser", path: "src/m.ts", line: 1, note: null, reason: null, module: null },
+    { position: 1, role: "handler", text: "audit", resolution: "external", target: null, name: null, path: null, line: null, note: "audit-lib", reason: null, module: "audit-lib" },
+    { position: 2, role: "handler", text: "createOrder", resolution: "resolved", target: "src/o.ts#function:createOrder", name: "createOrder", path: "src/o.ts", line: 5, note: null, reason: null, module: null },
+  ],
+  applications: [],
+};
 
 beforeEach(() => {
   engine.call.mockReset();
-  engine.call.mockImplementation((_command: string, args: { board?: BoardDocument }) => Promise.resolve(args.board ? { ...state([]), document: args.board } : null));
+  engine.call.mockImplementation(() => Promise.resolve(null));
+  toast.showToast.mockClear();
   store.resetBoards();
+  queryClient.clear();
+  // Two projects share the name "orders": the first in workspace order is the one refs name (D-3).
+  queryClient.setQueryData(engineKey("workspace", {}), workspaceView([projectRow(P, "orders"), projectRow(Q, "payments"), projectRow(SAME, "orders")]));
+  tabs.useTabs.setState({ boards: [REF], active: "home" });
 });
 
 describe("following a call", () => {
   it("opens the target 80 px right of the calling card, its header level with the calling line", () => {
-    store.adoptBoardState(state([{ id: "create-order", ref: { block: "src/routes/orders.ts#function:createOrder" }, at: [100, 50] }]));
-    store.updateView(ID, (view) => {
+    open([{ id: "create-order", ref: { block: "src/routes/orders.ts#function:createOrder" }, at: [100, 50] }]);
+    store.updatePageView(PAGE, (view) => {
       view.sizes["create-order"] = { width: 520, height: 400 };
     });
     const lineOffset = 190;
     const id = followCall({
-      boardId: ID,
+      target: PAGE,
       fromCardId: "create-order",
       fromLabel: "createOrder",
       targetKey: "src/services/order-service.ts#class:OrderService/method:place",
@@ -48,60 +74,58 @@ describe("following a call", () => {
       lineOffset,
       line: 32,
     });
-    const card = store.getBoard(ID)?.document.cards.find((item) => item.id === id);
+    const card = cards().find((item) => item.id === id);
     expect(card?.at).toEqual([100 + 520 + FOLLOW_GAP, 50 + lineOffset - HEADER_PORT]);
     expect(card?.ref).toEqual({ block: "src/services/order-service.ts#class:OrderService/method:place" });
-    expect(card?.view).toBeUndefined();
-    const view = store.getBoard(ID)?.view;
-    expect(view?.trail).toEqual([
+    const view = store.getPageView(PAGE);
+    expect(view.trail).toEqual([
       { cardId: "create-order", label: "createOrder", line: 32 },
       { cardId: id, label: "OrderService.place" },
     ]);
-    expect(view?.selectedCardId).toBe(id);
-    expect(view?.back).toHaveLength(1);
+    expect(view.selection).toEqual({ kind: "card", cardId: id, key: null });
+    expect(view.back).toHaveLength(1);
   });
 
-  it("focuses and unfolds a target that is already on the board instead of adding it", () => {
-    store.adoptBoardState(
-      state([
-        { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] },
-        { id: "b", ref: { block: "src/b.ts#function:b" }, at: [700, 0], folded: true },
-      ]),
-    );
-    const id = followCall({ boardId: ID, fromCardId: "a", fromLabel: "a", targetKey: "src/b.ts#function:b", targetLabel: "b" });
+  it("stays in the calling card's project", () => {
+    open([{ id: "charge", ref: { block: "src/pay.ts#function:charge", project: "payments" }, at: [0, 0] }]);
+    const id = followCall({ target: PAGE, fromCardId: "charge", fromLabel: "charge", targetKey: "src/stripe.ts#function:post", targetLabel: "post" });
+    expect(cards().find((item) => item.id === id)?.ref).toEqual({ block: "src/stripe.ts#function:post", project: "payments" });
+  });
+
+  it("focuses and unfolds a target that is already on the page instead of adding it", () => {
+    open([
+      { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] },
+      { id: "b", ref: { block: "src/b.ts#function:b" }, at: [700, 0], folded: true },
+    ]);
+    const id = followCall({ target: PAGE, fromCardId: "a", fromLabel: "a", targetKey: "src/b.ts#function:b", targetLabel: "b" });
     expect(id).toBe("b");
-    const board = store.getBoard(ID);
-    expect(board?.document.cards).toHaveLength(2);
-    expect(board?.document.cards[1]?.folded).toBeUndefined();
-    expect(board?.view.focus?.cardIds).toEqual(["b"]);
+    expect(cards()).toHaveLength(2);
+    expect(cards()[1]?.folded).toBeUndefined();
+    expect(store.getPageView(PAGE).focus?.cardIds).toEqual(["b"]);
   });
 
   it("Back and Forward walk the focus moves", () => {
-    store.adoptBoardState(state([{ id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }]));
-    store.updateView(ID, (view) => {
+    open([{ id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }]);
+    store.updatePageView(PAGE, (view) => {
       view.trail = [{ cardId: "a", label: "a" }];
     });
-    followCall({ boardId: ID, fromCardId: "a", fromLabel: "a", targetKey: "src/b.ts#function:b", targetLabel: "b" });
-    expect(store.getBoard(ID)?.view.trail.map((item) => item.label)).toEqual(["a", "b"]);
-    const b = store.getBoard(ID)?.view.trail[1]?.cardId ?? "";
-    followCall({ boardId: ID, fromCardId: b, fromLabel: "b", targetKey: "src/c.ts#function:c", targetLabel: "c" });
-    expect(store.getBoard(ID)?.view.trail.map((item) => item.label)).toEqual(["a", "b", "c"]);
-    store.travel(ID, "back");
-    store.travel(ID, "back");
-    expect(store.getBoard(ID)?.view.trail.map((item) => item.label)).toEqual(["a"]);
-    store.travel(ID, "forward");
-    expect(store.getBoard(ID)?.view.trail.map((item) => item.label)).toEqual(["a", "b"]);
+    followCall({ target: PAGE, fromCardId: "a", fromLabel: "a", targetKey: "src/b.ts#function:b", targetLabel: "b" });
+    const b = store.getPageView(PAGE).trail[1]?.cardId ?? "";
+    followCall({ target: PAGE, fromCardId: b, fromLabel: "b", targetKey: "src/c.ts#function:c", targetLabel: "c" });
+    expect(store.getPageView(PAGE).trail.map((item) => item.label)).toEqual(["a", "b", "c"]);
+    store.travel(PAGE, "back");
+    store.travel(PAGE, "back");
+    expect(store.getPageView(PAGE).trail.map((item) => item.label)).toEqual(["a"]);
+    store.travel(PAGE, "forward");
+    expect(store.getPageView(PAGE).trail.map((item) => item.label)).toEqual(["a", "b"]);
   });
 
-  it("adds a source that isn't on the trail after it", () => {
+  it("extends the trail after its source, adding a source that isn't on it", () => {
     expect(extendTrail([{ cardId: "e", label: "POST /orders" }], { cardId: "c", label: "createOrder" }, 32, { cardId: "p", label: "OrderService.place" }).map((item) => item.label)).toEqual([
       "POST /orders",
       "createOrder",
       "OrderService.place",
     ]);
-  });
-
-  it("truncates the trail after the card the follow started from", () => {
     const trail = [
       { cardId: "e", label: "POST /orders" },
       { cardId: "c", label: "createOrder", line: 32 },
@@ -115,83 +139,100 @@ describe("following a call", () => {
   });
 });
 
-describe("opening from the sidebar", () => {
-  it("opens an entrance card and one full card per resolved handler, creating a draft when none is open", async () => {
-    const entrance: CardView = {
-      type: "entrance",
-      header: { key: "entrance:x", kind: "http", title: "POST /orders", label: null, method: "POST", trigger: "/orders", triggerStatus: "exact", detector: "express.route", language: "typescript" },
-      evidence: { path: "src/server.ts", startLine: 3, endLine: 3, pointer: null, source: "current", code: null, text: null },
-      targets: [
-        { position: 0, role: "handler", text: "requireUser", resolution: "resolved", target: "src/m.ts#function:requireUser", name: "requireUser", path: "src/m.ts", line: 1, note: null, reason: null, module: null },
-        { position: 1, role: "handler", text: "audit", resolution: "external", target: null, name: null, path: null, line: null, note: "audit-lib", reason: null, module: "audit-lib" },
-        { position: 2, role: "handler", text: "createOrder", resolution: "resolved", target: "src/o.ts#function:createOrder", name: "createOrder", path: "src/o.ts", line: 5, note: null, reason: null, module: null },
-      ],
-      applications: [],
-    };
-    engine.call.mockImplementation((command: string) => Promise.resolve(command === "new_board" ? state([]) : command === "card" ? entrance : null));
-    openEntrance("entrance:x");
-    await vi.waitFor(() => {
-      expect(store.getBoard(ID)?.document.cards).toHaveLength(3);
-    });
-    expect(engine.call).toHaveBeenCalledWith("new_board", { title: "POST /orders" });
-    const cards = store.getBoard(ID)?.document.cards ?? [];
-    expect(cards.map((card) => card.ref)).toEqual([
-      { entrance: "entrance:x" },
-      { block: "src/m.ts#function:requireUser" },
-      { block: "src/o.ts#function:createOrder" },
+describe("adding cards from any project (D-3)", () => {
+  it("adds a definition once, shows its page and tab, and focuses it the second time", () => {
+    open([], boardDocument([page("page-1"), page("page-2")]));
+    const second = { board: REF, page: "page-2" };
+    const id = addBlock(second, P, "src/a.ts#function:a");
+    expect(id).toBe("a");
+    expect(store.getOpenBoard(REF)?.activePage).toBe("page-2");
+    expect(tabs.getActiveBoard()).toEqual(REF);
+    expect(addBlock(second, P, "src/a.ts#function:a")).toBe("a");
+    expect(store.getOpenBoard(REF)?.document.pages[1]?.cards).toHaveLength(1);
+    expect(store.getPageView(second).focus?.cardIds).toEqual(["a"]);
+  });
+
+  it("names another project by its shared name, and keeps the same key from two projects apart", () => {
+    open();
+    addBlock(PAGE, P, "src/a.ts#function:a");
+    addBlock(PAGE, Q, "src/a.ts#function:a");
+    expect(cards().map((card) => card.ref)).toEqual([{ block: "src/a.ts#function:a" }, { block: "src/a.ts#function:a", project: "payments" }]);
+    expect(new Set(cards().map((card) => card.id)).size).toBe(2);
+  });
+
+  it("refuses a card from a project with the board project's own name (V-62)", () => {
+    open();
+    expect(addBlock(PAGE, SAME, "src/a.ts#function:a")).toBeUndefined();
+    expect(cards()).toHaveLength(0);
+    expect(toast.showToast).toHaveBeenCalledTimes(1);
+  });
+
+  it("labels a node of another project under that project's name", () => {
+    open();
+    labelNode(PAGE, Q, "src/a.ts#function:a/if[0]", "Paid?", "person:a");
+    labelNode(PAGE, P, "src/a.ts#function:a/if[0]", "Valid?", "person:a");
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.labels).toEqual([
+      { key: "src/a.ts#function:a/if[0]", text: "Valid?", author: "person:a", signature: "" },
+      { project: "payments", key: "src/a.ts#function:a/if[0]", text: "Paid?", author: "person:a", signature: "" },
     ]);
-    expect(store.getBoard(ID)?.view.trail).toEqual([{ cardId: cards[0]?.id, label: "POST /orders" }]);
   });
 
-  it("opens a definition once; opening it again focuses it", async () => {
-    store.adoptBoardState(state([]));
-    openBlockCard("src/a.ts#function:a");
-    await vi.waitFor(() => {
-      expect(store.getBoard(ID)?.document.cards).toHaveLength(1);
-    });
-    openBlockCard("src/a.ts#function:a");
-    await vi.waitFor(() => {
-      expect(store.getBoard(ID)?.view.focus?.cardIds).toEqual(["a"]);
-    });
-    expect(store.getBoard(ID)?.document.cards).toHaveLength(1);
+  it("draws links between two cards and removes them with either card", () => {
+    open([
+      { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] },
+      { id: "b", ref: { block: "src/b.ts#function:b", project: "payments" }, at: [600, 0] },
+    ]);
+    expect(addLink(PAGE, "a", "a")).toBeUndefined();
+    expect(addLink(PAGE, "a", "b")).toBe("a-to-b");
+    removeCard(PAGE, "b");
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.links).toEqual([]);
   });
 
-  it("brings the board's tab forward when a source tab is showing", async () => {
-    const tabs = await import("../tabs");
-    store.adoptBoardState(state([]));
-    tabs.openBoardTab(ID);
-    tabs.openSource("src/a.ts");
-    expect(tabs.activeTab()?.kind).toBe("source");
-    openBlockCard("src/a.ts#function:a");
-    await vi.waitFor(() => {
-      expect(store.getBoard(ID)?.document.cards).toHaveLength(1);
-    });
-    expect(tabs.activeTab()).toMatchObject({ kind: "board", boardId: ID });
+  it("opens an entrance card and one full card per resolved handler, in its project", async () => {
+    open();
+    engine.call.mockImplementation((command: string) => Promise.resolve(command === "card" ? entrance : null));
+    await openEntrance(PAGE, Q, "entrance:x");
+    expect(engine.call).toHaveBeenCalledWith("card", { project: Q, key: "entrance:x" });
+    expect(cards().map((card) => card.ref)).toEqual([
+      { entrance: "entrance:x", project: "payments" },
+      { block: "src/m.ts#function:requireUser", project: "payments" },
+      { block: "src/o.ts#function:createOrder", project: "payments" },
+    ]);
+    expect(store.getPageView(PAGE).trail).toEqual([{ cardId: cards()[0]?.id, label: "POST /orders" }]);
+    expect(store.getPageView(PAGE).placement?.handlers.map((handler) => handler.key)).toEqual(["src/m.ts#function:requireUser", "src/o.ts#function:createOrder"]);
+  });
+
+  it("traces an entrance into a new draft titled after it", async () => {
+    const draft = { project: Q, id: ".unfold/local/drafts/trace.json" };
+    engine.call.mockImplementation((command: string) =>
+      Promise.resolve(command === "card" ? entrance : command === "new_board" ? boardState(Q, draft.id, boardDocument([page("page-1")], { title: "POST /orders" })) : null),
+    );
+    await expect(traceEntrance(Q, "entrance:x")).resolves.toEqual(draft);
+    expect(engine.call).toHaveBeenCalledWith("new_board", { project: Q, title: "POST /orders" });
+    expect(store.getOpenBoard(draft)?.document.pages[0]?.cards).toHaveLength(3);
+    expect(tabs.getActiveBoard()).toEqual(draft);
   });
 });
 
 describe("Arrange", () => {
-  it("lays cards out by call depth in one undoable step", () => {
-    store.adoptBoardState(
-      state([
-        { id: "c", ref: { block: "src/c.ts#function:c" }, at: [0, 900] },
-        { id: "b", ref: { block: "src/b.ts#function:b" }, at: [50, 500] },
-        { id: "e", ref: { entrance: "entrance:e" }, at: [900, 0] },
-      ]),
-    );
-    const before = store.getBoard(ID)?.document.cards.map((card) => card.at);
+  it("lays a page out by call depth in one undoable step", () => {
+    open([
+      { id: "c", ref: { block: "src/c.ts#function:c" }, at: [0, 900] },
+      { id: "b", ref: { block: "src/b.ts#function:b" }, at: [50, 500] },
+      { id: "e", ref: { entrance: "entrance:e" }, at: [900, 0] },
+    ]);
+    const before = cards().map((card) => card.at);
     const arrows = [
       { id: "1", source: "e", sourceHandle: "target:0", target: "b", kind: "handler" as const, dashed: false, order: 0, line: null },
       { id: "2", source: "b", sourceHandle: "src/b.ts#function:b/call[0]", target: "c", kind: "calls" as const, dashed: false, order: 0, line: 3 },
     ];
-    const moved = arrangeBoard(ID, arrows, () => undefined);
-    expect(moved).toBe(3);
-    const at = Object.fromEntries((store.getBoard(ID)?.document.cards ?? []).map((card) => [card.id, card.at]));
+    expect(arrangeBoard(PAGE, arrows, () => undefined)).toBe(3);
+    const at = Object.fromEntries(cards().map((card) => [card.id, card.at]));
     expect(at["e"]?.[0]).toBeLessThan(at["b"]?.[0] ?? 0);
     expect(at["b"]?.[0]).toBeLessThan(at["c"]?.[0] ?? 0);
     // Arranging again changes nothing.
-    expect(arrangeBoard(ID, arrows, () => undefined)).toBe(0);
-    store.undo(ID);
-    expect(store.getBoard(ID)?.document.cards.map((card) => card.at)).toEqual(before);
+    expect(arrangeBoard(PAGE, arrows, () => undefined)).toBe(0);
+    store.undo(REF);
+    expect(cards().map((card) => card.at)).toEqual(before);
   });
 });

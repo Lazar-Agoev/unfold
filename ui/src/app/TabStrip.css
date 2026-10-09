@@ -1,0 +1,126 @@
+/* The tab strip (components §2, V-32, V-33, V-44): the window's title bar and drag region. */
+
+.tab-strip {
+  display: flex;
+  flex-shrink: 0;
+  height: var(--tabstrip);
+  padding: 0 12px 0 8px;
+  background: var(--color-tabstrip);
+  /* The strip's bottom rule, drawn inside so the active tab can cover it and join the top bar. */
+  box-shadow: inset 0 -1px 0 var(--color-border-shell);
+  -webkit-app-region: drag;
+}
+
+/* Clears macOS's traffic lights. */
+.tab-strip[data-traffic-lights] {
+  padding-left: 84px;
+}
+
+.tab-strip-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  /* Room for the active tab's extra pixel over the rule (the scroller clips at its padding box). */
+  padding-bottom: 1px;
+  overflow: auto hidden;
+  scrollbar-width: none;
+}
+
+.tab-strip-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 96px;
+  max-width: 220px;
+  height: var(--tab);
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--radius-tab) var(--radius-tab) 0 0;
+  color: var(--color-muted);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  -webkit-app-region: no-drag;
+}
+
+.tab-home {
+  flex-shrink: 0;
+  min-width: auto;
+}
+
+.tab:hover {
+  color: var(--color-text);
+}
+
+.tab[data-active] {
+  z-index: 1;
+  height: calc(var(--tab) + 1px);
+  margin-bottom: -1px;
+  padding-bottom: 1px;
+  border-color: var(--color-border-shell);
+  background: var(--color-chrome);
+  color: var(--color-text);
+}
+
+.tab-main {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 12px;
+  border-radius: inherit;
+  font-weight: 500;
+}
+
+.tab[data-active] .tab-main {
+  font-weight: 600;
+}
+
+.tab-main:focus-visible {
+  outline-offset: -2px;
+}
+
+.tab-icon {
+  flex-shrink: 0;
+}
+
+.tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* V-33: a fixed 16px slot, so a tab keeps its width when its × appears. */
+.tab-board .tab-main {
+  padding-right: 8px;
+}
+
+.tab-close {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+  border-radius: var(--radius-chip);
+  color: var(--color-muted);
+  visibility: hidden;
+}
+
+.tab[data-active] .tab-close,
+.tab:hover .tab-close {
+  visibility: visible;
+}
+
+.tab-close:hover {
+  background: var(--color-pressed);
+  color: var(--color-text);
+}

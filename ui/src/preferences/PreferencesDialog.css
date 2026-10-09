@@ -30,7 +30,7 @@
 .preferences-note {
   display: block;
   margin-top: 2px;
-  font-size: var(--font-size-small);
+  font-size: var(--text-12);
   color: var(--color-muted);
 }
 
@@ -59,7 +59,7 @@
 
 .preferences-keys-category {
   padding: 4px 0;
-  font-size: var(--font-size-small);
+  font-size: var(--text-12);
   color: var(--color-muted);
 }
 
@@ -78,7 +78,7 @@
 }
 
 .preferences-key-conflict {
-  font-size: var(--font-size-small);
+  font-size: var(--text-12);
   color: var(--color-danger);
 }
 
@@ -113,6 +113,6 @@
 
 .preferences-key-prompt,
 .preferences-key-none {
-  font-size: var(--font-size-small);
+  font-size: var(--text-12);
   color: var(--color-muted);
 }

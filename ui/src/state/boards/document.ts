@@ -1,38 +1,50 @@
 /**
- * Pure edits of an `unfold-board` v1 document (architecture §9.1). Each function is an Immer recipe
- * over a draft document, so the store can record one undo step per edit. Optional fields are
- * deleted rather than set to `undefined`, matching what the file holds (`folded` only when true,
- * `description` only when there is text).
+ * Pure edits of an `unfold-board` document (contract §6.2). Each function is an Immer recipe over a
+ * draft document or page, so the store can record one undo step per edit. Optional fields are deleted
+ * rather than set to `undefined`, matching what the file holds (`folded` only when true, `description`
+ * and `label` only when there is text).
+ *
+ * Card, group, and link ids are unique together within their page; page ids within the board. Both
+ * match `/^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/` (contract §1.4).
  */
 
-import type { BoardDocument, Card, CardRef, Description, Group, View } from "../../ipc/generated";
+import type { BoardDocument, Card, CardRef, Description, Group, Key, LabelEntry, Link, Page, ProjectName, View } from "../../ipc/generated";
+import type { PageId } from "./types";
 
 /** The structural key a card shows. */
-export function cardKey(card: Card): string {
+export function cardKey(card: Card): Key {
   return "block" in card.ref ? card.ref.block : card.ref.entrance;
 }
 
-/** The first card that shows `key`, if any. */
-export function findCardByKey(document: BoardDocument, key: string): Card | undefined {
-  return document.cards.find((card) => cardKey(card) === key);
+export function isEntranceCard(card: Card): boolean {
+  return "entrance" in card.ref;
 }
 
-export function findCard(document: BoardDocument, cardId: string): Card | undefined {
-  return document.cards.find((card) => card.id === cardId);
+export function findPage(document: BoardDocument, pageId: PageId): Page | undefined {
+  return document.pages.find((page) => page.id === pageId);
+}
+
+export function findCard(page: Page, cardId: string): Card | undefined {
+  return page.cards.find((card) => card.id === cardId);
+}
+
+/** The first card of the page that shows `key` from the project `ref.project` names (undefined: the board's own). */
+export function findCardByRef(page: Page, key: Key, project: ProjectName | undefined): Card | undefined {
+  return page.cards.find((card) => cardKey(card) === key && card.ref.project === project);
 }
 
 /** `createOrder` → `create-order`; anything else non-alphanumeric becomes one dash. */
-function slug(text: string): string {
+function slug(text: string, fallback: string): string {
   const value = text
     .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  return value.length > 0 ? value.slice(0, 48).replace(/-+$/, "") : "card";
+  return value.length > 0 ? value.slice(0, 48).replace(/-+$/, "") : fallback;
 }
 
 /** A readable name for a key: `OrderService.place`, or `POST /orders` for an HTTP entrance. */
-export function keyDisplayName(key: string): string {
+export function keyDisplayName(key: Key): string {
   if (key.startsWith("entrance:")) {
     try {
       const parts: unknown = JSON.parse(key.slice("entrance:".length));
@@ -58,10 +70,8 @@ export function keyDisplayName(key: string): string {
   return names.slice(-2).join(".") || local;
 }
 
-/** An id unique among the document's cards and groups, derived from `base`. */
-export function uniqueId(document: BoardDocument, base: string): string {
-  const taken = new Set([...document.cards.map((card) => card.id), ...document.groups.map((group) => group.id)]);
-  const stem = slug(base);
+/** `stem`, or `stem-2`, `stem-3`, … : the first not in `taken`. */
+function firstFree(stem: string, taken: ReadonlySet<string>): string {
   if (!taken.has(stem)) {
     return stem;
   }
@@ -73,6 +83,12 @@ export function uniqueId(document: BoardDocument, base: string): string {
   }
 }
 
+/** An id unique among the page's cards, groups, and links, derived from `base`. */
+export function uniqueId(page: Page, base: string): string {
+  const taken = new Set([...page.cards.map((card) => card.id), ...page.groups.map((group) => group.id), ...page.links.map((link) => link.id)]);
+  return firstFree(slug(base, "card"), taken);
+}
+
 export interface NewCard {
   readonly ref: CardRef;
   readonly at: readonly [number, number];
@@ -80,10 +96,10 @@ export interface NewCard {
 }
 
 /** Adds a card and returns its id. Positions are rounded: the file holds finite numbers. */
-export function addCard(document: BoardDocument, card: NewCard): string {
+export function addCard(page: Page, card: NewCard): string {
   const key = "block" in card.ref ? card.ref.block : card.ref.entrance;
-  const id = uniqueId(document, keyDisplayName(key));
-  document.cards.push({
+  const id = uniqueId(page, keyDisplayName(key));
+  page.cards.push({
     id,
     ref: card.ref,
     at: [Math.round(card.at[0]), Math.round(card.at[1])],
@@ -92,15 +108,16 @@ export function addCard(document: BoardDocument, card: NewCard): string {
   return id;
 }
 
-/** Removes a card and the groups inside it. */
-export function removeCard(document: BoardDocument, cardId: string): void {
-  document.cards = document.cards.filter((card) => card.id !== cardId);
-  document.groups = document.groups.filter((group) => group.card !== cardId);
+/** Removes a card, the groups inside it, and the links that end at it. */
+export function removeCard(page: Page, cardId: string): void {
+  page.cards = page.cards.filter((card) => card.id !== cardId);
+  page.groups = page.groups.filter((group) => group.card !== cardId);
+  page.links = page.links.filter((link) => link.from !== cardId && link.to !== cardId);
 }
 
-/** Moves cards; ids not on the board are ignored. */
-export function moveCards(document: BoardDocument, positions: Readonly<Record<string, readonly [number, number]>>): void {
-  for (const card of document.cards) {
+/** Moves cards; ids not on the page are ignored. */
+export function moveCards(page: Page, positions: Readonly<Record<string, readonly [number, number]>>): void {
+  for (const card of page.cards) {
     const at = positions[card.id];
     if (at && Number.isFinite(at[0]) && Number.isFinite(at[1])) {
       card.at = [Math.round(at[0]), Math.round(at[1])];
@@ -109,17 +126,17 @@ export function moveCards(document: BoardDocument, positions: Readonly<Record<st
 }
 
 /** Sets a card's own Code/Flow switch (saved with the board). */
-export function setCardView(document: BoardDocument, cardId: string, view: View): void {
-  const card = findCard(document, cardId);
+export function setCardView(page: Page, cardId: string, view: View): void {
+  const card = findCard(page, cardId);
   if (card) {
     card.view = view;
   }
 }
 
 /** Folds or unfolds cards to their title; `folded` is written only when true. */
-export function setCardsFolded(document: BoardDocument, cardIds: readonly string[], folded: boolean): void {
+export function setCardsFolded(page: Page, cardIds: readonly string[], folded: boolean): void {
   const wanted = new Set(cardIds);
-  for (const card of document.cards) {
+  for (const card of page.cards) {
     if (!wanted.has(card.id)) {
       continue;
     }
@@ -137,8 +154,8 @@ export function description(text: string, author: string): Description {
 }
 
 /** Sets or clears (blank text) a card's description. */
-export function setCardDescription(document: BoardDocument, cardId: string, text: string, author: string): void {
-  const card = findCard(document, cardId);
+export function setCardDescription(page: Page, cardId: string, text: string, author: string): void {
+  const card = findCard(page, cardId);
   if (!card) {
     return;
   }
@@ -149,21 +166,47 @@ export function setCardDescription(document: BoardDocument, cardId: string, text
   }
 }
 
-/** Sets or clears (blank text) a Flow label. */
-export function setLabel(document: BoardDocument, key: string, text: string, author: string): void {
-  if (text.trim().length === 0) {
-    // Rebuild without the key: the labels map is a plain record.
-    document.labels = Object.fromEntries(Object.entries(document.labels).filter(([labeled]) => labeled !== key));
-  } else if (document.labels[key]?.text !== text) {
-    document.labels[key] = description(text, author);
+/** Labels and guards sort by (project, key), as the file writes them. */
+function labelOrder(a: Pick<LabelEntry, "project" | "key">, b: Pick<LabelEntry, "project" | "key">): number {
+  const pa = a.project ?? "";
+  const pb = b.project ?? "";
+  if (pa !== pb) {
+    return pa < pb ? -1 : 1;
   }
+  return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+}
+
+/** The label texts of a page that apply to cards from `project` (undefined: the board's own), by key. */
+export function labelsFor(labels: readonly LabelEntry[], project: ProjectName | undefined): Record<Key, string> {
+  return Object.fromEntries(labels.filter((label) => label.project === project).map((label) => [label.key, label.text]));
+}
+
+/** Sets or clears (blank text) the Flow label of `key` in the project `project` names. */
+export function setLabel(page: Page, project: ProjectName | undefined, key: Key, text: string, author: string): void {
+  const index = page.labels.findIndex((label) => label.project === project && label.key === key);
+  if (text.trim().length === 0) {
+    if (index >= 0) {
+      page.labels.splice(index, 1);
+    }
+    return;
+  }
+  if (index >= 0 && page.labels[index]?.text === text) {
+    return;
+  }
+  const label: LabelEntry = { ...(project !== undefined ? { project } : {}), key, ...description(text, author) };
+  if (index >= 0) {
+    page.labels[index] = label;
+    return;
+  }
+  const at = page.labels.findIndex((existing) => labelOrder(label, existing) < 0);
+  page.labels.splice(at < 0 ? page.labels.length : at, 0, label);
 }
 
 /** Adds a group of consecutive sibling statements inside a card and returns its id. */
-export function addGroup(document: BoardDocument, cardId: string, members: readonly string[], title: string): string {
-  const id = uniqueId(document, title.length > 0 ? title : "group");
+export function addGroup(page: Page, cardId: string, members: readonly string[], title: string): string {
+  const id = uniqueId(page, title.length > 0 ? title : "group");
   const group: Group = { id, card: cardId, title, members: [...members], collapsed: false };
-  document.groups.push(group);
+  page.groups.push(group);
   return id;
 }
 
@@ -174,8 +217,8 @@ export interface GroupChange {
   readonly description?: { readonly text: string; readonly author: string };
 }
 
-export function updateGroup(document: BoardDocument, groupId: string, change: GroupChange): void {
-  const group = document.groups.find((item) => item.id === groupId);
+export function updateGroup(page: Page, groupId: string, change: GroupChange): void {
+  const group = page.groups.find((item) => item.id === groupId);
   if (!group) {
     return;
   }
@@ -194,8 +237,36 @@ export function updateGroup(document: BoardDocument, groupId: string, change: Gr
   }
 }
 
-export function removeGroup(document: BoardDocument, groupId: string): void {
-  document.groups = document.groups.filter((group) => group.id !== groupId);
+export function removeGroup(page: Page, groupId: string): void {
+  page.groups = page.groups.filter((group) => group.id !== groupId);
+}
+
+/** Draws a link between two different cards of the page and returns its id (undefined if it can't). */
+export function addLink(page: Page, from: string, to: string): string | undefined {
+  if (from === to || !findCard(page, from) || !findCard(page, to)) {
+    return undefined;
+  }
+  const id = uniqueId(page, `${from}-to-${to}`);
+  const link: Link = { id, from, to };
+  page.links.push(link);
+  return id;
+}
+
+/** Sets or clears (blank text) a link's label. */
+export function setLinkLabel(page: Page, linkId: string, text: string, author: string): void {
+  const link = page.links.find((item) => item.id === linkId);
+  if (!link) {
+    return;
+  }
+  if (text.trim().length === 0) {
+    delete link.label;
+  } else if (link.label?.text !== text) {
+    link.label = description(text, author);
+  }
+}
+
+export function removeLink(page: Page, linkId: string): void {
+  page.links = page.links.filter((link) => link.id !== linkId);
 }
 
 export function setTitle(document: BoardDocument, title: string): void {
@@ -204,3 +275,68 @@ export function setTitle(document: BoardDocument, title: string): void {
   }
 }
 
+/** `page-<n>` with the smallest free `n`. */
+export function nextPageId(document: BoardDocument): PageId {
+  const taken = new Set(document.pages.map((page) => page.id));
+  for (let n = 1; ; n += 1) {
+    const id = `page-${n}`;
+    if (!taken.has(id)) {
+      return id;
+    }
+  }
+}
+
+function emptyPage(id: PageId, title: string, defaultView: View): Page {
+  return { id, title, defaultView, cards: [], groups: [], labels: [], guards: [], links: [] };
+}
+
+/** Adds an empty page after `after` (else last), titled "Page N" unless given a title. Returns its id. */
+export function addPage(document: BoardDocument, options: { readonly title?: string; readonly after?: PageId } = {}): PageId {
+  const id = nextPageId(document);
+  const index = options.after === undefined ? -1 : document.pages.findIndex((page) => page.id === options.after);
+  const at = index < 0 ? document.pages.length : index + 1;
+  const neighbour = document.pages[at - 1] ?? document.pages[0];
+  const title = options.title !== undefined && options.title.trim().length > 0 ? options.title : `Page ${document.pages.length + 1}`;
+  document.pages.splice(at, 0, emptyPage(id, title, neighbour?.defaultView ?? "code"));
+  return id;
+}
+
+export function renamePage(document: BoardDocument, pageId: PageId, title: string): void {
+  const page = findPage(document, pageId);
+  if (page && title.trim().length > 0) {
+    page.title = title;
+  }
+}
+
+/** Copies a page (cards, groups, labels, guards, links) right after it, titled "<title> copy". */
+export function duplicatePage(document: BoardDocument, pageId: PageId): PageId | undefined {
+  const index = document.pages.findIndex((page) => page.id === pageId);
+  const source = document.pages[index];
+  if (!source) {
+    return undefined;
+  }
+  const id = nextPageId(document);
+  // A JSON copy: `source` may be an Immer draft, which structured cloning refuses.
+  const copy = JSON.parse(JSON.stringify(source)) as Page;
+  document.pages.splice(index + 1, 0, { ...copy, id, title: `${source.title} copy` });
+  return id;
+}
+
+/** Moves a page one place up (-1) or down (1); nothing at either end. */
+export function movePage(document: BoardDocument, pageId: PageId, delta: -1 | 1): void {
+  const index = document.pages.findIndex((page) => page.id === pageId);
+  const to = index + delta;
+  const page = document.pages[index];
+  if (!page || to < 0 || to >= document.pages.length) {
+    return;
+  }
+  document.pages.splice(index, 1);
+  document.pages.splice(to, 0, page);
+}
+
+/** Deletes a page, unless it is the only one. */
+export function deletePage(document: BoardDocument, pageId: PageId): void {
+  if (document.pages.length > 1) {
+    document.pages = document.pages.filter((page) => page.id !== pageId);
+  }
+}

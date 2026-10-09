@@ -1,0 +1,62 @@
+/* Placeholder Home (U1c); U3 replaces it. */
+
+.home-stub-sidebar {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 12px 6px;
+}
+
+.home-stub-rows {
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.home-stub-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border-shell);
+}
+
+.home-stub-footer > .list-row {
+  flex: 1;
+}
+
+.home-stub {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 16px;
+  padding: 32px 40px;
+  overflow: auto;
+  background: var(--color-home);
+}
+
+.home-stub-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.home-stub-title {
+  font-size: var(--text-17);
+  font-weight: 600;
+}
+
+.home-stub-path {
+  color: var(--color-muted);
+  font-family: var(--font-code);
+  font-size: var(--text-12);
+}
+
+.home-stub-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 12px;
+}

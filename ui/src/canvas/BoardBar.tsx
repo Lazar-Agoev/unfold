@@ -3,17 +3,13 @@
  * createOrder"), and the camera controls (− + Fit) with Arrange by call depth.
  */
 
-import { ArrowLeft, Maximize, Minus, Plus, Workflow } from "lucide-react";
+import { ArrowLeft, Workflow } from "lucide-react";
 import { IconButton, Tooltip } from "../components";
 import { ActionIds, useShortcut } from "../keyboard";
-import { focusCard } from "../state/boards/api";
-import { pushFocusMove, useBoards } from "../state/boards/store";
-import type { TrailItem } from "../state/boards/types";
-
-const NO_TRAIL: readonly TrailItem[] = [];
+import { findPage, focusCard, pushFocusMove, useOpenBoard, usePageView, type PageTarget } from "../state/boards";
 
 export interface BoardBarProps {
-  readonly boardId: string;
+  readonly target: PageTarget;
   readonly onBack: () => void;
   readonly onZoomIn: () => void;
   readonly onZoomOut: () => void;
@@ -21,12 +17,12 @@ export interface BoardBarProps {
   readonly onArrange: () => void;
 }
 
-export function BoardBar({ boardId, onBack, onZoomIn, onZoomOut, onFit, onArrange }: BoardBarProps) {
-  const trail = useBoards((state) => state.boards[boardId]?.view.trail ?? NO_TRAIL);
-  const canGoBack = useBoards((state) => (state.boards[boardId]?.view.back.length ?? 0) > 0);
-  const hasCards = useBoards((state) => (state.boards[boardId]?.document.cards.length ?? 0) > 0);
+export function BoardBar({ target, onBack, onZoomIn, onZoomOut, onFit, onArrange }: BoardBarProps) {
+  const trail = usePageView(target, (view) => view.trail);
+  const canGoBack = usePageView(target, (view) => view.back.length > 0);
+  const hasCards = useOpenBoard(target.board, (board) => (findPage(board.document, target.page)?.cards.length ?? 0) > 0) ?? false;
   const backKey = useShortcut(ActionIds.back);
-  const fitKey = useShortcut(ActionIds.fitBoard);
+  const fitKey = useShortcut(ActionIds.fit);
   const zoomInKey = useShortcut(ActionIds.zoomIn);
   const zoomOutKey = useShortcut(ActionIds.zoomOut);
   return (
@@ -50,8 +46,8 @@ export function BoardBar({ boardId, onBack, onZoomIn, onZoomOut, onFit, onArrang
                 <button
                   type="button"
                   onClick={() => {
-                    pushFocusMove(boardId);
-                    focusCard(boardId, item.cardId);
+                    pushFocusMove(target);
+                    focusCard(target, item.cardId);
                   }}
                 >
                   {item.label}
@@ -62,9 +58,9 @@ export function BoardBar({ boardId, onBack, onZoomIn, onZoomOut, onFit, onArrang
         </nav>
       ) : null}
       <div className="board-zoom" role="group" aria-label="Camera">
-        <IconButton icon={Minus} label="Zoom Out" {...(zoomOutKey !== null ? { shortcut: zoomOutKey } : {})} size="small" tooltipSide="top" onClick={onZoomOut} />
-        <IconButton icon={Plus} label="Zoom In" {...(zoomInKey !== null ? { shortcut: zoomInKey } : {})} size="small" tooltipSide="top" onClick={onZoomIn} />
-        <IconButton icon={Maximize} label="Fit Board" {...(fitKey !== null ? { shortcut: fitKey } : {})} size="small" tooltipSide="top" onClick={onFit} disabled={!hasCards} />
+        <IconButton icon="minus" label="Zoom Out" {...(zoomOutKey !== null ? { shortcut: zoomOutKey } : {})} size={24} tooltipSide="top" onClick={onZoomOut} />
+        <IconButton icon="plus" label="Zoom In" {...(zoomInKey !== null ? { shortcut: zoomInKey } : {})} size={24} tooltipSide="top" onClick={onZoomIn} />
+        <IconButton icon="layers" label="Fit Board" {...(fitKey !== null ? { shortcut: fitKey } : {})} size={24} tooltipSide="top" onClick={onFit} disabled={!hasCards} />
         <span className="board-zoom-divider" aria-hidden="true" />
         <Tooltip content="Arrange by call depth: callers left, callees right" side="top" describe={false}>
           <button type="button" className="board-arrange" onClick={onArrange} disabled={!hasCards}>

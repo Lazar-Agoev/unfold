@@ -24,7 +24,7 @@
   gap: 6px;
   margin: 8px 16px 0;
   padding: 6px 9px;
-  border-radius: var(--radius);
+  border-radius: var(--radius-control);
   background: var(--color-warn-fill);
   color: var(--color-warn);
   font: 11px/16px var(--font-ui);
@@ -70,7 +70,7 @@
 .flow-region {
   position: absolute;
   border: 1px dashed var(--color-contour);
-  border-radius: var(--radius-large);
+  border-radius: var(--radius-card);
   pointer-events: none;
 }
 
@@ -99,7 +99,7 @@
   flex-direction: column;
   padding: 7px 11px;
   border: 1px solid var(--color-contour);
-  border-radius: var(--radius);
+  border-radius: var(--radius-control);
   background: var(--color-surface);
   cursor: pointer;
   overflow: visible;
@@ -233,7 +233,7 @@
   margin-top: 4px;
   padding: 0 7px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-small);
+  border-radius: var(--radius-chip);
   background: var(--color-step);
   font: 500 11px/14px var(--font-ui);
   white-space: nowrap;
@@ -257,7 +257,7 @@
 .flow-checks {
   margin-top: 2px;
   padding: 0 6px;
-  border-radius: var(--radius-small);
+  border-radius: var(--radius-chip);
   background: var(--color-surface);
   font: 600 11px/18px var(--font-ui);
   color: var(--color-decision);

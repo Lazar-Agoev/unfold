@@ -3,7 +3,7 @@ import type { ManualEntranceView } from "../ipc/generated";
 import { diagnosticsText, shellVersions } from "./diagnostics";
 import { draftOf, emptyDraft, hasProblems, manualTableOf, specOf, validateDraft, type EntranceDraft } from "./entrance";
 import { canBeHandler, locatorFor, locatorLanguage, locatorProblem } from "./locators";
-import { problemText, settingsProblem } from "./store";
+import { problemText, settingsProblem } from "./edits";
 
 function table(index: number, kind: ManualEntranceView["kind"], trigger: string | null, handler: string[], extra: Partial<ManualEntranceView> = {}): ManualEntranceView {
   return { index, kind, trigger, method: null, label: null, handler, startup: null, line: 10 + index * 4, ...extra };

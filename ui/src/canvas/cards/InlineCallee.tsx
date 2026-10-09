@@ -6,11 +6,20 @@ import { useMemo, useState } from "react";
 import { CodeView } from "../../code/CodeView";
 import { defaultFolds } from "../../code/outline";
 import { shortPath } from "../../code/text";
+import type { ProjectId } from "../../ipc/generated";
 import { cardQuery } from "../cardData";
 
-export function InlineCallee({ targetKey, onClose }: { readonly targetKey: string; readonly onClose: () => void }) {
+export function InlineCallee({
+  project,
+  targetKey,
+  onClose,
+}: {
+  readonly project: ProjectId;
+  readonly targetKey: string;
+  readonly onClose: () => void;
+}) {
   // The same cached model as the callee's own card, so expanding an open card costs nothing.
-  const query = useQuery(cardQuery(targetKey));
+  const query = useQuery(cardQuery(project, targetKey));
   const view = query.data?.type === "block" ? query.data : undefined;
   const code = view?.code?.source.state === "current" ? view.code.source : undefined;
   const initialFolds = useMemo(() => (code ? defaultFolds(code.outline) : []), [code]);

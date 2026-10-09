@@ -1,20 +1,17 @@
 /**
- * Board file operations (architecture §10.5, reader.md "Files"): Publish, Rename, Move back to
- * drafts, Delete, health repairs, and Mermaid export. Each first writes what is unsaved, because
- * the engine works from the version this window last saved; a changed ID (publish, rename,
- * unpublish) keeps the board's session (undo history, camera) through `adoptBoardState`.
+ * Board file operations (contract §4.6, §6.6): Publish, Discard changes, Move back to drafts, Delete,
+ * Duplicate, Move to folder, Rename, health repairs, Mermaid export, and board folders. Operations on
+ * an open board first write what is unsaved, because the engine works from the version this window
+ * last saved; an id that changes (first Publish, Move back to drafts) keeps the session (undo history,
+ * page views) and the tab.
  */
 
-import type { BoardState, RepairSpec } from "../../ipc/generated";
-import { windowCommand } from "../../ipc/unfold";
-import { call } from "./engine";
-import { adoptBoardState, applyServerState, editBoard, flushBoard, forgetBoard, getBoard } from "./store";
-import { setTitle } from "./document";
-
-/** What Publish or a file rename did: done (the board's new ID), or the name is taken. */
-export type FileOutcome =
-  | { readonly status: "done"; readonly id: string; readonly path: string }
-  | { readonly status: "name_taken"; readonly path: string; readonly suggestion: string };
+import type { BoardSummary, ExportedFile, ProjectId, PublishOutcome, RenamedFolder, RepairSpec, Resolve } from "../../ipc/generated";
+import { removeBoardTab, renameBoardTab } from "../tabStore";
+import { findPage, setTitle } from "./document";
+import { call, windowCommand } from "./engine";
+import { adoptBoardState, applyServerState, editBoard, flushBoard, forgetBoard, getOpenBoard } from "./store";
+import type { BoardRef, PageTarget } from "./types";
 
 /** A published board's folder-relative path. */
 export function publishedPath(name: string): string {
@@ -22,9 +19,9 @@ export function publishedPath(name: string): string {
 }
 
 /**
- * The file name Publish proposes for a title (reader.md "Names"): accents dropped, every other run
- * of non-alphanumeric characters one `-`, at most 80 characters, `board` when nothing is left.
- * The engine computes the same slug; this one only shows the path before publishing.
+ * The file name Publish proposes for a title: accents dropped, every other run of non-alphanumeric
+ * characters one `-`, at most 80 characters, `board` when nothing is left. The engine computes the
+ * same slug; this one only shows the path before publishing.
  */
 export function slugOf(title: string): string {
   const words = title
@@ -42,87 +39,119 @@ export function isValidName(name: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) && name.length <= 120;
 }
 
-function adopted(previous: string, state: BoardState): FileOutcome {
-  adoptBoardState(state, { replaces: previous });
-  return { status: "done", id: state.id, path: state.id };
-}
-
-/** Publishes a draft to `.unfold/boards/<name>.json` (the slug of its title when `name` is absent). */
-export async function publishBoard(id: string, name?: string): Promise<FileOutcome> {
-  await flushBoard(id);
-  const result = await call("publish_board", name !== undefined ? { id, name } : { id });
-  if (result.status === "name_taken") {
-    return result;
-  }
-  return adopted(id, result.board);
+/** Adopts a state whose id may differ from the open one, moving the session and its tab along. */
+function adoptAs(previous: BoardRef, state: Parameters<typeof adoptBoardState>[0]): BoardRef {
+  const next = adoptBoardState(state, { replaces: previous });
+  renameBoardTab(previous, next);
+  return next;
 }
 
 /**
- * Renames a board: the title is an edit like any other (one undo step, saved at once); a
- * published board's file follows the new title's slug with `rename_board`, never overwriting.
+ * Publishes a draft (`name` names its file on the first Publish) or a published board's unpublished
+ * changes (`resolve: "keep_mine"` writes them over a changed published file). On `done` the board
+ * carries on under its published id.
  */
-export async function renameBoard(id: string, title: string): Promise<FileOutcome> {
-  const trimmed = title.trim();
-  const board = getBoard(id);
-  if (!board || trimmed.length === 0) {
-    return { status: "done", id, path: id };
+export async function publishBoard(ref: BoardRef, options: { readonly name?: string; readonly resolve?: Resolve } = {}): Promise<PublishOutcome> {
+  await flushBoard(ref);
+  const result = await call("publish_board", {
+    project: ref.project,
+    id: ref.id,
+    ...(options.name !== undefined ? { name: options.name } : {}),
+    ...(options.resolve !== undefined ? { resolve: options.resolve } : {}),
+  });
+  if (result.status === "done") {
+    adoptAs(ref, result.board);
   }
-  if (board.document.title !== trimmed) {
-    editBoard(id, (document) => {
-      setTitle(document, trimmed);
-    });
-  }
-  await flushBoard(id);
-  const current = getBoard(id);
-  if (current?.place !== "published" || current.name === slugOf(trimmed)) {
-    return { status: "done", id, path: id };
-  }
-  return renamePublishedFile(id, slugOf(trimmed));
+  return result;
 }
 
-/** Renames a published board's file (never overwriting another board). */
-export async function renamePublishedFile(id: string, name: string): Promise<FileOutcome> {
-  await flushBoard(id);
-  const result = await call("rename_board", { id, name });
-  if (result.status === "name_taken") {
-    return result;
-  }
-  return adopted(id, result.board);
+/** Moves a published board back to drafts; resolves with its draft id. */
+export async function unpublishBoard(ref: BoardRef): Promise<BoardRef> {
+  await flushBoard(ref);
+  return adoptAs(ref, await call("unpublish_board", { project: ref.project, id: ref.id }));
 }
 
-/** Moves a published board back to drafts. */
-export async function unpublishBoard(id: string): Promise<string> {
-  await flushBoard(id);
-  const state = await call("unpublish_board", { id });
-  adoptBoardState(state, { replaces: id });
-  return state.id;
-}
-
-/** Deletes the board's file and closes it in this window (the caller has asked first). */
-export async function deleteBoard(id: string): Promise<void> {
+/** Deletes the board's file (the caller has asked first) and closes it in this window. */
+export async function deleteBoard(ref: BoardRef): Promise<void> {
   // Nothing may still be on its way to the file being deleted.
-  await flushBoard(id).catch(() => undefined);
-  await call("delete_board", { id });
-  forgetBoard(id);
+  await flushBoard(ref).catch(() => undefined);
+  await call("delete_board", { project: ref.project, id: ref.id });
+  forgetBoard(ref);
+  removeBoardTab(ref);
 }
 
-/** Applies one health repair (the engine saves it) and adopts the result as the saved board. */
-export async function repairBoard(id: string, repair: RepairSpec): Promise<void> {
-  await flushBoard(id);
-  const state = await call("repair_board", { id, repair });
-  applyServerState(id, state);
+/** Copies the board (its working version) into a new draft "<title> copy" in the same folder. */
+export async function duplicateBoard(ref: BoardRef): Promise<BoardSummary> {
+  if (getOpenBoard(ref)) {
+    await flushBoard(ref);
+  }
+  return call("duplicate_board", { project: ref.project, id: ref.id });
 }
 
-/** Exports the board's saved version as Mermaid through the save dialog; null when cancelled. */
-export async function exportBoardMermaid(id: string): Promise<{ path: string; bytes: number } | null> {
-  await flushBoard(id);
-  const title = getBoard(id)?.document.title;
-  return windowCommand("export_mermaid", title !== undefined ? { boardId: id, title } : { boardId: id });
+/** Moves any board, open or not, into a folder (null: the top level). The folder is Rust's (D-12). */
+export async function setBoardFolder(ref: BoardRef, folder: string | null): Promise<BoardSummary> {
+  return call("set_board_folder", { project: ref.project, id: ref.id, folder });
 }
 
-/** Puts the board's saved version on the clipboard as Mermaid. */
-export async function copyBoardMermaid(id: string): Promise<void> {
-  await flushBoard(id);
-  const { text } = await call("export_mermaid_text", { board: id });
+/** Renames an open board: the title is an edit like any other (one undo step), saved at once (D-7). */
+export async function renameBoard(ref: BoardRef, title: string): Promise<void> {
+  const trimmed = title.trim();
+  if (trimmed.length === 0 || getOpenBoard(ref)?.document.title === trimmed) {
+    return;
+  }
+  editBoard(ref, (document) => {
+    setTitle(document, trimmed);
+  });
+  await flushBoard(ref);
+}
+
+/** Applies one health repair (the engine saves it) and adopts the result as one undo step on its page. */
+export async function repairBoard(ref: BoardRef, repair: RepairSpec): Promise<void> {
+  await flushBoard(ref);
+  const state = await call("repair_board", { project: ref.project, id: ref.id, repair });
+  applyServerState(ref, state, repair.page);
+}
+
+/** The default file name of a page's export: the board's title, and the page's when there are several. */
+function exportTitle(target: PageTarget): string | undefined {
+  const document = getOpenBoard(target.board)?.document;
+  if (!document) {
+    return undefined;
+  }
+  const page = findPage(document, target.page);
+  return document.pages.length > 1 && page ? `${document.title} ${page.title}` : document.title;
+}
+
+/** Exports a page's saved version as Mermaid through the save dialog; null when cancelled. */
+export async function exportPageMermaid(target: PageTarget): Promise<ExportedFile | null> {
+  await flushBoard(target.board);
+  const title = exportTitle(target);
+  return windowCommand("export_mermaid", {
+    project: target.board.project,
+    board: target.board.id,
+    page: target.page,
+    ...(title !== undefined ? { title } : {}),
+  });
+}
+
+/** Puts a page's saved version on the clipboard as Mermaid. */
+export async function copyPageMermaid(target: PageTarget): Promise<void> {
+  await flushBoard(target.board);
+  const { text } = await call("export_mermaid_text", { project: target.board.project, board: { id: target.board.id, page: target.page } });
   await windowCommand("copy_to_clipboard", { text });
+}
+
+/** Adds an empty board folder (a no-op when it exists). */
+export async function createFolder(project: ProjectId, path: string): Promise<void> {
+  await call("create_folder", { project, path });
+}
+
+/** Renames a board folder, moving the boards at or under it. */
+export async function renameFolder(project: ProjectId, from: string, to: string): Promise<RenamedFolder> {
+  return call("rename_folder", { project, from, to });
+}
+
+/** Deletes an empty board folder (`folder_not_empty` otherwise). */
+export async function deleteFolder(project: ProjectId, path: string): Promise<void> {
+  await call("delete_folder", { project, path });
 }

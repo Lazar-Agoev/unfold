@@ -102,7 +102,7 @@ export function installFakeEngine({ handlers = {}, streams = {}, windowHandlers 
     }) as UnfoldApi["window"],
     // Rejections are plain {code, message} data, as from the real preload.
     // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
-    openDroppedFolder: () => Promise.reject({ code: "invalid_command", message: "No drops in tests." }),
+    addDroppedFolder: () => Promise.reject({ code: "invalid_command", message: "No drops in tests." }),
   };
 
   Object.defineProperty(window, "unfold", { configurable: true, value: api });

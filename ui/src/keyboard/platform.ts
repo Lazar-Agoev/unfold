@@ -1,7 +1,7 @@
 /** The platform the window runs on, which decides ⌘ versus Ctrl (architecture §11.7). */
 
 import type { WindowInfo } from "../ipc/unfold";
-import { useWindow } from "../state/window";
+import { useWindowStore } from "../state/window";
 
 export type Platform = WindowInfo["platform"];
 
@@ -16,10 +16,10 @@ function browserPlatform(): Platform {
 
 /** The platform now, for code outside React (the shortcut dispatcher). */
 export function currentPlatform(): Platform {
-  return useWindow.getState().info?.platform ?? browserPlatform();
+  return useWindowStore.getState().info?.platform ?? browserPlatform();
 }
 
 /** The platform, kept current. */
 export function usePlatform(): Platform {
-  return useWindow((state) => state.info?.platform ?? null) ?? browserPlatform();
+  return useWindowStore((state) => state.info?.platform ?? null) ?? browserPlatform();
 }

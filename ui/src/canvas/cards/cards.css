@@ -7,7 +7,7 @@
   min-width: 360px;
   max-width: 880px;
   border: 1px solid var(--color-contour);
-  border-radius: var(--radius-large);
+  border-radius: var(--radius-card);
   background: var(--color-surface);
   box-shadow: 0 1px 2px rgb(20 24 40 / 0.06);
   color: var(--color-text);
@@ -29,11 +29,11 @@
   min-height: 44px;
   padding: 6px 12px 6px 8px;
   border-bottom: 1px solid var(--color-border);
-  border-radius: var(--radius-large) var(--radius-large) 0 0;
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
   cursor: grab;
 }
 
-.board-card.folded .card-header { border-bottom-color: transparent; border-radius: var(--radius-large); }
+.board-card.folded .card-header { border-bottom-color: transparent; border-radius: var(--radius-card); }
 
 .card-fold {
   display: grid;
@@ -41,7 +41,7 @@
   width: 18px;
   height: 18px;
   flex-shrink: 0;
-  border-radius: var(--radius-small);
+  border-radius: var(--radius-chip);
   color: var(--color-muted);
 }
 
@@ -120,7 +120,7 @@
 .card-more {
   flex-shrink: 0;
   color: var(--color-accent-text);
-  font-size: var(--font-size-tiny);
+  font-size: var(--text-11);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -166,7 +166,7 @@
 
 .ecard-kind {
   padding: 1px 6px;
-  border-radius: var(--radius-small);
+  border-radius: var(--radius-chip);
   background: var(--color-selection);
   color: var(--color-accent-text);
   font: 600 10px/14px var(--font-code);
@@ -183,7 +183,7 @@
   text-overflow: ellipsis;
 }
 
-.ecard-label { padding: 8px 14px 0; font-size: var(--font-size-small); }
+.ecard-label { padding: 8px 14px 0; font-size: var(--text-12); }
 
 .ecard-evidence { padding: 6px 0 0; border-bottom: 1px solid var(--color-border); }
 .ecard-evidence .code-view { padding-top: 2px; }
@@ -238,6 +238,6 @@
 }
 
 .ecard-target > .code-link.resolved { color: var(--color-syntax-function); }
-.ecard-apps { padding: 0 14px 10px; font-size: var(--font-size-tiny); color: var(--color-muted); }
+.ecard-apps { padding: 0 14px 10px; font-size: var(--text-11); color: var(--color-muted); }
 
-.inline-callee { background: var(--color-surface); border-radius: var(--radius); }
+.inline-callee { background: var(--color-surface); border-radius: var(--radius-control); }

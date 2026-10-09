@@ -5,14 +5,16 @@
  */
 
 import type { MouseEvent, ReactNode } from "react";
+import { useScopeProject } from "../canvas/ProjectScope";
 import { HoverCard, Tooltip } from "../components";
 import type { CallLink as CallLinkModel, Peek } from "../ipc/generated";
 import { useEngineQuery } from "../ipc/queries";
 import { linkNote, shortPath } from "./text";
 
-/** The hover's content: the target's first written line (its signature) and location. */
+/** The hover's content: the target's first written line (its signature) and location, in the enclosing card's project. */
 export function PeekContent({ targetKey, hint = "Click to open · ⌥-click to expand inline" }: { readonly targetKey: string; readonly hint?: string }) {
-  const peek = useEngineQuery("peek", { key: targetKey });
+  const project = useScopeProject();
+  const peek = useEngineQuery("peek", { project: project ?? "", key: targetKey }, { enabled: project !== null });
   return <PeekBody peek={peek.data} failed={peek.isError} hint={hint} />;
 }
 

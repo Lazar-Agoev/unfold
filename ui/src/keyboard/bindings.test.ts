@@ -51,6 +51,13 @@ describe("shortcutFromEvent", () => {
     expect(shortcutFromEvent(keydown({ key: "k", code: "KeyK", metaKey: true }), "win32")).toBeNull();
   });
 
+  it("records Shift with brackets, minus, and comma by physical key (V-75)", () => {
+    expect(shortcutFromEvent(keydown({ key: "}", code: "BracketRight", metaKey: true, shiftKey: true }), "darwin")).toBe("Mod+Shift+]");
+    expect(shortcutFromEvent(keydown({ key: "_", code: "Minus", ctrlKey: true, shiftKey: true }), "win32")).toBe("Mod+Shift+-");
+    expect(shortcutFromEvent(keydown({ key: "+", code: "Equal", metaKey: true, shiftKey: true }), "darwin")).toBe("Mod+Shift+Plus");
+    expect(shortcutFromEvent(keydown({ key: "]", code: "BracketRight", metaKey: true }), "darwin")).toBe("Mod+]");
+  });
+
   it("reads the physical key when ⌥ changes the character, and waits while only modifiers are down", () => {
     expect(shortcutFromEvent(keydown({ key: "∫", code: "KeyB", altKey: true, metaKey: true }), "darwin")).toBe("Mod+Alt+B");
     expect(shortcutFromEvent(keydown({ key: "!", code: "Digit1", shiftKey: true }), "darwin")).toBe("Shift+1");
@@ -61,13 +68,20 @@ describe("shortcutFromEvent", () => {
 
 describe("parseKeyBindings", () => {
   it("keeps valid entries, normalized, and an empty string as no shortcut", () => {
-    const overrides = parseKeyBindings({ [ActionIds.toggleSidebar]: "mod+k", [ActionIds.focusSearch]: "" });
-    expect(serializeKeyBindings(overrides)).toEqual({ [ActionIds.focusSearch]: "", [ActionIds.toggleSidebar]: "Mod+K" });
+    const overrides = parseKeyBindings({ [ActionIds.toggleSidebar]: "mod+j", [ActionIds.removeProject]: "" });
+    expect(serializeKeyBindings(overrides)).toEqual({ [ActionIds.removeProject]: "", [ActionIds.toggleSidebar]: "Mod+J" });
   });
 
-  it("ignores unknown ids, unparseable shortcuts, and junk without throwing", () => {
+  it("ignores unknown ids, V1 ids, unparseable shortcuts, and junk without throwing", () => {
     expect(
-      parseKeyBindings({ "nope.action": "Mod+K", [ActionIds.compile]: "Mod+Banana", [ActionIds.undo]: 7, [ActionIds.redo]: "Mod+" }).size,
+      parseKeyBindings({
+        "nope.action": "Mod+K",
+        "view.toggleInspector": "Mod+I",
+        "workbench.commandPalette": "Mod+Shift+P",
+        [ActionIds.compile]: "Mod+Banana",
+        [ActionIds.undo]: 7,
+        [ActionIds.redo]: "Mod+",
+      }).size,
     ).toBe(0);
     for (const raw of [null, undefined, "Mod+K", 42, ["Mod+K"]]) {
       expect(parseKeyBindings(raw).size).toBe(0);
@@ -109,13 +123,13 @@ describe("registry with key bindings", () => {
     const listener = vi.fn();
     registry.subscribe(listener);
 
-    bindings.set({ [ActionIds.toggleSidebar]: "mod+k" });
+    bindings.set({ [ActionIds.toggleSidebar]: "mod+j" });
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(registry.get(ActionIds.toggleSidebar)?.shortcuts).toEqual(["Mod+K"]);
+    expect(registry.get(ActionIds.toggleSidebar)?.shortcuts).toEqual(["Mod+J"]);
     expect(dispatchShortcut(keydown({ key: "b", metaKey: true }), registry, mac)).toBeNull();
-    expect(dispatchShortcut(keydown({ key: "k", metaKey: true }), registry, mac)).toBe(ActionIds.toggleSidebar);
+    expect(dispatchShortcut(keydown({ key: "j", metaKey: true }), registry, mac)).toBe(ActionIds.toggleSidebar);
 
-    bindings.set({ [ActionIds.toggleSidebar]: "Mod+K" });
+    bindings.set({ [ActionIds.toggleSidebar]: "Mod+J" });
     expect(listener).toHaveBeenCalledTimes(1);
 
     bindings.set({});
@@ -126,19 +140,19 @@ describe("registry with key bindings", () => {
   it("lets a binding win over a view's own shortcuts, and unbinds with an empty string", () => {
     const bindings = createKeyBindings();
     const registry = createActionRegistry({ bindings });
-    registry.register({ id: ActionIds.toggleInspector, title: "Toggle Inspector", category: "View", shortcuts: ["Mod+I"], run: vi.fn() });
-    bindings.set({ [ActionIds.toggleInspector]: "" });
-    expect(registry.get(ActionIds.toggleInspector)?.shortcuts).toEqual([]);
+    registry.register({ id: ActionIds.add, title: "Add…", category: "Go", shortcuts: ["Mod+I", "/"], run: vi.fn() });
+    bindings.set({ [ActionIds.add]: "" });
+    expect(registry.get(ActionIds.add)?.shortcuts).toEqual([]);
     expect(dispatchShortcut(keydown({ key: "i", metaKey: true }), registry, mac)).toBeNull();
-    expect(dispatchShortcut(keydown({ key: "]" }), registry, mac)).toBeNull();
+    expect(dispatchShortcut(keydown({ key: "/" }), registry, mac)).toBeNull();
   });
 
   it("answers effective shortcuts for unregistered ids (tooltips before a view mounts)", () => {
     const bindings = createKeyBindings();
     const registry = createActionRegistry({ bindings });
-    expect(registry.shortcutsFor(ActionIds.fitBoard)).toEqual(["Shift+1"]);
-    bindings.set({ [ActionIds.fitBoard]: "Shift+F" });
-    expect(registry.shortcutsFor(ActionIds.fitBoard)).toEqual(["Shift+F"]);
-    expect(shortcutLabel("darwin", registry.shortcutsFor(ActionIds.fitBoard)[0] ?? "")).toBe("⇧F");
+    expect(registry.shortcutsFor(ActionIds.fit)).toEqual(["Shift+1"]);
+    bindings.set({ [ActionIds.fit]: "Shift+F" });
+    expect(registry.shortcutsFor(ActionIds.fit)).toEqual(["Shift+F"]);
+    expect(shortcutLabel("darwin", registry.shortcutsFor(ActionIds.fit)[0] ?? "")).toBe("⇧F");
   });
 });

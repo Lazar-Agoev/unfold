@@ -101,6 +101,19 @@ export function normalizeShortcut(text: string): string | null {
   return [...MODIFIER_ORDER.filter((modifier) => modifiers.has(modifier)), key].join("+");
 }
 
+/**
+ * Punctuation that Shift turns into another character (`]` into `}` on US layouts). With Shift, these
+ * match and record by physical key, so `Mod+Shift+]` works on every layout (V-75).
+ */
+const PHYSICAL_KEYS: ReadonlyMap<string, string> = new Map([
+  ["[", "BracketLeft"],
+  ["]", "BracketRight"],
+  ["=", "Equal"],
+  ["-", "Minus"],
+  [",", "Comma"],
+]);
+const KEYS_BY_CODE: ReadonlyMap<string, string> = new Map([...PHYSICAL_KEYS].map(([key, code]) => [code, key]));
+
 /** What a recorded key event reads (so tests can pass plain objects). */
 export type RecordableKey = KeyLike;
 
@@ -128,6 +141,10 @@ function recordedKey(event: RecordableKey): string | null {
   }
   if (event.key === "+") {
     return "Plus";
+  }
+  const physical = KEYS_BY_CODE.get(event.code);
+  if (event.shiftKey && physical !== undefined) {
+    return physical;
   }
   if (event.key.length === 1) {
     return event.key.toUpperCase();
@@ -178,7 +195,7 @@ export type KeyLike = Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey"
 /**
  * Letters and digits match by the character typed, so shortcuts follow the user's layout; when a
  * modifier changes the character (⌥ on macOS, Shift on digits, a non-Latin layout), they fall back to
- * the physical key.
+ * the physical key. So do `[ ] = - ,` when Shift changes them.
  */
 function keyMatches(event: KeyLike, key: string): boolean {
   const typed = event.key.length === 1 ? event.key.toLowerCase() : event.key;
@@ -187,6 +204,10 @@ function keyMatches(event: KeyLike, key: string): boolean {
   }
   if (/^[0-9]$/.test(key)) {
     return /^[0-9]$/.test(typed) ? typed === key : event.code === `Digit${key}`;
+  }
+  const code = PHYSICAL_KEYS.get(key);
+  if (code !== undefined && event.shiftKey && typed !== key) {
+    return event.code === code;
   }
   return typed === key;
 }

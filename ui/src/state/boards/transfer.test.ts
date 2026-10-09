@@ -1,26 +1,19 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { BoardDocument, BoardState } from "../../ipc/generated";
-import { useTabs } from "../tabs";
+import type { BoardDocument } from "../../ipc/generated";
 import { installFakeEngine, type FakeEngine } from "../../test/engine";
+import { boardDocument, boardState, page } from "../../test/workspace";
+import { useTabs } from "../tabStore";
 import * as store from "./store";
 import { installTransferReceiver, moveBoardToNewWindow, parseSession, resetTransfers, setTransfersReady } from "./transfer";
 import type { BoardSession } from "./types";
 
+const P = "p-orders0000";
 const ID = ".unfold/local/drafts/orders.json";
+const REF = { project: P, id: ID };
 
-function boardState(title = "Orders"): BoardState {
-  const document: BoardDocument = { format: "unfold-board", version: 1, title, defaultView: "code", cards: [], groups: [], labels: {}, guards: {} };
-  return {
-    id: ID,
-    place: "draft",
-    name: "orders",
-    document,
-    revision: "r1",
-    health: { items: [], missing: 0, outdated: 0, brokenGroups: 0, review: 0 },
-    outline: { rows: [], unlabeled: [] },
-    label: null,
-  };
+function documentTitled(title: string): BoardDocument {
+  return boardDocument([page("page-1"), page("page-2")], { title });
 }
 
 let engine: FakeEngine;
@@ -28,7 +21,7 @@ let engine: FakeEngine;
 beforeEach(() => {
   store.resetBoards();
   resetTransfers();
-  useTabs.setState({ tabs: [], activeId: null });
+  useTabs.setState({ boards: [], active: "home" });
 });
 
 afterEach(() => {
@@ -38,58 +31,77 @@ afterEach(() => {
 });
 
 describe("Move to New Window", () => {
-  it("opens a window, hands it the claim, then the session with its undo history, and forgets the board", async () => {
+  it("opens a window, hands it the claim, then the session with its history and views, and forgets the board", async () => {
     engine = installFakeEngine({
-      handlers: { save_board: ({ board }) => ({ ...boardState(), document: board, revision: "r2" }), move_board: () => null },
+      handlers: {
+        save_board: ({ board }) => boardState(P, ID, { ...documentTitled(board.title), pages: board.pages as BoardDocument["pages"] }, { revision: "r2" }),
+        save_board_view: () => null,
+        move_board: () => null,
+      },
       windowHandlers: { move_tab_to_new_window: () => ({ windowId: 2 }) },
     });
-    store.adoptBoardState(boardState());
-    store.editBoard(ID, (document) => {
+    store.adoptBoardState(boardState(P, ID, documentTitled("Orders")));
+    useTabs.setState({ boards: [REF], active: `${P}\u0000${ID}` });
+    store.setActivePage(REF, "page-2");
+    store.setCamera({ board: REF, page: "page-2" }, { x: 1, y: 2, zoom: 0.5 });
+    store.editBoard(REF, (document) => {
       document.title = "Order placement";
     });
-    await moveBoardToNewWindow(ID);
+    await moveBoardToNewWindow(REF);
 
     expect(engine.windowCalls.map((entry) => entry.command)).toEqual(["move_tab_to_new_window", "transfer_board_state"]);
     // Saved first, so nothing is on its way when the claim moves.
-    expect(engine.calls.map((entry) => entry.command)).toEqual(["save_board", "move_board"]);
-    expect(engine.callsOf("move_board")).toEqual([{ id: ID, toWindow: 2 }]);
+    expect(engine.calls.map((entry) => entry.command).sort()).toEqual(["move_board", "save_board", "save_board_view"]);
+    expect(engine.callsOf("move_board")).toEqual([{ project: P, id: ID, toWindow: 2 }]);
     const transfer = engine.windowCalls[1]?.args as { toWindow: number; payload: BoardSession };
     expect(transfer.toWindow).toBe(2);
     expect(transfer.payload.document.title).toBe("Order placement");
-    expect(transfer.payload.history.past.map((document) => document.title)).toEqual(["Orders"]);
-    expect(store.getBoard(ID)).toBeUndefined();
+    expect(transfer.payload.history.past.map((entry) => [entry.document.title, entry.page])).toEqual([["Orders", "page-2"]]);
+    expect(transfer.payload.activePage).toBe("page-2");
+    expect(transfer.payload.pages["page-2"]).toEqual({ camera: { x: 1, y: 2, zoom: 0.5 }, lens: null });
+    expect(store.getOpenBoard(REF)).toBeUndefined();
+    expect(useTabs.getState()).toEqual({ boards: [], active: "home" });
   });
 
-  it("adopts a moved board once the window is restored, with its history, and opens its tab", () => {
-    engine = installFakeEngine({ handlers: { save_board: ({ board }) => ({ ...boardState(), document: board }) } });
+  it("adopts a moved board once the window is restored, with its history and views, and saves its unsaved edits", async () => {
+    engine = installFakeEngine({ handlers: { save_board: ({ board }) => boardState(P, ID, { ...documentTitled(board.title), pages: board.pages as BoardDocument["pages"] }) } });
     installTransferReceiver();
     setTransfersReady(false);
     const session: BoardSession = {
-      state: boardState("Order placement"),
-      document: boardState("Order placement").document,
-      history: { past: [boardState("Orders").document], future: [] },
+      state: boardState(P, ID, documentTitled("Orders")),
+      document: documentTitled("Order placement"),
+      history: { past: [{ document: documentTitled("Orders"), page: "page-2" }], future: [] },
+      activePage: "page-2",
+      pages: { "page-2": { camera: { x: 1, y: 2, zoom: 0.5 }, lens: "flow" } },
     };
     // Structured cloning, as the main process delivers it.
     engine.emit({ type: "board_state_transferred", fromWindow: 1, payload: structuredClone(session) });
-    expect(store.getBoard(ID)).toBeUndefined();
+    expect(store.getOpenBoard(REF)).toBeUndefined();
 
     setTransfersReady(true);
-    expect(store.getBoard(ID)?.document.title).toBe("Order placement");
-    expect(useTabs.getState().activeId).toBe(`board:${ID}`);
-    expect(store.canUndo(ID)).toBe(true);
-    store.undo(ID);
-    expect(store.getBoard(ID)?.document.title).toBe("Orders");
+    const board = store.getOpenBoard(REF);
+    expect(board?.document.title).toBe("Order placement");
+    expect(board?.activePage).toBe("page-2");
+    expect(board?.pages["page-2"]).toMatchObject({ camera: { x: 1, y: 2, zoom: 0.5 }, lens: "flow" });
+    expect(board && store.isDirty(board)).toBe(true);
+    expect(useTabs.getState().active).toBe(`${P}\u0000${ID}`);
+    await store.flushBoard(REF);
+    expect(engine.callsOf("save_board")).toHaveLength(1);
+    store.undo(REF);
+    expect(store.getOpenBoard(REF)?.document.title).toBe("Orders");
 
     // Later sessions are adopted at once; malformed ones are ignored.
     engine.emit({ type: "board_state_transferred", fromWindow: 1, payload: { state: { id: 3 } } });
-    expect(store.useBoards.getState().order).toEqual([ID]);
+    expect(useTabs.getState().boards).toEqual([REF]);
   });
 
   it("recognizes only well-formed sessions", () => {
-    const valid = { state: boardState(), document: boardState().document, history: { past: [], future: [] } };
+    const valid = { state: boardState(P, ID), document: boardDocument(), history: { past: [], future: [] }, activePage: "page-1", pages: {} };
     expect(parseSession(valid)).not.toBeNull();
-    expect(parseSession({ ...valid, history: { past: [{}], future: [] } })).toBeNull();
+    expect(parseSession({ ...valid, history: { past: [{ document: boardDocument() }], future: [] } })).toBeNull();
+    expect(parseSession({ ...valid, history: { past: [boardDocument()], future: [] } })).toBeNull();
     expect(parseSession(null)).toBeNull();
-    expect(parseSession({ ...valid, document: { format: "codegraph-board" } })).toBeNull();
+    expect(parseSession({ ...valid, document: { format: "unfold-board", version: 1, cards: [] } })).toBeNull();
+    expect(parseSession({ ...valid, state: { ...valid.state, project: 1 } })).toBeNull();
   });
 });

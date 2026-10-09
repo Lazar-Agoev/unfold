@@ -1,6 +1,6 @@
 /**
- * An entrance card (architecture §10.2): the declared entrance, its evidence, and its targets in
- * registration order, without numbers. A resolved target follows like a call; its arrow leaves from
+ * An entrance card: the declared entrance, its evidence, and its targets in registration order,
+ * without numbers. A resolved target follows like a call; its arrow leaves from
  * its row.
  */
 
@@ -11,14 +11,20 @@ import { useLayoutEffect, useMemo, useState } from "react";
 import { CodeView } from "../../code/CodeView";
 import { defaultFolds } from "../../code/outline";
 import { reasonText, shortPath } from "../../code/text";
-import type { Card, CardView, TargetView } from "../../ipc/generated";
-import { entranceTitle } from "../../state/boards/api";
-import { keyDisplayName, setCardsFolded } from "../../state/boards/document";
-import { followCall, lineOffsetIn } from "../../state/boards/navigation";
-import { editBoard, selectCard } from "../../state/boards/store";
-import { select } from "../../state/selection";
+import type { Card, CardView, ProjectId, TargetView } from "../../ipc/generated";
+import {
+  editPage,
+  entranceTitle,
+  followCall,
+  keyDisplayName,
+  lineOffsetIn,
+  select,
+  setCardsFolded,
+  type PageTarget,
+} from "../../state/boards";
 import { targetHandle } from "../arrows";
 import { cardQuery, isMissing } from "../cardData";
+import { ProjectScope } from "../ProjectScope";
 import { useMeasure } from "../measure";
 import { entranceCardWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";
@@ -27,7 +33,9 @@ import { DescriptionLine, FoldToggle, HeaderPorts, TargetHandle } from "./parts"
 type EntranceModel = Extract<CardView, { type: "entrance" }>;
 
 export interface EntranceCardProps {
-  readonly boardId: string;
+  readonly target: PageTarget;
+  /** The project the card resolves to. */
+  readonly project: ProjectId;
   readonly card: Card & { readonly ref: { readonly entrance: string } };
   readonly ports: readonly string[];
   readonly selected: boolean;
@@ -130,14 +138,14 @@ function Evidence({ model }: { readonly model: EntranceModel }) {
   );
 }
 
-export function EntranceCard({ boardId, card, ports, selected }: EntranceCardProps) {
+export function EntranceCard({ target, project, card, ports, selected }: EntranceCardProps) {
   const key = card.ref.entrance;
-  const query = useQuery(cardQuery(key));
+  const query = useQuery(cardQuery(project, key));
   const model = query.data?.type === "entrance" ? query.data : undefined;
   const measure = useMeasure();
   const updateNodeInternals = useUpdateNodeInternals();
   const folded = card.folded === true;
-  const menu = useCardMenu(boardId, card.id, key, folded);
+  const menu = useCardMenu(target, project, card.id, folded);
   const title = model ? entranceTitle(model) : keyDisplayName(key);
   const portSet = useMemo(() => new Set(ports), [ports]);
 
@@ -155,21 +163,20 @@ export function EntranceCard({ boardId, card, ports, selected }: EntranceCardPro
   }, [updateNodeInternals, card.id, portsKey, folded, width, model]);
 
   const toggleFolded = () => {
-    editBoard(boardId, (document) => {
-      setCardsFolded(document, [card.id], !folded);
+    editPage(target, (page) => {
+      setCardsFolded(page, [card.id], !folded);
     });
   };
-  const follow = (target: string, anchor: HTMLElement) => {
+  const follow = (handler: string, anchor: HTMLElement) => {
     const offset = lineOffsetIn(anchor);
     followCall({
-      boardId,
+      target,
       fromCardId: card.id,
       fromLabel: title,
-      targetKey: target,
-      targetLabel: keyDisplayName(target),
+      targetKey: handler,
+      targetLabel: keyDisplayName(handler),
       ...(offset !== undefined ? { lineOffset: offset } : {}),
     });
-    select({ key: target });
   };
   const header = model?.header;
   const missing = query.isError && isMissing(query.error);
@@ -182,8 +189,7 @@ export function EntranceCard({ boardId, card, ports, selected }: EntranceCardPro
       style={{ width }}
       aria-label={title}
       onClick={() => {
-        selectCard(boardId, card.id);
-        select({ key });
+        select(target, { kind: "card", cardId: card.id, key: null });
       }}
       onContextMenu={menu.onContextMenu}
     >
@@ -202,6 +208,7 @@ export function EntranceCard({ boardId, card, ports, selected }: EntranceCardPro
         <>
           <DescriptionLine description={card.description} />
           <div className="card-body nodrag nopan">
+            <ProjectScope.Provider value={project}>
             {query.isPending ? <p className="card-note">Loading…</p> : null}
             {query.isError ? (
               <p className="card-note warn">
@@ -226,6 +233,7 @@ export function EntranceCard({ boardId, card, ports, selected }: EntranceCardPro
                 ) : null}
               </>
             ) : null}
+            </ProjectScope.Provider>
           </div>
         </>
       )}

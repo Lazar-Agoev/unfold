@@ -1,5 +1,5 @@
 /**
- * Modal layers (dialogs, the command palette). While one is open, window shortcuts stay quiet so a
+ * Modal layers (Add, every dialog). While one is open, window shortcuts stay quiet so a
  * key never acts on the view behind the modal.
  */
 

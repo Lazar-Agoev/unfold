@@ -1,188 +1,161 @@
 /**
- * Per-window layout state: which sidebar view shows, which panes are open, and how big they are.
- * Each window is its own renderer, so a module-level store is per window.
- *
- * Persistence (to `.unfold/local/state.json` through Rust) goes through `layoutSnapshot`,
- * `applyLayoutSnapshot`, and `subscribeToLayout`: the snapshot is plain JSON with only what should
- * come back when the window reopens.
+ * The window's layout (UI plan §3.9, V-79): the sidebar's width and visibility, the Selected section's
+ * collapse, the peek sheet's pin, Home's view and boards filter, and the expanded sidebar folders. It
+ * is saved with the window (`windows.json` `layout`) as plain JSON; the board lens is not part of it
+ * (it is per page, V-55).
  */
 
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
+import type { ProjectId } from "../ipc/generated";
 
-export type SidebarView = "files" | "entrances" | "search" | "boards";
-export type PanelTab = "problems" | "index_log" | "references";
-export type Pane = "sidebar" | "inspector" | "panel";
+export type HomeView = "overview" | "health" | "activity" | "recents" | "drafts";
+export type BoardsFilter = "all" | "published" | "drafts";
+export type BoardsSort = "edited" | "title";
 
-/** Min, max, and initial size of each pane in CSS pixels (widths for the side panes, height for the panel). */
-export const PANE_BOUNDS: Readonly<Record<Pane, { readonly min: number; readonly max: number; readonly initial: number }>> = {
-  sidebar: { min: 180, max: 640, initial: 260 },
-  inspector: { min: 240, max: 640, initial: 300 },
-  panel: { min: 96, max: 720, initial: 200 },
+export interface WindowLayout {
+  readonly v: 1;
+  readonly sidebar: { readonly width: number; readonly visible: boolean };
+  readonly selectedCollapsed: boolean;
+  readonly peek: { readonly pinned: boolean };
+  readonly home: { readonly view: HomeView; readonly boardsFilter: BoardsFilter; readonly boardsSort: BoardsSort };
+  /** Expanded sidebar folders, as `folderKey(project, path)`, oldest first. */
+  readonly folders: readonly string[];
+}
+
+/** The sidebar's width bounds and default, in CSS pixels. */
+export const SIDEBAR_WIDTH = { min: 220, max: 360, initial: 264 } as const;
+
+/** At most this many expanded folders are remembered (the oldest are forgotten). */
+const FOLDERS_LIMIT = 500;
+
+export const initialLayout: WindowLayout = {
+  v: 1,
+  sidebar: { width: SIDEBAR_WIDTH.initial, visible: true },
+  selectedCollapsed: false,
+  peek: { pinned: false },
+  home: { view: "overview", boardsFilter: "all", boardsSort: "edited" },
+  folders: [],
 };
 
-export interface PaneSizes {
-  readonly sidebar: number;
-  readonly inspector: number;
-  readonly panel: number;
+export const useLayout = create<WindowLayout>()(immer(() => initialLayout));
+
+/** The key of a sidebar folder in `WindowLayout.folders`. */
+export function folderKey(project: ProjectId, path: string): string {
+  return `${project}\u0000${path}`;
 }
 
-export interface LayoutState {
-  view: SidebarView;
-  sidebarVisible: boolean;
-  /** Closed by default (architecture §11.5). */
-  inspectorOpen: boolean;
-  panelOpen: boolean;
-  panelTab: PanelTab;
-  sizes: PaneSizes;
+function clampWidth(width: number): number {
+  return Number.isFinite(width) ? Math.round(Math.min(SIDEBAR_WIDTH.max, Math.max(SIDEBAR_WIDTH.min, width))) : SIDEBAR_WIDTH.initial;
 }
 
-export interface LayoutActions {
-  /**
-   * Shows a sidebar view. With `toggle` (clicking the active activity-bar icon), showing the view
-   * that is already visible hides the sidebar instead.
-   */
-  showView: (view: SidebarView, options?: { toggle?: boolean }) => void;
-  toggleSidebar: () => void;
-  toggleInspector: () => void;
-  togglePanel: () => void;
-  showPanelTab: (tab: PanelTab) => void;
-  /** Sets a pane's size, clamped to its bounds. */
-  setPaneSize: (pane: Pane, size: number) => void;
-  resetPaneSize: (pane: Pane) => void;
-}
-
-export const initialLayout: LayoutState = {
-  view: "files",
-  sidebarVisible: true,
-  inspectorOpen: false,
-  panelOpen: true,
-  panelTab: "problems",
-  sizes: {
-    sidebar: PANE_BOUNDS.sidebar.initial,
-    inspector: PANE_BOUNDS.inspector.initial,
-    panel: PANE_BOUNDS.panel.initial,
-  },
-};
-
-function clampPane(pane: Pane, size: number): number {
-  const { min, max, initial } = PANE_BOUNDS[pane];
-  return Number.isFinite(size) ? Math.round(Math.min(max, Math.max(min, size))) : initial;
-}
-
-export const createLayoutStore = (initial: LayoutState = initialLayout) =>
-  create<LayoutState & LayoutActions>()(
-    immer((set) => ({
-      ...initial,
-      showView: (view, options) => {
-        set((state) => {
-          if (options?.toggle && state.view === view && state.sidebarVisible) {
-            state.sidebarVisible = false;
-          } else {
-            state.view = view;
-            state.sidebarVisible = true;
-          }
-        });
-      },
-      toggleSidebar: () => {
-        set((state) => {
-          state.sidebarVisible = !state.sidebarVisible;
-        });
-      },
-      toggleInspector: () => {
-        set((state) => {
-          state.inspectorOpen = !state.inspectorOpen;
-        });
-      },
-      togglePanel: () => {
-        set((state) => {
-          state.panelOpen = !state.panelOpen;
-        });
-      },
-      showPanelTab: (tab) => {
-        set((state) => {
-          state.panelTab = tab;
-          state.panelOpen = true;
-        });
-      },
-      setPaneSize: (pane, size) => {
-        set((state) => {
-          state.sizes[pane] = clampPane(pane, size);
-        });
-      },
-      resetPaneSize: (pane) => {
-        set((state) => {
-          state.sizes[pane] = PANE_BOUNDS[pane].initial;
-        });
-      },
-    })),
-  );
-
-export type LayoutStore = ReturnType<typeof createLayoutStore>;
-
-export const useLayout = createLayoutStore();
-
-/** The persisted part of the layout, as plain JSON. */
-export interface LayoutSnapshot {
-  readonly view: SidebarView;
-  readonly sidebarVisible: boolean;
-  readonly inspectorOpen: boolean;
-  readonly panelOpen: boolean;
-  readonly panelTab: PanelTab;
-  readonly sizes: PaneSizes;
-}
-
-export function layoutSnapshot(store: LayoutStore = useLayout): LayoutSnapshot {
-  const { view, sidebarVisible, inspectorOpen, panelOpen, panelTab, sizes } = store.getState();
-  return { view, sidebarVisible, inspectorOpen, panelOpen, panelTab, sizes: { ...sizes } };
-}
-
-const VIEWS: readonly SidebarView[] = ["files", "entrances", "search", "boards"];
-const PANEL_TABS: readonly PanelTab[] = ["problems", "index_log", "references"];
-
-/**
- * Restores a saved layout. The input comes from disk, so every field is checked: unknown or
- * malformed fields keep their current values, and sizes are clamped to the pane bounds.
- */
-export function applyLayoutSnapshot(saved: unknown, store: LayoutStore = useLayout): void {
-  if (typeof saved !== "object" || saved === null) {
-    return;
-  }
-  const value = saved as Partial<Record<keyof LayoutSnapshot, unknown>>;
-  const sizes = (typeof value.sizes === "object" && value.sizes !== null ? value.sizes : {}) as Partial<
-    Record<Pane, unknown>
-  >;
-  store.setState((state) => {
-    if (VIEWS.includes(value.view as SidebarView)) {
-      state.view = value.view as SidebarView;
-    }
-    if (PANEL_TABS.includes(value.panelTab as PanelTab)) {
-      state.panelTab = value.panelTab as PanelTab;
-    }
-    for (const key of ["sidebarVisible", "inspectorOpen", "panelOpen"] as const) {
-      const flag = value[key];
-      if (typeof flag === "boolean") {
-        state[key] = flag;
-      }
-    }
-    for (const pane of ["sidebar", "inspector", "panel"] as const) {
-      const size = sizes[pane];
-      if (typeof size === "number") {
-        state.sizes[pane] = clampPane(pane, size);
-      }
-    }
+export function setSidebarWidth(px: number): void {
+  useLayout.setState((state) => {
+    state.sidebar.width = clampWidth(px);
   });
 }
 
-/** Calls `onChange` with a fresh snapshot whenever the persisted part of the layout changes. */
-export function subscribeToLayout(onChange: (snapshot: LayoutSnapshot) => void, store: LayoutStore = useLayout): () => void {
-  let previous = JSON.stringify(layoutSnapshot(store));
-  return store.subscribe(() => {
-    const snapshot = layoutSnapshot(store);
-    const serialized = JSON.stringify(snapshot);
-    if (serialized !== previous) {
-      previous = serialized;
-      onChange(snapshot);
+export function toggleSidebar(): void {
+  useLayout.setState((state) => {
+    state.sidebar.visible = !state.sidebar.visible;
+  });
+}
+
+export function setSelectedCollapsed(collapsed: boolean): void {
+  useLayout.setState((state) => {
+    state.selectedCollapsed = collapsed;
+  });
+}
+
+export function setPeekPinned(pinned: boolean): void {
+  useLayout.setState((state) => {
+    state.peek.pinned = pinned;
+  });
+}
+
+export function setHomeView(view: HomeView): void {
+  useLayout.setState((state) => {
+    state.home.view = view;
+  });
+}
+
+export function setBoardsFilter(filter: BoardsFilter): void {
+  useLayout.setState((state) => {
+    state.home.boardsFilter = filter;
+  });
+}
+
+export function setBoardsSort(sort: BoardsSort): void {
+  useLayout.setState((state) => {
+    state.home.boardsSort = sort;
+  });
+}
+
+export function setFolderExpanded(project: ProjectId, path: string, expanded: boolean): void {
+  const key = folderKey(project, path);
+  useLayout.setState((state) => {
+    const folders = state.folders.filter((folder) => folder !== key);
+    if (expanded) {
+      folders.push(key);
+    }
+    state.folders = folders.slice(-FOLDERS_LIMIT);
+  });
+}
+
+/** The layout as `save_window_state` stores it. */
+export function layoutSnapshot(): WindowLayout {
+  return useLayout.getState();
+}
+
+const HOME_VIEWS: readonly HomeView[] = ["overview", "health", "activity", "recents", "drafts"];
+const FILTERS: readonly BoardsFilter[] = ["all", "published", "drafts"];
+const SORTS: readonly BoardsSort[] = ["edited", "title"];
+
+function record(value: unknown): Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function oneOf<T extends string>(values: readonly T[], value: unknown, fallback: T): T {
+  return values.includes(value as T) ? (value as T) : fallback;
+}
+
+function flag(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+/**
+ * Restores a saved layout. The input comes from disk, so every field is checked: missing or malformed
+ * fields take their defaults, and the width is clamped to its bounds.
+ */
+export function applyLayoutSnapshot(json: unknown): void {
+  const saved = record(json);
+  const sidebar = record(saved["sidebar"]);
+  const peek = record(saved["peek"]);
+  const home = record(saved["home"]);
+  const folders = Array.isArray(saved["folders"]) ? saved["folders"].filter((folder): folder is string => typeof folder === "string") : [];
+  const fallback = initialLayout;
+  useLayout.setState({
+    v: 1,
+    sidebar: {
+      width: typeof sidebar["width"] === "number" ? clampWidth(sidebar["width"]) : fallback.sidebar.width,
+      visible: flag(sidebar["visible"], fallback.sidebar.visible),
+    },
+    selectedCollapsed: flag(saved["selectedCollapsed"], fallback.selectedCollapsed),
+    peek: { pinned: flag(peek["pinned"], fallback.peek.pinned) },
+    home: {
+      view: oneOf(HOME_VIEWS, home["view"], fallback.home.view),
+      boardsFilter: oneOf(FILTERS, home["boardsFilter"], fallback.home.boardsFilter),
+      boardsSort: oneOf(SORTS, home["boardsSort"], fallback.home.boardsSort),
+    },
+    folders: [...new Set(folders)].slice(-FOLDERS_LIMIT),
+  });
+}
+
+/** Calls `onChange` with the layout whenever it changes. Returns the unsubscribe function. */
+export function subscribeToLayout(onChange: (layout: WindowLayout) => void): () => void {
+  return useLayout.subscribe((layout, previous) => {
+    if (layout !== previous) {
+      onChange(layout);
     }
   });
 }

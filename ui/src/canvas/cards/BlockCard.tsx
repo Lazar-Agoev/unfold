@@ -1,8 +1,8 @@
 /**
- * A block card (architecture §10.2): one definition (or another indexed block) in Code or Flow.
- * The header shows the kind, name, and location, the card's own Code/Flow switch (saved with the
- * board), and the fold toggle; a folded card shows only its title and its arrows attach to the
- * header. The body never scrolls: the card sizes itself to its content.
+ * A block card: one definition (or another indexed block) of a project in Code or Flow. The header
+ * shows the kind, name, and location, the card's own Code/Flow switch (saved with the board), and the
+ * fold toggle; a folded card shows only its title and its arrows attach to the header. The body never
+ * scrolls: the card sizes itself to its content. Flow shows the page's labels for the card's project.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -15,12 +15,27 @@ import { defaultFolds, groupConflict, groupSelection } from "../../code/outline"
 import { shortPath } from "../../code/text";
 import { FlowView, flowPortNodes } from "../../flow/FlowView";
 import { layoutFlow } from "../../flow/layout";
-import type { CallLink, Card, CodeText, CodeView as CodeViewModel, View } from "../../ipc/generated";
-import { addGroup, keyDisplayName, setCardView, setCardsFolded, updateGroup } from "../../state/boards/document";
-import { followCall, lineOffsetIn } from "../../state/boards/navigation";
-import { editBoard, selectCard, setPendingGroup, updateView, useBoards } from "../../state/boards/store";
-import { select } from "../../state/selection";
+import type { CallLink, Card, CodeText, CodeView as CodeViewModel, ProjectId, View } from "../../ipc/generated";
+import {
+  addGroup,
+  editPage,
+  findPage,
+  followCall,
+  keyDisplayName,
+  labelsFor,
+  lineOffsetIn,
+  select,
+  setCardView,
+  setCardsFolded,
+  setPendingGroup,
+  updateGroup,
+  updatePageView,
+  useOpenBoard,
+  usePageView,
+  type PageTarget,
+} from "../../state/boards";
 import { cardQuery, isMissing, lastVerifiedCode } from "../cardData";
+import { ProjectScope } from "../ProjectScope";
 import { CARD_MAX_WIDTH, CARD_MIN_WIDTH } from "../layout";
 import { useMeasure } from "../measure";
 import { blockCardWidth, codeContentWidth } from "../sizing";
@@ -37,7 +52,9 @@ const NO_FOLDS: readonly string[] = [];
 const NO_KEYS: readonly string[] = [];
 
 export interface BlockCardProps {
-  readonly boardId: string;
+  readonly target: PageTarget;
+  /** The project the card resolves to. */
+  readonly project: ProjectId;
   readonly card: Card & { readonly ref: { readonly block: string } };
   readonly view: View;
   readonly ports: readonly string[];
@@ -48,9 +65,9 @@ function toggled(list: readonly string[], key: string): string[] {
   return list.includes(key) ? list.filter((item) => item !== key) : [...list, key];
 }
 
-export function BlockCard({ boardId, card, view, ports, selected }: BlockCardProps) {
+export function BlockCard({ target, project, card, view, ports, selected }: BlockCardProps) {
   const key = card.ref.block;
-  const query = useQuery(cardQuery(key));
+  const query = useQuery(cardQuery(project, key));
   const model = query.data?.type === "block" ? query.data : undefined;
   const measure = useMeasure();
   const updateNodeInternals = useUpdateNodeInternals();
@@ -61,32 +78,32 @@ export function BlockCard({ boardId, card, view, ports, selected }: BlockCardPro
       header ? { path: header.path, kind: header.kind, name: header.name, qualifiedName: header.qualifiedName, line: header.startLine } : null,
     [header],
   );
-  const menu = useCardMenu(boardId, card.id, key, folded, definition);
+  const menu = useCardMenu(target, project, card.id, folded, definition);
 
-  const codeFolds = useBoards((state) => state.boards[boardId]?.view.codeFolds[card.id]);
-  const expandedKeys = useBoards((state) => state.boards[boardId]?.view.expanded[card.id] ?? NO_KEYS);
-  const openChains = useBoards((state) => state.boards[boardId]?.view.flowChains[card.id] ?? NO_KEYS);
-  const selectedKey = useBoards((state) => (state.boards[boardId]?.view.selectedCardId === card.id ? state.boards[boardId].view.selectedKey : null));
-  const pending = useBoards((state) => {
-    const value = state.boards[boardId]?.view.pendingGroup;
-    return value?.cardId === card.id ? value : null;
-  });
-  const allGroups = useBoards((state) => state.boards[boardId]?.document.groups);
-  const labels = useBoards((state) => state.boards[boardId]?.document.labels);
-  const health = useBoards((state) => state.boards[boardId]?.health);
+  const codeFolds = usePageView(target, (pageView) => pageView.codeFolds[card.id]);
+  const expandedKeys = usePageView(target, (pageView) => pageView.expanded[card.id] ?? NO_KEYS);
+  const openChains = usePageView(target, (pageView) => pageView.flowChains[card.id] ?? NO_KEYS);
+  const selectedKey = usePageView(target, ({ selection }) => (selection.kind === "card" && selection.cardId === card.id ? selection.key : null));
+  const pending = usePageView(target, ({ pendingGroup }) => (pendingGroup?.cardId === card.id ? pendingGroup : null));
+  const allGroups = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.groups);
+  const labels = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.labels);
+  const health = useOpenBoard(target.board, (board) => board.health);
   const groups = useMemo(() => {
-    const broken = new Set((health?.items ?? []).flatMap((item) => (item.kind === "brokenGroup" && "group" in item.target ? [item.target.group] : [])));
+    const broken = new Set(
+      (health?.items ?? []).flatMap((item) => (item.page === target.page && item.kind === "brokenGroup" && "group" in item.target ? [item.target.group] : [])),
+    );
     return (allGroups ?? []).filter((group) => group.card === card.id && !broken.has(group.id));
-  }, [allGroups, health, card.id]);
+  }, [allGroups, health, card.id, target.page]);
 
   // Code: the verified source, or the last verified render kept in memory while the file changed.
   const codeModel: CodeViewModel | null = model?.code ?? null;
-  const stale = codeModel?.source.state === "changed" ? lastVerifiedCode(key) : undefined;
+  const stale = codeModel?.source.state === "changed" ? lastVerifiedCode(project, key) : undefined;
   const shown: CodeText | null =
     codeModel?.source.state === "current" ? codeModel.source : stale?.source.state === "current" ? stale.source : null;
   const folds = useMemo(() => new Set(codeFolds ?? (shown ? defaultFolds(shown.outline) : NO_FOLDS)), [codeFolds, shown]);
   const portSet = useMemo(() => new Set(ports), [ports]);
-  const labelText = useMemo(() => Object.fromEntries(Object.entries(labels ?? {}).map(([labeled, value]) => [labeled, value.text])), [labels]);
+  // The page's labels for this card's project (`ref.project` names it the same way labels do).
+  const labelText = useMemo(() => labelsFor(labels ?? [], card.ref.project), [labels, card.ref.project]);
   const chainSet = useMemo(() => new Set(openChains), [openChains]);
 
   // Laid out only while the card shows Flow: measuring and placing nodes is the costly part of a card.
@@ -143,16 +160,12 @@ export function BlockCard({ boardId, card, view, ports, selected }: BlockCardPro
   }, [updateNodeInternals, card.id, portsKey, foldsKey, folded, view, width, model, expandedKeys, openChains, groups, pending]);
 
   const selectKey = (blockKey: string) => {
-    selectCard(boardId, card.id);
-    updateView(boardId, (draft) => {
-      draft.selectedKey = blockKey;
-    });
-    select({ key: blockKey });
+    select(target, { kind: "card", cardId: card.id, key: blockKey });
   };
   const follow = (targetKey: string, anchor: HTMLElement, line?: number) => {
     const offset = lineOffsetIn(anchor);
     followCall({
-      boardId,
+      target,
       fromCardId: card.id,
       fromLabel: name,
       targetKey,
@@ -160,7 +173,6 @@ export function BlockCard({ boardId, card, view, ports, selected }: BlockCardPro
       ...(offset !== undefined ? { lineOffset: offset } : {}),
       ...(line !== undefined ? { line } : {}),
     });
-    select({ key: targetKey });
   };
   const onFollowLink = (link: CallLink, anchor: HTMLElement) => {
     if (link.target !== undefined) {
@@ -168,21 +180,22 @@ export function BlockCard({ boardId, card, view, ports, selected }: BlockCardPro
     }
   };
   const onExpand = (link: CallLink) => {
-    updateView(boardId, (draft) => {
+    updatePageView(target, (draft) => {
       draft.expanded[card.id] = toggled(draft.expanded[card.id] ?? [], link.source);
     });
   };
   const expanded = useMemo(() => {
     const map = new Map<string, ReactNode>();
     for (const occurrence of expandedKeys) {
-      const target = shown?.links.find((link) => link.source === occurrence)?.target;
-      if (target !== undefined) {
+      const callee = shown?.links.find((link) => link.source === occurrence)?.target;
+      if (callee !== undefined) {
         map.set(
           occurrence,
           <InlineCallee
-            targetKey={target}
+            project={project}
+            targetKey={callee}
             onClose={() => {
-              updateView(boardId, (draft) => {
+              updatePageView(target, (draft) => {
                 draft.expanded[card.id] = (draft.expanded[card.id] ?? []).filter((item) => item !== occurrence);
               });
             }}
@@ -191,7 +204,7 @@ export function BlockCard({ boardId, card, view, ports, selected }: BlockCardPro
       }
     }
     return map;
-  }, [expandedKeys, shown, boardId, card.id]);
+  }, [expandedKeys, shown, target, project, card.id]);
 
   const onGutterSelect = (from: number, to: number) => {
     if (!shown) {
@@ -199,35 +212,35 @@ export function BlockCard({ boardId, card, view, ports, selected }: BlockCardPro
     }
     const selection = groupSelection(shown.outline, from, to);
     if ("error" in selection) {
-      setPendingGroup(boardId, null);
-      showToast({ message: selection.error });
+      setPendingGroup(target, null);
+      showToast({ title: selection.error });
       return;
     }
     const conflict = groupConflict(shown.outline, selection.members, groups);
-    setPendingGroup(boardId, { cardId: card.id, members: selection.members, ...(conflict !== null ? { error: conflict } : {}) });
+    setPendingGroup(target, { cardId: card.id, members: selection.members, ...(conflict !== null ? { error: conflict } : {}) });
   };
   const onNamePendingGroup = (title: string | null) => {
     if (title === null || title.trim().length === 0 || !pending || pending.error !== undefined) {
-      setPendingGroup(boardId, null);
+      setPendingGroup(target, null);
       return;
     }
-    editBoard(boardId, (document) => addGroup(document, card.id, pending.members, title.trim()));
-    setPendingGroup(boardId, null);
+    editPage(target, (page) => addGroup(page, card.id, pending.members, title.trim()));
+    setPendingGroup(target, null);
   };
 
   const setView = (next: View) => {
-    editBoard(boardId, (document) => {
-      setCardView(document, card.id, next);
+    editPage(target, (page) => {
+      setCardView(page, card.id, next);
     });
-    updateView(boardId, (draft) => {
+    updatePageView(target, (draft) => {
       if (draft.lens !== null && !draft.lensExceptions.includes(card.id)) {
         draft.lensExceptions.push(card.id);
       }
     });
   };
   const toggleFolded = () => {
-    editBoard(boardId, (document) => {
-      setCardsFolded(document, [card.id], !folded);
+    editPage(target, (page) => {
+      setCardsFolded(page, [card.id], !folded);
     });
   };
 
@@ -256,7 +269,7 @@ export function BlockCard({ boardId, card, view, ports, selected }: BlockCardPro
           follow(callback.key, anchor);
         }}
         onToggleChain={(chainKey) => {
-          updateView(boardId, (draft) => {
+          updatePageView(target, (draft) => {
             draft.flowChains[card.id] = toggled(draft.flowChains[card.id] ?? [], chainKey);
           });
         }}
@@ -279,20 +292,20 @@ export function BlockCard({ boardId, card, view, ports, selected }: BlockCardPro
           label={name}
           folds={folds}
           onToggleFold={(foldKey) => {
-            updateView(boardId, (draft) => {
+            updatePageView(target, (draft) => {
               draft.codeFolds[card.id] = toggled(draft.codeFolds[card.id] ?? [...folds], foldKey);
             });
           }}
           groups={groups}
           onToggleGroup={(groupId) => {
             const group = groups.find((item) => item.id === groupId);
-            editBoard(boardId, (document) => {
-              updateGroup(document, groupId, { collapsed: !(group?.collapsed ?? false) });
+            editPage(target, (page) => {
+              updateGroup(page, groupId, { collapsed: !(group?.collapsed ?? false) });
             });
           }}
           onRenameGroup={(groupId, title) => {
-            editBoard(boardId, (document) => {
-              updateGroup(document, groupId, { title });
+            editPage(target, (page) => {
+              updateGroup(page, groupId, { title });
             });
           }}
           onGroupMenu={menu.openGroupMenu}
@@ -358,7 +371,7 @@ export function BlockCard({ boardId, card, view, ports, selected }: BlockCardPro
         <span className="card-header-spacer" />
         {!folded && model ? (
           <div className="nodrag" onClick={(event) => { event.stopPropagation(); }}>
-            <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={setView} label={`View of ${name}`} size="small" />
+            <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={setView} label={`View of ${name}`} variant="mini" />
           </div>
         ) : null}
         <HeaderPorts ids={headerPorts} />
@@ -366,7 +379,9 @@ export function BlockCard({ boardId, card, view, ports, selected }: BlockCardPro
       {folded ? null : (
         <>
           <DescriptionLine description={card.description} />
-          <div className="card-body nodrag nopan">{body}</div>
+          <div className="card-body nodrag nopan">
+            <ProjectScope.Provider value={project}>{body}</ProjectScope.Provider>
+          </div>
         </>
       )}
       {menu.element}

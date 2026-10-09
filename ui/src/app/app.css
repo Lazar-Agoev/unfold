@@ -1,0 +1,38 @@
+/* The window frame (components §1): the tab strip over a row of the sidebar and the content area. */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: clip;
+  background: var(--color-canvas);
+}
+
+.app-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.app-sidebar {
+  /* Anchors the resize handle on the right edge. */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 0;
+  border-right: 1px solid var(--color-border-shell);
+  background: var(--color-sidebar);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+}
+
+/* Positioned flex row: canvas dialogs center on it, and the peek sheet slides over or beside it. */
+#content-area {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}

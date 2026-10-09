@@ -4,7 +4,7 @@
  */
 
 import { useEffect } from "react";
-import { onEvent, type MenuCommand } from "../ipc/unfold";
+import { onShellEvent, type MenuCommand } from "../ipc/unfold";
 import { MENU_COMMAND_ACTIONS } from "./keymap";
 import { actions as windowActions, type ActionRegistry } from "./registry";
 
@@ -21,8 +21,8 @@ export function runMenuCommand(command: unknown, registry: ActionRegistry = wind
 export function useMenuCommands(registry: ActionRegistry = windowActions): void {
   useEffect(
     () =>
-      onEvent("menu_command", (event) => {
-        runMenuCommand(event["command"], registry);
+      onShellEvent("menu_command", (event) => {
+        runMenuCommand(event.command, registry);
       }),
     [registry],
   );

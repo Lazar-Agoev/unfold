@@ -1,33 +1,28 @@
-/** What this window shows: its id, its stable key, its folder, and the platform it runs on. */
+/**
+ * This window: its id, stable key, and platform (from `window_info`), and the project its Home shows
+ * (per window, D-25; saved in `windows.json`). Each window is its own renderer, so a module-level
+ * store is per window.
+ */
 
 import { create } from "zustand";
+import type { ProjectId } from "../ipc/generated";
 import type { WindowInfo } from "../ipc/unfold";
 
-export interface WindowState {
+export interface WindowStore {
   /** Null outside the app, where there is no main process to ask. */
-  info: WindowInfo | null;
-  setInfo: (info: WindowInfo | null) => void;
-  /** The window now shows another folder (or none); `key` is its stable key from now on. */
-  setFolder: (folder: string | null, key?: string) => void;
+  readonly info: WindowInfo | null;
+  /** The project Home shows; never changed by activating a board tab. */
+  readonly selectedProject: ProjectId | null;
 }
 
-export const useWindow = create<WindowState>()((set) => ({
-  info: null,
-  setInfo: (info) => {
-    set({ info });
-  },
-  setFolder: (folder, key) => {
-    set((state) => (state.info ? { info: { ...state.info, folder, key: key ?? state.info.key } } : state));
-  },
-}));
+export const useWindowStore = create<WindowStore>()(() => ({ info: null, selectedProject: null }));
 
-/** The last segment of a folder path, for titles. */
-export function folderName(folder: string): string {
-  const parts = folder.split(/[\\/]/).filter((part) => part.length > 0);
-  return parts.at(-1) ?? folder;
+/** Records what `window_info` said about this window (at boot). */
+export function setWindowInfo(info: WindowInfo | null): void {
+  useWindowStore.setState({ info });
 }
 
-/** A folder path for display: the home folder shortened to `~`. */
-export function displayPath(folder: string): string {
-  return folder.replace(/^\/(Users|home)\/[^/]+(?=\/|$)/, "~").replace(/^[A-Za-z]:\\Users\\[^\\]+(?=\\|$)/, "~");
+/** The project Home shows, kept current. */
+export function useSelectedProject(): ProjectId | null {
+  return useWindowStore((state) => state.selectedProject);
 }

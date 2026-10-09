@@ -5,8 +5,7 @@
  */
 
 import { showToast } from "../components";
-import { call } from "../ipc/commands";
-import { toUnfoldError, windowCommand } from "../ipc/unfold";
+import { call, toUnfoldError, windowCommand, type ProjectId } from "../ipc";
 
 /** The app, Electron, and Chromium versions from the window's user agent, one per line. */
 export function shellVersions(userAgent: string): string {
@@ -26,13 +25,13 @@ export function diagnosticsText(rust: string, userAgent: string): string {
   return [title, shellVersions(userAgent), ...rest].join("\n") + "\n";
 }
 
-/** Builds the report and copies it, then says so. */
-export async function copyDiagnostics(): Promise<void> {
+/** Builds the report (describing `project` as well, when given) and copies it, then says so. */
+export async function copyDiagnostics(project?: ProjectId): Promise<void> {
   try {
-    const report = await call("diagnostics", {});
+    const report = await call("diagnostics", project === undefined ? {} : { project });
     await windowCommand("copy_to_clipboard", { text: diagnosticsText(report.text, navigator.userAgent) });
-    showToast({ message: "Copied diagnostics to the clipboard. They hold versions and counts: no code and no paths.", tone: "success" });
+    showToast({ title: "Copied diagnostics", body: "They hold versions and counts: no code and no paths." });
   } catch (error) {
-    showToast({ message: `Couldn't copy diagnostics: ${toUnfoldError(error).message}`, tone: "danger" });
+    showToast({ title: "Couldn't copy diagnostics", body: toUnfoldError(error).message, tone: "danger" });
   }
 }

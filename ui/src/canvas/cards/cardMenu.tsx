@@ -1,23 +1,21 @@
 /**
- * Context menus on the canvas: a card's (Show in Inspector, Fold, Add as Entrance for a definition,
- * Remove from Board) and a group rail's (Collapse, Describe, Ungroup). Each board choice is one
- * board edit, so ⌘Z undoes it.
+ * Context menus on the canvas: a card's (Describe, Fold, Add as Entrance for a definition, Remove from
+ * Page) and a group rail's (Collapse, Describe, Ungroup). Each page choice is one board edit, so ⌘Z
+ * undoes it.
  */
 
 import type { MouseEvent, ReactNode } from "react";
 import { useContextMenu, type MenuEntry } from "../../components";
-import { addAsEntranceItem, type DefinitionRef } from "../../settings";
-import { editGroup, removeCardFromBoard, ungroup } from "../../state/boards/api";
-import { setCardsFolded } from "../../state/boards/document";
-import { editBoard, getBoard, selectBlock, selectCard } from "../../state/boards/store";
+import type { ProjectId } from "../../ipc/generated";
 import { requestFocus as focusTarget } from "../../keyboard";
-import { useLayout } from "../../state/layout";
+import { canBeHandler } from "../../settings/locators";
+import { editGroup, editPage, findPage, getOpenBoard, removeCard, select, setCardsFolded, ungroup, type PageTarget } from "../../state/boards";
+import { setSelectedCollapsed } from "../../state/layout";
+import { openDialog, type DefinitionRef } from "../../state/overlays";
 
-/** Opens the inspector (if closed) on the board's selection, and focuses one of its fields. */
-export function showInInspector(field = "inspector"): void {
-  if (!useLayout.getState().inspectorOpen) {
-    useLayout.getState().toggleInspector();
-  }
+/** Expands the sidebar's Selected section on the page's selection and focuses one of its fields. */
+function showInSelected(field: string): void {
+  setSelectedCollapsed(false);
   focusTarget(field);
 }
 
@@ -27,43 +25,57 @@ export interface CardMenu {
   readonly element: ReactNode;
 }
 
-/**
- * The context menus of one card. `definition` (the card's header, once loaded) offers Add as
- * Entrance.
- */
-export function useCardMenu(boardId: string, cardId: string, cardKey: string, folded: boolean, definition?: DefinitionRef | null): CardMenu {
+/** The context menus of one card. `definition` (the card's header, once loaded) offers Add as Entrance. */
+export function useCardMenu(
+  target: PageTarget,
+  project: ProjectId,
+  cardId: string,
+  folded: boolean,
+  definition?: DefinitionRef | null,
+): CardMenu {
   const menu = useContextMenu("Card actions");
   const cardEntries = (): MenuEntry[] => [
     {
-      id: "inspect",
-      label: "Show in Inspector",
+      id: "describe",
+      label: "Describe…",
       onSelect: () => {
-        selectCard(boardId, cardId);
-        showInInspector("inspector.description");
+        select(target, { kind: "card", cardId, key: null });
+        showInSelected("selected.description");
       },
     },
     {
       id: "fold",
       label: folded ? "Unfold Card" : "Fold Card",
       onSelect: () => {
-        editBoard(boardId, (document) => {
-          setCardsFolded(document, [cardId], !folded);
+        editPage(target, (page) => {
+          setCardsFolded(page, [cardId], !folded);
         });
       },
     },
-    ...(definition ? addAsEntranceItem(definition) : []),
+    ...(definition && canBeHandler(definition.kind)
+      ? [
+          {
+            id: "add-entrance",
+            label: "Add as Entrance…",
+            onSelect: () => {
+              openDialog({ kind: "entranceEditor", project, mode: "add", handler: definition });
+            },
+          },
+        ]
+      : []),
     { kind: "separator", id: "s1" },
     {
       id: "remove",
-      label: "Remove from Board",
+      label: "Remove from Page",
       danger: true,
       onSelect: () => {
-        removeCardFromBoard(boardId, cardId);
+        removeCard(target, cardId);
       },
     },
   ];
   const groupEntries = (groupId: string): MenuEntry[] => {
-    const group = getBoard(boardId)?.document.groups.find((item) => item.id === groupId);
+    const board = getOpenBoard(target.board);
+    const group = board ? findPage(board.document, target.page)?.groups.find((item) => item.id === groupId) : undefined;
     if (!group) {
       return [];
     }
@@ -72,15 +84,15 @@ export function useCardMenu(boardId: string, cardId: string, cardKey: string, fo
         id: "collapse",
         label: group.collapsed ? "Expand Group" : "Collapse Group",
         onSelect: () => {
-          editGroup(boardId, groupId, { collapsed: !group.collapsed });
+          editGroup(target, groupId, { collapsed: !group.collapsed });
         },
       },
       {
         id: "describe",
         label: "Describe Group…",
         onSelect: () => {
-          selectBlock(boardId, cardId, cardKey);
-          showInInspector(`inspector.group:${groupId}`);
+          select(target, { kind: "group", groupId });
+          showInSelected(`selected.group:${groupId}`);
         },
       },
       { kind: "separator", id: "s1" },
@@ -89,7 +101,7 @@ export function useCardMenu(boardId: string, cardId: string, cardKey: string, fo
         label: "Ungroup",
         danger: true,
         onSelect: () => {
-          ungroup(boardId, groupId);
+          ungroup(target, groupId);
         },
       },
     ];
@@ -97,7 +109,7 @@ export function useCardMenu(boardId: string, cardId: string, cardKey: string, fo
   return {
     onContextMenu: (event) => {
       event.stopPropagation();
-      selectCard(boardId, cardId);
+      select(target, { kind: "card", cardId, key: null });
       menu.open(event, cardEntries());
     },
     openGroupMenu: (groupId, at) => {

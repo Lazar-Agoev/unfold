@@ -1,7 +1,7 @@
 /**
- * Keyboard and actions: the registry every command lives in, the §11.7 keymap, the person's key
- * bindings over it, the shortcut dispatcher, application-menu routing, command scopes (⌘Z to the focused context), and named focus
- * targets.
+ * Keyboard and actions (UI plan §8): the registry every command lives in, the keymap, the person's key
+ * bindings over it, the shortcut dispatcher, application-menu routing, command scopes (⌘Z to the
+ * focused board), modal layers, and named focus targets.
  */
 
 export {
@@ -19,6 +19,7 @@ export { requestFocus, useFocusTarget } from "./focus-targets";
 export { useActions, useRegisterActions, useShortcut, useShortcutLabel, useShortcutLookup } from "./hooks";
 export {
   ACTION_INFO,
+  ADD_GROUPS,
   ActionIds,
   DEFAULT_SHORTCUTS,
   MENU_COMMAND_ACTIONS,

@@ -1,17 +1,25 @@
 /**
- * Placing the handler cards an entrance opens (architecture §10.2, in the spirit of following a
- * call): a column `FOLLOW_GAP` to the right of the entrance card, the first handler's header level
- * with its handler row, each next one level with its own row or just below the one above it, so
- * no arrow bends upward and no two cards overlap. The rows are only known once the entrance card
- * is drawn, so the canvas places them then, as part of the step that opened them.
+ * Placing the handler cards an entrance opens (in the spirit of following a call): a column
+ * `FOLLOW_GAP` to the right of the entrance card, the first handler's header level with its handler
+ * row, each next one level with its own row or just below the one above it, so no arrow bends upward
+ * and no two cards overlap. The rows are only known once the entrance card is drawn, so the canvas
+ * places them then, as part of the step that opened them.
  */
 
 import { useEffect } from "react";
-import { displayedRects } from "../state/boards/api";
-import { moveCards } from "../state/boards/document";
-import { lineOffsetIn } from "../state/boards/navigation";
-import { amendBoard, getBoard, requestFocus, setPendingPlacement, useBoards } from "../state/boards/store";
-import type { PendingPlacement } from "../state/boards/types";
+import {
+  amendPage,
+  displayedRects,
+  getOpenBoard,
+  getPageView,
+  lineOffsetIn,
+  moveCards,
+  requestCardFocus,
+  setPendingPlacement,
+  usePageView,
+  type PageTarget,
+  type PendingPlacement,
+} from "../state/boards";
 import { FOLLOW_GAP, HEADER_PORT, STACK_GAP, fallbackSize, type Rect, type Size } from "./layout";
 
 /** How long the canvas waits for the cards to load and measure before placing them anyway. */
@@ -58,23 +66,27 @@ function loaded(placement: PendingPlacement): boolean {
   });
 }
 
-function place(boardId: string, placement: PendingPlacement, rows: readonly (number | undefined)[]): void {
-  const board = getBoard(boardId);
-  const entrance = board ? displayedRects(board).get(placement.entranceId) : undefined;
-  if (board && entrance) {
-    const sizes = placement.handlers.map(({ cardId }) => board.view.sizes[cardId] ?? fallbackSize(false));
-    const positions = placeHandlers(entrance, rows, sizes);
-    amendBoard(boardId, (draft) => {
+function place(target: PageTarget, placement: PendingPlacement, rows: readonly (number | undefined)[]): void {
+  const board = getOpenBoard(target.board);
+  const entrance = board ? displayedRects(board, target.page).get(placement.entranceId) : undefined;
+  if (entrance) {
+    const { sizes } = getPageView(target);
+    const positions = placeHandlers(
+      entrance,
+      rows,
+      placement.handlers.map(({ cardId }) => sizes[cardId] ?? fallbackSize(false)),
+    );
+    amendPage(target, (draft) => {
       moveCards(draft, Object.fromEntries(placement.handlers.map(({ cardId }, index) => [cardId, positions[index] ?? [entrance.x, entrance.y]])));
     });
   }
-  setPendingPlacement(boardId, null);
-  requestFocus(boardId, [placement.entranceId, ...placement.handlers.map(({ cardId }) => cardId)], "fit");
+  setPendingPlacement(target, null);
+  requestCardFocus(target, [placement.entranceId, ...placement.handlers.map(({ cardId }) => cardId)], "fit");
 }
 
-/** Places the handlers of a just-opened entrance once its card is drawn (while the board is shown). */
-export function usePendingPlacement(boardId: string, active: boolean): void {
-  const placement = useBoards((state) => state.boards[boardId]?.view.placement ?? null);
+/** Places the handlers of a just-opened entrance once its card is drawn (while the page is shown). */
+export function usePendingPlacement(target: PageTarget, active: boolean): void {
+  const placement = usePageView(target, (view) => view.placement);
   useEffect(() => {
     if (!placement || !active) {
       return undefined;
@@ -82,13 +94,13 @@ export function usePendingPlacement(boardId: string, active: boolean): void {
     const started = Date.now();
     let timer: ReturnType<typeof setTimeout> | null = null;
     const attempt = () => {
-      const sizes = getBoard(boardId)?.view.sizes ?? {};
+      const { sizes } = getPageView(target);
       const measured = sizes[placement.entranceId] !== undefined && placement.handlers.every(({ cardId }) => sizes[cardId] !== undefined);
       const rows = measured && loaded(placement) ? handlerRows(placement) : null;
       if (rows) {
-        place(boardId, placement, rows);
+        place(target, placement, rows);
       } else if (Date.now() - started > PLACEMENT_TIMEOUT_MS) {
-        place(boardId, placement, handlerRows(placement) ?? placement.handlers.map(() => undefined));
+        place(target, placement, handlerRows(placement) ?? placement.handlers.map(() => undefined));
       } else {
         timer = setTimeout(attempt, PLACEMENT_POLL_MS);
       }
@@ -99,5 +111,5 @@ export function usePendingPlacement(boardId: string, active: boolean): void {
         clearTimeout(timer);
       }
     };
-  }, [placement, active, boardId]);
+  }, [placement, active, target]);
 }

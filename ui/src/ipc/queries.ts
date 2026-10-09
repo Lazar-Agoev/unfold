@@ -1,22 +1,17 @@
 /**
- * Engine data in TanStack Query: one key shape for every command (`["engine", command, args]`),
- * a hook to read it, and the precise invalidation engine events drive (architecture §11.8).
+ * Engine data in TanStack Query: one key shape for every command (`["engine", command, args]`), a hook
+ * to read it, and the invalidation engine events drive (contract §5, UI plan §4.3).
  *
- * Invalidation is per event, never "refetch everything" unless the engine says so
- * (`graph_updated.everything`):
- * - `graph_updated`: the changed files' outlines, views, tree levels, cards, and peeks, plus every
- *   entrance card (its applications can change with any file); the entrance tree when entrances or
- *   inputs changed; name search, relations, and the Index log.
- * - `files_changed`: the changed files' views, tree levels (pending marks), and cards (their source
- *   is now "changed"), and file search.
- * - `boards_changed`: the board list. `config_changed`: tree levels (skip marks), the summary, and
- *   the settings. `problems_changed`: Problems. `graph_status`: written straight into the cache.
+ * Every project command's arguments carry `project`, so each event touches only the queries of its
+ * project (and the cross-project `search`, `drafts`, and `board_refs` that can include it). Nothing is
+ * refetched wholesale except `graph_updated.everything` (that project only) and the engine-restart
+ * reset (`resetEngineQueries`), which the window's session code orders.
  */
 
 import { useQuery, type Query, type QueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { call, onEngineEvent } from "./commands";
-import type { CommandArgs, CommandName, CommandResult, Events } from "./generated";
-import { onConnection, type UnfoldError } from "./unfold";
+import type { CommandArgs, CommandName, CommandResult, EventType, ProjectId, WorkspaceEvent, WorkspaceView } from "./generated";
+import type { UnfoldError } from "./unfold";
 
 /** The query key of one command call. */
 export type EngineKey<C extends CommandName = CommandName> = readonly ["engine", C, CommandArgs<C>];
@@ -25,21 +20,22 @@ export function engineKey<C extends CommandName>(command: C, args: CommandArgs<C
   return ["engine", command, args];
 }
 
-/** The key prefix of every call of one command (for invalidation). */
-export function commandKey(command: CommandName): readonly ["engine", CommandName] {
-  return ["engine", command];
-}
+/** Queries that keep their default `staleTime: Infinity` except these (V-80: fetched when opened). */
+const ALWAYS_STALE: ReadonlySet<CommandName> = new Set<CommandName>(["git_info"]);
 
-/** Query options for one command call, for `useQueries` and `fetchQuery`. */
+/** Query options for one command call, for `useQueries`, `fetchQuery`, and `ensureQueryData`. */
 export function engineQueryOptions<C extends CommandName>(command: C, args: CommandArgs<C>) {
   return {
     queryKey: engineKey(command, args),
     queryFn: () => call(command, args),
+    ...(ALWAYS_STALE.has(command) ? { staleTime: 0 } : {}),
   };
 }
 
 export interface EngineQueryOptions {
   readonly enabled?: boolean;
+  /** Ask again whenever the window gains focus (only `workspace` does, D-4). */
+  readonly refetchOnWindowFocus?: boolean;
 }
 
 /** Reads one command's result, cached under its key and refreshed by engine events. */
@@ -49,55 +45,44 @@ export function useEngineQuery<C extends CommandName>(
   options: EngineQueryOptions = {},
 ): UseQueryResult<CommandResult<C>, UnfoldError> {
   return useQuery<CommandResult<C>, UnfoldError, CommandResult<C>, EngineKey<C>>({
-    queryKey: engineKey(command, args),
-    queryFn: () => call(command, args),
+    ...engineQueryOptions(command, args),
     enabled: options.enabled ?? true,
+    // "always": engine data never goes stale by time, so a plain `true` would never refetch.
+    ...(options.refetchOnWindowFocus === true ? { refetchOnWindowFocus: "always" as const } : {}),
   });
 }
 
-/** Commands whose results don't depend on the open folder; they survive a folder change. */
-const APP_COMMANDS: ReadonlySet<CommandName> = new Set<CommandName>(["recent_folders", "get_preferences", "app_info"]);
+type Args = Readonly<Record<string, unknown>>;
 
-function isFolderQuery(query: Query): boolean {
-  return query.queryKey[0] === "engine" && !APP_COMMANDS.has(query.queryKey[1] as CommandName);
+function commandOf(query: Query): string | null {
+  const [scope, command] = query.queryKey;
+  return scope === "engine" && typeof command === "string" ? command : null;
 }
 
-/** Drops every folder-dependent result (the window now shows another folder, or none). */
-export function clearFolderQueries(client: QueryClient): void {
-  client.removeQueries({ predicate: isFolderQuery });
-}
-
-function argsOf(query: Query): Readonly<Record<string, unknown>> {
+function argsOf(query: Query): Args {
   const args = query.queryKey[2];
-  return typeof args === "object" && args !== null ? (args as Readonly<Record<string, unknown>>) : {};
+  return typeof args === "object" && args !== null ? (args as Args) : {};
 }
 
-function stringArg(query: Query, name: string): string | null {
-  const value = argsOf(query)[name];
-  return typeof value === "string" ? value : null;
+function text(args: Args, name: string): string {
+  const value = args[name];
+  return typeof value === "string" ? value : "";
 }
 
-/** Invalidates calls of `command` whose arguments pass `test` (all calls without one). */
-function invalidate(
-  client: QueryClient,
-  command: CommandName,
-  test?: (query: Query) => boolean,
-): void {
+/** Whether a cross-project query (`search`) covered `project`: all projects, or a list naming it. */
+function includes(args: Args, project: ProjectId): boolean {
+  const projects = args["projects"];
+  return !Array.isArray(projects) || projects.includes(project);
+}
+
+/** Marks stale (and refetches if observed) the engine queries `test` picks, in one pass over the cache. */
+function invalidate(client: QueryClient, test: (command: string, args: Args) => boolean): void {
   void client.invalidateQueries({
-    queryKey: commandKey(command),
-    ...(test ? { predicate: test } : {}),
+    predicate: (query) => {
+      const command = commandOf(query);
+      return command !== null && test(command, argsOf(query));
+    },
   });
-}
-
-/** Every folder from the root down to `path`'s parent: the tree levels whose marks it affects. */
-export function ancestorDirs(path: string): string[] {
-  const dirs = [""];
-  let index = path.indexOf("/");
-  while (index >= 0) {
-    dirs.push(path.slice(0, index));
-    index = path.indexOf("/", index + 1);
-  }
-  return dirs;
 }
 
 const ENTRANCE_PREFIX = "entrance:";
@@ -108,110 +93,165 @@ export function keyFile(key: string): string {
   return hash < 0 ? key : key.slice(0, hash);
 }
 
-function invalidateFiles(client: QueryClient, paths: readonly string[]): void {
-  const files = new Set(paths);
-  const dirs = new Set(paths.flatMap(ancestorDirs));
-  const byPath = (query: Query) => files.has(stringArg(query, "path") ?? "\u0000");
-  invalidate(client, "file_view", byPath);
-  invalidate(client, "list_dir", (query) => dirs.has(stringArg(query, "path") ?? "\u0000"));
-}
+/** Commands that don't depend on any project; the engine-restart reset leaves them alone. */
+const APP_COMMANDS: ReadonlySet<string> = new Set<CommandName>(["get_preferences", "app_info"]);
 
-/** Applies one `graph_updated` event to the cache. */
-export function applyGraphUpdated(client: QueryClient, event: Events["graph_updated"]): void {
-  if (event.everything) {
-    void client.invalidateQueries({ predicate: isFolderQuery });
-    return;
-  }
-  const paths = [...event.changedFiles, ...event.removedFiles];
-  const files = new Set(paths);
-  const keys = new Set([...event.changedKeys, ...event.changedEntrances]);
-  invalidateFiles(client, paths);
-  invalidate(client, "file_outline", (query) => files.has(stringArg(query, "path") ?? "\u0000"));
-  const byKey = (query: Query) => {
-    const key = stringArg(query, "key");
-    return key !== null && (keys.has(key) || files.has(keyFile(key)));
-  };
-  // An entrance card also lists the applications it belongs to, which any file can change.
-  invalidate(client, "card", (query) => byKey(query) || (stringArg(query, "key")?.startsWith(ENTRANCE_PREFIX) ?? false));
-  invalidate(client, "peek", byKey);
-  if (event.changedEntrances.length > 0 || event.inputsChanged) {
-    invalidate(client, "entrance_tree");
-  }
-  // Callers and reached-from can change with any file; names can appear anywhere.
-  invalidate(client, "relations");
-  invalidate(client, "search");
-  invalidate(client, "index_log");
-}
+const WORKSPACE_KEY = engineKey("workspace", {});
 
-/** Applies one `files_changed` event to the cache. */
-export function applyFilesChanged(client: QueryClient, event: Events["files_changed"]): void {
-  if (event.truncated) {
-    invalidate(client, "file_view");
-    invalidate(client, "list_dir");
-    invalidate(client, "card");
-  } else {
-    invalidateFiles(client, event.paths);
-    // A card checks its file's bytes before showing them: an edited file shows as changed at once.
-    const files = new Set(event.paths);
-    invalidate(client, "card", (query) => files.has(keyFile(stringArg(query, "key") ?? "")));
-  }
-  // The file list behind file search may have gained or lost files.
-  invalidate(client, "search", (query) => {
-    const kinds = argsOf(query)["kinds"];
-    return !Array.isArray(kinds) || kinds.includes("files");
-  });
-}
-
-/**
- * After an engine-host restart the engine reopened the folder from its cache: whatever it answered
- * before may be out of date (no events arrived while it was down), and requests cut off by the
- * restart failed with `disconnected`. Every folder query is asked again.
- */
-function refetchAfterRestart(client: QueryClient): () => void {
-  let lost = false;
-  return onConnection((state) => {
-    if (state === "reconnecting" || state === "unavailable") {
-      lost = true;
-    } else if (state === "connected" && lost) {
-      lost = false;
-      void client.invalidateQueries({ predicate: isFolderQuery });
+/** Applies one engine event to the cache (events that aren't about the cache are ignored). */
+export function applyEngineEvent(client: QueryClient, event: WorkspaceEvent): void {
+  switch (event.type) {
+    case "workspace_changed":
+      client.setQueryData(WORKSPACE_KEY, event.workspace);
+      return;
+    case "project_state": {
+      const { project, state } = event;
+      client.setQueryData<WorkspaceView>(WORKSPACE_KEY, (workspace) =>
+        workspace ? { ...workspace, projects: workspace.projects.map((row) => (row.id === project ? { ...row, state } : row)) } : workspace,
+      );
+      invalidate(client, (command, args) => command === "project_summary" && args["project"] === project);
+      return;
     }
-  });
+    case "project_reset":
+      client.removeQueries({ predicate: (query) => commandOf(query) !== null && argsOf(query)["project"] === event.project });
+      return;
+    case "graph_updated": {
+      const { project } = event;
+      if (event.everything) {
+        invalidate(client, (command, args) => (command === "search" ? includes(args, project) : args["project"] === project));
+        void client.invalidateQueries({ queryKey: WORKSPACE_KEY });
+        return;
+      }
+      const files = new Set([...event.changedFiles, ...event.removedFiles]);
+      const keys = new Set([...event.changedKeys, ...event.changedEntrances]);
+      const byKey = (key: string) => keys.has(key) || files.has(keyFile(key));
+      const entrances = event.changedEntrances.length > 0 || event.inputsChanged;
+      invalidate(client, (command, args) => {
+        if (command === "search") {
+          return includes(args, project);
+        }
+        if (args["project"] !== project) {
+          return false;
+        }
+        switch (command) {
+          case "file_view":
+            return files.has(text(args, "path"));
+          case "card":
+            // An entrance card also lists the applications it belongs to, which any file can change.
+            return byKey(text(args, "key")) || text(args, "key").startsWith(ENTRANCE_PREFIX);
+          case "peek":
+            return byKey(text(args, "key"));
+          case "relations":
+          case "callers":
+          case "preview":
+          case "project_summary":
+          case "index_log":
+          case "board_thumbnails":
+            return true;
+          case "entrances":
+            return entrances;
+          default:
+            return false;
+        }
+      });
+      return;
+    }
+    case "files_changed": {
+      const { project, truncated } = event;
+      const paths = new Set(event.paths);
+      invalidate(client, (command, args) => {
+        if (command === "search") {
+          // The file list behind file search may have gained or lost files.
+          const kinds = args["kinds"];
+          return includes(args, project) && (!Array.isArray(kinds) || kinds.includes("files"));
+        }
+        if (args["project"] !== project) {
+          return false;
+        }
+        if (command === "file_view") {
+          return truncated || paths.has(text(args, "path"));
+        }
+        // A card checks its file's bytes before showing them: an edited file shows as changed at once.
+        return command === "card" && (truncated || paths.has(keyFile(text(args, "key"))));
+      });
+      return;
+    }
+    case "boards_changed": {
+      const { project } = event;
+      const boards = new Set(event.boards);
+      invalidate(client, (command, args) => {
+        if (command === "drafts" || command === "board_refs") {
+          return true;
+        }
+        if (args["project"] !== project) {
+          return false;
+        }
+        if (command === "board_thumbnails") {
+          const ids = args["boards"];
+          return Array.isArray(ids) && ids.some((id) => typeof id === "string" && boards.has(id));
+        }
+        return command === "list_boards" || command === "project_summary";
+      });
+      return;
+    }
+    case "problems_changed":
+      invalidate(client, (command, args) => args["project"] === event.project && (command === "problems" || command === "project_summary"));
+      return;
+    case "config_changed":
+      invalidate(
+        client,
+        (command, args) =>
+          args["project"] === event.project && (command === "project_config" || command === "compile_preview" || command === "scope_dir"),
+      );
+      return;
+    case "preferences_changed":
+      // Another window (or this one) saved the preferences; the event carries them.
+      client.setQueryData(engineKey("get_preferences", {}), event.preferences);
+      return;
+    case "compile_progress":
+    case "board_conflict":
+      // Not about the cache: the compile and board stores follow these.
+      return;
+  }
 }
 
-/** Subscribes the cache to engine events (and to engine-host restarts). Returns the unsubscribe function. */
+/** The events that change the cache. */
+const CACHE_EVENTS: readonly EventType[] = [
+  "workspace_changed",
+  "project_state",
+  "project_reset",
+  "graph_updated",
+  "files_changed",
+  "boards_changed",
+  "problems_changed",
+  "config_changed",
+  "preferences_changed",
+];
+
+/** Subscribes the cache to engine events. Returns the unsubscribe function. */
 export function installEngineInvalidation(client: QueryClient): () => void {
-  const unsubscribers = [
-    onEngineEvent("graph_updated", (event) => {
-      applyGraphUpdated(client, event);
+  const unsubscribers = CACHE_EVENTS.map((type) =>
+    onEngineEvent(type, (event) => {
+      applyEngineEvent(client, event);
     }),
-    onEngineEvent("files_changed", (event) => {
-      applyFilesChanged(client, event);
-    }),
-    onEngineEvent("boards_changed", () => {
-      invalidate(client, "list_boards");
-    }),
-    onEngineEvent("config_changed", () => {
-      invalidate(client, "list_dir");
-      invalidate(client, "folder_summary");
-      invalidate(client, "get_folder_config");
-    }),
-    onEngineEvent("problems_changed", () => {
-      invalidate(client, "problems");
-    }),
-    onEngineEvent("graph_status", (event) => {
-      client.setQueryData(engineKey("graph_status", {}), event.status);
-    }),
-    // Another window (or this one) saved the preferences. The event carries them, so the cache is
-    // replaced without a refetch; the shell's preference hooks then reapply the theme and bindings.
-    onEngineEvent("preferences_changed", (event) => {
-      client.setQueryData(engineKey("get_preferences", {}), event.preferences);
-    }),
-    refetchAfterRestart(client),
-  ];
+  );
   return () => {
     for (const unsubscribe of unsubscribers) {
       unsubscribe();
     }
   };
+}
+
+/**
+ * After an engine-host restart (contract §3.6): whatever the engine answered before may be out of date
+ * (no events arrived while it was down), so every project query is reset and the shown ones fetched
+ * again. Preferences and app info don't depend on the engine's state and stay.
+ */
+export function resetEngineQueries(client: QueryClient): Promise<void> {
+  return client.resetQueries({
+    predicate: (query) => {
+      const command = commandOf(query);
+      return command !== null && !APP_COMMANDS.has(command);
+    },
+  });
 }

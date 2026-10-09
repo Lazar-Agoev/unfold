@@ -1,19 +1,26 @@
-import { describe, expect, it } from "vitest";
-import type { BoardDocument, HealthItem } from "../../ipc/generated";
-import { isValidName, publishedPath, slugOf } from "./files";
-import { repairEffect, repairSpec } from "./health";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { HealthItem, Page } from "../../ipc/generated";
+import { boardDocument, boardState, page } from "../../test/workspace";
 
+const engine = vi.hoisted(() => ({
+  call: vi.fn(),
+  onEngineEvent: vi.fn(() => () => undefined),
+  windowCommand: vi.fn(() => Promise.resolve(null)),
+}));
+vi.mock("./engine", () => engine);
+vi.mock("../../components/Toast", () => ({ showToast: vi.fn() }));
+
+const { copyPageMermaid, deleteBoard, isValidName, publishBoard, publishedPath, slugOf, unpublishBoard } = await import("./files");
+const { itemsFor, repairEffect, repairSpec } = await import("./health");
+const store = await import("./store");
+const tabs = await import("../tabStore");
+
+const P = "p-orders0000";
 const KEY = "src/routes/orders.ts#function:createOrder";
-const DOC: BoardDocument = {
-  format: "unfold-board",
-  version: 1,
-  title: "Orders",
-  defaultView: "code",
-  cards: [{ id: "create-order", ref: { block: KEY }, at: [0, 0] }],
+const PAGE: Page = page("page-2", [{ id: "create-order", ref: { block: KEY, project: "payments" }, at: [0, 0] }], {
   groups: [{ id: "queue", card: "create-order", title: "Queue it", members: [`${KEY}/if[0]`], collapsed: false }],
-  labels: {},
-  guards: {},
-};
+  links: [{ id: "a-to-b", from: "create-order", to: "create-order-2" }],
+});
 
 describe("board file names", () => {
   it("slugs titles the way the engine does", () => {
@@ -34,21 +41,105 @@ describe("board file names", () => {
 });
 
 describe("repairs", () => {
-  const missing: HealthItem = { kind: "missing", target: { card: "create-order" }, message: "not in the graph", repairs: ["reconnect", "removeCard"] };
-  const member: HealthItem = { kind: "review", target: { group: "queue" }, key: `${KEY}/if[0]`, message: "the code changed", repairs: ["accept", "reconnect", "ungroup"] };
+  const missing: HealthItem = { page: "page-2", kind: "missing", target: { card: "create-order" }, message: "not in the graph", repairs: ["reconnect", "removeCard"] };
+  const member: HealthItem = {
+    page: "page-2",
+    kind: "review",
+    target: { group: "queue" },
+    project: "payments",
+    key: `${KEY}/if[0]`,
+    message: "the code changed",
+    repairs: ["accept", "reconnect", "ungroup"],
+  };
+  const link: HealthItem = { page: "page-2", kind: "brokenLink", target: { link: "a-to-b" }, message: "an end is missing", repairs: ["removeLink"] };
 
-  it("builds the request for each repair", () => {
-    expect(repairSpec("removeCard", missing, DOC)).toEqual({ kind: "remove_card", card: "create-order" });
-    expect(repairSpec("reconnect", missing, DOC)).toBeNull();
-    expect(repairSpec("reconnect", missing, DOC, "src/routes/orders.ts#function:placeOrder")).toEqual({ kind: "reconnect", from: KEY, to: "src/routes/orders.ts#function:placeOrder" });
-    expect(repairSpec("accept", member, DOC)).toEqual({ kind: "accept", key: `${KEY}/if[0]` });
-    expect(repairSpec("ungroup", member, DOC)).toEqual({ kind: "ungroup", group: "queue" });
-    expect(repairSpec("resign", { ...missing, kind: "outdated" }, DOC)).toEqual({ kind: "resign", target: { card: "create-order" } });
-    expect(repairSpec("removeLabel", { kind: "missing", target: { label: `${KEY}/if[0]` }, message: "", repairs: [] }, DOC)).toEqual({ kind: "remove_label", key: `${KEY}/if[0]` });
+  it("finds the items about a target on its own page", () => {
+    const health = { items: [missing, { ...missing, page: "page-1" }], missing: 2, outdated: 0, brokenGroups: 0, review: 0, notConnected: 0, brokenLinks: 0 };
+    expect(itemsFor(health, "page-2", { card: "create-order" })).toEqual([missing]);
+    expect(itemsFor(health, "page-2", { group: "create-order" })).toEqual([]);
+  });
+
+  it("builds the request for each repair, on the item's page and in its project", () => {
+    expect(repairSpec("removeCard", missing, PAGE)).toEqual({ page: "page-2", kind: "remove_card", card: "create-order" });
+    expect(repairSpec("reconnect", missing, PAGE)).toBeNull();
+    expect(repairSpec("reconnect", missing, PAGE, "src/routes/orders.ts#function:placeOrder")).toEqual({
+      page: "page-2",
+      kind: "reconnect",
+      project: "payments",
+      from: KEY,
+      to: "src/routes/orders.ts#function:placeOrder",
+    });
+    expect(repairSpec("accept", member, PAGE)).toEqual({ page: "page-2", kind: "accept", project: "payments", key: `${KEY}/if[0]` });
+    expect(repairSpec("ungroup", member, PAGE)).toEqual({ page: "page-2", kind: "ungroup", group: "queue" });
+    expect(repairSpec("removeLink", link, PAGE)).toEqual({ page: "page-2", kind: "remove_link", link: "a-to-b" });
+    expect(repairSpec("resign", { ...missing, kind: "outdated" }, PAGE)).toEqual({ page: "page-2", kind: "resign", target: { card: "create-order" } });
+    const label: HealthItem = { page: "page-2", kind: "missing", target: { label: { key: `${KEY}/if[0]` } }, message: "", repairs: [] };
+    expect(repairSpec("removeLabel", label, PAGE)).toEqual({ page: "page-2", kind: "remove_label", key: `${KEY}/if[0]` });
   });
 
   it("says what each repair does, naming what it is about", () => {
-    expect(repairEffect("removeCard", missing, DOC)).toBe("Removes the card createOrder from the board, with the groups inside it.");
-    expect(repairEffect("ungroup", member, DOC)).toContain('Removes the group "Queue it"');
+    expect(repairEffect("removeCard", missing, PAGE)).toBe("Removes the card createOrder from the page, with the groups inside it and its links.");
+    expect(repairEffect("ungroup", member, PAGE)).toContain('Removes the group "Queue it"');
+    expect(repairEffect("removeLink", link, PAGE)).toBe("Removes the link. Both cards stay on the page.");
+  });
+});
+
+describe("file operations on an open board", () => {
+  const draft = ".unfold/local/drafts/orders.json";
+  const published = ".unfold/boards/orders.json";
+  const ref = { project: P, id: draft };
+
+  beforeEach(() => {
+    engine.call.mockReset();
+    engine.windowCommand.mockClear();
+    store.resetBoards();
+    tabs.useTabs.setState({ boards: [], active: "home" });
+    store.adoptBoardState(boardState(P, draft, boardDocument([page("page-1"), page("page-2")])));
+    tabs.openBoardTab(ref);
+  });
+
+  it("publishing a draft carries the session and its tab over to the published id", async () => {
+    store.setActivePage(ref, "page-2");
+    store.editBoard(ref, (document) => {
+      document.title = "Orders";
+    });
+    engine.call.mockImplementation((command: string) =>
+      Promise.resolve(
+        command === "publish_board" ? { status: "done", board: boardState(P, published, boardDocument([page("page-1"), page("page-2")]), { place: "published" }) } : boardState(P, draft),
+      ),
+    );
+    const outcome = await publishBoard(ref, { name: "orders" });
+    expect(outcome.status).toBe("done");
+    expect(engine.call).toHaveBeenCalledWith("publish_board", { project: P, id: draft, name: "orders" });
+    const next = { project: P, id: published };
+    expect(store.getOpenBoard(ref)).toBeUndefined();
+    expect(store.getOpenBoard(next)?.activePage).toBe("page-2");
+    expect(store.canUndo(next)).toBe(true);
+    expect(tabs.useTabs.getState().boards).toEqual([next]);
+    expect(tabs.getActiveBoard()).toEqual(next);
+  });
+
+  it("leaves the board as it is when the name is taken", async () => {
+    engine.call.mockResolvedValue({ status: "name_taken", path: published, suggestion: "orders-2" });
+    await expect(publishBoard(ref, { name: "orders" })).resolves.toMatchObject({ status: "name_taken", suggestion: "orders-2" });
+    expect(store.getOpenBoard(ref)).toBeDefined();
+  });
+
+  it("moving back to drafts follows the new id; deleting forgets the board and its tab", async () => {
+    engine.call.mockResolvedValueOnce(boardState(P, ".unfold/local/drafts/orders-2.json"));
+    const moved = await unpublishBoard(ref);
+    expect(tabs.useTabs.getState().boards).toEqual([moved]);
+    engine.call.mockResolvedValueOnce(null);
+    await deleteBoard(moved);
+    expect(engine.call).toHaveBeenLastCalledWith("delete_board", { project: P, id: moved.id });
+    expect(store.getOpenBoard(moved)).toBeUndefined();
+    expect(tabs.useTabs.getState()).toEqual({ boards: [], active: "home" });
+  });
+
+  it("copies a page's saved version as Mermaid", async () => {
+    engine.call.mockResolvedValueOnce({ text: "flowchart LR" });
+    await copyPageMermaid({ board: ref, page: "page-2" });
+    expect(engine.call).toHaveBeenCalledWith("export_mermaid_text", { project: P, board: { id: draft, page: "page-2" } });
+    expect(engine.windowCommand).toHaveBeenCalledWith("copy_to_clipboard", { text: "flowchart LR" });
   });
 });

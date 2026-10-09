@@ -1,6 +1,6 @@
 /**
- * Named focus targets, so an action can focus a field that may not be mounted yet: "Focus search"
- * (`/`) shows the Search view, and its field takes focus as soon as it mounts.
+ * Named focus targets, so an action can focus a field that may not be mounted yet: a card menu's
+ * "Describe" opens the Selected section, and its description field takes focus as soon as it mounts.
  */
 
 import { useEffect, type RefObject } from "react";

@@ -1,5 +1,5 @@
 /**
- * Move to New Window (architecture §11.2, U-37): a board, with its unsaved edits and undo history,
+ * Move to New Window (UI plan §3.10): a board, with its unsaved edits, undo history, and page views,
  * moves into a window of its own.
  *
  * The source window opens the new window (`move_tab_to_new_window`), hands it the board's claim
@@ -8,25 +8,26 @@
  * (restoring replaces the tabs, so a session that arrives earlier waits).
  */
 
-import type { BoardDocument } from "../../ipc/generated";
-import { onEvent, windowCommand } from "../../ipc/unfold";
-import { openBoardTab } from "../tabs";
-import { call } from "./engine";
-import { adoptSession, exportSession, flushBoard, forgetBoard, getBoard } from "./store";
-import type { BoardSession } from "./types";
+import { onShellEvent } from "../../ipc/unfold";
+import { openBoardTab, removeBoardTab } from "../tabStore";
+import { call, windowCommand } from "./engine";
+import { adoptSession, exportSession, flushBoard, flushBoardView, forgetBoard } from "./store";
+import type { BoardRef, BoardSession, WindowId } from "./types";
 
 /** Moves an open board into a new window. Resolves with the new window's id. */
-export async function moveBoardToNewWindow(id: string): Promise<number> {
-  if (!getBoard(id)) {
-    throw new Error("That board isn't open in this window.");
-  }
+export async function moveBoardToNewWindow(ref: BoardRef): Promise<WindowId> {
   // Nothing may still be on its way to the engine once the claim moves; a failed save stays unsaved
   // in the session and is written by the new window.
-  await flushBoard(id).catch(() => undefined);
+  await Promise.all([flushBoard(ref), flushBoardView(ref)]);
+  const session = exportSession(ref);
+  if (!session) {
+    throw new Error("That board isn't open in this window.");
+  }
   const { windowId } = await windowCommand("move_tab_to_new_window");
-  await call("move_board", { id, toWindow: windowId });
-  await windowCommand("transfer_board_state", { toWindow: windowId, payload: exportSession(id) });
-  forgetBoard(id);
+  await call("move_board", { project: ref.project, id: ref.id, toWindow: windowId });
+  await windowCommand("transfer_board_state", { toWindow: windowId, payload: session });
+  forgetBoard(ref);
+  removeBoardTab(ref);
   return windowId;
 }
 
@@ -34,21 +35,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isDocument(value: unknown): value is BoardDocument {
-  return isRecord(value) && value["format"] === "unfold-board" && Array.isArray(value["cards"]) && Array.isArray(value["groups"]);
+function isDocument(value: unknown): boolean {
+  return isRecord(value) && value["format"] === "unfold-board" && Array.isArray(value["pages"]) && value["pages"].length > 0;
+}
+
+function isEntry(value: unknown): boolean {
+  return isRecord(value) && typeof value["page"] === "string" && isDocument(value["document"]);
 }
 
 /** The session another window sent, or null if the payload isn't one. */
 export function parseSession(payload: unknown): BoardSession | null {
-  if (!isRecord(payload) || !isRecord(payload["state"]) || !isRecord(payload["history"])) {
+  if (!isRecord(payload) || !isRecord(payload["state"]) || !isRecord(payload["history"]) || !isRecord(payload["pages"])) {
     return null;
   }
-  const { state, document, history } = payload;
+  const { state, document, history, activePage } = payload;
   const { past, future } = history;
-  if (typeof state["id"] !== "string" || !isDocument(state["document"]) || !isDocument(document)) {
+  if (typeof state["project"] !== "string" || typeof state["id"] !== "string" || !isDocument(state["document"]) || !isDocument(document)) {
     return null;
   }
-  if (!Array.isArray(past) || !Array.isArray(future) || !(past as unknown[]).every(isDocument) || !(future as unknown[]).every(isDocument)) {
+  if (typeof activePage !== "string" || !Array.isArray(past) || !Array.isArray(future) || !past.every(isEntry) || !future.every(isEntry)) {
     return null;
   }
   return payload as unknown as BoardSession;
@@ -59,8 +64,7 @@ let ready = false;
 let unsubscribe: (() => void) | null = null;
 
 function receive(session: BoardSession): void {
-  adoptSession(session);
-  openBoardTab(session.state.id);
+  openBoardTab(adoptSession(session));
 }
 
 /**
@@ -71,8 +75,8 @@ export function installTransferReceiver(): void {
   if (unsubscribe) {
     return;
   }
-  unsubscribe = onEvent("board_state_transferred", (event) => {
-    const session = parseSession(event["payload"]);
+  unsubscribe = onShellEvent("board_state_transferred", (event) => {
+    const session = parseSession(event.payload);
     if (!session) {
       return;
     }

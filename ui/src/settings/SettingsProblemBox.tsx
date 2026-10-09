@@ -1,7 +1,7 @@
 /** Rust's refusal of a settings change, with where in `.unfold/config.toml` it found the problem. */
 
 import { useEffect, useRef } from "react";
-import { problemText, type SettingsProblemText } from "./store";
+import { problemText, type SettingsProblemText } from "./edits";
 import "./settings.css";
 
 export function SettingsProblemBox({ problem }: { readonly problem: SettingsProblemText }) {

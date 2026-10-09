@@ -1,121 +1,140 @@
 /**
- * The board API the rest of the window uses: open a definition or an entrance on the active board,
- * and read which keys are on it (for the `●` marks). Opening onto a window with no board open
- * creates a draft first (architecture §10.5: every board saves itself from its first card).
+ * What screens do to a page's cards (UI plan §3.4, §3.7): add a definition or an entrance (from any
+ * connected project), bring a card into view, author descriptions, labels, groups, and links, and read
+ * which project-qualified keys a page shows (for the on-page marks). Each change is one undo step and
+ * autosaves.
+ *
+ * A card's project is its `ref.project` resolved against the current workspace (D-3); a card from the
+ * board's own project has no `ref.project`.
  */
 
 import { useMemo } from "react";
-import { showToast } from "../../components/Toast";
-import type { CardView } from "../../ipc/generated";
 import { queryClient } from "../../ipc/client";
-import { toUnfoldError } from "../../ipc/unfold";
+import type { Card, CardRef, CardView, Key, ProjectId, ProjectName } from "../../ipc/generated";
 import { cardQuery } from "../../canvas/cardData";
 import { CARD_MIN_WIDTH, FOLLOW_GAP, STACK_GAP, fallbackSize, newCardPlacement, reflow, type Rect } from "../../canvas/layout";
+import { showToast } from "../../components/Toast";
+import { activateBoard } from "../tabStore";
+import { getProjectIndex, refProjectFor, resolveRefProject, useProjectIndex } from "../workspace";
 import {
   addCard,
+  addLink as addLinkTo,
   cardKey,
-  findCardByKey,
+  findCard,
+  findCardByRef,
+  findPage,
   keyDisplayName,
-  removeCard,
+  removeCard as removeCardFrom,
   removeGroup,
+  removeLink as removeLinkFrom,
   setCardDescription,
   setCardsFolded,
   setLabel,
+  setLinkLabel as setLinkLabelOf,
   updateGroup,
   type GroupChange,
 } from "./document";
-import { openBoardTab } from "../tabs";
-import { editBoard, getBoard, newBoard, pushFocusMove, requestFocus, selectCard, setPendingPlacement, useBoards } from "./store";
-import type { OpenBoard, TrailItem } from "./types";
+import { cardRefKey, boardKey } from "./keys";
+import { newBoard } from "./open";
+import { editPage, getOpenBoard, pushFocusMove, requestCardFocus, select, setActivePage, setPendingPlacement, useBoards } from "./store";
+import type { BoardRef, OpenBoard, PageId, PageTarget } from "./types";
 
-let creating: Promise<string> | null = null;
-
-/** The board new cards go to, creating a draft named `title` when none is open. */
-export async function ensureActiveBoard(title: string): Promise<string> {
-  const { activeBoardId, order } = useBoards.getState();
-  const existing = activeBoardId ?? order.at(-1) ?? null;
-  if (existing !== null) {
-    // Opening from a source tab (a call link, ⊕) or a sidebar view while a source tab shows: the
-    // card goes to this board, so its tab comes forward to show it.
-    openBoardTab(existing);
-    return existing;
-  }
-  creating ??= newBoard(title).finally(() => {
-    creating = null;
-  });
-  return creating;
+/** A card ref for `key`, naming `project` when the card isn't from the board's own project. */
+function refOf(kind: "block" | "entrance", key: Key, project: ProjectName | undefined): CardRef {
+  const named = project !== undefined ? { project } : {};
+  return kind === "block" ? { block: key, ...named } : { entrance: key, ...named };
 }
 
-/** Every card's rectangle as the canvas shows it (saved positions reflowed by measured sizes). */
-export function displayedRects(board: OpenBoard): Map<string, Rect> {
+/** Every card's rectangle on a page as the canvas shows it (saved positions reflowed by measured sizes). */
+export function displayedRects(board: OpenBoard, pageId: PageId): Map<string, Rect> {
+  const page = findPage(board.document, pageId);
+  const sizes = board.pages[pageId]?.sizes ?? {};
+  const rects = new Map<string, Rect>();
+  if (!page) {
+    return rects;
+  }
   const sizeOf = (id: string) => {
-    const measured = board.view.sizes[id];
+    const measured = sizes[id];
     if (measured) {
       return measured;
     }
-    const card = board.document.cards.find((item) => item.id === id);
+    const card = findCard(page, id);
     return fallbackSize(card !== undefined && "entrance" in card.ref);
   };
-  const positions = reflow(board.document.cards, sizeOf);
-  const rects = new Map<string, Rect>();
-  for (const card of board.document.cards) {
+  const positions = reflow(page.cards, sizeOf);
+  for (const card of page.cards) {
     const at = positions.get(card.id) ?? { x: card.at[0], y: card.at[1] };
     rects.set(card.id, { ...at, ...sizeOf(card.id) });
   }
   return rects;
 }
 
-/** Brings an existing card into view, unfolding it if it was folded to its title. */
-export function focusCard(boardId: string, cardId: string): void {
-  const board = getBoard(boardId);
-  const card = board?.document.cards.find((item) => item.id === cardId);
-  if (!board || !card) {
+/** Shows a page: its board's tab and the page itself. */
+function showPage(target: PageTarget): void {
+  activateBoard(target.board);
+  setActivePage(target.board, target.page);
+}
+
+/** Brings an existing card into view and selects it, unfolding it if it was folded to its title. */
+export function focusCard(target: PageTarget, cardId: string): void {
+  const board = getOpenBoard(target.board);
+  const page = board ? findPage(board.document, target.page) : undefined;
+  const card = page ? findCard(page, cardId) : undefined;
+  if (!card) {
     return;
   }
   if (card.folded === true) {
     // Following into a folded card opens it; the reader never folds anything by itself.
-    editBoard(boardId, (document) => {
-      setCardsFolded(document, [cardId], false);
+    editPage(target, (draft) => {
+      setCardsFolded(draft, [cardId], false);
     });
   }
-  selectCard(boardId, cardId);
-  requestFocus(boardId, [cardId], "center");
+  select(target, { kind: "card", cardId, key: null });
+  requestCardFocus(target, [cardId], "center");
 }
 
-function reportFailure(error: unknown, what: string): void {
-  showToast({ message: `Couldn't open ${what}: ${toUnfoldError(error).message}`, tone: "danger" });
+/** The `ref.project` a card from `project` gets on the target's board, or undefined after a refusal toast. */
+function refProjectOn(target: PageTarget, project: ProjectId): { readonly project?: ProjectName } | undefined {
+  const result = refProjectFor(getProjectIndex(), target.board.project, project);
+  if (!result.ok) {
+    showToast({
+      title: "This card can't be added",
+      body: "Its project has the same name as this board's project. Rename one of the projects in its settings.",
+      tone: "danger",
+    });
+    return undefined;
+  }
+  return result;
 }
 
-async function openBlockCardAsync(key: string): Promise<void> {
+/**
+ * Adds a definition (or any indexed block) of `project` as a full card on the page, or focuses the card
+ * that already shows it. Shows the page. Returns the card's id (undefined when it can't be added, V-62).
+ */
+export function addBlock(target: PageTarget, project: ProjectId, key: Key): string | undefined {
+  const board = getOpenBoard(target.board);
+  const page = board ? findPage(board.document, target.page) : undefined;
+  const named = board && page ? refProjectOn(target, project) : undefined;
+  if (!board || !page || !named) {
+    return undefined;
+  }
+  showPage(target);
   const label = keyDisplayName(key);
-  const boardId = await ensureActiveBoard(label);
-  const board = getBoard(boardId);
-  if (!board) {
-    return;
-  }
-  const trail: TrailItem[] = [];
-  const existing = findCardByKey(board.document, key);
+  const existing = findCardByRef(page, key, named.project);
   if (existing) {
-    pushFocusMove(boardId, [{ cardId: existing.id, label }]);
-    focusCard(boardId, existing.id);
-    return;
+    pushFocusMove(target, [{ cardId: existing.id, label }]);
+    focusCard(target, existing.id);
+    return existing.id;
   }
-  const at = newCardPlacement([...displayedRects(board).values()]);
-  const cardId = editBoard(boardId, (document) => addCard(document, { ref: { block: key }, at }));
+  const at = newCardPlacement([...displayedRects(board, target.page).values()]);
+  const cardId = editPage(target, (draft) => addCard(draft, { ref: refOf("block", key, named.project), at }));
   if (cardId === undefined) {
-    return;
+    return undefined;
   }
-  trail.push({ cardId, label });
-  pushFocusMove(boardId, trail);
-  selectCard(boardId, cardId);
-  requestFocus(boardId, [cardId], "center");
-}
-
-/** Opens a definition (or any indexed block) as a full card on the active board, or focuses it. */
-export function openBlockCard(key: string): void {
-  openBlockCardAsync(key).catch((error: unknown) => {
-    reportFailure(error, keyDisplayName(key));
-  });
+  pushFocusMove(target, [{ cardId, label }]);
+  select(target, { kind: "card", cardId, key: null });
+  requestCardFocus(target, [cardId], "center");
+  return cardId;
 }
 
 /** The entrance's title as the trail and a new board show it: its label, or `POST /orders`. */
@@ -130,152 +149,191 @@ export function entranceTitle(card: Extract<CardView, { type: "entrance" }>): st
   return header.trigger ?? header.title;
 }
 
-async function openEntranceAsync(entranceKey: string): Promise<void> {
-  // Read through the cache: the entrance card then draws from it at once. Its title names a new draft.
-  const view = await queryClient.query(cardQuery(entranceKey));
+/** An entrance's card model, read through the cache (its card then draws from it at once). */
+async function entranceModel(project: ProjectId, entranceKey: Key): Promise<Extract<CardView, { type: "entrance" }>> {
+  const view = await queryClient.query(cardQuery(project, entranceKey));
   if (view.type !== "entrance") {
-    throw new Error("that key is not an entrance");
+    throw new Error("That key is not an entrance.");
   }
+  return view;
+}
+
+/**
+ * Opens an entrance card and a full card for each resolved handler on the page (or focuses the
+ * entrance card if it is already there). Handlers start in a column to its right; once the entrance
+ * card is drawn, the canvas moves each level with its handler row (`PendingPlacement`).
+ */
+export async function openEntrance(target: PageTarget, project: ProjectId, entranceKey: Key): Promise<void> {
+  const view = await entranceModel(project, entranceKey);
+  const board = getOpenBoard(target.board);
+  const page = board ? findPage(board.document, target.page) : undefined;
+  const named = board && page ? refProjectOn(target, project) : undefined;
+  if (!board || !page || !named) {
+    return;
+  }
+  showPage(target);
   const title = entranceTitle(view);
-  const boardId = await ensureActiveBoard(title);
-  const board = getBoard(boardId);
-  if (!board) {
-    return;
-  }
-  const existing = findCardByKey(board.document, entranceKey);
+  const existing = page.cards.find((card) => "entrance" in card.ref && card.ref.entrance === entranceKey && card.ref.project === named.project);
   if (existing) {
-    pushFocusMove(boardId, [{ cardId: existing.id, label: title }]);
-    focusCard(boardId, existing.id);
+    pushFocusMove(target, [{ cardId: existing.id, label: title }]);
+    focusCard(target, existing.id);
     return;
   }
-  const rects = displayedRects(board);
-  const [x, y] = newCardPlacement([...rects.values()]);
-  const onBoard = new Set(board.document.cards.map(cardKey));
+  const [x, y] = newCardPlacement([...displayedRects(board, target.page).values()]);
+  const onPage = new Set(page.cards.filter((card) => card.ref.project === named.project).map(cardKey));
   // Every resolved handler opens as a full card, in registration order, once each.
-  const handlers: string[] = [];
-  for (const target of view.targets) {
-    if (target.resolution === "resolved" && target.target !== null && !onBoard.has(target.target) && !handlers.includes(target.target)) {
-      handlers.push(target.target);
+  const handlers: Key[] = [];
+  for (const handler of view.targets) {
+    const key = handler.resolution === "resolved" ? handler.target : null;
+    if (key !== null && !onPage.has(key) && !handlers.includes(key)) {
+      handlers.push(key);
     }
   }
-  // Handlers start in a column to the right, stacked; once the entrance card is measured, the canvas
-  // moves each level with its handler row (`PendingPlacement`).
   const column = x + CARD_MIN_WIDTH + FOLLOW_GAP;
   const handlerHeight = fallbackSize(false).height + STACK_GAP;
-  const opened = editBoard(boardId, (document) => {
-    const entranceId = addCard(document, { ref: { entrance: entranceKey }, at: [x, y] });
-    const ids = handlers.map((handler, index) => ({ cardId: addCard(document, { ref: { block: handler }, at: [column, y + index * handlerHeight] }), key: handler }));
+  const opened = editPage(target, (draft) => {
+    const entranceId = addCard(draft, { ref: refOf("entrance", entranceKey, named.project), at: [x, y] });
+    const ids = handlers.map((key, index) => ({
+      cardId: addCard(draft, { ref: refOf("block", key, named.project), at: [column, y + index * handlerHeight] }),
+      key,
+    }));
     return { entranceId, handlers: ids };
   });
   if (!opened) {
     return;
   }
-  pushFocusMove(boardId, [{ cardId: opened.entranceId, label: title }]);
-  selectCard(boardId, opened.entranceId);
+  pushFocusMove(target, [{ cardId: opened.entranceId, label: title }]);
+  select(target, { kind: "card", cardId: opened.entranceId, key: null });
   if (opened.handlers.length > 0) {
-    setPendingPlacement(boardId, opened);
+    setPendingPlacement(target, opened);
   } else {
-    requestFocus(boardId, [opened.entranceId], "fit");
+    requestCardFocus(target, [opened.entranceId], "fit");
   }
 }
 
-/**
- * Opens an entrance card and a full card for each resolved handler on the active board (creating a
- * draft when none is open), or focuses the entrance card if it is already there.
- */
-export function openEntrance(entranceKey: string): void {
-  openEntranceAsync(entranceKey).catch((error: unknown) => {
-    reportFailure(error, keyDisplayName(entranceKey));
-  });
-}
-
-/** The active board's id: the board tab that was active last, or null when no board is open. */
-export function useActiveBoardId(): string | null {
-  return useBoards((state) => state.activeBoardId);
+/** Traces an entrance: a new draft in its project, titled after it, with the entrance and its handlers. */
+export async function traceEntrance(project: ProjectId, entranceKey: Key): Promise<BoardRef> {
+  const view = await entranceModel(project, entranceKey);
+  const ref = await newBoard(project, { title: entranceTitle(view) });
+  const page = getOpenBoard(ref)?.activePage;
+  if (page !== undefined) {
+    await openEntrance({ board: ref, page }, project, entranceKey);
+  }
+  return ref;
 }
 
 const NO_KEYS: ReadonlySet<string> = new Set();
 
-/** The structural keys on the active board (blocks and entrances), for the `●` marks. */
-export function useActiveBoardKeys(): ReadonlySet<string> {
-  const cards = useBoards((state) => (state.activeBoardId !== null ? state.boards[state.activeBoardId]?.document.cards : undefined));
-  return useMemo(() => (cards ? new Set(cards.map(cardKey)) : NO_KEYS), [cards]);
+/** The project-qualified keys (`cardRefKey`) of the cards on a page that resolve to a connected project. */
+export function usePageKeys(target: PageTarget | null): ReadonlySet<string> {
+  const key = target ? boardKey(target.board) : null;
+  const pageId = target?.page;
+  const cards = useBoards((state) => (key !== null ? state.boards[key]?.document.pages.find((page) => page.id === pageId)?.cards : undefined));
+  const index = useProjectIndex();
+  const boardProject = target?.board.project;
+  return useMemo(() => {
+    if (!cards || boardProject === undefined) {
+      return NO_KEYS;
+    }
+    const keys = new Set<string>();
+    for (const card of cards) {
+      const project = resolveRefProject(index, boardProject, card.ref.project);
+      if (project !== null) {
+        keys.add(cardRefKey(project, cardKey(card)));
+      }
+    }
+    return keys;
+  }, [cards, index, boardProject]);
+}
+
+/** The project a card on a board of `ref` reads from, kept current; null when it isn't connected (a placeholder). */
+export function useResolvedCardProject(ref: BoardRef, card: Card): ProjectId | null {
+  return resolveRefProject(useProjectIndex(), ref.project, card.ref.project);
 }
 
 // ---------------------------------------------------------------------------------------------
-// Authoring (the inspector and board menus): each is one undo step and autosaves. Typing in one
-// field merges into one step. `author` is `person:<username>` (from `app_info`).
+// Authoring (Selected, card menus): each is one undo step; typing in one field merges into one step.
+// `author` is `person:<username>` (`useAuthor`).
 
 /** Sets or clears (blank text) a card's description; the next save signs it. */
-export function describeCard(boardId: string, cardId: string, text: string, author: string): void {
-  editBoard(boardId, (document) => {
-    setCardDescription(document, cardId, text, author);
-  }, { coalesce: `describe:${cardId}` });
+export function describeCard(target: PageTarget, cardId: string, text: string, author: string): void {
+  editPage(
+    target,
+    (page) => {
+      setCardDescription(page, cardId, text, author);
+    },
+    { coalesce: `describe:${cardId}` },
+  );
 }
 
-/** Sets or clears (blank text) the Flow label of a block. */
-export function labelBlock(boardId: string, key: string, text: string, author: string): void {
-  editBoard(boardId, (document) => {
-    setLabel(document, key, text, author);
-  }, { coalesce: `label:${key}` });
+/** Sets or clears (blank text) the Flow label of a block of `project` on the page. */
+export function labelNode(target: PageTarget, project: ProjectId, key: Key, text: string, author: string): void {
+  const result = refProjectFor(getProjectIndex(), target.board.project, project);
+  if (!result.ok) {
+    return;
+  }
+  editPage(
+    target,
+    (page) => {
+      setLabel(page, result.project, key, text, author);
+    },
+    { coalesce: `label:${project}:${key}` },
+  );
 }
 
 /** Renames a group, sets its description, or collapses it. */
-export function editGroup(boardId: string, groupId: string, change: GroupChange): void {
-  editBoard(boardId, (document) => {
-    updateGroup(document, groupId, change);
-  }, change.collapsed === undefined ? { coalesce: `group:${groupId}` } : {});
+export function editGroup(target: PageTarget, groupId: string, change: GroupChange): void {
+  editPage(
+    target,
+    (page) => {
+      updateGroup(page, groupId, change);
+    },
+    change.collapsed === undefined ? { coalesce: `group:${groupId}` } : {},
+  );
 }
 
-export function ungroup(boardId: string, groupId: string): void {
-  editBoard(boardId, (document) => {
-    removeGroup(document, groupId);
+export function ungroup(target: PageTarget, groupId: string): void {
+  editPage(target, (page) => {
+    removeGroup(page, groupId);
   });
 }
 
-export function removeCardFromBoard(boardId: string, cardId: string): void {
-  editBoard(boardId, (document) => {
-    removeCard(document, cardId);
+/** Removes a card from the page, with its groups and links. */
+export function removeCard(target: PageTarget, cardId: string): void {
+  editPage(target, (page) => {
+    removeCardFrom(page, cardId);
   });
 }
 
-/** Folds (or unfolds) every card to its title: Fold all and Unfold all. */
-export function foldAllCards(boardId: string, folded: boolean): void {
-  editBoard(boardId, (document) => {
-    setCardsFolded(document, document.cards.map((card) => card.id), folded);
+/** Folds (or unfolds) every card of the page to its title: Fold all and Unfold all. */
+export function foldAll(target: PageTarget, folded: boolean): void {
+  editPage(target, (page) => {
+    setCardsFolded(
+      page,
+      page.cards.map((card) => card.id),
+      folded,
+    );
   });
 }
 
-/** A board's zoom (updated when the camera stops), for the status bar. */
-export function useBoardZoom(boardId: string): number {
-  return useBoards((state) => state.boards[boardId]?.view.camera?.zoom ?? 1);
+/** Draws a link between two cards of the page (V-58). Returns its id, or undefined when it can't be drawn. */
+export function addLink(target: PageTarget, from: string, to: string): string | undefined {
+  return editPage(target, (page) => addLinkTo(page, from, to));
 }
 
-/** Open board ids in the order they opened (for the editor's tabs and the window state). */
-export function useOpenBoardIds(): readonly string[] {
-  return useBoards((state) => state.order);
+/** Sets or clears (blank text) a link's label. */
+export function setLinkLabel(target: PageTarget, linkId: string, text: string, author: string): void {
+  editPage(
+    target,
+    (page) => {
+      setLinkLabelOf(page, linkId, text, author);
+    },
+    { coalesce: `link:${linkId}` },
+  );
 }
 
-export {
-  adoptBoardState,
-  canRedo,
-  canUndo,
-  forgetBoard,
-  reloadBoard,
-  updateView,
-  useBoards,
-  adoptSession,
-  closeBoard,
-  editBoard,
-  exportSession,
-  flushAllBoards,
-  flushBoard,
-  newBoard,
-  openBoard,
-  redo,
-  resolveConflict,
-  saveBoard,
-  setActiveBoard,
-  subscribeBoardOpened,
-  undo,
-} from "./store";
+export function removeLink(target: PageTarget, linkId: string): void {
+  editPage(target, (page) => {
+    removeLinkFrom(page, linkId);
+  });
+}
