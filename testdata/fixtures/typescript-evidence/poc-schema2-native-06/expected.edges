@@ -1,0 +1,5 @@
+broken.ts failed: Expected `}` but found `EOF` (at byte 25)
+use.ts#import[0] #0 imports `./missing.js` -> not_found
+use.ts#import[1] #0 imports `./broken.js` -> not_indexed
+use.ts#expression_statement[0]/call[0] #0 calls `missing` -> not_found
+use.ts#expression_statement[1]/call[0] #0 calls `broken` -> not_indexed

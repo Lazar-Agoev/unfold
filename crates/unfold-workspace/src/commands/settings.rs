@@ -1,0 +1,270 @@
+//! Settings commands (architecture §9.2, decision U-23): the app preferences, the folder's
+//! `.unfold/config.toml` (read, and changed through validated edits that keep its comments),
+//! and what the UI needs to sign its edits.
+
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+use unfold_core::vocab::{DetectorId, EntranceKind, HttpMethod, Language};
+use unfold_engine::settings::{ManualTargets, Settings};
+
+use super::NoArgs;
+use crate::error::WorkspaceError;
+use crate::events::WorkspaceEvent;
+use crate::ipc::context::Ctx;
+use crate::ipc::error::{CommandError, CommandResult};
+use crate::settings_edit::SettingsEdit;
+use crate::state::Preferences;
+
+/// `get_preferences`: the app preferences (defaults when none are saved).
+pub fn get_preferences(ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<Preferences> {
+    Ok(ctx.registry().app().preferences())
+}
+
+/// The arguments of `set_preferences`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct SetPreferencesArgs {
+    /// Every preference (read them with `get_preferences`, change some, send them back).
+    pub preferences: Preferences,
+}
+
+/// The most compile threads a preference may ask for.
+const MAX_THREADS: u32 = 256;
+
+/// `set_preferences`: saves the preferences and sends `preferences_changed` (with them) to every
+/// window, so other windows apply a new theme or key bindings at once. The thread limit and
+/// background-update default apply to folders opened afterwards.
+pub fn set_preferences(ctx: &Ctx<'_>, args: SetPreferencesArgs) -> CommandResult<Preferences> {
+    let preferences = args.preferences;
+    if preferences
+        .thread_limit
+        .is_some_and(|limit| limit == 0 || limit > MAX_THREADS)
+    {
+        return Err(CommandError::invalid_args(format!(
+            "the thread limit must be between 1 and {MAX_THREADS}"
+        )));
+    }
+    if preferences
+        .editor_command
+        .as_deref()
+        .is_some_and(|command| command.contains('\0'))
+    {
+        return Err(CommandError::invalid_args(
+            "the editor command contains a NUL character",
+        ));
+    }
+    ctx.registry().app().set_preferences(&preferences)?;
+    ctx.broadcast(&WorkspaceEvent::PreferencesChanged {
+        preferences: preferences.clone(),
+    });
+    Ok(preferences)
+}
+
+/// A settings problem with its position.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsProblem {
+    /// What is wrong.
+    pub message: String,
+    /// The one-based line, when known.
+    pub line: Option<u32>,
+    /// The one-based column, when known.
+    pub column: Option<u32>,
+}
+
+/// One `[[python.project]]` table.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PythonProjectView {
+    /// The project folder (`""` is the open folder).
+    pub root: String,
+    /// Import roots relative to the open folder; absent means the front end's default.
+    pub source_roots: Option<Vec<String>>,
+    /// The grammar version, such as `3.14`.
+    pub version: String,
+}
+
+/// One `[[entrance]]` table.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ManualEntranceView {
+    /// Its position among the `[[entrance]]` tables (what edits name).
+    pub index: u32,
+    /// The kind.
+    pub kind: EntranceKind,
+    /// The trigger.
+    pub trigger: Option<String>,
+    /// The HTTP method.
+    pub method: Option<HttpMethod>,
+    /// The label.
+    pub label: Option<String>,
+    /// Handler locators, middleware first (every kind but `process`).
+    pub handler: Vec<String>,
+    /// The startup locator (`process`).
+    pub startup: Option<String>,
+    /// The table's line in the file.
+    pub line: u32,
+}
+
+/// The validated settings, as the settings editor shows them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsView {
+    /// The languages to graph; absent means every supported language found.
+    pub languages: Option<Vec<Language>>,
+    /// `[scope] include` patterns.
+    pub include: Vec<String>,
+    /// `[scope] exclude` patterns.
+    pub exclude: Vec<String>,
+    /// Detectors turned off.
+    pub disabled_detectors: Vec<DetectorId>,
+    /// Python projects.
+    pub python_projects: Vec<PythonProjectView>,
+    /// Manual entrances, in file order.
+    pub entrances: Vec<ManualEntranceView>,
+}
+
+impl From<&Settings> for SettingsView {
+    fn from(settings: &Settings) -> Self {
+        Self {
+            languages: settings.languages.clone(),
+            include: settings
+                .scope
+                .include()
+                .iter()
+                .map(|pattern| pattern.to_string())
+                .collect(),
+            exclude: settings
+                .scope
+                .exclude()
+                .iter()
+                .map(|pattern| pattern.to_string())
+                .collect(),
+            disabled_detectors: settings.disabled_detectors.clone(),
+            python_projects: settings
+                .python_projects
+                .iter()
+                .map(|project| PythonProjectView {
+                    root: project.root.as_str().to_owned(),
+                    source_roots: project
+                        .source_roots
+                        .as_ref()
+                        .map(|roots| roots.iter().map(|root| root.as_str().to_owned()).collect()),
+                    version: project.version.as_str().to_owned(),
+                })
+                .collect(),
+            entrances: settings
+                .entrances
+                .iter()
+                .map(|entrance| {
+                    let (handler, startup) = match &entrance.targets {
+                        ManualTargets::Handlers(locators) => {
+                            (locators.iter().map(ToString::to_string).collect(), None)
+                        }
+                        ManualTargets::Startup(locator) => (Vec::new(), Some(locator.to_string())),
+                    };
+                    ManualEntranceView {
+                        index: u32::try_from(entrance.index).unwrap_or(u32::MAX),
+                        kind: entrance.kind,
+                        trigger: entrance.trigger.as_deref().map(str::to_owned),
+                        method: entrance.method,
+                        label: entrance.label.as_deref().map(str::to_owned),
+                        handler,
+                        startup,
+                        line: entrance.line,
+                    }
+                })
+                .collect(),
+        }
+    }
+}
+
+/// `.unfold/config.toml` as the settings editor sees it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderConfig {
+    /// Whether the file exists (absent means every default).
+    pub exists: bool,
+    /// The file's text.
+    pub text: Option<String>,
+    /// The validated settings, unless the file is invalid.
+    pub settings: Option<SettingsView>,
+    /// Why the file is invalid, with its position.
+    pub error: Option<SettingsProblem>,
+}
+
+fn folder_config(text: Option<String>, settings: Result<Settings, WorkspaceError>) -> FolderConfig {
+    let (settings, error) = match settings {
+        Ok(settings) => (Some(SettingsView::from(&settings)), None),
+        Err(WorkspaceError::InvalidSettings {
+            message,
+            line,
+            column,
+        }) => (
+            None,
+            Some(SettingsProblem {
+                message,
+                line,
+                column,
+            }),
+        ),
+        Err(other) => (
+            None,
+            Some(SettingsProblem {
+                message: other.to_string(),
+                line: None,
+                column: None,
+            }),
+        ),
+    };
+    FolderConfig {
+        exists: text.is_some(),
+        text,
+        settings,
+        error,
+    }
+}
+
+/// `get_folder_config`: the settings file's text, its validated settings, or why it is invalid.
+pub fn get_folder_config(ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<FolderConfig> {
+    let workspace = ctx.workspace()?;
+    let text = workspace.settings_text()?;
+    Ok(folder_config(text, workspace.settings()))
+}
+
+/// The arguments of `update_folder_config`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateFolderConfigArgs {
+    /// The edits, applied in order; all or nothing.
+    pub edits: Vec<SettingsEdit>,
+}
+
+/// `update_folder_config`: applies validated edits (scope, manual entrances, Python projects,
+/// detector toggles), keeping comments and formatting; an edit that would make the file invalid
+/// is refused with `invalid_settings` and nothing is written. Sends `config_changed`.
+pub fn update_folder_config(ctx: &Ctx<'_>, args: UpdateFolderConfigArgs) -> CommandResult<FolderConfig> {
+    let workspace = ctx.workspace()?;
+    let outcome = workspace.edit_settings(&args.edits)?;
+    let text = workspace.settings_text()?;
+    Ok(folder_config(text, Ok(outcome.settings)))
+}
+
+/// Facts about the app the UI can't get itself (it has no Node APIs).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AppInfo {
+    /// The person's username, which signs their board edits (`person:<username>`).
+    pub username: String,
+    /// The engine version.
+    pub engine_version: String,
+}
+
+/// `app_info`: the username that signs edits, and the engine version.
+pub fn app_info(_ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<AppInfo> {
+    let username = super::diagnostics::username().unwrap_or_else(|| "unknown".to_owned());
+    Ok(AppInfo {
+        username,
+        engine_version: unfold_engine::ENGINE_VERSION.to_owned(),
+    })
+}

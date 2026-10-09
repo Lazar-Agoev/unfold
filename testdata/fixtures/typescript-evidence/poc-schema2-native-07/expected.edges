@@ -1,0 +1,5 @@
+use.ts#try[0]/catch[0]/expression_statement[0]/call[0] #0 calls `error` -> not_concrete
+use.ts#variable:holder/function:holder/try[0]/catch[0]/expression_statement[0]/call[0] #0 calls `callback` -> not_concrete
+use.ts#variable:second/function:second/try[0]/catch[0]/expression_statement[0]/call[0] #0 calls `callback` -> not_concrete
+use.ts#expression_statement[0]/call[0] #0 calls `mutable` -> mutable_binding
+use.ts#expression_statement[1]/call[0] #0 calls `variable` -> mutable_binding

@@ -1,0 +1,1 @@
+import x from "pkg"; const v = { x, ...x }; const a = [...x]; x(...a);

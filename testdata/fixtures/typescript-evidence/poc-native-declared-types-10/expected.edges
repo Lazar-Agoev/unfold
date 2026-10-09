@@ -1,0 +1,3 @@
+override.ts#function:call/expression_statement[0]/call[0] #0 calls `base.m` -> overridden
+override.ts#function:call/expression_statement[1]/call[0] #0 calls `child.m` -> override.ts#class:Child/method:m
+override.ts#class:Holder/method:run/expression_statement[0]/call[0] #0 calls `this.base.m` -> overridden

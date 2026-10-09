@@ -1,0 +1,16 @@
+source_id,target_id,kind,target_text,resolution,reason,module,position
+b2,b19,imports,./validate.js,resolved,,,
+b5,b20,calls,validateOrder,resolved,,,
+b9,,calls,handler,unresolved,parameter,,1
+b11,,imports,express,external,,express,
+b12,b1,imports,./orders.js,resolved,,,
+b14,,calls,express,external,,express,
+b16,,calls,app.post,unresolved,unknown_receiver,,
+b16,b3,references,createOrder,resolved,,,1
+b18,,calls,app.listen,unresolved,unknown_receiver,,
+b23,,constructs,Error,external,,global,
+b25,b6,imports,./queue.js,resolved,,,
+b26,b19,imports,./validate.js,resolved,,,
+b29,b20,calls,validateOrder,resolved,,,
+b31,b7,calls,startConsumer,resolved,,,
+b31,b27,references,processOrder,resolved,,,1

@@ -1,0 +1,243 @@
+/* Cards on the board: sized to their content (360–880 px), never scrolling inside. */
+
+.board-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 360px;
+  max-width: 880px;
+  border: 1px solid var(--color-contour);
+  border-radius: var(--radius-large);
+  background: var(--color-surface);
+  box-shadow: 0 1px 2px rgb(20 24 40 / 0.06);
+  color: var(--color-text);
+  font-family: var(--font-ui);
+}
+
+.board-card.selected {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-selection), 0 1px 2px rgb(20 24 40 / 0.06);
+}
+
+.board-card.placeholder { border-style: dashed; }
+
+.card-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 12px 6px 8px;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: var(--radius-large) var(--radius-large) 0 0;
+  cursor: grab;
+}
+
+.board-card.folded .card-header { border-bottom-color: transparent; border-radius: var(--radius-large); }
+
+.card-fold {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: var(--radius-small);
+  color: var(--color-muted);
+}
+
+.card-fold:hover { background: var(--color-hover); color: var(--color-text); }
+.card-fold.folded { color: var(--color-accent-text); }
+
+.card-kind {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--color-syntax-function);
+}
+
+.card-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.card-title h3 {
+  overflow: hidden;
+  font: 600 13px/20px var(--font-code);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.card-location {
+  flex-shrink: 0;
+  font: 11.5px/16px var(--font-ui);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.card-header-spacer { flex: 1 1 12px; }
+
+.card-freshness {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-warn-fill);
+  color: var(--color-warn);
+  font: 500 11px/16px var(--font-ui);
+}
+
+/* Ports drawn at the header (a folded card's, or ones the body can't place) share its right edge. */
+.card-header-ports {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 0;
+}
+
+.card-description {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--color-border);
+  font: 12px/18px var(--font-ui);
+  color: var(--color-authored);
+}
+
+.card-description p {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.card-description.open p { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.card-more {
+  flex-shrink: 0;
+  color: var(--color-accent-text);
+  font-size: var(--font-size-tiny);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.card-body { position: relative; cursor: default; }
+
+.card-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  font: 12px/18px var(--font-ui);
+  color: var(--color-muted);
+}
+
+.card-note.warn { color: var(--color-warn); }
+
+/* React Flow handles: an accent dot at the card's edge for each opened call, the target at the header. */
+.board-card .react-flow__handle.card-port,
+.board-card .react-flow__handle.card-target {
+  width: 10px;
+  height: 10px;
+  min-width: 0;
+  min-height: 0;
+  border: 2px solid var(--color-surface);
+  border-radius: 999px;
+  background: var(--color-accent);
+}
+
+.board-card .react-flow__handle.card-target {
+  top: 22px;
+  background: var(--color-contour);
+  opacity: 0;
+}
+
+.code-row > .react-flow__handle.card-port { top: 10.5px; }
+.code-group-heading > .react-flow__handle.card-port { top: 50%; }
+
+/* Entrance cards */
+.entrance-card { border: 1.5px solid var(--color-accent); }
+
+.ecard-header { gap: 8px; }
+
+.ecard-kind {
+  padding: 1px 6px;
+  border-radius: var(--radius-small);
+  background: var(--color-selection);
+  color: var(--color-accent-text);
+  font: 600 10px/14px var(--font-code);
+  letter-spacing: 0.06em;
+}
+
+.ecard-method { font: 600 11.5px/16px var(--font-code); color: var(--color-muted); }
+
+.ecard-title {
+  min-width: 0;
+  overflow: hidden;
+  font: 600 16px/22px var(--font-code);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ecard-label { padding: 8px 14px 0; font-size: var(--font-size-small); }
+
+.ecard-evidence { padding: 6px 0 0; border-bottom: 1px solid var(--color-border); }
+.ecard-evidence .code-view { padding-top: 2px; }
+
+.ecard-location {
+  display: block;
+  padding: 0 14px;
+  font: 11px/16px var(--font-code);
+  color: var(--color-muted);
+}
+
+.ecard-text {
+  margin: 4px 0 8px;
+  padding: 0 14px;
+  font: 12px/19px var(--font-code);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.ecard-targets-heading {
+  padding: 8px 14px 2px;
+  font: 600 10px/14px var(--font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.ecard-targets { margin: 0; padding: 0 0 8px; list-style: none; }
+
+.ecard-target {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding-left: 14px;
+  font: 12.5px/18px var(--font-code);
+}
+
+.ecard-target small { font: 11px/16px var(--font-ui); color: var(--color-muted); white-space: nowrap; }
+.ecard-target > .code-leader { margin-top: 0; align-self: center; }
+.ecard-target > .react-flow__handle.card-port { top: 50%; }
+
+.ecard-role {
+  width: 52px;
+  flex-shrink: 0;
+  font: 10px/14px var(--font-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+}
+
+.ecard-target > .code-link.resolved { color: var(--color-syntax-function); }
+.ecard-apps { padding: 0 14px 10px; font-size: var(--font-size-tiny); color: var(--color-muted); }
+
+.inline-callee { background: var(--color-surface); border-radius: var(--radius); }

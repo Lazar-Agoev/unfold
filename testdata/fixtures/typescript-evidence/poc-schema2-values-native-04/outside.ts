@@ -1,0 +1,1 @@
+export class Outside {} export function callback() {}

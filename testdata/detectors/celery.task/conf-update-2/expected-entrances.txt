@@ -1,0 +1,2 @@
+# Expected entrances for testdata/detectors/celery.task/conf-update-2. Format: testdata/README.md.
+# Other configuration updates invalidate the application. Written: app.conf.update(other=True)

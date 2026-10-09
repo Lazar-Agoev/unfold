@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "python-orders-playground"
+version = "0.1.0"
+description = "Runnable Python orders service and Codegraph acceptance corpus"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.34,<1",
+  "celery[redis]>=5.5,<6",
+  "apscheduler>=3.11,<4",
+]
+
+[project.scripts]
+orders-api = "orders_playground.server:main"
+orders-api-dev = "orders_playground.server:main"
+orders-worker = "orders_playground.worker:main"
+orders-scheduler = "orders_playground.scheduler:main"
+orders = "orders_playground.cli:main"
+orders-cli = "orders_playground.cli:main"
+orders-legacy-export = "orders_legacy.export:main"
+
+[dependency-groups]
+dev = ["httpx>=0.28,<1", "pytest>=8,<10"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/orders_playground", "src/orders_extensions", "legacy/orders_legacy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

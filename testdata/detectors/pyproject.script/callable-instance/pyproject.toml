@@ -1,0 +1,4 @@
+[project.scripts]
+instance = "app:runner"
+class_value = "app:Runner"
+module_value = "app:helpers"

@@ -1,0 +1,40 @@
+/* Shared look of the side panes (sidebar, inspector). Their sizes come from the workbench. */
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
+.sidebar {
+  background: var(--color-sidebar);
+  border-right: 1px solid var(--color-border);
+}
+
+.inspector {
+  background: var(--color-surface);
+  border-left: 1px solid var(--color-border);
+}
+
+.pane-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 6px;
+}
+
+.pane-header {
+  padding: 10px 12px 6px;
+  font-size: var(--font-size-tiny);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.pane-hint {
+  padding: 4px 12px;
+  font-size: var(--font-size-small);
+  color: var(--color-muted);
+}

@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/celery.task/configuration-3. Format: testdata/README.md.
+# Configuration loading keeps handlers unsupported (PoC: "Configuration loading through direct and imported aliases..."). Written: app.config_from_cmdline(arguments)
+entrance	celery.task	worker	-	orders	exact	src/app.py:7
+	target	handler	unresolved	unsupported	first

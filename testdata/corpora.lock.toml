@@ -1,0 +1,179 @@
+# Larger corpora, pinned rather than copied into the repository (migration plan §2).
+#
+# Hash conventions used below:
+#   sha256           SHA-256 of one file's bytes, or of a downloaded archive's bytes.
+#   listing_sha256   SHA-256 of the corpus listing in `sha256sum` format: one line
+#                    "<file sha256>  <path relative to the corpus root>\n" per selected file,
+#                    sorted by path (byte order). Reproduce with
+#                    `find … | LC_ALL=C sort | xargs sha256sum | sha256sum` from the corpus root.
+#   poc_source_sha256  The PoC's own aggregate (compilers/codegraph/test/verify-python.ts):
+#                    SHA-256 of JSON.stringify([{filePath, sha256}, …]) sorted by filePath, as
+#                    locked in compilers/codegraph/test/python-recall-floor.json at 5c98a6e.
+# Nothing here is downloaded by tests. A missing value is written as "" with a note saying why.
+version = 1
+
+[poc]
+repository = "/Users/lazaragoev/Desktop/repos/graph-compiler"   # local only; the PoC has no remote
+commit = "5c98a6ef6e5d578b6b8668ee8cb4f30316573588"
+commit_date = "2026-10-08"
+
+# --- TypeScript -----------------------------------------------------------------------------
+
+[[corpus]]
+id = "typescript-6.0.3-src"
+language = "typescript"
+purpose = "The PoC's 'TypeScript fork src' corpus: semantic census, recall floor (96.0%), and resource budgets."
+url = "https://github.com/microsoft/TypeScript"
+tag = "v6.0.3"
+archive = "https://codeload.github.com/microsoft/TypeScript/tar.gz/refs/tags/v6.0.3"
+archive_sha256 = "c26953b79c1197e02f5666a0b612d5b9707339557aa9744097e7d5719de1a117"   # downloaded 2026-10-09; its src/ lacks the generated file (below)
+commit = ""           # not recorded by the PoC; resolve from the tag on first fetch
+root = "src"          # corpus root inside the archive
+selection = "every *.ts, *.tsx, *.mts, *.cts under root, excluding *.d.ts/*.d.mts/*.d.cts and any path containing node_modules, dist, or .codecodegraph* (PoC compilers/codegraph/test/corpus.ts)"
+files = 602
+bytes = 18143678
+listing_sha256 = "901c3ffc357c52a435412fc5447e1a27de3e8910bc2b94a6d5102ba77d0c90d8"
+# The PoC vendors this tree as `compilers/typescript/src` (package.json version 6.0.3); use it for
+# local development. The listing hash above was computed from that vendored copy. Compared with the
+# upstream v6.0.3 tag (2026-10-09), the copy has one extra file, the build-generated
+# compiler/diagnosticInformationMap.generated.ts; the other 601 files are byte-identical (see
+# typescript-6.0.3-src-upstream below).
+poc_local_path = "compilers/typescript/src"
+
+[[corpus]]
+id = "typescript-6.0.3-src-upstream"
+language = "typescript"
+purpose = "The upstream tag's src/ as downloaded, without the generated diagnostics map: the oracle corpus nightly CI can fetch (testdata/reference/oracles/)."
+url = "https://github.com/microsoft/TypeScript"
+tag = "v6.0.3"
+archive = "https://codeload.github.com/microsoft/TypeScript/tar.gz/refs/tags/v6.0.3"
+archive_sha256 = "c26953b79c1197e02f5666a0b612d5b9707339557aa9744097e7d5719de1a117"   # downloaded 2026-10-09
+root = "src"          # corpus root inside the archive (top folder TypeScript-6.0.3/)
+selection = "same file rule as typescript-6.0.3-src"
+files = 601
+listing_sha256 = "9d8b96ff033b0f4aed3b3ea0dc2a8254cb9345473e6ea7740860f55aaa1457a4"
+
+[[corpus]]
+id = "codegraph-self"
+language = "typescript"
+purpose = "The PoC compiler's own source and tests: complete reference-resolved call recall (100%, 4,440/4,440)."
+url = ""              # no public URL: the PoC repository is local only
+commit = "5c98a6ef6e5d578b6b8668ee8cb4f30316573588"
+root = "compilers/codegraph"
+selection = "same file rule as typescript-6.0.3-src, additionally excluding root-relative reports/ and test/fixtures/; tests are included (PoC corpus.ts --self)"
+files = 186
+bytes = 1944147
+listing_sha256 = "e321736f4059158b5b2f2b846bebb97701fbdfdaab5837a50d13ef004f1632a4"
+poc_local_path = "compilers/codegraph"
+
+[[corpus]]
+id = "typescript-syntax-cases"
+language = "typescript"
+purpose = "The PoC's 'adversarial syntax' corpus: parse coverage (>= 99% of reference-accepted files) and block parity only, not semantics."
+url = "https://github.com/microsoft/TypeScript"
+tag = "v6.0.3"
+root = "tests/cases"
+selection = "reference-accepted sources under root (PoC compilers/codegraph/test/syntax-corpus.ts); also the PoC scanner corpus"
+# files: not pinned; acceptance depends on the reference parser, so the PoC records counts per run
+listing_sha256 = ""   # not computed, for the same reason
+poc_local_path = "compilers/typescript/tests/cases"
+
+# --- Python ---------------------------------------------------------------------------------
+
+[[corpus]]
+id = "fastapi-full-stack-template-0.12.0"
+language = "python"
+purpose = "Python recall floor 185 of 232 and parity target (the PoC's 'target' corpus)."
+url = "https://github.com/fastapi/full-stack-fastapi-template"
+tag = "0.12.0"
+commit = "84c5a9e11a9e58262599e3d772f5386924e02ca7"
+archive = "https://codeload.github.com/fastapi/full-stack-fastapi-template/tar.gz/84c5a9e11a9e58262599e3d772f5386924e02ca7"
+archive_sha256 = "f4b03eff0c3052a3802ee9d4bdc533e750bf229d7d6cb2115796e368da4a72cc"   # from the PoC spike lock
+license = "MIT"
+root = "."            # paths below are relative to the archive's top folder
+source_roots = ["backend"]
+selection = "every **/*.py in the archive, including tests and migrations; read, never executed"
+files = 47
+bytes = 94776
+poc_source_sha256 = "27f4b4a55ec02fa81dfff5556610554bd3435dacd299f8ccb827c629784e9528"
+poc_lock = "spikes/python/corpus.lock.json"   # the PoC's spike corpus lock this entry copies
+
+[corpus.fingerprints]
+"backend/app/__init__.py" = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+"backend/app/alembic/env.py" = "5e65dea30d8b09742383af77fe10abe22dab87d92d36a8e46781fde08d64a265"
+"backend/app/alembic/versions/1a31ce608336_add_cascade_delete_relationships.py" = "56d9a949c1455e59dc9a4b09c469a4d35cd6063230ab1ac1059ba4b58f6804c1"
+"backend/app/alembic/versions/9c0a54914c78_add_max_length_for_string_varchar_.py" = "d9919ae828a0d1aa0fa68fd75bc75a90994a256b66a3a153918149d9578c0c1b"
+"backend/app/alembic/versions/d98dd8ec85a3_edit_replace_id_integers_in_all_models_.py" = "d5c549df50ddda6c9877e637e146cd757095460ee6285a7db06bb66724f32730"
+"backend/app/alembic/versions/e2412789c190_initialize_models.py" = "a73fcd9ff8a143b0a75228b63b6589e0ecbfa14c27286d33d4adeffe99c40075"
+"backend/app/alembic/versions/fe56fa70289e_add_created_at_to_user_and_item.py" = "68dc46eb06c7a6fe9059930eadbdeb349f5b13c789bb1a11846b05eccea0c304"
+"backend/app/api/__init__.py" = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+"backend/app/api/deps.py" = "84c30966b3b862c643009c14146d1924dec50be5b0efb9f56798e2fda5189daa"
+"backend/app/api/main.py" = "9e9d533bea7c8616a1d9dd3d7e7cdfefa36726fb221bb289fd102654b7e93b3f"
+"backend/app/api/routes/__init__.py" = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+"backend/app/api/routes/items.py" = "7f0fa55d1f7b02188c4abd4f88aa6db92fe03de38258b765ed050ec72032b410"
+"backend/app/api/routes/login.py" = "3c7f7c395b74cea54e505a16052679614b4fd92325d88b761385df8d952af642"
+"backend/app/api/routes/private.py" = "f5df74cc276f0d8d83337922fb8e05e69ecbc885d466d90d2e3de54ba5e4c8f4"
+"backend/app/api/routes/users.py" = "566f253330d75bdbf04f2fd59b380dd2c51041d931bd7af6b2064ee66ea96e6d"
+"backend/app/api/routes/utils.py" = "5e77b59fab0bfcb1cef581938dcc8a47afb7518664a497763d4c50711898e925"
+"backend/app/backend_pre_start.py" = "81341fc74b8b147f504cdc6fe5d3dcbfeb12fb163f23bc1c7355230216990cf7"
+"backend/app/core/__init__.py" = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+"backend/app/core/config.py" = "c40d706dc866b193c9b29fafecd2828875b11402d7778e61f9d13af6a7502346"
+"backend/app/core/db.py" = "4cf868430fa8ebecc5df45abd75b33f3e1a7aa55b8e2e8d259a2cb86aa725582"
+"backend/app/core/security.py" = "adb90882929ab33c238e2e9fa81b03fa0364c1a8cce0e9e70b98c68c321f468f"
+"backend/app/crud.py" = "f69d79e858ee22cee7792494b0df0370afaed20439ed16bbf6f70767926254d1"
+"backend/app/initial_data.py" = "29b51ebdd3c8cb9fde80a426f9c10af08c606ad0ffcec39a23fddc6587ab812c"
+"backend/app/main.py" = "e8b28b639d86c76dcf60348185c91125a789951ff085a5289d9f5add0854dfda"
+"backend/app/models.py" = "1b7384d0dc779cca9ebc9d2b05ccd1864988c2043a3692384ff7a731819050f0"
+"backend/app/tests_pre_start.py" = "aab5b1c1f1c3abd3aaf81f9922c5f10d384c0727571e5675082323ac6cb7f893"
+"backend/app/utils.py" = "9f30d36f4168ff23d95f3a2eeb06ce9c44880d6415ef9e586bb644b7cffb7da7"
+"backend/tests/__init__.py" = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+"backend/tests/api/__init__.py" = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+"backend/tests/api/routes/__init__.py" = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+"backend/tests/api/routes/test_items.py" = "be711def80eb52caeb1f2b0d9a933e294ea4f2f798ae2dc8924fb41fdda5528a"
+"backend/tests/api/routes/test_login.py" = "8f34b92a572406ce10a8cf8595736ee8aea5c84268be123a4a84498074228b8c"
+"backend/tests/api/routes/test_private.py" = "50b1d6d285a86c878b2501f8af68ce862dfb16dfccb7a4ab25b6c04143e40aa9"
+"backend/tests/api/routes/test_users.py" = "20676b10b47c74505cca440ec00fd21d5d4b376f46190de2ec7c8194f579f1e8"
+"backend/tests/conftest.py" = "ccccd7fa1092256e889fcf88c5fbc3415a52e2964fd66cb775722dbe7a6dd763"
+"backend/tests/crud/__init__.py" = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+"backend/tests/crud/test_user.py" = "e0c648b540d19f28e9f6a94fc025357698866361bdd29aa849e20d72e1f9e3bc"
+"backend/tests/scripts/__init__.py" = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+"backend/tests/scripts/test_backend_pre_start.py" = "1ac18d8f2eede6e2bd81e2e685aff6842069bb517e98512305ed1a8a9c017be5"
+"backend/tests/scripts/test_test_pre_start.py" = "f5448307c6ba7ab95fd4c549353f35eaa86eab586f90c50511b9e3be0cf96e99"
+"backend/tests/utils/__init__.py" = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+"backend/tests/utils/item.py" = "b06bc74e8df901f56c07e7c82bfc67cc9cb4bea2a0b69b51306a4da5402f5577"
+"backend/tests/utils/user.py" = "00fb245dc85bdcfda38f0d790597ec56581d1782fdc23fc72646237e6680cb27"
+"backend/tests/utils/utils.py" = "ec4de331ed328dda26e329024c1f598996845fb5d9f662413a99a5b39a7e7f70"
+"hooks/post_gen_project.py" = "ea8320797206afea47fbb6b243e7e71d849977ce762c8ec630c0512f12ce3799"
+"scripts/add_latest_release_date.py" = "6ccc4cad09fa69423bc4128380851669746955ae42a955158955c2be65491146"
+"scripts/prepare_release.py" = "edfebecdf9fa9dcee7b15cdd6db3d53ccc9843b99acd5e02bb004d3f3e543ca4"
+
+[[corpus]]
+id = "python-range"
+language = "python"
+purpose = "Unicode and CRLF range checks (astral and Greek identifiers, decorated function): recall floor 3 of 3."
+url = ""              # copied into the repository instead: it is one 233-byte file
+path = "testdata/fixtures/python-ranges"
+source_roots = ["fixtures"]
+selection = "fixtures/unicode.py, written by the PoC's spikes/python/prepare.mjs"
+files = 1
+bytes = 233
+sha256 = "27315a35486e096e8daa15d500ff1d6e29b86d0e40ae4a642dedd7b21031caa5"
+poc_source_sha256 = "4240b644765129cf6ae1967438b3dac455ba4b751bb82fa5de87e241d44102d5"
+
+[[corpus]]
+id = "python-isolation"
+language = "python"
+purpose = "Non-execution sentinels: ast.py, tokenize.py, sitecustomize.py, ordinary.py (plus payload.pth) that write a file if executed."
+url = ""
+selection = "generated by the PoC's spikes/python/prepare.mjs; not pinned or copied because each file embeds the absolute path of its sentinel, so the bytes differ per machine"
+files = 4
+
+[[corpus]]
+id = "python-playground"
+language = "python"
+purpose = "Python recall floor 91 of 96; the same 50 sources as the py-orders playground."
+url = ""
+path = "testdata/playgrounds/py-orders"
+selection = "src/**/*.py (legacy/, scripts/, tests/ excluded)"
+files = 50
+poc_source_sha256 = "b4f5e886bd423cf72edd728961672b2918bc238358e03f30ade00743b5216c09"   # computed with PoC paths "py-playground/src/…"

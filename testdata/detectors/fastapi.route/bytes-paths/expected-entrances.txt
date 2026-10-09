@@ -1,0 +1,8 @@
+# Expected entrances for testdata/detectors/fastapi.route/bytes-paths. Format: testdata/README.md.
+# Byte strings never become exact HTTP paths or mount prefixes (PoC: "Byte strings cannot become exact...").
+entrance	fastapi.route	http	GET	-	unknown	src/app.py:5
+	target	handler	resolved	src/app.py#function:endpoint	endpoint
+entrance	fastapi.route	http	GET	/route	partial	src/app.py:7
+	target	handler	resolved	src/app.py#function:endpoint	endpoint
+entrance	fastapi.route	http	GET	/other	partial	src/app.py:10
+	target	handler	resolved	src/app.py#function:endpoint	endpoint

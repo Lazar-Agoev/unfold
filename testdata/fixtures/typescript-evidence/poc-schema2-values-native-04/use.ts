@@ -1,0 +1,1 @@
+import type { Outside } from "./outside.js"; import type { Missing } from "./missing.js"; import { callback } from "./outside.js"; import { loop } from "./a.js"; function use(outside: Outside, missing: Missing) {} const refs = [callback, loop]; const a = b; const b = a; const cycle = [a, b];

@@ -1,0 +1,9 @@
+version = 1
+
+[[entrance]]
+kind = "command"
+handler = "barrel.ts#duplicate"
+
+[[entrance]]
+kind = "command"
+handler = "barrel.ts#remote"

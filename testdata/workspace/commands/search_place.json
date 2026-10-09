@@ -1,0 +1,25 @@
+{
+  "query": "place",
+  "definitions": [
+    {
+      "key": "src/services/order-service.ts#class:OrderService/method:place",
+      "name": "place",
+      "qualifiedName": "OrderService.place",
+      "path": "src/services/order-service.ts",
+      "kind": "method",
+      "line": 13,
+      "score": 560,
+      "nameMatches": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
+    }
+  ],
+  "entrances": [],
+  "files": [],
+  "filesTruncated": false,
+  "tookMs": 0
+}

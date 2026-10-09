@@ -1,0 +1,14 @@
+# Expected entrances for testdata/detectors/fastapi.route/partial-paths. Format: testdata/README.md.
+# Dynamic, unmounted, cyclic, deep, and annotation-only router paths never invent exact mounts (PoC: "Dynamic, unmounted, cyclic, deep...").
+entrance	fastapi.route	http	GET	/local	partial	src/app.py:6
+	target	handler	resolved	src/app.py#function:endpoint	endpoint
+entrance	fastapi.route	http	GET	-	unknown	src/app.py:8
+	target	handler	resolved	src/app.py#function:endpoint	endpoint
+entrance	fastapi.route	http	GET	/alone	partial	src/app.py:10
+	target	handler	resolved	src/app.py#function:endpoint	endpoint
+entrance	fastapi.route	http	GET	/cycle	partial	src/app.py:15
+	target	handler	resolved	src/app.py#function:endpoint	endpoint
+entrance	fastapi.route	http	GET	/typed	partial	src/app.py:17
+	target	handler	resolved	src/app.py#function:endpoint	endpoint
+entrance	fastapi.route	http	GET	/deep	partial	src/app.py:35
+	target	handler	resolved	src/app.py#function:endpoint	endpoint

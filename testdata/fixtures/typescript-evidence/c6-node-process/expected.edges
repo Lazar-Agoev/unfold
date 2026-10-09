@@ -1,0 +1,3 @@
+a.ts#function:local/expression_statement[0]/call[0] #0 calls `process.cwd` -> external node
+a.ts#expression_statement[0]/call[0] #0 calls `process.cwd` -> external global
+a.ts#function:shadowed/expression_statement[0]/call[0] #0 calls `console.log` -> external global

@@ -1,0 +1,20 @@
+# Build outputs
+target/
+node_modules/
+dist/
+out/
+*.node
+coverage/
+e2e/test-results/
+e2e/playwright-report/
+*.lcov
+*.profraw
+
+# Generated per machine by the app; never committed.
+**/.unfold/local/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

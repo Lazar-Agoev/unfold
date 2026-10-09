@@ -1,0 +1,4 @@
+a.ts#import[0] #0 imports `./b.js` -> b.ts#
+b.ts#import[0] #0 imports `./a.js` -> a.ts#
+use.ts#import[0] #0 imports `./outside.js` -> outside.ts#
+use.ts#import[1] #0 imports `./a.js` -> a.ts#

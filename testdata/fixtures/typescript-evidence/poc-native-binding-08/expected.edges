@@ -1,0 +1,4 @@
+namespaces.ts#function:first/expression_statement[0]/call[0] #0 calls `second` -> namespaces.ts#function:second
+namespaces.ts#expression_statement[0]/call[0] #0 calls `N.first` -> namespaces.ts#function:first
+namespaces.ts#expression_statement[1]/call[0] #0 calls `N.second` -> namespaces.ts#function:second
+namespaces.ts#expression_statement[2]/call[0] #0 calls `N.privateName` -> unknown_receiver

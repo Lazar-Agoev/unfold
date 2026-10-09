@@ -1,0 +1,4 @@
+helpers.ts#expression_statement[0]/call[0] #0 calls `actual.call` -> unknown_receiver
+helpers.ts#expression_statement[1]/call[0] #0 calls `actual.apply` -> unknown_receiver
+helpers.ts#expression_statement[2]/call[0] #0 calls `actual.bind()` -> dynamic
+helpers.ts#expression_statement[2]/call[0]/call[0] #0 calls `actual.bind` -> unknown_receiver

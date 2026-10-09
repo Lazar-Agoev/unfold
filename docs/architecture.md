@@ -4,15 +4,17 @@ Status: final architecture for V1 · 2026-10-08
 
 This document describes what we are building in the new `unfold` repository and how it fits together. It replaces the two earlier proposals, `desktop-app-design.md` and `unfold-desktop-from-scratch.md`, which were compared, merged, and removed. Two companion documents complete it:
 
-- [Decisions and trade-offs](decisions-and-tradeoffs.md) explains *why*: every decision (U-1 to U-36), the options we weighed, and the pros and cons of each.
-- [Migration plan](migration-plan.md) explains *when*: the phases from the proof of concept to V1 and V2.
+- [Decisions and trade-offs](decisions-and-tradeoffs.md) explains *why*: every decision (U-1 to U-37), the options we weighed, and the pros and cons of each.
+- [Migration plan](migration-plan.md) explains *when*: the steps that migrate the proof of concept into Unfold and end with V1, and the V2 tracks after them.
 
 The proof of concept is the `graph-compiler` repository, whose product was called "Codegraph". It stays as a frozen reference. No code moves over. Its semantics, test data, measurements, and reader design do.
 
 ## Summary
 
 - **One desktop app.** You open a folder, press **Compile**, and read the code as a graph. You see entrances (routes, workers, schedules, commands, scripts), the functions they reach, and the calls between them, as cards on a board. There is no separate compiler, CLI, server, or web app.
-- **A Rust engine in a Tauri 2 shell, with a React UI.** TypeScript is parsed with oxc and Python with Ruff's parser. The engine runs inside the app process.
+- **A Rust engine in an Electron app, with a React UI.** TypeScript is parsed with oxc and Python with Ruff's parser. The engine is a native Node addon that runs in its own helper process, the engine host, so a crash in it never closes a window. Chromium renders the UI the same way on every platform.
+- **As many windows as you want.** Several windows can show the same folder, each with its own boards, and they all share one engine and one graph. A board is open in one window at a time.
+- **macOS, Windows, and Linux.** V1 ships on all three at once.
 - **The graph keeps itself current.** After the first Compile, Unfold watches the folder and updates the graph in the background when files are saved. Only changed files are re-read and re-parsed, and only changed rows are written. V2 adds finer tracking, so that a typical edit re-resolves only its own file.
 - **Every repository gets a `.unfold/` folder.** Shared things, the settings and published boards, sit at its top level and can be committed. Machine-only things, the graph cache and your drafts, sit in `.unfold/local/`, which Git ignores on its own.
 - **The proof of concept's rules stay.** A call is linked only when there is proof of exactly one target. The graph records what the code declares, never what might happen at runtime. Code is shown only after its file's hash is checked. The same input produces the same graph. Nothing is ever run.
@@ -41,8 +43,9 @@ Unfold answers three questions, in this order:
 3. In **Entrances**, click `POST /orders`. A board opens with the entrance card and one card per handler.
 4. Click the call to `orderService.place` inside `createOrder`. The `OrderService.place` card opens beside it, with an arrow from the calling line. Switch a card to Flow to see its structure.
 5. Write a one-line description, label a Flow node, and group a few lines. The board saves itself as a draft.
-6. Edit `order-service.ts` in your editor and save. The card updates within a second.
-7. Press **Publish**. The board is written to `.unfold/boards/order-placement.json`, ready to commit.
+6. Press ⇧⌘N for a second window on the same folder, and open a queue worker from **Entrances** there. Both windows follow the same graph.
+7. Edit `order-service.ts` in your editor and save. The card updates within a second, in whichever window shows it.
+8. Press **Publish**. The board is written to `.unfold/boards/order-placement.json`, ready to commit.
 
 ### 1.3 Non-goals
 
@@ -60,7 +63,7 @@ Unfold answers three questions, in this order:
 | Static claims only | The graph records declarations, containment, and occurrences. An entrance is a declaration, not proof that it runs. Flow draws paths from written structure and marks what it can't route as opaque. | The graph model ([§5.5](#55-what-the-graph-does-not-claim)) and the Flow rules ([§10.4](#104-flow-view)) |
 | Verified source | Code is shown only when the file's current bytes match the hash its facts came from. The graph stores ranges and hashes, never code. | Hash, then slice ([§10.6](#106-freshness)) |
 | Deterministic | The same effective inputs give the same graph, whatever the thread count, the input order, or whether it was built at once or by many updates. | Canonical-export comparisons and incremental-equals-full property tests ([§16](#16-testing)) |
-| Nothing runs | Unfold never executes the indexed code, installs dependencies, runs Git or package scripts, or needs Node or Python installed. | Execution-sentinel tests and packaged-app checks ([§16](#16-testing)) |
+| Nothing runs | Unfold never executes the indexed code, installs dependencies, runs Git or package scripts, or needs Node or Python installed. The Node runtime inside Electron runs only Unfold's own code. | Execution-sentinel tests, packaged-app checks, and Electron fuses that stop the bundled runtime from running anything else ([§13](#13-security-and-privacy), [§16](#16-testing)) |
 | One place in your folder | Unfold writes only inside `.unfold/` at the root of the opened folder. | Path confinement ([§13](#13-security-and-privacy)) |
 
 ## 3. Decisions at a glance
@@ -72,7 +75,7 @@ Each row links to its full reasoning in [Decisions and trade-offs](decisions-and
 | Product | One desktop app, a reader rather than an editor, started fresh in a new repository | U-1, U-2, U-4 |
 | Words | Unfold, Compile, Entrances, Board, Draft, Publish, Export, Code, Flow | U-3 |
 | Engine | Rust | U-5 |
-| Shell | Tauri 2 | U-6 |
+| Shell | Electron, with the Rust engine as a native addon (napi-rs) | U-6 |
 | TypeScript | oxc's parser, semantic analysis, and resolver, with the proof of concept's native evidence rules and no type checker in V1 | U-7, U-8 |
 | Python | Ruff's parser, pinned, with Unfold's own binder | U-9 |
 | Engine shape | One shared backend behind narrow language adapters; the proof of concept's semantics, with its known defects fixed | U-10, U-11 |
@@ -87,34 +90,44 @@ Each row links to its full reasoning in [Decisions and trade-offs](decisions-and
 | Settings | TOML in `.unfold/config.toml`, personal state in `.unfold/local/`, and app preferences in the OS | U-23 |
 | UI | React. Rust computes, TypeScript lays out. IPC types are generated from Rust | U-24, U-25 |
 | Window | Activity bar (Files, Entrances, Search, Boards), tabs, inspector, bottom panel, status bar | U-26, U-28, U-29, U-30 |
+| Several windows | Any number of windows per folder, sharing one engine; a board is open in one window at a time | U-37 |
 | Reader | The v7.1 reader rules carry over unchanged | U-27 |
-| Process | One process with a locked-down webview | U-31 |
-| Repository | A Cargo workspace of seven crates and a pnpm UI | U-32 |
+| Processes | The main process, one engine host that runs the engine, and one sandboxed renderer per window | U-31 |
+| Repository | A Cargo workspace of seven engine crates and the addon crate, and a pnpm workspace for the Electron app and the UI | U-32 |
 | Testing | A frozen PoC reference with a divergence ledger, independent oracles, and incremental-equals-full tests | U-33, U-34 |
-| Platforms | macOS first. Windows and Linux run in CI from day one and are released in V2 | U-35 |
-| Build order | A vertical slice first, behind spikes and gates | U-36 |
+| Platforms | macOS, Windows, and Linux, all released in V1 and tested in CI from the first commit | U-35 |
+| Build order | A vertical slice first, then the proof of concept migrated one part per step, behind spikes and gates | U-36 |
 
 ## 4. System overview
 
-### 4.1 One process
+### 4.1 Processes
 
 ```mermaid
 flowchart LR
     Folder["Your folder<br/>(read only)"]
-    subgraph App["Unfold: one process"]
-        UI["Webview<br/>React, React Flow"]
-        Commands["Tauri commands,<br/>events, channels"]
-        Workspace["Workspace<br/>one per open folder"]
-        Watcher["File watcher"]
-        Engine["Engine<br/>extract, link, resolve,<br/>detect, validate"]
-        Languages["TypeScript: oxc<br/>Python: Ruff parser"]
-        Reader["Reader<br/>cards, Flow, relations,<br/>boards, Mermaid"]
+    subgraph App["Unfold"]
+        Main["Main process<br/>windows, menus,<br/>dialogs, updates"]
+        subgraph Windows["One renderer per window"]
+            UI1["Window<br/>React, React Flow"]
+            UI2["Window<br/>React, React Flow"]
+        end
+        subgraph Host["Engine host"]
+            Addon["unfold-node<br/>the engine as a Node addon"]
+            Workspace["Workspace<br/>one per open folder"]
+            Watcher["File watcher"]
+            Engine["Engine<br/>extract, link, resolve,<br/>detect, validate"]
+            Languages["TypeScript: oxc<br/>Python: Ruff parser"]
+            Reader["Reader<br/>cards, Flow, relations,<br/>boards, Mermaid"]
+        end
     end
     Store[(".unfold/local/cache/<br/>graph.sqlite")]
     Shared[".unfold/config.toml<br/>.unfold/boards/"]
     Drafts[".unfold/local/drafts/"]
-    UI <--> Commands
-    Commands <--> Workspace
+    Main -->|creates, hands out ports| Windows
+    Main -->|starts, restarts| Host
+    UI1 <-->|commands, events| Addon
+    UI2 <-->|commands, events| Addon
+    Addon <--> Workspace
     Folder --> Watcher
     Watcher --> Workspace
     Workspace --> Engine
@@ -127,16 +140,23 @@ flowchart LR
     Workspace <--> Drafts
 ```
 
-### 4.2 Threads
+Unfold is an Electron app with three kinds of process ([U-31](decisions-and-tradeoffs.md#u-31-an-engine-host-and-locked-down-windows)):
 
-| Thread | Work |
-| --- | --- |
-| Webview UI thread | React rendering, card layout, and input |
-| Tauri async runtime | Commands and events. It never blocks on long work |
-| Engine thread | Owns the in-memory program for the open folder and runs one compile or update at a time |
-| Rayon pool | Parallel per-file extraction and resolution, with fewer threads and low priority for background updates |
-| Watcher thread | Debounces and batches file-system events |
-| SQLite | One writer (the engine thread) and a pool of readers. Readers always see the last committed graph |
+- **The main process**, in TypeScript, owns the app's lifecycle: windows, menus, native dialogs, the single-instance lock, and updates. It does no graph work and never waits on the engine.
+- **The engine host** is an Electron utility process. It loads `unfold-node`, the Rust engine compiled as a Node-API addon, and holds one workspace per open folder. Its JavaScript only routes messages between windows and the addon. If it stops, the main process restarts it and every window reconnects ([§11.2](#112-several-windows)).
+- **Each window** is a sandboxed Chromium renderer running the React UI. It reaches the engine host over its own message port, and it can call only Unfold's commands ([§12](#12-commands-and-events), [§13](#13-security-and-privacy)).
+
+### 4.2 Processes and threads
+
+| Process | Thread | Work |
+| --- | --- | --- |
+| Each window | UI thread | React rendering, card layout, and input |
+| Main process | Main thread | Windows, menus, dialogs, and updates |
+| Engine host | JavaScript thread | Routes commands, results, and events between windows and the addon. It never blocks on long work: commands run on Rust threads and resolve as promises |
+| Engine host | Engine thread, one per open folder | Owns the in-memory program for that folder and runs one compile or update at a time |
+| Engine host | Rayon pool, shared | Parallel per-file extraction and resolution, with fewer threads and low priority for background updates |
+| Engine host | Watcher thread | Debounces and batches file-system events |
+| Engine host | SQLite | One writer per folder (its engine thread) and a pool of readers. Readers always see the last committed graph |
 
 ### 4.3 What happens during a compile
 
@@ -144,7 +164,7 @@ flowchart LR
 2. The engine reads and hashes those files. It takes their per-file facts from the cache, or extracts them in parallel.
 3. It rebuilds the cross-file indexes in memory, resolves call sites, runs the entrance detectors, and validates the result.
 4. It writes only the rows that changed, in one SQLite transaction.
-5. It emits `graph_updated` with the changed files, keys, and entrances. The UI refreshes only the cards that depend on them.
+5. It emits `graph_updated` with the changed files, keys, and entrances to every window that shows the folder. Each window refreshes only the cards that depend on them.
 
 [Section 7](#7-compiling-and-keeping-the-graph-current) gives the details.
 
@@ -289,7 +309,7 @@ For example, `ts-playground/src/routes/orders.ts#function:createOrder/if[0]` is 
 
 ### 5.6 Where the complete semantics live
 
-The proof of concept's `docs/format.md`, `docs/compiler.md`, and `docs/reader.md` hold every invariant, syntax mapping, detector bound, and derivation rule. In Phase 0 they are rewritten for the new repository as `docs/graph-model.md`, `docs/languages/typescript.md`, `docs/languages/python.md`, `docs/entrances.md`, and `docs/reader.md`, using Unfold's names and byte offsets. Where this document summarizes a rule, those files are authoritative.
+The proof of concept's `docs/format.md`, `docs/compiler.md`, and `docs/reader.md` hold every invariant, syntax mapping, detector bound, and derivation rule. In Step 1 of the migration they are rewritten for the new repository as `docs/graph-model.md`, `docs/languages/typescript.md`, `docs/languages/python.md`, `docs/entrances.md`, and `docs/reader.md`, using Unfold's names and byte offsets. Where this document summarizes a rule, those files are authoritative.
 
 ## 6. The engine
 
@@ -475,7 +495,7 @@ Files are processed in path order. Blocks are in preorder within each file, edge
 | C-5 | A launch into an existing unindexed file can report `not_found` | Extensions are probed before choosing between `not_found` and `not_indexed` |
 | C-6 | A local `NodeJS.Process` parameter is labeled `global` | The root must be undeclared |
 | C-12 | Empty `import {} from "x"` forms create a dependency | They are erased, as TypeScript's emit does |
-| C-8, C-9 | Open questions: destructured bindings from literal dynamic imports, and property locators compared with calls | Decided during Phase 2 with fixtures, then recorded as decisions |
+| C-8, C-9 | Open questions: destructured bindings from literal dynamic imports, and property locators compared with calls | Decided with fixtures during the TypeScript migration (C-8 in Step 4, C-9 in Step 5), then recorded as decisions |
 
 ## 7. Compiling and keeping the graph current
 
@@ -522,7 +542,7 @@ So editing one file can change edges in files that weren't edited:
 4. Compare the result with the previous state, and write only the rows that changed, in one transaction.
 5. Report which files, keys, and entrances changed, so that only those cards refresh.
 
-Steps 2 and 3 cover the whole program, but they run on compact in-memory facts, with no parsing and no I/O. We expect well under a second for repositories with a few thousand files; Phase 2 measures this and Phase 5 sets a hard limit ([migration plan](migration-plan.md)). Re-resolving everything makes V1 correct by construction, because there is no dependency bookkeeping to get wrong ([U-14](decisions-and-tradeoffs.md#u-14-what-gets-recompiled-per-file-facts-in-v1-early-cutoff-in-v2)).
+Steps 2 and 3 cover the whole program, but they run on compact in-memory facts, with no parsing and no I/O. We expect well under a second for repositories with a few thousand files; Step 5 of the migration measures this and Step 9 sets a hard limit ([migration plan](migration-plan.md)). Re-resolving everything makes V1 correct by construction, because there is no dependency bookkeeping to get wrong ([U-14](decisions-and-tradeoffs.md#u-14-what-gets-recompiled-per-file-facts-in-v1-early-cutoff-in-v2)).
 
 ### 7.4 V2: early cutoff
 
@@ -570,7 +590,7 @@ When one changes, the files whose settings hash changed are extracted again, and
 
 ### 7.8 Reopening a folder
 
-The graph in SQLite is usable as soon as the folder opens. In the background, Unfold compares each file's size and modification time with the stored values, hashes only the files that differ, and runs one update. It also loads the cached per-file facts to rebuild the in-memory program, so the next save updates quickly. When an app update has changed the engine version, the cache no longer matches and Unfold recompiles in the background. Boards are unaffected.
+The graph in SQLite is usable as soon as the folder opens, and the folder's windows come back with their tabs and layout ([§11.2](#112-several-windows)). In the background, Unfold compares each file's size and modification time with the stored values, hashes only the files that differ, and runs one update. It also loads the cached per-file facts to rebuild the in-memory program, so the next save updates quickly. When an app update has changed the engine version, the cache no longer matches and Unfold recompiles in the background. Boards are unaffected.
 
 ### 7.9 What the status bar says
 
@@ -598,10 +618,10 @@ Clicking it opens a menu with Compile, Rebuild from scratch, Pause background up
     ├── .gitignore           # contains "*", so Git ignores this folder and this file
     ├── cache/               # disposable: safe to delete at any time
     │   ├── graph.sqlite     # the graph, the per-file facts, and the search index
-    │   └── lock             # one Unfold window per folder
+    │   └── lock             # one copy of Unfold per folder
     ├── drafts/              # your unpublished boards; not disposable
     │   └── 7f3c2a….json
-    └── state.json           # open tabs, layout, last board, whether background updates are on
+    └── state.json           # each window's position, tabs, and layout; whether background updates are on
 ```
 
 - The first Compile in a folder creates `.unfold/`. Opening and browsing a folder writes nothing.
@@ -613,12 +633,14 @@ Clicking it opens a menu with Compile, Rebuild from scratch, Pause background up
 
 ### 8.2 Outside the folder
 
-| What | Where on macOS (Windows and Linux use their equivalents) |
-| --- | --- |
-| Preferences: theme, keyboard, editor command, background defaults, thread limit | `~/Library/Application Support/Unfold/preferences.json` |
-| Recent folders and window state | `~/Library/Application Support/Unfold/` |
-| Logs | `~/Library/Logs/Unfold/` |
-| Fallback for folders Unfold can't write to | `~/Library/Caches/Unfold/folders/<hash of the path>/` |
+| What | macOS | Windows | Linux |
+| --- | --- | --- | --- |
+| Preferences: theme, keyboard, editor command, background defaults, thread limit | `~/Library/Application Support/Unfold/preferences.json` | `%APPDATA%\Unfold\preferences.json` | `~/.config/Unfold/preferences.json` |
+| Recent folders, and the welcome window's position | `~/Library/Application Support/Unfold/` | `%APPDATA%\Unfold\` | `~/.config/Unfold/` |
+| Logs | `~/Library/Logs/Unfold/` | `%APPDATA%\Unfold\logs\` | `~/.config/Unfold/logs/` |
+| Fallback for folders Unfold can't write to | `~/Library/Caches/Unfold/folders/<hash of the path>/` | `%LOCALAPPDATA%\Unfold\folders\<hash>\` | `~/.cache/Unfold/folders/<hash>/` |
+
+Electron keeps Chromium's own caches in the same app-data folder. The UI never uses browser storage: everything it remembers goes through Rust into the files above or into `.unfold/local/`.
 
 If a folder is read-only, or sits on a network volume where SQLite's write-ahead log isn't safe, `local/` moves to the fallback location and the status bar says so. Publishing then needs a writable folder.
 
@@ -741,8 +763,11 @@ It is used for snapshots, parity with the proof of concept, determinism checks, 
 ### 8.7 Concurrency
 
 - Write-ahead logging lets UI queries read the last committed graph while an update runs.
-- Only the engine thread writes.
-- A lock file in `local/cache/` keeps one Unfold window per folder. Opening the same folder again focuses that window.
+- Only the folder's engine thread writes.
+- Unfold runs as a single copy per user. Launching it again, or opening a folder from another program, hands the request to the running copy.
+- Inside that copy, any number of windows can show a folder. They share its workspace: one engine thread, one SQLite writer, and one in-memory program ([§11.2](#112-several-windows)).
+- A board is open in one window at a time, so two windows never edit the same board.
+- A lock file in `local/cache/` keeps a second copy of Unfold, such as a development build or another version, from opening the same folder. That copy says the folder is open elsewhere instead.
 - Board and settings files edited outside the app, by a person, an agent, or a branch switch, are reloaded when the open board has no unsaved changes. Otherwise Unfold asks which version to keep.
 
 ## 9. Files we treat as contracts
@@ -927,7 +952,7 @@ Flow is not a runtime trace or proof that a branch runs. Short-circuit expressio
 
 ### 10.5 Boards
 
-- **Drafts.** Every board saves itself from its first card, a moment after each change, to `.unfold/local/drafts/`. The last open board reopens with the folder.
+- **Drafts.** Every board saves itself from its first card, a moment after each change, to `.unfold/local/drafts/`. Each window's open boards reopen with the folder.
 - **Publish.** This shows the file it will write, `.unfold/boards/<slug-of-title>.json`, and never overwrites an existing one; the name is editable only when a file already has it. The board is validated, written, and its draft removed. After that, edits save into the published file, so `git diff` shows them. Unfold never runs Git.
 - **Move back to drafts** reverses Publish. **Delete** asks first.
 - **Export** writes Mermaid to a location you choose. SVG, PNG, and a Markdown walkthrough come in V2. Mermaid uses solid arrows for calls and constructions and dashed arrows for imports and passed references.
@@ -1001,11 +1026,24 @@ These come from the v7.1 reader and from review comments on the Paper designs. T
   - the Code/Flow lens;
   - **Compile**, quiet while the graph is current and showing progress while compiling;
   - **Publish**, the inspector toggle, and the board menu (Rename, Export Mermaid, Fold all, Unfold all, Move back to drafts, Delete).
-- **Activity bar and sidebar.** One view at a time ([§11.2](#112-sidebar-views)).
-- **Editor area.** Tabs for boards and source files ([§11.3](#113-tabs-boards-and-source-files)).
-- **Inspector, bottom panel, and status bar.** See [§11.4](#114-inspector-bottom-panel-and-status-bar).
+- **Activity bar and sidebar.** One view at a time ([§11.3](#113-sidebar-views)).
+- **Editor area.** Tabs for boards and source files ([§11.4](#114-tabs-boards-and-source-files)). A board tab can move into a window of its own ([§11.2](#112-several-windows)).
+- **Inspector, bottom panel, and status bar.** See [§11.5](#115-inspector-bottom-panel-and-status-bar).
 
-### 11.2 Sidebar views
+### 11.2 Several windows
+
+You can open as many windows as you want, and put boards side by side on as many screens as you have ([U-37](decisions-and-tradeoffs.md#u-37-several-windows-per-folder-one-window-per-board)).
+
+- **A window shows one folder.** ⇧⌘N opens another window on the same folder. **Open Folder in New Window**, in the folder switcher, opens a different folder beside it. Each window has its own tabs, sidebar, inspector, bottom panel, lens, and selection.
+- **Windows on one folder share it.** They share one workspace: one engine, one graph, one watcher, and one SQLite writer. A save updates the cards in every window that shows them, and every window's status bar shows the same graph state.
+- **A board is open in one window at a time.** Opening a board that another window has open focuses that window and its tab. **Move to New Window**, in the tab's menu and the command palette, moves a board, with its undo history, into a window of its own.
+- **Source tabs can be open anywhere**, in any number of windows, because they are read-only.
+- **Windows come back.** `.unfold/local/state.json` records each window's position, size, tabs, and layout. Reopening the folder restores every window, moved onto a visible screen if a display has gone.
+- **Closing windows.** Closing the last window of a folder saves its drafts and closes its workspace. On macOS, Unfold keeps running with no windows, as Mac apps do. On Windows and Linux, closing the last window quits.
+- **If the engine host stops.** Every window keeps its boards and shows "Reconnecting…" in the status bar. The main process restarts the engine host, which reopens each folder from its cache ([§7.8](#78-reopening-a-folder)), and the windows reconnect. Unsaved board edits stay in their window and are saved once it reconnects.
+- **What a window costs.** Each window is its own Chromium renderer, so each adds memory ([§17](#17-performance-targets)). The graph is never copied into a window: each one fetches only the cards and pages it shows.
+
+### 11.3 Sidebar views
 
 **Files**
 
@@ -1052,7 +1090,7 @@ FILES                             ⊟  ...
   - a warning for a file that doesn't parse;
   - "not indexed" for unsupported languages;
   - "N launches" on `package.json` and `pyproject.toml`.
-- Clicking a definition opens or focuses its card, and double-clicking a file opens a source tab. The context menu offers Open card, Open source, Open in editor, Show callers, Exclude from graph, Include in graph, Graph only this folder, and Reveal in Finder.
+- Clicking a definition opens or focuses its card, and double-clicking a file opens a source tab. The context menu offers Open card, Open source, Open in editor, Show callers, Exclude from graph, Include in graph, Graph only this folder, and Reveal in Finder (Show in Explorer on Windows, and Show in file manager on Linux).
 
 **Entrances**
 
@@ -1129,7 +1167,7 @@ GROUPS
 - Published boards have a filled square and drafts an open one. A label appears only when something is wrong.
 - The outline of the open board lists its cards in follow order, indented by call depth, then its groups. "N Flow nodes still show code names" steps through unlabeled nodes.
 
-### 11.3 Tabs: boards and source files
+### 11.4 Tabs: boards and source files
 
 A board tab is a canvas. A source tab shows a whole file, read-only, drawn by the same renderer as Code cards, with syntax colors, folds, and calls as links. A `⊕` in the gutter beside each definition adds it to the open board, and `●` marks what's already there. Long files are virtualized by line.
 
@@ -1153,7 +1191,7 @@ A board tab is a canvas. A source tab shows a whole file, read-only, drawn by th
 
 A source tab may show current text that hasn't been compiled yet. It is labeled as such, and no graph links are drawn on it until the update commits.
 
-### 11.4 Inspector, bottom panel, and status bar
+### 11.5 Inspector, bottom panel, and status bar
 
 - **Inspector (right).** Closed by default (toggle with `]` or ⌥⌘B), and it never shows code.
   - With a card selected, it edits the card's description and lists its Calls (on the board, **+ Open**, or external with a module), Called by, Reached from, and Groups.
@@ -1165,7 +1203,7 @@ A source tab may show current text that hasn't been compiled yet. It is labeled 
   - **References** shows callers and reached-from as trees.
 - **Status bar.** Graph state ([§7.9](#79-what-the-status-bar-says)), languages, problem count, and zoom.
 
-### 11.5 Welcome and the first Compile
+### 11.6 Welcome and the first Compile
 
 With no folder open:
 
@@ -1205,11 +1243,13 @@ After opening a folder that has never been compiled:
 
 **Choose folders…** narrows the scope before the first Compile, which helps with large monorepos.
 
-### 11.6 Keyboard
+### 11.7 Keyboard
 
 | Action | macOS |
 | --- | --- |
 | Open folder | ⌘O |
+| New window on this folder | ⇧⌘N |
+| Close the tab, close the window | ⌘W, ⇧⌘W |
 | Compile | ⇧⌘B |
 | Quick open a file or a symbol | ⌘P, ⌘T |
 | Command palette | ⇧⌘P |
@@ -1222,54 +1262,77 @@ After opening a folder that has never been compiled:
 
 Windows and Linux use Ctrl in place of ⌘.
 
-### 11.7 UI technology, and what runs where
+### 11.8 UI technology, and what runs where
 
+- Chromium, which Electron bundles, renders the UI on every platform, so cards, Code, and Flow lay out the same everywhere. The UI and code fonts are bundled too, so text measures the same on every machine.
 - React 19 and strict TypeScript, built with Vite.
 - React Flow (`@xyflow/react`) for the canvas. It renders only visible cards on large boards, and edges and ports are memoized.
-- TanStack Query for data from Rust, invalidated by `graph_updated`, `boards_changed`, and `config_changed`.
-- Zustand with Immer for UI state: layout, selection, the lens, and the open board with its undo and redo history.
+- TanStack Query for data from Rust, invalidated in each window by `graph_updated`, `boards_changed`, and `config_changed`.
+- Zustand with Immer for each window's state: layout, selection, the lens, and its open boards with their undo and redo history.
 - TanStack Virtual for the file tree, search results, and long source tabs; cmdk for the command palette; lucide icons.
 - Design tokens as CSS variables, in light and dark sets, with styles kept beside each component.
 - **Rust computes everything that needs the graph or the source bytes**: the code render model in UTF-16, highlighting, folds, links, the Flow model, relations, closures, health, and Mermaid.
 - **TypeScript does layout**, because layout needs measured sizes: card sizing, reflow, Arrange by call depth, arrow routing, and the placement of nodes inside Flow.
+- **The UI uses no Node APIs and no browser storage.** It reaches the rest of the app only through `window.unfold` ([§12](#12-commands-and-events)).
 
 ## 12. Commands and events
 
-Types are defined once in Rust and generated for TypeScript with tauri-specta, which is pinned because it is still a release candidate; ts-rs is the fallback. Queries filter in Rust and return pages, so the UI never loads every definition at once.
+Commands, events, and their payload types are defined once in Rust, in `unfold-workspace`'s command table. `cargo xtask gen-ipc` generates their TypeScript types with ts-rs, and `tsc` checks the UI, the preload script, and the engine host against them at build time ([U-25](decisions-and-tradeoffs.md#u-25-typed-commands-generated-from-rust)). Queries filter in Rust and return pages, so the UI never loads every definition at once.
 
-| Area | Commands (UI to Rust) | Events (Rust to UI) |
-| --- | --- | --- |
-| Folders | `choose_folder`, `open_folder`, `close_folder`, `recent_folders`, `folder_summary` | `folder_opened` |
-| Compile | `compile` (mode `check` or `from_scratch`; streams progress over a channel), `cancel_compile`, `set_background_updates`, `graph_status` | `graph_status`, `compile_progress`, `graph_updated` |
-| Files | `list_dir`, `file_view`, `file_outline`, `open_in_editor`, `reveal_in_finder` | `files_changed` |
-| Graph | `card`, `peek`, `relations`, `entrance_tree`, `problems`, `index_log` | `problems_changed` |
-| Search | `search` (definitions, entrances, files), `search_text` (streams) | |
-| Boards | `list_boards`, `load_board`, `save_board`, `publish_board`, `unpublish_board`, `rename_board`, `delete_board`, `board_health` | `boards_changed` |
-| Export | `export_mermaid`; in V2, `export_svg`, `export_png`, and `export_markdown` | |
-| Settings | `get_preferences`, `set_preferences`, `get_folder_config`, `update_folder_config` | `config_changed` |
+**How a command travels.** The UI calls `window.unfold.invoke(command, args)`. The preload script sends window commands to the main process, and everything else over the window's port to the engine host. The host hands the command to the addon's `dispatch` function, the command runs on Rust threads, and its result comes back the same way, as a promise. Streams, such as compile progress and text search, arrive as messages tagged with their request, and can be cancelled. Events go to every window that shows the folder they concern.
 
-`graph_updated` carries the changed files, structural keys, and entrance keys. Each board query names its board, and Rust checks that each path stays inside the open folder.
+**The addon's surface** is small and rarely changes. Adding a command touches only Rust and the generated types:
+
+| Function | Does |
+| --- | --- |
+| `open_workspace`, `close_workspace` | Open or close a folder's workspace |
+| `dispatch` | Run one command for one window, and resolve with its result |
+| `cancel` | Cancel a running command or stream |
+| `subscribe` | Deliver events and stream messages from Rust threads to the engine host |
+
+**Commands**
+
+| Area | Commands (UI to the app) | Events (to the UI) | Handled by |
+| --- | --- | --- | --- |
+| Windows | `new_window`, `focus_window`, `move_tab_to_new_window`, `close_window` | | The main process |
+| Folders | `choose_folder`, `open_folder`, `close_folder`, `recent_folders`, `folder_summary` | `folder_opened` | The main process shows the folder picker; Rust does the rest |
+| Compile | `compile` (mode `check` or `from_scratch`; streams progress), `cancel_compile`, `set_background_updates`, `graph_status` | `graph_status`, `compile_progress`, `graph_updated` | Rust |
+| Files | `list_dir`, `file_view`, `file_outline`, `open_in_editor`, `reveal_in_finder` | `files_changed` | Rust |
+| Graph | `card`, `peek`, `relations`, `entrance_tree`, `problems`, `index_log` | `problems_changed` | Rust |
+| Search | `search` (definitions, entrances, files), `search_text` (streams) | | Rust |
+| Boards | `list_boards`, `open_board` (claims it for this window), `close_board`, `move_board`, `save_board`, `publish_board`, `unpublish_board`, `rename_board`, `delete_board`, `board_health` | `boards_changed` | Rust |
+| Export | `export_mermaid`; in V2, `export_svg`, `export_png`, and `export_markdown` | | The main process shows the save dialog, then Rust writes the file |
+| Settings | `get_preferences`, `set_preferences`, `get_folder_config`, `update_folder_config` | `config_changed` | Rust |
+
+`graph_updated` carries the changed files, structural keys, and entrance keys. Each board command names its board, and Rust checks that the calling window holds it. Every path a command names is checked to stay inside the open folder.
 
 ## 13. Security and privacy
 
-- **The webview gets no file, shell, or network permissions.** It can only call Unfold's own commands, which are listed in `desktop/capabilities/default.json`. The folder picker, save dialogs, opening files in an editor, and update checks all run in Rust.
+- **Windows get no file, shell, process, or network access.** Every renderer runs with context isolation and Chromium's sandbox, with Node integration off. Its preload script exposes one object, `window.unfold`, which can only send Unfold's commands and receive its events.
+- **The main process trusts only what it created.** It loads the UI only from Unfold's own `app://` protocol, inside the app's signed archive. It blocks navigation, new windows, embedded webviews, and every permission request, such as the camera or notifications, and it checks the sender of every message it handles.
+- **Paths outside the folder come only from dialogs.** The folder picker and save dialogs run in the main process, and only a path the person chose there is passed on to Rust. A window can never name a path outside the open folder.
 - **Every path a command receives is checked.** It must be relative to the folder, and Rust resolves it and rejects `..`, absolute paths, and symlinks that escape the root. Discovery doesn't follow symlinks out of the folder.
 - **Strict content security policy.** All assets are local, and nothing is loaded from the network. Source and descriptions are rendered as text, never as HTML.
-- **Unfold never runs the indexed code**, installs dependencies, runs Git or package scripts, or writes outside `.unfold/`, apart from its own app folders.
-- **No telemetry in V1.** The only network call is the update check, which can be turned off. Logs stay on the machine, and **Copy diagnostics** puts a redacted summary on the clipboard for bug reports.
+- **The bundled runtime runs only Unfold.** Electron's fuses are set when the app is packaged: it can't be started as plain Node, it ignores `NODE_OPTIONS` and inspector flags, and it loads its code only from its own archive, whose integrity is checked on macOS and Windows.
+- **Unfold never runs the indexed code**, installs dependencies, runs Git or package scripts, or writes outside `.unfold/`, apart from its own app folders and files you export.
+- **Electron stays current.** Unfold ships a current stable Electron and never falls outside the three major versions the Electron project supports, because each one carries Chromium's security fixes.
+- **No telemetry in V1.** The only network call is the update check, which can be turned off. Chromium's spellchecker is off, because on Windows and Linux it downloads dictionaries. Logs stay on the machine, and **Copy diagnostics** puts a redacted summary on the clipboard for bug reports.
 
 ## 14. Packaging, platforms, and updates
 
-| Platform | Package | Release |
-| --- | --- | --- |
-| macOS (Apple silicon and Intel) | Signed and notarized `.dmg` | V1 |
-| Windows 10 and 11 | Signed NSIS or MSI installer; it bootstraps WebView2 where it's missing | V2 |
-| Linux | AppImage, `.deb`, and `.rpm`, which depend on WebKitGTK | V2 |
+| Platform | Architectures | Package | Signing | Release |
+| --- | --- | --- | --- | --- |
+| macOS | Apple silicon and Intel, as separate builds | `.dmg`, plus a `.zip` that the updater uses | Developer ID, notarized | V1 |
+| Windows 10 and 11 | x64 | NSIS installer | Authenticode | V1 |
+| Linux | x64 | AppImage, `.deb`, and `.rpm` | Checksums published with each release | V1 |
+| Windows and Linux on Arm | arm64 | As above | As above | V2 |
 
-- **Updates** use the Tauri updater, with signed manifests published to GitHub Releases. They can be turned off.
-- **Builds and tests** run on all three platforms in CI from the first commit, so portability problems show up early, even before Windows and Linux are released ([U-35](decisions-and-tradeoffs.md#u-35-platforms-macos-first-all-three-in-ci)).
-- **The Mac App Store is not planned.** Its sandbox would need security-scoped bookmarks for folder access.
-- **The bundle identifier** is chosen together with the trademark check of the name Unfold ([U-3](decisions-and-tradeoffs.md#u-3-names-and-words)).
+- **All three platforms ship in V1** ([U-35](decisions-and-tradeoffs.md#u-35-platforms-macos-windows-and-linux-in-v1)). They are built and tested in CI from the first commit, and a release goes out only when the journeys pass on all three.
+- **Builds** use electron-builder, which also sets the Electron fuses ([§13](#13-security-and-privacy)). napi-rs builds `unfold-node` for each platform and architecture. The addon is unpacked beside the app's archive, as native modules must be, and ships inside the signed app.
+- **Updates** use electron-updater with GitHub Releases. Every download must match the SHA-512 hash in the release's manifest, and on macOS and Windows an update installs only if it carries our code signature. The AppImage updates itself; `.deb` and `.rpm` installs show a notice that links to the new package. Updates can be turned off.
+- **Electron upgrades** arrive as ordinary pull requests that must pass every gate. The addon uses Node-API, which is ABI-stable, so it doesn't need rebuilding for each Electron version.
+- **The Mac App Store and the Microsoft Store are not planned.** The Mac App Store's sandbox would need security-scoped bookmarks for folder access.
+- **The bundle identifier and the Windows app ID** are chosen together with the trademark check of the name Unfold ([U-3](decisions-and-tradeoffs.md#u-3-names-and-words)).
 
 ## 15. Repository layout
 
@@ -1278,9 +1341,9 @@ Types are defined once in Rust and generated for TypeScript with tauri-specta, w
 ```text
 unfold/
 ├── README.md                       # what Unfold is, the docs, and the proof of concept it rebuilds
-├── Cargo.toml                      # Rust workspace: crates/*, desktop, tools/xtask
+├── Cargo.toml                      # Rust workspace: crates/*, tools/xtask
 ├── rust-toolchain.toml             # pinned stable Rust
-├── package.json                    # pnpm workspace root: ui, e2e, tools/oracles
+├── package.json                    # pnpm workspace root: desktop, ui, e2e, tools/oracles
 ├── pnpm-workspace.yaml
 ├── justfile                        # just dev | test | check | e2e | bench | bundle | reference | oracles
 ├── deny.toml                       # cargo-deny: licenses and advisories
@@ -1318,20 +1381,21 @@ unfold/
 │   ├── unfold-reader/              # owner, catalog, closure, applications, relations, Flow model,
 │   │                               #   code render model, Mermaid; boards: format, JSON Schema,
 │   │                               #   validation, signatures, guards, health, drafts, publishing
-│   └── unfold-workspace/           # open folder, .unfold/ layout and fallback, settings, watcher,
-│                                   #   scheduler, cancellation, events, lock, text search
-├── desktop/                        # the Tauri app: a thin adapter with no logic of its own
-│   ├── Cargo.toml
-│   ├── tauri.conf.json
-│   ├── capabilities/default.json   # the webview may call our commands, nothing else
-│   ├── icons/
+│   ├── unfold-workspace/           # open folder, .unfold/ layout and fallback, settings, watcher,
+│   │                               #   scheduler, cancellation, events, lock, text search,
+│   │                               #   the command table, board claims per window
+│   └── unfold-node/                # the napi-rs addon: open and close a workspace, dispatch, cancel,
+│                                   #   subscribe; no logic of its own
+├── desktop/                        # the Electron app, in TypeScript, with no graph logic of its own
+│   ├── package.json
+│   ├── electron.vite.config.ts     # builds the main process, the preload script, and the engine host
+│   ├── electron-builder.yml        # packages, signing, notarization, fuses, updater
+│   ├── build/                      # icons and macOS entitlements
 │   └── src/
-│       ├── main.rs
-│       ├── commands/               # folders.rs, compile.rs, files.rs, graph.rs, search.rs,
-│       │                           #   boards.rs, export.rs, settings.rs
-│       ├── events.rs
-│       ├── menu.rs
-│       └── state.rs
+│       ├── main/                   # index.ts, windows.ts, menu.ts, dialogs.ts, protocol.ts,
+│       │                           #   security.ts, updater.ts, single-instance.ts
+│       ├── preload/                # index.ts: window.unfold, and nothing else
+│       └── engine-host/            # index.ts: loads unfold-node, routes each window's port, events
 ├── ui/                             # React app, built with Vite
 │   ├── package.json
 │   ├── vite.config.ts
@@ -1346,23 +1410,25 @@ unfold/
 │       ├── flow/                   # Flow view
 │       ├── inspector/              # right panel
 │       ├── panel/                  # Problems, Index log, References
-│       ├── state/                  # stores: layout, selection, lens, open board with undo
-│       └── theme/                  # tokens (light and dark), typography
+│       ├── state/                  # per-window stores: layout, selection, lens, open boards with undo
+│       └── theme/                  # tokens (light and dark), typography, bundled fonts
 ├── testdata/
 │   ├── fixtures/                   # small exact cases: worked, classes, entrances, unicode, failures,
 │   │                               #   Python policy cases
 │   ├── detectors/                  # <detector>/<case>/ with sources and expected entrances
 │   ├── playgrounds/                # ts-orders/ and py-orders/, copied from graph-compiler
 │   ├── boards/                     # the "Order placement" sample board, converted to unfold-board v1
-│   ├── reference/                  # frozen PoC generations, their canonical form, divergences.toml
+│   ├── reference/                  # frozen PoC generations, their canonical form, the reader
+│   │                               #   reference, divergences.toml
 │   └── corpora.lock.toml           # larger corpora pinned by URL and hash
 ├── tools/
 │   ├── xtask/                      # developer CLI: compile headless, export, reference import,
-│   │                               #   snapshots, parity, oracles, budgets, gen-lib-tables
-│   └── oracles/                    # Node, developer-only: TypeScript checker and Pyright oracles
+│   │                               #   snapshots, parity, oracles, budgets, gen-lib-tables, gen-ipc
+│   └── oracles/                    # Node, developer-only: TypeScript checker and Pyright oracles,
+│                                   #   and the reader-reference export
 ├── e2e/
 │   ├── ui/                         # Playwright on the UI against recorded command responses
-│   └── app/                        # WebdriverIO with the Tauri driver, on built apps
+│   └── app/                        # Playwright driving the built Electron app, on all three platforms
 └── fuzz/                           # cargo-fuzz targets for both language adapters and the backend
 ```
 
@@ -1376,30 +1442,39 @@ unfold/
 | `unfold-lang-python` | Everything Python-specific | `unfold-core`, `unfold-engine`, Ruff's parser |
 | `unfold-store` | SQLite | `unfold-core`, rusqlite |
 | `unfold-reader` | Derived views and boards | `unfold-core`, `unfold-store` |
-| `unfold-workspace` | One open folder, end to end | All of the above, `notify`, `ignore`, the ripgrep libraries |
-| `desktop` | Tauri commands, events, menus | `unfold-workspace`, Tauri |
+| `unfold-workspace` | One open folder, end to end, and the command table | All of the above, `notify`, `ignore`, the ripgrep libraries, ts-rs |
+| `unfold-node` | The Node-API addon that the engine host loads | `unfold-workspace`, napi-rs |
+
+| Package | Owns | Depends on |
+| --- | --- | --- |
+| `desktop` | The Electron main process, the preload script, and the engine host | Electron, electron-updater, the `unfold-node` addon, the generated IPC types |
+| `ui` | The React app | React and the libraries in [§11.8](#118-ui-technology-and-what-runs-where), the generated IPC types |
+| `e2e` | The UI and app journeys | Playwright |
+| `tools/oracles` | Developer-only oracles and the reader-reference export | TypeScript 6 and Pyright, as published packages |
 
 ### 15.3 Dependency rules
 
-1. No engine crate depends on Tauri or the UI. Everything outside `desktop/` and `ui/` can be tested headless.
+1. No engine crate depends on Electron, Node, or the UI. Everything outside `unfold-node`, `desktop/`, and `ui/` can be tested headless.
 2. Language crates depend only on `unfold-core` and `unfold-engine`. They never touch the store.
 3. `unfold-engine` produces in-memory results. `unfold-workspace` persists them through `unfold-store`.
 4. `unfold-reader` never parses source. It reads the store and verified bytes, and gets highlighting through a `Highlighter` trait that the language crates implement and the workspace wires in.
-5. `desktop/` holds no logic. Each command validates its input and calls `unfold-workspace`.
-6. The UI never touches files. It only calls typed commands.
+5. `unfold-node` and `desktop/` hold no graph logic. Rust validates every command and `unfold-workspace` handles it. The engine host only routes messages.
+6. The UI never touches files or Node. It only calls typed commands through `window.unfold`.
 7. Test data lives in `testdata/`, never inside crates, so Rust tests, UI tests, and tools share one copy.
-8. Because the engine knows nothing about Tauri, it could also run behind another shell, such as Electron through a native addon, without changes ([U-6](decisions-and-tradeoffs.md#u-6-tauri-2-for-the-shell)).
+8. The main process never handles graph data. It manages windows and the operating system's dialogs, and sends the engine host only lifecycle requests and paths chosen in dialogs.
+9. The UI depends on `window.unfold`, not on Electron, and the engine knows nothing about Electron. Either could sit behind another host, such as an editor extension, without changes ([U-6](decisions-and-tradeoffs.md#u-6-electron-for-the-shell-with-the-rust-engine-as-a-native-addon)).
 
 ### 15.4 Everyday commands
 
 | Command | Does |
 | --- | --- |
-| `just dev` | Runs the app with hot reload |
-| `just test` | Runs `cargo nextest` across the workspace and Vitest for the UI |
+| `just dev` | Builds the addon and runs the Electron app, with hot reload for the UI |
+| `just test` | Runs `cargo nextest` across the workspace, the addon's Node tests, and Vitest for the UI and the main process |
 | `just check` | Runs rustfmt, clippy, `tsc`, ESLint, and cargo-deny |
 | `just e2e` | Runs the Playwright UI journeys and the app journeys |
 | `just bench` | Runs the criterion benchmarks and the corpus budgets |
-| `just bundle` | Builds a signed app for the current platform |
+| `just bundle` | Builds a signed app for the current platform with electron-builder |
+| `cargo xtask gen-ipc` | Regenerates the TypeScript types for commands, events, and payloads |
 | `cargo xtask compile <folder>` | Compiles a folder headless and prints its statistics |
 | `cargo xtask export <folder>` | Writes the canonical export |
 | `cargo xtask reference import <graph-compiler path>` | Imports and converts the frozen proof-of-concept outputs |
@@ -1412,9 +1487,9 @@ unfold/
 
 | Workflow | Runs |
 | --- | --- |
-| `pr.yml`, on macOS, Windows, and Linux | Formatting, clippy, every Rust test, snapshot and parity tests on fixtures and playgrounds, UI component tests, Playwright journeys, and an app build |
-| `nightly.yml` | Full-corpus parity and oracles, budgets, a fixed-length fuzzing run, the incremental-equals-full property tests with long edit sequences, and the real-app journeys |
-| `release.yml` | Signed and notarized builds on release tags, plus updater manifests |
+| `pr.yml`, on macOS, Windows, and Linux | Formatting, clippy, every Rust test, the addon's Node tests, snapshot and parity tests on fixtures and playgrounds, UI component tests, an unsigned app build, and the Playwright journeys on the UI and on that build |
+| `nightly.yml`, on macOS, Windows, and Linux | Full-corpus parity and oracles, budgets, a fixed-length fuzzing run, the incremental-equals-full property tests with long edit sequences, and the full app journeys, including several windows and engine-host restarts |
+| `release.yml` | On release tags: signed builds for all three platforms and both Mac architectures, macOS notarization, and the updater's manifests |
 
 ## 16. Testing
 
@@ -1427,11 +1502,12 @@ unfold/
 | Detectors | Every supported form, and decoys that must not match | Data-driven cases in `testdata/detectors/<id>/<case>/` |
 | `unfold-store` | The schema, row diffs, single-transaction commits, reads during writes, rebuilds on a version change, a crash mid-commit | Unit tests with injected faults |
 | `unfold-reader` | Owner, catalog, closure, applications, relations, Flow lanes, the code render model, Mermaid, and boards (schema, signatures, guards, health, publishing) | Snapshots on both playgrounds; hand-written graph fixtures that don't depend on extraction; Mermaid checked by the real Mermaid parser |
-| `unfold-workspace` | Watcher batching, debounce, cancellation, last-good files, settings changes, reopening, the lock, the fallback location | Integration tests on temporary folders |
-| `desktop` | Command contracts, path confinement, capabilities | Rust tests, and generated TypeScript types that must compile against the UI |
-| UI | Components and journeys | Vitest and Testing Library, using fixtures the Rust views generate; Playwright in Chromium and WebKit against recorded command responses |
-| App | End-to-end journeys on built binaries | WebdriverIO with the Tauri driver |
-| Packaging | No Node or Python on `PATH`, paths with spaces and Unicode, read-only folders, execution sentinels | Packaged smoke tests on clean machines |
+| `unfold-workspace` | Watcher batching, debounce, cancellation, last-good files, settings changes, reopening, the lock, the fallback location, command contracts, path confinement, and board claims per window | Integration tests on temporary folders |
+| `unfold-node` | The addon's surface: dispatch round trips, events from Rust threads, cancellation, and panics returned as errors | Node tests against the built addon |
+| `desktop` | Window management and restore, engine-host restarts, sender checks, the `app://` protocol, and each window's security settings | Vitest for the main process, and generated TypeScript types that must compile against the preload script, the engine host, and the UI |
+| UI | Components and journeys | Vitest and Testing Library, using fixtures the Rust views generate; Playwright in Chromium against recorded command responses |
+| App | End-to-end journeys on built apps, including several windows on one folder and a restart of the engine host | Playwright's Electron support, on macOS, Windows, and Linux |
+| Packaging | No Node or Python on `PATH`, paths with spaces and Unicode, read-only folders, execution sentinels, and the fuses and window settings read back from the packaged app | Packaged smoke tests on clean machines of each platform |
 
 **Gates**:
 
@@ -1443,11 +1519,11 @@ unfold/
 - Budgets hold.
 - The journeys pass.
 
-[U-33](decisions-and-tradeoffs.md#u-33-correctness-evidence-frozen-poc-reference-divergence-ledger-independent-oracles) and [U-34](decisions-and-tradeoffs.md#u-34-testing-at-every-layer) explain these gates, and the [migration plan](migration-plan.md) says which phase introduces each one.
+[U-33](decisions-and-tradeoffs.md#u-33-correctness-evidence-frozen-poc-reference-divergence-ledger-independent-oracles) and [U-34](decisions-and-tradeoffs.md#u-34-testing-at-every-layer) explain these gates, and the [migration plan](migration-plan.md) says which step introduces each one.
 
 ## 17. Performance targets
 
-These targets are set from the first Rust measurements (Phases 2 and 5) and ratified on fixed hardware before V1 ships.
+These targets are set from the first measurements (Steps 5 and 9 of the migration, and the Step 0 window spike) and ratified on a fixed reference machine for each platform before V1 ships. Memory counts every Unfold process: the main process, the engine host, and the renderers.
 
 | Interaction | Target | Proof-of-concept baseline |
 | --- | --- | --- |
@@ -1460,7 +1536,10 @@ These targets are set from the first Rust measurements (Phases 2 and 5) and rati
 | Open a cached card, 95th percentile | Under 150 ms | |
 | Canvas | 60 fps with 50 cards; usable with 100 | |
 | Cancel acknowledged | Under 250 ms | |
-| Idle memory with a 2,000-file repository open | Under 400 MB | |
+| Launch to the welcome window | Under 1.5 s | |
+| Idle memory, one window, with a 2,000-file repository open | Under 600 MB | |
+| Each further window on the same folder | Under 150 MB more | |
+| Engine-host restart, until every window is usable again | Under 2 s | |
 
 A budget never passes by dropping files, call sites, or external or unresolved records.
 
@@ -1470,24 +1549,31 @@ A budget never passes by dropping files, call sites, or external or unresolved r
 | --- | --- |
 | The rewrite introduces wrong targets | Reference parity, 100%-precision oracle gates, and every divergence recorded before release |
 | Background updates leave a stale or wrong graph | One code path for every compile; full relinking in V1; incremental-equals-full property tests; Compile and Rebuild from scratch are always available |
-| Recall is lower without a type checker | The Phase 0 recall check, the C-2 rule, written-type evidence, visible reasons, and a TypeScript 7 checker provider ([U-8](decisions-and-tradeoffs.md#u-8-type-checker-evidence-later-through-typescript-7s-api)) |
+| Recall is lower without a type checker | The Step 0 recall check, the C-2 rule, written-type evidence, visible reasons, and a TypeScript 7 checker provider ([U-8](decisions-and-tradeoffs.md#u-8-type-checker-evidence-later-through-typescript-7s-api)) |
 | oxc changes its syntax tree often | Exact pins, our own adapter, and upgrades only with full corpus parity |
 | `oxc_semantic`'s scoping doesn't match our binding rules | Keep oxc's parser and port the proof of concept's binder onto its tree |
 | Ruff's parser is internal to Ruff | Pin a release tag behind an adapter; fall back to a vendored copy |
-| WebKit renders or performs worse than Chromium | A Phase 0 canvas spike, conservative CSS, and Linux releasing only after its suites pass. Because the engine is independent of the shell, Electron with a native addon remains a fallback |
+| Electron uses more memory, especially with several windows | A per-window budget, measured from the Step 0 spike. The graph lives once, in the engine host, and each window fetches only what it shows |
+| A native crash in the engine | The engine runs in its own process. The main process restarts it and the windows reconnect, keeping their boards. Fuzzing, depth limits, and larger stacks for engine threads make crashes rare |
+| An Electron security setting is missed | One hardening module in the main process, and a packaged-app test that reads back the fuses and every window's settings |
+| Electron's eight-week release cycle | Upgrades as routine pull requests behind every gate. Node-API means the addon needs no rebuild for each Electron version |
+| Native builds for three platforms and two Mac architectures | One napi-rs build matrix in CI, and packaged smoke tests on every target |
+| Signing certificates take time to obtain, especially on Windows | Ordered in Step 0, and signed builds on every platform from the Step 0 packaging spike onward |
 | `.unfold/local/` on read-only folders or network volumes | The fallback location in the OS cache folder |
 | Other tools react to writes in `.unfold/` | Writes are confined to `.unfold/local/cache/` and documented; dev servers rarely watch dot-folders |
 | Linux watcher limits on huge folders | Detect the inotify limit, fall back to scanning, and say so |
 | Mistakes converting between bytes and UTF-16 | One conversion module, property tests, and Unicode fixtures |
 | The app grows into an editor | The non-goals, stated up front |
-| tauri-specta is still a release candidate | Pinned, with ts-rs as the fallback |
-| "Unfold" is already a consumer app's name | A trademark check in Phase 0, before the name reaches folders and formats |
+| "Unfold" is already a consumer app's name | A trademark check in Step 0, before the name reaches folders and formats |
 
 ## 19. Glossary
 
 | Term | Meaning |
 | --- | --- |
-| Workspace | One opened folder, usually a repository root, and everything Unfold knows about it |
+| Workspace | One opened folder, usually a repository root, and everything Unfold knows about it. Every window on that folder shares it |
+| Window | One Unfold window: a folder with its own tabs, layout, and open boards. Several windows can show one folder |
+| Main process | Electron's process that owns windows, menus, dialogs, and updates |
+| Engine host | The helper process that runs the Rust engine for every window |
 | Compile | Bring the graph up to date with the files on disk. The first Compile builds it |
 | Background update | A compile the watcher triggers after files change |
 | Per-file facts | Everything the engine extracts from one file alone; cached by content hash |

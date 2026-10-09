@@ -1,0 +1,176 @@
+# Every night on macOS, Windows, and Linux (architecture §15.5): full parity, long property tests,
+# the performance budgets, and the packaged app end to end. Actions are pinned to commit SHAs.
+name: nightly
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+jobs:
+  nightly:
+    name: nightly (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: nightly-release
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install Linux libraries for Electron and a virtual display
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libnss3 libgbm1 libasound2t64 libgtk-3-0 libxss1 libxkbcommon0
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      # Every corpus in testdata/reference/corpora.toml. The large pinned corpora of
+      # testdata/corpora.lock.toml join this list once they are fetched in CI.
+      - name: Full parity
+        shell: bash
+        run: |
+          for corpus in mixed-playground playground-ts-native playground-ts-checker python-playground entrances; do
+            cargo xtask parity "$corpus" --limit 0
+          done
+
+      - name: Long property tests (incremental equals full, determinism)
+        env:
+          PROPTEST_CASES: "5000"
+        run: cargo test --release --workspace
+
+      - name: Budgets (ignored tests and benchmarks, release build)
+        run: cargo test --release --workspace -- --ignored
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      # The oracle gates on the pinned corpora outside the repository (testdata/reference/README.md,
+      # "Oracles"): fetch them by their locked archive hashes, regenerate the TypeScript checker's
+      # answers for the upstream TypeScript 6.0.3 source (too large to commit) with the
+      # developer-only Node oracle, and check precision and recall. Linux only: the answers don't
+      # depend on the platform.
+      - name: Fetch the pinned oracle corpora
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          corpora="$RUNNER_TEMP/corpora"
+          fetch() {
+            curl -fsSL -A unfold-build -o "$RUNNER_TEMP/$1.tar.gz" "$2"
+            echo "$3  $RUNNER_TEMP/$1.tar.gz" | sha256sum -c -
+          }
+          mkdir -p "$corpora/typescript-6.0.3-src-upstream" "$corpora/fastapi-full-stack-template-0.12.0"
+          fetch typescript https://codeload.github.com/microsoft/TypeScript/tar.gz/refs/tags/v6.0.3 \
+            c26953b79c1197e02f5666a0b612d5b9707339557aa9744097e7d5719de1a117
+          tar -xzf "$RUNNER_TEMP/typescript.tar.gz" -C "$corpora/typescript-6.0.3-src-upstream" \
+            --strip-components=2 TypeScript-6.0.3/src
+          fetch fastapi https://codeload.github.com/fastapi/full-stack-fastapi-template/tar.gz/84c5a9e11a9e58262599e3d772f5386924e02ca7 \
+            f4b03eff0c3052a3802ee9d4bdc533e750bf229d7d6cb2115796e368da4a72cc
+          tar -xzf "$RUNNER_TEMP/fastapi.tar.gz" -C "$corpora/fastapi-full-stack-template-0.12.0" --strip-components=1
+          echo "UNFOLD_CORPORA_DIR=$corpora" >> "$GITHUB_ENV"
+
+      - name: Oracle gates (every corpus available in CI)
+        if: runner.os == 'Linux'
+        run: |
+          cargo xtask oracles refresh typescript-6.0.3-src-upstream
+          cargo xtask oracles check ts-orders entrances py-orders mixed-playground python-ranges fastapi-template typescript-6.0.3-src-upstream
+
+      - name: Build the addon, the UI, and the desktop shell
+        run: |
+          pnpm --filter @unfold/node build
+          pnpm --filter @unfold/node test
+          pnpm --filter @unfold/ui build
+          pnpm --filter @unfold/desktop build
+          pnpm --filter @unfold/desktop exec node -e "require('electron')"
+
+      - name: Unsigned app build (unpacked)
+        run: pnpm --filter @unfold/desktop run bundle:dir
+
+      - name: Packaged smoke test
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run --auto-servernum pnpm --filter @unfold/desktop run smoke
+          else
+            pnpm --filter @unfold/desktop run smoke
+          fi
+
+      - name: Full Playwright journeys (several windows, engine-host restarts)
+        if: hashFiles('e2e/package.json') != ''
+        shell: bash
+        env:
+          UNFOLD_E2E_FULL: "1"
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run --auto-servernum pnpm --filter ./e2e test
+          else
+            pnpm --filter ./e2e test
+          fi
+
+  # A short, fixed-length fuzz run of every target in fuzz/ (fuzz/README.md): no input may make
+  # extraction, linking, or resolution panic, overflow, or hang. Crashing inputs are uploaded.
+  fuzz:
+    name: fuzz (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      FUZZ_TOOLCHAIN: nightly-2026-10-08
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install a pinned nightly toolchain and cargo-fuzz
+        run: |
+          rustup toolchain install "$FUZZ_TOOLCHAIN" --profile minimal
+          cargo +"$FUZZ_TOOLCHAIN" install cargo-fuzz --version 0.13.2 --locked
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: nightly-fuzz
+          workspaces: fuzz
+
+      - name: Seed the corpora from the playgrounds
+        working-directory: fuzz
+        run: |
+          mkdir -p corpus/typescript_extract corpus/python_extract corpus/link_resolve corpus/facts_decode
+          find ../testdata/playgrounds/ts-orders -name '*.ts' -exec cp {} corpus/typescript_extract/ \;
+          find ../testdata/playgrounds/py-orders -name '*.py' -exec cp {} corpus/python_extract/ \;
+          cargo +"$FUZZ_TOOLCHAIN" run --release --example facts_seeds
+
+      - name: Fuzz every target for two minutes
+        working-directory: fuzz
+        run: |
+          for target in typescript_extract python_extract link_resolve facts_decode; do
+            cargo +"$FUZZ_TOOLCHAIN" fuzz run "$target" -O "corpus/$target" -- \
+              -max_total_time=120 -timeout=10 -max_len=8192 -rss_limit_mb=4096
+          done
+
+      - name: Upload crashing inputs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts/

@@ -1,0 +1,1 @@
+class C { m() {} run(x: number) { switch (x) { case 0: if (unknownPredicate(this)) this.m(); } this.m(); } }

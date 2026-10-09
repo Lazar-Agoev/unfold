@@ -1,0 +1,1 @@
+from appmod import app

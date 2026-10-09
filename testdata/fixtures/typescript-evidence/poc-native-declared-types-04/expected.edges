@@ -1,0 +1,1 @@
+private-chain.ts#class:Base/method:run/expression_statement[0]/call[0] #0 calls `value.#repo.save` -> private-chain.ts#class:Repo/method:save

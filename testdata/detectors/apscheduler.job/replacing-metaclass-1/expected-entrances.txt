@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/apscheduler.job/replacing-metaclass-1. Format: testdata/README.md.
+# A replacing metaclass keeps the handler unsupported. Written: scheduler.add_job(Commands.run)
+entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:13
+	target	handler	unresolved	unsupported	Commands.run

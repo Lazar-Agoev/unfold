@@ -1,0 +1,18 @@
+# Expected entrances for testdata/detectors/fastapi.route/uncertain-arguments. Format: testdata/README.md.
+# Expanded or duplicate arguments keep uncertainty instead of guessing a path or handler (PoC: "Expanded or duplicate arguments...").
+entrance	fastapi.route	http	GET	-	unknown	src/app.py:5
+	target	handler	unresolved	unsupported	endpoint
+entrance	fastapi.route	http	GET	-	unknown	src/app.py:6
+	target	handler	unresolved	unsupported	settings
+	target	handler	unresolved	unsupported	endpoint
+entrance	fastapi.route	http	GET	/x	exact	src/app.py:7
+	target	handler	unresolved	unsupported	handlers
+entrance	fastapi.route	http	GET	/x	exact	src/app.py:8
+	target	handler	unresolved	unsupported	endpoint
+	target	handler	unresolved	unsupported	fake
+entrance	fastapi.route	http	GET	/x	exact	src/app.py:9
+	target	handler	unresolved	unsupported	endpoint
+	target	handler	unresolved	unsupported	fake
+entrance	fastapi.route	http	GET	/x	exact	src/app.py:10
+	target	handler	unresolved	unsupported	endpoint
+	target	handler	unresolved	unsupported	fake

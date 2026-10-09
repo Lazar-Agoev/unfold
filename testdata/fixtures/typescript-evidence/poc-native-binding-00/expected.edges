@@ -1,0 +1,3 @@
+recursion.ts#expression_statement[0]/call[0] #0 calls `first` -> recursion.ts#function:first
+recursion.ts#function:first/expression_statement[0]/call[0] #0 calls `second` -> recursion.ts#function:second
+recursion.ts#function:second/expression_statement[0]/call[0] #0 calls `first` -> recursion.ts#function:first

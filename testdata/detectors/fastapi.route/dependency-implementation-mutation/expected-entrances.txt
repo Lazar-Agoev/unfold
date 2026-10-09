@@ -1,0 +1,5 @@
+# Expected entrances for testdata/detectors/fastapi.route/dependency-implementation-mutation. Format: testdata/README.md.
+# A mutation of the Depends implementation withholds every dependency factory.
+entrance	fastapi.route	http	GET	/x	exact	src/app.py:7
+	target	handler	unresolved	unsupported	Depends(endpoint)
+	target	handler	resolved	src/app.py#function:endpoint	endpoint

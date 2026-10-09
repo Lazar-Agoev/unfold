@@ -1,0 +1,230 @@
+/*
+ * Design tokens: the Paper "Code Graph - v7" palette (architecture §10.7), in light and dark sets.
+ *
+ * The light set is the v7 reader's palette. The dark set is its counterpart: the same hues, lifted
+ * for contrast on dark surfaces. The theme follows the OS; `data-theme="light" | "dark"` on <html>
+ * overrides it.
+ *
+ * Text pairs meet WCAG AA (4.5:1) in both sets, and focus rings and icons meet 3:1;
+ * `src/theme/contrast.test.ts` checks the pairs the components use.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces and text */
+  --color-canvas: #f7f8fa;
+  --color-surface: #ffffff;
+  /* Floating layers (menus, popovers, dialogs, the palette): lifted above surfaces in the dark set. */
+  --color-popover: #ffffff;
+  --color-sidebar: #f3f4f6;
+  --color-chrome: #f3f4f6;
+  --color-text: #202126;
+  --color-muted: #656974;
+  --color-border: #e0e2e7;
+  --color-contour: #8b93a1;
+  --color-hover: rgb(32 33 38 / 0.06);
+  --color-step: #f4f5f8;
+
+  /* Accent: indigo */
+  --color-accent: #5862c0;
+  --color-accent-strong: #4a53a8;
+  --color-accent-text: #5862c0;
+  --color-on-accent: #ffffff;
+  --color-selection: #edf0fc;
+  --color-focus-ring: #5862c0;
+
+  /* Authored text (descriptions, labels): magenta */
+  --color-authored: #a8346f;
+  --color-authored-tint: #fbeff5;
+  --color-authored-line: #e7b1cc;
+
+  /* States */
+  --color-warn: #8a5a00;
+  --color-warn-fill: #fff3d6;
+  --color-success: #15803d;
+  /* Changed or pending (the amber dot): a darker amber than Flow's decision color, for 3:1 on chrome. */
+  --color-pending: #c26a0a;
+  --color-failure: #c42020;
+  --color-failure-fill: #fee2e2;
+  --color-danger: #c42020;
+  --color-danger-strong: #a81b1b;
+  --color-on-danger: #ffffff;
+
+  /* Syntax (v7) */
+  --color-syntax-plain: #202126;
+  --color-syntax-keyword: #0033b3;
+  --color-syntax-function: #00627a;
+  --color-syntax-property: #871094;
+  --color-syntax-string: #067d17;
+  --color-syntax-type: #7a5c14;
+  --color-syntax-number: #b4530a;
+  --color-syntax-comment: #8c8c8c;
+
+  /* Flow diagram */
+  --color-decision: #d97706;
+  --color-decision-fill: #fef3c7;
+  --color-data: #9333ea;
+  --color-data-fill: #f3e8ff;
+  --color-guard: #ea580c;
+  --color-guard-fill: #ffedd5;
+  --color-loop: #4f46e5;
+  --color-loop-line: #a5b4fc;
+
+  /* Typography: bundled fonts (see fonts in main.tsx), so text measures the same everywhere. */
+  --font-ui: "Inter Variable", system-ui, sans-serif;
+  --font-code: "JetBrains Mono Variable", ui-monospace, monospace;
+  --font-size-ui: 13px;
+  --font-size-small: 12px;
+  --font-size-tiny: 11px;
+
+  /* Shape */
+  --radius-small: 4px;
+  --radius: 6px;
+  --radius-large: 10px;
+  --shadow-raised: 0 1px 2px rgb(32 33 38 / 0.06), 0 0 0 1px var(--color-border);
+  --shadow-popover: 0 8px 24px rgb(32 33 38 / 0.14), 0 0 0 1px var(--color-border);
+  --color-overlay: rgb(20 21 26 / 0.28);
+  --color-tooltip: #2b2d33;
+  --color-on-tooltip: #f4f5f8;
+  --color-muted-on-tooltip: #a8acb6;
+
+  /* Layers: floating surfaces stack in this order. */
+  --z-resize: 5;
+  --z-popover: 40;
+  --z-dialog: 50;
+  --z-menu: 60;
+  --z-tooltip: 70;
+  --z-toast: 80;
+
+  /* Motion: short, and none at all when the OS asks for reduced motion (base.css). */
+  --duration-fast: 90ms;
+  --duration: 160ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --color-canvas: #15161a;
+    --color-surface: #1c1d22;
+    --color-popover: #25272d;
+    --color-sidebar: #18191d;
+    --color-chrome: #18191d;
+    --color-text: #e4e5ea;
+    --color-muted: #9a9ea9;
+    --color-border: #2d2f36;
+    --color-contour: #6f7682;
+    --color-hover: rgb(228 229 234 / 0.07);
+    --color-step: #202127;
+
+    --color-accent: #5862c0;
+    --color-accent-strong: #636cc9;
+    --color-accent-text: #949be9;
+    --color-on-accent: #ffffff;
+    --color-selection: #262a45;
+    --color-focus-ring: #8d95e8;
+
+    --color-authored: #e07bae;
+    --color-authored-tint: #3a2230;
+    --color-authored-line: #7a3d5c;
+
+    --color-warn: #e8b65a;
+    --color-warn-fill: #3a2e14;
+    --color-success: #4ade80;
+    --color-pending: #f59e0b;
+    --color-failure: #f87171;
+    --color-failure-fill: #3f1d1d;
+    --color-danger: #c93c3c;
+    --color-danger-strong: #b83232;
+    --color-on-danger: #ffffff;
+
+    --color-syntax-plain: #e4e5ea;
+    --color-syntax-keyword: #7f9cf5;
+    --color-syntax-function: #56b6c2;
+    --color-syntax-property: #c77dbb;
+    --color-syntax-string: #6aab73;
+    --color-syntax-type: #d5b778;
+    --color-syntax-number: #e0955a;
+    --color-syntax-comment: #7a7e85;
+
+    --color-decision: #f59e0b;
+    --color-decision-fill: #3b2a0b;
+    --color-data: #c084fc;
+    --color-data-fill: #2e1f45;
+    --color-guard: #fb923c;
+    --color-guard-fill: #3b2313;
+    --color-loop: #818cf8;
+    --color-loop-line: #4c51a0;
+
+    --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.3), 0 0 0 1px var(--color-border);
+    --shadow-popover: 0 8px 28px rgb(0 0 0 / 0.5), 0 0 0 1px var(--color-border);
+    --color-overlay: rgb(0 0 0 / 0.5);
+    --color-tooltip: #34363e;
+    --color-on-tooltip: #eceef3;
+    --color-muted-on-tooltip: #a8acb6;
+  }
+}
+
+/* The explicit override repeats the dark set: CSS can't share one block between a media query and a selector. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-canvas: #15161a;
+  --color-surface: #1c1d22;
+  --color-popover: #25272d;
+  --color-sidebar: #18191d;
+  --color-chrome: #18191d;
+  --color-text: #e4e5ea;
+  --color-muted: #9a9ea9;
+  --color-border: #2d2f36;
+  --color-contour: #6f7682;
+  --color-hover: rgb(228 229 234 / 0.07);
+  --color-step: #202127;
+
+  --color-accent: #5862c0;
+  --color-accent-strong: #636cc9;
+  --color-accent-text: #949be9;
+  --color-on-accent: #ffffff;
+  --color-selection: #262a45;
+  --color-focus-ring: #8d95e8;
+
+  --color-authored: #e07bae;
+  --color-authored-tint: #3a2230;
+  --color-authored-line: #7a3d5c;
+
+  --color-warn: #e8b65a;
+  --color-warn-fill: #3a2e14;
+  --color-success: #4ade80;
+  --color-pending: #f59e0b;
+  --color-failure: #f87171;
+  --color-failure-fill: #3f1d1d;
+  --color-danger: #c93c3c;
+  --color-danger-strong: #b83232;
+  --color-on-danger: #ffffff;
+
+  --color-syntax-plain: #e4e5ea;
+  --color-syntax-keyword: #7f9cf5;
+  --color-syntax-function: #56b6c2;
+  --color-syntax-property: #c77dbb;
+  --color-syntax-string: #6aab73;
+  --color-syntax-type: #d5b778;
+  --color-syntax-number: #e0955a;
+  --color-syntax-comment: #7a7e85;
+
+  --color-decision: #f59e0b;
+  --color-decision-fill: #3b2a0b;
+  --color-data: #c084fc;
+  --color-data-fill: #2e1f45;
+  --color-guard: #fb923c;
+  --color-guard-fill: #3b2313;
+  --color-loop: #818cf8;
+  --color-loop-line: #4c51a0;
+
+  --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.3), 0 0 0 1px var(--color-border);
+  --shadow-popover: 0 8px 28px rgb(0 0 0 / 0.5), 0 0 0 1px var(--color-border);
+  --color-overlay: rgb(0 0 0 / 0.5);
+  --color-tooltip: #34363e;
+  --color-on-tooltip: #eceef3;
+  --color-muted-on-tooltip: #a8acb6;
+}

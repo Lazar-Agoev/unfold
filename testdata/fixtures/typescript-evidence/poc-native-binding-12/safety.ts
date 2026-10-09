@@ -1,0 +1,1 @@
+export {}; function f() {} const g = function (f: () => void) { f(); }; class C { m(f: () => void) { f(); } } f(); g(() => {});

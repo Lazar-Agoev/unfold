@@ -1,0 +1,10 @@
+use.ts#import[0] #0 imports `@internal/omitted` -> src/omitted.ts#
+use.ts#import[1] #0 imports `@internal/missing` -> not_found
+use.ts#import[2] #0 imports `./missing.js` -> not_found
+use.ts#import[3] #0 imports `@scope/pkg` -> external @scope/pkg
+use.ts#import[4] #0 imports `not-installed` -> external not-installed
+use.ts#expression_statement[0]/call[0] #0 calls `omitted` -> src/omitted.ts#function:omitted
+use.ts#expression_statement[1]/call[0] #0 calls `absent` -> not_found
+use.ts#expression_statement[2]/call[0] #0 calls `missing` -> not_found
+use.ts#expression_statement[3]/call[0] #0 calls `call` -> external @scope/pkg
+use.ts#expression_statement[4]/call[0] #0 calls `bare` -> external not-installed

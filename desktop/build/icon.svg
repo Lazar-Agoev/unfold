@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!--
+    Unfold's placeholder app icon: three cards joined by edges, on an indigo tile.
+    Authored for this repository; rendered to icon.png by tools/icons/render-icon.mjs.
+    The tile leaves the 100 px margin macOS icons use.
+  -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#5664E0"/>
+      <stop offset="1" stop-color="#262C78"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E6E9FF"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#tile)"/>
+
+  <g fill="none" stroke="#AEB7FF" stroke-width="26" stroke-linecap="round">
+    <path d="M318 398 L318 664"/>
+    <path d="M452 398 C452 452 650 420 650 478"/>
+  </g>
+
+  <g fill="url(#card)">
+    <rect x="228" y="248" width="296" height="160" rx="34"/>
+    <rect x="500" y="466" width="296" height="160" rx="34"/>
+    <rect x="228" y="652" width="296" height="160" rx="34"/>
+  </g>
+
+  <g fill="#5664E0" opacity="0.55">
+    <rect x="270" y="300" width="160" height="22" rx="11"/>
+    <rect x="270" y="342" width="208" height="22" rx="11"/>
+    <rect x="542" y="518" width="208" height="22" rx="11"/>
+    <rect x="542" y="560" width="128" height="22" rx="11"/>
+    <rect x="270" y="704" width="120" height="22" rx="11"/>
+    <rect x="270" y="746" width="184" height="22" rx="11"/>
+  </g>
+</svg>

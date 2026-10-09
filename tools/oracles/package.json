@@ -1,0 +1,22 @@
+{
+  "name": "@unfold/oracles",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Developer-only tools: reference exports from the frozen proof of concept, and independent oracles (the TypeScript checker). Never shipped.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "export-reader": "node export-reader.mjs",
+    "check-mermaid": "node check-mermaid.mjs",
+    "check-board-schema": "node check-board-schema.mjs",
+    "typescript-oracle": "node typescript-oracle.mjs"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "jsdom": "30.1.1",
+    "mermaid": "12.0.0",
+    "typescript": "6.0.3"
+  }
+}

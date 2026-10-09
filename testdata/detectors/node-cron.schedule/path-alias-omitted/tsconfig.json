@@ -1,0 +1,1 @@
+{"compilerOptions": {"module": "NodeNext", "moduleResolution": "NodeNext", "types": [], "paths": {"node-cron": ["./local.ts"]}}}

@@ -1,0 +1,42 @@
+[package]
+name = "unfold-workspace"
+description = "One open Unfold folder end to end: layout, store, engine thread, watcher, events, settings edits, and state"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+unfold-core = { workspace = true, features = ["ts"] }
+unfold-engine = { workspace = true }
+unfold-lang-typescript = { workspace = true }
+unfold-lang-python = { workspace = true }
+unfold-store = { workspace = true }
+unfold-reader = { workspace = true, features = ["ts"] }
+grep-matcher = { workspace = true }
+grep-regex = { workspace = true }
+grep-searcher = { workspace = true }
+ignore = { workspace = true }
+notify = { workspace = true }
+notify-debouncer-full = { workspace = true }
+nucleo-matcher = { workspace = true }
+opener = { workspace = true }
+rayon = { workspace = true }
+rustc-hash = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+toml_edit = { workspace = true }
+ts-rs = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+tempfile = { workspace = true }
+unfold-core = { workspace = true, features = ["testkit", "ts"] }
+
+[lints]
+workspace = true

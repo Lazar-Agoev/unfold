@@ -1,0 +1,3 @@
+use.ts#class:C/method:run/switch[0]/case[0]/if[0]/call[0] #0 calls `unknownPredicate` -> unknown_name
+use.ts#class:C/method:run/switch[0]/case[0]/if[0]/expression_statement[0]/call[0] #0 calls `this.m` -> unknown_receiver
+use.ts#class:C/method:run/expression_statement[0]/call[0] #0 calls `this.m` -> unknown_receiver

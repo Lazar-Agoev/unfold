@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/apscheduler.job/custom-executor. Format: testdata/README.md.
+# A non-default executor keeps the handler unsupported.
+entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:7
+	target	handler	unresolved	unsupported	first

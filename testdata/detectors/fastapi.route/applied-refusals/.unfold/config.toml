@@ -1,0 +1,6 @@
+# Detector case: testdata/detectors/fastapi.route/applied-refusals.
+version = 1
+
+[[python.project]]
+root = "."
+source_roots = ["src"]

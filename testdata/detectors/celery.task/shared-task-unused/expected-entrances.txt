@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/celery.task/shared-task-unused. Format: testdata/README.md.
+# An unused shared_task alias doesn't withhold.
+entrance	celery.task	worker	-	orders	exact	src/app.py:8
+	target	handler	resolved	src/app.py#function:first	first

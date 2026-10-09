@@ -1,0 +1,50 @@
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  color: var(--color-muted);
+}
+
+.empty-state-page {
+  place-self: center;
+  max-width: 360px;
+  padding: 24px;
+}
+
+.empty-state-compact {
+  align-items: flex-start;
+  text-align: left;
+  padding: 4px 12px;
+}
+
+.empty-state-icon {
+  margin-bottom: 10px;
+  color: var(--color-contour);
+}
+
+.empty-state-title {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.empty-state-page .empty-state-title {
+  font-size: 14px;
+}
+
+.empty-state-compact .empty-state-title {
+  font-size: var(--font-size-small);
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+.empty-state-hint {
+  margin-top: 4px;
+  font-size: var(--font-size-small);
+}
+
+.empty-state-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}

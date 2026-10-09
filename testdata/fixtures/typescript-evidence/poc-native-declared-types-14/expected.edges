@@ -1,0 +1,2 @@
+ambiguous.ts#function:call/expression_statement[0]/call[0] #0 calls `union.m` -> unknown_receiver
+ambiguous.ts#function:call/expression_statement[1]/call[0] #0 calls `(…).m` -> unknown_receiver

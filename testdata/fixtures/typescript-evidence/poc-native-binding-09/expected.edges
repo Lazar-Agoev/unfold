@@ -1,0 +1,4 @@
+merges.ts#expression_statement[0]/call[0] #0 calls `F` -> merges.ts#function:F
+merges.ts#expression_statement[1]/call[0] #0 calls `F.extra` -> merges.ts#function:extra
+merges.ts#expression_statement[2]/call[0] #0 calls `C.extra` -> merges.ts#function:extra[1]
+merges.ts#expression_statement[3]/call[0] #0 calls `E.extra` -> merges.ts#function:extra[2]

@@ -1,0 +1,149 @@
+.editor-tabs {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  height: 34px;
+  background: var(--color-chrome);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.editor-tabs-strip {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.editor-tabs-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.editor-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  max-width: 240px;
+  padding: 0 6px 0 12px;
+  border-right: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+  cursor: default;
+}
+
+.editor-tab:hover {
+  color: var(--color-text);
+}
+
+.editor-tab-active {
+  background: var(--color-canvas);
+  color: var(--color-text);
+}
+
+/* The active tab merges into the editor below it, with an accent line on top. */
+.editor-tab-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: var(--color-accent);
+}
+
+.editor-tab-active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: var(--color-canvas);
+}
+
+.editor-tab:focus-visible {
+  outline-offset: -2px;
+}
+
+.editor-tab-icon {
+  display: grid;
+  place-items: center;
+  color: var(--color-muted);
+}
+
+.editor-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.editor-tab-close {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-small);
+  color: var(--color-muted);
+  visibility: hidden;
+}
+
+.editor-tab:hover .editor-tab-close,
+.editor-tab-active .editor-tab-close,
+.editor-tab:focus-visible .editor-tab-close {
+  visibility: visible;
+}
+
+.editor-tab-close:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+
+.editor-tabs-more {
+  align-self: center;
+  margin: 0 4px;
+}
+
+.panel-tabs-list {
+  display: flex;
+}
+
+.panel-tabs-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 7px;
+  font-size: var(--font-size-tiny);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.panel-tabs-tab:hover,
+.panel-tabs-tab[aria-selected="true"] {
+  color: var(--color-text);
+}
+
+.panel-tabs-tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--color-accent);
+}
+
+.panel-tabs-tab:focus-visible {
+  outline-offset: -2px;
+}
+
+.panel-tabs-tab .badge {
+  letter-spacing: 0;
+}

@@ -1,0 +1,29 @@
+[package]
+name = "unfold-reader"
+description = "Unfold's derived views, the Code and Flow render models, Mermaid export, and boards"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+# `ts_rs::TS` on the payload types that cross IPC, for the workspace's generated TypeScript types.
+ts = ["dep:ts-rs", "unfold-core/ts"]
+
+[dependencies]
+rustc-hash = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+ts-rs = { workspace = true, optional = true }
+unfold-core = { workspace = true }
+unfold-store = { workspace = true }
+unicode-id-start = { workspace = true }
+unicode-normalization = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+unfold-core = { workspace = true, features = ["testkit"] }
+
+[lints]
+workspace = true

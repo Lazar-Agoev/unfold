@@ -1,0 +1,3 @@
+inherit.ts#class:Mid/method:run/expression_statement[0]/call[0] #0 calls `this.m` -> inherit.ts#class:Base/method:m
+inherit.ts#class:Leaf/method:runAgain/expression_statement[0]/call[0] #0 calls `this.m` -> inherit.ts#class:Base/method:m
+inherit.ts#class:Leaf/method:runAgain/expression_statement[1]/call[0] #0 calls `super.m` -> inherit.ts#class:Base/method:m

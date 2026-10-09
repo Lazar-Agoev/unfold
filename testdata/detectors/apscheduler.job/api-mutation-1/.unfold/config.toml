@@ -1,0 +1,6 @@
+# Detector case: testdata/detectors/apscheduler.job/api-mutation-1.
+version = 1
+
+[[python.project]]
+root = "."
+source_roots = ["src"]

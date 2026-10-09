@@ -1,0 +1,746 @@
+[
+  {
+    "key": "src/orders_extensions/labels.py#function:namespace_label",
+    "kind": "function",
+    "name": "namespace_label",
+    "qualifiedName": "namespace_label"
+  },
+  {
+    "key": "src/orders_playground/cli.py#function:main",
+    "kind": "function",
+    "name": "main",
+    "qualifiedName": "main"
+  },
+  {
+    "key": "src/orders_playground/cli.py#function:report_command",
+    "kind": "function",
+    "name": "report_command",
+    "qualifiedName": "report_command"
+  },
+  {
+    "key": "src/orders_playground/db/connection.py#function:connect",
+    "kind": "function",
+    "name": "connect",
+    "qualifiedName": "connect"
+  },
+  {
+    "key": "src/orders_playground/db/repository.py#class:OrderRepository",
+    "kind": "class",
+    "name": "OrderRepository",
+    "qualifiedName": "OrderRepository"
+  },
+  {
+    "key": "src/orders_playground/db/repository.py#class:OrderRepository/constructor:__init__",
+    "kind": "constructor",
+    "name": "__init__",
+    "qualifiedName": "OrderRepository.__init__"
+  },
+  {
+    "key": "src/orders_playground/db/repository.py#class:OrderRepository/method:cancel",
+    "kind": "method",
+    "name": "cancel",
+    "qualifiedName": "OrderRepository.cancel"
+  },
+  {
+    "key": "src/orders_playground/db/repository.py#class:OrderRepository/method:find",
+    "kind": "method",
+    "name": "find",
+    "qualifiedName": "OrderRepository.find"
+  },
+  {
+    "key": "src/orders_playground/db/repository.py#class:OrderRepository/method:insert",
+    "kind": "method",
+    "name": "insert",
+    "qualifiedName": "OrderRepository.insert"
+  },
+  {
+    "key": "src/orders_playground/db/repository.py#class:OrderRepository/method:list",
+    "kind": "method",
+    "name": "list",
+    "qualifiedName": "OrderRepository.list"
+  },
+  {
+    "key": "src/orders_playground/db/repository.py#class:OrderRepository/method:remove",
+    "kind": "method",
+    "name": "remove",
+    "qualifiedName": "OrderRepository.remove"
+  },
+  {
+    "key": "src/orders_playground/features/control.py#function:async_records",
+    "kind": "function",
+    "name": "async_records",
+    "qualifiedName": "async_records"
+  },
+  {
+    "key": "src/orders_playground/features/control.py#function:collect",
+    "kind": "function",
+    "name": "collect",
+    "qualifiedName": "collect"
+  },
+  {
+    "key": "src/orders_playground/features/control.py#function:counter",
+    "kind": "function",
+    "name": "counter",
+    "qualifiedName": "counter"
+  },
+  {
+    "key": "src/orders_playground/features/control.py#function:counter/function:increment",
+    "kind": "function",
+    "name": "increment",
+    "qualifiedName": "counter.increment"
+  },
+  {
+    "key": "src/orders_playground/features/control.py#function:normalize",
+    "kind": "function",
+    "name": "normalize",
+    "qualifiedName": "normalize"
+  },
+  {
+    "key": "src/orders_playground/features/control.py#function:records",
+    "kind": "function",
+    "name": "records",
+    "qualifiedName": "records"
+  },
+  {
+    "key": "src/orders_playground/features/control.py#function:resource",
+    "kind": "function",
+    "name": "resource",
+    "qualifiedName": "resource"
+  },
+  {
+    "key": "src/orders_playground/features/control.py#function:scan",
+    "kind": "function",
+    "name": "scan",
+    "qualifiedName": "scan"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#class:Labels",
+    "kind": "class",
+    "name": "Labels",
+    "qualifiedName": "Labels"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#class:Labels/constructor:__init__",
+    "kind": "constructor",
+    "name": "__init__",
+    "qualifiedName": "Labels.__init__"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#class:Labels/getter:value",
+    "kind": "getter",
+    "name": "value",
+    "qualifiedName": "Labels.value"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#class:Labels/method:clean",
+    "kind": "method",
+    "name": "clean",
+    "qualifiedName": "Labels.clean"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#class:Labels/method:from_text",
+    "kind": "method",
+    "name": "from_text",
+    "qualifiedName": "Labels.from_text"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#class:Labels/method:name",
+    "kind": "method",
+    "name": "name",
+    "qualifiedName": "Labels.name"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#class:Labels/setter:value",
+    "kind": "setter",
+    "name": "value",
+    "qualifiedName": "Labels.value"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#class:Named",
+    "kind": "class",
+    "name": "Named",
+    "qualifiedName": "Named"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#class:Named/method:name",
+    "kind": "method",
+    "name": "name",
+    "qualifiedName": "Named.name"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#function:examples",
+    "kind": "function",
+    "name": "examples",
+    "qualifiedName": "examples"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#function:invoice_label",
+    "kind": "function",
+    "name": "invoice_label",
+    "qualifiedName": "invoice_label"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#function:normalize_sku",
+    "kind": "function",
+    "name": "normalize_sku",
+    "qualifiedName": "normalize_sku"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#function:stringify",
+    "kind": "function",
+    "name": "stringify",
+    "qualifiedName": "stringify"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#function:stringify[1]",
+    "kind": "function",
+    "name": "stringify",
+    "qualifiedName": "stringify"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#function:stringify[2]",
+    "kind": "function",
+    "name": "stringify",
+    "qualifiedName": "stringify"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#function:traced",
+    "kind": "function",
+    "name": "traced",
+    "qualifiedName": "traced"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#function:traced/function:decorate",
+    "kind": "function",
+    "name": "decorate",
+    "qualifiedName": "traced.decorate"
+  },
+  {
+    "key": "src/orders_playground/features/decorators.py#function:traced/function:decorate/function:wrapped",
+    "kind": "function",
+    "name": "wrapped",
+    "qualifiedName": "traced.decorate.wrapped"
+  },
+  {
+    "key": "src/orders_playground/features/dynamic.py#function:examples",
+    "kind": "function",
+    "name": "examples",
+    "qualifiedName": "examples"
+  },
+  {
+    "key": "src/orders_playground/features/dynamic.py#function:format_order",
+    "kind": "function",
+    "name": "format_order",
+    "qualifiedName": "format_order"
+  },
+  {
+    "key": "src/orders_playground/features/dynamic.py#function:monkey_patch",
+    "kind": "function",
+    "name": "monkey_patch",
+    "qualifiedName": "monkey_patch"
+  },
+  {
+    "key": "src/orders_playground/features/dynamic.py#function:replacement_label",
+    "kind": "function",
+    "name": "replacement_label",
+    "qualifiedName": "replacement_label"
+  },
+  {
+    "key": "src/orders_playground/features/exported.py#function:private_label",
+    "kind": "function",
+    "name": "private_label",
+    "qualifiedName": "private_label"
+  },
+  {
+    "key": "src/orders_playground/features/exported.py#function:public_label",
+    "kind": "function",
+    "name": "public_label",
+    "qualifiedName": "public_label"
+  },
+  {
+    "key": "src/orders_playground/features/fallback.py#function:public_label",
+    "kind": "function",
+    "name": "public_label",
+    "qualifiedName": "public_label"
+  },
+  {
+    "key": "src/orders_playground/features/imports.py#function:examples",
+    "kind": "function",
+    "name": "examples",
+    "qualifiedName": "examples"
+  },
+  {
+    "key": "src/orders_playground/features/inheritance.py#class:Combined",
+    "kind": "class",
+    "name": "Combined",
+    "qualifiedName": "Combined"
+  },
+  {
+    "key": "src/orders_playground/features/inheritance.py#class:Combined/method:describe",
+    "kind": "method",
+    "name": "describe",
+    "qualifiedName": "Combined.describe"
+  },
+  {
+    "key": "src/orders_playground/features/inheritance.py#class:Left",
+    "kind": "class",
+    "name": "Left",
+    "qualifiedName": "Left"
+  },
+  {
+    "key": "src/orders_playground/features/inheritance.py#class:Left/method:code",
+    "kind": "method",
+    "name": "code",
+    "qualifiedName": "Left.code"
+  },
+  {
+    "key": "src/orders_playground/features/inheritance.py#class:ReceiptFormatter",
+    "kind": "class",
+    "name": "ReceiptFormatter",
+    "qualifiedName": "ReceiptFormatter"
+  },
+  {
+    "key": "src/orders_playground/features/inheritance.py#class:ReceiptFormatter/method:__call__",
+    "kind": "method",
+    "name": "__call__",
+    "qualifiedName": "ReceiptFormatter.__call__"
+  },
+  {
+    "key": "src/orders_playground/features/inheritance.py#class:Right",
+    "kind": "class",
+    "name": "Right",
+    "qualifiedName": "Right"
+  },
+  {
+    "key": "src/orders_playground/features/inheritance.py#class:Right/method:code",
+    "kind": "method",
+    "name": "code",
+    "qualifiedName": "Right.code"
+  },
+  {
+    "key": "src/orders_playground/features/inheritance.py#class:Root",
+    "kind": "class",
+    "name": "Root",
+    "qualifiedName": "Root"
+  },
+  {
+    "key": "src/orders_playground/features/inheritance.py#class:Root/method:code",
+    "kind": "method",
+    "name": "code",
+    "qualifiedName": "Root.code"
+  },
+  {
+    "key": "src/orders_playground/features/inheritance.py#function:examples",
+    "kind": "function",
+    "name": "examples",
+    "qualifiedName": "examples"
+  },
+  {
+    "key": "src/orders_playground/features/unicode.py#function:unicode_example",
+    "kind": "function",
+    "name": "unicode_example",
+    "qualifiedName": "unicode_example"
+  },
+  {
+    "key": "src/orders_playground/features/unicode.py#function:κόστος",
+    "kind": "function",
+    "name": "κόστος",
+    "qualifiedName": "κόστος"
+  },
+  {
+    "key": "src/orders_playground/features/unicode.py#function:𐐀receipt",
+    "kind": "function",
+    "name": "𐐀receipt",
+    "qualifiedName": "𐐀receipt"
+  },
+  {
+    "key": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders",
+    "kind": "function",
+    "name": "cleanup_expired_orders",
+    "qualifiedName": "cleanup_expired_orders"
+  },
+  {
+    "key": "src/orders_playground/jobs/import_orders.py#function:import_orders",
+    "kind": "function",
+    "name": "import_orders",
+    "qualifiedName": "import_orders"
+  },
+  {
+    "key": "src/orders_playground/jobs/process_order.py#function:process_order",
+    "kind": "function",
+    "name": "process_order",
+    "qualifiedName": "process_order"
+  },
+  {
+    "key": "src/orders_playground/jobs/report.py#function:print_report",
+    "kind": "function",
+    "name": "print_report",
+    "qualifiedName": "print_report"
+  },
+  {
+    "key": "src/orders_playground/jobs/report.py#function:report_metrics",
+    "kind": "function",
+    "name": "report_metrics",
+    "qualifiedName": "report_metrics"
+  },
+  {
+    "key": "src/orders_playground/jobs/retry_failed.py#function:retry_failed",
+    "kind": "function",
+    "name": "retry_failed",
+    "qualifiedName": "retry_failed"
+  },
+  {
+    "key": "src/orders_playground/jobs/send_email.py#function:flush_outbox",
+    "kind": "function",
+    "name": "flush_outbox",
+    "qualifiedName": "flush_outbox"
+  },
+  {
+    "key": "src/orders_playground/jobs/send_email.py#function:send_email",
+    "kind": "function",
+    "name": "send_email",
+    "qualifiedName": "send_email"
+  },
+  {
+    "key": "src/orders_playground/lib/async_handler.py#function:async_handler",
+    "kind": "function",
+    "name": "async_handler",
+    "qualifiedName": "async_handler"
+  },
+  {
+    "key": "src/orders_playground/lib/async_handler.py#function:async_handler/function:wrapped",
+    "kind": "function",
+    "name": "wrapped",
+    "qualifiedName": "async_handler.wrapped"
+  },
+  {
+    "key": "src/orders_playground/lib/calendar.py#function:schedule",
+    "kind": "function",
+    "name": "schedule",
+    "qualifiedName": "schedule"
+  },
+  {
+    "key": "src/orders_playground/lib/logger.py#class:Logger",
+    "kind": "class",
+    "name": "Logger",
+    "qualifiedName": "Logger"
+  },
+  {
+    "key": "src/orders_playground/lib/logger.py#class:Logger/method:error",
+    "kind": "method",
+    "name": "error",
+    "qualifiedName": "Logger.error"
+  },
+  {
+    "key": "src/orders_playground/lib/logger.py#class:Logger/method:info",
+    "kind": "method",
+    "name": "info",
+    "qualifiedName": "Logger.info"
+  },
+  {
+    "key": "src/orders_playground/lib/logger.py#function:set_sink",
+    "kind": "function",
+    "name": "set_sink",
+    "qualifiedName": "set_sink"
+  },
+  {
+    "key": "src/orders_playground/lib/pool.py#class:Worker",
+    "kind": "class",
+    "name": "Worker",
+    "qualifiedName": "Worker"
+  },
+  {
+    "key": "src/orders_playground/lib/pool.py#class:Worker/constructor:__init__",
+    "kind": "constructor",
+    "name": "__init__",
+    "qualifiedName": "Worker.__init__"
+  },
+  {
+    "key": "src/orders_playground/lib/pool.py#class:Worker/method:run",
+    "kind": "method",
+    "name": "run",
+    "qualifiedName": "Worker.run"
+  },
+  {
+    "key": "src/orders_playground/lib/retry.py#function:with_retry",
+    "kind": "function",
+    "name": "with_retry",
+    "qualifiedName": "with_retry"
+  },
+  {
+    "key": "src/orders_playground/lib/slack.py#class:Slack",
+    "kind": "class",
+    "name": "Slack",
+    "qualifiedName": "Slack"
+  },
+  {
+    "key": "src/orders_playground/lib/slack.py#class:Slack/method:post",
+    "kind": "method",
+    "name": "post",
+    "qualifiedName": "Slack.post"
+  },
+  {
+    "key": "src/orders_playground/lib/validate.py#function:validate_order",
+    "kind": "function",
+    "name": "validate_order",
+    "qualifiedName": "validate_order"
+  },
+  {
+    "key": "src/orders_playground/queues/email_worker.py#function:email_task",
+    "kind": "function",
+    "name": "email_task",
+    "qualifiedName": "email_task"
+  },
+  {
+    "key": "src/orders_playground/routes/admin.py#function:admin_stats",
+    "kind": "function",
+    "name": "admin_stats",
+    "qualifiedName": "admin_stats"
+  },
+  {
+    "key": "src/orders_playground/routes/admin.py#function:register_admin_routes",
+    "kind": "function",
+    "name": "register_admin_routes",
+    "qualifiedName": "register_admin_routes"
+  },
+  {
+    "key": "src/orders_playground/routes/health.py#expression_statement[0]/call[0]/function[0]",
+    "kind": "function",
+    "name": "callback to health_router.get(\"/live\")",
+    "qualifiedName": "callback to health_router.get(\"/live\")"
+  },
+  {
+    "key": "src/orders_playground/routes/middleware.py#function:require_user",
+    "kind": "function",
+    "name": "require_user",
+    "qualifiedName": "require_user"
+  },
+  {
+    "key": "src/orders_playground/routes/middleware.py#function:validate_body",
+    "kind": "function",
+    "name": "validate_body",
+    "qualifiedName": "validate_body"
+  },
+  {
+    "key": "src/orders_playground/routes/orders.py#function:cancel_order",
+    "kind": "function",
+    "name": "cancel_order",
+    "qualifiedName": "cancel_order"
+  },
+  {
+    "key": "src/orders_playground/routes/orders.py#function:create_order",
+    "kind": "function",
+    "name": "create_order",
+    "qualifiedName": "create_order"
+  },
+  {
+    "key": "src/orders_playground/routes/orders.py#function:get_order",
+    "kind": "function",
+    "name": "get_order",
+    "qualifiedName": "get_order"
+  },
+  {
+    "key": "src/orders_playground/routes/orders.py#function:list_orders",
+    "kind": "function",
+    "name": "list_orders",
+    "qualifiedName": "list_orders"
+  },
+  {
+    "key": "src/orders_playground/scheduler.py#expression_statement[1]/call[0]/function[0]",
+    "kind": "function",
+    "name": "callback to scheduler.add_job",
+    "qualifiedName": "callback to scheduler.add_job"
+  },
+  {
+    "key": "src/orders_playground/scheduler.py#function:main",
+    "kind": "function",
+    "name": "main",
+    "qualifiedName": "main"
+  },
+  {
+    "key": "src/orders_playground/server.py#function:health_check",
+    "kind": "function",
+    "name": "health_check",
+    "qualifiedName": "health_check"
+  },
+  {
+    "key": "src/orders_playground/server.py#function:main",
+    "kind": "function",
+    "name": "main",
+    "qualifiedName": "main"
+  },
+  {
+    "key": "src/orders_playground/server.py#function:shutdown",
+    "kind": "function",
+    "name": "shutdown",
+    "qualifiedName": "shutdown"
+  },
+  {
+    "key": "src/orders_playground/server.py#function:status",
+    "kind": "function",
+    "name": "status",
+    "qualifiedName": "status"
+  },
+  {
+    "key": "src/orders_playground/services/events.py#class:Events",
+    "kind": "class",
+    "name": "Events",
+    "qualifiedName": "Events"
+  },
+  {
+    "key": "src/orders_playground/services/events.py#class:Events/method:emit",
+    "kind": "method",
+    "name": "emit",
+    "qualifiedName": "Events.emit"
+  },
+  {
+    "key": "src/orders_playground/services/events.py#class:Events/method:on",
+    "kind": "method",
+    "name": "on",
+    "qualifiedName": "Events.on"
+  },
+  {
+    "key": "src/orders_playground/services/notifier.py#class:Notifier",
+    "kind": "class",
+    "name": "Notifier",
+    "qualifiedName": "Notifier"
+  },
+  {
+    "key": "src/orders_playground/services/notifier.py#class:Notifier/method:notify",
+    "kind": "method",
+    "name": "notify",
+    "qualifiedName": "Notifier.notify"
+  },
+  {
+    "key": "src/orders_playground/services/notifier.py#class:Notifier/method:send",
+    "kind": "method",
+    "name": "send",
+    "qualifiedName": "Notifier.send"
+  },
+  {
+    "key": "src/orders_playground/services/notifier.py#class:ReceiptNotifier",
+    "kind": "class",
+    "name": "ReceiptNotifier",
+    "qualifiedName": "ReceiptNotifier"
+  },
+  {
+    "key": "src/orders_playground/services/notifier.py#class:ReceiptNotifier/method:send",
+    "kind": "method",
+    "name": "send",
+    "qualifiedName": "ReceiptNotifier.send"
+  },
+  {
+    "key": "src/orders_playground/services/notifier.py#function:notify_customer",
+    "kind": "function",
+    "name": "notify_customer",
+    "qualifiedName": "notify_customer"
+  },
+  {
+    "key": "src/orders_playground/services/order_service.py#class:OrderService",
+    "kind": "class",
+    "name": "OrderService",
+    "qualifiedName": "OrderService"
+  },
+  {
+    "key": "src/orders_playground/services/order_service.py#class:OrderService/constructor:__init__",
+    "kind": "constructor",
+    "name": "__init__",
+    "qualifiedName": "OrderService.__init__"
+  },
+  {
+    "key": "src/orders_playground/services/order_service.py#class:OrderService/getter:count",
+    "kind": "getter",
+    "name": "count",
+    "qualifiedName": "OrderService.count"
+  },
+  {
+    "key": "src/orders_playground/services/order_service.py#class:OrderService/method:cancel",
+    "kind": "method",
+    "name": "cancel",
+    "qualifiedName": "OrderService.cancel"
+  },
+  {
+    "key": "src/orders_playground/services/order_service.py#class:OrderService/method:get",
+    "kind": "method",
+    "name": "get",
+    "qualifiedName": "OrderService.get"
+  },
+  {
+    "key": "src/orders_playground/services/order_service.py#class:OrderService/method:list",
+    "kind": "method",
+    "name": "list",
+    "qualifiedName": "OrderService.list"
+  },
+  {
+    "key": "src/orders_playground/services/order_service.py#class:OrderService/method:place",
+    "kind": "method",
+    "name": "place",
+    "qualifiedName": "OrderService.place"
+  },
+  {
+    "key": "src/orders_playground/services/order_service.py#class:OrderService/method:remove",
+    "kind": "method",
+    "name": "remove",
+    "qualifiedName": "OrderService.remove"
+  },
+  {
+    "key": "src/orders_playground/services/payment.py#class:PaymentProvider",
+    "kind": "class",
+    "name": "PaymentProvider",
+    "qualifiedName": "PaymentProvider"
+  },
+  {
+    "key": "src/orders_playground/services/payment.py#class:PaymentProvider/method:charge",
+    "kind": "method",
+    "name": "charge",
+    "qualifiedName": "PaymentProvider.charge"
+  },
+  {
+    "key": "src/orders_playground/services/payment.py#class:StripeProvider",
+    "kind": "class",
+    "name": "StripeProvider",
+    "qualifiedName": "StripeProvider"
+  },
+  {
+    "key": "src/orders_playground/services/payment.py#class:StripeProvider/method:charge",
+    "kind": "method",
+    "name": "charge",
+    "qualifiedName": "StripeProvider.charge"
+  },
+  {
+    "key": "src/orders_playground/services/payment.py#function:create_provider",
+    "kind": "function",
+    "name": "create_provider",
+    "qualifiedName": "create_provider"
+  },
+  {
+    "key": "src/orders_playground/types.py#class:Order",
+    "kind": "class",
+    "name": "Order",
+    "qualifiedName": "Order"
+  },
+  {
+    "key": "src/orders_playground/types.py#class:OrderDraft",
+    "kind": "class",
+    "name": "OrderDraft",
+    "qualifiedName": "OrderDraft"
+  },
+  {
+    "key": "src/orders_playground/types.py#class:OrderItem",
+    "kind": "class",
+    "name": "OrderItem",
+    "qualifiedName": "OrderItem"
+  },
+  {
+    "key": "src/orders_playground/worker.py#function:main",
+    "kind": "function",
+    "name": "main",
+    "qualifiedName": "main"
+  },
+  {
+    "key": "src/orders_playground/worker.py#function:purge",
+    "kind": "function",
+    "name": "purge",
+    "qualifiedName": "purge"
+  }
+]

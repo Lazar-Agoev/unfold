@@ -1,0 +1,2 @@
+defaults.ts#function:outer/call[0] #0 calls `f` -> defaults.ts#function:f
+defaults.ts#function:outer/expression_statement[0]/call[0] #0 calls `f` -> mutable_binding

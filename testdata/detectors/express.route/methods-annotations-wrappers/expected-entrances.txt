@@ -1,0 +1,31 @@
+# Every route method on an application from the express default factory, on Express and Application
+# annotations, through transparent wrappers, with a no-substitution template; a dynamic and an empty
+# path are unknown. Every target is the handler. (PoC schema2-express: "recognizes every route method".)
+entrance	express.route	http	GET	/get	exact	main.ts:4
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	POST	/post	exact	main.ts:4
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	PUT	/put	exact	main.ts:4
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	PATCH	/patch	exact	main.ts:4
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	DELETE	/delete	exact	main.ts:5
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	OPTIONS	/options	exact	main.ts:5
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	HEAD	/head	exact	main.ts:5
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	ALL	/all	exact	main.ts:5
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	GET	/typed	exact	main.ts:6
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	POST	/application	exact	main.ts:6
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	GET	/wrapped	exact	main.ts:7
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	GET	/template	exact	main.ts:8
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	GET	-	unknown	main.ts:8
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	GET	-	unknown	main.ts:8
+	target	handler	resolved	main.ts#function:handler	handler

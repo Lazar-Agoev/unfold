@@ -1,0 +1,8 @@
+[project.scripts]
+first = "app:main"
+alias = "app:renamed"
+second = "app:other"
+reexport = "package:exposed"
+namespace = "namespace.worker:main"
+module_alias = "package:worker.main"
+method = "app:Commands.main"

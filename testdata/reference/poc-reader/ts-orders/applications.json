@@ -1,0 +1,64 @@
+{
+  "applications": [
+    {
+      "startup": "src/cli.ts#",
+      "name": "cli",
+      "launches": [
+        "entrance:[\"package.bin\",\"process\",\"\",\"orders\",\"dist/cli.js\"]",
+        "entrance:[\"package.script\",\"process\",\"\",\"cli\",\"src/cli.ts\"]"
+      ],
+      "entrances": [
+        "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/jobs/import-orders.ts#importOrders\"]",
+        "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/jobs/retry-failed.ts#retryFailed\"]",
+        "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]",
+        "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/jobs/retry-failed.ts#retryFailed\"]"
+      ]
+    },
+    {
+      "startup": "src/scheduler.ts#",
+      "name": "scheduler",
+      "launches": [
+        "entrance:[\"package.script\",\"process\",\"\",\"scheduler\",\"scheduler.ts\"]"
+      ],
+      "entrances": [
+        "entrance:[\"node-cron.schedule\",\"schedule\",\"\",\"*/15 * * * *\",\"(…)\"]",
+        "entrance:[\"node-cron.schedule\",\"schedule\",\"\",\"0 2 * * *\",\"cleanupExpiredOrders\"]"
+      ]
+    },
+    {
+      "startup": "src/server.ts#",
+      "name": "server",
+      "launches": [
+        "entrance:[\"package.script\",\"process\",\"\",\"dev\",\"src/server.ts\"]",
+        "entrance:[\"package.script\",\"process\",\"\",\"start\",\"dist/server.js\"]"
+      ],
+      "entrances": [
+        "entrance:[\"express.route\",\"http\",\"DELETE\",\"/orders/:id\",\"requireUser\"]",
+        "entrance:[\"express.route\",\"http\",\"GET\",\"\",\"status\"]",
+        "entrance:[\"express.route\",\"http\",\"GET\",\"/admin/stats\",\"adminStats\"]",
+        "entrance:[\"express.route\",\"http\",\"GET\",\"/health\",\"healthCheck\"]",
+        "entrance:[\"express.route\",\"http\",\"GET\",\"/health/live\",\"(…)\"]",
+        "entrance:[\"express.route\",\"http\",\"GET\",\"/orders\",\"listOrders\"]",
+        "entrance:[\"express.route\",\"http\",\"GET\",\"/orders/:id\",\"asyncHandler()\"]",
+        "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]",
+        "entrance:[\"manual\",\"event\",\"\",\"SIGTERM\",\"src/server.ts#shutdown\"]"
+      ]
+    },
+    {
+      "startup": "src/worker.ts#",
+      "name": "worker",
+      "launches": [
+        "entrance:[\"package.script\",\"process\",\"\",\"worker\",\"src/worker.ts\"]"
+      ],
+      "entrances": [
+        "entrance:[\"bullmq.worker\",\"worker\",\"\",\"\",\"new URL(\\\"../../report-processor.js\\\", import.meta.url)\"]",
+        "entrance:[\"bullmq.worker\",\"worker\",\"\",\"emails\",\"(…)\"]",
+        "entrance:[\"bullmq.worker\",\"worker\",\"\",\"orders\",\"processOrder\"]"
+      ]
+    }
+  ],
+  "otherEntrances": [],
+  "unindexedLaunches": [
+    "entrance:[\"package.script\",\"process\",\"\",\"legacy:export\",\"scripts/export.js\"]"
+  ]
+}

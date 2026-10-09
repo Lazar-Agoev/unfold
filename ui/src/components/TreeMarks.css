@@ -1,0 +1,34 @@
+.mark {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.mark-count {
+  font-size: var(--font-size-tiny);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted);
+}
+
+.mark-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.mark-dot-accent {
+  background: var(--color-accent-text);
+}
+
+.mark-dot-pending {
+  background: var(--color-pending);
+}
+
+.mark-warning {
+  color: var(--color-warn);
+}
+
+.mark-text {
+  font-size: var(--font-size-tiny);
+  color: var(--color-muted);
+}

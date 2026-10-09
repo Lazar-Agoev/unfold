@@ -1,0 +1,14 @@
+packages:
+  - desktop
+  - ui
+  - e2e
+  - tools/oracles
+  - crates/unfold-node
+
+# pnpm blocks dependency build scripts by default. Allow exactly what we need:
+# esbuild (used by Vite and electron-vite) verifies its platform binary on install.
+# Electron needs no script: it downloads its binary on first use.
+# electron-winstaller (Squirrel.Windows, pulled in by electron-builder) is unused: we build NSIS.
+allowBuilds:
+  electron-winstaller: false
+  esbuild: true

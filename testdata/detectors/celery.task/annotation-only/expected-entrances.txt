@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/celery.task/annotation-only. Format: testdata/README.md.
+# An annotation-only application can't prove a body.
+entrance	celery.task	worker	-	orders	exact	src/app.py:4
+	target	handler	unresolved	unsupported	first

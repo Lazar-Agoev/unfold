@@ -1,0 +1,44 @@
+/* The trigger wrapper adds no box: its child keeps its own place in the layout. */
+.hover-trigger {
+  display: contents;
+}
+
+.tooltip,
+.hovercard {
+  position: fixed;
+  left: 0;
+  top: 0;
+  animation: hover-layer-in var(--duration-fast) ease-out;
+}
+
+.tooltip {
+  z-index: var(--z-tooltip);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 320px;
+  padding: 4px 8px;
+  border-radius: var(--radius-small);
+  background: var(--color-tooltip);
+  color: var(--color-on-tooltip);
+  font-size: var(--font-size-small);
+  line-height: 16px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.tooltip .tooltip-kbd {
+  color: var(--color-muted-on-tooltip);
+}
+
+.hovercard {
+  z-index: var(--z-popover);
+  max-width: 440px;
+  padding: 10px 12px;
+  border-radius: var(--radius-large);
+  background: var(--color-popover);
+  box-shadow: var(--shadow-popover);
+  color: var(--color-text);
+  font-size: var(--font-size-small);
+  user-select: text;
+}

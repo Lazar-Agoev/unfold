@@ -1,0 +1,24 @@
+{
+  "name": "@unfold/node",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Unfold's Node-API addon (napi-rs), loaded by the Electron engine host.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "*.node"
+  ],
+  "napi": {
+    "binaryName": "unfold-node"
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "test": "node --test test/addon.test.mjs"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "3.10.8"
+  }
+}

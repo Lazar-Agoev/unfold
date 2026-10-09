@@ -1,0 +1,1 @@
+export {}; function actual() {} actual.call(null); actual.apply(null, []); actual.bind(null)();

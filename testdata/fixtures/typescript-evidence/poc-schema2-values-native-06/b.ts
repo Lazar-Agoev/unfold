@@ -1,0 +1,1 @@
+import { handle } from "./a.js"; const refs = [handle];

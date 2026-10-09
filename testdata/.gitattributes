@@ -1,0 +1,2 @@
+# Test data is byte-exact: hashes, signatures, offsets, and CRLF/encoding fixtures depend on it.
+* -text

@@ -1,0 +1,9 @@
+# Decoys: another package, a local object with route methods, a shadowing parameter, a let factory, a
+# const alias, a namespace default call, a computed method, route() chains, param and plain use, an
+# annotation-only router (partial, never mountable), an initializer from another package (the
+# initializer wins over the annotation), a mount with extra arguments, and an array mount.
+# (PoC schema2-express: "avoids spelling matches, computed routes, unsupported chains and annotation-only mounts".)
+entrance	express.route	http	GET	/annotation	partial	main.ts:11
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	GET	/actual	partial	main.ts:13
+	target	handler	resolved	main.ts#function:handler	handler

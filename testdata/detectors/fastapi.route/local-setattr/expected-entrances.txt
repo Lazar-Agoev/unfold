@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/fastapi.route/local-setattr. Format: testdata/README.md.
+# A local function named setattr is not the builtin: the route stays.
+entrance	fastapi.route	http	GET	/safe	exact	src/app.py:7
+	target	handler	resolved	src/app.py#function:endpoint	endpoint

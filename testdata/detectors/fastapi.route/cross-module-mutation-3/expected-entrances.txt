@@ -1,0 +1,2 @@
+# Expected entrances for testdata/detectors/fastapi.route/cross-module-mutation-3. Format: testdata/README.md.
+# A mutation through an imported alias in another module withholds the route despite star ambiguity, rebinding, or exec (PoC: "Cross-module mutation aliases..."). Written: exec(payload); app.get = replacement

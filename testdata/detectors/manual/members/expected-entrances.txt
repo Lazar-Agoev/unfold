@@ -1,0 +1,35 @@
+# Owner.member names direct members of a class or constant object literal: methods, static and
+# literal-named methods, function-valued properties; a constructor, an accessor, a field arrow, an
+# identifier-valued property, a data property, and a let object are unsupported; duplicates are
+# ambiguous; an override names its own body; a missing member is not_found.
+# (PoC schema2-manual: "manual members name explicit class/object bodies".)
+entrance	manual	event	-	-	unknown	.unfold/config.toml:3
+	target	handler	resolved	main.ts#class:Base/method:run	main.ts#Base.run
+entrance	manual	event	-	-	unknown	.unfold/config.toml:7
+	target	handler	resolved	main.ts#class:Base/method:staticRun	main.ts#Base.staticRun
+entrance	manual	event	-	-	unknown	.unfold/config.toml:11
+	target	handler	resolved	main.ts#class:Base/method[2]	main.ts#Base.literal
+entrance	manual	event	-	-	unknown	.unfold/config.toml:15
+	target	handler	unresolved	unsupported	main.ts#Base.constructor
+entrance	manual	event	-	-	unknown	.unfold/config.toml:19
+	target	handler	unresolved	unsupported	main.ts#Base.value
+entrance	manual	event	-	-	unknown	.unfold/config.toml:23
+	target	handler	unresolved	unsupported	main.ts#Base.field
+entrance	manual	event	-	-	unknown	.unfold/config.toml:27
+	target	handler	resolved	main.ts#variable:obj/method:method	main.ts#obj.method
+entrance	manual	event	-	-	unknown	.unfold/config.toml:31
+	target	handler	resolved	main.ts#variable:obj/function:arrow	main.ts#obj.arrow
+entrance	manual	event	-	-	unknown	.unfold/config.toml:35
+	target	handler	resolved	main.ts#variable:obj/function[1]	main.ts#obj.literal
+entrance	manual	event	-	-	unknown	.unfold/config.toml:39
+	target	handler	unresolved	unsupported	main.ts#obj.alias
+entrance	manual	event	-	-	unknown	.unfold/config.toml:43
+	target	handler	unresolved	unsupported	main.ts#obj.data
+entrance	manual	event	-	-	unknown	.unfold/config.toml:47
+	target	handler	unresolved	unsupported	main.ts#mutable.method
+entrance	manual	event	-	-	unknown	.unfold/config.toml:51
+	target	handler	unresolved	ambiguous	main.ts#obj.duplicate
+entrance	manual	event	-	-	unknown	.unfold/config.toml:55
+	target	handler	resolved	main.ts#class:Derived/method:run	main.ts#Derived.run
+entrance	manual	event	-	-	unknown	.unfold/config.toml:59
+	target	handler	unresolved	not_found	main.ts#Base.missing

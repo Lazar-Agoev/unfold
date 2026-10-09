@@ -1,0 +1,3 @@
+utility-interfaces.ts#function:use/expression_statement[0]/call[0] #0 calls `a.run` -> unknown_receiver
+utility-interfaces.ts#function:use/expression_statement[1]/call[0] #0 calls `b.run` -> unknown_receiver
+utility-interfaces.ts#function:use/expression_statement[2]/call[0] #0 calls `c.run` -> unknown_receiver

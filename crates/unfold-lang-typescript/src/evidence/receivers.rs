@@ -1,0 +1,513 @@
+//! Receiver evidence from what the syntax states (the proof of concept's
+//! `frontend/native/declared-types.ts`, evidence level 4): written annotations of variables,
+//! parameters, properties, and getters; explicit `new` and assertion initializers; `as` and
+//! `<T>` assertions; declared return types of callees; and member chains through class members'
+//! declared types. Library receivers (`string`, arrays, `Map`, `NodeJS.Process`, …) come from the
+//! generated tables. There is no inference, substitution, contextual typing, or flow narrowing:
+//! an unknown constituent, disagreeing declarations, or a narrowed receiver give no receiver.
+
+use smallvec::SmallVec;
+use unfold_engine::evidence::ExternalLocation;
+use unfold_engine::{DeclRef, FileId};
+
+use super::{Receiver, Target, Walk};
+use crate::link::TypeScriptLinked;
+use crate::payload::binding::{DeclFlags, DeclKind, Expr, Lookup, Meanings, TypeRef, VarKind};
+use crate::tables;
+
+/// A member access whose receiver is being evaluated.
+struct Access<'e> {
+    /// The receiver expression.
+    object: u32,
+    /// The member name (for an element access, a key written directly as a literal).
+    name: Option<&'e str>,
+    /// A private name's members.
+    private: Option<&'e [u32]>,
+    /// The access reads an array element.
+    element: bool,
+}
+
+/// The library types whose values are arrays.
+const ARRAYS: [&str; 4] = [
+    "Array",
+    "ReadonlyArray",
+    "globalThis.Array",
+    "globalThis.ReadonlyArray",
+];
+
+/// Where a library type is declared: Node's own namespace comes from `@types/node` (so a
+/// receiver of that type is labeled `node`, never `global`: C-6); everything else is the
+/// default library.
+fn library_location(qualified: &str) -> ExternalLocation {
+    let name = qualified.strip_prefix("globalThis.").unwrap_or(qualified);
+    if name.starts_with("NodeJS.") {
+        ExternalLocation::Package("@types/node".into())
+    } else {
+        ExternalLocation::Library
+    }
+}
+
+impl TypeScriptLinked<'_> {
+    /// The declared-type receiver of expression `index` (the proof of concept's
+    /// `declaredTypes.receiver`).
+    pub(crate) fn receiver(&self, walk: &mut Walk, file: FileId, index: u32) -> Receiver {
+        if let Some(done) = walk.receiver_memo.get(&(file, index)) {
+            return done.clone();
+        }
+        if !walk.receivers.insert((file, index)) || !walk.enter() {
+            return Receiver::default();
+        }
+        let receiver = self.receiver_uncached(walk, file, index);
+        walk.leave();
+        walk.receivers.remove(&(file, index));
+        walk.receiver_memo.insert((file, index), receiver.clone());
+        receiver
+    }
+
+    fn receiver_uncached(&self, walk: &mut Walk, file: FileId, index: u32) -> Receiver {
+        let Some(expr) = self.expr(file, index) else {
+            return Receiver::default();
+        };
+        match expr {
+            Expr::Paren(inner) | Expr::NonNull(inner) | Expr::Satisfies(inner) => {
+                return self.receiver(walk, file, *inner);
+            }
+            Expr::Assert { ty, .. } => {
+                return ty.map_or_else(Receiver::default, |ty| self.type_at(walk, file, ty));
+            }
+            _ => {}
+        }
+        if self.is_narrowed(file, index) {
+            return Receiver::default();
+        }
+        match expr {
+            Expr::This(context) => self.this_receiver(file, *context),
+            Expr::Super(context) => self.super_receiver(walk, file, *context),
+            Expr::Name { name, lookup } => {
+                if !self.has_symbol(file, name, *lookup) {
+                    return Receiver::default();
+                }
+                let target = self.symbol_lookup(walk, file, name, *lookup, Meanings::VALUE);
+                self.declared_receiver(walk, &target, true)
+            }
+            Expr::New { callee: Some(callee) } => self.constructed(walk, file, *callee),
+            Expr::Call { callee: Some(callee) } | Expr::Tagged { tag: callee } => {
+                let signature = self.unwrap_receiver(file, *callee);
+                if matches!(self.expr(file, signature), Some(Expr::Assert { .. })) {
+                    return Receiver::default();
+                }
+                let target = self.target(walk, file, *callee);
+                self.return_type(walk, &target)
+            }
+            Expr::Member {
+                object,
+                name,
+                private,
+            } => {
+                let access = Access {
+                    object: *object,
+                    name: Some(name),
+                    private: private.as_deref(),
+                    element: false,
+                };
+                self.member_receiver(walk, file, index, &access)
+            }
+            Expr::Element {
+                object,
+                key,
+                direct,
+                index: element,
+            } => {
+                let access = Access {
+                    object: *object,
+                    name: key.as_deref().filter(|_| *direct),
+                    private: None,
+                    element: *element,
+                };
+                self.member_receiver(walk, file, index, &access)
+            }
+            _ => Receiver::default(),
+        }
+    }
+
+    /// The receiver of a name or member target: its external or excluded boundary, its
+    /// declarations' written types (when any of them is annotated), the class it is (a static
+    /// receiver, when `classes` allows), or its declarations' declared types.
+    fn declared_receiver(&self, walk: &mut Walk, target: &Target, classes: bool) -> Receiver {
+        if target.ambiguous {
+            return Receiver::default();
+        }
+        if !target.excluded.is_empty() {
+            return Receiver::excluded(target.excluded.iter().cloned());
+        }
+        if !target.external.is_empty() {
+            return Receiver::external(target.external.iter().cloned(), false);
+        }
+        let annotated = target.declarations.iter().any(|&declaration| {
+            self.decl(declaration).is_some_and(|decl| {
+                decl.ty.is_some()
+                    && matches!(
+                        decl.kind,
+                        DeclKind::Variable | DeclKind::Parameter | DeclKind::Property
+                    )
+            })
+        });
+        if !annotated
+            && classes
+            && let Some(class) = self.class_for_target(target)
+        {
+            return Receiver::class(class, true);
+        }
+        let receivers: SmallVec<[Receiver; 2]> = target
+            .declarations
+            .iter()
+            .map(|&declaration| self.declaration_type(walk, declaration))
+            .collect();
+        consensus(receivers)
+    }
+
+    /// The receiver `new callee` constructs.
+    fn constructed(&self, walk: &mut Walk, file: FileId, callee: u32) -> Receiver {
+        let constructor = self.receiver(walk, file, callee);
+        if constructor.excluded {
+            return constructor;
+        }
+        if constructor.class.is_some() || constructor.external {
+            return if constructor.is_static || constructor.external {
+                Receiver {
+                    is_static: false,
+                    ..constructor
+                }
+            } else {
+                Receiver::default()
+            };
+        }
+        let mut written = callee;
+        while let Some(
+            Expr::Paren(inner) | Expr::NonNull(inner) | Expr::Satisfies(inner) | Expr::Instantiation(inner),
+        ) = self.expr(file, written)
+        {
+            written = *inner;
+        }
+        if matches!(self.expr(file, written), Some(Expr::Assert { .. })) {
+            return Receiver::default();
+        }
+        let target = self.target(walk, file, callee);
+        if let Some(Expr::Name { name, lookup }) = self.expr(file, written)
+            && &**name == "Array"
+            && !self.has_symbol(file, name, *lookup)
+            && !target.external.is_empty()
+        {
+            return Receiver {
+                array: true,
+                ..Receiver::external(target.external.iter().cloned(), false)
+            };
+        }
+        let annotated = target.declarations.iter().any(|&declaration| {
+            self.decl(declaration).is_some_and(|decl| {
+                decl.ty.is_some()
+                    && matches!(
+                        decl.kind,
+                        DeclKind::Variable | DeclKind::Property | DeclKind::Parameter
+                    )
+            })
+        });
+        if annotated {
+            return Receiver::default();
+        }
+        self.target_receiver(&target, false)
+    }
+
+    /// The receiver of a member access: its own target's class or declared types, else the
+    /// declared types of the receiver class's member.
+    fn member_receiver(&self, walk: &mut Walk, file: FileId, index: u32, access: &Access<'_>) -> Receiver {
+        let object = access.object;
+        if access.element && self.receiver(walk, file, object).array {
+            return Receiver::default();
+        }
+        let direct = self.target(walk, file, index);
+        if direct.ambiguous {
+            return Receiver::default();
+        }
+        if !direct.excluded.is_empty() {
+            return Receiver::excluded(direct.excluded.iter().cloned());
+        }
+        if !direct.external.is_empty() {
+            return Receiver::external(direct.external.iter().cloned(), false);
+        }
+        if let Some(class) = self.class_for_target(&direct) {
+            return Receiver::class(class, true);
+        }
+        if !direct.declarations.is_empty() {
+            let receivers: SmallVec<[Receiver; 2]> = direct
+                .declarations
+                .iter()
+                .map(|&declaration| self.declaration_type(walk, declaration))
+                .collect();
+            return consensus(receivers);
+        }
+        let base = self.receiver(walk, file, object);
+        if base.excluded {
+            return base;
+        }
+        if base.external {
+            return Receiver::external(base.locations, false);
+        }
+        let Some(class) = base.class.filter(|_| !base.unbound_this) else {
+            return Receiver::default();
+        };
+        let Some(name) = access.name else {
+            return Receiver::default();
+        };
+        let target = match access.private {
+            Some(private) => Target::of(private.iter().map(|&index| DeclRef { file, index })),
+            None => self.lookup_member(walk, class, name, base.is_static),
+        };
+        if target.ambiguous {
+            return Receiver::default();
+        }
+        if !target.excluded.is_empty() {
+            return Receiver::excluded(target.excluded.iter().cloned());
+        }
+        if !target.external.is_empty() {
+            return Receiver::external(target.external.iter().cloned(), false);
+        }
+        let receivers: SmallVec<[Receiver; 2]> = target
+            .declarations
+            .iter()
+            .map(|&declaration| self.declaration_type(walk, declaration))
+            .collect();
+        consensus(receivers)
+    }
+
+    /// A declaration's declared receiver: its written type, or an explicit `new` or assertion
+    /// initializer.
+    pub(crate) fn declaration_type(&self, walk: &mut Walk, declaration: DeclRef) -> Receiver {
+        let Some(decl) = self.decl(declaration) else {
+            return Receiver::default();
+        };
+        if !matches!(
+            decl.kind,
+            DeclKind::Variable | DeclKind::Getter | DeclKind::Parameter | DeclKind::Property
+        ) {
+            return Receiver::default();
+        }
+        if let Some(ty) = decl.ty {
+            return self.type_at(walk, declaration.file, ty);
+        }
+        let Some(mut init) = decl.initializer else {
+            return Receiver::default();
+        };
+        while let Some(Expr::Paren(inner) | Expr::NonNull(inner) | Expr::Satisfies(inner)) =
+            self.expr(declaration.file, init)
+        {
+            init = *inner;
+        }
+        match self.expr(declaration.file, init) {
+            Some(Expr::New { .. } | Expr::Assert { .. }) => self.receiver(walk, declaration.file, init),
+            _ => Receiver::default(),
+        }
+    }
+
+    /// The receiver a written type describes.
+    pub(crate) fn type_at(&self, walk: &mut Walk, file: FileId, ty: u32) -> Receiver {
+        if !walk.types.insert((file, ty)) || !walk.enter() {
+            return Receiver::default();
+        }
+        let receiver = match self
+            .binding(file)
+            .and_then(|binding| binding.types.get(ty as usize))
+        {
+            Some(TypeRef::Array) => Receiver {
+                array: true,
+                ..Receiver::external([ExternalLocation::Library], false)
+            },
+            Some(TypeRef::Primitive) => Receiver::external([ExternalLocation::Library], false),
+            Some(TypeRef::Names {
+                names,
+                value,
+                lookup,
+                shadowed,
+            }) => self.type_names(walk, file, names, *value, *lookup, *shadowed),
+            _ => Receiver::default(),
+        };
+        walk.leave();
+        walk.types.remove(&(file, ty));
+        receiver
+    }
+
+    /// The receiver a type reference (or, with `value`, a type query) names.
+    fn type_names(
+        &self,
+        walk: &mut Walk,
+        file: FileId,
+        names: &[Box<str>],
+        value: bool,
+        lookup: Lookup,
+        shadowed: bool,
+    ) -> Receiver {
+        let Some((first, rest)) = names.split_first() else {
+            return Receiver::default();
+        };
+        let meaning = if value { Meanings::VALUE } else { Meanings::TYPE };
+        let symbol = match lookup {
+            Lookup::Symbol(symbol) => Some(self.resolve_symbol(walk, file, symbol, meaning)),
+            Lookup::Unresolved | Lookup::Namespaced(_) => self.unresolved(walk, file, first, lookup, meaning),
+            Lookup::Dynamic => None,
+        };
+        let Some(mut target) = symbol else {
+            let shadow = shadowed || (lookup != Lookup::Dynamic && self.has_global(file, first));
+            let qualified = names.join(".");
+            if shadow || !tables::is_library_type(&qualified) {
+                return Receiver::default();
+            }
+            return Receiver {
+                array: ARRAYS.contains(&qualified.as_str()),
+                ..Receiver::external([library_location(&qualified)], value)
+            };
+        };
+        for name in rest {
+            target = self.member(walk, &target, name, meaning);
+        }
+        let direct = self.target_receiver(&target, value);
+        if direct.class.is_some() || direct.external || target.ambiguous || !target.excluded.is_empty() {
+            return direct;
+        }
+        if target.declarations.is_empty()
+            || target.declarations.iter().any(|&declaration| {
+                self.decl(declaration)
+                    .is_none_or(|decl| decl.kind != DeclKind::TypeAlias)
+            })
+        {
+            return Receiver::default();
+        }
+        let receivers: SmallVec<[Receiver; 2]> = target
+            .declarations
+            .iter()
+            .map(
+                |&declaration| match self.decl(declaration).and_then(|decl| decl.ty) {
+                    Some(ty) => self.type_at(walk, declaration.file, ty),
+                    None => Receiver::default(),
+                },
+            )
+            .collect();
+        consensus(receivers)
+    }
+
+    /// The receiver a target is as a value of its own: an excluded boundary, its class, or an
+    /// external value.
+    pub(crate) fn target_receiver(&self, target: &Target, is_static: bool) -> Receiver {
+        if target.ambiguous {
+            return Receiver::default();
+        }
+        if !target.excluded.is_empty() {
+            return Receiver::excluded(target.excluded.iter().cloned());
+        }
+        if target.external.is_empty()
+            && let Some(class) = self.class_for_target(target)
+        {
+            return Receiver::class(class, is_static);
+        }
+        if !target.external.is_empty() && target.declarations.is_empty() {
+            return Receiver::external(target.external.iter().cloned(), is_static);
+        }
+        Receiver::default()
+    }
+
+    /// The receiver a call to a target returns: the declared return types of its callables
+    /// (overload signatures included), when all of them agree and one has a body.
+    pub(crate) fn return_type(&self, walk: &mut Walk, target: &Target) -> Receiver {
+        if target.ambiguous || !target.excluded.is_empty() || !target.external.is_empty() {
+            return Receiver::default();
+        }
+        let callables: SmallVec<[Option<DeclRef>; 2]> = target
+            .declarations
+            .iter()
+            .filter(|&&declaration| {
+                self.decl(declaration)
+                    .is_some_and(|decl| !matches!(decl.kind, DeclKind::Namespace | DeclKind::Interface))
+            })
+            .map(|&declaration| self.callable(declaration))
+            .collect();
+        if callables.is_empty() || callables.iter().any(Option::is_none) {
+            return Receiver::default();
+        }
+        let has_body = callables.iter().flatten().any(|&callable| {
+            self.decl(callable)
+                .is_some_and(|decl| decl.flags.has(DeclFlags::HAS_BODY))
+        });
+        if !has_body {
+            return Receiver::default();
+        }
+        let receivers: SmallVec<[Receiver; 2]> = callables
+            .into_iter()
+            .flatten()
+            .map(
+                |callable| match self.decl(callable).and_then(|decl| decl.returns) {
+                    Some(ty) => self.type_at(walk, callable.file, ty),
+                    None => Receiver::default(),
+                },
+            )
+            .collect();
+        consensus(receivers)
+    }
+
+    /// The callable a declaration is: a function, method, or arrow; or the function or arrow
+    /// an unannotated property or `const` is initialized with.
+    pub(crate) fn callable(&self, declaration: DeclRef) -> Option<DeclRef> {
+        let decl = self.decl(declaration)?;
+        match decl.kind {
+            DeclKind::Function | DeclKind::FunctionExpression | DeclKind::Arrow | DeclKind::Method => {
+                Some(declaration)
+            }
+            DeclKind::Property | DeclKind::Variable
+                if decl.kind == DeclKind::Property || decl.var_kind == Some(VarKind::Const) =>
+            {
+                if decl.ty.is_some() {
+                    return None;
+                }
+                let init = self.unwrap_expr(declaration.file, decl.initializer?);
+                match self.expr(declaration.file, init)? {
+                    Expr::Function(function) => Some(DeclRef {
+                        file: declaration.file,
+                        index: *function,
+                    }),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
+/// The one receiver every declaration agrees on; anything unknown or disagreeing gives none.
+fn consensus(receivers: SmallVec<[Receiver; 2]>) -> Receiver {
+    let Some(first) = receivers.first() else {
+        return Receiver::default();
+    };
+    let known = first.class.is_some() || first.external || first.excluded;
+    let agree = receivers.iter().all(|item| {
+        item.class == first.class
+            && item.external == first.external
+            && item.excluded == first.excluded
+            && item.array == first.array
+            && item.is_static == first.is_static
+            && !item.unbound_this
+    });
+    if !known || !agree {
+        return Receiver::default();
+    }
+    if !(first.external || first.excluded) {
+        return first.clone();
+    }
+    let mut merged = first.clone();
+    merged.locations.clear();
+    for item in &receivers {
+        for location in &item.locations {
+            if !merged.locations.contains(location) {
+                merged.locations.push(location.clone());
+            }
+        }
+    }
+    merged
+}

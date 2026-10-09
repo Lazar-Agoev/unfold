@@ -1,0 +1,2 @@
+# Expected entrances for testdata/detectors/apscheduler.job/disabled. Format: testdata/README.md.
+# The detector is off: no schedules.

@@ -1,0 +1,2 @@
+# Expected entrances for testdata/detectors/celery.task/lookalike-local-module. Format: testdata/README.md.
+# A source module named celery shadows the package.

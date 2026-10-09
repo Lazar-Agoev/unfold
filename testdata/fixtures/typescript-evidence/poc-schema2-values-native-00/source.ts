@@ -1,0 +1,1 @@
+import express from "express"; export const router = express.Router(); export function named() {} export class Service {}

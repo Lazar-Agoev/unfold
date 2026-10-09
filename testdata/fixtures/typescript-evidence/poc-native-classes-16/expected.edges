@@ -1,0 +1,3 @@
+asserted-this.ts#class:A/method:run/expression_statement[0]/call[0] #0 calls `this.m` -> overridden
+asserted-this.ts#class:A/method:run/expression_statement[1]/call[0] #0 calls `this.m` -> overridden
+asserted-this.ts#class:A/method:run/expression_statement[2]/call[0] #0 calls `this.m` -> asserted-this.ts#class:A/method:m

@@ -1,0 +1,2 @@
+# Expected entrances for testdata/detectors/fastapi.route/lookalike-local-module. Format: testdata/README.md.
+# A source module named fastapi shadows the package, so its FastAPI is a local class.

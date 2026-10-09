@@ -1,0 +1,2 @@
+def selected():
+    return "right"

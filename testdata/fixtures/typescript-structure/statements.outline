@@ -1,0 +1,169 @@
+#function:run body `async function run(this: Window, a = first()) {⏎    "use strict";⏎    outer: for (let index = initial(); condition(); update()) { if (stop()) break outer; continue; }⏎    for (var key in object()) use(key);⏎    for await (const item of items()) use(item);⏎    for (target of targets) handle();⏎    while (condition()) body();⏎    do body(); while (condition());⏎    switch (input()) { case match(): use(); break; default: fallback(); }⏎    switch (empty) {}⏎    try { throw failure(); } catch (error: unknown) { recover(error); } finally { cleanup(); }⏎    try { action(); } catch { recover(); }⏎    if (a) b(); else if (c) d(); else e();⏎    if (x);⏎    return⏎    finish()⏎}`
+  name `run`
+  parameter[0] `this: Window`
+  parameter[1] `a = first()`
+  body `{⏎    "use strict";⏎    outer: for (let index = initial(); condition(); update()) { if (stop()) break outer; continue; }⏎    for (var key in object()) use(key);⏎    for await (const item of items()) use(item);⏎    for (target of targets) handle();⏎    while (condition()) body();⏎    do body(); while (condition());⏎    switch (input()) { case match(): use(); break; default: fallback(); }⏎    switch (empty) {}⏎    try { throw failure(); } catch (error: unknown) { recover(error); } finally { cleanup(); }⏎    try { action(); } catch { recover(); }⏎    if (a) b(); else if (c) d(); else e();⏎    if (x);⏎    return⏎    finish()⏎}`
+#function:run/call[0] parameter `first()`
+  callee `first`
+#function:run/expression_statement[0] body `"use strict";`
+  expression `"use strict"`
+#function:run/for[0] body `for (let index = initial(); condition(); update()) { if (stop()) break outer; continue; }`
+  initializer `let index = initial()`
+  condition `condition()`
+  update `update()`
+  body `{ if (stop()) break outer; continue; }`
+#function:run/for[0]/variable:index initializer `index = initial()`
+  name `index`
+  initializer `initial()`
+#function:run/for[0]/variable:index/call[0] initializer `initial()`
+  callee `initial`
+#function:run/for[0]/call[0] condition `condition()`
+  callee `condition`
+#function:run/for[0]/call[1] update `update()`
+  callee `update`
+#function:run/for[0]/if[0] body `if (stop()) break outer;`
+  condition `stop()`
+  then `break outer;`
+#function:run/for[0]/if[0]/call[0] condition `stop()`
+  callee `stop`
+#function:run/for[0]/if[0]/break[0] then `break outer;`
+#function:run/for[0]/continue[0] body `continue;`
+#function:run/for_in[0] body `for (var key in object()) use(key);`
+  initializer `var key`
+  iterable `object()`
+  body `use(key);`
+#function:run/for_in[0]/variable:key initializer `key`
+  name `key`
+#function:run/for_in[0]/call[0] iterable `object()`
+  callee `object`
+#function:run/for_in[0]/expression_statement[0] body `use(key);`
+  expression `use(key)`
+#function:run/for_in[0]/expression_statement[0]/call[0] expression `use(key)`
+  callee `use`
+  argument[0] `key`
+#function:run/for_of[0] body `for await (const item of items()) use(item);`
+  initializer `const item`
+  iterable `items()`
+  body `use(item);`
+#function:run/for_of[0]/variable:item initializer `item`
+  name `item`
+#function:run/for_of[0]/call[0] iterable `items()`
+  callee `items`
+#function:run/for_of[0]/expression_statement[0] body `use(item);`
+  expression `use(item)`
+#function:run/for_of[0]/expression_statement[0]/call[0] expression `use(item)`
+  callee `use`
+  argument[0] `item`
+#function:run/for_of[1] body `for (target of targets) handle();`
+  initializer `target`
+  iterable `targets`
+  body `handle();`
+#function:run/for_of[1]/expression_statement[0] body `handle();`
+  expression `handle()`
+#function:run/for_of[1]/expression_statement[0]/call[0] expression `handle()`
+  callee `handle`
+#function:run/while[0] body `while (condition()) body();`
+  condition `condition()`
+  body `body();`
+#function:run/while[0]/call[0] condition `condition()`
+  callee `condition`
+#function:run/while[0]/expression_statement[0] body `body();`
+  expression `body()`
+#function:run/while[0]/expression_statement[0]/call[0] expression `body()`
+  callee `body`
+#function:run/do_while[0] body `do body(); while (condition());`
+  body `body();`
+  condition `condition()`
+#function:run/do_while[0]/expression_statement[0] body `body();`
+  expression `body()`
+#function:run/do_while[0]/expression_statement[0]/call[0] expression `body()`
+  callee `body`
+#function:run/do_while[0]/call[0] condition `condition()`
+  callee `condition`
+#function:run/switch[0] body `switch (input()) { case match(): use(); break; default: fallback(); }`
+  expression `input()`
+  body `{ case match(): use(); break; default: fallback(); }`
+#function:run/switch[0]/call[0] expression `input()`
+  callee `input`
+#function:run/switch[0]/case[0] body `case match(): use(); break;`
+  condition `match()`
+  body `use(); break;`
+#function:run/switch[0]/case[0]/call[0] condition `match()`
+  callee `match`
+#function:run/switch[0]/case[0]/expression_statement[0] body `use();`
+  expression `use()`
+#function:run/switch[0]/case[0]/expression_statement[0]/call[0] expression `use()`
+  callee `use`
+#function:run/switch[0]/case[0]/break[0] body `break;`
+#function:run/switch[0]/default[0] body `default: fallback();`
+  body `fallback();`
+#function:run/switch[0]/default[0]/expression_statement[0] body `fallback();`
+  expression `fallback()`
+#function:run/switch[0]/default[0]/expression_statement[0]/call[0] expression `fallback()`
+  callee `fallback`
+#function:run/switch[1] body `switch (empty) {}`
+  expression `empty`
+  body `{}`
+#function:run/try[0] body `try { throw failure(); } catch (error: unknown) { recover(error); } finally { cleanup(); }`
+  body `{ throw failure(); }`
+  catch `catch (error: unknown) { recover(error); }`
+  finally `{ cleanup(); }`
+#function:run/try[0]/throw[0] body `throw failure();`
+  expression `failure()`
+#function:run/try[0]/throw[0]/call[0] expression `failure()`
+  callee `failure`
+#function:run/try[0]/catch[0] catch `catch (error: unknown) { recover(error); }`
+  binding `error: unknown`
+  body `{ recover(error); }`
+#function:run/try[0]/catch[0]/variable:error binding `error: unknown`
+  name `error`
+#function:run/try[0]/catch[0]/expression_statement[0] body `recover(error);`
+  expression `recover(error)`
+#function:run/try[0]/catch[0]/expression_statement[0]/call[0] expression `recover(error)`
+  callee `recover`
+  argument[0] `error`
+#function:run/try[0]/expression_statement[0] finally `cleanup();`
+  expression `cleanup()`
+#function:run/try[0]/expression_statement[0]/call[0] expression `cleanup()`
+  callee `cleanup`
+#function:run/try[1] body `try { action(); } catch { recover(); }`
+  body `{ action(); }`
+  catch `catch { recover(); }`
+#function:run/try[1]/expression_statement[0] body `action();`
+  expression `action()`
+#function:run/try[1]/expression_statement[0]/call[0] expression `action()`
+  callee `action`
+#function:run/try[1]/catch[0] catch `catch { recover(); }`
+  body `{ recover(); }`
+#function:run/try[1]/catch[0]/expression_statement[0] body `recover();`
+  expression `recover()`
+#function:run/try[1]/catch[0]/expression_statement[0]/call[0] expression `recover()`
+  callee `recover`
+#function:run/if[0] body `if (a) b(); else if (c) d(); else e();`
+  condition `a`
+  then `b();`
+  else `if (c) d(); else e();`
+#function:run/if[0]/expression_statement[0] then `b();`
+  expression `b()`
+#function:run/if[0]/expression_statement[0]/call[0] expression `b()`
+  callee `b`
+#function:run/if[0]/if[0] else `if (c) d(); else e();`
+  condition `c`
+  then `d();`
+  else `e();`
+#function:run/if[0]/if[0]/expression_statement[0] then `d();`
+  expression `d()`
+#function:run/if[0]/if[0]/expression_statement[0]/call[0] expression `d()`
+  callee `d`
+#function:run/if[0]/if[0]/expression_statement[1] else `e();`
+  expression `e()`
+#function:run/if[0]/if[0]/expression_statement[1]/call[0] expression `e()`
+  callee `e`
+#function:run/if[1] body `if (x);`
+  condition `x`
+  then `;`
+#function:run/return[0] body `return`
+#function:run/expression_statement[1] body `finish()`
+  expression `finish()`
+#function:run/expression_statement[1]/call[0] expression `finish()`
+  callee `finish`

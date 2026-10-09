@@ -1,0 +1,20 @@
+// Runtime imports: type-only forms and empty named forms are erased (C-12), internal aliases are not modules, and dynamic imports are import blocks whose literal or non-literal first argument is the specifier.
+import Default, { original as renamed, type Shape } from "./module.js";
+import * as namespace from "./module.js";
+import type { Other } from "./types.js";
+import { type OnlyType } from "./only-type.js";
+import {} from "./empty.js";
+import "./side-effect.js";
+import Alias = require("./alias.js");
+import type TypeAlias = require("./type-alias.js");
+import Qualified = Outer.Inner;
+export * from "./star.js";
+export type * from "./type-star.js";
+export * as ns from "./namespace.js";
+export { value as renamed2 } from "./named.js";
+export { type Shape2 } from "./type-named.js";
+export {} from "./empty-export.js";
+export { local };
+const loaded = import(path());
+const literal = import("./lit.js");
+const parenthesized = import(("./par.js"));

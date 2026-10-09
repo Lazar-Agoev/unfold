@@ -1,0 +1,830 @@
+{
+  "type": "block",
+  "header": {
+    "key": "src/routes/orders.ts#function:createOrder",
+    "kind": "function",
+    "name": "createOrder",
+    "qualifiedName": "createOrder",
+    "path": "src/routes/orders.ts",
+    "startLine": 25,
+    "endLine": 35,
+    "language": "typescript",
+    "fileState": "current",
+    "source": "current",
+    "owner": "src/routes/orders.ts#"
+  },
+  "code": {
+    "key": "src/routes/orders.ts#function:createOrder",
+    "path": "src/routes/orders.ts",
+    "language": "typescript",
+    "kind": "function",
+    "startLine": 25,
+    "endLine": 35,
+    "source": {
+      "state": "current",
+      "text": "export async function createOrder(req: Request, res: Response): Promise<void> {\n  const draft: OrderDraft = req.body;\n  if (req.header(\"prefer\") === \"respond-async\") {\n    const job = await ordersQueue.add(\"place-order\", { order: draft });\n    res.status(202).json({ jobId: job.id });\n    return;\n  }\n  const order = orderService.place(draft);\n  slack.post(\"#orders\", `Order ${order.id} placed for ${order.customerId}`);\n  res.status(201).json(order);\n}",
+      "dedent": 0,
+      "lines": [
+        {
+          "number": 25,
+          "start": 0,
+          "end": 79,
+          "indent": 0
+        },
+        {
+          "number": 26,
+          "start": 80,
+          "end": 117,
+          "indent": 2
+        },
+        {
+          "number": 27,
+          "start": 118,
+          "end": 167,
+          "indent": 2
+        },
+        {
+          "number": 28,
+          "start": 168,
+          "end": 239,
+          "indent": 4
+        },
+        {
+          "number": 29,
+          "start": 240,
+          "end": 284,
+          "indent": 4
+        },
+        {
+          "number": 30,
+          "start": 285,
+          "end": 296,
+          "indent": 4
+        },
+        {
+          "number": 31,
+          "start": 297,
+          "end": 300,
+          "indent": 2
+        },
+        {
+          "number": 32,
+          "start": 301,
+          "end": 343,
+          "indent": 2
+        },
+        {
+          "number": 33,
+          "start": 344,
+          "end": 420,
+          "indent": 2
+        },
+        {
+          "number": 34,
+          "start": 421,
+          "end": 451,
+          "indent": 2
+        },
+        {
+          "number": 35,
+          "start": 452,
+          "end": 453,
+          "indent": 0
+        }
+      ],
+      "spans": [
+        [
+          0,
+          6,
+          "keyword"
+        ],
+        [
+          7,
+          12,
+          "keyword"
+        ],
+        [
+          13,
+          21,
+          "keyword"
+        ],
+        [
+          22,
+          33,
+          "function"
+        ],
+        [
+          39,
+          46,
+          "type"
+        ],
+        [
+          53,
+          61,
+          "type"
+        ],
+        [
+          64,
+          71,
+          "type"
+        ],
+        [
+          72,
+          76,
+          "keyword"
+        ],
+        [
+          82,
+          87,
+          "keyword"
+        ],
+        [
+          95,
+          105,
+          "type"
+        ],
+        [
+          112,
+          116,
+          "property"
+        ],
+        [
+          120,
+          122,
+          "keyword"
+        ],
+        [
+          128,
+          134,
+          "function"
+        ],
+        [
+          135,
+          143,
+          "string"
+        ],
+        [
+          149,
+          164,
+          "string"
+        ],
+        [
+          172,
+          177,
+          "keyword"
+        ],
+        [
+          184,
+          189,
+          "keyword"
+        ],
+        [
+          202,
+          205,
+          "function"
+        ],
+        [
+          206,
+          219,
+          "string"
+        ],
+        [
+          223,
+          228,
+          "property"
+        ],
+        [
+          248,
+          254,
+          "function"
+        ],
+        [
+          255,
+          258,
+          "number"
+        ],
+        [
+          260,
+          264,
+          "function"
+        ],
+        [
+          267,
+          272,
+          "property"
+        ],
+        [
+          278,
+          280,
+          "property"
+        ],
+        [
+          289,
+          295,
+          "keyword"
+        ],
+        [
+          303,
+          308,
+          "keyword"
+        ],
+        [
+          330,
+          335,
+          "function"
+        ],
+        [
+          352,
+          356,
+          "function"
+        ],
+        [
+          357,
+          366,
+          "string"
+        ],
+        [
+          368,
+          375,
+          "string"
+        ],
+        [
+          375,
+          377,
+          "keyword"
+        ],
+        [
+          383,
+          385,
+          "property"
+        ],
+        [
+          385,
+          386,
+          "keyword"
+        ],
+        [
+          386,
+          398,
+          "string"
+        ],
+        [
+          398,
+          400,
+          "keyword"
+        ],
+        [
+          406,
+          416,
+          "property"
+        ],
+        [
+          416,
+          417,
+          "keyword"
+        ],
+        [
+          417,
+          418,
+          "string"
+        ],
+        [
+          427,
+          433,
+          "function"
+        ],
+        [
+          434,
+          437,
+          "number"
+        ],
+        [
+          439,
+          443,
+          "function"
+        ]
+      ],
+      "outline": [
+        {
+          "key": "src/routes/orders.ts#function:createOrder/variable:draft",
+          "kind": "variable",
+          "role": "body",
+          "startLine": 26,
+          "endLine": 26,
+          "start": 88,
+          "end": 116,
+          "groupable": true
+        },
+        {
+          "key": "src/routes/orders.ts#function:createOrder/if[0]",
+          "kind": "if",
+          "role": "body",
+          "startLine": 27,
+          "endLine": 31,
+          "start": 120,
+          "end": 300,
+          "groupable": true,
+          "fold": {
+            "folded": false,
+            "headerEnd": 166,
+            "braces": true,
+            "summary": "4 lines · returns",
+            "returns": true,
+            "throws": false,
+            "chain": 1
+          }
+        },
+        {
+          "key": "src/routes/orders.ts#function:createOrder/if[0]/variable:job",
+          "kind": "variable",
+          "role": "then",
+          "parent": 1,
+          "startLine": 28,
+          "endLine": 28,
+          "start": 178,
+          "end": 238,
+          "groupable": true
+        },
+        {
+          "key": "src/routes/orders.ts#function:createOrder/if[0]/expression_statement[0]",
+          "kind": "expression_statement",
+          "role": "then",
+          "parent": 1,
+          "startLine": 29,
+          "endLine": 29,
+          "start": 244,
+          "end": 284,
+          "groupable": true
+        },
+        {
+          "key": "src/routes/orders.ts#function:createOrder/if[0]/return[0]",
+          "kind": "return",
+          "role": "then",
+          "parent": 1,
+          "startLine": 30,
+          "endLine": 30,
+          "start": 289,
+          "end": 296,
+          "groupable": true
+        },
+        {
+          "key": "src/routes/orders.ts#function:createOrder/variable:order",
+          "kind": "variable",
+          "role": "body",
+          "startLine": 32,
+          "endLine": 32,
+          "start": 309,
+          "end": 342,
+          "groupable": true
+        },
+        {
+          "key": "src/routes/orders.ts#function:createOrder/expression_statement[0]",
+          "kind": "expression_statement",
+          "role": "body",
+          "startLine": 33,
+          "endLine": 33,
+          "start": 346,
+          "end": 420,
+          "groupable": true
+        },
+        {
+          "key": "src/routes/orders.ts#function:createOrder/expression_statement[1]",
+          "kind": "expression_statement",
+          "role": "body",
+          "startLine": 34,
+          "endLine": 34,
+          "start": 423,
+          "end": 451,
+          "groupable": true
+        }
+      ],
+      "links": [
+        {
+          "source": "src/routes/orders.ts#function:createOrder/if[0]/call[0]",
+          "owner": "src/routes/orders.ts#function:createOrder",
+          "kind": "calls",
+          "resolution": "external",
+          "text": "req.header",
+          "note": "express",
+          "module": "express",
+          "span": [
+            124,
+            134
+          ],
+          "line": 27
+        },
+        {
+          "source": "src/routes/orders.ts#function:createOrder/if[0]/variable:job/call[0]",
+          "owner": "src/routes/orders.ts#function:createOrder",
+          "kind": "calls",
+          "resolution": "external",
+          "text": "ordersQueue.add",
+          "note": "bullmq",
+          "module": "bullmq",
+          "span": [
+            190,
+            205
+          ],
+          "line": 28
+        },
+        {
+          "source": "src/routes/orders.ts#function:createOrder/if[0]/expression_statement[0]/call[0]",
+          "owner": "src/routes/orders.ts#function:createOrder",
+          "kind": "calls",
+          "resolution": "unresolved",
+          "text": "res.status().json",
+          "note": "receiver type unknown",
+          "reason": "unknown_receiver",
+          "span": [
+            260,
+            264
+          ],
+          "line": 29
+        },
+        {
+          "source": "src/routes/orders.ts#function:createOrder/if[0]/expression_statement[0]/call[0]/call[0]",
+          "owner": "src/routes/orders.ts#function:createOrder",
+          "kind": "calls",
+          "resolution": "external",
+          "text": "res.status",
+          "note": "express",
+          "module": "express",
+          "span": [
+            244,
+            254
+          ],
+          "line": 29
+        },
+        {
+          "source": "src/routes/orders.ts#function:createOrder/variable:order/call[0]",
+          "owner": "src/routes/orders.ts#function:createOrder",
+          "kind": "calls",
+          "resolution": "resolved",
+          "target": "src/services/order-service.ts#class:OrderService/method:place",
+          "text": "orderService.place",
+          "span": [
+            317,
+            335
+          ],
+          "line": 32
+        },
+        {
+          "source": "src/routes/orders.ts#function:createOrder/expression_statement[0]/call[0]",
+          "owner": "src/routes/orders.ts#function:createOrder",
+          "kind": "calls",
+          "resolution": "resolved",
+          "target": "src/lib/slack.ts#variable:slack/method:post",
+          "text": "slack.post",
+          "span": [
+            346,
+            356
+          ],
+          "line": 33
+        },
+        {
+          "source": "src/routes/orders.ts#function:createOrder/expression_statement[1]/call[0]",
+          "owner": "src/routes/orders.ts#function:createOrder",
+          "kind": "calls",
+          "resolution": "unresolved",
+          "text": "res.status().json",
+          "note": "receiver type unknown",
+          "reason": "unknown_receiver",
+          "span": [
+            439,
+            443
+          ],
+          "line": 34
+        },
+        {
+          "source": "src/routes/orders.ts#function:createOrder/expression_statement[1]/call[0]/call[0]",
+          "owner": "src/routes/orders.ts#function:createOrder",
+          "kind": "calls",
+          "resolution": "external",
+          "text": "res.status",
+          "note": "express",
+          "module": "express",
+          "span": [
+            423,
+            433
+          ],
+          "line": 34
+        }
+      ]
+    }
+  },
+  "flow": {
+    "key": "src/routes/orders.ts#function:createOrder",
+    "path": "src/routes/orders.ts",
+    "language": "typescript",
+    "kind": "function",
+    "source": "current",
+    "nodes": [
+      {
+        "id": 0,
+        "key": "src/routes/orders.ts#function:createOrder",
+        "kind": "start",
+        "blockKind": "function",
+        "label": "createOrder",
+        "startLine": 25,
+        "endLine": 35,
+        "lane": 0
+      },
+      {
+        "id": 1,
+        "key": "src/routes/orders.ts#function:createOrder/variable:draft",
+        "kind": "variable",
+        "blockKind": "variable",
+        "label": "draft",
+        "fallback": true,
+        "startLine": 26,
+        "endLine": 26,
+        "lane": 0
+      },
+      {
+        "id": 2,
+        "key": "src/routes/orders.ts#function:createOrder/if[0]",
+        "kind": "condition",
+        "blockKind": "if",
+        "label": "req.header?",
+        "fallback": true,
+        "startLine": 27,
+        "endLine": 31,
+        "lane": 0,
+        "chips": [
+          {
+            "source": "src/routes/orders.ts#function:createOrder/if[0]/call[0]",
+            "seq": 0,
+            "kind": "calls",
+            "resolution": "external",
+            "name": "req.header",
+            "note": "express",
+            "line": 27
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "key": "src/routes/orders.ts#function:createOrder/if[0]/variable:job",
+        "kind": "call",
+        "blockKind": "variable",
+        "label": "ordersQueue.add",
+        "fallback": true,
+        "startLine": 28,
+        "endLine": 28,
+        "lane": 1,
+        "chips": [
+          {
+            "source": "src/routes/orders.ts#function:createOrder/if[0]/variable:job/call[0]",
+            "seq": 0,
+            "kind": "calls",
+            "resolution": "external",
+            "name": "ordersQueue.add",
+            "note": "bullmq",
+            "line": 28
+          }
+        ],
+        "call": 0
+      },
+      {
+        "id": 4,
+        "key": "src/routes/orders.ts#function:createOrder/if[0]/expression_statement[0]",
+        "kind": "call",
+        "blockKind": "expression_statement",
+        "label": "res.status().json",
+        "fallback": true,
+        "startLine": 29,
+        "endLine": 29,
+        "lane": 1,
+        "chips": [
+          {
+            "source": "src/routes/orders.ts#function:createOrder/if[0]/expression_statement[0]/call[0]",
+            "seq": 0,
+            "kind": "calls",
+            "resolution": "unresolved",
+            "name": "res.status().json",
+            "note": "receiver type unknown",
+            "line": 29
+          },
+          {
+            "source": "src/routes/orders.ts#function:createOrder/if[0]/expression_statement[0]/call[0]/call[0]",
+            "seq": 0,
+            "kind": "calls",
+            "resolution": "external",
+            "name": "res.status",
+            "note": "express",
+            "line": 29
+          }
+        ],
+        "call": 0
+      },
+      {
+        "id": 5,
+        "key": "src/routes/orders.ts#function:createOrder/if[0]/return[0]",
+        "kind": "return",
+        "blockKind": "return",
+        "label": "Return",
+        "fallback": true,
+        "startLine": 30,
+        "endLine": 30,
+        "lane": 1
+      },
+      {
+        "id": 6,
+        "key": "src/routes/orders.ts#function:createOrder/variable:order",
+        "kind": "call",
+        "blockKind": "variable",
+        "label": "OrderService.place",
+        "fallback": true,
+        "startLine": 32,
+        "endLine": 32,
+        "lane": 0,
+        "chips": [
+          {
+            "source": "src/routes/orders.ts#function:createOrder/variable:order/call[0]",
+            "seq": 0,
+            "kind": "calls",
+            "resolution": "resolved",
+            "target": "src/services/order-service.ts#class:OrderService/method:place",
+            "name": "OrderService.place",
+            "line": 32
+          }
+        ],
+        "call": 0
+      },
+      {
+        "id": 7,
+        "key": "src/routes/orders.ts#function:createOrder/expression_statement[0]",
+        "kind": "call",
+        "blockKind": "expression_statement",
+        "label": "slack.post",
+        "fallback": true,
+        "startLine": 33,
+        "endLine": 33,
+        "lane": 0,
+        "chips": [
+          {
+            "source": "src/routes/orders.ts#function:createOrder/expression_statement[0]/call[0]",
+            "seq": 0,
+            "kind": "calls",
+            "resolution": "resolved",
+            "target": "src/lib/slack.ts#variable:slack/method:post",
+            "name": "slack.post",
+            "line": 33
+          }
+        ],
+        "call": 0
+      },
+      {
+        "id": 8,
+        "key": "src/routes/orders.ts#function:createOrder/expression_statement[1]",
+        "kind": "call",
+        "blockKind": "expression_statement",
+        "label": "res.status().json",
+        "fallback": true,
+        "startLine": 34,
+        "endLine": 34,
+        "lane": 0,
+        "chips": [
+          {
+            "source": "src/routes/orders.ts#function:createOrder/expression_statement[1]/call[0]",
+            "seq": 0,
+            "kind": "calls",
+            "resolution": "unresolved",
+            "name": "res.status().json",
+            "note": "receiver type unknown",
+            "line": 34
+          },
+          {
+            "source": "src/routes/orders.ts#function:createOrder/expression_statement[1]/call[0]/call[0]",
+            "seq": 0,
+            "kind": "calls",
+            "resolution": "external",
+            "name": "res.status",
+            "note": "express",
+            "line": 34
+          }
+        ],
+        "call": 0
+      },
+      {
+        "id": 9,
+        "kind": "end",
+        "label": "End",
+        "lane": 0
+      }
+    ],
+    "routes": [
+      {
+        "from": 3,
+        "to": 4,
+        "kind": "sequence"
+      },
+      {
+        "from": 4,
+        "to": 5,
+        "kind": "sequence"
+      },
+      {
+        "from": 2,
+        "to": 3,
+        "kind": "yes"
+      },
+      {
+        "from": 1,
+        "to": 2,
+        "kind": "sequence"
+      },
+      {
+        "from": 2,
+        "to": 6,
+        "kind": "no"
+      },
+      {
+        "from": 6,
+        "to": 7,
+        "kind": "sequence"
+      },
+      {
+        "from": 7,
+        "to": 8,
+        "kind": "sequence"
+      },
+      {
+        "from": 0,
+        "to": 1,
+        "kind": "sequence"
+      },
+      {
+        "from": 8,
+        "to": 9,
+        "kind": "sequence"
+      },
+      {
+        "from": 5,
+        "to": 9,
+        "kind": "return"
+      }
+    ],
+    "tree": [
+      {
+        "type": "node",
+        "node": 1,
+        "ends": false,
+        "lanes": 1
+      },
+      {
+        "type": "branch",
+        "node": 2,
+        "yes": [
+          {
+            "type": "node",
+            "node": 3,
+            "ends": false,
+            "lanes": 1
+          },
+          {
+            "type": "node",
+            "node": 4,
+            "ends": false,
+            "lanes": 1
+          },
+          {
+            "type": "node",
+            "node": 5,
+            "ends": true,
+            "lanes": 1
+          }
+        ],
+        "no": [],
+        "yesEnds": true,
+        "noEnds": false,
+        "ends": false,
+        "lanes": 2,
+        "yesLane": 1,
+        "elseIf": false
+      },
+      {
+        "type": "node",
+        "node": 6,
+        "ends": false,
+        "lanes": 1
+      },
+      {
+        "type": "node",
+        "node": 7,
+        "ends": false,
+        "lanes": 1
+      },
+      {
+        "type": "node",
+        "node": 8,
+        "ends": false,
+        "lanes": 1
+      }
+    ],
+    "start": 0,
+    "end": 9,
+    "lanes": 2,
+    "warnings": []
+  }
+}

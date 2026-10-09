@@ -1,0 +1,1 @@
+import { router, named as alias, Service } from "./source.js"; import * as external from "package/sub"; const refs = [router, alias, Service, external.run];

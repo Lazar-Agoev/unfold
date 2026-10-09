@@ -1,0 +1,290 @@
+/*
+ * The Flow view. Node boxes use the same numbers as FLOW_METRICS in layout.ts (padding 8 including
+ * the 1px border, type row 14, label lines 18, callee row 16, callback rows 22), so the computed
+ * geometry and the rendered boxes agree.
+ */
+
+.flow-view {
+  position: relative;
+  padding-bottom: 6px;
+  font-family: var(--font-ui);
+}
+
+.flow-caption {
+  padding: 8px 16px 0;
+  font: 600 10px/14px var(--font-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.flow-warnings {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 16px 0;
+  padding: 6px 9px;
+  border-radius: var(--radius);
+  background: var(--color-warn-fill);
+  color: var(--color-warn);
+  font: 11px/16px var(--font-ui);
+}
+
+.flow-warnings > svg { flex-shrink: 0; margin-top: 2px; }
+.flow-warnings p + p { margin-top: 3px; }
+
+.flow-diagram { position: relative; }
+
+.flow-edges {
+  position: absolute;
+  inset: 0 auto auto 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.flow-edge path:first-child {
+  fill: none;
+  stroke: var(--color-contour);
+  stroke-width: 1.5;
+}
+
+.flow-edge.dashed path:first-child {
+  stroke: var(--color-guard);
+  stroke-dasharray: 4 4;
+}
+
+.flow-arrowhead { fill: var(--color-contour); }
+.flow-arrowhead.error { fill: var(--color-guard); }
+
+.flow-edge-label {
+  font: 600 11px var(--font-ui);
+  fill: var(--color-muted);
+  paint-order: stroke;
+  stroke: var(--color-surface);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.flow-edge.dashed .flow-edge-label { fill: var(--color-guard); }
+
+.flow-region {
+  position: absolute;
+  border: 1px dashed var(--color-contour);
+  border-radius: var(--radius-large);
+  pointer-events: none;
+}
+
+.flow-region.kind-loop { border-color: var(--color-loop-line); background: color-mix(in srgb, var(--color-loop-line) 8%, transparent); }
+.flow-region.kind-try { border-color: var(--color-border); }
+.flow-region.kind-catch { border-color: var(--color-guard); background: color-mix(in srgb, var(--color-guard-fill) 40%, transparent); }
+
+.flow-region-title {
+  position: absolute;
+  top: 4px;
+  left: 10px;
+  display: flex;
+  gap: 6px;
+  font: 600 10px/14px var(--font-ui);
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
+}
+
+.flow-region.kind-loop .flow-region-title { color: var(--color-loop); }
+.flow-region.kind-catch .flow-region-title { color: var(--color-guard); }
+.flow-region-title small { font-weight: 400; letter-spacing: 0; font-family: var(--font-code); }
+
+.flow-node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  padding: 7px 11px;
+  border: 1px solid var(--color-contour);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  cursor: pointer;
+  overflow: visible;
+}
+
+.flow-node:hover { border-color: var(--color-text); }
+.flow-node.selected,
+.flow-pill.selected {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-selection);
+}
+
+.flow-node.unresolved { border-style: dashed; }
+.flow-node.kind-return { border-radius: 999px; padding-left: 16px; padding-right: 16px; }
+.flow-node.kind-throw { border-color: var(--color-failure); background: var(--color-failure-fill); }
+.flow-node.kind-opaque { border-style: dashed; border-color: var(--color-warn); background: var(--color-warn-fill); }
+.flow-node.kind-definition { border-style: dotted; }
+
+/* Diamonds and hexagons draw their outline in SVG; the box itself is invisible. */
+.flow-node.kind-condition,
+.flow-node.kind-loop {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.flow-node.kind-loop { padding-left: 21px; padding-right: 21px; }
+
+.flow-shape {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.flow-shape path {
+  fill: var(--color-surface);
+  stroke: var(--color-contour);
+  stroke-width: 1.25;
+}
+
+.flow-node.kind-condition .flow-shape path { fill: var(--color-decision-fill); stroke: var(--color-decision); }
+.flow-node.kind-loop .flow-shape path { stroke: var(--color-loop); }
+.flow-node.kind-condition.selected .flow-shape path,
+.flow-node.kind-loop.selected .flow-shape path { stroke: var(--color-accent); stroke-width: 2; }
+
+.flow-diamond-text {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 55%;
+  height: 100%;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.flow-type {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 14px;
+  min-width: 0;
+  font: 600 10px/14px var(--font-ui);
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.flow-type i {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  background: var(--color-contour);
+}
+
+.flow-type small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: 400 10px/14px var(--font-ui);
+  letter-spacing: 0;
+}
+
+.flow-node.kind-call .flow-type,
+.flow-node.kind-call .flow-type i { color: var(--color-accent-text); }
+.flow-node.kind-call .flow-type i { background: var(--color-accent); }
+.flow-node.kind-call.unresolved .flow-type i { background: none; border: 1px solid var(--color-contour); }
+.flow-node.kind-variable .flow-type { color: var(--color-data); }
+.flow-node.kind-variable .flow-type i { background: var(--color-data); }
+.flow-node.kind-throw .flow-type { color: var(--color-failure); }
+.flow-node.kind-throw .flow-type i { background: var(--color-failure); }
+.flow-node.kind-loop .flow-type { color: var(--color-loop); }
+.flow-node.kind-condition .flow-type { color: var(--color-decision); }
+.flow-node.kind-opaque .flow-type { color: var(--color-warn); }
+
+.flow-label {
+  position: relative;
+  margin-top: 3px;
+  font: 500 13px/18px var(--font-ui);
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.flow-label.fallback {
+  text-decoration: underline dotted var(--color-contour);
+  text-underline-offset: 3px;
+}
+
+.flow-callee {
+  align-self: flex-start;
+  height: 16px;
+  margin-top: 3px;
+  font: 11.5px/16px var(--font-code);
+  color: var(--color-syntax-function);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.flow-callback {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 0 7px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-small);
+  background: var(--color-step);
+  font: 500 11px/14px var(--font-ui);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.flow-callback > span { font-size: 9px; }
+.flow-callback small { color: var(--color-muted); font-size: 10.5px; }
+.flow-callback:hover { border-color: var(--color-contour); }
+
+.flow-opaque-note {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 16px;
+  margin-top: 3px;
+  font: 11px/16px var(--font-ui);
+  color: var(--color-warn);
+}
+
+.flow-checks {
+  margin-top: 2px;
+  padding: 0 6px;
+  border-radius: var(--radius-small);
+  background: var(--color-surface);
+  font: 600 11px/18px var(--font-ui);
+  color: var(--color-decision);
+}
+
+.flow-pill {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  border: 1.5px solid var(--color-text);
+  border-radius: 999px;
+  background: var(--color-surface);
+  font: 600 12.5px/18px var(--font-ui);
+  text-align: center;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.flow-pill-name { font-family: var(--font-code); }
+
+/* An arrow for a call in this node leaves from the card's edge, level with the node. */
+.flow-leader {
+  position: absolute;
+  height: 1.5px;
+  margin-top: -0.75px;
+  background: color-mix(in srgb, var(--color-accent) 60%, transparent);
+  pointer-events: none;
+}

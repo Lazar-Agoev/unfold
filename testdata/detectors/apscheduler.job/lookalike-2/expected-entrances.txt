@@ -1,0 +1,2 @@
+# Expected entrances for testdata/detectors/apscheduler.job/lookalike-2. Format: testdata/README.md.
+# Local lookalikes and subclasses add no entrances (PoC: "Local lookalikes subclasses scheduled_job..."). Written: from apscheduler.schedulers.blocking import BlockingScheduler; class Custom(BlockingScheduler): pass; scheduler = Custom()

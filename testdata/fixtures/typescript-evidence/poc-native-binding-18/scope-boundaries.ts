@@ -1,0 +1,1 @@
+function f() {} class C { f() {} method() { f(); } } with (object) { f(); console.log(); } f();

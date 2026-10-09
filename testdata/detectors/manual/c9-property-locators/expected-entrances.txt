@@ -1,0 +1,13 @@
+# C-9 (docs/entrances.md, Decisions): a function-valued property of a constant object literal is a
+# locator target (obj.arrow, obj.method) and an ordinary call reaches the same body (C-2); a locator
+# names the declaration as written even where a call refuses it: an annotated object (calls stay
+# unknown_receiver) and a reassigned member (calls are mutable_binding). The calls' edges are pinned
+# in crates/unfold-lang-typescript/tests/entrances.rs.
+entrance	manual	event	-	-	unknown	.unfold/config.toml:3
+	target	handler	resolved	main.ts#variable:api/function:arrow	main.ts#api.arrow
+entrance	manual	event	-	-	unknown	.unfold/config.toml:7
+	target	handler	resolved	main.ts#variable:api/method:method	main.ts#api.method
+entrance	manual	event	-	-	unknown	.unfold/config.toml:11
+	target	handler	resolved	main.ts#variable:typed/function:arrow	main.ts#typed.arrow
+entrance	manual	event	-	-	unknown	.unfold/config.toml:15
+	target	handler	resolved	main.ts#variable:written/function:arrow	main.ts#written.arrow

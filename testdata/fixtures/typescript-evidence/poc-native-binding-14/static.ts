@@ -1,0 +1,1 @@
+export {}; function f() {} class C { static { var f = () => {}; f(); } } f();

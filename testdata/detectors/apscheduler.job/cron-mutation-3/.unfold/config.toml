@@ -1,0 +1,6 @@
+# Detector case: testdata/detectors/apscheduler.job/cron-mutation-3.
+version = 1
+
+[[python.project]]
+root = "."
+source_roots = ["src"]

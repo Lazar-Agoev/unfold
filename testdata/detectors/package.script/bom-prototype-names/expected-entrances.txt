@@ -1,0 +1,15 @@
+# A byte-order mark and CRLF lines count in offsets; a duplicate's last member wins; __proto__ and an
+# empty name are ordinary names. (PoC schema2-launch: "package evidence preserves BOM, duplicate
+# members, escaped pointers, prototype names, and empty trigger keys".)
+entrance	package.script	process	-	x~/y	exact	package.json:2
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	__proto__	exact	package.json:2
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	-	unknown	package.json:2
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.bin	process	-	a~/b	exact	package.json:3
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.bin	process	-	__proto__	exact	package.json:3
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.bin	process	-	-	unknown	package.json:3
+	target	startup	resolved	src/main.ts#	src/main.ts

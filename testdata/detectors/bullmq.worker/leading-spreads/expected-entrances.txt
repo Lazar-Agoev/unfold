@@ -1,0 +1,7 @@
+# After a leading spread the processor's position is uncertain: unsupported with its written text,
+# and the queue is unknown; a sole spread is no entrance.
+# (PoC schema2-framework-jobs: "leading argument spreads retain unsupported syntactic handlers".)
+entrance	bullmq.worker	worker	-	-	unknown	main.ts:3
+	target	handler	unresolved	unsupported	handle
+entrance	bullmq.worker	worker	-	-	unknown	main.ts:4
+	target	handler	unresolved	unsupported	wrap()

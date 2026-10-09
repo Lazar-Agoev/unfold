@@ -1,0 +1,14 @@
+# Expected entrances for testdata/detectors/fastapi.route/applied-refusals. Format: testdata/README.md.
+# Applied decorated aliases and members keep rebinding, override, and metaclass refusals (PoC: "Applied decorated aliases and members...").
+entrance	fastapi.route	http	GET	/original	exact	src/metaclass.py:9
+	target	handler	resolved	src/metaclass.py#class:Commands/method:named	named
+entrance	fastapi.route	http	GET	/applied	exact	src/metaclass.py:11
+	target	handler	unresolved	wrapper	Commands.named
+entrance	fastapi.route	http	GET	/original	exact	src/override.py:6
+	target	handler	resolved	src/override.py#class:Base/method:named	named
+entrance	fastapi.route	http	GET	/applied	exact	src/override.py:11
+	target	handler	unresolved	wrapper	value.named
+entrance	fastapi.route	http	GET	/original	exact	src/rebound.py:5
+	target	handler	resolved	src/rebound.py#function:named	named
+entrance	fastapi.route	http	GET	/applied	exact	src/rebound.py:9
+	target	handler	unresolved	mutable_binding	alias

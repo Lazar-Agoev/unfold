@@ -1,0 +1,6 @@
+# Expected entrances for testdata/detectors/fastapi.route/annotation-fastapi. Format: testdata/README.md.
+# A FastAPI annotation proves a route while no indexed subclass exists (PoC: "Indexed framework subclasses...").
+entrance	fastapi.route	http	GET	/annotated	exact	src/app.py:5
+	target	handler	resolved	src/app.py#function:endpoint	endpoint
+entrance	fastapi.route	http	GET	/concrete	exact	src/app.py:7
+	target	handler	resolved	src/app.py#function:endpoint	endpoint

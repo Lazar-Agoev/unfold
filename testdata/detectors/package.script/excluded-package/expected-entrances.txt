@@ -1,0 +1,6 @@
+# An excluded package.json is never read (not even when it isn't JSON); a package whose scripts launch
+# nothing is still read. (PoC schema2-launch: "package detectors honor enabled IDs and exclusions".)
+entrance	package.script	process	-	start	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.bin	process	-	app	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts

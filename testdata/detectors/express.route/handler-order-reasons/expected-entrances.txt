@@ -1,0 +1,21 @@
+# Handlers keep their written order with arrays flattened: a re-exported import resolves, a hole is
+# dynamic, a spread is unsupported, inline functions resolve, a wrapper call is wrapper, an object is
+# dynamic, a let is mutable_binding, a class is unsupported, a package import is external, a missing
+# name is unknown_name; a parameter is parameter. Registrations without handlers produce nothing.
+# (PoC schema2-express: "preserves flattened handler ordering and shared unresolved reasons".)
+entrance	express.route	http	GET	/handlers	exact	main.ts:4
+	target	handler	resolved	main.ts#function:first	first
+	target	handler	resolved	handler.ts#function:imported	renamed
+	target	handler	unresolved	dynamic	(…)
+	target	handler	unresolved	unsupported	(…)
+	target	handler	resolved	main.ts#expression_statement[0]/call[0]/function[0]	(…)
+	target	handler	resolved	main.ts#expression_statement[0]/call[0]/function:inline	(…)
+	target	handler	unresolved	wrapper	wrapper()
+	target	handler	unresolved	dynamic	(…)
+	target	handler	unresolved	mutable_binding	mutable
+	target	handler	unresolved	unsupported	Handler
+	target	handler	external	middleware	external
+	target	handler	unresolved	unknown_name	missing
+	target	handler	unresolved	unsupported	(…)
+entrance	express.route	http	POST	/parameter	exact	main.ts:5
+	target	handler	unresolved	parameter	parameter

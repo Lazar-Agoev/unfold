@@ -1,0 +1,1 @@
+import { omitted } from "@internal/omitted"; import { absent } from "@internal/missing"; import { missing } from "./missing.js"; import { call } from "@scope/pkg"; import bare from "not-installed"; omitted(); absent(); missing(); call(); bare();

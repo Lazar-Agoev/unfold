@@ -1,0 +1,30 @@
+#call[0] body `initialize()`
+  callee `initialize`
+#variable:value body `value = create()`
+  name `value`
+  initializer `create()`
+#variable:value/call[0] initializer `create()`
+  callee `create`
+#function:run body `export function run() { return finish(); }`
+  name `run`
+  body `{ return finish(); }`
+#function:run/return[0] body `return finish();`
+  expression `finish()`
+#function:run/return[0]/call[0] expression `finish()`
+  callee `finish`
+#function:overloaded body `function overloaded(value: unknown) { return value; }`
+  name `overloaded`
+  parameter[0] `value: unknown`
+  body `{ return value; }`
+#function:overloaded/return[0] body `return value;`
+  expression `value`
+#variable:checked body `checked = (factory() as Map<string, Array<Foo>>) satisfies object`
+  name `checked`
+  initializer `(factory() as Map<string, Array<Foo>>) satisfies object`
+#variable:checked/call[0] initializer `factory()`
+  callee `factory`
+#variable:asserted body `asserted = (<Foo>make())!`
+  name `asserted`
+  initializer `(<Foo>make())!`
+#variable:asserted/call[0] initializer `make()`
+  callee `make`

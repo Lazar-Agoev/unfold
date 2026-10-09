@@ -1,0 +1,132 @@
+/* Base element styles shared by every view. Component styles live beside their components. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--color-canvas);
+  color: var(--color-text);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-ui);
+  line-height: 1.4;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: default;
+}
+
+button:disabled {
+  opacity: 0.45;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+kbd {
+  font-family: var(--font-ui);
+  font-size: var(--font-size-tiny);
+  color: var(--color-muted);
+}
+
+code,
+pre {
+  font-family: var(--font-code);
+}
+
+::selection {
+  background: var(--color-selection);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Visually hidden, still read by screen readers. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* While a pane edge is dragged, the whole window shows the resize cursor. */
+body[data-resizing="column"],
+body[data-resizing="column"] * {
+  cursor: col-resize !important;
+}
+
+body[data-resizing="row"],
+body[data-resizing="row"] * {
+  cursor: row-resize !important;
+}
+
+/* Floating layers (tooltips, menus, popovers, dialogs, the palette) fade in with this. */
+@keyframes hover-layer-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Respect the OS reduced-motion setting everywhere: no transitions, no spinning. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

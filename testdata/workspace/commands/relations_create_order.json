@@ -1,0 +1,115 @@
+{
+  "key": "src/routes/orders.ts#function:createOrder",
+  "callers": [
+    {
+      "owner": "src/routes/orders.ts#",
+      "ownerName": "src/routes/orders.ts",
+      "source": "src/routes/orders.ts#expression_statement[2]/call[0]",
+      "path": "src/routes/orders.ts",
+      "line": 49,
+      "kind": "references",
+      "position": 3
+    }
+  ],
+  "callersTotal": 1,
+  "callersNext": null,
+  "outgoing": {
+    "onBoard": [],
+    "openable": [
+      {
+        "source": "src/routes/orders.ts#function:createOrder/variable:order/call[0]",
+        "seq": 0,
+        "kind": "calls",
+        "resolution": "resolved",
+        "target": "src/services/order-service.ts#class:OrderService/method:place",
+        "text": "orderService.place",
+        "line": 32
+      },
+      {
+        "source": "src/routes/orders.ts#function:createOrder/expression_statement[0]/call[0]",
+        "seq": 0,
+        "kind": "calls",
+        "resolution": "resolved",
+        "target": "src/lib/slack.ts#variable:slack/method:post",
+        "text": "slack.post",
+        "line": 33
+      }
+    ],
+    "externalOrUnresolved": [
+      {
+        "source": "src/routes/orders.ts#function:createOrder/if[0]/call[0]",
+        "seq": 0,
+        "kind": "calls",
+        "resolution": "external",
+        "text": "req.header",
+        "module": "express",
+        "note": "express",
+        "line": 27
+      },
+      {
+        "source": "src/routes/orders.ts#function:createOrder/if[0]/variable:job/call[0]",
+        "seq": 0,
+        "kind": "calls",
+        "resolution": "external",
+        "text": "ordersQueue.add",
+        "module": "bullmq",
+        "note": "bullmq",
+        "line": 28
+      },
+      {
+        "source": "src/routes/orders.ts#function:createOrder/if[0]/expression_statement[0]/call[0]",
+        "seq": 0,
+        "kind": "calls",
+        "resolution": "unresolved",
+        "text": "res.status().json",
+        "reason": "unknown_receiver",
+        "note": "receiver type unknown",
+        "line": 29
+      },
+      {
+        "source": "src/routes/orders.ts#function:createOrder/if[0]/expression_statement[0]/call[0]/call[0]",
+        "seq": 0,
+        "kind": "calls",
+        "resolution": "external",
+        "text": "res.status",
+        "module": "express",
+        "note": "express",
+        "line": 29
+      },
+      {
+        "source": "src/routes/orders.ts#function:createOrder/expression_statement[1]/call[0]",
+        "seq": 0,
+        "kind": "calls",
+        "resolution": "unresolved",
+        "text": "res.status().json",
+        "reason": "unknown_receiver",
+        "note": "receiver type unknown",
+        "line": 34
+      },
+      {
+        "source": "src/routes/orders.ts#function:createOrder/expression_statement[1]/call[0]/call[0]",
+        "seq": 0,
+        "kind": "calls",
+        "resolution": "external",
+        "text": "res.status",
+        "module": "express",
+        "note": "express",
+        "line": 34
+      }
+    ]
+  },
+  "targetNames": {
+    "src/lib/slack.ts#variable:slack/method:post": "slack.post",
+    "src/services/order-service.ts#class:OrderService/method:place": "OrderService.place"
+  },
+  "reachedFrom": [
+    {
+      "key": "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]",
+      "title": "POST /orders",
+      "kind": "http",
+      "method": "POST",
+      "trigger": "/orders",
+      "path": "src/routes/orders.ts"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+[package]
+name = "unfold-core"
+description = "Unfold's graph model, vocabularies, structural keys, text offsets, validator, and canonical export"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+# Helpers for tests in this and downstream crates: the testdata location, golden files, and a
+# builder for hand-written graphs.
+testkit = []
+# `ts_rs::TS` on the types that cross IPC (vocabularies, keys, paths), for the workspace's
+# generated TypeScript types.
+ts = ["dep:ts-rs"]
+
+[dependencies]
+# Files are validated in parallel.
+rayon = { workspace = true }
+rustc-hash = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+ts-rs = { workspace = true, optional = true }
+
+[dev-dependencies]
+postcard = { workspace = true }
+proptest = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

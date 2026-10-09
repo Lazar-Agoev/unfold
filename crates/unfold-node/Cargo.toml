@@ -1,0 +1,39 @@
+[package]
+name = "unfold-node"
+description = "The Node-API addon the Electron engine host loads: a thin layer over unfold-workspace's Host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { workspace = true }
+napi-derive = { workspace = true }
+unfold-workspace = { workspace = true }
+
+[build-dependencies]
+napi-build = { workspace = true }
+
+# The workspace forbids `unsafe_code`, but the `#[napi]` macros expand to unsafe FFI glue, so this
+# crate states its lints itself: the workspace's set, minus that one. It has no hand-written unsafe.
+[lints.rust]
+unused_qualifications = "warn"
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+unwrap_used = "warn"
+redundant_clone = "warn"
+semicolon_if_nothing_returned = "warn"
+explicit_iter_loop = "warn"
+manual_let_else = "warn"
+inefficient_to_string = "warn"
+implicit_clone = "warn"
+cloned_instead_of_copied = "warn"
+uninlined_format_args = "warn"

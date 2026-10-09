@@ -1,0 +1,1 @@
+export {}; function f() {} function outer(value = f()) { var f = () => {}; f(); }

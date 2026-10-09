@@ -1,0 +1,5 @@
+[project.scripts]
+cache="safe:cached"
+changed="safe:changed"
+wrapped="safe:wrapped_alias"
+eval="unsafe:main"

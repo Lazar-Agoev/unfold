@@ -1,0 +1,80 @@
+# Recall floors, one per corpus and language (`cargo xtask oracles check`). Recall is the proof of
+# concept's definition: call sites the oracle resolves (one concrete target, no policy refusal) that
+# Unfold resolves to the same target, over the sites the oracle resolves. A floor records the counts
+# it was set from and passes when recall is at least that ratio, compared exactly. Floors only rise:
+# when the check reports recall above a floor, raise the floor to the reported counts. `poc` records
+# what the proof of concept reached, for comparison; every floor below is at or above it.
+
+[[floor]]
+corpus = "ts-orders"
+language = "typescript"
+matched = 71
+resolved = 71
+poc = "46 of 71 (native producer; the 25 C-2 calls now resolve)"
+
+[[floor]]
+corpus = "entrances"
+language = "typescript"
+matched = 3
+resolved = 3
+
+[[floor]]
+corpus = "py-orders"
+language = "python"
+matched = 91
+resolved = 96
+poc = "91 of 96"
+
+[[floor]]
+corpus = "mixed-playground"
+language = "typescript"
+matched = 71
+resolved = 71
+poc = "46 of 71"
+
+[[floor]]
+corpus = "mixed-playground"
+language = "python"
+matched = 91
+resolved = 96
+poc = "91 of 96"
+
+[[floor]]
+corpus = "python-ranges"
+language = "python"
+matched = 3
+resolved = 3
+poc = "3 of 3"
+
+[[floor]]
+corpus = "fastapi-template"
+language = "python"
+matched = 185
+resolved = 232
+poc = "185 of 232"
+
+# The upstream tag lacks the generated diagnostics map, whose 2,130 `diag()` calls all resolve, so
+# its recall sits below the 602-file corpus's; the floor is what Unfold reached when it was set.
+[[floor]]
+corpus = "typescript-6.0.3-src-upstream"
+language = "typescript"
+matched = 68590
+resolved = 71519
+
+[[floor]]
+corpus = "typescript-6.0.3-src"
+language = "typescript"
+matched = 70720
+resolved = 73649
+poc = "96.0% (70,717 of 73,649)"
+
+# The proof of concept measured 4,440 of 4,440 in place, with its TypeScript fork's declarations
+# beside the corpus. From a copy those imports stay unresolved for both sides; the two sites
+# missing here call a function-valued property of a constant object literal that also spreads
+# another object, which the checker resolves and Unfold's C-2 rule leaves `unknown_receiver`.
+[[floor]]
+corpus = "codegraph-self"
+language = "typescript"
+matched = 6805
+resolved = 6807
+poc = "4,440 of 4,440 (in place)"

@@ -1,0 +1,2 @@
+# Expected entrances for testdata/detectors/celery.task/mutation-7. Format: testdata/README.md.
+# Celery and Task class mutations invalidate genuine API provenance (PoC: "Celery and Task class mutations..."). Written: class Box: pass; box = Box(); box.api = app; box.api.task = fake

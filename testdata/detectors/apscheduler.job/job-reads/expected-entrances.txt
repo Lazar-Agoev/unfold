@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/apscheduler.job/job-reads. Format: testdata/README.md.
+# Reading job state does not invalidate.
+entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/app.py:7
+	target	handler	resolved	src/app.py#function:first	first

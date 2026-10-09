@@ -1,0 +1,110 @@
+/**
+ * The engine host: an Electron utility process that loads the Rust addon and routes each window's
+ * port to it (architecture §4.1, U-31). The main process sends lifecycle messages, plus its own
+ * trusted requests (export to a dialog path, window restore), answered over the parent port.
+ */
+
+import type { MessagePortMain } from "electron";
+import type { AppFolders, HostToMain, HostToRenderer, MainToHost } from "../shared/transport";
+import { transportError } from "../shared/transport";
+import { loadEngineBinding } from "./binding";
+import type { Engine, WindowPort } from "./router";
+import { EngineRouter } from "./router";
+
+let router: EngineRouter | null = null;
+
+function log(message: string): void {
+  console.error(`[engine-host] ${message}`);
+}
+
+function postToMain(message: HostToMain): void {
+  process.parentPort.postMessage(message);
+}
+
+function startEngine(addonPath: string, folders: AppFolders): EngineRouter {
+  let engine: Engine;
+  let created: EngineRouter | null = null;
+  try {
+    const binding = loadEngineBinding(addonPath);
+    binding.init(JSON.stringify(folders));
+    binding.subscribe((message) => {
+      created?.handleSinkMessage(message);
+    });
+    engine = { binding };
+    log(`loaded the engine addon from ${addonPath}`);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    log(`the engine addon could not be loaded from ${addonPath}: ${reason}`);
+    engine = {
+      unavailable: transportError("engine_unavailable", `The Unfold engine could not be loaded: ${reason}`),
+    };
+  }
+  created = new EngineRouter(engine, log, {
+    attached: (windowId, folder, error) => {
+      postToMain({ type: "attached", windowId, folder, ...(error ? { error } : {}) });
+    },
+  });
+  return created;
+}
+
+function windowPort(port: MessagePortMain): WindowPort {
+  return {
+    post: (message: HostToRenderer) => {
+      port.postMessage(message);
+    },
+    onMessage: (handler) => {
+      port.on("message", (event) => {
+        handler(event.data);
+      });
+      port.start();
+    },
+    close: () => {
+      port.close();
+    },
+  };
+}
+
+function handleLifecycle(message: MainToHost, ports: MessagePortMain[]): void {
+  switch (message.type) {
+    case "init":
+      router ??= startEngine(message.addonPath, message.folders);
+      return;
+    case "attach": {
+      const port = ports[0];
+      if (!port) {
+        log(`attach for window ${message.windowId} arrived without a port`);
+        return;
+      }
+      if (!router) {
+        log(`attach for window ${message.windowId} arrived before init`);
+        port.close();
+        return;
+      }
+      router.attach(message.windowId, message.folder, windowPort(port));
+      return;
+    }
+    case "detach":
+      router?.detach(message.windowId);
+      return;
+    case "request": {
+      const { id } = message;
+      if (!router) {
+        postToMain({ type: "result", id, ok: false, error: transportError("disconnected", "The engine host has not started.") });
+        return;
+      }
+      void router.trusted(message.windowId, message.command, message.args).then((result) => {
+        postToMain({ type: "result", id, ...result });
+      });
+      return;
+    }
+    case "shutdown":
+      void (router?.shutdown() ?? Promise.resolve()).finally(() => {
+        process.exit(0);
+      });
+      return;
+  }
+}
+
+process.parentPort.on("message", (event) => {
+  handleLifecycle(event.data as MainToHost, event.ports);
+});

@@ -1,0 +1,1 @@
+import type { Application } from "express"; export function handle(app: Application) {}

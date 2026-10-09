@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/pyproject.script/nearest-owner. Format: testdata/README.md.
+# Only nearest owning TOML files are read; an invalid outer file that owns nothing is ignored (PoC: "Only nearest selected TOML owners are read...").
+entrance	pyproject.script	process	-	run	exact	kept/pyproject.toml:2
+	target	startup	resolved	kept/app.py#function:main	app:main

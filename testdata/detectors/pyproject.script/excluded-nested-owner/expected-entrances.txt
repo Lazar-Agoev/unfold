@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/pyproject.script/excluded-nested-owner. Format: testdata/README.md.
+# An excluded nearest TOML owner can't contribute contexts to an outer project (PoC: "An excluded nearest TOML owner...").
+entrance	pyproject.script	process	-	run	exact	pyproject.toml:2
+	target	startup	resolved	src/service.py#function:main	service:main

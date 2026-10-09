@@ -1,0 +1,10 @@
+# Detector case: testdata/detectors/pyproject.script/disagreeing-contexts.
+version = 1
+
+[[python.project]]
+root = "left"
+source_roots = ["."]
+
+[[python.project]]
+root = "right"
+source_roots = ["."]

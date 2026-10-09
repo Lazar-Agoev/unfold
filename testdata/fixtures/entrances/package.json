@@ -1,0 +1,10 @@
+{
+  "name": "orders-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p .",
+    "start": "npm run build && node dist/server.js",
+    "worker": "tsx src/worker.ts"
+  }
+}

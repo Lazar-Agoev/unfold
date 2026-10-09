@@ -1,0 +1,7 @@
+# After a leading spread the handler's position is uncertain: unsupported with its written text, and
+# the expression is unknown; a sole spread is no entrance.
+# (PoC schema2-framework-jobs: "leading argument spreads retain unsupported syntactic handlers".)
+entrance	node-cron.schedule	schedule	-	-	unknown	main.ts:3
+	target	handler	unresolved	unsupported	handle
+entrance	node-cron.schedule	schedule	-	-	unknown	main.ts:4
+	target	handler	unresolved	unsupported	(…)

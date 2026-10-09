@@ -1,0 +1,1 @@
+{"compilerOptions":{"target":"ESNext","module":"NodeNext","moduleResolution":"NodeNext","typeRoots":["/nonexistent/compilers/typescript/node_modules/@types"],"types":["node"]}}

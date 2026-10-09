@@ -1,0 +1,1 @@
+import { type T } from "missing"; import type { U } from "missing"; export { type T } from "re-export"; export type { U } from "re-export";

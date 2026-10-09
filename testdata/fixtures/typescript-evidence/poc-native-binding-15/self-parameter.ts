@@ -1,0 +1,1 @@
+export {}; const fn = function self(self: () => void) { self(); }; fn(() => {});

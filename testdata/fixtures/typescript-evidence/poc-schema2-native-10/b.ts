@@ -1,0 +1,1 @@
+switch (x) {} for (const y of z) f(y);

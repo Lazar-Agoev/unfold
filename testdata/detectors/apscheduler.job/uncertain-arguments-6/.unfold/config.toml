@@ -1,0 +1,6 @@
+# Detector case: testdata/detectors/apscheduler.job/uncertain-arguments-6.
+version = 1
+
+[[python.project]]
+root = "."
+source_roots = ["src"]

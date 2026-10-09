@@ -1,0 +1,2 @@
+# Expected entrances for testdata/detectors/fastapi.route/disabled. Format: testdata/README.md.
+# The detector is off: no routes.

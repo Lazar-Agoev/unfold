@@ -1,0 +1,6 @@
+array-types.ts#function:run/expression_statement[0]/call[0] #0 calls `a[0].save` -> unknown_receiver
+array-types.ts#function:run/expression_statement[1]/call[0] #0 calls `b[0].save` -> unknown_receiver
+array-types.ts#function:run/expression_statement[2]/call[0] #0 calls `make()[0].save` -> unknown_receiver
+array-types.ts#function:run/expression_statement[2]/call[0]/call[0] #0 calls `make` -> array-types.ts#function:make
+array-types.ts#variable:constructed/new[0] #0 constructs `Array` -> external global
+array-types.ts#expression_statement[0]/call[0] #0 calls `constructed[0].save` -> unknown_receiver

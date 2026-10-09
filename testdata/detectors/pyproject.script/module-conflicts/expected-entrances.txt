@@ -1,0 +1,8 @@
+# Expected entrances for testdata/detectors/pyproject.script/module-conflicts. Format: testdata/README.md.
+# Module and package conflicts and unimported child files can't manufacture attributes (PoC: "Module/package conflicts and unimported child files...").
+entrance	pyproject.script	process	-	conflict	exact	pyproject.toml:2
+	target	startup	unresolved	ambiguous	conflict:main
+entrance	pyproject.script	process	-	attribute	exact	pyproject.toml:3
+	target	startup	unresolved	not_found	pkg:worker.main
+entrance	pyproject.script	process	-	namespace	exact	pyproject.toml:4
+	target	startup	unresolved	not_found	space:worker.main

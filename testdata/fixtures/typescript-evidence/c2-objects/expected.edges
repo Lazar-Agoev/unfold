@@ -1,0 +1,13 @@
+a.ts#expression_statement[0]/call[0] #0 calls `service.start` -> a.ts#variable:service/method:start
+a.ts#expression_statement[1]/call[0] #0 calls `service.stop` -> a.ts#variable:service/function:stop
+a.ts#expression_statement[2]/call[0] #0 calls `service.arrow` -> mutable_binding
+a.ts#expression_statement[6]/call[0] #0 calls `written.run` -> mutable_binding
+a.ts#expression_statement[7]/call[0] #0 calls `spread.extra` -> unknown_receiver
+a.ts#expression_statement[8]/call[0] #0 calls `annotated.draw` -> unknown_receiver
+a.ts#expression_statement[9]/call[0] #0 calls `asserted.draw` -> unknown_receiver
+a.ts#expression_statement[10]/call[0] #0 calls `mutable.go` -> unknown_receiver
+a.ts#expression_statement[11]/call[0] #0 calls `computed.lit` -> unknown_receiver
+b.ts#import[0] #0 imports `./a.js` -> a.ts#
+b.ts#import[1] #0 imports `./a.js` -> a.ts#
+b.ts#expression_statement[0]/call[0] #0 calls `service.start` -> a.ts#variable:service/method:start
+b.ts#expression_statement[1]/call[0] #0 calls `all.service.stop` -> a.ts#variable:service/function:stop

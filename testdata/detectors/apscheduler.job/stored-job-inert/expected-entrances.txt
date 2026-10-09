@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/apscheduler.job/stored-job-inert. Format: testdata/README.md.
+# A stored Job that nothing mutates stays inert.
+entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/app.py:7
+	target	handler	resolved	src/app.py#function:first	first

@@ -1,0 +1,1 @@
+private.ts#class:Base/method:run/expression_statement[0]/call[0] #0 calls `value.#m` -> private.ts#class:Base/method:%23m

@@ -1,0 +1,14 @@
+# Expected entrances for testdata/detectors/celery.task/queues. Format: testdata/README.md.
+# Queue triggers use only written nonempty strings, never task names or defaults (PoC: "Queue labels use only written nonempty strings...").
+entrance	celery.task	worker	-	orders	exact	src/app.py:6
+	target	handler	resolved	src/app.py#function:first	first
+entrance	celery.task	worker	-	-	unknown	src/app.py:7
+	target	handler	resolved	src/app.py#function:first	first
+entrance	celery.task	worker	-	-	unknown	src/app.py:8
+	target	handler	resolved	src/app.py#function:first	first
+entrance	celery.task	worker	-	-	unknown	src/app.py:9
+	target	handler	resolved	src/app.py#function:first	first
+entrance	celery.task	worker	-	-	unknown	src/app.py:10
+	target	handler	resolved	src/app.py#function:first	first
+entrance	celery.task	worker	-	-	unknown	src/app.py:11
+	target	handler	resolved	src/app.py#function:first	first

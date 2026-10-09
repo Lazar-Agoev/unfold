@@ -1,0 +1,20 @@
+[package]
+name = "unfold-store"
+description = "Unfold's SQLite graph cache: schema, delta commits, reader queries, FTS5 search, and the per-file facts cache"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+rusqlite = { workspace = true }
+rustc-hash = { workspace = true }
+thiserror = { workspace = true }
+unfold-core = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+unfold-core = { workspace = true, features = ["testkit"] }
+
+[lints]
+workspace = true

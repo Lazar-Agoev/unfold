@@ -1,0 +1,2317 @@
+{
+  "src/cli.ts#function:main": {
+    "callers": [
+      {
+        "owner": "src/cli.ts#",
+        "source": "src/cli.ts#expression_statement[0]/call[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/cli.ts#function:main/switch[0]/case[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/jobs/import-orders.ts#function:importOrders",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/cli.ts#function:main/switch[0]/case[1]/variable[0]/import[0]",
+        "kind": "imports",
+        "target": "src/jobs/report.ts#",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/cli.ts#function:main/switch[0]/case[1]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "not_concrete",
+        "module": null,
+        "position": null,
+        "text": "printReport"
+      },
+      {
+        "source": "src/cli.ts#function:main/switch[0]/case[3]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/jobs/retry-failed.ts#function:retryFailed",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/cli.ts#function:main/switch[0]/case[5]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "logger.info"
+      },
+      {
+        "source": "src/cli.ts#function:main/switch[0]/default[0]/throw[0]/new[0]",
+        "kind": "constructs",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Error"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/db/connection.ts#function:connect": {
+    "callers": [
+      {
+        "owner": "src/services/order-service.ts#",
+        "source": "src/services/order-service.ts#variable:orderService/new[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+    ]
+  },
+  "src/db/repository.ts#class:OrderRepository": {
+    "callers": [
+      {
+        "owner": "src/db/connection.ts#",
+        "source": "src/db/connection.ts#variable:repository/new[0]",
+        "kind": "constructs",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/db/repository.ts#class:OrderRepository/new[0]",
+        "kind": "constructs",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Map"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+    ]
+  },
+  "src/db/repository.ts#class:OrderRepository/method:cancel": {
+    "callers": [
+      {
+        "owner": "src/services/order-service.ts#class:OrderService/method:cancel",
+        "source": "src/services/order-service.ts#class:OrderService/method:cancel/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/db/repository.ts#class:OrderRepository/method:cancel/variable:order/call[0]",
+        "kind": "calls",
+        "target": "src/db/repository.ts#class:OrderRepository/method:find",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"express.route\",\"http\",\"DELETE\",\"/orders/:id\",\"requireUser\"]",
+      "entrance:[\"node-cron.schedule\",\"schedule\",\"\",\"0 2 * * *\",\"cleanupExpiredOrders\"]"
+    ]
+  },
+  "src/db/repository.ts#class:OrderRepository/method:find": {
+    "callers": [
+      {
+        "owner": "src/db/repository.ts#class:OrderRepository/method:cancel",
+        "source": "src/db/repository.ts#class:OrderRepository/method:cancel/variable:order/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/services/order-service.ts#class:OrderService/method:get",
+        "source": "src/services/order-service.ts#class:OrderService/method:get/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/db/repository.ts#class:OrderRepository/method:find/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "this.orders.get"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"express.route\",\"http\",\"DELETE\",\"/orders/:id\",\"requireUser\"]",
+      "entrance:[\"node-cron.schedule\",\"schedule\",\"\",\"0 2 * * *\",\"cleanupExpiredOrders\"]"
+    ]
+  },
+  "src/db/repository.ts#class:OrderRepository/method:insert": {
+    "callers": [
+      {
+        "owner": "src/services/order-service.ts#class:OrderService/method:place",
+        "source": "src/services/order-service.ts#class:OrderService/method:place/expression_statement[1]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/db/repository.ts#class:OrderRepository/method:insert/if[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "this.orders.has"
+      },
+      {
+        "source": "src/db/repository.ts#class:OrderRepository/method:insert/if[0]/throw[0]/new[0]",
+        "kind": "constructs",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Error"
+      },
+      {
+        "source": "src/db/repository.ts#class:OrderRepository/method:insert/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "this.orders.set"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"bullmq.worker\",\"worker\",\"\",\"orders\",\"processOrder\"]",
+      "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/jobs/import-orders.ts#importOrders\"]"
+    ]
+  },
+  "src/db/repository.ts#class:OrderRepository/method:list": {
+    "callers": [
+      {
+        "owner": "src/services/order-service.ts#class:OrderService/getter:count",
+        "source": "src/services/order-service.ts#class:OrderService/getter:count/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/services/order-service.ts#class:OrderService/method:list",
+        "source": "src/services/order-service.ts#class:OrderService/method:list/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/db/repository.ts#class:OrderRepository/method:list/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Array.from"
+      },
+      {
+        "source": "src/db/repository.ts#class:OrderRepository/method:list/return[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "this.orders.values"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"express.route\",\"http\",\"GET\",\"/admin/stats\",\"adminStats\"]",
+      "entrance:[\"express.route\",\"http\",\"GET\",\"/orders\",\"listOrders\"]",
+      "entrance:[\"node-cron.schedule\",\"schedule\",\"\",\"*/15 * * * *\",\"(…)\"]",
+      "entrance:[\"node-cron.schedule\",\"schedule\",\"\",\"0 2 * * *\",\"cleanupExpiredOrders\"]"
+    ]
+  },
+  "src/db/repository.ts#class:OrderRepository/method:remove": {
+    "callers": [
+      {
+        "owner": "src/services/order-service.ts#class:OrderService/method:remove",
+        "source": "src/services/order-service.ts#class:OrderService/method:remove/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/db/repository.ts#class:OrderRepository/method:remove/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "this.orders.delete"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"node-cron.schedule\",\"schedule\",\"\",\"0 2 * * *\",\"cleanupExpiredOrders\"]"
+    ]
+  },
+  "src/jobs/cleanup.ts#function:cleanupExpiredOrders": {
+    "callers": [
+      {
+        "owner": "src/scheduler.ts#",
+        "source": "src/scheduler.ts#expression_statement[0]/call[0]",
+        "kind": "references",
+        "position": 1
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/jobs/cleanup.ts#function:cleanupExpiredOrders/variable:orders/call[0]",
+        "kind": "calls",
+        "target": "src/services/order-service.ts#class:OrderService/method:list",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/jobs/cleanup.ts#function:cleanupExpiredOrders/variable:expiresBefore/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Date.now"
+      },
+      {
+        "source": "src/jobs/cleanup.ts#function:cleanupExpiredOrders/for[0]/variable:createdAt/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Date.parse"
+      },
+      {
+        "source": "src/jobs/cleanup.ts#function:cleanupExpiredOrders/for[0]/if[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/services/order-service.ts#class:OrderService/method:cancel",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/jobs/cleanup.ts#function:cleanupExpiredOrders/for[0]/if[1]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "expired.push"
+      },
+      {
+        "source": "src/jobs/cleanup.ts#function:cleanupExpiredOrders/if[0]/do_while[0]/variable:id/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "expired.pop"
+      },
+      {
+        "source": "src/jobs/cleanup.ts#function:cleanupExpiredOrders/if[0]/do_while[0]/if[0]/call[0]",
+        "kind": "calls",
+        "target": "src/services/order-service.ts#class:OrderService/method:remove",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/jobs/cleanup.ts#function:cleanupExpiredOrders/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "logger.info"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"node-cron.schedule\",\"schedule\",\"\",\"0 2 * * *\",\"cleanupExpiredOrders\"]"
+    ]
+  },
+  "src/jobs/import-orders.ts#function:importOrders": {
+    "callers": [
+      {
+        "owner": "src/cli.ts#function:main",
+        "source": "src/cli.ts#function:main/switch[0]/case[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/jobs/import-orders.ts#function:importOrders/variable:input/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "JSON.parse"
+      },
+      {
+        "source": "src/jobs/import-orders.ts#function:importOrders/variable:input/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "node:fs/promises",
+        "position": null,
+        "text": "readFile"
+      },
+      {
+        "source": "src/jobs/import-orders.ts#function:importOrders/if[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Array.isArray"
+      },
+      {
+        "source": "src/jobs/import-orders.ts#function:importOrders/if[0]/throw[0]/new[0]",
+        "kind": "constructs",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Error"
+      },
+      {
+        "source": "src/jobs/import-orders.ts#function:importOrders/for_of[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "input.entries"
+      },
+      {
+        "source": "src/jobs/import-orders.ts#function:importOrders/for_of[0]/try[0]/variable:draft/call[0]",
+        "kind": "calls",
+        "target": "src/lib/validate.ts#function:validateOrder",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/jobs/import-orders.ts#function:importOrders/for_of[0]/try[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/services/order-service.ts#class:OrderService/method:place",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/jobs/import-orders.ts#function:importOrders/for_of[0]/try[0]/catch[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "logger.error"
+      },
+      {
+        "source": "src/jobs/import-orders.ts#function:importOrders/for_of[0]/try[0]/catch[0]/expression_statement[1]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "failures.push"
+      },
+      {
+        "source": "src/jobs/import-orders.ts#function:importOrders/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "logger.info"
+      },
+      {
+        "source": "src/jobs/import-orders.ts#function:importOrders/if[1]/throw[0]/new[0]",
+        "kind": "constructs",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "AggregateError"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/jobs/import-orders.ts#importOrders\"]"
+    ]
+  },
+  "src/jobs/process-order.ts#function:processOrder": {
+    "callers": [
+      {
+        "owner": "src/queues/orders-worker.ts#",
+        "source": "src/queues/orders-worker.ts#variable:ordersWorker/new[0]",
+        "kind": "references",
+        "position": 1
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/jobs/process-order.ts#function:processOrder/variable:draft/call[0]",
+        "kind": "calls",
+        "target": "src/lib/validate.ts#function:validateOrder",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/jobs/process-order.ts#function:processOrder/variable:order/call[0]",
+        "kind": "calls",
+        "target": "src/services/order-service.ts#class:OrderService/method:place",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/jobs/process-order.ts#function:processOrder/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "bullmq",
+        "position": null,
+        "text": "emailQueue.add"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"bullmq.worker\",\"worker\",\"\",\"orders\",\"processOrder\"]"
+    ]
+  },
+  "src/jobs/report.ts#function:printReport": {
+    "callers": [
+      {
+        "owner": "src/scheduler.ts#",
+        "source": "src/scheduler.ts#expression_statement[2]/call[0]",
+        "kind": "references",
+        "position": 1
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/jobs/report.ts#function:printReport/variable:orders/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "orderService.list().map"
+      },
+      {
+        "source": "src/jobs/report.ts#function:printReport/variable:orders/call[0]/call[0]",
+        "kind": "calls",
+        "target": "src/services/order-service.ts#class:OrderService/method:list",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/jobs/report.ts#function:printReport/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "logger.info"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/jobs/report.ts#function:reportMetrics": {
+    "callers": [
+      {
+        "owner": "src/scheduler.ts#expression_statement[1]/call[0]/function[0]",
+        "source": "src/scheduler.ts#expression_statement[1]/call[0]/function[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/jobs/report.ts#function:reportMetrics/variable:orders/call[0]",
+        "kind": "calls",
+        "target": "src/services/order-service.ts#class:OrderService/method:list",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/jobs/report.ts#function:reportMetrics/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "logger.info"
+      },
+      {
+        "source": "src/jobs/report.ts#function:reportMetrics/expression_statement[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "orders.filter"
+      },
+      {
+        "source": "src/jobs/report.ts#function:reportMetrics/expression_statement[0]/call[0]/call[1]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "orders.filter"
+      },
+      {
+        "source": "src/jobs/report.ts#function:reportMetrics/expression_statement[0]/call[0]/call[2]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "orders.filter"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"node-cron.schedule\",\"schedule\",\"\",\"*/15 * * * *\",\"(…)\"]"
+    ]
+  },
+  "src/jobs/retry-failed.ts#function:retryFailed": {
+    "callers": [
+      {
+        "owner": "src/cli.ts#function:main",
+        "source": "src/cli.ts#function:main/switch[0]/case[3]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/jobs/retry-failed.ts#function:retryFailed/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/lib/retry.ts#function:withRetry",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/jobs/retry-failed.ts#function:retryFailed/expression_statement[0]/call[0]",
+        "kind": "references",
+        "target": "src/jobs/send-email.ts#function:flushOutbox",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": 0,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/jobs/retry-failed.ts#retryFailed\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/jobs/retry-failed.ts#retryFailed\"]"
+    ]
+  },
+  "src/jobs/send-email.ts#function:flushOutbox": {
+    "callers": [
+      {
+        "owner": "src/jobs/retry-failed.ts#function:retryFailed",
+        "source": "src/jobs/retry-failed.ts#function:retryFailed/expression_statement[0]/call[0]",
+        "kind": "references",
+        "position": 0
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/jobs/send-email.ts#function:flushOutbox/for_of[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/jobs/send-email.ts#function:sendEmail",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/jobs/retry-failed.ts#retryFailed\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/jobs/retry-failed.ts#retryFailed\"]"
+    ]
+  },
+  "src/jobs/send-email.ts#function:sendEmail": {
+    "callers": [
+      {
+        "owner": "src/jobs/send-email.ts#function:flushOutbox",
+        "source": "src/jobs/send-email.ts#function:flushOutbox/for_of[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/queues/email-worker.ts#variable:emailWorker/new[0]/function[0]/expression_statement[0]/call[0]/function[0]",
+        "source": "src/queues/email-worker.ts#variable:emailWorker/new[0]/function[0]/expression_statement[0]/call[0]/function[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/jobs/send-email.ts#function:sendEmail/if[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "payload.to.includes"
+      },
+      {
+        "source": "src/jobs/send-email.ts#function:sendEmail/if[0]/throw[0]/new[0]",
+        "kind": "constructs",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Error"
+      },
+      {
+        "source": "src/jobs/send-email.ts#function:sendEmail/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "outbox.add"
+      },
+      {
+        "source": "src/jobs/send-email.ts#function:sendEmail/expression_statement[1]/new[0]",
+        "kind": "constructs",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Promise"
+      },
+      {
+        "source": "src/jobs/send-email.ts#function:sendEmail/expression_statement[2]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "logger.info"
+      },
+      {
+        "source": "src/jobs/send-email.ts#function:sendEmail/expression_statement[3]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "outbox.delete"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/jobs/retry-failed.ts#retryFailed\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/jobs/retry-failed.ts#retryFailed\"]"
+    ]
+  },
+  "src/lib/async-handler.ts#function:asyncHandler": {
+    "callers": [
+      {
+        "owner": "src/routes/orders.ts#",
+        "source": "src/routes/orders.ts#expression_statement[1]/call[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/lib/calendar.ts#function:schedule": {
+    "callers": [
+      {
+        "owner": "src/scheduler.ts#",
+        "source": "src/scheduler.ts#expression_statement[2]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/lib/calendar.ts#function:schedule/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "setImmediate"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/lib/logger.ts#function:setLogSink": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/lib/logger.ts#variable:logger/method:error": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/lib/logger.ts#variable:logger/method:error/variable:line/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "JSON.stringify"
+      },
+      {
+        "source": "src/lib/logger.ts#variable:logger/method:error/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "mutable_binding",
+        "module": null,
+        "position": null,
+        "text": "sink"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/lib/logger.ts#variable:logger/method:info": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/lib/logger.ts#variable:logger/method:info/variable:line/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "JSON.stringify"
+      },
+      {
+        "source": "src/lib/logger.ts#variable:logger/method:info/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "mutable_binding",
+        "module": null,
+        "position": null,
+        "text": "sink"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/lib/pool.ts#class:Worker": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/lib/pool.ts#class:Worker/constructor:constructor": {
+    "callers": [
+      {
+        "owner": "src/worker.ts#",
+        "source": "src/worker.ts#variable:maintenance/new[0]",
+        "kind": "constructs",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/lib/pool.ts#class:Worker/method:run": {
+    "callers": [
+      {
+        "owner": "src/worker.ts#",
+        "source": "src/worker.ts#expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/lib/pool.ts#class:Worker/method:run/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "logger.info"
+      },
+      {
+        "source": "src/lib/pool.ts#class:Worker/method:run/expression_statement[1]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "parameter",
+        "module": null,
+        "position": null,
+        "text": "this.task"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/lib/retry.ts#function:withRetry": {
+    "callers": [
+      {
+        "owner": "src/jobs/retry-failed.ts#function:retryFailed",
+        "source": "src/jobs/retry-failed.ts#function:retryFailed/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/queues/email-worker.ts#variable:emailWorker/new[0]/function[0]",
+        "source": "src/queues/email-worker.ts#variable:emailWorker/new[0]/function[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/lib/retry.ts#function:withRetry/if[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Number.isInteger"
+      },
+      {
+        "source": "src/lib/retry.ts#function:withRetry/if[0]/throw[0]/new[0]",
+        "kind": "constructs",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "RangeError"
+      },
+      {
+        "source": "src/lib/retry.ts#function:withRetry/while[0]/try[0]/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "parameter",
+        "module": null,
+        "position": 0,
+        "text": "fn"
+      },
+      {
+        "source": "src/lib/retry.ts#function:withRetry/while[0]/try[0]/catch[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "logger.error"
+      },
+      {
+        "source": "src/lib/retry.ts#function:withRetry/throw[0]/new[0]",
+        "kind": "constructs",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Error"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"bullmq.worker\",\"worker\",\"\",\"emails\",\"(…)\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/jobs/retry-failed.ts#retryFailed\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/jobs/retry-failed.ts#retryFailed\"]"
+    ]
+  },
+  "src/lib/slack.ts#variable:slack/method:post": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/lib/slack.ts#variable:slack/method:post/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "logger.info"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/lib/validate.ts#function:validateOrder": {
+    "callers": [
+      {
+        "owner": "src/jobs/import-orders.ts#function:importOrders",
+        "source": "src/jobs/import-orders.ts#function:importOrders/for_of[0]/try[0]/variable:draft/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/jobs/process-order.ts#function:processOrder",
+        "source": "src/jobs/process-order.ts#function:processOrder/variable:draft/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/routes/middleware.ts#function:validateBody",
+        "source": "src/routes/middleware.ts#function:validateBody/try[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/services/order-service.ts#class:OrderService/method:place",
+        "source": "src/services/order-service.ts#class:OrderService/method:place/variable:draft/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/lib/validate.ts#function:validateOrder/if[0]/throw[0]/new[0]",
+        "kind": "constructs",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Error"
+      },
+      {
+        "source": "src/lib/validate.ts#function:validateOrder/if[1]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "customerId.trim"
+      },
+      {
+        "source": "src/lib/validate.ts#function:validateOrder/if[1]/throw[0]/new[0]",
+        "kind": "constructs",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Error"
+      },
+      {
+        "source": "src/lib/validate.ts#function:validateOrder/if[1]/if[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "(…).test"
+      },
+      {
+        "source": "src/lib/validate.ts#function:validateOrder/if[1]/if[0]/throw[0]/new[0]",
+        "kind": "constructs",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Error"
+      },
+      {
+        "source": "src/lib/validate.ts#function:validateOrder/if[1]/if[0]/if[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Array.isArray"
+      },
+      {
+        "source": "src/lib/validate.ts#function:validateOrder/if[1]/if[0]/if[0]/throw[0]/new[0]",
+        "kind": "constructs",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Error"
+      },
+      {
+        "source": "src/lib/validate.ts#function:validateOrder/variable:validatedItems/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "items.map"
+      },
+      {
+        "source": "src/lib/validate.ts#function:validateOrder/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "customerId.trim"
+      },
+      {
+        "source": "src/lib/validate.ts#function:validateOrder/return[0]/call[1]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "email.trim"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"bullmq.worker\",\"worker\",\"\",\"orders\",\"processOrder\"]",
+      "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/jobs/import-orders.ts#importOrders\"]"
+    ]
+  },
+  "src/queues/email-worker.ts#variable:emailWorker/new[0]/function[0]": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/queues/email-worker.ts#variable:emailWorker/new[0]/function[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/lib/retry.ts#function:withRetry",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"bullmq.worker\",\"worker\",\"\",\"emails\",\"(…)\"]"
+    ]
+  },
+  "src/routes/admin.ts#function:adminStats": {
+    "callers": [
+      {
+        "owner": "src/routes/admin.ts#function:registerAdminRoutes",
+        "source": "src/routes/admin.ts#function:registerAdminRoutes/expression_statement[0]/call[0]",
+        "kind": "references",
+        "position": 1
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/routes/admin.ts#function:adminStats/variable:orders/call[0]",
+        "kind": "calls",
+        "target": "src/services/order-service.ts#class:OrderService/method:list",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/routes/admin.ts#function:adminStats/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "express",
+        "position": null,
+        "text": "res.json"
+      },
+      {
+        "source": "src/routes/admin.ts#function:adminStats/expression_statement[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "orders.filter"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"express.route\",\"http\",\"GET\",\"/admin/stats\",\"adminStats\"]"
+    ]
+  },
+  "src/routes/admin.ts#function:registerAdminRoutes": {
+    "callers": [
+      {
+        "owner": "src/server.ts#",
+        "source": "src/server.ts#expression_statement[5]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/routes/admin.ts#function:registerAdminRoutes/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "express",
+        "position": null,
+        "text": "app.get"
+      },
+      {
+        "source": "src/routes/admin.ts#function:registerAdminRoutes/expression_statement[0]/call[0]",
+        "kind": "references",
+        "target": "src/routes/admin.ts#function:adminStats",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": 1,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/routes/health.ts#expression_statement[0]/call[0]/function[0]": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/routes/health.ts#expression_statement[0]/call[0]/function[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "res.json"
+      },
+      {
+        "source": "src/routes/health.ts#expression_statement[0]/call[0]/function[0]/expression_statement[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "process.uptime"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"express.route\",\"http\",\"GET\",\"/health/live\",\"(…)\"]"
+    ]
+  },
+  "src/routes/middleware.ts#function:requireUser": {
+    "callers": [
+      {
+        "owner": "src/routes/orders.ts#",
+        "source": "src/routes/orders.ts#expression_statement[2]/call[0]",
+        "kind": "references",
+        "position": 1
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/routes/middleware.ts#function:requireUser/if[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "express",
+        "position": null,
+        "text": "req.header"
+      },
+      {
+        "source": "src/routes/middleware.ts#function:requireUser/if[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "res.status().json"
+      },
+      {
+        "source": "src/routes/middleware.ts#function:requireUser/if[0]/expression_statement[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "express",
+        "position": null,
+        "text": "res.status"
+      },
+      {
+        "source": "src/routes/middleware.ts#function:requireUser/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "parameter",
+        "module": null,
+        "position": 2,
+        "text": "next"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"express.route\",\"http\",\"DELETE\",\"/orders/:id\",\"requireUser\"]",
+      "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]"
+    ]
+  },
+  "src/routes/middleware.ts#function:validateBody": {
+    "callers": [
+      {
+        "owner": "src/routes/orders.ts#",
+        "source": "src/routes/orders.ts#expression_statement[2]/call[0]",
+        "kind": "references",
+        "position": 2
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/routes/middleware.ts#function:validateBody/try[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/lib/validate.ts#function:validateOrder",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/routes/middleware.ts#function:validateBody/try[0]/catch[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "res.status().json"
+      },
+      {
+        "source": "src/routes/middleware.ts#function:validateBody/try[0]/catch[0]/expression_statement[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "express",
+        "position": null,
+        "text": "res.status"
+      },
+      {
+        "source": "src/routes/middleware.ts#function:validateBody/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "parameter",
+        "module": null,
+        "position": 2,
+        "text": "next"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]"
+    ]
+  },
+  "src/routes/orders.ts#function:cancelOrder": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/routes/orders.ts#function:cancelOrder/variable:order/call[0]",
+        "kind": "calls",
+        "target": "src/services/order-service.ts#class:OrderService/method:cancel",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/routes/orders.ts#function:cancelOrder/if[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "res.status().json"
+      },
+      {
+        "source": "src/routes/orders.ts#function:cancelOrder/if[0]/expression_statement[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "express",
+        "position": null,
+        "text": "res.status"
+      },
+      {
+        "source": "src/routes/orders.ts#function:cancelOrder/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "express",
+        "position": null,
+        "text": "res.json"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"express.route\",\"http\",\"DELETE\",\"/orders/:id\",\"requireUser\"]"
+    ]
+  },
+  "src/routes/orders.ts#function:createOrder": {
+    "callers": [
+      {
+        "owner": "src/routes/orders.ts#",
+        "source": "src/routes/orders.ts#expression_statement[2]/call[0]",
+        "kind": "references",
+        "position": 3
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/routes/orders.ts#function:createOrder/if[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "express",
+        "position": null,
+        "text": "req.header"
+      },
+      {
+        "source": "src/routes/orders.ts#function:createOrder/if[0]/variable:job/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "bullmq",
+        "position": null,
+        "text": "ordersQueue.add"
+      },
+      {
+        "source": "src/routes/orders.ts#function:createOrder/if[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "res.status().json"
+      },
+      {
+        "source": "src/routes/orders.ts#function:createOrder/if[0]/expression_statement[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "express",
+        "position": null,
+        "text": "res.status"
+      },
+      {
+        "source": "src/routes/orders.ts#function:createOrder/variable:order/call[0]",
+        "kind": "calls",
+        "target": "src/services/order-service.ts#class:OrderService/method:place",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/routes/orders.ts#function:createOrder/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "slack.post"
+      },
+      {
+        "source": "src/routes/orders.ts#function:createOrder/expression_statement[1]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "res.status().json"
+      },
+      {
+        "source": "src/routes/orders.ts#function:createOrder/expression_statement[1]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "express",
+        "position": null,
+        "text": "res.status"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]"
+    ]
+  },
+  "src/routes/orders.ts#function:getOrder": {
+    "callers": [
+      {
+        "owner": "src/routes/orders.ts#",
+        "source": "src/routes/orders.ts#expression_statement[1]/call[0]/call[0]",
+        "kind": "references",
+        "position": 0
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/routes/orders.ts#function:getOrder/variable:order/call[0]",
+        "kind": "calls",
+        "target": "src/services/order-service.ts#class:OrderService/method:get",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/routes/orders.ts#function:getOrder/if[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "res.status().json"
+      },
+      {
+        "source": "src/routes/orders.ts#function:getOrder/if[0]/expression_statement[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "express",
+        "position": null,
+        "text": "res.status"
+      },
+      {
+        "source": "src/routes/orders.ts#function:getOrder/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "express",
+        "position": null,
+        "text": "res.json"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/routes/orders.ts#function:listOrders": {
+    "callers": [
+      {
+        "owner": "src/routes/orders.ts#",
+        "source": "src/routes/orders.ts#expression_statement[0]/call[0]",
+        "kind": "references",
+        "position": 1
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/routes/orders.ts#function:listOrders/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "express",
+        "position": null,
+        "text": "res.json"
+      },
+      {
+        "source": "src/routes/orders.ts#function:listOrders/expression_statement[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": "src/services/order-service.ts#class:OrderService/method:list",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"express.route\",\"http\",\"GET\",\"/orders\",\"listOrders\"]"
+    ]
+  },
+  "src/scheduler.ts#expression_statement[1]/call[0]/function[0]": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/scheduler.ts#expression_statement[1]/call[0]/function[0]/call[0]",
+        "kind": "calls",
+        "target": "src/jobs/report.ts#function:reportMetrics",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"node-cron.schedule\",\"schedule\",\"\",\"*/15 * * * *\",\"(…)\"]"
+    ]
+  },
+  "src/server.ts#function:healthCheck": {
+    "callers": [
+      {
+        "owner": "src/server.ts#",
+        "source": "src/server.ts#expression_statement[1]/call[0]",
+        "kind": "references",
+        "position": 1
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/server.ts#function:healthCheck/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "express",
+        "position": null,
+        "text": "res.json"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"express.route\",\"http\",\"GET\",\"/health\",\"healthCheck\"]"
+    ]
+  },
+  "src/server.ts#function:shutdown": {
+    "callers": [
+      {
+        "owner": "src/server.ts#",
+        "source": "src/server.ts#expression_statement[6]/call[0]",
+        "kind": "references",
+        "position": 1
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/server.ts#function:shutdown/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "server.close"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"event\",\"\",\"SIGTERM\",\"src/server.ts#shutdown\"]"
+    ]
+  },
+  "src/server.ts#function:status": {
+    "callers": [
+      {
+        "owner": "src/server.ts#",
+        "source": "src/server.ts#expression_statement[2]/call[0]",
+        "kind": "references",
+        "position": 1
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/server.ts#function:status/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "express",
+        "position": null,
+        "text": "res.json"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"express.route\",\"http\",\"GET\",\"\",\"status\"]"
+    ]
+  },
+  "src/services/events.ts#variable:events/method:emit": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/services/events.ts#variable:events/method:emit/variable:handlers/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "subscriptions.get"
+      },
+      {
+        "source": "src/services/events.ts#variable:events/method:emit/for_of[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "not_concrete",
+        "module": null,
+        "position": null,
+        "text": "handler"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/services/events.ts#variable:events/method:on": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/services/events.ts#variable:events/method:on/variable:handlers/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "subscriptions.get"
+      },
+      {
+        "source": "src/services/events.ts#variable:events/method:on/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "handlers.push"
+      },
+      {
+        "source": "src/services/events.ts#variable:events/method:on/expression_statement[1]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "subscriptions.set"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/services/notifier.ts#class:Notifier": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+    ]
+  },
+  "src/services/notifier.ts#class:Notifier/method:notify": {
+    "callers": [
+      {
+        "owner": "src/services/notifier.ts#function:notifyCustomer",
+        "source": "src/services/notifier.ts#function:notifyCustomer/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/services/notifier.ts#class:Notifier/method:notify/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "not_concrete",
+        "module": null,
+        "position": null,
+        "text": "this.send"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+    ]
+  },
+  "src/services/notifier.ts#class:ReceiptNotifier": {
+    "callers": [
+      {
+        "owner": "src/services/notifier.ts#",
+        "source": "src/services/notifier.ts#variable:notifier/new[0]",
+        "kind": "constructs",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+    ]
+  },
+  "src/services/notifier.ts#class:ReceiptNotifier/method:send": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/services/notifier.ts#class:ReceiptNotifier/method:send/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "logger.info"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/services/notifier.ts#function:notifyCustomer": {
+    "callers": [
+      {
+        "owner": "src/services/notifier.ts#",
+        "source": "src/services/notifier.ts#expression_statement[0]/call[0]",
+        "kind": "references",
+        "position": 1
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/services/notifier.ts#function:notifyCustomer/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/services/notifier.ts#class:Notifier/method:notify",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+    ]
+  },
+  "src/services/order-service.ts#class:OrderService": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+    ]
+  },
+  "src/services/order-service.ts#class:OrderService/constructor:constructor": {
+    "callers": [
+      {
+        "owner": "src/services/order-service.ts#",
+        "source": "src/services/order-service.ts#variable:orderService/new[0]",
+        "kind": "constructs",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+    ]
+  },
+  "src/services/order-service.ts#class:OrderService/getter:count": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/services/order-service.ts#class:OrderService/getter:count/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/db/repository.ts#class:OrderRepository/method:list",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/services/order-service.ts#class:OrderService/method:cancel": {
+    "callers": [
+      {
+        "owner": "src/jobs/cleanup.ts#function:cleanupExpiredOrders",
+        "source": "src/jobs/cleanup.ts#function:cleanupExpiredOrders/for[0]/if[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/routes/orders.ts#function:cancelOrder",
+        "source": "src/routes/orders.ts#function:cancelOrder/variable:order/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/services/order-service.ts#class:OrderService/method:cancel/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/db/repository.ts#class:OrderRepository/method:cancel",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"express.route\",\"http\",\"DELETE\",\"/orders/:id\",\"requireUser\"]",
+      "entrance:[\"node-cron.schedule\",\"schedule\",\"\",\"0 2 * * *\",\"cleanupExpiredOrders\"]"
+    ]
+  },
+  "src/services/order-service.ts#class:OrderService/method:get": {
+    "callers": [
+      {
+        "owner": "src/routes/orders.ts#function:getOrder",
+        "source": "src/routes/orders.ts#function:getOrder/variable:order/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/services/order-service.ts#class:OrderService/method:get/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/db/repository.ts#class:OrderRepository/method:find",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/services/order-service.ts#class:OrderService/method:list": {
+    "callers": [
+      {
+        "owner": "src/jobs/cleanup.ts#function:cleanupExpiredOrders",
+        "source": "src/jobs/cleanup.ts#function:cleanupExpiredOrders/variable:orders/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/jobs/report.ts#function:printReport",
+        "source": "src/jobs/report.ts#function:printReport/variable:orders/call[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/jobs/report.ts#function:reportMetrics",
+        "source": "src/jobs/report.ts#function:reportMetrics/variable:orders/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/routes/admin.ts#function:adminStats",
+        "source": "src/routes/admin.ts#function:adminStats/variable:orders/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/routes/orders.ts#function:listOrders",
+        "source": "src/routes/orders.ts#function:listOrders/expression_statement[0]/call[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/worker.ts#function:purge",
+        "source": "src/worker.ts#function:purge/for_of[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/services/order-service.ts#class:OrderService/method:list/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/db/repository.ts#class:OrderRepository/method:list",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"express.route\",\"http\",\"GET\",\"/admin/stats\",\"adminStats\"]",
+      "entrance:[\"express.route\",\"http\",\"GET\",\"/orders\",\"listOrders\"]",
+      "entrance:[\"node-cron.schedule\",\"schedule\",\"\",\"*/15 * * * *\",\"(…)\"]",
+      "entrance:[\"node-cron.schedule\",\"schedule\",\"\",\"0 2 * * *\",\"cleanupExpiredOrders\"]"
+    ]
+  },
+  "src/services/order-service.ts#class:OrderService/method:place": {
+    "callers": [
+      {
+        "owner": "src/jobs/import-orders.ts#function:importOrders",
+        "source": "src/jobs/import-orders.ts#function:importOrders/for_of[0]/try[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/jobs/process-order.ts#function:processOrder",
+        "source": "src/jobs/process-order.ts#function:processOrder/variable:order/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/routes/orders.ts#function:createOrder",
+        "source": "src/routes/orders.ts#function:createOrder/variable:order/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/services/order-service.ts#class:OrderService/method:place/variable:draft/call[0]",
+        "kind": "calls",
+        "target": "src/lib/validate.ts#function:validateOrder",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/services/order-service.ts#class:OrderService/method:place/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "overridden",
+        "module": null,
+        "position": null,
+        "text": "this.payments.charge"
+      },
+      {
+        "source": "src/services/order-service.ts#class:OrderService/method:place/variable:order/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "node:crypto",
+        "position": null,
+        "text": "randomUUID"
+      },
+      {
+        "source": "src/services/order-service.ts#class:OrderService/method:place/variable:order/call[1]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Date.toISOString"
+      },
+      {
+        "source": "src/services/order-service.ts#class:OrderService/method:place/variable:order/call[1]/new[0]",
+        "kind": "constructs",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Date"
+      },
+      {
+        "source": "src/services/order-service.ts#class:OrderService/method:place/expression_statement[1]/call[0]",
+        "kind": "calls",
+        "target": "src/db/repository.ts#class:OrderRepository/method:insert",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/services/order-service.ts#class:OrderService/method:place/expression_statement[2]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "events.emit"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"bullmq.worker\",\"worker\",\"\",\"orders\",\"processOrder\"]",
+      "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/jobs/import-orders.ts#importOrders\"]"
+    ]
+  },
+  "src/services/order-service.ts#class:OrderService/method:remove": {
+    "callers": [
+      {
+        "owner": "src/jobs/cleanup.ts#function:cleanupExpiredOrders",
+        "source": "src/jobs/cleanup.ts#function:cleanupExpiredOrders/if[0]/do_while[0]/if[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/worker.ts#function:purge",
+        "source": "src/worker.ts#function:purge/for_of[0]/if[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/services/order-service.ts#class:OrderService/method:remove/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/db/repository.ts#class:OrderRepository/method:remove",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"node-cron.schedule\",\"schedule\",\"\",\"0 2 * * *\",\"cleanupExpiredOrders\"]"
+    ]
+  },
+  "src/services/payment.ts#class:PaymentProvider": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+    ]
+  },
+  "src/services/payment.ts#class:PaymentProvider/method:charge": {
+    "callers": [
+      {
+        "owner": "src/services/payment.ts#class:StripeProvider/method:charge",
+        "source": "src/services/payment.ts#class:StripeProvider/method:charge/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/services/payment.ts#class:PaymentProvider/method:charge/variable:total/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "order.items.reduce"
+      },
+      {
+        "source": "src/services/payment.ts#class:PaymentProvider/method:charge/if[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Number.isFinite"
+      },
+      {
+        "source": "src/services/payment.ts#class:PaymentProvider/method:charge/if[0]/throw[0]/new[0]",
+        "kind": "constructs",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "global",
+        "position": null,
+        "text": "Error"
+      },
+      {
+        "source": "src/services/payment.ts#class:PaymentProvider/method:charge/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "logger.info"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/services/payment.ts#class:StripeProvider": {
+    "callers": [
+      {
+        "owner": "src/services/payment.ts#function:createProvider",
+        "source": "src/services/payment.ts#function:createProvider/return[0]/new[0]",
+        "kind": "constructs",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+    ]
+  },
+  "src/services/payment.ts#class:StripeProvider/method:charge": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/services/payment.ts#class:StripeProvider/method:charge/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/services/payment.ts#class:PaymentProvider/method:charge",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/services/payment.ts#class:StripeProvider/method:charge/expression_statement[1]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "logger.info"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/services/payment.ts#function:createProvider": {
+    "callers": [
+      {
+        "owner": "src/services/order-service.ts#",
+        "source": "src/services/order-service.ts#variable:orderService/new[0]/call[1]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/services/payment.ts#function:createProvider/return[0]/new[0]",
+        "kind": "constructs",
+        "target": "src/services/payment.ts#class:StripeProvider",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+    ]
+  },
+  "src/worker.ts#function:purge": {
+    "callers": [
+      {
+        "owner": "src/worker.ts#",
+        "source": "src/worker.ts#variable:maintenance/new[0]",
+        "kind": "references",
+        "position": 1
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/worker.ts#function:purge/for_of[0]/call[0]",
+        "kind": "calls",
+        "target": "src/services/order-service.ts#class:OrderService/method:list",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/worker.ts#function:purge/for_of[0]/if[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/services/order-service.ts#class:OrderService/method:remove",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  }
+}

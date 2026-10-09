@@ -1,0 +1,5 @@
+main.ts#import[0] #0 imports `remote` -> external remote
+main.ts#import[1] #0 imports `local` -> local.ts#
+main.ts#variable:app/call[0] #0 calls `express` -> local.ts#function:express
+main.ts#function:owner/expression_statement[0]/call[0] #0 calls `inspect` -> main.ts#function:inspect
+main.ts#function:owner/expression_statement[0]/call[0] #1 references `express` -> local.ts#function:express @0

@@ -1,0 +1,4 @@
+conditions.ts#class:C/method:run/if[0]/call[0] #0 calls `check` -> conditions.ts#function:check
+conditions.ts#class:C/method:run/if[0]/expression_statement[0]/call[0] #0 calls `this.m` -> conditions.ts#class:C/method:m
+conditions.ts#class:C/method:run/expression_statement[0]/call[0] #0 calls `host` -> conditions.ts#function:host
+conditions.ts#class:C/method:run/expression_statement[0]/call[1] #0 calls `this.m` -> conditions.ts#class:C/method:m

@@ -1,0 +1,118 @@
+.preferences {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.preferences-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.preferences-label {
+  font-weight: 500;
+}
+
+.preferences-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.preferences-check input {
+  margin-top: 3px;
+  accent-color: var(--color-accent);
+}
+
+.preferences-note {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--font-size-small);
+  color: var(--color-muted);
+}
+
+.preferences-heading {
+  margin: 0;
+  font-size: inherit;
+}
+
+.preferences-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.preferences-keys-list {
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.preferences-keys-group + .preferences-keys-group {
+  margin-top: 8px;
+}
+
+.preferences-keys-category {
+  padding: 4px 0;
+  font-size: var(--font-size-small);
+  color: var(--color-muted);
+}
+
+.preferences-key {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+}
+
+.preferences-key-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.preferences-key-conflict {
+  font-size: var(--font-size-small);
+  color: var(--color-danger);
+}
+
+.preferences-key-record {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 120px;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.preferences-key-record:hover {
+  background: var(--color-hover);
+}
+
+.preferences-key-record[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-selection);
+}
+
+.preferences-key-record[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.preferences-key-prompt,
+.preferences-key-none {
+  font-size: var(--font-size-small);
+  color: var(--color-muted);
+}

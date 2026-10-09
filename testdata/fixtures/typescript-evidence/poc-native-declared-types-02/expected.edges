@@ -1,0 +1,6 @@
+new.ts#variable:repo/new[0] #0 constructs `Repo` -> new.ts#class:Repo
+new.ts#expression_statement[0]/call[0] #0 calls `repo.save` -> new.ts#class:Repo/method:save
+new.ts#class:Holder/new[0] #0 constructs `Repo` -> new.ts#class:Repo
+new.ts#class:Holder/method:run/expression_statement[0]/call[0] #0 calls `this.repo.save` -> new.ts#class:Repo/method:save
+new.ts#expression_statement[1]/call[0] #0 calls `Repo.save` -> new.ts#class:Repo/method:save
+new.ts#expression_statement[1]/call[0]/new[0] #0 constructs `Repo` -> new.ts#class:Repo

@@ -1,0 +1,1 @@
+import type { Client } from "external"; interface Local { send(): void } function run(mixed: Client | Local, unknown: Client | any) { mixed.send(); unknown.send(); }

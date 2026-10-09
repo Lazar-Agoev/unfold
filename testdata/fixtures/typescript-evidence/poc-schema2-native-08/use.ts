@@ -1,0 +1,1 @@
+class C { m() {} run(x: number) { switch (x) { case 0: this.m(); break; default: this.m(); } } }

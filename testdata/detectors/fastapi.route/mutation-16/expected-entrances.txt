@@ -1,0 +1,2 @@
+# Expected entrances for testdata/detectors/fastapi.route/mutation-16. Format: testdata/README.md.
+# Every indexed receiver mutation and delegated alias invalidates route proof (PoC: "Every indexed receiver mutation..."). Written: from builtins import setattr as write; write(app, 'get', fake)

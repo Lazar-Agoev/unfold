@@ -1,0 +1,7 @@
+module.ts#expression_statement[0]/call[0] #0 calls `globalHelper` -> one.ts#function:globalHelper
+module.ts#expression_statement[1]/call[0] #0 calls `Shared.fromTwo` -> two.ts#function:fromTwo
+module.ts#expression_statement[2]/call[0] #0 calls `augmented` -> not_concrete
+two.ts#expression_statement[0]/call[0] #0 calls `globalHelper` -> one.ts#function:globalHelper
+two.ts#function:fromTwo/expression_statement[0]/call[0] #0 calls `fromOne` -> one.ts#function:fromOne
+two.ts#expression_statement[1]/call[0] #0 calls `Shared.fromOne` -> one.ts#function:fromOne
+two.ts#expression_statement[2]/call[0] #0 calls `Shared.fromTwo` -> two.ts#function:fromTwo

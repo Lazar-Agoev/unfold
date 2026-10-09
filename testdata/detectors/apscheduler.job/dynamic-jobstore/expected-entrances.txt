@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/apscheduler.job/dynamic-jobstore. Format: testdata/README.md.
+# A dynamic job store keeps the handler unsupported.
+entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:7
+	target	handler	unresolved	unsupported	first

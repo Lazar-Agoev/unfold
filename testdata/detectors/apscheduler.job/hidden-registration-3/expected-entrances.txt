@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/apscheduler.job/hidden-registration-3. Format: testdata/README.md.
+# Hidden and historical registration aliases keep negative domain evidence (PoC: "Hidden and historical registration aliases..."). Written: class Box: pass; box = Box(); box.register = scheduler.add_job; box.register(second, id='first')
+entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/app.py:7
+	target	handler	unresolved	unsupported	first

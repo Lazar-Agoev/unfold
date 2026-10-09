@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/pyproject.script/failed-file. Format: testdata/README.md.
+# A file that fails to parse still gives its project a context; its module is not indexed (PoC: "Failed selected Python files...").
+entrance	pyproject.script	process	-	run	exact	pyproject.toml:2
+	target	startup	unresolved	not_indexed	broken:main

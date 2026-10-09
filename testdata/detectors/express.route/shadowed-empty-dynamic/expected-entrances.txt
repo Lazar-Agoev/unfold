@@ -1,0 +1,17 @@
+# A shadowed inner router stays distinct; a one-argument mount has an empty prefix, so empty and "/"
+# local paths join to "/"; a dynamic local path stays unknown on every branch, mounted or not.
+# (PoC schema2-express: "keeps distinct shadowed routers and empty or dynamic paths consistent".)
+entrance	express.route	http	GET	/outer/outer-route	exact	main.ts:3
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	GET	/inner	partial	main.ts:4
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	GET	/	exact	main.ts:5
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	POST	/	exact	main.ts:5
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	GET	-	unknown	main.ts:6
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	GET	-	unknown	main.ts:6
+	target	handler	resolved	main.ts#function:handler	handler
+entrance	express.route	http	GET	-	unknown	main.ts:7
+	target	handler	resolved	main.ts#function:handler	handler

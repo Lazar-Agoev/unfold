@@ -1,0 +1,20 @@
+.popover {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: var(--z-popover);
+  min-width: 200px;
+  max-width: min(480px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: 6px;
+  border-radius: var(--radius-large);
+  background: var(--color-popover);
+  box-shadow: var(--shadow-popover);
+  color: var(--color-text);
+  animation: hover-layer-in var(--duration-fast) ease-out;
+}
+
+.popover:focus {
+  outline: none;
+}

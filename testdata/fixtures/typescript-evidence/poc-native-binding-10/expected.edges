@@ -1,0 +1,5 @@
+globals.ts#expression_statement[0]/call[0] #0 calls `console` -> globals.ts#function:console
+globals.ts#expression_statement[1]/call[0] #0 calls `Math` -> globals.ts#variable:Math/function:Math
+globals.ts#function:local/expression_statement[0]/call[0] #0 calls `JSON` -> parameter @0
+globals.ts#function:local/expression_statement[1]/call[0] #0 calls `Promise` -> parameter @1
+globals.ts#expression_statement[2]/call[0] #0 calls `unknownFunction` -> unknown_name

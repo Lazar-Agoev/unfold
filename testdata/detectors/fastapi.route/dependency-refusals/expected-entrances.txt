@@ -1,0 +1,12 @@
+# Expected entrances for testdata/detectors/fastapi.route/dependency-refusals. Format: testdata/README.md.
+# Unproven dependency factories and expansions stay explicit unsupported targets before the endpoint (PoC: "Unproved dependency factories...").
+entrance	fastapi.route	http	GET	/x	exact	src/expanded.py:5
+	target	handler	resolved	src/expanded.py#function:endpoint	endpoint
+	target	handler	unresolved	unsupported	*extra
+	target	handler	resolved	src/expanded.py#function:endpoint	endpoint
+entrance	fastapi.route	http	GET	/x	exact	src/local.py:6
+	target	handler	unresolved	unsupported	Depends(endpoint)
+	target	handler	resolved	src/local.py#function:endpoint	endpoint
+entrance	fastapi.route	http	GET	/x	exact	src/unknown.py:5
+	target	handler	unresolved	unsupported	unknown
+	target	handler	resolved	src/unknown.py#function:endpoint	endpoint

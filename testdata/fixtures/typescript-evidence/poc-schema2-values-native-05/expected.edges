@@ -1,0 +1,2 @@
+use.ts#class:Potential/call[0] #0 calls `factory` -> unknown_name
+use.ts#class:Narrowed/method:run/if[0]/call[0] #0 calls `unknownPredicate` -> unknown_name

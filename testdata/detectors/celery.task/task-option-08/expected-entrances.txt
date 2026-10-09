@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/celery.task/task-option-08. Format: testdata/README.md.
+# Only task name and queue options prove the body (PoC: "Only constructor main broker backend..."). Written option: lazy=False
+entrance	celery.task	worker	-	orders	exact	src/app.py:6
+	target	handler	unresolved	unsupported	first

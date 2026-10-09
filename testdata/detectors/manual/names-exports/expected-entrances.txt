@@ -1,0 +1,24 @@
+# Names follow exports, the default export, and re-exports first, then top-level declarations; a
+# constant arrow and an overloaded function resolve; a namespace member is not_found; a let, a data
+# constant, an alias, and a class handler are unsupported.
+# (PoC schema2-manual: "manual names follow exports/default/reexports and top-level concrete definitions".)
+entrance	manual	command	-	-	unknown	.unfold/config.toml:3
+	target	handler	resolved	defs.ts#function:save	barrel.ts#renamed
+entrance	manual	command	-	-	unknown	.unfold/config.toml:7
+	target	handler	resolved	defs.ts#function:default	barrel.ts#default
+entrance	manual	command	-	-	unknown	.unfold/config.toml:11
+	target	handler	resolved	barrel.ts#function:local	barrel.ts#local
+entrance	manual	command	-	-	unknown	.unfold/config.toml:15
+	target	handler	resolved	defs.ts#variable:arrow/function:arrow	defs.ts#arrow
+entrance	manual	command	-	-	unknown	.unfold/config.toml:19
+	target	handler	resolved	defs.ts#function:overloaded	defs.ts#overloaded
+entrance	manual	command	-	-	unknown	.unfold/config.toml:23
+	target	handler	unresolved	not_found	barrel.ts#secret
+entrance	manual	command	-	-	unknown	.unfold/config.toml:27
+	target	handler	unresolved	unsupported	defs.ts#mutable
+entrance	manual	command	-	-	unknown	.unfold/config.toml:31
+	target	handler	unresolved	unsupported	defs.ts#data
+entrance	manual	command	-	-	unknown	.unfold/config.toml:35
+	target	handler	unresolved	unsupported	defs.ts#alias
+entrance	manual	command	-	-	unknown	.unfold/config.toml:39
+	target	handler	unresolved	unsupported	defs.ts#Named

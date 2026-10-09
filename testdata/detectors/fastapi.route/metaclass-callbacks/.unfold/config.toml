@@ -1,0 +1,6 @@
+# Detector case: testdata/detectors/fastapi.route/metaclass-callbacks.
+version = 1
+
+[[python.project]]
+root = "."
+source_roots = ["src"]

@@ -1,0 +1,15 @@
+# Named (aliased), default, and namespace schedules with literal and template expressions, through a
+# wrapper; dynamic and empty expressions are unknown; a schedule without a handler is no entrance.
+# (PoC schema2-framework-jobs: "node-cron supports named, default and namespace schedules".)
+entrance	node-cron.schedule	schedule	-	0 * * * *	exact	main.ts:3
+	target	handler	resolved	main.ts#function:handle	handle
+entrance	node-cron.schedule	schedule	-	1 * * * *	exact	main.ts:3
+	target	handler	resolved	main.ts#expression_statement[1]/call[0]/function[0]	(…)
+entrance	node-cron.schedule	schedule	-	2 * * * *	exact	main.ts:3
+	target	handler	resolved	main.ts#expression_statement[2]/call[0]/function:tick	(…)
+entrance	node-cron.schedule	schedule	-	3 * * * *	exact	main.ts:4
+	target	handler	resolved	main.ts#function:handle	handle
+entrance	node-cron.schedule	schedule	-	-	unknown	main.ts:4
+	target	handler	resolved	main.ts#function:handle	handle
+entrance	node-cron.schedule	schedule	-	-	unknown	main.ts:4
+	target	handler	resolved	main.ts#function:handle	handle

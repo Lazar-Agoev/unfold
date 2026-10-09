@@ -1,0 +1,6 @@
+static.ts#class:Base/method:run/expression_statement[0]/call[0] #0 calls `this.m` -> static.ts#class:Base/method:m
+static.ts#class:Base/method:run/expression_statement[1]/call[0] #0 calls `Base.m` -> static.ts#class:Base/method:m
+static.ts#class:Child/method:run/expression_statement[0]/call[0] #0 calls `this.m` -> static.ts#class:Child/method:m
+static.ts#class:Child/method:run/expression_statement[1]/call[0] #0 calls `super.m` -> static.ts#class:Base/method:m
+static.ts#expression_statement[0]/call[0] #0 calls `Inherited.m` -> static.ts#class:Base/method:m
+static.ts#expression_statement[1]/call[0] #0 calls `Child.m` -> static.ts#class:Child/method:m

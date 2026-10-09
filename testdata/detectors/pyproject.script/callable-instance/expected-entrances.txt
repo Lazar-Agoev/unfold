@@ -1,0 +1,8 @@
+# Expected entrances for testdata/detectors/pyproject.script/callable-instance. Format: testdata/README.md.
+# A proven callable instance's __call__ is the startup; a class or a module is not.
+entrance	pyproject.script	process	-	instance	exact	pyproject.toml:2
+	target	startup	resolved	src/app.py#class:Runner/method:__call__	app:runner
+entrance	pyproject.script	process	-	class_value	exact	pyproject.toml:3
+	target	startup	unresolved	unsupported	app:Runner
+entrance	pyproject.script	process	-	module_value	exact	pyproject.toml:4
+	target	startup	unresolved	unsupported	app:helpers

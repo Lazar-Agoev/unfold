@@ -1,0 +1,2 @@
+# Expected entrances for testdata/detectors/apscheduler.job/api-mutation-5. Format: testdata/README.md.
+# Scheduler and Job class API mutations can't manufacture registrations (PoC: "Scheduler and Job class API mutations..."). Written: class Box: pass; box = Box(); box.api = scheduler; box.api.add_job = fake

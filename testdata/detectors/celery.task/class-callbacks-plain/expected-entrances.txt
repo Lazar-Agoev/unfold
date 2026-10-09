@@ -1,0 +1,8 @@
+# Expected entrances for testdata/detectors/celery.task/class-callbacks-plain. Format: testdata/README.md.
+# Ordinary class members resolve as task callbacks.
+entrance	celery.task	worker	-	-	unknown	src/app.py:11
+	target	handler	resolved	src/app.py#class:Commands/method:run	Commands.run
+entrance	celery.task	worker	-	-	unknown	src/app.py:12
+	target	handler	resolved	src/app.py#class:Commands/method:run	Child.run
+entrance	celery.task	worker	-	-	unknown	src/app.py:13
+	target	handler	resolved	src/app.py#class:Commands/method:run	alias

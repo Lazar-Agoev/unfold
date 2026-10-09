@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/celery.task/historical-shared-task-cross-module. Format: testdata/README.md.
+# A rebound shared_task alias in another module still withholds.
+entrance	celery.task	worker	-	orders	exact	src/appmod.py:6
+	target	handler	unresolved	unsupported	first

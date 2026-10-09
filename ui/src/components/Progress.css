@@ -1,0 +1,43 @@
+.spinner {
+  flex-shrink: 0;
+  animation: spinner-turn 0.9s linear infinite;
+}
+
+.spinner-wrap {
+  display: inline-flex;
+}
+
+@keyframes spinner-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.progress {
+  position: relative;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--color-border);
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+  transition: width var(--duration) ease;
+}
+
+.progress-indeterminate .progress-fill {
+  width: 35%;
+  animation: progress-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes progress-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(290%);
+  }
+}

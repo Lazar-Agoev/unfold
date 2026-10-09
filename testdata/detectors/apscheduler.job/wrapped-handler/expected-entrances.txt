@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/apscheduler.job/wrapped-handler. Format: testdata/README.md.
+# A wrapped function stays wrapper.
+entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:10
+	target	handler	unresolved	wrapper	wrapped

@@ -1,0 +1,3 @@
+annotations.ts#function:call/expression_statement[0]/call[0] #0 calls `repo.save` -> annotations.ts#class:Repo/method:save
+annotations.ts#expression_statement[0]/call[0] #0 calls `repo.save` -> annotations.ts#class:Repo/method:save
+annotations.ts#class:Holder/method:run/expression_statement[0]/call[0] #0 calls `this.repo.save` -> annotations.ts#class:Repo/method:save

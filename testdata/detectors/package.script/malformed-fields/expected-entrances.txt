@@ -1,0 +1,4 @@
+# Malformed package fields launch nothing: a non-string script, a cycle, a missing reference, an
+# unselected --prefix package, a scripts array, an empty bin, a bin array, and a string bin without
+# a package name. (PoC schema2-launch: "malformed package fields and missing selected script
+# references yield notes without invented entrances".)

@@ -1,0 +1,4 @@
+library-objects.ts#function:use/expression_statement[0]/call[0] #0 calls `map.get` -> external global
+library-objects.ts#function:use/expression_statement[1]/call[0] #0 calls `set.has` -> external global
+library-objects.ts#function:use/expression_statement[2]/call[0] #0 calls `date.getTime` -> external global
+library-objects.ts#function:use/expression_statement[3]/call[0] #0 calls `array.forEach` -> external global

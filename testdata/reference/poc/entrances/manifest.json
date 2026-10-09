@@ -1,0 +1,52 @@
+{
+  "schema_version": 3,
+  "generated_at": "2026-10-08T20:27:35Z",
+  "offset_unit": "utf16",
+  "end_offset_exclusive": true,
+  "line_base": 1,
+  "detectors": [
+    "bullmq.worker",
+    "express.route",
+    "manual",
+    "node-cron.schedule",
+    "package.bin",
+    "package.script"
+  ],
+  "files": {
+    "src/orders.ts": {
+      "sha256": "b553e66d4f1f93765ed8ceb54ab983f2dd71fce5988104fdbc9f55bd9e3cb132",
+      "language": "typescript"
+    },
+    "src/queue.ts": {
+      "sha256": "fd61bd7c961dad80a2b3a7e1bdfee8ad5bbc93ffeda097af69eef09fd168b02e",
+      "language": "typescript"
+    },
+    "src/server.ts": {
+      "sha256": "ab62f633963de469dfceff33679012fb11665ab77e9910d220487ecf6942a462",
+      "language": "typescript"
+    },
+    "src/validate.ts": {
+      "sha256": "ee1bafa10478eee96f73249d41dee2b8276bfd3637d97570c3ff9fd12344aa7f",
+      "language": "typescript"
+    },
+    "src/worker.ts": {
+      "sha256": "45b7f3c8ab940d0251b7bac009e4de8a7e6b9e1060c6558a1ccb8ff5802d094f",
+      "language": "typescript"
+    }
+  },
+  "inputs": {
+    "codegraph.json": {
+      "sha256": "c2c95fdb9bc9dddf2c31881becf5a5c67c2df8192f3e36a4abb3af1974f8033a"
+    },
+    "package.json": {
+      "sha256": "f030fdf5570b72c3a626c794ccd47c1a3c35990e4a7f14ef8f136516d1cd1f3e"
+    }
+  },
+  "producers": [
+    {
+      "language": "typescript",
+      "front_end": "typescript",
+      "version": "6.0.3"
+    }
+  ]
+}

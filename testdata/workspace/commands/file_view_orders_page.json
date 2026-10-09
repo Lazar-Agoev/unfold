@@ -1,0 +1,521 @@
+{
+  "path": "src/routes/orders.ts",
+  "language": "typescript",
+  "graph": "current",
+  "fileState": "current",
+  "unshowable": null,
+  "lineCount": 50,
+  "startLine": 1,
+  "endLine": 12,
+  "textStart": 0,
+  "text": "import express, { type Request, type Response, type Router } from \"express\";\nimport { asyncHandler } from \"../lib/async-handler.ts\";\nimport { slack } from \"../lib/slack.ts\";\nimport { ordersQueue } from \"../queues/queues.ts\";\nimport { orderService } from \"../services/order-service.ts\";\nimport type { OrderDraft } from \"../types.ts\";\nimport { requireUser, validateBody } from \"./middleware.ts\";\n\nexport const ordersRouter: Router = express.Router();\n\nexport function listOrders(_req: Request, res: Response): void {\n  res.json({ orders: orderService.list() });\n",
+  "lines": [
+    {
+      "number": 1,
+      "start": 0,
+      "end": 76,
+      "indent": 0
+    },
+    {
+      "number": 2,
+      "start": 77,
+      "end": 132,
+      "indent": 0
+    },
+    {
+      "number": 3,
+      "start": 133,
+      "end": 173,
+      "indent": 0
+    },
+    {
+      "number": 4,
+      "start": 174,
+      "end": 224,
+      "indent": 0
+    },
+    {
+      "number": 5,
+      "start": 225,
+      "end": 285,
+      "indent": 0
+    },
+    {
+      "number": 6,
+      "start": 286,
+      "end": 332,
+      "indent": 0
+    },
+    {
+      "number": 7,
+      "start": 333,
+      "end": 393,
+      "indent": 0
+    },
+    {
+      "number": 8,
+      "start": 394,
+      "end": 394,
+      "indent": 0
+    },
+    {
+      "number": 9,
+      "start": 395,
+      "end": 448,
+      "indent": 0
+    },
+    {
+      "number": 10,
+      "start": 449,
+      "end": 449,
+      "indent": 0
+    },
+    {
+      "number": 11,
+      "start": 450,
+      "end": 514,
+      "indent": 0
+    },
+    {
+      "number": 12,
+      "start": 515,
+      "end": 559,
+      "indent": 2
+    }
+  ],
+  "spans": [
+    [
+      0,
+      6,
+      "keyword"
+    ],
+    [
+      18,
+      22,
+      "keyword"
+    ],
+    [
+      23,
+      30,
+      "type"
+    ],
+    [
+      32,
+      36,
+      "keyword"
+    ],
+    [
+      37,
+      45,
+      "type"
+    ],
+    [
+      47,
+      51,
+      "keyword"
+    ],
+    [
+      52,
+      58,
+      "type"
+    ],
+    [
+      61,
+      65,
+      "keyword"
+    ],
+    [
+      66,
+      75,
+      "string"
+    ],
+    [
+      77,
+      83,
+      "keyword"
+    ],
+    [
+      101,
+      105,
+      "keyword"
+    ],
+    [
+      106,
+      131,
+      "string"
+    ],
+    [
+      133,
+      139,
+      "keyword"
+    ],
+    [
+      150,
+      154,
+      "keyword"
+    ],
+    [
+      155,
+      172,
+      "string"
+    ],
+    [
+      174,
+      180,
+      "keyword"
+    ],
+    [
+      197,
+      201,
+      "keyword"
+    ],
+    [
+      202,
+      223,
+      "string"
+    ],
+    [
+      225,
+      231,
+      "keyword"
+    ],
+    [
+      249,
+      253,
+      "keyword"
+    ],
+    [
+      254,
+      284,
+      "string"
+    ],
+    [
+      286,
+      292,
+      "keyword"
+    ],
+    [
+      293,
+      297,
+      "keyword"
+    ],
+    [
+      300,
+      310,
+      "type"
+    ],
+    [
+      313,
+      317,
+      "keyword"
+    ],
+    [
+      318,
+      331,
+      "string"
+    ],
+    [
+      333,
+      339,
+      "keyword"
+    ],
+    [
+      370,
+      374,
+      "keyword"
+    ],
+    [
+      375,
+      392,
+      "string"
+    ],
+    [
+      395,
+      401,
+      "keyword"
+    ],
+    [
+      402,
+      407,
+      "keyword"
+    ],
+    [
+      422,
+      428,
+      "type"
+    ],
+    [
+      439,
+      445,
+      "function"
+    ],
+    [
+      450,
+      456,
+      "keyword"
+    ],
+    [
+      457,
+      465,
+      "keyword"
+    ],
+    [
+      466,
+      476,
+      "function"
+    ],
+    [
+      483,
+      490,
+      "type"
+    ],
+    [
+      497,
+      505,
+      "type"
+    ],
+    [
+      508,
+      512,
+      "keyword"
+    ],
+    [
+      521,
+      525,
+      "function"
+    ],
+    [
+      528,
+      534,
+      "property"
+    ],
+    [
+      549,
+      553,
+      "function"
+    ]
+  ],
+  "outline": [
+    {
+      "key": "src/routes/orders.ts#import[0]",
+      "kind": "import",
+      "role": "body",
+      "startLine": 1,
+      "endLine": 1,
+      "start": 0,
+      "end": 76,
+      "groupable": true
+    },
+    {
+      "key": "src/routes/orders.ts#import[1]",
+      "kind": "import",
+      "role": "body",
+      "startLine": 2,
+      "endLine": 2,
+      "start": 77,
+      "end": 132,
+      "groupable": true
+    },
+    {
+      "key": "src/routes/orders.ts#import[2]",
+      "kind": "import",
+      "role": "body",
+      "startLine": 3,
+      "endLine": 3,
+      "start": 133,
+      "end": 173,
+      "groupable": true
+    },
+    {
+      "key": "src/routes/orders.ts#import[3]",
+      "kind": "import",
+      "role": "body",
+      "startLine": 4,
+      "endLine": 4,
+      "start": 174,
+      "end": 224,
+      "groupable": true
+    },
+    {
+      "key": "src/routes/orders.ts#import[4]",
+      "kind": "import",
+      "role": "body",
+      "startLine": 5,
+      "endLine": 5,
+      "start": 225,
+      "end": 285,
+      "groupable": true
+    },
+    {
+      "key": "src/routes/orders.ts#import[5]",
+      "kind": "import",
+      "role": "body",
+      "startLine": 7,
+      "endLine": 7,
+      "start": 333,
+      "end": 393,
+      "groupable": true
+    },
+    {
+      "key": "src/routes/orders.ts#variable:ordersRouter",
+      "kind": "variable",
+      "role": "body",
+      "startLine": 9,
+      "endLine": 9,
+      "start": 408,
+      "end": 447,
+      "groupable": true
+    },
+    {
+      "key": "src/routes/orders.ts#function:listOrders",
+      "kind": "function",
+      "role": "body",
+      "startLine": 11,
+      "endLine": 13,
+      "start": 450,
+      "end": 561,
+      "groupable": false,
+      "fold": {
+        "folded": false,
+        "headerEnd": 513,
+        "braces": true,
+        "summary": "2 lines",
+        "returns": false,
+        "throws": false
+      }
+    },
+    {
+      "key": "src/routes/orders.ts#function:listOrders/expression_statement[0]",
+      "kind": "expression_statement",
+      "role": "body",
+      "parent": 7,
+      "startLine": 12,
+      "endLine": 12,
+      "start": 517,
+      "end": 559,
+      "groupable": true
+    }
+  ],
+  "links": [
+    {
+      "source": "src/routes/orders.ts#import[0]",
+      "owner": "src/routes/orders.ts#",
+      "kind": "imports",
+      "resolution": "external",
+      "text": "express",
+      "note": "express",
+      "module": "express",
+      "span": [
+        66,
+        75
+      ],
+      "line": 1
+    },
+    {
+      "source": "src/routes/orders.ts#import[1]",
+      "owner": "src/routes/orders.ts#",
+      "kind": "imports",
+      "resolution": "resolved",
+      "target": "src/lib/async-handler.ts#",
+      "text": "../lib/async-handler.ts",
+      "span": [
+        106,
+        131
+      ],
+      "line": 2
+    },
+    {
+      "source": "src/routes/orders.ts#import[2]",
+      "owner": "src/routes/orders.ts#",
+      "kind": "imports",
+      "resolution": "resolved",
+      "target": "src/lib/slack.ts#",
+      "text": "../lib/slack.ts",
+      "span": [
+        155,
+        172
+      ],
+      "line": 3
+    },
+    {
+      "source": "src/routes/orders.ts#import[3]",
+      "owner": "src/routes/orders.ts#",
+      "kind": "imports",
+      "resolution": "resolved",
+      "target": "src/queues/queues.ts#",
+      "text": "../queues/queues.ts",
+      "span": [
+        202,
+        223
+      ],
+      "line": 4
+    },
+    {
+      "source": "src/routes/orders.ts#import[4]",
+      "owner": "src/routes/orders.ts#",
+      "kind": "imports",
+      "resolution": "resolved",
+      "target": "src/services/order-service.ts#",
+      "text": "../services/order-service.ts",
+      "span": [
+        254,
+        284
+      ],
+      "line": 5
+    },
+    {
+      "source": "src/routes/orders.ts#import[5]",
+      "owner": "src/routes/orders.ts#",
+      "kind": "imports",
+      "resolution": "resolved",
+      "target": "src/routes/middleware.ts#",
+      "text": "./middleware.ts",
+      "span": [
+        375,
+        392
+      ],
+      "line": 7
+    },
+    {
+      "source": "src/routes/orders.ts#variable:ordersRouter/call[0]",
+      "owner": "src/routes/orders.ts#",
+      "kind": "calls",
+      "resolution": "external",
+      "text": "express.Router",
+      "note": "express",
+      "module": "express",
+      "span": [
+        431,
+        445
+      ],
+      "line": 9
+    },
+    {
+      "source": "src/routes/orders.ts#function:listOrders/expression_statement[0]/call[0]",
+      "owner": "src/routes/orders.ts#function:listOrders",
+      "kind": "calls",
+      "resolution": "external",
+      "text": "res.json",
+      "note": "express",
+      "module": "express",
+      "span": [
+        517,
+        525
+      ],
+      "line": 12
+    },
+    {
+      "source": "src/routes/orders.ts#function:listOrders/expression_statement[0]/call[0]/call[0]",
+      "owner": "src/routes/orders.ts#function:listOrders",
+      "kind": "calls",
+      "resolution": "resolved",
+      "target": "src/services/order-service.ts#class:OrderService/method:list",
+      "text": "orderService.list",
+      "span": [
+        536,
+        553
+      ],
+      "line": 12
+    }
+  ]
+}

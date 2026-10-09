@@ -1,0 +1,5 @@
+library.ts#function:call/expression_statement[0]/call[0] #0 calls `array.map` -> external global
+library.ts#function:call/expression_statement[1]/call[0] #0 calls `text.trim` -> external global
+library.ts#function:call/expression_statement[2]/call[0] #0 calls `map.get` -> external global
+library.ts#expression_statement[0]/call[0] #0 calls `values().forEach` -> external global
+library.ts#expression_statement[0]/call[0]/call[0] #0 calls `values` -> library.ts#function:values

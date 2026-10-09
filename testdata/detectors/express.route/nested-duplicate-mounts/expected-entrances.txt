@@ -1,0 +1,19 @@
+# Mounts compose across files through re-exported const routers: nested and duplicate mounts give one
+# entrance per branch (duplicates numbered), with prefixes joined, repeated slashes collapsed, and a
+# trailing slash dropped. (PoC schema2-express: "composes multiple nested and duplicate mounts".)
+entrance	express.route	http	GET	/direct/item	exact	routers.ts:3
+	target	handler	resolved	routers.ts#function:handler	handler
+entrance	express.route	http	GET	/direct/item	exact	routers.ts:3
+	target	handler	resolved	routers.ts#function:handler	handler
+entrance	express.route	http	GET	/v1/nested/item	exact	routers.ts:3
+	target	handler	resolved	routers.ts#function:handler	handler
+entrance	express.route	http	GET	/v2/nested/item	exact	routers.ts:3
+	target	handler	resolved	routers.ts#function:handler	handler
+entrance	express.route	http	POST	/direct	exact	routers.ts:3
+	target	handler	resolved	routers.ts#function:handler	handler
+entrance	express.route	http	POST	/direct	exact	routers.ts:3
+	target	handler	resolved	routers.ts#function:handler	handler
+entrance	express.route	http	POST	/v1/nested	exact	routers.ts:3
+	target	handler	resolved	routers.ts#function:handler	handler
+entrance	express.route	http	POST	/v2/nested	exact	routers.ts:3
+	target	handler	resolved	routers.ts#function:handler	handler

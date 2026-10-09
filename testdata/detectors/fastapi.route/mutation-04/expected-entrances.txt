@@ -1,0 +1,2 @@
+# Expected entrances for testdata/detectors/fastapi.route/mutation-04. Format: testdata/README.md.
+# Every indexed receiver mutation and delegated alias invalidates route proof (PoC: "Every indexed receiver mutation..."). Written: app.router = fake

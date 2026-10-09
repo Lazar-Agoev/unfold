@@ -1,0 +1,81 @@
+/* The board in the title bar, and the board dialogs. */
+
+.board-title {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.board-title:hover { background: var(--color-hover); }
+
+.board-title-input {
+  width: 260px;
+  padding: 2px 6px;
+  border: 1px solid var(--color-focus-ring);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  font: 600 var(--font-size-ui) / 18px var(--font-ui);
+  color: var(--color-text);
+  outline: none;
+}
+
+.board-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-code);
+  font-size: var(--font-size-tiny);
+  color: var(--color-muted);
+}
+
+.dialog-description .board-path { white-space: normal; overflow-wrap: anywhere; color: var(--color-text); }
+
+.board-saving { font-size: var(--font-size-tiny); color: var(--color-muted); }
+
+.titlebar-publish { height: 26px; }
+
+/* Repairs: each option says what it does before it is applied. */
+.repair-options { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; border: 0; }
+
+.repair-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.repair-option.chosen { border-color: var(--color-accent); background: var(--color-selection); }
+.repair-option input { margin-top: 2px; accent-color: var(--color-accent); }
+.repair-option span { display: flex; flex-direction: column; gap: 2px; }
+.repair-option strong { font-size: var(--font-size-small); font-weight: 600; }
+.repair-option small { font-size: var(--font-size-small); color: var(--color-muted); line-height: 1.45; }
+
+.repair-reconnect { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.repair-hits { display: flex; flex-direction: column; max-height: 200px; overflow: auto; }
+
+.repair-hit {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: var(--radius-small);
+  text-align: left;
+}
+
+.repair-hit:hover { background: var(--color-hover); }
+.repair-hit.chosen { background: var(--color-selection); }
+.repair-hit-name { font-family: var(--font-code); font-size: 11.5px; color: var(--color-text); }
+.repair-hit-path { font-size: var(--font-size-tiny); color: var(--color-muted); }
+.repair-hint { margin-top: 8px; font-size: var(--font-size-tiny); color: var(--color-muted); }
+
+.group-form { display: flex; flex-direction: column; gap: 10px; }

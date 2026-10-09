@@ -1,0 +1,11 @@
+main.ts#class:Base/method:install/expression_statement[0]/call[0] #0 calls `register` -> main.ts#function:register
+main.ts#class:Base/method:install/expression_statement[0]/call[0] #1 references `this.safe` -> main.ts#class:Base/method:safe @1
+main.ts#class:Base/method:install/expression_statement[0]/call[0] #2 references `Base.ready` -> main.ts#class:Base/method:ready @4
+main.ts#class:Derived/method:install/expression_statement[0]/call[0] #0 calls `register` -> main.ts#function:register
+main.ts#class:Derived/method:install/expression_statement[0]/call[0] #1 references `super.run` -> main.ts#class:Base/method:run @0
+main.ts#function:owner/expression_statement[0]/call[0] #0 calls `register` -> main.ts#function:register
+main.ts#function:owner/expression_statement[1]/call[0] #0 calls `callback` -> parameter @0
+main.ts#function:owner/expression_statement[2]/call[0] #0 calls `(…)` -> main.ts#function:owner/expression_statement[2]/call[0]/function[0]
+main.ts#function:owner/expression_statement[2]/call[0]/function[0]/call[0] #0 calls `callback` -> parameter
+main.ts#function:owner/expression_statement[3]/new[0] #0 constructs `callback` -> parameter
+main.ts#expression_statement[0]/new[0] #0 constructs `ordinary` -> main.ts#function:ordinary

@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unfold.dev/schemas/unfold-board-1.schema.json",
+  "title": "unfold-board version 1",
+  "description": "An Unfold board: cards that reference blocks and entrances by structural key, their positions and views, groups of consecutive sibling statements, attributed descriptions and Flow labels, and guards that keep references from reattaching to different code. Unknown fields are rejected.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["cards", "defaultView", "format", "groups", "title", "version"],
+  "properties": {
+    "format": { "const": "unfold-board" },
+    "version": { "const": 1 },
+    "title": { "$ref": "#/$defs/text", "description": "The board's title." },
+    "defaultView": { "$ref": "#/$defs/view", "description": "The view of cards without their own." },
+    "cards": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/card" }
+    },
+    "groups": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/group" }
+    },
+    "labels": {
+      "type": "object",
+      "description": "Flow-node labels, keyed by block key.",
+      "propertyNames": { "$ref": "#/$defs/blockKey" },
+      "additionalProperties": { "$ref": "#/$defs/description" }
+    },
+    "guards": {
+      "type": "object",
+      "description": "What each reference was when it was saved, keyed by block or entrance key.",
+      "propertyNames": { "minLength": 1 },
+      "additionalProperties": { "$ref": "#/$defs/guard" }
+    }
+  },
+  "$defs": {
+    "text": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "view": {
+      "enum": ["code", "flow"]
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "blockKey": {
+      "type": "string",
+      "pattern": "^(?!entrance:).*#",
+      "description": "A structural block key: the file path, `#`, then the steps."
+    },
+    "entranceKey": {
+      "type": "string",
+      "pattern": "^entrance:",
+      "description": "A structural entrance key."
+    },
+    "description": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["author", "text"],
+      "properties": {
+        "text": { "$ref": "#/$defs/text" },
+        "author": {
+          "type": "string",
+          "pattern": "^(person|agent):.*\\S",
+          "description": "`person:<username>` or `agent:<name>`."
+        },
+        "signature": {
+          "description": "`sha256:` and the hash of the exact selected source bytes; empty until a save signs it from verified source.",
+          "anyOf": [{ "$ref": "#/$defs/signature" }, { "const": "" }]
+        }
+      }
+    },
+    "card": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at", "id", "ref"],
+      "properties": {
+        "id": { "$ref": "#/$defs/text", "description": "Unique among cards and groups." },
+        "ref": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "maxProperties": 1,
+          "properties": {
+            "block": { "$ref": "#/$defs/blockKey" },
+            "entrance": { "$ref": "#/$defs/entranceKey" }
+          }
+        },
+        "at": {
+          "type": "array",
+          "description": "The canvas position.",
+          "prefixItems": [{ "type": "number" }, { "type": "number" }],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "view": { "$ref": "#/$defs/view" },
+        "folded": { "type": "boolean", "description": "Written only when true." },
+        "description": { "$ref": "#/$defs/description" }
+      }
+    },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["card", "collapsed", "id", "members", "title"],
+      "properties": {
+        "id": { "$ref": "#/$defs/text", "description": "Unique among cards and groups." },
+        "card": { "$ref": "#/$defs/text", "description": "The id of the block card the group belongs to." },
+        "title": { "$ref": "#/$defs/text" },
+        "members": {
+          "type": "array",
+          "description": "The keys of consecutive sibling statements with one parent and one body role.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/blockKey" }
+        },
+        "collapsed": { "type": "boolean" },
+        "description": { "$ref": "#/$defs/description" }
+      }
+    },
+    "guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "owner", "signature"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "The block kind, or `entrance:` and the entrance kind.",
+          "pattern": "^(file|function|class|method|constructor|getter|setter|variable|call|new|import|if|for|for_in|for_of|while|do_while|switch|case|default|try|catch|return|throw|break|continue|expression_statement|with|match|entrance:(process|command|http|worker|schedule|event))$"
+        },
+        "owner": { "type": "string", "description": "The owner's block key; empty for an entrance." },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    }
+  }
+}

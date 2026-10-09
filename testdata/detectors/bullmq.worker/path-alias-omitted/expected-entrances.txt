@@ -1,0 +1,3 @@
+# A tsconfig paths alias that sends "bullmq" to a repository file, and a re-export from an excluded
+# file, prove nothing. (PoC schema2-framework-jobs: "framework origins do not cross omitted files or
+# local bare-specifier path aliases".)

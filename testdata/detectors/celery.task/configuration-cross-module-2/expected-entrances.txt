@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/celery.task/configuration-cross-module-2. Format: testdata/README.md.
+# The same through a module attribute.
+entrance	celery.task	worker	-	orders	exact	src/appmod.py:6
+	target	handler	unresolved	unsupported	first

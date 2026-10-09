@@ -1,0 +1,1 @@
+class Celery: pass

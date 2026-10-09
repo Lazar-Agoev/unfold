@@ -1,0 +1,1 @@
+import type { Store } from "./barrel.js"; import type * as Models from "./repo.js"; function run(a: Store, b: Models.Repo) { a.save(); b.save(); }

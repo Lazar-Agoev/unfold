@@ -1,0 +1,3638 @@
+{
+  "src/orders_extensions/labels.py#function:namespace_label": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/imports.py#function:examples",
+        "source": "src/orders_playground/features/imports.py#function:examples/return[0]/call[2]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/cli.py#function:main": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/cli.py#",
+        "source": "src/orders_playground/cli.py#if[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/cli.py#function:main/variable:parser/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:argparse",
+        "position": null,
+        "text": "argparse.ArgumentParser"
+      },
+      {
+        "source": "src/orders_playground/cli.py#function:main/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "parser.add_argument"
+      },
+      {
+        "source": "src/orders_playground/cli.py#function:main/expression_statement[1]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "parser.add_argument"
+      },
+      {
+        "source": "src/orders_playground/cli.py#function:main/variable:arguments/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "parser.parse_args"
+      },
+      {
+        "source": "src/orders_playground/cli.py#function:main/match[0]/case[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/jobs/import_orders.py#function:import_orders",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/cli.py#function:main/match[0]/case[1]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/cli.py#function:report_command",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/cli.py#function:main/match[0]/case[2]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/jobs/retry_failed.py#function:retry_failed",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/cli.py#function:main/match[0]/case[3]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "ValueError"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/cli.py#function:report_command": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/cli.py#function:main",
+        "source": "src/orders_playground/cli.py#function:main/match[0]/case[1]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/cli.py#function:report_command/variable:report/import[0]",
+        "kind": "imports",
+        "target": "src/orders_playground/jobs/report.py#",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/cli.py#function:report_command/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "not_concrete",
+        "module": null,
+        "position": null,
+        "text": "report.print_report"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/db/connection.py#function:connect": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/services/order_service.py#",
+        "source": "src/orders_playground/services/order_service.py#variable:order_service/call[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/db/connection.py#function:connect/return[0]/call[0]",
+        "kind": "constructs",
+        "target": "src/orders_playground/db/repository.py#class:OrderRepository/constructor:__init__",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/db/repository.py#class:OrderRepository": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/db/repository.py#class:OrderRepository/constructor:__init__": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/db/connection.py#function:connect",
+        "source": "src/orders_playground/db/connection.py#function:connect/return[0]/call[0]",
+        "kind": "constructs",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/db/repository.py#class:OrderRepository/method:cancel": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/services/order_service.py#class:OrderService/method:cancel",
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:cancel/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/db/repository.py#class:OrderRepository/method:cancel/variable:order/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/db/repository.py#class:OrderRepository/method:find",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"apscheduler.job\",\"schedule\",\"\",\"0 2 * * *\",\"cleanup_expired_orders\"]",
+      "entrance:[\"fastapi.route\",\"http\",\"DELETE\",\"/orders/{order_id}\",\"require_user\"]"
+    ]
+  },
+  "src/orders_playground/db/repository.py#class:OrderRepository/method:find": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/db/repository.py#class:OrderRepository/method:cancel",
+        "source": "src/orders_playground/db/repository.py#class:OrderRepository/method:cancel/variable:order/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/services/order_service.py#class:OrderService/method:get",
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:get/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/db/repository.py#class:OrderRepository/method:find/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "self.orders.get"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"apscheduler.job\",\"schedule\",\"\",\"0 2 * * *\",\"cleanup_expired_orders\"]",
+      "entrance:[\"fastapi.route\",\"http\",\"DELETE\",\"/orders/{order_id}\",\"require_user\"]"
+    ]
+  },
+  "src/orders_playground/db/repository.py#class:OrderRepository/method:insert": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/services/order_service.py#class:OrderService/method:place",
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:place/expression_statement[1]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/db/repository.py#class:OrderRepository/method:insert/if[0]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "ValueError"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"celery.task\",\"worker\",\"\",\"orders\",\"process_order\"]",
+      "entrance:[\"fastapi.route\",\"http\",\"POST\",\"/orders\",\"require_user\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/orders_playground/jobs/import_orders.py#import_orders\"]"
+    ]
+  },
+  "src/orders_playground/db/repository.py#class:OrderRepository/method:list": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/services/order_service.py#class:OrderService/getter:count",
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/getter:count/return[0]/call[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/services/order_service.py#class:OrderService/method:list",
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:list/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/db/repository.py#class:OrderRepository/method:list/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "list"
+      },
+      {
+        "source": "src/orders_playground/db/repository.py#class:OrderRepository/method:list/return[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "self.orders.values"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"apscheduler.job\",\"schedule\",\"\",\"*/15 * * * *\",\"lambda: report_metrics()\"]",
+      "entrance:[\"apscheduler.job\",\"schedule\",\"\",\"0 2 * * *\",\"cleanup_expired_orders\"]",
+      "entrance:[\"fastapi.route\",\"http\",\"GET\",\"/admin/stats\",\"admin_stats\"]",
+      "entrance:[\"fastapi.route\",\"http\",\"GET\",\"/orders\",\"list_orders\"]"
+    ]
+  },
+  "src/orders_playground/db/repository.py#class:OrderRepository/method:remove": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/services/order_service.py#class:OrderService/method:remove",
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:remove/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/db/repository.py#class:OrderRepository/method:remove/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "self.orders.pop"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"apscheduler.job\",\"schedule\",\"\",\"0 2 * * *\",\"cleanup_expired_orders\"]"
+    ]
+  },
+  "src/orders_playground/features/control.py#function:async_records": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/control.py#function:collect",
+        "source": "src/orders_playground/features/control.py#function:collect/with[0]/for_of[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/control.py#function:async_records/for_of[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/control.py#function:normalize",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/control.py#function:collect": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/control.py#function:collect/with[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "wrapper",
+        "module": null,
+        "position": null,
+        "text": "resource"
+      },
+      {
+        "source": "src/orders_playground/features/control.py#function:collect/with[0]/for_of[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/control.py#function:async_records",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/features/control.py#function:collect/with[0]/for_of[0]/if[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "results.append"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/control.py#function:counter": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/control.py#function:counter/function:increment": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/control.py#function:normalize": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/control.py#function:async_records",
+        "source": "src/orders_playground/features/control.py#function:async_records/for_of[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/features/control.py#function:records",
+        "source": "src/orders_playground/features/control.py#function:records/for_of[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/features/control.py#function:scan",
+        "source": "src/orders_playground/features/control.py#function:scan/variable:cleaned/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/features/control.py#function:scan",
+        "source": "src/orders_playground/features/control.py#function:scan/variable:names/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/features/control.py#function:scan",
+        "source": "src/orders_playground/features/control.py#function:scan/variable:streamed/call[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/features/control.py#function:scan",
+        "source": "src/orders_playground/features/control.py#function:scan/variable:unique/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/control.py#function:normalize/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "value.strip().upper"
+      },
+      {
+        "source": "src/orders_playground/features/control.py#function:normalize/return[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "value.strip"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/control.py#function:records": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/control.py#function:records/for_of[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/control.py#function:normalize",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/control.py#function:resource": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/control.py#function:scan": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/control.py#function:scan/variable:cleaned/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/control.py#function:normalize",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/features/control.py#function:scan/variable:cleaned/variable:length/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "len"
+      },
+      {
+        "source": "src/orders_playground/features/control.py#function:scan/variable:names/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/control.py#function:normalize",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/features/control.py#function:scan/variable:unique/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/control.py#function:normalize",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/features/control.py#function:scan/variable:streamed/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "tuple"
+      },
+      {
+        "source": "src/orders_playground/features/control.py#function:scan/variable:streamed/call[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/control.py#function:normalize",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/features/control.py#function:scan/for_of[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "cleaned.append"
+      },
+      {
+        "source": "src/orders_playground/features/control.py#function:scan/try[0]/catch[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "cleaned.append"
+      },
+      {
+        "source": "src/orders_playground/features/control.py#function:scan/try[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "cleaned.append"
+      },
+      {
+        "source": "src/orders_playground/features/control.py#function:scan/try[0]/expression_statement[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "dynamic",
+        "module": null,
+        "position": null,
+        "text": "first.lower"
+      },
+      {
+        "source": "src/orders_playground/features/control.py#function:scan/with[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:io",
+        "position": null,
+        "text": "StringIO"
+      },
+      {
+        "source": "src/orders_playground/features/control.py#function:scan/with[0]/variable:names%5B\"first\"%5D/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "source.readline().strip"
+      },
+      {
+        "source": "src/orders_playground/features/control.py#function:scan/with[0]/variable:names%5B\"first\"%5D/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "source.readline"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#class:Labels": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#class:Labels/constructor:__init__": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#class:Labels/getter:value": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#class:Labels/method:clean": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/decorators.py#class:Labels/method:from_text",
+        "source": "src/orders_playground/features/decorators.py#class:Labels/method:from_text/return[0]/call[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/features/decorators.py#class:Labels/method:name",
+        "source": "src/orders_playground/features/decorators.py#class:Labels/method:name/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/decorators.py#class:Labels/method:clean/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/decorators.py#function:normalize_sku",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#class:Labels/method:from_text": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/decorators.py#function:examples",
+        "source": "src/orders_playground/features/decorators.py#function:examples/variable:labels/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/decorators.py#class:Labels/method:from_text/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "not_concrete",
+        "module": null,
+        "position": null,
+        "text": "cls"
+      },
+      {
+        "source": "src/orders_playground/features/decorators.py#class:Labels/method:from_text/return[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/decorators.py#class:Labels/method:clean",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#class:Labels/method:name": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/decorators.py#class:Labels/method:name/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/decorators.py#class:Labels/method:clean",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#class:Labels/setter:value": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#class:Named": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#class:Named/method:name": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#function:examples": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/decorators.py#function:examples/variable:labels/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/decorators.py#class:Labels/method:from_text",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/features/decorators.py#function:examples/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "wrapper",
+        "module": null,
+        "position": null,
+        "text": "invoice_label"
+      },
+      {
+        "source": "src/orders_playground/features/decorators.py#function:examples/return[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "labels.name"
+      },
+      {
+        "source": "src/orders_playground/features/decorators.py#function:examples/return[0]/call[1]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/decorators.py#function:stringify[2]",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#function:invoice_label": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#function:normalize_sku": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/decorators.py#class:Labels/method:clean",
+        "source": "src/orders_playground/features/decorators.py#class:Labels/method:clean/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/decorators.py#function:normalize_sku/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "value.strip().upper"
+      },
+      {
+        "source": "src/orders_playground/features/decorators.py#function:normalize_sku/return[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "value.strip"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#function:stringify": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#function:stringify[1]": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#function:stringify[2]": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/decorators.py#function:examples",
+        "source": "src/orders_playground/features/decorators.py#function:examples/return[0]/call[1]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/decorators.py#function:stringify[2]/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "str"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#function:traced": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/decorators.py#",
+        "source": "src/orders_playground/features/decorators.py#function:invoice_label/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#function:traced/function:decorate": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/decorators.py#function:traced/function:decorate/function:wrapped/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:functools",
+        "position": null,
+        "text": "wraps"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/decorators.py#function:traced/function:decorate/function:wrapped": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/decorators.py#function:traced/function:decorate/function:wrapped/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "parameter",
+        "module": null,
+        "position": null,
+        "text": "fn"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/dynamic.py#function:examples": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/dynamic.py#function:examples/variable:prefixed/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:functools",
+        "position": null,
+        "text": "partial"
+      },
+      {
+        "source": "src/orders_playground/features/dynamic.py#function:examples/variable:prefixed/call[0]",
+        "kind": "references",
+        "target": "src/orders_playground/features/dynamic.py#function:format_order",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": 0,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/features/dynamic.py#function:examples/variable:dispatch/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "getattr"
+      },
+      {
+        "source": "src/orders_playground/features/dynamic.py#function:examples/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/dynamic.py#function:format_order",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/features/dynamic.py#function:examples/return[0]/call[1]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/dynamic.py#function:format_order",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/features/dynamic.py#function:examples/return[0]/call[2]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "wrapper",
+        "module": null,
+        "position": null,
+        "text": "prefixed"
+      },
+      {
+        "source": "src/orders_playground/features/dynamic.py#function:examples/return[0]/call[3]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "dynamic",
+        "module": null,
+        "position": null,
+        "text": "dispatch"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/dynamic.py#function:format_order": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/dynamic.py#function:examples",
+        "source": "src/orders_playground/features/dynamic.py#function:examples/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/features/dynamic.py#function:examples",
+        "source": "src/orders_playground/features/dynamic.py#function:examples/return[0]/call[1]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/features/dynamic.py#function:examples",
+        "source": "src/orders_playground/features/dynamic.py#function:examples/variable:prefixed/call[0]",
+        "kind": "references",
+        "position": 0
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/dynamic.py#function:monkey_patch": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/dynamic.py#function:monkey_patch/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "mutable_binding",
+        "module": null,
+        "position": null,
+        "text": "fallback.public_label"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/dynamic.py#function:replacement_label": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/exported.py#function:private_label": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/exported.py#function:public_label": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/imports.py#function:examples",
+        "source": "src/orders_playground/features/imports.py#function:examples/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/features/imports.py#function:examples",
+        "source": "src/orders_playground/features/imports.py#function:examples/return[0]/call[3]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/fallback.py#function:public_label": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/imports.py#function:examples": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/imports.py#function:examples/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/exported.py#function:public_label",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/features/imports.py#function:examples/return[0]/call[1]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "ambiguous",
+        "module": null,
+        "position": null,
+        "text": "selected_label"
+      },
+      {
+        "source": "src/orders_playground/features/imports.py#function:examples/return[0]/call[2]",
+        "kind": "calls",
+        "target": "src/orders_extensions/labels.py#function:namespace_label",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/features/imports.py#function:examples/return[0]/call[3]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/exported.py#function:public_label",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/inheritance.py#class:Combined": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/inheritance.py#function:examples",
+        "source": "src/orders_playground/features/inheritance.py#function:examples/variable:combined/call[0]",
+        "kind": "constructs",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/inheritance.py#class:Combined/method:describe": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/inheritance.py#function:examples",
+        "source": "src/orders_playground/features/inheritance.py#function:examples/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/inheritance.py#class:Combined/method:describe/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/inheritance.py#class:Left/method:code",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/inheritance.py#class:Left": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/inheritance.py#class:Left/method:code": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/inheritance.py#class:Combined/method:describe",
+        "source": "src/orders_playground/features/inheritance.py#class:Combined/method:describe/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/inheritance.py#class:Left/method:code/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "ambiguous",
+        "module": null,
+        "position": null,
+        "text": "super().code"
+      },
+      {
+        "source": "src/orders_playground/features/inheritance.py#class:Left/method:code/return[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "super"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/inheritance.py#class:ReceiptFormatter": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/inheritance.py#function:examples",
+        "source": "src/orders_playground/features/inheritance.py#function:examples/variable:formatter/call[0]",
+        "kind": "constructs",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/inheritance.py#class:ReceiptFormatter/method:__call__": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/inheritance.py#function:examples",
+        "source": "src/orders_playground/features/inheritance.py#function:examples/return[0]/call[1]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/inheritance.py#class:Right": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/inheritance.py#class:Right/method:code": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/inheritance.py#class:Right/method:code/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/inheritance.py#class:Root/method:code",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/features/inheritance.py#class:Right/method:code/return[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "super"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/inheritance.py#class:Root": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/inheritance.py#class:Root/method:code": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/inheritance.py#class:Right/method:code",
+        "source": "src/orders_playground/features/inheritance.py#class:Right/method:code/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/inheritance.py#function:examples": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/inheritance.py#function:examples/variable:combined/call[0]",
+        "kind": "constructs",
+        "target": "src/orders_playground/features/inheritance.py#class:Combined",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/features/inheritance.py#function:examples/variable:formatter/call[0]",
+        "kind": "constructs",
+        "target": "src/orders_playground/features/inheritance.py#class:ReceiptFormatter",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/features/inheritance.py#function:examples/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/inheritance.py#class:Combined/method:describe",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/features/inheritance.py#function:examples/return[0]/call[1]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/inheritance.py#class:ReceiptFormatter/method:__call__",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/unicode.py#function:unicode_example": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/unicode.py#",
+        "source": "src/orders_playground/features/unicode.py#if[0]/expression_statement[0]/call[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/unicode.py#function:unicode_example/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/unicode.py#function:𐐀receipt",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/unicode.py#function:κόστος": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/unicode.py#function:𐐀receipt",
+        "source": "src/orders_playground/features/unicode.py#function:𐐀receipt/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/features/unicode.py#function:𐐀receipt": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/features/unicode.py#function:unicode_example",
+        "source": "src/orders_playground/features/unicode.py#function:unicode_example/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/features/unicode.py#function:𐐀receipt/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/features/unicode.py#function:κόστος",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/scheduler.py#",
+        "source": "src/orders_playground/scheduler.py#expression_statement[0]/call[0]",
+        "kind": "references",
+        "position": 0
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders/variable:expires_before/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:datetime",
+        "position": null,
+        "text": "datetime.now"
+      },
+      {
+        "source": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders/variable:expires_before/call[1]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:datetime",
+        "position": null,
+        "text": "timedelta"
+      },
+      {
+        "source": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders/variable:purge_before/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:datetime",
+        "position": null,
+        "text": "timedelta"
+      },
+      {
+        "source": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders/for_of[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/services/order_service.py#class:OrderService/method:list",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders/for_of[0]/variable:created_at/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:datetime",
+        "position": null,
+        "text": "datetime.fromisoformat"
+      },
+      {
+        "source": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders/for_of[0]/if[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/services/order_service.py#class:OrderService/method:cancel",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders/for_of[0]/if[1]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "expired.append"
+      },
+      {
+        "source": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders/while[0]/if[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/services/order_service.py#class:OrderService/method:remove",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders/while[0]/if[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "expired.pop"
+      },
+      {
+        "source": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/logger.py#class:Logger/method:info",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"apscheduler.job\",\"schedule\",\"\",\"0 2 * * *\",\"cleanup_expired_orders\"]"
+    ]
+  },
+  "src/orders_playground/jobs/import_orders.py#function:import_orders": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/cli.py#function:main",
+        "source": "src/orders_playground/cli.py#function:main/match[0]/case[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/jobs/import_orders.py#function:import_orders/with[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "Path(path).open"
+      },
+      {
+        "source": "src/orders_playground/jobs/import_orders.py#function:import_orders/with[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:pathlib",
+        "position": null,
+        "text": "Path"
+      },
+      {
+        "source": "src/orders_playground/jobs/import_orders.py#function:import_orders/with[0]/variable:values/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:json",
+        "position": null,
+        "text": "json.load"
+      },
+      {
+        "source": "src/orders_playground/jobs/import_orders.py#function:import_orders/if[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "isinstance"
+      },
+      {
+        "source": "src/orders_playground/jobs/import_orders.py#function:import_orders/if[0]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "ValueError"
+      },
+      {
+        "source": "src/orders_playground/jobs/import_orders.py#function:import_orders/for_of[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "enumerate"
+      },
+      {
+        "source": "src/orders_playground/jobs/import_orders.py#function:import_orders/for_of[0]/try[0]/variable:draft/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/validate.py#function:validate_order",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/jobs/import_orders.py#function:import_orders/for_of[0]/try[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/services/order_service.py#class:OrderService/method:place",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/jobs/import_orders.py#function:import_orders/for_of[0]/try[0]/catch[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/logger.py#class:Logger/method:error",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/jobs/import_orders.py#function:import_orders/for_of[0]/try[0]/catch[0]/expression_statement[1]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "failures.append"
+      },
+      {
+        "source": "src/orders_playground/jobs/import_orders.py#function:import_orders/variable:summary/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "len"
+      },
+      {
+        "source": "src/orders_playground/jobs/import_orders.py#function:import_orders/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/logger.py#class:Logger/method:info",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/jobs/import_orders.py#function:import_orders/if[1]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_name",
+        "module": null,
+        "position": null,
+        "text": "ExceptionGroup"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/orders_playground/jobs/import_orders.py#import_orders\"]"
+    ]
+  },
+  "src/orders_playground/jobs/process_order.py#function:process_order": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/queues/orders_worker.py#",
+        "source": "src/orders_playground/queues/orders_worker.py#variable:process_order_task/call[0]",
+        "kind": "references",
+        "position": 0
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/jobs/process_order.py#function:process_order/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/services/order_service.py#class:OrderService/method:place",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"celery.task\",\"worker\",\"\",\"orders\",\"process_order\"]"
+    ]
+  },
+  "src/orders_playground/jobs/report.py#function:print_report": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/queues/report_worker.py#",
+        "source": "src/orders_playground/queues/report_worker.py#variable:report_task/call[0]",
+        "kind": "references",
+        "position": 0
+      },
+      {
+        "owner": "src/orders_playground/scheduler.py#function:main",
+        "source": "src/orders_playground/scheduler.py#function:main/expression_statement[0]/call[0]",
+        "kind": "references",
+        "position": 1
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/jobs/report.py#function:print_report/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/logger.py#class:Logger/method:info",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"celery.task\",\"worker\",\"\",\"\",\"print_report\"]"
+    ]
+  },
+  "src/orders_playground/jobs/report.py#function:report_metrics": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/scheduler.py#expression_statement[1]/call[0]/function[0]",
+        "source": "src/orders_playground/scheduler.py#expression_statement[1]/call[0]/function[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/jobs/report.py#function:report_metrics/variable:metrics/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "sum"
+      },
+      {
+        "source": "src/orders_playground/jobs/report.py#function:report_metrics/variable:metrics/call[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/services/order_service.py#class:OrderService/method:list",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/jobs/report.py#function:report_metrics/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/logger.py#class:Logger/method:info",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"apscheduler.job\",\"schedule\",\"\",\"*/15 * * * *\",\"lambda: report_metrics()\"]"
+    ]
+  },
+  "src/orders_playground/jobs/retry_failed.py#function:retry_failed": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/cli.py#function:main",
+        "source": "src/orders_playground/cli.py#function:main/match[0]/case[2]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/jobs/retry_failed.py#function:retry_failed/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/retry.py#function:with_retry",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/jobs/retry_failed.py#function:retry_failed/expression_statement[0]/call[0]",
+        "kind": "references",
+        "target": "src/orders_playground/jobs/send_email.py#function:flush_outbox",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": 0,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]"
+    ]
+  },
+  "src/orders_playground/jobs/send_email.py#function:flush_outbox": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/jobs/retry_failed.py#function:retry_failed",
+        "source": "src/orders_playground/jobs/retry_failed.py#function:retry_failed/expression_statement[0]/call[0]",
+        "kind": "references",
+        "position": 0
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/jobs/send_email.py#function:flush_outbox/for_of[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "list"
+      },
+      {
+        "source": "src/orders_playground/jobs/send_email.py#function:flush_outbox/for_of[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/jobs/send_email.py#function:send_email",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]"
+    ]
+  },
+  "src/orders_playground/jobs/send_email.py#function:send_email": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/jobs/send_email.py#function:flush_outbox",
+        "source": "src/orders_playground/jobs/send_email.py#function:flush_outbox/for_of[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/queues/email_worker.py#function:email_task/expression_statement[0]/call[0]/function[0]",
+        "source": "src/orders_playground/queues/email_worker.py#function:email_task/expression_statement[0]/call[0]/function[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/jobs/send_email.py#function:send_email/if[0]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "ValueError"
+      },
+      {
+        "source": "src/orders_playground/jobs/send_email.py#function:send_email/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "outbox.append"
+      },
+      {
+        "source": "src/orders_playground/jobs/send_email.py#function:send_email/expression_statement[1]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:time",
+        "position": null,
+        "text": "sleep"
+      },
+      {
+        "source": "src/orders_playground/jobs/send_email.py#function:send_email/expression_statement[2]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/logger.py#class:Logger/method:info",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/jobs/send_email.py#function:send_email/expression_statement[3]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "outbox.remove"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]"
+    ]
+  },
+  "src/orders_playground/lib/async_handler.py#function:async_handler": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/routes/orders.py#",
+        "source": "src/orders_playground/routes/orders.py#expression_statement[1]/call[0]/call[1]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/lib/async_handler.py#function:async_handler/function:wrapped/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:functools",
+        "position": null,
+        "text": "wraps"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/lib/async_handler.py#function:async_handler/function:wrapped": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/lib/async_handler.py#function:async_handler/function:wrapped/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "parameter",
+        "module": null,
+        "position": null,
+        "text": "fn"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/lib/calendar.py#function:schedule": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/scheduler.py#function:main",
+        "source": "src/orders_playground/scheduler.py#function:main/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/lib/calendar.py#function:schedule/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "parameter",
+        "module": null,
+        "position": 1,
+        "text": "handler"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/lib/logger.py#class:Logger": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/lib/logger.py#",
+        "source": "src/orders_playground/lib/logger.py#variable:logger/call[0]",
+        "kind": "constructs",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/lib/logger.py#class:Logger/method:error": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/jobs/import_orders.py#function:import_orders",
+        "source": "src/orders_playground/jobs/import_orders.py#function:import_orders/for_of[0]/try[0]/catch[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/lib/retry.py#function:with_retry",
+        "source": "src/orders_playground/lib/retry.py#function:with_retry/while[0]/try[0]/catch[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/lib/logger.py#class:Logger/method:error/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "mutable_binding",
+        "module": null,
+        "position": null,
+        "text": "sink"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"celery.task\",\"worker\",\"\",\"emails\",\"email_task\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/orders_playground/jobs/import_orders.py#import_orders\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]"
+    ]
+  },
+  "src/orders_playground/lib/logger.py#class:Logger/method:info": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders",
+        "source": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/jobs/import_orders.py#function:import_orders",
+        "source": "src/orders_playground/jobs/import_orders.py#function:import_orders/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/jobs/report.py#function:print_report",
+        "source": "src/orders_playground/jobs/report.py#function:print_report/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/jobs/report.py#function:report_metrics",
+        "source": "src/orders_playground/jobs/report.py#function:report_metrics/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/jobs/send_email.py#function:send_email",
+        "source": "src/orders_playground/jobs/send_email.py#function:send_email/expression_statement[2]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/lib/slack.py#class:Slack/method:post",
+        "source": "src/orders_playground/lib/slack.py#class:Slack/method:post/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/server.py#function:shutdown",
+        "source": "src/orders_playground/server.py#function:shutdown/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/services/notifier.py#class:ReceiptNotifier/method:send",
+        "source": "src/orders_playground/services/notifier.py#class:ReceiptNotifier/method:send/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/services/payment.py#class:PaymentProvider/method:charge",
+        "source": "src/orders_playground/services/payment.py#class:PaymentProvider/method:charge/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/services/payment.py#class:StripeProvider/method:charge",
+        "source": "src/orders_playground/services/payment.py#class:StripeProvider/method:charge/expression_statement[1]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/lib/logger.py#class:Logger/method:info/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "mutable_binding",
+        "module": null,
+        "position": null,
+        "text": "sink"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"apscheduler.job\",\"schedule\",\"\",\"*/15 * * * *\",\"lambda: report_metrics()\"]",
+      "entrance:[\"apscheduler.job\",\"schedule\",\"\",\"0 2 * * *\",\"cleanup_expired_orders\"]",
+      "entrance:[\"celery.task\",\"worker\",\"\",\"\",\"print_report\"]",
+      "entrance:[\"fastapi.route\",\"http\",\"POST\",\"/orders\",\"require_user\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/orders_playground/jobs/import_orders.py#import_orders\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]",
+      "entrance:[\"manual\",\"event\",\"\",\"SIGTERM\",\"src/orders_playground/server.py#shutdown\"]"
+    ]
+  },
+  "src/orders_playground/lib/logger.py#function:set_sink": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/lib/pool.py#class:Worker": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/lib/pool.py#class:Worker/constructor:__init__": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/worker.py#",
+        "source": "src/orders_playground/worker.py#variable:maintenance/call[0]",
+        "kind": "constructs",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/lib/pool.py#class:Worker/method:run": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/worker.py#function:main",
+        "source": "src/orders_playground/worker.py#function:main/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/lib/pool.py#class:Worker/method:run/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "self.handler"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/lib/retry.py#function:with_retry": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/jobs/retry_failed.py#function:retry_failed",
+        "source": "src/orders_playground/jobs/retry_failed.py#function:retry_failed/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/queues/email_worker.py#function:email_task",
+        "source": "src/orders_playground/queues/email_worker.py#function:email_task/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/lib/retry.py#function:with_retry/if[0]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "ValueError"
+      },
+      {
+        "source": "src/orders_playground/lib/retry.py#function:with_retry/while[0]/try[0]/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "parameter",
+        "module": null,
+        "position": 0,
+        "text": "fn"
+      },
+      {
+        "source": "src/orders_playground/lib/retry.py#function:with_retry/while[0]/try[0]/catch[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/logger.py#class:Logger/method:error",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/lib/retry.py#function:with_retry/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "RuntimeError"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"celery.task\",\"worker\",\"\",\"emails\",\"email_task\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]"
+    ]
+  },
+  "src/orders_playground/lib/slack.py#class:Slack": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/lib/slack.py#",
+        "source": "src/orders_playground/lib/slack.py#variable:slack/call[0]",
+        "kind": "constructs",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/lib/slack.py#class:Slack/method:post": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/routes/orders.py#function:create_order",
+        "source": "src/orders_playground/routes/orders.py#function:create_order/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/lib/slack.py#class:Slack/method:post/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/logger.py#class:Logger/method:info",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"fastapi.route\",\"http\",\"POST\",\"/orders\",\"require_user\"]"
+    ]
+  },
+  "src/orders_playground/lib/validate.py#function:validate_order": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/jobs/import_orders.py#function:import_orders",
+        "source": "src/orders_playground/jobs/import_orders.py#function:import_orders/for_of[0]/try[0]/variable:draft/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/routes/middleware.py#function:validate_body",
+        "source": "src/orders_playground/routes/middleware.py#function:validate_body/try[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/services/order_service.py#class:OrderService/method:place",
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:place/variable:draft/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/if[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "isinstance"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/if[0]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "ValueError"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/if[0]/if[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "isinstance"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/if[0]/if[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "value.get"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/if[0]/if[0]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "ValueError"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/if[0]/if[0]/if[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "isinstance"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/if[0]/if[0]/if[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "value.get"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/if[0]/if[0]/if[0]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "ValueError"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/variable:items/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "value.get"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/if[1]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "isinstance"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/if[1]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "ValueError"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/for_of[0]/if[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "isinstance"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/for_of[0]/if[0]/call[1]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "isinstance"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/for_of[0]/if[0]/call[1]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "item.get"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/for_of[0]/if[0]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "ValueError"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/for_of[0]/variable:quantity, price/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "item.get"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/for_of[0]/variable:quantity, price/call[1]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "item.get"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/for_of[0]/if[1]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "type"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/for_of[0]/if[1]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "ValueError"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/for_of[0]/if[2]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "type"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/for_of[0]/if[2]/call[1]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:math",
+        "position": null,
+        "text": "isfinite"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/for_of[0]/if[2]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "ValueError"
+      },
+      {
+        "source": "src/orders_playground/lib/validate.py#function:validate_order/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:typing",
+        "position": null,
+        "text": "cast"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"celery.task\",\"worker\",\"\",\"orders\",\"process_order\"]",
+      "entrance:[\"fastapi.route\",\"http\",\"POST\",\"/orders\",\"require_user\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/orders_playground/jobs/import_orders.py#import_orders\"]"
+    ]
+  },
+  "src/orders_playground/queues/email_worker.py#function:email_task": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/queues/email_worker.py#function:email_task/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/retry.py#function:with_retry",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"celery.task\",\"worker\",\"\",\"emails\",\"email_task\"]"
+    ]
+  },
+  "src/orders_playground/routes/admin.py#function:admin_stats": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/routes/admin.py#function:register_admin_routes",
+        "source": "src/orders_playground/routes/admin.py#function:register_admin_routes/expression_statement[0]/call[0]",
+        "kind": "references",
+        "position": 0
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/routes/admin.py#function:admin_stats/variable:orders/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/services/order_service.py#class:OrderService/method:list",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/routes/admin.py#function:admin_stats/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "sum"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"fastapi.route\",\"http\",\"GET\",\"/admin/stats\",\"admin_stats\"]"
+    ]
+  },
+  "src/orders_playground/routes/admin.py#function:register_admin_routes": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/server.py#",
+        "source": "src/orders_playground/server.py#expression_statement[2]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/routes/admin.py#function:register_admin_routes/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "dynamic",
+        "module": null,
+        "position": null,
+        "text": "app.get(\"/admin/stats\")"
+      },
+      {
+        "source": "src/orders_playground/routes/admin.py#function:register_admin_routes/expression_statement[0]/call[0]",
+        "kind": "references",
+        "target": "src/orders_playground/routes/admin.py#function:admin_stats",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": 0,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/routes/admin.py#function:register_admin_routes/expression_statement[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "app.get"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/routes/health.py#expression_statement[0]/call[0]/function[0]": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"fastapi.route\",\"http\",\"GET\",\"/health/live\",\"lambda: {\\\"status\\\": \\\"alive\\\"}\"]"
+    ]
+  },
+  "src/orders_playground/routes/middleware.py#function:require_user": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/routes/orders.py#",
+        "source": "src/orders_playground/routes/orders.py#expression_statement[2]/call[0]/call[0]/call[0]",
+        "kind": "references",
+        "position": 0
+      },
+      {
+        "owner": "src/orders_playground/routes/orders.py#",
+        "source": "src/orders_playground/routes/orders.py#expression_statement[3]/call[0]/call[0]/call[0]",
+        "kind": "references",
+        "position": 0
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/routes/middleware.py#function:require_user/if[0]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "fastapi",
+        "position": null,
+        "text": "HTTPException"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"fastapi.route\",\"http\",\"DELETE\",\"/orders/{order_id}\",\"require_user\"]",
+      "entrance:[\"fastapi.route\",\"http\",\"POST\",\"/orders\",\"require_user\"]"
+    ]
+  },
+  "src/orders_playground/routes/middleware.py#function:validate_body": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/routes/orders.py#",
+        "source": "src/orders_playground/routes/orders.py#expression_statement[2]/call[0]/call[0]/call[1]",
+        "kind": "references",
+        "position": 0
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/routes/middleware.py#function:validate_body/try[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/validate.py#function:validate_order",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/routes/middleware.py#function:validate_body/try[0]/expression_statement[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "request.json"
+      },
+      {
+        "source": "src/orders_playground/routes/middleware.py#function:validate_body/try[0]/catch[0]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "fastapi",
+        "position": null,
+        "text": "HTTPException"
+      },
+      {
+        "source": "src/orders_playground/routes/middleware.py#function:validate_body/try[0]/catch[0]/throw[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "str"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"fastapi.route\",\"http\",\"POST\",\"/orders\",\"require_user\"]"
+    ]
+  },
+  "src/orders_playground/routes/orders.py#function:cancel_order": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/routes/orders.py#",
+        "source": "src/orders_playground/routes/orders.py#expression_statement[3]/call[0]",
+        "kind": "references",
+        "position": 0
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/routes/orders.py#function:cancel_order/variable:order/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/services/order_service.py#class:OrderService/method:cancel",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/routes/orders.py#function:cancel_order/if[0]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "fastapi",
+        "position": null,
+        "text": "HTTPException"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"fastapi.route\",\"http\",\"DELETE\",\"/orders/{order_id}\",\"require_user\"]"
+    ]
+  },
+  "src/orders_playground/routes/orders.py#function:create_order": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/routes/orders.py#",
+        "source": "src/orders_playground/routes/orders.py#expression_statement[2]/call[0]",
+        "kind": "references",
+        "position": 0
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/routes/orders.py#function:create_order/variable:draft/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "request.json"
+      },
+      {
+        "source": "src/orders_playground/routes/orders.py#function:create_order/if[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "request.headers.get"
+      },
+      {
+        "source": "src/orders_playground/routes/orders.py#function:create_order/if[0]/variable:job/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "celery_app.signature(\"orders.process\", args=[draft], queue=\"orders\").delay"
+      },
+      {
+        "source": "src/orders_playground/routes/orders.py#function:create_order/if[0]/variable:job/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "celery_app.signature"
+      },
+      {
+        "source": "src/orders_playground/routes/orders.py#function:create_order/if[0]/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "fastapi",
+        "position": null,
+        "text": "JSONResponse"
+      },
+      {
+        "source": "src/orders_playground/routes/orders.py#function:create_order/variable:order/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/services/order_service.py#class:OrderService/method:place",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/routes/orders.py#function:create_order/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/slack.py#class:Slack/method:post",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/routes/orders.py#function:create_order/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "fastapi",
+        "position": null,
+        "text": "JSONResponse"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"fastapi.route\",\"http\",\"POST\",\"/orders\",\"require_user\"]"
+    ]
+  },
+  "src/orders_playground/routes/orders.py#function:get_order": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/routes/orders.py#",
+        "source": "src/orders_playground/routes/orders.py#expression_statement[1]/call[0]/call[1]",
+        "kind": "references",
+        "position": 0
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/routes/orders.py#function:get_order/variable:order/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/services/order_service.py#class:OrderService/method:get",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/routes/orders.py#function:get_order/if[0]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "fastapi",
+        "position": null,
+        "text": "HTTPException"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/routes/orders.py#function:list_orders": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/routes/orders.py#",
+        "source": "src/orders_playground/routes/orders.py#expression_statement[0]/call[0]",
+        "kind": "references",
+        "position": 0
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/routes/orders.py#function:list_orders/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/services/order_service.py#class:OrderService/method:list",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"fastapi.route\",\"http\",\"GET\",\"/orders\",\"list_orders\"]"
+    ]
+  },
+  "src/orders_playground/scheduler.py#expression_statement[1]/call[0]/function[0]": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/scheduler.py#expression_statement[1]/call[0]/function[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/jobs/report.py#function:report_metrics",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"apscheduler.job\",\"schedule\",\"\",\"*/15 * * * *\",\"lambda: report_metrics()\"]"
+    ]
+  },
+  "src/orders_playground/scheduler.py#function:main": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/scheduler.py#",
+        "source": "src/orders_playground/scheduler.py#if[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/scheduler.py#function:main/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/calendar.py#function:schedule",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/scheduler.py#function:main/expression_statement[0]/call[0]",
+        "kind": "references",
+        "target": "src/orders_playground/jobs/report.py#function:print_report",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": 1,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/scheduler.py#function:main/expression_statement[1]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "scheduler.start"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/server.py#function:health_check": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"fastapi.route\",\"http\",\"GET\",\"/health\",\"health_check\"]"
+    ]
+  },
+  "src/orders_playground/server.py#function:main": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/server.py#",
+        "source": "src/orders_playground/server.py#if[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/server.py#function:main/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:signal",
+        "position": null,
+        "text": "signal.signal"
+      },
+      {
+        "source": "src/orders_playground/server.py#function:main/expression_statement[0]/call[0]",
+        "kind": "references",
+        "target": "src/orders_playground/server.py#function:shutdown",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": 1,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/server.py#function:main/expression_statement[1]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "uvicorn",
+        "position": null,
+        "text": "uvicorn.run"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/server.py#function:shutdown": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/server.py#function:main",
+        "source": "src/orders_playground/server.py#function:main/expression_statement[0]/call[0]",
+        "kind": "references",
+        "position": 1
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/server.py#function:shutdown/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/logger.py#class:Logger/method:info",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"event\",\"\",\"SIGTERM\",\"src/orders_playground/server.py#shutdown\"]"
+    ]
+  },
+  "src/orders_playground/server.py#function:status": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"fastapi.route\",\"http\",\"GET\",\"\",\"status\"]"
+    ]
+  },
+  "src/orders_playground/services/events.py#class:Events": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/services/events.py#",
+        "source": "src/orders_playground/services/events.py#variable:events/call[0]",
+        "kind": "constructs",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/services/events.py#class:Events/method:emit": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/services/order_service.py#class:OrderService/method:place",
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:place/expression_statement[2]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/services/events.py#class:Events/method:emit/for_of[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "subscriptions.get"
+      },
+      {
+        "source": "src/orders_playground/services/events.py#class:Events/method:emit/for_of[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "not_concrete",
+        "module": null,
+        "position": null,
+        "text": "handler"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"celery.task\",\"worker\",\"\",\"orders\",\"process_order\"]",
+      "entrance:[\"fastapi.route\",\"http\",\"POST\",\"/orders\",\"require_user\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/orders_playground/jobs/import_orders.py#import_orders\"]"
+    ]
+  },
+  "src/orders_playground/services/events.py#class:Events/method:on": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/services/notifier.py#",
+        "source": "src/orders_playground/services/notifier.py#expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/services/events.py#class:Events/method:on/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "subscriptions.setdefault(name, []).append"
+      },
+      {
+        "source": "src/orders_playground/services/events.py#class:Events/method:on/expression_statement[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "subscriptions.setdefault"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/services/notifier.py#class:Notifier": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/services/notifier.py#class:Notifier/method:notify": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/services/notifier.py#class:Notifier/method:notify/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "not_concrete",
+        "module": null,
+        "position": null,
+        "text": "self.send"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/services/notifier.py#class:Notifier/method:send": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": []
+  },
+  "src/orders_playground/services/notifier.py#class:ReceiptNotifier": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/services/notifier.py#class:ReceiptNotifier/method:send": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/services/notifier.py#class:ReceiptNotifier/method:send/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/logger.py#class:Logger/method:info",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/services/notifier.py#function:notify_customer": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/services/notifier.py#",
+        "source": "src/orders_playground/services/notifier.py#expression_statement[0]/call[0]",
+        "kind": "references",
+        "position": 1
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/services/notifier.py#function:notify_customer/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "notifier.notify"
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/services/order_service.py#class:OrderService": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/services/order_service.py#class:OrderService/constructor:__init__": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/services/order_service.py#",
+        "source": "src/orders_playground/services/order_service.py#variable:order_service/call[0]",
+        "kind": "constructs",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/services/order_service.py#class:OrderService/getter:count": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/getter:count/return[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "len"
+      },
+      {
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/getter:count/return[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/db/repository.py#class:OrderRepository/method:list",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/services/order_service.py#class:OrderService/method:cancel": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders",
+        "source": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders/for_of[0]/if[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/routes/orders.py#function:cancel_order",
+        "source": "src/orders_playground/routes/orders.py#function:cancel_order/variable:order/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:cancel/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/db/repository.py#class:OrderRepository/method:cancel",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"apscheduler.job\",\"schedule\",\"\",\"0 2 * * *\",\"cleanup_expired_orders\"]",
+      "entrance:[\"fastapi.route\",\"http\",\"DELETE\",\"/orders/{order_id}\",\"require_user\"]"
+    ]
+  },
+  "src/orders_playground/services/order_service.py#class:OrderService/method:get": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/routes/orders.py#function:get_order",
+        "source": "src/orders_playground/routes/orders.py#function:get_order/variable:order/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:get/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/db/repository.py#class:OrderRepository/method:find",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/services/order_service.py#class:OrderService/method:list": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders",
+        "source": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders/for_of[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/jobs/report.py#function:report_metrics",
+        "source": "src/orders_playground/jobs/report.py#function:report_metrics/variable:metrics/call[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/routes/admin.py#function:admin_stats",
+        "source": "src/orders_playground/routes/admin.py#function:admin_stats/variable:orders/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/routes/orders.py#function:list_orders",
+        "source": "src/orders_playground/routes/orders.py#function:list_orders/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/worker.py#function:purge",
+        "source": "src/orders_playground/worker.py#function:purge/for_of[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:list/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/db/repository.py#class:OrderRepository/method:list",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"apscheduler.job\",\"schedule\",\"\",\"*/15 * * * *\",\"lambda: report_metrics()\"]",
+      "entrance:[\"apscheduler.job\",\"schedule\",\"\",\"0 2 * * *\",\"cleanup_expired_orders\"]",
+      "entrance:[\"fastapi.route\",\"http\",\"GET\",\"/admin/stats\",\"admin_stats\"]",
+      "entrance:[\"fastapi.route\",\"http\",\"GET\",\"/orders\",\"list_orders\"]"
+    ]
+  },
+  "src/orders_playground/services/order_service.py#class:OrderService/method:place": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/jobs/import_orders.py#function:import_orders",
+        "source": "src/orders_playground/jobs/import_orders.py#function:import_orders/for_of[0]/try[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/jobs/process_order.py#function:process_order",
+        "source": "src/orders_playground/jobs/process_order.py#function:process_order/return[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/routes/orders.py#function:create_order",
+        "source": "src/orders_playground/routes/orders.py#function:create_order/variable:order/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:place/variable:draft/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/validate.py#function:validate_order",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:place/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "overridden",
+        "module": null,
+        "position": null,
+        "text": "self.payments.charge"
+      },
+      {
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:place/variable:order/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "str"
+      },
+      {
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:place/variable:order/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:uuid",
+        "position": null,
+        "text": "uuid4"
+      },
+      {
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:place/variable:order/call[1]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "datetime.now(timezone.utc).isoformat"
+      },
+      {
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:place/variable:order/call[1]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:datetime",
+        "position": null,
+        "text": "datetime.now"
+      },
+      {
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:place/expression_statement[1]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/db/repository.py#class:OrderRepository/method:insert",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:place/expression_statement[2]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/services/events.py#class:Events/method:emit",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"celery.task\",\"worker\",\"\",\"orders\",\"process_order\"]",
+      "entrance:[\"fastapi.route\",\"http\",\"POST\",\"/orders\",\"require_user\"]",
+      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/orders_playground/jobs/import_orders.py#import_orders\"]"
+    ]
+  },
+  "src/orders_playground/services/order_service.py#class:OrderService/method:remove": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders",
+        "source": "src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders/while[0]/if[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      },
+      {
+        "owner": "src/orders_playground/worker.py#function:purge",
+        "source": "src/orders_playground/worker.py#function:purge/for_of[0]/if[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/services/order_service.py#class:OrderService/method:remove/return[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/db/repository.py#class:OrderRepository/method:remove",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"apscheduler.job\",\"schedule\",\"\",\"0 2 * * *\",\"cleanup_expired_orders\"]"
+    ]
+  },
+  "src/orders_playground/services/payment.py#class:PaymentProvider": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/services/payment.py#class:PaymentProvider/method:charge": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/services/payment.py#class:StripeProvider/method:charge",
+        "source": "src/orders_playground/services/payment.py#class:StripeProvider/method:charge/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/services/payment.py#class:PaymentProvider/method:charge/variable:total/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "sum"
+      },
+      {
+        "source": "src/orders_playground/services/payment.py#class:PaymentProvider/method:charge/if[0]/throw[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "ValueError"
+      },
+      {
+        "source": "src/orders_playground/services/payment.py#class:PaymentProvider/method:charge/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/logger.py#class:Logger/method:info",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/services/payment.py#class:StripeProvider": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/services/payment.py#function:create_provider",
+        "source": "src/orders_playground/services/payment.py#function:create_provider/return[0]/call[0]",
+        "kind": "constructs",
+        "position": null
+      }
+    ],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/services/payment.py#class:StripeProvider/method:charge": {
+    "callers": [],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/services/payment.py#class:StripeProvider/method:charge/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/services/payment.py#class:PaymentProvider/method:charge",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/services/payment.py#class:StripeProvider/method:charge/expression_statement[0]/call[0]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "external",
+        "reason": null,
+        "module": "python:builtins",
+        "position": null,
+        "text": "super"
+      },
+      {
+        "source": "src/orders_playground/services/payment.py#class:StripeProvider/method:charge/expression_statement[1]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/logger.py#class:Logger/method:info",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/services/payment.py#function:create_provider": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/services/order_service.py#",
+        "source": "src/orders_playground/services/order_service.py#variable:order_service/call[0]/call[1]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/services/payment.py#function:create_provider/return[0]/call[0]",
+        "kind": "constructs",
+        "target": "src/orders_playground/services/payment.py#class:StripeProvider",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/types.py#class:Order": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/types.py#class:OrderDraft": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/types.py#class:OrderItem": {
+    "callers": [],
+    "outgoing": [],
+    "reachedFrom": [
+      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+    ]
+  },
+  "src/orders_playground/worker.py#function:main": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/worker.py#",
+        "source": "src/orders_playground/worker.py#if[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "position": null
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/worker.py#function:main/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/lib/pool.py#class:Worker/method:run",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/worker.py#function:main/expression_statement[1]/call[0]",
+        "kind": "calls",
+        "target": null,
+        "resolution": "unresolved",
+        "reason": "unknown_receiver",
+        "module": null,
+        "position": null,
+        "text": "celery_app.worker_main"
+      }
+    ],
+    "reachedFrom": []
+  },
+  "src/orders_playground/worker.py#function:purge": {
+    "callers": [
+      {
+        "owner": "src/orders_playground/worker.py#",
+        "source": "src/orders_playground/worker.py#variable:maintenance/call[0]",
+        "kind": "references",
+        "position": 1
+      }
+    ],
+    "outgoing": [
+      {
+        "source": "src/orders_playground/worker.py#function:purge/for_of[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/services/order_service.py#class:OrderService/method:list",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      },
+      {
+        "source": "src/orders_playground/worker.py#function:purge/for_of[0]/if[0]/expression_statement[0]/call[0]",
+        "kind": "calls",
+        "target": "src/orders_playground/services/order_service.py#class:OrderService/method:remove",
+        "resolution": "resolved",
+        "reason": null,
+        "module": null,
+        "position": null,
+        "text": null
+      }
+    ],
+    "reachedFrom": []
+  }
+}

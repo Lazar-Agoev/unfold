@@ -1,0 +1,1 @@
+export { imported as handler } from './handler.js';

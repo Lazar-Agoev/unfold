@@ -7,7 +7,7 @@ This document records every decision behind Unfold. For each one it gives the qu
 - [Architecture](architecture.md) describes what we are building.
 - [Migration plan](migration-plan.md) describes the order we build it in, and what V1 and V2 contain.
 
-Decision IDs are U-1 to U-36. In the new repository each one becomes its own file under `docs/decisions/`, and later changes are added as new decisions rather than edits to old ones.
+Decision IDs are U-1 to U-37. In the new repository each one becomes its own file under `docs/decisions/`, and later changes are added as new decisions rather than edits to old ones.
 
 ## How we got here
 
@@ -50,7 +50,7 @@ You asked for a clean rebuild as one desktop app. Two agents each wrote a propos
 | Scope | Exclusions in settings; scope from the tree later | A persisted scope recipe, "Compile this folder", and context provenance |
 | Old boards | Imports the PoC's boards | No compatibility promise |
 | Unresolved calls | Listed in Problems | Not problems |
-| Build order | Layer by layer: the reader in Phase 3, Python in Phase 4 | An end-to-end slice first |
+| Build order | Layer by layer: the reader in its Phase 3, Python in its Phase 4 | An end-to-end slice first |
 | Repository | A Cargo workspace with 11 crates, plus a pnpm UI | One TypeScript package |
 
 **They agreed on most of the product:**
@@ -94,12 +94,25 @@ It also pointed out that the checker question could be settled cheaply, by runni
 
 ### Your decisions on 2026-10-08
 
-1. **Rust and Tauri.**
+1. **Rust and Tauri.** Later the same day you kept Rust and replaced Tauri with Electron (see the next section).
 2. **A `.unfold/` folder in every repository**, so each repository keeps its own information there.
 3. **The button is called "Compile", but compilation should run in the background** and recompile only what an edit changed, rather than the whole graph. This needed design thought, which is recorded in U-13, U-14, and U-15.
 4. Delete the two proposals and replace them with three documents: this one, the [architecture](architecture.md), and the [migration plan](migration-plan.md).
 
-Everything else below follows the review's merged recommendations, adjusted for these four decisions.
+Everything else below follows the review's merged recommendations, adjusted for these decisions.
+
+### The move to Electron
+
+Later on 2026-10-08, before any code was written, you revisited the shell. You want several boards open at once in different windows, and a UI that is as good as it can be. You asked whether Electron would serve that better than Tauri, and whether it would mean rewriting the engine and the compilers in TypeScript.
+
+The analysis found four things:
+
+- **The engine doesn't change.** Nothing in U-5's case for Rust depends on the shell. The PoC's JavaScript engine needed 3.7 GB and 11.3 s, the parsers we chose are Rust, and background updates need a fast relink. Electron runs the same V8 the PoC struggled with. The design already kept every engine crate free of the shell, so Electron can host the Rust engine as a native addon built with napi-rs.
+- **Several windows work in both shells**, so they don't decide it on their own. What they need is a change to Unfold's own design, which allowed one window per folder. That change is U-37.
+- **What Electron adds is one rendering engine.** Chromium draws the canvas the same way on every platform, which matters because cards size themselves by measuring text. It also brings Chrome DevTools, Playwright for the whole app, and mature apps with many windows to learn from. And it removes the WebKitGTK risk that had kept Windows and Linux out of V1.
+- **What it costs**: a larger download, more memory for each window, an addon boundary, security hardening we have to do ourselves, and Electron's eight-week release cycle.
+
+You chose Electron with the Rust engine, and all three platforms in V1. That changed U-6, U-25, U-31, U-32, U-34, U-35, and U-36, added U-37, and reorganized the [migration plan](migration-plan.md) into steps that each migrate one part of the PoC. Because nothing had been built yet, these decisions were revised in place rather than superseded by new ones.
 
 ## Decision index
 
@@ -110,7 +123,7 @@ Everything else below follows the review's merged recommendations, adjusted for 
 | [U-3](#u-3-names-and-words) | Names and words | Product |
 | [U-4](#u-4-a-reader-not-an-editor) | A reader, not an editor | Product |
 | [U-5](#u-5-rust-for-the-engine) | Rust for the engine | Engine and platform |
-| [U-6](#u-6-tauri-2-for-the-shell) | Tauri 2 for the shell | Engine and platform |
+| [U-6](#u-6-electron-for-the-shell-with-the-rust-engine-as-a-native-addon) | Electron for the shell, with the Rust engine as a native addon | Engine and platform |
 | [U-7](#u-7-typescript-through-oxc-without-a-type-checker-in-v1) | TypeScript through oxc, without a type checker in V1 | Engine and platform |
 | [U-8](#u-8-type-checker-evidence-later-through-typescript-7s-api) | Type-checker evidence later, through TypeScript 7's API | Engine and platform |
 | [U-9](#u-9-python-through-ruffs-parser) | Python through Ruff's parser | Engine and platform |
@@ -135,12 +148,13 @@ Everything else below follows the review's merged recommendations, adjusted for 
 | [U-28](#u-28-problems-lists-only-real-problems) | Problems lists only real problems | The app |
 | [U-29](#u-29-inspector-and-board-outline) | Inspector and board outline | The app |
 | [U-30](#u-30-search-covers-definitions-entrances-files-and-text) | Search covers definitions, entrances, files, and text | The app |
-| [U-31](#u-31-one-process-with-a-locked-down-webview) | One process with a locked-down webview | The app |
+| [U-31](#u-31-an-engine-host-and-locked-down-windows) | An engine host and locked-down windows | The app |
 | [U-32](#u-32-repository-layout-a-cargo-workspace-and-a-pnpm-ui) | Repository layout: a Cargo workspace and a pnpm UI | Engineering |
 | [U-33](#u-33-correctness-evidence-frozen-poc-reference-divergence-ledger-independent-oracles) | Correctness evidence: frozen PoC reference, divergence ledger, independent oracles | Engineering |
 | [U-34](#u-34-testing-at-every-layer) | Testing at every layer | Engineering |
-| [U-35](#u-35-platforms-macos-first-all-three-in-ci) | Platforms: macOS first, all three in CI | Engineering |
-| [U-36](#u-36-build-order-a-vertical-slice-first) | Build order: a vertical slice first | Engineering |
+| [U-35](#u-35-platforms-macos-windows-and-linux-in-v1) | Platforms: macOS, Windows, and Linux in V1 | Engineering |
+| [U-36](#u-36-build-order-a-vertical-slice-then-the-migration-step-by-step) | Build order: a vertical slice, then the migration step by step | Engineering |
+| [U-37](#u-37-several-windows-per-folder-one-window-per-board) | Several windows per folder, one window per board | The app |
 
 ## Product
 
@@ -204,7 +218,7 @@ Everything else below follows the review's merged recommendations, adjusted for 
 
 | Thing | Word |
 | --- | --- |
-| The product | **Unfold**, subject to a trademark check in Phase 0, before the name reaches folders and formats |
+| The product | **Unfold**, subject to a trademark check in Step 0, before the name reaches folders and formats |
 | The button that builds or refreshes the graph | **Compile** |
 | Declared ways work starts | **Entrances** |
 | An authored canvas | **Board**. One that lives only on this machine is a **Draft** |
@@ -272,8 +286,8 @@ Nothing is named Codegraph anywhere: not folders, formats, IDs, or bundle names.
 
 | Option | For | Against |
 | --- | --- | --- |
-| TypeScript (Proposal B) | The PoC's logic and test knowledge are already in TypeScript. Pyright's parser and the TypeScript compiler API are JavaScript. It's the shortest path to a working app, with one language for the UI and the engine | The PoC's engine peaked at 3.7 GB and took 11.3 s for 602 files, and parallel workers didn't help. The checker API it needs is TypeScript 6's, the line being retired. A JavaScript host for the engine means Electron |
-| **Rust (Proposal A)** | The best TypeScript and Python parsers are written in Rust (oxc, and Ruff's). It brings real parallelism, low memory, one binary, and a strict type system for a precision engine. The PoC's archived rewrite plan already recommended Rust and oxc | Everything is ported, and every guarantee is earned again. Builds are slower. The parser crates change often. There are two languages in the repository |
+| TypeScript (Proposal B) | The PoC's logic and test knowledge are already in TypeScript. Pyright's parser and the TypeScript compiler API are JavaScript. It's the shortest path to a working app, with one language for the UI and the engine | The PoC's engine peaked at 3.7 GB and took 11.3 s for 602 files, and parallel workers didn't help. The checker API it needs is TypeScript 6's, the line being retired. Inside Electron it would run on the same V8, beside the UI |
+| **Rust (Proposal A)** | The best TypeScript and Python parsers are written in Rust (oxc, and Ruff's). It brings real parallelism, low memory, one native library, and a strict type system for a precision engine. The PoC's archived rewrite plan already recommended Rust and oxc | Everything is ported, and every guarantee is earned again. Builds are slower. The parser crates change often. There are two languages in the repository |
 | Go | TypeScript 7 is written in Go | TypeScript 7's packages are internal, and its API runs out of process anyway. Python parser options are weak, and Go's desktop shells (Wails) are less mature |
 | C# | A mature language with native UI toolkits (Avalonia, MAUI) | No first-class TypeScript or Python parser, and a full UI rebuild |
 | C++ | Maximum control | tree-sitter is the only realistic parser, memory safety is manual, and we'd still need a UI toolkit |
@@ -283,12 +297,12 @@ Nothing is named Codegraph anywhere: not folders, formats, IDs, or bundle names.
 - **Memory and speed were the PoC's real problems.** A desktop app opened on arbitrary repositories has to fix them by design.
 - **Background compilation (U-13, U-14) needs a fast in-memory relink** over compact facts, which Rust makes natural.
 - **The future TypeScript checker is a Go binary** with an out-of-process API, so a Rust host can use it as easily as Node can (U-8).
-- **A desktop app ships as one binary.** That was the "single binary" trigger in the PoC's own rewrite plan (D-76).
-- **You chose Rust and Tauri.**
+- **The engine ships as one native library**, with no runtime of its own to install. That was the "single binary" trigger in the PoC's own rewrite plan (D-76).
+- **You chose Rust**, and kept it when the shell became Electron (U-6). Electron runs the same V8 that peaked at 3.7 GB, so it is no reason to move the engine to TypeScript.
 
 **Pros**
 - Speed and low memory, with parallel extraction and resolution across every core.
-- One binary, with nothing to install.
+- One native library, with nothing to install.
 - Maintained parsers with large user bases: oxc is used by Rolldown and Oxlint, and Ruff's parser by Ruff and ty.
 - A compiler-checked type system for policy code where mistakes become wrong links.
 - No TypeScript fork, and no TypeScript 6 dependency.
@@ -299,39 +313,47 @@ Nothing is named Codegraph anywhere: not folders, formats, IDs, or bundle names.
 - Rust compiles more slowly, and fewer people can contribute.
 - oxc is on 0.x versions and changes its syntax tree often. Ruff's parser is an internal crate.
 - The repository has two languages: Rust for the engine and TypeScript for the UI.
-- There is no type checker in V1, so recall on inference-heavy code is a risk. The Phase 0 recall check measures it (U-8).
+- There is no type checker in V1, so recall on inference-heavy code is a risk. The Step 0 recall check measures it (U-8).
 
-**Revisit if** a Phase 0 spike shows that oxc or Ruff's parser can't carry the rules. Even then the fallback stays in Rust: port the PoC's binder onto oxc's tree, or vendor Ruff's parser.
+**Revisit if** a Step 0 spike shows that oxc or Ruff's parser can't carry the rules. Even then the fallback stays in Rust: port the PoC's binder onto oxc's tree, or vendor Ruff's parser.
 
-### U-6: Tauri 2 for the shell
+### U-6: Electron for the shell, with the Rust engine as a native addon
 
-**Decided.** Tauri 2 hosts the React UI in the system webview, and the Rust engine runs in the same process.
+**Decided.** Electron hosts the React UI in Chromium on every platform. The Rust engine is built as a Node-API addon, `unfold-node`, with napi-rs, and it runs in the engine host, a helper process that serves every window (U-31). The main process and the preload script are TypeScript, and they hold no graph logic.
+
+**Question.** Which shell should host the UI and the engine? You want several boards open at once in separate windows (U-37), on every platform, with the best UI we can build.
 
 **Options**
 
 | Option | For | Against |
 | --- | --- | --- |
-| Electron with a TypeScript engine (Proposal B) | One Chromium everywhere and a huge ecosystem. Playwright drives it | It bundles Chromium and Node, so the app is large. It only makes sense with a TypeScript engine, which U-5 rejects |
-| Electron with a Rust native addon (napi-rs) | Chromium everywhere and the Rust engine | Bundled Chromium and Node anyway, plus an addon boundary to maintain |
-| **Tauri 2** | The Rust engine runs in-process. Small download and memory. A capability-based security model. A built-in bundler, updater, and signing | Three rendering engines; less mature end-to-end tooling on macOS |
+| Tauri 2 (chosen first, then replaced) | The Rust engine runs in the app's process. A small download and low memory. Locked down by default, with a capability model. A built-in bundler, updater, and signing. It supports several windows | Three rendering engines: WKWebView on macOS, WebView2 on Windows, and WebKitGTK on Linux, which is the weakest. A canvas that sizes cards by measuring text is sensitive to their differences. The engine's version follows the user's operating system. End-to-end tests on macOS need an embedded WebDriver plugin, and its IPC type generator (tauri-specta) is a release candidate |
+| **Electron, with the Rust engine as a native addon (napi-rs)** | One Chromium everywhere, so the canvas renders and measures the same on every machine. Chrome DevTools in every window. Playwright drives the packaged app. Mature apps with many windows to learn from, such as VS Code and Slack. electron-builder and electron-updater cover all three platforms | It bundles Chromium and Node: a larger download, more memory, and a renderer process for each window. An addon boundary to keep small. Security hardening is ours to do. A new major version every eight weeks |
+| Electron with a TypeScript engine (Proposal B) | One language for everything | Brings back the PoC's memory and speed problems and the TypeScript 6 API (U-5) |
 | A native toolkit (GPUI, Slint, egui, Qt, SwiftUI) | Native performance and look | Rebuilds the cards, code layout, and canvas from nothing, and loses the HTML and CSS workflow used to design the reader in Paper |
-| Wails (Go) | A small shell | Tied to Go (U-5) |
+| Wails (Go) | A small shell | Tied to Go (U-5), with the same system-webview differences as Tauri |
 
-**Why.** Both proposals agreed that the shell follows the engine. With a Rust engine, Tauri adds no second runtime and no transport, and Tauri 2 has been stable since October 2024.
+**Why**
+- **One rendering engine.** Both shells can open several windows, so windows alone don't decide this. What Electron adds is Chromium everywhere. Cards size themselves by measuring text, and reflow and arrows depend on those sizes, so one engine removes a whole class of per-platform layout bugs and per-engine CSS.
+- **All three platforms in V1.** WebKitGTK was the main reason Windows and Linux waited for V2. Without it, they ship together (U-35).
+- **Tooling for a UI-heavy app.** Chrome DevTools and React DevTools in every window, and Playwright for both the UI and the packaged app (U-34).
+- **The engine stays in Rust (U-5).** Both proposals said the shell should follow the engine, because a Rust engine in Electron needs a bridge. napi-rs generates that bridge from Rust, Node-API is ABI-stable across Electron versions, and the addon exposes only a handful of functions (U-25). That keeps the boundary small enough to be worth having Chromium.
+- **You chose Electron.**
 
 **Pros**
-- A small app with low idle memory.
-- No sidecar processes and no serialization between the engine and the store.
-- The webview can only call the commands we expose (U-31).
-- The updater, signing, and bundling are built in.
+- The UI renders the same on macOS, Windows, and Linux.
+- The best debugging and end-to-end tooling for web UIs.
+- A large ecosystem, and many apps with several windows to learn from.
+- The engine crates, the store, and the UI are the same as in the Tauri design. Only the shell layer differs.
 
 **Cons**
-- **Three webviews.** Tauri renders with WKWebView on macOS, WebView2 (Chromium) on Windows, and WebKitGTK on Linux. A canvas that sizes cards by measuring text is sensitive to their differences, and WebKitGTK is the weakest.
-- **End-to-end testing on macOS** uses an embedded WebDriver plugin rather than a standard driver.
-- **tauri-specta**, which generates our IPC types, is still a release candidate (U-25).
-- The ecosystem is smaller than Electron's.
+- **Size.** Chromium and Node add roughly 100 MB to the download, where Tauri's shell added a few MB.
+- **Memory.** A higher baseline, and every window is its own renderer process. The architecture's budgets account for it ([§17](architecture.md#17-performance-targets)).
+- **Hardening.** Tauri was locked down by default. With Electron we set context isolation, the sandbox, navigation and permission blocks, the `app://` protocol, and the fuses ourselves, and test them on the packaged app (U-31).
+- **Upgrades.** Electron ships a major version every eight weeks and supports the latest three, so upgrades are routine work.
+- **One more layer.** Rust, the addon, the TypeScript main process and preload script, and the React UI.
 
-**Fallback.** If the Phase 0 canvas spike fails on WebKit, we move to Electron with a native addon. The engine crates don't change, because no engine crate depends on Tauri.
+**Revisit if** download size or memory becomes the main complaint. Neither the engine crates nor the UI depends on Electron, because the UI talks only to `window.unfold`. A move back to Tauri would replace only `desktop/` and `unfold-node`.
 
 ### U-7: TypeScript through oxc, without a type checker in V1
 
@@ -345,7 +367,7 @@ Nothing is named Codegraph anywhere: not folders, formats, IDs, or bundle names.
 | **oxc** | A fast, complete TypeScript, TSX, and JSX grammar, plus scopes, symbols, references, and a resolver that understands `tsconfig` `paths` and package `exports` | 0.x API churn. Its scoping must match our binding rules |
 | SWC | A mature parser | Focused on transforms. No semantic analysis or resolver comparable to oxc's |
 | tree-sitter-typescript | Fast and tolerant of broken code | Syntax only, with a different tree shape. Binding, modules, and classes would all be extra work (PoC D-5) |
-| The TypeScript 6 checker in production (Proposal B) | The highest recall on inference-heavy code | Needs Node. Ties Unfold to the line being retired. Large memory. It was the source of defects C-1 and C-3. It can't be its own precision oracle |
+| The TypeScript 6 checker in production (Proposal B) | The highest recall on inference-heavy code | Ties Unfold to the line being retired. Large memory. It was the source of defects C-1 and C-3. It can't be its own precision oracle. It would run in Node beside the Rust engine, with the PoC's memory problem |
 | TypeScript 7's API | The future checker | Not available in 7.0 |
 
 **Why**
@@ -367,13 +389,13 @@ Nothing is named Codegraph anywhere: not folders, formats, IDs, or bundle names.
 - Recall may be lower on inference-heavy application code (U-8).
 - oxc's spans are UTF-8 (U-12).
 
-**Revisit if** the Phase 0 recall check fails. The checker provider then moves into V1 (U-8).
+**Revisit if** the Step 0 recall check fails. The checker provider then moves into V1 (U-8).
 
 ### U-8: Type-checker evidence later, through TypeScript 7's API
 
-**Decided.** An optional checker provider will use TypeScript 7's programmatic API, planned for 7.1. It runs as a bundled `tsgo` process and feeds evidence through the same shared policy and the same oracle gates. It is planned for V2 and moves into V1 only if the Phase 0 recall check fails.
+**Decided.** An optional checker provider will use TypeScript 7's programmatic API, planned for 7.1. It runs as a bundled `tsgo` process and feeds evidence through the same shared policy and the same oracle gates. It is planned for V2 and moves into V1 only if the Step 0 recall check fails.
 
-**Decision rule (Phase 0).** We pick two real-world TypeScript backend repositories, pinned by commit, and run both of the PoC's TypeScript producers on them:
+**Decision rule (Step 0).** We pick two real-world TypeScript backend repositories, pinned by commit, and run both of the PoC's TypeScript producers on them:
 
 - If the native producer resolves at least **90%** of the calls the checker resolves on each repository, V1 ships without a checker.
 - If it doesn't, the provider joins V1. If TypeScript 7's API isn't stable at that point, we choose between shipping V1 with lower recall, with the reasons visible, and waiting for the API.
@@ -398,7 +420,7 @@ Nothing is named Codegraph anywhere: not folders, formats, IDs, or bundle names.
 
 | Option | For | Against |
 | --- | --- | --- |
-| The vendored Pyright parser (the PoC and Proposal B) | Proven in the PoC, with exact UTF-16 ranges | Needs a JavaScript runtime inside a Rust app, plus 114 MB of vendored source |
+| The vendored Pyright parser (the PoC and Proposal B) | Proven in the PoC, with exact UTF-16 ranges | Would put the Python front end in JavaScript, on the far side of the addon boundary from the Rust backend, plus 114 MB of vendored source. It also shares a grammar with the Pyright oracle |
 | **Ruff's parser** | Rust-native, fast, and current with the latest grammar (used by Ruff and ty). Exact ranges and a token stream | An internal crate, not a stable public library |
 | tree-sitter-python | Portable and fast | The PoC measured it rejecting Python 3.13 type-parameter defaults (D-84), and it has no semantics |
 | CPython's `ast` module | The official grammar | Needs Python installed, which breaks the "nothing to install" rule, and offsets need converting |
@@ -414,7 +436,7 @@ Nothing is named Codegraph anywhere: not folders, formats, IDs, or bundle names.
 
 **Cons**
 - **An internal crate.** It is pinned to a git tag, and its API can change between tags.
-- **Version-specific syntax.** Rejecting syntax by grammar version, for 3.12 through 3.14, has to be verified in Phase 0.
+- **Version-specific syntax.** Rejecting syntax by grammar version, for 3.12 through 3.14, has to be verified in Step 0.
 - **The biggest port.** The Python binder (the write census, C3 lookup, decorator proofs, and the framework detectors' proofs) is the largest and riskiest part of the rewrite.
 
 **Revisit if** the parser's API becomes unworkable. We would then vendor a copy at a tag.
@@ -453,7 +475,7 @@ A tiny "alien" test language keeps the backend honest.
 The PoC's known defects are handled like this:
 - **C-2, C-4, C-5, C-6, and C-12** are fixed.
 - **C-1 and C-3** disappear along with the checker-backed producer.
-- **C-8 and C-9** are decided with fixtures in Phase 2.
+- **C-8 and C-9** are decided with fixtures during the TypeScript migration, C-8 in Step 4 and C-9 in Step 5.
 
 **Why.** These semantics were verified independently, at 100% precision, and the reading experience they produce is the one you liked.
 
@@ -564,7 +586,7 @@ Re-resolving only the edited file would miss these, and the miss would be silent
 - Correct by construction.
 - Simple.
 - Writes are proportional to the change.
-- We expect updates in well under a second on repositories with a few thousand files. Phase 2 measures this and Phase 5 sets a hard limit.
+- We expect updates in well under a second on repositories with a few thousand files. Step 5 of the migration measures this and Step 9 sets a hard limit.
 
 **Cons of V1**
 - The CPU work of each update grows with the repository, so very large monorepos may lag. That is what V2 is for.
@@ -575,7 +597,7 @@ Re-resolving only the edited file would miss these, and the miss would be silent
 - Recording dependencies is subtle.
 - It needs separate interface and body hashes for each file, and records of what each resolution consulted, including failed lookups and census entries.
 
-**Revisit if** V1 misses the update-latency limit on target repositories. Early cutoff (Phase 9) then moves into V1.
+**Revisit if** V1 misses the update-latency limit on target repositories. Early cutoff (V2, Track A) then moves into V1.
 
 ### U-15: A file that stops parsing keeps its last good facts
 
@@ -670,7 +692,7 @@ This revises the review's earlier advice to "never mix versions in V1", which as
 └── local/             # machine-only; its .gitignore contains "*"
     ├── cache/         # disposable: graph.sqlite and the lock
     ├── drafts/        # your unpublished boards; not disposable
-    └── state.json     # tabs, layout, last board, background-update setting
+    └── state.json     # each window's tabs and layout, background-update setting
 ```
 
 **Options**
@@ -811,7 +833,7 @@ The graph database is private and can change in any release.
 | Place | Holds |
 | --- | --- |
 | `.unfold/config.toml` | Shared settings: scope, languages, disabled detectors, Python projects, manual entrances. Written only when a setting differs from the defaults. Versioned, unknown keys are rejected, and the app edits it while preserving comments |
-| `.unfold/local/state.json` | Personal state for this folder: open tabs, layout, last board, whether background updates are on |
+| `.unfold/local/state.json` | Personal state for this folder: its windows, each with its position, tabs, layout, and open boards, and whether background updates are on |
 | The OS app-data folder | App preferences: theme, keyboard, editor command, background defaults, thread limit, and recent folders |
 
 **Options**
@@ -866,18 +888,31 @@ Rust computes everything that needs the graph or the source bytes: the render mo
 
 ### U-25: Typed commands generated from Rust
 
-**Decided.** Commands, events, and channels are defined in Rust. tauri-specta (pinned, because it's a release candidate) generates their TypeScript types, with ts-rs as the fallback. Queries are paginated.
+**Decided**
+- Commands, events, streams, and their payload types are defined once in Rust, in `unfold-workspace`'s command table.
+- `cargo xtask gen-ipc` generates their TypeScript types with ts-rs. `tsc` checks the UI, the preload script, and the engine host against them at build time.
+- The addon's surface is small and fixed: open and close a workspace, dispatch a command, cancel, and subscribe to events. Adding a command touches only Rust and the generated types, never the addon.
+- Queries are paginated.
 
-**Options.** We considered hand-written TypeScript types, runtime schemas such as Proposal B's Zod schemas, and types generated from Rust (chosen).
+**Options**
+
+| Option | For | Against |
+| --- | --- | --- |
+| Hand-written TypeScript types | No generator | They drift from Rust |
+| Runtime schemas, such as Proposal B's Zod schemas | Validation in the UI | A second definition of every type, and validation that Rust does anyway |
+| One napi-rs function per command, using the `.d.ts` file napi-rs generates | Types with no extra tool | Every command becomes part of the addon boundary, which then changes with every feature |
+| **A command table in Rust, ts-rs types, and a small addon** | One definition, and an addon that rarely changes | A code-generation step |
 
 **Pros**
 - One definition, so the UI and the engine can't drift.
 - Type errors appear at build time.
+- The addon boundary stays small and stable.
+- No dependency on a release candidate. tauri-specta, the earlier plan, was one.
 
 **Cons**
-- A dependency on a release candidate.
 - A code-generation step.
 - Validation runs only in Rust. That's acceptable, because Rust validates every input anyway.
+- Payloads are converted to JavaScript values in the engine host and copied once more into the window, so they must stay small: one card or one page at a time.
 
 ### U-26: An IDE-shaped window
 
@@ -888,6 +923,8 @@ Rust computes everything that needs the graph or the source bytes: the render mo
 - a status bar and a command palette;
 - a keyboard map;
 - welcome and first-Compile screens.
+
+You can open several of these windows at once (U-37).
 
 **Options.** We could keep the PoC's single sidebar, which stacked boards, entrances, and a flat Definitions list capped at 400 items, or adopt the IDE layout both proposals described (chosen).
 
@@ -975,37 +1012,85 @@ Unresolved calls are facts about the code, not problems. They appear on call chi
 - Text search reads files, so it's bounded, streamed, and cancellable.
 - More UI to build.
 
-### U-31: One process with a locked-down webview
+### U-31: An engine host and locked-down windows
 
 **Decided**
-- **One process.** The engine runs on its own thread with a rayon pool, and SQLite has one writer and a pool of readers.
-- **A locked-down webview.** It may call only Unfold's commands, every path is confined to the folder, and a strict content security policy applies.
+- **Three kinds of process.**
+  - The **main process**, in TypeScript, runs windows, menus, dialogs, and updates.
+  - The **engine host**, an Electron utility process, loads the Rust engine and holds one workspace per open folder. Each folder gets an engine thread, one SQLite writer, and a pool of readers, and all folders share one rayon pool.
+  - Each **window** is a sandboxed renderer.
+- **Direct lines.** Each window talks to the engine host over its own message port, which the main process hands out. The main process stays out of the data path.
+- **Restart, don't crash.** If the engine host stops, the main process restarts it. Windows keep their boards, reconnect, and then save any unsaved edits.
+- **Locked-down windows.** A window may call only Unfold's commands. Every path is confined to the folder, paths outside it come only from dialogs, and a strict content security policy applies.
 - **Privacy.** No telemetry, and no network use other than the update check.
 
 **Options**
 
 | Option | For | Against |
 | --- | --- | --- |
-| Proposal B's process tree: a main process, a workspace service, and a disposable analysis process | Crash isolation, and a JavaScript heap released after each job | Necessary for a Node engine, not for Rust. It adds transport and supervision |
-| **One process** | Simple, with no serialization between the engine and the store | A hard crash takes the app down |
+| The addon in the main process | The fewest moving parts | The main process serves every window, so converting large results there makes every window stutter, and a native crash closes all of them |
+| **The addon in a utility process (the engine host)** | The main process stays responsive. A crash costs a restart, not the app. Windows reach the engine directly | One more process, and restart and reconnect logic |
+| The engine as a separate Rust binary, talking over standard input and output | Isolation, with no Node in the engine's process | We'd design, version, and supervise our own protocol, which the addon avoids |
+| Proposal B's process tree: a main process, a workspace service, and a disposable analysis process per job | Crash isolation, and a JavaScript heap released after each job | Needed for a Node engine, not a Rust one (U-5) |
+
+**Why.** You want several windows open at once (U-37). A single engine host gives all of them one graph and one writer per folder, without letting one window's heavy query, or a rare native crash, take the others down.
 
 **Pros**
-- Simplicity.
-- Rust's memory safety.
-- A panic in one job is caught.
+- Every window shares one engine, one graph, and one SQLite writer per folder.
+- The main process stays responsive, however busy the engine is.
+- A crash in the engine is recoverable, and drafts are never lost.
+- Rust's memory safety, with panics caught and returned as errors.
 
 **Cons**
-- A stack overflow on pathological input could still crash the app. Fuzzing, depth limits, larger stacks for engine threads, and autosaved drafts mitigate this.
+- Results are copied between processes, so payloads stay small (U-25).
+- Restart and reconnect logic to build and test.
+- A stack overflow on pathological input still stops the engine host, though not the app. Fuzzing, depth limits, and larger stacks for engine threads make that rare.
 
-**Revisit if** crashes appear in the field. The engine is a library, so compiles can move into a child process.
+**Revisit if** copying between processes shows up in card-open latency. Payloads are per card and paginated, so we don't expect it.
+
+### U-37: Several windows per folder, one window per board
+
+**Decided**
+- Unfold opens as many windows as you want. Each window shows one folder and has its own tabs, sidebar, inspector, bottom panel, lens, and selection.
+- Several windows can show the same folder. They share its workspace: one engine, one graph, one watcher, and one SQLite writer. Events reach every window that shows the folder.
+- A board is open in one window at a time. Opening it from another window focuses the window that has it. **Move to New Window** moves a board, with its undo history, into a window of its own. Source tabs are read-only, so they can be open anywhere.
+- `.unfold/local/state.json` records every window's position, size, tabs, and layout, and reopening the folder restores them all.
+- Unfold runs as one copy per user. The lock in `.unfold/local/cache/` now keeps a second copy, such as another version or a development build, from opening the folder. It no longer limits the folder to one window.
+
+**Question.** You want to work on several boards at once, in different windows. How should windows relate to folders and boards?
+
+**Options**
+
+| Option | For | Against |
+| --- | --- | --- |
+| One window per folder (the earlier design) | The simplest | Two boards from one repository can't sit side by side, or on two screens |
+| Split panes inside one window | One window to manage | No second screen, and each canvas gets narrow |
+| Several windows, any board in any number of them, kept in sync | The most freedom | Every edit and every undo has to be merged across windows. That is a small collaborative editor, out of proportion for V1 |
+| **Several windows, one window per board** | Boards side by side on any number of screens, while each board's edits and undo history live in one place | The same board can't be shown twice, for example at two zoom levels |
+
+**Why.** It gives you several boards at once, in separate windows, without any merge logic: a board has exactly one editor at a time, just as it does with a single window.
+
+**Pros**
+- Boards side by side, on as many screens as you have.
+- One graph for every window, so they never disagree.
+- No synchronization of board edits.
+
+**Cons**
+- Each window is its own renderer process and costs memory ([architecture §17](architecture.md#17-performance-targets)).
+- `state.json` holds per-window state, and restoring it has to cope with screens that are gone.
+- The same board can't be open twice.
+- Dragging a tab from one window into another isn't in V1. Move to New Window is.
+
+**Revisit if** people want the same board in two windows. The board's state and undo history would then move into the engine host, and windows would send their edits to it.
 
 ## Engineering
 
 ### U-32: Repository layout: a Cargo workspace and a pnpm UI
 
 **Decided.** The repository holds:
-- seven crates: `unfold-core`, `unfold-engine`, `unfold-lang-typescript`, `unfold-lang-python`, `unfold-store`, `unfold-reader`, and `unfold-workspace`;
-- `desktop/`, the Tauri app;
+- seven engine crates: `unfold-core`, `unfold-engine`, `unfold-lang-typescript`, `unfold-lang-python`, `unfold-store`, `unfold-reader`, and `unfold-workspace`;
+- `unfold-node`, the napi-rs addon over `unfold-workspace`;
+- `desktop/`, the Electron app in TypeScript: the main process, the preload script, and the engine host;
 - `ui/`, the React app;
 - `testdata/`, `tools/` (with `xtask` and the oracles), `e2e/`, and `fuzz/`;
 - docs, with one file per decision.
@@ -1018,7 +1103,7 @@ The dependency rules are in the [architecture](architecture.md#153-dependency-ru
 | --- | --- | --- |
 | Eleven crates (Proposal A) | Very fine boundaries | Premature, with boilerplate before there's code |
 | One TypeScript package (Proposal B) | One toolchain | Not possible with a Rust engine |
-| **Seven crates** | The heavy parser dependencies are isolated, which helps compile times, and every boundary can be tested headless | Some boundaries may need adjusting |
+| **Seven engine crates and an addon crate** | The heavy parser dependencies are isolated, which helps compile times, and every boundary except the addon can be tested headless | Some boundaries may need adjusting |
 
 **Pros**
 - Clear ownership.
@@ -1061,9 +1146,10 @@ The dependency rules are in the [architecture](architecture.md#153-dependency-ru
 - **Detector cases** are data-driven: positive forms, decoys, aliases, spreads, and dynamic values.
 - **Fuzzing** covers both language adapters and the backend: any bytes must produce a graph or a reported failure, never a crash.
 - **Property tests** cover the UTF-8 and UTF-16 mapping, validator invariants, determinism, and incremental-equals-full over random edit sequences.
-- **UI tests** run components on fixtures the engine generates, and Playwright journeys run against recorded command responses in Chromium and WebKit.
-- **App journeys** run on built binaries with WebdriverIO.
-- **Packaged checks** cover running with no Node or Python, paths with spaces and Unicode, read-only folders, and execution sentinels that prove nothing runs.
+- **Addon tests** call the built `unfold-node` from Node: round trips, events from Rust threads, cancellation, and panics returned as errors.
+- **UI tests** run components on fixtures the engine generates, and Playwright journeys run against recorded command responses in Chromium.
+- **App journeys** run on built apps with Playwright's Electron support, on macOS, Windows, and Linux. They include several windows on one folder and a restart of the engine host.
+- **Packaged checks** cover running with no Node or Python, paths with spaces and Unicode, read-only folders, execution sentinels that prove nothing runs, and the Electron fuses and window settings, read back from the packaged app.
 
 **Why.** The PoC earned trust by testing each layer independently. Background compilation adds one new invariant that needs its own test: a graph built by updates must equal a fresh compile.
 
@@ -1074,32 +1160,41 @@ The dependency rules are in the [architecture](architecture.md#153-dependency-ru
 **Cons**
 - A large test investment, and three-platform CI takes time and money.
 
-### U-35: Platforms: macOS first, all three in CI
+### U-35: Platforms: macOS, Windows, and Linux in V1
 
-**Decided.** V1 is released on macOS, signed, notarized, and updating itself. Windows and Linux are built and tested in CI from the first commit, and released in V2 once their suites pass.
+**Decided.** V1 ships on all three desktop platforms at once:
+- macOS on Apple silicon and Intel, signed and notarized;
+- Windows 10 and 11 on x64, signed;
+- Linux on x64, as an AppImage, a `.deb`, and an `.rpm`.
+
+All of them update themselves. Every migration step runs on all three in CI from the first commit, and a step is done only when its journeys pass on each. Arm builds for Windows and Linux come in V2.
 
 **Options**
 
 | Option | For | Against |
 | --- | --- | --- |
-| Release all three in V1 | The widest reach | Slower to V1, and WebKitGTK risk on the critical path |
-| macOS only, adding the others later (Proposal B's default) | Focus | Portability problems would surface late |
-| **macOS first, with all three in CI** (Proposal A) | Focus, plus early warning | CI cost |
+| macOS only, adding the others later (Proposal B's default) | Focus | Portability problems surface late |
+| macOS first, with all three in CI and the others released in V2 (Proposal A, and our plan while the shell was Tauri) | Focus, plus early warning, with WebKitGTK kept off the critical path | With Electron the webview risk is gone, so it would delay two platforms for little reason |
+| **All three in V1** | The widest reach, and no late porting phase | Three signing setups, and every release is tested three times |
+
+**Why.** Electron renders with Chromium everywhere (U-6), so the risk that justified releasing the platforms one after another is gone. What remains is ordinary engineering: signing, installers, path and case rules, and watcher limits. That work is cheaper to do as we go than in a phase of its own.
 
 **Pros**
-- Focus.
-- Path and case-sensitivity bugs show up at once.
+- Windows and Linux users from the first release.
+- Platform bugs are fixed in the step that causes them.
+- No separate porting phase.
 
 **Cons**
-- CI time and cost.
-- Linux rendering issues are known early but fixed later.
+- Three signing setups: an Apple Developer ID, a Windows code-signing certificate, and checksums for the Linux packages. The certificates are ordered in Step 0, because they take time to issue.
+- CI time and cost on three platforms.
+- Journeys and budgets must pass on all three before a step is done, which slows each step a little.
 
-### U-36: Build order: a vertical slice first
+### U-36: Build order: a vertical slice, then the migration step by step
 
 **Decided**
-1. **Phase 0** freezes the PoC and runs the spikes.
-2. **Phase 1** builds a thin end-to-end TypeScript slice: open a folder, Compile, open an entrance, follow a call, save a file and watch the card update, then relaunch and find the draft.
-3. **Later phases** deepen each layer.
+1. **Step 0** freezes the PoC and runs the spikes. **Step 1** lays the foundations and imports the PoC's frozen outputs as Unfold's reference.
+2. **Step 2** builds a thin end-to-end TypeScript slice: open a folder, Compile, open an entrance, follow a call, open a second window, save a file and watch the card update in both, then relaunch and find the draft.
+3. **Steps 3 to 11** migrate the rest of the PoC one part at a time: TypeScript structure, resolution, and entrances; the reader; Python; background compiling; the shell and windows; and the release. Each step says what it takes from the PoC, what it builds, how it proves that Unfold matches the PoC, and which part of the PoC nobody needs to consult afterwards.
 
 The [migration plan](migration-plan.md) has the details.
 
@@ -1107,23 +1202,27 @@ The [migration plan](migration-plan.md) has the details.
 
 | Option | For | Against |
 | --- | --- | --- |
-| Layer by layer (Proposal A) | Each layer is finished before the next | Nothing usable until Phase 3, and Python waits until Phase 4 |
-| **A vertical slice first** (Proposal B) | Usable early, and it proves the whole architecture, including the update path, before most of the code exists | Some rework as layers deepen |
+| Layer by layer (Proposal A) | Each layer is finished before the next | Nothing usable until its third phase, and Python waits until its fourth |
+| One large port, compared with the PoC at the end | Fewer intermediate states | Differences pile up and are hard to trace back to their cause |
+| **A vertical slice, then one part of the PoC per step** (Proposal B's slice, with the review's parity discipline) | Usable early. It proves the whole architecture, including the update path and several windows, before most of the code exists. Every difference from the PoC is caught in the step that caused it | Some rework as layers deepen |
 
 **Pros**
-- Early feedback on the UI and the update loop.
+- Early feedback on the UI, the update loop, and windows.
 - Risks surface while they're still cheap to fix.
+- Each step has one clear parity check, so it's obvious when it's done.
 
 **Cons**
 - The first slice covers few rules, so parity arrives later in the plan.
+- Twelve steps, each with its own gate, take discipline to keep.
 
 ## What we decided against
 
 | Option | Proposed by | Why not |
 | --- | --- | --- |
-| Electron with a TypeScript engine | Proposal B | A Rust engine was chosen (U-5), and Tauri follows from it (U-6) |
+| Electron with a TypeScript engine | Proposal B | The engine stays in Rust (U-5), and Electron hosts it as a native addon (U-6) |
+| Tauri 2 | Proposal A, and our first choice | Three webviews to keep in step, with WebKitGTK keeping Windows and Linux out of V1 (U-6) |
 | The TypeScript 6 checker as the production analyzer | Proposal B | It's the retiring line, uses large amounts of memory, and can't be its own oracle (U-7) |
-| The vendored Pyright parser | The PoC, Proposal B | It needs a JavaScript runtime (U-9) |
+| The vendored Pyright parser | The PoC, Proposal B | It would put part of the engine in JavaScript (U-9) |
 | tree-sitter parsers | Considered | Syntax only, and gaps in the Python grammar were measured (U-7, U-9) |
 | A graph database | Considered | The queries are simple (U-19) |
 | A public graph format, such as the CSV package | The PoC | Only committed files are contracts (U-21) |
@@ -1138,16 +1237,21 @@ The [migration plan](migration-plan.md) has the details.
 | Eleven crates | Proposal A | Premature (U-32) |
 | Building layer by layer | Proposal A | A usable app too late (U-36) |
 | Recording every resolution lookup in V1 | Proposal B | V1 relinks fully. Lookups are recorded only for V2's early cutoff (U-17) |
-| A multi-process engine | Proposal B | Not needed with Rust (U-31) |
+| A disposable analysis process for each job | Proposal B | It existed to release a JavaScript heap. The Rust engine lives in one long-lived engine host (U-31) |
+| Loading the engine addon in the main process | Considered | Every window would stutter during heavy calls, and close if the engine crashed (U-31) |
+| One window per folder | Our earlier design | You want several boards side by side (U-37) |
+| The same board open in several windows, kept in sync | Considered | A small collaborative editor, out of proportion for V1 (U-37) |
+| Releasing macOS first, and Windows and Linux in V2 | Proposal A, and our plan with Tauri | With Chromium everywhere, all three ship in V1 (U-35) |
 
 ## Still open
 
 | Question | Until it's decided | Decided by or in |
 | --- | --- | --- |
-| Does the name "Unfold" pass a trademark check, and what's the bundle identifier? | "Unfold" is used internally | Phase 0, before the name reaches `.unfold/`, `unfold-board`, and the bundle identifier |
-| Does V1 need the type checker? | No | The Phase 0 recall check (U-8) |
-| Which real-world repositories to pin for recall checks and budgets | None pinned | Phase 0 |
-| C-8: should destructured bindings from literal dynamic imports resolve? C-9: should property locators match calls? | The PoC's behavior | Phase 2, with fixtures |
+| Does the name "Unfold" pass a trademark check, and what are the bundle identifier and the Windows app ID? | "Unfold" is used internally | Step 0, before the name reaches `.unfold/`, `unfold-board`, and the bundle identifier |
+| Does V1 need the type checker? | No | The Step 0 recall check (U-8) |
+| Which real-world repositories to pin for recall checks and budgets | None pinned | Step 0 |
+| C-8: should destructured bindings from literal dynamic imports resolve? C-9: should property locators match calls? | The PoC's behavior | Steps 4 and 5, with fixtures |
 | A personal scope layer (`.unfold/local/config.toml`) | Not in V1 | When someone needs it |
 | Should Mermaid export optionally include source text? | Labels only | When someone asks |
-| The final keyboard shortcuts | The [architecture's table](architecture.md#116-keyboard) | The Phase 6 review |
+| The final keyboard shortcuts | The [architecture's table](architecture.md#117-keyboard) | The Step 10 review |
+| Dragging tabs from one window into another | Move to New Window only | When someone needs it (U-37) |

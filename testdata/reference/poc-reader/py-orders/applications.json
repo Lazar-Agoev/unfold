@@ -1,0 +1,64 @@
+{
+  "applications": [
+    {
+      "startup": "src/orders_playground/cli.py#function:main",
+      "name": "cli#main",
+      "launches": [
+        "entrance:[\"pyproject.script\",\"process\",\"\",\"orders\",\"orders_playground.cli:main\"]",
+        "entrance:[\"pyproject.script\",\"process\",\"\",\"orders-cli\",\"orders_playground.cli:main\"]"
+      ],
+      "entrances": [
+        "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/orders_playground/jobs/import_orders.py#import_orders\"]",
+        "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]",
+        "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]",
+        "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]"
+      ]
+    },
+    {
+      "startup": "src/orders_playground/scheduler.py#function:main",
+      "name": "scheduler#main",
+      "launches": [
+        "entrance:[\"pyproject.script\",\"process\",\"\",\"orders-scheduler\",\"orders_playground.scheduler:main\"]"
+      ],
+      "entrances": [
+        "entrance:[\"apscheduler.job\",\"schedule\",\"\",\"*/15 * * * *\",\"lambda: report_metrics()\"]",
+        "entrance:[\"apscheduler.job\",\"schedule\",\"\",\"0 2 * * *\",\"cleanup_expired_orders\"]"
+      ]
+    },
+    {
+      "startup": "src/orders_playground/server.py#function:main",
+      "name": "server#main",
+      "launches": [
+        "entrance:[\"pyproject.script\",\"process\",\"\",\"orders-api\",\"orders_playground.server:main\"]",
+        "entrance:[\"pyproject.script\",\"process\",\"\",\"orders-api-dev\",\"orders_playground.server:main\"]"
+      ],
+      "entrances": [
+        "entrance:[\"fastapi.route\",\"http\",\"DELETE\",\"/orders/{order_id}\",\"require_user\"]",
+        "entrance:[\"fastapi.route\",\"http\",\"GET\",\"\",\"status\"]",
+        "entrance:[\"fastapi.route\",\"http\",\"GET\",\"/admin/stats\",\"admin_stats\"]",
+        "entrance:[\"fastapi.route\",\"http\",\"GET\",\"/health\",\"health_check\"]",
+        "entrance:[\"fastapi.route\",\"http\",\"GET\",\"/health/live\",\"lambda: {\\\"status\\\": \\\"alive\\\"}\"]",
+        "entrance:[\"fastapi.route\",\"http\",\"GET\",\"/orders\",\"list_orders\"]",
+        "entrance:[\"fastapi.route\",\"http\",\"GET\",\"/orders/{order_id}\",\"async_handler(get_order)\"]",
+        "entrance:[\"fastapi.route\",\"http\",\"POST\",\"/orders\",\"require_user\"]",
+        "entrance:[\"manual\",\"event\",\"\",\"SIGTERM\",\"src/orders_playground/server.py#shutdown\"]"
+      ]
+    },
+    {
+      "startup": "src/orders_playground/worker.py#function:main",
+      "name": "worker#main",
+      "launches": [
+        "entrance:[\"pyproject.script\",\"process\",\"\",\"orders-worker\",\"orders_playground.worker:main\"]"
+      ],
+      "entrances": [
+        "entrance:[\"celery.task\",\"worker\",\"\",\"\",\"print_report\"]",
+        "entrance:[\"celery.task\",\"worker\",\"\",\"emails\",\"email_task\"]",
+        "entrance:[\"celery.task\",\"worker\",\"\",\"orders\",\"process_order\"]"
+      ]
+    }
+  ],
+  "otherEntrances": [],
+  "unindexedLaunches": [
+    "entrance:[\"pyproject.script\",\"process\",\"\",\"orders-legacy-export\",\"orders_legacy.export:main\"]"
+  ]
+}

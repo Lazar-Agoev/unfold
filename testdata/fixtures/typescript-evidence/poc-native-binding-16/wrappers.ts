@@ -1,0 +1,1 @@
+export {}; function f() {} f!(); (f as () => void)(); (f satisfies Function)(); (<() => void>f)();

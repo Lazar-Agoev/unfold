@@ -1,0 +1,29 @@
+version = 1
+
+[[entrance]]
+kind = "command"
+handler = "main.ts:1"
+
+[[entrance]]
+kind = "command"
+handler = "main.ts:2"
+
+[[entrance]]
+kind = "command"
+handler = "main.ts:3"
+
+[[entrance]]
+kind = "command"
+handler = "main.ts:5"
+
+[[entrance]]
+kind = "command"
+handler = "main.ts:7"
+
+[[entrance]]
+kind = "command"
+handler = "main.ts:10"
+
+[[entrance]]
+kind = "command"
+handler = "main.ts:99"

@@ -1,0 +1,2 @@
+# Expected entrances for testdata/detectors/apscheduler.job/non-registrations. Format: testdata/README.md.
+# scheduled_job decorators and APScheduler 4 add no entrances.

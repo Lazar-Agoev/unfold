@@ -1,0 +1,1 @@
+import { run } from "./excluded.js"; import type { Client } from "./excluded.js"; run(); run(); function call(client: Client) { client.send(); }

@@ -1,0 +1,8 @@
+# Expected entrances for testdata/detectors/fastapi.route/class-callbacks-plain. Format: testdata/README.md.
+# Ordinary class members resolve as route and dependency callbacks.
+entrance	fastapi.route	http	GET	/callback	exact	src/app.py:10
+	target	handler	resolved	src/app.py#class:Commands/method:run	Commands.run
+entrance	fastapi.route	http	GET	/dependency	exact	src/app.py:11
+	target	handler	resolved	src/app.py#class:Commands/method:run	Child.run
+	target	handler	resolved	src/app.py#class:Commands/method:run	alias
+	target	handler	resolved	src/app.py#function:endpoint	endpoint

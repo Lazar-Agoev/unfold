@@ -1,0 +1,16 @@
+# Expected entrances for testdata/detectors/pyproject.script/aliases-namespaces-reexports. Format: testdata/README.md.
+# Script aliases and direct namespace modules resolve; cross-module re-exports stay unsupported (PoC: "Script aliases and direct namespace modules resolve...").
+entrance	pyproject.script	process	-	first	exact	pyproject.toml:2
+	target	startup	resolved	src/app.py#function:main	app:main
+entrance	pyproject.script	process	-	alias	exact	pyproject.toml:3
+	target	startup	resolved	src/app.py#function:main	app:renamed
+entrance	pyproject.script	process	-	second	exact	pyproject.toml:4
+	target	startup	resolved	src/app.py#function:other	app:other
+entrance	pyproject.script	process	-	reexport	exact	pyproject.toml:5
+	target	startup	unresolved	unsupported	package:exposed
+entrance	pyproject.script	process	-	namespace	exact	pyproject.toml:6
+	target	startup	resolved	src/namespace/worker.py#function:main	namespace.worker:main
+entrance	pyproject.script	process	-	module_alias	exact	pyproject.toml:7
+	target	startup	unresolved	unsupported	package:worker.main
+entrance	pyproject.script	process	-	method	exact	pyproject.toml:8
+	target	startup	resolved	src/app.py#class:Commands/method:main	app:Commands.main

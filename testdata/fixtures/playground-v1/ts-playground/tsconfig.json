@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "strict": true,
+    "noEmitOnError": true,
+    "rootDir": ".",
+    "outDir": "dist",
+    "rewriteRelativeImportExtensions": true
+  },
+  "files": ["main.ts", "utils.ts"]
+}

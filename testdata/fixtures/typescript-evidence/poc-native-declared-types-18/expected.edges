@@ -1,0 +1,2 @@
+generic-return.ts#expression_statement[0]/call[0] #0 calls `factory().m` -> unknown_receiver
+generic-return.ts#expression_statement[0]/call[0]/call[0] #0 calls `factory` -> generic-return.ts#variable:factory/function:factory

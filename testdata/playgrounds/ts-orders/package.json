@@ -1,0 +1,29 @@
+{
+  "name": "orders-playground",
+  "private": true,
+  "type": "module",
+  "bin": { "orders": "dist/cli.js" },
+  "scripts": {
+    "build": "tsc -p .",
+    "prestart": "npm run build",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
+    "worker": "NODE_ENV=production tsx src/worker.ts",
+    "scheduler": "cd src && tsx scheduler.ts",
+    "cli": "tsx src/cli.ts",
+    "legacy:export": "node scripts/export.js",
+    "dev:all": "npm run dev & npm run worker",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "bullmq": "5.81.5",
+    "express": "5.2.1",
+    "node-cron": "4.6.0"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6",
+    "@types/node": "26.6.4",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3"
+  }
+}

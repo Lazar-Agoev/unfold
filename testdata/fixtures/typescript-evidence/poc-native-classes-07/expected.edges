@@ -1,0 +1,3 @@
+field-overrides.ts#class:Base/method:run/expression_statement[0]/call[0] #0 calls `this.m` -> overridden
+field-overrides.ts#class:Other/method:run/expression_statement[0]/call[0] #0 calls `this.n` -> overridden
+field-overrides.ts#class:Parameter/constructor:constructor/expression_statement[0]/call[0] #0 calls `super` -> field-overrides.ts#class:Other

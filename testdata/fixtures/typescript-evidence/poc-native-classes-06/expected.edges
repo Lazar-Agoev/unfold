@@ -1,0 +1,3 @@
+fields.ts#class:C/method:run/expression_statement[0]/call[0] #0 calls `this.arrow` -> fields.ts#class:C/function:arrow
+fields.ts#class:C/method:run/expression_statement[1]/call[0] #0 calls `this.expression` -> fields.ts#class:C/function:expression
+fields.ts#class:C/method:run/expression_statement[2]/call[0] #0 calls `this.declared` -> not_concrete

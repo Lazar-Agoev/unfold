@@ -1,0 +1,1 @@
+export class Base { m() {} run() { this.m(); } }

@@ -1,0 +1,23 @@
+{
+  "name": "unfold-workspace",
+  "private": true,
+  "description": "pnpm workspace root for Unfold's desktop shell and UI.",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "build": "pnpm --filter @unfold/ui build && pnpm --filter @unfold/desktop build"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.12.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.13.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.1"
+  }
+}

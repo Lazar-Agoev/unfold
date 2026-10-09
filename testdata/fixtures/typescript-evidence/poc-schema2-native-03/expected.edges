@@ -1,0 +1,2 @@
+use.ts#function:run/expression_statement[0]/call[0] #0 calls `mixed.send` -> unknown_receiver
+use.ts#function:run/expression_statement[1]/call[0] #0 calls `unknown.send` -> unknown_receiver

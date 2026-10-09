@@ -1,0 +1,179 @@
+# On a version tag (v1.2.3): signed builds for macOS (Apple silicon and Intel, notarized), Windows
+# (Authenticode), and Linux (AppImage, .deb, .rpm, with checksums), each smoke-tested, then one
+# draft GitHub Release holding every installer and the updater's manifests (latest*.yml and
+# blockmaps). A maintainer publishes the draft once the journeys pass on all three platforms
+# (architecture §14); electron-updater only sees published releases.
+#
+# Secrets (repository settings > Secrets and variables > Actions). PLACEHOLDERS until the
+# certificates from Step 0 are issued; without them the signing jobs fail rather than ship unsigned.
+#   MAC_CSC_LINK           base64 of the Developer ID Application certificate (.p12)
+#   MAC_CSC_KEY_PASSWORD   its password
+#   APPLE_API_KEY_P8       contents of the App Store Connect API key (.p8) used to notarize
+#   APPLE_API_KEY_ID       that key's ID
+#   APPLE_API_ISSUER       its issuer ID
+#   WIN_CSC_LINK           base64 of the Authenticode certificate (.pfx); its subject must match
+#                          win.signtoolOptions.publisherName in desktop/electron-builder.yml
+#   WIN_CSC_KEY_PASSWORD   its password
+# Actions are pinned to commit SHAs.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  build:
+    name: build (${{ matrix.name }})
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: macos
+            os: macos-15
+            # Both Mac architectures from one run, so latest-mac.yml lists both zips.
+            rust_targets: aarch64-apple-darwin x86_64-apple-darwin
+            builder_args: --mac --arm64 --x64
+          - name: windows
+            os: windows-2025
+            rust_targets: x86_64-pc-windows-msvc
+            builder_args: --win --x64
+          - name: linux
+            os: ubuntu-24.04
+            rust_targets: x86_64-unknown-linux-gnu
+            builder_args: --linux --x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: The version comes from the tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install the pinned Rust toolchain and targets
+        shell: bash
+        run: |
+          rustup toolchain install
+          rustup target add ${{ matrix.rust_targets }}
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install Linux packaging tools and libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm xvfb libnss3 libgbm1 libasound2t64 libgtk-3-0 libxss1 libxkbcommon0
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the engine addon for each target
+        shell: bash
+        run: |
+          for target in ${{ matrix.rust_targets }}; do
+            pnpm --filter @unfold/node exec napi build --platform --release --target "$target"
+          done
+
+      - name: Build the UI and the desktop shell; check the notices
+        shell: bash
+        run: |
+          pnpm --filter @unfold/ui build
+          pnpm --filter @unfold/desktop build
+          cargo xtask notices --check
+          pnpm --filter @unfold/desktop exec node -e "require('electron')"
+
+      - name: Write the notarization key
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/notarize.p8"
+          echo "APPLE_API_KEY=$RUNNER_TEMP/notarize.p8" >> "$GITHUB_ENV"
+
+      # forceCodeSigning makes a missing certificate an error on macOS and Windows.
+      # unfoldReleaseBuild turns the updater on (desktop/src/main/update-policy.ts).
+      - name: Package (signed)
+        shell: bash
+        working-directory: desktop
+        env:
+          CSC_LINK: ${{ runner.os == 'macOS' && secrets.MAC_CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: >-
+          pnpm exec electron-builder --config electron-builder.yml ${{ matrix.builder_args }}
+          --publish never
+          -c.extraMetadata.version=${{ steps.version.outputs.version }}
+          -c.extraMetadata.unfoldReleaseBuild=true
+          ${{ runner.os != 'Linux' && '-c.forceCodeSigning=true' || '' }}
+
+      - name: Packaged smoke test
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run --auto-servernum pnpm --filter @unfold/desktop run smoke
+          else
+            pnpm --filter @unfold/desktop run smoke
+          fi
+
+      - name: Collect the release files
+        shell: bash
+        run: |
+          mkdir -p release
+          cd desktop/dist
+          for file in *.dmg *.zip *.exe *.AppImage *.deb *.rpm *.blockmap latest*.yml; do
+            [ -e "$file" ] && cp "$file" ../../release/
+          done
+          ls -la ../../release
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ matrix.name }}
+          path: release/
+          if-no-files-found: error
+
+  release:
+    name: draft GitHub Release
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: release
+        run: sha256sum -- * | grep -v ' SHA256SUMS.txt$' > SHA256SUMS.txt
+
+      - name: Create the draft release and upload every file
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --verify-tag \
+            --title "Unfold ${GITHUB_REF_NAME#v}" \
+            --notes "Installers for macOS (Apple silicon and Intel), Windows, and Linux. SHA-256 checksums are in SHA256SUMS.txt."

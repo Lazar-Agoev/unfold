@@ -1,0 +1,33 @@
+# Script references through yarn, pnpm, bun run, npm start/test, and run-script, with ignored
+# arguments after --; eight nested references launch, nine are refused; a cycle, a missing script,
+# an unselected --prefix package, and arguments without -- launch nothing.
+entrance	package.script	process	-	yarn	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	yarn-run	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	pnpm	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	bun	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	npm-start	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	start	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	launch	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	d1	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	d2	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	d3	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	d4	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	d5	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	d6	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	d7	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	d8	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts

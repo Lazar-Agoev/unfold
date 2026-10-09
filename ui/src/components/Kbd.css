@@ -1,0 +1,30 @@
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-small);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-tiny);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.kbd-default {
+  background: var(--color-step);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+  color: var(--color-muted);
+}
+
+.kbd-onAccent {
+  background: rgb(255 255 255 / 0.18);
+  color: var(--color-on-accent);
+}
+
+.kbd-plain {
+  height: auto;
+  padding: 0;
+  color: var(--color-muted);
+}

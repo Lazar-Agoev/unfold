@@ -1,0 +1,84 @@
+#variable:variable body `variable = function () {}`
+  name `variable`
+  initializer `function () {}`
+#variable:variable/function:variable initializer `function () {}`
+  body `{}`
+#variable:explicit body `explicit = function named() {}`
+  name `explicit`
+  initializer `function named() {}`
+#variable:explicit/function:named initializer `function named() {}`
+  name `named`
+  body `{}`
+#variable:target body `target`
+  name `target`
+#expression_statement[0] body `target = () => {};`
+  expression `target = () => {}`
+#expression_statement[0]/function:target expression `() => {}`
+  body `{}`
+#expression_statement[1] body `target ||= class {};`
+  expression `target ||= class {}`
+#expression_statement[1]/class:target expression `class {}`
+#expression_statement[2] body `holder.property = () => {};`
+  expression `holder.property = () => {}`
+#expression_statement[2]/function[0] expression `() => {}`
+  body `{}`
+#function:withDefault body `function withDefault(callback = () => {}) {}`
+  name `withDefault`
+  parameter[0] `callback = () => {}`
+  body `{}`
+#function:withDefault/function:callback parameter `() => {}`
+  body `{}`
+#variable[3] body `{ binding = () => {} } = source`
+  name `{ binding = () => {} }`
+  initializer `source`
+#variable[3]/variable:binding binding `binding = () => {}`
+  name `binding`
+  initializer `() => {}`
+#variable[3]/variable:binding/function:binding initializer `() => {}`
+  body `{}`
+#variable:object body `object = { property: () => {}, [computed]: () => {}, 42: () => {}, "text": () => {}, method() {}, get value() { return 1; } }`
+  name `object`
+  initializer `{ property: () => {}, [computed]: () => {}, 42: () => {}, "text": () => {}, method() {}, get value() { return 1; } }`
+#variable:object/function:property initializer `() => {}`
+  body `{}`
+#variable:object/function[1] initializer `() => {}`
+  body `{}`
+#variable:object/function:42 initializer `() => {}`
+  body `{}`
+#variable:object/function:text initializer `() => {}`
+  body `{}`
+#variable:object/method:method initializer `method() {}`
+  name `method`
+  body `{}`
+#variable:object/getter:value initializer `get value() { return 1; }`
+  name `value`
+  body `{ return 1; }`
+#variable:object/getter:value/return[0] body `return 1;`
+  expression `1`
+#class:Fields body `class Fields { field = () => {}; static #secret = function () {}; [dynamic] = () => {}; constructor() {} }`
+  name `Fields`
+#class:Fields/function:field body `() => {}`
+  body `{}`
+#class:Fields/function:%23secret body `function () {}`
+  body `{}`
+#class:Fields/function[2] body `() => {}`
+  body `{}`
+#class:Fields/constructor:constructor body `constructor() {}`
+  body `{}`
+#variable:wrapped body `wrapped = ((() => {}) as Handler)!`
+  name `wrapped`
+  initializer `((() => {}) as Handler)!`
+#variable:wrapped/function:wrapped initializer `() => {}`
+  body `{}`
+#function:default body `() => {}`
+  body `{}`
+#expression_statement[3] body `[assignedDefault = () => {}] = pairs;`
+  expression `[assignedDefault = () => {}] = pairs`
+#expression_statement[3]/function:assignedDefault expression `() => {}`
+  body `{}`
+#expression_statement[4] body `({ key: renamed = function () {}, shorthand = () => {} } = options);`
+  expression `({ key: renamed = function () {}, shorthand = () => {} } = options)`
+#expression_statement[4]/function:renamed expression `function () {}`
+  body `{}`
+#expression_statement[4]/function[1] expression `() => {}`
+  body `{}`

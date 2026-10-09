@@ -1,0 +1,7 @@
+external.ts#expression_statement[0]/call[0] #0 calls `console.log` -> external global
+external.ts#expression_statement[1]/call[0] #0 calls `Math.max` -> external global
+external.ts#expression_statement[2]/call[0] #0 calls `JSON.parse` -> external global
+external.ts#expression_statement[3]/call[0] #0 calls `Promise.resolve` -> external global
+external.ts#expression_statement[4]/new[0] #0 constructs `Map` -> external global
+external.ts#expression_statement[5]/call[0] #0 calls `unknown.method` -> unknown_receiver
+external.ts#expression_statement[6]/call[0] #0 calls `unknown` -> unknown_name

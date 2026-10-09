@@ -1,0 +1,6 @@
+# Detector case: testdata/detectors/apscheduler.job/stored-job-5.
+version = 1
+
+[[python.project]]
+root = "."
+source_roots = ["src"]

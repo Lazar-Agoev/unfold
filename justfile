@@ -1,0 +1,96 @@
+# Unfold developer commands. Run `just --list` to see them.
+
+set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
+
+# --- Rust recipes ---
+
+# Run every Rust test in the workspace.
+test:
+    cargo test --workspace
+
+# Check formatting and lints (warnings are errors).
+check:
+    cargo fmt --all -- --check
+    cargo clippy --workspace --all-targets -- -D warnings
+
+# Run a developer task: `just xtask canonical-check graph.jsonl`.
+xtask *args:
+    cargo xtask {{args}}
+
+# --- Engine addon (crates/unfold-node) ---
+
+# Build the engine addon (debug) where the app loads it: crates/unfold-node/unfold-node.<platform>.node.
+addon:
+    pnpm --filter @unfold/node build:debug
+
+# Build the engine addon with the release profile (what packaging ships).
+addon-release:
+    pnpm --filter @unfold/node build
+
+# Test the built addon through its JavaScript surface.
+addon-test: addon
+    pnpm --filter @unfold/node test
+
+# --- JS recipes (desktop/ui) ---
+
+# Install the JavaScript workspace (desktop, ui, the addon's build tooling).
+js-install:
+    pnpm install
+
+# Build the engine addon, then run the app with hot reload for the UI (Vite dev server + electron-vite).
+dev: addon
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pnpm --filter @unfold/ui dev &
+    ui=$!
+    trap 'kill $ui' EXIT
+    UNFOLD_UI_DEV_URL=http://localhost:5173 pnpm --filter @unfold/desktop dev
+
+# Typecheck, lint, and unit-test the desktop shell and the UI.
+js-check:
+    pnpm -r typecheck
+    pnpm -r lint
+    pnpm -r --filter "!@unfold/e2e" test
+
+# Build the UI and the Electron app (run it with `pnpm --filter @unfold/desktop start`).
+js-build:
+    pnpm --filter @unfold/ui build
+    pnpm --filter @unfold/desktop build
+
+# Build the release addon, the UI, and the desktop shell, then run the end-to-end journeys (e2e/)
+# on the unpackaged app. Pass Playwright arguments through: `just e2e journeys/slice.spec.ts`.
+e2e *args: addon-release js-build
+    pnpm --filter @unfold/desktop exec node -e "require('electron')"
+    pnpm --filter @unfold/e2e test {{args}}
+
+# Measure the architecture §17 budgets on this machine (release addon; see docs/testing.md).
+e2e-budgets *args: addon-release js-build
+    pnpm --filter @unfold/e2e budgets {{args}}
+
+# --- Packaging (desktop/electron-builder.yml) ---
+
+# macOS signing only with a certificate named in the environment (CSC_LINK or CSC_NAME), never with
+# whichever identity happens to be in the login keychain; without one the build is unsigned.
+csc_discovery := if env("CSC_LINK", "") + env("CSC_NAME", "") == "" { "false" } else { env("CSC_IDENTITY_AUTO_DISCOVERY", "true") }
+
+# Build installers for this platform (unsigned unless certificates are set; see desktop/electron-builder.yml).
+bundle $CSC_IDENTITY_AUTO_DISCOVERY=csc_discovery: _bundle-inputs
+    pnpm --filter @unfold/desktop run bundle
+
+# The unpacked app only (desktop/dist/<platform>-unpacked or mac*/Unfold.app), for smoke tests.
+bundle-dir $CSC_IDENTITY_AUTO_DISCOVERY=csc_discovery: _bundle-inputs
+    pnpm --filter @unfold/desktop run bundle:dir
+
+# Launch the unpacked app from `just bundle-dir` and check fuses, hardening, and a compile.
+smoke:
+    pnpm --filter @unfold/desktop run smoke
+
+# Write THIRD_PARTY_NOTICES.md (it ships inside the app).
+notices:
+    cargo xtask notices
+
+_bundle-inputs: addon-release
+    pnpm --filter @unfold/ui build
+    pnpm --filter @unfold/desktop build
+    cargo xtask notices --check
+    pnpm --filter @unfold/desktop exec node -e "require('electron')"

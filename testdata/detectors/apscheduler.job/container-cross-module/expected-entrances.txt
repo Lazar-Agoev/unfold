@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/apscheduler.job/container-cross-module. Format: testdata/README.md.
+# A container of registration methods called from another module withholds.
+entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/appmod.py:7
+	target	handler	unresolved	unsupported	first

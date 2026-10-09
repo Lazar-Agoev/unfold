@@ -1,0 +1,1 @@
+{"scripts": {"boot": "tsx ../src/main.ts", "preboot": "tsx absent.ts"}}

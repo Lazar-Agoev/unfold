@@ -1,0 +1,2 @@
+import express from 'express'; import { exportedParent as router, child as leaf } from './barrel.js';
+const app = express(); app.use('/v1/', router); app.use('/v2', router); app.use('/direct', leaf); app.use('/direct', leaf);

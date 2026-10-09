@@ -1,0 +1,9 @@
+# Missing and unindexed launches stay (not_found, not_indexed); launches leaving the folder or
+# through node_modules produce no entrance. (PoC schema2-launch: "missing and unindexed launches
+# remain while out-of-repository and dependency launches are excluded".)
+entrance	package.script	process	-	missing	exact	package.json:1
+	target	startup	unresolved	not_found	missing.ts
+entrance	package.script	process	-	omitted	exact	package.json:1
+	target	startup	unresolved	not_indexed	omitted.ts
+entrance	package.script	process	-	legacy	exact	package.json:1
+	target	startup	unresolved	not_indexed	legacy.js

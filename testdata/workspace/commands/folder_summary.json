@@ -1,0 +1,47 @@
+{
+  "folder": "<folder>",
+  "name": "ts-orders",
+  "compiled": true,
+  "status": {
+    "state": {
+      "kind": "current",
+      "files": 34,
+      "languages": [
+        "typescript"
+      ]
+    },
+    "fallback": null,
+    "watching": "off",
+    "backgroundUpdates": true,
+    "complete": true
+  },
+  "languages": [
+    {
+      "language": "typescript",
+      "files": 34
+    }
+  ],
+  "files": 34,
+  "unindexed": 2,
+  "skipped": [
+    {
+      "folder": ".",
+      "reason": "javascript",
+      "reasonText": "JavaScript isn't graphed",
+      "wholeFolder": false,
+      "files": 1
+    },
+    {
+      "folder": "scripts",
+      "reason": "javascript",
+      "reasonText": "JavaScript isn't graphed",
+      "wholeFolder": false,
+      "files": 1
+    }
+  ],
+  "fallback": null,
+  "localPath": ".unfold/local",
+  "configExists": true,
+  "settingsError": null,
+  "problems": []
+}

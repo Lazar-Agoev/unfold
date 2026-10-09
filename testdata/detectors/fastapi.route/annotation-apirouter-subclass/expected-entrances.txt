@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/fastapi.route/annotation-apirouter-subclass. Format: testdata/README.md.
+# An indexed APIRouter subclass makes annotation receivers uncertain; the genuine factory instance keeps its route.
+entrance	fastapi.route	http	GET	/concrete	exact	src/app.py:7
+	target	handler	resolved	src/app.py#function:endpoint	endpoint

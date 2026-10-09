@@ -1,0 +1,41 @@
+{
+  "type": "entrance",
+  "header": {
+    "key": "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/jobs/import-orders.ts#importOrders\"]",
+    "kind": "command",
+    "title": "command import",
+    "label": null,
+    "method": null,
+    "trigger": "import",
+    "triggerStatus": "exact",
+    "detector": "manual",
+    "language": null
+  },
+  "evidence": {
+    "path": ".unfold/config.toml",
+    "startLine": 6,
+    "endLine": 9,
+    "pointer": "/entrance/0",
+    "source": "current",
+    "code": null,
+    "text": "[[entrance]]\nkind = \"command\"\ntrigger = \"import\"\nhandler = \"src/jobs/import-orders.ts#importOrders\""
+  },
+  "targets": [
+    {
+      "position": 0,
+      "role": "handler",
+      "text": "src/jobs/import-orders.ts#importOrders",
+      "resolution": "resolved",
+      "target": "src/jobs/import-orders.ts#function:importOrders",
+      "name": "importOrders",
+      "path": "src/jobs/import-orders.ts",
+      "line": 6,
+      "note": null,
+      "reason": null,
+      "module": null
+    }
+  ],
+  "applications": [
+    "cli"
+  ]
+}

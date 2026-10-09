@@ -1,0 +1,115 @@
+.welcome {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: 32px;
+  background: var(--color-canvas);
+}
+
+.welcome-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-top: -6vh;
+}
+
+.welcome-wordmark {
+  font-size: 44px;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  color: var(--color-text);
+}
+
+.welcome-tagline {
+  margin-top: 12px;
+  font-size: 15px;
+  color: var(--color-muted);
+}
+
+.welcome-open {
+  margin-top: 32px;
+}
+
+.welcome[data-dragging] {
+  box-shadow: inset 0 0 0 2px var(--color-accent);
+}
+
+.welcome-drop {
+  margin-top: 10px;
+  font-size: var(--font-size-small);
+  color: var(--color-muted);
+}
+
+.welcome-recent {
+  width: min(560px, 80vw);
+  margin-top: 40px;
+  text-align: left;
+}
+
+.welcome-recent-title {
+  padding: 0 10px 6px;
+  font-size: var(--font-size-tiny);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.welcome-recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.welcome-recent-row {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius);
+}
+
+.welcome-recent-row:hover {
+  background: var(--color-hover);
+}
+
+.welcome-recent-open {
+  display: grid;
+  grid-template-columns: minmax(120px, 30%) minmax(0, 1fr) max-content;
+  align-items: baseline;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.welcome-recent-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.welcome-recent-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-small);
+  color: var(--color-muted);
+}
+
+.welcome-recent-time {
+  font-size: var(--font-size-small);
+  color: var(--color-muted);
+}
+
+.welcome-recent-forget {
+  opacity: 0;
+}
+
+.welcome-recent-row:hover .welcome-recent-forget,
+.welcome-recent-forget:focus-visible {
+  opacity: 1;
+}

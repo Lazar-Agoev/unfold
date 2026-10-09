@@ -1,0 +1,98 @@
+# The corpora under the oracle gates (`cargo xtask oracles check|refresh`). Format and rules:
+# testdata/reference/README.md, "Oracles".
+#
+# [[corpus]]
+# name       Corpus name; its oracle files are <name>.<language>.jsonl.
+# folder     A folder under testdata/ (corpora kept in the repository), or
+# lock       a testdata/corpora.lock.toml id (corpora pinned, not copied), found at
+#            $UNFOLD_CORPORA_DIR/<lock id>, else at the lock's PoC checkout + poc_local_path.
+# languages  The languages compiled and checked.
+# committed  Whether the oracle files are committed here (default true); uncommitted ones are
+#            regenerated into target/oracles/ wherever the corpus is available.
+# settings   .unfold/config.toml written into the temporary copy of a corpus that has none.
+# pyright    Python only: the proof of concept's saved Pyright rows (`rows`, relative to the PoC
+#            repository), the lock id whose `poc_source_sha256` they were computed for (`lock`),
+#            and prefix mappings from their paths to the folder's (`paths`).
+
+# --- In the repository: checked on every pull request ----------------------------------------
+
+[[corpus]]
+name = "ts-orders"
+folder = "playgrounds/ts-orders"
+languages = ["typescript"]
+
+[[corpus]]
+name = "entrances"
+folder = "fixtures/entrances"
+languages = ["typescript"]
+
+[[corpus]]
+name = "py-orders"
+folder = "playgrounds/py-orders"
+languages = ["python"]
+pyright = { rows = "compilers/codegraph/reports/python-typescript/phase5/macos/playground-reference.json", lock = "python-playground", paths = [{ poc = "py-playground/", unfold = "" }] }
+
+[[corpus]]
+name = "mixed-playground"
+folder = "playgrounds"
+languages = ["typescript", "python"]
+pyright = { rows = "compilers/codegraph/reports/python-typescript/phase5/macos/playground-reference.json", lock = "python-playground", paths = [{ poc = "py-playground/", unfold = "py-orders/" }] }
+
+[[corpus]]
+name = "python-ranges"
+folder = "fixtures/python-ranges"
+languages = ["python"]
+# The PoC indexed this corpus with source root fixtures/ (spikes/python/corpus.lock.json).
+settings = """
+version = 1
+
+[[python.project]]
+root = "."
+source_roots = ["fixtures"]
+"""
+pyright = { rows = "compilers/codegraph/reports/python-typescript/phase5/macos/ranges-reference.json", lock = "python-range", paths = [{ poc = "", unfold = "" }] }
+
+# --- Pinned outside the repository: nightly CI fetches them, or a local checkout ------------
+
+[[corpus]]
+name = "fastapi-template"
+lock = "fastapi-full-stack-template-0.12.0"
+languages = ["python"]
+settings = """
+version = 1
+
+[[python.project]]
+root = "."
+source_roots = ["backend"]
+"""
+pyright = { rows = "compilers/codegraph/reports/python-typescript/phase5/macos/target-reference.json", lock = "fastapi-full-stack-template-0.12.0", paths = [{ poc = "", unfold = "" }] }
+
+# The upstream v6.0.3 tag's src/ (601 files): what nightly CI downloads and checks.
+[[corpus]]
+name = "typescript-6.0.3-src-upstream"
+lock = "typescript-6.0.3-src-upstream"
+languages = ["typescript"]
+committed = false
+
+# The PoC's 602-file corpus: the same tree plus its generated diagnosticInformationMap.generated.ts.
+# Only where the PoC checkout is.
+[[corpus]]
+name = "typescript-6.0.3-src"
+lock = "typescript-6.0.3-src"
+languages = ["typescript"]
+committed = false
+
+# The PoC compiler's own source and tests (186 files), only where the PoC checkout is. Compiled
+# from a copy, so its imports of the PoC's TypeScript fork outside the corpus stay unresolved for
+# both Unfold and the checker.
+[[corpus]]
+name = "codegraph-self"
+lock = "codegraph-self"
+languages = ["typescript"]
+committed = false
+settings = """
+version = 1
+
+[scope]
+exclude = ["reports/**", "test/fixtures/**"]
+"""

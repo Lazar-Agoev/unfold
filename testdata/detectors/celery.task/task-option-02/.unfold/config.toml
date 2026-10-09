@@ -1,0 +1,6 @@
+# Detector case: testdata/detectors/celery.task/task-option-02.
+version = 1
+
+[[python.project]]
+root = "."
+source_roots = ["src"]

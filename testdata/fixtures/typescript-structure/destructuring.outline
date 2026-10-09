@@ -1,0 +1,70 @@
+#variable[0] body `{ a = f(), b: c, [k()]: d, nested: { value = g() }, ...rest } = source()`
+  name `{ a = f(), b: c, [k()]: d, nested: { value = g() }, ...rest }`
+  initializer `source()`
+#variable[0]/variable:a binding `a = f()`
+  name `a`
+  initializer `f()`
+#variable[0]/variable:a/call[0] initializer `f()`
+  callee `f`
+#variable[0]/variable:c binding `b: c`
+  name `c`
+#variable[0]/variable:d binding `[k()]: d`
+  name `d`
+#variable[0]/variable:d/call[0] - `k()`
+  callee `k`
+#variable[0]/variable:value binding `value = g()`
+  name `value`
+  initializer `g()`
+#variable[0]/variable:value/call[0] initializer `g()`
+  callee `g`
+#variable[0]/variable:rest binding `...rest`
+  name `rest`
+#variable[0]/call[0] initializer `source()`
+  callee `source`
+#variable[1] body `[first = h(), , [inner], ...tail] = values()`
+  name `[first = h(), , [inner], ...tail]`
+  initializer `values()`
+#variable[1]/variable:first binding `first = h()`
+  name `first`
+  initializer `h()`
+#variable[1]/variable:first/call[0] initializer `h()`
+  callee `h`
+#variable[1]/variable:inner binding `inner`
+  name `inner`
+#variable[1]/variable:tail binding `...tail`
+  name `tail`
+#variable[1]/call[0] initializer `values()`
+  callee `values`
+#function:parameters body `function parameters({ parameter = p() } = {}, [item = q()] = []) {}`
+  name `parameters`
+  parameter[0] `{ parameter = p() } = {}`
+  parameter[1] `[item = q()] = []`
+  body `{}`
+#function:parameters/call[0] parameter `p()`
+  callee `p`
+#function:parameters/call[1] parameter `q()`
+  callee `q`
+#try[0] body `try {} catch ({ message = fallback() }) {}`
+  body `{}`
+  catch `catch ({ message = fallback() }) {}`
+#try[0]/catch[0] catch `catch ({ message = fallback() }) {}`
+  binding `{ message = fallback() }`
+  body `{}`
+#try[0]/catch[0]/variable[0] binding `{ message = fallback() }`
+  name `{ message = fallback() }`
+#try[0]/catch[0]/variable[0]/variable:message binding `message = fallback()`
+  name `message`
+  initializer `fallback()`
+#try[0]/catch[0]/variable[0]/variable:message/call[0] initializer `fallback()`
+  callee `fallback`
+#for_of[0] body `for (const { entry = initialize() } of entries) {}`
+  initializer `const { entry = initialize() }`
+  iterable `entries`
+  body `{}`
+#for_of[0]/variable[0] initializer `{ entry = initialize() }`
+  name `{ entry = initialize() }`
+#for_of[0]/variable[0]/variable:entry binding `entry = initialize()`
+  name `entry`
+  initializer `initialize()`
+#for_of[0]/variable[0]/variable:entry/call[0] initializer `initialize()`
+  callee `initialize`

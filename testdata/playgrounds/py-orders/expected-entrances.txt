@@ -1,0 +1,55 @@
+# Expected entrances for testdata/playgrounds/py-orders: 25 entrances, 28 targets.
+# Derived from testdata/reference/poc/python-playground/ (PoC 5c98a6e). Format: testdata/README.md.
+entrance	manual	command	-	import	exact	.unfold/config.toml:16
+	target	handler	resolved	src/orders_playground/jobs/import_orders.py#function:import_orders	src/orders_playground/jobs/import_orders.py#import_orders
+entrance	manual	command	-	report	exact	.unfold/config.toml:21
+	target	handler	resolved	src/orders_playground/cli.py#function:report_command	src/orders_playground/cli.py#report_command
+entrance	manual	command	-	replay	exact	.unfold/config.toml:26
+	target	handler	resolved	src/orders_playground/jobs/retry_failed.py#function:retry_failed	src/orders_playground/jobs/retry_failed.py#retry_failed
+entrance	manual	command	-	retry	exact	.unfold/config.toml:31
+	target	handler	resolved	src/orders_playground/jobs/retry_failed.py#function:retry_failed	src/orders_playground/jobs/retry_failed.py#retry_failed
+entrance	manual	event	-	SIGTERM	exact	.unfold/config.toml:36
+	target	handler	resolved	src/orders_playground/server.py#function:shutdown	src/orders_playground/server.py#shutdown
+entrance	pyproject.script	process	-	orders-api	exact	pyproject.toml:18
+	target	startup	resolved	src/orders_playground/server.py#function:main	orders_playground.server:main
+entrance	pyproject.script	process	-	orders-api-dev	exact	pyproject.toml:19
+	target	startup	resolved	src/orders_playground/server.py#function:main	orders_playground.server:main
+entrance	pyproject.script	process	-	orders-worker	exact	pyproject.toml:20
+	target	startup	resolved	src/orders_playground/worker.py#function:main	orders_playground.worker:main
+entrance	pyproject.script	process	-	orders-scheduler	exact	pyproject.toml:21
+	target	startup	resolved	src/orders_playground/scheduler.py#function:main	orders_playground.scheduler:main
+entrance	pyproject.script	process	-	orders	exact	pyproject.toml:22
+	target	startup	resolved	src/orders_playground/cli.py#function:main	orders_playground.cli:main
+entrance	pyproject.script	process	-	orders-cli	exact	pyproject.toml:23
+	target	startup	resolved	src/orders_playground/cli.py#function:main	orders_playground.cli:main
+entrance	pyproject.script	process	-	orders-legacy-export	exact	pyproject.toml:24
+	target	startup	unresolved	not_indexed	orders_legacy.export:main
+entrance	celery.task	worker	-	emails	exact	src/orders_playground/queues/email_worker.py:6
+	target	handler	resolved	src/orders_playground/queues/email_worker.py#function:email_task	email_task
+entrance	celery.task	worker	-	orders	exact	src/orders_playground/queues/orders_worker.py:4
+	target	handler	resolved	src/orders_playground/jobs/process_order.py#function:process_order	process_order
+entrance	celery.task	worker	-	-	unknown	src/orders_playground/queues/report_worker.py:5
+	target	handler	resolved	src/orders_playground/jobs/report.py#function:print_report	print_report
+entrance	fastapi.route	http	GET	/admin/stats	exact	src/orders_playground/routes/admin.py:12
+	target	handler	resolved	src/orders_playground/routes/admin.py#function:admin_stats	admin_stats
+entrance	fastapi.route	http	GET	/health/live	exact	src/orders_playground/routes/health.py:4
+	target	handler	resolved	src/orders_playground/routes/health.py#expression_statement[0]/call[0]/function[0]	lambda: {"status": "alive"}
+entrance	fastapi.route	http	GET	/orders	exact	src/orders_playground/routes/orders.py:41
+	target	handler	resolved	src/orders_playground/routes/orders.py#function:list_orders	list_orders
+entrance	fastapi.route	http	GET	/orders/{order_id}	exact	src/orders_playground/routes/orders.py:42
+	target	handler	unresolved	wrapper	async_handler(get_order)
+entrance	fastapi.route	http	POST	/orders	exact	src/orders_playground/routes/orders.py:43
+	target	handler	resolved	src/orders_playground/routes/middleware.py#function:require_user	require_user
+	target	handler	resolved	src/orders_playground/routes/middleware.py#function:validate_body	validate_body
+	target	handler	resolved	src/orders_playground/routes/orders.py#function:create_order	create_order
+entrance	fastapi.route	http	DELETE	/orders/{order_id}	exact	src/orders_playground/routes/orders.py:44
+	target	handler	resolved	src/orders_playground/routes/middleware.py#function:require_user	require_user
+	target	handler	resolved	src/orders_playground/routes/orders.py#function:cancel_order	cancel_order
+entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/orders_playground/scheduler.py:9
+	target	handler	resolved	src/orders_playground/jobs/cleanup.py#function:cleanup_expired_orders	cleanup_expired_orders
+entrance	apscheduler.job	schedule	-	*/15 * * * *	exact	src/orders_playground/scheduler.py:10
+	target	handler	resolved	src/orders_playground/scheduler.py#expression_statement[1]/call[0]/function[0]	lambda: report_metrics()
+entrance	fastapi.route	http	GET	/health	exact	src/orders_playground/server.py:16
+	target	handler	resolved	src/orders_playground/server.py#function:health_check	health_check
+entrance	fastapi.route	http	GET	-	unknown	src/orders_playground/server.py:21
+	target	handler	resolved	src/orders_playground/server.py#function:status	status

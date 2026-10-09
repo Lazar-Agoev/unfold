@@ -1,0 +1,1 @@
+import value = require("#dual"); import("#dual");

@@ -1,0 +1,4 @@
+# Expected entrances for testdata/detectors/celery.task/producers. Format: testdata/README.md.
+# Producing messages does not register tasks.
+entrance	celery.task	worker	-	orders	exact	src/app.py:8
+	target	handler	resolved	src/app.py#function:first	first

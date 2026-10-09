@@ -1,0 +1,15 @@
+barrel.ts#import[0] #0 imports `./defs.js` -> defs.ts#
+main.ts#import[0] #0 imports `./barrel.js` -> barrel.ts#
+main.ts#expression_statement[0]/call[0] #0 calls `register` -> not_concrete
+main.ts#expression_statement[0]/call[0] #1 references `renamed` -> defs.ts#function:handler @0
+main.ts#expression_statement[0]/call[0] #2 references `arrow` -> defs.ts#variable:arrow/function:arrow @1
+main.ts#expression_statement[0]/call[0] #3 references `Job` -> defs.ts#class:Job @2
+main.ts#expression_statement[0]/call[0] #4 references `overloaded` -> defs.ts#function:overloaded @3
+main.ts#expression_statement[1]/new[0] #0 constructs `Job` -> defs.ts#class:Job/constructor:constructor
+main.ts#expression_statement[1]/new[0] #1 references `renamed` -> defs.ts#function:handler @0
+main.ts#variable:local/new[0] #0 constructs `Handlers` -> defs.ts#class:Handlers
+main.ts#expression_statement[2]/call[0] #0 calls `register` -> not_concrete
+main.ts#expression_statement[2]/call[0] #1 references `local.member` -> defs.ts#class:Handlers/method:member @0
+main.ts#expression_statement[2]/call[0] #2 references `local["member"]` -> defs.ts#class:Handlers/method:member @1
+main.ts#expression_statement[2]/call[0] #3 references `Handlers.ready` -> defs.ts#class:Handlers/method:ready @2
+main.ts#expression_statement[2]/call[0] #4 references `local.field` -> defs.ts#class:Handlers/function:field @3

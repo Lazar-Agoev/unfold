@@ -1,0 +1,2 @@
+# Expected entrances for testdata/detectors/pyproject.script/disabled. Format: testdata/README.md.
+# The detector is off: the invalid TOML is never read.

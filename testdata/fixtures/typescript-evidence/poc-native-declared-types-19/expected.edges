@@ -1,0 +1,4 @@
+inferred.ts#function:inferred/return[0]/new[0] #0 constructs `Repo` -> inferred.ts#class:Repo
+inferred.ts#expression_statement[0]/call[0] #0 calls `inferred().save` -> unknown_receiver
+inferred.ts#expression_statement[0]/call[0]/call[0] #0 calls `inferred` -> inferred.ts#function:inferred
+inferred.ts#expression_statement[1]/call[0] #0 calls `values.map` -> unknown_receiver

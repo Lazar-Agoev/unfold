@@ -1,0 +1,12 @@
+import express from "express";
+import absent from "absent-package";
+import type { Application, Router } from "express-core";
+import type { Express } from "express";
+const app: Application = express();
+const router: Router = express.Router();
+declare let ambientApp: Express;
+app.get("/");
+router.get("/");
+ambientApp.get("/");
+const unknown = absent();
+unknown.get("/");

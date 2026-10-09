@@ -1,0 +1,2 @@
+# Expected entrances for testdata/detectors/apscheduler.job/api-mutation-4. Format: testdata/README.md.
+# Scheduler and Job class API mutations can't manufacture registrations (PoC: "Scheduler and Job class API mutations..."). Written: from apscheduler.job import Job; Job._modify = fake

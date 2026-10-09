@@ -1,0 +1,1 @@
+{"scripts": {"start": "node dist/main.js", "direct": "tsx src/main", "directory": "tsx src/sub", "emitted": "node dist/main", "export": "node scripts/export", "absent": "node scripts/absent"}, "bin": {"app": "dist/main.js"}}

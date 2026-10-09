@@ -1,0 +1,383 @@
+{
+  "schema_version": 3,
+  "generated_at": "2026-10-08T22:50:49Z",
+  "offset_unit": "utf16",
+  "end_offset_exclusive": true,
+  "line_base": 1,
+  "detectors": [
+    "apscheduler.job",
+    "bullmq.worker",
+    "celery.task",
+    "express.route",
+    "fastapi.route",
+    "manual",
+    "node-cron.schedule",
+    "package.bin",
+    "package.script",
+    "pyproject.script"
+  ],
+  "files": {
+    "py-playground/src/orders_extensions/labels.py": {
+      "sha256": "8444f4786734e8786c89374d330c1d2def7a226d92e53e4dbd52920f81df886e",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/__init__.py": {
+      "sha256": "9da0e466cb6eb5e4f086211f59cf7b2f95d1eb75bfd72405eb51eb7f3ae5c4a8",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/cli.py": {
+      "sha256": "18ab444b24ec08159ad817eae9f23ecdf38a377da9d813d481d100af77eb92d6",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/config.py": {
+      "sha256": "546765c980460127139e20bbee20753d637b919536cdc506cd5fb17bfbe81a14",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/db/__init__.py": {
+      "sha256": "ee58fa54d9a6fa3825f5d936c54ed21f829c13b79c378e56743a2471f0b6cac3",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/db/connection.py": {
+      "sha256": "c5e8a125b05040f26a1ececab629b8625e3821c85cf8bb1460e30bb8fed16343",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/db/repository.py": {
+      "sha256": "94fe9640984e8ba8323d0b5c8fd97bbc3ad7082dcd67697aaabd7f3e506f9fde",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/features/__init__.py": {
+      "sha256": "ac6ec2d75f3930362551b7d428976f7f35566ce8d56d6c46b9f2e1872b67dbf2",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/features/control.py": {
+      "sha256": "be88ad7a0842a89734314ffceb278f98e099673ebcc281d43353932a19bf1a3f",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/features/decorators.py": {
+      "sha256": "985905900c2bbe652ef4687ed5ca5358f2b9744e13529c9f6633bc5cb232f719",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/features/dynamic.py": {
+      "sha256": "f12909f628d4c63cd88d85f187b5ccc5e6b09b22d0cb6a7695b74f3e103b269b",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/features/exported.py": {
+      "sha256": "d2fe2b9bcb2bf73623d0bcc823b620ec48fe5e89196c590802b1cd9e9cb490d3",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/features/fallback.py": {
+      "sha256": "ab8cf874d5d4518783df956e732a2fa26d138f3f2ce92a19252b86471ed93e09",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/features/imports.py": {
+      "sha256": "c4d81f5df12e456c928c920dffef775d2bb414c3c274b19e230fa1b838d77612",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/features/inheritance.py": {
+      "sha256": "11c77d31fe050dc8830dbcccc170da1d44a428e91d994ad2888b4f625df69ed8",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/features/unicode.py": {
+      "sha256": "78181e6163ed0632795bfeae00c59f3e44b9cf2d8f9b05dbf3f82bd60c64c572",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/jobs/__init__.py": {
+      "sha256": "ac6ec2d75f3930362551b7d428976f7f35566ce8d56d6c46b9f2e1872b67dbf2",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/jobs/cleanup.py": {
+      "sha256": "e6f570428865e068076af72c3f24c89d1271e18d55a9290c0414340720a1a698",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/jobs/import_orders.py": {
+      "sha256": "acd4a12a06ceb5d688a97d9d07c6aea5d7592e44e0ccd0b0472cdee232795769",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/jobs/process_order.py": {
+      "sha256": "9af4eaa652d9d39e0645736621ba092fb200f79f1e50dc673332f26bf7eaae55",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/jobs/report.py": {
+      "sha256": "fe59f1ba423ff4635c8aa3bdc1e54465464383b2613c88be3728881b9a5f476e",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/jobs/retry_failed.py": {
+      "sha256": "e50cf5f1da4193e6c195030e534b2a3d0d26ec7880087a3c9d4586a67d9f4aed",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/jobs/send_email.py": {
+      "sha256": "cd3aabb41757e6ac1f018a7d0280c3bdcded514330701ea00425f236951a3a34",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/lib/__init__.py": {
+      "sha256": "ac6ec2d75f3930362551b7d428976f7f35566ce8d56d6c46b9f2e1872b67dbf2",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/lib/async_handler.py": {
+      "sha256": "90a9d8961b9c79a54d5fa453cb947ab6a255158a9b7255b2c157c65ccb5ed540",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/lib/calendar.py": {
+      "sha256": "0825db74ad6373bb8601f5216848415412b126a114bb654083017cfe9da356ef",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/lib/logger.py": {
+      "sha256": "87ad9c8838d6b6bdf7a3f3a4948f13915b736902127eb5eeb6a9af61e85560c6",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/lib/pool.py": {
+      "sha256": "e12aed7486c8702bd68e7c10e0593df6a4d68ec9eb2d93e6e41a9d44ddc56272",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/lib/retry.py": {
+      "sha256": "b68875fe80779e0d72bdb90198d468052b3a27378ac1c6fc6bf0caabb89d9ab9",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/lib/slack.py": {
+      "sha256": "b9b6421faa02a00fe03755be4a95502e3cef40a87a2e349269ae3d0bcd86eb2d",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/lib/validate.py": {
+      "sha256": "80b76ed49b315de2da72e86631c74a7ca94251f58e5428d43adedadbc061d146",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/queues/__init__.py": {
+      "sha256": "ac6ec2d75f3930362551b7d428976f7f35566ce8d56d6c46b9f2e1872b67dbf2",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/queues/email_worker.py": {
+      "sha256": "c0afe99fcdb451425788fbfa8c0fb17d9cccf99ed14b0c8cda37a44b487ed4a8",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/queues/orders_worker.py": {
+      "sha256": "e8f5618d7dcfd64914bd2c81cddb86277ce4c864de2dd436fa961172a461bb8f",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/queues/queues.py": {
+      "sha256": "5cfed32f3364cbe47399dcf4f0ab6148cbae04e5253d6a72d1a9814c7001c84d",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/queues/report_worker.py": {
+      "sha256": "2cfca7d64a20324ce775bf78ed85c6d0a5da9eb910ca7c58696978d81ebcde0a",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/routes/__init__.py": {
+      "sha256": "ac6ec2d75f3930362551b7d428976f7f35566ce8d56d6c46b9f2e1872b67dbf2",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/routes/admin.py": {
+      "sha256": "c8fdb5eb3135c7b8b2b1d96308f16fbd5158c3cb5b9270416bbf314ea5135c31",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/routes/health.py": {
+      "sha256": "9a915954ddea25ee13d062b614dec8eb32b60e55939df36c924b660f4ad32a83",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/routes/middleware.py": {
+      "sha256": "32cb9d1377765c6aa5947ca9f655500f2eb93c32b598de76379ea20a26982691",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/routes/orders.py": {
+      "sha256": "b0baa88b76b556f29471f90351cd5161bdc5d8dbcd44440618dfb4a89e231cb4",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/scheduler.py": {
+      "sha256": "f215dd5b3708e7d44b97f27914d02c695ce63dbe454ccf24700e3deb6f8b393a",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/server.py": {
+      "sha256": "60c8dabe6b626cafd2b72b6ae3041679a65a53a7423771c2e3ab07e4602c3f7e",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/services/__init__.py": {
+      "sha256": "ac6ec2d75f3930362551b7d428976f7f35566ce8d56d6c46b9f2e1872b67dbf2",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/services/events.py": {
+      "sha256": "7abb0a35973c62e06587a02b0d86c28daefb957583d7cb87c464b3a1254be832",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/services/notifier.py": {
+      "sha256": "0bef0e8f738e0f97c77af90c121465f76010828024685bac4ad730fa09a875d4",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/services/order_service.py": {
+      "sha256": "763579e5da2a690c460cf0510493c592ee98bdf32ab788bca50cca19bf6fb041",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/services/payment.py": {
+      "sha256": "241982d7f23a97a8cbff0d8be1c08488e11d74eb2cc7ab5e6cdd5817435a24bf",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/types.py": {
+      "sha256": "e6e0141436c7c6353efb79f5696a60223dfaba7e26470c2457edba755541d536",
+      "language": "python"
+    },
+    "py-playground/src/orders_playground/worker.py": {
+      "sha256": "1661715d4be0f4d5e84aa41a02d315dd291beb4b4aeb457bbd3847b997543626",
+      "language": "python"
+    },
+    "ts-playground/src/cli.ts": {
+      "sha256": "92c226a19c2dbbc322dea37bec73573877c3d32950dfb002bc261df341a3e2c7",
+      "language": "typescript"
+    },
+    "ts-playground/src/config.ts": {
+      "sha256": "3ca33c34552e59064caf5c543aa3519deed9e0d0690dbc89796d63aa47566649",
+      "language": "typescript"
+    },
+    "ts-playground/src/db/connection.ts": {
+      "sha256": "c77602b7a33c5395f006dde583c9f078b263bcde69764a67df0412abf68e8a37",
+      "language": "typescript"
+    },
+    "ts-playground/src/db/index.ts": {
+      "sha256": "02a1607644785a301440eecaf90bae7809dd199fe0598e9788dde498cbc6fd5e",
+      "language": "typescript"
+    },
+    "ts-playground/src/db/repository.ts": {
+      "sha256": "e0fa82eb0fe55f1f6d394b2341c8eaf8109882f6ecfe0d9dcd8325d2ee6812a0",
+      "language": "typescript"
+    },
+    "ts-playground/src/jobs/cleanup.ts": {
+      "sha256": "e289a9d7cbd902cb8faff6d52e693eb4db8af69d94161a4525417d0a203526d2",
+      "language": "typescript"
+    },
+    "ts-playground/src/jobs/import-orders.ts": {
+      "sha256": "3b00588b0873f3101bded72ae33c721c26f9d681d5338f43c5aff3c3da4c2985",
+      "language": "typescript"
+    },
+    "ts-playground/src/jobs/process-order.ts": {
+      "sha256": "301b2d16517372f63fa3f6735e971e1946a1e58b0200031acb5ddeffa1e5bb80",
+      "language": "typescript"
+    },
+    "ts-playground/src/jobs/report.ts": {
+      "sha256": "3d073bb4bd9634b21ba4b4e8a5311a18051dc643f22df51bc1c61918c81ce7ce",
+      "language": "typescript"
+    },
+    "ts-playground/src/jobs/retry-failed.ts": {
+      "sha256": "22d12199323d79554b310eddd4e3c9227f30258ef3efc39e8f73fe809d5b0a65",
+      "language": "typescript"
+    },
+    "ts-playground/src/jobs/send-email.ts": {
+      "sha256": "b06777f6cafc2bcff9d5d2f491f6555ab8186ac3763432fb34df767f553af4cc",
+      "language": "typescript"
+    },
+    "ts-playground/src/lib/async-handler.ts": {
+      "sha256": "b2dbede311c33f6f76c9a7fbc30c355e79c67442953f353c66bc002c9cae0268",
+      "language": "typescript"
+    },
+    "ts-playground/src/lib/calendar.ts": {
+      "sha256": "8669cd22de08441f45da3d1b185bf99057e54316a7601346b8a461bd2f83e8b6",
+      "language": "typescript"
+    },
+    "ts-playground/src/lib/logger.ts": {
+      "sha256": "2c3b364047762ac411cbe3cd78de68ef21712daa5866f9c231bd774ffc453dbe",
+      "language": "typescript"
+    },
+    "ts-playground/src/lib/pool.ts": {
+      "sha256": "c16816c7af764974fb6a8da4df1151dabc9eb6b69688d1bf151eb940baa9266a",
+      "language": "typescript"
+    },
+    "ts-playground/src/lib/retry.ts": {
+      "sha256": "539eba77b2205544383964a6385e0e22a951882949369ea02e6abcda4ea70750",
+      "language": "typescript"
+    },
+    "ts-playground/src/lib/slack.ts": {
+      "sha256": "d2d5dde24a49f3552936c8409f859d13152de104e7224121cbe6496dbfca4a25",
+      "language": "typescript"
+    },
+    "ts-playground/src/lib/validate.ts": {
+      "sha256": "db658b97d354ce4345cfc9cc7ee7fbcd863a912331aa80140efb1b1add9db0ff",
+      "language": "typescript"
+    },
+    "ts-playground/src/queues/email-worker.ts": {
+      "sha256": "d3aed51b7b5ef0d3d5870a3ae81333a2cdfd7aa37b5ad225eb5c3babd71e90e6",
+      "language": "typescript"
+    },
+    "ts-playground/src/queues/orders-worker.ts": {
+      "sha256": "2ae6653f5a6795ccc8037e2faf5de3f2456cdc87a4ea2de07d721ad4333593a1",
+      "language": "typescript"
+    },
+    "ts-playground/src/queues/queues.ts": {
+      "sha256": "ab5737dca7d17e07846275de090cadf782e82688e7875fffeb219d44ee12dcee",
+      "language": "typescript"
+    },
+    "ts-playground/src/queues/report-worker.ts": {
+      "sha256": "57acc69cacf0f5ac11cc1c31280b53ffba803a554427fee7863aaf5983fe4d32",
+      "language": "typescript"
+    },
+    "ts-playground/src/routes/admin.ts": {
+      "sha256": "e0b1bfdadd81911bc7cae7932b805c50ba8ec6ba2e290f98c2dff46e35f190b8",
+      "language": "typescript"
+    },
+    "ts-playground/src/routes/health.ts": {
+      "sha256": "11056354a48b73cdf2123ad445d9a4793ac0c8c12e918fd22dc45d63ba2b0ca9",
+      "language": "typescript"
+    },
+    "ts-playground/src/routes/middleware.ts": {
+      "sha256": "c2d70ac0b940cb4efc77a43a38431019ae92bd10f66fd08bf39e1a5053db7d9f",
+      "language": "typescript"
+    },
+    "ts-playground/src/routes/orders.ts": {
+      "sha256": "9f0543a7c946ecebcd983208dc00fc2a4e8559f2b6b3a995155b7f70439b7528",
+      "language": "typescript"
+    },
+    "ts-playground/src/scheduler.ts": {
+      "sha256": "65b5da78920de98ffd0fbf7e494517a08d1f21856d19e358fc9f521a64cbb1cd",
+      "language": "typescript"
+    },
+    "ts-playground/src/server.ts": {
+      "sha256": "cea21b5cb5a9f63da1887d0633b8820b6bd83dc321a0c49781b4a888121f428d",
+      "language": "typescript"
+    },
+    "ts-playground/src/services/events.ts": {
+      "sha256": "10401b2f7c3d6cd0fd6ee48ac8db2f7beb74540d4a480a58e5ce3123ef6aa39d",
+      "language": "typescript"
+    },
+    "ts-playground/src/services/notifier.ts": {
+      "sha256": "6eb59395cff31a4c72d7083995033133ba931c452c05abe4e2129e546ab30e66",
+      "language": "typescript"
+    },
+    "ts-playground/src/services/order-service.ts": {
+      "sha256": "3baac14013440cc763ca2d9b0932e04e0fd24feacc35b7fd9f833ac9b70e5426",
+      "language": "typescript"
+    },
+    "ts-playground/src/services/payment.ts": {
+      "sha256": "48928b2913ee5de43767a70d5041654f548951e12c53b018654cc12d2f8ecdfd",
+      "language": "typescript"
+    },
+    "ts-playground/src/types.ts": {
+      "sha256": "515fcd9ed505097c68249c1516a040be0827c49a097f4abad35d24ff1802ce0d",
+      "language": "typescript"
+    },
+    "ts-playground/src/worker.ts": {
+      "sha256": "129b16ea6d7b13cf112aaa6ae25b2e43f8f127ace2a293df615d9c0180b2d6e2",
+      "language": "typescript"
+    }
+  },
+  "inputs": {
+    "codegraph.json": {
+      "sha256": "ac0f4ae3235634639432202f37561053d32f535c372690e133fef6248d0647bb"
+    },
+    "py-playground/codegraph.json": {
+      "sha256": "844859cba3db57fd20f46ed7c4212f92eab5a3339471606f09397bc5e2747a17"
+    },
+    "py-playground/pyproject.toml": {
+      "sha256": "00b2f93eafd0a2bba8adb37010faf5f4e80f3b6d65a52641cfb64dd8f0070735"
+    },
+    "ts-playground/package.json": {
+      "sha256": "66ee14addb1e6d54bdb24c448b7e5f11fb00038f25449dd6e33b59b82851a34c"
+    }
+  },
+  "producers": [
+    {
+      "language": "python",
+      "front_end": "python",
+      "version": "1.1.407-codegraph.1"
+    },
+    {
+      "language": "typescript",
+      "front_end": "native",
+      "version": "6.0.3-codegraph.1"
+    }
+  ]
+}

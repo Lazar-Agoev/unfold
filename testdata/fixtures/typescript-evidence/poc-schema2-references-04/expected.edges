@@ -1,0 +1,12 @@
+factory.ts#import[0] #0 imports `remote-factory` -> external remote-factory
+factory.ts#variable:shared/call[0] #0 calls `create.Router` -> external remote-factory
+main.ts#import[0] #0 imports `remote-factory` -> external remote-factory
+main.ts#import[1] #0 imports `./factory.js` -> factory.ts#
+main.ts#variable:first/call[0] #0 calls `create` -> external remote-factory
+main.ts#variable:second/call[0] #0 calls `first` -> not_concrete
+main.ts#variable:third/call[0] #0 calls `second` -> not_concrete
+main.ts#variable:mutable/call[0] #0 calls `create` -> external remote-factory
+main.ts#variable:cycleA/call[0] #0 calls `cycleB` -> not_concrete
+main.ts#variable:cycleB/call[0] #0 calls `cycleA` -> not_concrete
+main.ts#variable:local/call[0] #0 calls `localCreate` -> main.ts#function:localCreate
+main.ts#function:owner/expression_statement[0]/call[0] #0 calls `inspect` -> main.ts#function:inspect

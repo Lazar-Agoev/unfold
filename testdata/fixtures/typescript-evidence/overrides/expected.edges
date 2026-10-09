@@ -1,0 +1,6 @@
+a.ts#class:Animal/method:reveal/expression_statement[0]/call[0] #0 calls `this.#secret` -> a.ts#class:Animal/method:%23secret
+a.ts#function:talk/expression_statement[0]/call[0] #0 calls `a.speak` -> overridden
+a.ts#function:talk/expression_statement[1]/call[0] #0 calls `a.walk` -> ambiguous
+a.ts#function:talk/expression_statement[2]/call[0] #0 calls `d.speak` -> a.ts#class:Dog/method:speak
+a.ts#class:Unknown/call[0] #0 calls `make` -> a.ts#variable:make/function:make
+a.ts#function:stroll/expression_statement[0]/call[0] #0 calls `a.walk` -> ambiguous

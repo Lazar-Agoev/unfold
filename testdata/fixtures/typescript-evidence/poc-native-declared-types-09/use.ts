@@ -1,0 +1,1 @@
+import type { Client } from "./outside.js"; function call(client: Client, process: NodeJS.Process) { client.send(); process.cwd(); }

@@ -1,0 +1,3 @@
+barrel.ts#import[0] #0 imports `./repo.js` -> repo.ts#
+use.ts#function:run/expression_statement[0]/call[0] #0 calls `a.save` -> repo.ts#class:Repo/method:save
+use.ts#function:run/expression_statement[1]/call[0] #0 calls `b.save` -> repo.ts#class:Repo/method:save

@@ -1,0 +1,6 @@
+# Expected entrances for testdata/detectors/fastapi.route/aliases-reexports-annotations. Format: testdata/README.md.
+# Imported and qualified API aliases, re-exports, and an annotation-only application prove routes (PoC: "Imported and qualified API aliases...").
+entrance	fastapi.route	http	HEAD	/health	exact	src/app.py:6
+	target	handler	resolved	src/app.py#function:install/function:health	health
+entrance	fastapi.route	http	GET	/api/own/x	exact	src/shared.py:4
+	target	handler	resolved	src/shared.py#function:handler	handler

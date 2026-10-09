@@ -1,0 +1,13 @@
+# Handlers share the handler policy: a let is mutable_binding, a missing name unknown_name, a
+# parameter parameter, a string dynamic, a spread dynamic.
+# (PoC schema2-framework-jobs: "both job detectors share ... handler policy".)
+entrance	node-cron.schedule	schedule	-	mutable	exact	main.ts:3
+	target	handler	unresolved	mutable_binding	mutable
+entrance	node-cron.schedule	schedule	-	missing	exact	main.ts:3
+	target	handler	unresolved	unknown_name	absent
+entrance	node-cron.schedule	schedule	-	parameter	exact	main.ts:4
+	target	handler	unresolved	parameter	callback
+entrance	node-cron.schedule	schedule	-	data	exact	main.ts:5
+	target	handler	unresolved	dynamic	(…)
+entrance	node-cron.schedule	schedule	-	spread	exact	main.ts:5
+	target	handler	unresolved	dynamic	(…)

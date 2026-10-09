@@ -1,0 +1,1 @@
+export {}; console.log(); Math.max(); JSON.parse(""); Promise.resolve(); new Map(); unknown.method(); unknown();

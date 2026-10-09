@@ -1,0 +1,5 @@
+id,kind,label,method,trigger,trigger_status,detector,evidence_block_id,evidence_file_path,evidence_start_offset,evidence_end_offset,evidence_pointer
+e1,worker,,,orders,exact,manual,,codegraph.json,25,107,/entrypoints/0
+e2,process,,,start,exact,package.script,,package.json,109,156,/scripts/start
+e3,process,,,worker,exact,package.script,,package.json,162,191,/scripts/worker
+e4,http,,POST,/orders,exact,express.route,b16,src/server.ts,98,130,

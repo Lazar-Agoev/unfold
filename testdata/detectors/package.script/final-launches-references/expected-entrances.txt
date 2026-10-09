@@ -1,0 +1,16 @@
+# Scripts launch through their final step and selected references (npm run, npm --prefix); lifecycle
+# scripts and pre/post hooks of existing scripts are skipped ("prefix" is not a hook); tools,
+# node --test, and unsupported operators launch nothing; a referenced package's own scripts count too.
+# (PoC schema2-launch: "scripts select final launches, follow selected references".)
+entrance	package.script	process	-	start	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	prefix	exact	package.json:1
+	target	startup	resolved	src/worker.ts#	src/worker.ts
+entrance	package.script	process	-	production	exact	package.json:1
+	target	startup	resolved	src/main.ts#	src/main.ts
+entrance	package.script	process	-	worker	exact	package.json:1
+	target	startup	resolved	src/worker.ts#	worker.ts
+entrance	package.script	process	-	indirect	exact	package.json:1
+	target	startup	resolved	src/main.ts#	../src/main.ts
+entrance	package.script	process	-	boot	exact	tools/package.json:1
+	target	startup	resolved	src/main.ts#	../src/main.ts

@@ -1,0 +1,26 @@
+id,kind,label,method,trigger,trigger_status,detector,evidence_block_id,evidence_file_path,evidence_start_offset,evidence_end_offset,evidence_pointer
+e1,command,,,import,exact,manual,,py-playground/codegraph.json,99,235,/entrypoints/0
+e2,command,,,report,exact,manual,,py-playground/codegraph.json,241,363,/entrypoints/1
+e3,command,,,replay,exact,manual,,py-playground/codegraph.json,369,503,/entrypoints/2
+e4,command,,,retry,exact,manual,,py-playground/codegraph.json,509,642,/entrypoints/3
+e5,event,,,SIGTERM,exact,manual,,py-playground/codegraph.json,648,766,/entrypoints/4
+e6,process,,,orders-api,exact,pyproject.script,,py-playground/pyproject.toml,387,431,/project/scripts/orders-api
+e7,process,,,orders-api-dev,exact,pyproject.script,,py-playground/pyproject.toml,432,480,/project/scripts/orders-api-dev
+e8,process,,,orders-worker,exact,pyproject.script,,py-playground/pyproject.toml,481,528,/project/scripts/orders-worker
+e9,process,,,orders-scheduler,exact,pyproject.script,,py-playground/pyproject.toml,529,582,/project/scripts/orders-scheduler
+e10,process,,,orders,exact,pyproject.script,,py-playground/pyproject.toml,583,620,/project/scripts/orders
+e11,process,,,orders-cli,exact,pyproject.script,,py-playground/pyproject.toml,621,662,/project/scripts/orders-cli
+e12,process,,,orders-legacy-export,exact,pyproject.script,,py-playground/pyproject.toml,663,713,/project/scripts/orders-legacy-export
+e13,worker,,,emails,exact,celery.task,b552,py-playground/src/orders_playground/queues/email_worker.py,110,161,
+e14,worker,,,orders,exact,celery.task,b561,py-playground/src/orders_playground/queues/orders_worker.py,100,169,
+e15,worker,,,,unknown,celery.task,b575,py-playground/src/orders_playground/queues/report_worker.py,119,190,
+e16,http,,GET,/admin/stats,exact,fastapi.route,b589,py-playground/src/orders_playground/routes/admin.py,317,353,
+e17,http,,GET,/health/live,exact,fastapi.route,b596,py-playground/src/orders_playground/routes/health.py,59,114,
+e18,http,,GET,/orders,exact,fastapi.route,b661,py-playground/src/orders_playground/routes/orders.py,1271,1305,
+e19,http,,GET,/orders/{order_id},exact,fastapi.route,b664,py-playground/src/orders_playground/routes/orders.py,1306,1364,
+e20,http,,POST,/orders,exact,fastapi.route,b668,py-playground/src/orders_playground/routes/orders.py,1365,1463,
+e21,http,,DELETE,/orders/{order_id},exact,fastapi.route,b673,py-playground/src/orders_playground/routes/orders.py,1464,1551,
+e22,schedule,,,0 2 * * *,exact,apscheduler.job,b685,py-playground/src/orders_playground/scheduler.py,319,429,
+e23,schedule,,,*/15 * * * *,exact,apscheduler.job,b688,py-playground/src/orders_playground/scheduler.py,430,545,
+e24,http,,GET,/health,exact,fastapi.route,b713,py-playground/src/orders_playground/server.py,360,378,
+e25,http,,GET,,unknown,fastapi.route,b716,py-playground/src/orders_playground/server.py,448,482,

@@ -1,0 +1,6 @@
+callable-return.ts#variable:factory/function:factory/new[0] #0 constructs `C` -> callable-return.ts#class:C
+callable-return.ts#class:Holder/function:factory/new[0] #0 constructs `C` -> callable-return.ts#class:C
+callable-return.ts#class:Holder/method:run/expression_statement[0]/call[0] #0 calls `this.factory().m` -> unknown_receiver
+callable-return.ts#class:Holder/method:run/expression_statement[0]/call[0]/call[0] #0 calls `this.factory` -> callable-return.ts#class:Holder/function:factory
+callable-return.ts#expression_statement[0]/call[0] #0 calls `factory().m` -> unknown_receiver
+callable-return.ts#expression_statement[0]/call[0]/call[0] #0 calls `factory` -> callable-return.ts#variable:factory/function:factory

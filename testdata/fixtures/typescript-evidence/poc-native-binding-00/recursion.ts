@@ -1,0 +1,1 @@
+export {}; first(); function first() { second(); } function second() { first(); }

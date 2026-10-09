@@ -1,0 +1,445 @@
+{
+  "cards": [
+    {
+      "at": [
+        -104,
+        1221
+      ],
+      "description": {
+        "author": "agent:codex",
+        "signature": "sha256:6f2bbed7bc305377d2f6121f38f0a9c68aec9409b5f6a533bcc25bcc609197ba",
+        "text": "The Prefer header chooses queued placement (202) or synchronous placement (201). The queued path returns before the synchronous calls."
+      },
+      "id": "create-order",
+      "ref": {
+        "block": "src/routes/orders.ts#function:createOrder"
+      },
+      "view": "code"
+    },
+    {
+      "at": [
+        -104,
+        -2
+      ],
+      "id": "middleware-0",
+      "ref": {
+        "block": "src/routes/middleware.ts#function:requireUser"
+      },
+      "view": "code"
+    },
+    {
+      "at": [
+        -104,
+        535
+      ],
+      "id": "middleware-1",
+      "ref": {
+        "block": "src/routes/middleware.ts#function:validateBody"
+      },
+      "view": "code"
+    },
+    {
+      "at": [
+        674,
+        1563
+      ],
+      "description": {
+        "author": "agent:codex",
+        "signature": "sha256:74d246fe8920d24dde56b962e36f4001a96d57f1b0583692916edb20b422afe9",
+        "text": "Validates the draft, charges through the injected payment provider, builds and inserts the order, emits order.placed, and returns it. Static call resolution may stop at injected interfaces."
+      },
+      "id": "place-order",
+      "ref": {
+        "block": "src/services/order-service.ts#class:OrderService/method:place"
+      },
+      "view": "code"
+    },
+    {
+      "at": [
+        -404,
+        -2
+      ],
+      "description": {
+        "author": "agent:codex",
+        "signature": "sha256:f26d21c71dc749abf8223caeaf97365e165a5c8aeb62b76a1aa13d27584b35db",
+        "text": "The POST route registers requireUser, validateBody, and createOrder in this order. Handler registration does not guarantee a middleware calls next()."
+      },
+      "id": "post-orders",
+      "ref": {
+        "entrance": "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]"
+      },
+      "view": "code"
+    },
+    {
+      "at": [
+        1222,
+        722
+      ],
+      "id": "validate-order",
+      "ref": {
+        "block": "src/lib/validate.ts#function:validateOrder"
+      },
+      "view": "code"
+    }
+  ],
+  "defaultView": "code",
+  "format": "unfold-board",
+  "groups": [
+    {
+      "card": "create-order",
+      "collapsed": false,
+      "description": {
+        "author": "agent:codex",
+        "signature": "sha256:eba575631a1b2cb75725933e26c3feec5c5cf9eb10dab0be0f7168b43d35dbc5",
+        "text": "Queue the draft and acknowledge the job without continuing into the synchronous path."
+      },
+      "id": "async-placement",
+      "members": [
+        "src/routes/orders.ts#function:createOrder/if[0]"
+      ],
+      "title": "Queue async placement"
+    },
+    {
+      "card": "create-order",
+      "collapsed": false,
+      "description": {
+        "author": "agent:codex",
+        "signature": "sha256:e78150bd9f08bbe06272b9c00ad77c0ba70da561f50bb047c4eed14d22741314",
+        "text": "Place the order, post a Slack notification, and return the created order."
+      },
+      "id": "sync-placement",
+      "members": [
+        "src/routes/orders.ts#function:createOrder/variable:order",
+        "src/routes/orders.ts#function:createOrder/expression_statement[0]",
+        "src/routes/orders.ts#function:createOrder/expression_statement[1]"
+      ],
+      "title": "Place and acknowledge"
+    }
+  ],
+  "guards": {
+    "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]": {
+      "kind": "entrance:http",
+      "owner": "",
+      "signature": "sha256:f26d21c71dc749abf8223caeaf97365e165a5c8aeb62b76a1aa13d27584b35db"
+    },
+    "src/lib/validate.ts#function:validateOrder": {
+      "kind": "function",
+      "owner": "src/lib/validate.ts#",
+      "signature": "sha256:14d08db85918ec99ac0df5609760cde0516de5854753deac20b821af114883f7"
+    },
+    "src/lib/validate.ts#function:validateOrder/if[0]": {
+      "kind": "if",
+      "owner": "src/lib/validate.ts#function:validateOrder",
+      "signature": "sha256:613cda99b549185031d06c7c616fbe877570968e01340f8ecfe7e14692487e76"
+    },
+    "src/lib/validate.ts#function:validateOrder/if[0]/throw[0]": {
+      "kind": "throw",
+      "owner": "src/lib/validate.ts#function:validateOrder",
+      "signature": "sha256:aa74379057bff8f3533a024c9174034c18130b64137ce85426d9921506ca3950"
+    },
+    "src/lib/validate.ts#function:validateOrder/if[1]": {
+      "kind": "if",
+      "owner": "src/lib/validate.ts#function:validateOrder",
+      "signature": "sha256:cc603340b13d717065ed54caf6240a2e0972e5ff63a8e0d678b587ef79c6d87a"
+    },
+    "src/lib/validate.ts#function:validateOrder/return[0]": {
+      "kind": "return",
+      "owner": "src/lib/validate.ts#function:validateOrder",
+      "signature": "sha256:780602c7d14c920493617cde5a3bcc7e7b7151bec357a3053292992ead8c1017"
+    },
+    "src/lib/validate.ts#function:validateOrder/variable:validatedItems": {
+      "kind": "variable",
+      "owner": "src/lib/validate.ts#function:validateOrder",
+      "signature": "sha256:6e5997db2f54ce575995f22a47924654a39092b17b17379d537996b82c195c93"
+    },
+    "src/lib/validate.ts#function:validateOrder/variable[0]": {
+      "kind": "variable",
+      "owner": "src/lib/validate.ts#function:validateOrder",
+      "signature": "sha256:e5a698f2d3adc20f8c37c0f51ee3dfaa71dbfe05b7f2cda398f20f7d0e00a471"
+    },
+    "src/routes/middleware.ts#function:requireUser": {
+      "kind": "function",
+      "owner": "src/routes/middleware.ts#",
+      "signature": "sha256:fa67e7ca5cfd80f1631c832985f3e469f1b2d7700a0a79d9f64a76a18c64390d"
+    },
+    "src/routes/middleware.ts#function:requireUser/expression_statement[0]": {
+      "kind": "expression_statement",
+      "owner": "src/routes/middleware.ts#function:requireUser",
+      "signature": "sha256:2822e58218a3e4c2f9516ad2959b6c457cb3869ef36b1e43bb4ca91470850f2c"
+    },
+    "src/routes/middleware.ts#function:requireUser/if[0]": {
+      "kind": "if",
+      "owner": "src/routes/middleware.ts#function:requireUser",
+      "signature": "sha256:d63f3021fe7566b3e3c1ec688f022b82babf71a6e4024b77a9581d28cdc7c8a6"
+    },
+    "src/routes/middleware.ts#function:requireUser/if[0]/expression_statement[0]": {
+      "kind": "expression_statement",
+      "owner": "src/routes/middleware.ts#function:requireUser",
+      "signature": "sha256:3d8ce5c4f37085a7648497a3d60535740c214db73b7e24508f82f43797a75970"
+    },
+    "src/routes/middleware.ts#function:requireUser/if[0]/return[0]": {
+      "kind": "return",
+      "owner": "src/routes/middleware.ts#function:requireUser",
+      "signature": "sha256:8beaabe25ab7e0a80d1e25bada55a2f5a227101c2210eadf0b368d3c2be4a83f"
+    },
+    "src/routes/middleware.ts#function:validateBody": {
+      "kind": "function",
+      "owner": "src/routes/middleware.ts#",
+      "signature": "sha256:8666f553b1a5f1c60b18b2acc7c31d50f2637313a52c2aca6730f2cad3563bc6"
+    },
+    "src/routes/middleware.ts#function:validateBody/expression_statement[0]": {
+      "kind": "expression_statement",
+      "owner": "src/routes/middleware.ts#function:validateBody",
+      "signature": "sha256:2822e58218a3e4c2f9516ad2959b6c457cb3869ef36b1e43bb4ca91470850f2c"
+    },
+    "src/routes/middleware.ts#function:validateBody/try[0]/catch[0]/expression_statement[0]": {
+      "kind": "expression_statement",
+      "owner": "src/routes/middleware.ts#function:validateBody",
+      "signature": "sha256:89ea0a87bda7e8f55966780b9642296139166c1d6620a1f1cc45048ea97d3dac"
+    },
+    "src/routes/middleware.ts#function:validateBody/try[0]/catch[0]/return[0]": {
+      "kind": "return",
+      "owner": "src/routes/middleware.ts#function:validateBody",
+      "signature": "sha256:8beaabe25ab7e0a80d1e25bada55a2f5a227101c2210eadf0b368d3c2be4a83f"
+    },
+    "src/routes/middleware.ts#function:validateBody/try[0]/catch[0]/variable:message": {
+      "kind": "variable",
+      "owner": "src/routes/middleware.ts#function:validateBody",
+      "signature": "sha256:2be7dfe30cfdd3eddcee7f4599ef10c62ed536af19b2854388d4cac208b306a6"
+    },
+    "src/routes/middleware.ts#function:validateBody/try[0]/expression_statement[0]": {
+      "kind": "expression_statement",
+      "owner": "src/routes/middleware.ts#function:validateBody",
+      "signature": "sha256:801c150fc5e15b556acd63051904a8a7b9f0f48f547aec7218c06f05d40290e8"
+    },
+    "src/routes/orders.ts#function:createOrder": {
+      "kind": "function",
+      "owner": "src/routes/orders.ts#",
+      "signature": "sha256:6f2bbed7bc305377d2f6121f38f0a9c68aec9409b5f6a533bcc25bcc609197ba"
+    },
+    "src/routes/orders.ts#function:createOrder/expression_statement[0]": {
+      "kind": "expression_statement",
+      "owner": "src/routes/orders.ts#function:createOrder",
+      "signature": "sha256:337f13d60f163402f77ae039aab05768b418844ef5d1011ecf2a0349139b22a4"
+    },
+    "src/routes/orders.ts#function:createOrder/expression_statement[1]": {
+      "kind": "expression_statement",
+      "owner": "src/routes/orders.ts#function:createOrder",
+      "signature": "sha256:8be47bc81da809eabbe9199ef5afa188d653137f63da41c7b1adca89181918a7"
+    },
+    "src/routes/orders.ts#function:createOrder/if[0]": {
+      "kind": "if",
+      "owner": "src/routes/orders.ts#function:createOrder",
+      "signature": "sha256:eba575631a1b2cb75725933e26c3feec5c5cf9eb10dab0be0f7168b43d35dbc5"
+    },
+    "src/routes/orders.ts#function:createOrder/if[0]/expression_statement[0]": {
+      "kind": "expression_statement",
+      "owner": "src/routes/orders.ts#function:createOrder",
+      "signature": "sha256:b5bba03b8facfa7164e774ad288f705841e05f29d6768e8244e37b1e068382ff"
+    },
+    "src/routes/orders.ts#function:createOrder/if[0]/return[0]": {
+      "kind": "return",
+      "owner": "src/routes/orders.ts#function:createOrder",
+      "signature": "sha256:8beaabe25ab7e0a80d1e25bada55a2f5a227101c2210eadf0b368d3c2be4a83f"
+    },
+    "src/routes/orders.ts#function:createOrder/if[0]/variable:job": {
+      "kind": "variable",
+      "owner": "src/routes/orders.ts#function:createOrder",
+      "signature": "sha256:f8d1003c9e547cdd8129b5e6f2b735bfeef8706a315d2d1f37920808b7319b6f"
+    },
+    "src/routes/orders.ts#function:createOrder/variable:draft": {
+      "kind": "variable",
+      "owner": "src/routes/orders.ts#function:createOrder",
+      "signature": "sha256:baeee0f6a666c35cfafcc00a56db362247d39a53b2ded1201ec04a66e6da0f8a"
+    },
+    "src/routes/orders.ts#function:createOrder/variable:order": {
+      "kind": "variable",
+      "owner": "src/routes/orders.ts#function:createOrder",
+      "signature": "sha256:625df29337653c23b66a7fefe5a9e1c6e65c962ea05b28f01eadb88a073f1664"
+    },
+    "src/services/order-service.ts#class:OrderService/method:place": {
+      "kind": "method",
+      "owner": "src/services/order-service.ts#class:OrderService",
+      "signature": "sha256:74d246fe8920d24dde56b962e36f4001a96d57f1b0583692916edb20b422afe9"
+    },
+    "src/services/order-service.ts#class:OrderService/method:place/expression_statement[0]": {
+      "kind": "expression_statement",
+      "owner": "src/services/order-service.ts#class:OrderService/method:place",
+      "signature": "sha256:e1f087a1567e354fef974a421ea11d0b507fe1e42191d7393ffc9cd9993ccaa9"
+    },
+    "src/services/order-service.ts#class:OrderService/method:place/expression_statement[1]": {
+      "kind": "expression_statement",
+      "owner": "src/services/order-service.ts#class:OrderService/method:place",
+      "signature": "sha256:86ca7ef6efc30c6fa91e35d05b30ce9a1a1f9dcaa079503753acef38a4586941"
+    },
+    "src/services/order-service.ts#class:OrderService/method:place/expression_statement[2]": {
+      "kind": "expression_statement",
+      "owner": "src/services/order-service.ts#class:OrderService/method:place",
+      "signature": "sha256:c9c8095556b2b2d6262aa511680af71b656338cc66abebb1c3cd4632e7216958"
+    },
+    "src/services/order-service.ts#class:OrderService/method:place/return[0]": {
+      "kind": "return",
+      "owner": "src/services/order-service.ts#class:OrderService/method:place",
+      "signature": "sha256:5e447b8e1c048c5c683b0857d686a39e6e97725efd4f26b54bf82137d999686a"
+    },
+    "src/services/order-service.ts#class:OrderService/method:place/variable:draft": {
+      "kind": "variable",
+      "owner": "src/services/order-service.ts#class:OrderService/method:place",
+      "signature": "sha256:cd35d0a303b10b394f020a628eea3c056aa54892fe51d6dc93dbf24c806c8a9d"
+    },
+    "src/services/order-service.ts#class:OrderService/method:place/variable:order": {
+      "kind": "variable",
+      "owner": "src/services/order-service.ts#class:OrderService/method:place",
+      "signature": "sha256:007c43f56cf738c7e1006800aa64c0529ed8c99e921f7e2118030bf0eacf62b3"
+    }
+  },
+  "labels": {
+    "src/lib/validate.ts#function:validateOrder/if[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:613cda99b549185031d06c7c616fbe877570968e01340f8ecfe7e14692487e76",
+      "text": "Is the input not an object?"
+    },
+    "src/lib/validate.ts#function:validateOrder/if[0]/throw[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:aa74379057bff8f3533a024c9174034c18130b64137ce85426d9921506ca3950",
+      "text": "Reject: the order must be an object"
+    },
+    "src/lib/validate.ts#function:validateOrder/if[1]": {
+      "author": "agent:claude",
+      "signature": "sha256:cc603340b13d717065ed54caf6240a2e0972e5ff63a8e0d678b587ef79c6d87a",
+      "text": "Is the customer, email, or item list invalid?"
+    },
+    "src/lib/validate.ts#function:validateOrder/return[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:780602c7d14c920493617cde5a3bcc7e7b7151bec357a3053292992ead8c1017",
+      "text": "Hand back the cleaned draft"
+    },
+    "src/lib/validate.ts#function:validateOrder/variable:validatedItems": {
+      "author": "agent:claude",
+      "signature": "sha256:6e5997db2f54ce575995f22a47924654a39092b17b17379d537996b82c195c93",
+      "text": "Validate every line item"
+    },
+    "src/lib/validate.ts#function:validateOrder/variable[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:e5a698f2d3adc20f8c37c0f51ee3dfaa71dbfe05b7f2cda398f20f7d0e00a471",
+      "text": "Pull customerId, email, and items out of the input"
+    },
+    "src/routes/middleware.ts#function:requireUser/expression_statement[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:2822e58218a3e4c2f9516ad2959b6c457cb3869ef36b1e43bb4ca91470850f2c",
+      "text": "Hand off to the next handler"
+    },
+    "src/routes/middleware.ts#function:requireUser/if[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:d63f3021fe7566b3e3c1ec688f022b82babf71a6e4024b77a9581d28cdc7c8a6",
+      "text": "Is the x-user-id header missing?"
+    },
+    "src/routes/middleware.ts#function:requireUser/if[0]/expression_statement[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:3d8ce5c4f37085a7648497a3d60535740c214db73b7e24508f82f43797a75970",
+      "text": "Reply 401 and ask for the header"
+    },
+    "src/routes/middleware.ts#function:requireUser/if[0]/return[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:8beaabe25ab7e0a80d1e25bada55a2f5a227101c2210eadf0b368d3c2be4a83f",
+      "text": "Stop here"
+    },
+    "src/routes/middleware.ts#function:validateBody/expression_statement[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:2822e58218a3e4c2f9516ad2959b6c457cb3869ef36b1e43bb4ca91470850f2c",
+      "text": "Hand off to the next handler"
+    },
+    "src/routes/middleware.ts#function:validateBody/try[0]/catch[0]/expression_statement[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:89ea0a87bda7e8f55966780b9642296139166c1d6620a1f1cc45048ea97d3dac",
+      "text": "Reply 400 with the message"
+    },
+    "src/routes/middleware.ts#function:validateBody/try[0]/catch[0]/return[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:8beaabe25ab7e0a80d1e25bada55a2f5a227101c2210eadf0b368d3c2be4a83f",
+      "text": "Stop here"
+    },
+    "src/routes/middleware.ts#function:validateBody/try[0]/catch[0]/variable:message": {
+      "author": "agent:claude",
+      "signature": "sha256:2be7dfe30cfdd3eddcee7f4599ef10c62ed536af19b2854388d4cac208b306a6",
+      "text": "Pick a readable error message"
+    },
+    "src/routes/middleware.ts#function:validateBody/try[0]/expression_statement[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:801c150fc5e15b556acd63051904a8a7b9f0f48f547aec7218c06f05d40290e8",
+      "text": "Validate and normalize the request body"
+    },
+    "src/routes/orders.ts#function:createOrder/expression_statement[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:337f13d60f163402f77ae039aab05768b418844ef5d1011ecf2a0349139b22a4",
+      "text": "Announce the order in #orders on Slack"
+    },
+    "src/routes/orders.ts#function:createOrder/expression_statement[1]": {
+      "author": "agent:claude",
+      "signature": "sha256:8be47bc81da809eabbe9199ef5afa188d653137f63da41c7b1adca89181918a7",
+      "text": "Reply 201 with the created order"
+    },
+    "src/routes/orders.ts#function:createOrder/if[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:eba575631a1b2cb75725933e26c3feec5c5cf9eb10dab0be0f7168b43d35dbc5",
+      "text": "Did the client ask for an asynchronous reply?"
+    },
+    "src/routes/orders.ts#function:createOrder/if[0]/expression_statement[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:b5bba03b8facfa7164e774ad288f705841e05f29d6768e8244e37b1e068382ff",
+      "text": "Reply 202 with the job ID"
+    },
+    "src/routes/orders.ts#function:createOrder/if[0]/return[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:8beaabe25ab7e0a80d1e25bada55a2f5a227101c2210eadf0b368d3c2be4a83f",
+      "text": "Stop here"
+    },
+    "src/routes/orders.ts#function:createOrder/if[0]/variable:job": {
+      "author": "agent:claude",
+      "signature": "sha256:f8d1003c9e547cdd8129b5e6f2b735bfeef8706a315d2d1f37920808b7319b6f",
+      "text": "Queue the order for a background worker"
+    },
+    "src/routes/orders.ts#function:createOrder/variable:draft": {
+      "author": "agent:claude",
+      "signature": "sha256:baeee0f6a666c35cfafcc00a56db362247d39a53b2ded1201ec04a66e6da0f8a",
+      "text": "Read the order draft from the request body"
+    },
+    "src/routes/orders.ts#function:createOrder/variable:order": {
+      "author": "agent:claude",
+      "signature": "sha256:625df29337653c23b66a7fefe5a9e1c6e65c962ea05b28f01eadb88a073f1664",
+      "text": "Place the order"
+    },
+    "src/services/order-service.ts#class:OrderService/method:place/expression_statement[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:e1f087a1567e354fef974a421ea11d0b507fe1e42191d7393ffc9cd9993ccaa9",
+      "text": "Charge the customer through the payment provider"
+    },
+    "src/services/order-service.ts#class:OrderService/method:place/expression_statement[1]": {
+      "author": "agent:claude",
+      "signature": "sha256:86ca7ef6efc30c6fa91e35d05b30ce9a1a1f9dcaa079503753acef38a4586941",
+      "text": "Save the order"
+    },
+    "src/services/order-service.ts#class:OrderService/method:place/expression_statement[2]": {
+      "author": "agent:claude",
+      "signature": "sha256:c9c8095556b2b2d6262aa511680af71b656338cc66abebb1c3cd4632e7216958",
+      "text": "Tell listeners the order was placed"
+    },
+    "src/services/order-service.ts#class:OrderService/method:place/return[0]": {
+      "author": "agent:claude",
+      "signature": "sha256:5e447b8e1c048c5c683b0857d686a39e6e97725efd4f26b54bf82137d999686a",
+      "text": "Hand back the saved order"
+    },
+    "src/services/order-service.ts#class:OrderService/method:place/variable:draft": {
+      "author": "agent:claude",
+      "signature": "sha256:cd35d0a303b10b394f020a628eea3c056aa54892fe51d6dc93dbf24c806c8a9d",
+      "text": "Validate and normalize the input"
+    },
+    "src/services/order-service.ts#class:OrderService/method:place/variable:order": {
+      "author": "agent:claude",
+      "signature": "sha256:007c43f56cf738c7e1006800aa64c0529ed8c99e921f7e2118030bf0eacf62b3",
+      "text": "Build the order with an ID, first status, and timestamp"
+    }
+  },
+  "title": "Order placement",
+  "version": 1
+}

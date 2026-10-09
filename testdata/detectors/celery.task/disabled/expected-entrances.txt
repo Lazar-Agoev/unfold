@@ -1,0 +1,2 @@
+# Expected entrances for testdata/detectors/celery.task/disabled. Format: testdata/README.md.
+# The detector is off: no tasks.

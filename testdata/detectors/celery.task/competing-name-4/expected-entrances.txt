@@ -1,0 +1,6 @@
+# Expected entrances for testdata/detectors/celery.task/competing-name-4. Format: testdata/README.md.
+# Duplicate and generated names make the shared registry uncertain across applications. Written: app.task(name=NAME, queue='emails')(second)
+entrance	celery.task	worker	-	orders	exact	src/app.py:6
+	target	handler	unresolved	unsupported	first
+entrance	celery.task	worker	-	emails	exact	src/app.py:7
+	target	handler	unresolved	unsupported	second

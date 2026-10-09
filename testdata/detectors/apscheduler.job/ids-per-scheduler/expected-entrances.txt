@@ -1,0 +1,6 @@
+# Expected entrances for testdata/detectors/apscheduler.job/ids-per-scheduler. Format: testdata/README.md.
+# Literal job IDs are local to each proven scheduler (PoC: "Literal job-ID conflicts...").
+entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/app.py:8
+	target	handler	resolved	src/app.py#function:first	first
+entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:9
+	target	handler	resolved	src/app.py#function:second	second

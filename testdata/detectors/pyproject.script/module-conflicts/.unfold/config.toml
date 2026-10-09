@@ -1,0 +1,6 @@
+# Detector case: testdata/detectors/pyproject.script/module-conflicts.
+version = 1
+
+[[python.project]]
+root = "."
+source_roots = ["src", "legacy"]

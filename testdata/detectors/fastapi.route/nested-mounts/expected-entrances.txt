@@ -1,0 +1,8 @@
+# Expected entrances for testdata/detectors/fastapi.route/nested-mounts. Format: testdata/README.md.
+# Nested and duplicate router mounts keep Python concatenation and independent branches (PoC: "Nested and duplicate router mounts...").
+entrance	fastapi.route	http	GET	/first/outer/nested/inner//leaf/	exact	src/app.py:8
+	target	handler	resolved	src/app.py#function:endpoint	endpoint
+entrance	fastapi.route	http	GET	/first/outer/nested/inner//leaf/	exact	src/app.py:8
+	target	handler	resolved	src/app.py#function:endpoint	endpoint
+entrance	fastapi.route	http	GET	/second/outer/nested/inner//leaf/	exact	src/app.py:8
+	target	handler	resolved	src/app.py#function:endpoint	endpoint

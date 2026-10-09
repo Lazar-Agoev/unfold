@@ -1,0 +1,2 @@
+# Expected entrances for testdata/detectors/celery.task/conf-update-6. Format: testdata/README.md.
+# Other configuration updates invalidate the application. Written: update = app.conf.update; update(task_serializer='json')

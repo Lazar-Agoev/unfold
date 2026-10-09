@@ -1,0 +1,10 @@
+{
+  "key": "src/routes/orders.ts#function:createOrder",
+  "kind": "function",
+  "name": "createOrder",
+  "qualifiedName": "createOrder",
+  "signature": "export async function createOrder(req: Request, res: Response): Promise<void> {",
+  "path": "src/routes/orders.ts",
+  "line": 25,
+  "language": "typescript"
+}

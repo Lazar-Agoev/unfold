@@ -1,0 +1,31 @@
+#import[0] body `import Default, { original as renamed, type Shape } from "./module.js";`
+  specifier `"./module.js"`
+#import[1] body `import * as namespace from "./module.js";`
+  specifier `"./module.js"`
+#import[2] body `import "./side-effect.js";`
+  specifier `"./side-effect.js"`
+#import[3] body `import Alias = require("./alias.js");`
+  specifier `"./alias.js"`
+#import[4] body `export * from "./star.js";`
+  specifier `"./star.js"`
+#import[5] body `export * as ns from "./namespace.js";`
+  specifier `"./namespace.js"`
+#import[6] body `export { value as renamed2 } from "./named.js";`
+  specifier `"./named.js"`
+#variable:loaded body `loaded = import(path())`
+  name `loaded`
+  initializer `import(path())`
+#variable:loaded/import[0] initializer `import(path())`
+  specifier `path()`
+#variable:loaded/import[0]/call[0] - `path()`
+  callee `path`
+#variable:literal body `literal = import("./lit.js")`
+  name `literal`
+  initializer `import("./lit.js")`
+#variable:literal/import[0] initializer `import("./lit.js")`
+  specifier `"./lit.js"`
+#variable:parenthesized body `parenthesized = import(("./par.js"))`
+  name `parenthesized`
+  initializer `import(("./par.js"))`
+#variable:parenthesized/import[0] initializer `import(("./par.js"))`
+  specifier `("./par.js")`

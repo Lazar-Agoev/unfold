@@ -1,0 +1,1 @@
+export {}; function self() {} const f = function self() { self(); }; f(); self();

@@ -1,0 +1,115 @@
+flowchart LR
+  %% Paths from written structure; call arrows come from the index.
+  subgraph c0_card["createOrder<br/>The Prefer header chooses queued placement (202) or synchronous placement (201). The queued path returns before the synchronous calls."]
+    direction TB
+    c0_n0(["createOrder"])
+    c0_n1["Read the order draft from the request body"]
+    c0_n3[["Queue the order for a background worker"]]
+    c0_n4[["Reply 202 with the job ID"]]
+    c0_n5(("Stop here"))
+    c0_n9(["End"])
+    subgraph c0_g0["Queue async placement<br/>Queue the draft and acknowledge the job without continuing into the synchronous path."]
+      c0_n2{"Did the client ask for an asynchronous reply?"}
+    end
+    subgraph c0_g1["Place and acknowledge<br/>Place the order, post a Slack notification, and return the created order."]
+      c0_n6[["Place the order"]]
+      c0_n7[["Announce the order in #35;orders on Slack"]]
+      c0_n8[["Reply 201 with the created order"]]
+    end
+    c0_n3 --> c0_n4
+    c0_n4 --> c0_n5
+    c0_n2 -->|"yes"| c0_n3
+    c0_n1 --> c0_n2
+    c0_n2 -->|"no"| c0_n6
+    c0_n6 --> c0_n7
+    c0_n7 --> c0_n8
+    c0_n0 --> c0_n1
+    c0_n8 --> c0_n9
+    c0_n5 -->|"return"| c0_n9
+  end
+  subgraph c1_card["requireUser"]
+    direction TB
+    c1_n0(["requireUser"])
+    c1_n1{"Is the x-user-id header missing?"}
+    c1_n2[["Reply 401 and ask for the header"]]
+    c1_n3(("Stop here"))
+    c1_n4[["Hand off to the next handler"]]
+    c1_n5(["End"])
+    c1_n2 --> c1_n3
+    c1_n1 -->|"yes"| c1_n2
+    c1_n1 -->|"no"| c1_n4
+    c1_n0 --> c1_n1
+    c1_n4 --> c1_n5
+    c1_n3 -->|"return"| c1_n5
+  end
+  subgraph c2_card["validateBody"]
+    direction TB
+    c2_n0(["validateBody"])
+    c2_n1[["Validate and normalize the request body"]]
+    c2_n2["Pick a readable error message"]
+    c2_n3[["Reply 400 with the message"]]
+    c2_n4(("Stop here"))
+    c2_n5[["Hand off to the next handler"]]
+    c2_n6(["End"])
+    c2_n2 --> c2_n3
+    c2_n3 --> c2_n4
+    c2_n1 -.->|"on error"| c2_n2
+    c2_n1 --> c2_n5
+    c2_n0 --> c2_n1
+    c2_n5 --> c2_n6
+    c2_n4 -->|"return"| c2_n6
+  end
+  subgraph c3_card["OrderService.place<br/>Validates the draft, charges through the injected payment provider, builds and inserts the order, emits order.placed, and returns it. Static call resolution may stop at injected interfaces."]
+    direction TB
+    c3_n0(["place"])
+    c3_n1[["Validate and normalize the input"]]
+    c3_n2[["Charge the customer through the payment provider"]]
+    c3_n3["Build the order with an ID, first status, and timestamp"]
+    c3_n4[["Save the order"]]
+    c3_n5[["Tell listeners the order was placed"]]
+    c3_n6(("Hand back the saved order"))
+    c3_n7(["End"])
+    c3_n1 --> c3_n2
+    c3_n2 --> c3_n3
+    c3_n3 --> c3_n4
+    c3_n4 --> c3_n5
+    c3_n5 --> c3_n6
+    c3_n0 --> c3_n1
+    c3_n6 -->|"return"| c3_n7
+  end
+  c4(["POST /orders"])
+  subgraph c5_card["validateOrder"]
+    direction TB
+    c5_n0(["validateOrder"])
+    c5_n1{"Is the input not an object?"}
+    c5_n2>"Reject: the order must be an object"]
+    c5_n3["Pull customerId, email, and items out of the input"]
+    c5_n4{"Is the customer, email, or item list invalid?"}
+    c5_n5>"Throw"]
+    c5_n6{"email?"}
+    c5_n7>"Throw"]
+    c5_n8{"Array.isArray, items?"}
+    c5_n9>"Throw"]
+    c5_n10[["Validate every line item<br/>ƒ callback to items.map (separate definition)"]]
+    c5_n11(("Hand back the cleaned draft"))
+    c5_n12(["End"])
+    c5_n1 -->|"yes"| c5_n2
+    c5_n8 -->|"yes"| c5_n9
+    c5_n6 -->|"yes"| c5_n7
+    c5_n6 -->|"no · else if"| c5_n8
+    c5_n4 -->|"yes"| c5_n5
+    c5_n4 -->|"no · else if"| c5_n6
+    c5_n1 -->|"no"| c5_n3
+    c5_n3 --> c5_n4
+    c5_n8 -->|"no"| c5_n10
+    c5_n10 --> c5_n11
+    c5_n0 --> c5_n1
+    c5_n11 -->|"return"| c5_n12
+  end
+  c0_n6 -->|"calls"| c3_n0
+  c2_n1 -->|"calls"| c5_n0
+  c3_n1 -->|"calls"| c5_n0
+  c4 -->|"handler"| c1_n0
+  c4 -->|"handler"| c2_n0
+  c4 -->|"handler"| c0_n0
+  classDef opaque fill:#fff4dc,stroke:#a66b10,stroke-dasharray:4 3
