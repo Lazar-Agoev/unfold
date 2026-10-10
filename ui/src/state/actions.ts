@@ -1,5 +1,5 @@
 /**
- * What the window-level actions do (UI plan §8.1, the ones the frame registers): Home, closing tabs and
+ * What the window-level actions do (the ones the frame registers): Home, closing tabs and
  * windows, New board, Add project, Compile, Preferences, and showing a project. The frame registers
  * them with their ids and titles; screens may call them directly.
  */
@@ -21,7 +21,7 @@ export function currentProject(): ProjectId | null {
   return getActiveBoard()?.project ?? useWindowStore.getState().selectedProject;
 }
 
-/** Shows a project on Home (its overview), as a project row click does (V-52) and after it is added. */
+/** Shows a project on Home (its overview), as a project row click does and after it is added. */
 export async function showProject(project: ProjectId): Promise<void> {
   setHomeView("overview");
   activateHome();
@@ -30,7 +30,7 @@ export async function showProject(project: ProjectId): Promise<void> {
 
 /**
  * Close Tab (⌘W): closes the active board tab. On Home it closes the window when Home is the only tab,
- * and does nothing otherwise (V-44).
+ * and does nothing otherwise.
  */
 export async function closeActiveTab(): Promise<void> {
   const { active, boards } = useTabs.getState();
@@ -41,7 +41,7 @@ export async function closeActiveTab(): Promise<void> {
   }
 }
 
-/** New Board (⌘N): a draft in the active board's project, or in the project Home shows (V-63). */
+/** New Board (⌘N): a draft in the active board's project, or in the project Home shows. */
 export async function newBoardHere(): Promise<BoardRef | null> {
   const project = currentProject();
   return project === null ? null : newBoard(project);

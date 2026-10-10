@@ -1,4 +1,4 @@
-//! Boards (contract §3.5, §4.6, §4.7, §6): claims across windows, pages, cards from other
+//! Boards (docs/ipc.md › Boards): claims across windows, pages, cards from other
 //! projects and placeholders, drawn links, unpublished changes and Publish (conflicts, keep
 //! mine, discard), Move back to drafts, folders, view state, outside edits per working file,
 //! drafts and references across projects, thumbnails, and export.

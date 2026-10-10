@@ -1,7 +1,7 @@
 /**
- * One arrow between cards (02 §4.7): a curve from the calling row at the card's right edge into the
- * target's header, with a filled head. Arrows to opened calls are `--color-arrow`; an entrance's arrow
- * to its handler is the gray contour. Imports and passed references are dashed. Memoized.
+ * One arrow between cards: a curve from the calling row at the card's right edge into the target's
+ * header, with a filled head. Arrows to opened calls are `--color-arrow`; an entrance's arrow to its
+ * handler is the gray contour. Imports and passed references are dashed. Memoized.
  */
 
 import { getBezierPath, type Edge, type EdgeProps } from "@xyflow/react";

@@ -1,4 +1,4 @@
-//! Board claims of one project (contract §3.5, decision U-37): a board is open in one window at
+//! Board claims of one project (decision U-37): a board is open in one window at
 //! a time, so two windows never edit the same board and no merge logic exists.
 //!
 //! [`BoardClaims`] maps each open board of a project (by `BoardId`) to the window holding it.
@@ -8,8 +8,8 @@
 //! it held. Board commands check [`BoardClaims::check`] before touching a board.
 //!
 //! Each claim also records the other projects the board's cards resolve to
-//! ([`BoardClaims::set_references`]): an open board keeps those projects live too (contract
-//! §3.3), so the cards it shows from them stay current.
+//! ([`BoardClaims::set_references`]): an open board keeps those projects live too (decision
+//! U-45), so the cards it shows from them stay current.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Mutex, MutexGuard, PoisonError};

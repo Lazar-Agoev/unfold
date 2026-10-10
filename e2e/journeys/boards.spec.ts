@@ -1,5 +1,5 @@
 /**
- * A board's life outside publishing (redesign §4.7, R-10, V-51, V-74, V-92, V-93): renaming in place,
+ * A board's life outside publishing (architecture §11.8, decision U-47): renaming in place,
  * the board menu (Duplicate, Share as Mermaid, Fold all, Delete), folders and Move to folder, and edits
  * made to a board's file outside the app (a clean board reloads; a deleted file shows the banner), and a
  * save that fails (the banner's Retry).

@@ -103,7 +103,7 @@ function projectMenu(state: ProjectState): string[] {
   return enabled(projectMenuEntries(projectRow("p-1", "storefront-api", { state })));
 }
 
-describe("the project menu (07, V-18)", () => {
+describe("the project menu", () => {
   it("has every item in every state", () => {
     const all = labels(projectMenuEntries(projectRow("p-1", "storefront-api")));
     expect(all).toEqual([

@@ -1,8 +1,7 @@
 /**
- * Project settings (redesign §4.11, artboard 08, V-16, V-70, V-71): an 880×700 dialog over the window
- * with four sections. General (the shared name, the folder, background updates, where the graph is
- * kept), Scope (the folder tree and its rules), Detectors (a switch each, by language), and Python
- * projects. Every change but background updates is staged and saved together with
+ * Project settings: an 880×700 dialog over the window with four sections. General (the shared name,
+ * the folder, background updates, where the graph is kept), Scope (the folder tree and its rules),
+ * Detectors (a switch each, by language), and Python projects. Every change but background updates is staged and saved together with
  * `update_project_config`, all or nothing; Rust keeps the file's comments and formatting. Closing with
  * staged changes asks first.
  */
@@ -58,7 +57,7 @@ const FALLBACK_NOTES: Readonly<Record<FallbackReason, string>> = {
   wal_unavailable: "The folder's disk can't hold the graph database safely, so it is kept in Unfold's app data.",
 };
 
-/** Where the graph is kept and how the folder is watched, in words (V-71). */
+/** Where the graph is kept and how the folder is watched, in words. */
 function storageNotes(status: GraphStatus): string[] {
   const notes = [status.fallback ? FALLBACK_NOTES[status.fallback] : "The graph and drafts are kept in the project's .unfold/local/ folder."];
   if (status.watching === "scanning") {
@@ -359,7 +358,7 @@ function SettingsForm({ project, name, config, initialSection, onClose }: FormPr
   const dirty = edits.length > 0;
   const problems = draftProblems(draft);
 
-  // `config_changed` refetched the file: adopt it when nothing is staged, else say so (V-71).
+  // `config_changed` refetched the file: adopt it when nothing is staged, else say so.
   const [seenConfig, setSeenConfig] = useState(config);
   if (seenConfig !== config) {
     setSeenConfig(config);

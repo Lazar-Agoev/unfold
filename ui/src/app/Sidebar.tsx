@@ -1,7 +1,7 @@
 /**
- * The sidebar container (components §4, home-sidebar "Container"): 264px by default, resizable 220–360
- * from its right edge, hidden with ⌘B (width and visibility live in the window layout). It hosts the
- * Home-mode sidebar while Home is active, else the active board's sidebar.
+ * The sidebar container: 264px by default, resizable 220–360 from its right edge, hidden with ⌘B (width and
+ * visibility live in the window layout). It hosts the Home-mode sidebar while Home is active, else the
+ * active board's sidebar.
  */
 
 import { ResizeHandle } from "../components";

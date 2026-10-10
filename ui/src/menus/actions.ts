@@ -28,8 +28,8 @@ import { activateHome, getActiveBoard } from "../state/tabs";
 import { getProjectIndex, selectProject } from "../state/workspace";
 
 /**
- * The focus target of the board header's title (U2 registers it on its rename field): Rename… asks
- * for it, and the header renames in place (V-74).
+ * The focus target of the board header's title (the header registers it on its rename field): Rename… asks
+ * for it, and the header renames in place.
  */
 const BOARD_TITLE_FOCUS = "board.title";
 
@@ -175,13 +175,13 @@ export async function showHealth(project: ProjectId): Promise<void> {
   await selectProject(project);
 }
 
-/** The toast for `boards_open` (V-76): another window holds one of the project's boards. */
+/** The toast for `boards_open`: another window holds one of the project's boards. */
 function boardsOpenElsewhere(name: string): void {
   showToast({ title: `A board of ${name} is open in another window.`, body: "Close it there, then try again.", tone: "danger" });
 }
 
 /**
- * Remove from workspace… (V-76): the main process asks; this window's tabs of the project close
+ * Remove from workspace…: the main process asks; this window's tabs of the project close
  * (saved); then the engine removes it. Its `.unfold/` stays.
  */
 export async function removeProject(row: Pick<ProjectRow, "id" | "name">): Promise<void> {
@@ -201,7 +201,7 @@ export async function removeProject(row: Pick<ProjectRow, "id" | "name">): Promi
   }
 }
 
-/** Switches the project to another worktree's folder (V-76, contract §1.2); this window's tabs of it close first. */
+/** Switches the project to another worktree's folder (decision U-41); this window's tabs of it close first. */
 export async function switchWorktree(row: Pick<ProjectRow, "id" | "name">, path: string, branch: string): Promise<void> {
   try {
     await closeBoardsOfProject(row.id);

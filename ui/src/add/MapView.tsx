@@ -1,9 +1,9 @@
 /**
- * Add before typing (03, V-2, V-5, V-64): the Look in column (All projects and each project, with
- * entrance counts) and the map of each shown project's applications as lanes of entrance chips. A chip
- * on the current page is marked "on page"; the chip under the pointer or the keyboard gets a popover
- * after 300 ms with its handler, where it is declared, what it reaches, and where else it is ("Already
- * on <board> › <page>").
+ * Add before typing: the Look in column (All projects and each project, with entrance counts) and the
+ * map of each shown project's applications as lanes of entrance chips. A chip on the current page is
+ * marked "on page"; the chip under the pointer or the keyboard gets a popover after 300 ms with its
+ * handler, where it is declared, what it reaches, and where else it is ("Already on <board> ›
+ * <page>").
  */
 
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -16,7 +16,7 @@ import { plural } from "../lib/format";
 import { cardRefKey, type PageTarget } from "../state/boards";
 import type { LaneView, MapChip, ProjectMap } from "./map";
 
-/** The popover waits this long on a chip (V-64). */
+/** The popover waits this long on a chip. */
 export const POPOVER_DELAY = 300;
 
 interface LookInProps {
@@ -85,7 +85,7 @@ interface MapViewProps {
   readonly projects: readonly ProjectMap[];
   /** `cardRefKey`s of the cards on the page Add adds to. */
   readonly onPage: ReadonlySet<string>;
-  /** Why a project's entrances can't be added here (V-62), if they can't. */
+  /** Why a project's entrances can't be added here, if they can't. */
   readonly blocked: (project: ProjectId) => string | null;
   /** The keyboard's chip. */
   readonly activeChip: string | null;
@@ -323,7 +323,7 @@ interface ChipPopoverProps {
   readonly onPointer: (inside: boolean) => void;
 }
 
-/** 6px under its chip, left edges aligned (03 §4.3); above it when there is no room below. */
+/** 6px under its chip, left edges aligned; above it when there is no room below. */
 export function ChipPopover({ chip, projectName, page, container, onOpenRef, onPointer }: ChipPopoverProps) {
   const layer = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<{ left: number; top: number } | null>(null);

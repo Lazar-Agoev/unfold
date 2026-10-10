@@ -1,7 +1,7 @@
 /**
- * The sidebar in board mode (components §4, 02): a scrolling region with the board's header, its Pages,
- * and On this page, over the Selected section pinned to the bottom. It shares the board's undo scope,
- * so ⌘Z after an edit made here undoes it.
+ * The sidebar in board mode: a scrolling region with the board's header, its Pages, and On this page,
+ * over the Selected section pinned to the bottom. It shares the board's undo scope, so ⌘Z after an edit
+ * made here undoes it.
  */
 
 import { useMemo, useRef } from "react";

@@ -1,6 +1,6 @@
 /**
- * Selected for a Flow node (redesign §4.4, V-60): its label (the page's, for the card's project), the
- * name from the code it replaces, its type and lines, and where its paths go (each selects that node).
+ * Selected for a Flow node: its label (the page's, for the card's project), the name from the code it
+ * replaces, its type and lines, and where its paths go (each selects that node).
  */
 
 import { nodeTypeName } from "../../flow/layout";

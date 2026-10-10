@@ -11,7 +11,7 @@ const WEB = folder("apps/web", null, 398);
 const LEGACY = folder("tools/legacy", "ignored", 0);
 const FOLDERS = [folder("apps/api", null, 512), WEB, folder("scripts", "excluded", 61), LEGACY, folder("node_modules", "default", 0)];
 
-describe("what the first Compile reads (06)", () => {
+describe("what the first Compile reads", () => {
   it("says what it reads, by language", () => {
     expect(languageSentence(fixture("compile_preview", "compile_preview"))).toBe("Unfold will read 34 TypeScript files.");
     expect(
@@ -26,7 +26,7 @@ describe("what the first Compile reads (06)", () => {
     expect(languageSentence({ files: 0, languages: [] })).toBe("There are no TypeScript or Python files to read.");
   });
 
-  it("groups skipped folders by reason, two examples each, in 06's words", () => {
+  it("groups skipped folders by reason, two examples each, in sentence case", () => {
     const skipped = (folderName: string, reason: SkipKind, files: number, wholeFolder = true): SkippedFolder => ({
       folder: folderName,
       reason,
@@ -58,7 +58,7 @@ describe("what the first Compile reads (06)", () => {
   });
 });
 
-describe("the first Compile's scope (V-69)", () => {
+describe("the first Compile's scope", () => {
   it("reads the saved choice from scope_dir", () => {
     expect(FOLDERS.map(savedChoice)).toEqual(["checked", "checked", "unchecked", "disabled", "disabled"]);
     expect(scopeRows(FOLDERS).map((row) => row.path)).toEqual(["apps/api", "apps/web", "scripts", "tools/legacy"]);

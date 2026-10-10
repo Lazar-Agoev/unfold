@@ -88,12 +88,12 @@
   padding: 20px 24px;
 }
 
-/* The confirming button is 14px inline in every dialog (08's Save, 12's Publish). */
+/* The confirming button is 14px inline in every dialog (Project settings' Save, Publish's Publish). */
 .dialog-footer :is(.button-primary, .button-danger):not(.button-with-icon, .button-with-shortcut, .button-with-trailing) {
   padding-inline: 14px;
 }
 
-/* Project settings (08): ruled header and footer, and a body that lays itself out. */
+/* Project settings: ruled header and footer, and a body that lays itself out. */
 .dialog-880 .dialog-header {
   padding: 20px 20px 18px 24px;
   border-bottom: 1px solid var(--color-border);

@@ -1,5 +1,5 @@
 /**
- * Health rows (11, V-77): each problem as a title, an explanation, a location, and the one action that
+ * Health rows: each problem as a title, an explanation, a location, and the one action that
  * deals with it (Open the file, or Settings on the right section); and boards with health items.
  * Unresolved calls are facts about the code, never problems, so they never appear here.
  */
@@ -56,7 +56,7 @@ function explanation(item: ProblemItem): string {
   }
 }
 
-/** The Project settings section a settings problem is about (V-77). */
+/** The Project settings section a settings problem is about. */
 export function settingsSection(message: string): ProjectSettingsSection {
   if (/python/i.test(message)) {
     return "python";

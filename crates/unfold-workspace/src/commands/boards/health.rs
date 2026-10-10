@@ -1,5 +1,5 @@
 //! Keeping a live project's board health and open sessions in step with the disk and the
-//! graphs (contract §4.3, §5, §6.6): the health refresh after graph updates, and the checks that
+//! graphs: the health refresh after graph updates, and the checks that
 //! tell a window when the working file of a board it holds changed outside the app
 //! (`board_conflict`).
 

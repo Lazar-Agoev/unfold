@@ -3,7 +3,7 @@
  * (a name, e.g. New folder).
  *
  * A dialog is placed on the window (Add, Preferences, Project settings) or on the canvas area
- * (`#content-area`: Publish, Discard, Delete, Rename), with its scrim over just that area (V-9).
+ * (`#content-area`: Publish, Discard, Delete, Rename), with its scrim over just that area.
  * While open, it traps Tab inside itself, makes the app behind it inert, silences window shortcuts,
  * closes on Escape, and returns focus to where it was when it closes.
  */

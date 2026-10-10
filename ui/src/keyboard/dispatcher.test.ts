@@ -75,7 +75,7 @@ describe("dispatchShortcut", () => {
     expect(dispatchShortcut(keydown({ key: "A", shiftKey: true }), registry, mac)).toBeNull();
   });
 
-  it("matches Mod+Shift+] and Mod+Shift+[ by physical key, and Ctrl+Tab on every platform (V-75)", () => {
+  it("matches Mod+Shift+] and Mod+Shift+[ by physical key, and Ctrl+Tab on every platform", () => {
     const next = vi.fn();
     const previous = vi.fn();
     const registry = registryWith(

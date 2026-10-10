@@ -106,7 +106,7 @@ export function stream(
   };
 }
 
-/** Runs a window or dialog command in the main process (contract §7.3). */
+/** Runs a window or dialog command in the main process. */
 export async function windowCommand<C extends WindowCommand>(
   command: C,
   ...args: WindowCommandArgs<C>

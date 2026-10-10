@@ -69,7 +69,7 @@ afterEach(() => {
   engine = null;
 });
 
-describe("first launch (05)", () => {
+describe("first launch", () => {
   it("offers Add project and the folders opened before, and adds one back", async () => {
     const removedAtMs = Date.now() - 3 * 24 * 60 * 60 * 1000;
     const fake = start(workspaceView([], { removed: [{ path: "/Users/someone/code/storefront-api", name: "storefront-api", removedAtMs }] }), {
@@ -97,8 +97,8 @@ describe("first launch (05)", () => {
   });
 });
 
-describe("the not-compiled Home (06)", () => {
-  it("keeps scope changes in memory and writes them just before the Compile (V-69)", async () => {
+describe("the not-compiled Home", () => {
+  it("keeps scope changes in memory and writes them just before the Compile", async () => {
     const fake = start(workspaceView([projectRow(P, "ts-orders", { state: { kind: "not_compiled" }, git: { branch: "main", detached: null, worktrees: 1 } })]), {
       update_project_config: () => ({}) as never,
     });
@@ -136,7 +136,7 @@ describe("the not-compiled Home (06)", () => {
   });
 });
 
-describe("Home's state line in the states a screenshot run can't reach (07)", () => {
+describe("Home's state line in the states a screenshot run can't reach", () => {
   const line = () => screen.findByText((_, node) => node?.classList.contains("home-state-line") === true);
 
   it("says a failed Compile with the link joined to its detail (row 7)", async () => {
@@ -175,7 +175,7 @@ describe("Home's state line in the states a screenshot run can't reach (07)", ()
   });
 });
 
-describe("the compiled Home (01)", () => {
+describe("the compiled Home", () => {
   it("shows the header, How it starts, Boards, and the Health line", async () => {
     start(workspaceView([projectRow(P, "ts-orders", { path: "/Users/someone/code/ts-orders" })]));
     renderWithClient(<HomeMain />);
@@ -189,7 +189,7 @@ describe("the compiled Home (01)", () => {
     expect(screen.getByText("1 launch into code that isn't indexed")).toBeTruthy();
   });
 
-  it("expands an application to every entrance with a filter (V-48)", async () => {
+  it("expands an application to every entrance with a filter", async () => {
     const fake = start(workspaceView([projectRow(P, "ts-orders")]));
     renderWithClient(<HomeMain />);
     const server = await screen.findAllByRole("region");
@@ -215,13 +215,13 @@ describe("the compiled Home (01)", () => {
   });
 });
 
-describe("Health and activity (11)", () => {
+describe("Health and activity", () => {
   const PROBLEMS: ProblemItem[] = [
     { category: "doesnt_parse", path: "src/a.ts", line: 3, column: 1, message: "Unexpected token", fileState: "last_good" },
     { category: "settings", path: ".unfold/config.toml", line: null, column: null, message: "[scope] exclude isn't a list", fileState: null },
   ];
 
-  it("lists every problem with its action (V-77)", async () => {
+  it("lists every problem with its action", async () => {
     start(workspaceView([projectRow(P, "ts-orders", { state: { kind: "problems", count: 2 } })]), { problems: () => PROBLEMS }, "health");
     renderWithClient(
       <>
@@ -260,7 +260,7 @@ describe("Health and activity (11)", () => {
   });
 });
 
-describe("Recents and Drafts (V-65)", () => {
+describe("Recents and Drafts", () => {
   it("lists the drafts of every project with their project", async () => {
     const draft = { ...fixture("list_boards", "list_boards").boards[0], project: P, id: ".unfold/local/drafts/trace.json", place: "draft" as const, title: "Trace" };
     start(workspaceView([projectRow(P, "ts-orders")]), { drafts: () => ({ drafts: [draft] as never }) }, "drafts");

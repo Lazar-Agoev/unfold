@@ -1,5 +1,5 @@
 /**
- * The window's tab strip (components §2, V-32, V-33, V-44), which is also the title bar and the window's
+ * The window's tab strip, which is also the title bar and the window's
  * drag region: Home pinned first, then a tab per open board with its project's monogram. A board tab
  * shows `×` in a fixed slot while active or hovered, closes on a middle click, and has a menu (Close,
  * Close other tabs, Open in new window). Tabs shrink to 96px; past that the strip scrolls, keeping the

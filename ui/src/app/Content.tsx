@@ -1,6 +1,6 @@
 /**
  * The content area (`#content-area`, a positioned flex row): Home's main area while Home is active, else
- * the active board's view (only that board is mounted, V-46), with the peek sheet as its last child. The
+ * the active board's view (only that board is mounted), with the peek sheet as its last child. The
  * window's title follows what it shows.
  */
 

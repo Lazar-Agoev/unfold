@@ -1,4 +1,4 @@
-/** Board folder paths (contract §1.4): checking one, and joining a folder name onto its parent. */
+/** Board folder paths (architecture §9.1): checking one, and joining a folder name onto its parent. */
 
 const CONTROL = /\p{Cc}/u;
 

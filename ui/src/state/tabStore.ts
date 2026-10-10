@@ -1,5 +1,5 @@
 /**
- * The window's tab strip as data (UI plan §3.3): Home, implicit, always first and never closable, then
+ * The window's tab strip as data: Home, implicit, always first and never closable, then
  * the board tabs in order, one of them active. The board store opens and renames board tabs here;
  * `tabs.ts` adds closing (which needs the board store) and is what screens import.
  */
@@ -17,7 +17,7 @@ export interface TabsState {
   readonly active: TabKey;
 }
 
-/** A window holds at most this many board tabs (contract §2.2). */
+/** A window holds at most this many board tabs. */
 export const MAX_BOARD_TABS = 100;
 
 export const useTabs = create<TabsState>()(() => ({ boards: [], active: "home" }));

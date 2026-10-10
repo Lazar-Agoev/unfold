@@ -2,8 +2,8 @@
  * Card models from Rust (`card {project, key}`), cached with TanStack Query under the engine key, so
  * `graph_updated` and `files_changed` refresh exactly the cards of the files that changed in that
  * project (ipc/queries). The model is the same on every page and board: a page's Flow labels are
- * applied by the UI from its own document (flow/layout), never baked in by Rust (V-56), so a label the
- * person just changed or cleared shows at once.
+ * applied by the UI from its own document (flow/layout), never baked in by Rust, so a label the person
+ * just changed or cleared shows at once.
  *
  * When a file's source changes, the last verified Code render stays in memory to be shown dimmed: it
  * is never re-sliced and never saved. It is kept per project and key, and forgotten with its project.

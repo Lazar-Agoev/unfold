@@ -1,4 +1,4 @@
-/** One Health row (11 "Health list"): warning icon, title and explanation, location, and its action. */
+/** One Health row: warning icon, title and explanation, location, and its action. */
 
 import type { CSSProperties } from "react";
 import { Button } from "../../components";
@@ -18,7 +18,7 @@ export function runHealthAction(project: ProjectId, action: HealthAction): void 
 export interface HealthRowViewProps {
   readonly row: Pick<HealthRow, "title" | "explanation" | "location">;
   readonly icon?: IconName;
-  /** "board" rows set title and explanation on one line (11 "Boards health"). */
+  /** "board" rows set title and explanation on one line. */
   readonly inline?: boolean;
   readonly action?: { readonly label: string; readonly run: () => void } | null;
   readonly style?: CSSProperties;

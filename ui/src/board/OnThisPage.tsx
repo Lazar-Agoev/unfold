@@ -1,9 +1,9 @@
 /**
- * On this page (components §4.5, 10 §3): the page's cards in follow order, indented by call depth, with
- * their groups and drawn links, a review mark where something needs review, "not connected" on a card
- * whose project isn't, and a project monogram column when the page mixes projects (V-36). A click
- * brings the card into view (a focus move: Back returns), selects a group, or selects a link. The last
- * line steps through the Flow nodes still showing code names.
+ * On this page: the page's cards in follow order, indented by call depth, with their groups and drawn
+ * links, a review mark where something needs review, "not connected" on a card whose project isn't, and
+ * a project monogram column when the page mixes projects. A click brings the card into view (a focus
+ * move: Back returns), selects a group, or selects a link. The last line steps through the Flow nodes
+ * still showing code names.
  */
 
 import { useMemo, type RefObject } from "react";
@@ -16,7 +16,7 @@ import { stepUnlabeled, useUnlabeled } from "./unlabeled";
 import { useWindowed } from "./windowed";
 
 const ROW_HEIGHT = 28;
-/** Indentation per level of call depth (components §4.5). */
+/** Indentation per level of call depth. */
 const INDENT = 16;
 
 function isSelected(row: PageRow, selection: Selection): boolean {

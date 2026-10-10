@@ -1,5 +1,5 @@
 /**
- * A sheet that slides in from the right over the canvas area (09 §2). Unpinned it floats over the
+ * A sheet that slides in from the right over the canvas area. Unpinned it floats over the
  * content; pinned it takes its place in the row, so the content beside it narrows. It is not modal:
  * the rest of the window stays usable, and Escape inside it closes it.
  *

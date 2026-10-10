@@ -1,5 +1,5 @@
 /**
- * Streamed commands where only the latest request matters (UI plan §4.4): each run cancels the one
+ * Streamed commands where only the latest request matters: each run cancels the one
  * before it, and messages or a result arriving late from a superseded run are dropped. Add's text
  * search runs one per keystroke this way.
  */

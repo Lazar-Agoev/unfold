@@ -1,4 +1,4 @@
-/* The source peek sheet (09): header, the read-only file, match ticks, and the footer hint. */
+/* The source peek sheet: header, the read-only file, match ticks, and the footer hint. */
 
 .peek-header {
   display: flex;
@@ -41,7 +41,7 @@
   flex: 1;
 }
 
-/* Code area (09 §5) */
+/* Code area */
 
 .peek-code-area {
   position: relative;
@@ -68,7 +68,7 @@
   outline-offset: -2px;
 }
 
-/* The vertical thumb runs in the match ticks' lane: 8px wide, 2px from the edge, 8px from the ends (09 §5.3). */
+/* The vertical thumb runs in the match ticks' lane: 8px wide, 2px from the edge, 8px from the ends. */
 .peek-scroller::-webkit-scrollbar {
   width: 12px;
 }
@@ -201,7 +201,7 @@
   background: var(--color-selection);
 }
 
-/* Calls read as links (09 §5.2): accent, a 1px underline from the font. */
+/* Calls read as links: accent, a 1px underline from the font. */
 .peek .code-link.resolved {
   border-bottom: 0;
   border-radius: 2px;
@@ -235,7 +235,7 @@
   background: var(--color-accent);
 }
 
-/* Footer hint (09 §6) */
+/* Footer hint */
 
 .peek-footer {
   display: flex;

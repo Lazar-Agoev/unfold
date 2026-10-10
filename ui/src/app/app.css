@@ -1,4 +1,4 @@
-/* The window frame (components §1): the tab strip over a row of the sidebar and the content area. */
+/* The window frame: the tab strip over a row of the sidebar and the content area. */
 
 .app {
   display: flex;

@@ -1,4 +1,4 @@
-//! Compile commands (contract §4.3, architecture §7.1, §11.5): Compile and Rebuild from scratch
+//! Compile commands (architecture §7.1, §11.11): Compile and Rebuild from scratch
 //! with streamed progress, cancelling, the background-update switch, Problems, and the Index
 //! log. A running compile keeps its project live.
 

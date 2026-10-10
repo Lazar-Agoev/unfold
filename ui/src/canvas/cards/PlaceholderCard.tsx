@@ -1,7 +1,7 @@
 /**
- * A card whose project isn't connected on this machine (10 §5.4, V-35, V-61): where the card would be,
- * which project and definition it shows, who added it, and Connect project (the Add project picker).
- * Links still attach to it; it can be selected, moved, and removed like any card.
+ * A card whose project isn't connected on this machine: where the card would be, which project and
+ * definition it shows, who added it, and Connect project (the Add project picker). Links still attach
+ * to it; it can be selected, moved, and removed like any card.
  */
 
 import { Button, Monogram } from "../../components";
@@ -13,7 +13,7 @@ import { useCardMenu } from "./cardMenu";
 import { CardHandles } from "./parts";
 import { clickCard } from "./select";
 
-/** The placeholder's width (10 §5.4). */
+/** The placeholder's width. */
 const PLACEHOLDER_WIDTH = 288;
 
 export interface PlaceholderCardProps {

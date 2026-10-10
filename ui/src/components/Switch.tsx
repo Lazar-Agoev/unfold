@@ -1,4 +1,4 @@
-/** An on/off switch (08's suggestion, V-16): a 28×16 track with a 12px knob, accent when on. */
+/** An on/off switch: a 28×16 track with a 12px knob, accent when on. */
 
 import type { ButtonHTMLAttributes } from "react";
 import { cx } from "./internal/dom";

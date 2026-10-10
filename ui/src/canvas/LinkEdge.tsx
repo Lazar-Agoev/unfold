@@ -1,8 +1,8 @@
 /**
- * A drawn link between two cards (10 §5.5–5.6, V-58): a dashed, signed curve. Selected, it is the
- * accent at 1.75px with a hollow dot where it starts; otherwise the gray contour. Its label sits on the
- * curve's midpoint as a chip with the author's name; a click selects the link, a double-click edits its
- * label in the sidebar, and its menu offers Edit label and Remove link. Memoized.
+ * A drawn link between two cards: a dashed, signed curve. Selected, it is the accent at 1.75px with a
+ * hollow dot where it starts; otherwise the gray contour. Its label sits on the curve's midpoint as a
+ * chip with the author's name; a click selects the link, a double-click edits its label in the sidebar,
+ * and its menu offers Edit label and Remove link. Memoized.
  */
 
 import { EdgeLabelRenderer, Position, getBezierPath, type Edge, type EdgeProps } from "@xyflow/react";

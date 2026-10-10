@@ -1,5 +1,5 @@
 /**
- * The window's open boards (UI plan §3.4–§3.7, §3.10): sessions keyed by `BoardRef`, pages, edits as
+ * The window's open boards: sessions keyed by `BoardRef`, pages, edits as
  * undo steps across pages, autosave of `BoardEdit`, view state per page, cards from any connected
  * project, health and repairs, file operations, and Move to New Window. Screens import from here.
  */

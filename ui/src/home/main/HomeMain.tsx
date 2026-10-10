@@ -1,7 +1,7 @@
 /**
- * Home's main area (V-47): one of the selected project's overview, Health, or Activity; the Recents or
- * Drafts board grid; first launch for an empty workspace (05); the first-Compile setup for a project
- * that was never compiled (06). It scrolls as one; the sidebar stays put.
+ * Home's main area: one of the selected project's overview, Health, or Activity; the Recents or
+ * Drafts board grid; first launch for an empty workspace; the first-Compile setup for a project that
+ * was never compiled. It scrolls as one; the sidebar stays put.
  */
 
 import { useState, type JSX, type ReactNode } from "react";

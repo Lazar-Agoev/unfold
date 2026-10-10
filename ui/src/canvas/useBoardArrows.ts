@@ -17,7 +17,7 @@ export interface BoardArrows {
   readonly settled: boolean;
 }
 
-/** The arrows of a page of a board of `boardProject`; its cards resolve by shared name (D-3). */
+/** The arrows of a page of a board of `boardProject`; its cards resolve by shared name (U-40). */
 export function useBoardArrows(boardProject: ProjectId, cards: readonly Card[]): BoardArrows {
   const index = useProjectIndex();
   const arrowCards = useMemo(

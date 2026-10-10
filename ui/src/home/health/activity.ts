@@ -1,5 +1,5 @@
 /**
- * The Activity log (11, V-47): each committed update to the graph, newest first, as a table row of
+ * The Activity log: each committed update to the graph, newest first, as a table row of
  * when, what, files read / cached / failed, and how long it took. The counts come from the engine's
  * fact lines ("files: read 3, from cache 211, …", "states: current 213, failed 1").
  */
@@ -29,14 +29,14 @@ function countIn(value: string | undefined, name: string): number {
 export interface LogRow {
   readonly id: string;
   readonly time: string;
-  /** The short word 11 draws ("Update"); `action` is the engine's full name, for the cell's tooltip. */
+  /** The short word ("Update"); `action` is the engine's full name, for the cell's tooltip. */
   readonly what: string;
   readonly action: string;
   readonly files: string;
   readonly duration: string;
 }
 
-/** The engine's update kinds in the words 11 draws, short enough for the 120px What column. */
+/** The engine's update kinds as words short enough for the 120px What column. */
 const ACTION_WORDS: Readonly<Record<string, string>> = {
   Compile: "Compile",
   "Background update": "Update",

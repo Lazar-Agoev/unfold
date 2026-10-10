@@ -1,5 +1,5 @@
 /**
- * Board file operations (contract §4.6, §6.6): Publish, Discard changes, Move back to drafts, Delete,
+ * Board file operations: Publish, Discard changes, Move back to drafts, Delete,
  * Duplicate, Move to folder, Rename, health repairs, Mermaid export, and board folders. Operations on
  * an open board first write what is unsaved, because the engine works from the version this window
  * last saved; an id that changes (first Publish, Move back to drafts) keeps the session (undo history,
@@ -88,12 +88,12 @@ export async function duplicateBoard(ref: BoardRef): Promise<BoardSummary> {
   return call("duplicate_board", { project: ref.project, id: ref.id });
 }
 
-/** Moves any board, open or not, into a folder (null: the top level). The folder is Rust's (D-12). */
+/** Moves any board, open or not, into a folder (null: the top level). The folder is Rust's (U-47). */
 export async function setBoardFolder(ref: BoardRef, folder: string | null): Promise<BoardSummary> {
   return call("set_board_folder", { project: ref.project, id: ref.id, folder });
 }
 
-/** Renames an open board: the title is an edit like any other (one undo step), saved at once (D-7). */
+/** Renames an open board: the title is an edit like any other (one undo step), saved at once (U-43). */
 export async function renameBoard(ref: BoardRef, title: string): Promise<void> {
   const trimmed = title.trim();
   if (trimmed.length === 0 || getOpenBoard(ref)?.document.title === trimmed) {

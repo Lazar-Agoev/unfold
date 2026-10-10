@@ -1,7 +1,7 @@
 /**
- * The board-mode sidebar's header (components §4.1): back to Home, the project's monogram with
- * "project / folder", the board's title (renamed in place on double-click, V-74), and the board menu.
- * The title is the focus target `board.title`: focusing it (the board menu's Rename…) starts renaming.
+ * The board-mode sidebar's header: back to Home, the project's monogram with "project / folder", the
+ * board's title (renamed in place on double-click), and the board menu. The title is the focus target
+ * `board.title`: focusing it (the board menu's Rename…) starts renaming.
  */
 
 import { useRef, useState } from "react";

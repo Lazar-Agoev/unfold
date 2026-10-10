@@ -1,5 +1,5 @@
 /**
- * The board confirmations (V-73), 400 wide over the canvas: Discard changes (back to the published
+ * The board confirmations, 400 wide over the canvas: Discard changes (back to the published
  * version) and Delete. Both work on a board this window holds or on one Home's menu names.
  */
 

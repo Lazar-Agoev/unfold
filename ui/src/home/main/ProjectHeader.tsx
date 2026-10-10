@@ -1,7 +1,7 @@
 /**
- * The project header on Home (01 "Project header", 06, 11): the path, the 32px name, the project menu,
+ * The project header on Home: the path, the 32px name, the project menu,
  * Settings and New board, then the branch and worktree switcher and the state line. A project that
- * isn't compiled yet shows only its menu and the state line (06).
+ * isn't compiled yet shows only its menu and the state line.
  */
 
 import { Button } from "../../components";

@@ -1,5 +1,5 @@
 /**
- * Compile per project (UI plan §3.11): the Compiles (or Rebuilds from scratch) this window started,
+ * Compile per project: the Compiles (or Rebuilds from scratch) this window started,
  * with their streamed progress, and the progress of compiles and background updates started anywhere
  * (`compile_progress` events), until the project's state leaves compiling or updating.
  */
@@ -66,7 +66,7 @@ export function useCompileProgress(project: ProjectId): CompileProgress | null {
   return useCompileState((state) => state.progress[project] ?? null);
 }
 
-/** Whether a Compile this window started for the project is running (V-67: only this window says "compiled"). */
+/** Whether a Compile this window started for the project is running (only this window says "compiled"). */
 export function useCompileStartedHere(project: ProjectId): boolean {
   return useCompileState((state) => state.running[project] !== undefined);
 }

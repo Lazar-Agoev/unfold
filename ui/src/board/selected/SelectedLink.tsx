@@ -1,7 +1,6 @@
 /**
- * Selected for a drawn link (components §4.6, 10): "Link · drawn by <author>", its label (edited in
- * place), the cards it joins with their projects' monograms, what a drawn link is, and Edit label and
- * Remove link.
+ * Selected for a drawn link: "Link · drawn by <author>", its label (edited in place), the cards it
+ * joins with their projects' monograms, what a drawn link is, and Edit label and Remove link.
  */
 
 import { useId, useRef } from "react";

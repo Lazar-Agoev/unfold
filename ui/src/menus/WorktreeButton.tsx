@@ -1,9 +1,9 @@
 /**
- * The branch and worktree switcher on a project's Home header (01 meta row, V-15, V-80): the branch,
+ * The branch and worktree switcher on a project's Home header: the branch,
  * "· N worktrees" when there are several, and a popover in the menu style listing the repository's
  * worktrees from `git_info` (fetched each time it opens): branch, folder, a check on the current one,
  * unavailable ones disabled, and the note "Drafts and the graph are per worktree." Choosing one closes
- * this window's tabs of the project and switches it (V-76).
+ * this window's tabs of the project and switches it.
  */
 
 import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from "react";

@@ -1,6 +1,6 @@
 /**
- * The map's data (03, V-64): `entrances {perApplication: 12}` for every connected project (they rest,
- * so nothing wakes), and `entrances` with 500 rows for each lane the person expanded. Refreshed by
+ * The map's data: `entrances {perApplication: 12}` for every connected project (they rest, so nothing
+ * wakes), and `entrances` with 500 rows for each lane the person expanded. Refreshed by
  * `graph_updated` through the query cache.
  */
 

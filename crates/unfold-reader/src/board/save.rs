@@ -1,6 +1,5 @@
 //! Saving: preparing a board for writing, page by page and project by project — signing what
-//! is unsigned, saving guards, signing link labels, and refusing new problems (contract §6.3,
-//! §6.5).
+//! is unsigned, saving guards, signing link labels, and refusing new problems.
 //!
 //! A signature is only ever computed from bytes that verified against the facts' hash, so text
 //! can never be signed against source the graph has not seen. Text about a project that is not
@@ -278,8 +277,7 @@ fn prepare_page(
 
 /// Prepares `board` for writing over `previous` (the version being replaced, with its health,
 /// if any), page by page against `graphs`: a page equal to the previous version's page keeps
-/// its health unchecked; every other page is signed and checked (see the module documentation
-/// and contract §6.5). [`Board::projects`] is refreshed. Returns the board and its health.
+/// its health unchecked; every other page is signed and checked (see the module documentation). [`Board::projects`] is refreshed. Returns the board and its health.
 pub fn prepare_save(
     mut board: Board,
     previous: Option<(&Board, &Health)>,

@@ -1,4 +1,4 @@
-/* The not-compiled Home (06): a 720px column, left-aligned. */
+/* The not-compiled Home: a 720px column, left-aligned. */
 
 .home-page.home-page-setup {
   gap: 32px;
@@ -189,7 +189,7 @@
   color: var(--color-muted);
 }
 
-/* Compile: 06 draws this button 2px roomier on each side than the kit's primary button. */
+/* Compile: this button is 2px roomier on each side than the kit's primary button. */
 .home-compile-button.button {
   padding: 0 12px 0 14px;
 }

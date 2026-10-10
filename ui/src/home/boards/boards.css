@@ -1,4 +1,4 @@
-/* Board grids on Home (01 "Boards", V-49, V-50, V-65). */
+/* Board grids on Home. */
 
 .home-boards {
   display: flex;
@@ -66,7 +66,7 @@
   line-height: var(--leading-20);
 }
 
-/* The grid: four columns at full width, at least 220px each (V-49). */
+/* The grid: four columns at full width, at least 220px each. */
 .home-board-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

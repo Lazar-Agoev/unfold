@@ -1,6 +1,6 @@
 /**
- * The workspace (UI plan §3.2): its projects as every window shows them, this window's selection, and
- * how a board's cards find their project by shared name (D-3).
+ * The workspace: its projects as every window shows them, this window's selection, and
+ * how a board's cards find their project by shared name (U-40).
  *
  * The `workspace` query is replaced by `workspace_changed` and patched by `project_state`, so the
  * project index below changes identity exactly when the workspace does, and every card resolves again
@@ -16,7 +16,7 @@ import { useWindowStore } from "./window";
 
 const WORKSPACE_KEY = engineKey("workspace", {});
 
-/** The workspace, kept current (refetched when the window gains focus: branches change outside, D-4). */
+/** The workspace, kept current (refetched when the window gains focus: branches change outside, U-41). */
 export function useWorkspace(): WorkspaceView | undefined {
   return useEngineQuery("workspace", {}, { refetchOnWindowFocus: true }).data;
 }
@@ -30,7 +30,7 @@ function getWorkspace(): WorkspaceView | undefined {
 export interface ProjectIndex {
   readonly rows: readonly ProjectRow[];
   readonly byId: ReadonlyMap<ProjectId, ProjectRow>;
-  /** The first row in workspace order wins a shared name (D-3). */
+  /** The first row in workspace order wins a shared name (U-40). */
   readonly byName: ReadonlyMap<ProjectName, ProjectId>;
 }
 
@@ -87,7 +87,7 @@ export type RefProject = { readonly ok: true; readonly project?: ProjectName } |
 /**
  * The `ref.project` a card from `cardProject` gets on a board of `boardProject`: omitted for the
  * board's own project, else its shared name; refused when that name is the board project's own (such
- * a ref can't be saved, V-62).
+ * a ref can't be saved).
  */
 export function refProjectFor(index: ProjectIndex, boardProject: ProjectId, cardProject: ProjectId): RefProject {
   if (cardProject === boardProject) {
@@ -125,7 +125,7 @@ export async function addProjectFromPicker(): Promise<ProjectId | null> {
   return added.project;
 }
 
-/** Adds back a folder "Opened before" lists (A-1), then selects it. */
+/** Adds back a folder "Opened before" lists (U-46), then selects it. */
 export async function readdProject(path: string): Promise<ProjectId> {
   const added = await call("readd_project", { path });
   await selectProject(added.project.id);

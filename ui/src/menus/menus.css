@@ -1,4 +1,4 @@
-/* The branch and worktree switcher (01 meta row, V-15, V-80). */
+/* The branch and worktree switcher on a project's Home header. */
 
 .worktree-button {
   display: inline-flex;
@@ -106,7 +106,7 @@
   color: var(--color-muted);
 }
 
-/* Under a rule inset like a menu separator (V-43); the text stays in the rows' lane. */
+/* Under a rule inset like a menu separator; the text stays in the rows' lane. */
 .worktree-note {
   margin: 4px 4px 0;
   padding: 8px 4px 4px;

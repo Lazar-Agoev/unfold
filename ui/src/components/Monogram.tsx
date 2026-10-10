@@ -1,5 +1,5 @@
 /**
- * A project's monogram (components §3, V-24): a neutral rounded square with the name's initial, no
+ * A project's monogram: a neutral rounded square with the name's initial, no
  * hue per project. The workspace's mark is the one dark monogram.
  */
 

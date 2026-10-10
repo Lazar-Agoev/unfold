@@ -1,7 +1,7 @@
 /**
- * Context menus on the canvas (UI plan §7.2): a card's (Open source, Show callers, Draw link…, Add as
- * entrance…, Fold or Unfold card, Remove from page) and a group rail's (Collapse, Describe, Ungroup).
- * Each page choice is one board edit, so ⌘Z undoes it.
+ * Context menus on the canvas: a card's (Open source, Show callers, Draw link…, Add as entrance…,
+ * Fold or Unfold card, Remove from page) and a group rail's (Collapse, Describe, Ungroup). Each page
+ * choice is one board edit, so ⌘Z undoes it.
  */
 
 import type { MouseEvent, ReactNode } from "react";

@@ -7,7 +7,7 @@ export type TextRange = readonly [number, number];
 
 /**
  * `text` with each range (clamped, overlaps merged) wrapped in a `<mark>` of `className`: text matches
- * get the tinted bold run, command names a bold run (V-4).
+ * get the tinted bold run, command names a bold run.
  */
 export function highlightRanges(text: string, ranges: readonly TextRange[], className: string): ReactNode {
   if (ranges.length === 0) {

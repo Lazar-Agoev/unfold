@@ -33,7 +33,7 @@
   fill: var(--color-on-danger);
 }
 
-/* The moon is faint in the sidebar row (V-20) and muted in the Home state line (07). */
+/* The moon is faint in the sidebar row and muted in the Home state line. */
 .state-glyph-resting {
   stroke: var(--color-faint);
 }

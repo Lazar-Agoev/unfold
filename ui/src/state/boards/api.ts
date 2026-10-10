@@ -1,10 +1,10 @@
 /**
- * What screens do to a page's cards (UI plan §3.4, §3.7): add a definition or an entrance (from any
+ * What screens do to a page's cards: add a definition or an entrance (from any
  * connected project), bring a card into view, author descriptions, labels, groups, and links, and read
  * which project-qualified keys a page shows (for the on-page marks). Each change is one undo step and
  * autosaves.
  *
- * A card's project is its `ref.project` resolved against the current workspace (D-3); a card from the
+ * A card's project is its `ref.project` resolved against the current workspace (U-40); a card from the
  * board's own project has no `ref.project`.
  */
 
@@ -111,7 +111,7 @@ function refProjectOn(target: PageTarget, project: ProjectId): { readonly projec
 
 /**
  * Adds a definition (or any indexed block) of `project` as a full card on the page, or focuses the card
- * that already shows it. Shows the page. Returns the card's id (undefined when it can't be added, V-62).
+ * that already shows it. Shows the page. Returns the card's id (undefined when it can't be added).
  */
 export function addBlock(target: PageTarget, project: ProjectId, key: Key): string | undefined {
   const board = getOpenBoard(target.board);
@@ -328,7 +328,7 @@ export function foldAll(target: PageTarget, folded: boolean): void {
   });
 }
 
-/** Draws a link between two cards of the page (V-58). Returns its id, or undefined when it can't be drawn. */
+/** Draws a link between two cards of the page. Returns its id, or undefined when it can't be drawn. */
 export function addLink(target: PageTarget, from: string, to: string): string | undefined {
   return editPage(target, (page) => addLinkTo(page, from, to));
 }

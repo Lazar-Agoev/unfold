@@ -1,6 +1,6 @@
-//! Workspace commands (contract §4.2): the project rows every window shows, adding (from the
+//! Workspace commands: the project rows every window shows, adding (from the
 //! main process only, or a folder "Opened before"), removing, ordering, expanding, and selecting
-//! projects, and the branch and worktree switcher (R-4).
+//! projects, and the branch and worktree switcher (decision U-41).
 
 use std::path::Path;
 

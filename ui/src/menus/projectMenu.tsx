@@ -1,5 +1,5 @@
 /**
- * The project menu (artboard 07, V-18, V-43): `⋯` on a project's sidebar row and on its Home header.
+ * The project menu: `⋯` on a project's sidebar row and on its Home header.
  * Every item is there in every state, disabled when it doesn't apply: Compile (again), Rebuild from
  * scratch, Cancel, Pause or Resume background updates; Settings…, Add entrance…, Health and activity;
  * Reveal in Finder, Copy diagnostics; Remove from workspace….
@@ -14,7 +14,7 @@ import { copyDiagnostics } from "../settings";
 import { useProjectRow } from "../state/workspace";
 import { addEntrance, backgroundUpdates, cancel, compile, openSettings, removeProject, showHealth } from "./actions";
 
-/** What a project's state allows (V-18): a resting project answers as its last state did. */
+/** What a project's state allows: a resting project answers as its last state did. */
 export interface ProjectAbilities {
   readonly compiled: boolean;
   readonly compiling: boolean;

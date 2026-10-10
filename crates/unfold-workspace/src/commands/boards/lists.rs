@@ -1,4 +1,4 @@
-//! What lists boards (contract §3.4, §4.2, §4.4, §4.6): a project's boards and empty folders,
+//! What lists boards: a project's boards and empty folders,
 //! the drafts of every project, board thumbnails, and where a key is on boards. All of them read
 //! from disk and serve resting projects without waking them; only a live project's boards carry
 //! a health label (health needs a current graph).

@@ -1,5 +1,5 @@
 /**
- * "<project> compiled" (07 toasts, V-67): when a Compile this window started ends well, a toast with
+ * "<project> compiled": when a Compile this window started ends well, a toast with
  * the project's monogram, how many entrances it found, and Open Home, unless this window's Home is
  * already showing that project. Mounted once per window, so it speaks from a board tab too.
  */

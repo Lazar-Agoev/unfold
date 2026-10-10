@@ -1,7 +1,7 @@
 /**
- * What Enter does with Add's selection (redesign §4.5, V-63): an entrance or a function goes onto the
- * current page (⌘Enter: onto a new page after it); from Home it starts a new draft in the result's own
- * project. A file opens in the peek sheet; a text match opens it at its line.
+ * What Enter does with Add's selection: an entrance or a function goes onto the current page (⌘Enter:
+ * onto a new page after it); from Home it starts a new draft in the result's own project. A file opens
+ * in the peek sheet; a text match opens it at its line.
  */
 
 import { showToast } from "../components";

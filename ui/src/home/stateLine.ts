@@ -1,13 +1,13 @@
 /**
- * Home's state line under the project's name (07 "Home state line", V-25, V-68): the state in words,
- * a muted detail, one action link, and the quiet notes (fallback location, watching by scanning) that
- * the trailing info icon explains. Plain data, so every state's wording is testable.
+ * Home's state line under the project's name: the state in words, a muted detail, one action link, and the
+ * quiet notes (fallback location, watching by scanning) that the trailing info icon explains. Plain data,
+ * so every state's wording is testable.
  */
 
 import type { CompileProgress, FallbackReason, ProjectState, ProjectSummary } from "../ipc";
 import { formatCount, languageList, plural, relativeTime } from "../lib/format";
 
-/** A run of the detail: mono for branch names (V-25). Runs sit 6px apart, as 06 draws "· branch" and "main". */
+/** A run of the detail: mono for branch names. Runs sit 6px apart ("· branch" and "main"). */
 interface DetailPart {
   readonly text: string;
   readonly mono?: boolean;
@@ -19,7 +19,7 @@ export interface StateLineModel {
   readonly headline: string;
   /** Starts with "· "; empty when the state needs no detail. */
   readonly detail: readonly DetailPart[];
-  /** The accent link after the detail. `joined` follows the detail with no gap (07 row 7). */
+  /** The accent link after the detail. `joined` follows the detail with no gap. */
   readonly action: { readonly kind: StateAction; readonly label: string; readonly joined: boolean } | null;
   /** Sentences for the info icon's tooltip; no icon when empty. */
   readonly notes: readonly string[];
@@ -60,7 +60,7 @@ export function fallbackReasonText(reason: FallbackReason): string {
 
 const SCANNING_NOTE = "File events aren't available for this folder, so Unfold checks it for changes every few seconds.";
 
-/** "412 of 1,058 files · resolving calls" from the state's counts and the latest progress (V-68). */
+/** "412 of 1,058 files · resolving calls" from the state's counts and the latest progress. */
 export function compilingDetail(state: { readonly done: number; readonly total: number }, progress: CompileProgress | null): string {
   const reading = progress !== null && (progress.stage === "snapshot" || progress.stage === "extract") && progress.total > 0;
   const done = reading ? progress.done : state.done;
@@ -76,7 +76,7 @@ export function compilingDetail(state: { readonly done: number; readonly total: 
   return parts.join(" · ");
 }
 
-/** "1,284 files · TypeScript + Python · updated 2 minutes ago" (V-25). */
+/** "1,284 files · TypeScript + Python · updated 2 minutes ago". */
 function graphDetail(summary: ProjectSummary | undefined, nowMs: number | undefined): string {
   if (!summary) {
     return "";

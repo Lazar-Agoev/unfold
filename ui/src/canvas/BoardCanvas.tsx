@@ -1,6 +1,6 @@
 /**
  * A page's canvas (React Flow): cards as custom nodes at their reflowed positions, one memoized arrow
- * per opened call occurrence, the page's drawn links (V-58), and a camera that pans and zooms without
+ * per opened call occurrence, the page's drawn links, and a camera that pans and zooms without
  * changing what any card shows. No minimap. Large pages render only the cards in view. While a link is
  * being drawn, the next card clicked ends it; Escape or a click on the canvas cancels.
  */

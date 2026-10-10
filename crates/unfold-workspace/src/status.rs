@@ -1,4 +1,4 @@
-//! What the status bar says (architecture §7.9).
+//! What a project's state says: its sidebar row and Home's state line (architecture §7.9).
 //!
 //! ```text
 //! ● Graph current · 84 files · TypeScript + Python          current
@@ -69,7 +69,7 @@ pub enum GraphState {
     },
 }
 
-/// A project's state, as its row shows it (contract §4.1): one indicator per row.
+/// A project's state, as its row shows it (architecture §7.9): one indicator per row.
 ///
 /// A live project's state is derived from its [`GraphStatus`] and its problem count (the Problems
 /// list less board health), first match wins: `failed` > `compiling` > `updating` > `paused` >

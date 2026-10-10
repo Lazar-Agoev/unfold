@@ -1,7 +1,7 @@
 /**
- * The icon set's drawings (V-22). Path data is the designs' own, verbatim, in the viewBox each was
- * drawn in: the custom 16px icons of the Home artboards, the 24px board icons of 02, 03–04, 09, and 12,
- * and the 10px disclosure chevrons. The Lucide-style icons of 08 and 11 (check, close, folder,
+ * The icon set's drawings. Path data is the designs' own, verbatim, in the viewBox each was drawn in:
+ * the custom 16px icons of Home, the 24px icons of the board, Add, the peek sheet, and Publish, and the
+ * 10px disclosure chevrons. The Lucide-style icons of Project settings and Health (check, close, folder,
  * warning, info) are redrawn in the 16px style. Strokes are `currentColor`, 1.5 unless noted, with
  * round caps and joins.
  */
@@ -66,16 +66,16 @@ export type IconName = (typeof ICON_NAMES)[number];
 const FOLDER = "M2 4.5C2 3.67 2.67 3 3.5 3H6.5L8 4.5H12.5C13.33 4.5 14 5.17 14 6V11.5C14 12.33 13.33 13 12.5 13H3.5C2.67 13 2 12.33 2 11.5V4.5Z";
 
 export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
-  // Window tabs (components §2.2).
+  // Window tabs.
   home: { box: 16, stroke: 1.4, shapes: [{ d: "M2.5 7L8 2.5L13.5 7V13.5H9.5V10H6.5V13.5H2.5V7Z" }] },
-  // Board breadcrumb, dock, menus (components §4.1, §6, 12 §2.2).
+  // Board breadcrumb, dock, menus.
   "chevron-left": { box: 24, shapes: [{ d: "M15 18l-6-6 6-6" }] },
   "chevron-right": { box: 24, shapes: [{ d: "M9 18l6-6-6-6" }] },
   "chevron-down": { box: 24, shapes: [{ d: "M6 9l6 6 6-6" }] },
-  // Sidebar disclosure (home-sidebar §4).
+  // Sidebar disclosure.
   "chevron-right-small": { box: 10, shapes: [{ d: "M3.5 2L6.5 5L3.5 8" }] },
   "chevron-down-small": { box: 10, shapes: [{ d: "M2 3.5L5 6.5L8 3.5" }] },
-  // The filled-dots `⋯` everywhere (V-39; 01's project menu).
+  // The filled-dots `⋯` everywhere (as on the project menu).
   dots: {
     box: 16,
     shapes: [
@@ -86,7 +86,7 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   },
   plus: { box: 16, shapes: [{ d: "M8 3.5V12.5M3.5 8H12.5" }] },
   minus: { box: 16, shapes: [{ d: "M3.5 8H12.5" }] },
-  // Pages and On this page (components §4.4, §4.5).
+  // Pages and On this page.
   page: { box: 24, shapes: [{ d: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" }, { d: "M14 3v5h5" }] },
   entrance: {
     box: 24,
@@ -94,7 +94,7 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   },
   group: { box: 24, shapes: [{ d: "M13 4H9v16h4" }] },
   link: { box: 16, shapes: [{ d: "M2 8h9", dash: "2.5 2" }, { d: "M10 5l3 3-3 3" }] },
-  // Home sidebar (home-sidebar §1, §2, §5).
+  // Home sidebar.
   search: { box: 16, shapes: [{ circle: [7, 7, 4.5] }, { d: "M10.5 10.5L13.5 13.5" }] },
   clock: { box: 16, shapes: [{ circle: [8, 8, 5.5] }, { d: "M8 5V8L10 9.5" }] },
   drafts: { box: 16, shapes: [{ rect: [3, 2.5, 10, 11, 1.5], dash: "2 2" }] },
@@ -107,7 +107,7 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
       { rect: [2.5, 4.75, 8.75, 8.75, 1.5], dash: "2 1.75" },
     ],
   },
-  // Home's branch switcher (01).
+  // Home's branch switcher.
   branch: {
     box: 16,
     shapes: [
@@ -117,7 +117,7 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
       { d: "M4.5 5.25V10.75M11.5 7.25C11.5 9.5 8 9.5 5.5 11" },
     ],
   },
-  // Home's Health strip (01); also 08's badge check, redrawn.
+  // Home's Health strip; also Project settings' badge check, redrawn.
   check: { box: 16, shapes: [{ d: "M3.5 8.5L6.5 11.5L12.5 4.5" }] },
   gear: {
     box: 16,
@@ -126,7 +126,7 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
       { d: "M8 1.8V3.6M8 12.4V14.2M14.2 8H12.4M3.6 8H1.8M12.4 3.6L11.1 4.9M4.9 11.1L3.6 12.4M12.4 12.4L11.1 11.1M4.9 4.9L3.6 3.6" },
     ],
   },
-  // Dock (components §6).
+  // Dock.
   arrange: {
     box: 24,
     shapes: [
@@ -136,7 +136,7 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
       { d: "M9 12h3M12 6v12M12 6h3M12 18h3" },
     ],
   },
-  // Peek sheet menu and header (components §8, 09 §3).
+  // Peek sheet menu and header.
   "external-link": {
     box: 24,
     shapes: [{ d: "M15 3h6v6" }, { d: "M10 14 21 3" }, { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" }],
@@ -158,11 +158,11 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
       },
     ],
   },
-  // 08's close, redrawn.
+  // Project settings' close, redrawn.
   close: { box: 16, shapes: [{ d: "M4 4L12 12M12 4L4 12" }] },
-  // The peek's ⊕ (09 §5.2).
+  // The peek's ⊕.
   "add-circle": { box: 24, stroke: 1.75, shapes: [{ circle: [12, 12, 9] }, { d: "M12 8v8" }, { d: "M8 12h8" }] },
-  // 11's problem icon and 12's conflict icon, redrawn; the triangle follows 07's failed glyph.
+  // Health's problem icon and Publish's conflict icon, redrawn; the triangle follows the failed state glyph.
   "warning-circle": { box: 16, shapes: [{ circle: [8, 8, 6] }, { d: "M8 5V8.75" }, { circle: [8, 11, 0.9], filled: true }] },
   "warning-triangle": {
     box: 16,
@@ -172,17 +172,17 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
       { circle: [8, 10.9, 0.8], filled: true },
     ],
   },
-  // The state line's fallback note (07); also 11's quiet note.
+  // The state line's fallback note; also Health's quiet note.
   info: { box: 16, shapes: [{ circle: [8, 8, 6] }, { d: "M8 7.25V11" }, { circle: [8, 5, 0.9], filled: true }] },
-  // The first-Compile promise (06).
+  // The first-Compile promise.
   shield: { box: 16, shapes: [{ d: "M8 1.75L13 3.75V7.5C13 10.6 10.9 13.1 8 14.25C5.1 13.1 3 10.6 3 7.5V3.75L8 1.75Z" }] },
-  // Add's commands (04b) and the Publish changes list (12).
+  // Add's commands and the Publish changes list.
   publish: { box: 24, shapes: [{ d: "M12 15V3" }, { d: "m7 8 5-5 5 5" }, { d: "M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" }] },
   "move-back": { box: 24, shapes: [{ d: "M9 14 4 9l5-5" }, { d: "M4 9h10.5a5.5 5.5 0 0 1 0 11H11" }] },
   copy: { box: 24, shapes: [{ rect: [8, 8, 13, 13, 2] }, { d: "M4 16V5a2 2 0 0 1 2-2h11" }] },
   activity: { box: 24, shapes: [{ d: "M22 12h-4l-3 8L9 4l-3 8H2" }] },
   edit: { box: 24, shapes: [{ d: "M12 20h9" }, { d: "M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" }] },
-  // Add's "All projects" (03 §4.1).
+  // Add's "All projects".
   layers: { box: 24, shapes: [{ d: "m12 3 9 5-9 5-9-5 9-5Z" }, { d: "m3 13 9 5 9-5" }] },
   // Go back and forward (the navigation commands), as arrows.
   back: { box: 16, shapes: [{ d: "M13 8H3.5M7.5 4L3.5 8L7.5 12" }] },

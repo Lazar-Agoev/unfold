@@ -1,5 +1,5 @@
 /**
- * The application menu: standard roles plus Unfold's commands (architecture §11.7). Add Project and
+ * The application menu: standard roles plus Unfold's commands (architecture §11.3, §11.13). Add Project and
  * New Window run here; everything else is forwarded to the focused window's UI as a `menu_command`
  * event. Edit > Undo and Redo are forwarded too, so they reach the focused board; the preload keeps
  * a text field's native undo when one has focus. Keys the UI's dispatcher owns alone (`A`, `/`,

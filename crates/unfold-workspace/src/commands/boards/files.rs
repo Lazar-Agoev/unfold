@@ -1,5 +1,5 @@
-//! A project's board files by board id (contract §1.3, §6.1, §6.6): which file a board's
-//! working version is in, reading it, and writing it the way the table of §6.6 says.
+//! A project's board files by board id (decision U-43): which file a board's working version
+//! is in, reading it, and writing it.
 //!
 //! A board's **id** is its public file's folder-relative path: `.unfold/local/drafts/<name>.json`
 //! for a draft (the same id when `local/` is in the fallback location) and
@@ -249,14 +249,14 @@ impl<'a> Files<'a> {
         Ok(self.dirs.remove(file)?)
     }
 
-    /// A draft name no draft has: `board-<ms>`, then `-2`, `-3`, … (decision D-6).
+    /// A draft name no draft has: `board-<ms>`, then `-2`, `-3`, and so on.
     pub(super) fn new_draft(&self) -> CommandResult<BoardFile> {
         Ok(self
             .dirs
             .free_draft(&format!("board-{}", crate::commit::now_ms()))?)
     }
 
-    /// Writes `board` as board `file`'s working version (contract §6.6): the draft; or for a
+    /// Writes `board` as board `file`'s working version (decision U-43): the draft; or for a
     /// published board its changes copy, started from published revision `base` when the copy
     /// is new, and deleted (the board back on its published file) when the working version
     /// equals the published one.

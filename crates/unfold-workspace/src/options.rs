@@ -35,7 +35,7 @@ pub struct WorkspaceOptions {
     /// Whether background updates are on for a folder with no `state.json` yet.
     pub background_updates_default: bool,
     /// How long a project stays live after its last use or its last interest (a selection, an
-    /// open board) before it rests (contract §3.3).
+    /// open board) before it rests (decision U-45).
     pub rest_after: Duration,
     /// How often the liveness reaper looks for projects that may rest.
     pub reap_interval: Duration,

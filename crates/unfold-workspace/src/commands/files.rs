@@ -1,4 +1,4 @@
-//! File commands (contract §4.4): opening a project's file in the person's editor or file
+//! File commands: opening a project's file in the person's editor or file
 //! manager. The source a peek sheet shows is `file_view`.
 
 use std::path::Path;

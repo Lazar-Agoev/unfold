@@ -1,9 +1,9 @@
 /**
- * Publish (artboard 12, V-7, V-72), over the canvas, 520 wide. Three variants:
+ * Publish, over the canvas, 520 wide. Three variants:
  *
  * - a draft's first Publish: "Publish <board>", the file name (the title's slug; Rust's suggestion when
  *   the name is taken), and where it writes;
- * - a published board's unpublished changes: "Publish changes to <board>" with their count (the contract
+ * - a published board's unpublished changes: "Publish changes to <board>" with their count (the engine
  *   returns a count, not a list);
  * - a conflict (the published file changed since the changes started, e.g. a pull): Keep mine writes
  *   them over it; Take theirs and drop my changes discards them (the button turns into a danger

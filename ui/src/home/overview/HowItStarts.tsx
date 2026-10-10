@@ -1,5 +1,5 @@
 /**
- * How it starts (01, V-48, V-19): one card per application with its launch command and its first
+ * How it starts: one card per application with its launch command and its first
  * eight entrances (hover one to Trace it onto a new draft); "N more · Filter" expands the card in place
  * to every entrance with a filter; then the entrances no launch reaches and the launches into code that
  * isn't indexed, each collapsed.
@@ -16,7 +16,7 @@ import { traceFromHome } from "../actions";
 import { useWindowed } from "../windowed";
 import { applicationRows, launchCommand, overflowWords, widestApplication } from "./entrances";
 
-/** Entrances per application on Home (V-19), and in an expanded card (contract ≤ 500). */
+/** Entrances per application on Home, and in an expanded card (at most 500). */
 const SHOWN = 8;
 const ALL = 500;
 const ROW = 28;
@@ -94,7 +94,7 @@ function useDebounced(value: string, delay: number): string {
   return debounced;
 }
 
-/** An expanded application (V-48): a filter and every entrance, scrolling inside the card. */
+/** An expanded application: a filter and every entrance, scrolling inside the card. */
 function AllEntrances({ project, application, onMenu, onCollapse }: {
   readonly project: ProjectId;
   readonly application: ApplicationEntrances;

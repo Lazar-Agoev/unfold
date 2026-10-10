@@ -1,10 +1,9 @@
 /**
- * A block card (02 §4, V-34): one definition (or another indexed block) of a project in Code or Flow.
- * The header shows the project monogram (a card from another project, 10 §5.1), `ƒ`, the name, the file,
- * and the card's own Code | Flow switch (saved with the board); a review banner and the description
- * follow. A folded card (double-click its header) shows only the header, and its arrows attach there.
- * The body never scrolls: the card sizes itself to its content. Flow shows the page's labels for the
- * card's project.
+ * A block card: one definition (or another indexed block) of a project in Code or Flow. The header shows
+ * the project monogram (a card from another project), `ƒ`, the name, the file, and the card's own Code |
+ * Flow switch (saved with the board); a review banner and the description follow. A folded card
+ * (double-click its header) shows only the header, and its arrows attach there. The body never scrolls:
+ * the card sizes itself to its content. Flow shows the page's labels for the card's project.
  */
 
 import { useQuery } from "@tanstack/react-query";

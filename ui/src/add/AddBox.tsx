@@ -1,7 +1,6 @@
 /**
- * The window's Add box (UI plan §7.2, R-13), mounted once: it registers the `add.*` actions (`A`, ⌘K, `/`;
- * ⇧⌘P commands; ⌘P files; ⌘T functions) and shows the box while an Add request is open. Each request
- * starts a fresh box.
+ * The window's Add box, mounted once: it registers the `add.*` actions (`A`, ⌘K, `/`; ⇧⌘P commands; ⌘P
+ * files; ⌘T functions) and shows the box while an Add request is open. Each request starts a fresh box.
  */
 
 import type { JSX } from "react";

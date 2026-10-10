@@ -1,5 +1,5 @@
 /**
- * Key chips (components §7.6, 03–04 §0): `filled` on an accent button (Add's "A"), `outlined` in hint
+ * Key chips: `filled` on an accent button (Add's "A"), `outlined` in hint
  * lines (the peek footer's "esc"), and `keycap` in Add's footer and command rows, one cap per key.
  */
 

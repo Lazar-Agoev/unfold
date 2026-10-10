@@ -1,7 +1,7 @@
 /**
- * Add's `>` mode (R-13, 04b): every registered action that shows in Add, matched against what follows
- * the `>`. Without a query the commands are grouped (`ADD_GROUPS` order); with one they are ranked in a
- * single "Commands" group, the matched part of each name in bold.
+ * Add's `>` mode: every registered action that shows in Add, matched against what follows the `>`.
+ * Without a query the commands are grouped (`ADD_GROUPS` order); with one they are ranked in a single
+ * "Commands" group, the matched part of each name in bold.
  */
 
 import { ADD_GROUPS, type Action } from "../keyboard";

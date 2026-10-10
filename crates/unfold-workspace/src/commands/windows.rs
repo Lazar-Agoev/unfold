@@ -1,4 +1,4 @@
-//! Remembered windows (contract §2.2, §4.8): `windows.json` in the app-data folder holds the
+//! Remembered windows (architecture §11.10): `windows.json` in the app-data folder holds the
 //! windows that come back at launch: each one's Home selection, board tabs, active tab, and
 //! layout (which the UI saves), and its position and size (which the main process saves).
 //!

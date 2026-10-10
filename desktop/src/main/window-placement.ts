@@ -1,5 +1,5 @@
 /**
- * Restoring windows (architecture §11.2): reading the saved windows, and where each one goes:
+ * Restoring windows (architecture §11.10): reading the saved windows, and where each one goes:
  * back where it was, unless no screen shows it any more (a display was unplugged or rearranged), in
  * which case it moves onto the primary screen. Pure functions, so they are tested without Electron.
  */

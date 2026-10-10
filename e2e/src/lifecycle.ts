@@ -1,5 +1,5 @@
 /**
- * A board's life on disk (redesign §4.7, R-6, R-10): its files under `.unfold/`, and the edits that
+ * A board's life on disk (decisions U-43, U-47): its files under `.unfold/`, and the edits that
  * make unpublished changes.
  */
 

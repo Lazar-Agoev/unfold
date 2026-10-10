@@ -1,8 +1,7 @@
 /**
- * Add's search while typing (redesign §4.5, 04, V-63): kind tabs with counts, result groups in the order
- * Entrances, Functions, Files, Text, and on the All tab the first four of each kind with a "N more"
- * row that switches to that kind's tab. Names come from one `search` fan-out; text matches stream from
- * `search_text`.
+ * Add's search while typing: kind tabs with counts, result groups in the order Entrances, Functions,
+ * Files, Text, and on the All tab the first four of each kind with a "N more" row that switches to that
+ * kind's tab. Names come from one `search` fan-out; text matches stream from `search_text`.
  */
 
 import type { FileHit, ProjectId, SearchArgs, SearchHit, SearchKind, SearchResults, TextMatch, TextSearchFile } from "../ipc/generated";
@@ -30,10 +29,10 @@ const MORE_WORDS: Readonly<Record<AddKind, readonly [string, string]>> = {
 
 /** Rows per kind on the All tab. */
 const ALL_ROWS = 4;
-/** Name results asked for on the All tab, and on one kind's tab (V-63). */
+/** Name results asked for on the All tab, and on one kind's tab. */
 const ALL_LIMIT = 50;
 const KIND_LIMIT = 500;
-/** Text search starts at this many characters (V-63). */
+/** Text search starts at this many characters. */
 export const TEXT_MIN = 2;
 
 const SEARCH_KIND: Readonly<Record<Exclude<AddKind, "text">, SearchKind>> = {

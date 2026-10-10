@@ -1,4 +1,4 @@
-//! Events to windows (contract §5, architecture §12) and the sink they go through.
+//! Events to windows (architecture §12, docs/ipc.md › Events) and the sink they go through.
 //!
 //! Every window shows the whole workspace, so every event is for every window: a project's
 //! workspace hands each event to the [`EventSink`], and the host sends it as
@@ -44,7 +44,7 @@ pub trait EventSink: Send + Sync {
 /// says everything changed (`everything` / `truncated`), and windows refresh what they show.
 pub const MAX_LISTED: usize = 2_000;
 
-/// Which file an open board's session reads (contract §6.6).
+/// Which file an open board's session reads (decision U-43).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkingFile {

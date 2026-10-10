@@ -17,7 +17,7 @@
 //!   engine swapped its state, so the store must follow, and the new paths simply make the next
 //!   update.
 //! - While background updates are **paused**, paths keep accumulating and their count is the
-//!   status bar's "N files changed since the last compile". A Compile covers everything and
+//!   "N files changed since the last compile" on Home's state line. A Compile covers everything and
 //!   clears them.
 //! - In **scanning** mode (no usable file-system events) the engine thread checks the whole
 //!   folder every `scan_interval` instead.
@@ -94,7 +94,7 @@ impl Sched {
             && (self.paused || !self.compiled || (self.pending.is_empty() && !self.rescan))
     }
 
-    /// The status bar's changed-file count.
+    /// The changed-file count Home's state line shows while paused.
     pub(crate) fn changed(&self) -> u32 {
         u32::try_from(self.pending.len()).unwrap_or(u32::MAX)
     }

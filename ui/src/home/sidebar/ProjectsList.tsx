@@ -1,8 +1,7 @@
 /**
- * The projects list (home-sidebar §4–§5): a project row selects the project and shows its Home
- * overview (V-52); its chevron only expands it; under an expanded project, its folders and boards
- * (V-51), from `list_boards`. The list scrolls on its own and renders only the rows in view once it
- * is long (plan §9).
+ * The projects list: a project row selects the project and shows its Home overview; its chevron only
+ * expands it; under an expanded project, its folders and boards, from `list_boards`. The list scrolls
+ * on its own and renders only the rows in view once it is long.
  */
 
 import { useQueries } from "@tanstack/react-query";
@@ -25,7 +24,7 @@ import { rowHeight, sidebarRows, type ProjectTree, type SidebarRow } from "./tre
 /** Past this many rows the list renders only the rows in view. */
 const WINDOW_THRESHOLD = 120;
 
-/** The branch a project row shows: nothing on the usual default branches (home-sidebar §4). */
+/** The branch a project row shows: nothing on the usual default branches. */
 function branchOf(row: ProjectRow): string | null {
   const git = row.git;
   if (!git) {

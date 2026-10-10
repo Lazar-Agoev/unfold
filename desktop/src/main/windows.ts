@@ -1,7 +1,7 @@
 /**
  * The window factory and registry. Every window gets a numeric id (used on the wire to the engine)
  * and a stable key (its remembered state in `windows.json` survives restarts). Every window shows
- * the whole workspace (architecture §11.2, U-37).
+ * the whole workspace (architecture §11.10, U-37).
  */
 
 import { randomUUID } from "node:crypto";

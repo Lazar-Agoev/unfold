@@ -1,5 +1,5 @@
 /**
- * The Health line at the bottom of the overview (01 "Health strip", V-77): what is fine with a check,
+ * The Health line at the bottom of the overview: what is fine with a check,
  * what needs a look in amber with its action, and the way into Health and activity.
  */
 

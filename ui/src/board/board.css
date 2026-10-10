@@ -1,6 +1,6 @@
 /*
- * The board view (components §1, §5, §6; 13 for dark): the top bar over the stage. Floating chrome
- * centers on the canvas a sheet leaves uncovered: `--covered-right` is its width (V-38).
+ * The board view: the top bar over the stage. Floating chrome centers on the canvas a sheet leaves
+ * uncovered: `--covered-right` is its width.
  */
 
 .board-view {

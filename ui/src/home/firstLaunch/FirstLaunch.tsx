@@ -1,8 +1,8 @@
 /**
- * First launch (05): an empty workspace. Add project… (⌘O) opens the folder picker; a folder dropped
+ * First launch: an empty workspace. Add project… (⌘O) opens the folder picker; a folder dropped
  * on the zone (or anywhere on the window, which the frame handles) is added; "Opened before" lists the
  * folders removed from the workspace, with when (they were open until removed), each added back with
- * `readd_project` (V-21, A-1).
+ * `readd_project`.
  */
 
 import { useState, type DragEvent } from "react";

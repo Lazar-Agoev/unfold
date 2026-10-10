@@ -55,7 +55,7 @@ beforeEach(() => {
   toast.showToast.mockClear();
   store.resetBoards();
   queryClient.clear();
-  // Two projects share the name "orders": the first in workspace order is the one refs name (D-3).
+  // Two projects share the name "orders": the first in workspace order is the one refs name (U-40).
   queryClient.setQueryData(engineKey("workspace", {}), workspaceView([projectRow(P, "orders"), projectRow(Q, "payments"), projectRow(SAME, "orders")]));
   tabs.useTabs.setState({ boards: [REF], active: "home" });
 });
@@ -141,7 +141,7 @@ describe("following a call", () => {
   });
 });
 
-describe("adding cards from any project (D-3)", () => {
+describe("adding cards from any project", () => {
   it("adds a definition once, shows its page and tab, and focuses it the second time", () => {
     open([], boardDocument([page("page-1"), page("page-2")]));
     const second = { board: REF, page: "page-2" };
@@ -162,7 +162,7 @@ describe("adding cards from any project (D-3)", () => {
     expect(new Set(cards().map((card) => card.id)).size).toBe(2);
   });
 
-  it("refuses a card from a project with the board project's own name (V-62)", () => {
+  it("refuses a card from a project with the board project's own name", () => {
     open();
     expect(addBlock(PAGE, SAME, "src/a.ts#function:a")).toBeUndefined();
     expect(cards()).toHaveLength(0);

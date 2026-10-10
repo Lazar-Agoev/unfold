@@ -1,4 +1,4 @@
-//! The Node-API addon that the Electron engine host loads (contract §3.1, architecture §12). It
+//! The Node-API addon that the Electron engine host loads (architecture §12, docs/ipc.md). It
 //! exposes `init`, `subscribe`, `dispatch`, `cancel`, `detachWindow`, and `shutdown` over one
 //! process-wide [`Host`], and holds no graph logic of its own.
 //!

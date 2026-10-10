@@ -29,7 +29,7 @@ blessing.
 | Addon | `crates/unfold-node/test/addon.test.mjs` (`node --test`) | The built addon through its JavaScript surface |
 | Mermaid and schema checks | `tools/oracles/check-mermaid.mjs`, `check-board-schema.mjs` | Snapshots parse with the real Mermaid parser; boards validate against `docs/schemas/unfold-board.schema.json` |
 | Packaged smoke | `desktop/scripts/smoke.mts` (`just smoke`) | Fuses, window hardening, a Compile with no Node or Python on `PATH`, and nothing written outside `.unfold/` ([desktop/README.md](../desktop/README.md#packaging)) |
-| End-to-end journeys | `e2e/journeys/` (Playwright on the built app) | The studio, journey by journey, and a check that every row of the redesign's §6 and §8 tables has a home in them ([below](#end-to-end-journeys)) |
+| End-to-end journeys | `e2e/journeys/` (Playwright on the built app) | The studio, journey by journey, and a check that every row of the [UI shell](ui-shell.md)'s "Where V1's parts went" and keyboard tables has a home in them ([below](#end-to-end-journeys)) |
 | Budgets | `e2e/budgets/` (`just e2e-budgets`) | The [architecture §17](architecture.md#17-performance-targets) performance targets on this machine |
 
 ## Running the gates locally
@@ -141,28 +141,29 @@ folder with a user-data folder, a home folder, and copies of the playgrounds `ts
 synthetic repository), so tests never share state and nothing is written into `testdata/`. Tests run one app at a
 time (one worker), because some of them time what they do. A failed test keeps its sandbox and prints its path.
 
-| Spec (`e2e/journeys/`) | What it covers (redesign section) |
+| Spec (`e2e/journeys/`) | What it covers |
 | --- | --- |
-| `first-launch.spec.ts` | An empty workspace; Add project with the picker and ⌘O, a dropped folder, a dropped file, a folder from the command line and from a second launch; the not-compiled Home with what it reads and skips, its scope tree, and the first Compile (§4.1–§4.2) |
-| `home.spec.ts` | A compiled project's Home: the header with the branch and worktree switcher, How it starts and Trace, the Boards section, the sidebar tree, Recents and Drafts; Health and activity for a file that doesn't parse (§4.3) |
-| `board.spec.ts` | Reading a board: following calls and ⌥-click inline, On this page, Selected, the trail with Back and Forward, the lens and a card's own view; pages, descriptions, groups, Flow labels, undo and redo across pages; Show callers, a drawn link, Arrange, the zoom and Fit, the canvas and card menus (§4.4) |
-| `boards.spec.ts` | A board's life outside publishing: rename in place, Duplicate, Share as Mermaid, Fold all, Delete; folders and Move to folder; a board's file edited or deleted outside the app; a failed save and Retry (§4.7) |
-| `publish.spec.ts` | Drafts and publishing: a trace saved with its cards in place (left at once, published, and shown again with no unpublished changes); the first Publish naming the file; unpublished changes, Publish, Discard changes, Move back to drafts; a taken file name; a published file that changed underneath, resolved both ways (§4.7) |
-| `add.spec.ts` | Add: opening it on a board (A, ⌘K, /), the map, Enter and ⌘Enter; search across two projects with kind tabs, counts, the preview, and Look in; text search options; commands after `>`, ⇧⌘P, ⌘P, ⌘T, and Copy Diagnostics (§4.5) |
-| `peek.spec.ts` | The source peek sheet: a whole file with folds, call links, and ⊕; the pin, the menu, Escape; a text match at its line and Open source from a card (§4.6) |
-| `cross-project.spec.ts` | A board spanning projects: a `py-orders` card on a `ts-orders` board, a drawn and labeled link, and a placeholder while the shared name doesn't match (§4.8) |
-| `windows.spec.ts` | Several windows: New Window, two windows updating after a save, a board held by another window, Open in new window keeping undo, windows and tabs restored after quitting, and a killed engine host reconnecting every window without losing an edit (§4.9, §4.10) |
-| `background.spec.ts` | Background updates: a saved file updates the graph and the open card; a described card asks for review; a broken file keeps its last version; a 500-file branch switch ends equal to a fresh compile; edits made while closed; a read-only folder; a deleted cache; a case-only rename (§4.10) |
-| `project-menu.spec.ts` | The project menu: Compile again, Rebuild from scratch, Cancel, Pause and Resume, Settings…, Add entrance…, Health and activity, Reveal in Finder, Copy diagnostics, Remove from workspace… (§4.2, §4.10) |
-| `settings.spec.ts` | Project settings (Scope, Detectors, the name, the guard on unsaved edits), the manual entrance editor from the project menu, Home, and a card, and Preferences (the theme, a key binding) (§4.11) |
-| `keyboard.spec.ts` | Every shortcut of the §8 keyboard map once, with its effect; a plain key never fires while typing and no window shortcut fires under a dialog; the application menu's File, View, and Go items |
-| `coverage.spec.ts` | Runs without the app: every row of the redesign's "Where everything goes" table (§6, 33 rows) and keyboard map (§8, 19 rows) has a home in the journeys |
+| `first-launch.spec.ts` | An empty workspace; Add project with the picker and ⌘O, a dropped folder, a dropped file, a folder from the command line and from a second launch; the not-compiled Home with what it reads and skips, its scope tree, and the first Compile |
+| `home.spec.ts` | A compiled project's Home: the header with the branch and worktree switcher, How it starts and Trace, the Boards section, the sidebar tree, Recents and Drafts; Health and activity for a file that doesn't parse |
+| `board.spec.ts` | Reading a board: following calls and ⌥-click inline, On this page, Selected, the trail with Back and Forward, the lens and a card's own view; pages, descriptions, groups, Flow labels, undo and redo across pages; Show callers, a drawn link, Arrange, the zoom and Fit, the canvas and card menus |
+| `boards.spec.ts` | A board's life outside publishing: rename in place, Duplicate, Share as Mermaid, Fold all, Delete; folders and Move to folder; a board's file edited or deleted outside the app; a failed save and Retry |
+| `publish.spec.ts` | Drafts and publishing: a trace saved with its cards in place (left at once, published, and shown again with no unpublished changes); the first Publish naming the file; unpublished changes, Publish, Discard changes, Move back to drafts; a taken file name; a published file that changed underneath, resolved both ways |
+| `add.spec.ts` | Add: opening it on a board (A, ⌘K, /), the map, Enter and ⌘Enter; search across two projects with kind tabs, counts, the preview, and Look in; text search options; commands after `>`, ⇧⌘P, ⌘P, ⌘T, and Copy Diagnostics |
+| `peek.spec.ts` | The source peek sheet: a whole file with folds, call links, and ⊕; the pin, the menu, Escape; a text match at its line and Open source from a card |
+| `cross-project.spec.ts` | A board spanning projects: a `py-orders` card on a `ts-orders` board, a drawn and labeled link, and a placeholder while the shared name doesn't match |
+| `windows.spec.ts` | Several windows: New Window, two windows updating after a save, a board held by another window, Open in new window keeping undo, windows and tabs restored after quitting, and a killed engine host reconnecting every window without losing an edit |
+| `background.spec.ts` | Background updates: a saved file updates the graph and the open card; a described card asks for review; a broken file keeps its last version; a 500-file branch switch ends equal to a fresh compile; edits made while closed; a read-only folder; a deleted cache; a case-only rename |
+| `project-menu.spec.ts` | The project menu: Compile again, Rebuild from scratch, Cancel, Pause and Resume, Settings…, Add entrance…, Health and activity, Reveal in Finder, Copy diagnostics, Remove from workspace… |
+| `settings.spec.ts` | Project settings (Scope, Detectors, the name, the guard on unsaved edits), the manual entrance editor from the project menu, Home, and a card, and Preferences (the theme, a key binding) |
+| `keyboard.spec.ts` | Every action of the [keyboard map](ui-shell.md#keyboard) once, with its effect; a plain key never fires while typing and no window shortcut fires under a dialog; the application menu's File, View, and Go items |
+| `coverage.spec.ts` | Runs without the app: every row of the UI shell's "Where V1's parts went" table (18 rows) and keyboard table (23 rows) has a home in the journeys |
 
-The coverage journey keeps the journeys honest against the redesign. `e2e/src/coverage.ts` maps each row of
-§6 and §8 (its first column) to the spec, test, and step that exercise its new home, and `coverage.spec.ts`
-reads `docs/redesign/studio-redesign.md` and the spec sources: a row without a home, a mapped step that was
-renamed or deleted, and a mapping for a row that no longer exists all fail. When a journey's step is renamed,
-update its mapping; when the redesign gains a row, give it a step.
+The coverage journey keeps the journeys honest against the UI shell. `e2e/src/coverage.ts` maps each row of
+`docs/ui-shell.md`'s ["Where V1's parts went"](ui-shell.md#where-v1s-parts-went) table and its
+[keyboard](ui-shell.md#keyboard) table (its first column) to the spec, test, and step that exercise the part's
+new home or run the action, and `coverage.spec.ts` reads those two tables and the spec sources: a row without a
+home, a mapped step that was renamed or deleted, and a mapping for a row that no longer exists all fail. When a
+journey's step is renamed, update its mapping; when either table gains a row, give it a step.
 
 To run them: `just e2e` runs every journey; `just e2e journeys/board.spec.ts journeys/boards.spec.ts` runs
 some, and further arguments go to Playwright (`-g "<test title>"`). `just e2e` rebuilds the release addon, the
@@ -213,5 +214,5 @@ What the misses point at:
   V2 target needs incremental relinking.
 - **Graph current after reopening.** The project is usable within about 0.2 s, but its Home says "Graph
   current" only after the reopen check, which still links, resolves, validates, and commits an empty change
-  when no file changed (about 0.4 s of it on 602 files). The redesign build's follow-up F-16 skips that work
-  when nothing changed; these two figures change with it.
+  when no file changed (about 0.4 s of it on 602 files). Skipping that work when nothing changed is a planned
+  follow-up; these two figures change with it.

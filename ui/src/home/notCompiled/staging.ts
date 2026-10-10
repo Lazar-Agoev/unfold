@@ -1,5 +1,5 @@
 /**
- * First-Compile scope changes, kept in memory per project until Compile writes them (V-69): nothing is
+ * First-Compile scope changes, kept in memory per project until Compile writes them: nothing is
  * written to `.unfold/config.toml` before the person compiles.
  */
 

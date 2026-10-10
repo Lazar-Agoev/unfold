@@ -1,5 +1,5 @@
 /**
- * The scope tree of Project settings (08, V-70): where each folder stands with the saved `[scope]`
+ * The scope tree of Project settings: where each folder stands with the saved `[scope]`
  * patterns and the ones staged in the dialog, and what checking or unchecking it stages.
  *
  * `scope_dir` says where a folder stands with the saved file (`skipped`). Staged changes are worked
@@ -11,7 +11,7 @@
 
 import type { ScopeFolder, SkipKind } from "../ipc";
 
-/** Why a folder isn't graphed, as the tree's reason column says it (08). */
+/** Why a folder isn't graphed, as the tree's reason column says it. */
 const SKIP_REASONS: Readonly<Record<SkipKind, string>> = {
   default: "skipped by default",
   ignored: "ignored by .gitignore",

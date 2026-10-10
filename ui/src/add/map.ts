@@ -1,12 +1,12 @@
 /**
- * Add's map before typing (redesign §4.5, 03, V-64): each connected project's applications as lanes of
- * entrance chips, twelve per lane and then a "+N more" chip that expands the lane, plus a lane for the
- * entrances no launch reaches. Pure: the view and the keyboard both walk what this builds.
+ * Add's map before typing: each connected project's applications as lanes of entrance chips, twelve
+ * per lane and then a "+N more" chip that expands the lane, plus a lane for the entrances no launch
+ * reaches. Pure: the view and the keyboard both walk what this builds.
  */
 
 import type { EntranceMap, EntranceRow, LaunchRow, ProjectId, ProjectRow } from "../ipc/generated";
 
-/** Entrance chips per lane before "+N more" (V-64), and the most an expanded lane shows. */
+/** Entrance chips per lane before "+N more", and the most an expanded lane shows. */
 export const PER_LANE = 12;
 export const EXPANDED_LANE = 500;
 
@@ -85,7 +85,7 @@ export function lanesOf(map: EntranceMap): Lane[] {
   return lanes;
 }
 
-/** The entrances a project's map counts (Look in), summed from its totals without waking it (V-64). */
+/** The entrances a project's map counts (Look in), summed from its totals without waking it. */
 export function mapTotal(map: EntranceMap): number {
   return map.applications.reduce((sum, application) => sum + application.total, 0) + map.unreached.total;
 }

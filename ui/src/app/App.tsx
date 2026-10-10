@@ -1,5 +1,5 @@
 /**
- * The window (UI plan §7.1): the tab strip, then the sidebar and the content area, then the window-level
+ * The window: the tab strip, then the sidebar and the content area, then the window-level
  * layers (Add, dialogs, toasts). It wires the window up, registers the frame's actions, and adds folders
  * dropped anywhere on it as projects.
  */

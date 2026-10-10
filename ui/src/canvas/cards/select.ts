@@ -1,4 +1,4 @@
-/** What a click on a card does: select it (or a node inside it), or, in link mode, finish the link (V-58). */
+/** What a click on a card does: select it (or a node inside it), or, in link mode, finish the link. */
 
 import type { Key } from "../../ipc/generated";
 import { requestFocus } from "../../keyboard";

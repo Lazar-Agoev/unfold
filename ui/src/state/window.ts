@@ -1,6 +1,6 @@
 /**
  * This window: its id, stable key, and platform (from `window_info`), and the project its Home shows
- * (per window, D-25; saved in `windows.json`). Each window is its own renderer, so a module-level
+ * (per window, U-46; saved in `windows.json`). Each window is its own renderer, so a module-level
  * store is per window.
  */
 

@@ -18,7 +18,7 @@
 //!
 //! When the folder is read-only (detected by attempting the write), or sits on a network volume
 //! where SQLite's write-ahead log is unsafe, `local/` moves to
-//! `<fallbackCacheDir>/<hash of the canonical path>/` and the status bar says so. Shared files
+//! `<fallbackCacheDir>/<hash of the canonical path>/`, and Home's state line and Project settings say so. Shared files
 //! (`config.toml`, `boards/`) stay in the folder either way.
 
 use std::fmt::Write as _;

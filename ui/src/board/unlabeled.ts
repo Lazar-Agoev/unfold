@@ -1,8 +1,7 @@
 /**
- * "N Flow steps unlabeled · Label them" (redesign §4.4): the Flow nodes of a page that still show
- * their code names, and the stepper that brings each into view in turn, selected, with its label field
- * open in Selected. The page's outline lists them as of the last save; labels written since count as
- * written at once.
+ * "N Flow steps unlabeled · Label them": the Flow nodes of a page that still show their code names,
+ * and the stepper that brings each into view in turn, selected, with its label field open in Selected.
+ * The page's outline lists them as of the last save; labels written since count as written at once.
  */
 
 import { useMemo } from "react";

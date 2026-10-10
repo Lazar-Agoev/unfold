@@ -2,7 +2,7 @@
 
 import type { Language } from "../ipc/generated";
 
-/** `1,284`. With `max`, a count at or past the cap reads `500+` (V-65). */
+/** `1,284`. With `max`, a count at or past the cap reads `500+`. */
 export function formatCount(count: number, max?: number): string {
   if (max !== undefined && count >= max) {
     return `${max.toLocaleString("en-US")}+`;

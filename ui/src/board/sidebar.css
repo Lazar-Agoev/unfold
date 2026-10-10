@@ -1,4 +1,4 @@
-/* The board-mode sidebar (components §4; 10 §3; 13 for dark): a scrolling region over Selected. */
+/* The board-mode sidebar: a scrolling region over Selected. */
 
 .board-sidebar {
   display: flex;
@@ -27,7 +27,7 @@
   color: var(--color-muted);
 }
 
-/* Header (components §4.1) */
+/* Header */
 .board-header { display: flex; flex-direction: column; flex-shrink: 0; }
 
 .board-crumb {
@@ -63,7 +63,7 @@
   white-space: nowrap;
 }
 
-/* A title being renamed in place (V-74). */
+/* A title being renamed in place. */
 .inline-rename {
   width: 100%;
   min-width: 0;
@@ -80,7 +80,7 @@
 .inline-rename.board-page-title { font-size: var(--text-13); line-height: var(--leading-20); }
 
 /* A page's ⋯ shows in its trailing slot on hover and keyboard focus, so the review dot keeps its lane
-   (components §4.4 draws no ⋯ on the selected row). */
+   (the design draws no ⋯ on the selected row). */
 .page-row { position: relative; }
 
 .list-row.page-row .list-row-menu {
@@ -101,7 +101,7 @@
   background: var(--color-review);
 }
 
-/* On this page (components §4.5) */
+/* On this page */
 .layer-list { position: relative; }
 .layer-slot { position: absolute; top: 0; right: 0; left: 0; }
 
@@ -171,7 +171,7 @@
   white-space: nowrap;
 }
 
-/* Selected (components §4.6): at most half the sidebar, scrolling on its own. */
+/* Selected: at most half the sidebar, scrolling on its own. */
 .board-selected {
   display: flex;
   flex-direction: column;

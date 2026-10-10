@@ -1,5 +1,5 @@
 /**
- * The window-level actions the frame registers (UI plan §8.1, those marked U1c): tabs, New board, windows,
+ * The window-level actions the frame registers: tabs, New board, windows,
  * Add project, Compile, the sidebar, Undo/Redo (sent to the focused board's scope), and Preferences. What
  * they do lives in `state/actions.ts`; here they get their ids, titles, and when they apply.
  */

@@ -1,7 +1,7 @@
 /**
- * A 28px row (components §4.3): a 16px leading slot, a label, a trailing slot that stays 16px wide
- * unless it holds more, and an optional menu button that shows on hover, focus, and selection
- * (V-18). Depth indents the row. Hover and selection fill per V-8 and V-41.
+ * A 28px row: a 16px leading slot, a label, a trailing slot that stays 16px wide unless it holds
+ * more, and an optional menu button that shows on hover, focus, and selection. Depth indents the
+ * row. Hover is one step lighter than selection.
  *
  * The row is a plain element: give it the role its list needs (`option`, `treeitem`, `menuitem`) and
  * a `tabIndex` when it takes focus; Enter on a focused row calls `onClick`.

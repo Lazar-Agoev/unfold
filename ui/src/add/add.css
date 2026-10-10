@@ -1,4 +1,4 @@
-/* The Add box (03, 04, 04b): one box over the window, the map, search results with a preview, and commands. */
+/* The Add box: one box over the window, the map, search results with a preview, and commands. */
 
 .add-scrim {
   position: fixed;
@@ -7,7 +7,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  /* 50px under the 38px tab strip (03 §1). */
+  /* 50px under the 38px tab strip. */
   padding: 88px 24px 24px;
   background: var(--color-scrim);
   animation: hover-layer-in var(--duration) ease-out;
@@ -74,7 +74,7 @@
   background: var(--color-canvas);
 }
 
-/* Text search options (V-1): Match case, Whole word, Regex, on the Text tab. */
+/* Text search options: Match case, Whole word, Regex, on the Text tab. */
 .add-options {
   display: flex;
   gap: 2px;
@@ -183,7 +183,7 @@
     "liga" 0;
 }
 
-/* Look in (03 §4.1) */
+/* Look in */
 
 .add-lookin {
   display: flex;
@@ -279,7 +279,7 @@
   color: var(--color-muted);
 }
 
-/* Map (03 §4.2) */
+/* Map */
 
 .add-map {
   flex: 1;
@@ -448,7 +448,7 @@
   background: var(--color-accent);
 }
 
-/* Entrance popover (03 §4.3) */
+/* Entrance popover */
 
 .add-popover {
   position: fixed;
@@ -542,7 +542,7 @@
   white-space: nowrap;
 }
 
-/* Lists: results and commands (04 §5.1, 04b §6) */
+/* Lists: results and commands */
 
 .add-results,
 .add-commands {
@@ -718,7 +718,7 @@
   color: inherit;
 }
 
-/* Preview (04 §5.2) */
+/* Preview */
 
 .add-preview {
   display: flex;
@@ -888,7 +888,7 @@
   flex: 1;
 }
 
-/* As drawn (04 §5.2): 12px each side and 8px before the shortcut, set in the regular weight. */
+/* As drawn: 12px each side and 8px before the shortcut, set in the regular weight. */
 .add-preview-buttons .button {
   padding: 0 12px;
 }
@@ -898,7 +898,7 @@
   font-weight: 400;
 }
 
-/* Footer (03–04 §7) */
+/* Footer */
 
 .add-footer {
   display: flex;

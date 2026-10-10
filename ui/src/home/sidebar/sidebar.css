@@ -1,4 +1,4 @@
-/* The Home-mode sidebar (home-sidebar.md). The frame's container gives the width, edge, and fill. */
+/* The Home-mode sidebar. The frame's container gives the width, edge, and fill. */
 
 .home-sidebar {
   display: flex;
@@ -107,7 +107,7 @@
   color: var(--color-muted);
 }
 
-/* The list scrolls between the header and the footer (the spacer of home-sidebar §8). */
+/* The list scrolls between the header and the footer. */
 .home-projects {
   flex: 1;
   min-height: 0;
@@ -208,7 +208,7 @@
   text-overflow: clip;
 }
 
-/* V-18: `⋯` after the state slot, on hover, focus, selection, and while its menu is open. */
+/* `⋯` after the state slot, on hover, focus, selection, and while its menu is open. */
 .home-row-menu {
   display: none;
   flex-shrink: 0;

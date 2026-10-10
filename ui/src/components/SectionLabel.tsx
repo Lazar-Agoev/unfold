@@ -1,4 +1,4 @@
-/** A section's caps label in a 28px row (components §4.2), with an optional trailing control or note. */
+/** A section's caps label in a 28px row, with an optional trailing control or note. */
 
 import type { HTMLAttributes, ReactNode } from "react";
 import { cx } from "./internal/dom";

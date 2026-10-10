@@ -73,7 +73,7 @@ afterEach(() => {
 });
 
 describe("the board sidebar", () => {
-  it("shows the project and folder, and renames the board in place (V-74)", () => {
+  it("shows the project and folder, and renames the board in place", () => {
     open();
     renderSidebar();
     expect(screen.getByText("orders / Checkout")).not.toBeNull();

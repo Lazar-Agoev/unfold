@@ -48,7 +48,7 @@ describe("following", () => {
 });
 
 describe("card sizing", () => {
-  it("keeps block cards between 280 and 880 px wide, and entrance cards between 200 and 320 (V-57)", () => {
+  it("keeps block cards between 280 and 880 px wide, and entrance cards between 200 and 320", () => {
     expect(blockCardWidth({ name: "f", location: "a.ts", monogram: false, body: 10 }, estimateText)).toBe(CARD_MIN_WIDTH);
     expect(blockCardWidth({ name: "f", location: "a.ts", monogram: false, body: 5000 }, estimateText)).toBe(CARD_MAX_WIDTH);
     const entrance = (handlers: string[]) => entranceCardWidth({ method: "POST", title: "/orders", location: "src/routes/orders.ts:22", handlers }, estimateText);

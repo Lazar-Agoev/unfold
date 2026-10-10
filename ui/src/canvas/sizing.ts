@@ -1,9 +1,9 @@
 /**
- * Card widths (V-57): block cards size to their content between 280 and 880 px, entrance cards between
- * 200 and 320 px, measured with the bundled fonts; longer lines soft-wrap and nothing scrolls inside a
+ * Card widths: block cards size to their content between 280 and 880 px, entrance cards between 200
+ * and 320 px, measured with the bundled fonts; longer lines soft-wrap and nothing scrolls inside a
  * card. Heights follow from the content and are measured by the canvas; before a card is drawn, its
  * height and an entrance card's handler rows are estimated from its model, so cards a step opens are
- * placed in that step. The constants follow cards.css and code.css (02 §4).
+ * placed in that step. The constants follow cards.css and code.css.
  */
 
 import type { CardView, CodeText } from "../ipc/generated";

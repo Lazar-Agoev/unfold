@@ -1,5 +1,5 @@
 /**
- * The board menu (artboard 12 §2, V-43, V-7): the `⋯` in the board header, and the right-click menu of
+ * The board menu: the `⋯` in the board header, and the right-click menu of
  * a board on Home and in the sidebar. Rename…, Move to folder ›, Duplicate, Open in new window, Share ›,
  * Fold all cards, Unfold all cards, Discard changes… (only with unpublished changes), Move back to
  * drafts (only published), Delete…. Share, Fold, and Unfold need a page, so they are disabled for a

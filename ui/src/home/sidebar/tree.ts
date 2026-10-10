@@ -1,6 +1,6 @@
 /**
- * The Home sidebar's projects list as flat rows (home-sidebar §4–§5, V-51, plan §9): each project row,
- * and under an expanded project its folders and boards, folders first, then boards, each by name.
+ * The Home sidebar's projects list as flat rows: each project row, and under an expanded project its
+ * folders and boards, folders first, then boards, each by name.
  */
 
 import type { BoardList, BoardSummary, ProjectId, ProjectRow } from "../../ipc";

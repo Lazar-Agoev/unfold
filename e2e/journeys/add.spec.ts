@@ -1,5 +1,5 @@
 /**
- * Add (redesign §4.5, R-13): one box that finds entrances, functions, files, and text in every
+ * Add (architecture §11.6, decision U-30): one box that finds entrances, functions, files, and text in every
  * connected project and puts what you pick on a page, and runs commands after `>`. It replaces V1's
  * Search and Entrances views, the command palette, Go to File, and Go to Symbol.
  */

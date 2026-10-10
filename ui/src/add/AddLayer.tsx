@@ -1,8 +1,7 @@
 /**
- * The Add box (redesign §4.5, R-13, 03, 04, 04b): one box over the window. Empty, it shows the map;
- * typing searches every connected project; `>` lists commands. Focus stays in its input: ↑ ↓ move the
- * selection (← → too on the map), Enter adds to the current page, ⌘Enter on a new page, Tab switches
- * the kind, Escape closes.
+ * The Add box: one box over the window. Empty, it shows the map; typing searches every connected
+ * project; `>` lists commands. Focus stays in its input: ↑ ↓ move the selection (← → too on the map),
+ * Enter adds to the current page, ⌘Enter on a new page, Tab switches the kind, Escape closes.
  */
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -40,10 +39,10 @@ import { useTextSearch } from "./textSearch";
 import { useAddMap } from "./useMap";
 import "./add.css";
 
-/** Debounces: the query (V-63) and the preview. */
+/** Debounces: the query and the preview. */
 const QUERY_DELAY = 120;
 const PREVIEW_DELAY = 150;
-/** The box's fixed height in map and search mode (03 §1); its chrome is the input row, the footer, and the border. */
+/** The box's fixed height in map and search mode; its chrome is the input row, the footer, and the border. */
 const BOX_HEIGHT = 660;
 const CHROME_HEIGHT = 56 + 40 + 2;
 
@@ -136,12 +135,12 @@ function itemProject(item: ResultItem): ProjectId | null {
   }
 }
 
-/** The tabs of a mode, in Tab order: the map has no All (V-3). */
+/** The tabs of a mode, in Tab order: the map has no All. */
 function tabsOf(mode: Mode): readonly AddTab[] {
   return mode === "map" ? KINDS : ["all", ...KINDS];
 }
 
-/** The `>` keycap and the hints along the bottom (03–04 §7). */
+/** The `>` keycap and the hints along the bottom. */
 function Footer({ mode, onPage }: { readonly mode: Mode; readonly onPage: boolean }) {
   const platform = usePlatform();
   const hint = (key: string, label: string) => (
@@ -261,7 +260,7 @@ export function AddLayer({ request }: { readonly request: AddRequest }) {
     input.current?.focus();
   }, []);
 
-  /** Why results of `project` can't be added to the page (V-62), if they can't. */
+  /** Why results of `project` can't be added to the page, if they can't. */
   const blocked = (project: ProjectId | null): string | null =>
     page !== null && project !== null && !refProjectFor(index, page.board.project, project).ok ? BLOCKED : null;
   const projectName = (project: string) => index.byId.get(project)?.name ?? "?";

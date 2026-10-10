@@ -1,6 +1,6 @@
 /**
- * The peek sheet's render model, as pure functions over `file_view` pages (09 §5): which page holds a
- * line, which lines show (folds hide ranges), which outline items are definitions (they get `⊕` and a
+ * The peek sheet's render model, as pure functions over `file_view` pages: which page holds a line,
+ * which lines show (folds hide ranges), which outline items are definitions (they get `⊕` and a
  * fold), where text matches fall on a line, and the match ticks beside the scrollbar. Offsets are
  * UTF-16 offsets from the start of the file; a page's text begins at `textStart`.
  */
@@ -53,7 +53,7 @@ export function visibleLines(lineCount: number, folded: readonly FoldedRange[]):
   return lines;
 }
 
-/** The block kinds that are definitions: only they get `⊕` and a fold (09 §5.2). */
+/** The block kinds that are definitions: only they get `⊕` and a fold. */
 const DEFINITION_KINDS: ReadonlySet<BlockKind> = new Set(["function", "class", "method", "constructor", "getter", "setter"]);
 
 function isDefinition(item: Pick<OutlineItem, "kind">): boolean {

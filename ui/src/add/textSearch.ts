@@ -1,5 +1,5 @@
 /**
- * Add's streamed text search (R-13): one `search_text` at a time per Add box, across every connected
+ * Add's streamed text search: one `search_text` at a time per Add box, across every connected
  * project. A new query (or option) cancels the running search; matches arrive file by file and are
  * shown in batches. The graph changing re-runs it (the engine doesn't invalidate streams).
  */

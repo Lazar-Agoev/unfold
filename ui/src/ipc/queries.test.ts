@@ -106,7 +106,7 @@ describe("engine keys", () => {
   });
 });
 
-describe("invalidation by event (contract §5)", () => {
+describe("invalidation by event", () => {
   it("workspace_changed replaces the workspace without a refetch", () => {
     const next = workspaceView([projectRow(P, "orders")]);
     applyEngineEvent(client, { type: "workspace_changed", workspace: next });

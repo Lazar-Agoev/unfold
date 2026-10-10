@@ -1,4 +1,4 @@
-//! `relations` and `callers` (contract §4.4, architecture §10.1, decision U-29): what the
+//! `relations` and `callers` (architecture §10.1, decision U-29): what the
 //! Selected section shows for one definition (its callers, its outgoing calls grouped on the
 //! page / openable / external or unresolved, and the entrances it is reached from), and **Show
 //! callers**: the distinct definitions that call it.

@@ -1,5 +1,5 @@
 //! `search`: definitions, entrances, and files by name across the workspace's projects
-//! (contract §4.5, decisions U-30, D-9). It also serves Add's name search and quick open.
+//! (decisions U-30, U-45). It also serves Add's name search and quick open.
 //!
 //! One request is one fan-out in Rust: every project in "Look in" (all of them by default) is
 //! searched in parallel, and the results are merged. In each project, definitions and entrances

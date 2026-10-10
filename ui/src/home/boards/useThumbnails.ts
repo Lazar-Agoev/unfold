@@ -1,5 +1,5 @@
 /**
- * Thumbnails for a list of boards (plan §9): `board_thumbnails` in chunks of at most 60 ids per
+ * Thumbnails for a list of boards: `board_thumbnails` in chunks of at most 60 ids per
  * project, aligned to the list's order, each fetched only once one of its boards is rendered.
  */
 

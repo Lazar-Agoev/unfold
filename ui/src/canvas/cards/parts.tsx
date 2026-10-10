@@ -1,7 +1,7 @@
 /**
- * Pieces every card shares (02 §4, 10 §5): the ports arrows and links attach to (invisible: no port dots
- * are drawn), the kind glyph, the description strip (edited in place on double-click), and the note
- * line a card body shows while it loads or when its source is unavailable.
+ * Pieces every card shares: the ports arrows and links attach to (invisible: no port dots are drawn),
+ * the kind glyph, the description strip (edited in place on double-click), and the note line a card body
+ * shows while it loads or when its source is unavailable.
  */
 
 import { Handle, Position } from "@xyflow/react";
@@ -44,7 +44,7 @@ export function CardHandles() {
 
 const FUNCTION_KINDS: ReadonlySet<BlockKind> = new Set(["function", "method", "constructor", "getter", "setter"]);
 
-/** `ƒ` for a function (accent on the selected card), `{}` for any other block (02 §4). */
+/** `ƒ` for a function (accent on the selected card), `{}` for any other block. */
 export function CardGlyph({ kind }: { readonly kind: BlockKind | null }) {
   return (
     <span className="card-glyph" title={kind ?? undefined} aria-hidden="true">
@@ -64,8 +64,8 @@ export function CardNote({ warn = false, children }: { readonly warn?: boolean; 
 }
 
 /**
- * The card's description (02 §4.2): one line with **more**, in the authored color. Double-click edits
- * it in place (Enter saves, Shift+Enter breaks the line, Escape keeps the old text); clearing it removes it.
+ * The card's description: one line with **more**, in the authored color. Double-click edits it in place
+ * (Enter saves, Shift+Enter breaks the line, Escape keeps the old text); clearing it removes it.
  */
 export function DescriptionStrip({ target, cardId, description }: { readonly target: PageTarget; readonly cardId: string; readonly description: Description | undefined }) {
   const [open, setOpen] = useState(false);

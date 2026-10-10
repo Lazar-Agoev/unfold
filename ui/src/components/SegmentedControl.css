@@ -28,7 +28,7 @@
   outline-offset: 0;
 }
 
-/* The window lens (components §7.5). */
+/* The window lens. */
 .segmented-lens {
   height: 30px;
   border-radius: var(--radius-tab);
@@ -49,7 +49,7 @@
   box-shadow: var(--shadow-segment);
 }
 
-/* A card's mini lens (02 §4.1). */
+/* A card's mini lens. */
 .segmented-mini {
   border-radius: var(--radius-control);
   background: var(--color-track-soft);
@@ -67,7 +67,7 @@
   font-weight: 600;
 }
 
-/* Health | Activity (11). */
+/* Health | Activity. */
 .segmented-switch {
   gap: 2px;
   border-radius: var(--radius-tab);

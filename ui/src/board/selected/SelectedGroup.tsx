@@ -1,4 +1,4 @@
-/** Selected for a group (V-60): its title (renamed in place), its description, the card it is in, and Ungroup. */
+/** Selected for a group: its title (renamed in place), its description, the card it is in, and Ungroup. */
 
 import { Button } from "../../components";
 import type { Group } from "../../ipc/generated";

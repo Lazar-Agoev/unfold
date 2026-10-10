@@ -47,7 +47,7 @@ function lineFor(state: ProjectState, extra: { summary?: ProjectSummary; branch?
   });
 }
 
-describe("Home's state line (07, V-25)", () => {
+describe("Home's state line", () => {
   it("words every state", () => {
     expect(text(lineFor({ kind: "not_compiled" }))).toBe("Not compiled yet · branch main");
     expect(text(lineFor({ kind: "compiling", done: 412, total: 1058 }))).toBe("Compiling · 412 of 1,058 files [Cancel]");
@@ -94,7 +94,7 @@ describe("Home's state line (07, V-25)", () => {
   });
 });
 
-describe("compile progress (V-68)", () => {
+describe("compile progress", () => {
   it("counts files while reading, then names the stage", () => {
     expect(compilingDetail({ done: 0, total: 0 }, { stage: "extract", done: 412, total: 1058 })).toBe("412 of 1,058 files · reading files");
     expect(compilingDetail({ done: 1058, total: 1058 }, { stage: "resolve", done: 3, total: 9 })).toBe("1,058 of 1,058 files · resolving calls");

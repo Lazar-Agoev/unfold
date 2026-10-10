@@ -1,8 +1,8 @@
 /**
- * The window's layout (UI plan §3.9, V-79): the sidebar's width and visibility, the Selected section's
+ * The window's layout: the sidebar's width and visibility, the Selected section's
  * collapse, the peek sheet's pin, Home's view and boards filter, and the expanded sidebar folders. It
  * is saved with the window (`windows.json` `layout`) as plain JSON; the board lens is not part of it
- * (it is per page, V-55).
+ * (it is per page).
  */
 
 import { create } from "zustand";

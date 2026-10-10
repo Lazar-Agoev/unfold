@@ -32,7 +32,7 @@ interface ResultListProps<T> {
 }
 
 const HEADER_HEIGHT = 24;
-/** The list's padding above the first and below the last row (04 §5.1). */
+/** The list's padding above the first and below the last row. */
 const LIST_PADDING = { start: 6, end: 8 } as const;
 
 type Row<T> = { readonly kind: "header"; readonly section: ListSection<T> } | { readonly kind: "item"; readonly item: T; readonly option: number };

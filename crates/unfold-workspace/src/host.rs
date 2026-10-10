@@ -1,5 +1,5 @@
-//! [`Host`]: the facade the napi-rs addon wraps, one per engine-host process (contract §3.1,
-//! architecture §12).
+//! [`Host`]: the facade the napi-rs addon wraps, one per engine-host process
+//! (architecture §12, docs/ipc.md).
 //!
 //! | Addon function | Host |
 //! | --- | --- |

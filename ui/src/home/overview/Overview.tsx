@@ -1,4 +1,4 @@
-/** A compiled project's Home overview (01): How it starts, Boards, and the Health line. */
+/** A compiled project's Home overview: How it starts, Boards, and the Health line. */
 
 import type { ProjectId, ProjectSummary } from "../../ipc";
 import { BoardsSection } from "../boards/BoardsSection";

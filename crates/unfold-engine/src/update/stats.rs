@@ -61,7 +61,7 @@ impl fmt::Display for Stage {
 }
 
 /// A progress report: `done` of `total` items of `stage` (files for snapshot and extract).
-/// The status bar renders it as "Compiling · 12 of 84 files".
+/// Home's state line renders it as "Compiling · 12 of 84 files".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Progress {
     /// The running stage.

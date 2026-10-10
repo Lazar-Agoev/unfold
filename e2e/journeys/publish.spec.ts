@@ -1,5 +1,5 @@
 /**
- * Drafts, publishing, and unpublished changes (redesign §4.7, R-6, V-72, V-95): a new board is a draft;
+ * Drafts, publishing, and unpublished changes (architecture §11.8, decision U-43): a new board is a draft;
  * its first Publish names its file; edits to a published board stay on this machine until Publish;
  * Discard changes and Move back to drafts; a name that's taken; and a published file that changed
  * underneath the changes (a pull), resolved both ways. A trace's first save already has its cards in

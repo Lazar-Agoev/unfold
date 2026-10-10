@@ -15,7 +15,7 @@ const TEXT = [
   "graph unchanged: nothing that shapes it changed",
 ].join("\n");
 
-describe("the Activity log (11)", () => {
+describe("the Activity log", () => {
   it("splits the engine's fact lines", () => {
     const { summary, facts } = factLines(TEXT);
     expect(summary).toMatch(/^update/);
@@ -23,7 +23,7 @@ describe("the Activity log (11)", () => {
     expect(facts[2]).toEqual({ label: "graph unchanged", value: "nothing that shapes it changed" });
   });
 
-  it("lists updates newest first with files read / cached / failed, each kind in 11's word", () => {
+  it("lists updates newest first with files read / cached / failed, each kind in its short word", () => {
     const rows = logRows(
       [
         entry(NOW - 86_400_000, "Compile", "compile\nfiles: read 214, from cache 0\nstates: current 214", 2000, 100),

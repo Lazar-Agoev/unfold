@@ -1,4 +1,4 @@
-/* Bottom right, 24px from the edges, 10px apart, newest at the bottom (V-67); lifted above an open
+/* Bottom right, 24px from the edges, 10px apart, newest at the bottom; lifted above an open
    dialog's footer when they would meet (Toast.tsx). */
 .toaster {
   position: fixed;
@@ -78,7 +78,7 @@
   line-height: var(--leading-16);
 }
 
-/* × shows on hover and while the toast holds focus (V-67). */
+/* × shows on hover and while the toast holds focus. */
 .toast-close {
   margin: 0 -6px 0 -4px;
   opacity: 0;

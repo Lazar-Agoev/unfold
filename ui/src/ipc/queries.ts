@@ -1,6 +1,6 @@
 /**
  * Engine data in TanStack Query: one key shape for every command (`["engine", command, args]`), a hook
- * to read it, and the invalidation engine events drive (contract §5, UI plan §4.3).
+ * to read it, and the invalidation engine events drive (docs/ipc.md).
  *
  * Every project command's arguments carry `project`, so each event touches only the queries of its
  * project (and the cross-project `search`, `drafts`, and `board_refs` that can include it). Nothing is
@@ -20,7 +20,7 @@ export function engineKey<C extends CommandName>(command: C, args: CommandArgs<C
   return ["engine", command, args];
 }
 
-/** Queries that keep their default `staleTime: Infinity` except these (V-80: fetched when opened). */
+/** Queries that keep their default `staleTime: Infinity` except these (fetched when opened). */
 const ALWAYS_STALE: ReadonlySet<CommandName> = new Set<CommandName>(["git_info"]);
 
 /** Query options for one command call, for `useQueries`, `fetchQuery`, and `ensureQueryData`. */
@@ -34,7 +34,7 @@ export function engineQueryOptions<C extends CommandName>(command: C, args: Comm
 
 export interface EngineQueryOptions {
   readonly enabled?: boolean;
-  /** Ask again whenever the window gains focus (only `workspace` does, D-4). */
+  /** Ask again whenever the window gains focus (only `workspace` does, U-41). */
   readonly refetchOnWindowFocus?: boolean;
 }
 
@@ -256,7 +256,7 @@ export function installEngineInvalidation(client: QueryClient): () => void {
 }
 
 /**
- * After an engine-host restart (contract §3.6): whatever the engine answered before may be out of date
+ * After an engine-host restart: whatever the engine answered before may be out of date
  * (no events arrived while it was down), so every project query is reset and the shown ones fetched
  * again. Preferences and app info don't depend on the engine's state and stay.
  */

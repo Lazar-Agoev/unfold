@@ -1,5 +1,5 @@
 /**
- * Board folder prompts (V-51), 400 wide over the content area: New folder…, Rename…, and Move to
+ * Board folder prompts, 400 wide over the content area: New folder…, Rename…, and Move to
  * folder (the board menu's "New folder…", Add's command). Failures are toasts; the sidebar follows by
  * `boards_changed`.
  */

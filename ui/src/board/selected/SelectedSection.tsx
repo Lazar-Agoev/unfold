@@ -1,8 +1,7 @@
 /**
- * Selected (redesign §4.4, R-11, V-60): what is selected on the page, pinned to the bottom of the board
- * sidebar under a rule. A card, a Flow node inside one, a group, or a drawn link; a hint when nothing
- * is. It takes at most half the sidebar's height and scrolls on its own; its collapse is remembered per
- * window.
+ * Selected: what is selected on the page, pinned to the bottom of the board sidebar under a rule. A
+ * card, a Flow node inside one, a group, or a drawn link; a hint when nothing is. It takes at most half
+ * the sidebar's height and scrolls on its own; its collapse is remembered per window.
  */
 
 import { useQuery } from "@tanstack/react-query";

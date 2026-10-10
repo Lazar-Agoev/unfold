@@ -1,5 +1,5 @@
 /**
- * Home's state line (07, V-25, V-68): the state's glyph and words, the muted detail, its action link,
+ * Home's state line: the state's glyph and words, the muted detail, its action link,
  * and an info icon whose tooltip carries the quiet notes (fallback location, watching by scanning).
  */
 
@@ -37,7 +37,7 @@ export interface StateLineProps {
 export function StateLine({ project, state, summary, branch }: StateLineProps) {
   const progress = useCompileProgress(project);
   const onHealth = useLayout((layout) => layout.home.view === "health");
-  // Whether the files that don't parse still show on the graph decides the problems wording (07 row 5).
+  // Whether the files that don't parse still show on the graph decides the problems wording.
   const problems = useEngineQuery("problems", { project }, { enabled: state.kind === "problems" });
   const parse = problems.data?.filter((item) => item.category === "doesnt_parse" || item.category === "cant_read");
   const lastGood = parse === undefined ? undefined : parse.every((item) => item.fileState === "last_good");

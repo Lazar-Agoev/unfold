@@ -1,4 +1,4 @@
-//! How many unpublished changes a published board has (contract §6.6, decision D-24): a
+//! How many unpublished changes a published board has (decision U-43): a
 //! structural count of the differences between the working version and the published one, so
 //! the header can say "2 unpublished changes", and a copy with none can be deleted.
 

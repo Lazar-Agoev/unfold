@@ -1,7 +1,7 @@
 /**
- * An entrance card (02 §4.5): the method and trigger, where it is declared, and its handlers in
- * registration order. A resolved handler follows like a call; the opened ones (with a card on the
- * page) are accent links, and their arrows leave from their rows.
+ * An entrance card: the method and trigger, where it is declared, and its handlers in registration
+ * order. A resolved handler follows like a call; the opened ones (with a card on the page) are
+ * accent links, and their arrows leave from their rows.
  */
 
 import { useQuery } from "@tanstack/react-query";

@@ -1,10 +1,10 @@
 /**
- * The source peek sheet (redesign §4.6, R-12, 09, V-38, V-66): one whole file, read-only, sliding in
- * from the right over the content; pinned, the content narrows instead. Virtualized by line and fetched
- * in `file_view` pages of 200 lines. Syntax colors, folds on definitions, calls as links (hover peeks,
- * click adds the callee), a `⊕` beside each definition to add it to the page (`●` when it's there), the
- * text matches it was opened with (ticks beside the scrollbar), and Open in editor / Reveal in Finder.
- * One sheet per window, kept across tab switches; Escape closes it.
+ * The source peek sheet: one whole file, read-only, sliding in from the right over the content; pinned,
+ * the content narrows instead. Virtualized by line and fetched in `file_view` pages of 200 lines.
+ * Syntax colors, folds on definitions, calls as links (hover peeks, click adds the callee), a `⊕`
+ * beside each definition to add it to the page (`●` when it's there), the text matches it was opened
+ * with (ticks beside the scrollbar), and Open in editor / Reveal in Finder. One sheet per window, kept
+ * across tab switches; Escape closes it.
  */
 
 import { useQueries } from "@tanstack/react-query";
@@ -41,10 +41,10 @@ import "../code/code.css";
 import "./peek.css";
 
 const ROW_HEIGHT = 20;
-/** The code area's padding above the first row and below the last (09 §5). */
+/** The code area's padding above the first row and below the last. */
 const PADDING = 8;
 
-/** Adds a definition of `project` where Add would: the active page, or a new draft from Home (V-66). */
+/** Adds a definition of `project` where Add would: the active page, or a new draft from Home. */
 async function addDefinition(target: AddTarget, project: ProjectId, key: Key): Promise<void> {
   try {
     if (target.kind === "page") {

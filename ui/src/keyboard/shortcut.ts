@@ -103,7 +103,7 @@ export function normalizeShortcut(text: string): string | null {
 
 /**
  * Punctuation that Shift turns into another character (`]` into `}` on US layouts). With Shift, these
- * match and record by physical key, so `Mod+Shift+]` works on every layout (V-75).
+ * match and record by physical key, so `Mod+Shift+]` works on every layout.
  */
 const PHYSICAL_KEYS: ReadonlyMap<string, string> = new Map([
   ["[", "BracketLeft"],

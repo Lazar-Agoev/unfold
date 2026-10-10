@@ -1,4 +1,4 @@
-//! `file_view`: what the peek sheet renders (contract §4.4, architecture §11.4).
+//! `file_view`: what the peek sheet renders (architecture §11.7, decision U-48).
 //!
 //! The peek sheet shows a whole file, read-only, through the same render model as Code cards:
 //! syntax colors, the statement outline with its folds, and calls as links. Long files are

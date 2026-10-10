@@ -1,4 +1,4 @@
-//! Graph commands for one card (contract §4.4, architecture §10.2–10.4): `card` (an entrance
+//! Graph commands for one card (architecture §10.2–10.4): `card` (an entrance
 //! or block card with its Code and Flow models), `peek` (the hover over a call link), and
 //! `preview` (Add's preview pane and the map popover). Each wakes the card's project.
 
@@ -182,7 +182,7 @@ pub enum CardView {
 }
 
 /// Names of targets in other files, from the store. A page's authored Flow labels are the UI's
-/// to apply (decision V-56), so one card serves every page.
+/// to apply, so one card serves every page.
 struct CardContext<'a> {
     reader: &'a Reader,
 }

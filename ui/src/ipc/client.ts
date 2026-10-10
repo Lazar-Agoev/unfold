@@ -14,7 +14,7 @@ export const queryClient = new QueryClient({
 });
 
 // Several windows share one screen, so "focused" means the window has focus rather than the page
-// being visible: the few queries that refetch on focus (`workspace`, D-4) ask again on window focus.
+// being visible: the few queries that refetch on focus (`workspace`, U-41) ask again on window focus.
 focusManager.setEventListener((setFocused) => {
   if (typeof window === "undefined") {
     return undefined;

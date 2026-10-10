@@ -1,5 +1,5 @@
 /**
- * The window's tabs (UI plan §3.3): Home, implicit, always first and never closable, then board tabs
+ * The window's tabs: Home, implicit, always first and never closable, then board tabs
  * in order, one tab active. A board tab exists exactly while its board is open in this window, so
  * closing one saves and closes the board.
  */

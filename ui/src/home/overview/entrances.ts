@@ -1,4 +1,4 @@
-/** How it starts (01, V-48, V-19): how an application card names its launch and its overflow. */
+/** How it starts: how an application card names its launch and its overflow. */
 
 import type { ApplicationEntrances, LaunchRow } from "../../ipc";
 import { formatCount } from "../../lib/format";
@@ -18,7 +18,7 @@ export function overflowWords(application: Pick<ApplicationEntrances, "total" | 
   return `${formatCount(more)} more ${routes ? (more === 1 ? "route" : "routes") : more === 1 ? "entrance" : "entrances"}`;
 }
 
-/** The application that grows 1.4 in its row (V-48): the one with the most entrances, when there are several. */
+/** The application that grows 1.4 in its row: the one with the most entrances, when there are several. */
 export function widestApplication(applications: readonly Pick<ApplicationEntrances, "startup" | "total">[]): string | null {
   if (applications.length < 2) {
     return null;
@@ -26,10 +26,10 @@ export function widestApplication(applications: readonly Pick<ApplicationEntranc
   return applications.reduce((widest, application) => (application.total > widest.total ? application : widest)).startup;
 }
 
-/** At most this many application cards share a row (01 draws three). */
+/** At most this many application cards share a row. */
 const PER_ROW = 3;
 
-/** The applications in rows of at most three, as even as they go: 4 → 2 + 2, 5 → 3 + 2 (V-48). */
+/** The applications in rows of at most three, as even as they go: 4 → 2 + 2, 5 → 3 + 2. */
 export function applicationRows<T>(applications: readonly T[]): T[][] {
   const count = Math.ceil(applications.length / PER_ROW);
   const rows: T[][] = [];

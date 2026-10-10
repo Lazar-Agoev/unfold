@@ -1,5 +1,5 @@
 /**
- * Board health in the UI (contract §6.4): which item is about what on which page, what each offered
+ * Board health in the UI: which item is about what on which page, what each offered
  * repair does in words (shown before it is applied), and the `repair_board` request for it.
  */
 

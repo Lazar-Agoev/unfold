@@ -1,4 +1,4 @@
-/** A small outlined label with an optional icon ("File exists" in Project settings, 08). */
+/** A small outlined label with an optional icon ("File exists" in Project settings). */
 
 import type { HTMLAttributes, ReactNode } from "react";
 import { Icon, type IconName } from "../icons";

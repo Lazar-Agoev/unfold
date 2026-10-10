@@ -1,4 +1,4 @@
-//! The board commands' argument and result types (contract §4.6).
+//! The board commands' argument and result types (docs/ipc.md › Boards).
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -11,7 +11,7 @@ use crate::projects::ProjectId;
 use crate::state::BoardView;
 
 /// An `unfold-board` document as the window edits it: the board's working version, without a
-/// changes copy's `publishes` and `baseRevision` (contract §6.2).
+/// changes copy's `publishes` and `baseRevision`.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct BoardDocument {
@@ -36,7 +36,7 @@ impl BoardDocument {
     }
 }
 
-/// What a window saves: the title and the pages (contract §6.5). The folder, the `projects`
+/// What a window saves: the title and the pages. The folder, the `projects`
 /// list, and the file framing are Rust's. Labels, guards, and links are optional on input;
 /// signatures may be `""` (signed on save).
 #[derive(Debug, Clone, PartialEq, Deserialize, TS)]

@@ -1,5 +1,5 @@
 /**
- * Keyboard and actions (UI plan §8): the registry every command lives in, the keymap, the person's key
+ * Keyboard and actions (docs/ui-shell.md#keyboard): the registry every command lives in, the keymap, the person's key
  * bindings over it, the shortcut dispatcher, application-menu routing, command scopes (⌘Z to the
  * focused board), modal layers, and named focus targets.
  */

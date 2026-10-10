@@ -24,7 +24,7 @@ describe("StateIndicator", () => {
     const slot = container.querySelector(".state-indicator-row");
     expect(slot?.getAttribute("data-state")).toBe(state.kind);
     if (words === null) {
-      // A current project's slot stays empty (07: quiet is the normal state).
+      // A current project's slot stays empty: quiet is the normal state.
       expect(slot?.children).toHaveLength(0);
       expect(slot?.getAttribute("aria-hidden")).toBe("true");
     } else {

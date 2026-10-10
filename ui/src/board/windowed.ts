@@ -1,5 +1,5 @@
 /**
- * On this page past 150 rows (plan §9): the rows near the view, against the sidebar's scrolling region
+ * On this page past 150 rows: the rows near the view, against the sidebar's scrolling region
  * (`@tanstack/react-virtual`). Shorter lists render in full, as plain flow.
  */
 

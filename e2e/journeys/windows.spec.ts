@@ -1,8 +1,8 @@
 /**
- * Several windows on one workspace (redesign §4.9, U-37) and the engine host restarting (§4.10): New
- * Window; two windows, each with its own board, both updating after a save; a board held by another
- * window focuses that window; Open in new window (from a tab and from the board menu) keeps the
- * board's undo history; windows and tabs come back after quitting; and a killed engine host reconnects
+ * Several windows on one workspace (architecture §11.10, decision U-37) and the engine host
+ * restarting (§11.11): New Window; two windows, each with its own board, both updating after a save; a
+ * board held by another window focuses that window; Open in new window (from a tab and from the board
+ * menu) keeps the board's undo history; windows and tabs come back after quitting; and a killed engine host reconnects
  * every window without losing an edit.
  */
 

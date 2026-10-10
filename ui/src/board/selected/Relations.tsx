@@ -1,4 +1,4 @@
-/** Selected's label/value rows (components §4.6): an 88px label column (72px for links), then the value. */
+/** Selected's label/value rows: an 88px label column (72px for links), then the value. */
 
 import type { ReactNode } from "react";
 

@@ -1,6 +1,6 @@
 /**
- * The actions U5 registers (UI plan §8.1), so the project and board menus' commands are also in Add's
- * `>` mode and the application menu: the project ones act on the window's current project (the active
+ * The actions registered so the project and board menus' commands are also in Add's `>` mode and the
+ * application menu: the project ones act on the window's current project (the active
  * board's, else the one Home shows), the board ones on the active board tab.
  */
 

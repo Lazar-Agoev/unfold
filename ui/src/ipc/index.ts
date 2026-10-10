@@ -1,5 +1,5 @@
 /**
- * The UI's client for the rest of the app (UI plan §4): engine commands, streams, and events typed by
+ * The UI's client for the rest of the app: engine commands, streams, and events typed by
  * the generated module; window commands and shell events typed by the desktop shell; and the query
  * cache with its keys and event-driven invalidation. Screens import from here.
  */

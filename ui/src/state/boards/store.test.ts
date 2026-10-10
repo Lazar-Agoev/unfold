@@ -237,7 +237,7 @@ describe("undo and redo", () => {
     expect(store.getOpenBoard(REF)?.history.past).toHaveLength(store.HISTORY_LIMIT);
   });
 
-  it("keeps one history across the board's pages, and undo or redo shows the page each step changed (V-54)", () => {
+  it("keeps one history across the board's pages, and undo or redo shows the page each step changed", () => {
     store.adoptBoardState(state(boardDocument([page("page-1"), page("page-2")])));
     const second = { board: REF, page: "page-2" };
     edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));

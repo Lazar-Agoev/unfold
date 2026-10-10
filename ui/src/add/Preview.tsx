@@ -1,8 +1,8 @@
 /**
- * Add's preview pane (04 §5.2, V-6, V-63): where the selection is, its first lines of code in the
- * reader's syntax colors, Reached from, Calls, Called by, and the buttons Enter and ⌘Enter press. An
- * entrance shows its handler, where it is declared, and what it reaches; a file its first 12 lines; a
- * text match the lines around it. Asked for 150 ms after the selection settles.
+ * Add's preview pane: where the selection is, its first lines of code in the reader's syntax colors,
+ * Reached from, Calls, Called by, and the buttons Enter and ⌘Enter press. An entrance shows its
+ * handler, where it is declared, and what it reaches; a file its first 12 lines; a text match the
+ * lines around it. Asked for 150 ms after the selection settles.
  */
 
 import type { ReactNode } from "react";
@@ -16,7 +16,7 @@ import { baseName, type ResultItem } from "./search";
 
 /** Lines a definition's preview shows, as drawn (the pane also holds its relations and buttons). */
 const BLOCK_LINES = 5;
-/** Lines of a file's top, and around a text match (V-63). */
+/** Lines of a file's top, and around a text match. */
 const FILE_LINES = 12;
 const AROUND_MATCH = 5;
 

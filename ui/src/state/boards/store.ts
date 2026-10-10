@@ -1,10 +1,10 @@
 /**
- * The window's open boards (UI plan §3.4–§3.6): each an `unfold-board` document plus view state per
+ * The window's open boards: each an `unfold-board` document plus view state per
  * page. A board is open in one window at a time, so its edits and undo history live here alone.
  *
  * - Every edit is one undo step (bursts with a `coalesce` key merge); a step remembers the page it
- *   changed, and undo or redo shows that page (V-54). One history per board, across its pages.
- * - Edits autosave a moment later through `save_board` as a `BoardEdit` (title and pages only, D-12);
+ *   changed, and undo or redo shows that page. One history per board, across its pages.
+ * - Edits autosave a moment later through `save_board` as a `BoardEdit` (title and pages only, U-47);
  *   saves never overlap, and edits made during one are saved right after.
  * - Outside edits arrive as `board_conflict`: a board without unsaved edits reloads, one with unsaved
  *   edits gets a `conflict` for the person to resolve.
@@ -267,7 +267,7 @@ export function setPendingGroup(target: PageTarget, pending: PendingGroup | null
   });
 }
 
-/** Starts (from a card) or ends (null) link drawing mode on a page (V-58). */
+/** Starts (from a card) or ends (null) link drawing mode on a page. */
 export function setLinking(target: PageTarget, from: string | null): void {
   updatePageView(target, (view) => {
     view.linking = from === null ? null : { from };
@@ -501,7 +501,7 @@ function shared<T>(previous: T, next: T): T {
   return replaceEqualDeep(previous, next);
 }
 
-/** What `save_board` takes: the title and pages, never `folder` or `projects` (Rust's, D-12). */
+/** What `save_board` takes: the title and pages, never `folder` or `projects` (Rust's, U-47). */
 function boardEdit(document: BoardDocument) {
   return { title: document.title, pages: document.pages };
 }

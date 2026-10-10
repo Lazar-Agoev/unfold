@@ -1,5 +1,5 @@
 /**
- * A 16px check box (V-23) with the states of 06 and 08: checked, unchecked, mixed (some folders
+ * A 16px check box with four states: checked, unchecked, mixed (some folders
  * inside are excluded), and disabled (ignored by default or by .gitignore). A native input under the
  * drawing keeps keyboard and screen-reader behavior.
  */

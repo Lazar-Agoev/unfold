@@ -1,5 +1,5 @@
 /**
- * Menus in HTML, in one style (V-43): `Menu` (the keyboard-navigable list), `ContextMenu` (a Menu at
+ * Menus in HTML, in one style: `Menu` (the keyboard-navigable list), `ContextMenu` (a Menu at
  * the pointer), `useContextMenu` (state for one), and `MenuButton` (a button that opens a Menu below
  * it). An item may hold a submenu, which opens to its right with its first item level with the row.
  *
@@ -64,7 +64,7 @@ interface MenuProps {
   readonly onClose: () => void;
   /** Which item takes focus first. */
   readonly initialFocus?: "first" | "last";
-  /** Fixed width in px (V-43: board 220, project 264, peek 208, share 196); otherwise it fits its items. */
+  /** Fixed width in px (board 220, project 264, peek 208, share 196); otherwise it fits its items. */
   readonly width?: number;
   readonly className?: string;
 }

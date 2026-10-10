@@ -1,4 +1,4 @@
-// Tests of the built addon through its JavaScript surface (contract §3.1): the dispatch round
+// Tests of the built addon through its JavaScript surface (docs/ipc.md): the dispatch round
 // trip, broadcast events and stream messages from Rust threads reaching the sink, a result never
 // overtaking its stream messages, trusted commands, cancelling, errors, detaching windows, and
 // shutting down. Build the addon first (`just addon`); the tests run in one process because the

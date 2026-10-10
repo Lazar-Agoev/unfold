@@ -1,8 +1,8 @@
 /**
- * Selected for a card (components §4.6, V-60): its name and location, its description (edited here or
- * on the card), then for a block Called by and Reached from (up to 3 each, then "N more · Show
- * callers"), Not opened (up to 5 calls not on the page, each "+ Open"), and its groups. For an entrance,
- * its handlers. A card of a project that isn't connected shows what the board knows about it.
+ * Selected for a card: its name and location, its description (edited here or on the card), then for a
+ * block Called by and Reached from (up to 3 each, then "N more · Show callers"), Not opened (up to 5
+ * calls not on the page, each "+ Open"), and its groups. For an entrance, its handlers. A card of a
+ * project that isn't connected shows what the board knows about it.
  */
 
 import { useQuery } from "@tanstack/react-query";

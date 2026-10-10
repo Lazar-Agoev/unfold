@@ -51,7 +51,7 @@ describe("shortcutFromEvent", () => {
     expect(shortcutFromEvent(keydown({ key: "k", code: "KeyK", metaKey: true }), "win32")).toBeNull();
   });
 
-  it("records Shift with brackets, minus, and comma by physical key (V-75)", () => {
+  it("records Shift with brackets, minus, and comma by physical key", () => {
     expect(shortcutFromEvent(keydown({ key: "}", code: "BracketRight", metaKey: true, shiftKey: true }), "darwin")).toBe("Mod+Shift+]");
     expect(shortcutFromEvent(keydown({ key: "_", code: "Minus", ctrlKey: true, shiftKey: true }), "win32")).toBe("Mod+Shift+-");
     expect(shortcutFromEvent(keydown({ key: "+", code: "Equal", metaKey: true, shiftKey: true }), "darwin")).toBe("Mod+Shift+Plus");

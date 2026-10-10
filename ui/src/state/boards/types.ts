@@ -1,12 +1,12 @@
 /**
- * Types of the window's open boards (UI plan §3.4): the document as its file holds it, plus view state
+ * Types of the window's open boards: the document as its file holds it, plus view state
  * per page that never goes into the file (only each page's camera and lens are remembered, through
  * `save_board_view`).
  */
 
 import type { BoardDocument, BoardState, Health, Key, PageOutline, Place, ProjectId, PublishedState, View } from "../../ipc/generated";
 
-/** A board's id: the folder-relative path of its public file (contract §1.3). */
+/** A board's id: the folder-relative path of its public file. */
 export type BoardId = string;
 /** A page's id, unique in its board (`page-1`). */
 export type PageId = string;
@@ -75,9 +75,9 @@ export interface PendingGroup {
   readonly error?: string;
 }
 
-/** View state of one page (created when the page is first shown). Survives unmounting (V-46). */
+/** View state of one page (created when the page is first shown). Survives unmounting. */
 export interface PageView {
-  /** The page's lens (V-55): null until the person uses the top Code/Flow switch on this page. */
+  /** The page's lens: null until the person uses the top Code/Flow switch on this page. */
   lens: View | null;
   camera: Camera | null;
   selection: Selection;
@@ -96,11 +96,11 @@ export interface PageView {
   sizes: Record<string, CardSize>;
   focus: FocusRequest | null;
   pendingGroup: PendingGroup | null;
-  /** Link drawing mode (V-58): the next card clicked becomes the link's other end. */
+  /** Link drawing mode: the next card clicked becomes the link's other end. */
   linking: { readonly from: string } | null;
 }
 
-/** One undo step: the whole document before it, and the page it changed (V-54: undo shows that page). */
+/** One undo step: the whole document before it, and the page it changed (undo shows that page). */
 export interface HistoryEntry {
   readonly document: BoardDocument;
   readonly page: PageId;

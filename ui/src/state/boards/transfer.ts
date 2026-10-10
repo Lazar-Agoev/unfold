@@ -1,5 +1,5 @@
 /**
- * Move to New Window (UI plan §3.10): a board, with its unsaved edits, undo history, and page views,
+ * Move to New Window: a board, with its unsaved edits, undo history, and page views,
  * moves into a window of its own.
  *
  * The source window opens the new window (`move_tab_to_new_window`), hands it the board's claim

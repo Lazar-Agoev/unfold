@@ -1,10 +1,10 @@
-/** Board lists on Home (V-49, V-65): filtering, sorting, and how a board card describes its board. */
+/** Board lists on Home: filtering, sorting, and how a board card describes its board. */
 
 import type { BoardSummary } from "../../ipc";
 import { plural, relativeTime } from "../../lib/format";
 import type { BoardsFilter, BoardsSort } from "../../state/layout";
 
-/** Natural, case-insensitive name order ("Page 2" before "Page 10"), as the sidebar tree sorts (V-51). */
+/** Natural, case-insensitive name order ("Page 2" before "Page 10"), as the sidebar tree sorts. */
 export const byName = new Intl.Collator("en", { numeric: true, sensitivity: "base" }).compare;
 
 /** The title a board shows: its title, else its file name. */
@@ -25,7 +25,7 @@ export function sortBoards(boards: readonly BoardSummary[], sort: BoardsSort): B
   });
 }
 
-/** A board id under `.unfold/local/drafts/` is a draft (contract §1.3). */
+/** A board id under `.unfold/local/drafts/` is a draft. */
 export function isDraftId(id: string): boolean {
   return id.startsWith(".unfold/local/drafts/");
 }

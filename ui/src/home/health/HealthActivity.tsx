@@ -1,6 +1,6 @@
 /**
- * Health and activity (11, V-26, V-47): a mode of Home under the project header with a Health |
- * Activity switch showing one list at a time. Health: every problem with its action (V-77), the boards
+ * Health and activity: a mode of Home under the project header with a Health |
+ * Activity switch showing one list at a time. Health: every problem with its action, the boards
  * that need review, and a quiet note. Activity: the index log as a table, newest first, with Copy
  * diagnostics.
  */

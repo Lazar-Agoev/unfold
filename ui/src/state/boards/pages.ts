@@ -1,5 +1,5 @@
 /**
- * A board's pages (V-53): add, rename, duplicate, reorder, delete. Each is one undo step of the board;
+ * A board's pages: add, rename, duplicate, reorder, delete. Each is one undo step of the board;
  * undoing it shows the page it was about.
  */
 

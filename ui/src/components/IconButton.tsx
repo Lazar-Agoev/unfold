@@ -1,5 +1,5 @@
 /**
- * An icon-only button (components §7.4) with an accessible label and a tooltip that shows the label
+ * An icon-only button with an accessible label and a tooltip that shows the label
  * and shortcut. Pressed (a toggle that is on, or a menu that is open) shows the pressed fill.
  */
 

@@ -1,6 +1,6 @@
 /**
- * The not-compiled Home (06): what Unfold will read, what it skips and why, settings or discovery
- * problems as Health rows (V-69), the top-level scope with check boxes staged until Compile, the
+ * The not-compiled Home: what Unfold will read, what it skips and why, settings or discovery
+ * problems as Health rows, the top-level scope with check boxes staged until Compile, the
  * promise that nothing runs, and Compile (⇧⌘B). Once the state leaves not-compiled, Home shows the
  * compiled overview filling in as the compile finds entrances.
  */
@@ -38,7 +38,7 @@ function Skipped({ preview }: { readonly preview: CompilePreview }) {
   );
 }
 
-/** Settings and discovery problems the preview found, as Health rows (V-69). */
+/** Settings and discovery problems the preview found, as Health rows. */
 function PreviewProblems({ project, preview }: { readonly project: ProjectId; readonly preview: CompilePreview }) {
   const rows = [
     ...(preview.settingsError === null

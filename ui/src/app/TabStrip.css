@@ -1,4 +1,4 @@
-/* The tab strip (components §2, V-32, V-33, V-44): the window's title bar and drag region. */
+/* The tab strip: the window's title bar and drag region. */
 
 .tab-strip {
   display: flex;
@@ -98,7 +98,7 @@
   white-space: nowrap;
 }
 
-/* V-33: a fixed 16px slot, so a tab keeps its width when its × appears. */
+/* A fixed 16px slot, so a tab keeps its width when its × appears. */
 .tab-board .tab-main {
   padding-right: 8px;
 }

@@ -1,5 +1,5 @@
 /**
- * Recents and Drafts (V-65): the boards opened lately and the drafts (with published boards that have
+ * Recents and Drafts: the boards opened lately and the drafts (with published boards that have
  * unpublished changes) of every project, as board grids in Home's main area. Each card names its
  * project; the window's selected project stays as it was.
  */
@@ -14,7 +14,7 @@ import { cardOf } from "./BoardsSection";
 import { isDraftId } from "./model";
 import "./boards.css";
 
-/** Drafts lists at most this many (contract §4.2). */
+/** Drafts lists at most this many. */
 const DRAFTS_CAP = 500;
 
 function ViewPage({ title, note, children }: { readonly title: string; readonly note: string; readonly children: ReactNode }) {

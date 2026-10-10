@@ -1,5 +1,5 @@
 /**
- * The workspace's windows and projects, as the main process sees them (architecture §11.2).
+ * The workspace's windows and projects, as the main process sees them (architecture §11.10).
  *
  * - At launch, the windows open when the app last quit come back ({@link Workspace.restore}): the
  *   main process asks the engine (trusted `saved_windows`) and recreates each with its key and

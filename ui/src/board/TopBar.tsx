@@ -1,8 +1,8 @@
 /**
- * The canvas top bar (components §5): the page's name and the board's publish state on the left, the
- * page's Code | Flow lens centered over the uncovered canvas (V-38, V-55), and Share and Publish on the
- * right. Share opens the share menu; Publish opens the publish dialog. On a canvas too narrow to center
- * the lens between its neighbours, it moves aside and the title and state shorten (`placeLens`).
+ * The canvas top bar: the page's name and the board's publish state on the left, the page's Code | Flow
+ * lens centered over the uncovered canvas, and Share and Publish on the right. Share opens the share
+ * menu; Publish opens the publish dialog. On a canvas too narrow to center the lens between its
+ * neighbours, it moves aside and the title and state shorten (`placeLens`).
  */
 
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
@@ -19,7 +19,7 @@ const LENS_OPTIONS = [
   { value: "flow", label: "Flow" },
 ] as const;
 
-/** The share menu's width (V-43). */
+/** The share menu's width. */
 const SHARE_MENU_WIDTH = 196;
 
 export function TopBar({ target }: { readonly target: PageTarget }) {

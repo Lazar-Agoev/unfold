@@ -1,5 +1,5 @@
 /**
- * First launch and connecting projects (redesign §4.1–§4.2): an empty workspace, Add project with the
+ * First launch and connecting projects (architecture §11.4): an empty workspace, Add project with the
  * picker and ⌘O, a folder dropped on the window, a file dropped by mistake, a folder from the command
  * line and from a second launch; then the not-compiled Home with its scope tree and the first Compile.
  */

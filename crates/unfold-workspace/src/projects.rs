@@ -1,4 +1,4 @@
-//! The workspace's projects (contract §1, §2.1, §3.2–3.4; redesign R-2, R-3, R-8): one per
+//! The workspace's projects (architecture §11.1–11.2; decisions U-39, U-40, U-45): one per
 //! [`crate::host::Host`], owned by it.
 //!
 //! ```text
@@ -16,7 +16,7 @@
 //!
 //! # Live and resting projects
 //!
-//! A project is **live** while something needs it, and **rests** otherwise (decision D-8: Rust
+//! A project is **live** while something needs it, and **rests** otherwise (decision U-45: Rust
 //! owns liveness; the router knows nothing of projects):
 //!
 //! ```text
@@ -85,7 +85,7 @@ const RESTING_POOL_IDLE: Duration = Duration::from_secs(60);
 const FOLDER_GONE: &str = "The folder is gone or can't be read.";
 
 /// A project's id: `p-` and 10 characters of `[a-z2-7]`, random, assigned when the project is
-/// added (decision D-1). It survives restarts and worktree switches.
+/// added (decision U-40). It survives restarts and worktree switches.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, TS)]
 #[serde(transparent)]
 pub struct ProjectId(String);
@@ -400,7 +400,7 @@ fn unavailable_reason(error: &WorkspaceError) -> String {
     }
 }
 
-/// The shared name of the canonical folder `root`: `[project] name`, or the default (D-2).
+/// The shared name of the canonical folder `root`: `[project] name`, or the default (decision U-40).
 pub(crate) fn shared_name(root: &Path) -> String {
     load_settings(root)
         .ok()
@@ -506,7 +506,7 @@ impl Projects {
         })
     }
 
-    /// The first project in workspace order whose shared name is `name` (decision D-3): what a
+    /// The first project in workspace order whose shared name is `name` (decision U-40): what a
     /// board's `ref.project` names.
     pub fn resolve_name(&self, name: &str) -> Option<ProjectId> {
         lock(&self.inner)

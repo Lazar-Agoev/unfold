@@ -1,4 +1,4 @@
-/* Cards on the board (02 §4, 10 §5, V-34): sized to their content, no shadow, never scrolling inside. */
+/* Cards on the board: sized to their content, no shadow, never scrolling inside. */
 
 .board-card {
   position: relative;
@@ -71,7 +71,7 @@
   width: 0;
 }
 
-/* 02 §4.4: the review banner under the header. */
+/* The review banner under the header. */
 .card-review {
   display: flex;
   flex-shrink: 0;
@@ -88,7 +88,7 @@
 .card-review-text { flex: 1; min-width: 0; }
 .card-review .card-review-action { font-weight: 600; color: var(--color-warn); }
 
-/* 02 §4.2: the description strip. */
+/* The description strip. */
 .card-description {
   display: flex;
   flex-shrink: 0;
@@ -142,7 +142,7 @@
 
 .card-note.warn { color: var(--color-warn); }
 
-/* React Flow handles: arrows and links attach to them, but no port dots are drawn (02 §4.7). */
+/* React Flow handles: arrows and links attach to them, but no port dots are drawn. */
 .board-card .react-flow__handle {
   width: 1px;
   height: 1px;
@@ -165,7 +165,7 @@
 .code-row > .react-flow__handle.card-port { top: 10px; }
 .code-group-heading > .react-flow__handle.card-port { top: 50%; }
 
-/* Entrance cards (02 §4.5). */
+/* Entrance cards. */
 .ecard-method {
   flex-shrink: 0;
   padding: 2px 0;
@@ -241,7 +241,7 @@ button.ecard-handler-name:hover { text-decoration: underline 1px; text-underline
 .ecard-handler-name.external,
 .ecard-handler-name.unresolved { color: var(--color-muted); cursor: help; }
 
-/* Placeholder: a card of a project that isn't connected (10 §5.4). */
+/* Placeholder: a card of a project that isn't connected. */
 .board-card.placeholder-card {
   gap: 12px;
   padding: 14px;

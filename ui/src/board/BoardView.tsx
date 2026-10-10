@@ -1,13 +1,12 @@
 /**
- * A board in its tab (UI plan §7.2, 02): the top bar over the stage, where the active page's canvas
- * sits with the banners at its top, the dock at its bottom, and the link-drawing hint. Only the active
- * board tab is mounted (V-46); each page has its own React Flow store, so switching pages starts from
- * that page's camera.
+ * A board in its tab: the top bar over the stage, where the active page's canvas sits with the banners
+ * at its top, the dock at its bottom, and the link-drawing hint. Only the active board tab is mounted;
+ * each page has its own React Flow store, so switching pages starts from that page's camera.
  *
  * It registers the board's actions while mounted (Back, Forward, Fit, zoom, Arrange, the lens, New
  * page, Publish, the Share and Board commands), and the board's undo scope: ⌘Z reaches it when the
  * board or its sidebar has focus or was clicked last. Floating chrome centers on the canvas a sheet
- * leaves uncovered (V-38).
+ * leaves uncovered.
  */
 
 import { ReactFlowProvider, useReactFlow, useStoreApi } from "@xyflow/react";

@@ -1,5 +1,5 @@
 /**
- * Project settings → Scope (08, V-70): a check-box tree of the project's folders, one `scope_dir`
+ * Project settings → Scope: a check-box tree of the project's folders, one `scope_dir`
  * level per expanded folder, with the folders discovery skips listed last with their reason, and the
  * Rules the boxes write. Every change is staged; the dialog saves them together.
  */

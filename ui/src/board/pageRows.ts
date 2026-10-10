@@ -1,8 +1,8 @@
 /**
- * The rows of On this page (redesign §4.4, components §4.5, V-36, V-59): the page's cards in follow
- * order indented by call depth (from the page's outline as of the last save; cards added since go last
- * at depth 0), each card's groups nested under it, and each drawn link right after its `from` card's
- * groups, one level deeper. Pure, so it is tested without a DOM.
+ * The rows of On this page: the page's cards in follow order indented by call depth (from the page's
+ * outline as of the last save; cards added since go last at depth 0), each card's groups nested under
+ * it, and each drawn link right after its `from` card's groups, one level deeper. Pure, so it is
+ * tested without a DOM.
  */
 
 import type { Card, Group, HealthItem, Link, Page, PageOutline, ProjectName } from "../ipc/generated";
@@ -32,7 +32,7 @@ export type PageRow =
 
 interface PageRows {
   readonly rows: readonly PageRow[];
-  /** Whether the page holds cards from more than one project: the rows then carry a monogram (V-36). */
+  /** Whether the page holds cards from more than one project: the rows then carry a monogram. */
   readonly multiProject: boolean;
 }
 

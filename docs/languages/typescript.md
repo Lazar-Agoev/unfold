@@ -100,7 +100,7 @@ brace-only blocks still become blocks.
 | Expression statement, including a directive such as `"use strict";` | `expression_statement` | `expression` |
 
 Parameters bind no variables, so destructuring in a parameter selects no binding blocks. A
-destructured declaration is an unnamed `variable` with one `binding` variable per bound name (D-18);
+destructured declaration is an unnamed `variable` with one `binding` variable per bound name (PoC D-18);
 a binding element's range includes its property name and default, so `b: c` is named `c` and spans
 `b: c`. Statement ranges include their semicolon when one is written; automatic semicolon insertion
 ends them at their last token.

@@ -1,5 +1,5 @@
 /**
- * The project's Boards on Home (01 "Boards", V-49): All / Published / Drafts, sorted by last edited or
+ * The project's Boards on Home: All / Published / Drafts, sorted by last edited or
  * title (remembered per window), as a grid of board cards; "No boards yet" with New board when empty.
  */
 

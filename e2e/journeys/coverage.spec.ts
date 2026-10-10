@@ -1,8 +1,8 @@
 /**
- * Every row of the redesign's "Where everything goes" table (§6) and keyboard map (§8) has a home in
- * the journeys: `e2e/src/coverage.ts` maps each row to the test steps that exercise it, and this check
- * reads the redesign document and the journey sources so neither can drift (a new row without a home,
- * a mapped step that was renamed or deleted, or a mapping for a row that no longer exists all fail).
+ * Every row of the UI shell's "Where V1's parts went" table and its keyboard table has a home in the
+ * journeys: `e2e/src/coverage.ts` maps each row to the test steps that exercise it, and this check
+ * reads `docs/ui-shell.md` and the journey sources so neither can drift (a new row without a home, a
+ * mapped step that was renamed or deleted, or a mapping for a row that no longer exists all fail).
  * It runs without the app.
  */
 
@@ -12,17 +12,17 @@ import { expect, test } from "@playwright/test";
 import { KEYBOARD_HOMES, MAP_HOMES, type Home } from "../src/coverage";
 import { repoRoot } from "../src/paths";
 
-const REDESIGN = join(repoRoot, "docs", "redesign", "studio-redesign.md");
+const UI_SHELL = join(repoRoot, "docs", "ui-shell.md");
 
-/** The first column of every body row of the table under the heading that starts with `heading`. */
+/** The first column of every body row of the first table under the heading `heading`. */
 function firstColumn(markdown: string, heading: string): string[] {
-  const start = markdown.indexOf(`\n${heading}`);
-  expect(start, `the redesign has a section "${heading}"`).toBeGreaterThanOrEqual(0);
-  const section = markdown.slice(start + 1);
-  const end = section.indexOf("\n## ", 1);
-  const lines = (end < 0 ? section : section.slice(0, end)).split("\n").filter((line) => line.startsWith("| "));
+  const start = markdown.indexOf(`\n${heading}\n`);
+  expect(start, `docs/ui-shell.md has a section "${heading}"`).toBeGreaterThanOrEqual(0);
+  const lines = markdown.slice(start + 1).split("\n");
+  const first = lines.findIndex((line) => line.startsWith("| "));
+  const end = lines.findIndex((line, index) => index > first && !line.startsWith("| "));
   // Skip the header row and its rule.
-  return lines.slice(2).map((line) => {
+  return lines.slice(first + 2, end < 0 ? undefined : end).map((line) => {
     const cell = line.slice(2).split(/(?<!\\)\|/)[0] ?? "";
     return cell.replaceAll("\\|", "|").replaceAll("**", "").replaceAll("`", "").trim();
   });
@@ -60,14 +60,14 @@ function checkHomes(table: string, rows: readonly string[], homes: Readonly<Reco
   }
 }
 
-test("every row of the redesign's §6 table has a home in the journeys", () => {
-  const rows = firstColumn(readFileSync(REDESIGN, "utf8"), "## 6. Where everything goes");
-  expect(rows.length).toBeGreaterThan(30);
-  checkHomes("§6", rows, MAP_HOMES);
+test("every row of the UI shell's \"Where V1's parts went\" table has a home in the journeys", () => {
+  const rows = firstColumn(readFileSync(UI_SHELL, "utf8"), "## Where V1's parts went");
+  expect(rows.length).toBeGreaterThanOrEqual(18);
+  checkHomes("the \"Where V1's parts went\" table", rows, MAP_HOMES);
 });
 
-test("every shortcut of the redesign's §8 keyboard map is pressed in the journeys", () => {
-  const rows = firstColumn(readFileSync(REDESIGN, "utf8"), "## 8. Keyboard");
-  expect(rows.length).toBeGreaterThan(15);
-  checkHomes("§8", rows, KEYBOARD_HOMES);
+test("every action of the UI shell's keyboard table runs in the journeys", () => {
+  const rows = firstColumn(readFileSync(UI_SHELL, "utf8"), "## Keyboard");
+  expect(rows.length).toBeGreaterThanOrEqual(23);
+  checkHomes("the keyboard table", rows, KEYBOARD_HOMES);
 });

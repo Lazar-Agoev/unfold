@@ -63,8 +63,8 @@ afterEach(() => {
   engine.uninstall();
 });
 
-describe("the Home sidebar (home-sidebar.md)", () => {
-  it("draws every project state in the row's slot (07), the ones a screenshot run can't reach included", async () => {
+describe("the Home sidebar", () => {
+  it("draws every project state in the row's slot, the ones a screenshot run can't reach included", async () => {
     rows = [
       projectRow(API, "storefront-api", { state: { kind: "failed", message: "disk full" } }),
       projectRow(WEB, "storefront-web", { state: { kind: "resting", last: { kind: "current" }, atMs: 0 } }),
@@ -78,7 +78,7 @@ describe("the Home sidebar (home-sidebar.md)", () => {
       return row?.querySelector(".state-indicator") ?? null;
     };
     expect((await slot("storefront-api"))?.getAttribute("aria-label")).toBe("Compile failed");
-    // Resting: the moon, with the name undimmed (V-20).
+    // Resting: the moon, with the name undimmed.
     const resting = await slot("storefront-web");
     expect(resting?.getAttribute("aria-label")).toBe("Resting");
     expect(resting?.querySelector("svg")?.getAttribute("width")).toBe("14");
@@ -149,7 +149,7 @@ describe("the Home sidebar (home-sidebar.md)", () => {
     rows = [];
     renderWithClient(<HomeSidebar />);
     expect(await screen.findByText("No projects yet")).toBeTruthy();
-    // Without projects the Drafts row has no count (05).
+    // Without projects the Drafts row has no count.
     expect(screen.getByRole("button", { name: "Drafts" }).textContent).toBe("Drafts");
   });
 });

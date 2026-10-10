@@ -108,7 +108,7 @@ describe("tabs", () => {
     stop();
   });
 
-  it("⌘W on Home closes the window only when Home is the only tab (V-44)", async () => {
+  it("⌘W on Home closes the window only when Home is the only tab", async () => {
     tabs.openBoardTab(a, { activate: false });
     await closeActiveTab();
     expect(engine.windowCommand).not.toHaveBeenCalled();

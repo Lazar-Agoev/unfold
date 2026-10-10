@@ -1,5 +1,5 @@
 /**
- * Show callers (redesign §6, References → card menu): asks the engine for the distinct definitions
+ * Show callers (V1's References, now on the card menu): asks the engine for the distinct definitions
  * that call a card's block (`callers`), and adds the ones not on the page yet as cards in a column to
  * its left, sized from their models so each one's right edge lines up. One undo step; Back returns.
  */

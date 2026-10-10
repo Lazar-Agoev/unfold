@@ -1,5 +1,5 @@
 /**
- * Project settings' model (08, V-16, V-70, V-71): the form's staged state (the shared name, scope
+ * Project settings' model: the form's staged state (the shared name, scope
  * lists, detectors, Python projects), the detectors people can switch, and the `SettingsEdit`s that
  * turn the settings the dialog opened with into the staged ones. Rust applies them all or none.
  */
@@ -108,7 +108,7 @@ function pythonProblem(project: PythonDraft, all: readonly PythonDraft[]): strin
 
 const PROJECT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
-/** Why a shared name can't be saved (contract §4.1), or null. Empty means "the default". */
+/** Why a shared name can't be saved, or null. Empty means "the default". */
 function nameProblem(name: string): string | null {
   const trimmed = name.trim();
   return trimmed === "" || PROJECT_NAME.test(trimmed)

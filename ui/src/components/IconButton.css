@@ -27,7 +27,7 @@
   color: var(--color-text);
 }
 
-/* Pressed toggles and open menus (09's `⋯`, 07's project menu trigger). */
+/* Pressed toggles and open menus (the peek sheet's `⋯`, the project menu's trigger). */
 .icon-button[aria-pressed="true"],
 .icon-button[aria-expanded="true"],
 .icon-button[aria-expanded="true"]:hover {

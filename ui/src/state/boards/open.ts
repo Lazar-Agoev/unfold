@@ -1,5 +1,5 @@
 /**
- * Opening and closing boards in this window (contract §3.5): `open_board` and `new_board` claim a
+ * Opening and closing boards in this window: `open_board` and `new_board` claim a
  * board, a board held elsewhere focuses that window instead, and closing saves first, then releases
  * the claim. A board's session and its tab come and go together.
  */
@@ -97,14 +97,14 @@ export async function closeBoard(ref: BoardRef): Promise<void> {
   }
 }
 
-/** Closes this window's boards of a project (before it is removed or switched to another worktree, V-76). */
+/** Closes this window's boards of a project (before it is removed or switched to another worktree). */
 export async function closeBoardsOfProject(project: ProjectId): Promise<void> {
   const refs = useTabs.getState().boards.filter((ref) => ref.project === project);
   await Promise.all(refs.map((ref) => closeBoard(ref)));
 }
 
 /**
- * After an engine-host restart (contract §3.6, D-27): the claims went with the engine, so each board
+ * After an engine-host restart: the claims went with the engine, so each board
  * tab is claimed again, in tab order, before anything is saved. A board another window took meanwhile
  * loses its tab; one whose file changed meanwhile reloads, or asks about its unsaved edits. Then every
  * unsaved edit and view is written. (The window's session code orders this between `select_project`

@@ -27,7 +27,7 @@ const COMMANDS: Record<MenuCommand, true> = {
   copy_diagnostics: true,
 };
 
-/** The redesign's keyboard table (§8, contract §7.4) as menu accelerators, by item label. */
+/** The keyboard table (docs/ui-shell.md#keyboard) as menu accelerators, by item label. */
 const ACCELERATORS: Readonly<Record<string, string>> = {
   "Add Project…": "CmdOrCtrl+O",
   "New Board": "CmdOrCtrl+N",
@@ -82,7 +82,7 @@ describe("the application menu", () => {
     expect(actions.forward).not.toHaveBeenCalled();
   });
 
-  it("shows the redesign's shortcuts, and no item is disabled", () => {
+  it("shows the keyboard map's shortcuts, and no item is disabled", () => {
     const { all } = menu(true);
     const labelled = all.filter((item) => item.label !== undefined && item.accelerator !== undefined);
     expect(Object.fromEntries(labelled.map((item) => [item.label, item.accelerator]))).toEqual(ACCELERATORS);

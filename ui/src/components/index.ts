@@ -1,5 +1,5 @@
 /**
- * Unfold's UI kit (UI plan §6): small, data-independent, accessible building blocks styled with the
+ * Unfold's UI kit: small, data-independent, accessible building blocks styled with the
  * theme tokens (light and dark). Screens compose these; they never restyle them from outside.
  */
 

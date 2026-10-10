@@ -1,8 +1,8 @@
 /**
- * Window-wide wiring (UI plan §2 `app/`, core API "Wiring the frame"): the shortcut dispatcher and menu
- * commands, the saved theme and key bindings, cache invalidation and the board and compile event
- * handlers, the window's session (restore, saving, engine restarts), a toast for actions that fail,
- * `project_added` and `project_add_failed`, and the project Home shows at first.
+ * Window-wide wiring: the shortcut dispatcher and menu commands, the saved theme and key bindings, cache
+ * invalidation and the board and compile event handlers, the window's session (restore, saving, engine
+ * restarts), a toast for actions that fail, `project_added` and `project_add_failed`, and the project Home
+ * shows at first.
  */
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -60,7 +60,7 @@ export function useWindowWiring(): void {
 
 /**
  * Home shows a project from the start: the one the window remembered, else the workspace's selected one,
- * else the first (UI plan §3.2). When the shown project leaves the workspace, it picks again. (A project
+ * else the first. When the shown project leaves the workspace, it picks again. (A project
  * just added may be selected before the workspace lists it, so only a project the workspace listed
  * before counts as gone.)
  */

@@ -1,5 +1,5 @@
 /**
- * A title renamed in place (V-74): the board's in the sidebar header and a page's in its row. A
+ * A title renamed in place: the board's in the sidebar header and a page's in its row. A
  * double-click (or `editing` from outside) turns it into a field; Enter commits, Escape or an empty
  * title keeps the old one, and leaving the field commits.
  */

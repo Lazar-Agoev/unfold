@@ -1,4 +1,4 @@
-//! `entrances`: how a project starts (contract §4.3, decision D-22), for Home's "How it starts"
+//! `entrances`: how a project starts (docs/entrances.md), for Home's "How it starts"
 //! and Add's map. Applications are named after their startup, with their launches and their
 //! entrances; then the entrances no launch reaches, and the launches into code that isn't
 //! indexed. Each application's entrances are filtered and paged in Rust: the first

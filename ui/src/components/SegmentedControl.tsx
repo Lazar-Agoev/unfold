@@ -1,6 +1,6 @@
 /**
- * Mutually exclusive options side by side: the window's Code | Flow lens (`lens`, components §7.5),
- * a card's mini lens (`mini`, 02 §4.1), and Health | Activity (`switch`, 11). It is a radio group:
+ * Mutually exclusive options side by side: the window's Code | Flow lens (`lens`),
+ * a card's mini lens (`mini`), and Health | Activity (`switch`). It is a radio group:
  * Tab reaches the chosen option, and the arrow keys move and choose.
  */
 

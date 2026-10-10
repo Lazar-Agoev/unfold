@@ -43,7 +43,7 @@ describe("On this page", () => {
     ]);
   });
 
-  it("nests a card's groups, then its links one level deeper (V-59)", () => {
+  it("nests a card's groups, then its links one level deeper", () => {
     const { rows } = pageRows(thePage, outline, context);
     expect(rows.map((row) => [row.kind, row.id, row.depth])).toEqual([
       ["card", "post-orders", 0],
@@ -63,7 +63,7 @@ describe("On this page", () => {
     expect(rows.filter((row) => row.review).map((row) => row.id)).toEqual(["charge"]);
   });
 
-  it("shows the project column only when the page mixes projects, and which cards aren't connected (V-36)", () => {
+  it("shows the project column only when the page mixes projects, and which cards aren't connected", () => {
     const mixed = pageRows(thePage, outline, context);
     expect(mixed.multiProject).toBe(true);
     const receipt = mixed.rows.find((row) => row.id === "receipt");

@@ -194,7 +194,7 @@ impl Workspace {
         self.shared.status()
     }
 
-    /// The project's row state now (contract §4.1).
+    /// The project's row state now (architecture §7.9).
     pub fn project_state(&self) -> ProjectState {
         self.shared.project_states().0
     }
@@ -481,7 +481,7 @@ pub(crate) fn load_settings(root: &Path) -> Result<Settings> {
     })
 }
 
-/// Counts for the status bar from the stored graph's files.
+/// Counts for Home's state line from the stored graph's files.
 fn graph_counts(reader: &unfold_store::Reader) -> Result<GraphCounts> {
     let rows = reader.files()?;
     let mut languages: Vec<LanguageId> = rows.iter().map(|row| row.language).collect();

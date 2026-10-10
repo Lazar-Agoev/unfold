@@ -1,4 +1,4 @@
-//! The `unfold-board` version 1 document (architecture §9.1, decision U-22; redesign R-5, R-7).
+//! The `unfold-board` version 1 document (architecture §9.1, decisions U-22, U-42, U-44).
 //!
 //! A board is a titled list of **pages**, optionally filed in a folder. Each page holds authored
 //! choices only: references to blocks and entrances by structural key (in the board's own
@@ -399,7 +399,7 @@ pub struct GuardEntry {
     pub signature: Signature,
 }
 
-/// A link drawn between two cards of a page (redesign R-7): the graph does not join code
+/// A link drawn between two cards of a page (decision U-44): the graph does not join code
 /// across projects, so people do, with an optional signed label ("calls over HTTP").
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

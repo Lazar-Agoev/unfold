@@ -128,9 +128,9 @@ used:
   problems sat in a bottom panel; entrances, the best starting point, were the second of four sidebar views.
 
 The redesign gives the canvas about 80% of the window, makes projects first-class, and moves every job onto the thing
-it describes. It kept Electron and the Rust engine, and changed neither the compilers nor the graph. Every
-recommendation of its decisions (R-1 to R-16) was accepted: they are U-38 to U-51, and U-16, U-26, U-29, U-30, and
-U-37 were revised in place, with U-27's overlay rule.
+it describes. It kept Electron and the Rust engine, and changed neither the compilers nor the graph. Every one
+of its recommendations was accepted: they are U-38 to U-51, and U-16, U-26, U-29, U-30, and U-37 were revised in
+place, with U-27's overlay rule.
 
 **No backward compatibility.** Unfold has never shipped: there are no users, no published boards, and no saved
 preferences to keep. So the redesign replaced what it changed: no migration from the earlier board format, no readers

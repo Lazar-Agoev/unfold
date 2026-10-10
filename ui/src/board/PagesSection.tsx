@@ -1,7 +1,7 @@
 /**
- * Pages (components §4.4, V-53): the board's pages in order, each with a review mark when something on
- * it needs review; + adds a page. A row's menu (or right-click) renames it in place (also on
- * double-click), duplicates it, moves it up or down, or deletes it after asking (not the only page).
+ * Pages: the board's pages in order, each with a review mark when something on it needs review; + adds
+ * a page. A row's menu (or right-click) renames it in place (also on double-click), duplicates it,
+ * moves it up or down, or deletes it after asking (not the only page).
  */
 
 import { useMemo, useState, type MouseEvent } from "react";
@@ -12,7 +12,7 @@ import { ActionIds, useShortcut } from "../keyboard";
 import { addPage, deletePage, duplicatePage, movePage, renamePage, setActivePage, useOpenBoard, type BoardRef, type PageTarget } from "../state/boards";
 import { InlineRename } from "./InlineRename";
 
-/** The page menu's width (V-43, as the board menu). */
+/** The page menu's width (as the board menu). */
 const PAGE_MENU_WIDTH = 220;
 
 /** The ids of the pages with something that needs review (a card from a project that isn't connected doesn't). */

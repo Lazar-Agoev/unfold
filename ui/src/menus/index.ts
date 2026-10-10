@@ -1,5 +1,5 @@
 /**
- * Menus and the project-level actions (UI plan §2, U5): the board menu and its Share menu, the project
+ * Menus and the project-level actions: the board menu and its Share menu, the project
  * menu, the branch and worktree switcher, and the actions behind them (registered once by the frame).
  */
 

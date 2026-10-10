@@ -1,5 +1,5 @@
 /**
- * What a row on the page is (components §4.5): `ƒ` for a function (set in the code face), and the
+ * What a row on the page is: `ƒ` for a function (set in the code face), and the
  * entrance, group, and drawn-link icons. Accent when its row is selected.
  */
 

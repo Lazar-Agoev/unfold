@@ -1,7 +1,7 @@
 /**
- * The rows of Add's lists (04 §5.1, 04b §6): a result of any kind (project monogram, kind column, name,
- * trailing meta: an entrance's `project · application`, a file's definition count), the "N more <kind>" link, and a command (icon, group ›, name with its match in bold,
- * keycaps).
+ * The rows of Add's lists: a result of any kind (project monogram, kind column, name, trailing meta:
+ * an entrance's `project · application`, a file's definition count), the "N more <kind>" link, and a
+ * command (icon, group ›, name with its match in bold, keycaps).
  */
 
 import { KeyChip, Monogram } from "../components";
@@ -11,7 +11,7 @@ import type { CommandItem } from "./commands";
 import { highlightRanges } from "./highlight";
 import { baseName, definitionColumn, entranceColumn, trimmedMatch, type ResultItem } from "./search";
 
-/** Row heights: results and commands 32, the "more" link 28 (04 §5.1). */
+/** Row heights: results and commands 32, the "more" link 28. */
 export const ROW_HEIGHT = 32;
 const MORE_HEIGHT = 28;
 
@@ -39,7 +39,7 @@ interface ResultRowProps {
   readonly item: Exclude<ResultItem, { type: "more" }>;
   readonly selected: boolean;
   readonly projectName: string;
-  /** Why it can't be added here (a same-name project, V-62), if it can't. */
+  /** Why it can't be added here (a same-name project), if it can't. */
   readonly blocked: string | null;
 }
 

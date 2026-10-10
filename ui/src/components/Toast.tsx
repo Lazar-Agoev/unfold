@@ -1,5 +1,5 @@
 /**
- * Toasts (07, V-67): short notes in the window's bottom-right corner that never block the canvas
+ * Toasts: short notes in the window's bottom-right corner that never block the canvas
  * ("storefront-web compiled", "Reconnecting to the engine…"). Call `showToast` from anywhere; the
  * frame renders one `<Toaster />`. At most four show, newest at the bottom; a toast shown with the id
  * of one already showing replaces it in place. While a dialog is open, the stack rises above its
@@ -40,7 +40,7 @@ let nextId = 1;
 let shows = 0;
 
 const MAX_TOASTS = 4;
-/** The stack's distance from the window's right and bottom edges, and the space it keeps above a dialog's footer (V-67). */
+/** The stack's distance from the window's right and bottom edges, and the space it keeps above a dialog's footer. */
 const EDGE = 24;
 const GAP = 10;
 
@@ -129,7 +129,7 @@ function ToastItem({ toast }: { readonly toast: ShownToast }) {
 
 /**
  * Lifts the stack just above the innermost open dialog's footer while the footer would sit under it
- * (in its bottom right corner, sized as it is); otherwise it keeps V-67's place.
+ * (in its bottom right corner, sized as it is); otherwise it keeps its place.
  */
 function useFooterClearance(stack: RefObject<HTMLElement | null>): void {
   const footers = useDialogFooters();

@@ -1,6 +1,6 @@
 //! What the rest of the workspace asks of the board commands: the one narrow interface between
 //! the core (projects, liveness, events, Home) and the board sessions and health of
-//! `commands::boards` (contract §3.5, §4.3, §4.6, §6).
+//! `commands::boards`.
 //!
 //! | Hook | Called by | When |
 //! | --- | --- | --- |

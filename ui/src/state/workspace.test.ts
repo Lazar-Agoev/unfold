@@ -20,7 +20,7 @@ beforeEach(() => {
   commands.call.mockClear();
 });
 
-describe("name resolution (D-3)", () => {
+describe("name resolution", () => {
   it("resolves a ref's shared name to the first connected project of that name, and no name to the board's project", () => {
     const index = projectIndex(workspace);
     expect(resolveRefProject(index, PAYMENTS, undefined)).toBe(PAYMENTS);
@@ -39,7 +39,7 @@ describe("name resolution (D-3)", () => {
     expect(getProjectIndex().byId.get(PAYMENTS)?.name).toBe("billing");
   });
 
-  it("names another project in a new ref, omits the board's own, and refuses a same-name project (V-62)", () => {
+  it("names another project in a new ref, omits the board's own, and refuses a same-name project", () => {
     const index = projectIndex(workspace);
     expect(refProjectFor(index, ORDERS, ORDERS)).toEqual({ ok: true });
     expect(refProjectFor(index, ORDERS, PAYMENTS)).toEqual({ ok: true, project: "payments" });

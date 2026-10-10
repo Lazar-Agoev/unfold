@@ -1,8 +1,8 @@
 /**
- * Notices at the top of the canvas (redesign §6: banners, unchanged): an outside edit made while this
- * window had unsaved changes (Keep mine or Take theirs; Keep mine or Close the board when the file was
- * deleted), and a save that failed (Retry). Neither is modal, and neither covers a card's first row for
- * long: they sit over the stage's top edge.
+ * Notices at the top of the canvas: an outside edit made while this window had unsaved changes (Keep
+ * mine or Take theirs; Keep mine or Close the board when the file was deleted), and a save that failed
+ * (Retry). Neither is modal, and neither covers a card's first row for long: they sit over the stage's
+ * top edge.
  */
 
 import { useState } from "react";

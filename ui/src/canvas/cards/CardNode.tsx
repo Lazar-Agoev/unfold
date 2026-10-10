@@ -2,7 +2,7 @@
  * The canvas node for one card. Its data is only the page and the card's ports, so a card re-renders
  * when its own document entry, model, or ports change, never because another card did or because the
  * camera moved (zoom is a camera and never changes what a card shows). The card reads from the project
- * its ref resolves to; one from a project that isn't connected shows as a placeholder (V-35).
+ * its ref resolves to; one from a project that isn't connected shows as a placeholder.
  */
 
 import type { Node, NodeProps } from "@xyflow/react";

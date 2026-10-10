@@ -1,5 +1,5 @@
 /**
- * Long lists inside a scrolling area (plan §9): Home's main area and the sidebar's projects list each
+ * Long lists inside a scrolling area: Home's main area and the sidebar's projects list each
  * scroll as one; a long list inside renders only the rows near the view (`@tanstack/react-virtual`
  * against that scroller). Short lists render in full, as plain flow.
  */

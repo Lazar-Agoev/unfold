@@ -1,13 +1,13 @@
 /**
- * Board geometry (TypeScript lays out, architecture §11.8): reflow when cards change size, where a
+ * Board geometry (TypeScript lays out, architecture §11.14): reflow when cards change size, where a
  * followed card opens, where an entrance's handlers and new cards go, and Arrange by call depth. Pure
  * functions over positions and measured sizes, so they are deterministic and testable without a DOM.
  */
 
-/** Block cards size to their content between these widths (V-57). */
+/** Block cards size to their content between these widths. */
 export const CARD_MIN_WIDTH = 280;
 export const CARD_MAX_WIDTH = 880;
-/** Entrance cards are narrower: their header, location, and handler names (V-57). */
+/** Entrance cards are narrower: their header, location, and handler names. */
 export const ENTRANCE_MIN_WIDTH = 200;
 export const ENTRANCE_MAX_WIDTH = 320;
 /** A followed card opens this far to the right of the card it was followed from. */
@@ -94,7 +94,7 @@ export function followPlacement(source: Rect, lineOffset: number): [number, numb
 
 /**
  * Where Show callers puts a card's callers: a column `FOLLOW_GAP` to its left, each caller's right edge
- * there, stacked from the card's top (redesign §6: "adds the callers' cards to its left").
+ * there, stacked from the card's top.
  */
 export function callerPlacement(card: Rect, sizes: readonly Size[]): [number, number][] {
   let y = card.y;

@@ -21,7 +21,7 @@ function route(key: string): EntranceRow {
   };
 }
 
-describe("How it starts (V-48, V-19)", () => {
+describe("How it starts", () => {
   it("names the launch as it is typed", () => {
     const map = fixture("entrances", "entrances");
     const [cli] = map.applications;

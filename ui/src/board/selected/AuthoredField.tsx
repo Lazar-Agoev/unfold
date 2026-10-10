@@ -1,7 +1,7 @@
 /**
- * Authored text in Selected (components §4.6): a description or a Flow label in the authored color on
- * its tint, edited in place (the field grows with its lines), with who wrote it underneath. Every
- * keystroke is a board edit; typing in one field merges into one undo step.
+ * Authored text in Selected: a description or a Flow label in the authored color on its tint, edited
+ * in place (the field grows with its lines), with who wrote it underneath. Every keystroke is a board
+ * edit; typing in one field merges into one undo step.
  */
 
 import { useRef, type ReactNode } from "react";

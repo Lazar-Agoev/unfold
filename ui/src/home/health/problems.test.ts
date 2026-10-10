@@ -13,7 +13,7 @@ const PROBLEMS: ProblemItem[] = [
   problem("compile_failed", "", "disk full"),
 ];
 
-describe("Health rows (11, V-77)", () => {
+describe("Health rows", () => {
   it("reads each problem as a title, an explanation, a location, and its action", () => {
     expect(healthRows(PROBLEMS)).toEqual([
       {

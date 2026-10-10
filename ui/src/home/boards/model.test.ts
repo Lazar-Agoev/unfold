@@ -32,7 +32,7 @@ const BOARDS = [
   board("d", null, "draft", NOW - 7_200_000),
 ];
 
-describe("Home's Boards (V-49)", () => {
+describe("Home's Boards", () => {
   it("filters by place", () => {
     expect(filterBoards(BOARDS, "all")).toHaveLength(4);
     expect(filterBoards(BOARDS, "published").map((item) => item.id)).toEqual(["a", "b"]);
@@ -49,7 +49,7 @@ describe("Home's Boards (V-49)", () => {
   it("describes a board in its subline", () => {
     expect(boardSubline(board("b", "Order lifecycle", "published", NOW - 7_200_000, { pages: 3 }), NOW)).toBe("3 pages · Published · edited 2 hours ago");
     expect(boardSubline(board("c", "x", "published", NOW - 60_000, { changes: 2 }), NOW)).toBe("1 page · Published · 2 unpublished changes · edited a minute ago");
-    // A cross-project board says who it's with instead of when it was edited (01).
+    // A cross-project board says who it's with instead of when it was edited.
     expect(boardSubline(board("e", "Cart → API trace", "draft", NOW, { pages: 2, projects: ["storefront-web"] }), NOW)).toBe("2 pages · Draft");
   });
 
@@ -59,7 +59,7 @@ describe("Home's Boards (V-49)", () => {
   });
 });
 
-describe("thumbnail chunks (plan §9)", () => {
+describe("thumbnail chunks", () => {
   it("splits per project into chunks of at most 60, in list order", () => {
     const refs = Array.from({ length: 130 }, (_, index) => ({ project: index % 2 === 0 ? "p-a" : "p-b", id: `b${index}` }));
     const chunks = thumbnailChunks(refs);

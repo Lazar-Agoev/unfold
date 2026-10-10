@@ -1,10 +1,9 @@
 /*
- * Design tokens: the studio chrome (docs/redesign/build/design/, decisions V-13, V-14, V-24, V-28..V-31,
- * V-40..V-42) and the reader's card, syntax, and Flow colors, in light and dark sets.
+ * Design tokens: the studio chrome and the reader's card, syntax, and Flow colors, in light and dark
+ * sets (docs/ui-shell.md#theme; decision U-51 in docs/decisions-and-tradeoffs.md).
  *
- * The dark set is artboard v2 · 13's (designed, not inverted). Syntax and Flow node colors keep the
- * reader's values in both sets (V-28, V-40). The theme follows the OS; `data-theme="light" | "dark"`
- * on <html> overrides it.
+ * The dark set is designed, not inverted. Syntax and Flow node colors keep the reader's values in both
+ * sets. The theme follows the OS; `data-theme="light" | "dark"` on <html> overrides it.
  *
  * `src/theme/contrast.test.ts` checks that text meets WCAG AA (4.5:1) and that focus rings and marks
  * meet 3:1 on the surfaces they sit on.
@@ -25,7 +24,7 @@
   --color-track-soft: #f3f4f6;
   --color-pressed: #eef0f3;
 
-  /* Rows: hover is one step lighter than selection (V-41) */
+  /* Rows: hover is one step lighter than selection */
   --color-hover: #f3f5fd;
   --color-selection: #edf0fc;
   --color-selection-strong: #dce1f5;
@@ -38,7 +37,7 @@
   --color-subtle: #64748b;
   --color-faint: #94a3b8;
 
-  /* Hairlines (V-31) and placeholders */
+  /* Hairlines and placeholders */
   --color-border: #e0e2e7;
   --color-border-shell: #e0e2e7;
   --color-card-rule: #e0e2e7;
@@ -47,7 +46,7 @@
   --color-placeholder-line: #b6bcc8;
   --color-dashed: #c9cdd6;
 
-  /* Accent: indigo (V-30) */
+  /* Accent: indigo */
   --color-accent: #5862c0;
   --color-accent-text: #5862c0;
   --color-on-accent: #ffffff;
@@ -59,7 +58,7 @@
   --color-arrow: #5862c0;
   --color-focus-ring: #5862c0;
 
-  /* Meaning (V-11, V-27, V-28, V-39) */
+  /* Meaning */
   --color-review: #d97706;
   --color-warn: #8a5a00;
   --color-warn-fill: #fff3d6;
@@ -77,7 +76,7 @@
   --color-contour: #8b93a1;
   --color-unresolved: #8b93a1;
 
-  /* Monograms (V-24) */
+  /* Monograms */
   --color-monogram: #e6e8ec;
   --color-monogram-ink: #3f4451;
   --color-workspace-mark: #202126;

@@ -1,7 +1,6 @@
 /**
- * The Home-mode sidebar (home-sidebar.md): the workspace row with search, Recents and Drafts (V-65),
- * the projects list with each project's state (07) and its folder and board tree (V-51, V-52), and the
- * footer with Add project and Preferences.
+ * The Home-mode sidebar: the workspace row with search, Recents and Drafts, the projects list with
+ * each project's state and its folder and board tree, and the footer with Add project and Preferences.
  */
 
 import type { JSX } from "react";
@@ -19,7 +18,7 @@ import { useWorkspace } from "../../state/workspace";
 import { ProjectsList } from "./ProjectsList";
 import "./sidebar.css";
 
-/** Drafts lists at most this many (contract §4.2); the count reads "500+" there (V-65). */
+/** Drafts lists at most this many; the count reads "500+" there. */
 const DRAFTS_CAP = 500;
 
 function workspaceName(author: string | null): string {
@@ -56,7 +55,7 @@ export function HomeSidebar(): JSX.Element {
   const name = workspaceName(useAuthor());
   const projects = workspace?.projects ?? [];
   const drafts = useEngineQuery("drafts", {}, { enabled: projects.length > 0 });
-  // No count without drafts (05 draws none).
+  // No count without drafts.
   const draftCount = drafts.data && drafts.data.drafts.length > 0 ? formatCount(drafts.data.drafts.length, DRAFTS_CAP) : undefined;
   const addShortcut = useShortcut(ActionIds.add) ?? undefined;
   const projectShortcut = useShortcut(ActionIds.addProject) ?? undefined;

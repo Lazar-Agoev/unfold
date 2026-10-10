@@ -2,7 +2,7 @@
 //! ([`projects`]), and for each live project its `.unfold/` layout and fallback location, the
 //! folder lock, the engine thread that compiles and commits, the watcher and the update
 //! scheduler, cancellation, events, problems and the Index log, settings edits, remembered
-//! state, and path confinement (contract §1–§5; architecture §4.2, §7, §8, §12, §13).
+//! state, and path confinement (architecture §4.2, §7, §8, §11, §12, §13).
 //!
 //! # Shape
 //!

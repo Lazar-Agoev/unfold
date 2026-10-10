@@ -1,5 +1,5 @@
 /**
- * What the window shows over its content (UI plan §3.3): the Add box, the peek sheet, and one dialog
+ * What the window shows over its content: the Add box, the peek sheet, and one dialog
  * at a time. Each is a request any screen or action can make; the hosts (`AddBox`, `PeekSheet`,
  * `DialogHost`) render them. None of this is saved with the window.
  */
@@ -94,7 +94,7 @@ export function useAddTarget(): AddTarget {
   return { kind: "home", project };
 }
 
-/** Shows a file in the peek sheet (one per window, kept across tab switches, V-66). */
+/** Shows a file in the peek sheet (one per window, kept across tab switches). */
 export function openPeek(target: PeekTarget): void {
   useOverlays.setState({ peek: target });
 }

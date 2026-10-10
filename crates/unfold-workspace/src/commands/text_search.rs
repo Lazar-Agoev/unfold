@@ -1,5 +1,5 @@
 //! `search_text`: text matches across the workspace's projects with ripgrep's libraries
-//! (`grep-searcher`, `grep-regex`), streamed file by file (contract §4.5, decisions U-30, D-9).
+//! (`grep-searcher`, `grep-regex`), streamed file by file (decisions U-30, U-45).
 //!
 //! It searches each project's file list: a live project's files under discovery's ignore rules
 //! (never `.unfold/`), or a resting project's indexed files from its stored graph. It skips

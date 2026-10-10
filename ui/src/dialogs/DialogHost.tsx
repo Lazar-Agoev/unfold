@@ -1,5 +1,5 @@
 /**
- * The one host for every dialog (UI plan §2): the window's `DialogRequest` (one at a time) and this
+ * The one host for every dialog: the window's `DialogRequest` (one at a time) and this
  * module's Move to folder prompt.
  */
 

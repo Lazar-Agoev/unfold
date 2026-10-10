@@ -48,7 +48,7 @@ function describeRows(rows: readonly SidebarRow[]): string[] {
   });
 }
 
-describe("the sidebar tree (V-51)", () => {
+describe("the sidebar tree", () => {
   it("lists folders first, then boards, each by name; collapsed folders hide their contents", () => {
     expect(describeRows(treeRows(P, LIST, new Set()))).toEqual(["> Archive (empty)", "> Checkout", "> Jobs", "- Auth, end to end"]);
   });

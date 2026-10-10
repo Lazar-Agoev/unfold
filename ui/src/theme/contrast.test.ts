@@ -35,8 +35,7 @@ function contrast(a: string, b: string): number {
 const HEX = /^#[0-9a-f]{6}$/i;
 
 /**
- * Text on the grounds it sits on: WCAG AA, 4.5:1, the floor of the redesign's §7 ("no text lighter
- * than `--color-subtle` on white"). Pairs with a translucent value in a theme (dark warn and
+ * Text on the grounds it sits on: WCAG AA, 4.5:1 (no text lighter than `--color-subtle` on white). Pairs with a translucent value in a theme (dark warn and
  * authored tints) are checked only where both are opaque.
  */
 const TEXT_PAIRS: readonly (readonly [string, string])[] = [
@@ -76,18 +75,18 @@ const TEXT_PAIRS: readonly (readonly [string, string])[] = [
 
 /**
  * Focus rings, state dots, and marks against their grounds: 3:1. `--color-faint` isn't held to it:
- * the redesign (§7) keeps it for rules, icons, and disabled states, and the designs' value is below
+ * it is for rules, icons, and disabled states only (docs/ui-shell.md#theme), and the designs' value is below
  * 3:1 (2.56:1 light, 2.74:1 dark on the surface).
  */
 const MARK_PAIRS: readonly (readonly [string, string])[] = [
   ...["surface", "sidebar", "canvas", "home", "chrome"].map((ground) => ["focus-ring", ground] as const),
   ["accent", "chrome"],
   ["accent", "canvas"],
-  // Review amber is #D97706 everywhere (V-39); on the light sidebar it is 2.98:1, so that pair isn't held.
+  // Review amber is #D97706 everywhere; on the light sidebar it is 2.98:1, so that pair isn't held.
   ["review", "surface"],
   ["review", "home"],
   ["success", "home"],
-  // The primary button's shortcut hint (06's "⇧⌘B", 05's "⌘O") repeats the label's key, as drawn.
+  // The primary button's shortcut hint ("⇧⌘B" on Compile, "⌘O" on Add project) repeats the label's key, as drawn.
   ["on-accent-soft", "accent"],
 ];
 

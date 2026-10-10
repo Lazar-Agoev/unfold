@@ -1,5 +1,5 @@
 /**
- * Background updates (redesign §4.10, U-13): a saved file updates the graph and the open card; a
+ * Background updates (architecture §11.11, decision U-13): a saved file updates the graph and the open card; a
  * described card whose code changed asks for review on the card, its row, and its page; a file that
  * breaks shows its last version until it is fixed; a branch switch across 500 files is one update that
  * ends equal to a fresh compile; files edited while the app is closed are picked up on reopen; a

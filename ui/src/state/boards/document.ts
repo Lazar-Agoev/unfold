@@ -1,11 +1,11 @@
 /**
- * Pure edits of an `unfold-board` document (contract §6.2). Each function is an Immer recipe over a
+ * Pure edits of an `unfold-board` document. Each function is an Immer recipe over a
  * draft document or page, so the store can record one undo step per edit. Optional fields are deleted
  * rather than set to `undefined`, matching what the file holds (`folded` only when true, `description`
  * and `label` only when there is text).
  *
  * Card, group, and link ids are unique together within their page; page ids within the board. Both
- * match `/^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/` (contract §1.4).
+ * match `/^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/`.
  */
 
 import type { BoardDocument, Card, CardRef, Description, Group, Key, LabelEntry, Link, Page, ProjectName, View } from "../../ipc/generated";

@@ -1,5 +1,5 @@
 /**
- * Dropping folders anywhere on the window adds them to the workspace as projects (UI plan §7.1); the
+ * Dropping folders anywhere on the window adds them to the workspace as projects; the
  * last one added shows on Home. Only items of this drop are accepted (the preload checks), and the
  * engine checks each is a folder.
  */

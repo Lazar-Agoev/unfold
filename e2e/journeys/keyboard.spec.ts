@@ -1,7 +1,7 @@
 /**
- * The keyboard map of redesign §8, each shortcut once with its effect; the dispatcher's rules (a
- * plain key never fires while typing, no window shortcut fires while a dialog is open); and the
- * application menu's Unfold items (§6 "Application menu").
+ * The keyboard map (`docs/ui-shell.md#keyboard`), each shortcut once with its effect; the dispatcher's
+ * rules (a plain key never fires while typing, no window shortcut fires while a dialog is open); and
+ * the application menu's Unfold items.
  */
 
 import type { Page } from "@playwright/test";
@@ -215,10 +215,23 @@ test.describe("the keyboard", () => {
       await expect(addBox(page)).toHaveCount(0);
     });
 
-    await test.step("⇧⌘N opens a new window", async () => {
-      const second = await app.nextWindow(() => page.keyboard.press("Meta+Shift+N"));
-      await expect(homeTitle(second)).toHaveText("ts-orders");
+    const second = await test.step("⇧⌘N opens a new window", async () => {
+      const opened = await app.nextWindow(() => page.keyboard.press("Meta+Shift+N"));
+      await expect(homeTitle(opened)).toHaveText("ts-orders");
       expect(app.windows()).toHaveLength(2);
+      return opened;
+    });
+
+    await test.step("⇧⌘W closes the new window", async () => {
+      const closed = second.waitForEvent("close");
+      // The window closes on the key-down, so the press's key-up finds no page.
+      await second.keyboard.press("Meta+Shift+W").catch((error: unknown) => {
+        if (!second.isClosed()) {
+          throw error;
+        }
+      });
+      await closed;
+      expect(app.windows()).toHaveLength(1);
     });
     await expect(boardView(page)).toBeVisible();
   });

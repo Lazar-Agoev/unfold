@@ -1,5 +1,5 @@
 /**
- * Home (UI plan §2, U3): the Home-mode sidebar, Home's main area in every state (overview, Health and
+ * Home: the Home-mode sidebar, Home's main area in every state (overview, Health and
  * activity, Recents, Drafts, first launch, the first Compile), and the window's "compiled" toasts.
  */
 

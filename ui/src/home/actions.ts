@@ -1,6 +1,6 @@
 /**
  * What Home's buttons and rows do with boards: open one, make one, trace an entrance onto a new draft,
- * and Review a board's health (V-77). Each runs from a click, so failures show as a toast rather than
+ * and Review a board's health. Each runs from a click, so failures show as a toast rather than
  * throwing (the `flows.ts` pattern).
  */
 
@@ -42,7 +42,7 @@ export async function traceFromHome(project: ProjectId, entrance: Key): Promise<
   }
 }
 
-/** Opens a board on the page of its first health item, with that card selected (V-77). */
+/** Opens a board on the page of its first health item, with that card selected. */
 export async function reviewBoard(ref: BoardRef): Promise<void> {
   try {
     const outcome = await openBoard(ref);

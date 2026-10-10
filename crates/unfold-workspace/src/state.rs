@@ -1,5 +1,5 @@
-//! Remembered state, in JSON files Rust owns (contract §2, architecture §8.1–8.2, decision
-//! U-23). The UI never uses browser storage; everything it remembers lives here.
+//! Remembered state, in JSON files Rust owns (architecture §8.1–8.2, decisions
+//! U-23, U-46). The UI never uses browser storage; everything it remembers lives here.
 //!
 //! - **Per app** (the app-data folder the desktop shell passes at init): `preferences.json`
 //!   (theme, editor command, background-update default, thread limit, key bindings),
@@ -144,7 +144,7 @@ pub struct PageView {
     pub lens: Option<View>,
 }
 
-/// A board's view state (`state.json` `boards[id]`, contract R-9): its last active page and each
+/// A board's view state (`state.json` `boards[id]`): its last active page and each
 /// page's camera and lens.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -168,7 +168,7 @@ pub struct LocalState {
     pub version: u32,
     /// Whether background updates are on for the project.
     pub background_updates: bool,
-    /// Board folders with no board in them, sorted (contract R-10).
+    /// Board folders with no board in them, sorted (decision U-47).
     pub empty_folders: Vec<String>,
     /// View state by board id, least recently written first (the file keeps that order).
     pub boards: IndexMap<String, BoardView>,

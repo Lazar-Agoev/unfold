@@ -1,5 +1,5 @@
 /**
- * The keyboard map (UI plan §8.1): the well-known action ids and their default shortcuts, kept in one
+ * The keyboard map (docs/ui-shell.md#keyboard): the well-known action ids and their default shortcuts, kept in one
  * place. Screens register actions under these ids and get the shortcut without restating it. A person
  * can rebind exactly these actions in Preferences → Keyboard (`bindings.ts`); other registered ids
  * (Add's commands, menus) keep the shortcuts their specs give.

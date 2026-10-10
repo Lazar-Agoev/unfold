@@ -1,7 +1,7 @@
 /**
- * Board cards in a responsive grid (01 "Boards", V-49, V-50, V-65): a thumbnail of the first page, the
+ * Board cards in a responsive grid: a thumbnail of the first page, the
  * title, and a subline. Click opens the board; the right-click menu is the board menu. Long grids
- * render only the rows of cards in view, and fetch thumbnails only for those (plan §9).
+ * render only the rows of cards in view, and fetch thumbnails only for those.
  */
 
 import { useLayoutEffect, useState, type MouseEvent } from "react";
@@ -23,7 +23,7 @@ export interface BoardCardModel {
   readonly subline: string | ((thumbnail: Thumbnail | undefined) => string);
   /** Other projects its cards come from: "· [W] with storefront-web". */
   readonly with: readonly string[];
-  /** The board's own project's name, shown first on cross-project lists (V-65). */
+  /** The board's own project's name, shown first on cross-project lists. */
   readonly projectName?: string;
 }
 
@@ -100,7 +100,7 @@ function BoardCard({ board, thumbnail, onMenu }: { readonly board: BoardCardMode
   );
 }
 
-/** How many columns of at least 220px fit (V-49: four at full width). */
+/** How many columns of at least 220px fit (four at full width). */
 function useColumns(element: HTMLElement | null): number {
   const [columns, setColumns] = useState(4);
   useLayoutEffect(() => {

@@ -1,7 +1,7 @@
 /**
- * A board thumbnail's drawing (01 "How thumbnails are drawn", D-26, plan §9): the first page's cards as
- * rectangles sized by the canvas's fallback rules, fitted into a 252×138 box with 22px margins, each
- * with two to five text lines, joined by 1px edges. Pure and memoized per `Thumbnail` object.
+ * A board thumbnail's drawing: the first page's cards as rectangles sized by the canvas's fallback rules,
+ * fitted into a 252×138 box with 22px margins, each with two to five text lines, joined by 1px edges. Pure
+ * and memoized per `Thumbnail` object.
  */
 
 import { boundsOf, fallbackSize, type Rect } from "../../canvas/layout";
@@ -42,7 +42,7 @@ export interface ThumbDrawing {
   readonly links: string;
 }
 
-/** The canvas size a card would have before it is measured (plan §9). */
+/** The canvas size a card would have before it is measured. */
 export function cardSize(card: Pick<ThumbnailCard, "kind" | "folded" | "lines">): { width: number; height: number } {
   if (card.kind === "entrance") {
     return fallbackSize(true);

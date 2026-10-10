@@ -137,7 +137,7 @@ export type BlockKind = "file" | "function" | "class" | "method" | "constructor"
 
 /**
  * An `unfold-board` document as the window edits it: the board's working version, without a
- * changes copy's `publishes` and `baseRevision` (contract §6.2).
+ * changes copy's `publishes` and `baseRevision`.
  */
 export type BoardDocument = { 
 /**
@@ -169,7 +169,7 @@ projects: Array<ProjectName>,
 pages: Array<Page>, };
 
 /**
- * What a window saves: the title and the pages (contract §6.5). The folder, the `projects`
+ * What a window saves: the title and the pages. The folder, the `projects`
  * list, and the file framing are Rust's. Labels, guards, and links are optional on input;
  * signatures may be `""` (signed on save).
  */
@@ -403,7 +403,7 @@ label: string | null,
 error: string | null, };
 
 /**
- * A board's view state (`state.json` `boards[id]`, contract R-9): its last active page and each
+ * A board's view state (`state.json` `boards[id]`): its last active page and each
  * page's camera and lens.
  */
 export type BoardView = { 
@@ -852,7 +852,7 @@ problems: number,
 durationMs: number, };
 
 /**
- * What the first-Compile screen shows before anything is written (architecture §11.6).
+ * What a new project's Home shows before anything is written (architecture §11.4).
  */
 export type CompilePreview = { 
 /**
@@ -2183,7 +2183,7 @@ startLine: number,
 endLine: number, };
 
 /**
- * A link drawn between two cards of a page (redesign R-7): the graph does not join code
+ * A link drawn between two cards of a page (decision U-44): the graph does not join code
  * across projects, so people do, with an optional signed label ("calls over HTTP").
  */
 export type Link = { 
@@ -2881,7 +2881,7 @@ boards: Array<BoardHealthCount>, };
 
 /**
  * A project's id: `p-` and 10 characters of `[a-z2-7]`, random, assigned when the project is
- * added (decision D-1). It survives restarts and worktree switches.
+ * added (decision U-40). It survives restarts and worktree switches.
  */
 export type ProjectId = string;
 
@@ -2986,7 +2986,7 @@ state: ProjectState,
 git: GitSummary | null, };
 
 /**
- * A project's state, as its row shows it (contract §4.1): one indicator per row.
+ * A project's state, as its row shows it (architecture §7.9): one indicator per row.
  *
  * A live project's state is derived from its [`GraphStatus`] and its problem count (the Problems
  * list less board health), first match wins: `failed` > `compiling` > `updating` > `paused` >
@@ -4393,7 +4393,7 @@ board: string,
 page: string | null, };
 
 /**
- * Which file an open board's session reads (contract §6.6).
+ * Which file an open board's session reads (decision U-43).
  */
 export type WorkingFile = "draft" | "changes" | "published";
 

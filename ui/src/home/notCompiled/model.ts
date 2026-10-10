@@ -1,6 +1,6 @@
 /**
- * What the not-compiled Home says (06): what will be read, what is skipped and why, and the scope tree
- * whose check boxes are staged in memory until Compile writes them (V-69).
+ * What the not-compiled Home says: what will be read, what is skipped and why, and the scope tree
+ * whose check boxes are staged in memory until Compile writes them.
  */
 
 import type { CompilePreview, Language, ScopeFolder, SettingsEdit, SkipKind, SkippedFolder } from "../../ipc";
@@ -36,7 +36,7 @@ function folderName(entry: SkippedFolder): string {
   return entry.wholeFolder ? `${entry.folder}/` : entry.folder;
 }
 
-/** The Skipped table's reasons, in the sentence case of 06 (the engine's `reasonText` is a lowercase phrase). */
+/** The Skipped table's reasons, in sentence case (the engine's `reasonText` is a lowercase phrase). */
 const SKIPPED_REASONS: Readonly<Record<SkipKind, string>> = {
   default: "Skipped by default",
   ignored: "Ignored by .gitignore",

@@ -1,5 +1,5 @@
 /**
- * A project's state as one glyph (07): in the sidebar row's 16px slot (`row`) or before the words on
+ * A project's state as one glyph: in the sidebar row's 16px slot (`row`) or before the words on
  * Home's state line (`line`). A current project's row slot stays empty; quiet is the normal state.
  * The problems dot and the failed triangle of an unavailable project explain themselves in a tooltip.
  */
@@ -12,7 +12,7 @@ import { ProgressRing } from "./ProgressRing";
 import { Tooltip } from "./Tooltip";
 import "./StateIndicator.css";
 
-/** A project's state (contract §4.1 `ProjectState`), as the engine reports it. */
+/** A project's state (`ProjectState`), as the engine reports it. */
 type ProjectState =
   | { readonly kind: "current" }
   | { readonly kind: "compiling"; readonly done: number; readonly total: number }

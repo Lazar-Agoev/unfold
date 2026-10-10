@@ -1,9 +1,9 @@
 /**
- * The floating dock at the bottom of the canvas (components §6), centered on the uncovered canvas
- * (V-38): Add, Back and Forward, the trail of focus moves ("POST /orders › createOrder"), Arrange, and
- * the camera (−, the zoom, +, Fit). It replaces V1's board bar. On a narrow canvas it sheds parts
- * (board.css, by the lane's width): the trail first, then Add's key and Arrange's label, then Back and
- * Forward, then Arrange; the zoom controls always stay.
+ * The floating dock at the bottom of the canvas, centered on the uncovered canvas: Add, Back and
+ * Forward, the trail of focus moves ("POST /orders › createOrder"), Arrange, and the camera (−, the
+ * zoom, +, Fit). It replaces V1's board bar. On a narrow canvas it sheds parts (board.css, by the
+ * lane's width): the trail first, then Add's key and Arrange's label, then Back and Forward, then
+ * Arrange; the zoom controls always stay.
  */
 
 import { useStore } from "@xyflow/react";

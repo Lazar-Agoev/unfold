@@ -1,4 +1,4 @@
-/* The overview's How it starts and Health line (01). */
+/* The overview's How it starts and Health line. */
 
 .home-starts {
   display: flex;
@@ -37,7 +37,7 @@
   color: var(--color-text);
 }
 
-/* V-48: rows of at most three cards; in each, the biggest application grows 1.4. A narrow window
+/* Rows of at most three cards; in each, the biggest application grows 1.4. A narrow window
    wraps a row's cards at 280px. */
 .home-applications {
   display: flex;

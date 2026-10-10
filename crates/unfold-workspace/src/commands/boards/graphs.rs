@@ -1,5 +1,5 @@
-//! The graphs a board reads (contract §6.4): its own project's, and one per other project its
-//! cards name, resolved by shared name (decision D-3) and read from that project's stored graph
+//! The graphs a board reads: its own project's, and one per other project its
+//! cards name, resolved by shared name (decision U-40) and read from that project's stored graph
 //! without waking it (the live pool, or a resting project's read-only pool). A name that
 //! resolves to no project, or to one with no usable graph, is **not connected**: its cards are
 //! placeholders.
@@ -21,7 +21,7 @@ pub(super) type Stamp = Option<i64>;
 
 /// What a board's health depends on: its working file's revision, its own project's graph, and
 /// the projects its cards' names resolve to with their graphs. A cached health is current while
-/// its key is (contract §4.3).
+/// its key is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct HealthKey {
     /// The working file's revision.

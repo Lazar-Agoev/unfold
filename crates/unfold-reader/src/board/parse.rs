@@ -606,7 +606,7 @@ pub(crate) fn parse_changes(text: &str, name: &str) -> Result<(Board, Revision),
     Ok((board, base))
 }
 
-/// Parses an edit the UI saves (`{title, pages}`, contract §6.5): the pages with the page
+/// Parses an edit the UI saves (`{title, pages}`): the pages with the page
 /// rules, `projects` derived from the cards, and `folder` from the caller (the folder is the
 /// board's metadata, never part of an edit).
 pub fn parse_edit(text: &str, folder: Option<String>) -> Result<Board, BoardError> {

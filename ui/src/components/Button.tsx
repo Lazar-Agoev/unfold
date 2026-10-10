@@ -1,5 +1,5 @@
 /**
- * Buttons (components §7.1–7.3): `Button` in four variants, with an optional leading icon, a
+ * Buttons: `Button` in four variants, with an optional leading icon, a
  * trailing icon (Share's chevron), a shortcut hint, and a busy ring; and `TextButton`, a link-like
  * button inside text ("Label them", "+ Open", "Review").
  */

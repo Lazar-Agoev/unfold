@@ -10,7 +10,7 @@ function thumbnail(cards: ThumbnailCard[], edges: [string, string][] = [], links
   return { board: "b", page: { id: "page-1", title: "Page 1" }, pages: 1, cards, edges, links, truncated: false, error: null };
 }
 
-describe("board thumbnails (D-26, V-50)", () => {
+describe("board thumbnails", () => {
   it("sizes cards with the canvas's fallback rules", () => {
     expect(cardSize({ kind: "entrance", folded: false, lines: null })).toEqual({ width: 240, height: 160 });
     expect(cardSize({ kind: "block", folded: true, lines: 40 })).toEqual({ width: 520, height: 44 });

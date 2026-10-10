@@ -73,7 +73,7 @@ async function compileOnce(project: string): Promise<void> {
   });
 }
 
-describe("the compiled toast (V-67)", () => {
+describe("the compiled toast", () => {
   it("announces a Compile this window started, with the entrances it found", async () => {
     await compileOnce(WEB);
     expect(await screen.findByText("storefront-web compiled")).toBeTruthy();

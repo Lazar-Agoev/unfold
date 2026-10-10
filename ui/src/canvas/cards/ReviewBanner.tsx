@@ -1,8 +1,8 @@
 /**
- * Health on a card (redesign §4.10, 02 §4.4): a full-width banner under the header ("Changed since it
- * was described · Review"), and the repair popover its Review opens: each problem with its repairs,
- * every repair explained before it is applied (`repairEffect`), Apply saving it at once as one undo
- * step. Reconnect first asks for the definition (or entrance) the reference became.
+ * Health on a card: a full-width banner under the header ("Changed since it was described · Review"),
+ * and the repair popover its Review opens: each problem with its repairs, every repair explained
+ * before it is applied (`repairEffect`), Apply saving it at once as one undo step. Reconnect first
+ * asks for the definition (or entrance) the reference became.
  */
 
 import { useMemo, useState } from "react";

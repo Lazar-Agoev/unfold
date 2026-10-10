@@ -1,5 +1,5 @@
 /**
- * The progress ring of 07: a quarter arc over a hairline track that turns while work runs (V-68).
+ * The progress ring: a quarter arc over a hairline track that turns while work runs.
  * Decorative: whatever shows it also says what is running in words.
  */
 

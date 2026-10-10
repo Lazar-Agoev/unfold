@@ -1,8 +1,8 @@
 /**
- * The board's publish state as the top bar shows it (02 §5, 10 §4, V-12, V-39): "Draft", "Published",
- * or "Published · N unpublished changes", then "· uses <other projects>" for a board whose cards come
- * from other projects. The dot is faint for a draft, the accent for unpublished changes, and absent for
- * a plain published board.
+ * The board's publish state as the top bar shows it: "Draft", "Published", or "Published · N
+ * unpublished changes", then "· uses <other projects>" for a board whose cards come from other
+ * projects. The dot is faint for a draft, the accent for unpublished changes, and absent for a plain
+ * published board.
  */
 
 import { useMemo } from "react";

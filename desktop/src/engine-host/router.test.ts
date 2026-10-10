@@ -289,7 +289,7 @@ describe("EngineRouter: sink fan-out", () => {
 });
 
 describe("EngineRouter: trusted commands", () => {
-  it("lists exactly the contract's main-process-only commands and closing writes", () => {
+  it("lists exactly the main-process-only commands and closing writes", () => {
     expect([...MAIN_PROCESS_ONLY].sort()).toEqual(
       ["add_project", "export_mermaid", "forget_window", "save_window_bounds", "saved_windows"].sort(),
     );

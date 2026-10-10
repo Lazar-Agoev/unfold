@@ -1,11 +1,11 @@
 /**
- * Where the top bar's Code | Flow lens goes (components §5, V-38): centered over the uncovered canvas
- * while it clears the page title and publish state on its left and Share on its right; otherwise as
- * close to the center as it fits, and on a canvas too narrow for both, at the right of the free space
- * with the title and state shortened to the room left of it.
+ * Where the top bar's Code | Flow lens goes: centered over the uncovered canvas while it clears the
+ * page title and publish state on its left and Share on its right; otherwise as close to the center
+ * as it fits, and on a canvas too narrow for both, at the right of the free space with the title and
+ * state shortened to the room left of it.
  */
 
-/** The top bar's left padding (components §5). */
+/** The top bar's left padding. */
 const PADDING_LEFT = 20;
 /** The space kept between the lens and its neighbours. */
 const CLEARANCE = 12;

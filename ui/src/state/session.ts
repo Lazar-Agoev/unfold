@@ -1,5 +1,5 @@
 /**
- * The window's session (UI plan §3.8, §3.9): what the window remembers in `windows.json`, how it comes
+ * The window's session: what the window remembers in `windows.json`, how it comes
  * back at launch or on reload, and how it recovers when the engine host restarts.
  *
  * - Restore: `window_state {key}` → the layout → the Home selection → the saved board tabs, reopened
@@ -7,7 +7,7 @@
  *   moved here from another window adopted, and the window's state followed.
  * - Save: `save_window_state` 400 ms after the selection, the tabs, a board's active page, or the
  *   layout change, and at once when the page goes away (the window closes, the app quits).
- * - Engine restart (contract §3.6): a toast while the engine is away (V-78); once it is back, the
+ * - Engine restart: a toast while the engine is away; once it is back, the
  *   selection is sent again, every board tab is claimed again and its unsaved edits saved, the window's
  *   state saved, and the query cache reset, in that order.
  * - `focus_board`: another window asked for a board this one holds, so its tab is shown.
@@ -165,7 +165,7 @@ function followWindowState(key: string): () => void {
 }
 
 /**
- * After an engine-host restart (contract §3.6): Rust came back with every project resting and no
+ * After an engine-host restart: Rust came back with every project resting and no
  * claims, so the window sends its selection again, claims its boards again and saves their unsaved
  * edits (`reclaimBoards`), saves its own state, and only then drops what the cache held.
  */

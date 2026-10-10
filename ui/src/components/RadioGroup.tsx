@@ -1,4 +1,4 @@
-/** A short list of exclusive choices (12 §3.4: Keep mine / Take theirs and drop my changes). */
+/** A short list of exclusive choices (Publish's Keep mine / Take theirs and drop my changes). */
 
 import { useId } from "react";
 import { cx } from "./internal/dom";
