@@ -11,8 +11,9 @@ export interface EngineBinding {
   /** Register the single sink; Rust calls it from any thread with one JSON message string. */
   subscribe(sink: (message: string) => void): void;
   /**
-   * Run one command for one window (any window id: windows need no attach). Rejects with an Error
-   * whose message is JSON `{code, message}`.
+   * Run one command for one window (any window id: windows need no attach). Settles only after the
+   * command's stream messages reached the sink. Rejects with an Error whose message is JSON
+   * `{code, message}`.
    */
   dispatch(windowId: number, requestId: number, command: string): Promise<string>;
   /** Cancel a running command or stream (no-op if finished). */

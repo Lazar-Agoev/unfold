@@ -18,7 +18,9 @@
 //! **The first Compile** creates `.unfold/` (or the fallback location), takes the folder lock,
 //! and opens the store, and only then. **If `local/cache/` disappears** while the folder is
 //! open, the next piece of work notices, recreates it, and compiles everything again with a
-//! fresh engine. **A failed or cancelled commit** rolls back and the engine doesn't adopt the
+//! fresh engine. **The reopen check** restores the stored graph and checks every file by size and
+//! time; when nothing the graph was built from changed while the folder was closed, it neither
+//! links again nor commits. **A failed or cancelled commit** rolls back and the engine doesn't adopt the
 //! update, so the engine, the store, and readers all keep the previous graph. A Compile or
 //! Rebuild the user cancels stops even while committing; background work commits once started.
 
@@ -31,7 +33,7 @@ use unfold_core::RepoPath;
 use unfold_core::vocab::FileState;
 use unfold_engine::update::Progress;
 use unfold_engine::{CancelToken, Engine, Language, UpdateError, UpdateRequest};
-use unfold_store::{Store, Writer};
+use unfold_store::{CommitStats, Store, Writer};
 
 use crate::commit::{self, Committed};
 use crate::compile::{CompileJob, CompileMode, CompileOutcome, CompileProgress, ProgressFn};
@@ -402,7 +404,7 @@ impl EngineThread {
         let restored = loaded.and_then(|loaded| {
             let engine = self.engine.as_mut().ok_or(WorkspaceError::NotCompiled)?;
             engine
-                .restore(loaded.graph, loaded.disks)
+                .restore(loaded.graph, loaded.disks, loaded.basis)
                 .map_err(|error| WorkspaceError::Update(error.to_string()))?;
             Ok(loaded.committed)
         });
@@ -515,10 +517,25 @@ impl EngineThread {
         let first = base.is_none();
         // The engine adopts the update only once the store holds it: a failed or cancelled
         // commit rolls back and leaves the engine, the store, and readers on the previous graph.
-        let (stats, next) =
-            commit::commit(&mut lock(writer), engine, &prepared, base, commit_cancel.as_ref())?;
+        // An update that changed nothing the store holds isn't committed.
+        let next = match base {
+            Some(base) if commit::unchanged(engine, &prepared, base) => None,
+            _ => Some(commit::commit(
+                &mut lock(writer),
+                engine,
+                &prepared,
+                base,
+                commit_cancel.as_ref(),
+            )?),
+        };
         let outcome = engine.adopt(prepared).map_err(update_error)?;
-        self.committed = Some(next);
+        let stats = match next {
+            Some((stats, next)) => {
+                self.committed = Some(next);
+                stats
+            }
+            None => CommitStats::default(),
+        };
         if matches!(kind, RunKind::Rebuild) {
             // Rebuild drops last-good facts (§7.1): a file that doesn't parse now is failed,
             // and the cache must not bring its last good version back later. Fresh entries

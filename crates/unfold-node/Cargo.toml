@@ -10,7 +10,8 @@ publish.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { workspace = true }
+# napi5: functions made from closures (the ordered channel's no-op target).
+napi = { workspace = true, features = ["napi5"] }
 napi-derive = { workspace = true }
 unfold-workspace = { workspace = true }
 

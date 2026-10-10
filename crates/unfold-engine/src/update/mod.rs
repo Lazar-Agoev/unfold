@@ -9,7 +9,7 @@
 //! | First Compile | [`UpdateRequest::compile`] | Every file is new |
 //! | Compile | [`UpdateRequest::compile`] | Every file is re-read and re-hashed; only changed bytes are extracted |
 //! | Background update | [`UpdateRequest::background`] | The watcher's paths, checked by size and modification time first |
-//! | Reopen check | [`UpdateRequest::reopen`] after [`Engine::restore`] | Every file, by size and modification time |
+//! | Reopen check | [`UpdateRequest::reopen`] after [`Engine::restore`] | Every file, by size and modification time; the graph is linked again only if something it was linked from changed ([`LinkBasis`]) |
 //! | Rebuild from scratch | [`UpdateRequest::rebuild`] | Everything, without the cache or last-good facts |
 //!
 //! Each update runs the stages of [`Stage`] in order: discover (or apply the changed paths),
@@ -20,6 +20,7 @@
 //! cancelled or failed one leaves the previous graph, facts, and fingerprints untouched.
 //! `docs/compiling.md` describes the rules.
 
+mod basis;
 mod build;
 mod cache;
 mod extract;
@@ -41,6 +42,7 @@ use unfold_core::validate::Violation;
 use unfold_core::vocab::Language as LanguageId;
 use unfold_core::{Graph, RepoPath};
 
+pub use basis::LinkBasis;
 pub use cache::{
     CacheEntry, CacheError, CacheStatus, FactsCache, FactsKey, MemoryFactsCache, NewCacheEntry, decode_facts,
     decode_failure, encode_failure,
@@ -265,6 +267,8 @@ pub struct UpdateOutcome {
     /// Whether every discovered file is indexed: no failed file, unreadable input, discovery
     /// problem, or invalid settings.
     pub complete: bool,
+    /// What the new graph was linked from: store it with the graph for [`Engine::restore`].
+    pub basis: LinkBasis,
 }
 
 /// An update [`Engine::prepare`] finished and the engine hasn't adopted yet.

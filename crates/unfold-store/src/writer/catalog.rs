@@ -185,5 +185,6 @@ pub(crate) fn write_meta(conn: &Connection, meta: &GraphMeta) -> Result<()> {
     upsert.execute((meta_key::SETTINGS_HASH, meta.settings_hash.to_string()))?;
     upsert.execute((meta_key::COMPILED_AT, meta.compiled_at_ms.to_string()))?;
     upsert.execute((meta_key::COMPLETE, if meta.complete { "true" } else { "false" }))?;
+    upsert.execute((meta_key::LINK_BASIS, &*meta.link_basis))?;
     Ok(())
 }

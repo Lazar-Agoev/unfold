@@ -147,6 +147,9 @@ fn a_board_is_open_in_one_window_at_a_time() {
     assert_eq!(board["project"], project.as_str());
     assert_eq!(board["place"], "draft");
     assert_eq!(board["published"], Value::Null);
+    let recent = harness.ok(1, "workspace", json!({}))["recentBoards"][0].clone();
+    assert_eq!(recent["board"], id.as_str(), "a new board is a recent board");
+    assert_eq!(recent["title"], "Order placement");
     let document = &board["document"];
     assert_eq!(document["format"], "unfold-board");
     assert_eq!(document["version"], 1);

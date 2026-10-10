@@ -32,7 +32,9 @@ UI ◄── window.unfold.on(type, ...) ◄────────────
   keeps running.
 - Streamed commands (`compile`, `search_text`) send messages before they resolve:
   `{"kind":"stream","windowId":1,"requestId":7,"message":{…}}` (`SinkMessage`). The final result
-  is the command's resolution.
+  is the command's resolution. The addon sends sink messages and settles promises through one
+  ordered channel, so a request settles only after every message sent before it (its stream
+  messages, and the events its command sent) reached the sink.
 - **Events go to every window** as `{"kind":"broadcast","event":{…}}`, which the engine host's
   router posts to every window port it has. Only `board_conflict` is targeted, to the window holding
   the board: `{"kind":"event","windows":[w],"event":{…}}`. Project events name their `project`.
@@ -79,7 +81,7 @@ promise through a thread-safe function and never blocks the JavaScript thread.
 | Addon | Host | Notes |
 | --- | --- | --- |
 | `init(options)` | `init(&str)` | `{"appDataDir","logsDir","fallbackCacheDir"}`; once. Loads `workspace.json`; every project starts resting. Starts the liveness reaper |
-| `subscribe(sink)` | `subscribe(Fn(String))` | Every event and stream message, one JSON string each |
+| `subscribe(sink)` | `subscribe(Fn(String))` | Every event and stream message, one JSON string each, on the channel that also settles promises (in order) |
 | `dispatch(windowId, requestId, command)` | `dispatch_async(window, request, json, done)` | `done(Ok(json))` or `done(Err(CommandError))`; the rejection message is `error.to_json()`. Any window id is accepted |
 | `cancel(requestId)` | `cancel(request)` | No-op when finished |
 | `detachWindow(windowId)` | `detach_window_async(window, done)` | A window closed: waits for its [closing writes](#closing-writes), then releases its board claims and sessions and its Home selection. Projects that lose interest start their lease |
@@ -134,7 +136,7 @@ setting (`update_project_config` with `set_project_name`).
 | Command | L | Does |
 | --- | --- | --- |
 | `project_summary` | wakes | Home's header and Health line: the `ProjectState` and the graph status (fallback location, watching by scanning, background updates), when the graph was last committed, files, languages, applications, entrances, the branch and worktrees, and a health summary: graph and settings problems, files that don't parse, the settings error, unreached entrances, launches into code that isn't indexed, and the boards that need review (most items first, ≤ 20). |
-| `compile_preview` | wakes | What the not-compiled Home shows: files that would be graphed by language, files that wouldn't, skipped folders with their reasons, where `local/` would live (and why, with the fallback location), whether the settings file exists or is invalid, and discovery problems. Walks the folder; writes nothing. |
+| `compile_preview` | wakes | What the not-compiled Home shows: files that would be graphed by language, files that wouldn't, skipped folders with their reasons, where the first Compile would put `local/` (and why, with the fallback location: a network volume, a link, or a folder this process can't write, asked of the operating system), whether the settings file exists or is invalid, and discovery problems. Walks the folder; writes nothing. |
 | `scope_dir` | wakes | One level of the scope tree (`path`, `""` for the root): its folders only (≤ 2,000, by name), each with why it is skipped (if it is) and how many source files discovery finds under it, ignoring `[scope]`. |
 | `entrances` | rests | How the project starts, for Home and Add's map: applications named after their startup, with their launches (≤ 5) and their first `perApplication` entrances (default 8, 1–500) and total; then the entrances no launch reaches, and launches into code that isn't indexed (≤ 50). `application` (a startup key) returns that application only; `filter` keeps entrances whose title, trigger, label, or path contains it, ignoring case. HTTP routes sort by their first path segment (`group`), path, and method. `not_compiled` before the first Compile. |
 | `problems` | wakes | The Problems list ([U-28](decisions-and-tradeoffs.md#u-28-problems-lists-only-real-problems)): files that don't parse or can't be read, settings errors, discovery and input problems, a failed compile, and the health of **every** board of the project (≤ 5,000). |
@@ -199,7 +201,7 @@ board, held or not: the folder is Rust-owned metadata, never part of what a wind
 | `list_boards` | rests | A project's boards and its empty folders: for each board its place, name, title, folder, page and card counts, the other projects its cards come from, its unpublished changes (`changes`, 0 for none), when its working file changed, the window holding it, a health `label` only when something is wrong (`1 missing · 2 outdated`; `null` for a resting project, whose health needs a current graph), and `error` when the file can't be read (≤ 2,000). |
 | `board_thumbnails` | rests | What Home's thumbnails draw for up to 60 boards: the first page's cards (≤ 200: position, kind, view, folded, line count, and whether the card is from another project), the graph links between same-project cards, and the drawn links. The UI turns cards into rectangles with the canvas's own sizing rules. |
 | `open_board` | wakes | Claims the board for the calling window and returns it (`status: "opened"`) with its revision, publish state (`published`: the published revision, `changes`, and `baseChanged`), health, page outlines, and view state; records a recent board. If another window holds it, returns `status: "held"` with `heldBy`, and the UI asks the main process to focus that window. |
-| `new_board` | wakes | Creates an empty draft with one page (`page-1`; "Untitled board", "Page 1" unless named), optionally in a folder, claims it, and returns it. `not_compiled` before the first Compile (drafts live in `local/`). |
+| `new_board` | wakes | Creates an empty draft with one page (`page-1`; "Untitled board", "Page 1" unless named), optionally in a folder, claims it, and returns it; records a recent board. `not_compiled` before the first Compile (drafts live in `local/`). |
 | `reload_board` | wakes | Reads the board's working file again (after `board_conflict`) and returns it. |
 | `close_board` | — | Releases the claim. Save first: unsaved edits live in the window. |
 | `move_board` | — | Hands the claim to another window (Open in new window). |

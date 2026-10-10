@@ -118,6 +118,25 @@ impl Layout {
         self.local().is_dir()
     }
 
+    /// The layout as [`Layout::prepare`] would leave it, decided without writing: `local/` moves
+    /// to the fallback location when it doesn't exist yet and the folder (or its `.unfold/`)
+    /// can't be written, which is what `prepare`'s write would find.
+    pub fn as_prepared(&self) -> Self {
+        let mut prepared = self.clone();
+        if self.location == Location::InFolder && !self.is_compiled() {
+            let unfold_dir = self.unfold_dir();
+            let nearest = if unfold_dir.is_dir() {
+                unfold_dir
+            } else {
+                self.root.clone()
+            };
+            if !is_writable(&nearest) {
+                prepared.location = Location::Fallback(FallbackReason::ReadOnly);
+            }
+        }
+        prepared
+    }
+
     /// Creates `local/` with its `cache/` and `drafts/` folders (and, in the folder, the
     /// `.gitignore` that hides `local/` from Git). A folder that refuses the write moves
     /// `local/` to the fallback location.
@@ -271,6 +290,20 @@ fn has_link(root: &Path) -> bool {
     })
 }
 
+/// Whether this process may create entries in the folder `dir`, asked of the operating system
+/// (permissions, access control lists, read-only volumes) without writing.
+#[cfg(unix)]
+fn is_writable(dir: &Path) -> bool {
+    nix::unistd::access(dir, nix::unistd::AccessFlags::W_OK).is_ok()
+}
+
+/// Whether this process may create entries in the folder `dir`: the read-only attribute is all
+/// that can be checked without writing; `prepare` still finds out for sure.
+#[cfg(not(unix))]
+fn is_writable(dir: &Path) -> bool {
+    std::fs::metadata(dir).is_ok_and(|metadata| !metadata.permissions().readonly())
+}
+
 /// Whether an I/O error means the location can't be written.
 fn is_read_only(error: &std::io::Error) -> bool {
     matches!(
@@ -335,6 +368,29 @@ mod tests {
         assert!(root.join(".unfold/local/cache").is_dir());
         assert!(root.join(".unfold/local/drafts").is_dir());
         assert_eq!(Layout::discover(&root, &fallback), layout);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_read_only_folder_is_known_to_fall_back_before_anything_is_written() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (_dir, root, fallback) = dirs();
+        let layout = Layout::discover(&root, &fallback);
+        assert_eq!(
+            layout.as_prepared(),
+            layout,
+            "a writable folder keeps local/ in it"
+        );
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o555)).expect("chmod");
+        let prepared = layout.as_prepared();
+        let mut written = layout;
+        let outcome = written.prepare();
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).expect("chmod back");
+        assert_eq!(prepared.location(), Location::Fallback(FallbackReason::ReadOnly));
+        assert!(prepared.local().starts_with(&fallback));
+        outcome.expect("prepare");
+        assert_eq!(written, prepared, "prepare puts local/ where the preview said");
     }
 
     #[test]

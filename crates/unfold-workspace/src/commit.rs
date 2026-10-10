@@ -13,17 +13,20 @@
 //!
 //! When the workspace doesn't know what the store holds (a first compile, a recreated or cleared
 //! cache, or a commit that failed), every file is written in full with `Writer::replace`, which
-//! also drops whatever else the store held. Disk stamps come from `Engine::disk_state`; reader
+//! also drops whatever else the store held. An update that kept the graph, every disk stamp,
+//! and the metadata (a reopen check that found nothing changed) isn't committed at all
+//! ([`unchanged`]). Disk stamps come from `Engine::disk_state`; reader
 //! projections from `unfold_reader::project`. Everything goes in one transaction, so a failed
 //! commit leaves the previous graph readable.
 
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rustc_hash::FxHashMap;
 use unfold_core::{ContentHash, Graph, RepoPath};
 use unfold_engine::discovery::FileStamp;
 use unfold_engine::update::DiskState;
-use unfold_engine::{CancelToken, Engine, PreparedUpdate, UpdateOutcome};
+use unfold_engine::{CancelToken, Engine, LinkBasis, PreparedUpdate, UpdateOutcome};
 use unfold_reader::{Projections, project};
 use unfold_store::{
     Application, CommitStats, Definition, DiskStamp, EntranceChanges, FileChange, GraphMeta, Membership,
@@ -33,13 +36,14 @@ use unfold_store::{
 use crate::error::{Result, WorkspaceError};
 
 /// What the store holds besides the graph the engine remembers: each file's disk stamp, the
-/// reader projections, and nothing else. It lets a commit skip rows that didn't change.
+/// reader projections, and the graph metadata. It lets a commit skip rows that didn't change.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Committed {
     stamps: FxHashMap<RepoPath, DiskStamp>,
     definitions: FxHashMap<RepoPath, Vec<Definition>>,
     applications: Vec<Application>,
     memberships: Vec<Membership>,
+    meta: Option<GraphMeta>,
 }
 
 /// The engine's disk state as the store's stamp.
@@ -107,7 +111,31 @@ pub(crate) fn graph_meta(engine: &Engine, prepared: &PreparedUpdate) -> GraphMet
         settings_hash: ContentHash::from_bytes(*prepared.settings().hash().as_bytes()),
         compiled_at_ms: now_ms(),
         complete: prepared.outcome().complete,
+        link_basis: prepared.outcome().basis.encode().into(),
     }
+}
+
+/// Whether committing `prepared` (an update of `engine`) would change nothing the store holds
+/// (`committed`): it kept the engine's graph, every file's disk stamp is the stored one, and so
+/// is the metadata but for its time. The update is then adopted without a commit, and the
+/// store keeps the time of the commit that last changed it.
+pub(crate) fn unchanged(engine: &Engine, prepared: &PreparedUpdate, committed: &Committed) -> bool {
+    let outcome = prepared.outcome();
+    let graph = &outcome.graph;
+    let Some(stored) = &committed.meta else {
+        return false;
+    };
+    let meta = GraphMeta {
+        compiled_at_ms: stored.compiled_at_ms,
+        ..graph_meta(engine, prepared)
+    };
+    Arc::ptr_eq(graph, &outcome.previous)
+        && meta == *stored
+        && committed.stamps.len() == graph.files.len()
+        && graph.files.iter().all(|file| {
+            let path = &file.file.path;
+            committed.stamps.get(path) == Some(&disk_stamp(prepared.disk_state(path)))
+        })
 }
 
 /// Commits `prepared` (an update of `engine` it hasn't adopted yet) against what the store
@@ -134,14 +162,9 @@ pub(crate) fn commit(
         .iter()
         .map(|file| disk_stamp(prepared.disk_state(&file.file.path)))
         .collect();
+    let meta = graph_meta(engine, prepared);
     let stats = {
-        let update = build(
-            outcome,
-            &projections,
-            &stamps,
-            committed,
-            graph_meta(engine, prepared),
-        );
+        let update = build(outcome, &projections, &stamps, committed, meta.clone());
         let written = match committed {
             Some(_) => writer.commit_unless(&update, &cancelled),
             None => writer.replace_unless(&update, &cancelled),
@@ -162,6 +185,7 @@ pub(crate) fn commit(
         definitions: FxHashMap::with_capacity_and_hasher(graph.files.len(), Default::default()),
         applications,
         memberships,
+        meta: Some(meta),
     };
     for ((file, stamp), definitions) in graph.files.iter().zip(stamps).zip(definitions) {
         next.stamps.insert(file.file.path.clone(), stamp);
@@ -242,11 +266,12 @@ fn build<'a>(
     }
 }
 
-/// The committed graph, its files' disk states, and what the store holds, read in one
-/// snapshot: what reopening a folder restores the engine from.
+/// The committed graph, its files' disk states, what it was linked from, and what the store
+/// holds, read in one snapshot: what reopening a folder restores the engine from.
 pub(crate) struct Loaded {
     pub(crate) graph: Graph,
     pub(crate) disks: Vec<(RepoPath, DiskState)>,
+    pub(crate) basis: Option<LinkBasis>,
     pub(crate) committed: Committed,
 }
 
@@ -255,9 +280,12 @@ pub(crate) fn load(reader: &Reader) -> Result<Loaded> {
     Ok(reader.snapshot(|reader| {
         let graph = reader.graph()?;
         let rows = reader.files()?;
+        let meta = reader.meta()?.graph;
+        let basis = meta.as_ref().and_then(|meta| LinkBasis::decode(&meta.link_basis));
         let mut committed = Committed {
             applications: reader.applications()?,
             memberships: reader.memberships()?,
+            meta,
             ..Committed::default()
         };
         let mut cursor = None;
@@ -293,6 +321,7 @@ pub(crate) fn load(reader: &Reader) -> Result<Loaded> {
         Ok(Loaded {
             graph,
             disks,
+            basis,
             committed,
         })
     })?)

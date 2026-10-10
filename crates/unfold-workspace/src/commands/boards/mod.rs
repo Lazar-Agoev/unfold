@@ -347,8 +347,9 @@ pub fn open_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<OpenBoardRe
     })
 }
 
-/// `new_board`: creates an empty draft with one page, opens it in the calling window, and
-/// returns it. `not_compiled` before the project's first Compile (drafts live in `local/`).
+/// `new_board`: creates an empty draft with one page, opens it in the calling window, records it
+/// as a recent board, and returns it. `not_compiled` before the project's first Compile (drafts
+/// live in `local/`).
 pub fn new_board(ctx: &Ctx<'_>, args: NewBoardArgs) -> CommandResult<BoardState> {
     let project = ctx.project(&args.project)?;
     let workspace = project.wake()?;
@@ -380,6 +381,10 @@ pub fn new_board(ctx: &Ctx<'_>, args: NewBoardArgs) -> CommandResult<BoardState>
     if let Some(folder) = &folder {
         folder_used(&workspace, folder);
     }
+    // Recents are a convenience: a failed write never fails the new board.
+    let _ = ctx
+        .projects()
+        .record_recent_board(held.project.id(), &held.id, &state.document.board.title);
     held.announce(vec![held.id.clone()], folder.is_some());
     Ok(state)
 }

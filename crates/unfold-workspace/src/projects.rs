@@ -923,8 +923,8 @@ impl Projects {
         Ok(())
     }
 
-    /// Records that board `board` of project `project`, titled `title`, was opened (most recent
-    /// first; at most 20 are kept).
+    /// Records that board `board` of project `project`, titled `title`, was opened or created
+    /// (most recent first; at most 20 are kept).
     pub fn record_recent_board(&self, project: &ProjectId, board: &str, title: &str) -> Result<()> {
         let recent = RecentBoard {
             project: project.clone(),

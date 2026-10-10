@@ -50,7 +50,7 @@ The addon is loaded from `crates/unfold-node` in a checkout, and from `<resource
 
 ## The engine addon
 
-`crates/unfold-node` is a napi-rs v3 addon over `unfold_workspace::Host`, with no logic of its own. It exports exactly `init`, `subscribe`, `dispatch`, `cancel`, `detachWindow`, and `shutdown` ([docs/ipc.md](../docs/ipc.md#the-addons-surface-host)). Promises settle from Rust threads through thread-safe deferreds, so the JavaScript thread never waits; the sink is a weak (unref'd) thread-safe function called without blocking; a panic rejects with `internal`. Build it with `just addon` (debug) or `just addon-release`; the napi CLI writes `unfold-node.<platform>.node`, `index.js`, and `index.d.ts` into the crate folder. `just addon-test` runs its Node tests against the build.
+`crates/unfold-node` is a napi-rs v3 addon over `unfold_workspace::Host`, with no logic of its own. It exports exactly `init`, `subscribe`, `dispatch`, `cancel`, `detachWindow`, and `shutdown` ([docs/ipc.md](../docs/ipc.md#the-addons-surface-host)). Promises settle from Rust threads through thread-safe deferreds, so the JavaScript thread never waits. Sink messages and settlements share one ordered channel, a weak (unref'd) thread-safe function called without blocking, so a request settles only after its stream messages reached the sink; a panic rejects with `internal`. Build it with `just addon` (debug) or `just addon-release`; the napi CLI writes `unfold-node.<platform>.node`, `index.js`, and `index.d.ts` into the crate folder. `just addon-test` runs its Node tests against the build.
 
 ## Window commands that involve the engine
 

@@ -121,3 +121,58 @@ fn reopening_a_mixed_folder_re_extracts_only_what_its_configuration_touches() {
     assert_eq!(files, (typescript, 0, typescript), "exactly the TypeScript files");
     close(workspace);
 }
+
+/// The stored graph's compile time and the canonical text of the graph readers see.
+fn stored(workspace: &Workspace) -> (i64, String) {
+    let reader = workspace.readers().expect("readers").get().expect("reader");
+    let meta = reader.meta().expect("meta").graph.expect("a graph");
+    let graph = reader.graph().expect("graph");
+    (meta.compiled_at_ms, unfold_core::canonical::to_string(&graph))
+}
+
+#[test]
+fn reopening_an_unchanged_folder_neither_links_nor_commits() {
+    let playground = Playground::new("ts-orders", true);
+    // What linking finds (a package manifest it can't read) survives a reopen that doesn't link.
+    playground.write("tools/package.json", "[]\n");
+    let sink = RecordingSink::new();
+    let workspace = playground.open(&sink, false);
+    compile(&workspace);
+    let problems = workspace.problems();
+    assert!(
+        problems
+            .iter()
+            .any(|problem| problem.path == "tools/package.json"),
+        "{problems:?}"
+    );
+    let (compiled_at, graph) = stored(&workspace);
+    close(workspace);
+
+    let (workspace, files) = reopen(&playground, &sink);
+    assert_eq!(files, (0, 0, 0));
+    let entry = workspace.index_log().last().cloned().expect("the reopen check");
+    assert!(entry.text.contains("graph unchanged"), "{}", entry.text);
+    assert_eq!(
+        (entry.commit_ms, entry.files_written),
+        (0, 0),
+        "nothing is committed"
+    );
+    assert_eq!(workspace.problems(), problems);
+    assert_eq!(stored(&workspace), (compiled_at, graph.clone()));
+    close(workspace);
+
+    // A change only linking sees, made while closed, links again and commits.
+    let config = std::fs::read_to_string(playground.path(".unfold/config.toml")).expect("settings");
+    playground.write(
+        ".unfold/config.toml",
+        &format!("{config}\n[[entrance]]\nkind = \"command\"\ntrigger = \"go\"\nhandler = \"src/server.ts#shutdown\"\n"),
+    );
+    let (workspace, files) = reopen(&playground, &sink);
+    assert_eq!(files.1 + files.2, 0, "no file's facts changed");
+    let entry = workspace.index_log().last().cloned().expect("the reopen check");
+    assert!(!entry.text.contains("graph unchanged"), "{}", entry.text);
+    let (at, relinked) = stored(&workspace);
+    assert!(at >= compiled_at);
+    assert_ne!(relinked, graph, "the manual entrance is in the stored graph");
+    close(workspace);
+}

@@ -191,6 +191,7 @@ pub fn meta(compiled_at_ms: i64) -> GraphMeta {
         settings_hash: ContentHash::of(b"settings"),
         compiled_at_ms,
         complete: true,
+        link_basis: r#"{"fingerprint":"test"}"#.into(),
     }
 }
 

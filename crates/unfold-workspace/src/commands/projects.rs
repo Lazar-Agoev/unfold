@@ -138,7 +138,8 @@ pub fn compile_preview(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<Compil
             });
         }
     }
-    let layout = workspace.layout();
+    // Before the first Compile, where that Compile would put `local/` (it may not be writable).
+    let layout = workspace.layout().as_prepared();
     let fallback = match layout.location() {
         Location::InFolder => None,
         Location::Fallback(reason) => Some(reason),

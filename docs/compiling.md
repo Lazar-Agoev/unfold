@@ -21,7 +21,7 @@ fingerprints, the effective settings, and the committed graph. Languages are reg
 | First Compile | `UpdateRequest::compile()` | Everything (every file is new) | Contents | All cores but one |
 | Compile | `UpdateRequest::compile()` | Everything | Contents (re-hash every file) | All cores but one |
 | Background update | `UpdateRequest::background(paths)` | The watcher's paths | Size and modification time, then contents | Background pool (2) |
-| Reopen check | `Engine::restore(graph, disks)`, then `UpdateRequest::reopen()` | Everything | Size and modification time, then contents | Background pool |
+| Reopen check | `Engine::restore(graph, disks, basis)`, then `UpdateRequest::reopen()` | Everything | Size and modification time, then contents | Background pool |
 | Rebuild from scratch | `UpdateRequest::rebuild()` | Everything, without cache or last-good facts | Contents | All cores but one |
 
 Because every action shares this code path, a graph built by many updates equals the graph a fresh
@@ -204,10 +204,16 @@ operating system.
 
 ## Reopening a folder
 
-`Engine::restore(graph, disks)` rebuilds the in-memory program from the stored graph and the cache without
-parsing: each file's facts come back by the hash they came from and its current settings hash. Files the cache
-can't supply are left for the next update. `UpdateRequest::reopen()` then discovers the folder, hashes only
-files whose size or modification time differs, and relinks once. When the engine version changed, nothing
+`Engine::restore(graph, disks, basis)` rebuilds the in-memory program from the stored graph and the cache
+without parsing: each file's facts come back by the hash they came from and its current settings hash. Files
+the cache can't supply are left for the next update. `UpdateRequest::reopen()` then discovers the folder and
+hashes only files whose size or modification time differs. It relinks only when something changed: a file's
+facts, the file set, or what the graph was linked from. That is the `LinkBasis` every update reports
+(`UpdateOutcome::basis`) and the store keeps with the graph: a fingerprint of the engine and front-end
+versions, the folder, the effective settings and the settings file, every configuration input, and the
+unindexed and context files, with the problems linking found. A graph restored without its basis is relinked
+once. When nothing changed, the restored graph and its link problems are kept, and the workspace commits
+nothing (every disk stamp and the metadata are already stored). When the engine version changed, nothing
 matches and the reopen check recompiles in the background.
 
 ## Determinism
@@ -230,8 +236,9 @@ the project rests ([architecture §11.2](architecture.md#112-live-and-resting-pr
 it: one engine thread, one store writer, one watcher. Opening a folder that was never compiled writes
 nothing. A folder compiled before (its `local/` exists) takes the folder lock in `local/cache/lock` — a second
 copy of Unfold gets `open_elsewhere` — and opens `graph.sqlite`, whose graph is readable at once. The engine
-thread then loads the whole stored graph (`Reader::graph`), calls `Engine::restore`, and runs
-`UpdateRequest::reopen()` in the background. A database the store recreated (engine or front-end version
+thread then loads the whole stored graph (`Reader::graph`) and its link basis, calls `Engine::restore`, and
+runs `UpdateRequest::reopen()` in the background; a check that changed nothing the store holds isn't
+committed. A database the store recreated (engine or front-end version
 changed, damaged, or deleted) is compiled again in the background with a fresh engine.
 
 **The first Compile** creates `.unfold/local/` with its `.gitignore` (`*`), `cache/`, and `drafts/`, then

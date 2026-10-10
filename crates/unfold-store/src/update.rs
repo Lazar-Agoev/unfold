@@ -260,4 +260,7 @@ pub struct GraphMeta {
     /// Whether every discovered file is indexed (no failed files, read errors, or invalid
     /// settings).
     pub complete: bool,
+    /// What the graph was linked from and what linking found, as text written by the engine, so
+    /// a reopened folder can keep the graph without linking it again.
+    pub link_basis: Box<str>,
 }

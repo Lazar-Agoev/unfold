@@ -42,21 +42,25 @@ impl Reader {
             get(meta_key::SETTINGS_HASH),
             get(meta_key::COMPILED_AT),
             get(meta_key::COMPLETE),
+            get(meta_key::LINK_BASIS),
         ) {
-            (Some(producers), Some(settings), Some(compiled_at), Some(complete)) => Some(GraphMeta {
-                producers: producers.into(),
-                settings_hash: settings
-                    .parse()
-                    .map_err(|_| codec::invalid("settings hash", settings))?,
-                compiled_at_ms: compiled_at
-                    .parse()
-                    .map_err(|_| codec::invalid("compile time", compiled_at))?,
-                complete: match complete {
-                    "true" => true,
-                    "false" => false,
-                    other => return Err(codec::invalid("completeness", other)),
-                },
-            }),
+            (Some(producers), Some(settings), Some(compiled_at), Some(complete), Some(link_basis)) => {
+                Some(GraphMeta {
+                    producers: producers.into(),
+                    settings_hash: settings
+                        .parse()
+                        .map_err(|_| codec::invalid("settings hash", settings))?,
+                    compiled_at_ms: compiled_at
+                        .parse()
+                        .map_err(|_| codec::invalid("compile time", compiled_at))?,
+                    complete: match complete {
+                        "true" => true,
+                        "false" => false,
+                        other => return Err(codec::invalid("completeness", other)),
+                    },
+                    link_basis: link_basis.into(),
+                })
+            }
             _ => None,
         };
         Ok(StoredMeta {

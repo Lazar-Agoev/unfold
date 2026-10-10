@@ -13,7 +13,7 @@ use super::cache::{CacheStatus, FactsKey, decode_facts};
 use super::run::{Run, options_of};
 use super::scan::{load_settings, scan};
 use super::state::{DiskState, Facts, FileEntry, InputEntry, SettingsState, State};
-use super::{Changes, Engine, UpdateError, UpdateKind, UpdateRequest, Verify};
+use super::{Changes, Engine, LinkBasis, UpdateError, UpdateKind, UpdateRequest, Verify};
 use crate::ENGINE_VERSION;
 use crate::language::{Language, LanguageId, ProjectInputs};
 use crate::settings::SettingsHash;
@@ -30,27 +30,35 @@ pub struct RestoreStats {
 }
 
 impl Engine {
-    /// Restores the state of a previous session: `graph` is the stored graph, and `disks` the
-    /// stored disk state of its files. Each file's facts come from the cache by the hash its
-    /// facts came from and its settings hash, which the extraction options give
+    /// Restores the state of a previous session: `graph` is the stored graph, `disks` the
+    /// stored disk state of its files, and `basis` what the graph was linked from
+    /// ([`super::UpdateOutcome::basis`]), if it was kept. Each file's facts come from the cache
+    /// by the hash its facts came from and its settings hash, which the extraction options give
     /// ([`Language::extraction_options`]), so the configuration inputs are read first, as an
     /// update reads them; files the cache can't supply are left for the next update. Follow
     /// with [`super::UpdateRequest::reopen`], which checks every file (and input) by size and
-    /// modification time and hashes only those that differ.
+    /// modification time and hashes only those that differ, and links the graph again only when
+    /// something changed or `basis` doesn't match.
     pub fn restore(
         &mut self,
         graph: Graph,
         disks: impl IntoIterator<Item = (RepoPath, DiskState)>,
+        basis: Option<LinkBasis>,
     ) -> Result<RestoreStats, UpdateError> {
         let disks: FxHashMap<RepoPath, DiskState> = disks.into_iter().collect();
         let pool = self.pool(UpdateKind::Background)?;
         let this = &*self;
-        let (state, stats) = pool.install(|| this.restored(graph, &disks));
+        let (state, stats) = pool.install(|| this.restored(graph, &disks, basis));
         self.set_state(state);
         Ok(stats)
     }
 
-    fn restored(&self, graph: Graph, disks: &FxHashMap<RepoPath, DiskState>) -> (State, RestoreStats) {
+    fn restored(
+        &self,
+        graph: Graph,
+        disks: &FxHashMap<RepoPath, DiskState>,
+        basis: Option<LinkBasis>,
+    ) -> (State, RestoreStats) {
         let settings = load_settings(
             &self.root,
             &SettingsState::default(),
@@ -133,6 +141,7 @@ impl Engine {
             // keeps every file's settings hash when none did.
             inputs,
             built: true,
+            restored: basis,
             complete,
             graph: Arc::new(graph),
             ..State::default()

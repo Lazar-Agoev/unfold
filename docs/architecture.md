@@ -594,7 +594,7 @@ When one changes, the files whose settings hash changed are extracted again, and
 
 ### 7.8 Opening a project
 
-A project opens when it wakes ([§11.2](#112-live-and-resting-projects)). The graph in SQLite is usable at once. In the background, Unfold compares each file's size and modification time with the stored values, hashes only the files that differ, and runs one update. It also loads the cached per-file facts to rebuild the in-memory program, so the next save updates quickly. When an app update has changed the engine version, the cache no longer matches and Unfold recompiles in the background. Boards are unaffected.
+A project opens when it wakes ([§11.2](#112-live-and-resting-projects)). The graph in SQLite is usable at once. In the background, Unfold compares each file's size and modification time with the stored values, hashes only the files that differ, and runs one update. It also loads the cached per-file facts to rebuild the in-memory program, so the next save updates quickly. When nothing changed while the project rested (no file added, removed, or changed, and the same settings, configuration inputs, and engine), the stored graph is kept as it is: nothing is linked again or written. When an app update has changed the engine version, the cache no longer matches and Unfold recompiles in the background. Boards are unaffected.
 
 ### 7.9 What a project's state says
 
@@ -654,7 +654,7 @@ Electron keeps Chromium's own caches in the same app-data folder. The UI never u
 
 | File | Holds | Written when |
 | --- | --- | --- |
-| `workspace.json` | Each project's id, path, cached shared name, row expanded or collapsed, repository identity, when it was added, and its last known state; the last project selected in any window (the default for new windows); recent boards (≤ 20); folders removed from the workspace (≤ 5) | Projects are added, removed, reordered, expanded, selected, renamed, or switched; a board is opened, renamed by Publish, or deleted; a project rests; the app quits |
+| `workspace.json` | Each project's id, path, cached shared name, row expanded or collapsed, repository identity, when it was added, and its last known state; the last project selected in any window (the default for new windows); recent boards (≤ 20); folders removed from the workspace (≤ 5) | Projects are added, removed, reordered, expanded, selected, renamed, or switched; a board is created, opened, renamed by Publish, or deleted; a project rests; the app quits |
 | `windows.json` | Each window's key, bounds, whether maximized, Home selection, board tabs (each with its page), active tab, and layout (sidebar width and visibility, the Selected section, the peek pin, Home's view and board filters, expanded sidebar folders); at most 16 windows | The window saves its state, and the main process its bounds |
 | `.unfold/local/state.json` | Background updates on or off; empty board folders; each board's view state: its active page and each page's camera and lens (≤ 500 boards, ≤ 200 pages each) | A setting or a view changes. Before the first Compile, changes are kept in memory |
 
@@ -1373,7 +1373,7 @@ Commands, events, and their payload types are defined once in Rust, in `unfold-w
 | Function | Does |
 | --- | --- |
 | `init` | Starts the engine with the app's folders; every project starts resting |
-| `subscribe` | Delivers events and stream messages from Rust threads to the engine host |
+| `subscribe` | Delivers events and stream messages from Rust threads to the engine host, in order with the results they precede |
 | `dispatch` | Runs one command for one window, and resolves with its result |
 | `cancel` | Cancels a running command or stream |
 | `detachWindow` | A window closed: waits for its last board and window-state writes, then releases its boards and its Home selection |

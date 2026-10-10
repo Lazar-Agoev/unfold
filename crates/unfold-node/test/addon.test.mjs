@@ -1,10 +1,11 @@
 // Tests of the built addon through its JavaScript surface (contract §3.1): the dispatch round
-// trip, broadcast events and stream messages from Rust threads reaching the sink, trusted
-// commands, cancelling, errors, detaching windows, and shutting down. Build the addon first
-// (`just addon`); the tests run in one process because the addon holds one process-wide host.
+// trip, broadcast events and stream messages from Rust threads reaching the sink, a result never
+// overtaking its stream messages, trusted commands, cancelling, errors, detaching windows, and
+// shutting down. Build the addon first (`just addon`); the tests run in one process because the
+// addon holds one process-wide host.
 
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -146,6 +147,34 @@ describe("unfold-node addon", { skip: built ? false : "the addon is not built: r
     assert.ok(entrance, "ts-orders has entrances");
     const card = await dispatch(2, "card", { project, key: entrance.key });
     assert.equal(typeof card.type, "string");
+  });
+
+  it("settles a request only after every stream message it sent reached the sink", async () => {
+    // More matching files than Node's thread-safe functions deliver in one turn (1,000 calls),
+    // staying under search_text's 2,000 matches.
+    const count = 1_800;
+    const many = join(scratch, "many");
+    mkdirSync(join(many, "src"), { recursive: true });
+    for (let index = 0; index < count; index++) {
+      writeFileSync(join(many, "src", `f${index}.ts`), `export const needle${index} = ${index};\n`);
+    }
+    const added = (await trusted("add_project", { path: many })).project.id;
+    assert.equal(await dispatch(4, "select_project", { project: added }), null);
+    await sinkMessage((m) => m.kind === "broadcast" && m.event.type === "project_state" && m.event.project === added);
+
+    const requestId = nextRequest++;
+    const searching = addon.dispatch(
+      4,
+      requestId,
+      JSON.stringify({ command: "search_text", args: { query: "needle", projects: [added] } }),
+    );
+    // Hold the JavaScript thread while Rust searches, so every stream message and the result
+    // are waiting at once when it is free again: the result must still come last.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2_000);
+    const summary = JSON.parse(await searching);
+    const streamed = messages.filter((m) => m.kind === "stream" && m.requestId === requestId);
+    assert.equal(summary.files, count);
+    assert.equal(streamed.length, count, "every stream message arrived before the result");
   });
 
   it("cancels a running command", async () => {

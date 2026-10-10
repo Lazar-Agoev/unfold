@@ -16,8 +16,8 @@ use super::read::{Counter, Read, read_all, read_file};
 use super::scan::{self, Scan, stamp_of};
 use super::state::{DiskState, Facts, FileEntry, InputEntry, SettingsState, State};
 use super::{
-    ChangeSummary, Changes, Engine, Problem, ProblemKind, Stage, UpdateError, UpdateKind, UpdateOutcome,
-    UpdateRequest, UpdateStats, Verify,
+    ChangeSummary, Changes, Engine, LinkBasis, Problem, ProblemKind, Stage, UpdateError, UpdateKind,
+    UpdateOutcome, UpdateRequest, UpdateStats, Verify,
 };
 use crate::ENGINE_VERSION;
 use crate::discovery::FileStamp;
@@ -156,14 +156,30 @@ impl<'e, 'r> Run<'e, 'r> {
             link_problems: base.link_problems.clone(),
             discovered: true,
             built: true,
-            // Relinked below whenever the old graph wasn't linked by this engine.
+            // Relinked below unless the old graph was linked from what this update sees.
             linked: true,
+            restored: None,
             graph: Arc::clone(&old.graph),
             complete: false,
         };
+        // Whether the old graph was linked from the context this update sees (everything but
+        // the files' facts): by this engine, or, for a restored graph, by the session whose
+        // basis the store kept, which also kept what linking found.
+        let context_kept = if old.linked {
+            !context_differs(old, &state)
+        } else if let Some(basis) = old
+            .restored
+            .as_ref()
+            .filter(|basis| basis.matches(engine, &state))
+        {
+            state.link_problems = basis.problems();
+            true
+        } else {
+            false
+        };
         state.complete = is_complete(&state);
 
-        let relink = request.kind != UpdateKind::Background || !old.linked || shapes_differ(old, &state);
+        let relink = request.kind != UpdateKind::Background || !context_kept || files_differ(old, &state);
         if relink {
             // Only current files are checked against bytes: last-good facts (and entrance
             // evidence in them) come from earlier bytes than the ones just read.
@@ -219,6 +235,7 @@ impl<'e, 'r> Run<'e, 'r> {
             stats: self.stats,
             problems,
             complete: state.complete,
+            basis: LinkBasis::of(engine, &state),
         };
         Ok((state, outcome))
     }
@@ -725,26 +742,32 @@ fn input_entry(role: InputRole, stamp: Option<FileStamp>, read: Read, requested:
     }
 }
 
-/// Whether anything that shapes the graph differs between two states.
-fn shapes_differ(old: &State, new: &State) -> bool {
+/// Whether anything but the files that shapes the graph differs between two states: the
+/// settings, the settings file, the configuration inputs, or the unindexed or context files
+/// (what [`LinkBasis`] fingerprints).
+fn context_differs(old: &State, new: &State) -> bool {
     let source_hash = |state: &State| state.settings.source.as_ref().map(Snapshot::hash);
     let input = |entry: &InputEntry| (entry.role, entry.content.as_ref().ok().map(Snapshot::hash));
     old.settings.settings != new.settings.settings
         || source_hash(old) != source_hash(new)
         || old.unindexed != new.unindexed
         || old.context != new.context
-        || old.files.len() != new.files.len()
-        || old
-            .files
-            .iter()
-            .zip(&new.files)
-            .any(|((a, x), (b, y))| a != b || x.language != y.language || !x.facts.same_as(&y.facts))
         || old.inputs.len() != new.inputs.len()
         || old
             .inputs
             .iter()
             .zip(&new.inputs)
             .any(|((a, x), (b, y))| a != b || input(x) != input(y))
+}
+
+/// Whether the indexed files, their languages, or their facts differ between two states.
+fn files_differ(old: &State, new: &State) -> bool {
+    old.files.len() != new.files.len()
+        || old
+            .files
+            .iter()
+            .zip(&new.files)
+            .any(|((a, x), (b, y))| a != b || x.language != y.language || !x.facts.same_as(&y.facts))
 }
 
 fn is_complete(state: &State) -> bool {

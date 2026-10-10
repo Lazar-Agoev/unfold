@@ -35,6 +35,7 @@ pub use language::{
 pub use program::{BlockRef, CallRef, DeclRef, FactsSet, FileId, ProgramFile, ValueRef};
 pub use resolve::{Outcome, Resolver};
 pub use update::{
-    ChangeSummary, Changes, Engine, EngineOptions, FactsCache, MemoryFactsCache, PreparedUpdate, Problem,
-    ProblemKind, Progress, Stage, UpdateError, UpdateKind, UpdateOutcome, UpdateRequest, UpdateStats, Verify,
+    ChangeSummary, Changes, Engine, EngineOptions, FactsCache, LinkBasis, MemoryFactsCache, PreparedUpdate,
+    Problem, ProblemKind, Progress, Stage, UpdateError, UpdateKind, UpdateOutcome, UpdateRequest,
+    UpdateStats, Verify,
 };

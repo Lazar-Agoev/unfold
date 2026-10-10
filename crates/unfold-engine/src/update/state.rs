@@ -10,7 +10,7 @@ use std::sync::Arc;
 use unfold_core::vocab::{FileState, InputRole, Language as LanguageId};
 use unfold_core::{ContentHash, FileRecord, Graph, RepoPath, Snapshot};
 
-use super::Problem;
+use super::{LinkBasis, Problem};
 use crate::discovery::FileStamp;
 use crate::facts::FileFacts;
 use crate::settings::{Settings, SettingsHash};
@@ -168,10 +168,12 @@ pub(crate) struct State {
     /// Whether `graph` came from an update or a restore (rather than being the initial empty
     /// graph).
     pub(crate) built: bool,
-    /// Whether `graph` was linked by this engine. A restored graph wasn't: whatever built it
-    /// (possibly an older engine) is not trusted, and its link problems weren't kept, so the
-    /// first update after a restore always relinks.
+    /// Whether `graph` was linked by this engine. A restored graph wasn't: the first update
+    /// after a restore links it again unless it sees exactly what the graph was linked from
+    /// (`restored`).
     pub(crate) linked: bool,
+    /// For a restored graph, what it was linked from, when the store kept it.
+    pub(crate) restored: Option<LinkBasis>,
     pub(crate) graph: Arc<Graph>,
     pub(crate) complete: bool,
 }

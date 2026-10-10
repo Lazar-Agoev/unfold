@@ -8,20 +8,38 @@
 //!   waits on Rust.
 //! - A failure rejects with an `Error` whose message is the JSON `{"code","message"}` of a
 //!   [`CommandError`]. A panic, in a command or in this layer, becomes an `internal` rejection.
-//! - The sink is a weak (unref'd) thread-safe function called without blocking, so Rust threads
-//!   never wait on JavaScript and the sink never keeps the process alive.
+//! - Sink messages and promise settlements reach the JavaScript thread through **one ordered
+//!   channel** (a thread-safe function, [`Delivery`]): a settlement is queued behind every
+//!   message sent before it, so a request's result never overtakes its stream messages (or the
+//!   events its command sent). The channel is weak (unref'd) and called without blocking, so
+//!   Rust threads never wait on JavaScript and it never keeps the process alive.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError, RwLock};
 
 use napi::bindgen_prelude::{Function, Object, ToNapiValue};
-use napi::threadsafe_function::ThreadsafeFunctionCallMode;
-use napi::{Env, Error, JsDeferred, Result};
+use napi::threadsafe_function::{ThreadsafeCallContext, ThreadsafeFunction, ThreadsafeFunctionCallMode};
+use napi::{Env, Error, JsDeferred, Result, Status};
 use napi_derive::napi;
 use unfold_workspace::{CommandError, CommandResult, Host};
 
 /// The one host of this process: the workspace and its projects live behind it.
 static HOST: LazyLock<Host> = LazyLock::new(Host::new);
+
+/// What the ordered channel carries to the JavaScript thread, in the order it was sent.
+enum Delivery {
+    /// A sink message, handed to the sink.
+    Message(String),
+    /// A request's outcome: settles its promise once every earlier message reached the sink.
+    Settle(Box<dyn FnOnce() + Send>),
+}
+
+/// The ordered channel: a weak thread-safe function whose JavaScript-thread callback delivers
+/// each [`Delivery`] (the function it calls does nothing).
+type Channel = ThreadsafeFunction<Delivery, (), (), Status, false, true>;
+
+/// The channel of the registered sink; `None` before `subscribe`.
+static CHANNEL: RwLock<Option<Channel>> = RwLock::new(None);
 
 /// How a deferred promise gets its value on the JavaScript thread.
 type Resolver<T> = Box<dyn FnOnce(Env) -> Result<T>>;
@@ -37,24 +55,32 @@ pub fn init(options: String) -> Result<()> {
 }
 
 /// Registers the single sink. Rust calls it from any thread with one JSON message: an event for
-/// every window or for some, or a stream message of a running command. Replaces any earlier sink.
+/// every window or for some, or a stream message of a running command. A request's stream
+/// messages reach the sink before its promise settles. Replaces any earlier sink.
 #[napi(catch_unwind, ts_args_type = "sink: (message: string) => void")]
-pub fn subscribe(sink: Function<String, ()>) -> Result<()> {
-    let sink = sink
-        .build_threadsafe_function::<String>()
+pub fn subscribe(env: &Env, sink: Function<String, ()>) -> Result<()> {
+    let sink = sink.create_ref()?;
+    let channel = env
+        .create_function_from_closure::<(), (), _>("unfoldDelivery", |_| Ok(()))?
+        .build_threadsafe_function::<Delivery>()
         .weak::<true>()
-        .build()?;
-    HOST.subscribe(move |message| {
-        // A full queue or a closing environment drops the message: the sink must never block a
-        // Rust thread, and a message for a process that is exiting has no reader anyway.
-        let _status = sink.call(message, ThreadsafeFunctionCallMode::NonBlocking);
-    });
+        .build_callback(
+            move |context: ThreadsafeCallContext<Delivery>| match context.value {
+                Delivery::Message(message) => sink.borrow_back(&context.env)?.call(message),
+                Delivery::Settle(settle) => {
+                    settle();
+                    Ok(())
+                }
+            },
+        )?;
+    *CHANNEL.write().unwrap_or_else(PoisonError::into_inner) = Some(channel);
+    HOST.subscribe(|message| deliver(Delivery::Message(message)));
     Ok(())
 }
 
 /// Runs one command (`{"command","args"}` JSON) for one window (any window id: windows need no
-/// attach). Resolves with the result JSON; stream messages go to the sink first. `requestId` must
-/// be unique among running requests.
+/// attach). Resolves with the result JSON once its stream messages reached the sink.
+/// `requestId` must be unique among running requests.
 #[napi(catch_unwind, ts_return_type = "Promise<string>")]
 pub fn dispatch(env: &Env, window_id: u32, request_id: i64, command: String) -> Result<Object<'_>> {
     let request = request_number(request_id);
@@ -100,9 +126,25 @@ fn rejection(error: &CommandError) -> Error {
     Error::from_reason(error.to_json())
 }
 
+/// Sends `delivery` down the ordered channel without blocking. Without a sink, a settlement runs
+/// at once (no message can be waiting) and a message has no reader. A closing environment drops
+/// either: nothing reads them in a process that is exiting.
+fn deliver(delivery: Delivery) {
+    // Held while queueing, so a sink registered meanwhile can't take later deliveries first.
+    let channel = CHANNEL.read().unwrap_or_else(PoisonError::into_inner);
+    match (&*channel, delivery) {
+        (Some(channel), delivery) => {
+            let _status = channel.call(delivery, ThreadsafeFunctionCallMode::NonBlocking);
+        }
+        (None, Delivery::Settle(settle)) => settle(),
+        (None, Delivery::Message(_)) => {}
+    }
+}
+
 /// Creates a promise and hands `start` the callback that settles it. The callback may run on any
-/// thread. If `start` panics before handing the request to Rust, the promise rejects with
-/// `internal` instead of staying pending.
+/// thread; the settlement travels the ordered channel, behind every message sent before it. If
+/// `start` panics before handing the request to Rust, the promise rejects with `internal`
+/// instead of staying pending.
 fn promise<T, F>(env: &Env, start: F) -> Result<Object<'_>>
 where
     T: ToNapiValue + Send + 'static,
@@ -113,7 +155,7 @@ where
     let settle_slot = Arc::clone(&slot);
     let done: Done<T> = Box::new(move |result| {
         if let Some(deferred) = take(&settle_slot) {
-            settle(deferred, result);
+            deliver(Delivery::Settle(Box::new(move || settle(deferred, result))));
         }
     });
     let started = catch_unwind(AssertUnwindSafe(move || start(done)));

@@ -235,6 +235,29 @@ fn the_compile_preview_writes_nothing() {
     assert!(!harness.root.join(".unfold/local").exists());
 }
 
+#[cfg(unix)]
+#[test]
+fn the_compile_preview_names_the_fallback_location_of_a_read_only_folder() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let harness = Harness::new("ts-orders", false);
+    let chmod = |mode: u32| {
+        for dir in [harness.root.join(".unfold"), harness.root.clone()] {
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(mode)).expect("chmod");
+        }
+    };
+    chmod(0o555);
+    let preview = harness.call(1, "compile_preview", json!({ "project": harness.project }));
+    chmod(0o755);
+    let preview = preview.expect("compile_preview");
+    assert_eq!(preview["fallback"], "read_only");
+    let fallback = harness.base.join("fallback");
+    let local = preview["localPath"].as_str().expect("the local path");
+    assert!(std::path::Path::new(local).starts_with(&fallback), "{local}");
+    assert!(!fallback.exists(), "the preview writes nothing");
+    assert!(!harness.root.join(".unfold/local").exists());
+}
+
 #[test]
 fn home_lists_every_board_with_thumbnails_and_health() {
     let harness = Harness::new("ts-orders", false);

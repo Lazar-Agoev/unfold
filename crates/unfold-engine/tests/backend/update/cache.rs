@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use unfold_core::Graph;
 use unfold_core::vocab::FileState;
-use unfold_engine::UpdateRequest;
 use unfold_engine::update::{DiskState, MemoryFactsCache};
+use unfold_engine::{Engine, LinkBasis, UpdateOutcome, UpdateRequest};
 
 use super::{Counting, Folder, background, canonical, compile, engine_with, template};
 
@@ -130,7 +130,7 @@ fn reopening_restores_facts_and_checks_stamps() {
     folder.write("lib/util.ts", &template(2, 1));
 
     let mut reopened = engine_with(&folder, Arc::clone(&language), cache, 2);
-    let restored = reopened.restore(graph, disks).expect("restore");
+    let restored = reopened.restore(graph, disks, None).expect("restore");
     assert_eq!((restored.files, restored.restored, restored.missing), (6, 6, 0));
     assert_eq!(reopened.graph().files.len(), 6);
     let outcome = reopened.update(UpdateRequest::reopen()).expect("reopen check");
@@ -145,27 +145,92 @@ fn reopening_restores_facts_and_checks_stamps() {
     );
 }
 
-/// The first update after a restore relinks even when nothing changed: the stored graph came
-/// from an earlier session (maybe an older engine), and its link problems weren't kept.
-#[test]
-fn the_first_update_after_a_restore_relinks() {
-    let folder = Folder::new();
-    project(&folder);
-    let cache = Arc::new(MemoryFactsCache::new());
-    let mut engine = engine_with(&folder, Counting::new(), Arc::clone(&cache), 2);
-    let first = compile(&mut engine);
-    let graph: Graph = (*first.graph).clone();
+/// A new session over `cache`, restored from `outcome` (an update of `engine`) with `basis`.
+fn restored(
+    folder: &Folder,
+    cache: &Arc<MemoryFactsCache>,
+    engine: &Engine,
+    outcome: &UpdateOutcome,
+    basis: Option<LinkBasis>,
+) -> Engine {
+    let graph: Graph = (*outcome.graph).clone();
     let disks: Vec<(unfold_core::RepoPath, DiskState)> = graph
         .files
         .iter()
         .filter_map(|file| Some((file.file.path.clone(), engine.disk_state(&file.file.path)?)))
         .collect();
-    let mut reopened = engine_with(&folder, Counting::new(), cache, 2);
-    reopened.restore(graph, disks).expect("restore");
+    let mut reopened = engine_with(folder, Counting::new(), Arc::clone(cache), 2);
+    reopened.restore(graph, disks, basis).expect("restore");
+    reopened
+}
+
+/// When nothing the graph was linked from changed while the folder was closed, the reopen check
+/// keeps the restored graph and the problems linking found, without linking again.
+#[test]
+fn a_restored_graph_is_kept_when_nothing_it_was_linked_from_changed() {
+    let folder = Folder::new();
+    project(&folder);
+    let cache = Arc::new(MemoryFactsCache::new());
+    let mut engine = engine_with(&folder, Counting::new(), Arc::clone(&cache), 2);
+    let first = compile(&mut engine);
+    let mut reopened = restored(&folder, &cache, &engine, &first, Some(first.basis.clone()));
+    let outcome = reopened.update(UpdateRequest::reopen()).expect("reopen check");
+    assert_eq!(outcome.stats.files_read, 0);
+    assert!(!outcome.stats.relinked, "the restored graph is kept");
+    assert!(outcome.summary.is_empty());
+    assert_eq!(canonical(&outcome), canonical(&first));
+    assert_eq!(outcome.problems, first.problems);
+    assert_eq!(outcome.complete, first.complete);
+    assert_eq!(outcome.basis, first.basis);
+}
+
+/// Without a basis (the store didn't keep one), the first update after a restore links again:
+/// the stored graph's link problems are unknown.
+#[test]
+fn a_restored_graph_without_its_basis_is_linked_again() {
+    let folder = Folder::new();
+    project(&folder);
+    let cache = Arc::new(MemoryFactsCache::new());
+    let mut engine = engine_with(&folder, Counting::new(), Arc::clone(&cache), 2);
+    let first = compile(&mut engine);
+    let mut reopened = restored(&folder, &cache, &engine, &first, None);
     let outcome = reopened.update(UpdateRequest::reopen()).expect("reopen check");
     assert_eq!(outcome.stats.files_read, 0);
     assert!(outcome.stats.relinked, "a restored graph is relinked once");
     assert_eq!(canonical(&outcome), canonical(&first));
     let again = reopened.update(UpdateRequest::reopen()).expect("second check");
     assert!(!again.stats.relinked, "later unchanged updates keep the graph");
+}
+
+/// A change only linking sees, made while the folder was closed (a manual entrance changes no
+/// file's facts), links the restored graph again, which then equals a full compile.
+#[test]
+fn a_restored_graph_is_linked_again_when_what_it_was_linked_from_changed() {
+    let folder = Folder::new();
+    project(&folder);
+    let cache = Arc::new(MemoryFactsCache::new());
+    let mut engine = engine_with(&folder, Counting::new(), Arc::clone(&cache), 2);
+    let first = compile(&mut engine);
+    folder.write(
+        ".unfold/config.toml",
+        "[[entrance]]\nkind = \"command\"\ntrigger = \"go\"\nhandler = \"main.ts#go\"\n",
+    );
+    let mut reopened = restored(&folder, &cache, &engine, &first, Some(first.basis.clone()));
+    let outcome = reopened.update(UpdateRequest::reopen()).expect("reopen check");
+    assert_eq!(outcome.stats.files_read, 0, "no file's facts changed");
+    assert!(outcome.stats.relinked);
+    assert_eq!(outcome.graph.entrances.len(), 1);
+    assert_ne!(outcome.basis, first.basis);
+    let mut fresh = engine_with(&folder, Counting::new(), Arc::new(MemoryFactsCache::new()), 2);
+    assert_eq!(canonical(&outcome), canonical(&compile(&mut fresh)));
+
+    // An unindexed file appearing changes what linking sees too.
+    let mut engine = engine_with(&folder, Counting::new(), Arc::clone(&cache), 2);
+    let second = compile(&mut engine);
+    folder.write("lib/notes.py", "x = 1\n");
+    let mut reopened = restored(&folder, &cache, &engine, &second, Some(second.basis.clone()));
+    let outcome = reopened.update(UpdateRequest::reopen()).expect("reopen check");
+    assert!(outcome.stats.relinked);
+    let mut fresh = engine_with(&folder, Counting::new(), Arc::new(MemoryFactsCache::new()), 2);
+    assert_eq!(canonical(&outcome), canonical(&compile(&mut fresh)));
 }

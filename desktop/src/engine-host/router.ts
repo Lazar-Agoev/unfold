@@ -7,7 +7,8 @@
  *   shows the whole workspace, so attaching opens nothing.
  * - Sink messages go to windows: events by their `windows` list, broadcasts (every project event,
  *   and app-wide ones such as `preferences_changed`) to every attached window, and stream messages
- *   by window id and request id.
+ *   by window id and request id. The addon settles a request's promise only after its stream
+ *   messages reached the sink, so a window gets them before the result.
  * - Trusted commands: the main process's own requests ({@link EngineRouter.trusted}) are dispatched
  *   with `"trusted": true`. A window can never send one: its commands are rebuilt here from `command`
  *   and `args`, and a window message naming a {@link MAIN_PROCESS_ONLY} command or carrying `trusted`
@@ -306,16 +307,14 @@ export class EngineRouter {
       }
     };
 
+    // The addon settles a request only after its stream messages reached the sink, so they are
+    // posted before the result.
     dispatchNow(() => binding.dispatch(connection.windowId, requestId, command)).then(
       (json) => {
-        afterSinkMessages(() => {
-          finish(parseResult(rendererId, json));
-        });
+        finish(parseResult(rendererId, json));
       },
       (error: unknown) => {
-        afterSinkMessages(() => {
-          finish(failure(rendererId, errorFromRejection(error)));
-        });
+        finish(failure(rendererId, errorFromRejection(error)));
       },
     );
   }
@@ -345,20 +344,6 @@ export class EngineRouter {
 }
 
 /** Calls `binding.dispatch` now, turning a synchronous throw into a rejection. */
-/**
- * Runs `deliver` once the stream messages the addon sent before settling a request have been
- * delivered. Rust sends a request's stream messages to the sink before it settles the request's
- * promise, but the two reach this thread through different thread-safe functions, and Node may run the
- * settlement first: when the event loop's pass had already looked at the sink before its messages
- * arrived, they wait for the next pass's poll phase. Two `setImmediate` hops wait for that phase, so a
- * request's result never overtakes its messages (which would then be dropped as late).
- */
-function afterSinkMessages(deliver: () => void): void {
-  setImmediate(() => {
-    setImmediate(deliver);
-  });
-}
-
 function dispatchNow(dispatch: () => Promise<string>): Promise<string> {
   try {
     return dispatch();

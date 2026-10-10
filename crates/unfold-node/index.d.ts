@@ -20,8 +20,8 @@ export declare function detachWindow(windowId: number): Promise<void>
 
 /**
  * Runs one command (`{"command","args"}` JSON) for one window (any window id: windows need no
- * attach). Resolves with the result JSON; stream messages go to the sink first. `requestId` must
- * be unique among running requests.
+ * attach). Resolves with the result JSON once its stream messages reached the sink.
+ * `requestId` must be unique among running requests.
  */
 export declare function dispatch(windowId: number, requestId: number, command: string): Promise<string>
 
@@ -36,6 +36,7 @@ export declare function shutdown(): Promise<void>
 
 /**
  * Registers the single sink. Rust calls it from any thread with one JSON message: an event for
- * every window or for some, or a stream message of a running command. Replaces any earlier sink.
+ * every window or for some, or a stream message of a running command. A request's stream
+ * messages reach the sink before its promise settles. Replaces any earlier sink.
  */
 export declare function subscribe(sink: (message: string) => void): void

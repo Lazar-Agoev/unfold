@@ -92,14 +92,10 @@ class FakePort implements WindowPort {
   }
 }
 
-/** Waits for pending promise callbacks and the router's two `setImmediate` hops before a result. */
+/** Waits for pending promise callbacks. */
 const flush = () =>
   new Promise((resolve) => {
-    setTimeout(() => {
-      setImmediate(() => {
-        setImmediate(resolve);
-      });
-    }, 0);
+    setTimeout(resolve, 0);
   });
 const CONNECTED: HostToRenderer = { kind: "status", state: "connected" };
 const UNAVAILABLE = { code: "engine_unavailable", message: "The Unfold engine could not be loaded." };
@@ -253,20 +249,24 @@ describe("EngineRouter: sink fan-out", () => {
     ]);
   });
 
-  it("delivers stream messages the sink hands over after the request settled, before its result", async () => {
+  it("posts a request's stream messages before its result, at once and in the addon's order", async () => {
+    // The addon settles a request only after its stream messages reached the sink (its own tests
+    // prove that boundary); the router keeps that order and holds nothing back.
     const { binding, router } = setup();
     const port = new FakePort();
     router.attach(1, port);
     port.send({ kind: "invoke", id: 4, command: "search_text", args: { query: "retry" } });
 
-    // Rust sent the message first, but Node runs the sink's callback one event-loop pass later.
-    binding.dispatches.get(1)?.result.resolve("{}");
-    await new Promise((resolve) => setImmediate(resolve));
-    router.handleSinkMessage(JSON.stringify({ kind: "stream", windowId: 1, requestId: 1, message: { path: "a.ts" } }));
-    await flush();
+    for (const path of ["a.ts", "b.ts"]) {
+      router.handleSinkMessage(JSON.stringify({ kind: "stream", windowId: 1, requestId: 1, message: { path } }));
+    }
+    const result = binding.dispatches.get(1)?.result;
+    result?.resolve("{}");
+    await result?.promise;
 
     expect(port.received()).toEqual([
       { kind: "stream", id: 4, message: { path: "a.ts" } },
+      { kind: "stream", id: 4, message: { path: "b.ts" } },
       { kind: "result", id: 4, ok: true, value: {} },
     ]);
   });

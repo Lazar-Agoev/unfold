@@ -122,6 +122,7 @@ pub(crate) mod meta_key {
     pub const SETTINGS_HASH: &str = "settings_hash";
     pub const COMPILED_AT: &str = "compiled_at";
     pub const COMPLETE: &str = "complete";
+    pub const LINK_BASIS: &str = "link_basis";
 }
 
 /// Creates every table in an empty database and records the versions.
