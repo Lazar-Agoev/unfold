@@ -51,7 +51,8 @@ pub struct CompileOutcome {
     pub changed_entrances: u32,
     /// Whether every discovered file is indexed.
     pub complete: bool,
-    /// Problems after the compile.
+    /// Problems after the compile that make the project's state: graph and settings problems,
+    /// not board health.
     pub problems: u32,
     /// The update's wall time, in milliseconds.
     pub duration_ms: u64,

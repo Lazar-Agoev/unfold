@@ -496,11 +496,75 @@ fn python_folds_keep_their_header_and_offsets_are_utf16() {
     // A card of the function starts at its own first line, relative offsets included.
     let card = render(&file, 1, source, None, FoldPolicy::Card).unwrap();
     assert_eq!(card.lines[0].number, 2);
-    assert_eq!(card.dedent, 4);
+    // A top-level function's body keeps its indentation; the `if` inside it loses the function's.
+    assert_eq!(card.dedent, 0);
+    assert_eq!(
+        render(&file, 2, source, None, FoldPolicy::Card).unwrap().dedent,
+        4
+    );
     let card_start = source.find("def").unwrap();
     assert_eq!(
         card.links[0].span.unwrap()[0],
         units(&source[card_start..], print - card_start)
+    );
+}
+
+/// The indentation a card hides from the lines after its first, for the block `needle` finds.
+fn card_dedent(path: &str, language: Language, source: &str, kind: K, needle: &str) -> u32 {
+    let mut g = GraphBuilder::new();
+    let file = g.file(path, language, source);
+    let block = add(&mut g, file, kind, Role::Body, None, needle);
+    let file = only_file(g.build());
+    render(&file, block.local_id(), source, None, FoldPolicy::Card)
+        .unwrap()
+        .dedent
+}
+
+#[test]
+fn cards_hide_only_the_indentation_every_line_shares() {
+    // A top-level Python function: nothing, so its body stays indented under `def`.
+    let top = "def area(r):\n    if r < 0:\n        raise ValueError(r)\n\n    return 3.14 * r * r\n";
+    let body = "def area(r):\n    if r < 0:\n        raise ValueError(r)\n\n    return 3.14 * r * r";
+    assert_eq!(
+        card_dedent("area.py", Language::Python, top, K::Function, body),
+        0
+    );
+
+    // A Python method: its class's indentation, counting the `def` line at its column.
+    let class = "class Circle:\n    def area(self):\n        if self.r < 0:\n            return 0\n        return 3.14\n";
+    let method = "def area(self):\n        if self.r < 0:\n            return 0\n        return 3.14";
+    assert_eq!(
+        card_dedent("circle.py", Language::Python, class, K::Method, method),
+        4
+    );
+
+    // A TypeScript method: its class's indentation, closing brace included.
+    let ts = "export class Cart {\n  total(): number {\n    let sum = 0;\n    return sum;\n  }\n}\n";
+    let total = "total(): number {\n    let sum = 0;\n    return sum;\n  }";
+    assert_eq!(
+        card_dedent("cart.ts", Language::TypeScript, ts, K::Method, total),
+        2
+    );
+
+    // A top-level TypeScript function and a callback that starts mid-line: the first line's
+    // indentation in the file counts, not where on it the block starts.
+    let function = "function sum(xs) {\n  return xs.reduce((a, b) => {\n    return a + b;\n  });\n}\n";
+    let whole = "function sum(xs) {\n  return xs.reduce((a, b) => {\n    return a + b;\n  });\n}";
+    assert_eq!(
+        card_dedent("sum.ts", Language::TypeScript, function, K::Function, whole),
+        0
+    );
+    let callback = "(a, b) => {\n    return a + b;\n  }";
+    assert_eq!(
+        card_dedent("sum.ts", Language::TypeScript, function, K::Function, callback),
+        2
+    );
+
+    // A one-line method: its own indentation (there is nothing after its first line to hide it from).
+    let one = "class A:\n    def f(self): pass\n";
+    assert_eq!(
+        card_dedent("a.py", Language::Python, one, K::Method, "def f(self): pass"),
+        4
     );
 }
 

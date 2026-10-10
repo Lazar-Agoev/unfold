@@ -248,6 +248,21 @@ fn home_lists_every_board_with_thumbnails_and_health() {
     });
     let summary = harness.ok(1, "project_summary", json!({ "project": harness.project }));
     assert_eq!(summary["health"]["boardsNeedingReview"], 1);
+    // A board that needs review is listed in Problems and shows in the Health line, not in the
+    // row's state.
+    eventually("the boards' health reaches Problems", || {
+        let problems = harness.ok(1, "problems", json!({ "project": harness.project }));
+        problems
+            .as_array()
+            .expect("problems")
+            .iter()
+            .any(|problem| problem["category"] == "board")
+    });
+    let summary = harness.ok(1, "project_summary", json!({ "project": harness.project }));
+    assert_eq!(summary["state"], json!({"kind": "current"}));
+    assert_eq!(summary["health"]["problems"], 0);
+    let workspace = harness.ok(1, "workspace", json!({}));
+    assert_eq!(workspace["projects"][0]["state"], json!({"kind": "current"}));
 
     let list = harness.ok(1, "list_boards", json!({ "project": harness.project }));
     assert_eq!(list["project"], harness.project.as_str());

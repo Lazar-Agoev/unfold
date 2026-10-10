@@ -14,7 +14,7 @@ use crate::git::{self, GitInfo};
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::layout::{FallbackReason, Location};
-use crate::problems::ProblemCategory;
+use crate::problems::{ProblemCategory, project_problem_count};
 use crate::projects::ProjectId;
 use crate::status::{GraphStatus, ProjectState};
 
@@ -318,7 +318,10 @@ pub const MAX_HEALTH_BOARDS: usize = 20;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectHealth {
-    /// The Problems count (the row's `problems` count).
+    /// The problems that make the row's state, equal to its `problems` count: files that don't
+    /// parse or can't be read, settings errors, discovery, input, and cache problems, and a failed
+    /// compile. Board health isn't counted (boards that need review are counted apart); the
+    /// `problems` command lists both.
     pub problems: u32,
     /// Files that don't parse or can't be read.
     pub doesnt_parse: u32,
@@ -402,7 +405,7 @@ pub fn project_summary(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<Projec
         applications: catalog.applications,
         entrances: catalog.entrances,
         health: ProjectHealth {
-            problems: count(problems.len()),
+            problems: project_problem_count(&problems),
             doesnt_parse: count(doesnt_parse),
             settings_error: workspace.settings().err().map(|error| error.to_string()),
             unreached_entrances: catalog.unreached,

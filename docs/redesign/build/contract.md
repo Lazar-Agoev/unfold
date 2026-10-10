@@ -389,14 +389,17 @@ type ProjectState =             // §4.10 of the redesign; one indicator per row
   | { kind: "current" }
   | { kind: "compiling"; done: number; total: number }      // a Compile or Rebuild
   | { kind: "updating"; files: number | null }               // a background update
-  | { kind: "problems"; count: number }                      // count = problems(project).length
+  | { kind: "problems"; count: number }                      // count = problems(project) less category "board"
   | { kind: "paused"; changed: number }
   | { kind: "not_compiled" }
   | { kind: "failed"; message: string }
   | { kind: "resting"; last: ProjectState; atMs: Ms }        // last ∈ current|problems|paused|not_compiled|failed
   | { kind: "unavailable"; reason: string };                 // the folder is gone, or open elsewhere
-// Derived for a live project from GraphStatus and the Problems count, first match wins:
+// Derived for a live project from GraphStatus and the problem count, first match wins:
 // failed > compiling > updating > paused > not_compiled > problems (count > 0) > current.
+// The problem count is graph and settings problems only: files that don't parse or can't be read,
+// settings errors, discovery, input, and cache problems, a failed compile. Board health never makes
+// a row amber: boards that need review show in Home's Health line (health.boards) and in `problems`.
 // A resting project that has never been live has last = not_compiled when it has no .unfold/local/cache,
 // else current.
 
@@ -461,7 +464,7 @@ interface ProjectSummary {
   files: number; languages: Language[];
   applications: number; entrances: number;
   health: {
-    problems: number;                                    // = ProjectState problems count
+    problems: number;                                    // = ProjectState problems count: `problems` less board health
     doesntParse: number;                                 // files that don't parse or can't be read
     settingsError: string | null;
     unreachedEntrances: number; unindexedLaunches: number;
@@ -685,7 +688,7 @@ Rust no longer lists windows for project events. `SinkMessage` keeps its three k
 | `project_reset` | all | The project's folder changed (worktree switch) or it was removed: everything cached for it is stale | `{project}` |
 | `compile_progress` | all | Throttled, as V1 | `{project, stage, done, total}` |
 | `graph_updated` | all | A commit changed the graph | V1 fields with `project` |
-| `problems_changed` | all | The Problems list changed | `{project, count}` |
+| `problems_changed` | all | The Problems list changed | `{project, count}` (the list's length, board health included) |
 | `files_changed` | all | The watcher saw files change | `{project, paths, truncated}` |
 | `boards_changed` | all | Board files, folders, or a board's publish state changed (outside the app or by a command) | `{project, boards: BoardId[], folders: boolean}` (a copy's change is reported under its published id) |
 | `board_conflict` | the holder | The file the board's session reads changed on disk outside the app | `{project, board: BoardId, file: "draft" \| "changes" \| "published", savedRevision, diskRevision: string \| null}` |

@@ -15,7 +15,7 @@
 //! projects live: [`crate::claims::BoardClaims::set_references`]), the recent boards
 //! ([`crate::projects::Projects::record_recent_board`] and its siblings), and the view state
 //! ([`crate::state::LocalState::put_board_view`] and its siblings); the board commands keep them
-//! current. Board health items reach the Problems list (and the row's problem count) through
+//! current. Board health items reach the Problems list (not the row's problem count) through
 //! [`crate::Workspace::set_board_problems`], which [`refresh_health`] calls.
 
 use std::sync::Arc;

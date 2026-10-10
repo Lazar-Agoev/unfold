@@ -114,7 +114,7 @@ pub enum WorkspaceEvent {
     ProblemsChanged {
         /// The project.
         project: ProjectId,
-        /// How many problems there are now.
+        /// How many problems the list has now, board health included.
         count: u32,
     },
     /// Files appeared, changed, or disappeared on disk.

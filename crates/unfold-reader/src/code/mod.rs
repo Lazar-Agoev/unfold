@@ -86,7 +86,9 @@ pub enum CodeSource {
 pub struct CodeText {
     /// The exact slice of the source.
     pub text: String,
-    /// The indentation common to every nonblank line after the first, which the view may hide.
+    /// The indentation every nonblank line shares, the first counted at its line's indentation
+    /// in the file (a method's class indentation, nothing for a top-level function). The view
+    /// may hide it from the lines after the first; `text` shows the first from the block's start.
     pub dedent: u32,
     /// The lines of `text`.
     pub lines: Vec<CodeLine>,
@@ -323,7 +325,8 @@ pub fn render(
     let offsets = Offsets::new(path, range, slice);
     // The stored first line counts lines exactly as the view does, and `text` is the verified
     // text it was counted in, so the whole file need not be scanned again.
-    let (lines, dedent) = lines::lines(slice, block.lines.start, &offsets.utf16);
+    let first_indent = lines::indent_at(text, range.start as usize);
+    let (lines, dedent) = lines::lines(slice, block.lines.start, first_indent, &offsets.utf16);
     let spans = highlighter.map_or_else(Vec::new, |highlighter| {
         spans::spans(text, range, &highlighter.highlight(text), &offsets)
     });

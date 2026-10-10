@@ -9,6 +9,10 @@
 //! - a compile that failed outright (the previous graph is kept);
 //! - board health, which the board commands set ([`crate::Workspace::set_board_problems`]).
 //!
+//! Board health is listed but doesn't make the project's state: the row's amber dot and Home's
+//! state line count the other problems only ([`project_problem_count`]); boards that need review
+//! show in Home's Health line.
+//!
 //! Unresolved calls are facts about the code, not problems; the Index log counts them. Language
 //! problems the linker reports (`Linked::problems`, such as Python modules that two source roots
 //! both provide) arrive as input problems among the engine's standing problems.
@@ -106,6 +110,16 @@ impl Problems {
         all.dedup();
         all
     }
+}
+
+/// How many of `problems` make the project's `problems` state (contract §4.1): graph and
+/// settings problems and a failed compile, not board health.
+pub(crate) fn project_problem_count(problems: &[ProblemItem]) -> u32 {
+    let count = problems
+        .iter()
+        .filter(|problem| problem.category != ProblemCategory::Board)
+        .count();
+    u32::try_from(count).unwrap_or(u32::MAX)
 }
 
 /// The problems a committed graph and the engine's standing problems describe. Files that don't
@@ -323,6 +337,26 @@ mod tests {
         assert_eq!(item.category, ProblemCategory::Settings);
         assert_eq!(item.line, Some(2));
         assert!(item.column.is_some());
+    }
+
+    #[test]
+    fn board_health_doesnt_count_toward_the_project_state() {
+        let problems = Problems {
+            graph: vec![ProblemItem::new(ProblemCategory::DoesntParse, "a.ts", "bad")],
+            compile: Some(ProblemItem::new(ProblemCategory::CompileFailed, "", "boom")),
+            boards: vec![
+                ProblemItem::new(ProblemCategory::Board, ".unfold/boards/a.json", "outdated"),
+                ProblemItem::new(ProblemCategory::Board, ".unfold/boards/b.json", "missing"),
+            ],
+        };
+        let all = problems.all();
+        assert_eq!(all.len(), 4);
+        assert_eq!(project_problem_count(&all), 2);
+        let boards_only = Problems {
+            boards: problems.boards,
+            ..Problems::default()
+        };
+        assert_eq!(project_problem_count(&boards_only.all()), 0);
     }
 
     #[test]

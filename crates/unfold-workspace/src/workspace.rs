@@ -322,7 +322,7 @@ impl Workspace {
     }
 
     /// Replaces the board-health problems (from the board commands' health refresh): the
-    /// Problems list and the row's problem count include them.
+    /// Problems list includes them; the row's state doesn't count them.
     pub fn set_board_problems(&self, problems: Vec<ProblemItem>) {
         self.shared.update_problems(|all| all.boards = problems);
     }

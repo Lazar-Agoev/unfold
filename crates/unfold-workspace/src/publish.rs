@@ -10,7 +10,7 @@ use crate::commit;
 use crate::compile::CompileOutcome;
 use crate::error::WorkspaceError;
 use crate::events::{MAX_LISTED, WorkspaceEvent};
-use crate::problems::{IndexLogEntry, ProblemCategory, ProblemItem, graph_problems};
+use crate::problems::{IndexLogEntry, ProblemCategory, ProblemItem, graph_problems, project_problem_count};
 use crate::shared::{Shared, lock};
 use crate::status::{Activity, GraphCounts, WatchMode};
 use crate::watcher;
@@ -86,7 +86,7 @@ pub(crate) fn committed(
             watcher::emit_files_changed(shared, paths);
         }
     }
-    let problem_count = u32::try_from(shared.problems().len()).unwrap_or(u32::MAX);
+    let problem_count = project_problem_count(&shared.problems());
     shared.update_status(|model| {
         model.compiled = true;
         model.failure = None;

@@ -38,7 +38,7 @@ use crate::compile::CompileJob;
 use crate::events::{EventSink, WorkspaceEvent};
 use crate::layout::Layout;
 use crate::options::WorkspaceOptions;
-use crate::problems::{IndexLog, ProblemItem, Problems};
+use crate::problems::{IndexLog, ProblemItem, Problems, project_problem_count};
 use crate::projects::ProjectId;
 use crate::state::LocalState;
 use crate::status::{GraphStatus, ProjectState, StatusModel, WatchMode};
@@ -243,7 +243,8 @@ impl Shared {
     }
 
     /// Changes the problems and sends `problems_changed` when the list changed (and
-    /// `project_state` when the count changes the row's state).
+    /// `project_state` when the change moves the row's state: board health doesn't count toward
+    /// it, see [`project_problem_count`]).
     pub(crate) fn update_problems(&self, change: impl FnOnce(&mut Problems)) {
         let mut problems = lock(&self.problems);
         let before = problems.all();
@@ -256,7 +257,7 @@ impl Shared {
                 count,
             });
             // Still under the problems lock, so the row's count follows the list's order.
-            self.update_status(|model| model.problems = count);
+            self.update_status(|model| model.problems = project_problem_count(&after));
         }
     }
 

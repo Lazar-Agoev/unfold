@@ -731,7 +731,9 @@ export type CodeText = {
  */
 text: string, 
 /**
- * The indentation common to every nonblank line after the first, which the view may hide.
+ * The indentation every nonblank line shares, the first counted at its line's indentation
+ * in the file (a method's class indentation, nothing for a top-level function). The view
+ * may hide it from the lines after the first; `text` shows the first from the block's start.
  */
 dedent: number, 
 /**
@@ -840,7 +842,8 @@ changedEntrances: number,
  */
 complete: boolean, 
 /**
- * Problems after the compile.
+ * Problems after the compile that make the project's state: graph and settings problems,
+ * not board health.
  */
 problems: number, 
 /**
@@ -2845,7 +2848,10 @@ name: SharedName, };
  */
 export type ProjectHealth = { 
 /**
- * The Problems count (the row's `problems` count).
+ * The problems that make the row's state, equal to its `problems` count: files that don't
+ * parse or can't be read, settings errors, discovery, input, and cache problems, and a failed
+ * compile. Board health isn't counted (boards that need review are counted apart); the
+ * `problems` command lists both.
  */
 problems: number, 
 /**
@@ -2982,9 +2988,9 @@ git: GitSummary | null, };
 /**
  * A project's state, as its row shows it (contract §4.1): one indicator per row.
  *
- * A live project's state is derived from its [`GraphStatus`] and its Problems count, first match
- * wins: `failed` > `compiling` > `updating` > `paused` > `not_compiled` > `problems` (a nonzero
- * count) > `current`. A resting project shows the last state it had while live.
+ * A live project's state is derived from its [`GraphStatus`] and its problem count (the Problems
+ * list less board health), first match wins: `failed` > `compiling` > `updating` > `paused` >
+ * `not_compiled` > `problems` (a nonzero count) > `current`. A resting project shows the last state it had while live.
  */
 export type ProjectState = { "kind": "current" } | { "kind": "compiling", 
 /**
@@ -3000,7 +3006,8 @@ total: number, } | { "kind": "updating",
  */
 files: number | null, } | { "kind": "problems", 
 /**
- * How many problems (the length of `problems`).
+ * How many: files that don't parse or can't be read, settings errors, discovery, input,
+ * and cache problems, and a failed compile.
  */
 count: number, } | { "kind": "paused", 
 /**
@@ -4464,7 +4471,7 @@ complete: boolean, } | { "type": "problems_changed",
  */
 project: ProjectId, 
 /**
- * How many problems there are now.
+ * How many problems the list has now, board health included.
  */
 count: number, } | { "type": "files_changed", 
 /**

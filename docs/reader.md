@@ -183,7 +183,7 @@ camelCase; absent optional fields are omitted.
 | Part | Contents |
 | --- | --- |
 | `text` | The exact slice, line endings and byte-order mark included |
-| `dedent` | The indentation common to every nonblank line after the first, which the view may hide |
+| `dedent` | The indentation every nonblank line shares, the first counted at its line's indentation in the file (a method's class indentation; nothing for a top-level function); the view may hide it from the lines after the first |
 | `lines` | `number` (one-based, in the file), `start`, `end` (before the terminator), `indent` (leading spaces and tabs) |
 | `spans` | `[start, end, class]`, sorted and non-overlapping; text outside them is plain |
 | `outline` | The statement outline in preorder (below) |

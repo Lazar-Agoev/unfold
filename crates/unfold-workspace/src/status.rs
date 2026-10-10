@@ -11,7 +11,7 @@
 //!
 //! Besides the state, the status says whether `local/` is in the fallback location and how the
 //! folder is watched (events, or a periodic scan). The workspace keeps a status model of the
-//! facts behind it (with the Problems count) and derives two views from them: the
+//! facts behind it (with the problem count) and derives two views from them: the
 //! [`GraphStatus`] Home's state line and Project settings show, and the [`ProjectState`] the
 //! project's row shows. A `project_state` event goes out when the derived row state changes,
 //! ignoring progress counts (those travel in `compile_progress`).
@@ -71,9 +71,9 @@ pub enum GraphState {
 
 /// A project's state, as its row shows it (contract §4.1): one indicator per row.
 ///
-/// A live project's state is derived from its [`GraphStatus`] and its Problems count, first match
-/// wins: `failed` > `compiling` > `updating` > `paused` > `not_compiled` > `problems` (a nonzero
-/// count) > `current`. A resting project shows the last state it had while live.
+/// A live project's state is derived from its [`GraphStatus`] and its problem count (the Problems
+/// list less board health), first match wins: `failed` > `compiling` > `updating` > `paused` >
+/// `not_compiled` > `problems` (a nonzero count) > `current`. A resting project shows the last state it had while live.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum ProjectState {
@@ -91,9 +91,11 @@ pub enum ProjectState {
         /// How many files changed, or `None` while checking the whole folder.
         files: Option<u32>,
     },
-    /// The Problems list isn't empty.
+    /// The Problems list has graph or settings problems (board health doesn't count: boards that
+    /// need review show in Home's Health line).
     Problems {
-        /// How many problems (the length of `problems`).
+        /// How many: files that don't parse or can't be read, settings errors, discovery, input,
+        /// and cache problems, and a failed compile.
         count: u32,
     },
     /// Background updates are paused.
@@ -185,7 +187,7 @@ pub(crate) struct GraphCounts {
 #[derive(Debug, Clone)]
 pub(crate) struct StatusModel {
     pub(crate) compiled: bool,
-    /// The Problems count.
+    /// The Problems count less board health (see [`ProjectState::Problems`]).
     pub(crate) problems: u32,
     pub(crate) activity: Activity,
     pub(crate) failure: Option<String>,
