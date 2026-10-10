@@ -122,7 +122,7 @@ function EntranceForm({ project, initial, index, blocked, onDone }: FormProps) {
     <Dialog
       open
       onClose={onDone}
-      title={index === null ? "Add Entrance" : "Edit Entrance"}
+      title={index === null ? "Add entrance" : "Edit entrance"}
       description="For entrances the detectors can't see, such as CLI dispatch or a signal handler. Saved in .unfold/config.toml, keeping its comments and formatting."
       width={520}
       placement="window"
@@ -133,7 +133,7 @@ function EntranceForm({ project, initial, index, blocked, onDone }: FormProps) {
             Cancel
           </Button>
           <Button variant="primary" type="submit" form={formId} busy={saving} disabled={saving || blocked !== null}>
-            {index === null ? "Add Entrance" : "Save"}
+            {index === null ? "Add entrance" : "Save"}
           </Button>
         </>
       }
@@ -313,7 +313,7 @@ export function RemoveEntranceDialog({ request, onClose }: { readonly request: R
     <ConfirmDialog
       open
       danger
-      title="Remove Entrance"
+      title="Remove entrance"
       message={`Remove ${entrance.title} from .unfold/config.toml? Everyone who shares the repository loses it too.`}
       confirmLabel="Remove"
       placement="window"

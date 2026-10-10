@@ -1,0 +1,200 @@
+/* Board grids on Home (01 "Boards", V-49, V-50, V-65). */
+
+.home-boards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.home-boards-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 24px;
+}
+
+.home-boards-filters {
+  display: flex;
+  flex: 1;
+  gap: 2px;
+}
+
+.home-boards-filter {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--radius-control);
+  color: var(--color-muted);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  font-weight: 500;
+}
+
+.home-boards-filter:hover {
+  color: var(--color-text);
+}
+
+.home-boards-filter[aria-checked="true"] {
+  background: var(--color-pressed);
+  color: var(--color-text);
+}
+
+.home-boards-sort {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-muted);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  font-weight: 500;
+}
+
+.home-boards-sort:hover,
+.home-boards-sort[aria-haspopup]:focus-visible {
+  color: var(--color-text);
+}
+
+.home-boards-note {
+  color: var(--color-muted);
+  font-size: var(--text-13);
+  line-height: var(--leading-20);
+}
+
+
+.home-view-note {
+  color: var(--color-muted);
+  font-size: var(--text-13);
+  line-height: var(--leading-20);
+}
+
+/* The grid: four columns at full width, at least 220px each (V-49). */
+.home-board-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.home-board-grid-windowed {
+  position: relative;
+  display: block;
+}
+
+.home-board-row {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.home-board-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  border-radius: var(--radius-tab);
+  cursor: default;
+}
+
+.home-board-card:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.home-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 140px;
+  overflow: clip;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-tab);
+  /* A published board's ground: the canvas tone in light, one step above Home's ground in dark. */
+  background: var(--color-sidebar);
+  transition: border-color var(--duration-fast) ease;
+}
+
+.home-thumb-draft {
+  border-style: dashed;
+  border-color: var(--color-dashed);
+  background: var(--color-home);
+}
+
+.home-board-card:hover .home-thumb {
+  border-color: var(--color-placeholder-line);
+}
+
+.home-thumb-svg {
+  flex-shrink: 0;
+}
+
+.home-thumb-card {
+  fill: var(--color-surface);
+  stroke: var(--color-border);
+}
+
+.home-thumb-line,
+.home-thumb-accent {
+  fill: none;
+  stroke: var(--color-border);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.home-thumb-accent {
+  stroke: var(--color-accent);
+}
+
+.home-thumb-edge,
+.home-thumb-link {
+  fill: none;
+  stroke: var(--color-dashed);
+}
+
+.home-thumb-link {
+  stroke: var(--color-contour);
+  stroke-dasharray: 3 2;
+}
+
+.home-thumb-mono {
+  fill: var(--color-monogram);
+}
+
+.home-thumb-note {
+  color: var(--color-muted);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+}
+
+.home-board-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.home-board-title {
+  overflow: hidden;
+  font-size: var(--text-13);
+  line-height: var(--leading-20);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-board-subline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--color-muted);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  white-space: nowrap;
+}
+
+.home-board-words {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

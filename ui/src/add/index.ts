@@ -1,7 +1,6 @@
 /**
- * The Add box (UI plan §2, U4): map, search, preview, and commands; it registers the `add.*` actions.
- *
- * Placeholder body from the frame (U1c) with the plan's signature; U4 replaces it.
+ * The Add box (UI plan §2, U4): the map, search across projects, the preview, and `>` commands; it
+ * registers the `add.*` actions.
  */
 
 export { AddBox } from "./AddBox";

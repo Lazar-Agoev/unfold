@@ -1,49 +1,213 @@
-/* Placeholder board screen (U1c); U2 replaces it. */
+/*
+ * The board view (components §1, §5, §6; 13 for dark): the top bar over the stage. Floating chrome
+ * centers on the canvas a sheet leaves uncovered: `--covered-right` is its width (V-38).
+ */
 
-.board-stub-sidebar {
+.board-view {
+  position: relative;
   display: flex;
-  flex-direction: column;
-  padding: 8px 8px 16px;
-}
-
-.board-stub-crumb {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: var(--row);
-  padding: 0 8px 0 6px;
-  color: var(--color-muted);
-  font-size: var(--text-12);
-  line-height: var(--leading-16);
-}
-
-.board-stub-title {
-  padding: 6px 8px 16px;
-  font-size: var(--text-15);
-  font-weight: 600;
-  letter-spacing: var(--tracking-title);
-}
-
-.board-stub {
-  display: flex;
-  flex-direction: column;
   flex: 1;
+  flex-direction: column;
   min-width: 0;
+  background: var(--color-canvas);
+  outline: none;
 }
 
-.board-stub-topbar {
+/* Top bar */
+.board-topbar {
+  position: relative;
   display: flex;
   flex-shrink: 0;
   align-items: center;
+  gap: 8px;
   height: var(--topbar);
   padding: 0 12px 0 20px;
   border-bottom: 1px solid var(--color-border-shell);
   background: var(--color-chrome);
-  font-weight: 600;
 }
 
-.board-stub-stage {
+.board-topbar-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-13);
+  line-height: var(--leading-20);
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.board-publish-state {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  padding-left: 4px;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.board-publish-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+}
+
+.board-publish-dot.faint { background: var(--color-faint); }
+.board-publish-dot.accent { background: var(--color-accent); }
+.board-topbar-spacer { flex: 1; }
+
+.board-topbar .board-lens {
+  position: absolute;
+  top: 9px;
+  left: calc((100% - var(--covered-right, 0px)) / 2);
+  translate: -50%;
+}
+
+/* Stage: the canvas, with the notices at its top and the dock at its bottom. */
+.board-stage {
   position: relative;
   flex: 1;
   min-height: 0;
+  overflow: clip;
 }
+
+.board-notices {
+  position: absolute;
+  top: 12px;
+  left: calc((100% - var(--covered-right, 0px)) / 2);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100% - var(--covered-right, 0px) - 32px);
+  translate: -50%;
+  pointer-events: none;
+}
+
+.board-banner,
+.board-hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-float);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  pointer-events: auto;
+}
+
+.board-banner {
+  padding: 5px 6px 5px 12px;
+  color: var(--color-text);
+}
+
+.board-banner > .icon { flex-shrink: 0; color: var(--color-muted); }
+.board-banner-text { min-width: 0; }
+
+.board-banner.conflict {
+  border-color: color-mix(in srgb, var(--color-review) 40%, transparent);
+  background: var(--color-warn-fill);
+  color: var(--color-warn);
+}
+
+.board-banner.conflict > .icon { color: var(--color-review); }
+
+.board-hint {
+  padding: 6px 12px;
+  color: var(--color-muted);
+}
+
+.board-hint kbd {
+  padding: 0 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-chip);
+  font: 500 11px/14px var(--font-ui);
+}
+
+.board-empty {
+  position: absolute;
+  top: 45%;
+  left: calc((100% - var(--covered-right, 0px)) / 2);
+  translate: -50% -50%;
+  font-size: var(--text-13);
+  line-height: var(--leading-20);
+  color: var(--color-muted);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Dock */
+.board-dock {
+  position: absolute;
+  bottom: 24px;
+  left: calc((100% - var(--covered-right, 0px)) / 2);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - var(--covered-right, 0px) - 32px);
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-float);
+  translate: -50%;
+}
+
+.board-dock .board-dock-add { padding-right: 6px; }
+.board-dock-add .button-label { display: flex; align-items: center; gap: 6px; }
+
+.board-dock-divider {
+  flex-shrink: 0;
+  width: 1px;
+  height: 16px;
+  background: var(--color-border);
+}
+
+.board-dock-group { display: flex; flex-shrink: 0; align-items: center; }
+
+.board-dock-zoom {
+  width: 44px;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  font-weight: 500;
+  font-feature-settings: "tnum";
+  text-align: center;
+}
+
+.board-trail { min-width: 0; }
+
+.board-trail ol {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  margin: 0;
+  padding: 0 8px;
+  overflow: hidden;
+  list-style: none;
+}
+
+.board-trail li { display: flex; flex-shrink: 0; align-items: center; gap: 4px; white-space: nowrap; }
+.board-trail li:last-child { flex-shrink: 1; min-width: 0; }
+.board-trail-separator { color: var(--color-faint); stroke-width: 2; }
+
+.board-trail button {
+  overflow: hidden;
+  font: 12px/16px var(--font-code);
+  color: var(--color-muted);
+  text-overflow: ellipsis;
+}
+
+.board-trail button:hover { color: var(--color-accent-text); }
+.board-trail li.current button { font-weight: 600; color: var(--color-text); }
+
+/* Make a group from lines */
+.group-form { display: flex; flex-direction: column; gap: 12px; }

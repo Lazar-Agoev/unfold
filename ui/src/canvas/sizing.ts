@@ -1,22 +1,32 @@
 /**
- * Card widths (architecture §10.2): cards size to their content between 360 and 880 px, measured
- * with the bundled fonts; longer lines soft-wrap and nothing scrolls inside a card. Heights follow
- * from the content and are measured by the canvas.
+ * Card widths (V-57): block cards size to their content between 280 and 880 px, entrance cards between
+ * 200 and 320 px, measured with the bundled fonts; longer lines soft-wrap and nothing scrolls inside a
+ * card. Heights follow from the content and are measured by the canvas. The constants follow
+ * cards.css and code.css (02 §4).
  */
 
 import type { CodeText } from "../ipc/generated";
 import type { Measure } from "../flow/layout";
-import { clampCardWidth } from "./layout";
-import { CODE_FONT, TITLE_FONT, UI_FONT } from "./measure";
+import { ENTRANCE_MAX_WIDTH, ENTRANCE_MIN_WIDTH, clampCardWidth } from "./layout";
+import { CODE_FONT, LOCATION_FONT, METHOD_FONT, TITLE_FONT } from "./measure";
 
 /** The card's border, left and right. */
 const BORDER = 2;
-/** The fold column and the space after line numbers (code.css). */
-const GUTTER_PX = 24;
+/** The header's and body's inline padding, each side. */
+const PADDING = 12;
+/** Gaps between the header's parts. */
+const GAP = 8;
+/** The `ƒ` glyph. */
+const GLYPH = 8;
+/** A cross-project card's 20px monogram. */
+const MONOGRAM = 20;
+/** The card's Code | Flow mini lens. */
+const LENS = 84;
+/** The line-number gutter: at least 40px, else the digits, 14px after them, and 4 before. */
+const GUTTER_MIN = 40;
+const GUTTER_PAD = 18;
 /** The space the code view leaves after the text (code.css `.code-row` padding). */
 const TEXT_END = 20;
-/** A calling line with a port also draws a leader to the card's edge (code.css `.code-leader`). */
-const LEADER = 42;
 /** The tab size the code view uses. */
 const TAB = 2;
 
@@ -29,42 +39,59 @@ function columns(text: string, start: number, end: number): number {
   return count;
 }
 
-/** The width a Code view needs to show its longest line unwrapped (with a leader where a port sits). */
-export function codeContentWidth(code: CodeText, portLines: ReadonlySet<number>, measure: Measure): number {
+/** The width of the line-number gutter for numbers of `digits` digits. */
+export function gutterWidth(digits: number, measure: Measure): number {
+  return Math.max(GUTTER_MIN, Math.ceil(digits * measure("0", CODE_FONT)) + GUTTER_PAD);
+}
+
+/** The width a Code view needs to show its longest line unwrapped. */
+export function codeContentWidth(code: CodeText, measure: Measure): number {
   const ch = measure("0", CODE_FONT);
   const digits = String(code.lines.at(-1)?.number ?? 1).length;
   let widest = 0;
   code.lines.forEach((line, index) => {
     const skip = index === 0 ? 0 : Math.min(code.dedent, line.indent);
-    const width = columns(code.text, line.start + skip, line.end) * ch + (portLines.has(line.number) ? LEADER : 0);
-    widest = Math.max(widest, width);
+    widest = Math.max(widest, columns(code.text, line.start + skip, line.end) * ch);
   });
-  return Math.ceil(GUTTER_PX + (digits + 1) * ch + widest + TEXT_END + BORDER + 1);
-}
-
-/** The width a block card's header needs: icon, name, location, switch, and fold toggle. */
-export function headerWidth(name: string, location: string, measure: Measure): number {
-  const controls = 150;
-  return Math.ceil(16 + 22 + measure(name, TITLE_FONT) + 10 + measure(location, UI_FONT) * 0.92 + controls + BORDER);
+  return Math.ceil(gutterWidth(digits, measure) + widest + TEXT_END + BORDER + 1);
 }
 
 export interface BlockWidthInput {
   readonly name: string;
   readonly location: string;
+  /** Whether the header starts with the project monogram (a card from another project). */
+  readonly monogram: boolean;
   /** The body's own width need (Code or Flow), or null while loading. */
   readonly body: number | null;
 }
 
-/** A block card's width: its header and body need, clamped to 360–880. */
-export function blockCardWidth(input: BlockWidthInput, measure: Measure): number {
-  return clampCardWidth(Math.max(headerWidth(input.name, input.location, measure), input.body ?? 0));
+/** The width a block card's header needs: monogram, `ƒ`, name, location, and the mini lens. */
+export function headerWidth(input: Omit<BlockWidthInput, "body">, measure: Measure): number {
+  const monogram = input.monogram ? MONOGRAM + GAP : 0;
+  const text = measure(input.name, TITLE_FONT) + GAP + measure(input.location, LOCATION_FONT);
+  return Math.ceil(PADDING * 2 + BORDER + monogram + GLYPH + GAP + text + GAP + LENS);
 }
 
-/** An entrance card's width: its title, evidence lines, and target rows. */
-export function entranceCardWidth(title: string, lines: readonly string[], targets: readonly string[], measure: Measure): number {
-  const ch = measure("0", CODE_FONT);
-  const titleWidth = measure(title, '600 18px "JetBrains Mono Variable", ui-monospace, monospace') + 120;
-  const evidence = lines.reduce((widest, line) => Math.max(widest, line.length * ch), 0) + 32 + BORDER;
-  const rows = targets.reduce((widest, target) => Math.max(widest, measure(target, CODE_FONT)), 0) + 150;
-  return clampCardWidth(Math.max(titleWidth, evidence, rows));
+/** A block card's width: its header and body need, clamped to 280–880. */
+export function blockCardWidth(input: BlockWidthInput, measure: Measure): number {
+  return clampCardWidth(Math.max(headerWidth(input, measure), input.body ?? 0));
+}
+
+export interface EntranceWidthInput {
+  /** `POST`, or null for an entrance without a method. */
+  readonly method: string | null;
+  readonly title: string;
+  readonly location: string;
+  readonly handlers: readonly string[];
+}
+
+/** An entrance card's width: its header, location, and handler rows, clamped to 200–320 (the heading always fits). */
+export function entranceCardWidth(input: EntranceWidthInput, measure: Measure): number {
+  const method = input.method !== null ? measure(input.method, METHOD_FONT) + GAP : 0;
+  const header = method + measure(input.title, TITLE_FONT);
+  const body = Math.max(
+    measure(input.location, LOCATION_FONT),
+    ...input.handlers.map((name) => measure(name, CODE_FONT)),
+  );
+  return clampCardWidth(Math.max(header, body) + PADDING * 2 + BORDER, ENTRANCE_MIN_WIDTH, ENTRANCE_MAX_WIDTH);
 }

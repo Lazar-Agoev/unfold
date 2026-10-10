@@ -108,6 +108,8 @@ export function useFontEpoch(): number {
   );
 }
 
-export const CODE_FONT = '12.5px "JetBrains Mono Variable", ui-monospace, monospace';
-export const UI_FONT = '13px "Inter Variable", system-ui, sans-serif';
+/** The card fonts (cards.css, code.css): code rows, the header's name, location, and an entrance's method. */
+export const CODE_FONT = '12px "JetBrains Mono Variable", ui-monospace, monospace';
 export const TITLE_FONT = '600 13px "JetBrains Mono Variable", ui-monospace, monospace';
+export const LOCATION_FONT = '11px "JetBrains Mono Variable", ui-monospace, monospace';
+export const METHOD_FONT = '500 11px "JetBrains Mono Variable", ui-monospace, monospace';

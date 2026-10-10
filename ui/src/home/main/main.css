@@ -1,0 +1,129 @@
+/* Home's main area (01 "Artboard and regions"): it scrolls as one; the content column is the width
+   left after 56px on each side. */
+
+.home-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  background: var(--color-home);
+}
+
+.home-page {
+  display: flex;
+  flex-direction: column;
+  gap: 44px;
+  padding: 36px 56px 40px;
+}
+
+.home-mono {
+  font-family: var(--font-code);
+  font-size: var(--text-12);
+  font-feature-settings:
+    "calt" 0,
+    "liga" 0;
+}
+
+/* Section headings shared by Home's sections ("How it starts", "Boards", "Health and activity"). */
+.home-section-title {
+  font-size: var(--text-15);
+  line-height: var(--leading-20);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Caps labels ("Skipped", "Boards", "Activity", "Opened before"). */
+.home-caps {
+  color: var(--color-muted);
+  font-size: var(--text-11);
+  line-height: var(--leading-14);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+/* Project header */
+.home-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.home-path {
+  color: var(--color-muted);
+  font-family: var(--font-code);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+}
+
+.home-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-width: 0;
+}
+
+.home-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-32);
+  line-height: var(--leading-40);
+  font-weight: 700;
+  letter-spacing: var(--tracking-display);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-header-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 34px;
+  padding-top: 6px;
+}
+
+.home-header-compact .home-state-line {
+  padding-top: 6px;
+}
+
+/* State line (07 "Home state line") */
+.home-state-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--text-13);
+  line-height: var(--leading-16);
+  white-space: nowrap;
+}
+
+.home-state-detail {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-muted);
+  text-overflow: ellipsis;
+}
+
+.home-state-action {
+  padding-left: 6px;
+}
+
+.home-state-action-joined {
+  padding-left: 0;
+}
+
+.home-state-info {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--color-muted);
+}

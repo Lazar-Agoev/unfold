@@ -131,7 +131,19 @@ describe("Code view", () => {
     expect(container.querySelectorAll(".code-row")).toHaveLength(code.lines.length);
     expect(container.querySelector(".tok-keyword")?.textContent).toBe("export");
     expect(container.querySelector(".code-view")?.textContent).toContain('const order = orderService.place(draft);');
-    expect(container.querySelector(".code-block.compound")).not.toBeNull();
+    expect(container.querySelector(".code-block[data-block]")).not.toBeNull();
+  });
+
+  it("marks external calls, opened calls, and a calling line's step fill (02 §4.3)", () => {
+    const ports = new Set([placeLink.source]);
+    const { container } = render(
+      wrap(<CodeView code={code} language="typescript" label="createOrder" folds={new Set()} ports={ports} renderPorts={() => null} onFollow={vi.fn()} />),
+    );
+    expect(container.querySelector(".code-link.external")?.textContent).toBe("req.header");
+    expect(container.querySelector(".code-link.resolved.opened")?.textContent).toBe("orderService.place");
+    expect(container.querySelector(`.code-row.has-port[data-line="${placeLink.line}"]`)).not.toBeNull();
+    // Every row has its line number in the gutter, with no fold column before it.
+    expect(container.querySelectorAll(".code-gutter .code-number")).toHaveLength(code.lines.length);
   });
 
   it("follows on click, expands inline on ⌥-click, and explains unresolved calls", () => {

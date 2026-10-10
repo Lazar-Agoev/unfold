@@ -16,7 +16,9 @@
  *                          that to light unless told), so the UI's default "system" preference follows it.
  *   --project <folder>     A folder to add as a project (passed on the command line, as the OS would).
  *                          It is copied into the throwaway folder first (without `.unfold/local/`), so
- *                          the original is never written to; `--in-place` uses it as is.
+ *                          the original is never written to; `--in-place` uses it as is. Repeatable: the
+ *                          first is passed at launch, each next one by a second launch of the app (which
+ *                          hands its folder to the running one, as opening a folder from Finder would).
  *   --actions <json|@file> Steps run in order before the screenshot (a JSON array, or `@path` to a JSON
  *                          file). Each step is an object with one of:
  *                            {"compile": true}           Compile every project and wait for it to finish.
@@ -24,6 +26,7 @@
  *                            {"run": "<action id>"}      Presses the action's default shortcut (ids listed in
  *                                                        SHORTCUTS below, e.g. "view.toggleSidebar").
  *                            {"press": "Meta+B"}         A Playwright key press.
+ *                            {"type": "POST /orders"}    Types text into whatever has focus.
  *                            {"click": "<selector>"}     Clicks a Playwright selector (`role=tab[name="Home"]`).
  *                            {"rightClick": "<selector>"} Opens a context menu.
  *                            {"hover": "<selector>"}     Hovers a selector.
@@ -67,7 +70,7 @@ function usage(message) {
 }
 
 function parseArgs(argv) {
-  const options = { theme: "light", size: { width: 1440, height: 900 }, scale: "css", build: true, keep: false, inPlace: false, actions: [] };
+  const options = { theme: "light", size: { width: 1440, height: 900 }, scale: "css", build: true, keep: false, inPlace: false, actions: [], projects: [] };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
     const value = () => {
@@ -89,7 +92,7 @@ function parseArgs(argv) {
         }
         break;
       case "--project":
-        options.project = resolve(value());
+        options.projects.push(resolve(value()));
         break;
       case "--in-place":
         options.inPlace = true;
@@ -162,6 +165,8 @@ async function runStep(page, step) {
     await pressAction(page, step.run);
   } else if (step.press !== undefined) {
     await page.keyboard.press(step.press);
+  } else if (step.type !== undefined) {
+    await page.keyboard.type(step.type);
   } else if (step.click !== undefined) {
     await page.locator(step.click).first().click();
   } else if (step.rightClick !== undefined) {
@@ -221,14 +226,16 @@ async function main() {
   mkdirSync(userData, { recursive: true });
   mkdirSync(home, { recursive: true });
 
-  let project;
-  if (options.project) {
-    project = options.inPlace ? options.project : join(root, basename(options.project));
-    if (!options.inPlace) {
-      cpSync(options.project, project, { recursive: true });
-      rmSync(join(project, ".unfold", "local"), { recursive: true, force: true });
+  const projects = options.projects.map((source) => {
+    if (options.inPlace) {
+      return source;
     }
-  }
+    const copy = join(root, basename(source));
+    cpSync(source, copy, { recursive: true });
+    rmSync(join(copy, ".unfold", "local"), { recursive: true, force: true });
+    return copy;
+  });
+  const [project, ...moreProjects] = projects;
 
   const env = {};
   for (const [key, value] of Object.entries(process.env)) {
@@ -269,6 +276,11 @@ async function main() {
     await page.locator('[role="tablist"][aria-label="Window tabs"]').waitFor({ timeout: 30_000 });
     if (project) {
       await page.locator("[data-project-id]").first().waitFor({ timeout: 30_000 });
+    }
+    // A second launch on the same app data hands its folder to the running app and quits.
+    for (const [index, folder] of moreProjects.entries()) {
+      execFileSync(electronPath, [desktopDir, `--user-data-dir=${userData}`, folder], { env, stdio: "ignore", timeout: 30_000 });
+      await page.locator("[data-project-id]").nth(index + 1).waitFor({ timeout: 30_000 });
     }
     for (const step of options.actions) {
       await runStep(page, step);

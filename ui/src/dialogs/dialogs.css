@@ -1,0 +1,107 @@
+/* Publish (12 §3). The Dialog gives the frame, header, and footer; these are the body's sections. */
+
+.publish-destination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 4px;
+  row-gap: 2px;
+}
+
+.publish-destination code {
+  font-family: var(--font-code);
+  font-size: var(--text-12);
+  line-height: var(--leading-20);
+  color: var(--color-text);
+}
+
+.publish-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.publish-caps {
+  font-size: var(--text-11);
+  line-height: var(--leading-14);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.publish-changes {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-tab);
+}
+
+.publish-change {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 12px;
+}
+
+.publish-change + .publish-change {
+  border-top: 1px solid var(--color-border);
+}
+
+.publish-change-icon {
+  flex-shrink: 0;
+  color: var(--color-muted);
+}
+
+.publish-change-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-13);
+  line-height: var(--leading-20);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.publish-change-meta {
+  flex-shrink: 0;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+.publish-conflict {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-tab);
+  background: var(--color-warn-fill);
+}
+
+.publish-section + .publish-conflict {
+  margin-top: 16px;
+}
+
+.publish-conflict-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: var(--text-13);
+  line-height: var(--leading-20);
+  color: var(--color-warn);
+}
+
+.publish-conflict-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 16px;
+  height: 20px;
+  color: var(--color-review);
+}
+
+.publish-choices {
+  padding-left: 26px;
+}

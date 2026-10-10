@@ -205,3 +205,176 @@ From [ui-plan.md](ui-plan.md), where the doc, the contract, and the designs are 
   unchecked box border in dark (2.74:1), and the shortcut hint on primary buttons (3.95:1) keep the design's values:
   each is a mark or a secondary hint repeated by text elsewhere, not body text. `--color-faint` is never text (§7), so
   its pairs are tested only as marks. The contrast test encodes exactly these exceptions.
+
+## Add and peek decisions (U4)
+
+- **V-82 Add's focus model.** Focus never leaves Add's input: ↑ ↓ (and PageUp/PageDown) move the selected result or
+  command, ← → too on the map; Tab and ⇧Tab switch the kind; Escape closes from anywhere in the box. Results and
+  commands are a listbox the input points into (`aria-activedescendant`). Clicking a row adds it (⌘-click on a new
+  page); hover only tints.
+- **V-83 Commands list.** With nothing after `>`, every enabled action that shows in Add, under one header per group
+  in `ADD_GROUPS` order. With a query, one "Commands" group ranked by: title prefix, word start, substring, every word,
+  letters in order (each bolds its run), then keywords, group or category (no bold). The group prefix (`Share ›`)
+  shows only when an action's `group` differs from its category (a submenu), as drawn. Which actions apply is read
+  once per opening.
+- **V-84 Search rows where the data is thinner than the drawing.** An entrance row's meta is `<project> · <file>`
+  (`search` hits don't name the application); a file row has no meta (`FileHit` has no definition count); a
+  definition row shows its qualified name, and its kind column is `FN` for functions, else the block kind
+  (`METHOD`, `CLASS`). The right-hand count reads "N projects · M results", N = projects with any result.
+- **V-85 Preview contents.** A definition shows its first 10 lines (the pane also holds the relations and buttons),
+  then "N more lines"; Calls reads "N functions · <modules> (external)" from the listed calls; Reached from and
+  Called by show the first, then "+N". An entrance shows Handler, Declared and Reaches (as the map popover). Files
+  and text matches show "Open file ↵" instead of the add buttons (Enter and ⌘Enter both open the sheet); on Home the
+  primary button reads "Add to a new draft" and there is no New page.
+- **V-86 Map lanes.** Applications without entrances are left out; the entrances no launch reaches get a last lane
+  "Not reached from a launch" (no command line). A lane's command comes from its first launch: `npm run <script>`
+  for a package script, else the trigger or the startup. A project that isn't compiled shows "Not compiled yet." in
+  its group; one that is compiling shows the drawn compiling line. "+N more" expands the lane in place (500).
+- **V-87 Map popover.** Shown for the keyboard's chip or the hovered one after 300 ms, under the chip (above it when
+  there is no room); the pointer can move into it. "Already on <board> › <page>" names the first board ref that
+  isn't the current page, "· N more" when there are others; its Open opens that board on that page and closes Add.
+  The footer is absent when the entrance is on no other page.
+- **V-88 Text search.** The stream runs whenever the query has at least two characters (for the Text count on every
+  tab); the options apply to it and are shown on the Text tab only (V-1). Because engine events don't invalidate
+  streams, Add re-runs it 300 ms after any `graph_updated` or `files_changed` while it is open.
+- **V-89 Peek definitions and folds.** Definitions (and so `⊕`, the on-page dot, and fold chevrons) are outline items
+  of kind function, class, method, constructor, getter, setter; the outermost wins when several start on one line.
+  Every fold starts open; folds reset when the sheet opens another target. A folded TypeScript definition reads
+  `<header> { <summary> }` with the summary as the pill.
+- **V-90 Peek links and adding.** A resolved call link hovers its peek and a click adds the callee to the page (or a
+  new draft from Home, V-66), like `⊕`. When the file changed since the graph, the header meta says "changed since
+  the last update" and the file shows without `⊕`, folds or links (offsets would be stale). Long lines scroll
+  horizontally.
+- **V-91 Peek keys and pin.** `peek.close` (Escape, not while typing, hidden from Add) and `peek.openInEditor`
+  (⇧⌘O, listed in Add while the sheet is open). The pin is a pressed icon button (the kit's pressed fill), not an
+  accent fill. The sheet keeps one target; each new target (file, line, or match) opens it fresh.
+
+## Dialogs, settings, preferences, and menus (U5)
+
+- **V-92 Board menu off the canvas.** Home's and the sidebar's right-click menu is the same board menu. For a board
+  this window doesn't hold, Share, Fold all cards, and Unfold all cards are disabled (they need a page); Rename…
+  opens the board and renames it in its header (V-74, focus target `board.title`); Open in new window opens it here
+  first and is disabled while another window holds it. Discard changes… shows only with unpublished changes, Move
+  back to drafts only for a published board; their separator goes with them.
+- **V-93 Move to folder.** The submenu lists Top level, then every folder of the project as its full path (natural
+  order, the board's own checked), then "New folder…", a 400px prompt that moves the board into a new folder path.
+  Add's "Move Board to Folder…" is the same prompt with the current folder filled in (empty = top level).
+- **V-94 Project menu per state.** All ten items always (07's Current menu, plus Cancel); disabled: Compile
+  while compiling or unavailable ("Compile" before the first Compile, else "Compile again" with ⇧⌘B); Rebuild from
+  scratch when not compiled or compiling; Cancel unless compiling; one Pause/Resume item named by the state (a
+  resting project answers as its last state); Settings…, Add entrance…, Reveal in Finder when unavailable; Health
+  and activity when not compiled. "Open in editor" isn't an item: `open_in_editor` opens files, not folders.
+- **V-95 Publish details.** A draft's file name is an editable field holding the slug; `name_taken` puts Rust's
+  suggestion in it with "… already exists". The change count shows as one row ("Edited on this machine since the
+  last Publish", the copy's age), since the contract returns only a count (V-72). The conflict box shows before
+  Publish when the open board's `baseChanged` says so, else after `publish_board` answers `conflict`; its message
+  has no "pulled N min ago" (nothing reports when) and says "deleted … writes it again" for `theirsRevision: null`.
+  A published board without changes shows "<board> is published" with Publish disabled.
+- **V-96 Scope tree behaviour.** A row's click or Space toggles its box (the chevron expands); folders excluded by a
+  pattern above them are locked with a tooltip naming it (remove that rule to include them); the Rules list shows
+  `exclude` and `include` patterns, staged additions after the saved ones, staged removals struck through with a
+  "Keep" button. Glob patterns the UI can't evaluate (`[…]`, `{…}`) leave a folder where `scope_dir` put it.
+- **V-97 Settings General and errors.** General is a label column (Name, Folder with Reveal in Finder, Background
+  updates, Storage). An emptied name means the folder's default. When `.unfold/config.toml` doesn't parse, Scope,
+  Detectors, and Python projects show the error with "Open in editor" (at its line) and the name is read-only; Save
+  failures show Rust's message (with its line and column) at the top of the section, and the dialog stays open.
+- **V-98 Worktree switcher details.** The Home button is hidden outside a Git repository; a detached HEAD reads
+  "detached <7 hex>". The popover is 264 wide; rows elide the path at its start so the worktree folder stays
+  visible. Switching toasts "Switched <project> to <branch>" with the V-15 note.
+- **V-99 U5 command titles.** The actions U5 registers use the registry's title case ("Move Board Back to Drafts",
+  "Show Health and Activity"), like every other registered action; menus keep the drawn sentence-case labels.
+- **V-100 Preferences layout.** Sections General (theme, editor command, update check) and New projects
+  (background updates, compile threads), then Keyboard; on/off settings are switches.
+
+## Home decisions (U3)
+
+- **V-101 Application rows.** How it starts lays applications in rows of at most three, as even as they go (4 → 2 + 2,
+  5 → 3 + 2); in a row the cards share the width as drawn (`flex-basis: 0`), the one with the most entrances grows
+  1.4, and a narrow window wraps them at 280px. (V-48's single wrapping row stretched a lone fourth card across the
+  page.) An expanded card has a filter field, every entrance (≤ 500, 420px scroll) and "N entrances · Show fewer";
+  "N more" reads "routes" when every row is an HTTP route, else "entrances". The launch command is `npm run <script>`
+  for a package script, else the trigger or the startup as written.
+- **V-102 Entrance rows.** Click or Enter traces the entrance on a new draft (Trace → shows on hover and keyboard
+  focus). Only manual entrances have a menu (Trace on a New Board, Edit…, Remove…); right-clicking elsewhere on an
+  application card offers Add Entrance…. The expanded "Not reached from a launch" lists every such entrance (one
+  `entrances` call with 500 per application, made only while open); launches show their command and the startup (or
+  why it isn't indexed).
+- **V-103 Health line items.** All files parse / N files don't parse (See Health); the settings file can't be used
+  (Settings, on the section V-77 picks); Every entrance reaches indexed code, else a muted "N launches into code that
+  isn't indexed" (a fact, not a problem); one board needing review reads "N items need review in <board> · Review",
+  several "N boards need review · See Health". Board review counts say "items" (health items can be cards, groups,
+  labels or links).
+- **V-104 Health list.** Health shows the problems except board health, then the boards from `project_summary`, each
+  explained by its first board problem; the switch's count is both together. Open goes to the peek sheet for file
+  problems (and inputs with a path); Settings for settings (section by V-77) and discovery problems (Scope); a failed
+  Compile and cache problems have no action. Nothing to show reads "Nothing needs a look". The Activity log's files
+  column counts read and from-cache files from the engine's fact lines, and failed = files that failed plus those
+  showing their last version that parsed; duration = update + commit time; the action is shown as the engine names it.
+- **V-105 State line details.** "See Health" is hidden on the Health view. A project whose problems are all files that
+  don't parse is headed "N files don't parse"; the detail is 07 row 5's "showing its last version that parsed" only
+  when `problems` says each still does (a file that never parsed isn't on the graph), else the graph detail. Other
+  problems read "N problems" with the graph detail. Unavailable reads
+  "Unavailable · <reason>" and its Home shows only the header and the reason. Paused with no changes reads "Paused ·
+  background updates are off". The info icon's tooltip carries the fallback reason and the scanning note; "using
+  fallback location" is also appended to the detail of a current project (07 row 9).
+- **V-106 First Compile.** The scope tree hides discovery's default skips (they are in Skipped); other skipped folders
+  are disabled with the reason in words. "N of M files" = the saved scope's file count adjusted by the staged
+  changes, of that count plus the folders the scope leaves out. Compile is disabled when the staged scope reads
+  nothing; ⇧⌘B on this Home writes the staged scope first too (the view registers `project.compile` over the
+  frame's). The caption scales with the project: "A few seconds" (< 500 files), "About a minute" (< 5,000), "A few
+  minutes". With the fallback location, the promise names where the graph is kept and why.
+- **V-107 Opened before.** Rows show the folder and Add; the "last opened" time isn't drawn because `WorkspaceView`'s
+  `removed` carries no time (A-1 keeps `removedAtMs` in `workspace.json` only; flag for the contract owner).
+- **V-108 Sidebar details.** A project row's branch shows unless it is `main` or `master` (a detached HEAD shows its
+  commit). The project row's `⋯` sits after the state slot. An expanded project with no boards shows "No boards yet";
+  one whose list failed "Couldn't list its boards". Drafts shows no count at 0. Folder rows toggle on click; board rows
+  open on click; ↑/↓ move between rows and →/← expand and collapse. The workspace name is the username, capitalized,
+  with "'s workspace".
+- **V-109 Board cards.** A card's subline adds "N unpublished changes" for a published board with changes; Recents
+  read "N pages · Draft · opened <when>" (pages once the thumbnail answers); cross-project lists lead with the board's
+  project (monogram and name). A thumbnail's accent line marks the first entrance card's first line; drawn links are
+  dashed; scale is capped at 0.12 so a one-card page stays a sketch; a published thumbnail's ground is
+  `--color-sidebar` (canvas tone in light, one step above Home in dark). Board cards don't show selection; hover
+  darkens the thumbnail edge. A filter with no boards reads "No published boards" / "No drafts".
+- **V-110 Compiled toast.** Mounted once per window by the frame (`CompiledToasts` from `home/`), it watches each
+  project's Compile started in this window, reads `project_summary` when it ends, and says nothing for a failed or
+  cancelled first Compile.
+
+## Board decisions (U2)
+
+- **V-111 Authored bylines.** Descriptions, labels, and link labels carry no time, so Selected's byline and a link
+  chip show the author only ("Lazar", not "Lazar · 2 h ago"); a link without a label reads "Link" with no "drawn by".
+- **V-112 Card header and body.** A block card's header shows the file as its last two path segments without the line
+  (as drawn; the full `path:line` is its tooltip and in Selected); `ƒ` for functions, `{}` for other blocks. No fold
+  chevron is drawn: double-click the header or the card menu folds. An entrance card shows only what 02 §4.5 draws
+  (method and trigger, the declaration, "Handlers, in order"); V1's evidence code, role column and "Part of" line are
+  dropped; external and unresolved handlers are muted with the reason as their tooltip.
+- **V-113 Code rows.** A fold's chevron sits in the 14px after the line number, shown on row hover and always on a
+  folded row; the group toggle sits in the same place. Compound blocks get no tint and no indent guide (not drawn);
+  only rows that send an arrow get the step fill. The gutter is 40px, wider for 4-digit line numbers. External call
+  names take `--color-syntax-external`; unresolved calls a 1px dashed underline.
+- **V-114 Review banner and repairs.** The banner names the card's first problem ("Changed since it was described"
+  for review and outdated, "Missing from the graph", "A group no longer matches the code"); Review opens a 340px
+  popover listing every problem of the card and its groups, each repair with its effect and Apply (saved at once,
+  undoable). Reconnect searches the card's own project.
+- **V-115 Drawn link geometry.** A link leaves and enters by the facing sides (right → left when the target is to the
+  right, bottom → top when the cards overlap horizontally), at header height on the sides; its label chip sits on the
+  curve's midpoint above the cards; an unlabeled link has no chip. Right-clicking a link (or its chip) offers Edit
+  label and Remove link. While drawing, a hint at the top of the canvas reads "Click the card to link to · esc
+  cancels"; a click on the empty canvas cancels too.
+- **V-116 Show callers.** Up to 20 callers (`callers`' default); the ones not on the page open in a column 80px to the
+  card's left, each right-aligned there (sized from its model before it is drawn) and stacked from the card's top, in
+  one undo step; those already on the page are brought into view with them. Nothing calling, or more than 20, says so
+  in a toast.
+- **V-117 Marks.** A page row's mark and On this page's marks count every health item except "not connected" (that
+  card's row says "not connected" instead). Delete page… asks first (400px canvas dialog) and is undoable.
+- **V-118 Publish button.** Disabled for a published board without unpublished changes (nothing to publish).
+- **V-119 Uncovered canvas.** While the peek sheet floats unpinned, the lens, the dock, the banners and the empty-page
+  hint center on the canvas left of it (`--covered-right` = the sheet's width); pinned, the canvas itself narrows.
+- **V-120 Selected details.** An entrance card lists its Handlers with "+ Open" for those not on the page. Called by
+  focuses the caller's card, or adds it; Reached from opens that entrance on the page. Empty relations are omitted.
+- **V-121 Label them.** The stepper brings the node's card into view and selects the node with its label field open in
+  Selected; it doesn't switch a Code card to Flow (that would be an edit).
+- **V-122 Description on the card.** Double-click the strip to edit it in place (Enter saves, Shift+Enter breaks the
+  line, Escape keeps the old text); a card without a description is described in Selected. The card menu has no
+  "Describe…" (`board.describeSelected` focuses Selected's field).

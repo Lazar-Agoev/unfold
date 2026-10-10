@@ -80,11 +80,11 @@ describe("the manual entrance editor", () => {
   it("adds a command with its handler", async () => {
     const fake = install();
     const dialog = await openEditor(addFor("src/cli.ts", "runReport"));
-    expect(within(dialog).getByRole("heading", { name: "Add Entrance" })).toBeTruthy();
+    expect(within(dialog).getByRole("heading", { name: "Add entrance" })).toBeTruthy();
     expect(screen.getByLabelText<HTMLInputElement>("Handler 1").value).toBe("src/cli.ts#runReport");
     expect(within(dialog).queryByLabelText("Method")).toBeNull();
     type("Trigger", "report");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Add Entrance" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add entrance" }));
     await waitFor(() => {
       expect(fake.callsOf("update_project_config")).toHaveLength(1);
     });
@@ -113,7 +113,7 @@ describe("the manual entrance editor", () => {
     fireEvent.click(within(dialog).getByRole("radio", { name: "Worker" }));
     expect(within(dialog).queryByLabelText("Method")).toBeNull();
     fireEvent.click(within(dialog).getByRole("radio", { name: "HTTP" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Add Entrance" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add entrance" }));
     await waitFor(() => {
       expect(fake.callsOf("update_project_config")).toHaveLength(1);
     });
@@ -129,11 +129,11 @@ describe("the manual entrance editor", () => {
     const dialog = await openEditor();
     fireEvent.click(within(dialog).getByRole("radio", { name: "Process" }));
     expect(within(dialog).queryByLabelText("Handler 1")).toBeNull();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Add Entrance" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add entrance" }));
     expect(await within(dialog).findByText(/needs the file it starts from/)).toBeTruthy();
     expect(fake.callsOf("update_project_config")).toHaveLength(0);
     type("Startup", "src/worker.ts");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Add Entrance" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add entrance" }));
     await waitFor(() => {
       expect(fake.callsOf("update_project_config")).toHaveLength(1);
     });
@@ -147,7 +147,7 @@ describe("the manual entrance editor", () => {
     fireEvent.blur(screen.getByLabelText("Handler 1"));
     expect(within(dialog).getByText(/After # comes a name/)).toBeTruthy();
     expect(screen.getByLabelText("Handler 1").getAttribute("aria-invalid")).toBe("true");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Add Entrance" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add entrance" }));
     expect(fake.callsOf("update_project_config")).toHaveLength(0);
   });
 
@@ -157,7 +157,7 @@ describe("the manual entrance editor", () => {
       throw { code: "invalid_settings", message: ".unfold/config.toml:14:11: `src/cli.ts#x` names a file that isn't TypeScript or Python" };
     });
     const dialog = await openEditor(addFor("src/cli.ts", "x"));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Add Entrance" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add entrance" }));
     const alert = await within(dialog).findByRole("alert");
     expect(alert.textContent).toContain("Line 14, column 11:");
     expect(alert.textContent).toContain("names a file that isn't TypeScript or Python");
@@ -168,7 +168,7 @@ describe("the manual entrance editor", () => {
     const fake = install();
     const row = { key: 'entrance:["manual","event","","SIGTERM","src/server.ts#shutdown"]', detector: "manual" as const, title: "EVENT SIGTERM" };
     const dialog = await openEditor({ kind: "entranceEditor", project: PROJECT, mode: "edit", entrance: row });
-    expect(within(dialog).getByRole("heading", { name: "Edit Entrance" })).toBeTruthy();
+    expect(within(dialog).getByRole("heading", { name: "Edit entrance" })).toBeTruthy();
     expect(screen.getByLabelText<HTMLInputElement>("Trigger").value).toBe("SIGTERM");
     expect(screen.getByLabelText<HTMLInputElement>("Label").value).toBe("Shut down");
     type("Trigger", "SIGINT");

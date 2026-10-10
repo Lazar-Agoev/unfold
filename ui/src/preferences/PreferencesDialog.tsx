@@ -1,13 +1,14 @@
 /**
- * Preferences (app-wide, `preferences.json` through Rust): theme, editor command, whether
- * background updates start on for newly compiled folders, the compile thread limit, the update
- * check, and key bindings. The theme applies at once through `data-theme`; everything saves with
- * `set_preferences`. Saved theme and key bindings apply on load and whenever the preferences change.
+ * Preferences (app-wide, `preferences.json` through Rust; ⌘, and the sidebar's gear): theme, editor
+ * command, the update check, whether background updates start on for newly compiled projects, the
+ * compile thread limit, and key bindings by action id. The theme applies at once through `data-theme`;
+ * everything saves with `set_preferences`. Saved theme and key bindings apply on load and whenever
+ * the preferences change.
  */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Button, Dialog, SegmentedControl, TextField, showToast } from "../components";
+import { Button, Dialog, SegmentedControl, Switch, TextField, showToast } from "../components";
 import { call } from "../ipc/commands";
 import type { Preferences, Theme } from "../ipc/generated";
 import { engineKey, engineQueryOptions, useEngineQuery } from "../ipc/queries";
@@ -147,67 +148,67 @@ function PreferencesForm({ saved, onDone }: { readonly saved: Preferences; reado
       }
     >
       <div className="preferences">
-        <div className="preferences-row">
-          <span className="preferences-label" id="preferences-theme">
-            Theme
-          </span>
-          <SegmentedControl<Theme>
-            label="Theme"
-            variant="switch"
-            options={THEMES}
-            value={theme}
-            onChange={(next) => {
-              setTheme(next);
-              applyTheme(next);
-            }}
-          />
-        </div>
-        <TextField
-          label="Editor command"
-          placeholder="code -g {path}:{line}"
-          value={editor}
-          onChange={(event) => {
-            setEditor(event.target.value);
-          }}
-          hint="Runs without a shell. {path}, {line}, and {column} are replaced. Empty opens files with the system's default app."
-        />
-        <label className="preferences-check">
-          <input
-            type="checkbox"
-            checked={background}
+        <section className="preferences-section" aria-labelledby="preferences-general">
+          <h3 id="preferences-general" className="preferences-caps">
+            General
+          </h3>
+          <div className="preferences-row">
+            <span className="preferences-text">
+              <span className="preferences-label">Theme</span>
+              <span className="preferences-note">System follows your computer's light or dark setting.</span>
+            </span>
+            <SegmentedControl<Theme>
+              label="Theme"
+              variant="switch"
+              options={THEMES}
+              value={theme}
+              onChange={(next) => {
+                setTheme(next);
+                applyTheme(next);
+              }}
+            />
+          </div>
+          <TextField
+            label="Editor command"
+            placeholder="code -g {path}:{line}"
+            className="preferences-code"
+            value={editor}
             onChange={(event) => {
-              setBackground(event.target.checked);
+              setEditor(event.target.value);
             }}
+            hint="Runs without a shell. {path}, {line}, and {column} are replaced. Empty opens files with the system's default app."
           />
-          <span>
-            Update the graph in the background as files change
-            <span className="preferences-note">For folders compiled from now on. Each folder remembers its own switch.</span>
-          </span>
-        </label>
-        <TextField
-          label="Compile threads"
-          inputMode="numeric"
-          placeholder="Automatic (every core but one)"
-          value={threads}
-          error={limit.ok ? null : limit.message}
-          onChange={(event) => {
-            setThreads(event.target.value);
-          }}
-          hint="Applies to folders opened afterwards."
-        />
-        <label className="preferences-check">
-          <input
-            type="checkbox"
-            checked={checkUpdates}
+          <div className="preferences-row">
+            <span className="preferences-text">
+              <span className="preferences-label">Check for new versions</span>
+              <span className="preferences-note">The only time Unfold uses the network. Nothing about you or your code is sent.</span>
+            </span>
+            <Switch checked={checkUpdates} label="Check for new versions" onChange={setCheckUpdates} />
+          </div>
+        </section>
+        <section className="preferences-section" aria-labelledby="preferences-projects">
+          <h3 id="preferences-projects" className="preferences-caps">
+            New projects
+          </h3>
+          <div className="preferences-row">
+            <span className="preferences-text">
+              <span className="preferences-label">Background updates</span>
+              <span className="preferences-note">Update the graph as files change, for projects compiled from now on. Each project keeps its own switch.</span>
+            </span>
+            <Switch checked={background} label="Background updates" onChange={setBackground} />
+          </div>
+          <TextField
+            label="Compile threads"
+            inputMode="numeric"
+            placeholder="Automatic (every core but one)"
+            value={threads}
+            error={limit.ok ? null : limit.message}
             onChange={(event) => {
-              setCheckUpdates(event.target.checked);
+              setThreads(event.target.value);
             }}
+            hint="Applies to projects opened afterwards."
           />
-          <span>
-            Check for new versions of Unfold
-            <span className="preferences-note">The only time Unfold uses the network. Nothing about you or your code is sent.</span>
-          </span>
-        </label>
+        </section>
         <KeyboardSection overrides={bindings} conflicts={conflicts} platform={platform} onChange={setBindings} />
       </div>
     </Dialog>

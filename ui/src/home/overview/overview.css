@@ -1,0 +1,308 @@
+/* The overview's How it starts and Health line (01). */
+
+.home-starts {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.home-starts-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-height: 24px;
+}
+
+.home-starts-summary {
+  flex: 1;
+  min-width: 0;
+  color: var(--color-muted);
+  font-size: var(--text-13);
+  line-height: var(--leading-20);
+}
+
+.home-add-entrance {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  align-self: center;
+  gap: 6px;
+  color: var(--color-muted);
+  font-size: var(--text-13);
+  line-height: var(--leading-16);
+  font-weight: 500;
+}
+
+.home-add-entrance:hover {
+  color: var(--color-text);
+}
+
+/* V-48: rows of at most three cards; in each, the biggest application grows 1.4. A narrow window
+   wraps a row's cards at 280px. */
+.home-applications {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.home-applications-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.home-application {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 280px;
+  padding-bottom: 6px;
+  overflow: clip;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-tab);
+  background: var(--color-surface);
+}
+
+.home-application-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 12px 14px 8px;
+}
+
+.home-application-name {
+  flex-shrink: 0;
+  font-size: var(--text-13);
+  line-height: var(--leading-16);
+  font-weight: 600;
+}
+
+.home-application-launch,
+.home-launch-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-family: var(--font-code);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-entrance-list {
+  display: flex;
+  flex-direction: column;
+  padding: 0 6px 6px;
+}
+
+.home-entrance-list-all {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.home-entrance-filter {
+  padding: 0 14px 8px;
+}
+
+.home-entrance-none {
+  padding: 4px 8px;
+  color: var(--color-muted);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+}
+
+.home-entrance-row,
+.home-launch-row {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: var(--row);
+  padding: 0 8px;
+  border-radius: var(--radius-mono);
+  white-space: nowrap;
+}
+
+.home-launch-row {
+  gap: 16px;
+}
+
+.home-entrance-row:hover,
+.home-entrance-row:focus-visible {
+  background: var(--color-selection);
+}
+
+.home-entrance-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px var(--color-focus-ring);
+}
+
+.home-entrance-method {
+  flex-shrink: 0;
+  width: 64px;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-family: var(--font-code);
+  font-size: var(--text-11);
+  line-height: var(--leading-14);
+  text-overflow: ellipsis;
+}
+
+.home-entrance-method-danger {
+  color: var(--color-danger);
+}
+
+.home-entrance-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-code);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  text-overflow: ellipsis;
+  font-feature-settings:
+    "calt" 0,
+    "liga" 0;
+}
+
+.home-entrance-trailing {
+  flex-shrink: 0;
+  width: 64px;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  text-align: right;
+}
+
+.home-entrance-count {
+  color: var(--color-muted);
+}
+
+.home-entrance-trace {
+  display: none;
+  color: var(--color-accent-text);
+  font-weight: 500;
+}
+
+.home-entrance-row:hover .home-entrance-count,
+.home-entrance-row:focus-visible .home-entrance-count {
+  display: none;
+}
+
+.home-entrance-row:hover .home-entrance-trace,
+.home-entrance-row:focus-visible .home-entrance-trace {
+  display: inline;
+}
+
+.home-application-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 35px;
+  padding: 6px 14px 0;
+  border-top: 1px solid var(--color-card-rule-soft);
+  color: var(--color-muted);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+}
+
+/* The two collapsed sections */
+.home-collapsed-sections {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-collapsed-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--row);
+  color: var(--color-muted);
+  font-size: var(--text-13);
+  line-height: var(--leading-16);
+}
+
+.home-collapsed-row:hover {
+  color: var(--color-text);
+}
+
+.home-collapsed-chevron {
+  display: grid;
+  place-items: center;
+  width: 12px;
+}
+
+.home-collapsed-body {
+  max-width: 640px;
+  margin: 2px 0 8px 18px;
+  padding-top: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-tab);
+  background: var(--color-surface);
+}
+
+/* Health line */
+.home-health-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 24px;
+  min-height: 48px;
+  padding-top: 4px;
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-13);
+  line-height: var(--leading-16);
+}
+
+.home-health-label {
+  font-size: inherit;
+  font-weight: 600;
+}
+
+.home-health-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.home-health-mark {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 14px;
+  color: var(--color-muted);
+}
+
+.home-health-item-note .home-health-mark {
+  display: none;
+}
+
+.home-health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-review);
+}
+
+.home-health-item-review .home-health-text {
+  color: var(--color-warn);
+}
+
+.home-health-item-note .home-health-text,
+.home-health-sep {
+  color: var(--color-muted);
+}
+
+.home-health-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
+.home-health-link:hover {
+  color: var(--color-text);
+}

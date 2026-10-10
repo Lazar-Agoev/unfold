@@ -1,0 +1,271 @@
+/* The Home-mode sidebar (home-sidebar.md). The frame's container gives the width, edge, and fill. */
+
+.home-sidebar {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 12px 6px;
+}
+
+/* 1. Workspace row */
+.home-workspace-row {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding-left: 6px;
+}
+
+.home-workspace-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-13);
+  line-height: var(--leading-16);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 2. Recents, Drafts */
+.home-nav {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  padding: 4px 0 16px;
+}
+
+.home-nav-row,
+.home-footer-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--row);
+  padding: 0 6px;
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+  font-size: var(--text-13);
+  line-height: var(--leading-16);
+  text-align: left;
+}
+
+.home-nav-row:hover,
+.home-footer-add:hover {
+  background: var(--color-hover);
+}
+
+.home-nav-row[aria-current="page"] {
+  background: var(--color-selection);
+}
+
+.home-nav-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 20px;
+  color: var(--color-muted);
+}
+
+.home-nav-label {
+  flex: 1;
+}
+
+.home-nav-count {
+  width: 24px;
+  color: var(--color-muted);
+  font-size: var(--text-12);
+  text-align: right;
+}
+
+/* 3. "Projects" */
+.home-projects-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: var(--row);
+  padding: 0 4px 0 6px;
+}
+
+.home-projects-label {
+  flex: 1;
+  color: var(--color-muted);
+  font-size: var(--text-11);
+  line-height: var(--leading-14);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+.home-projects-empty {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: var(--row);
+  padding: 0 6px;
+  color: var(--color-muted);
+}
+
+/* The list scrolls between the header and the footer (the spacer of home-sidebar §8). */
+.home-projects {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.home-projects-tree {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-projects-slot {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+}
+
+/* 4. Project row */
+.home-project-row,
+.home-tree-row {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  height: var(--row);
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+  font-size: var(--text-13);
+  line-height: var(--leading-16);
+  white-space: nowrap;
+  cursor: default;
+}
+
+.home-project-row {
+  padding: 0 6px;
+}
+
+.home-tree-row {
+  padding-right: 6px;
+}
+
+.home-project-row:hover,
+.home-tree-row:hover {
+  background: var(--color-hover);
+}
+
+.home-project-row[aria-selected="true"] {
+  background: var(--color-selection);
+}
+
+.home-project-row:focus-visible,
+.home-tree-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px var(--color-focus-ring);
+}
+
+.home-disclosure {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 12px;
+  height: 16px;
+  color: var(--color-muted);
+}
+
+.home-project-row[aria-selected="true"] .home-disclosure {
+  color: var(--color-text);
+}
+
+.home-project-name {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.home-project-title {
+  flex-shrink: 0;
+  max-width: 100%;
+  overflow: hidden;
+  font-weight: 500;
+  letter-spacing: var(--tracking-title);
+  text-overflow: ellipsis;
+}
+
+.home-project-branch {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-family: var(--font-code);
+  font-size: var(--text-11);
+  line-height: var(--leading-14);
+  letter-spacing: var(--tracking-display);
+  text-overflow: clip;
+}
+
+/* V-18: `⋯` after the state slot, on hover, focus, selection, and while its menu is open. */
+.home-row-menu {
+  display: none;
+  flex-shrink: 0;
+  margin: 0 -4px 0 -2px;
+}
+
+.home-project-row:hover .home-row-menu,
+.home-project-row:focus-within .home-row-menu,
+.home-project-row[aria-selected="true"] .home-row-menu,
+.home-row-menu:has([aria-expanded="true"]) {
+  display: flex;
+}
+
+/* 5. Folders and boards under an expanded project */
+.home-tree-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 16px;
+  color: var(--color-muted);
+}
+
+.home-tree-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-tree-trailing {
+  flex-shrink: 0;
+  width: 24px;
+  color: var(--color-muted);
+  font-size: var(--text-12);
+  text-align: right;
+}
+
+.home-tree-note {
+  display: flex;
+  align-items: center;
+  height: var(--row);
+  padding-left: 42px;
+  color: var(--color-muted);
+}
+
+/* 6. Footer */
+.home-sidebar-footer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border-shell);
+}
+
+.home-footer-add {
+  flex: 1;
+}

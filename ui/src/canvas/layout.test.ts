@@ -1,10 +1,22 @@
 import { describe, expect, it } from "vitest";
 import type { CardView, CodeText } from "../ipc/generated";
 import { fixture } from "../test/engine";
-import { estimateText } from "./measure";
-import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, FOLLOW_GAP, HEADER_PORT, STACK_GAP, arrange, followPlacement, reflow } from "./layout";
+import { CODE_FONT, estimateText } from "./measure";
+import {
+  CARD_MAX_WIDTH,
+  CARD_MIN_WIDTH,
+  ENTRANCE_MAX_WIDTH,
+  ENTRANCE_MIN_WIDTH,
+  FOLLOW_GAP,
+  HEADER_PORT,
+  STACK_GAP,
+  arrange,
+  callerPlacement,
+  followPlacement,
+  reflow,
+} from "./layout";
 import { placeHandlers } from "./placement";
-import { blockCardWidth, codeContentWidth, entranceCardWidth } from "./sizing";
+import { blockCardWidth, codeContentWidth, entranceCardWidth, gutterWidth, headerWidth } from "./sizing";
 
 const createOrder = fixture("card", "card_create_order") as Extract<CardView, { type: "block" }>;
 const code = (createOrder.code?.source.state === "current" ? createOrder.code.source : null) as CodeText;
@@ -34,22 +46,33 @@ describe("following", () => {
 });
 
 describe("card sizing", () => {
-  it("keeps every card between 360 and 880 px wide", () => {
-    expect(blockCardWidth({ name: "f", location: "a.ts:1", body: 10 }, estimateText)).toBe(CARD_MIN_WIDTH);
-    expect(blockCardWidth({ name: "f", location: "a.ts:1", body: 5000 }, estimateText)).toBe(CARD_MAX_WIDTH);
-    expect(entranceCardWidth("x", ["y".repeat(400)], [], estimateText)).toBe(CARD_MAX_WIDTH);
-    expect(entranceCardWidth("x", [], [], estimateText)).toBe(CARD_MIN_WIDTH);
+  it("keeps block cards between 280 and 880 px wide, and entrance cards between 200 and 320 (V-57)", () => {
+    expect(blockCardWidth({ name: "f", location: "a.ts", monogram: false, body: 10 }, estimateText)).toBe(CARD_MIN_WIDTH);
+    expect(blockCardWidth({ name: "f", location: "a.ts", monogram: false, body: 5000 }, estimateText)).toBe(CARD_MAX_WIDTH);
+    const entrance = (handlers: string[]) => entranceCardWidth({ method: "POST", title: "/orders", location: "src/routes/orders.ts:22", handlers }, estimateText);
+    expect(entrance([])).toBeGreaterThanOrEqual(ENTRANCE_MIN_WIDTH);
+    expect(entrance(["x".repeat(200)])).toBe(ENTRANCE_MAX_WIDTH);
+    expect(entranceCardWidth({ method: null, title: "a", location: "", handlers: [] }, estimateText)).toBe(ENTRANCE_MIN_WIDTH);
   });
 
-  it("sizes a Code card to its longest line, with room for a port's leader", () => {
-    const plain = codeContentWidth(code, new Set(), estimateText);
+  it("sizes a Code card to its longest line after a gutter of at least 40 px, and a monogram widens the header", () => {
+    const width = codeContentWidth(code, estimateText);
     const widest = Math.max(...code.lines.map((line) => line.end - line.start));
-    expect(plain).toBeGreaterThan(widest * estimateText("0", '12.5px "JetBrains Mono Variable"'));
-    const withPort = codeContentWidth(code, new Set(code.lines.map((line) => line.number)), estimateText);
-    expect(withPort).toBeGreaterThan(plain);
-    const width = blockCardWidth({ name: "createOrder", location: "routes/orders.ts:25", body: plain }, estimateText);
-    expect(width).toBeGreaterThanOrEqual(CARD_MIN_WIDTH);
-    expect(width).toBeLessThanOrEqual(CARD_MAX_WIDTH);
+    expect(width).toBeGreaterThan(widest * estimateText("0", CODE_FONT) + 40);
+    expect(gutterWidth(2, estimateText)).toBe(40);
+    expect(gutterWidth(5, estimateText)).toBeGreaterThan(40);
+    const plain = headerWidth({ name: "createOrder", location: "orders/create.ts", monogram: false }, estimateText);
+    expect(headerWidth({ name: "createOrder", location: "orders/create.ts", monogram: true }, estimateText)).toBe(plain + 28);
+  });
+});
+
+describe("Show callers", () => {
+  it("puts each caller's right edge 80 px left of the card, stacked from its top", () => {
+    const card = { x: 1000, y: 100, width: 400, height: 300 };
+    expect(callerPlacement(card, [{ width: 300, height: 200 }, { width: 500, height: 100 }])).toEqual([
+      [1000 - FOLLOW_GAP - 300, 100],
+      [1000 - FOLLOW_GAP - 500, 100 + 200 + STACK_GAP],
+    ]);
   });
 });
 

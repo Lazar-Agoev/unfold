@@ -1,24 +1,11 @@
-/* The board tab: the canvas fills it; the bottom bar floats in its corner without covering cards (Fit leaves room). */
-
-.board-tab {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background: var(--color-canvas);
-  outline: none;
-}
+/* The page's canvas (02 §4.7, 10 §5.5–5.6, V-34): the stage ground, arrows, drawn links and their labels. */
 
 .board-canvas {
   --xy-background-color: var(--color-canvas);
 }
 
-.board-canvas .react-flow__edge-path.board-arrow {
-  stroke: var(--color-accent);
-  stroke-width: 1.5;
-}
-
-.board-canvas .react-flow__edge-path.board-arrow.dashed { stroke-dasharray: 5 4; }
+.board-canvas.linking .react-flow__pane,
+.board-canvas.linking .board-card { cursor: crosshair; }
 
 /* Nodes size themselves; React Flow's default node chrome is not used. */
 .board-canvas .react-flow__node-card {
@@ -29,112 +16,74 @@
   cursor: default;
 }
 
-.board-empty {
+/* Arrows: opened calls in the arrow color, an entrance to its handler in the gray contour. */
+.board-canvas .react-flow__edge.board-arrow-edge { pointer-events: none; }
+.board-arrow { color: var(--color-arrow); }
+.board-arrow.handler { color: var(--color-contour); }
+
+.board-arrow-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.board-arrow-line.dashed { stroke-dasharray: 5 4; }
+.board-arrow-head { fill: currentColor; }
+
+/* Link labels sit over the cards, so a label between close cards stays readable. */
+.board-canvas .react-flow__edgelabel-renderer { z-index: 1; }
+
+/* Drawn links: dashed; the selected one in the accent at 1.75px. */
+.board-link { color: var(--color-contour); cursor: pointer; }
+.board-link.selected { color: var(--color-accent); }
+
+.board-link-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.board-link.selected .board-link-line { stroke-width: 1.75; }
+
+.board-link-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+}
+
+.board-link-head { fill: currentColor; }
+
+.board-link-start {
+  fill: var(--color-surface);
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.board-link-label {
   position: absolute;
-  top: 45%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: var(--color-muted);
-  font-size: var(--text-13);
-  pointer-events: none;
-}
-
-.board-bar {
-  position: absolute;
-  left: 16px;
-  bottom: 14px;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  max-width: calc(100% - 32px);
-  padding: 4px 6px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-card);
-  background: var(--color-surface);
-  box-shadow: 0 1px 2px rgb(20 24 40 / 0.06);
-}
-
-.board-back,
-.board-arrange {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 24px;
-  padding: 0 8px;
-  border-radius: var(--radius-control);
-  font: 500 12px/16px var(--font-ui);
-  color: var(--color-text);
-}
-
-.board-back:hover:not(:disabled),
-.board-arrange:hover:not(:disabled) { background: var(--color-hover); }
-
-.board-trail {
-  min-width: 0;
-  padding: 0 8px;
-  border-left: 1px solid var(--color-border);
-  border-right: 1px solid var(--color-border);
-}
-
-.board-trail ol {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  overflow: hidden;
-}
-
-.board-trail li { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-.board-trail-separator { color: var(--color-contour); }
-.board-trail button { font: 12px/16px var(--font-code); color: var(--color-muted); }
-.board-trail button:hover { color: var(--color-accent-text); }
-.board-trail li.current button { font-weight: 600; color: var(--color-text); }
-
-.board-zoom { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
-.board-zoom-divider { width: 1px; height: 16px; margin: 0 4px; background: var(--color-border); }
-
-/* Notices over the top edge of the board: an outside edit to resolve, or a save to retry. */
-.board-banner {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  z-index: 6;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  max-width: calc(100% - 32px);
-  padding: 5px 6px 5px 12px;
-  transform: translateX(-50%);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-card);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-segment);
-  font-size: var(--text-12);
-  color: var(--color-text);
-}
-
-.board-banner.conflict {
-  border-color: var(--color-warn);
-  background: var(--color-warn-fill);
-}
-
-.board-banner.conflict svg { flex-shrink: 0; color: var(--color-warn); }
-.board-banner.quiet { color: var(--color-muted); box-shadow: none; }
-.board-banner-text { min-width: 0; }
-
-.board-banner-action {
-  flex-shrink: 0;
   height: 24px;
-  padding: 0 10px;
+  padding: 0 8px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   background: var(--color-surface);
-  font: 500 12px/16px var(--font-ui);
-  color: var(--color-text);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  white-space: nowrap;
+  pointer-events: all;
 }
 
-.board-banner-action:hover:not(:disabled) { background: var(--color-hover); }
-.board-banner-action:disabled { opacity: 0.6; }
+.board-link-text { font-weight: 500; color: var(--color-text); }
+.board-link-author { color: var(--color-muted); }
+
+.board-link-label.selected {
+  border-color: var(--color-accent);
+  background: var(--color-selection);
+  box-shadow: var(--shadow-ring);
+}
+
+.board-link-label.selected .board-link-text,
+.board-link-label.selected .board-link-author { color: var(--color-accent-text); }

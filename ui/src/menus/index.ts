@@ -1,8 +1,9 @@
 /**
- * Menus and the project-level actions (UI plan §2, U5): the board menu, the Share menu, the project
- * menu, and the worktree switcher.
- *
- * Placeholder bodies from the frame (U1c) with the plan's signatures; U5 replaces them.
+ * Menus and the project-level actions (UI plan §2, U5): the board menu and its Share menu, the project
+ * menu, the branch and worktree switcher, and the actions behind them (registered once by the frame).
  */
 
-export { BoardMenuButton, ProjectMenuButton, WorktreeButton, boardMenuEntries, projectMenuEntries, shareMenuEntries, useProjectActions } from "./menus";
+export { BoardMenuButton, boardMenuEntries, shareMenuEntries } from "./boardMenu";
+export { ProjectMenuButton, projectMenuEntries } from "./projectMenu";
+export { useProjectActions } from "./projectActions";
+export { WorktreeButton } from "./WorktreeButton";

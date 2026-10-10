@@ -1,0 +1,225 @@
+/* Health and activity (11), and Health rows wherever they show (06's preview problems). */
+
+.home-health {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.home-health-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 30px;
+}
+
+.home-health-back {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: var(--color-muted);
+  font-size: var(--text-13);
+  line-height: var(--leading-16);
+}
+
+.home-health-back:hover {
+  color: var(--color-text);
+}
+
+.home-health-list {
+  border-top: 1px solid var(--color-border);
+}
+
+.home-health-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 63px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.home-health-row-inline {
+  height: 49px;
+  padding: 10px 4px;
+}
+
+.home-health-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--color-muted);
+}
+
+.home-health-icon-review {
+  color: var(--color-review);
+}
+
+.home-health-words {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.home-health-row-inline .home-health-words {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-health-title {
+  overflow: hidden;
+  font-size: var(--text-13);
+  line-height: var(--leading-20);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-health-row-inline .home-health-title {
+  flex-shrink: 0;
+  font-weight: 400;
+}
+
+.home-health-explanation {
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-health-location {
+  flex-shrink: 0;
+  width: 240px;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-family: var(--font-code);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-health-row-inline .home-health-location {
+  font-family: var(--font-ui);
+}
+
+.home-health-action {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  width: 96px;
+}
+
+.home-health-boards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.home-health-boards-label {
+  padding-left: 4px;
+}
+
+.home-health-quiet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 4px;
+  color: var(--color-muted);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+}
+
+.home-health-quiet .icon {
+  color: var(--color-faint);
+}
+
+/* Activity */
+.home-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.home-activity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--text-13);
+  line-height: var(--leading-16);
+}
+
+.home-activity-note {
+  color: var(--color-muted);
+  font-size: var(--text-12);
+}
+
+.home-log {
+  display: flex;
+  flex-direction: column;
+  overflow: clip;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-tab);
+}
+
+.home-log-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 32px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-13);
+  line-height: var(--leading-16);
+  white-space: nowrap;
+}
+
+.home-log-row:last-child {
+  border-bottom: none;
+}
+
+.home-log .home-log-head {
+  height: 30px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-sidebar);
+  color: var(--color-muted);
+  font-size: var(--text-12);
+  font-weight: 500;
+}
+
+.home-log-time,
+.home-log-what {
+  flex-shrink: 0;
+  width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-log-files {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.home-log-duration {
+  flex-shrink: 0;
+  width: 80px;
+  text-align: right;
+}
+
+.home-log-row:not(.home-log-head) .home-log-files,
+.home-log-row:not(.home-log-head) .home-log-duration {
+  font-family: var(--font-code);
+  font-size: var(--text-12);
+}
+
+.home-log-row:not(.home-log-head) .home-log-duration {
+  color: var(--color-muted);
+}

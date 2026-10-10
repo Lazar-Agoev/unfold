@@ -38,7 +38,7 @@ function sameShortcuts(a: readonly string[], b: readonly string[]): boolean {
 }
 
 /** The overrides with `id` bound to `shortcut` (`""` for none); binding the default drops the override. */
-export function withBinding(
+function withBinding(
   overrides: KeyBindingOverrides,
   id: WellKnownActionId,
   shortcut: string,
@@ -54,7 +54,7 @@ export function withBinding(
 
 const hasModifier = (event: KeyboardEvent) => event.metaKey || event.ctrlKey || event.altKey || event.shiftKey;
 
-export interface KeyboardSectionProps {
+interface KeyboardSectionProps {
   readonly overrides: KeyBindingOverrides;
   readonly conflicts: ReadonlyMap<WellKnownActionId, readonly WellKnownActionId[]>;
   readonly platform: Platform;
@@ -90,7 +90,7 @@ export function KeyboardSection({ overrides, conflicts, platform, onChange }: Ke
   return (
     <section className="preferences-keys" aria-labelledby="preferences-keys-title">
       <div className="preferences-row">
-        <h3 className="preferences-label preferences-heading" id="preferences-keys-title">
+        <h3 className="preferences-caps" id="preferences-keys-title">
           Keyboard
         </h3>
         <Button

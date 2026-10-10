@@ -85,10 +85,10 @@ function place(target: PageTarget, placement: PendingPlacement, rows: readonly (
 }
 
 /** Places the handlers of a just-opened entrance once its card is drawn (while the page is shown). */
-export function usePendingPlacement(target: PageTarget, active: boolean): void {
+export function usePendingPlacement(target: PageTarget): void {
   const placement = usePageView(target, (view) => view.placement);
   useEffect(() => {
-    if (!placement || !active) {
+    if (!placement) {
       return undefined;
     }
     const started = Date.now();
@@ -111,5 +111,5 @@ export function usePendingPlacement(target: PageTarget, active: boolean): void {
         clearTimeout(timer);
       }
     };
-  }, [placement, active, target]);
+  }, [placement, target]);
 }

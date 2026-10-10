@@ -4,9 +4,12 @@
  * positions and measured sizes, so they are deterministic and testable without a DOM.
  */
 
-/** Cards size to their content between these widths (architecture §10.2). */
-export const CARD_MIN_WIDTH = 360;
+/** Block cards size to their content between these widths (V-57). */
+export const CARD_MIN_WIDTH = 280;
 export const CARD_MAX_WIDTH = 880;
+/** Entrance cards are narrower: their header, location, and handler names (V-57). */
+export const ENTRANCE_MIN_WIDTH = 200;
+export const ENTRANCE_MAX_WIDTH = 320;
 /** A followed card opens this far to the right of the card it was followed from. */
 export const FOLLOW_GAP = 80;
 /** The vertical center of a card's header, where arrows attach and a followed card's header aligns. */
@@ -38,11 +41,12 @@ export interface PlacedCard {
 
 /** A size for a card that hasn't been measured yet. */
 export function fallbackSize(entrance: boolean): Size {
-  return entrance ? { width: CARD_MIN_WIDTH, height: 220 } : { width: 520, height: 320 };
+  return entrance ? { width: 240, height: 160 } : { width: 520, height: 320 };
 }
 
-export function clampCardWidth(width: number): number {
-  return Math.min(CARD_MAX_WIDTH, Math.max(CARD_MIN_WIDTH, Math.ceil(width)));
+/** A width clamped to `min`–`max` (default: a block card's), rounded up to whole pixels. */
+export function clampCardWidth(width: number, min = CARD_MIN_WIDTH, max = CARD_MAX_WIDTH): number {
+  return Math.min(max, Math.max(min, Math.ceil(width)));
 }
 
 /**
@@ -86,6 +90,19 @@ export function reflow(
  */
 export function followPlacement(source: Rect, lineOffset: number): [number, number] {
   return [Math.round(source.x + source.width + FOLLOW_GAP), Math.round(source.y + lineOffset - HEADER_PORT)];
+}
+
+/**
+ * Where Show callers puts a card's callers: a column `FOLLOW_GAP` to its left, each caller's right edge
+ * there, stacked from the card's top (redesign §6: "adds the callers' cards to its left").
+ */
+export function callerPlacement(card: Rect, sizes: readonly Size[]): [number, number][] {
+  let y = card.y;
+  return sizes.map((size) => {
+    const at: [number, number] = [Math.round(card.x - FOLLOW_GAP - size.width), Math.round(y)];
+    y += size.height + STACK_GAP;
+    return at;
+  });
 }
 
 /** Where a card opened from the sidebar goes: to the right of everything, level with the top card. */

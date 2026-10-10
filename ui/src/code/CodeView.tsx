@@ -1,7 +1,7 @@
 /**
- * The Code view of a card (architecture §10.3): the exact verified slice with syntax colors,
- * compound blocks tinted with indent guides and gutter folds, calls as links, board groups on a
- * magenta rail, and a port at the end of each calling line that has an arrow.
+ * The Code view of a card (architecture §10.3, 02 §4.3): the exact verified slice with syntax colors in
+ * 20px rows, folds from the gutter, calls as links, board groups on a magenta rail, and a port at the
+ * card's edge for each calling line that has an arrow (the row gets the step fill).
  *
  * The component only lays out the reader's `CodeText` model; it never re-slices or re-parses.
  * Ports are drawn by the caller (`renderPorts`), so the renderer stays independent of the canvas.
@@ -9,6 +9,7 @@
 
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import type { CallLink as CallLinkModel, CodeLine, CodeText as CodeTextModel, Group, Language, OutlineItem } from "../ipc/generated";
+import { Icon } from "../icons";
 import { CallLink } from "./CallLink";
 import { CodeText } from "./CodeText";
 import { foldHiding, lineAt, outlineChildren } from "./outline";
@@ -52,8 +53,6 @@ export interface CodeViewProps {
 
 const EMPTY_SET: ReadonlySet<string> = new Set();
 const PENDING = "\u0000pending";
-/** The fold column and the space after the line numbers, in pixels (code.css keeps them in step). */
-const GUTTER_PX = 24;
 
 interface RowInfo {
   readonly line: CodeLine;
@@ -214,12 +213,7 @@ export function CodeView(props: CodeViewProps) {
     if (!ids || ids.length === 0 || !props.renderPorts) {
       return null;
     }
-    return (
-      <>
-        <span className="code-leader" aria-hidden="true" />
-        {props.renderPorts(ids)}
-      </>
-    );
+    return props.renderPorts(ids);
   };
   const select = (key: string | undefined) => (event: MouseEvent) => {
     if (key !== undefined && props.onSelect) {
@@ -227,25 +221,9 @@ export function CodeView(props: CodeViewProps) {
       props.onSelect(key);
     }
   };
+  // The line number, right-aligned in the gutter; a fold's chevron sits in the space after it.
   const gutter = (number: number, chevron: { key: string; open: boolean } | undefined) => (
-    <>
-      <span className="code-fold">
-        {chevron && props.onToggleFold ? (
-          <button
-            type="button"
-            tabIndex={-1}
-            className="code-chevron nodrag"
-            aria-label={`${chevron.open ? "Fold" : "Unfold"} line ${number}`}
-            aria-expanded={chevron.open}
-            onClick={(event) => {
-              event.stopPropagation();
-              props.onToggleFold?.(chevron.key);
-            }}
-          >
-            {chevron.open ? "▾" : "▸"}
-          </button>
-        ) : null}
-      </span>
+    <span className="code-gutter">
       <span
         className="code-number nodrag"
         onMouseDown={
@@ -263,7 +241,22 @@ export function CodeView(props: CodeViewProps) {
       >
         {number}
       </span>
-    </>
+      {chevron && props.onToggleFold ? (
+        <button
+          type="button"
+          tabIndex={-1}
+          className={`code-chevron nodrag${chevron.open ? "" : " folded"}`}
+          aria-label={`${chevron.open ? "Fold" : "Unfold"} line ${number}`}
+          aria-expanded={chevron.open}
+          onClick={(event) => {
+            event.stopPropagation();
+            props.onToggleFold?.(chevron.key);
+          }}
+        >
+          <Icon name={chevron.open ? "chevron-down-small" : "chevron-right-small"} size={10} />
+        </button>
+      ) : null}
+    </span>
   );
   const isSelectedLine = (number: number) => selected !== undefined && number >= selected.startLine && number <= selected.endLine;
 
@@ -339,14 +332,9 @@ export function CodeView(props: CodeViewProps) {
     if (folds.has(item.key)) {
       return foldRow(item);
     }
-    const first = rows.get(item.startLine);
-    const indent = first ? Math.max(0, first.line.indent - first.skip) : 0;
     return (
-      <div key={`b${item.key}`} className={`code-block compound${props.selectedKey === item.key ? " selected" : ""}`} data-block={item.key}>
+      <div key={`b${item.key}`} className={`code-block${props.selectedKey === item.key ? " selected" : ""}`} data-block={item.key}>
         {range(item.startLine, item.endLine, children.get(index) ?? [], false, [...chevrons, item.key])}
-        {item.endLine > item.startLine + 1 ? (
-          <span className="code-indent-guide" aria-hidden="true" style={{ left: `calc(${GUTTER_PX}px + ${digits + 1 + indent}ch)` }} />
-        ) : null}
       </div>
     );
   }
@@ -435,7 +423,7 @@ export function CodeView(props: CodeViewProps) {
               }
             }}
           >
-            {group.collapsed ? "▸" : "▾"}
+            <Icon name={group.collapsed ? "chevron-right-small" : "chevron-down-small"} size={10} />
           </button>
           {renaming === group.id ? (
             <input
@@ -551,7 +539,7 @@ export function CodeView(props: CodeViewProps) {
       className={`code-view${drag ? " gutter-dragging" : ""}${props.dimmed ? " dimmed" : ""}`}
       role="group"
       aria-label={`Source of ${props.label}`}
-      style={{ ["--code-digits" as string]: `${digits + 1}ch` }}
+      style={{ ["--code-digits" as string]: `${digits}ch` }}
     >
       {range(firstLine, lastLine, children.get(-1) ?? [], false, [])}
     </div>

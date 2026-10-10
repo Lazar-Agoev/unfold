@@ -1,9 +1,16 @@
-/** Pieces every card shares: ports, the fold toggle, the kind icon, and the quiet description line. */
+/**
+ * Pieces every card shares (02 §4, 10 §5): the ports arrows and links attach to (invisible: no port dots
+ * are drawn), the kind glyph, the description strip (edited in place on double-click), and the note
+ * line a card body shows while it loads or when its source is unavailable.
+ */
 
 import { Handle, Position } from "@xyflow/react";
-import { Box, Braces, FileCode, SquareFunction } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { Icon } from "../../icons";
 import type { BlockKind, Description } from "../../ipc/generated";
+import { useAuthor } from "../../state/author";
+import { describeCard, type PageTarget } from "../../state/boards";
+import { LINK_SIDES } from "../linkSides";
 
 /** The handle every arrow into a card attaches to: its header's left edge. */
 export const TARGET_HANDLE = "in";
@@ -18,52 +25,98 @@ export function HeaderPorts({ ids }: { readonly ids: readonly string[] }) {
   return ids.length > 0 ? <span className="card-header-ports">{renderPorts(ids)}</span> : null;
 }
 
-export function TargetHandle() {
-  return <Handle id={TARGET_HANDLE} type="target" position={Position.Left} isConnectable={false} className="card-target" />;
-}
+const SIDE_POSITIONS = { left: Position.Left, right: Position.Right, top: Position.Top, bottom: Position.Bottom } as const;
 
-export function FoldToggle({ folded, label, onToggle }: { readonly folded: boolean; readonly label: string; readonly onToggle: () => void }) {
+/** The arrow target at the header, and a source and a target handle on each side for drawn links. */
+export function CardHandles() {
   return (
-    <button
-      type="button"
-      className={`card-fold nodrag${folded ? " folded" : ""}`}
-      aria-label={`${folded ? "Unfold" : "Fold"} ${label}`}
-      aria-expanded={!folded}
-      title={folded ? "Unfold card" : "Fold to its title"}
-      onClick={(event) => {
-        event.stopPropagation();
-        onToggle();
-      }}
-      onDoubleClick={(event) => {
-        event.stopPropagation();
-      }}
-    >
-      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-        <path d={folded ? "M3.5 2 L6.5 5 L3.5 8" : "M2 3.5 L5 6.5 L8 3.5"} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </button>
+    <>
+      <Handle id={TARGET_HANDLE} type="target" position={Position.Left} isConnectable={false} className="card-target" />
+      {LINK_SIDES.map((side) => (
+        <span key={side} className={`card-link-handles ${side}`}>
+          <Handle id={`link-out-${side}`} type="source" position={SIDE_POSITIONS[side]} isConnectable={false} className="card-link-handle" />
+          <Handle id={`link-in-${side}`} type="target" position={SIDE_POSITIONS[side]} isConnectable={false} className="card-link-handle" />
+        </span>
+      ))}
+    </>
   );
 }
 
 const FUNCTION_KINDS: ReadonlySet<BlockKind> = new Set(["function", "method", "constructor", "getter", "setter"]);
 
-export function KindIcon({ kind }: { readonly kind: BlockKind | null }) {
-  const Icon = kind === null ? Braces : FUNCTION_KINDS.has(kind) ? SquareFunction : kind === "class" ? Box : kind === "file" ? FileCode : Braces;
+/** `ƒ` for a function (accent on the selected card), `{}` for any other block (02 §4). */
+export function CardGlyph({ kind }: { readonly kind: BlockKind | null }) {
   return (
-    <span className="card-kind" title={kind ?? undefined}>
-      <Icon size={14} aria-hidden="true" />
+    <span className="card-glyph" title={kind ?? undefined} aria-hidden="true">
+      {kind === null || FUNCTION_KINDS.has(kind) ? "ƒ" : "{}"}
     </span>
   );
 }
 
-/** One quiet line of authored text with a **more** link (architecture §10.7). */
-export function DescriptionLine({ description }: { readonly description: Description | undefined }) {
+/** A quiet line in a card body: loading, or (with `warn`) why the code isn't shown. */
+export function CardNote({ warn = false, children }: { readonly warn?: boolean; readonly children: ReactNode }) {
+  return (
+    <p className={`card-note${warn ? " warn" : ""}`}>
+      {warn ? <Icon name="warning-triangle" size={14} /> : null}
+      {children}
+    </p>
+  );
+}
+
+/**
+ * The card's description (02 §4.2): one line with **more**, in the authored color. Double-click edits
+ * it in place (Enter saves, Shift+Enter breaks the line, Escape keeps the old text); clearing it removes it.
+ */
+export function DescriptionStrip({ target, cardId, description }: { readonly target: PageTarget; readonly cardId: string; readonly description: Description | undefined }) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const author = useAuthor();
   if (!description) {
     return null;
   }
+  if (editing && author !== null) {
+    const finish = (text: string | null) => {
+      setEditing(false);
+      if (text !== null && text.trim() !== description.text) {
+        describeCard(target, cardId, text.trim(), author);
+      }
+    };
+    return (
+      <div className="card-description editing nodrag nopan">
+        <textarea
+          autoFocus
+          className="card-description-input"
+          aria-label="Description"
+          defaultValue={description.text}
+          rows={Math.min(6, Math.max(2, description.text.split("\n").length))}
+          onClick={(event) => {
+            event.stopPropagation();
+          }}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              finish(event.currentTarget.value);
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              finish(null);
+            }
+          }}
+          onBlur={(event) => {
+            finish(event.currentTarget.value);
+          }}
+        />
+      </div>
+    );
+  }
   return (
-    <div className={`card-description nodrag${open ? " open" : ""}`}>
+    <div
+      className={`card-description nodrag${open ? " open" : ""}`}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        setEditing(true);
+      }}
+    >
       <p title={open ? undefined : description.text}>{description.text}</p>
       <button
         type="button"

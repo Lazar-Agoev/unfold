@@ -1,11 +1,11 @@
 /**
  * A page's canvas (React Flow): cards as custom nodes at their reflowed positions, one memoized arrow
- * per opened call occurrence, and a camera that pans and zooms without changing what any card shows.
- * No minimap and nothing over the canvas. Large pages render only the cards in view.
+ * per opened call occurrence, the page's drawn links (V-58), and a camera that pans and zooms without
+ * changing what any card shows. No minimap. Large pages render only the cards in view. While a link is
+ * being drawn, the next card clicked ends it; Escape or a click on the canvas cancels.
  */
 
 import {
-  MarkerType,
   ReactFlow,
   getViewportForBounds,
   useReactFlow,
@@ -14,9 +14,10 @@ import {
   type OnMove,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import type { Card } from "../ipc/generated";
+import type { Card, Link } from "../ipc/generated";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useContextMenu } from "../components";
+import { authorName } from "../code/text";
 import {
   displayedRects,
   editPage,
@@ -24,9 +25,11 @@ import {
   getOpenBoard,
   getPageView,
   moveCards,
+  removeLink,
   requestCardFocus,
   select,
   setCamera,
+  setLinking,
   updatePageView,
   usePageView,
   type PageTarget,
@@ -36,19 +39,23 @@ import type { BoardArrows } from "./useBoardArrows";
 import { CardNode, type CardNodeType } from "./cards/CardNode";
 import { TARGET_HANDLE } from "./cards/parts";
 import { boundsOf, fallbackSize, reflow, type Rect } from "./layout";
+import { LinkEdge, type LinkEdgeType } from "./LinkEdge";
+import { linkEnds } from "./linkSides";
 import { usePendingPlacement } from "./placement";
 import "./canvas.css";
 
+type CanvasEdge = ArrowEdgeType | LinkEdgeType;
+
 const nodeTypes = { card: CardNode };
-const edgeTypes = { arrow: ArrowEdge };
+const edgeTypes = { arrow: ArrowEdge, link: LinkEdge };
 const NO_PORTS: readonly string[] = [];
-/** Fit leaves room for the bottom bar, so nothing covers a card. */
-export const FIT_PADDING = { top: "32px", right: "40px", bottom: "72px", left: "40px" } as const;
+const NO_LINKS: readonly Link[] = [];
+/** Fit leaves room for the dock at the bottom, so nothing covers a card. */
+export const FIT_PADDING = { top: "32px", right: "40px", bottom: "96px", left: "40px" } as const;
 export const MIN_ZOOM = 0.05;
 export const MAX_ZOOM = 1.5;
 /** Above this many cards, only the cards in view render. */
 const VISIBLE_ONLY_ABOVE = 40;
-const ARROW_MARKER = { type: MarkerType.ArrowClosed, width: 16, height: 16, color: "var(--color-accent)" } as const;
 
 /** React Flow error 008 (an edge whose port isn't measured yet) is expected while cards load. */
 function onFlowError(code: string, message: string): void {
@@ -60,21 +67,24 @@ function onFlowError(code: string, message: string): void {
 export interface BoardCanvasProps {
   /** The page shown (a stable object while it is the same page). */
   readonly target: PageTarget;
-  readonly active: boolean;
   /** The page's cards (the document's list). */
   readonly cards: readonly Card[];
+  /** The page's drawn links. */
+  readonly links: readonly Link[] | undefined;
   /** The arrows and ports derived from the cards' models (`useBoardArrows`, computed by the tab). */
   readonly boardArrows: BoardArrows;
 }
 
-export function BoardCanvas({ target, active, cards, boardArrows }: BoardCanvasProps) {
-  const flow = useReactFlow<CardNodeType, ArrowEdgeType>();
+export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: BoardCanvasProps) {
+  const flow = useReactFlow<CardNodeType, CanvasEdge>();
   const sizes = usePageView(target, (view) => view.sizes);
   const focus = usePageView(target, (view) => view.focus);
+  const linking = usePageView(target, (view) => view.linking !== null);
+  const selectedLink = usePageView(target, ({ selection }) => (selection.kind === "link" ? selection.linkId : null));
   const [initialCamera] = useState(() => getPageView(target).camera);
 
   const { arrows, ports, settled } = boardArrows;
-  usePendingPlacement(target, active);
+  usePendingPlacement(target);
   const paneMenu = useContextMenu("Board actions");
 
   // Positions: saved positions reflowed by measured sizes; a dragged card follows the pointer.
@@ -124,7 +134,7 @@ export function BoardCanvas({ target, active, cards, boardArrows }: BoardCanvasP
   }, [cards, display, drag, ports, target, nodeCache]);
 
   const [edgeCache] = useState(() => new Map<string, ArrowEdgeType>());
-  const edges = useMemo(() => {
+  const arrowEdges = useMemo(() => {
     const live = new Set<string>();
     const list = arrows.map((arrow) => {
       const cached = edgeCache.get(arrow.id);
@@ -135,10 +145,10 @@ export function BoardCanvas({ target, active, cards, boardArrows }: BoardCanvasP
         sourceHandle: arrow.sourceHandle,
         target: arrow.target,
         targetHandle: TARGET_HANDLE,
-        markerEnd: ARROW_MARKER,
+        className: "board-arrow-edge",
         focusable: false,
         selectable: false,
-        data: { dashed: arrow.dashed, label: arrow.kind },
+        data: { dashed: arrow.dashed, handler: arrow.kind === "handler" },
       };
       edgeCache.set(arrow.id, edge);
       live.add(arrow.id);
@@ -151,6 +161,77 @@ export function BoardCanvas({ target, active, cards, boardArrows }: BoardCanvasP
     }
     return list;
   }, [arrows, edgeCache]);
+
+  // Links leave and enter by the sides facing each other, so they follow the cards as they move.
+  const [linkCache] = useState(() => new Map<string, LinkEdgeType>());
+  const linkEdges = useMemo(() => {
+    const rectOf = (id: string): Rect | undefined => {
+      const at = drag?.id === id ? drag : display.get(id);
+      return at ? { x: at.x, y: at.y, ...sizeOf(id) } : undefined;
+    };
+    const live = new Set<string>();
+    const list = links.flatMap((link): LinkEdgeType[] => {
+      const from = rectOf(link.from);
+      const to = rectOf(link.to);
+      if (!from || !to) {
+        return [];
+      }
+      const ends = linkEnds(from, to);
+      const label = link.label?.text ?? null;
+      const author = link.label ? authorName(link.label.author) : null;
+      const selected = link.id === selectedLink;
+      const cached = linkCache.get(link.id);
+      const edge: LinkEdgeType =
+        cached?.source === link.from &&
+        cached.target === link.to &&
+        cached.sourceHandle === `link-out-${ends.from}` &&
+        cached.targetHandle === `link-in-${ends.to}` &&
+        cached.data?.label === label &&
+        cached.data.author === author &&
+        cached.data.selected === selected
+          ? cached
+          : {
+              id: link.id,
+              type: "link",
+              source: link.from,
+              sourceHandle: `link-out-${ends.from}`,
+              target: link.to,
+              targetHandle: `link-in-${ends.to}`,
+              className: "board-link-edge",
+              focusable: false,
+              selectable: false,
+              data: { target, selected, label, author },
+            };
+      linkCache.set(link.id, edge);
+      live.add(link.id);
+      return [edge];
+    });
+    for (const id of [...linkCache.keys()]) {
+      if (!live.has(id)) {
+        linkCache.delete(id);
+      }
+    }
+    return list;
+  }, [links, display, drag, sizeOf, selectedLink, target, linkCache]);
+  const edges = useMemo((): CanvasEdge[] => [...arrowEdges, ...linkEdges], [arrowEdges, linkEdges]);
+
+  // Escape ends link drawing (before anything else hears it).
+  useEffect(() => {
+    if (!linking) {
+      return undefined;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setLinking(target, null);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [linking, target]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<CardNodeType>[]) => {
@@ -197,7 +278,7 @@ export function BoardCanvas({ target, active, cards, boardArrows }: BoardCanvasP
   // Focus requests: once the cards they name have loaded and been measured, center or fit them.
   const handled = useRef<number | null>(null);
   useEffect(() => {
-    if (!focus || !active || width === 0 || height === 0 || handled.current === focus.seq) {
+    if (!focus || width === 0 || height === 0 || handled.current === focus.seq) {
       return undefined;
     }
     // Fit without names waits for every card, so a board opened in a new window fits what it shows.
@@ -230,11 +311,11 @@ export function BoardCanvas({ target, active, cards, boardArrows }: BoardCanvasP
     return () => {
       clearTimeout(timer);
     };
-  }, [focus, active, width, height, settled, sizes, target, flow, cards]);
+  }, [focus, width, height, settled, sizes, target, flow, cards]);
 
   return (
     <>
-    <ReactFlow<CardNodeType, ArrowEdgeType>
+    <ReactFlow<CardNodeType, CanvasEdge>
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}
@@ -243,16 +324,33 @@ export function BoardCanvas({ target, active, cards, boardArrows }: BoardCanvasP
       onNodeDragStop={onNodeDragStop}
       onMoveEnd={onMoveEnd}
       onPaneClick={() => {
+        if (getPageView(target).linking) {
+          setLinking(target, null);
+          return;
+        }
         select(target, { kind: "none" });
+      }}
+      onEdgeClick={(_event, edge) => {
+        if (edge.type === "link") {
+          select(target, { kind: "link", linkId: edge.id });
+        }
+      }}
+      onEdgeContextMenu={(event, edge) => {
+        if (edge.type !== "link") {
+          return;
+        }
+        event.preventDefault();
+        select(target, { kind: "link", linkId: edge.id });
+        paneMenu.open({ x: event.clientX, y: event.clientY }, [{ id: "remove", label: "Remove link", danger: true, onSelect: () => { removeLink(target, edge.id); } }]);
       }}
       onPaneContextMenu={(event) => {
         event.preventDefault();
         const hasCards = cards.length > 0;
         paneMenu.open({ x: event.clientX, y: event.clientY }, [
-          { id: "fit", label: "Fit Board", shortcut: "Shift+1", disabled: !hasCards, onSelect: () => { requestCardFocus(target, [], "fit"); } },
+          { id: "fit", label: "Fit", shortcut: "Shift+1", disabled: !hasCards, onSelect: () => { requestCardFocus(target, [], "fit"); } },
           { kind: "separator", id: "s1" },
-          { id: "fold", label: "Fold All Cards", disabled: !hasCards, onSelect: () => { foldAll(target, true); } },
-          { id: "unfold", label: "Unfold All Cards", disabled: !hasCards, onSelect: () => { foldAll(target, false); } },
+          { id: "fold", label: "Fold all cards", disabled: !hasCards, onSelect: () => { foldAll(target, true); } },
+          { id: "unfold", label: "Unfold all cards", disabled: !hasCards, onSelect: () => { foldAll(target, false); } },
         ]);
       }}
       onError={onFlowError}
@@ -272,7 +370,7 @@ export function BoardCanvas({ target, active, cards, boardArrows }: BoardCanvasP
       panOnScroll
       proOptions={{ hideAttribution: true }}
       aria-label="Board canvas"
-      className="board-canvas"
+      className={`board-canvas${linking ? " linking" : ""}`}
     />
     {paneMenu.element}
     </>

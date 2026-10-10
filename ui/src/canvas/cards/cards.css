@@ -1,93 +1,67 @@
-/* Cards on the board: sized to their content (360–880 px), never scrolling inside. */
+/* Cards on the board (02 §4, 10 §5, V-34): sized to their content, no shadow, never scrolling inside. */
 
 .board-card {
   position: relative;
   display: flex;
   flex-direction: column;
-  min-width: 360px;
-  max-width: 880px;
-  border: 1px solid var(--color-contour);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   background: var(--color-surface);
-  box-shadow: 0 1px 2px rgb(20 24 40 / 0.06);
   color: var(--color-text);
   font-family: var(--font-ui);
+  /* The review banner and step rows meet the rounded corners cleanly. */
+  overflow: clip;
 }
 
+/* Selected: a 1.5px accent border (the half pixel drawn outside, so nothing moves) and the 3px ring. */
 .board-card.selected {
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-selection), 0 1px 2px rgb(20 24 40 / 0.06);
+  box-shadow:
+    0 0 0 0.5px var(--color-accent),
+    0 0 0 3.5px var(--color-accent-ring);
 }
 
-.board-card.placeholder { border-style: dashed; }
+.board-card.missing { border-style: dashed; }
 
 .card-header {
   position: relative;
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 8px;
-  min-height: 44px;
-  padding: 6px 12px 6px 8px;
-  border-bottom: 1px solid var(--color-border);
-  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-card-rule);
   cursor: grab;
 }
 
-.board-card.folded .card-header { border-bottom-color: transparent; border-radius: var(--radius-card); }
+.board-card.folded .card-header { border-bottom-color: transparent; }
 
-.card-fold {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
+.card-glyph {
   flex-shrink: 0;
-  border-radius: var(--radius-chip);
+  font: 700 13px/16px var(--font-code);
   color: var(--color-muted);
 }
 
-.card-fold:hover { background: var(--color-hover); color: var(--color-text); }
-.card-fold.folded { color: var(--color-accent-text); }
-
-.card-kind {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  color: var(--color-syntax-function);
-}
+.board-card.selected .card-glyph { color: var(--color-accent-text); }
 
 .card-title {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+  flex: 0 1 auto;
   min-width: 0;
-}
-
-.card-title h3 {
   overflow: hidden;
-  font: 600 13px/20px var(--font-code);
+  font: 600 13px/16px var(--font-code);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
+/* The file pushes the mini lens to the right edge. */
 .card-location {
-  flex-shrink: 0;
-  font: 11.5px/16px var(--font-ui);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font: 11px/14px var(--font-code);
   color: var(--color-muted);
   white-space: nowrap;
-}
-
-.card-header-spacer { flex: 1 1 12px; }
-
-.card-freshness {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--color-warn-fill);
-  color: var(--color-warn);
-  font: 500 11px/16px var(--font-ui);
+  text-overflow: ellipsis;
 }
 
 /* Ports drawn at the header (a folded card's, or ones the body can't place) share its right edge. */
@@ -97,14 +71,34 @@
   width: 0;
 }
 
+/* 02 §4.4: the review banner under the header. */
+.card-review {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  background: var(--color-warn-fill);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-warn);
+  cursor: default;
+}
+
+.card-review-text { flex: 1; min-width: 0; }
+.card-review .card-review-action { font-weight: 600; color: var(--color-warn); }
+
+/* 02 §4.2: the description strip. */
 .card-description {
   display: flex;
+  flex-shrink: 0;
   align-items: baseline;
   gap: 6px;
-  padding: 6px 14px;
-  border-bottom: 1px solid var(--color-border);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-card-rule-soft);
   font: 12px/18px var(--font-ui);
   color: var(--color-authored);
+  cursor: text;
 }
 
 .card-description p {
@@ -119,10 +113,20 @@
 
 .card-more {
   flex-shrink: 0;
-  color: var(--color-accent-text);
-  font-size: var(--text-11);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  font: 12px/16px var(--font-ui);
+  color: var(--color-authored);
+}
+
+.card-description-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
 }
 
 .card-body { position: relative; cursor: default; }
@@ -131,113 +135,195 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 14px;
-  font: 12px/18px var(--font-ui);
+  padding: 10px 12px;
+  font: 12px/16px var(--font-ui);
   color: var(--color-muted);
 }
 
 .card-note.warn { color: var(--color-warn); }
 
-/* React Flow handles: an accent dot at the card's edge for each opened call, the target at the header. */
-.board-card .react-flow__handle.card-port,
-.board-card .react-flow__handle.card-target {
-  width: 10px;
-  height: 10px;
+/* React Flow handles: arrows and links attach to them, but no port dots are drawn (02 §4.7). */
+.board-card .react-flow__handle {
+  width: 1px;
+  height: 1px;
   min-width: 0;
   min-height: 0;
-  border: 2px solid var(--color-surface);
-  border-radius: 999px;
-  background: var(--color-accent);
-}
-
-.board-card .react-flow__handle.card-target {
-  top: 22px;
-  background: var(--color-contour);
+  border: 0;
+  background: transparent;
   opacity: 0;
+  pointer-events: none;
 }
 
-.code-row > .react-flow__handle.card-port { top: 10.5px; }
+/* Arrows enter at the header's center; side links at the same height, top and bottom links mid-edge. */
+.board-card .react-flow__handle.card-target,
+.card-link-handles.left > .react-flow__handle,
+.card-link-handles.right > .react-flow__handle { top: 21px; }
+
+.code-row > .react-flow__handle.card-port { top: 10px; }
 .code-group-heading > .react-flow__handle.card-port { top: 50%; }
 
-/* Entrance cards */
-.entrance-card { border: 1.5px solid var(--color-accent); }
-
-.ecard-header { gap: 8px; }
-
-.ecard-kind {
-  padding: 1px 6px;
-  border-radius: var(--radius-chip);
-  background: var(--color-selection);
-  color: var(--color-accent-text);
-  font: 600 10px/14px var(--font-code);
-  letter-spacing: 0.06em;
+/* Entrance cards (02 §4.5). */
+.ecard-method {
+  flex-shrink: 0;
+  padding: 2px 0;
+  font: 500 11px/14px var(--font-code);
+  color: var(--color-muted);
 }
 
-.ecard-method { font: 600 11.5px/16px var(--font-code); color: var(--color-muted); }
+.entrance-card .card-header > .react-flow__handle,
+.entrance-card .card-link-handles.left > .react-flow__handle,
+.entrance-card .card-link-handles.right > .react-flow__handle { top: 18px; }
 
-.ecard-title {
+.ecard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+}
+
+.ecard-location {
+  overflow-wrap: anywhere;
+  font: 11px/14px var(--font-code);
+  color: var(--color-muted);
+}
+
+.ecard-heading {
+  font-size: var(--text-11);
+  line-height: var(--leading-14);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.ecard-empty { font-size: var(--text-12); line-height: var(--leading-16); color: var(--color-muted); }
+
+.ecard-handlers {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ecard-handler {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+/* Arrows leave a handler row at the card's edge. */
+.ecard-handler > .react-flow__handle.card-port { top: 50%; right: -12px; }
+
+.ecard-handler-name {
   min-width: 0;
   overflow: hidden;
-  font: 600 16px/22px var(--font-code);
+  font: 12px/16px var(--font-code);
+  color: var(--color-text);
+  text-align: left;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.ecard-label { padding: 8px 14px 0; font-size: var(--text-12); }
+button.ecard-handler-name:hover { text-decoration: underline 1px; text-underline-position: from-font; }
 
-.ecard-evidence { padding: 6px 0 0; border-bottom: 1px solid var(--color-border); }
-.ecard-evidence .code-view { padding-top: 2px; }
-
-.ecard-location {
-  display: block;
-  padding: 0 14px;
-  font: 11px/16px var(--font-code);
-  color: var(--color-muted);
+.ecard-handler-name.opened {
+  font-weight: 600;
+  color: var(--color-accent-text);
+  text-decoration: underline 1px;
+  text-underline-position: from-font;
 }
 
-.ecard-text {
-  margin: 4px 0 8px;
-  padding: 0 14px;
-  font: 12px/19px var(--font-code);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  user-select: text;
+.ecard-handler-name.external,
+.ecard-handler-name.unresolved { color: var(--color-muted); cursor: help; }
+
+/* Placeholder: a card of a project that isn't connected (10 §5.4). */
+.board-card.placeholder-card {
+  gap: 12px;
+  padding: 14px;
+  border: 1.5px dashed var(--color-placeholder-line);
+  background: var(--color-placeholder);
+  cursor: grab;
 }
 
-.ecard-targets-heading {
-  padding: 8px 14px 2px;
-  font: 600 10px/14px var(--font-ui);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-muted);
-}
+.board-card.placeholder-card.selected { border-color: var(--color-accent); }
 
-.ecard-targets { margin: 0; padding: 0 0 8px; list-style: none; }
+.placeholder-card .card-link-handles.left > .react-flow__handle,
+.placeholder-card .card-link-handles.right > .react-flow__handle { top: 24px; }
 
-.ecard-target {
-  position: relative;
+.placeholder-from {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 26px;
-  padding-left: 14px;
-  font: 12.5px/18px var(--font-code);
-}
-
-.ecard-target small { font: 11px/16px var(--font-ui); color: var(--color-muted); white-space: nowrap; }
-.ecard-target > .code-leader { margin-top: 0; align-self: center; }
-.ecard-target > .react-flow__handle.card-port { top: 50%; }
-
-.ecard-role {
-  width: 52px;
-  flex-shrink: 0;
-  font: 10px/14px var(--font-ui);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  font-weight: 500;
   color: var(--color-muted);
 }
 
-.ecard-target > .code-link.resolved { color: var(--color-syntax-function); }
-.ecard-apps { padding: 0 14px 10px; font-size: var(--text-11); color: var(--color-muted); }
+.placeholder-name {
+  font: 12px/16px var(--font-code);
+  color: var(--color-muted);
+}
 
-.inline-callee { background: var(--color-surface); border-radius: var(--radius-control); }
+.placeholder-note {
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+.placeholder-card .placeholder-connect { align-self: flex-start; }
+
+/* The repair popover a review banner opens. */
+.repair-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 480px;
+  padding: 12px;
+  overflow: auto;
+}
+
+.repair-item { display: flex; flex-direction: column; gap: 4px; }
+.repair-title { font-size: var(--text-13); line-height: var(--leading-20); font-weight: 600; }
+.repair-message,
+.repair-note { font-size: var(--text-12); line-height: var(--leading-16); color: var(--color-muted); }
+
+.repair-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.repair-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.repair-option-text { display: flex; flex-direction: column; gap: 2px; font-size: var(--text-12); line-height: var(--leading-16); }
+.repair-option-text strong { font-size: var(--text-13); font-weight: 500; }
+.repair-option-text span { color: var(--color-muted); }
+.repair-reconnect { display: flex; flex-direction: column; gap: 4px; align-self: stretch; }
+.repair-hits { display: flex; flex-direction: column; max-height: 180px; overflow: auto; }
+
+.repair-hit {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 8px;
+  border-radius: var(--radius-control);
+  text-align: left;
+}
+
+.repair-hit:hover { background: var(--color-hover); }
+.repair-hit[aria-selected="true"] { background: var(--color-selection); }
+.repair-hit-name { font: 12px/16px var(--font-code); }
+.repair-hit-path { font: 11px/14px var(--font-code); color: var(--color-muted); }

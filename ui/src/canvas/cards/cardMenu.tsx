@@ -1,72 +1,109 @@
 /**
- * Context menus on the canvas: a card's (Describe, Fold, Add as Entrance for a definition, Remove from
- * Page) and a group rail's (Collapse, Describe, Ungroup). Each page choice is one board edit, so ⌘Z
- * undoes it.
+ * Context menus on the canvas (UI plan §7.2): a card's (Open source, Show callers, Draw link…, Add as
+ * entrance…, Fold or Unfold card, Remove from page) and a group rail's (Collapse, Describe, Ungroup).
+ * Each page choice is one board edit, so ⌘Z undoes it.
  */
 
 import type { MouseEvent, ReactNode } from "react";
 import { useContextMenu, type MenuEntry } from "../../components";
 import type { ProjectId } from "../../ipc/generated";
-import { requestFocus as focusTarget } from "../../keyboard";
+import { requestFocus } from "../../keyboard";
 import { canBeHandler } from "../../settings/locators";
-import { editGroup, editPage, findPage, getOpenBoard, removeCard, select, setCardsFolded, ungroup, type PageTarget } from "../../state/boards";
+import { editGroup, editPage, findPage, getOpenBoard, removeCard, select, setCardsFolded, setLinking, ungroup, type PageTarget } from "../../state/boards";
 import { setSelectedCollapsed } from "../../state/layout";
-import { openDialog, type DefinitionRef } from "../../state/overlays";
+import { openDialog, openPeek, type DefinitionRef } from "../../state/overlays";
+import { showCallers } from "../showCallers";
 
 /** Expands the sidebar's Selected section on the page's selection and focuses one of its fields. */
 function showInSelected(field: string): void {
   setSelectedCollapsed(false);
-  focusTarget(field);
+  requestFocus(field);
 }
 
-export interface CardMenu {
+/** Where a card's source is: a block's definition, or an entrance's declaration. */
+interface CardSource {
+  readonly path: string;
+  readonly line: number | null;
+  /** A block's definition, which may become an entrance's handler. */
+  readonly definition?: DefinitionRef;
+}
+
+interface CardMenu {
   readonly onContextMenu: (event: MouseEvent) => void;
   readonly openGroupMenu: (groupId: string, at: MouseEvent | Element) => void;
   readonly element: ReactNode;
 }
 
-/** The context menus of one card. `definition` (the card's header, once loaded) offers Add as Entrance. */
+/**
+ * The context menus of one card. `project` is null for a card of a project that isn't connected;
+ * `source` (once the card's model loaded) offers Open source and Add as entrance; `block` offers Show callers.
+ */
 export function useCardMenu(
   target: PageTarget,
-  project: ProjectId,
+  project: ProjectId | null,
   cardId: string,
   folded: boolean,
-  definition?: DefinitionRef | null,
+  block: boolean,
+  source: CardSource | null,
 ): CardMenu {
-  const menu = useContextMenu("Card actions");
+  const menu = useContextMenu("Card actions", 220);
   const cardEntries = (): MenuEntry[] => [
     {
-      id: "describe",
-      label: "Describe…",
+      id: "source",
+      label: "Open source",
+      icon: "external-link",
+      disabled: source === null || project === null,
       onSelect: () => {
-        select(target, { kind: "card", cardId, key: null });
-        showInSelected("selected.description");
+        if (source && project !== null) {
+          openPeek({ project, path: source.path, ...(source.line !== null ? { line: source.line } : {}) });
+        }
       },
     },
+    ...(block
+      ? [
+          {
+            id: "callers",
+            label: "Show callers",
+            onSelect: () => void showCallers(target, cardId),
+          },
+        ]
+      : []),
+    {
+      id: "link",
+      label: "Draw link…",
+      icon: "link",
+      onSelect: () => {
+        setLinking(target, cardId);
+      },
+    },
+    ...(project !== null && source?.definition && canBeHandler(source.definition.kind)
+      ? [
+          {
+            id: "add-entrance",
+            label: "Add as entrance…",
+            icon: "entrance",
+            onSelect: () => {
+              if (source.definition) {
+                openDialog({ kind: "entranceEditor", project, mode: "add", handler: source.definition });
+              }
+            },
+          } satisfies MenuEntry,
+        ]
+      : []),
+    { kind: "separator", id: "s1" },
     {
       id: "fold",
-      label: folded ? "Unfold Card" : "Fold Card",
+      label: folded ? "Unfold card" : "Fold card",
       onSelect: () => {
         editPage(target, (page) => {
           setCardsFolded(page, [cardId], !folded);
         });
       },
     },
-    ...(definition && canBeHandler(definition.kind)
-      ? [
-          {
-            id: "add-entrance",
-            label: "Add as Entrance…",
-            onSelect: () => {
-              openDialog({ kind: "entranceEditor", project, mode: "add", handler: definition });
-            },
-          },
-        ]
-      : []),
-    { kind: "separator", id: "s1" },
+    { kind: "separator", id: "s2" },
     {
       id: "remove",
-      label: "Remove from Page",
+      label: "Remove from page",
       danger: true,
       onSelect: () => {
         removeCard(target, cardId);
@@ -82,14 +119,14 @@ export function useCardMenu(
     return [
       {
         id: "collapse",
-        label: group.collapsed ? "Expand Group" : "Collapse Group",
+        label: group.collapsed ? "Expand group" : "Collapse group",
         onSelect: () => {
           editGroup(target, groupId, { collapsed: !group.collapsed });
         },
       },
       {
         id: "describe",
-        label: "Describe Group…",
+        label: "Describe group…",
         onSelect: () => {
           select(target, { kind: "group", groupId });
           showInSelected(`selected.group:${groupId}`);

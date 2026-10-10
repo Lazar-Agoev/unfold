@@ -1,13 +1,14 @@
 /** A callee expanded inline under its calling line (⌥-click): its verified source, read-only. */
 
 import { useQuery } from "@tanstack/react-query";
-import { X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { IconButton } from "../../components";
 import { CodeView } from "../../code/CodeView";
 import { defaultFolds } from "../../code/outline";
 import { shortPath } from "../../code/text";
 import type { ProjectId } from "../../ipc/generated";
 import { cardQuery } from "../cardData";
+import { CardNote } from "./parts";
 
 export function InlineCallee({
   project,
@@ -26,7 +27,7 @@ export function InlineCallee({
   const [toggled, setToggled] = useState<ReadonlySet<string> | null>(null);
   const folds = toggled ?? new Set(initialFolds);
   return (
-    <div className="inline-callee" onClick={(event) => { event.stopPropagation(); }}>
+    <div onClick={(event) => { event.stopPropagation(); }}>
       <div className="code-inline-heading">
         <strong>{view?.header.qualifiedName ?? targetKey}</strong>
         {view ? (
@@ -34,9 +35,7 @@ export function InlineCallee({
             {shortPath(view.header.path)}:{view.header.startLine}
           </span>
         ) : null}
-        <button type="button" className="code-inline-close nodrag" aria-label="Close the expanded callee" onClick={onClose}>
-          <X size={12} aria-hidden="true" />
-        </button>
+        <IconButton icon="close" label="Close the expanded callee" size={20} className="nodrag" onClick={onClose} />
       </div>
       {code && view ? (
         <CodeView
@@ -55,7 +54,7 @@ export function InlineCallee({
           }}
         />
       ) : (
-        <p className="card-note">{query.isError ? "This callee isn't in the graph." : view ? "Source unavailable." : "Loading…"}</p>
+        <CardNote>{query.isError ? "This callee isn't in the graph." : view ? "Source unavailable." : "Loading…"}</CardNote>
       )}
     </div>
   );

@@ -24,9 +24,11 @@ export {
   useResolvedCardProject,
 } from "./api";
 export {
+  addCard,
   addGroup,
   cardKey,
   findCard,
+  findCardByRef,
   findPage,
   keyDisplayName,
   labelsFor,

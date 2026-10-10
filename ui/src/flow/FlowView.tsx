@@ -5,10 +5,10 @@
  * `layoutFlow`; this component only draws it. Ports are drawn by the caller (`renderPorts`).
  */
 
-import { AlertTriangle } from "lucide-react";
 import { useId, type MouseEvent, type ReactNode } from "react";
 import type { FlowCallback, FlowModel, FlowNode } from "../ipc/generated";
 import { linkNote } from "../code/text";
+import { Icon } from "../icons";
 import { followableCall, nodeTypeName, roundedPath, type FlowLayout, type PlacedNode } from "./layout";
 import "./flow.css";
 
@@ -166,7 +166,7 @@ function FlowNodeView({
         : null}
       {node.kind === "opaque" ? (
         <span className="flow-opaque-note">
-          <AlertTriangle size={11} aria-hidden="true" />
+          <Icon name="warning-triangle" size={12} />
           Routing not drawn · see Code
         </span>
       ) : null}
@@ -183,7 +183,7 @@ export function FlowView(props: FlowViewProps) {
       <div className="flow-caption">Paths from written structure</div>
       {model.warnings.length > 0 ? (
         <div className="flow-warnings" role="note">
-          <AlertTriangle size={13} aria-hidden="true" />
+          <Icon name="warning-triangle" size={14} />
           <div>
             {model.warnings.map((warning) => (
               <p key={warning.code}>{warning.message}</p>

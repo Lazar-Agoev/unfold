@@ -1,0 +1,903 @@
+/* The Add box (03, 04, 04b): one box over the window, the map, search results with a preview, and commands. */
+
+.add-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  /* 50px under the 38px tab strip (03 §1). */
+  padding: 88px 24px 24px;
+  background: var(--color-scrim);
+  animation: hover-layer-in var(--duration) ease-out;
+}
+
+.add-box {
+  display: flex;
+  flex-direction: column;
+  width: 1040px;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: clip;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-dialog);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-float);
+  color: var(--color-text);
+}
+
+/* Input row */
+
+.add-input-row {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  padding: 0 16px 0 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.add-input-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--color-muted);
+}
+
+.add-input {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: var(--text-16);
+  line-height: var(--leading-24);
+  color: var(--color-text);
+  caret-color: var(--color-accent);
+  user-select: text;
+}
+
+.add-input::placeholder {
+  color: var(--color-muted);
+}
+
+.add-input:focus-visible {
+  outline: none;
+}
+
+.add-esc.key-chip {
+  padding: 0 6px;
+  background: var(--color-canvas);
+}
+
+/* Text search options (V-1): Match case, Whole word, Regex, on the Text tab. */
+.add-options {
+  display: flex;
+  gap: 2px;
+}
+
+.add-option {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-control);
+  font-family: var(--font-code);
+  font-size: var(--text-11);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+.add-option:hover {
+  background: var(--color-hover);
+}
+
+.add-option[aria-pressed="true"] {
+  background: var(--color-selection);
+  color: var(--color-accent-text);
+}
+
+/* Kinds row */
+
+.add-kinds {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 44px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.add-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.add-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  font-size: var(--text-13);
+  line-height: var(--leading-20);
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+.add-tab:hover {
+  background: var(--color-hover);
+}
+
+.add-tab[aria-selected="true"] {
+  background: var(--color-selection);
+  color: var(--color-accent-text);
+}
+
+.add-tab-count {
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  font-weight: 400;
+  color: var(--color-muted);
+}
+
+.add-kinds-spacer,
+.add-preview-spacer,
+.add-footer-spacer {
+  flex: 1;
+}
+
+.add-kinds-text {
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+/* Body */
+
+.add-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: clip;
+}
+
+.add-empty {
+  padding: 20px 24px;
+  color: var(--color-muted);
+}
+
+.add-empty.commands {
+  padding: 16px 20px;
+}
+
+.add-code {
+  font-family: var(--font-code);
+  font-feature-settings:
+    "calt" 0,
+    "liga" 0;
+}
+
+/* Look in (03 §4.1) */
+
+.add-lookin {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 216px;
+  padding: 16px 8px;
+  border-right: 1px solid var(--color-border);
+}
+
+.add-lookin-label {
+  padding: 0 8px 6px;
+  font-size: var(--text-11);
+  line-height: var(--leading-16);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.add-lookin-rows {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.add-lookin-row {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-control);
+  text-align: left;
+}
+
+.add-lookin-row:hover {
+  background: var(--color-hover);
+}
+
+.add-lookin-row.selected {
+  background: var(--color-selection);
+}
+
+.add-lookin-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--color-muted);
+}
+
+.add-lookin-row.selected .add-lookin-icon {
+  color: var(--color-accent-text);
+}
+
+.add-lookin-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.add-lookin-row.selected .add-lookin-name {
+  font-weight: 500;
+}
+
+.add-lookin-count {
+  width: 24px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  font-feature-settings: "tnum";
+  color: var(--color-muted);
+}
+
+.add-lookin-row.selected .add-lookin-count {
+  color: var(--color-accent-text);
+}
+
+.add-lookin-note {
+  padding: 8px 8px 0;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+/* Map (03 §4.2) */
+
+.add-map {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.add-map-spacer {
+  position: relative;
+  margin: 0 24px;
+}
+
+.add-map-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
+.add-project {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.add-project-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+}
+
+.add-project-name {
+  font-size: var(--text-15);
+  line-height: var(--leading-20);
+  font-weight: 600;
+}
+
+.add-project-branch,
+.add-lane-command {
+  font-family: var(--font-code);
+  color: var(--color-muted);
+}
+
+.add-project-branch {
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+}
+
+.add-project-compiling {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 18px;
+  margin-top: -4px;
+  padding-left: 28px;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+.add-project-note {
+  padding: 4px 0 4px 28px;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+.add-lane {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 6px 0 6px 28px;
+}
+
+.add-lane-name {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 132px;
+  padding-top: 2px;
+}
+
+.add-lane-title {
+  font-weight: 500;
+}
+
+.add-lane-command {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-11);
+  line-height: var(--leading-16);
+}
+
+.add-lane-chips {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.add-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  font-family: var(--font-code);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  white-space: nowrap;
+}
+
+.add-chip:hover,
+.add-chip.active {
+  border-color: var(--color-accent);
+  background: var(--color-selection);
+}
+
+.add-chip.blocked {
+  opacity: 0.5;
+}
+
+.add-chip.more {
+  font-family: var(--font-ui);
+  font-weight: 500;
+  color: var(--color-accent-text);
+}
+
+.add-chip-kind {
+  font-size: var(--text-11);
+  color: var(--color-muted);
+}
+
+.add-chip-kind.danger {
+  color: var(--color-danger);
+}
+
+.add-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.add-chip-on-page {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 2px;
+  font-family: var(--font-ui);
+  font-size: var(--text-11);
+  font-weight: 500;
+  color: var(--color-accent-text);
+}
+
+.add-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-accent);
+}
+
+/* Entrance popover (03 §4.3) */
+
+.add-popover {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  width: 328px;
+  overflow: clip;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-dialog);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-float);
+  animation: hover-layer-in var(--duration-fast) ease-out;
+}
+
+.add-popover-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 8px;
+}
+
+.add-popover-kind {
+  font-family: var(--font-code);
+  font-size: var(--text-11);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+.add-popover-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-code);
+  font-weight: 600;
+}
+
+.add-popover-context,
+.add-popover-already {
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+.add-popover-facts {
+  margin: 0;
+  padding: 0 14px 10px;
+}
+
+.add-popover-facts > div {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+}
+
+.add-popover-facts dt {
+  flex-shrink: 0;
+  width: 72px;
+  color: var(--color-muted);
+}
+
+.add-popover-facts dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.add-popover-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-canvas);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+.add-popover-already {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Lists: results and commands (04 §5.1, 04b §6) */
+
+.add-results,
+.add-commands {
+  position: relative;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.add-results {
+  flex: 1;
+}
+
+.add-list-spacer {
+  position: relative;
+}
+
+.add-list-header,
+.add-list-row {
+  position: absolute;
+  top: 0;
+  left: 8px;
+  width: calc(100% - 16px);
+}
+
+.add-list-header {
+  display: flex;
+  align-items: flex-end;
+  padding: 0 12px 4px;
+  font-size: var(--text-11);
+  line-height: var(--leading-16);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.add-list-row {
+  border-radius: var(--radius-control);
+}
+
+.add-list-row:hover {
+  background: var(--color-hover);
+}
+
+.add-list-row.selected {
+  background: var(--color-selection);
+}
+
+.add-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 100%;
+  padding: 0 12px;
+}
+
+.add-row-kind {
+  flex-shrink: 0;
+  width: 56px;
+  overflow: hidden;
+  font-family: var(--font-code);
+  font-size: var(--text-11);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+.add-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+  font-family: var(--font-code);
+  font-feature-settings:
+    "calt" 0,
+    "liga" 0;
+}
+
+.add-list-row.selected .add-row-name {
+  font-weight: 600;
+}
+
+.add-row-name.snippet {
+  font-size: var(--text-12);
+}
+
+.add-text-match {
+  border-radius: 3px;
+  background: var(--color-match);
+  font-weight: 600;
+  color: inherit;
+}
+
+.add-row-meta {
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+.add-row-meta.add-code {
+  font-size: var(--text-11);
+}
+
+.add-row.blocked .add-row-name {
+  color: var(--color-muted);
+}
+
+/* The "N more" link lines up with the name column: 12 + 20 + 12 + 56 + 12. */
+.add-more {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 12px 0 112px;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  font-weight: 500;
+  color: var(--color-accent-text);
+}
+
+.add-command {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 100%;
+  padding: 0 12px;
+}
+
+.add-command-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--color-muted);
+}
+
+.add-list-row.selected .add-command-icon {
+  color: var(--color-accent-text);
+}
+
+.add-command-name {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.add-command-group {
+  color: var(--color-muted);
+}
+
+.add-list-row.selected .add-command-title {
+  font-weight: 500;
+}
+
+.add-command-match {
+  background: none;
+  font-weight: 600;
+  color: inherit;
+}
+
+/* Preview (04 §5.2) */
+
+.add-preview {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 12px;
+  width: 392px;
+  min-height: 0;
+  padding: 16px 20px;
+  overflow: hidden;
+  border-left: 1px solid var(--color-border);
+}
+
+.add-preview-location {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  height: 20px;
+  min-width: 0;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.add-preview-location .add-code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--text-11);
+}
+
+.add-preview-title {
+  display: flex;
+  flex-shrink: 0;
+  align-items: baseline;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-code);
+  font-size: var(--text-17);
+  line-height: var(--leading-24);
+  font-weight: 600;
+}
+
+.add-preview-kind {
+  flex-shrink: 0;
+  font-family: var(--font-code);
+  font-size: var(--text-11);
+  line-height: var(--leading-16);
+  font-weight: 400;
+  color: var(--color-muted);
+}
+
+.add-preview-code {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: clip;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-canvas);
+}
+
+.add-preview-lines {
+  padding: 10px 12px 4px;
+  overflow: hidden;
+  font-family: var(--font-code);
+  font-size: var(--text-12);
+  line-height: var(--leading-20);
+  font-feature-settings:
+    "calt" 0,
+    "liga" 0;
+  color: var(--color-syntax-plain);
+}
+
+.add-preview-lines:last-child {
+  padding-bottom: 10px;
+}
+
+.add-preview-line {
+  display: flex;
+  gap: 12px;
+}
+
+.add-preview-line.current {
+  margin: 0 -12px;
+  padding: 0 12px;
+  background: var(--color-selection);
+}
+
+.add-preview-number {
+  flex-shrink: 0;
+  min-width: 2ch;
+  text-align: right;
+  color: var(--color-muted);
+}
+
+.add-preview-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: pre;
+}
+
+.add-preview-more {
+  padding: 0 12px 10px 40px;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+.add-preview-relations {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  padding-top: 4px;
+}
+
+.add-preview-relation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+}
+
+.add-preview-label {
+  flex-shrink: 0;
+  width: 96px;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+.add-preview-value {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+}
+
+.add-preview-prose {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--text-13);
+  line-height: var(--leading-20);
+}
+
+.add-preview-status {
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+.add-preview-buttons {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.add-preview-primary {
+  flex: 1;
+}
+
+/* Footer (03–04 §7) */
+
+.add-footer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 20px;
+  height: 40px;
+  padding: 0 16px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-canvas);
+}
+
+.add-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}

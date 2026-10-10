@@ -2,18 +2,17 @@
  * The canvas node for one card. Its data is only the page and the card's ports, so a card re-renders
  * when its own document entry, model, or ports change, never because another card did or because the
  * camera moved (zoom is a camera and never changes what a card shows). The card reads from the project
- * its ref resolves to; one from a project that isn't connected shows as a placeholder.
+ * its ref resolves to; one from a project that isn't connected shows as a placeholder (V-35).
  */
 
 import type { Node, NodeProps } from "@xyflow/react";
 import { memo } from "react";
 import type { Card } from "../../ipc/generated";
-import { cardKey, effectiveView, findPage, keyDisplayName, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
+import { effectiveView, findPage, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
 import { resolveRefProject, useProjectIndex } from "../../state/workspace";
-import { CARD_MIN_WIDTH } from "../layout";
 import { BlockCard } from "./BlockCard";
 import { EntranceCard } from "./EntranceCard";
-import { TargetHandle } from "./parts";
+import { PlaceholderCard } from "./PlaceholderCard";
 import "./cards.css";
 
 export interface CardNodeData extends Record<string, unknown> {
@@ -23,24 +22,6 @@ export interface CardNodeData extends Record<string, unknown> {
 }
 
 export type CardNodeType = Node<CardNodeData, "card">;
-
-/** A card whose project isn't connected: where it would be, and where it comes from. */
-function NotConnectedCard({ card }: { readonly card: Card }) {
-  const name = keyDisplayName(cardKey(card));
-  return (
-    <article className="board-card block-card placeholder" data-card-id={card.id} data-key={cardKey(card)} style={{ width: CARD_MIN_WIDTH }} aria-label={name}>
-      <TargetHandle />
-      <header className="card-header card-drag">
-        <div className="card-title">
-          <h3>{name}</h3>
-        </div>
-      </header>
-      <div className="card-body">
-        <p className="card-note">From {card.ref.project} · not connected</p>
-      </div>
-    </article>
-  );
-}
 
 export const CardNode = memo(function CardNode({ id, data }: NodeProps<CardNodeType>) {
   const { target, ports } = data;
@@ -56,7 +37,7 @@ export const CardNode = memo(function CardNode({ id, data }: NodeProps<CardNodeT
   }
   const project = resolveRefProject(index, target.board.project, card.ref.project);
   if (project === null) {
-    return <NotConnectedCard card={card} />;
+    return <PlaceholderCard target={target} card={card} projectName={card.ref.project ?? ""} selected={selected} />;
   }
   if ("entrance" in card.ref) {
     return <EntranceCard target={target} project={project} card={card as Card & { ref: { entrance: string } }} ports={ports} selected={selected} />;

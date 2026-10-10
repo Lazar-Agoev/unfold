@@ -29,7 +29,7 @@ export function settingsProblem(code: string, text: string): SettingsProblemText
   return { code, message, line: Number(match[2]), column: Number(match[3]) };
 }
 
-export type EditOutcome = { readonly ok: true; readonly config: ProjectConfig } | { readonly ok: false; readonly problem: SettingsProblemText };
+type EditOutcome = { readonly ok: true; readonly config: ProjectConfig } | { readonly ok: false; readonly problem: SettingsProblemText };
 
 /** Applies settings edits to a project, all or nothing. */
 export async function applySettingsEdits(project: ProjectId, edits: readonly SettingsEdit[]): Promise<EditOutcome> {

@@ -1,34 +1,24 @@
 /**
- * An entrance card: the declared entrance, its evidence, and its targets in registration order,
- * without numbers. A resolved target follows like a call; its arrow leaves from
- * its row.
+ * An entrance card (02 §4.5): the method and trigger, where it is declared, and its handlers in
+ * registration order. A resolved handler follows like a call; the opened ones (with a card on the
+ * page) are accent links, and their arrows leave from their rows.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { Handle, Position, useUpdateNodeInternals } from "@xyflow/react";
-import { AlertTriangle } from "lucide-react";
-import { useLayoutEffect, useMemo, useState } from "react";
-import { CodeView } from "../../code/CodeView";
-import { defaultFolds } from "../../code/outline";
+import { useLayoutEffect, useMemo } from "react";
+import { Monogram } from "../../components";
 import { reasonText, shortPath } from "../../code/text";
 import type { Card, CardView, ProjectId, TargetView } from "../../ipc/generated";
-import {
-  editPage,
-  entranceTitle,
-  followCall,
-  keyDisplayName,
-  lineOffsetIn,
-  select,
-  setCardsFolded,
-  type PageTarget,
-} from "../../state/boards";
+import { editPage, entranceTitle, followCall, keyDisplayName, lineOffsetIn, setCardsFolded, type PageTarget } from "../../state/boards";
 import { targetHandle } from "../arrows";
 import { cardQuery, isMissing } from "../cardData";
-import { ProjectScope } from "../ProjectScope";
 import { useMeasure } from "../measure";
 import { entranceCardWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";
-import { DescriptionLine, FoldToggle, HeaderPorts, TargetHandle } from "./parts";
+import { CardHandles, CardNote, DescriptionStrip, HeaderPorts } from "./parts";
+import { ReviewBanner } from "./ReviewBanner";
+import { clickCard } from "./select";
 
 type EntranceModel = Extract<CardView, { type: "entrance" }>;
 
@@ -41,101 +31,61 @@ export interface EntranceCardProps {
   readonly selected: boolean;
 }
 
-function targetName(target: TargetView): string {
-  return target.name ?? target.text;
+function handlerName(handler: TargetView): string {
+  return handler.name ?? handler.text;
 }
 
-function TargetRow({
-  target,
+/** Where a handler is, or why it can't be followed (its tooltip). */
+function handlerNote(handler: TargetView): string | null {
+  if (handler.resolution === "external") {
+    return handler.module ?? handler.note ?? "external";
+  }
+  if (handler.resolution === "unresolved") {
+    return handler.note ?? reasonText(handler.reason);
+  }
+  return handler.path !== null ? `${shortPath(handler.path)}${handler.line !== null ? `:${handler.line}` : ""}` : null;
+}
+
+function HandlerRow({
+  handler,
   port,
   onFollow,
 }: {
-  readonly target: TargetView;
+  readonly handler: TargetView;
   readonly port: string | null;
   readonly onFollow: (target: string, anchor: HTMLElement) => void;
 }) {
-  const followable = target.resolution === "resolved" && target.target !== null;
-  const note =
-    target.resolution === "external"
-      ? (target.module ?? target.note ?? "external")
-      : target.resolution === "unresolved"
-        ? (target.note ?? reasonText(target.reason))
-        : target.path !== null
-          ? `${shortPath(target.path)}${target.line !== null ? `:${target.line}` : ""}`
-          : null;
+  const followable = handler.resolution === "resolved" && handler.target !== null;
   return (
-    <li className={`ecard-target ${target.resolution}`} data-port-row="target" data-target-key={target.target ?? undefined}>
-      <span className="ecard-role">{target.role}</span>
+    <li className="ecard-handler" data-port-row="target" data-target-key={handler.target ?? undefined}>
       {followable ? (
         <button
           type="button"
-          className="code-link resolved nodrag"
+          className={`ecard-handler-name nodrag${port !== null ? " opened" : ""}`}
+          title={handlerNote(handler) ?? undefined}
           onClick={(event) => {
             event.stopPropagation();
-            if (target.target !== null) {
-              onFollow(target.target, event.currentTarget);
+            if (handler.target !== null) {
+              onFollow(handler.target, event.currentTarget);
             }
           }}
         >
-          {targetName(target)}
+          {handlerName(handler)}
         </button>
       ) : (
-        <span className={`code-link ${target.resolution}`} title={note ?? undefined}>
-          {targetName(target)}
+        <span className={`ecard-handler-name ${handler.resolution}`} title={handlerNote(handler) ?? undefined}>
+          {handlerName(handler)}
         </span>
       )}
-      {note !== null ? <small>{note}</small> : null}
-      {port !== null ? (
-        <>
-          <span className="code-leader" aria-hidden="true" />
-          <Handle id={port} type="source" position={Position.Right} isConnectable={false} className="card-port" />
-        </>
-      ) : null}
+      {port !== null ? <Handle id={port} type="source" position={Position.Right} isConnectable={false} className="card-port" /> : null}
     </li>
   );
 }
 
-function Evidence({ model }: { readonly model: EntranceModel }) {
+/** The declaration's location: `src/routes/orders.ts:22`. */
+function declaredAt(model: EntranceModel): string {
   const { evidence } = model;
-  const code = evidence.code?.source.state === "current" ? evidence.code : null;
-  const initial = useMemo(() => (code?.source.state === "current" ? defaultFolds(code.source.outline) : []), [code]);
-  const [folds, setFolds] = useState<ReadonlySet<string> | null>(null);
-  const location = `${evidence.path}${evidence.startLine !== null ? `:${evidence.startLine}` : ""}`;
-  if (evidence.source !== "current") {
-    return (
-      <div className="ecard-evidence">
-        <span className="ecard-location">{location}</span>
-        <p className="card-note warn">
-          <AlertTriangle size={13} aria-hidden="true" />
-          {evidence.source === "changed" ? "The declaration changed · updating." : "Source unavailable."}
-        </p>
-      </div>
-    );
-  }
-  return (
-    <div className="ecard-evidence">
-      <span className="ecard-location">{location}</span>
-      {code?.source.state === "current" ? (
-        <CodeView
-          code={code.source}
-          language={code.language}
-          label={location}
-          folds={folds ?? new Set(initial)}
-          onToggleFold={(key) => {
-            const next = new Set(folds ?? initial);
-            if (next.has(key)) {
-              next.delete(key);
-            } else {
-              next.add(key);
-            }
-            setFolds(next);
-          }}
-        />
-      ) : evidence.text !== null ? (
-        <pre className="ecard-text">{evidence.text}</pre>
-      ) : null}
-    </div>
-  );
+  return `${evidence.path}${evidence.startLine !== null ? `:${evidence.startLine}` : ""}`;
 }
 
 export function EntranceCard({ target, project, card, ports, selected }: EntranceCardProps) {
@@ -145,17 +95,24 @@ export function EntranceCard({ target, project, card, ports, selected }: Entranc
   const measure = useMeasure();
   const updateNodeInternals = useUpdateNodeInternals();
   const folded = card.folded === true;
-  const menu = useCardMenu(target, project, card.id, folded);
+  const header = model?.header;
+  const source = useMemo(() => (model ? { path: model.evidence.path, line: model.evidence.startLine } : null), [model]);
+  const menu = useCardMenu(target, project, card.id, folded, false, source);
   const title = model ? entranceTitle(model) : keyDisplayName(key);
+  // `POST` and `/orders` when the entrance has both; else its title alone.
+  const method = header?.method !== null && header?.trigger !== null ? (header?.method ?? null) : null;
+  const shownTitle = method !== null ? (header?.trigger ?? title) : title;
   const portSet = useMemo(() => new Set(ports), [ports]);
+  const foreign = card.ref.project;
 
-  const width = useMemo(() => {
-    const lines =
-      model?.evidence.code?.source.state === "current"
-        ? model.evidence.code.source.text.split("\n")
-        : (model?.evidence.text?.split("\n") ?? []);
-    return entranceCardWidth(title, lines, (model?.targets ?? []).map(targetName), measure);
-  }, [model, title, measure]);
+  const width = useMemo(
+    () =>
+      entranceCardWidth(
+        { method, title: shownTitle, location: model ? declaredAt(model) : "", handlers: (model?.targets ?? []).map(handlerName) },
+        measure,
+      ),
+    [method, shownTitle, model, measure],
+  );
 
   const portsKey = ports.join("\u0000");
   useLayoutEffect(() => {
@@ -178,62 +135,49 @@ export function EntranceCard({ target, project, card, ports, selected }: Entranc
       ...(offset !== undefined ? { lineOffset: offset } : {}),
     });
   };
-  const header = model?.header;
   const missing = query.isError && isMissing(query.error);
   return (
     <article
-      className={`board-card entrance-card${selected ? " selected" : ""}${folded ? " folded" : ""}${missing ? " placeholder" : ""}`}
+      className={`board-card entrance-card${selected ? " selected" : ""}${folded ? " folded" : ""}${missing ? " missing" : ""}`}
       data-card-id={card.id}
       data-key={key}
       data-loading={query.isPending ? "true" : undefined}
       style={{ width }}
       aria-label={title}
       onClick={() => {
-        select(target, { kind: "card", cardId: card.id, key: null });
+        clickCard(target, card.id, null);
       }}
       onContextMenu={menu.onContextMenu}
     >
-      <TargetHandle />
-      <header className="card-header ecard-header card-drag" onDoubleClick={toggleFolded}>
-        <FoldToggle folded={folded} label={title} onToggle={toggleFolded} />
-        <span className="ecard-kind">{(header?.kind ?? "entrance").toUpperCase()}</span>
-        {header?.method ? <span className="ecard-method">{header.method}</span> : null}
-        <h3 className="ecard-title" title={title}>
-          {header?.trigger ?? title}
+      <CardHandles />
+      <header className="card-header card-drag" onDoubleClick={toggleFolded}>
+        {foreign !== undefined ? <Monogram name={foreign} size={20} /> : null}
+        {method !== null ? <span className="ecard-method">{method}</span> : null}
+        <h3 className="card-title" title={title}>
+          {shownTitle}
         </h3>
-        <span className="card-header-spacer" />
         <HeaderPorts ids={folded ? ports : []} />
       </header>
+      <ReviewBanner target={target} project={project} cardId={card.id} />
       {folded ? null : (
         <>
-          <DescriptionLine description={card.description} />
-          <div className="card-body nodrag nopan">
-            <ProjectScope.Provider value={project}>
-            {query.isPending ? <p className="card-note">Loading…</p> : null}
-            {query.isError ? (
-              <p className="card-note warn">
-                <AlertTriangle size={13} aria-hidden="true" />
-                {missing ? "This entrance is missing from the graph." : query.error.message}
-              </p>
-            ) : null}
-            {model ? (
-              <>
-                {header?.label ? <p className="ecard-label">{header.label}</p> : null}
-                <Evidence model={model} />
-                <div className="ecard-targets-heading">Targets, in registration order</div>
-                {model.targets.length === 0 ? <p className="card-note">No targets resolved.</p> : null}
-                <ul className="ecard-targets">
-                  {model.targets.map((target) => {
-                    const handle = targetHandle(target.position);
-                    return <TargetRow key={handle} target={target} port={portSet.has(handle) ? handle : null} onFollow={follow} />;
-                  })}
-                </ul>
-                {model.applications.length > 0 ? (
-                  <p className="ecard-apps">Part of {model.applications.join(", ")}</p>
-                ) : null}
-              </>
-            ) : null}
-            </ProjectScope.Provider>
+          <DescriptionStrip target={target} cardId={card.id} description={card.description} />
+          <div className="card-body ecard-body nodrag nopan">
+              {query.isPending ? <CardNote>Loading…</CardNote> : null}
+              {query.isError ? <CardNote warn>{missing ? "This entrance is missing from the graph." : query.error.message}</CardNote> : null}
+              {model ? (
+                <>
+                  <span className="ecard-location">{declaredAt(model)}</span>
+                  <h4 className="ecard-heading">Handlers, in order</h4>
+                  {model.targets.length === 0 ? <p className="ecard-empty">No handlers resolved.</p> : null}
+                  <ul className="ecard-handlers">
+                    {model.targets.map((handler) => {
+                      const handle = targetHandle(handler.position);
+                      return <HandlerRow key={handle} handler={handler} port={portSet.has(handle) ? handle : null} onFollow={follow} />;
+                    })}
+                  </ul>
+                </>
+              ) : null}
           </div>
         </>
       )}

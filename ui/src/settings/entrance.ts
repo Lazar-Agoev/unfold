@@ -48,7 +48,7 @@ export function draftOf(view: ManualEntranceView): EntranceDraft {
 }
 
 /** What's wrong with a draft, by field. `handlers[i]` matches the i-th handler field. */
-export interface DraftProblems {
+interface DraftProblems {
   readonly trigger?: string;
   readonly startup?: string;
   readonly handlers: readonly (string | null)[];

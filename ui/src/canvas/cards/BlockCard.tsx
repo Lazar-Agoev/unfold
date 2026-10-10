@@ -1,15 +1,16 @@
 /**
- * A block card: one definition (or another indexed block) of a project in Code or Flow. The header
- * shows the kind, name, and location, the card's own Code/Flow switch (saved with the board), and the
- * fold toggle; a folded card shows only its title and its arrows attach to the header. The body never
- * scrolls: the card sizes itself to its content. Flow shows the page's labels for the card's project.
+ * A block card (02 §4, V-34): one definition (or another indexed block) of a project in Code or Flow.
+ * The header shows the project monogram (a card from another project, 10 §5.1), `ƒ`, the name, the file,
+ * and the card's own Code | Flow switch (saved with the board); a review banner and the description
+ * follow. A folded card (double-click its header) shows only the header, and its arrows attach there.
+ * The body never scrolls: the card sizes itself to its content. Flow shows the page's labels for the
+ * card's project.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { useUpdateNodeInternals } from "@xyflow/react";
-import { AlertTriangle } from "lucide-react";
 import { useLayoutEffect, useMemo, type ReactNode } from "react";
-import { SegmentedControl, showToast } from "../../components";
+import { Monogram, SegmentedControl, showToast } from "../../components";
 import { CodeView } from "../../code/CodeView";
 import { defaultFolds, groupConflict, groupSelection } from "../../code/outline";
 import { shortPath } from "../../code/text";
@@ -24,7 +25,6 @@ import {
   keyDisplayName,
   labelsFor,
   lineOffsetIn,
-  select,
   setCardView,
   setCardsFolded,
   setPendingGroup,
@@ -36,12 +36,14 @@ import {
 } from "../../state/boards";
 import { cardQuery, isMissing, lastVerifiedCode } from "../cardData";
 import { ProjectScope } from "../ProjectScope";
-import { CARD_MAX_WIDTH, CARD_MIN_WIDTH } from "../layout";
+import { CARD_MAX_WIDTH } from "../layout";
 import { useMeasure } from "../measure";
 import { blockCardWidth, codeContentWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";
 import { InlineCallee } from "./InlineCallee";
-import { DescriptionLine, FoldToggle, HeaderPorts, KindIcon, TargetHandle, renderPorts } from "./parts";
+import { CardGlyph, CardHandles, CardNote, DescriptionStrip, HeaderPorts, renderPorts } from "./parts";
+import { ReviewBanner } from "./ReviewBanner";
+import { clickCard } from "./select";
 
 const VIEW_OPTIONS = [
   { value: "code", label: "Code" },
@@ -78,7 +80,8 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
       header ? { path: header.path, kind: header.kind, name: header.name, qualifiedName: header.qualifiedName, line: header.startLine } : null,
     [header],
   );
-  const menu = useCardMenu(target, project, card.id, folded, definition);
+  const source = useMemo(() => (definition ? { path: definition.path, line: definition.line, definition } : null), [definition]);
+  const menu = useCardMenu(target, project, card.id, folded, true, source);
 
   const codeFolds = usePageView(target, (pageView) => pageView.codeFolds[card.id]);
   const expandedKeys = usePageView(target, (pageView) => pageView.expanded[card.id] ?? NO_KEYS);
@@ -114,25 +117,15 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
   );
 
   const name = model?.header.qualifiedName ?? keyDisplayName(key);
-  const location = model ? `${shortPath(model.header.path)}:${model.header.startLine}` : "";
-  const portLines = useMemo(() => {
-    const lines = new Set<number>();
-    for (const link of shown?.links ?? []) {
-      if (portSet.has(link.source)) {
-        lines.add(link.line);
-      }
-    }
-    return lines;
-  }, [shown, portSet]);
-  const bodyWidth = folded
-    ? null
-    : view === "flow" && flowLayout
-      ? flowLayout.width + 2
-      : shown
-        ? codeContentWidth(shown, portLines, measure)
-        : null;
+  const location = model ? shortPath(model.header.path) : "";
+  // A card from another project names it with its monogram (`ref.project` is its shared name).
+  const foreign = card.ref.project;
+  const bodyWidth = folded ? null : view === "flow" && flowLayout ? flowLayout.width + 2 : shown ? codeContentWidth(shown, measure) : null;
   // `measure` changes when the bundled fonts load, so widths come from the real fonts.
-  const width = useMemo(() => blockCardWidth({ name, location, body: bodyWidth }, measure), [name, location, bodyWidth, measure]);
+  const width = useMemo(
+    () => blockCardWidth({ name, location, monogram: foreign !== undefined, body: bodyWidth }, measure),
+    [name, location, foreign, bodyWidth, measure],
+  );
 
   // Which ports the body places; the rest (and all of a folded card's) sit on the header.
   const flowPorts = useMemo(() => {
@@ -160,7 +153,7 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
   }, [updateNodeInternals, card.id, portsKey, foldsKey, folded, view, width, model, expandedKeys, openChains, groups, pending]);
 
   const selectKey = (blockKey: string) => {
-    select(target, { kind: "card", cardId: card.id, key: blockKey });
+    clickCard(target, card.id, blockKey);
   };
   const follow = (targetKey: string, anchor: HTMLElement, line?: number) => {
     const offset = lineOffsetIn(anchor);
@@ -246,14 +239,9 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
 
   let body: ReactNode;
   if (query.isPending) {
-    body = <p className="card-note">Loading…</p>;
+    body = <CardNote>Loading…</CardNote>;
   } else if (query.isError) {
-    body = (
-      <p className="card-note warn">
-        <AlertTriangle size={13} aria-hidden="true" />
-        {isMissing(query.error) ? "This reference is missing from the graph." : query.error.message}
-      </p>
-    );
+    body = <CardNote warn>{isMissing(query.error) ? "This reference is missing from the graph." : query.error.message}</CardNote>;
   } else if (view === "flow" && model?.flow && flowLayout && flowPorts) {
     body = (
       <FlowView
@@ -281,10 +269,9 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
     body = (
       <>
         {stale ? (
-          <p className="card-note warn">
-            <AlertTriangle size={13} aria-hidden="true" />
+          <CardNote warn>
             {model.header.fileState === "last_good" ? "Doesn't parse right now · showing the last verified code" : "Updating · showing the last verified code"}
-          </p>
+          </CardNote>
         ) : null}
         <CodeView
           code={shown}
@@ -324,61 +311,51 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
       </>
     );
   } else if (codeModel?.source.state === "changed") {
-    body = (
-      <p className="card-note warn">
-        <AlertTriangle size={13} aria-hidden="true" />
-        {model?.header.fileState === "last_good" ? "This file doesn't parse right now." : "The source changed · updating."}
-      </p>
-    );
+    body = <CardNote warn>{model?.header.fileState === "last_good" ? "This file doesn't parse right now." : "The source changed · updating."}</CardNote>;
   } else {
-    body = (
-      <p className="card-note warn">
-        <AlertTriangle size={13} aria-hidden="true" />
-        Source unavailable.
-      </p>
-    );
+    body = <CardNote warn>Source unavailable.</CardNote>;
   }
 
   const missing = query.isError && isMissing(query.error);
-  const freshness = model && model.header.source !== "current" ? (model.header.source === "changed" ? "changed" : "missing") : null;
   return (
     <article
-      className={`board-card block-card${selected ? " selected" : ""}${folded ? " folded" : ""}${missing ? " placeholder" : ""}`}
+      className={`board-card block-card${selected ? " selected" : ""}${folded ? " folded" : ""}${missing ? " missing" : ""}`}
       data-card-id={card.id}
       data-key={key}
       data-loading={query.isPending ? "true" : undefined}
-      style={{ width: Math.max(CARD_MIN_WIDTH, width) }}
+      style={{ width }}
       aria-label={name}
       onClick={() => {
         selectKey(key);
       }}
       onContextMenu={menu.onContextMenu}
     >
-      <TargetHandle />
+      <CardHandles />
       <header className="card-header card-drag" onDoubleClick={toggleFolded}>
-        <FoldToggle folded={folded} label={name} onToggle={toggleFolded} />
-        <KindIcon kind={model?.header.kind ?? null} />
-        <div className="card-title">
-          <h3 title={model?.header.qualifiedName ?? key}>{name}</h3>
-          {location ? <span className="card-location">{location}</span> : null}
-        </div>
-        {freshness ? (
-          <span className={`card-freshness ${freshness}`}>
-            <AlertTriangle size={11} aria-hidden="true" />
-            {freshness === "changed" ? "Source changed" : "Source missing"}
-          </span>
-        ) : null}
-        <span className="card-header-spacer" />
+        {foreign !== undefined ? <Monogram name={foreign} size={20} /> : null}
+        <CardGlyph kind={model?.header.kind ?? null} />
+        <h3 className="card-title" title={model?.header.qualifiedName ?? key}>
+          {name}
+        </h3>
+        <span className="card-location" title={model ? `${model.header.path}:${model.header.startLine}` : undefined}>
+          {location}
+        </span>
         {!folded && model ? (
-          <div className="nodrag" onClick={(event) => { event.stopPropagation(); }}>
+          <div
+            className="nodrag"
+            onClick={(event) => {
+              event.stopPropagation();
+            }}
+          >
             <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={setView} label={`View of ${name}`} variant="mini" />
           </div>
         ) : null}
         <HeaderPorts ids={headerPorts} />
       </header>
+      <ReviewBanner target={target} project={project} cardId={card.id} />
       {folded ? null : (
         <>
-          <DescriptionLine description={card.description} />
+          <DescriptionStrip target={target} cardId={card.id} description={card.description} />
           <div className="card-body nodrag nopan">
             <ProjectScope.Provider value={project}>{body}</ProjectScope.Provider>
           </div>
