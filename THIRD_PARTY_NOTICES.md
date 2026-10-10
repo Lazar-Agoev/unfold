@@ -448,73 +448,46 @@ SOFTWARE.
 | --- | --- | --- | --- | --- |
 | @fontsource-variable/inter | 5.3.0 | OFL-1.1 | https://fontsource.org/fonts/inter | [160](#license-text-160) |
 | @fontsource-variable/jetbrains-mono | 5.3.0 | OFL-1.1 | https://fontsource.org/fonts/jetbrains-mono | [161](#license-text-161) |
-| @radix-ui/primitive | 1.1.7 | MIT | https://radix-ui.com/primitives | [162](#license-text-162) |
-| @radix-ui/react-compose-refs | 1.1.5 | MIT | https://radix-ui.com/primitives | [162](#license-text-162) |
-| @radix-ui/react-context | 1.2.2 | MIT | https://radix-ui.com/primitives | [162](#license-text-162) |
-| @radix-ui/react-dialog | 1.2.0 | MIT | https://radix-ui.com/primitives | [162](#license-text-162) |
-| @radix-ui/react-dismissable-layer | 1.1.20 | MIT | https://radix-ui.com/primitives | [162](#license-text-162) |
-| @radix-ui/react-focus-guards | 1.1.6 | MIT | https://radix-ui.com/primitives | [162](#license-text-162) |
-| @radix-ui/react-focus-scope | 1.2.0 | MIT | https://radix-ui.com/primitives | [162](#license-text-162) |
-| @radix-ui/react-id | 1.1.4 | MIT | https://radix-ui.com/primitives | [162](#license-text-162) |
-| @radix-ui/react-portal | 1.1.18 | MIT | https://radix-ui.com/primitives | [162](#license-text-162) |
-| @radix-ui/react-presence | 1.1.11 | MIT | https://radix-ui.com/primitives | [162](#license-text-162) |
-| @radix-ui/react-primitive | 2.1.11 | MIT | https://radix-ui.com/primitives | [162](#license-text-162) |
-| @radix-ui/react-slot | 1.4.0 | MIT | https://radix-ui.com/primitives | [162](#license-text-162) |
-| @radix-ui/react-use-callback-ref | 1.1.4 | MIT | https://radix-ui.com/primitives | [162](#license-text-162) |
-| @radix-ui/react-use-controllable-state | 1.2.6 | MIT | https://radix-ui.com/primitives | [162](#license-text-162) |
-| @radix-ui/react-use-effect-event | 0.0.5 | MIT | https://radix-ui.com/primitives | [162](#license-text-162) |
-| @radix-ui/react-use-layout-effect | 1.1.4 | MIT | https://radix-ui.com/primitives | [162](#license-text-162) |
-| @tanstack/query-core | 5.104.1 | MIT | https://tanstack.com/query | [163](#license-text-163) |
-| @tanstack/react-query | 5.104.1 | MIT | https://tanstack.com/query | [163](#license-text-163) |
-| @tanstack/react-virtual | 3.14.13 | MIT | https://tanstack.com/virtual | [163](#license-text-163) |
-| @tanstack/virtual-core | 3.17.11 | MIT | https://tanstack.com/virtual | [163](#license-text-163) |
-| @xyflow/react | 12.12.0 | MIT | https://reactflow.dev | [164](#license-text-164) |
-| @xyflow/system | 0.0.83 | MIT | https://github.com/xyflow/xyflow#readme | [164](#license-text-164) |
-| argparse | 2.0.1 | Python-2.0 | https://github.com/nodeca/argparse#readme | [165](#license-text-165) |
-| aria-hidden | 1.2.6 | MIT | https://github.com/theKashey/aria-hidden#readme | [166](#license-text-166) |
-| builder-util-runtime | 9.7.0 | MIT | https://github.com/electron-userland/electron-builder | [167](#license-text-167) |
-| classcat | 5.0.5 | MIT | https://github.com/jorgebucaran/classcat#readme | [168](#license-text-168) |
-| cmdk | 1.1.1 | MIT | https://github.com/pacocoursey/cmdk#readme | [169](#license-text-169) |
-| csstype | 3.2.3 | MIT | https://github.com/frenic/csstype#readme | [170](#license-text-170) |
-| d3-color | 3.1.0 | ISC | https://d3js.org/d3-color/ | [171](#license-text-171) |
-| d3-dispatch | 3.0.1 | ISC | https://d3js.org/d3-dispatch/ | [172](#license-text-172) |
-| d3-drag | 3.0.0 | ISC | https://d3js.org/d3-drag/ | [172](#license-text-172) |
-| d3-ease | 3.0.1 | BSD-3-Clause | https://d3js.org/d3-ease/ | [173](#license-text-173) |
-| d3-interpolate | 3.0.1 | ISC | https://d3js.org/d3-interpolate/ | [172](#license-text-172) |
-| d3-selection | 3.0.0 | ISC | https://d3js.org/d3-selection/ | [172](#license-text-172) |
-| d3-timer | 3.0.1 | ISC | https://d3js.org/d3-timer/ | [172](#license-text-172) |
-| d3-transition | 3.0.1 | ISC | https://d3js.org/d3-transition/ | [172](#license-text-172) |
-| d3-zoom | 3.0.0 | ISC | https://d3js.org/d3-zoom/ | [172](#license-text-172) |
-| debug | 4.4.3 | MIT | https://github.com/debug-js/debug#readme | [174](#license-text-174) |
-| detect-node-es | 1.1.0 | MIT | https://github.com/thekashey/detect-node | [175](#license-text-175) |
-| electron-updater | 6.8.9 | MIT | https://github.com/electron-userland/electron-builder | [167](#license-text-167) |
-| fs-extra | 10.1.0 | MIT | https://github.com/jprichardson/node-fs-extra | [176](#license-text-176) |
-| get-nonce | 1.0.1 | MIT | https://github.com/theKashey/get-nonce | [177](#license-text-177) |
-| graceful-fs | 4.2.11 | ISC | https://github.com/isaacs/node-graceful-fs#readme | [178](#license-text-178) |
-| immer | 11.1.21 | MIT | https://github.com/immerjs/immer#readme | [179](#license-text-179) |
-| js-yaml | 4.3.2 | MIT | https://github.com/nodeca/js-yaml#readme | [180](#license-text-180) |
-| jsonfile | 6.2.1 | MIT | https://github.com/jprichardson/node-jsonfile#readme | [181](#license-text-181) |
-| lazy-val | 1.0.5 | MIT | https://github.com/develar/lazy-val | [182](#license-text-182) |
-| lodash.escaperegexp | 4.1.2 | MIT | https://lodash.com/ | [183](#license-text-183) |
-| lodash.isequal | 4.5.0 | MIT | https://lodash.com/ | [184](#license-text-184) |
-| lucide-react | 1.52.0 | ISC | https://lucide.dev | [185](#license-text-185) |
-| ms | 2.1.3 | MIT | https://github.com/vercel/ms#readme | [186](#license-text-186) |
-| react | 19.3.0 | MIT | https://react.dev/ | [187](#license-text-187) |
-| react-dom | 19.3.0 | MIT | https://react.dev/ | [187](#license-text-187) |
-| react-remove-scroll | 2.7.2 | MIT | https://github.com/theKashey/react-remove-scroll#readme | [166](#license-text-166) |
-| react-remove-scroll-bar | 2.3.8 | MIT | https://github.com/theKashey/react-remove-scroll-bar#readme | [188](#license-text-188) |
-| react-style-singleton | 2.2.3 | MIT | https://github.com/theKashey/react-style-singleton#readme | [166](#license-text-166) |
-| sax | 1.6.1 | BlueOak-1.0.0 | https://github.com/isaacs/sax-js#readme | [189](#license-text-189) |
-| scheduler | 0.28.0 | MIT | https://react.dev/ | [187](#license-text-187) |
-| semver | 7.7.4 | ISC | https://github.com/npm/node-semver#readme | [190](#license-text-190) |
-| tiny-typed-emitter | 2.1.0 | MIT | https://github.com/binier/tiny-typed-emitter#readme | [191](#license-text-191) |
-| tslib | 2.8.1 | 0BSD | https://www.typescriptlang.org/ | [192](#license-text-192), [193](#license-text-193) |
-| universalify | 2.0.1 | MIT | https://github.com/RyanZim/universalify#readme | [194](#license-text-194) |
-| use-callback-ref | 1.3.3 | MIT | https://github.com/theKashey/use-callback-ref#readme | [166](#license-text-166) |
-| use-sidecar | 1.1.3 | MIT | https://github.com/theKashey/use-sidecar | [166](#license-text-166) |
-| use-sync-external-store | 1.7.0 | MIT | https://github.com/react/react#readme | [187](#license-text-187) |
-| zustand | 4.5.7 | MIT | https://github.com/pmndrs/zustand | [195](#license-text-195) |
-| zustand | 5.0.15 | MIT | https://github.com/pmndrs/zustand | [195](#license-text-195) |
+| @tanstack/query-core | 5.104.1 | MIT | https://tanstack.com/query | [162](#license-text-162) |
+| @tanstack/react-query | 5.104.1 | MIT | https://tanstack.com/query | [162](#license-text-162) |
+| @tanstack/react-virtual | 3.14.13 | MIT | https://tanstack.com/virtual | [162](#license-text-162) |
+| @tanstack/virtual-core | 3.17.11 | MIT | https://tanstack.com/virtual | [162](#license-text-162) |
+| @xyflow/react | 12.12.0 | MIT | https://reactflow.dev | [163](#license-text-163) |
+| @xyflow/system | 0.0.83 | MIT | https://github.com/xyflow/xyflow#readme | [163](#license-text-163) |
+| argparse | 2.0.1 | Python-2.0 | https://github.com/nodeca/argparse#readme | [164](#license-text-164) |
+| builder-util-runtime | 9.7.0 | MIT | https://github.com/electron-userland/electron-builder | [165](#license-text-165) |
+| classcat | 5.0.5 | MIT | https://github.com/jorgebucaran/classcat#readme | [166](#license-text-166) |
+| csstype | 3.2.3 | MIT | https://github.com/frenic/csstype#readme | [167](#license-text-167) |
+| d3-color | 3.1.0 | ISC | https://d3js.org/d3-color/ | [168](#license-text-168) |
+| d3-dispatch | 3.0.1 | ISC | https://d3js.org/d3-dispatch/ | [169](#license-text-169) |
+| d3-drag | 3.0.0 | ISC | https://d3js.org/d3-drag/ | [169](#license-text-169) |
+| d3-ease | 3.0.1 | BSD-3-Clause | https://d3js.org/d3-ease/ | [170](#license-text-170) |
+| d3-interpolate | 3.0.1 | ISC | https://d3js.org/d3-interpolate/ | [169](#license-text-169) |
+| d3-selection | 3.0.0 | ISC | https://d3js.org/d3-selection/ | [169](#license-text-169) |
+| d3-timer | 3.0.1 | ISC | https://d3js.org/d3-timer/ | [169](#license-text-169) |
+| d3-transition | 3.0.1 | ISC | https://d3js.org/d3-transition/ | [169](#license-text-169) |
+| d3-zoom | 3.0.0 | ISC | https://d3js.org/d3-zoom/ | [169](#license-text-169) |
+| debug | 4.4.3 | MIT | https://github.com/debug-js/debug#readme | [171](#license-text-171) |
+| electron-updater | 6.8.9 | MIT | https://github.com/electron-userland/electron-builder | [165](#license-text-165) |
+| fs-extra | 10.1.0 | MIT | https://github.com/jprichardson/node-fs-extra | [172](#license-text-172) |
+| graceful-fs | 4.2.11 | ISC | https://github.com/isaacs/node-graceful-fs#readme | [173](#license-text-173) |
+| immer | 11.1.21 | MIT | https://github.com/immerjs/immer#readme | [174](#license-text-174) |
+| js-yaml | 4.3.2 | MIT | https://github.com/nodeca/js-yaml#readme | [175](#license-text-175) |
+| jsonfile | 6.2.1 | MIT | https://github.com/jprichardson/node-jsonfile#readme | [176](#license-text-176) |
+| lazy-val | 1.0.5 | MIT | https://github.com/develar/lazy-val | [177](#license-text-177) |
+| lodash.escaperegexp | 4.1.2 | MIT | https://lodash.com/ | [178](#license-text-178) |
+| lodash.isequal | 4.5.0 | MIT | https://lodash.com/ | [179](#license-text-179) |
+| ms | 2.1.3 | MIT | https://github.com/vercel/ms#readme | [180](#license-text-180) |
+| react | 19.3.0 | MIT | https://react.dev/ | [181](#license-text-181) |
+| react-dom | 19.3.0 | MIT | https://react.dev/ | [181](#license-text-181) |
+| sax | 1.6.1 | BlueOak-1.0.0 | https://github.com/isaacs/sax-js#readme | [182](#license-text-182) |
+| scheduler | 0.28.0 | MIT | https://react.dev/ | [181](#license-text-181) |
+| semver | 7.7.4 | ISC | https://github.com/npm/node-semver#readme | [183](#license-text-183) |
+| tiny-typed-emitter | 2.1.0 | MIT | https://github.com/binier/tiny-typed-emitter#readme | [184](#license-text-184) |
+| universalify | 2.0.1 | MIT | https://github.com/RyanZim/universalify#readme | [185](#license-text-185) |
+| use-sync-external-store | 1.7.0 | MIT | https://github.com/react/react#readme | [181](#license-text-181) |
+| zustand | 4.5.7 | MIT | https://github.com/pmndrs/zustand | [186](#license-text-186) |
+| zustand | 5.0.15 | MIT | https://github.com/pmndrs/zustand | [186](#license-text-186) |
 
 ## License texts
 
@@ -10962,35 +10935,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ### License text 162
 
-<a id="license-text-162"></a>Used by: @radix-ui/primitive 1.1.7, @radix-ui/react-compose-refs 1.1.5, @radix-ui/react-context 1.2.2, @radix-ui/react-dialog 1.2.0, @radix-ui/react-dismissable-layer 1.1.20, @radix-ui/react-focus-guards 1.1.6, @radix-ui/react-focus-scope 1.2.0, @radix-ui/react-id 1.1.4, @radix-ui/react-portal 1.1.18, @radix-ui/react-presence 1.1.11, @radix-ui/react-primitive 2.1.11, @radix-ui/react-slot 1.4.0, @radix-ui/react-use-callback-ref 1.1.4, @radix-ui/react-use-controllable-state 1.2.6, @radix-ui/react-use-effect-event 0.0.5, @radix-ui/react-use-layout-effect 1.1.4
-
-```text
-MIT License
-
-Copyright (c) 2022 WorkOS
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### License text 163
-
-<a id="license-text-163"></a>Used by: @tanstack/query-core 5.104.1, @tanstack/react-query 5.104.1, @tanstack/react-virtual 3.14.13, @tanstack/virtual-core 3.17.11
+<a id="license-text-162"></a>Used by: @tanstack/query-core 5.104.1, @tanstack/react-query 5.104.1, @tanstack/react-virtual 3.14.13, @tanstack/virtual-core 3.17.11
 
 ```text
 MIT License
@@ -11016,9 +10961,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 164
+### License text 163
 
-<a id="license-text-164"></a>Used by: @xyflow/react 12.12.0, @xyflow/system 0.0.83
+<a id="license-text-163"></a>Used by: @xyflow/react 12.12.0, @xyflow/system 0.0.83
 
 ```text
 MIT License
@@ -11044,9 +10989,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 165
+### License text 164
 
-<a id="license-text-165"></a>Used by: argparse 2.0.1
+<a id="license-text-164"></a>Used by: argparse 2.0.1
 
 ```text
 A. HISTORY OF THE SOFTWARE
@@ -11305,37 +11250,9 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
 OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### License text 166
+### License text 165
 
-<a id="license-text-166"></a>Used by: aria-hidden 1.2.6, react-remove-scroll 2.7.2, react-style-singleton 2.2.3, use-callback-ref 1.3.3, use-sidecar 1.1.3
-
-```text
-MIT License
-
-Copyright (c) 2017 Anton Korzunov
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### License text 167
-
-<a id="license-text-167"></a>Used by: builder-util-runtime 9.7.0, electron-updater 6.8.9
+<a id="license-text-165"></a>Used by: builder-util-runtime 9.7.0, electron-updater 6.8.9
 
 ```text
 The MIT License (MIT)
@@ -11361,9 +11278,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 168
+### License text 166
 
-<a id="license-text-168"></a>Used by: classcat 5.0.5
+<a id="license-text-166"></a>Used by: classcat 5.0.5
 
 ```text
 Copyright © Jorge Bucaran <<https://jorgebucaran.com>>
@@ -11375,37 +11292,9 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### License text 169
+### License text 167
 
-<a id="license-text-169"></a>Used by: cmdk 1.1.1
-
-```text
-MIT License
-
-Copyright (c) 2022 Paco Coursey
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### License text 170
-
-<a id="license-text-170"></a>Used by: csstype 3.2.3
+<a id="license-text-167"></a>Used by: csstype 3.2.3
 
 ```text
 Copyright (c) 2017-2018 Fredrik Nicol
@@ -11429,9 +11318,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 171
+### License text 168
 
-<a id="license-text-171"></a>Used by: d3-color 3.1.0
+<a id="license-text-168"></a>Used by: d3-color 3.1.0
 
 ```text
 Copyright 2010-2022 Mike Bostock
@@ -11449,9 +11338,9 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### License text 172
+### License text 169
 
-<a id="license-text-172"></a>Used by: d3-dispatch 3.0.1, d3-drag 3.0.0, d3-interpolate 3.0.1, d3-selection 3.0.0, d3-timer 3.0.1, d3-transition 3.0.1, d3-zoom 3.0.0
+<a id="license-text-169"></a>Used by: d3-dispatch 3.0.1, d3-drag 3.0.0, d3-interpolate 3.0.1, d3-selection 3.0.0, d3-timer 3.0.1, d3-transition 3.0.1, d3-zoom 3.0.0
 
 ```text
 Copyright 2010-2021 Mike Bostock
@@ -11469,9 +11358,9 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### License text 173
+### License text 170
 
-<a id="license-text-173"></a>Used by: d3-ease 3.0.1
+<a id="license-text-170"></a>Used by: d3-ease 3.0.1
 
 ```text
 Copyright 2010-2021 Mike Bostock
@@ -11504,9 +11393,9 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### License text 174
+### License text 171
 
-<a id="license-text-174"></a>Used by: debug 4.4.3
+<a id="license-text-171"></a>Used by: debug 4.4.3
 
 ```text
 (The MIT License)
@@ -11530,37 +11419,9 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### License text 175
+### License text 172
 
-<a id="license-text-175"></a>Used by: detect-node-es 1.1.0
-
-```text
-MIT License
-
-Copyright (c) 2017 Ilya Kantor
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### License text 176
-
-<a id="license-text-176"></a>Used by: fs-extra 10.1.0
+<a id="license-text-172"></a>Used by: fs-extra 10.1.0
 
 ```text
 (The MIT License)
@@ -11580,37 +11441,9 @@ OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHE
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### License text 177
+### License text 173
 
-<a id="license-text-177"></a>Used by: get-nonce 1.0.1
-
-```text
-MIT License
-
-Copyright (c) 2020 Anton Korzunov
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### License text 178
-
-<a id="license-text-178"></a>Used by: graceful-fs 4.2.11
+<a id="license-text-173"></a>Used by: graceful-fs 4.2.11
 
 ```text
 The ISC License
@@ -11630,9 +11463,9 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### License text 179
+### License text 174
 
-<a id="license-text-179"></a>Used by: immer 11.1.21
+<a id="license-text-174"></a>Used by: immer 11.1.21
 
 ```text
 MIT License
@@ -11658,9 +11491,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 180
+### License text 175
 
-<a id="license-text-180"></a>Used by: js-yaml 4.3.2
+<a id="license-text-175"></a>Used by: js-yaml 4.3.2
 
 ```text
 (The MIT License)
@@ -11686,9 +11519,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### License text 181
+### License text 176
 
-<a id="license-text-181"></a>Used by: jsonfile 6.2.1
+<a id="license-text-176"></a>Used by: jsonfile 6.2.1
 
 ```text
 (The MIT License)
@@ -11708,9 +11541,9 @@ OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHE
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### License text 182
+### License text 177
 
-<a id="license-text-182"></a>Used by: lazy-val 1.0.5
+<a id="license-text-177"></a>Used by: lazy-val 1.0.5
 
 ```text
 MIT License
@@ -11736,9 +11569,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 183
+### License text 178
 
-<a id="license-text-183"></a>Used by: lodash.escaperegexp 4.1.2
+<a id="license-text-178"></a>Used by: lodash.escaperegexp 4.1.2
 
 ```text
 Copyright jQuery Foundation and other contributors <https://jquery.org/>
@@ -11790,9 +11623,9 @@ licenses; we recommend you read them, as their terms may differ from the
 terms above.
 ```
 
-### License text 184
+### License text 179
 
-<a id="license-text-184"></a>Used by: lodash.isequal 4.5.0
+<a id="license-text-179"></a>Used by: lodash.isequal 4.5.0
 
 ```text
 Copyright JS Foundation and other contributors <https://js.foundation/>
@@ -11844,59 +11677,9 @@ licenses; we recommend you read them, as their terms may differ from the
 terms above.
 ```
 
-### License text 185
+### License text 180
 
-<a id="license-text-185"></a>Used by: lucide-react 1.52.0
-
-```text
-ISC License
-
-Copyright (c) 2026 Lucide Icons and Contributors
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted, provided that the above
-copyright notice and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
----
-
-The following Lucide icons are derived from the Feather project:
-
-airplay, alert-circle, alert-octagon, alert-triangle, aperture, arrow-down-circle, arrow-down-left, arrow-down-right, arrow-down, arrow-left-circle, arrow-left, arrow-right-circle, arrow-right, arrow-up-circle, arrow-up-left, arrow-up-right, arrow-up, at-sign, calendar, cast, check, chevron-down, chevron-left, chevron-right, chevron-up, chevrons-down, chevrons-left, chevrons-right, chevrons-up, circle, clipboard, clock, code, columns, command, compass, corner-down-left, corner-down-right, corner-left-down, corner-left-up, corner-right-down, corner-right-up, corner-up-left, corner-up-right, crosshair, database, divide-circle, divide-square, dollar-sign, download, external-link, feather, frown, hash, headphones, help-circle, info, italic, key, layout, life-buoy, link-2, link, loader, lock, log-in, log-out, maximize, meh, minimize, minimize-2, minus-circle, minus-square, minus, monitor, moon, more-horizontal, more-vertical, move, music, navigation-2, navigation, octagon, pause-circle, percent, plus-circle, plus-square, plus, power, radio, rss, search, server, share, shopping-bag, sidebar, smartphone, smile, square, table-2, tablet, target, terminal, trash-2, trash, triangle, tv, type, upload, x-circle, x-octagon, x-square, x, zoom-in, zoom-out
-
-The MIT License (MIT) (for the icons listed above)
-
-Copyright (c) 2013-present Cole Bemis
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### License text 186
-
-<a id="license-text-186"></a>Used by: ms 2.1.3
+<a id="license-text-180"></a>Used by: ms 2.1.3
 
 ```text
 The MIT License (MIT)
@@ -11922,9 +11705,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 187
+### License text 181
 
-<a id="license-text-187"></a>Used by: react 19.3.0, react-dom 19.3.0, scheduler 0.28.0, use-sync-external-store 1.7.0
+<a id="license-text-181"></a>Used by: react 19.3.0, react-dom 19.3.0, scheduler 0.28.0, use-sync-external-store 1.7.0
 
 ```text
 MIT License
@@ -11950,37 +11733,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 188
+### License text 182
 
-<a id="license-text-188"></a>Used by: react-remove-scroll-bar 2.3.8
-
-```text
-MIT License
-
-Copyright (c) Anton Korzunov
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### License text 189
-
-<a id="license-text-189"></a>Used by: sax 1.6.1
+<a id="license-text-182"></a>Used by: sax 1.6.1
 
 ```text
 # Blue Oak Model License
@@ -12040,9 +11795,9 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
 ```
 
-### License text 190
+### License text 183
 
-<a id="license-text-190"></a>Used by: semver 7.7.4
+<a id="license-text-183"></a>Used by: semver 7.7.4
 
 ```text
 The ISC License
@@ -12062,9 +11817,9 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### License text 191
+### License text 184
 
-<a id="license-text-191"></a>Used by: tiny-typed-emitter 2.1.0
+<a id="license-text-184"></a>Used by: tiny-typed-emitter 2.1.0
 
 ```text
 MIT License
@@ -12090,49 +11845,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 192
+### License text 185
 
-<a id="license-text-192"></a>Used by: tslib 2.8.1
-
-```text
-/******************************************************************************
-Copyright (c) Microsoft Corporation.
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-PERFORMANCE OF THIS SOFTWARE.
-***************************************************************************** */
-```
-
-### License text 193
-
-<a id="license-text-193"></a>Used by: tslib 2.8.1
-
-```text
-Copyright (c) Microsoft Corporation.
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-PERFORMANCE OF THIS SOFTWARE.
-```
-
-### License text 194
-
-<a id="license-text-194"></a>Used by: universalify 2.0.1
+<a id="license-text-185"></a>Used by: universalify 2.0.1
 
 ```text
 (The MIT License)
@@ -12157,9 +11872,9 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### License text 195
+### License text 186
 
-<a id="license-text-195"></a>Used by: zustand 4.5.7, zustand 5.0.15
+<a id="license-text-186"></a>Used by: zustand 4.5.7, zustand 5.0.15
 
 ```text
 MIT License

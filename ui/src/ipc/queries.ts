@@ -103,12 +103,14 @@ export function applyEngineEvent(client: QueryClient, event: WorkspaceEvent): vo
   switch (event.type) {
     case "workspace_changed":
       client.setQueryData(WORKSPACE_KEY, event.workspace);
+      rereadWorkspaceInFlight(client);
       return;
     case "project_state": {
       const { project, state } = event;
       client.setQueryData<WorkspaceView>(WORKSPACE_KEY, (workspace) =>
         workspace ? { ...workspace, projects: workspace.projects.map((row) => (row.id === project ? { ...row, state } : row)) } : workspace,
       );
+      rereadWorkspaceInFlight(client);
       invalidate(client, (command, args) => command === "project_summary" && args["project"] === project);
       return;
     }
@@ -227,6 +229,17 @@ const CACHE_EVENTS: readonly EventType[] = [
   "config_changed",
   "preferences_changed",
 ];
+
+/**
+ * A `workspace` read still in flight may have been answered before the change an event just wrote
+ * into the cache (results and events reach the window by different paths), and would put the old
+ * state back when it lands. It is cancelled and read again, so the cache ends with the newer state.
+ */
+function rereadWorkspaceInFlight(client: QueryClient): void {
+  if (client.isFetching({ queryKey: WORKSPACE_KEY }) > 0) {
+    void client.invalidateQueries({ queryKey: WORKSPACE_KEY });
+  }
+}
 
 /** Subscribes the cache to engine events. Returns the unsubscribe function. */
 export function installEngineInvalidation(client: QueryClient): () => void {

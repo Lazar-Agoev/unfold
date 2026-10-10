@@ -92,7 +92,15 @@ class FakePort implements WindowPort {
   }
 }
 
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+/** Waits for pending promise callbacks and the router's two `setImmediate` hops before a result. */
+const flush = () =>
+  new Promise((resolve) => {
+    setTimeout(() => {
+      setImmediate(() => {
+        setImmediate(resolve);
+      });
+    }, 0);
+  });
 const CONNECTED: HostToRenderer = { kind: "status", state: "connected" };
 const UNAVAILABLE = { code: "engine_unavailable", message: "The Unfold engine could not be loaded." };
 
@@ -242,6 +250,24 @@ describe("EngineRouter: sink fan-out", () => {
     expect(b.received()).toEqual([
       { kind: "stream", id: 9, message: { done: 3 } },
       { kind: "result", id: 9, ok: true, value: {} },
+    ]);
+  });
+
+  it("delivers stream messages the sink hands over after the request settled, before its result", async () => {
+    const { binding, router } = setup();
+    const port = new FakePort();
+    router.attach(1, port);
+    port.send({ kind: "invoke", id: 4, command: "search_text", args: { query: "retry" } });
+
+    // Rust sent the message first, but Node runs the sink's callback one event-loop pass later.
+    binding.dispatches.get(1)?.result.resolve("{}");
+    await new Promise((resolve) => setImmediate(resolve));
+    router.handleSinkMessage(JSON.stringify({ kind: "stream", windowId: 1, requestId: 1, message: { path: "a.ts" } }));
+    await flush();
+
+    expect(port.received()).toEqual([
+      { kind: "stream", id: 4, message: { path: "a.ts" } },
+      { kind: "result", id: 4, ok: true, value: {} },
     ]);
   });
 

@@ -22,7 +22,9 @@ export function BoardHeader({ board }: { readonly board: BoardRef }) {
   const project = useProjectRow(board.project);
   const title = useOpenBoard(board, (open) => open.document.title) ?? "";
   const savedFolder = useOpenBoard(board, (open) => open.document.folder);
-  const folder = useBoardSummary(board)?.folder ?? savedFolder ?? null;
+  // The list's folder once it has the board (null = top level), else the one the board opened with.
+  const summary = useBoardSummary(board);
+  const folder = summary ? summary.folder : (savedFolder ?? null);
   const [editing, setEditing] = useState(false);
   const slot = useRef<HTMLDivElement>(null);
   useFocusTarget(BOARD_TITLE_FIELD, slot);

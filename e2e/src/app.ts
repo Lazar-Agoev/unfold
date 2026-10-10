@@ -1,8 +1,10 @@
 /**
  * Launching the built, unpackaged app with a sandbox's user data and home, and driving what only
- * the main process can do: stubbing dialogs, finding and killing the engine host, quitting.
+ * the main process can do: stubbing dialogs, a second launch, the clipboard, finding and killing the
+ * engine host, memory, quitting.
  */
 
+import { spawn } from "node:child_process";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { _electron } from "@playwright/test";
 import { desktopDir, electronExecutable } from "./paths";
@@ -10,8 +12,21 @@ import type { Sandbox } from "./sandbox";
 import { prepareWindow } from "./window";
 
 export interface LaunchOptions {
-  /** Extra command-line arguments, such as a folder to open. */
+  /** Extra command-line arguments, such as a folder to add as a project. */
   readonly args?: readonly string[];
+}
+
+/** The environment the app runs in: this process's, with a throwaway home. */
+function appEnv(sandbox: Sandbox): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined && key !== "ELECTRON_RUN_AS_NODE" && key !== "NODE_OPTIONS") {
+      env[key] = value;
+    }
+  }
+  // A throwaway home keeps logs (~/Library/Logs/Unfold) and fallback caches out of the real ones.
+  env["HOME"] = sandbox.home;
+  return env;
 }
 
 /** One running copy of the app. */
@@ -19,26 +34,20 @@ export class UnfoldApp {
   readonly electron: ElectronApplication;
   /** The main process's and engine host's output, for failure reports. */
   readonly logs: string[];
+  private readonly sandbox: Sandbox;
   private closed = false;
 
-  private constructor(electron: ElectronApplication, logs: string[]) {
+  private constructor(electron: ElectronApplication, logs: string[], sandbox: Sandbox) {
     this.electron = electron;
     this.logs = logs;
+    this.sandbox = sandbox;
   }
 
   static async launch(sandbox: Sandbox, options: LaunchOptions = {}): Promise<UnfoldApp> {
-    const env: Record<string, string> = {};
-    for (const [key, value] of Object.entries(process.env)) {
-      if (value !== undefined && key !== "ELECTRON_RUN_AS_NODE" && key !== "NODE_OPTIONS") {
-        env[key] = value;
-      }
-    }
-    // A throwaway home keeps logs (~/Library/Logs/Unfold) and fallback caches out of the real ones.
-    env["HOME"] = sandbox.home;
     const electron = await _electron.launch({
       executablePath: electronExecutable(),
       args: [desktopDir, `--user-data-dir=${sandbox.userData}`, ...(options.args ?? [])],
-      env,
+      env: appEnv(sandbox),
     });
     const logs: string[] = [];
     const proc = electron.process();
@@ -52,7 +61,7 @@ export class UnfoldApp {
         }
       });
     });
-    return new UnfoldApp(electron, logs);
+    return new UnfoldApp(electron, logs, sandbox);
   }
 
   get isClosed(): boolean {
@@ -91,12 +100,6 @@ export class UnfoldApp {
     }, { width, height });
   }
 
-  /** A window's outer size, `[width, height]`. */
-  async windowSize(page: Page): Promise<number[]> {
-    const handle = await this.electron.browserWindow(page);
-    return handle.evaluate((window: Electron.BrowserWindow) => window.getSize());
-  }
-
   /** The folder picker answers `folder` from now on. */
   async stubFolderDialog(folder: string): Promise<void> {
     await this.electron.evaluate(({ dialog }, chosen) => {
@@ -111,9 +114,49 @@ export class UnfoldApp {
     }, file);
   }
 
-  /** The focused window's id in the main process, or null. */
-  async focusedWindowId(): Promise<number | null> {
-    return this.electron.evaluate(({ BrowserWindow }) => BrowserWindow.getFocusedWindow()?.id ?? null);
+  /**
+   * Message boxes (Remove from workspace's confirmation) answer with button `response` from now on,
+   * and record the messages they showed (`messageBoxes`).
+   */
+  async stubMessageBox(response: number): Promise<void> {
+    await this.electron.evaluate(({ dialog }, answer) => {
+      const store = globalThis as unknown as { __messageBoxes?: string[] };
+      const shown: string[] = [];
+      store.__messageBoxes = shown;
+      const stub = (...args: unknown[]): Promise<Electron.MessageBoxReturnValue> => {
+        const options = args.at(-1) as Electron.MessageBoxOptions;
+        shown.push(options.message);
+        return Promise.resolve({ response: answer, checkboxChecked: false });
+      };
+      dialog.showMessageBox = stub;
+    }, response);
+  }
+
+  /** The messages the stubbed message boxes showed, oldest first. */
+  async messageBoxes(): Promise<string[]> {
+    return this.electron.evaluate(() => (globalThis as unknown as { __messageBoxes?: string[] }).__messageBoxes ?? []);
+  }
+
+  /** What the clipboard holds (the main process writes it for the windows). */
+  async clipboardText(): Promise<string> {
+    return this.electron.evaluate(({ clipboard }) => clipboard.readText());
+  }
+
+  /**
+   * Launches the app a second time with `args`, as opening a folder from the Finder or a terminal
+   * does: the second copy hands its arguments to this one and exits.
+   */
+  async secondLaunch(args: readonly string[]): Promise<void> {
+    const child = spawn(electronExecutable(), [desktopDir, `--user-data-dir=${this.sandbox.userData}`, ...args], {
+      env: appEnv(this.sandbox),
+      stdio: "ignore",
+    });
+    await new Promise<void>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("exit", () => {
+        resolve();
+      });
+    });
   }
 
   /** The engine host's process id (the utility process named "Unfold Engine"), or null. */

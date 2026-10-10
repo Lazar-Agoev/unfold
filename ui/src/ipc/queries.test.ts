@@ -1,5 +1,5 @@
-import { QueryClient } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it } from "vitest";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { projectRow, workspaceView } from "../test/workspace";
 import type { CommandArgs, CommandName, Events, Preferences, WorkspaceView } from "./generated";
 import { applyEngineEvent, engineKey, engineQueryOptions, keyFile, resetEngineQueries } from "./queries";
@@ -122,6 +122,40 @@ describe("invalidation by event (contract §5)", () => {
     expect(after?.projects[0]?.state).toEqual({ kind: "compiling", done: 3, total: 10 });
     expect(after?.projects[1]).toBe(before.projects[1]);
     expect(stale()).toEqual([`project_summary:${P}:`]);
+  });
+
+  it("a workspace read answered before a state change doesn't put the old state back", async () => {
+    const key = engineKey("workspace", {});
+    const fresh = workspaceView([projectRow(P, "orders")]);
+    const old = workspaceView([{ ...projectRow(P, "orders"), state: { kind: "updating", files: null } }]);
+    let answerOld: (() => void) | undefined;
+    let reads = 0;
+    const queryFn = () => {
+      reads += 1;
+      // The first read was answered before the change, but its answer lands after the change's event.
+      return reads === 1
+        ? new Promise<WorkspaceView>((resolve) => {
+            answerOld = () => {
+              resolve(old);
+            };
+          })
+        : Promise.resolve(fresh);
+    };
+    // The window has the workspace and is reading it again (a reconnect or focus refetch).
+    client.setQueryData(key, old);
+    const observer = new QueryObserver(client, { queryKey: key, queryFn });
+    const unsubscribe = observer.subscribe(() => undefined);
+    await vi.waitFor(() => {
+      expect(answerOld).toBeDefined();
+    });
+    applyEngineEvent(client, { type: "project_state", project: P, state: { kind: "current" } });
+    answerOld?.();
+    await vi.waitFor(() => {
+      expect(observer.getCurrentResult().isFetching).toBe(false);
+    });
+    expect(client.getQueryData<WorkspaceView>(key)?.projects[0]?.state).toEqual({ kind: "current" });
+    expect(reads).toBe(2);
+    unsubscribe();
   });
 
   it("project_reset drops every query of that project and nothing else", () => {

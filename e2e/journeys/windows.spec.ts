@@ -1,206 +1,194 @@
 /**
- * Migration plan Step 10, the window journeys (U-37): two windows on one folder each with its own
- * board, both updating after a save; opening a board held by the other window focuses it; Move to
- * New Window keeps the undo history; three windows come back after quitting; and stopping the
- * engine host reconnects every window without losing an edit.
+ * Several windows on one workspace (redesign §4.9, U-37) and the engine host restarting (§4.10): New
+ * Window; two windows, each with its own board, both updating after a save; a board held by another
+ * window focuses that window; Open in new window (from a tab and from the board menu) keeps the
+ * board's undo history; windows and tabs come back after quitting; and a killed engine host reconnects
+ * every window without losing an edit.
  */
 
-import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import type { UnfoldApp } from "../src/app";
+import { addInput, openAdd, search } from "../src/add";
+import { activeBoardRef, boardMenu, card, clickCanvas, expectCardsLoaded, pagesList, readBoard, selected } from "../src/board";
 import { expect, test } from "../src/fixtures";
-import { openAndCompile, openPlace, PLACE, reopened } from "../src/flows";
+import { launchCompiled, openPlace, PLACE, traceEntrance } from "../src/flows";
+import { boardTab, expectGraphCurrent, homeTab, homeTitle, projectRow, showHome, sidebarBoard, tabs, toast } from "../src/home";
 import { editFile } from "../src/sandbox";
-import {
-  activeBoard,
-  activeBoardId,
-  card,
-  cards,
-  editorTabs,
-  expectConnection,
-  expectGraphCurrent,
-  graphStatus,
-  showView,
-  windowInfo,
-} from "../src/window";
+import { focusedWindows, spyOnFocus, windowWithKey } from "../src/session";
+import { enterText, expectConnection, invoke, windowInfo } from "../src/window";
 
-interface BoardFile {
-  readonly cards: { readonly id: string; readonly folded?: boolean }[];
-}
-
-function readBoard(folder: string, boardId: string): BoardFile {
-  return JSON.parse(readFileSync(join(folder, boardId), "utf8")) as BoardFile;
-}
-
-/** Records which windows the main process focuses (`BrowserWindow#focus`). */
-async function spyOnFocus(app: UnfoldApp): Promise<void> {
-  await app.electron.evaluate(({ BrowserWindow }) => {
-    const store = globalThis as unknown as { __focused?: number[] };
-    if (store.__focused) {
-      return;
-    }
-    const focused: number[] = [];
-    store.__focused = focused;
-    const prototype = BrowserWindow.prototype as unknown as { focus: (this: Electron.BrowserWindow) => void };
-    const original = prototype.focus;
-    prototype.focus = function focus(this: Electron.BrowserWindow) {
-      focused.push(this.id);
-      original.call(this);
-    };
-  });
-}
-
-async function focusedWindows(app: UnfoldApp): Promise<number[]> {
-  return app.electron.evaluate(() => (globalThis as unknown as { __focused?: number[] }).__focused ?? []);
-}
-
-/** The window whose key is `key`. */
-async function findWindow(pages: readonly Page[], key: string | undefined): Promise<Page> {
-  for (const page of pages) {
-    if ((await windowInfo(page)).key === key) {
-      return page;
-    }
-  }
-  throw new Error(`no window has key ${String(key)}`);
-}
-
-/** Opens `OrderService.place` from Search, on the window's own board. */
-async function openPlaceFromSearch(page: Page): Promise<void> {
-  await showView(page, "Search");
-  await page.locator(".search-view").getByRole("searchbox").fill("OrderService.place");
-  await page.getByRole("listbox", { name: "Search results" }).getByRole("option").filter({ hasText: "place" }).first().click();
+/** Adds `OrderService.place` on a new draft from Home's Add (Enter makes the draft). */
+async function placeOnNewDraft(page: Page): Promise<void> {
+  const before = await tabs(page).count();
+  await openAdd(page);
+  await search(page, "OrderService.place");
+  await expect(addInput(page)).toHaveAttribute("aria-activedescendant", /.+/);
+  await addInput(page).press("Enter");
+  await expect(tabs(page)).toHaveCount(before + 1);
   await expect(card(page, PLACE).locator(".code-view")).toBeVisible();
 }
 
+/** The window's tab titles, Home first (without the project monograms). */
+function tabLabels(page: Page) {
+  return tabs(page).locator(".tab-label");
+}
+
+/** The number of pages the active board has. */
+function pages(page: Page) {
+  return pagesList(page).getByRole("option");
+}
+
 test.describe("several windows", () => {
-  test("two windows, each with its own board, both update after a save; a held board focuses its window", async ({ sandbox, launch }) => {
-    const folder = sandbox.playground("ts-orders");
-    const app = await launch();
-    const first = await app.firstWindow();
-    await openAndCompile(app, first, folder);
+  test("New Window; two windows with their own boards both update; a held board focuses its window", async ({ sandbox, launch }) => {
+    const { app, page: first, folders } = await launchCompiled(launch, sandbox);
+    const folder = folders[0] ?? "";
     await openPlace(first);
-    const firstBoard = await activeBoardId(first);
 
-    const second = await app.nextWindow(() => first.keyboard.press("Meta+Shift+N"));
-    await expectConnection(second, "connected");
-    await expectGraphCurrent(second);
-    await openPlaceFromSearch(second);
-    const secondBoard = await activeBoardId(second);
-    expect(secondBoard).not.toBe(firstBoard);
+    const second = await test.step("⇧⌘N opens another window on the same workspace and project", async () => {
+      const opened = await app.nextWindow(() => first.keyboard.press("Meta+Shift+N"));
+      await expectConnection(opened, "connected");
+      await expect(projectRow(opened, "ts-orders")).toBeVisible();
+      await expect(homeTitle(opened)).toHaveText("ts-orders");
+      await expect(homeTab(opened)).toHaveAttribute("aria-selected", "true");
+      return opened;
+    });
 
-    editFile(join(folder, "src/services/order-service.ts"), "this.repo.insert(order);", "this.repo.insert(order); // saved once");
-    await expect(card(first, PLACE)).toContainText("// saved once");
-    await expect(card(second, PLACE)).toContainText("// saved once");
-    await expect(graphStatus(first)).toHaveText(await graphStatus(second).textContent() ?? "");
+    await test.step("each window opens its own board", async () => {
+      await placeOnNewDraft(second);
+      expect((await activeBoardRef(second)).id).not.toBe((await activeBoardRef(first)).id);
+    });
 
-    // The second window opens the first window's board: it stays in the first window, which is focused.
-    await spyOnFocus(app);
-    const firstId = (await windowInfo(first)).windowId;
-    await showView(second, "Boards");
-    const tabsBefore = await editorTabs(second).count();
-    await second.locator(".board-row", { hasText: "POST /orders" }).click();
-    await expect.poll(() => focusedWindows(app)).toContain(firstId);
-    expect(await editorTabs(second).count()).toBe(tabsBefore);
-    await expect(first.locator(`.board-tab[data-board-id="${firstBoard}"]`)).toHaveCount(1);
+    await test.step("a save updates the card in both windows", async () => {
+      editFile(join(folder, "src/services/order-service.ts"), "this.payments.charge(draft);", "this.payments.charge(draft); // seen by both windows");
+      await expect(card(first, PLACE)).toContainText("// seen by both windows", { timeout: 30_000 });
+      await expect(card(second, PLACE)).toContainText("// seen by both windows", { timeout: 30_000 });
+    });
+
+    await test.step("opening a board another window holds focuses that window and its tab", async () => {
+      await spyOnFocus(app);
+      await showHome(first);
+      await expect(boardTab(first, "POST /orders")).toHaveAttribute("aria-selected", "false");
+      await showHome(second);
+      await sidebarBoard(second, "POST /orders").click();
+      const firstId = await app.windowId(first);
+      await expect.poll(() => focusedWindows(app)).toContain(firstId);
+      await expect(boardTab(first, "POST /orders")).toHaveAttribute("aria-selected", "true");
+      // The board stays where it was: the second window opened no tab for it.
+      await expect(boardTab(second, "POST /orders")).toHaveCount(0);
+    });
   });
 
-  test("Move to New Window keeps the board's undo history", async ({ sandbox, launch }) => {
-    const folder = sandbox.playground("ts-orders");
-    const app = await launch();
-    const first = await app.firstWindow();
-    await openAndCompile(app, first, folder);
-    await openPlace(first);
-    const boardId = await activeBoardId(first);
-    const count = await cards(first).count();
+  test("Open in new window, from a tab and from the board menu, keeps the board's undo history", async ({ sandbox, launch }) => {
+    const { app, page: first } = await launchCompiled(launch, sandbox);
+    await traceEntrance(first, "POST", "/orders");
+    const board = await activeBoardRef(first);
 
-    // An undoable edit before the move: fold the place card.
-    await card(first, PLACE).locator(".card-fold").click();
-    await expect(card(first, PLACE)).toHaveClass(/\bfolded\b/);
+    await test.step("an edit in the first window: a new page", async () => {
+      await first.getByRole("complementary", { name: "Sidebar" }).getByRole("button", { name: "New page" }).click();
+      await expect(pages(first)).toHaveCount(2);
+    });
 
-    const boardTab = editorTabs(first).filter({ hasText: "POST /orders" });
-    await boardTab.click({ button: "right" });
-    const moved = await app.nextWindow(() => first.getByRole("menuitem", { name: "Move to New Window" }).click());
-    await expect(moved.locator(`.board-tab[data-board-id="${boardId}"]`)).toBeVisible();
-    await expect(first.locator(`.board-tab[data-board-id="${boardId}"]`)).toHaveCount(0);
-    await expect(cards(moved)).toHaveCount(count);
-    await expect(card(moved, PLACE)).toHaveClass(/\bfolded\b/);
+    const second = await test.step("the tab's Open in new window moves the board to a new window", async () => {
+      await boardTab(first, "POST /orders").click({ button: "right" });
+      const menu = first.getByRole("menu", { name: "Tab" });
+      const opened = await app.nextWindow(() => menu.getByRole("menuitem", { name: "Open in new window" }).click());
+      await expect(boardTab(opened, "POST /orders")).toHaveAttribute("aria-selected", "true");
+      await expect(boardTab(first, "POST /orders")).toHaveCount(0);
+      expect(await activeBoardRef(opened)).toEqual(board);
+      await expect(pages(opened)).toHaveCount(2);
+      return opened;
+    });
 
-    // Undo in the new window reverts the edit made in the old one.
-    await activeBoard(moved).locator(".react-flow__pane").click({ position: { x: 12, y: 12 } });
-    await moved.keyboard.press("Meta+Z");
-    await expect(card(moved, PLACE)).not.toHaveClass(/\bfolded\b/);
-    await expect.poll(() => readBoard(folder, boardId).cards.some((entry) => entry.folded === true)).toBe(false);
-    await moved.keyboard.press("Meta+Shift+Z");
-    await expect(card(moved, PLACE)).toHaveClass(/\bfolded\b/);
+    await test.step("⌘Z in the new window undoes the edit made in the first", async () => {
+      await clickCanvas(second);
+      await second.keyboard.press("Meta+Z");
+      await expect(pages(second)).toHaveCount(1);
+      await second.keyboard.press("Meta+Shift+Z");
+      await expect(pages(second)).toHaveCount(2);
+    });
+
+    await test.step("the board menu's Open in new window moves it on, with its history", async () => {
+      await second.getByRole("complementary", { name: "Sidebar" }).getByRole("button", { name: "New page" }).click();
+      await expect(pages(second)).toHaveCount(3);
+      const third = await app.nextWindow(() => boardMenu(second, "Open in new window"));
+      await expect(boardTab(third, "POST /orders")).toHaveAttribute("aria-selected", "true");
+      await expect(boardTab(second, "POST /orders")).toHaveCount(0);
+      await expect(pages(third)).toHaveCount(3);
+      await clickCanvas(third);
+      await third.keyboard.press("Meta+Z");
+      await expect(pages(third)).toHaveCount(2);
+      await third.keyboard.press("Meta+Z");
+      await expect(pages(third)).toHaveCount(1);
+    });
   });
 
-  test("quitting with three windows open and relaunching restores all three", async ({ sandbox, launch }) => {
-    const folder = sandbox.playground("ts-orders");
-    let app = await launch();
-    const first = await app.firstWindow();
-    await openAndCompile(app, first, folder);
-    await openPlace(first);
+  test("quitting with two windows and relaunching restores both, with their tabs", async ({ sandbox, launch }) => {
+    const { app, page: first } = await launchCompiled(launch, sandbox);
+    await traceEntrance(first, "POST", "/orders");
+    await showHome(first);
+    await traceEntrance(first, "GET", "/health");
+    await boardTab(first, "POST /orders").click();
     const second = await app.nextWindow(() => first.keyboard.press("Meta+Shift+N"));
-    await expectGraphCurrent(second);
-    const third = await app.nextWindow(() => second.keyboard.press("Meta+Shift+N"));
-    await expectGraphCurrent(third);
-    const keys = await Promise.all([first, second, third].map(async (page) => (await windowInfo(page)).key));
-    expect(new Set(keys).size).toBe(3);
-    // Each window saves its bounds and its state when its workspace opens.
-    await expect.poll(() => existsSync(join(folder, ".unfold/local/state.json")) && Object.keys((JSON.parse(readFileSync(join(folder, ".unfold/local/state.json"), "utf8")) as { windows?: Record<string, unknown> }).windows ?? {}).length).toBe(3);
-    // Resized right before quitting, inside the bounds-save debounce: the save is flushed on close.
-    const resizedKey = keys[2];
-    await app.resize(third, 1100, 760);
+    await expect(homeTitle(second)).toHaveText("ts-orders");
+    await traceEntrance(second, "DELETE", "/orders/:id");
+    const keys = [(await windowInfo(first)).key, (await windowInfo(second)).key];
+    // The windows save their state 400 ms after a change, and at once as they close.
     await app.quit();
 
-    app = await launch();
-    const restored = await app.firstWindow();
-    await reopened(app, restored, folder);
-    await expect.poll(() => app.windows().length).toBe(3);
-    const restoredKeys = await Promise.all(app.windows().map(async (page) => (await windowInfo(page)).key));
-    expect(restoredKeys.sort()).toEqual([...keys].sort());
-    const resized = await findWindow(app.windows(), resizedKey);
-    const [width = 0, height = 0] = await app.windowSize(resized);
-    expect(Math.abs(width - 1100)).toBeLessThanOrEqual(4);
-    expect(Math.abs(height - 760)).toBeLessThanOrEqual(4);
-    for (const page of app.windows()) {
-      await expect(page.locator(".workbench")).toBeVisible();
-    }
-    const withBoard = await Promise.all(app.windows().map((page) => page.locator(".board-tab").count()));
-    expect(withBoard.reduce((sum, value) => sum + value, 0)).toBeGreaterThanOrEqual(1);
+    const relaunched = await launch();
+    await relaunched.firstWindow();
+
+    await test.step("both windows come back", async () => {
+      await expect.poll(() => relaunched.windows().length).toBe(2);
+      const restoredKeys = await Promise.all(relaunched.windows().map(async (window) => (await windowInfo(window)).key));
+      expect(restoredKeys.sort()).toEqual([...keys].sort());
+    });
+
+    await test.step("each window's tabs and active tab come back, and its boards reopen", async () => {
+      const restoredFirst = await windowWithKey(relaunched, keys[0] ?? "");
+      const restoredSecond = await windowWithKey(relaunched, keys[1] ?? "");
+      await expect(tabLabels(restoredFirst)).toHaveText(["Home", "POST /orders", "GET /health"]);
+      await expect(boardTab(restoredFirst, "POST /orders")).toHaveAttribute("aria-selected", "true");
+      await expectCardsLoaded(restoredFirst);
+      await expect(restoredFirst.locator(".board-view .entrance-card")).toBeVisible();
+      await expect(tabLabels(restoredSecond)).toHaveText(["Home", "DELETE /orders/:id"]);
+      await expect(boardTab(restoredSecond, "DELETE /orders/:id")).toHaveAttribute("aria-selected", "true");
+      await expect(restoredSecond.locator(".board-view .entrance-card")).toBeVisible();
+    });
   });
 
-  test("stopping the engine host reconnects every window without losing an edit", async ({ sandbox, launch }) => {
-    const folder = sandbox.playground("ts-orders");
-    const app = await launch();
-    const first = await app.firstWindow();
-    await openAndCompile(app, first, folder);
+  test("a killed engine host reconnects every window without losing an edit", async ({ sandbox, launch }) => {
+    const { app, page: first, folders } = await launchCompiled(launch, sandbox);
+    const folder = folders[0] ?? "";
     await openPlace(first);
-    const boardId = await activeBoardId(first);
     const second = await app.nextWindow(() => first.keyboard.press("Meta+Shift+N"));
-    await expectGraphCurrent(second);
-    await expect.poll(() => existsSync(join(folder, boardId)) && readBoard(folder, boardId).cards.length === 5).toBe(true);
+    await expect(homeTitle(second)).toHaveText("ts-orders");
+    const { id } = await activeBoardRef(first);
 
-    // An edit, then the engine host dies before the autosave can reach it.
-    const placeId = (await card(first, PLACE).getAttribute("data-card-id")) ?? "";
-    await card(first, PLACE).locator(".card-fold").click();
-    const killed = await app.killEngineHost();
-    const stopped = Date.now();
-    await expect(first.locator("[data-connection='reconnecting']")).toBeVisible();
-    await expectConnection(first, "connected");
-    await expectConnection(second, "connected");
-    await expectGraphCurrent(first);
-    await expectGraphCurrent(second);
-    test.info().annotations.push({ type: "engine-host restart until both windows are usable", description: `${Date.now() - stopped} ms` });
-    expect(await app.engineHostPid()).not.toBe(killed);
+    await test.step("an edit is waiting to be saved when the engine host dies", async () => {
+      await card(first, PLACE).locator(".card-header").click();
+      await enterText(selected(first).getByRole("textbox", { name: "Description" }), "Written as the engine went away.");
+      const pid = await app.killEngineHost();
+      await expect(toast(first, "Reconnecting to the engine…")).toBeVisible();
+      await expect.poll(() => app.engineHostPid()).not.toBe(pid);
+    });
 
-    // The edit made before the restart is saved after it, and both windows keep working.
-    await expect(card(first, PLACE)).toHaveClass(/\bfolded\b/);
-    await expect.poll(() => readBoard(folder, boardId).cards.find((entry) => entry.id === placeId)?.folded ?? false).toBe(true);
-    await expect(first.locator(".board-banner")).toHaveCount(0);
-    editFile(join(folder, "src/services/order-service.ts"), "this.repo.insert(order);", "this.repo.insert(order); // after the restart");
-    await openPlaceFromSearch(second);
-    await expect(card(second, PLACE)).toContainText("// after the restart");
+    await test.step("every window reconnects; the toast goes and the board stays open", async () => {
+      for (const window of [first, second]) {
+        await expectConnection(window, "connected");
+        await expect(toast(window, "Reconnecting to the engine…")).toHaveCount(0, { timeout: 30_000 });
+      }
+      await expect(boardTab(first, "POST /orders")).toHaveAttribute("aria-selected", "true");
+      await expect(card(first, PLACE).locator(".code-view")).toBeVisible();
+      await expectGraphCurrent(second);
+    });
+
+    await test.step("the edit is saved after the reconnect, and the engine answers again", async () => {
+      await expect
+        .poll(() => readBoard(folder, id).pages[0]?.cards.find((entry) => entry.ref.block?.endsWith(PLACE))?.description?.text)
+        .toBe("Written as the engine went away.");
+      const project = (await activeBoardRef(first)).project;
+      await expect.poll(async () => (await invoke<{ boards: { id: string; heldBy: number | null }[] }>(second, "list_boards", { project })).boards.find((board) => board.id === id)?.heldBy).toBe((await windowInfo(first)).windowId);
+    });
   });
 });

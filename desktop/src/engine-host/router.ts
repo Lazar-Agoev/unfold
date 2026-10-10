@@ -308,10 +308,14 @@ export class EngineRouter {
 
     dispatchNow(() => binding.dispatch(connection.windowId, requestId, command)).then(
       (json) => {
-        finish(parseResult(rendererId, json));
+        afterSinkMessages(() => {
+          finish(parseResult(rendererId, json));
+        });
       },
       (error: unknown) => {
-        finish(failure(rendererId, errorFromRejection(error)));
+        afterSinkMessages(() => {
+          finish(failure(rendererId, errorFromRejection(error)));
+        });
       },
     );
   }
@@ -341,6 +345,20 @@ export class EngineRouter {
 }
 
 /** Calls `binding.dispatch` now, turning a synchronous throw into a rejection. */
+/**
+ * Runs `deliver` once the stream messages the addon sent before settling a request have been
+ * delivered. Rust sends a request's stream messages to the sink before it settles the request's
+ * promise, but the two reach this thread through different thread-safe functions, and Node may run the
+ * settlement first: when the event loop's pass had already looked at the sink before its messages
+ * arrived, they wait for the next pass's poll phase. Two `setImmediate` hops wait for that phase, so a
+ * request's result never overtakes its messages (which would then be dropped as late).
+ */
+function afterSinkMessages(deliver: () => void): void {
+  setImmediate(() => {
+    setImmediate(deliver);
+  });
+}
+
 function dispatchNow(dispatch: () => Promise<string>): Promise<string> {
   try {
     return dispatch();
