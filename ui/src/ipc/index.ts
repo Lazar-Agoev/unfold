@@ -5,28 +5,20 @@
  */
 
 export { queryClient } from "./client";
-export { call, callStream, onEngineEvent, type TypedStream } from "./commands";
+export { call, onEngineEvent } from "./commands";
 export type * from "./generated";
-export { useConnectionState } from "./hooks";
 export {
   engineKey,
   engineQueryOptions,
   installEngineInvalidation,
-  resetEngineQueries,
   useEngineQuery,
-  type EngineKey,
-  type EngineQueryOptions,
 } from "./queries";
 export { createLatestStream, type LatestStream } from "./stream";
 export {
-  UnfoldError,
   addDroppedFolder,
   onShellEvent,
   toUnfoldError,
   windowCommand,
-  type ConnectionState,
   type DroppedFile,
   type MenuCommand,
-  type ShellEvent,
-  type WindowInfo,
 } from "./unfold";

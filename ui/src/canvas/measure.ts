@@ -95,7 +95,7 @@ export function useMeasure(): Measure {
 }
 
 /** Changes when the bundled fonts finish loading, so measured layouts recompute. */
-export function useFontEpoch(): number {
+function useFontEpoch(): number {
   return useSyncExternalStore(
     (listener) => {
       watchFonts();

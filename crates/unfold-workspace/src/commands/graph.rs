@@ -501,7 +501,7 @@ pub fn peek(ctx: &Ctx<'_>, args: ProjectKeyArgs) -> CommandResult<Peek> {
 }
 
 /// The most lines a block preview shows.
-pub const PREVIEW_LINES: u32 = 12;
+pub const PREVIEW_LINES: u32 = 5;
 /// The most entrances a block preview lists under "Reached from".
 const PREVIEW_REACHED: usize = 5;
 /// The most calls a block preview lists.
@@ -610,7 +610,7 @@ pub enum Preview {
         project: ProjectId,
         /// Its card header.
         header: BlockHeader,
-        /// Its first lines (at most 12).
+        /// Its first lines (at most 5).
         code: PreviewCode,
         /// The entrances it is reached from (at most 5 listed).
         reached_from: Listed<EntranceRef>,

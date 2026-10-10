@@ -98,6 +98,12 @@ fn representative_commands_match_their_goldens() {
         json!({ "key": entrance["key"] }),
     );
     golden(&harness, "search_place", "search", json!({ "query": "place" }));
+    golden(
+        &harness,
+        "search_worker",
+        "search",
+        json!({ "query": "worker", "kinds": ["entrances", "files"], "limit": 4 }),
+    );
     golden(&harness, "problems", "problems", json!({}));
 
     // Boards: a teammate's published board, listed and then opened.

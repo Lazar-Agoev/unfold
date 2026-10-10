@@ -9,7 +9,9 @@
 //! disk walk without a watcher to keep it current). Every candidate is ranked with
 //! `nucleo-matcher`'s fuzzy score (a match in the name counts most, then the qualified name, then
 //! the path); merged results sort by score, then workspace order, then shorter name, then key, so
-//! they are deterministic. Searching never wakes a project.
+//! they are deterministic. Only the returned hits get details from the stored graph (definitions'
+//! lines, entrances' applications, files' definition counts), with one reader per project.
+//! Searching never wakes a project.
 
 use std::cmp::Ordering;
 use std::sync::Arc;
@@ -18,6 +20,7 @@ use std::time::Instant;
 use nucleo_matcher::pattern::{AtomKind, CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 use rayon::prelude::*;
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unfold_store::{CandidateKind, ReadPool, SearchCandidate};
@@ -85,6 +88,9 @@ pub struct SearchHit {
     pub kind: String,
     /// A definition's first line.
     pub line: Option<u32>,
+    /// The name of the first application (by startup key) an entrance belongs to, as
+    /// `entrances` names applications; `None` for a definition or an entrance in none.
+    pub application: Option<String>,
     /// The rank score (higher is better).
     pub score: u32,
     /// UTF-16 offsets of the matched characters in `name`, for highlighting.
@@ -101,6 +107,8 @@ pub struct FileHit {
     pub path: String,
     /// The file name.
     pub name: String,
+    /// How many definitions the stored graph holds in it; `None` when it isn't indexed.
+    pub definitions: Option<u32>,
     /// The rank score (higher is better).
     pub score: u32,
     /// UTF-16 offsets of the matched characters in `path`, for highlighting.
@@ -234,25 +242,8 @@ pub fn search(ctx: &Ctx<'_>, args: SearchArgs) -> CommandResult<SearchResults> {
             .then_with(|| a.key.cmp(&b.key))
     };
     let mut definitions = merge(&found, |found| &found.definitions, limit, order_hits);
-    // Lines only for the hits returned, with one reader per project.
-    for (project, found) in projects.iter().zip(&found) {
-        let Some(pool) = &found.readers else {
-            continue;
-        };
-        if !definitions.hits.iter().any(|hit| hit.project == *project.id()) {
-            continue;
-        }
-        let reader = pool.get()?;
-        for hit in definitions
-            .hits
-            .iter_mut()
-            .filter(|hit| hit.project == *project.id())
-        {
-            hit.line = reader.block(&hit.key)?.map(|located| located.block.lines.start);
-        }
-    }
-    let entrances = merge(&found, |found| &found.entrances, limit, order_hits);
-    let files = merge(
+    let mut entrances = merge(&found, |found| &found.entrances, limit, order_hits);
+    let mut files = merge(
         &found,
         |found| &found.files,
         limit,
@@ -264,6 +255,18 @@ pub fn search(ctx: &Ctx<'_>, args: SearchArgs) -> CommandResult<SearchResults> {
                 .then_with(|| a.path.cmp(&b.path))
         },
     );
+    // Details only for the hits returned, with one reader per project.
+    for (project, found) in projects.iter().zip(&found) {
+        if let Some(pool) = &found.readers {
+            detail(
+                project.id(),
+                pool,
+                &mut definitions.hits,
+                &mut entrances.hits,
+                &mut files.hits,
+            )?;
+        }
+    }
     Ok(SearchResults {
         query,
         definitions,
@@ -272,6 +275,55 @@ pub fn search(ctx: &Ctx<'_>, args: SearchArgs) -> CommandResult<SearchResults> {
         projects: totals,
         took_ms: u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX),
     })
+}
+
+/// Fills in one project's returned hits from its stored graph: definitions' lines, entrances'
+/// applications (one grouped query), and files' definition counts (one grouped query).
+fn detail(
+    project: &ProjectId,
+    pool: &ReadPool,
+    definitions: &mut [SearchHit],
+    entrances: &mut [SearchHit],
+    files: &mut [FileHit],
+) -> CommandResult<()> {
+    let ours = |hit_project: &ProjectId| hit_project == project;
+    if !definitions.iter().any(|hit| ours(&hit.project))
+        && !entrances.iter().any(|hit| ours(&hit.project))
+        && !files.iter().any(|hit| ours(&hit.project))
+    {
+        return Ok(());
+    }
+    let reader = pool.get()?;
+    for hit in definitions.iter_mut().filter(|hit| ours(&hit.project)) {
+        hit.line = reader.block(&hit.key)?.map(|located| located.block.lines.start);
+    }
+    let keys: Vec<&str> = entrances
+        .iter()
+        .filter(|hit| ours(&hit.project))
+        .map(|hit| hit.key.as_str())
+        .collect();
+    let applications: FxHashMap<String, String> = reader
+        .entrance_applications(&keys)?
+        .into_iter()
+        .map(|(key, name)| (key.as_str().to_owned(), name.into()))
+        .collect();
+    for hit in entrances.iter_mut().filter(|hit| ours(&hit.project)) {
+        hit.application = applications.get(&hit.key).cloned();
+    }
+    let paths: Vec<&str> = files
+        .iter()
+        .filter(|hit| ours(&hit.project))
+        .map(|hit| hit.path.as_str())
+        .collect();
+    let counts: FxHashMap<String, u32> = reader
+        .definition_counts(&paths)?
+        .into_iter()
+        .map(|(path, count)| (path.as_str().to_owned(), count))
+        .collect();
+    for hit in files.iter_mut().filter(|hit| ours(&hit.project)) {
+        hit.definitions = counts.get(&hit.path).copied();
+    }
+    Ok(())
 }
 
 /// The projects to look in, in workspace order: every project, or those `only` names (each must
@@ -462,6 +514,7 @@ fn rank(
                 path: candidate.path.to_string(),
                 kind: candidate.item_kind.to_string(),
                 line: None,
+                application: None,
                 score,
                 name_matches,
             })
@@ -500,6 +553,7 @@ fn rank_files(
             project: project.clone(),
             path: path.to_owned(),
             name: path.rsplit('/').next().unwrap_or(path).to_owned(),
+            definitions: None,
             score,
             matches: score_with_matches(pattern, matcher, path, &mut chars)
                 .map_or_else(Vec::new, |(_, matches)| matches),

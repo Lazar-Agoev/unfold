@@ -41,7 +41,7 @@ export function parseKeyBindings(raw: unknown): Map<WellKnownActionId, string> {
 }
 
 /** The shortcuts an override stands for. */
-export function overrideShortcuts(override: string): readonly string[] {
+function overrideShortcuts(override: string): readonly string[] {
   return override === "" ? [] : [override];
 }
 

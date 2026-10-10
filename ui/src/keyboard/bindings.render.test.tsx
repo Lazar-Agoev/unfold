@@ -3,12 +3,12 @@ import "../test/dom";
 import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { createKeyBindings } from "./bindings";
-import { useActions, useShortcutLabel } from "./hooks";
+import { useActions, useShortcut } from "./hooks";
 import { ActionIds } from "./keymap";
 import { createActionRegistry, type ActionRegistry } from "./registry";
 
 function Label({ id, registry }: { readonly id: string; readonly registry: ActionRegistry }) {
-  return <span data-testid="label">{useShortcutLabel(id, registry) ?? "none"}</span>;
+  return <span data-testid="label">{useShortcut(id, registry) ?? "none"}</span>;
 }
 
 /** What Add's `>` mode lists: actions shown in Add, each with its shortcut. */
@@ -24,17 +24,16 @@ function Commands({ registry }: { readonly registry: ActionRegistry }) {
 }
 
 describe("labels follow key bindings", () => {
-  it("updates a tooltip-style label when the binding changes, even for an unregistered action", () => {
+  it("updates a shortcut shown in a tooltip when the binding changes, even for an unregistered action", () => {
     const bindings = createKeyBindings();
     const registry = createActionRegistry({ bindings });
     render(<Label id={ActionIds.compile} registry={registry} />);
     const label = screen.getByTestId("label");
-    // jsdom has no platform, so labels use the Ctrl style.
-    expect(label.textContent).toBe("Ctrl+Shift+B");
+    expect(label.textContent).toBe("Mod+Shift+B");
     act(() => {
       bindings.set({ [ActionIds.compile]: "Mod+R" });
     });
-    expect(label.textContent).toBe("Ctrl+R");
+    expect(label.textContent).toBe("Mod+R");
     act(() => {
       bindings.set({ [ActionIds.compile]: "" });
     });

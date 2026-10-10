@@ -230,7 +230,7 @@ describe("undo and redo", () => {
     store.undo(REF);
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards).toHaveLength(0);
     expect(store.canUndo(REF)).toBe(false);
-    expect(store.canRedo(REF)).toBe(true);
+    expect(store.getOpenBoard(REF)?.history.future).toHaveLength(3);
     for (let step = 0; step < 250; step += 1) {
       store.editBoard(REF, (document) => { setTitle(document, `Title ${step}`); });
     }

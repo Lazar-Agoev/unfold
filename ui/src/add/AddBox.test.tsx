@@ -2,7 +2,7 @@
 import "../test/dom";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EntranceMap } from "../ipc";
+import type { EntranceMap, SearchGroup, SearchResults } from "../ipc";
 import { actions, type ActionSpec } from "../keyboard";
 import type * as Boards from "../state/boards";
 import { openBoard } from "../state/boards";
@@ -33,6 +33,13 @@ function entrances(project: string): EntranceMap {
 
 const FIRST = entrances(ORDERS).applications[0]?.entrances[0]?.key ?? "";
 
+/** A search golden (`search_place`, `search_worker`) with its hits in the orders project. */
+function searchResults(name: string): SearchResults {
+  const results = fixture("search", name);
+  const inOrders = <T extends { project: string }>(group: SearchGroup<T>): SearchGroup<T> => ({ ...group, hits: group.hits.map((hit) => ({ ...hit, project: ORDERS })) });
+  return { ...results, definitions: inOrders(results.definitions), entrances: inOrders(results.entrances), files: inOrders(results.files) };
+}
+
 let engine: FakeEngine;
 
 beforeEach(() => {
@@ -41,7 +48,7 @@ beforeEach(() => {
     handlers: {
       workspace: () => workspaceView([projectRow(ORDERS, "storefront-api"), projectRow(PAYMENTS, "payments")]),
       entrances: ({ project }) => (project === ORDERS ? entrances(ORDERS) : { ...entrances(PAYMENTS), applications: [] }),
-      search: () => ({ ...fixture("search", "search_place"), definitions: { ...fixture("search", "search_place").definitions, hits: fixture("search", "search_place").definitions.hits.map((hit) => ({ ...hit, project: ORDERS })) } }),
+      search: ({ query }) => searchResults(query === "worker" ? "search_worker" : "search_place"),
       preview: () => ({ ...fixture("preview", "preview_create_order"), project: ORDERS }),
       board_refs: () => ({ refs: [], truncated: false }),
       open_board: () => ({
@@ -144,6 +151,9 @@ describe("the Add box", () => {
     expect(row.getAttribute("aria-selected")).toBe("true");
     expect(screen.getByText("1 project · 1 result")).toBeTruthy();
     await screen.findByRole("heading", { name: "createOrder" });
+    // The preview shows a definition's first 5 lines, then how many more it has.
+    expect(document.querySelectorAll(".add-preview-line")).toHaveLength(5);
+    expect(screen.getByText("6 more lines")).toBeTruthy();
 
     // Tab switches the kind; the kind's own search asks for 500.
     press("Tab");
@@ -156,6 +166,18 @@ describe("the Add box", () => {
     await waitFor(() => {
       expect(adds.newBoard).toHaveBeenCalledWith(ORDERS, { title: "place" });
     });
+  });
+
+  it("names each entrance's application and counts each file's definitions", async () => {
+    renderWithClient(<AddBox />);
+    act(() => {
+      openAdd();
+    });
+    type("worker");
+    const launch = await screen.findByRole("option", { name: /Entrance .* worker/ });
+    expect(within(launch).getByText("storefront-api · worker")).toBeTruthy();
+    const file = screen.getByRole("option", { name: "File src/worker.ts" });
+    expect(within(file).getByText("1 definition")).toBeTruthy();
   });
 
   it("streams text matches from two characters, with the text options on the Text tab", async () => {

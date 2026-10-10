@@ -165,7 +165,7 @@ fn cards_peeks_relations_callers_and_previews_name_their_project() {
     let code = &preview["code"];
     assert_eq!(code["startLine"], 9);
     let lines = code["lines"].as_array().expect("lines");
-    assert!(!lines.is_empty() && lines.len() <= 12);
+    assert!(!lines.is_empty() && lines.len() <= 5);
     assert!(
         code["text"]
             .as_str()

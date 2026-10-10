@@ -1,7 +1,8 @@
 /**
  * First launch (05): an empty workspace. Add project… (⌘O) opens the folder picker; a folder dropped
  * on the zone (or anywhere on the window, which the frame handles) is added; "Opened before" lists the
- * folders removed from the workspace, each added back with `readd_project` (V-21, A-1).
+ * folders removed from the workspace, with when (they were open until removed), each added back with
+ * `readd_project` (V-21, A-1).
  */
 
 import { useState, type DragEvent } from "react";
@@ -9,7 +10,7 @@ import { Button, TextButton, showToast } from "../../components";
 import { Icon } from "../../icons";
 import { toUnfoldError, type RemovedProject } from "../../ipc";
 import { ActionIds, useShortcut } from "../../keyboard";
-import { displayPath } from "../../lib/format";
+import { displayPath, relativeTime } from "../../lib/format";
 import { addProject } from "../../state/actions";
 import { setHomeView } from "../../state/layout";
 import { activateHome } from "../../state/tabs";
@@ -93,6 +94,7 @@ export function FirstLaunch({ removed }: { readonly removed: readonly RemovedPro
                   <span className="home-first-before-path" title={folder.path}>
                     {displayPath(folder.path)}
                   </span>
+                  <span className="home-first-before-when">{`last opened ${relativeTime(folder.removedAtMs)}`}</span>
                   <span className="home-first-before-action">
                     <TextButton aria-label={`Add ${folder.name}`} onClick={() => void addBack(folder)}>
                       Add

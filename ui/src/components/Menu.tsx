@@ -35,16 +35,16 @@ interface MenuItemBase {
 }
 
 /** A command, or a row that opens a submenu (Share ›, Move to folder ›). */
-export type MenuItem = MenuItemBase &
+type MenuItem = MenuItemBase &
   ({ readonly onSelect: () => void; readonly submenu?: undefined } | { readonly submenu: readonly MenuEntry[]; readonly onSelect?: undefined });
 
-export interface MenuSeparator {
+interface MenuSeparator {
   readonly kind: "separator";
   readonly id: string;
 }
 
 /** A non-interactive section heading inside a menu. */
-export interface MenuHeading {
+interface MenuHeading {
   readonly kind: "heading";
   readonly id: string;
   readonly label: string;
@@ -56,7 +56,7 @@ function isItem(entry: MenuEntry): entry is MenuItem {
   return entry.kind === undefined || entry.kind === "item";
 }
 
-export interface MenuProps {
+interface MenuProps {
   readonly entries: readonly MenuEntry[];
   /** The menu's accessible name. */
   readonly label: string;
@@ -292,7 +292,7 @@ function Submenu({ anchor, entries, label, focus, onClose, onBack }: SubmenuProp
 }
 
 /** The menu list itself. Hosts (ContextMenu, MenuButton) position it and handle outside presses. */
-export function Menu({ initialFocus = "first", ...props }: MenuProps) {
+function Menu({ initialFocus = "first", ...props }: MenuProps) {
   return <MenuList {...props} initialFocus={initialFocus} />;
 }
 
@@ -318,7 +318,7 @@ function FloatingMenu({ anchor, side, align, trigger, ...menu }: FloatingMenuPro
   );
 }
 
-export interface ContextMenuProps {
+interface ContextMenuProps {
   /** Where the menu opens: the pointer, or below an element for keyboard-opened menus. */
   readonly at: Point;
   readonly entries: readonly MenuEntry[];
@@ -328,7 +328,7 @@ export interface ContextMenuProps {
 }
 
 /** A Menu at a point, in a portal, closing on a press outside or when the window loses focus. */
-export function ContextMenu({ at, ...menu }: ContextMenuProps) {
+function ContextMenu({ at, ...menu }: ContextMenuProps) {
   return <FloatingMenu anchor={at} side="bottom" align="start" initialFocus="first" {...menu} />;
 }
 

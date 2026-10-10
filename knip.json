@@ -1,0 +1,31 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "ignoreWorkspaces": [
+    "e2e",
+    "tools/oracles",
+    "crates/unfold-node"
+  ],
+  "workspaces": {
+    ".": {
+      "entry": [],
+      "project": []
+    },
+    "ui": {
+      "project": [
+        "src/**/*.{ts,tsx}!"
+      ],
+      "ignore": [
+        "src/ipc/generated/**"
+      ]
+    },
+    "desktop": {
+      "entry": [
+        "scripts/*.mts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.mts"
+      ]
+    }
+  }
+}

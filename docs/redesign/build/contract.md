@@ -405,7 +405,9 @@ interface ProjectRow {
   state: ProjectState;
   git: { branch: string | null; detached: string | null; worktrees: number } | null;  // null: no repository
 }
-interface WorkspaceView { projects: ProjectRow[]; selected: ProjectId | null; recentBoards: RecentBoard[] }
+interface WorkspaceView { projects: ProjectRow[]; selected: ProjectId | null; recentBoards: RecentBoard[];
+  removed: RemovedProject[] }                                               // A-1: "Opened before", most recent first
+interface RemovedProject { path: string; name: ProjectName; removedAtMs: Ms }
 interface RecentBoard { project: ProjectId; board: BoardId; title: string; openedAtMs: Ms }
 
 interface GitInfo {
@@ -506,7 +508,7 @@ interface Callers { project: ProjectId; key: Key; total: number;
   callers: { key: Key; name: string; qualifiedName: string; path: string; line: number; sites: number }[] } // by path, line
 type Preview =
   | { kind: "block"; project: ProjectId; header: BlockHeader;
-      code: { startLine: number; textStart: number; text: string; lines: CodeLine[]; spans: CodeSpan[] }; // ≤ 12 lines, file_view page model
+      code: { startLine: number; textStart: number; text: string; lines: CodeLine[]; spans: CodeSpan[] }; // ≤ 5 lines (as Add draws), file_view page model
       reachedFrom: { total: number; items: EntranceRef[] };                                   // ≤ 5
       calls: { total: number; items: { name: string; key: Key | null; module: string | null }[] };   // ≤ 8, source order
       calledBy: { total: number; items: { key: Key; name: string; path: string; line: number }[] } } // ≤ 5
@@ -532,7 +534,12 @@ interface SearchResults {
   tookMs: number;
 }
 interface SearchGroup<T> { hits: T[]; total: number; truncated: boolean }   // total capped at 2,000 per kind per project
-// SearchHit, FileHit = V1 shapes + project: ProjectId
+// SearchHit, FileHit = V1 shapes + project: ProjectId, and:
+//   SearchHit.application: string | null  // an entrance's first application (by startup key), named as `entrances`
+//                                          // names it (a launch: the application it starts); null for definitions
+//   FileHit.definitions: number | null     // definitions in the stored graph; null when the file isn't indexed
+// Lines, applications, and definition counts are read only for the returned hits, with one reader per project;
+// applications and definition counts take one grouped query each per project.
 interface TextSearchFile { project: ProjectId; path: string; matches: TextMatch[] }          // TextMatch = V1
 interface TextSearchSummary { files: number; matches: number; searched: number; truncated: boolean;
   filesTruncated: boolean; projects: { project: ProjectId; files: number; matches: number }[] }
@@ -1104,7 +1111,8 @@ TS:    D1 transport + api types ─► D2 engine host ─► D3 main + preload  
 
 - **A-1 Opened before.** `workspace.json` gains `"removed": [{ "path", "name", "removedAtMs" }]` (≤ 5, most recent
   first; `remove_project` pushes the row's path and name; a path leaves the list when it is added again).
-  `WorkspaceView` gains `removed: {path: string; name: ProjectName}[]`. New engine command
+  `WorkspaceView` gains `removed: {path: string; name: ProjectName; removedAtMs: Ms}[]` (first launch shows
+  `removedAtMs` as "last opened <relative time>"). New engine command
   `readd_project {path: string}` → same result as `add_project` (not trusted, L —): accepts only a path currently in
   `removed` (else `not_found`), then behaves exactly like `add_project`. First launch's "Opened before" list uses it.
 - **A-2 No U0 bridge (replaces the U0 half of R7).** Step 2 does not adapt the V1 shell (`ui/src/`) to the new IPC.

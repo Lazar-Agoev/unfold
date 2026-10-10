@@ -63,7 +63,6 @@ export { closeBoard, closeBoardsOfProject, newBoard, openBoard, reclaimBoards, t
 export { addPage, deletePage, duplicatePage, movePage, renamePage } from "./pages";
 export {
   amendPage,
-  canRedo,
   canUndo,
   discardChanges,
   editBoard,

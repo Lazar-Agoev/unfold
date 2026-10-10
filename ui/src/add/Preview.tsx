@@ -14,8 +14,8 @@ import { methodColumn, triggerText } from "../lib/entrances";
 import { plural } from "../lib/format";
 import { baseName, type ResultItem } from "./search";
 
-/** Lines a definition's preview shows (the pane also holds its relations and buttons). */
-const BLOCK_LINES = 10;
+/** Lines a definition's preview shows, as drawn (the pane also holds its relations and buttons). */
+const BLOCK_LINES = 5;
 /** Lines of a file's top, and around a text match (V-63). */
 const FILE_LINES = 12;
 const AROUND_MATCH = 5;

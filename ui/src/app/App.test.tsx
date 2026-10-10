@@ -97,6 +97,15 @@ describe("the window frame", () => {
     expect(useTabs.getState().active).toBe("home");
   });
 
+  it("says why a folder from the menu, the command line, or the OS couldn't be added", async () => {
+    renderWithClient(<App />);
+    act(() => {
+      engine.emit({ type: "project_add_failed", path: "/Users/ada/code/notes.txt", message: "Not a folder." });
+    });
+    expect(await screen.findByText("Couldn't add ~/code/notes.txt")).toBeTruthy();
+    expect(screen.getByText("Not a folder.")).toBeTruthy();
+  });
+
   it("shows another project when the shown one leaves the workspace", async () => {
     renderWithClient(<App />);
     await waitFor(() => {

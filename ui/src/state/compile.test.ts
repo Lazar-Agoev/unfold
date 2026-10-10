@@ -1,14 +1,18 @@
 // @vitest-environment jsdom
 import "../test/dom";
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { installFakeEngine, type FakeEngine } from "../test/engine";
-import { cancelCompile, installCompileEvents, startCompile, useCompileProgress, useCompileStartedHere } from "./compile";
+import { cancelCompile, installCompileEvents, resetCompile, startCompile, useCompileProgress, useCompileStartedHere } from "./compile";
 
 const P = "p-orders0000";
 const Q = "p-payments00";
 
 let engine: FakeEngine;
+
+beforeEach(() => {
+  resetCompile();
+});
 
 afterEach(() => {
   engine.uninstall();
@@ -60,6 +64,8 @@ describe("compile per project", () => {
     engine = installFakeEngine();
     const stop = installCompileEvents();
     const q = hooks(Q);
+    // Nothing is left over from the test before (its Compile of P reported progress).
+    expect(hooks(P).result.current).toEqual({ progress: null, here: false });
     act(() => {
       engine.emit({ type: "compile_progress", project: Q, stage: "snapshot", done: 1, total: 4 });
     });

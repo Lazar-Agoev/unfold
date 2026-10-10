@@ -87,7 +87,7 @@ export function activateBoard(ref: BoardRef): void {
   activateTab(boardKey(ref));
 }
 
-export function activateTab(key: TabKey): void {
+function activateTab(key: TabKey): void {
   useTabs.setState((state) => (key === "home" || indexOf(state, key) >= 0 ? { active: key } : state));
 }
 

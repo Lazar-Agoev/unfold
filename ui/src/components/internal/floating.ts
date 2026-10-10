@@ -57,7 +57,7 @@ function fits(position: { left: number; top: number }, size: { width: number; he
 }
 
 /** Computes where a floating element of `size` goes next to `anchor` within `viewport`. */
-export function computePosition(
+function computePosition(
   anchor: Rect,
   size: { width: number; height: number },
   placement: Placement,

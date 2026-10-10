@@ -39,7 +39,11 @@ export interface EngineHostOptions {
 /** More exits than this within {@link RESTART_WINDOW_MS} and the main process stops restarting. */
 const MAX_RESTARTS = 5;
 const RESTART_WINDOW_MS = 60_000;
-const SHUTDOWN_TIMEOUT_MS = 5_000;
+/**
+ * How long quitting waits for the engine host to exit before killing it: longer than Rust's detach
+ * waits for a window's closing writes (15 s), so a slow board save still lands.
+ */
+const SHUTDOWN_TIMEOUT_MS = 16_000;
 
 export class EngineHost {
   private child: UtilityProcess | null = null;

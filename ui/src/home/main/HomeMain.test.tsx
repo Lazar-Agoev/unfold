@@ -71,13 +71,15 @@ afterEach(() => {
 
 describe("first launch (05)", () => {
   it("offers Add project and the folders opened before, and adds one back", async () => {
-    const fake = start(workspaceView([], { removed: [{ path: "/Users/someone/code/storefront-api", name: "storefront-api" }] }), {
+    const removedAtMs = Date.now() - 3 * 24 * 60 * 60 * 1000;
+    const fake = start(workspaceView([], { removed: [{ path: "/Users/someone/code/storefront-api", name: "storefront-api", removedAtMs }] }), {
       readd_project: () => ({ status: "added", project: projectRow(P, "storefront-api") }),
     });
     renderWithClient(<HomeMain />);
     expect(await screen.findByRole("heading", { name: "Read a codebase by how it starts." })).toBeTruthy();
     expect(screen.getByText("Drop a folder here")).toBeTruthy();
     expect(screen.getByText("~/code/storefront-api")).toBeTruthy();
+    expect(screen.getByText("last opened 3 days ago")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Add storefront-api" }));
     await waitFor(() => {
       expect(fake.callsOf("readd_project")).toEqual([{ path: "/Users/someone/code/storefront-api" }]);

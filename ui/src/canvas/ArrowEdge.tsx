@@ -7,7 +7,7 @@
 import { getBezierPath, type Edge, type EdgeProps } from "@xyflow/react";
 import { memo } from "react";
 
-export interface ArrowData extends Record<string, unknown> {
+interface ArrowData extends Record<string, unknown> {
   readonly dashed: boolean;
   /** An entrance's arrow to one of its handlers. */
   readonly handler: boolean;

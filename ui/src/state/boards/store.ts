@@ -41,7 +41,7 @@ import type {
 /** How long after the last edit a board saves itself. */
 export const AUTOSAVE_MS = 600;
 /** Edits with the same coalesce key closer together than this are one undo step. */
-export const COALESCE_MS = 1200;
+const COALESCE_MS = 1200;
 /** Undo steps kept per board. */
 export const HISTORY_LIMIT = 200;
 /** How long after the last camera, lens, or page change a board's view is saved. */
@@ -447,10 +447,6 @@ export function canUndo(ref: BoardRef): boolean {
   return (getOpenBoard(ref)?.history.past.length ?? 0) > 0;
 }
 
-export function canRedo(ref: BoardRef): boolean {
-  return (getOpenBoard(ref)?.history.future.length ?? 0) > 0;
-}
-
 function step(ref: BoardRef, from: "past" | "future"): boolean {
   const board = getOpenBoard(ref);
   const entry = board?.history[from].at(-1);
@@ -760,7 +756,7 @@ function adoptReloaded(ref: BoardRef, state: BoardState): void {
 }
 
 /** Reads the board from disk again, replacing this window's document (Take theirs). */
-export async function reloadBoard(ref: BoardRef): Promise<void> {
+async function reloadBoard(ref: BoardRef): Promise<void> {
   const running = inflight.get(boardKey(ref));
   if (running) {
     await running;

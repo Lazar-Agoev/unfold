@@ -32,7 +32,7 @@ export function onWindowDrop(event: DragEvent): void {
 }
 
 /** Adds the folders one by one, says why any can't be added, then shows the last one added. */
-export async function addDroppedFolders(files: readonly DroppedFile[]): Promise<void> {
+async function addDroppedFolders(files: readonly DroppedFile[]): Promise<void> {
   let added: ProjectId | null = null;
   for (const file of files) {
     try {

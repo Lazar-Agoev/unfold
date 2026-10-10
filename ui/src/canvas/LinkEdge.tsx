@@ -13,7 +13,7 @@ import { removeLink, select, type PageTarget } from "../state/boards";
 import { setSelectedCollapsed } from "../state/layout";
 import { LINK_LABEL_FIELD } from "./cards/select";
 
-export interface LinkData extends Record<string, unknown> {
+interface LinkData extends Record<string, unknown> {
   readonly target: PageTarget;
   readonly selected: boolean;
   readonly label: string | null;

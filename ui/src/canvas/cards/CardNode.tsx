@@ -15,7 +15,7 @@ import { EntranceCard } from "./EntranceCard";
 import { PlaceholderCard } from "./PlaceholderCard";
 import "./cards.css";
 
-export interface CardNodeData extends Record<string, unknown> {
+interface CardNodeData extends Record<string, unknown> {
   readonly target: PageTarget;
   /** Occurrence keys (or entrance target handles) with an arrow, sorted. */
   readonly ports: readonly string[];

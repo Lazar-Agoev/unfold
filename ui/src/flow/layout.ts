@@ -12,7 +12,7 @@ import type { FlowItem, FlowModel, FlowNode, RouteKind } from "../ipc/generated"
 /** Measures the width of `text` in pixels for a CSS font shorthand. */
 export type Measure = (text: string, font: string) => number;
 
-export const FLOW_FONTS = {
+const FLOW_FONTS = {
   label: '500 13px "Inter Variable", system-ui, sans-serif',
   name: '600 12.5px "JetBrains Mono Variable", ui-monospace, monospace',
   pill: '600 12.5px "Inter Variable", system-ui, sans-serif',
@@ -22,7 +22,7 @@ export const FLOW_FONTS = {
 const SLACK = 6;
 
 /** Vertical rhythm of a node box (flow.css keeps the same numbers). */
-export const FLOW_METRICS = {
+const FLOW_METRICS = {
   padY: 8,
   padX: 12,
   typeRow: 14,
@@ -37,7 +37,7 @@ export const FLOW_METRICS = {
 } as const;
 
 /** Spacing between items, lanes, and inside regions. */
-export const FLOW_SPACING = {
+const FLOW_SPACING = {
   vgap: 30,
   laneGap: 28,
   regionPad: 18,
@@ -70,7 +70,7 @@ export interface PlacedNode {
   readonly summary?: boolean;
 }
 
-export interface FlowRegion {
+interface FlowRegion {
   readonly kind: "loop" | "try" | "catch";
   readonly title: string;
   readonly subtitle?: string;
@@ -87,7 +87,7 @@ export interface Point {
   readonly y: number;
 }
 
-export interface FlowEdge {
+interface FlowEdge {
   readonly id: string;
   readonly from: string;
   readonly to: string;

@@ -198,6 +198,61 @@ fn entrances_definitions_and_applications() {
 }
 
 #[test]
+fn definition_counts_and_entrance_applications_are_grouped() {
+    let (_dir, mut store) = temp_store();
+    let prepared = Prepared::new(sample().build());
+    store.writer.commit(&prepared.first_compile()).unwrap();
+    let reader = store.readers.get().unwrap();
+
+    // Indexed files count their definitions (even none); other paths are left out.
+    let counts = reader
+        .definition_counts(&["src/server.ts", "README.md", "src/orders.ts"])
+        .unwrap();
+    let expected = |path: &str| {
+        let index = prepared
+            .graph
+            .files
+            .iter()
+            .position(|file| file.file.path.as_str() == path)
+            .unwrap();
+        u32::try_from(prepared.definitions[index].len()).unwrap()
+    };
+    let counts: Vec<(&str, u32)> = counts
+        .iter()
+        .map(|(path, count)| (path.as_str(), *count))
+        .collect();
+    assert_eq!(
+        counts,
+        [("src/orders.ts", 2), ("src/server.ts", expected("src/server.ts"))]
+    );
+    assert!(reader.definition_counts(&[]).unwrap().is_empty());
+
+    // Members name their application; the launch names the application it starts.
+    let mut keys: Vec<&str> = prepared
+        .graph
+        .entrances
+        .iter()
+        .map(|entrance| entrance.key.as_str())
+        .collect();
+    keys.push("entrance:[]");
+    let named = reader.entrance_applications(&keys).unwrap();
+    let mut expected: Vec<&str> = prepared
+        .graph
+        .entrances
+        .iter()
+        .map(|entrance| entrance.key.as_str())
+        .collect();
+    expected.sort_unstable();
+    assert_eq!(
+        named.iter().map(|(key, _)| key.as_str()).collect::<Vec<_>>(),
+        expected,
+        "every sample entrance has an application, listed once"
+    );
+    assert!(named.iter().all(|(_, name)| &**name == "start"));
+    assert!(reader.entrance_applications(&[]).unwrap().is_empty());
+}
+
+#[test]
 fn stats_count_rows() {
     let (_dir, mut store) = temp_store();
     let prepared = Prepared::new(sample().build());

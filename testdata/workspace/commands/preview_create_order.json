@@ -17,7 +17,7 @@
   "code": {
     "startLine": 25,
     "textStart": 854,
-    "text": "export async function createOrder(req: Request, res: Response): Promise<void> {\n  const draft: OrderDraft = req.body;\n  if (req.header(\"prefer\") === \"respond-async\") {\n    const job = await ordersQueue.add(\"place-order\", { order: draft });\n    res.status(202).json({ jobId: job.id });\n    return;\n  }\n  const order = orderService.place(draft);\n  slack.post(\"#orders\", `Order ${order.id} placed for ${order.customerId}`);\n  res.status(201).json(order);\n}\n",
+    "text": "export async function createOrder(req: Request, res: Response): Promise<void> {\n  const draft: OrderDraft = req.body;\n  if (req.header(\"prefer\") === \"respond-async\") {\n    const job = await ordersQueue.add(\"place-order\", { order: draft });\n    res.status(202).json({ jobId: job.id });\n",
     "lines": [
       {
         "number": 25,
@@ -48,42 +48,6 @@
         "start": 1094,
         "end": 1138,
         "indent": 4
-      },
-      {
-        "number": 30,
-        "start": 1139,
-        "end": 1150,
-        "indent": 4
-      },
-      {
-        "number": 31,
-        "start": 1151,
-        "end": 1154,
-        "indent": 2
-      },
-      {
-        "number": 32,
-        "start": 1155,
-        "end": 1197,
-        "indent": 2
-      },
-      {
-        "number": 33,
-        "start": 1198,
-        "end": 1274,
-        "indent": 2
-      },
-      {
-        "number": 34,
-        "start": 1275,
-        "end": 1305,
-        "indent": 2
-      },
-      {
-        "number": 35,
-        "start": 1306,
-        "end": 1307,
-        "indent": 0
       }
     ],
     "spans": [
@@ -211,91 +175,6 @@
         1132,
         1134,
         "property"
-      ],
-      [
-        1143,
-        1149,
-        "keyword"
-      ],
-      [
-        1157,
-        1162,
-        "keyword"
-      ],
-      [
-        1184,
-        1189,
-        "function"
-      ],
-      [
-        1206,
-        1210,
-        "function"
-      ],
-      [
-        1211,
-        1220,
-        "string"
-      ],
-      [
-        1222,
-        1229,
-        "string"
-      ],
-      [
-        1229,
-        1231,
-        "keyword"
-      ],
-      [
-        1237,
-        1239,
-        "property"
-      ],
-      [
-        1239,
-        1240,
-        "keyword"
-      ],
-      [
-        1240,
-        1252,
-        "string"
-      ],
-      [
-        1252,
-        1254,
-        "keyword"
-      ],
-      [
-        1260,
-        1270,
-        "property"
-      ],
-      [
-        1270,
-        1271,
-        "keyword"
-      ],
-      [
-        1271,
-        1272,
-        "string"
-      ],
-      [
-        1281,
-        1287,
-        "function"
-      ],
-      [
-        1288,
-        1291,
-        "number"
-      ],
-      [
-        1293,
-        1297,
-        "function"
       ]
     ]
   },

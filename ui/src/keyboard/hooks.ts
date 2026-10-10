@@ -1,9 +1,7 @@
 /** React hooks over the action registry. */
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { usePlatform } from "./platform";
 import { actions as windowActions, type Action, type ActionRegistry, type ActionSpec } from "./registry";
-import { shortcutLabel } from "./shortcut";
 
 /** A string that changes when anything the registry stores about these specs (besides closures) changes. */
 function signatureOf(specs: readonly ActionSpec[]): string {
@@ -69,11 +67,4 @@ export function useShortcutLookup(registry: ActionRegistry = windowActions): (id
   // Re-render whenever registrations or bindings change, which is when lookups can change.
   useActions(registry);
   return (id: string) => registry.shortcutsFor(id)[0] ?? null;
-}
-
-/** The label of an action's primary shortcut in the platform's style (`⇧⌘P`), or null if it has none. */
-export function useShortcutLabel(id: string, registry: ActionRegistry = windowActions): string | null {
-  const platform = usePlatform();
-  const shortcut = useShortcut(id, registry);
-  return shortcut === null ? null : shortcutLabel(platform, shortcut);
 }

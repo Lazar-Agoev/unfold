@@ -23,7 +23,7 @@ type Handler<C extends CommandName> = (args: CommandArgs<C>) => CommandResult<C>
 export type EngineHandlers = { [C in CommandName]?: Handler<C> };
 
 /** A streamed command's handler: send messages, then resolve (or never, until cancelled). */
-export type StreamHandler = (
+type StreamHandler = (
   args: Readonly<Record<string, unknown>>,
   send: (message: unknown) => void,
   signal: AbortSignal,

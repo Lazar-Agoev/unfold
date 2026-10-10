@@ -8,7 +8,7 @@ import { useRef, type KeyboardEvent } from "react";
 import { cx } from "./internal/dom";
 import "./SegmentedControl.css";
 
-export interface SegmentedOption<V extends string> {
+interface SegmentedOption<V extends string> {
   readonly value: V;
   readonly label: string;
   /** Shown after the label in the `switch` variant (Health's problem count). */

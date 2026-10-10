@@ -37,7 +37,7 @@ export interface TreeRowContent {
   readonly title?: string;
 }
 
-export interface TreeRowState {
+interface TreeRowState {
   readonly depth: number;
   readonly expanded: boolean;
   readonly selected: boolean;

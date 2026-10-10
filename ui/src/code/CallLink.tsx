@@ -12,7 +12,7 @@ import { useEngineQuery } from "../ipc/queries";
 import { linkNote, shortPath } from "./text";
 
 /** The hover's content: the target's first written line (its signature) and location, in the enclosing card's project. */
-export function PeekContent({ targetKey, hint = "Click to open · ⌥-click to expand inline" }: { readonly targetKey: string; readonly hint?: string }) {
+function PeekContent({ targetKey, hint = "Click to open · ⌥-click to expand inline" }: { readonly targetKey: string; readonly hint?: string }) {
   const project = useScopeProject();
   const peek = useEngineQuery("peek", { project: project ?? "", key: targetKey }, { enabled: project !== null });
   return <PeekBody peek={peek.data} failed={peek.isError} hint={hint} />;

@@ -39,7 +39,7 @@ export function duration(ms: number): string {
   return ms < 1000 ? `${formatCount(Math.round(ms))} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
 
-export function logRow(entry: IndexLogEntry, nowMs?: number): LogRow {
+function logRow(entry: IndexLogEntry, nowMs?: number): LogRow {
   const facts = new Map(factLines(entry.text).facts.map((fact) => [fact.label, fact.value]));
   const read = countIn(facts.get("files"), "read");
   const cached = countIn(facts.get("files"), "from cache");

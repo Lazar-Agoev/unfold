@@ -11,9 +11,9 @@ import { cx } from "./internal/dom";
 import "./Resizable.css";
 
 /** The pane edge the handle sits on. Dragging away from the pane grows it. */
-export type PaneEdge = "left" | "right" | "top" | "bottom";
+type PaneEdge = "left" | "right" | "top" | "bottom";
 
-export interface SizeBounds {
+interface SizeBounds {
   readonly min: number;
   readonly max: number;
   /** Double-click and Enter return here. */

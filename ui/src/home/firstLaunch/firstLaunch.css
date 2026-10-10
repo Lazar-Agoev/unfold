@@ -136,6 +136,14 @@
   white-space: nowrap;
 }
 
+.home-first-before-when {
+  flex-shrink: 0;
+  width: 140px;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
 .home-first-before-action {
   display: flex;
   justify-content: flex-end;

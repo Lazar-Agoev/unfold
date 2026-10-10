@@ -160,6 +160,8 @@ pub struct RemovedProject {
     pub path: String,
     /// Its shared name when it was removed.
     pub name: String,
+    /// When it was removed, in milliseconds since the Unix epoch.
+    pub removed_at_ms: i64,
 }
 
 /// One project row of the sidebar.
@@ -537,6 +539,7 @@ impl Projects {
                 .map(|removed| RemovedProject {
                     path: removed.path.clone(),
                     name: removed.name.clone(),
+                    removed_at_ms: removed.removed_at_ms,
                 })
                 .collect();
             (

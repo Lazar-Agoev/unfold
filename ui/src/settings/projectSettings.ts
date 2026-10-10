@@ -109,7 +109,7 @@ function pythonProblem(project: PythonDraft, all: readonly PythonDraft[]): strin
 const PROJECT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 /** Why a shared name can't be saved (contract §4.1), or null. Empty means "the default". */
-export function nameProblem(name: string): string | null {
+function nameProblem(name: string): string | null {
   const trimmed = name.trim();
   return trimmed === "" || PROJECT_NAME.test(trimmed)
     ? null

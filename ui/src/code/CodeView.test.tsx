@@ -8,9 +8,15 @@ import type { CallLink, CardView, CodeText } from "../ipc/generated";
 import { fixture } from "../test/engine";
 import { CodeView, portAnchors } from "./CodeView";
 import type { OutlineItem } from "../ipc/generated";
-import { defaultFolds, foldHiding, groupConflict, groupForLines, groupSelection } from "./outline";
+import { defaultFolds, foldHiding, groupConflict, groupSelection } from "./outline";
 import { linkRanges, segmentRange, spanRanges } from "./segments";
 import { linkNote } from "./text";
+
+/** The members of the group a gutter selection makes, or none when it can't be a group. */
+function groupForLines(outline: readonly OutlineItem[], fromLine: number, toLine: number): string[] {
+  const selection = groupSelection(outline, fromLine, toLine);
+  return "members" in selection ? selection.members : [];
+}
 
 vi.mock("../state/boards/engine", () => ({ call: vi.fn(() => new Promise(() => undefined)), onEngineEvent: vi.fn() }));
 

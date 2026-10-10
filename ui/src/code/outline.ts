@@ -109,12 +109,6 @@ export function groupSelection(outline: readonly OutlineItem[], fromLine: number
   return { error: "Select the lines of whole statements to group them." };
 }
 
-/** The members of the group a gutter selection makes, or none when it can't be a group. */
-export function groupForLines(outline: readonly OutlineItem[], fromLine: number, toLine: number): string[] {
-  const selection = groupSelection(outline, fromLine, toLine);
-  return "members" in selection ? selection.members : [];
-}
-
 /**
  * Checks a new group against the card's groups (by their members' lines): groups never overlap or
  * nest. Returns the reason, or null when it fits.
@@ -136,6 +130,6 @@ export function groupConflict(
 }
 
 /** Whether two line ranges overlap. */
-export function linesOverlap(a: { startLine: number; endLine: number }, b: { startLine: number; endLine: number }): boolean {
+function linesOverlap(a: { startLine: number; endLine: number }, b: { startLine: number; endLine: number }): boolean {
   return a.startLine <= b.endLine && b.startLine <= a.endLine;
 }

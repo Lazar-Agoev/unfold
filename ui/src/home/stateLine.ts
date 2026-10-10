@@ -8,7 +8,7 @@ import type { CompileProgress, FallbackReason, ProjectState, ProjectSummary } fr
 import { formatCount, languageList, plural, relativeTime } from "../lib/format";
 
 /** A run of the detail: mono for branch names (V-25). */
-export interface DetailPart {
+interface DetailPart {
   readonly text: string;
   readonly mono?: boolean;
 }

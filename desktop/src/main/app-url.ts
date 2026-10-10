@@ -6,8 +6,8 @@
 import { extname, resolve, sep } from "node:path";
 
 export const APP_SCHEME = "app";
-export const APP_HOST = "unfold";
-export const APP_ENTRY_URL = `${APP_SCHEME}://${APP_HOST}/index.html`;
+const APP_HOST = "unfold";
+const APP_ENTRY_URL = `${APP_SCHEME}://${APP_HOST}/index.html`;
 
 /**
  * The production policy: every asset comes from the app itself, there are no inline scripts or

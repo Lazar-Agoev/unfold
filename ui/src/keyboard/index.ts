@@ -14,39 +14,29 @@ export {
   type KeyBindingOverrides,
   type KeyBindings,
 } from "./bindings";
-export { dispatchShortcut, useShortcutDispatcher, type DispatchContext } from "./dispatcher";
+export { useShortcutDispatcher } from "./dispatcher";
 export { requestFocus, useFocusTarget } from "./focus-targets";
-export { useActions, useRegisterActions, useShortcut, useShortcutLabel, useShortcutLookup } from "./hooks";
+export { useActions, useRegisterActions, useShortcut, useShortcutLookup } from "./hooks";
 export {
   ACTION_INFO,
   ADD_GROUPS,
   ActionIds,
   DEFAULT_SHORTCUTS,
-  MENU_COMMAND_ACTIONS,
-  defaultShortcuts,
   isWellKnownAction,
   type WellKnownActionId,
 } from "./keymap";
-export { runMenuCommand, useMenuCommands } from "./menu";
+export { useMenuCommands } from "./menu";
 export { isModalOpen, pushModal } from "./modal";
-export { currentPlatform, usePlatform, type Platform } from "./platform";
+export { usePlatform, type Platform } from "./platform";
 export {
   actions,
-  createActionRegistry,
   setActionErrorHandler,
   type Action,
-  type ActionRegistry,
   type ActionSpec,
 } from "./registry";
-export { registerScope, runScoped, scopedHandler, useCommandScope, type ScopeHandlers, type ScopedCommand } from "./scopes";
+export { runScoped, scopedHandler, useCommandScope } from "./scopes";
 export {
-  chordIdentity,
-  isEditableTarget,
-  matchesChord,
-  normalizeShortcut,
-  parseShortcut,
   shortcutFromEvent,
   shortcutAriaLabel,
   shortcutLabel,
-  type Chord,
 } from "./shortcut";

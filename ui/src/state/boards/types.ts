@@ -118,7 +118,7 @@ export interface HistoryEntry {
 }
 
 /** Undo and redo for one board across its pages: whole documents, so the history is plain JSON. */
-export interface BoardHistory {
+interface BoardHistory {
   past: HistoryEntry[];
   future: HistoryEntry[];
   /** The last coalescing edit (a drag, typing), so a burst becomes one step. */
@@ -126,7 +126,7 @@ export interface BoardHistory {
 }
 
 /** An outside change to a board with unsaved edits, waiting for the person to choose. */
-export interface BoardConflict {
+interface BoardConflict {
   /** The revision on disk, or null when the file was deleted. */
   readonly diskRevision: string | null;
 }

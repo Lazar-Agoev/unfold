@@ -110,6 +110,64 @@ fn kinds_and_limits_apply_across_projects() {
 }
 
 #[test]
+fn entrances_name_their_application_and_files_count_their_definitions() {
+    let harness = Harness::compiled("ts-orders");
+    let results = harness.ok(
+        1,
+        "search",
+        json!({ "query": "orders", "kinds": ["entrances"], "limit": 500 }),
+    );
+    let application = |key: &str| {
+        hits(&results, "entrances")
+            .into_iter()
+            .find(|hit| hit["key"] == key)
+            .map(|hit| hit["application"].clone())
+            .unwrap_or_else(|| panic!("no hit {key}: {results}"))
+    };
+    // A member names its first application; a launch, the application it starts.
+    assert_eq!(
+        application(r#"entrance:["express.route","http","GET","/orders","listOrders"]"#),
+        "server"
+    );
+    assert_eq!(
+        application(r#"entrance:["bullmq.worker","worker","","orders","processOrder"]"#),
+        "worker"
+    );
+    let launch = harness.ok(
+        1,
+        "search",
+        json!({ "query": "scheduler", "kinds": ["entrances"] }),
+    );
+    assert!(
+        hits(&launch, "entrances")
+            .iter()
+            .any(|hit| hit["kind"] == "process" && hit["application"] == "scheduler"),
+        "{launch}"
+    );
+
+    // An indexed file counts its definitions; any other file has no count.
+    let files = harness.ok(
+        1,
+        "search",
+        json!({ "query": "o", "kinds": ["files"], "limit": 500 }),
+    );
+    let definitions = |path: &str| {
+        hits(&files, "files")
+            .into_iter()
+            .find(|hit| hit["path"] == path)
+            .map(|hit| hit["definitions"].clone())
+            .unwrap_or_else(|| panic!("no hit {path}: {files}"))
+    };
+    assert_eq!(definitions("src/routes/orders.ts"), 4);
+    assert_eq!(
+        definitions("src/queues/orders-worker.ts"),
+        0,
+        "indexed, without definitions"
+    );
+    assert_eq!(definitions("tsconfig.json"), Value::Null);
+}
+
+#[test]
 fn search_is_fast() {
     let harness = Harness::compiled("ts-orders");
     let queries = [

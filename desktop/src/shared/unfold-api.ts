@@ -92,7 +92,12 @@ export type ShellEvent =
    * A project was added from the menu, the command line, the OS (`open-file`), a second launch, or a
    * drop the UI didn't handle: select it. Sent to the focused window.
    */
-  | { readonly type: "project_added"; readonly project: string };
+  | { readonly type: "project_added"; readonly project: string }
+  /**
+   * Adding a folder from the menu, the command line, the OS, a second launch, or a drop the UI didn't
+   * handle failed (it isn't a folder, the workspace is full, …): say why. Sent to the focused window.
+   */
+  | { readonly type: "project_add_failed"; readonly path: string; readonly message: string };
 
 /** A running streamed command. */
 export interface StreamHandle {
@@ -219,7 +224,7 @@ export interface UnfoldApi {
    * Add a folder the person just dropped on this window as a project, from the `drop` event's
    * `File`. Only an item of the latest drop is accepted, and the engine checks it is a folder (else
    * it rejects with `not_a_folder`). Without a handler in the UI, the preload adds a single folder
-   * dropped anywhere in the window by itself and emits `project_added`.
+   * dropped anywhere in the window by itself and emits `project_added` (or `project_add_failed`).
    */
   addDroppedFolder(file: DroppedFile): Promise<AddedProject>;
 }

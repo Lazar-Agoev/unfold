@@ -8,7 +8,8 @@
  *   window opens.
  * - A folder from the menu, the command line, the OS (`open-file`), a second launch, or a drop joins
  *   the workspace through the trusted `add_project`, the only door for an outside path. The menu,
- *   command line, OS, and second launch also tell the focused window to select it (`project_added`).
+ *   command line, OS, and second launch also tell the focused window to select it (`project_added`),
+ *   or why it couldn't be added (`project_add_failed`).
  * - Bounds are saved with `save_window_bounds` when a window is created and whenever it is moved or
  *   resized (debounced by the registry, and flushed as the window closes so the last move before
  *   closing or quitting is kept).
@@ -17,7 +18,7 @@
  */
 
 import { transportError } from "../shared/transport";
-import type { AddedProject } from "../shared/unfold-api";
+import type { AddedProject, ShellEvent } from "../shared/unfold-api";
 import type { EngineHost } from "./engine-host";
 import { EngineRequestError } from "./engine-host";
 import { savedWindowList } from "./window-placement";
@@ -62,20 +63,21 @@ export class Workspace {
 
   /**
    * Adds a project from the menu, the command line, the OS, or a second launch, then tells the
-   * focused window (else the first one, else a new one) to select it. Failures are logged.
+   * focused window (else the first one, else a new one) to select it, or why it couldn't be added.
    */
   async addProject(path: string): Promise<void> {
-    let added: AddedProject;
+    let event: ShellEvent;
     try {
-      added = await this.add(0, path);
+      event = { type: "project_added", project: (await this.add(0, path)).project };
     } catch (error) {
       console.error(`[main] adding ${path} to the workspace failed: ${describe(error)}`);
-      return;
+      const message = error instanceof EngineRequestError ? error.error.message : describe(error);
+      event = { type: "project_add_failed", path, message };
     }
     // At launch, the windows coming back receive it rather than a window of their own.
     await this.restoring;
     const target = this.registry.focused() ?? this.registry.all()[0] ?? this.registry.create();
-    this.registry.deliver(target, { type: "project_added", project: added.project });
+    this.registry.deliver(target, event);
   }
 
   /** The app is quitting: windows closing from now on are remembered, not forgotten. */

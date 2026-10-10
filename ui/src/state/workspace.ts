@@ -22,7 +22,7 @@ export function useWorkspace(): WorkspaceView | undefined {
 }
 
 /** The workspace from the cache, outside React. */
-export function getWorkspace(): WorkspaceView | undefined {
+function getWorkspace(): WorkspaceView | undefined {
   return queryClient.getQueryData<WorkspaceView>(WORKSPACE_KEY);
 }
 

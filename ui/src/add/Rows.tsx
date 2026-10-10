@@ -1,11 +1,12 @@
 /**
  * The rows of Add's lists (04 §5.1, 04b §6): a result of any kind (project monogram, kind column, name,
- * trailing meta), the "N more <kind>" link, and a command (icon, group ›, name with its match in bold,
+ * trailing meta: an entrance's `project · application`, a file's definition count), the "N more <kind>" link, and a command (icon, group ›, name with its match in bold,
  * keycaps).
  */
 
 import { KeyChip, Monogram } from "../components";
 import { Icon } from "../icons";
+import { plural } from "../lib/format";
 import type { CommandItem } from "./commands";
 import { highlightRanges } from "./highlight";
 import { baseName, definitionColumn, entranceColumn, trimmedMatch, type ResultItem } from "./search";
@@ -45,11 +46,12 @@ interface ResultRowProps {
 function Meta({ item, projectName }: { readonly item: ResultRowProps["item"]; readonly projectName: string }) {
   switch (item.type) {
     case "entrance":
-      return <span className="add-row-meta">{`${projectName} · ${baseName(item.hit.path)}`}</span>;
+      // Its application, as the map lanes name them; the declaring file when it has none.
+      return <span className="add-row-meta">{`${projectName} · ${item.hit.application ?? baseName(item.hit.path)}`}</span>;
     case "function":
       return <span className="add-row-meta add-code">{item.hit.path}</span>;
     case "file":
-      return null;
+      return item.hit.definitions === null ? null : <span className="add-row-meta">{plural(item.hit.definitions, "definition")}</span>;
     case "text":
       return <span className="add-row-meta add-code">{`${item.hit.file.path}:${item.hit.match.line}`}</span>;
   }

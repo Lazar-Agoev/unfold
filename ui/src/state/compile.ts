@@ -89,3 +89,8 @@ export function installCompileEvents(): () => void {
     }
   };
 }
+
+/** Forgets every Compile and progress report (tests: the store is per window, so per test file otherwise). */
+export function resetCompile(): void {
+  useCompileState.setState({ running: {}, progress: {} });
+}

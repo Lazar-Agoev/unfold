@@ -16,10 +16,6 @@ export function cardKey(card: Card): Key {
   return "block" in card.ref ? card.ref.block : card.ref.entrance;
 }
 
-export function isEntranceCard(card: Card): boolean {
-  return "entrance" in card.ref;
-}
-
 export function findPage(document: BoardDocument, pageId: PageId): Page | undefined {
   return document.pages.find((page) => page.id === pageId);
 }
@@ -149,7 +145,7 @@ export function setCardsFolded(page: Page, cardIds: readonly string[], folded: b
 }
 
 /** A new, unsigned description (the next save signs it from verified source). */
-export function description(text: string, author: string): Description {
+function description(text: string, author: string): Description {
   return { text, author, signature: "" };
 }
 

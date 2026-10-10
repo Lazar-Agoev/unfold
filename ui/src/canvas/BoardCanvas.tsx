@@ -51,9 +51,9 @@ const edgeTypes = { arrow: ArrowEdge, link: LinkEdge };
 const NO_PORTS: readonly string[] = [];
 const NO_LINKS: readonly Link[] = [];
 /** Fit leaves room for the dock at the bottom, so nothing covers a card. */
-export const FIT_PADDING = { top: "32px", right: "40px", bottom: "96px", left: "40px" } as const;
-export const MIN_ZOOM = 0.05;
-export const MAX_ZOOM = 1.5;
+const FIT_PADDING = { top: "32px", right: "40px", bottom: "96px", left: "40px" } as const;
+const MIN_ZOOM = 0.05;
+const MAX_ZOOM = 1.5;
 /** Above this many cards, only the cards in view render. */
 const VISIBLE_ONLY_ABOVE = 40;
 

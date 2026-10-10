@@ -105,7 +105,6 @@
   --color-decision: #d97706;
   --color-decision-fill: #fef3c7;
   --color-data: #9333ea;
-  --color-data-fill: #f3e8ff;
   --color-guard: #ea580c;
   --color-guard-fill: #ffedd5;
   --color-loop: #4f46e5;
@@ -145,13 +144,9 @@
 
   /* Sizes */
   --row: 28px;
-  --row-result: 32px;
   --tabstrip: 38px;
   --tab: 30px;
   --topbar: 48px;
-  --sidebar-default: 264px;
-  --sidebar-min: 220px;
-  --sidebar-max: 360px;
   --peek-width: 640px;
 
   /* Layers: floating surfaces stack in this order. */
@@ -251,7 +246,6 @@
     --color-decision: #f59e0b;
     --color-decision-fill: #3b2a0b;
     --color-data: #c084fc;
-    --color-data-fill: #2e1f45;
     --color-guard: #fb923c;
     --color-guard-fill: #3b2313;
     --color-loop: #818cf8;
@@ -344,7 +338,6 @@
   --color-decision: #f59e0b;
   --color-decision-fill: #3b2a0b;
   --color-data: #c084fc;
-  --color-data-fill: #2e1f45;
   --color-guard: #fb923c;
   --color-guard-fill: #3b2313;
   --color-loop: #818cf8;

@@ -187,16 +187,37 @@ describe("addProject", () => {
     expect(windows()[0]?.window.sent).toEqual([{ type: "project_added", project: PROJECT }]);
   });
 
-  it("logs a folder the engine refuses and tells no window", async () => {
+  it("tells the focused window why the engine refused a folder, and logs it", async () => {
     const { engine, registry, workspace } = setup();
     engine.answers.set("add_project", () =>
-      Promise.reject(new EngineRequestError({ code: "not_a_folder", message: "gone" })),
+      Promise.reject(new EngineRequestError({ code: "not_a_folder", message: "Not a folder: /code/gone." })),
     );
-    const entry = registry.create() as Entry;
-    entry.window.finishLoad();
+    const [a, b] = [registry.create() as Entry, registry.create() as Entry];
+    a.window.finishLoad();
+    b.window.finishLoad();
+    b.window.focus();
     await workspace.addProject("/code/gone");
-    expect(entry.window.sent).toEqual([]);
-    expect(console.error).toHaveBeenCalledWith("[main] adding /code/gone to the workspace failed: not_a_folder: gone");
+    expect(a.window.sent).toEqual([]);
+    expect(b.window.sent).toEqual([
+      { type: "project_add_failed", path: "/code/gone", message: "Not a folder: /code/gone." },
+    ]);
+    expect(console.error).toHaveBeenCalledWith(
+      "[main] adding /code/gone to the workspace failed: not_a_folder: Not a folder: /code/gone.",
+    );
+  });
+
+  it("at launch, tells a restored window about a folder it couldn't add once its UI has loaded", async () => {
+    const { engine, workspace, windows } = setup();
+    engine.answers.set("saved_windows", () => Promise.resolve({ windows: [{ key: "a", bounds: null, maximized: false }] }));
+    engine.answers.set("add_project", () =>
+      Promise.reject(new EngineRequestError({ code: "too_many_projects", message: "The workspace is full." })),
+    );
+    await Promise.all([workspace.restore(), workspace.addProject("/code/shop")]);
+    expect(windows().map((entry) => entry.key)).toEqual(["a"]);
+    windows()[0]?.window.finishLoad();
+    expect(windows()[0]?.window.sent).toEqual([
+      { type: "project_add_failed", path: "/code/shop", message: "The workspace is full." },
+    ]);
   });
 });
 

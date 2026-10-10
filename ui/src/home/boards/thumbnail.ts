@@ -16,14 +16,14 @@ const LINE_GAP = 8;
 const LINE_INSET = 7.5;
 const MONOGRAM = 9;
 
-export interface ThumbLine {
+interface ThumbLine {
   readonly x1: number;
   readonly x2: number;
   readonly y: number;
   readonly accent: boolean;
 }
 
-export interface ThumbCard {
+interface ThumbCard {
   readonly id: string;
   /** On half pixels, for crisp 1px strokes. */
   readonly x: number;

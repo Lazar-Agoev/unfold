@@ -2,7 +2,8 @@
 
 use rusqlite::Row;
 use rustc_hash::FxHashMap;
-use unfold_core::{Entrance, EntranceTarget, Evidence};
+use unfold_core::vocab::{EntranceKind, Resolution};
+use unfold_core::{Entrance, EntranceTarget, Evidence, Key, RepoPath};
 
 use super::Reader;
 use super::graph::collect;
@@ -66,6 +67,14 @@ fn decode_definition(row: &Row<'_>) -> Result<DefinitionRow> {
         qualified_name: codec::text(row, 5)?.into(),
         label: codec::opt_text(row, 6)?.unwrap_or_default().into(),
     })
+}
+
+/// `?1, ?2, …, ?count`: numbered, so a statement can repeat the list.
+fn placeholders(count: usize) -> String {
+    (1..=count)
+        .map(|index| format!("?{index}"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 impl Reader {
@@ -162,6 +171,52 @@ impl Reader {
             items: items.into_iter().map(|(_, definition)| definition).collect(),
             next,
         })
+    }
+
+    /// How many definitions each file of `paths` holds, in one grouped query. A path that isn't
+    /// an indexed file is left out; an indexed file without definitions counts 0.
+    pub fn definition_counts(&self, paths: &[&str]) -> Result<Vec<(RepoPath, u32)>> {
+        if paths.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut statement = self.conn().prepare_cached(&format!(
+            "SELECT f.path, count(d.key_id) FROM files f LEFT JOIN definitions d ON d.file_id = f.id \
+             WHERE f.path IN ({}) GROUP BY f.id ORDER BY f.path",
+            placeholders(paths.len())
+        ))?;
+        collect(&mut statement, rusqlite::params_from_iter(paths), |row| {
+            Ok((codec::path(row, 0)?, codec::u32_at(row, 1)?))
+        })
+    }
+
+    /// The name of the first application (by startup key) each entrance of `keys` belongs to:
+    /// through its memberships, or, for a launch, the application it starts (as the entrance map
+    /// files them). One query; an entrance without an application is left out. Sorted by key.
+    pub fn entrance_applications(&self, keys: &[&str]) -> Result<Vec<(Key, Box<str>)>> {
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+        let list = placeholders(keys.len());
+        let (process, resolved) = (EntranceKind::Process.as_str(), Resolution::Resolved.as_str());
+        let mut statement = self.conn().prepare_cached(&format!(
+            "SELECT ek.key, a.name, ak.key FROM entrances e JOIN keys ek ON ek.id = e.key_id \
+             JOIN memberships m ON m.entrance_id = e.key_id \
+             JOIN applications a ON a.startup_key_id = m.application_id \
+             JOIN keys ak ON ak.id = a.startup_key_id WHERE ek.key IN ({list}) \
+             UNION ALL \
+             SELECT ek.key, a.name, ak.key FROM entrances e JOIN keys ek ON ek.id = e.key_id \
+             JOIN entrance_targets t ON t.entrance_id = e.id \
+             AND t.position = (SELECT min(position) FROM entrance_targets WHERE entrance_id = e.id) \
+             JOIN applications a ON a.startup_key_id = t.target_key_id \
+             JOIN keys ak ON ak.id = a.startup_key_id \
+             WHERE e.kind = '{process}' AND t.resolution = '{resolved}' AND ek.key IN ({list}) \
+             ORDER BY 1, 3"
+        ))?;
+        let mut rows = collect(&mut statement, rusqlite::params_from_iter(keys), |row| {
+            Ok((codec::key(row, 0)?, codec::text(row, 1)?.into()))
+        })?;
+        rows.dedup_by(|next, first| next.0 == first.0);
+        Ok(rows)
     }
 
     /// Every application, ordered by startup key.

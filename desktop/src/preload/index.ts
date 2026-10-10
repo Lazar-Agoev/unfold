@@ -195,7 +195,7 @@ window.addEventListener("dragover", (event) => {
     event.preventDefault();
   }
 });
-// Bubble: a drop the UI didn't handle adds the dropped folder, and the UI selects it.
+// Bubble: a drop the UI didn't handle adds the dropped folder, and the UI selects it (or says why it couldn't).
 window.addEventListener("drop", (event) => {
   if (event.defaultPrevented || !hasFiles(event)) {
     return;
@@ -207,8 +207,10 @@ window.addEventListener("drop", (event) => {
       (added) => {
         emit({ type: "project_added", project: (added as AddedProject).project } satisfies ShellEvent);
       },
-      () => {
-        // Not a folder (a file was dropped), or the workspace is full: nothing to add.
+      (error: unknown) => {
+        // Not a folder (a file was dropped), or the workspace is full: the UI says why.
+        const { message } = error as TransportError;
+        emit({ type: "project_add_failed", path, message } satisfies ShellEvent);
       },
     );
   }

@@ -17,10 +17,10 @@ export const HEADER_PORT = 22;
 /** The space reflow keeps between stacked cards. */
 export const STACK_GAP = 32;
 /** Arrange: the gap between depth columns (it carries the arrows) and between separate call trees. */
-export const COLUMN_GAP = 120;
-export const BAND_GAP = 72;
+const COLUMN_GAP = 120;
+const BAND_GAP = 72;
 /** New cards opened from the sidebar sit this far right of everything already on the board. */
-export const NEW_CARD_GAP = 160;
+const NEW_CARD_GAP = 160;
 
 export interface Point {
   readonly x: number;

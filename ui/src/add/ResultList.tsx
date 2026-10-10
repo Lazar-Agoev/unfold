@@ -3,9 +3,6 @@
  * rows. The selection is driven from Add's input (focus never leaves it, so the caret stays where the
  * person types), and the list keeps the selected row in view. A listbox the input points into with
  * `aria-activedescendant`.
- *
- * Built here rather than with the kit's `VirtualList`, whose active row is internal and moves only with
- * focus inside the list.
  */
 
 import { useVirtualizer } from "@tanstack/react-virtual";

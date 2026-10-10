@@ -11,10 +11,8 @@ import { getOpenBoard, useBoards } from "./boards/store";
 import { useTabs, type TabKey } from "./tabStore";
 
 export {
-  MAX_BOARD_TABS,
   activateBoard,
   activateHome,
-  activateTab,
   getActiveBoard,
   moveTab,
   nextTab,
@@ -24,7 +22,6 @@ export {
   useActiveBoard,
   useTabs,
   type TabKey,
-  type TabsState,
 } from "./tabStore";
 
 /** Closes a board tab: saves the board's edits and view, releases it, then removes the tab. Home never closes. */

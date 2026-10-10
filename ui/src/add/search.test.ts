@@ -3,7 +3,7 @@ import type { SearchHit, SearchResults, TextSearchFile } from "../ipc/generated"
 import { allSearchArgs, entranceColumn, kindCounts, kindSearchArgs, moreLabel, projectsWithResults, resultGroups, trimmedMatch, type TextResults } from "./search";
 
 function hit(project: string, name: string, kind = "function", qualifiedName = name): SearchHit {
-  return { project, key: `src/a.ts#function:${name}`, name, qualifiedName, path: "src/a.ts", kind, line: 3, score: 1, nameMatches: [] };
+  return { project, key: `src/a.ts#function:${name}`, name, qualifiedName, path: "src/a.ts", kind, line: 3, application: null, score: 1, nameMatches: [] };
 }
 
 function results(definitions: SearchHit[], total = definitions.length): SearchResults {

@@ -1267,6 +1267,10 @@ path: string,
  */
 name: string, 
 /**
+ * How many definitions the stored graph holds in it; `None` when it isn't indexed.
+ */
+definitions: number | null, 
+/**
  * The rank score (higher is better).
  */
 score: number, 
@@ -2644,7 +2648,7 @@ project: ProjectId,
  */
 header: BlockHeader, 
 /**
- * Its first lines (at most 12).
+ * Its first lines (at most 5).
  */
 code: PreviewCode, 
 /**
@@ -3281,7 +3285,11 @@ path: string,
 /**
  * Its shared name when it was removed.
  */
-name: string, };
+name: string, 
+/**
+ * When it was removed, in milliseconds since the Unix epoch.
+ */
+removedAtMs: number, };
 
 /**
  * The arguments of `rename_folder`.
@@ -3631,6 +3639,11 @@ kind: string,
  * A definition's first line.
  */
 line: number | null, 
+/**
+ * The name of the first application (by startup key) an entrance belongs to, as
+ * `entrances` names applications; `None` for a definition or an entrance in none.
+ */
+application: string | null, 
 /**
  * The rank score (higher is better).
  */

@@ -1,7 +1,8 @@
 /**
  * Window-wide wiring (UI plan §2 `app/`, core API "Wiring the frame"): the shortcut dispatcher and menu
  * commands, the saved theme and key bindings, cache invalidation and the board and compile event
- * handlers, a toast for actions that fail, `project_added`, and the project Home shows at first.
+ * handlers, the window's session (restore, saving, engine restarts), a toast for actions that fail,
+ * `project_added` and `project_add_failed`, and the project Home shows at first.
  */
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -9,10 +10,12 @@ import { useEffect, useRef } from "react";
 import { showToast } from "../components";
 import { installEngineInvalidation, onShellEvent, type ProjectId } from "../ipc";
 import { setActionErrorHandler, useMenuCommands, useShortcutDispatcher } from "../keyboard";
+import { displayPath } from "../lib/format";
 import { usePreferencesKeyBindings, usePreferencesTheme } from "../preferences";
 import { showProject } from "../state/actions";
-import { installBoardEvents, setTransfersReady } from "../state/boards";
+import { installBoardEvents } from "../state/boards";
 import { installCompileEvents } from "../state/compile";
+import { installSession, useRestored } from "../state/session";
 import { useSelectedProject } from "../state/window";
 import { selectProject, useWorkspace } from "../state/workspace";
 
@@ -40,25 +43,34 @@ export function useWindowWiring(): void {
   // A project added from the menu, the command line, the OS, or a drop the frame didn't handle.
   useEffect(() => onShellEvent("project_added", (event) => void showProject(event.project)), []);
 
-  // Boards moved here from another window are adopted once the window is set up.
-  useEffect(() => {
-    setTransfersReady(true);
-  }, []);
+  // Adding a folder from the menu, the command line, the OS, or a second launch failed.
+  useEffect(
+    () =>
+      onShellEvent("project_add_failed", ({ path, message }) => {
+        showToast({ title: `Couldn't add ${displayPath(path)}`, body: message, tone: "danger" });
+      }),
+    [],
+  );
+
+  // Restores the window, then saves it as it changes; boards moved here are adopted once it's restored.
+  useEffect(() => installSession(client), [client]);
 
   useDefaultProject();
 }
 
 /**
- * Home shows a project from the start: the workspace's selected one, else the first (UI plan §3.2). When
- * the shown project leaves the workspace, it picks again. (A project just added may be selected before
- * the workspace lists it, so only a project the workspace listed before counts as gone.)
+ * Home shows a project from the start: the one the window remembered, else the workspace's selected one,
+ * else the first (UI plan §3.2). When the shown project leaves the workspace, it picks again. (A project
+ * just added may be selected before the workspace lists it, so only a project the workspace listed
+ * before counts as gone.)
  */
 function useDefaultProject(): void {
+  const restored = useRestored();
   const workspace = useWorkspace();
   const selected = useSelectedProject();
   const listed = useRef<ReadonlySet<ProjectId>>(new Set());
   useEffect(() => {
-    if (!workspace) {
+    if (!restored || !workspace) {
       return;
     }
     const rows = workspace.projects;
@@ -72,5 +84,5 @@ function useDefaultProject(): void {
     if (fallback !== selected) {
       void selectProject(fallback);
     }
-  }, [workspace, selected]);
+  }, [restored, workspace, selected]);
 }

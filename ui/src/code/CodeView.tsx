@@ -16,7 +16,7 @@ import { foldHiding, lineAt, outlineChildren } from "./outline";
 import { linkRanges, spanRanges } from "./segments";
 import "./code.css";
 
-export interface PendingGroupView {
+interface PendingGroupView {
   readonly members: readonly string[];
   readonly error?: string;
 }

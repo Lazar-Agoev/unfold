@@ -2,6 +2,7 @@
 //! expansion, selection, recent boards, `workspace.json` across restarts, and unknown projects.
 
 use std::collections::BTreeSet;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 use unfold_workspace::{Host, ProjectId};
@@ -159,10 +160,12 @@ fn removed_folders_can_be_added_back_and_nothing_else() {
     harness.host.detach_window(2).expect("detach");
 
     let mark = harness.sink.mark();
+    let before = now_ms();
     assert_eq!(
         harness.ok(1, "remove_project", json!({ "project": python })),
         Value::Null
     );
+    let after = now_ms();
     assert!(
         harness
             .sink
@@ -174,9 +177,16 @@ fn removed_folders_can_be_added_back_and_nothing_else() {
     let workspace = harness.ok(1, "workspace", json!({}));
     assert_eq!(ids(&workspace), std::slice::from_ref(&harness.project));
     let path = python_root.to_str().expect("utf-8");
+    let removed_at = workspace["removed"][0]["removedAtMs"]
+        .as_i64()
+        .expect("removedAtMs");
+    assert!(
+        (before..=after).contains(&removed_at),
+        "it records when it was removed"
+    );
     assert_eq!(
         workspace["removed"],
-        json!([{ "path": path, "name": "py-orders" }])
+        json!([{ "path": path, "name": "py-orders", "removedAtMs": removed_at }])
     );
     assert_eq!(
         workspace["selected"],
@@ -356,4 +366,12 @@ fn a_new_shared_name_reaches_every_window() {
         ),
         "invalid_settings"
     );
+}
+
+/// Now, in milliseconds since the Unix epoch.
+fn now_ms() -> i64 {
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("after the epoch");
+    i64::try_from(elapsed.as_millis()).expect("fits")
 }

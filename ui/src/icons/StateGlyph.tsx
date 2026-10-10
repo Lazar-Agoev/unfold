@@ -7,7 +7,7 @@
 
 import "./icons.css";
 
-export type StateGlyphName = "ring" | "paused" | "not-compiled" | "failed" | "resting";
+type StateGlyphName = "ring" | "paused" | "not-compiled" | "failed" | "resting";
 
 export interface StateGlyphProps {
   readonly glyph: StateGlyphName;

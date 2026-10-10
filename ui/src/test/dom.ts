@@ -33,6 +33,3 @@ if (!("ResizeObserver" in globalThis)) {
 Element.prototype.scrollIntoView = function scrollIntoView() {
   // jsdom doesn't scroll.
 };
-
-/** The viewport height the shims report, for tests that count rendered rows. */
-export const VIEWPORT_HEIGHT = VIEWPORT.height;
