@@ -1,6 +1,6 @@
 /** Portals and dismissal for floating layers. */
 
-import { useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { pushModal } from "../../keyboard";
 
@@ -95,4 +95,41 @@ export function useModal(open: boolean): void {
       }
     };
   }, [open]);
+}
+
+/** The footers of the open dialogs, innermost last; the toaster keeps clear of their buttons. */
+let dialogFooters: readonly HTMLElement[] = [];
+const footerListeners = new Set<() => void>();
+
+function setDialogFooters(next: readonly HTMLElement[]): void {
+  dialogFooters = next;
+  for (const listener of footerListeners) {
+    listener();
+  }
+}
+
+/** Registers an open dialog's footer (`present` while it has one) for `useDialogFooters`. */
+export function useDialogFooter(footer: RefObject<HTMLElement | null>, present: boolean): void {
+  useLayoutEffect(() => {
+    const element = footer.current;
+    if (!present || !element) {
+      return undefined;
+    }
+    setDialogFooters([...dialogFooters, element]);
+    return () => {
+      setDialogFooters(dialogFooters.filter((item) => item !== element));
+    };
+  }, [footer, present]);
+}
+
+function subscribeFooters(listener: () => void): () => void {
+  footerListeners.add(listener);
+  return () => {
+    footerListeners.delete(listener);
+  };
+}
+
+/** The footers of the open dialogs, innermost last. */
+export function useDialogFooters(): readonly HTMLElement[] {
+  return useSyncExternalStore(subscribeFooters, () => dialogFooters);
 }

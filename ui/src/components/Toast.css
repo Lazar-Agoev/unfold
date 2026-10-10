@@ -1,4 +1,5 @@
-/* Bottom right, 24px from the edges, 10px apart, newest at the bottom (V-67). */
+/* Bottom right, 24px from the edges, 10px apart, newest at the bottom (V-67); lifted above an open
+   dialog's footer when they would meet (Toast.tsx). */
 .toaster {
   position: fixed;
   right: 24px;
@@ -9,6 +10,7 @@
   align-items: flex-end;
   gap: 10px;
   pointer-events: none;
+  transition: bottom var(--duration) ease-out;
 }
 
 .toast {

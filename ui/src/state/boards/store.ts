@@ -33,7 +33,6 @@ import type {
   PageTarget,
   PageView,
   PendingGroup,
-  PendingPlacement,
   Selection,
   TrailItem,
 } from "./types";
@@ -125,7 +124,6 @@ function pageView(camera: Camera | null = null, lens: View | null = null): PageV
     sizes: {},
     focus: null,
     pendingGroup: null,
-    placement: null,
     linking: null,
   };
 }
@@ -266,12 +264,6 @@ export function travel(target: PageTarget, direction: "back" | "forward"): Focus
 export function setPendingGroup(target: PageTarget, pending: PendingGroup | null): void {
   updatePageView(target, (view) => {
     view.pendingGroup = pending as Draft<PendingGroup> | null;
-  });
-}
-
-export function setPendingPlacement(target: PageTarget, placement: PendingPlacement | null): void {
-  updatePageView(target, (view) => {
-    view.placement = placement as Draft<PendingPlacement> | null;
   });
 }
 
@@ -416,31 +408,6 @@ export function editPage<T>(
     },
     { ...options, page: target.page },
   );
-}
-
-/**
- * Changes a page as part of the last undo step instead of a new one (placing the cards an entrance
- * just opened once they are measured), and schedules an autosave.
- */
-export function amendPage(target: PageTarget, recipe: (page: Draft<Page>) => void): void {
-  const board = getOpenBoard(target.board);
-  if (!board) {
-    return;
-  }
-  const next = produce(board.document, (draft) => {
-    const page = draft.pages.find((item) => item.id === target.page);
-    if (page) {
-      recipe(page);
-    }
-  });
-  if (next === board.document) {
-    return;
-  }
-  update(target.board, (open) => {
-    open.document = next;
-    open.edits += 1;
-  });
-  scheduleSave(target.board);
 }
 
 export function canUndo(ref: BoardRef): boolean {

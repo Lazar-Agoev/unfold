@@ -49,6 +49,29 @@ test.describe("the board", () => {
     const { page } = await launchCompiled(launch, sandbox);
     await traceEntrance(page, "POST", "/orders");
 
+    await test.step("the traced handlers stand in a column beside the entrance, the first level with its row", async () => {
+      const geometry = await boardView(page).evaluate((view, key) => {
+        const viewport = view.querySelector<HTMLElement>(".react-flow__viewport");
+        const entrance = view.querySelector(".entrance-card");
+        const row = entrance?.querySelector(`.ecard-handler[data-target-key$='${key}']`)?.getBoundingClientRect();
+        const handler = view.querySelector(`.block-card[data-key$='${key}']`)?.getBoundingClientRect();
+        if (!viewport || !entrance || !row || !handler) {
+          return null;
+        }
+        const zoom = new DOMMatrix(getComputedStyle(viewport).transform).a;
+        const right = entrance.getBoundingClientRect().right;
+        const columns = [...view.querySelectorAll(".block-card")].map((card) => (card.getBoundingClientRect().left - right) / zoom);
+        return { columns, rise: (handler.top - (row.top + row.height / 2)) / zoom };
+      }, REQUIRE_USER);
+      expect(geometry?.columns).toHaveLength(3);
+      // FOLLOW_GAP (ui/src/canvas/layout.ts) to the right of the entrance card.
+      for (const gap of geometry?.columns ?? []) {
+        expect(Math.abs(gap - 80)).toBeLessThan(1);
+      }
+      // The handler's header center (HEADER_PORT, 22 px below its top) is level with its row's center.
+      expect(Math.abs((geometry?.rise ?? Number.NaN) + 22)).toBeLessThan(2);
+    });
+
     await test.step("On this page lists the traced cards in follow order", async () => {
       await expect(onThisPage(page).locator(".layer-label")).toHaveText(["POST /orders", "requireUser", "validateBody", "createOrder"]);
       await expect(card(page, POST_ORDERS)).toHaveClass(/entrance-card/);

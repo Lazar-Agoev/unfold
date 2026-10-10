@@ -10,6 +10,7 @@ export {
   describeCard,
   displayedRects,
   editGroup,
+  entranceCardText,
   entranceTitle,
   focusCard,
   foldAll,
@@ -62,7 +63,6 @@ export { lineOffsetIn, followCall, type FollowRequest } from "./navigation";
 export { closeBoard, closeBoardsOfProject, newBoard, openBoard, reclaimBoards, type OpenOutcome } from "./open";
 export { addPage, deletePage, duplicatePage, movePage, renamePage } from "./pages";
 export {
-  amendPage,
   canUndo,
   discardChanges,
   editBoard,
@@ -85,7 +85,6 @@ export {
   setLinking,
   setPageLens,
   setPendingGroup,
-  setPendingPlacement,
   travel,
   undo,
   updatePageView,
@@ -107,7 +106,6 @@ export type {
   PageTarget,
   PageView,
   PendingGroup,
-  PendingPlacement,
   Selection,
   TrailItem,
   WindowId,

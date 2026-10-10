@@ -2,6 +2,7 @@
 import "../test/dom";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Dialog } from "./Dialog";
 import { Toaster, dismissToast, showToast } from "./Toast";
 
 beforeEach(() => {
@@ -79,5 +80,43 @@ describe("Toast", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(titles()).toEqual([]);
+  });
+
+  it("rises above an open dialog's footer when they would meet, and returns when it closes", () => {
+    // jsdom's window is 1024 × 768 and every element 400 × 220 (test/dom): a footer along the bottom right meets the stack.
+    let footerTop = 700;
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains("dialog-footer") ? new DOMRect(600, footerTop, 400, 44) : new DOMRect();
+    });
+    const toaster = () => document.querySelector<HTMLElement>(".toaster");
+    const dialog = (open: boolean) => <Dialog open={open} onClose={() => undefined} title="orders settings" width={880} placement="window" footer={<button type="button">Save</button>} />;
+    const { rerender } = render(
+      <>
+        <Toaster />
+        {dialog(true)}
+      </>,
+    );
+    act(() => {
+      showToast({ title: "Copied diagnostics" });
+    });
+    expect(toaster()?.style.bottom).toBe(`${768 - 700 + 10}px`);
+
+    footerTop = 100;
+    rerender(
+      <>
+        <Toaster />
+        {dialog(false)}
+      </>,
+    );
+    expect(toaster()?.style.bottom).toBe("");
+    rerender(
+      <>
+        <Toaster />
+        {dialog(true)}
+      </>,
+    );
+    // A footer that doesn't reach the stack leaves it in its corner.
+    expect(toaster()?.style.bottom).toBe("");
+    rect.mockRestore();
   });
 });

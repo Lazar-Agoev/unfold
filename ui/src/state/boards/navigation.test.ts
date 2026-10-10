@@ -15,9 +15,11 @@ vi.mock("../../components/Toast", () => toast);
 
 const store = await import("./store");
 const { followCall, extendTrail } = await import("./navigation");
-const { addBlock, addLink, labelNode, openEntrance, removeCard, traceEntrance } = await import("./api");
+const { addBlock, addLink, entranceCardText, labelNode, openEntrance, removeCard, traceEntrance } = await import("./api");
 const { arrangeBoard } = await import("../../canvas/arrangeBoard");
-const { FOLLOW_GAP, HEADER_PORT } = await import("../../canvas/layout");
+const { FOLLOW_GAP, HEADER_PORT, STACK_GAP, fallbackSize } = await import("../../canvas/layout");
+const { estimateText } = await import("../../canvas/measure");
+const { entranceCardWidth, entranceHandlerRows } = await import("../../canvas/sizing");
 const tabs = await import("../tabStore");
 
 const P = "p-orders0000";
@@ -199,7 +201,27 @@ describe("adding cards from any project (D-3)", () => {
       { block: "src/o.ts#function:createOrder", project: "payments" },
     ]);
     expect(store.getPageView(PAGE).trail).toEqual([{ cardId: cards()[0]?.id, label: "POST /orders" }]);
-    expect(store.getPageView(PAGE).placement?.handlers.map((handler) => handler.key)).toEqual(["src/m.ts#function:requireUser", "src/o.ts#function:createOrder"]);
+  });
+
+  it("places the handlers beside the entrance, level with their rows, in the step that opens them", async () => {
+    open();
+    engine.call.mockImplementation((command: string) => Promise.resolve(command === "card" ? entrance : null));
+    await openEntrance(PAGE, P, "entrance:x");
+    const text = entranceCardText(entrance);
+    const width = entranceCardWidth(text, estimateText);
+    const rows = entranceHandlerRows(text, false, width, estimateText);
+    const [first, second] = [rows[0] ?? 0, rows[2] ?? 0];
+    const top = first - HEADER_PORT;
+    expect(cards().map((card) => card.at)).toEqual([
+      [0, 0],
+      [width + FOLLOW_GAP, top],
+      // createOrder's row (after the external audit) is above requireUser's bottom, so it stacks below it.
+      [width + FOLLOW_GAP, Math.max(second - HEADER_PORT, top + fallbackSize(false).height + STACK_GAP)],
+    ]);
+    expect(store.getPageView(PAGE).focus?.cardIds).toEqual(cards().map((card) => card.id));
+    // One undo step; nothing is left to move the cards later.
+    store.undo(REF);
+    expect(cards()).toEqual([]);
   });
 
   it("traces an entrance into a new draft titled after it", async () => {

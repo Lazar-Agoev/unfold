@@ -5,10 +5,9 @@
  */
 
 import { queryClient } from "../ipc/client";
-import type { CardView, ProjectId } from "../ipc/generated";
+import type { ProjectId } from "../ipc/generated";
 import { toUnfoldError } from "../ipc/unfold";
 import { showToast } from "../components";
-import { shortPath } from "../code/text";
 import {
   addCard,
   displayedRects,
@@ -25,31 +24,12 @@ import {
 import { call } from "../state/boards/engine";
 import { getProjectIndex, resolveRefProject } from "../state/workspace";
 import { cardQuery } from "./cardData";
-import { callerPlacement, fallbackSize, type Size } from "./layout";
+import { callerPlacement } from "./layout";
 import { measureText } from "./measure";
-import { blockCardWidth, codeContentWidth } from "./sizing";
+import { estimatedBlockSize } from "./sizing";
 
 /** How many callers one Show callers adds at most (the engine's default page). */
 const CALLERS_LIMIT = 20;
-/** A block card's header with its mini lens, its code's top and bottom padding, and a code row (cards.css, code.css). */
-const HEADER_HEIGHT = 44;
-const CODE_PADDING = 18;
-const CODE_ROW = 20;
-
-/** A caller card's size before it is drawn: its width from its model, its height from its lines. */
-function estimatedSize(view: CardView | undefined, foreign: boolean): Size {
-  const code = view?.type === "block" && view.code?.source.state === "current" ? view.code.source : null;
-  if (view?.type !== "block" || !code) {
-    return fallbackSize(false);
-  }
-  const width = blockCardWidth(
-    { name: view.header.qualifiedName, location: shortPath(view.header.path), monogram: foreign, body: codeContentWidth(code, measureText) },
-    measureText,
-  );
-  // The header, the code's padding, and one row per line (long lines wrap, so this is a floor).
-  return { width, height: HEADER_HEIGHT + CODE_PADDING + code.lines.length * CODE_ROW };
-}
-
 /** Adds the callers of a block card to its left (or brings those already on the page into view). */
 export async function showCallers(target: PageTarget, cardId: string): Promise<void> {
   const start = getOpenBoard(target.board);
@@ -88,7 +68,7 @@ export async function showCallers(target: PageTarget, cardId: string): Promise<v
   }
   const refProject = card.ref.project;
   const present = keys.flatMap((key) => findCardByRef(page, key, refProject)?.id ?? []);
-  const missing = keys.flatMap((key, index) => (findCardByRef(page, key, refProject) ? [] : [{ key, size: estimatedSize(models[index], refProject !== undefined) }]));
+  const missing = keys.flatMap((key, index) => (findCardByRef(page, key, refProject) ? [] : [{ key, size: estimatedBlockSize(models[index], refProject !== undefined, measureText) }]));
   const positions = callerPlacement(
     rect,
     missing.map((item) => item.size),

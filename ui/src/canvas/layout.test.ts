@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CardView, CodeText } from "../ipc/generated";
+import { shortPath } from "../code/text";
 import { fixture } from "../test/engine";
 import { CODE_FONT, estimateText } from "./measure";
 import {
@@ -12,11 +13,12 @@ import {
   STACK_GAP,
   arrange,
   callerPlacement,
+  fallbackSize,
   followPlacement,
+  handlerPlacement,
   reflow,
 } from "./layout";
-import { placeHandlers } from "./placement";
-import { blockCardWidth, codeContentWidth, entranceCardWidth, gutterWidth, headerWidth } from "./sizing";
+import { blockCardWidth, codeContentWidth, entranceCardWidth, entranceHandlerRows, estimatedBlockSize, gutterWidth, headerWidth } from "./sizing";
 
 const createOrder = fixture("card", "card_create_order") as Extract<CardView, { type: "block" }>;
 const code = (createOrder.code?.source.state === "current" ? createOrder.code.source : null) as CodeText;
@@ -63,6 +65,24 @@ describe("card sizing", () => {
     expect(gutterWidth(5, estimateText)).toBeGreaterThan(40);
     const plain = headerWidth({ name: "createOrder", location: "orders/create.ts", monogram: false }, estimateText);
     expect(headerWidth({ name: "createOrder", location: "orders/create.ts", monogram: true }, estimateText)).toBe(plain + 28);
+  });
+});
+
+describe("estimates before a card is drawn", () => {
+  it("sizes a block card from its model: its width, and a row per line under the header", () => {
+    const size = estimatedBlockSize(createOrder, false, estimateText);
+    expect(size.width).toBe(blockCardWidth({ name: createOrder.header.qualifiedName, location: shortPath(createOrder.header.path), monogram: false, body: codeContentWidth(code, estimateText) }, estimateText));
+    expect(size.height).toBe(44 + 18 + code.lines.length * 20);
+    expect(estimatedBlockSize(undefined, false, estimateText)).toEqual(fallbackSize(false));
+  });
+
+  it("finds an entrance card's handler rows below its header, location, and heading", () => {
+    const text = { method: "POST", title: "/orders", location: "src/routes/orders.ts:22", handlers: ["requireUser", "createOrder"] };
+    // Border, header (padding, the 18px method badge, rule), body padding, location, gap, heading, gap, half a row.
+    expect(entranceHandlerRows(text, false, 240, estimateText)).toEqual([102, 122]);
+    expect(entranceHandlerRows(text, true, 240, estimateText)).toEqual([104, 124]);
+    expect(entranceHandlerRows({ ...text, method: null }, false, 240, estimateText)).toEqual([100, 120]);
+    expect(entranceHandlerRows({ ...text, location: "x".repeat(60) }, false, 240, estimateText)).toEqual([116, 136]);
   });
 });
 
@@ -116,12 +136,12 @@ describe("placing an entrance's handlers", () => {
   const entrance = { x: 0, y: 100, width: 400, height: 300 };
 
   it("puts the first handler level with its row, in a column to the right", () => {
-    const [first] = placeHandlers(entrance, [180], [{ width: 520, height: 200 }]);
+    const [first] = handlerPlacement(entrance, [180], [{ width: 520, height: 200 }]);
     expect(first).toEqual([400 + FOLLOW_GAP, 100 + 180 - HEADER_PORT]);
   });
 
   it("stacks the next handlers level with their rows, or below the one above, never overlapping", () => {
-    const positions = placeHandlers(entrance, [180, 204, 600], [{ width: 520, height: 200 }, { width: 520, height: 100 }, { width: 520, height: 50 }]);
+    const positions = handlerPlacement(entrance, [180, 204, 600], [{ width: 520, height: 200 }, { width: 520, height: 100 }, { width: 520, height: 50 }]);
     const firstY = 100 + 180 - HEADER_PORT;
     expect(positions[1]).toEqual([400 + FOLLOW_GAP, firstY + 200 + STACK_GAP]);
     expect(positions[2]).toEqual([400 + FOLLOW_GAP, 100 + 600 - HEADER_PORT]);

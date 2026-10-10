@@ -12,7 +12,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, ty
 import { Button } from "./Button";
 import { IconButton } from "./IconButton";
 import { cx, tabbableElements, trapTab } from "./internal/dom";
-import { Portal, useModal } from "./internal/layers";
+import { Portal, useDialogFooter, useModal } from "./internal/layers";
 import { TextField } from "./TextField";
 import "./Dialog.css";
 
@@ -82,7 +82,9 @@ export function Dialog({
   const id = useId();
   const scrim = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
   useModal(open);
+  useDialogFooter(footerRef, open && footer !== undefined);
   useCanvasArea(scrim, open && placement === "canvas");
 
   useEffect(() => {
@@ -141,7 +143,11 @@ export function Dialog({
             {large ? <IconButton icon="close" label="Close" onClick={onClose} /> : null}
           </div>
           {children === undefined ? null : <div className="dialog-body">{children}</div>}
-          {footer === undefined ? null : <div className="dialog-footer">{footer}</div>}
+          {footer === undefined ? null : (
+            <div ref={footerRef} className="dialog-footer">
+              {footer}
+            </div>
+          )}
         </div>
       </div>
     </Portal>

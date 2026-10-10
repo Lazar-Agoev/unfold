@@ -75,16 +75,6 @@ export interface PendingGroup {
   readonly error?: string;
 }
 
-/**
- * Handler cards an entrance just opened, waiting for the entrance card to be measured so each can be
- * placed level with its handler row.
- */
-export interface PendingPlacement {
-  readonly entranceId: string;
-  /** The handler cards, in registration order, with the keys their rows resolve to. */
-  readonly handlers: readonly { readonly cardId: string; readonly key: Key }[];
-}
-
 /** View state of one page (created when the page is first shown). Survives unmounting (V-46). */
 export interface PageView {
   /** The page's lens (V-55): null until the person uses the top Code/Flow switch on this page. */
@@ -106,7 +96,6 @@ export interface PageView {
   sizes: Record<string, CardSize>;
   focus: FocusRequest | null;
   pendingGroup: PendingGroup | null;
-  placement: PendingPlacement | null;
   /** Link drawing mode (V-58): the next card clicked becomes the link's other end. */
   linking: { readonly from: string } | null;
 }

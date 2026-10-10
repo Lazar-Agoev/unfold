@@ -241,6 +241,7 @@ export interface BoardFile {
     readonly cards: readonly {
       readonly id: string;
       readonly ref: { readonly block?: string; readonly entrance?: string; readonly project?: string };
+      readonly at: readonly [number, number];
       readonly folded?: boolean;
       readonly view?: string;
       readonly description?: { readonly text: string };

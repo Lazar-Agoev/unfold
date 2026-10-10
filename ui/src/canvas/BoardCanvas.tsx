@@ -41,7 +41,6 @@ import { TARGET_HANDLE } from "./cards/parts";
 import { boundsOf, fallbackSize, reflow, type Rect } from "./layout";
 import { LinkEdge, type LinkEdgeType } from "./LinkEdge";
 import { linkEnds } from "./linkSides";
-import { usePendingPlacement } from "./placement";
 import "./canvas.css";
 
 type CanvasEdge = ArrowEdgeType | LinkEdgeType;
@@ -84,7 +83,6 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
   const [initialCamera] = useState(() => getPageView(target).camera);
 
   const { arrows, ports, settled } = boardArrows;
-  usePendingPlacement(target);
   const paneMenu = useContextMenu("Board actions");
 
   // Positions: saved positions reflowed by measured sizes; a dragged card follows the pointer.

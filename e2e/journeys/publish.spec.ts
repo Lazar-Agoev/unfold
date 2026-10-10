@@ -2,19 +2,25 @@
  * Drafts, publishing, and unpublished changes (redesign §4.7, R-6, V-72, V-95): a new board is a draft;
  * its first Publish names its file; edits to a published board stay on this machine until Publish;
  * Discard changes and Move back to drafts; a name that's taken; and a published file that changed
- * underneath the changes (a pull), resolved both ways.
+ * underneath the changes (a pull), resolved both ways. A trace's first save already has its cards in
+ * place: leaving the board at once and publishing makes no unpublished changes later.
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { activeBoardRef, boardMenu, boardView, clickCanvas, layerRow, publishState, readBoard, type BoardFile } from "../src/board";
+import { activeBoardRef, boardMenu, boardView, clickCanvas, expectCardsLoaded, layerRow, publishState, readBoard, type BoardFile } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { launchCompiled, traceEntrance } from "../src/flows";
-import { dialog, homeMain, homeTab, showHome, sidebar, toast } from "../src/home";
+import { boardTab, dialog, entranceRow, homeMain, homeTab, showHome, sidebar, toast } from "../src/home";
 import { boardFiles, describeSelected, DRAFTS, expectBoardFile, firstDescription, PUBLISHED } from "../src/lifecycle";
 
 const DRAFT_ID = /^\.unfold\/local\/drafts\/board-\d+(-\d+)?\.json$/;
 const PUBLISHED_ID = ".unfold/boards/post-orders.json";
+
+/** Each card's id and position on a board file's first page. */
+function places(board: BoardFile): string {
+  return JSON.stringify(board.pages[0]?.cards.map((card) => [card.id, card.at]));
+}
 
 /** Rewrites a board file's title on disk, as a teammate's commit pulled in would. */
 function retitle(folder: string, id: string, title: string): void {
@@ -28,22 +34,26 @@ test.describe("publishing", () => {
     const { page, folders } = await launchCompiled(launch, sandbox);
     const folder = folders[0] ?? "";
 
-    await test.step("a new board is a draft, on this machine only", async () => {
-      await traceEntrance(page, "POST", "/orders");
-      await expect(publishState(page)).toHaveText("Draft");
+    let traced = "";
+    await test.step("a new board is a draft, on this machine only, saved with its cards in place", async () => {
+      // Leave the board as soon as the trace draws it: nothing may move its cards after that step.
+      await entranceRow(page, "POST", "/orders").click();
+      await expect(boardView(page).locator(".entrance-card")).toBeAttached();
       const { id } = await activeBoardRef(page);
+      await showHome(page);
       expect(id).toMatch(DRAFT_ID);
-      await expectBoardFile(folder, id, (board) => board.title === "POST /orders", "the draft is written");
+      const draft = await expectBoardFile(folder, id, (board) => board.title === "POST /orders" && board.pages[0]?.cards.length === 4, "the draft is written with the traced cards");
+      traced = places(draft);
       expect(boardFiles(folder, PUBLISHED)).toEqual([]);
     });
 
     await test.step("Drafts in the sidebar lists it", async () => {
-      await showHome(page);
       await sidebar(page).getByRole("button", { name: /^Drafts/ }).click();
       await expect(homeMain(page).getByRole("heading", { name: "Drafts", level: 1 })).toBeVisible();
       await expect(homeMain(page).getByRole("button", { name: "POST /orders" })).toBeVisible();
       await homeMain(page).getByRole("button", { name: "POST /orders" }).click();
       await expect(publishState(page)).toHaveText("Draft");
+      await expectCardsLoaded(page);
     });
 
     await test.step("the first Publish (⇧⌘E) names the file and writes it to .unfold/boards", async () => {
@@ -58,12 +68,22 @@ test.describe("publishing", () => {
       await expect(toast(page, "Published POST /orders")).toBeVisible();
       await expect(publishState(page)).toHaveText("Published");
       expect((await activeBoardRef(page)).id).toBe(PUBLISHED_ID);
-      expect(readBoard(folder, PUBLISHED_ID).title).toBe("POST /orders");
+      const published = readBoard(folder, PUBLISHED_ID);
+      expect(published.title).toBe("POST /orders");
+      expect(places(published), "the cards stand where the trace saved them").toBe(traced);
       expect(boardFiles(folder, DRAFTS)).toEqual([]);
     });
 
-    await test.step("a published board without changes has nothing to publish", async () => {
+    await test.step("a published board without changes has nothing to publish, shown again too", async () => {
       await expect(boardView(page).getByRole("button", { name: "Publish", exact: true })).toBeDisabled();
+      await showHome(page);
+      await boardTab(page, "POST /orders").click();
+      await expectCardsLoaded(page);
+      // Long enough for an autosave (600 ms) of anything that moved after showing the board.
+      await page.waitForTimeout(1_500);
+      await expect(publishState(page)).toHaveText("Published");
+      await expect(boardView(page).getByRole("button", { name: "Publish", exact: true })).toBeDisabled();
+      expect(existsSync(join(folder, ".unfold/local/drafts/post-orders.changes.json"))).toBe(false);
     });
 
     await test.step("an edit is an unpublished change kept on this machine", async () => {

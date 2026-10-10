@@ -1,7 +1,7 @@
 /**
  * Board geometry (TypeScript lays out, architecture §11.8): reflow when cards change size, where a
- * followed card opens, where new cards go, and Arrange by call depth. Pure functions over
- * positions and measured sizes, so they are deterministic and testable without a DOM.
+ * followed card opens, where an entrance's handlers and new cards go, and Arrange by call depth. Pure
+ * functions over positions and measured sizes, so they are deterministic and testable without a DOM.
  */
 
 /** Block cards size to their content between these widths (V-57). */
@@ -103,6 +103,26 @@ export function callerPlacement(card: Rect, sizes: readonly Size[]): [number, nu
     y += size.height + STACK_GAP;
     return at;
   });
+}
+
+/**
+ * Where an entrance's handler cards go (in the spirit of following a call): a column `FOLLOW_GAP` to
+ * the right of the entrance card, the first handler's header level with its handler row, each next
+ * one level with its own row or just below the one above it, so no arrow bends upward and no two
+ * cards overlap. `rows[i]` is handler i's row center below the entrance card's top (undefined when
+ * unknown), `sizes[i]` its card size.
+ */
+export function handlerPlacement(entrance: Point & Pick<Size, "width">, rows: readonly (number | undefined)[], sizes: readonly Size[]): [number, number][] {
+  const x = Math.round(entrance.x + entrance.width + FOLLOW_GAP);
+  const positions: [number, number][] = [];
+  let below = Number.NEGATIVE_INFINITY;
+  rows.forEach((row, index) => {
+    const level = entrance.y + (row ?? HEADER_PORT) - HEADER_PORT;
+    const y = Math.round(Math.max(level, below));
+    positions.push([x, y]);
+    below = y + (sizes[index]?.height ?? fallbackSize(false).height) + STACK_GAP;
+  });
+  return positions;
 }
 
 /** Where a card opened from the sidebar goes: to the right of everything, level with the top card. */

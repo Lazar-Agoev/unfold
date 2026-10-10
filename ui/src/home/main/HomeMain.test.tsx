@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "../../test/dom";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { ProblemItem, ProjectRow, ProjectSummary, WorkspaceView } from "../../ipc";
 import { resetBoards } from "../../state/boards/store";
 import { initialLayout, useLayout, type HomeView } from "../../state/layout";
@@ -151,6 +151,11 @@ describe("Home's state line in the states a screenshot run can't reach (07)", ()
   });
 
   it("shows a resting project's Home with the moon and when it was last checked (row 8)", async () => {
+    // Midday, so two hours ago is still today.
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 5, 15, 12) });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     start(workspaceView([projectRow(P, "ts-orders", { state: { kind: "resting", last: { kind: "current" }, atMs: Date.now() - 2 * 3_600_000 } })]));
     renderWithClient(<HomeMain />);
     const state = await line();

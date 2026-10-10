@@ -668,7 +668,8 @@ If a folder is read-only, or sits on a network volume where SQLite's write-ahead
 PRAGMA journal_mode = WAL;
 
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
--- schema_version, engine_version, producers (JSON), settings_hash, compiled_at, complete
+-- schema_version, engine_version, producers (JSON), settings_hash, compiled_at, complete,
+-- link_basis (JSON: what the graph was linked from, and the problems linking found)
 
 CREATE TABLE files (
   id          INTEGER PRIMARY KEY,
@@ -1645,7 +1646,7 @@ These targets are set from the first measurements (Steps 5 and 9 of the migratio
 | Launch to Home | Under 1.5 s | |
 | Idle memory, one window, with a 2,000-file repository open | Under 600 MB | |
 | Each further window | Under 150 MB more | |
-| Idle memory with three projects connected | Measured: see [testing](testing.md) | |
+| Idle memory with three projects connected | Under 600 MB (as one window); measured in [testing](testing.md#budgets-measured) | |
 | Engine-host restart, until every window is usable again | Under 2 s | |
 
 A budget never passes by dropping files, call sites, or external or unresolved records.

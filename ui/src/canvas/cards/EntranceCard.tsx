@@ -9,8 +9,8 @@ import { Handle, Position, useUpdateNodeInternals } from "@xyflow/react";
 import { useLayoutEffect, useMemo } from "react";
 import { Monogram } from "../../components";
 import { reasonText, shortPath } from "../../code/text";
-import type { Card, CardView, ProjectId, TargetView } from "../../ipc/generated";
-import { editPage, entranceTitle, followCall, keyDisplayName, lineOffsetIn, setCardsFolded, type PageTarget } from "../../state/boards";
+import type { Card, ProjectId, TargetView } from "../../ipc/generated";
+import { editPage, entranceCardText, entranceTitle, followCall, keyDisplayName, lineOffsetIn, setCardsFolded, type PageTarget } from "../../state/boards";
 import { targetHandle } from "../arrows";
 import { cardQuery, isMissing } from "../cardData";
 import { useMeasure } from "../measure";
@@ -20,7 +20,6 @@ import { CardHandles, CardNote, DescriptionStrip, HeaderPorts } from "./parts";
 import { ReviewBanner } from "./ReviewBanner";
 import { clickCard } from "./select";
 
-type EntranceModel = Extract<CardView, { type: "entrance" }>;
 
 export interface EntranceCardProps {
   readonly target: PageTarget;
@@ -82,12 +81,6 @@ function HandlerRow({
   );
 }
 
-/** The declaration's location: `src/routes/orders.ts:22`. */
-function declaredAt(model: EntranceModel): string {
-  const { evidence } = model;
-  return `${evidence.path}${evidence.startLine !== null ? `:${evidence.startLine}` : ""}`;
-}
-
 export function EntranceCard({ target, project, card, ports, selected }: EntranceCardProps) {
   const key = card.ref.entrance;
   const query = useQuery(cardQuery(project, key));
@@ -95,24 +88,14 @@ export function EntranceCard({ target, project, card, ports, selected }: Entranc
   const measure = useMeasure();
   const updateNodeInternals = useUpdateNodeInternals();
   const folded = card.folded === true;
-  const header = model?.header;
   const source = useMemo(() => (model ? { path: model.evidence.path, line: model.evidence.startLine } : null), [model]);
   const menu = useCardMenu(target, project, card.id, folded, false, source);
   const title = model ? entranceTitle(model) : keyDisplayName(key);
-  // `POST` and `/orders` when the entrance has both; else its title alone.
-  const method = header?.method !== null && header?.trigger !== null ? (header?.method ?? null) : null;
-  const shownTitle = method !== null ? (header?.trigger ?? title) : title;
+  const text = useMemo(() => (model ? entranceCardText(model) : { method: null, title, location: "", handlers: [] }), [model, title]);
   const portSet = useMemo(() => new Set(ports), [ports]);
   const foreign = card.ref.project;
 
-  const width = useMemo(
-    () =>
-      entranceCardWidth(
-        { method, title: shownTitle, location: model ? declaredAt(model) : "", handlers: (model?.targets ?? []).map(handlerName) },
-        measure,
-      ),
-    [method, shownTitle, model, measure],
-  );
+  const width = useMemo(() => entranceCardWidth(text, measure), [text, measure]);
 
   const portsKey = ports.join("\u0000");
   useLayoutEffect(() => {
@@ -152,9 +135,9 @@ export function EntranceCard({ target, project, card, ports, selected }: Entranc
       <CardHandles />
       <header className="card-header card-drag" onDoubleClick={toggleFolded}>
         {foreign !== undefined ? <Monogram name={foreign} size={20} /> : null}
-        {method !== null ? <span className="ecard-method">{method}</span> : null}
+        {text.method !== null ? <span className="ecard-method">{text.method}</span> : null}
         <h3 className="card-title" title={title}>
-          {shownTitle}
+          {text.title}
         </h3>
         <HeaderPorts ids={folded ? ports : []} />
       </header>
@@ -167,7 +150,7 @@ export function EntranceCard({ target, project, card, ports, selected }: Entranc
               {query.isError ? <CardNote warn>{missing ? "This entrance is missing from the graph." : query.error.message}</CardNote> : null}
               {model ? (
                 <>
-                  <span className="ecard-location">{declaredAt(model)}</span>
+                  <span className="ecard-location">{text.location}</span>
                   <h4 className="ecard-heading">Handlers, in order</h4>
                   {model.targets.length === 0 ? <p className="ecard-empty">No handlers resolved.</p> : null}
                   <ul className="ecard-handlers">

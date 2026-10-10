@@ -2,16 +2,17 @@
  * Toasts (07, V-67): short notes in the window's bottom-right corner that never block the canvas
  * ("storefront-web compiled", "Reconnecting to the engine…"). Call `showToast` from anywhere; the
  * frame renders one `<Toaster />`. At most four show, newest at the bottom; a toast shown with the id
- * of one already showing replaces it in place.
+ * of one already showing replaces it in place. While a dialog is open, the stack rises above its
+ * footer when the two would meet, so its buttons stay reachable.
  */
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { create } from "zustand";
 import { Icon } from "../icons";
 import { TextButton } from "./Button";
 import { IconButton } from "./IconButton";
 import { cx } from "./internal/dom";
-import { Portal } from "./internal/layers";
+import { Portal, useDialogFooters } from "./internal/layers";
 import "./Toast.css";
 
 export interface ToastOptions {
@@ -39,6 +40,9 @@ let nextId = 1;
 let shows = 0;
 
 const MAX_TOASTS = 4;
+/** The stack's distance from the window's right and bottom edges, and the space it keeps above a dialog's footer (V-67). */
+const EDGE = 24;
+const GAP = 10;
 
 /** Shows a toast and returns its id. */
 export function showToast(options: ToastOptions): string {
@@ -123,12 +127,52 @@ function ToastItem({ toast }: { readonly toast: ShownToast }) {
   );
 }
 
-/** Renders the window's toasts, bottom right, above everything else. */
+/**
+ * Lifts the stack just above the innermost open dialog's footer while the footer would sit under it
+ * (in its bottom right corner, sized as it is); otherwise it keeps V-67's place.
+ */
+function useFooterClearance(stack: RefObject<HTMLElement | null>): void {
+  const footers = useDialogFooters();
+  useLayoutEffect(() => {
+    const element = stack.current;
+    const footer = footers.at(-1);
+    if (!element || !footer) {
+      return undefined;
+    }
+    const update = () => {
+      const area = footer.getBoundingClientRect();
+      const right = window.innerWidth - EDGE;
+      const base = window.innerHeight - EDGE;
+      const meets =
+        element.offsetHeight > 0 &&
+        area.left < right &&
+        area.right > right - element.offsetWidth &&
+        area.top < base &&
+        area.bottom > base - element.offsetHeight;
+      Object.assign(element.style, { bottom: meets ? `${window.innerHeight - area.top + GAP}px` : "" });
+    };
+    update();
+    // The footer moves when its dialog resizes, and the stack grows and shrinks with its toasts.
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    observer.observe(footer.parentElement ?? footer);
+    window.addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+      Object.assign(element.style, { bottom: "" });
+    };
+  }, [footers, stack]);
+}
+
+/** Renders the window's toasts, bottom right, above everything else (and clear of a dialog's buttons). */
 export function Toaster() {
   const toasts = useToasts((state) => state.toasts);
+  const stack = useRef<HTMLElement>(null);
+  useFooterClearance(stack);
   return (
     <Portal>
-      <section className="toaster" aria-label="Notifications" aria-live="polite">
+      <section ref={stack} className="toaster" aria-label="Notifications" aria-live="polite">
         {toasts.map((toast) => (
           <ToastItem key={toast.id} toast={toast} />
         ))}

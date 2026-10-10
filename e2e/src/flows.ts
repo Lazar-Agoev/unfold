@@ -55,34 +55,6 @@ export async function traceEntrance(page: Page, kind: string, trigger: string): 
   await expect(tabs(page)).toHaveCount(before + 1);
   await expect(boardView(page).locator(".entrance-card")).toBeVisible();
   await expectCardsLoaded(page);
-  await expectHandlersPlaced(page);
-}
-
-/** The canvas's gap between a card and the cards it opens (`FOLLOW_GAP` in ui/src/canvas/layout.ts). */
-const FOLLOW_GAP = 80;
-
-/**
- * Waits until a traced entrance's handler cards stand in their column beside it. The trace places
- * them once their cards are drawn and measured, as part of the same step: an edit made before that
- * (or leaving the board first) would meet them still in their first, estimated places.
- */
-async function expectHandlersPlaced(page: Page): Promise<void> {
-  await expect
-    .poll(
-      () =>
-        boardView(page).evaluate((view, gap) => {
-          const viewport = view.querySelector<HTMLElement>(".react-flow__viewport");
-          const entrance = view.querySelector(".entrance-card")?.getBoundingClientRect();
-          if (!viewport || !entrance) {
-            return false;
-          }
-          const zoom = new DOMMatrix(getComputedStyle(viewport).transform).a;
-          const handlers = [...view.querySelectorAll(".block-card")].map((card) => card.getBoundingClientRect());
-          return handlers.every((handler) => Math.abs((handler.left - entrance.right) / zoom - gap) < 1);
-        }, FOLLOW_GAP),
-      { message: "the traced handlers are placed beside the entrance" },
-    )
-    .toBe(true);
 }
 
 /** On a compiled `ts-orders`: traces `POST /orders` and follows `orderService.place` from `createOrder`. */

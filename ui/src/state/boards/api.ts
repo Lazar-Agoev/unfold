@@ -12,7 +12,9 @@ import { useMemo } from "react";
 import { queryClient } from "../../ipc/client";
 import type { Card, CardRef, CardView, Key, ProjectId, ProjectName } from "../../ipc/generated";
 import { cardQuery } from "../../canvas/cardData";
-import { CARD_MIN_WIDTH, FOLLOW_GAP, STACK_GAP, fallbackSize, newCardPlacement, reflow, type Rect } from "../../canvas/layout";
+import { fallbackSize, handlerPlacement, newCardPlacement, reflow, type Rect } from "../../canvas/layout";
+import { measureText } from "../../canvas/measure";
+import { entranceCardWidth, entranceHandlerRows, estimatedBlockSize, type EntranceWidthInput } from "../../canvas/sizing";
 import { showToast } from "../../components/Toast";
 import { activateBoard } from "../tabStore";
 import { getProjectIndex, refProjectFor, resolveRefProject, useProjectIndex } from "../workspace";
@@ -36,7 +38,7 @@ import {
 } from "./document";
 import { cardRefKey, boardKey } from "./keys";
 import { newBoard } from "./open";
-import { editPage, getOpenBoard, pushFocusMove, requestCardFocus, select, setActivePage, setPendingPlacement, useBoards } from "./store";
+import { editPage, getOpenBoard, pushFocusMove, requestCardFocus, select, setActivePage, useBoards } from "./store";
 import type { BoardRef, OpenBoard, PageId, PageTarget } from "./types";
 
 /** A card ref for `key`, naming `project` when the card isn't from the board's own project. */
@@ -149,6 +151,18 @@ export function entranceTitle(card: Extract<CardView, { type: "entrance" }>): st
   return header.trigger ?? header.title;
 }
 
+/** What an entrance card shows: `POST` and `/orders` when it has both, else its title; where it is declared; its handlers. */
+export function entranceCardText(card: Extract<CardView, { type: "entrance" }>): EntranceWidthInput {
+  const { header, evidence } = card;
+  const method = header.method !== null && header.trigger !== null ? header.method : null;
+  return {
+    method,
+    title: method !== null ? (header.trigger ?? entranceTitle(card)) : entranceTitle(card),
+    location: `${evidence.path}${evidence.startLine !== null ? `:${evidence.startLine}` : ""}`,
+    handlers: card.targets.map((handler) => handler.name ?? handler.text),
+  };
+}
+
 /** An entrance's card model, read through the cache (its card then draws from it at once). */
 async function entranceModel(project: ProjectId, entranceKey: Key): Promise<Extract<CardView, { type: "entrance" }>> {
   const view = await queryClient.query(cardQuery(project, entranceKey));
@@ -160,11 +174,16 @@ async function entranceModel(project: ProjectId, entranceKey: Key): Promise<Extr
 
 /**
  * Opens an entrance card and a full card for each resolved handler on the page (or focuses the
- * entrance card if it is already there). Handlers start in a column to its right; once the entrance
- * card is drawn, the canvas moves each level with its handler row (`PendingPlacement`).
+ * entrance card if it is already there), in one step: the handlers stand in a column to its right,
+ * each level with its handler row, placed from the cards' models before they are drawn, so nothing
+ * moves them afterwards (measuring them only fits the camera).
  */
 export async function openEntrance(target: PageTarget, project: ProjectId, entranceKey: Key): Promise<void> {
   const view = await entranceModel(project, entranceKey);
+  // Every resolved handler opens as a full card, in registration order, once each. Their models size
+  // them, and the cards draw from the same cache at once.
+  const resolved = [...new Set(view.targets.flatMap((handler) => (handler.resolution === "resolved" && handler.target !== null ? [handler.target] : [])))];
+  const models = await Promise.all(resolved.map((key) => queryClient.query(cardQuery(project, key)).catch(() => undefined)));
   const board = getOpenBoard(target.board);
   const page = board ? findPage(board.document, target.page) : undefined;
   const named = board && page ? refProjectOn(target, project) : undefined;
@@ -181,34 +200,27 @@ export async function openEntrance(target: PageTarget, project: ProjectId, entra
   }
   const [x, y] = newCardPlacement([...displayedRects(board, target.page).values()]);
   const onPage = new Set(page.cards.filter((card) => card.ref.project === named.project).map(cardKey));
-  // Every resolved handler opens as a full card, in registration order, once each.
-  const handlers: Key[] = [];
-  for (const handler of view.targets) {
-    const key = handler.resolution === "resolved" ? handler.target : null;
-    if (key !== null && !onPage.has(key) && !handlers.includes(key)) {
-      handlers.push(key);
-    }
-  }
-  const column = x + CARD_MIN_WIDTH + FOLLOW_GAP;
-  const handlerHeight = fallbackSize(false).height + STACK_GAP;
-  const opened = editPage(target, (draft) => {
-    const entranceId = addCard(draft, { ref: refOf("entrance", entranceKey, named.project), at: [x, y] });
-    const ids = handlers.map((key, index) => ({
-      cardId: addCard(draft, { ref: refOf("block", key, named.project), at: [column, y + index * handlerHeight] }),
-      key,
-    }));
-    return { entranceId, handlers: ids };
-  });
-  if (!opened) {
+  const handlers = resolved.flatMap((key, index) => (onPage.has(key) ? [] : [{ key, model: models[index] }]));
+  const foreign = named.project !== undefined;
+  const text = entranceCardText(view);
+  const width = entranceCardWidth(text, measureText);
+  const rows = entranceHandlerRows(text, foreign, width, measureText);
+  const positions = handlerPlacement(
+    { x, y, width },
+    handlers.map(({ key }) => rows[view.targets.findIndex((handler) => handler.target === key)]),
+    handlers.map(({ model }) => estimatedBlockSize(model, foreign, measureText)),
+  );
+  const opened = editPage(target, (draft) => [
+    addCard(draft, { ref: refOf("entrance", entranceKey, named.project), at: [x, y] }),
+    ...handlers.map(({ key }, index) => addCard(draft, { ref: refOf("block", key, named.project), at: positions[index] ?? [x, y] })),
+  ]);
+  const entranceId = opened?.[0];
+  if (!opened || entranceId === undefined) {
     return;
   }
-  pushFocusMove(target, [{ cardId: opened.entranceId, label: title }]);
-  select(target, { kind: "card", cardId: opened.entranceId, key: null });
-  if (opened.handlers.length > 0) {
-    setPendingPlacement(target, opened);
-  } else {
-    requestCardFocus(target, [opened.entranceId], "fit");
-  }
+  pushFocusMove(target, [{ cardId: entranceId, label: title }]);
+  select(target, { kind: "card", cardId: entranceId, key: null });
+  requestCardFocus(target, opened, "fit");
 }
 
 /** Traces an entrance: a new draft in its project, titled after it, with the entrance and its handlers. */

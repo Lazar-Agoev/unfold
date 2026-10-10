@@ -111,8 +111,8 @@ Each window is its own renderer with its own stores. Nothing is shared between w
   the first project. It never changes because a board tab is active. `select_project` keeps the project live.
 - **Board sessions.** An open board holds its working document, the revision it was loaded from, its publish state,
   health, and outlines, its undo history, its active page, and a view per page (lens, camera, selection, folds,
-  inline expansions, the follow trail with Back and Forward, measured card sizes, and pending focus, placement, or
-  link drawing).
+  inline expansions, the follow trail with Back and Forward, measured card sizes, and pending focus or link
+  drawing).
   - Every edit is one undo step of the board, whichever page it changed; bursts with the same coalescing key within
     1.2 s merge; at most 200 steps; undo and redo show the page they change. Reloads, discards, and repairs are
     undo steps too.
@@ -231,7 +231,8 @@ The screens follow [architecture §11](architecture.md#11-the-desktop-app). Deta
   boards this window doesn't hold too (Home and the sidebar right-click it): Share and folding are then disabled,
   Rename… opens the board first, and Open in new window opens it here first.
 - **Toasts** sit at the bottom right, newest at the bottom, at most four; information hides after 5 s, errors after
-  8 s, and the engine toast stays until the window has reconnected.
+  8 s, and the engine toast stays until the window has reconnected. While a dialog is open, the stack rises just
+  above the dialog's footer when it would otherwise cover its buttons.
 
 ## Overlays
 
