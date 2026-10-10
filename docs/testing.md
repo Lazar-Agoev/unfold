@@ -77,7 +77,7 @@ call, and the `tsconfig.json` inputs Unfold fingerprints, in `playground-ts-nati
 
 ## Precision and recall gates
 
-The V1 gates ([migration plan §7](migration-plan.md)): **precision**, every resolved call and named
+The V1 gates: **precision**, every resolved call and named
 reference agrees with an independent oracle on every pinned corpus, in both languages; **recall**,
 at or above every recorded floor, and floors only rise.
 
@@ -120,7 +120,7 @@ Details, the corpus list, and the file formats: [testdata/reference/README.md](.
 
 ## The proof of concept's baseline
 
-The proof of concept's recorded results ([migration plan §1](migration-plan.md#1-where-we-start)) beside Unfold's,
+The proof of concept's recorded results beside Unfold's,
 as recorded in this file and in [testdata/reference/README.md](../testdata/reference/README.md#results-2026-10-09).
 
 | Measure | Proof of concept | Unfold |

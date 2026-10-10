@@ -1,4 +1,4 @@
-# Larger corpora, pinned rather than copied into the repository (migration plan §2).
+# Larger corpora, pinned rather than copied into the repository.
 #
 # Hash conventions used below:
 #   sha256           SHA-256 of one file's bytes, or of a downloaded archive's bytes.

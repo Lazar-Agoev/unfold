@@ -2,10 +2,9 @@
 
 Status: V1, with the studio window · 2026-10-09
 
-This document describes what we are building in the new `unfold` repository and how it fits together. It replaces the two earlier proposals, `desktop-app-design.md` and `unfold-desktop-from-scratch.md`, which were compared, merged, and removed. Two companion documents complete it:
+This document describes what we are building in the new `unfold` repository and how it fits together. It replaces the two earlier proposals, `desktop-app-design.md` and `unfold-desktop-from-scratch.md`, which were compared, merged, and removed. A companion document completes it:
 
 - [Decisions and trade-offs](decisions-and-tradeoffs.md) explains *why*: every decision (U-1 to U-51), the options we weighed, and the pros and cons of each.
-- [Migration plan](migration-plan.md) explains *when*: the steps that migrate the proof of concept into Unfold and end with V1, and the V2 tracks after them.
 
 The proof of concept is the `graph-compiler` repository, whose product was called "Codegraph". It stays as a frozen reference. No code moves over. Its semantics, test data, measurements, and reader design do.
 
@@ -545,7 +544,7 @@ So editing one file can change edges in files that weren't edited:
 4. Compare the result with the previous state, and write only the rows that changed, in one transaction.
 5. Report which files, keys, and entrances changed, so that only those cards refresh.
 
-Steps 2 and 3 cover the whole program, but they run on compact in-memory facts, with no parsing and no I/O. We expect well under a second for repositories with a few thousand files; Step 5 of the migration measures this and Step 9 sets a hard limit ([migration plan](migration-plan.md)). Re-resolving everything makes V1 correct by construction, because there is no dependency bookkeeping to get wrong ([U-14](decisions-and-tradeoffs.md#u-14-what-gets-recompiled-per-file-facts-in-v1-early-cutoff-in-v2)).
+Steps 2 and 3 cover the whole program, but they run on compact in-memory facts, with no parsing and no I/O. We expect well under a second for repositories with a few thousand files; Step 5 of the migration measures this and Step 9 sets a hard limit. Re-resolving everything makes V1 correct by construction, because there is no dependency bookkeeping to get wrong ([U-14](decisions-and-tradeoffs.md#u-14-what-gets-recompiled-per-file-facts-in-v1-early-cutoff-in-v2)).
 
 ### 7.4 V2: early cutoff
 
@@ -1440,7 +1439,6 @@ unfold/
 │   ├── README.md                   # map of the docs
 │   ├── architecture.md             # this document
 │   ├── decisions-and-tradeoffs.md  # every decision, with the options weighed
-│   ├── migration-plan.md           # the build order from the proof of concept
 │   ├── graph-model.md              # blocks, slots, edges, entrances, keys, invariants
 │   ├── compiling.md                # the update entry point, the facts cache, the workspace lifecycle
 │   ├── settings-and-scope.md       # .unfold/config.toml, discovery, scope
@@ -1626,7 +1624,7 @@ unfold/
 - Budgets hold.
 - The journeys pass.
 
-[U-33](decisions-and-tradeoffs.md#u-33-correctness-evidence-frozen-poc-reference-divergence-ledger-independent-oracles) and [U-34](decisions-and-tradeoffs.md#u-34-testing-at-every-layer) explain these gates, and the [migration plan](migration-plan.md) says which step introduces each one.
+[U-33](decisions-and-tradeoffs.md#u-33-correctness-evidence-frozen-poc-reference-divergence-ledger-independent-oracles) and [U-34](decisions-and-tradeoffs.md#u-34-testing-at-every-layer) explain these gates.
 
 ## 17. Performance targets
 

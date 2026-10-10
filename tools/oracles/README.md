@@ -73,8 +73,8 @@ node tools/oracles/check-board-schema.mjs   # or: pnpm --filter @unfold/oracles 
 
 ## TypeScript checker oracle
 
-`typescript-oracle.mjs` is the independent precision oracle for TypeScript (migration plan Steps 4
-and 7, [U-33](../../docs/decisions-and-tradeoffs.md#u-33-correctness-evidence-frozen-poc-reference-divergence-ledger-independent-oracles)).
+`typescript-oracle.mjs` is the independent precision oracle for TypeScript
+([U-33](../../docs/decisions-and-tradeoffs.md#u-33-correctness-evidence-frozen-poc-reference-divergence-ledger-independent-oracles)).
 It asks the published `typescript` package, pinned exactly in `package.json` (6.0.3, the version
 the proof of concept's checker-backed producer used), what every call, construction, and named
 argument of a corpus targets, and writes one JSONL file that `cargo xtask oracles check` compares

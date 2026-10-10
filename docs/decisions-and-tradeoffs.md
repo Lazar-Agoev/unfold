@@ -5,7 +5,6 @@ Status: decided · 2026-10-08; the studio redesign · 2026-10-09
 This document records every decision behind Unfold. For each one it gives the question, the options we weighed, what we chose, why, and the pros and cons. It also preserves the discussion that led there. The two earlier proposals were removed after they were merged, so their arguments live on here.
 
 - [Architecture](architecture.md) describes what we are building.
-- [Migration plan](migration-plan.md) describes the order we build it in, and what V1 and V2 contain.
 
 Decision IDs are U-1 to U-51. Because nothing has shipped, a decision that changes is revised in place, and the change is told in [How we got here](#how-we-got-here).
 
@@ -97,7 +96,7 @@ It also pointed out that the checker question could be settled cheaply, by runni
 1. **Rust and Tauri.** Later the same day you kept Rust and replaced Tauri with Electron (see the next section).
 2. **A `.unfold/` folder in every repository**, so each repository keeps its own information there.
 3. **The button is called "Compile", but compilation should run in the background** and recompile only what an edit changed, rather than the whole graph. This needed design thought, which is recorded in U-13, U-14, and U-15.
-4. Delete the two proposals and replace them with three documents: this one, the [architecture](architecture.md), and the [migration plan](migration-plan.md).
+4. Delete the two proposals and replace them with three documents: this one, the [architecture](architecture.md), and the migration plan.
 
 Everything else below follows the review's merged recommendations, adjusted for these decisions.
 
@@ -112,7 +111,7 @@ The analysis found four things:
 - **What Electron adds is one rendering engine.** Chromium draws the canvas the same way on every platform, which matters because cards size themselves by measuring text. It also brings Chrome DevTools, Playwright for the whole app, and mature apps with many windows to learn from. And it removes the WebKitGTK risk that had kept Windows and Linux out of V1.
 - **What it costs**: a larger download, more memory for each window, an addon boundary, security hardening we have to do ourselves, and Electron's eight-week release cycle.
 
-You chose Electron with the Rust engine, and all three platforms in V1. That changed U-6, U-25, U-31, U-32, U-34, U-35, and U-36, added U-37, and reorganized the [migration plan](migration-plan.md) into steps that each migrate one part of the PoC. Because nothing had been built yet, these decisions were revised in place rather than superseded by new ones.
+You chose Electron with the Rust engine, and all three platforms in V1. That changed U-6, U-25, U-31, U-32, U-34, U-35, and U-36, added U-37, and reorganized the migration plan into steps that each migrate one part of the PoC. Because nothing had been built yet, these decisions were revised in place rather than superseded by new ones.
 
 ### The studio redesign
 
@@ -1705,8 +1704,6 @@ All of them update themselves. Every migration step runs on all three in CI from
 1. **Step 0** freezes the PoC and runs the spikes. **Step 1** lays the foundations and imports the PoC's frozen outputs as Unfold's reference.
 2. **Step 2** builds a thin end-to-end TypeScript slice: open a folder, Compile, open an entrance, follow a call, open a second window, save a file and watch the card update in both, then relaunch and find the draft.
 3. **Steps 3 to 11** migrate the rest of the PoC one part at a time: TypeScript structure, resolution, and entrances; the reader; Python; background compiling; the shell and windows; and the release. Each step says what it takes from the PoC, what it builds, how it proves that Unfold matches the PoC, and which part of the PoC nobody needs to consult afterwards.
-
-The [migration plan](migration-plan.md) has the details.
 
 **Options**
 

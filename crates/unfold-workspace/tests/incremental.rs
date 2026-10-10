@@ -1,4 +1,4 @@
-//! Incremental equals full, with the real languages (migration plan Step 9, architecture §7.2,
+//! Incremental equals full, with the real languages (architecture §7.2,
 //! §16): random edit sequences on copies of both playgrounds go through a workspace's background
 //! updates (the path the watcher feeds, and the store's row diffs), and the graph the workspace
 //! committed must equal a fresh full compile of the same bytes, record for record.

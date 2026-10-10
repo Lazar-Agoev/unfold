@@ -9,7 +9,6 @@ what Unfold should be and why; the reference documents describe what is built, a
 | --- | --- |
 | [Architecture](architecture.md) | What we build: the product and its guarantees, the engine, compiling and storage (including `workspace.json`, `windows.json`, and `state.json`), the formats, the reader, the desktop app (the workspace, projects and their liveness, the studio window, Home, Add, the peek sheet, boards across projects, several windows), commands, security, packaging, repository layout, testing layers, and performance targets |
 | [Decisions and trade-offs](decisions-and-tradeoffs.md) | Why: how the design came about (the proposals, the move to Electron, the studio redesign), every decision (U-1 to U-51) with the options weighed, what was rejected, and what is still open |
-| [Migration plan](migration-plan.md) | The build order from the proof of concept: Steps 0–11, what V1 and V2 contain, and each step's gates (its window is V1's, which the studio redesign replaced) |
 
 ## Reference
 
