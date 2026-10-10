@@ -1,305 +1,391 @@
 # UI shell
 
-This document describes the Unfold window as it is built: what each part shows, which commands it offers, and
-the keyboard map. The design it implements is [architecture §11](architecture.md#11-the-desktop-app). What
-cards, Code, Flow, and boards show is in [the reader](reader.md), the commands the window sends to the engine are in
-[IPC](ipc.md), and the Electron side (processes, menu, window restore, packaging) is in
-[desktop/README.md](../desktop/README.md). The code is `ui/src/` (React) and `desktop/src/main/` (the application
-menu and windows).
+This document describes the renderer as it is built (`ui/src/`): how its modules are laid out, the state each
+window keeps, how it talks to the engine and keeps its caches current, the keyboard, the theme, the shared
+components, and the layers that can cover the canvas. What the window offers, part by part, is
+[architecture §11](architecture.md#11-the-desktop-app); what cards, Code, Flow, and boards show is
+[the reader](reader.md); the commands the window sends are [IPC](ipc.md); and the Electron side (processes, the
+application menu, window restore, packaging) is [desktop/README.md](../desktop/README.md).
 
-## The window
+## Modules
 
 ```text
-┌ title bar: folder ▾ · board title [Draft] ·  [ Code | Flow ]  · Compile · Publish · ◨ · ⋯ ┐
-├──┬─────────────┬──────────────────────────────────────────────┬────────────┤
-│A │ sidebar     │ editor: board tabs and source tabs           │ inspector  │
-│c │ (one view)  │                                              │ (closed by │
-│t │             │                                              │  default)  │
-├──┴─────────────┴──────────────────────────────────────────────┴────────────┤
-│ bottom panel: Problems · Index log · References                            │
-├────────────────────────────────────────────────────────────────────────────┤
-│ status bar: graph state · notes · connection          problem count · zoom │
-└────────────────────────────────────────────────────────────────────────────┘
+ui/src/
+  main.tsx       boot: the query client, the theme, <App/>
+  app/           the window frame: tab strip, sidebar container, content area, window-level layers,
+                 wiring, the frame's actions, folder drops
+  home/          Home: its sidebar, first launch, not compiled, the overview, boards and thumbnails,
+                 health and activity, the compiled toast
+  board/         a board tab: its sidebar (header, Pages, On this page, Selected), the top bar, the dock
+  canvas/        the React Flow canvas: cards (block, entrance, placeholder), arrows, drawn links,
+                 layout and sizing, Arrange, Show callers
+  code/ flow/    the Code and Flow renderers
+  add/           Add: the map, search across projects, the preview, commands
+  peek/          the source peek sheet
+  settings/      project settings, the entrance editor, Copy Diagnostics
+  preferences/   Preferences, with the keyboard section
+  dialogs/       one host for every dialog: Publish, Discard changes, Delete, folder prompts
+  menus/         the board, share, and project menus, project actions, the worktree switcher
+  ipc/           the typed client, queries and invalidation, streams; generated/ (never edited)
+  keyboard/      the action registry, keymap, dispatcher, bindings, command scopes, menu commands
+  state/         per-window stores: workspace, window, tabs, layout, overlays, compile, author,
+                 session, actions, and boards/ (open board sessions)
+  components/    the shared kit
+  icons/         the 16px icon set and the project-state glyphs
+  lib/           pure helpers: formatting, entrance and file text
+  theme/         tokens.css, base.css, theme.ts (bundled fonts)
+  test/          test helpers: a fake engine, rendering, a workspace fixture
 ```
 
-The sidebar, inspector, and bottom panel resize from their inner edges (a resize handle also takes the arrow keys,
-Home, End, and Enter). A new window starts with the Files view, the sidebar and bottom panel open on Problems, and
-the inspector closed. The layout, the lens, and the open tabs are remembered per window ([Restore](#restore)).
+Screens (`home`, `board`, `add`, `peek`, `settings`, `preferences`, `dialogs`, `menus`) import from `state/`,
+`ipc/`, `components/`, `icons/`, `lib/`, and `keyboard/`, and from each other's `index.ts` only. Nothing imports
+`app/`. `state/` imports no screen; it may use `canvas/`'s layout and card-data helpers. `canvas/`, `code/`, and
+`flow/` render the reader's models ([the reader](reader.md)).
 
-## Title bar
+## The frame
 
-The title bar is also the window's drag region (`ui/src/shell/TitleBar.tsx`).
+```text
+App
+ ├ TabStrip                  Home, then one tab per open board (its project's monogram and title)
+ ├ Body
+ │   Sidebar                 Home mode → HomeSidebar          board tab → BoardSidebar(board)
+ │   #content-area           Home → HomeMain                  board tab → BoardView(board)
+ │                           PeekSheet (the last child, over the right of the content area)
+ ├ AddLayer · DialogHost · Toaster
+```
 
-- **Folder switcher** (the folder's name, `▾`): up to eight recent folders, then **Open Folder…** (⌘O), **Open
-  Folder in New Window…**, **New Window** (⇧⌘N), **Folder Settings…**, **Close Folder**, and **Preferences…** (⌘,). With no folder
-  open the title bar shows "Unfold" instead.
-- **Board title**, while a board tab is active: click it to rename (Enter saves, Escape cancels). A draft shows a
-  **Draft** chip; a published board shows its path under `.unfold/boards/`.
-- **Code | Flow**, the window's lens. Cards that have no view of their own follow it; a card's own switch (in its
-  header) overrides it and is saved with the board. The lens is saved with the window, not with the board.
-- **Compile.** Quiet while the graph is current (its tooltip says Compile checks every file again), a plain button
-  when a Compile would change something, and "Compiling · 12 of 84 files" (then the stage in words: linking,
-  resolving calls, finding entrances, checking the graph) with a **Cancel Compile** button while one runs.
-- **Publish**, only for a draft board, opens the Publish dialog, which names the file it writes
-  (`.unfold/boards/<name>.json`); afterwards edits save into that file ([reader: Files](reader.md#files)).
-- **Toggle Inspector** (◨, ⌥⌘B or `]`).
-- **Board menu** (`⋯`): Rename…, Export Mermaid…, Copy Mermaid, Fold All, Unfold All, Move to New Window, Move
-  Back to Drafts (published boards only), and Delete….
+- **Tabs.** Home is implicit, always first, and never closes. A board tab exists exactly while its board is open in
+  this window: closing it saves the board's edits and view, then `close_board`. A tab is as wide as its title up to
+  220px, shrinking to 96px; past that the strip scrolls with the active tab kept in view. `×` sits in a fixed slot
+  on the active and hovered tab; middle-click closes. A tab's menu has Close, Close other tabs, and Open in new
+  window. ⌘W on Home closes the window only when Home is the only tab. At most 100 board tabs.
+- **One mounted board.** Only the active board tab is mounted; its camera, card sizes, and selection live in the
+  store, so switching back restores it without measuring again.
+- **The sidebar** is 264px by default, resizable from 220 to 360px from its right edge, and ⌘B hides it. Home mode
+  shows the workspace row (with Add's search), Recents, Drafts, and the projects; board mode shows the active board.
+  A project row's click selects the project and shows its Home; its chevron only expands it; `⋯` (on hover and
+  while selected) opens the project menu. In a project's tree, folders come first, then boards, each in natural
+  order; ↑ ↓ move between rows and → ← expand and collapse. A folder's menu has New Board Here, New Folder…,
+  Rename…, and Delete (only when empty); boards move between folders with the board menu's Move to folder. Home's
+  sidebar ends with Add project and the Preferences gear; a board's sidebar has no footer.
+- **The board sidebar** has the board header (back to Home, the project and folder, the title, which renames in
+  place on double-click, and the board menu), **Pages** (each page with a review mark; a page's menu has Rename,
+  Duplicate page, Move up, Move down, and Delete page…), **On this page** (the cards in follow order indented by
+  call depth, their groups, and drawn links after their `from` card; a project-initial column only when the page
+  holds cards from more than one project; "N Flow steps unlabeled · Label them"), and **Selected**, which takes at
+  most half the sidebar's height, scrolls, and collapses.
+- **Selected** follows the page's selection. A card: its name, location, description, Called by and Reached from (up
+  to three each, then "N more · Show callers"), the calls not on the page (up to five, each with **+ Open**), and its
+  groups; an entrance card lists its handlers. A Flow node: its label, the code name it replaces, and its paths. A
+  group: its title, description, and Ungroup. A drawn link: its label, Edit label, and Remove link. Bylines show the
+  author only, because authored text carries no time.
+- **The canvas** has the top bar (the page title and publish state, the lens centered, Share and Publish) and the
+  dock, both floating ([Overlays](#overlays)). Its context menu has Fit, Fold all cards, and Unfold all cards; a
+  card's has Open source, Show callers, Draw link…, Add as entrance… (for blocks that can be handlers), and Remove
+  from page; a group's has Describe group… and Ungroup; a link's has Edit label and Remove link. A card that needs
+  review shows a banner whose **Review** opens a popover of its problems, each repair with its effect and Apply (saved
+  at once, undoable).
 
-Before the first Compile only the folder switcher is shown.
+## State
 
-## Activity bar and sidebar views
+Each window is its own renderer with its own stores. Nothing is shared between windows except through Rust.
 
-The activity bar holds one icon per view, with Preferences at the bottom. Clicking the active view's icon hides the
-sidebar (⌘B toggles it too).
+| Store | Kind | Holds | Saved to |
+| --- | --- | --- | --- |
+| `workspace` query | TanStack Query | The `WorkspaceView`: project rows, recent boards, folders opened before | Rust (`workspace.json`) |
+| `useWindowStore` (`state/window.ts`) | Zustand | The window's id, key, and platform; its Home selection | `windows.json` |
+| `useTabs` (`state/tabs.ts`) | Zustand with Immer | The board tabs in order and the active tab | `windows.json` |
+| `useLayout` (`state/layout.ts`) | Zustand with Immer | Sidebar width and visibility, the Selected collapse, the peek pin, Home's view and its board filter and sort, expanded sidebar folders | `windows.json` (`layout`) |
+| `state/overlays.ts` | Zustand | The open Add request, the peek target, the open dialog | Not saved |
+| `state/boards/` | Zustand with Immer | Open board sessions | `save_board` (the document), `save_board_view` (the view) |
+| `state/compile.ts` | Zustand | Each project's running Compile and its progress | Not saved |
+| Everything else from Rust | TanStack Query | [Data from the engine](#data-from-the-engine) | — |
 
-| View | Shortcut | What it shows |
+- **Projects and names.** `state/workspace.ts` indexes the rows by id and by shared name (the first row in
+  workspace order wins a name). A card's project is resolved against the **current** index on every render: absent
+  `ref.project` means the board's own project, an unknown name means a placeholder. Connecting, renaming, or
+  removing a project re-resolves every card at once, without reloading the board. Adding a card from another
+  project writes that project's shared name into its `ref`; a project whose name equals the board's own project's
+  can't be added ("Rename one of the projects in its settings").
+- **The Home selection** is per window. A window starts on its saved selection, else the workspace's default, else
+  the first project. It never changes because a board tab is active. `select_project` keeps the project live.
+- **Board sessions.** An open board holds its working document, the revision it was loaded from, its publish state,
+  health, and outlines, its undo history, its active page, and a view per page (lens, camera, selection, folds,
+  inline expansions, the follow trail with Back and Forward, measured card sizes, and pending focus, placement, or
+  link drawing).
+  - Every edit is one undo step of the board, whichever page it changed; bursts with the same coalescing key within
+    1.2 s merge; at most 200 steps; undo and redo show the page they change. Reloads, discards, and repairs are
+    undo steps too.
+  - The board saves itself 600 ms after the last edit, never with two saves in flight. `save_board` sends `{title,
+    pages}` only: Rust owns the folder, the other projects, and the file's framing. A save keeps the identities of
+    untouched cards, so they don't render again.
+  - A conflict (`board_conflict`) with no unsaved edits reloads; with unsaved edits it shows a banner, **Keep mine**
+    (`save_board` with `force`) or **Take theirs** (`reload_board`), and stops autosave until it is resolved. A
+    failed save shows a banner with **Retry**.
+  - After `graph_updated` of any project the board's cards come from, its health is fetched again (250 ms later,
+    once per board).
+  - View changes (camera, lens, page) are never undo steps; they are saved with `save_board_view` a second after
+    they stop. The lens is the active page's, shown as the lens or else the page's default view; a card's own switch
+    overrides it.
+  - Publish and Move back to drafts change a board's id; the session and its tab follow the new id.
+- **Moving a board to a new window.** Open in new window saves what it can, opens a window
+  (`move_tab_to_new_window`), moves the claim (`move_board`), and hands the session (the document, the undo history,
+  the active page, and each page's camera and lens) to the new window (`transfer_board_state`), which adopts it once
+  it has restored itself.
+- **Compile.** `startCompile` streams `compile` (one per project per window); Cancel cancels the stream and sends
+  `cancel_compile`. Progress comes from the stream or from `compile_progress`, and clears when the project's state
+  leaves compiling or updating.
+- **The session** (`state/session.ts`):
+  - **Restore**, at launch or reload: `window_state {key}`, then the layout, the Home selection, the board tabs
+    reopened on their pages (a board that can't be opened, or is held elsewhere, loses its tab), and the active tab.
+    Only then are boards moved here from another window adopted.
+  - **Save:** `save_window_state` 400 ms after the selection, the tabs, a board's active page, or the layout
+    changes, and at once when the page goes away (`pagehide` also sends every dirty board and pending view).
+  - **Engine restart:** a toast ("Reconnecting to the engine…") while the engine host is away. Once it is back:
+    `select_project` again, `open_board` for every board tab in order (a board held elsewhere loses its tab, with a
+    toast; a changed revision goes through the conflict rule), then every dirty board and pending view is saved, the
+    window's state saved, and every engine query reset except preferences and app info.
+  - `focus_board` shows the tab of a board another window asked for.
+
+## Data from the engine
+
+`ipc/` is the window's only way to the engine: `call`, `callStream`, and `onEngineEvent` (typed by the generated
+module), `windowCommand` and `onShellEvent` (typed by `desktop/src/shared/unfold-api.ts`), `addDroppedFolder`, and
+`useConnectionState`. Errors are `UnfoldError`s with Rust's or the transport's code.
+
+- **Keys.** Every engine read is a query keyed `["engine", command, args]`. Every project command's args carry
+  `project`, so each event touches only the queries of its project (and the cross-project `search`, `drafts`, and
+  `board_refs` that include it).
+- **Defaults.** `staleTime: Infinity`, no retry, no refetch on focus: data changes only when an event says so. The
+  `workspace` query also refetches on window focus (a branch checkout changes `.git/HEAD`, which nothing watches),
+  and `git_info` is fetched fresh each time the worktree switcher opens.
+- **Writes** are plain calls from `state/`. Their effects arrive as events, or are adopted from the result
+  (`save_board` into the board store, `update_project_config` into its query).
+- **Streams.** `createLatestStream` runs one request at a time: each run cancels the one before, and late messages
+  are dropped. Add runs `search_text` this way on every query change, and runs it again 300 ms after a
+  `graph_updated` or `files_changed` while it is open, because events don't invalidate streams.
+
+**Invalidation** (`installEngineInvalidation`, `ipc/queries.ts`; P is the event's project):
+
+| Event | Effect |
+| --- | --- |
+| `workspace_changed` | Replaces the `workspace` data (no refetch) |
+| `project_state` | Patches the row's state in `workspace`; invalidates P's `project_summary` |
+| `project_reset` | Removes every query of P; forgets P's remembered card renders |
+| `graph_updated` with `everything` | Invalidates every query of P, `search` that includes P, and `workspace` |
+| `graph_updated` | P's `file_view` by path; `card` by key or file, and every entrance card; `peek` by key or file; `relations`, `callers`, `preview`, `project_summary`, `index_log`, `board_thumbnails`; `entrances` when entrances or inputs changed; `search` that includes P. The board store refreshes the health of open boards with cards from P |
+| `files_changed` | P's `file_view` and `card` by path (all of them when truncated); `search` for files that includes P |
+| `boards_changed` | P's `list_boards`, `project_summary`, and the `board_thumbnails` that name a listed board; `drafts`; every `board_refs` |
+| `problems_changed` | P's `problems` and `project_summary` |
+| `config_changed` | P's `project_config`, `compile_preview`, and `scope_dir` |
+| `preferences_changed` | Replaces the `get_preferences` data; the window applies the theme and key bindings at once |
+| `compile_progress`, `board_conflict` | Not the cache: the compile store and the board store |
+
+No handler invalidates without a predicate. Invalidation refetches only the queries something shows; the others
+refetch when next shown.
+
+**Who reads what.** Lists use commands that don't wake a project (`list_boards`, `drafts`, `entrances`, `search`,
+`board_thumbnails`, `board_refs`), and Home reads `project_summary` only for the selected project. Thumbnails are
+fetched in chunks of 60 as their rows scroll into view and drawn as plain SVG with the canvas's fallback card sizes.
+Every page and board shares one `card {project, key}` query per definition; the UI applies each page's Flow labels
+itself, and keeps the last verified render of each card in memory.
+
+## Screens
+
+The screens follow [architecture §11](architecture.md#11-the-desktop-app). Details that matter when changing them:
+
+- **Home** (`home/`) shows one of five views of the selected project, remembered per window: the overview, Health,
+  Activity, Recents, or Drafts. How it starts lays out applications in rows of at most three; an application's "N
+  more" expands it in place with a filter and every entrance (up to 500). Only manual entrances have a menu (Trace on
+  a New Board, Edit…, Remove…). Board cards show a thumbnail, the title, and a subline with pages, publish state, and
+  unpublished changes; the grid has All, Published, and Drafts and sorts by last edited or title. The not-compiled
+  Home keeps scope changes in memory and writes them with `update_project_config` just before `compile`. "<project>
+  compiled" is toasted only in the window that started the Compile, when its Home isn't showing that project.
+- **Health and activity** shows one list at a time. Health: the problems other than board health (Open shows the
+  file in the peek sheet at its line; Settings opens project settings on the section the problem is about), then the
+  boards that need review (Review opens the board on the page of its first item, with the card selected). Activity:
+  every update, newest first, with Copy diagnostics.
+- **Add** (`add/`) is a 1040 × 660 box over the window. Focus stays in its input: ↑ ↓ and Page Up/Down move the
+  selection (← → too on the map), Tab and ⇧Tab switch the kind, Escape closes, and a click adds (⌘-click on a new
+  page). Queries wait 120 ms; All shows up to four rows per kind and asks for 50 per kind, a kind's tab 500; text
+  search starts at two characters; the preview waits 150 ms (a file's first 12 lines, a match with five lines around
+  it). Before typing, the map shows 12 entrances per application, then "+N more"; hovering an entrance for 300 ms
+  shows its preview and the first other board page it is on. In command mode, `>` lists every enabled action under
+  its group, or, with a query, ranked by title prefix, word start, substring, every word, then letters in order.
+- **The peek sheet** (`peek/`) loads the file in pages of 200 lines as they scroll into view. Definitions (functions,
+  classes, methods, constructors, accessors) get `⊕`, the on-page mark, and a fold chevron; folds start open. Its
+  keys: Escape closes (`peek.close`, not while typing) and ⇧⌘O opens the file in your editor (`peek.openInEditor`).
+- **Project settings** (`settings/`) is an 880 × 700 dialog over the window: General (the name, staged; background
+  updates, applied at once; where the graph is stored), Scope (the tree loads one level at a time from `scope_dir`;
+  folders excluded by a rule above them are locked; the rules list shows staged additions and struck-through staged
+  removals), Detectors, and Python projects. Save sends every staged edit in one `update_project_config`; Rust's
+  error, with its line and column, stays at the top of the section. When `.unfold/config.toml` doesn't parse, the
+  sections show the error with Open in editor, and the name is read-only. Closing with staged edits asks first.
+- **Publish** (`dialogs/`) has three forms: a draft's first Publish (the file name, editable when `name_taken`
+  suggests another), a published board's changes (their count), and a conflict (keep mine, or take theirs and drop
+  my changes). The conflict form shows before Publish when the board's `baseChanged` says so, else when
+  `publish_board` answers `conflict`. Publish is disabled for a published board without changes. Discard changes and
+  Delete ask first; Move back to drafts doesn't.
+- **Menus** (`menus/`) share one style: 28px items, their shortcuts, separators, and submenus that open to the right.
+  The project menu shows every item in every state, with the ones that don't apply disabled. The board menu works on
+  boards this window doesn't hold too (Home and the sidebar right-click it): Share and folding are then disabled,
+  Rename… opens the board first, and Open in new window opens it here first.
+- **Toasts** sit at the bottom right, newest at the bottom, at most four; information hides after 5 s, errors after
+  8 s, and the engine toast stays until the window has reconnected.
+
+## Overlays
+
+The overlay rule is [architecture §11.3](architecture.md#113-the-window). How it is built:
+
+| Layer | Placement | Modal |
 | --- | --- | --- |
-| **Files** | ⌘1 | The folder as it is on disk. Indexed files expand into their definitions in source order. Quiet marks: `→N` entrances registered in the file, `●` on the open board, an amber dot for a changed or pending file, a warning for a file that doesn't parse, "not indexed", "ignored", and "N launches" on `package.json` and `pyproject.toml`. Header buttons show or hide ignored files and collapse all. Context menu: Open card, Open source, Open in editor, Show callers, Exclude from graph / Include in graph, Graph only this folder, and Reveal in Finder (Show in Explorer, Show in file manager) |
-| **Entrances** | ⌘2 | Applications named after their startup, with their launches, then their entrances with a fixed method column and a language tag; then "Not reached from a launch" and "Launches into code that isn't indexed". Clicking an entrance opens its card and its handler cards. The `…` menu has Add Entrance… and Folder Settings…; a manual entrance's context menu has Edit… and Remove |
-| **Search** | ⌘3 (`/` focuses the field) | One field with tabs All, Definitions, Entrances, Files, Text. Text search streams matches and has Match case, Match whole word, and Use regular expression; a new query cancels the running one. Definitions and entrances open cards; files and text matches open source tabs. A definition's context menu also offers Add as Entrance… |
-| **Boards** | ⌘4 | Published boards (filled square) and "Drafts · on this machine" (open square), with a label only when something is wrong, and **+** for a new board. For the open board: its outline in follow order, indented by call depth (click focuses the card), "N Flow nodes still show code names" with a stepper, its groups, and its health problems with their repairs. A board's context menu has Move to New Window and Delete… |
+| The dock and the top bar's lens | Float at the canvas's edges, centered on the uncovered canvas | No |
+| Banners (conflict, failed save, drawing a link) | The top of the canvas | No |
+| The peek sheet | Slides over the right of `#content-area`, 640px wide; pinned, it is in the flow and the content narrows | No |
+| Add, project settings, Preferences | Centered on the window, over a scrim on the whole window | Yes |
+| Board dialogs (Publish, Discard changes, Delete, Delete page, folder prompts) | Centered on the canvas, over a scrim on the canvas only | Yes |
+| Menus, popovers, tooltips, toasts | Above everything, in that order | No |
 
-## Editor tabs
-
-Board tabs and source tabs share one tab strip (`ui/src/editor/`). A board tab shows the board's title and a Draft
-chip; a source tab shows the file name. Delete or Backspace on a focused tab closes it. The tab context menu has
-Close (⌘W), Close Others, and then **Move to New Window** for a board tab or Reveal in Finder for a source tab. With
-no tab open the editor says how to start ("Open an entrance or a definition to start a board, or a file to read
-it", with ⌘P), and ⌘W closes the window.
-
-### Board tabs
-
-A board tab is a canvas of cards (`ui/src/canvas/`). The bar at its bottom has Back (⌘[), the trail of the follow
-path, Zoom Out (⌘-), Zoom In (⌘=), Fit Board (⇧1), and Arrange by call depth; Forward is ⌘]. The canvas context menu has
-Fit Board, Fold All Cards, and Unfold All Cards; a card's context menu has Show in Inspector, Fold Card / Unfold
-Card, Remove from Board, and, on a group, Expand / Collapse Group, Describe Group…, and Ungroup.
-
-- **Following calls.** In Code, a resolved call is a link: hover shows the target's signature and location, a click
-  opens (or focuses) the target's card, and ⌥-click expands the callee inline under the calling line. External
-  calls show their module; unresolved calls have a dashed underline whose tooltip gives the reason.
-- **Groups.** Drag over line numbers in a Code card's gutter to select consecutive statements, then type the
-  group's title; or run **Make a Group in Selected Card…** and type the lines (`27-31`). A group shows on a rail
-  with its title. F2 on a group renames it.
-- **Banners.** Two quiet notices can sit above the canvas: an outside edit made while this window had unsaved
-  changes (Keep mine / Take theirs), and a failed save (Retry). Neither is modal.
-
-### Source tabs
-
-A source tab shows one whole file, read-only, drawn by the same renderer as Code cards: syntax colors, folds, and
-calls as links (hover peeks, a click opens the target's card). A `⊕` in the gutter beside each definition adds it to
-the open board, and `●` marks what's already there. Long files are fetched in pages and virtualized by line. When
-the file changed since the graph was built, a warning chip says so and no links are drawn until the next update.
-Binary and very large files are not shown. The header's `…` menu has Open in editor and Reveal in Finder.
-
-## Inspector
-
-The inspector (`ui/src/inspector/`) is on the right, closed by default, and never shows code. It follows the
-active board's selection:
-
-- **A card:** its description (editable), then for a block card its **Calls** (on the board, **+ Open**, or external
-  and unresolved with their module or reason), **Called by**, **Reached from**, and **Groups** with their
-  descriptions; for an entrance card, its **Handlers**.
-- **A Flow node:** its type and lines, its Flow label (editable, showing the code name it replaces), and its
-  **Paths** (where the yes and no routes go).
-
-Every edit is a board edit signed with your name (`person:<username>`), so ⌘Z undoes it as on the canvas.
-**Describe Selected Card** in the command palette jumps to the description field.
-
-## Bottom panel
-
-Toggle it with ⌘J; its tabs are:
-
-- **Problems:** files that don't parse or can't be read, settings errors, discovery and input problems (such as an
-  unreadable `package.json` or `pyproject.toml`, an `extends` that names a package that isn't installed, or a Python
-  import that more than one source root supplies), a failed compile, and the open boards' health. Unresolved calls
-  are never problems ([U-28](decisions-and-tradeoffs.md#u-28-problems-lists-only-real-problems)). A file entry opens
-  a source tab at its line; a board entry offers its repairs (or opens the board, or focuses the window that has it).
-- **Index log:** each committed update, newest first: files read, taken from cache, or failed, time per stage, and
-  counts by resolution, reason, entrance kind, and detector.
-- **References:** for the selected definition, its callers as a tree (each caller expands into its own callers) and
-  the entrances it is reached from.
-
-**Show Problems** and **Show Index Log** in the command palette open the panel on that tab.
-
-## Status bar
-
-From left to right: the graph's state, quiet notes, the engine connection when it isn't connected, then the problem
-count (click to show Problems) and the active board's zoom. The states (`ui/src/shell/status.ts`, the engine side
-in [architecture §7.9](architecture.md#79-what-the-status-bar-says)):
-
-| Glyph | Text | Meaning |
-| --- | --- | --- |
-| `○` | Not compiled yet | The folder has no graph yet |
-| `●` | Graph current · 84 files · TypeScript + Python | The graph matches the files on disk |
-| `◌` | Compiling · 12 of 84 files (then the stage) | A Compile is running |
-| `◌` | Updating · 3 files changed (or "checking the folder") | A background update is running |
-| `●` (amber) | 1 file doesn't parse · showing its last version that parsed | Some files are broken; the graph keeps their last good version |
-| `●` (amber) | Background updates paused · N files changed since the last compile | Background updates are off for this folder |
-| `▲` | Compile failed · see Problems | The last Compile failed; the previous graph stays |
-
-Notes after the state: "using fallback location" (the folder is read-only, on a network volume, or can't hold the
-database safely, so `.unfold/local/` lives in Unfold's app data; the tooltip says which) and "watching by scanning"
-(file events aren't available, so the folder is checked every few seconds). The connection item reads "Connecting
-to the engine…", "Reconnecting…" (the engine host is restarting; the windows keep their boards), or "Engine
-unavailable".
-
-Clicking the state opens a menu: Compile (⇧⌘B), Rebuild from scratch, Cancel Compile (while one runs), Pause or
-Resume background updates, Show index log, and Copy Diagnostics.
-
-## Welcome and the first Compile
-
-With no folder, the window shows the welcome screen: **Open Folder…** (⌘O), the recent folders with when each was
-last opened (each can be forgotten, and the list is read again each time the screen shows), and dropping a folder
-anywhere on the window opens it.
-
-**Close Folder** (File menu, folder switcher, or the palette) returns the window to the welcome screen: the window
-writes its unsaved board edits, then the main process's `close_folder` window command re-attaches the window to the
-engine host with no folder, which detaches it from the folder's workspace (the folder's last window closes it). The
-window stays open on every platform, and other windows on the folder keep it.
-
-A folder that has never been compiled shows the first-Compile screen instead of the workbench: the folder's name,
-how many TypeScript and Python files would be graphed, what is skipped and why (grouped by reason, for example
-"node_modules, dist (skipped by default)"), any settings error (the defaults are used then) or discovery problem,
-**Choose folders…**, and **Compile** (⇧⌘B), with the promise: "Reads files only. Runs nothing and installs nothing.
-Creates .unfold/ in this folder for the graph and your boards. After this, the graph updates itself as files
-change." For a folder that can't be written, it names the fallback location instead. While compiling it shows a
-progress bar and Cancel.
-
-**Choose folders…** lists the top-level folders. Picking some writes `[scope] include` into `.unfold/config.toml`
-(as **Graph only this folder** for the first and **Include in graph** for the rest) before the first Compile, which
-helps with large monorepos.
-
-## Folder settings and the manual entrance editor
-
-**Folder Settings…** (folder switcher, Entrances view `…`, or the command palette) edits the open folder's shared
-`.unfold/config.toml` ([settings and scope](settings-and-scope.md)). It shows whether the file exists, and has three
-sections:
-
-- **Python projects:** each project's folder, source roots, and Python grammar (3.12, 3.13, 3.14), with add and
-  remove.
-- **Detectors:** a switch per detector, grouped by language (package.json scripts and bin, Express routes, BullMQ
-  workers, node-cron schedules; pyproject.toml scripts, FastAPI routes, Celery tasks, APScheduler jobs).
-- **Scope:** the Graph only and Excluded patterns, each with a remove button. Patterns are added from the Files
-  view's context menu.
-
-Changes are staged and saved together, all or nothing, through Rust, which keeps the file's comments and formatting
-and writes the file only when a setting differs from the defaults. An edit that would make the file invalid is
-refused with the error shown in the dialog. The graph picks a saved change up in the background.
-
-The **manual entrance editor** (Add Entrance… in the Entrances view or the palette, Add as Entrance… on a
-definition, Edit… on a manual entrance) edits one `[[entrance]]` table: kind, trigger, method (HTTP only), label,
-and either handlers (in order, with buttons to move one earlier or remove it) or, for a process, its startup.
-Locators are checked while typing ([entrances](entrances.md#manual-entrances-and-locators)); Remove asks for
-confirmation first.
-
-## Preferences
-
-Preferences (⌘,, the activity bar, or the folder switcher) are app-wide and stored by Rust in `preferences.json`:
-theme (applied at once), the editor command used by Open in editor (for example `code -g {path}:{line}`; it runs
-without a shell, and empty opens files as text in the system's editor), whether background updates start on for
-newly compiled folders, the compile thread limit (applies to folders opened afterwards), and whether to check for
-new versions of Unfold, and key bindings (the **Keyboard** section; see [Keyboard](#keyboard) below). Saving sends
-`preferences_changed` to every open window, welcome windows included, so a new theme or key bindings apply
-everywhere at once ([IPC: events](ipc.md#events)).
-
-## Copy Diagnostics
-
-**Copy Diagnostics** (Help menu, the status bar menu, or the palette) copies a redacted report for bug reports:
-Rust's summary (engine version, platform, graph state and counts, problems by kind, watch mode, lock state, settings
-counts) plus the app, Electron, and Chromium versions. It holds no code and no paths
-([IPC: `diagnostics`](ipc.md#settings)). The main process writes the clipboard, because windows have no clipboard
-permission.
-
-## Several windows
-
-- **One folder per window.** New Window (⇧⌘N) opens another window on the same folder; Open Folder in New Window…
-  opens a different folder beside it. Each window has its own tabs, sidebar, inspector, panel, lens, and selection.
-- **Windows on one folder share it:** one engine, one graph, one watcher. A save updates the cards in every window
-  that shows them, and every window's status bar shows the same state.
-- **A board is open in one window at a time.** Opening a board another window holds focuses that window instead.
-  **Move to New Window** (tab menu, board menu, Boards view, or the palette) moves a board, with its undo history,
-  into a new window on the same folder. Source tabs can be open in any number of windows.
-- **Closing.** Closing the last window of a folder saves its drafts and closes its workspace. On macOS the app keeps
-  running with no windows; on Windows and Linux closing the last window quits.
-- **Engine restarts.** If the engine host stops, every window shows "Reconnecting…", keeps its boards, and
-  reconnects when the main process has restarted it; unsaved board edits are saved after reconnecting.
-
-## Restore
-
-Each window has a stable key. Its tabs, active tab, layout, lens, and open boards are saved (debounced) into the
-folder's `.unfold/local/state.json`, and its position and size by the main process. Reopening a folder recreates
-each of its saved windows (at most 16), moved onto a visible screen if a display has gone, and reopens their boards;
-a board that can no longer be opened loses its tab. A window you close (other than the folder's last) is forgotten.
-Details: [desktop/README.md](../desktop/README.md#window-restore).
-
-## Command palette
-
-⇧⌘P opens the palette with every enabled command and its shortcut, fuzzy-filtered. ⌘P (Go to File…) and ⌘T (Go to
-Symbol…) open it as quick-open; typing `>` first switches to commands. Commands that have no shortcut are reached
-here, among them Open Folder in New Window…, Close Folder, Rebuild from Scratch, Cancel Compile, Show Index Log, Show Problems,
-Add Entrance…, Folder Settings…, Copy Diagnostics, New Board, Publish Board…, Rename Board…, Export Board as
-Mermaid…, Copy Board as Mermaid, Fold All Cards, Unfold All Cards, Move Board to New Window, Move Board Back to
-Drafts, Delete Board…, Describe Selected Card, Make a Group in Selected Card…, Remove Selected Card from Board,
-Arrange by Call Depth, and Next Flow Node Showing a Code Name.
+- While the sheet floats unpinned, the lens, the dock, the banners, and the empty-page hint center on the canvas left
+  of it (`--covered-right` is the sheet's width). On a narrow canvas the lens moves aside to clear the title and
+  Share, and the dock sheds parts as it narrows: the trail keeps only its current step, then goes; then Add's key and
+  Arrange's label; then Back and Forward; then Arrange. Zoom and Fit stay.
+- A modal layer pushes itself on the keyboard's modal stack (`pushModal`), so no window shortcut fires under it.
+  The peek sheet is not modal. Escape closes each layer, and each layer handles its own Escape.
+- Layers stack by the `--z-*` tokens: resize handles, the sheet, popovers, dialogs, menus, tooltips, toasts.
 
 ## Keyboard
 
 The map is `ui/src/keyboard/keymap.ts`. `Mod` is ⌘ on macOS and Ctrl on Windows and Linux; shortcuts are shown in
 each platform's style (`⇧⌘P`, `Ctrl+Shift+P`).
 
-| Action | macOS | Windows and Linux |
-| --- | --- | --- |
-| Open Folder… | ⌘O | Ctrl+O |
-| New Window (same folder) | ⇧⌘N | Ctrl+Shift+N |
-| Close Tab (closes the window when no tab is open) | ⌘W | Ctrl+W |
-| Close Window | ⇧⌘W | Ctrl+Shift+W |
-| Compile | ⇧⌘B | Ctrl+Shift+B |
-| Go to File…, Go to Symbol… | ⌘P, ⌘T | Ctrl+P, Ctrl+T |
-| Command palette | ⇧⌘P | Ctrl+Shift+P |
-| Files, Entrances, Search, Boards | ⌘1, ⌘2, ⌘3, ⌘4 | Ctrl+1 … Ctrl+4 |
-| Focus Search | `/` | `/` |
-| Toggle Sidebar | ⌘B | Ctrl+B |
-| Toggle Inspector | ⌥⌘B or `]` | Ctrl+Alt+B or `]` |
-| Toggle Panel | ⌘J | Ctrl+J |
-| Back, Forward (board) | ⌘[, ⌘] | Ctrl+[, Ctrl+] |
-| Fit Board | ⇧1 | Shift+1 |
-| Zoom In, Zoom Out (board) | ⌘= (or ⇧⌘+), ⌘- | Ctrl+= (or Ctrl+Shift++), Ctrl+- |
-| Undo, Redo (board edit) | ⌘Z, ⇧⌘Z | Ctrl+Z, Ctrl+Shift+Z |
-| Preferences… | ⌘, | Ctrl+, |
-| Copy Diagnostics | none (menu and palette) | none |
+| Action | Id | macOS | Windows and Linux |
+| --- | --- | --- | --- |
+| Add… | `add.open` | `A`, ⌘K, `/` | `A`, Ctrl+K, `/` |
+| Commands… (Add with `>`) | `add.commands` | ⇧⌘P | Ctrl+Shift+P |
+| Go to File…, Go to Function… | `add.files`, `add.functions` | ⌘P, ⌘T | Ctrl+P, Ctrl+T |
+| Home | `tabs.home` | ⌘0 | Ctrl+0 |
+| Next Tab, Previous Tab | `tabs.next`, `tabs.previous` | ⌃Tab or ⇧⌘], ⌃⇧Tab or ⇧⌘[ | Ctrl+Tab or Ctrl+Shift+], Ctrl+Shift+Tab or Ctrl+Shift+[ |
+| Close Tab | `tabs.close` | ⌘W | Ctrl+W |
+| New Board | `board.new` | ⌘N | Ctrl+N |
+| New Page | `board.newPage` | ⌥⌘N | Ctrl+Alt+N |
+| New Window | `window.new` | ⇧⌘N | Ctrl+Shift+N |
+| Close Window | `window.close` | ⇧⌘W | Ctrl+Shift+W |
+| Add Project… | `project.add` | ⌘O | Ctrl+O |
+| Compile (the selected project, or the active board's) | `project.compile` | ⇧⌘B | Ctrl+Shift+B |
+| Code, Flow (the page's lens) | `board.lensCode`, `board.lensFlow` | ⌘1, ⌘2 | Ctrl+1, Ctrl+2 |
+| Toggle Sidebar | `view.toggleSidebar` | ⌘B | Ctrl+B |
+| Back, Forward | `navigation.back`, `navigation.forward` | ⌘[, ⌘] | Ctrl+[, Ctrl+] |
+| Fit | `board.fit` | ⇧1 | Shift+1 |
+| Zoom In, Zoom Out | `board.zoomIn`, `board.zoomOut` | ⌘= (or ⇧⌘+), ⌘- | Ctrl+= (or Ctrl+Shift++), Ctrl+- |
+| Arrange by Call Depth | `board.arrange` | ⇧A | Shift+A |
+| Undo, Redo (board edit) | `edit.undo`, `edit.redo` | ⌘Z, ⇧⌘Z | Ctrl+Z, Ctrl+Shift+Z |
+| Preferences… | `app.preferences` | ⌘, | Ctrl+, |
+| Publish | `board.publish` | ⇧⌘E | Ctrl+Shift+E |
+| Remove Project from Workspace… | `project.remove` | none | none |
+| Copy Diagnostics | `help.copyDiagnostics` | none | none |
+
+These are the actions a person can rebind. Every other registered action (folding, groups, describing, Show
+callers, Share, the project menu's and board menu's items, and the peek sheet's keys) has no default shortcut, or a
+fixed one, and is reached in Add's `>` mode or its menu. ⌘N makes a draft in the selected project on Home, and in
+the active board's project in a board tab.
 
 How keys are dispatched (`ui/src/keyboard/dispatcher.ts`):
 
-- Plain keys (`/`, `]`, `⇧1`) never fire while typing in a text field; ⌘/Ctrl shortcuts do, except Undo and Redo,
-  which leave a text field its own native undo.
-- While a dialog or the palette is open, no window shortcut fires.
-- Undo and Redo go to the part of the window you're working in (the focused board, or the one clicked last).
-- The application menu's items run the same actions as their keys (the main process forwards them as
-  `menu_command` events), so a key runs its action once.
+- Events a component already handled (`preventDefault`: lists, menus, the canvas's own keys) are left alone, and so
+  are keys while composing text.
+- Plain keys (`A`, `/`, `⇧1`, `⇧A`) never fire while typing in a text field; ⌘/Ctrl shortcuts do, except Undo and
+  Redo, which leave a text field its own native undo.
+- While a modal layer is open (Add, any dialog), no window shortcut fires.
+- Later registrations win: a mounted view's actions over the frame's. A disabled action lets the key through.
+- A handled key is `preventDefault`ed, which also stops Electron from running the application menu's accelerator for
+  it, so a key runs its action once. Auto-repeat is ignored, except for zoom.
+- Undo and Redo go to the board you're working in: the innermost command scope around focus, or the one clicked last.
+- `[`, `]`, `=`, `-`, and `,` match by physical key when Shift changes the character typed, so ⇧⌘] works on every
+  keyboard layout; ⌃Tab works on macOS.
+- The application menu's items run the same actions as their keys: the main process forwards them as
+  `menu_command` events (`MENU_COMMAND_ACTIONS` maps each to its action id). Add Project…, New Window, and Close
+  Window run in the main process itself.
 - In lists and trees, arrow keys move, Enter opens, and typing letters jumps by name; Shift+F10 or the context-menu
-  key opens a context menu; Escape closes menus, popovers, and dialogs.
+  key opens a context menu; Escape closes menus, popovers, sheets, and dialogs.
 
 ### Custom key bindings
 
-Every action in the table except Preferences… can be rebound in Preferences → **Keyboard**, which lists the actions
-by category with their effective shortcut. Click a row's shortcut and press the new combination (modifiers alone
-keep it listening; Escape cancels; Backspace leaves the action with no shortcut). **Reset** returns a row to its
-default and **Reset All** every row. If two actions end up on the same combination (including an action's second
-default, such as `]` for Toggle Inspector), both rows are flagged and Save stays disabled until one changes.
+Every action in the table can be rebound in Preferences → **Keyboard**, which lists them by category with their
+effective shortcut. Click a row's shortcut and press the new combination (modifiers alone keep it listening; Escape
+cancels; Backspace leaves the action with no shortcut). **Reset** returns a row to its default and **Reset All**
+every row. If two actions end up on the same combination (including an action's second default, such as `/` for
+Add), both rows are flagged and Save stays disabled until one changes.
 
-Bindings are stored in `preferences.json` as `keyBindings`, a map from action id (`ui/src/keyboard/keymap.ts`,
-e.g. `view.toggleSidebar`) to one shortcut in the keymap's notation (`Mod+Shift+K`, case-insensitive; `Plus` and
-`Space` name those keys); `""` means no shortcut. A binding replaces all of an action's default shortcuts.
-Entries for unknown ids and shortcuts that don't parse are ignored (a hand-edited file never breaks the keyboard),
-and Save carries entries for ids this version doesn't know over untouched (`ui/src/keyboard/bindings.ts`).
+Bindings are stored in `preferences.json` as `keyBindings`, a map from action id to one shortcut in the keymap's
+notation (`Mod+Shift+K`, case-insensitive; `Plus` and `Space` name those keys); `""` means no shortcut. A binding
+replaces all of an action's default shortcuts. Entries for unknown ids and shortcuts that don't parse are ignored, so
+a hand-edited file never breaks the keyboard (`ui/src/keyboard/bindings.ts`).
 
-The window applies the bindings when preferences load and whenever they're saved: the action registry re-resolves
-every shortcut, so the dispatcher, the palette, and tooltips show and use the effective ones. There is no
-cross-window preferences event: another open window picks the change up (theme included) when it's reopened or when
-Preferences is opened in it, which always re-reads `preferences.json`.
+Saving sends `preferences_changed` to every window, which applies the bindings at once: the action registry
+re-resolves every shortcut, so the dispatcher, Add's commands, menus, and tooltips show and use the effective ones.
+The application menu keeps its default accelerators; for an action the menu also owns, the old default still works
+through the menu, unless the new bindings give that combination to another action, which the window then handles
+first.
 
-The application menu keeps its default accelerators. For actions the menu also owns (Open Folder, New Window,
-Compile, Close Tab, Close Window, Undo, Redo, Command Palette, the four views, and the three toggles), the old
-default still works through the menu and is the one the menu shows, unless the new bindings give that combination
-to another action, in which case the window handles it first and the menu doesn't fire.
+## Theme
+
+`ui/src/theme/tokens.css` defines every color, size, radius, layer, and duration as a CSS variable, in three blocks:
+`:root` (light), `@media (prefers-color-scheme: dark) :root:not([data-theme="light"])`, and `:root[data-theme="dark"]`
+(the last two identical). The theme follows the OS unless Preferences sets one, which `applyThemeOverride` writes as
+`data-theme` on `<html>`. The dark set is designed, not inverted ([U-51](decisions-and-tradeoffs.md#u-51-the-studios-visual-system)).
+
+| Group | What |
+| --- | --- |
+| Grounds | `--color-canvas`, `--color-home`, `--color-sidebar`, `--color-chrome` (top bar and active tab), `--color-tabstrip`, `--color-surface` (cards, dock, menus, dialogs, the sheet, toasts), `--color-control`, tracks, pressed |
+| Rows | `--color-hover` (one step lighter than selection), `--color-selection`, a stronger selection, matched text |
+| Text | `--color-text`, `--color-muted` (secondary text), `--color-subtle` (line numbers), `--color-faint` (rules, icons, and disabled states only, never text) |
+| Lines | `--color-border`, `--color-border-shell`, card rules, placeholder lines, dashed borders |
+| Accent | The indigo `--color-accent` (light `#5862C0`, dark `#A0AAFF`) for selection, the primary button, links, and focus; nothing else in the chrome is colored unless it means something |
+| Meaning | `--color-review` (amber: needs review), `--color-warn` and its fill (banners), `--color-success` (the "Graph current" dot only), `--color-danger` (destructive actions and `DELETE`) |
+| Reader | Authored magenta, step rows, arrows, the unresolved underline, external call names, the v7 syntax palette, and the Flow node colors (the last two keep the reader's values in both sets) |
+| Monograms | A neutral gray square with the project's initial, so it never clashes with the reader's colors |
+| Type | Inter for the interface and JetBrains Mono for code, both bundled; sizes paired with leadings (`--text-13` with `--leading-20`); code never ligates |
+| Shape and size | Radii from 4 to 12px; rows 28px, tab strip 38px, top bar 48px, the sheet 640px; shadows only for floating things |
+| Layers and motion | `--z-*` (see [Overlays](#overlays)); 90 and 160 ms, and none when the OS asks for reduced motion |
+
+`src/theme/contrast.test.ts` checks that text meets WCAG AA (4.5:1) and focus rings and marks 3:1 on the surfaces
+they sit on, with four listed exceptions that are marks repeated by text elsewhere.
+
+## Components
+
+The shared kit is `ui/src/components/` (import it from `components/index.ts`), styled only with the tokens:
+`Button` and `TextButton`, `IconButton`, `KeyChip`, `MenuButton` and `useContextMenu` (with submenus), `Popover`,
+`Tooltip` and `HoverCard`, `Dialog`, `ConfirmDialog`, and `PromptDialog` (placed on the window or the canvas),
+`Sheet`, `SegmentedControl` (the lens, a card's switch, the Health | Activity switch), `Switch`, `Checkbox` (with a
+mixed state), `RadioGroup`, `Monogram`, `StateIndicator` (a project's state as a row glyph or before Home's state
+line), `ProgressRing`, `Toaster` with `showToast` and `dismissToast`, `SectionLabel`, `ListRow`, `Badge`,
+`KindGlyph`, `TreeView`, `ResizeHandle`, `TextField` and `SearchField`, and `EmptyState`. Icons are one 16px set
+(`icons/`, `<Icon name>`), with the project-state glyphs beside them. Long lists are virtualized with TanStack
+Virtual.
+
+## Where V1's parts went
+
+The window was rebuilt from V1's IDE-shaped workbench ([U-26](decisions-and-tradeoffs.md#u-26-a-studio-window)).
+Every region and command had a new home; nothing was dropped.
+
+| V1 | Now |
+| --- | --- |
+| Title bar folder switcher (recent folders, Open Folder, New Window, Folder Settings, Close Folder, Preferences) | Home's sidebar: the projects, Add project, the project menu, the gear; recent folders became Recents (recent boards) |
+| Title bar board title, Code \| Flow, Compile, Publish | The board header (rename in place); the canvas top bar's lens and Publish; Compile on a new project's Home, then the project menu |
+| Inspector, and its toggle | The board sidebar's Selected section, and editing on the card; ⌘B toggles the whole sidebar |
+| Board menu `⋯` | The board header's menu; Fold all and Unfold all also in the canvas menu; Mermaid under Share |
+| Activity bar | Gone |
+| Files view (the disk tree and its marks and menu) | Finding a file: Add → Files. Scope actions: Project settings → Scope. Open in editor and Reveal in Finder: the peek sheet's menu and the project menu. Show callers: the card menu |
+| Entrances view | Home → How it starts, and Add's map. Add Entrance: the project menu and How it starts; editing and removing a manual entrance: its row on Home |
+| Search view (and match case, whole word, regex) | Add, with the same tabs and text options |
+| Boards view (boards, drafts, outline, the Flow-label stepper, groups, health and repairs) | Home's Boards and the sidebar's tree; On this page; "Label them"; the card's review banner and Home's Health |
+| Editor tabs; source tabs | Window tabs; the peek sheet |
+| The board bar (Back, trail, zoom, Fit, Arrange) | The dock, with Forward added |
+| Bottom panel: Problems, Index log, References | Home's Health line and Health and activity; Selected's Called by and Reached from, and Show callers |
+| Status bar (graph state, notes, connection, problem count, zoom) and its menu | The project row and Home's state line; the notes in the state line's tooltip and Project settings → General; the connection as a toast; zoom in the dock; the menu's items in the project menu |
+| Welcome screen; first-Compile screen | First launch on Home, Add project, and dropping a folder; a new project's Home with the scope tree |
+| Close Folder | Remove from workspace, in the project menu (it never deletes `.unfold/`) |
+| Folder Settings dialog | The Project settings dialog |
+| Command palette, Go to File, Go to Symbol | Add: `>` for commands; ⌘P opens it on Files, ⌘T on Functions |
+| Several windows on one folder | Several windows on the workspace; Open in new window on a tab or in the board menu |

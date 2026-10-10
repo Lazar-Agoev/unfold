@@ -1,9 +1,9 @@
 # Settings and scope
 
-This document describes `.unfold/config.toml`, how Unfold discovers the files in an open folder, which
+This document describes `.unfold/config.toml`, how Unfold discovers the files in a project's folder, which
 folders it always skips, how `[scope]` and `languages` narrow what is graphed, and how settings are
 fingerprinted for the per-file facts cache. It expands [architecture §9.2](architecture.md#92-project-settings),
-[§7.7](architecture.md#77-settings-and-inputs), [U-16](decisions-and-tradeoffs.md#u-16-discovery-and-scope-without-git),
+[§7.7](architecture.md#77-settings-and-inputs), [U-16](decisions-and-tradeoffs.md#u-16-discovery-and-scope-without-running-git),
 and [U-23](decisions-and-tradeoffs.md#u-23-settings-in-toml-in-three-places).
 
 The code is `crates/unfold-engine/src/settings/` (the model, parsing, scope matching, hashing) and
@@ -11,9 +11,10 @@ The code is `crates/unfold-engine/src/settings/` (the model, parsing, scope matc
 
 ## `.unfold/config.toml`
 
-The shared, committed settings of one folder. The file is optional: an absent file means the
+The shared, committed settings of one project. The file is optional: an absent file means the
 defaults, and the app writes it only when a setting differs from them. Editing it from the app while
-preserving comments is the workspace's job; this section describes what the engine reads.
+preserving comments is the workspace's job ([How the app edits it](#how-the-app-edits-it)); this section
+describes what the engine reads.
 
 ```toml
 version = 1
@@ -63,7 +64,7 @@ characters, and carries the byte span of the offending key or value:
 ```
 
 The file must be UTF-8; a leading byte-order mark is skipped (spans still count its bytes). Settings
-errors are never partially applied: the folder's compile reports the error instead.
+errors are never partially applied: the project's compile reports the error instead.
 
 ### Project name
 
@@ -79,13 +80,33 @@ app removes the `[project]` table.
 
 The name changes no compile, so it is in neither settings hash ([Settings hashing](#settings-hashing)).
 
+### How the app edits it
+
+The app changes the file only through `update_project_config` ([IPC](ipc.md#project-home-and-settings)): a list
+of edits applied in order, all or nothing, that keep the file's comments and formatting and write it only when
+its text changes. An edit that would make the file invalid is refused with the error (`invalid_settings`), and one that a broader rule stands in the way of is refused as a
+conflict (`settings_conflict`). The edits come from:
+
+- **Project settings** (a dialog from the project menu or Home): **General** sets or removes `[project] name`
+  (an empty name means the default); **Scope** is a tree of the project's folders whose check boxes become
+  `exclude` and `include` patterns (each a folder path, escaped as a glob) and whose rules list removes a pattern as
+  written; **Detectors** turns detectors on and off; **Python projects** sets and removes `[[python.project]]`
+  tables. Changes are staged and sent together with Save. Background updates, also in General, live in the
+  project's `state.json`, not here.
+- **The not-compiled Home's scope tree**, whose changes are kept in memory and written just before the first
+  Compile, so nothing is written to a folder that was never compiled.
+- **The manual entrance editor**, which adds, replaces, or removes one `[[entrance]]` table.
+
+When the file doesn't parse, Project settings shows the error with Open in editor, and the edits that need a
+valid file wait until it is fixed.
+
 ### Python projects
 
 Each `[[python.project]]` table configures the Python files under its `root`:
 
 | Key | Default | Rules |
 | --- | --- | --- |
-| `root` | `.` | A folder relative to the open folder; no `..`, no leading `/`. Two tables can't share a root |
+| `root` | `.` | A folder relative to the project's folder; no `..`, no leading `/`. Two tables can't share a root |
 | `source_roots` | Python front end's default | Nonempty list of folders relative to `root`, joined onto it; no duplicates after normalization |
 | `version` | `"3.14"` | `"3.12"`, `"3.13"`, or `"3.14"` (strings) |
 
@@ -99,18 +120,18 @@ console scripts that reach them resolve as `not_indexed` rather than `not_found`
 playground uses exactly this: `legacy` is a source root and `legacy/**` is excluded.
 
 When more than one source root (or a module and a package of the same name) supplies an imported module, the
-import's edge is `ambiguous` and the import is listed in the Problems view, without making the graph incomplete
+import's edge is `ambiguous` and the import is listed in Problems, without making the graph incomplete
 ([Python](languages/python.md#entrance-detectors-and-problems)).
 
 ## Discovery
 
-Discovery walks the open folder with the `ignore` crate (ripgrep's walker). It never runs Git and
+Discovery walks the project's folder with the `ignore` crate (ripgrep's walker). It never runs Git and
 works the same in a plain folder as in a repository.
 
 - **Ignore files.** `.gitignore` files at every level, `.ignore` files, `.git/info/exclude`, and the
   global Git excludes file (`core.excludesFile`, found by reading Git's config files) apply, with
   ripgrep's semantics. `.gitignore` applies even when the folder isn't a Git repository, and ignore
-  files in folders above the open folder apply too. Rare differences from Git's own rules are
+  files in folders above the project's folder apply too. Rare differences from Git's own rules are
   accepted (U-16): for example, when you open a folder that a parent repository ignores, Git would
   ignore everything in it while the walk does not.
 - **Always excluded.** Folders named `node_modules`, `.venv`, `venv`, `__pycache__`, `.mypy_cache`,
@@ -119,7 +140,7 @@ works the same in a plain folder as in a repository.
   such as `dist`, need an ignore rule or a scope exclusion.
 - **Hidden files** are walked like any other (Git tracks them too).
 - **Symlinks.** A symlinked folder is never followed (no cycles, no duplicates, no escapes). A
-  symlinked file counts, under its own path, only when its target is a file inside the open folder;
+  symlinked file counts, under its own path, only when its target is a file inside the project's folder;
   its size and modification time are the target's. Dangling symlinks and symlinks to files outside
   the folder are skipped.
 - **Names.** Paths are folder-relative, `/`-separated, and case-preserving, and they sort by their UTF-8
@@ -168,7 +189,7 @@ after an ignore file changes.
 
 ### The skipped-files report
 
-The first-Compile screen shows what was left out ("Skipped: node_modules, .venv, dist (from .gitignore
+A project's not-compiled Home shows what was left out ("Skipped: node_modules, .venv, dist (from .gitignore
 and defaults)"). Discovery reports it aggregated by folder:
 
 | Reason | Meaning |
@@ -191,7 +212,7 @@ yielded.
 
 ## Scope
 
-`[scope] include` and `exclude` are glob patterns relative to the open folder. They apply on top of
+`[scope] include` and `exclude` are glob patterns relative to the project's folder. They apply on top of
 the ignore files and the always-excluded folders.
 
 - A pattern matches a path when it equals the path, names a folder that contains it (`docs` matches

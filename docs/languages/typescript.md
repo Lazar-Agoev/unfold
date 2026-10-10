@@ -239,9 +239,9 @@ Adjacent spans of the same class merge; spans never overlap and lie on character
 ## Project configuration
 
 Each TypeScript file uses the `tsconfig.json` in its folder or the closest ancestor folder inside the
-open folder (`unfold_lang_typescript::config`). Other `tsconfig*.json` files matter only when a chain
+project's folder (`unfold_lang_typescript::config`). Other `tsconfig*.json` files matter only when a chain
 extends them. A file with no configuration uses ESNext and NodeNext, as the proof of concept did.
-Unlike the proof of concept, the search never leaves the open folder: Unfold reads nothing outside it.
+Unlike the proof of concept, the search never leaves the project's folder: Unfold reads nothing outside it.
 
 - **JSONC.** `//` and `/* */` comments, trailing commas, and a byte-order mark are accepted; anything
   else must be JSON. Duplicate keys keep the last value. Option names and enumerated values are
@@ -251,7 +251,7 @@ Unlike the proof of concept, the search never leaves the open folder: Unfold rea
   own options override them all (options merge one by one; `files`, `include`, and `exclude` are
   replaced whole). A path written `./x`, `../x`, or absolute names a file, with `.json` added when the
   path itself doesn't exist. Anything else names a package, looked up in `node_modules` from the
-  configuration's folder up to the open folder: the exact file, then with `.json`, then the package's
+  configuration's folder up to the project's folder: the exact file, then with `.json`, then the package's
   `"tsconfig"` field, then its `tsconfig.json`. `node_modules` is never walked: the language asks the
   engine for these candidates (`Language::requested_inputs`, role `tsconfig`), and the engine reads
   the ones that exist, round by round.
@@ -263,7 +263,7 @@ Unlike the proof of concept, the search never leaves the open folder: Unfold rea
 - **Paths.** `baseUrl`, `paths`, `rootDir`, `outDir`, `outFile`, and `declarationDir` resolve against
   the configuration that wrote them; `${configDir}` means the folder of the configuration being
   built. `paths` substitutions resolve against `baseUrl` when it is set, and otherwise against the
-  configuration that wrote `paths`. Paths outside the open folder are dropped.
+  configuration that wrote `paths`. Paths outside the project's folder are dropped.
 - **Inputs.** Every file of a used chain (the nearest configuration of any TypeScript file with facts,
   and its bases) is a graph input with role `tsconfig` (`Linked::inputs_read`). Any input change
   relinks; only files whose extraction options changed are extracted again.

@@ -252,7 +252,7 @@ Extraction never reads another file; linking reads only these facts (it never pa
 
 **Source roots** come from the file's `[[python.project]]` (`source_roots`, joined onto its `root`).
 Without them, the project folder is the configured project's root, or else the nearest folder above
-the file holding a `pyproject.toml`, or else the open folder; its source root is `src/` when that
+the file holding a `pyproject.toml`, or else the project's folder; its source root is `src/` when that
 folder has a src layout (a `src` folder with Python files), and the folder itself otherwise. A source
 root may lie outside `[scope]` (py-orders' `legacy/`): modules found there exist but are not indexed.
 
@@ -279,7 +279,7 @@ root may lie outside `[scope]` (py-orders' `legacy/`): modules found there exist
 - Imports a proven `TYPE_CHECKING` guard erases still bind their names; only their occurrences go.
 
 `PythonLinked::ambiguous_imports` lists the imports whose module several roots (or a module and a
-package) could supply, for the Problems view.
+package) could supply, for the Problems list.
 
 ### Named child imports
 
@@ -448,7 +448,7 @@ they are fingerprinted even without scripts. The source detectors share one valu
 `Linked::problems` lists every import whose module more than one source root (or a module and a package)
 supplies, at the importing file, without making the graph incomplete (its edges are already `ambiguous`), and
 every owning `pyproject.toml` the console-script detector can't read, which does make it incomplete. The engine
-lists them in the Problems view with the configuration-input problems.
+lists them in Problems with the configuration-input problems.
 
 ## Parity with the proof of concept
 

@@ -358,7 +358,7 @@ different languages.
 
 ## Paths
 
-Paths are relative to the open folder, nonempty, `/`-separated, and case-preserving. They contain no
+Paths are relative to the project's folder, nonempty, `/`-separated, and case-preserving. They contain no
 empty, `.`, or `..` component, no backslash, no NUL, and no drive or absolute prefix, so they never
 escape the root. Paths order by their UTF-8 bytes.
 

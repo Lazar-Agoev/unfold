@@ -5,7 +5,9 @@ Status: plan for V1 and V2 · 2026-10-08
 This plan takes us from the `graph-compiler` proof of concept to Unfold, one step at a time.
 
 - [Architecture](architecture.md) describes what we are building.
-- [Decisions and trade-offs](decisions-and-tradeoffs.md) explains why (U-1 to U-37).
+- [Decisions and trade-offs](decisions-and-tradeoffs.md) explains why (U-1 to U-51).
+
+This plan is the record of how V1 was built. Its window (Steps 2 and 10: the activity bar, source tabs, the inspector, the bottom panel, the status bar, the command palette, and windows per folder) was V1's IDE-shaped workbench, which the studio redesign replaced after V1 was built ([How we got here](decisions-and-tradeoffs.md#the-studio-redesign), [U-26](decisions-and-tradeoffs.md#u-26-a-studio-window)). The window as it is now is [architecture §11](architecture.md#11-the-desktop-app).
 
 ## Summary
 
@@ -434,7 +436,7 @@ In addition:
 
 ### Step 10: The IDE shell and several windows
 
-**Goal.** The window from [architecture §11](architecture.md#11-the-desktop-app), complete, and as many of them as you want.
+**Goal.** V1's IDE-shaped window, complete, and as many of them as you want. (The studio redesign later replaced this window: [architecture §11](architecture.md#11-the-desktop-app).)
 
 **From the PoC.** Only the v7.1 designs. The PoC had a single sidebar and one browser tab.
 
@@ -444,7 +446,7 @@ In addition:
 - **Search.** Definitions, entrances, files, and text, with ⌘P and ⌘T quick open.
 - **Source tabs.** Virtualized, with call links and the `⊕` gutter.
 - **Panels.** Reached-from in the inspector, and Problems, Index log, and References in the bottom panel.
-- **Several windows** ([U-37](decisions-and-tradeoffs.md#u-37-several-windows-per-folder-one-window-per-board)):
+- **Several windows** ([U-37](decisions-and-tradeoffs.md#u-37-several-windows-one-window-per-board)):
   - New Window, and Open Folder in New Window;
   - several windows per folder, sharing one workspace;
   - a board open in one window at a time, with focus moving to the window that has it;

@@ -301,7 +301,7 @@ entrance. A registration with no explicit handler produces no entrance.
 - **Inputs.** Every discovered `package.json` outside `node_modules` that scope doesn't exclude is read when
   `package.script` or `package.bin` is enabled, and fingerprinted even when it declares nothing (with both disabled,
   none is read). A package that isn't strict JSON (comments, trailing commas, single quotes, control characters) or
-  isn't an object is listed in the Problems view and makes the graph incomplete; the rest of the graph is kept.
+  isn't an object is listed in Problems (Home's Health) and makes the graph incomplete; the rest of the graph is kept.
 - **Enumeration.** Each own member of `scripts`, in written order, except the lifecycle scripts (`preinstall`,
   `install`, `postinstall`, `prepublish`, `preprepare`, `prepare`, `postprepare`, `prepublishOnly`, `prepack`,
   `postpack`, `dependencies`) and `pre<name>`/`post<name>` when `<name>` is an own member (`prefix` stays when there
@@ -414,7 +414,7 @@ schedule("*/15 * * * *", () => reportMetrics());
 ### Differences from the proof of concept
 
 - **Problems instead of failures.** The proof of concept failed the whole build on a `package.json` that wasn't JSON
-  or wasn't an object; Unfold lists it in the Problems view, marks the graph incomplete, and keeps everything else.
+  or wasn't an object; Unfold lists it in Problems (Home's Health), marks the graph incomplete, and keeps everything else.
 - **No debug notes.** The proof of concept wrote a debug note for each unsupported script and malformed `scripts`
   or `bin` value. Unfold has no note channel; those produce no entrance and nothing else.
 - **Which packages.** The proof of concept read the Git-visible `package.json` files (or, from an explicit file
@@ -516,7 +516,7 @@ inline table; no trailing comment or whitespace; offsets count a byte-order mark
 `/project/scripts/<name>` (`~` written `~0`, `/` written `~1`).
 
 **Problems:** an owning file that isn't valid TOML (duplicate keys included), a `project` or `project.scripts`
-that isn't a table, or a script with an empty name is listed in the Problems view and makes the graph incomplete;
+that isn't a table, or a script with an empty name is listed in Problems (Home's Health) and makes the graph incomplete;
 the rest of the graph is kept.
 
 ### `fastapi.route`
@@ -614,7 +614,7 @@ scheduler.add_job(cleanup_expired_orders, CronTrigger.from_crontab("0 2 * * *", 
 ### Differences from the proof of concept
 
 - **Problems instead of failures.** The proof of concept failed the whole build on an unreadable owning
-  `pyproject.toml`; Unfold lists it in the Problems view, marks the graph incomplete, and keeps everything else.
+  `pyproject.toml`; Unfold lists it in Problems (Home's Health), marks the graph incomplete, and keeps everything else.
   A script with an empty name is listed the same way (its pointer would be `/project/scripts/`, which the
   graph model rejects).
 - **Target texts of a few refusals.** A target's text is the expression's written label. Two refusals name a

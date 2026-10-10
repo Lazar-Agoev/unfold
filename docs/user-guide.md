@@ -1,40 +1,73 @@
 # Using Unfold
 
 Unfold helps you read a codebase by following how it starts and where it goes. It reads TypeScript and Python. It
-never runs your code, installs anything, or uses Git. Shortcuts below are for macOS; on Windows and Linux use Ctrl
+never runs your code, installs anything, or runs Git. Shortcuts below are for macOS; on Windows and Linux use Ctrl
 where you see ⌘. The full list is in [the keyboard map](ui-shell.md#keyboard).
 
-## Open a folder
+## Projects and boards
 
-Press **Open Folder…** (⌘O) on the welcome screen, pick a recent folder, or drop a folder onto the window. Opening
-and browsing a folder writes nothing to it.
+Everything you connect lives in one **workspace**. Each **project** in it is a folder with its own graph, usually a
+repository. You explain the code on **boards**: a board is a story, such as "Order lifecycle", and holds **pages**,
+each one trace, such as "Placing an order". A page holds **cards**: an entrance or a function, shown as code or as a
+diagram. Projects hold code; boards hold stories.
+
+## Add your first project
+
+The first time you open Unfold, Home is empty. Press **Add project…** (⌘O) and pick a folder, or drop a folder
+anywhere on the window. The folder joins the workspace as a project, and its Home opens. Adding a project writes
+nothing to it. Folders you removed recently are listed under "Opened before", one click from coming back.
+
+You can add as many projects as you like (up to 64): **+** next to Projects in the sidebar, or ⌘O, adds another.
 
 ## The first Compile
 
-A folder you haven't compiled before shows a short summary first: how many TypeScript and Python files Unfold will
-read, and which folders it skips (for example `node_modules`, `dist`, or anything your `.gitignore` ignores). For a
-large repository, **Choose folders…** lets you pick just the parts you care about.
+A project you haven't compiled yet shows what Unfold is about to do: how many TypeScript and Python files it will
+read, and which folders it skips and why (for example `node_modules`, `dist`, or anything your `.gitignore`
+ignores). For a large repository, clear the check boxes of the folders you don't care about.
 
 Press **Compile** (⇧⌘B). Unfold reads the files, works out what calls what, and finds the ways the code starts. It
-creates a `.unfold/` folder in your repository to keep the graph and your boards. From then on the graph keeps
-itself current while the folder is open: you don't need to compile again after editing.
+creates a `.unfold/` folder in the project to keep the graph and your boards. From then on the graph keeps itself
+current: you don't need to compile again after editing.
 
-## Entrances
+## Home
 
-The **Entrances** view (⌘2) lists the ways your code can start:
+Home is the first tab of every window. It shows the project selected in the sidebar:
 
-- launch scripts and commands from `package.json` and `pyproject.toml`;
-- HTTP routes (Express, FastAPI);
-- queue workers and tasks (BullMQ, Celery);
-- schedules (node-cron, APScheduler);
-- entrances you declare yourself ([below](#settings)).
+- **How it starts:** the project's applications, named after how each one starts (`server`, `worker`), with their
+  entrances: launch scripts and commands from `package.json` and `pyproject.toml`; HTTP routes (Express, FastAPI);
+  queue workers and tasks (BullMQ, Celery); schedules (node-cron, APScheduler); and entrances you declare yourself
+  ([below](#settings)). Hover an entrance and click **Trace** to open it on a new board, with the functions that
+  handle it.
+- **Boards:** the boards people made about this project, published and drafts.
+- **Health:** one line that says whether anything needs a look, such as a file that doesn't parse or a board whose
+  code changed. **Health and activity** shows the whole list and the log of recent updates.
 
-They are grouped by application, named after how each one starts (`server`, `worker`). Click an entrance to open
-it as a card on a board, with the functions that handle it.
+The line under the project's name says where things stand: "Graph current · 84 files · TypeScript + Python ·
+updated 2 min ago", "Updating · 2 files changed", "1 file doesn't parse", and so on. The project's row in the
+sidebar shows the same thing as one small mark ([every state](architecture.md#79-what-a-projects-state-says)).
+The project menu (`⋯` on its row or on Home) has Compile, Rebuild from scratch, Pause background updates, Settings,
+Health and activity, and Remove from workspace.
+
+**Recents** and **Drafts**, at the top of the sidebar, show boards from every project: the ones you opened
+recently, and every draft and unpublished change on this machine.
+
+## Boards and pages
+
+A board opens in a tab at the top of the window, and the sidebar switches to it:
+
+- **Pages:** the board's pages. **+** adds one (⌥⌘N); a page's `⋯` menu renames, duplicates, reorders, or deletes
+  it.
+- **On this page:** the cards in the order you followed them, indented by call depth, with their groups and links.
+- **Selected:** the card you selected: where it is, its description, who calls it, which entrances reach it, and the
+  calls you haven't opened yet (**+ Open**).
+
+The bar above the canvas shows the page, whether the board is a draft or published, the **Code | Flow** switch,
+**Share**, and **Publish**. The dock at the bottom has **Add**, Back and Forward, the trail of calls you followed,
+**Arrange**, and the zoom. ⌘B hides the sidebar.
 
 ## Following calls
 
-Each function on a board is a card. In a card, calls you can follow are links:
+Each function on a page is a card. In a card, calls you can follow are links:
 
 - **hover** a call to see what it calls and where;
 - **click** it to open that function's card next to this one;
@@ -44,10 +77,8 @@ A call Unfold can't follow has a dashed underline; hover it to see why (for exam
 only known when the program runs). A call into a library shows the library's name. Unfold only links a call when it
 can prove where it goes, so a link is always right.
 
-Use **Back** (⌘[) and **Forward** (⌘]) to retrace your steps, **Fit Board** (⇧1) to see everything, and ⌘= / ⌘- to
-zoom. You can also open any file as a read-only **source tab** (double-click it in Files, or ⌘P), click its calls, and
-use the `⊕` beside a function to add it to the board. The **References** tab in the bottom panel shows who calls the
-selected function and which entrances reach it.
+Use **Back** (⌘[) and **Forward** (⌘]) to retrace your steps, **Fit** (⇧1) to see everything, and ⌘= / ⌘- to zoom.
+**Show callers**, in a card's menu, adds the functions that call it to its left.
 
 ## Code and Flow
 
@@ -56,97 +87,135 @@ Every card shows a function one of two ways:
 - **Code**, its exact source, with folds and links;
 - **Flow**, a diagram of its steps, branches, and loops.
 
-The **Code | Flow** switch in the title bar sets the default for the window. Each card also has its own switch,
-which is saved with the board.
+The **Code | Flow** switch above the canvas (⌘1, ⌘2) sets it for the page. Each card also has its own switch, which
+is saved with the board.
+
+## Add
+
+**Add** (`A`, ⌘K, or `/`) finds code in every project and puts it on the page:
+
+- Before you type, it shows every project's applications and their entrances, with the ones already on the page
+  marked.
+- As you type, it finds entrances, functions, files, and text, with a tab for each and a preview on the right. On
+  the Text tab you can match case, whole words, or a regular expression.
+- **Enter** adds the selection to the page, and **⌘Enter** adds it on a new page. A file or a text match opens in the
+  peek sheet instead. From Home, Enter starts a new board.
+- Type `>` first to run a command instead: everything the app can do is listed there, with its shortcut. ⇧⌘P opens
+  Add this way, ⌘P on Files, and ⌘T on Functions.
+
+## Reading a whole file
+
+A file opens in the **peek sheet**, on the right of the canvas: the whole file, read-only, with its calls as links.
+The `⊕` beside a function adds it to the page, and so does a click on a call. Pin the sheet to keep it open while
+you work; Escape closes it. Its menu opens the file in your own editor (⇧⌘O) or shows it in Finder.
 
 ## Describing, labeling, and grouping
 
-Boards are for explaining a path to someone else (or to yourself later). Open the inspector (⌥⌘B, or `]`) and select:
+Boards are for explaining a path to someone else (or to yourself later):
 
-- a **card**, to write a description of what the function does;
-- a **Flow node**, to give it a plain-language label in place of its code ("Queue the order" instead of
-  `ordersQueue.add(...)`). The Boards view counts the nodes that still show code and steps you through them.
+- Select a **card** and write what the function does in Selected, or double-click the description strip on the card.
+- Select a **Flow node** and give it a plain-language label in place of its code ("Queue the order" instead of
+  `ordersQueue.add(...)`). "N Flow steps unlabeled · Label them", under On this page, steps you through the nodes
+  that still show code.
+- To **group** lines, drag over the line numbers of a Code card and give the group a title; it shows as a colored
+  rail beside those lines. Right-click a group to describe it or ungroup it.
 
-To **group** lines, drag over the line numbers of a Code card and give the group a title; it shows as a colored rail
-beside those lines. Groups can be described, collapsed, and ungrouped from the card's menu.
-
-Everything you write is signed with your name. ⌘Z and ⇧⌘Z undo and redo board edits.
+Everything you write is signed with your name. ⌘Z and ⇧⌘Z undo and redo board edits, on any page.
 
 **When the code changes.** Descriptions and labels remember the code they were written for. If that code changes,
-they are marked **outdated** (never silently deleted), and the Boards view and Problems list them with ways to
-repair them.
+the card shows "Changed since it was described · Review", which lists what happened and offers repairs. Nothing is
+ever silently deleted.
 
-## Drafts and Publish
+## Drafts and publishing
 
-A new board is a **draft**: it lives only on your machine, under `.unfold/local/drafts/`, and saves as you work.
+A new board (⌘N) is a **draft**: it lives only on your machine, in the project's `.unfold/local/drafts/`, and saves
+as you work. Organize a project's boards in folders: **Move to folder** in the board menu (its **New folder…** makes one), or
+right-click a folder in the sidebar.
 
-When a board is ready to share, press **Publish**. Unfold writes it to `.unfold/boards/<name>.json` inside the
-repository. Commit that file like code; teammates who pull it see the board in their Boards view, and later edits
-show up in `git diff`. **Move Back to Drafts** in the board menu (`⋯`) takes a board out of the repository again.
+When a board is ready to share, press **Publish** (⇧⌘E). Unfold writes it to `.unfold/boards/<name>.json` inside the
+repository. Commit that file like code; teammates who pull it see the board on their Home.
 
-## Export Mermaid
+**Edits to a published board** stay on your machine as **unpublished changes** ("Published · 2 unpublished changes")
+until you press **Publish** again, so your team never sees half-finished edits in `git diff`. **Discard changes**, in
+the board menu, goes back to the published version. If someone else's version arrived since you started (you pulled
+a change to the same board), Publish asks whether to keep yours or take theirs.
 
-From the board menu (`⋯`), **Export Mermaid…** saves the board as a Mermaid diagram (`.mmd`), which renders in
-GitHub, GitLab, and many wikis; **Copy Mermaid** puts it on the clipboard instead.
+**Move back to drafts**, in the board menu, takes a board out of the repository again. **Share** exports the page as
+a Mermaid diagram (`.mmd`), which renders in GitHub, GitLab, and many wikis, or copies it.
+
+## Boards across projects
+
+A page can hold cards from any project in your workspace, for example the web app's checkout handler next to the
+API route it calls: add them with Add, which searches every project. The graph never links code across
+repositories, so draw the link yourself: **Draw link…** in a card's menu, then click the other card, and give the
+link a label such as "calls over HTTP".
+
+A teammate who hasn't added one of those projects sees its cards as placeholders, with **Connect project** to add it.
+Projects are matched by name: a project's name is its folder's name unless you change it in its settings. A board
+can't hold cards from a project with the same name as its own; rename one of them first.
 
 ## Several windows
 
-You can open as many windows as you like:
+You can open as many windows as you like: **New Window** (⇧⌘N). Every window shows the whole workspace and shares
+one graph per project, so an edit shows up in all of them. **Open in new window**, on a tab or in the board menu,
+moves a board, with its undo history, into a window of its own. A board can be open in only one window at a time;
+opening it elsewhere brings its window forward. When you start Unfold again, your windows come back where you left
+them, with their tabs.
 
-- **New Window** (⇧⌘N) opens another window on the same folder, so you can put two boards side by side or on two
-  screens. Windows on the same folder share one graph, so an edit shows up in all of them.
-- **Move to New Window** (right-click a board's tab) moves a board, with its undo history, into a window of its own.
-- **Open Folder in New Window…** opens a different repository beside the current one.
+## Branches and worktrees
 
-A board can be open in only one window at a time; opening it elsewhere brings its window forward. When you reopen a
-folder, its windows come back where you left them, with their tabs.
+A project's Home shows its branch. If the repository has several worktrees, the branch button switches the project
+between them. The graph and your drafts belong to each worktree's folder, so they change when you switch, and the
+published boards are the ones on that branch. Unfold reads Git's files to find these; it never runs Git.
 
-## Background updates and the status bar
+## Background updates and the engine
 
-While a folder is open, Unfold notices when files change (when you edit, switch branches, or pull) and updates the
-graph in the background. Open cards update by themselves. The left end of the status bar tells you where things
-stand:
+While you use a project, Unfold notices when its files change (when you edit, switch branches, or pull) and updates
+the graph in the background; open cards update by themselves. Projects you aren't using rest, and catch up when you
+open them again. **Pause background updates**, in the project menu, stops the updates for that project; Home then
+counts the files that changed since.
 
-| You see | It means |
-| --- | --- |
-| **● Graph current · 84 files** | Everything is up to date |
-| **◌ Compiling…** or **◌ Updating · 3 files changed** | Unfold is catching up |
-| **● 1 file doesn't parse** (amber) | A file has a syntax error; see [Broken files](#broken-files) |
-| **● Background updates paused** | Updates are off for this folder; it counts the files changed since |
-| **▲ Compile failed · see Problems** | Something went wrong; the previous graph stays, and Problems says why |
-| **Reconnecting…** | Unfold's engine is restarting; your boards are kept |
+If Unfold's engine has to restart, a message says "Reconnecting to the engine…". Your boards stay open, and unsaved
+edits are saved once it's back.
 
-Click the status to **Compile**, **Rebuild from scratch**, **Pause** or **Resume background updates**, show the
-**Index log** (what the last update did), or **Copy Diagnostics** for a bug report (versions and counts only: no code
-and no paths). "Using fallback location" means the folder can't be written to (it's read-only or on a network
-drive), so Unfold keeps the graph and drafts in its own app folder instead; publishing needs a writable folder.
+"Using fallback location" means the folder can't be written to (it's read-only or on a network drive), so Unfold
+keeps the graph and drafts in its own app folder instead; publishing needs a writable folder.
 
 ## Broken files
 
-A file that doesn't parse (say, half-way through an edit) doesn't break the graph. Unfold keeps showing the last
-version of that file that did parse, dimmed, marks it in Files, and lists it in **Problems** (⌘J). When you fix the
-file, it comes back to normal on the next update. A file Unfold can't read at all is listed in Problems too.
+A file that doesn't parse (say, halfway through an edit) doesn't break the graph. Unfold keeps the last version of
+that file that did parse, and Home says so ("1 file doesn't parse · showing its last version that parsed"). When you
+fix the file, it comes back to normal on the next update. A file Unfold can't read at all is listed in Health too.
 
-Problems lists only things that need attention: broken or unreadable files, settings errors, and boards that need
+Health lists only things that need attention: broken or unreadable files, settings errors, and boards that need
 review. Calls Unfold can't follow are facts about the code, not problems.
 
 ## Settings
 
-Settings for a folder live in `.unfold/config.toml`, which is shared with your team through the repository. You
-rarely need to edit it by hand:
+Settings for a project live in `.unfold/config.toml`, which is shared with your team through the repository. Open
+them with **Settings** on Home or in the project menu:
 
-- **What gets graphed.** Right-click a folder in Files for **Exclude from graph**, **Include in graph**, or **Graph
-  only this folder**. Unfold already skips what your ignore files skip, plus folders such as `node_modules`.
-- **Manual entrances.** If your code starts in a way Unfold doesn't detect, add it yourself: **Add Entrance…** in the
-  Entrances view's `…` menu, or right-click a function and choose **Add as Entrance…**. You pick the kind (command, HTTP
-  route, worker, schedule, event, or process), its trigger, and the functions that handle it.
-- **Folder Settings…** (in the folder menu at the top left) sets up **Python projects** (where a project's imports
-  start, its source roots, and the Python version), turns individual **detectors** on or off, and lists the scope
-  rules.
+- **General:** the project's name, which boards of other projects use for it, and whether background updates are on.
+- **Scope:** which folders are graphed. Unfold already skips what your ignore files skip, plus folders such as
+  `node_modules`.
+- **Detectors:** turn individual entrance detectors (Express routes, Celery tasks, and so on) on or off.
+- **Python projects:** where a Python project's imports start, its source roots, and the Python version.
 
-App-wide **Preferences** (⌘,) set the theme, the command that opens a file in your own editor, whether background
-updates start on for new folders, how many threads a Compile uses, and whether Unfold checks for new versions (the
-only time it uses the network; nothing about you or your code is sent).
+Changes are saved together when you press **Save**. **Manual entrances:** if your code starts in a way Unfold
+doesn't detect, add it yourself with **Add entrance…** (on Home or in the project menu), or **Add as entrance…** in a
+function card's menu. You pick the kind (command, HTTP route, worker, schedule, event, or process), its trigger, and
+the functions that handle it. Manual entrances can be edited or removed from their menu on Home.
+
+**Remove from workspace**, in the project menu, takes a project out of Unfold. It never deletes the project's
+`.unfold/` folder.
+
+## Preferences
+
+App-wide **Preferences** (⌘,, or the gear at the bottom of Home's sidebar) set the theme, the command that opens a file
+in your own editor, whether background updates start on for new projects, how many threads a Compile uses, whether
+Unfold checks for new versions (the only time it uses the network; nothing about you or your code is sent), and your
+own key bindings. **Copy Diagnostics**, in the Help menu or the project menu, copies a summary for a bug report:
+versions and counts only, no code and no paths.
 
 ## What to commit
 
@@ -154,7 +223,7 @@ only time it uses the network; nothing about you or your code is sent).
 | --- | --- |
 | `.unfold/config.toml` | Yes: your team's shared settings. It appears only when you change a setting |
 | `.unfold/boards/` | Yes: your published boards |
-| `.unfold/local/` | No. It holds the graph cache, your drafts, and window positions, and it contains its own `.gitignore`, so Git ignores it automatically |
+| `.unfold/local/` | No. It holds the graph cache, your drafts and unpublished changes, and view state, and it contains its own `.gitignore`, so Git ignores it automatically |
 
 After a first Compile with default settings, Git sees nothing new. If your team would rather not share anything,
 add `.unfold/` to the repository's `.gitignore`; published boards then simply stay on each machine. The graph cache

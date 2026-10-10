@@ -11,7 +11,7 @@ result to the store.
 
 ## One entry point
 
-An `Engine` is the in-memory program of one open folder: every file's facts and disk state, the input
+An `Engine` is the in-memory program of one live project's folder: every file's facts and disk state, the input
 fingerprints, the effective settings, and the committed graph. Languages are registered as
 `Arc<dyn Language>`; the facts cache is an `Arc<dyn FactsCache>`. Every action is one call to
 `Engine::update(request)`:
@@ -221,12 +221,13 @@ compiles.
 
 ## Workspace lifecycle
 
-`crates/unfold-workspace` drives the engine for one open folder and persists what it produces
+`crates/unfold-workspace` drives the engine for each live project and persists what it produces
 ([architecture §7–8](architecture.md#7-compiling-and-keeping-the-graph-current)). Its module documentation
 is the detailed reference; this is the outline.
 
-**Opening.** The addon's registry canonicalizes the path, so every window on one folder shares one
-`Workspace`: one engine thread, one store writer, one watcher. Opening a folder that was never compiled writes
+**Opening.** The projects registry opens a project's `Workspace` when the project wakes, and closes it when
+the project rests ([architecture §11.2](architecture.md#112-live-and-resting-projects)). Every window shares
+it: one engine thread, one store writer, one watcher. Opening a folder that was never compiled writes
 nothing. A folder compiled before (its `local/` exists) takes the folder lock in `local/cache/lock` — a second
 copy of Unfold gets `open_elsewhere` — and opens `graph.sqlite`, whose graph is readable at once. The engine
 thread then loads the whole stored graph (`Reader::graph`), calls `Engine::restore`, and runs
@@ -237,14 +238,15 @@ changed, damaged, or deleted) is compiled again in the background with a fresh e
 `state.json`; nothing else in `.unfold/` appears until a setting differs from the defaults or a board is
 published. A folder that refuses the write (read-only), or sits on a network volume (detected with `statfs`),
 or where SQLite refuses write-ahead logging, keeps `local/` in `<fallbackCacheDir>/<hash of the path>/`
-instead, and the status says so.
+instead, and the project's Home says so.
 
 **Every update** runs on the engine thread: `Engine::prepare`, then one store transaction built from the
 prepared outcome's previous and new graphs (`FileChange::between`, `EntranceChanges::between`, disk stamps from
 `Engine::disk_state`, reader projections from `unfold_reader::project`, and the graph metadata), then a fresh
 `ReaderIndex::from_graph` in the `ReaderCache` (only after `Engine::adopt`, which runs once the transaction
 commits), then events: `graph_updated` (changed files, keys, and
-entrances; everything after a full commit), `problems_changed`, and `graph_status`. The facts cache is the
+entrances; everything after a full commit), `problems_changed`, and `project_state` when the project's state
+changes. The facts cache is the
 store's `file_facts` table, through the same writer behind a mutex. The store's version string combines
 `ENGINE_VERSION` with every front end's producer version, so a front-end change also starts the cache over.
 
@@ -255,8 +257,8 @@ preparing, merges the paths, and restarts it. A background update that has start
 commit (architecture §7.5); the newer change then runs as the next update. Background updates use the engine's small pool; an explicit Compile uses
 every core but one. Event overflow asks for a full check; an inotify limit, a watcher that can't start, or a
 network volume switches the folder to a periodic scan (`UpdateRequest::reopen()` every few seconds), reported
-as "watching by scanning". Background updates can be paused per folder (`state.json`); paused folders count
-the paths changed since the last update.
+as "watching by scanning". Background updates can be paused per project (`state.json`); a paused project
+counts the paths changed since the last update.
 
 **Recovery.** If `local/cache/` disappears while the folder is open (the watcher notices, and every piece of
 work checks), the engine thread recreates it, takes the lock again, and compiles everything with a fresh
@@ -270,5 +272,8 @@ store first. Only after that commit succeeds does it drop the cached facts of th
 entry was already replaced by the fresh one. A rebuild that is cancelled or fails therefore keeps the old
 graph and its facts, last-good facts included.
 
-**Closing.** When the folder's last window detaches, the registry's close hook runs (drafts are saved there),
-the engine thread finishes or cancels its work, the watcher stops, and the lock is released.
+**Closing.** A project rests once nothing needs it, its lease has run out, and its engine is idle; it also
+closes when it is removed from the workspace, switched to another worktree, or the app quits. Its last state is
+written to `workspace.json`, the engine thread stops, the watcher stops, the lock is released, and the
+project's command-side state (the file list, rendered files, board sessions) is dropped. Windows save their
+boards before releasing them, so nothing unsaved lives in a closing workspace.
