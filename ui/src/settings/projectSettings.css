@@ -195,7 +195,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 36px;
+  height: 32px;
   padding-left: 2px;
   border-bottom: 1px solid var(--color-border);
   font-size: var(--text-13);
@@ -282,9 +282,9 @@
 
 .scope-tree {
   display: flex;
-  flex: 1 0 auto;
+  flex: 0 1 auto;
   flex-direction: column;
-  min-height: 240px;
+  min-height: 140px;
   overflow: clip;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-tab);
@@ -320,10 +320,12 @@
   text-align: right;
 }
 
-.scope-tree-body {
-  flex: 1 1 0;
+/* Sized by its rows (the TreeView's spacer) rather than by the box, so a short tree ends after its last row. */
+.scope-tree .scope-tree-body {
+  flex: 0 1 auto;
   height: auto;
   min-height: 0;
+  contain: none;
 }
 
 .scope-tree-body .tree-spacer {
@@ -435,6 +437,11 @@
 .scope-rule[data-status="removed"] .scope-rule-kind {
   color: var(--color-muted);
   text-decoration: line-through;
+}
+
+.scope-rule .icon-button .icon {
+  width: 14px;
+  height: 14px;
 }
 
 .scope-rule .text-button {

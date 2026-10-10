@@ -16,3 +16,8 @@
 - F-8 (polish) screenshot.mjs takes one --project; cross-project screenshots need a repeatable --project.
 - F-9 (polish, Rust+U3) WorkspaceView.removed lacks removedAtMs for first launch's "last opened" column; add it and show it. **Done.**
 - F-10 (polish, U3) state/compile.ts module state leaks between tests (U3 note); check when sweeping.
+- F-11 (Rust) `ProjectState::Problems.count` includes board-health items, so a board needing review turns the row amber
+  and Home's state line into "N problems". Artboard 01 draws "Graph current" with a board review item in the Health
+  line. The row state and state line count graph and settings problems only; boards needing review show in the Health
+  line (and `problems` list / Health and activity), not in the project state.
+- F-12 (Rust, unfold-reader) A top-level Python function's card loses its body indentation: the common indentation stripped from a block includes the body, so `def` and its body both start at column 0 (`crates/unfold-reader/src/code/lines.rs`, whose test asserts it). Strip only the indentation common to every line including the first (the header's own column), so the body keeps its indent relative to `def`.

@@ -136,6 +136,7 @@ function PreferencesForm({ saved, onDone }: { readonly saved: Preferences; reado
       title="Preferences"
       width={520}
       placement="window"
+      className="preferences-dialog"
       footer={
         <>
           <Button variant="secondary" onClick={cancel}>

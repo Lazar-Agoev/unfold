@@ -378,3 +378,52 @@ From [ui-plan.md](ui-plan.md), where the doc, the contract, and the designs are 
 - **V-122 Description on the card.** Double-click the strip to edit it in place (Enter saves, Shift+Enter breaks the
   line, Escape keeps the old text); a card without a description is described in Selected. The card menu has no
   "Describe…" (`board.describeSelected` focuses Selected's field).
+
+## Visual QA: dialogs, settings, menus, preferences (V4)
+
+- **V-123 Dialog footers.** The confirming button of every dialog (primary or danger, without an icon or shortcut) is
+  14px inline, as 08's Save and 12's Publish draw it; Cancel keeps 12px.
+- **V-124 Settings lists.** Detectors rows are 32px under 1px rules, the drawn Rules list's style (V-16), not 36px; the
+  Scope tree is as tall as its rows (as drawn) and scrolls inside once the pane is full, so Rules always follow it.
+- **V-125 Scrolling settings dialogs.** Preferences, whose body always scrolls, takes 08's ruled header and footer.
+  The entrance editor's disclosure ("Locator forms") uses the kit's small chevron, not the native triangle.
+
+## Visual QA: Add and peek (V3)
+
+- **V-126 Keycaps and outlined key chips.** The kit draws their 1px border as an inset shadow, so their padding takes
+  the border's pixel (keycap 6px, a shortcut's caps 5px, outlined 6px; Add's `esc` 7px): widths match 03, 04b and 09.
+- **V-127 Text-match rows.** A snippet whose first match starts past ~32 characters is cut to start 16 characters
+  before it, behind "…", so the tinted run is always in view; a selected snippet stays regular so its bold run reads.
+- **V-128 Peek scrollbar.** The vertical thumb runs in the match ticks' lane (8px track 2px from the edge, 8px from the
+  ends, 09 §5.3); the keyboard-focused code area shows the focus ring inside its edges.
+
+## Visual QA: Home (V2)
+
+- **V-129 Home's scrollbar.** Home's main area always reserves the 8px scrollbar (`scrollbar-gutter: stable`) inside
+  its right 56px (48px padding + the gutter), so the content column is 1064px at 1440 whether or not Home scrolls.
+- **V-130 Outlined controls take a real border.** The kit's secondary button and the Health | Activity switch draw
+  their 1px edge as a border, not an inset shadow, so their widths are the drawn ones (Settings 77px; Health 77px,
+  Activity 70px). The not-compiled Home's Compile button is 14px / 12px inline, as 06 draws it.
+- **V-131 Skipped table.** Rows are grouped by the skip kind and worded in 06's sentence case ("Skipped by default",
+  "Ignored by .gitignore", "Excluded in settings", …), not with the engine's lowercase phrase. A reason whose folders
+  hold no counted files (discovery doesn't walk a folder it skips whole) shows no count instead of "0 files".
+- **V-132 Activity's What column.** The engine's update kinds read as 11 draws them ("Compile", "Update", "Rebuild"),
+  with the engine's name ("Background update", "Rebuild from scratch") as the cell's tooltip: the full names clip in
+  the drawn 120px column. Amends V-104's "the action is shown as the engine names it".
+- **V-133 State-line runs.** The detail's runs are flex items 6px apart, each 16px tall (06's "· branch" then the
+  mono "main"), so a mono branch doesn't make the line taller.
+- **V-134 Opened before.** A long folder path is elided at its start, so the folder's name stays visible.
+- **V-135 How it starts with no applications.** When every entrance is unreached, the headline drops "in 0
+  applications" ("1,040 entrances. Hover one to trace it on a new board.").
+
+## Visual QA: board (V1)
+
+- **V-136 Page row menu.** A page's `⋯` shows in the row's trailing slot only on hover and keyboard focus (02 draws
+  none on the selected row), so a review dot keeps its lane at the row's right edge.
+- **V-137 Narrow canvas.** The top bar's lens stays centered while it clears the title and state and Share;
+  otherwise it sits as close to the center as fits, and on a canvas too narrow for both it sits before Share (or at
+  the right of the canvas a floating sheet leaves) with the title and state shortened, the state first. The dock
+  sheds parts as its lane narrows: the trail keeps only its current step (< 720px), then goes (< 560px); then Add's
+  key and Arrange's label (< 440px); then Back and Forward (< 350px); then Arrange (< 290px). Zoom and Fit stay.
+- **V-138 Call link hint.** A call link's hover names what a click does where it is: "Click to open · ⌥-click to
+  expand inline" on a card, "Click to add it" in the peek sheet.

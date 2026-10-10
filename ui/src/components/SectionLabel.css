@@ -31,6 +31,6 @@
   color: var(--color-muted);
 }
 
-.section-label-trailing:has(> .icon-button) {
+.section-label-trailing:has(.icon-button) {
   margin-right: -4px;
 }

@@ -23,11 +23,19 @@ describe("the Activity log (11)", () => {
     expect(facts[2]).toEqual({ label: "graph unchanged", value: "nothing that shapes it changed" });
   });
 
-  it("lists updates newest first with files read / cached / failed", () => {
-    const rows = logRows([entry(NOW - 86_400_000, "Compile", "compile\nfiles: read 214, from cache 0\nstates: current 214", 2000, 100), entry(NOW - 120_000, "Background update", TEXT)], NOW);
-    expect(rows.map((row) => [row.time, row.what, row.files, row.duration])).toEqual([
-      ["2 minutes ago", "Background update", "3 / 211 / 1", "140 ms"],
-      ["yesterday", "Compile", "214 / 0 / 0", "2.1 s"],
+  it("lists updates newest first with files read / cached / failed, each kind in 11's word", () => {
+    const rows = logRows(
+      [
+        entry(NOW - 86_400_000, "Compile", "compile\nfiles: read 214, from cache 0\nstates: current 214", 2000, 100),
+        entry(NOW - 3_600_000, "Rebuild from scratch", "rebuild\nfiles: read 214, from cache 0"),
+        entry(NOW - 120_000, "Background update", TEXT),
+      ],
+      NOW,
+    );
+    expect(rows.map((row) => [row.time, row.what, row.action, row.files, row.duration])).toEqual([
+      ["2 minutes ago", "Update", "Background update", "3 / 211 / 1", "140 ms"],
+      ["an hour ago", "Rebuild", "Rebuild from scratch", "214 / 0 / 0", "140 ms"],
+      ["yesterday", "Compile", "Compile", "214 / 0 / 0", "2.1 s"],
     ]);
   });
 

@@ -70,7 +70,7 @@
 }
 
 .add-esc.key-chip {
-  padding: 0 6px;
+  padding: 0 7px;
   background: var(--color-canvas);
 }
 
@@ -189,6 +189,7 @@
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  gap: 2px;
   width: 216px;
   padding: 16px 8px;
   border-right: 1px solid var(--color-border);
@@ -272,7 +273,7 @@
 }
 
 .add-lookin-note {
-  padding: 8px 8px 0;
+  padding: 0 8px;
   font-size: var(--text-12);
   line-height: var(--leading-16);
   color: var(--color-muted);
@@ -628,7 +629,14 @@
   font-size: var(--text-12);
 }
 
+/* A selected snippet stays regular so its bold match run still reads. */
+.add-list-row.selected .add-row-name.snippet {
+  font-weight: 400;
+}
+
 .add-text-match {
+  /* A block run, so the tint fills the 20px line as drawn. */
+  display: inline-block;
   border-radius: 3px;
   background: var(--color-match);
   font-weight: 600;
@@ -878,6 +886,16 @@
 
 .add-preview-primary {
   flex: 1;
+}
+
+/* As drawn (04 §5.2): 12px each side and 8px before the shortcut, set in the regular weight. */
+.add-preview-buttons .button {
+  padding: 0 12px;
+}
+
+.add-preview-buttons .button-shortcut {
+  margin-left: 2px;
+  font-weight: 400;
 }
 
 /* Footer (03–04 §7) */

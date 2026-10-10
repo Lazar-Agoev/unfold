@@ -78,16 +78,16 @@
   gap: 6px;
   height: 26px;
   padding: 0 10px;
+  border: 1px solid transparent;
   border-radius: var(--radius-control);
-  box-shadow: inset 0 0 0 1px transparent;
   font-size: var(--text-13);
   line-height: var(--leading-16);
   font-weight: 500;
 }
 
 .segmented-switch .segmented-option[aria-checked="true"] {
+  border-color: var(--color-border);
   background: var(--color-control);
-  box-shadow: inset 0 0 0 1px var(--color-border);
 }
 
 .segmented-count {

@@ -7,7 +7,7 @@
 import type { CompileProgress, FallbackReason, ProjectState, ProjectSummary } from "../ipc";
 import { formatCount, languageList, plural, relativeTime } from "../lib/format";
 
-/** A run of the detail: mono for branch names (V-25). */
+/** A run of the detail: mono for branch names (V-25). Runs sit 6px apart, as 06 draws "· branch" and "main". */
 interface DetailPart {
   readonly text: string;
   readonly mono?: boolean;
@@ -117,7 +117,7 @@ export function stateLine({ state, summary, progress, branch, lastGood, nowMs }:
   });
   switch (state.kind) {
     case "not_compiled":
-      return line("Not compiled yet", branch === null ? [] : [{ text: "· branch " }, { text: branch, mono: true }]);
+      return line("Not compiled yet", branch === null ? [] : [{ text: "· branch" }, { text: branch, mono: true }]);
     case "compiling":
       return line("Compiling", dot(compilingDetail(state, progress)), { kind: "cancel", label: "Cancel", joined: false });
     case "updating":

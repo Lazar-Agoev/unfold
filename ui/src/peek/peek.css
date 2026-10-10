@@ -62,8 +62,23 @@
   user-select: text;
 }
 
+/* Focused from the keyboard (it scrolls with the arrows), the code area shows the ring inside its edges. */
 .peek-scroller:focus-visible {
-  outline: none;
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+/* The vertical thumb runs in the match ticks' lane: 8px wide, 2px from the edge, 8px from the ends (09 §5.3). */
+.peek-scroller::-webkit-scrollbar {
+  width: 12px;
+}
+
+.peek-scroller::-webkit-scrollbar-thumb:vertical {
+  border-width: 1px 3px;
+}
+
+.peek-scroller::-webkit-scrollbar-track:vertical {
+  margin: 8px 0;
 }
 
 .peek-spacer-rows {

@@ -136,6 +136,40 @@ describe("the not-compiled Home (06)", () => {
   });
 });
 
+describe("Home's state line in the states a screenshot run can't reach (07)", () => {
+  const line = () => screen.findByText((_, node) => node?.classList.contains("home-state-line") === true);
+
+  it("says a failed Compile with the link joined to its detail (row 7)", async () => {
+    start(workspaceView([projectRow(P, "ts-orders", { state: { kind: "failed", message: "disk full" } })]));
+    renderWithClient(<HomeMain />);
+    const state = await line();
+    expect(within(state).getByRole("img", { name: "Compile failed" })).toBeTruthy();
+    await waitFor(() => {
+      expect(state.textContent).toBe("Compile failed· the previous graph stays ·See Health");
+    });
+    expect(state.querySelector(".home-state-action-joined")).not.toBeNull();
+  });
+
+  it("shows a resting project's Home with the moon and when it was last checked (row 8)", async () => {
+    start(workspaceView([projectRow(P, "ts-orders", { state: { kind: "resting", last: { kind: "current" }, atMs: Date.now() - 2 * 3_600_000 } })]));
+    renderWithClient(<HomeMain />);
+    const state = await line();
+    expect(within(state).getByRole("img", { name: "Resting" })).toBeTruthy();
+    expect(state.textContent).toBe("Resting· last checked 2 hours ago");
+    // Its last state's Home: the overview, not the first-Compile setup.
+    expect(await screen.findByRole("region", { name: "How it starts" })).toBeTruthy();
+  });
+
+  it("shows only the header and the reason for an unavailable project", async () => {
+    start(workspaceView([projectRow(P, "ts-orders", { state: { kind: "unavailable", reason: "The folder is gone." } })]));
+    renderWithClient(<HomeMain />);
+    const state = await line();
+    expect(state.textContent).toBe("Unavailable· The folder is gone.");
+    expect(screen.getByText("This project isn't available")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "How it starts" })).toBeNull();
+  });
+});
+
 describe("the compiled Home (01)", () => {
   it("shows the header, How it starts, Boards, and the Health line", async () => {
     start(workspaceView([projectRow(P, "ts-orders", { path: "/Users/someone/code/ts-orders" })]));
@@ -213,7 +247,8 @@ describe("Health and activity (11)", () => {
     renderWithClient(<HomeMain />);
     const table = await screen.findByRole("table", { name: "Activity" });
     const cells = within(table).getAllByRole("row").map((row) => row.textContent);
-    expect(cells[1]).toContain("Background update");
+    expect(cells[1]).toContain("Update");
+    expect(within(table).getByText("Update").getAttribute("title")).toBe("Background update");
     expect(cells[1]).toContain("1 / 33 / 1");
     expect(cells[2]).toContain("34 / 0 / 0");
     expect(screen.getByRole("button", { name: "Copy diagnostics" })).toBeTruthy();

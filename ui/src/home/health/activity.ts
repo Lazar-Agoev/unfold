@@ -29,10 +29,19 @@ function countIn(value: string | undefined, name: string): number {
 export interface LogRow {
   readonly id: string;
   readonly time: string;
+  /** The short word 11 draws ("Update"); `action` is the engine's full name, for the cell's tooltip. */
   readonly what: string;
+  readonly action: string;
   readonly files: string;
   readonly duration: string;
 }
+
+/** The engine's update kinds in the words 11 draws, short enough for the 120px What column. */
+const ACTION_WORDS: Readonly<Record<string, string>> = {
+  Compile: "Compile",
+  "Background update": "Update",
+  "Rebuild from scratch": "Rebuild",
+};
 
 /** "140 ms", "2.1 s". */
 export function duration(ms: number): string {
@@ -48,7 +57,8 @@ function logRow(entry: IndexLogEntry, nowMs?: number): LogRow {
   return {
     id: `${entry.atMs}:${entry.action}`,
     time: relativeTime(entry.atMs, nowMs),
-    what: entry.action,
+    what: ACTION_WORDS[entry.action] ?? entry.action,
+    action: entry.action,
     files: `${formatCount(read)} / ${formatCount(cached)} / ${formatCount(failed)}`,
     duration: duration(entry.updateMs + entry.commitMs),
   };

@@ -94,7 +94,9 @@ function ActivityLog({ project }: { readonly project: ProjectId }) {
     return row ? (
       <div key={`${row.id}:${index}`} role="row" className="home-log-row" style={style}>
         <span role="cell" className="home-log-time">{row.time}</span>
-        <span role="cell" className="home-log-what">{row.what}</span>
+        <span role="cell" className="home-log-what" title={row.what === row.action ? undefined : row.action}>
+          {row.what}
+        </span>
         <span role="cell" className="home-log-files">{row.files}</span>
         <span role="cell" className="home-log-duration">{row.duration}</span>
       </div>

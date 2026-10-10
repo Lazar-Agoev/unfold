@@ -112,7 +112,7 @@ function LineText({ page, line, linked, marks, folded, onUnfold, onFollow }: Lin
     const key = group.segments[0]?.start ?? 0;
     const link = group.link === null ? undefined : view.links[group.link];
     return link ? (
-      <CallLink key={`l${key}`} link={link} onFollow={onFollow}>
+      <CallLink key={`l${key}`} link={link} onFollow={onFollow} hint="Click to add it">
         {runs}
       </CallLink>
     ) : (

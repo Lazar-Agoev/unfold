@@ -74,6 +74,9 @@ describe("row text", () => {
 
   it("drops a match line's indentation and moves its ranges along", () => {
     expect(trimmedMatch(FILE.matches[0] ?? { line: 0, text: "", column: 0, ranges: [] })).toEqual({ text: "Partial refunds are capped", ranges: [[8, 14]] });
+    const long = "x".repeat(40) + "refund";
+    expect(trimmedMatch({ line: 1, text: `  ${long}`, column: 0, ranges: [[42, 48]] })).toEqual({ text: `…${"x".repeat(16)}refund`, ranges: [[17, 23]] });
+    expect(trimmedMatch({ line: 1, text: "refund", column: 900, ranges: [[0, 6]] })).toEqual({ text: "…refund", ranges: [[1, 7]] });
     expect(moreLabel("files", 1)).toBe("1 more file");
     expect(moreLabel("text", 2000, true)).toBe("2,000+ more matches");
   });

@@ -79,6 +79,20 @@
 
 .inline-rename.board-page-title { font-size: var(--text-13); line-height: var(--leading-20); }
 
+/* A page's ⋯ shows in its trailing slot on hover and keyboard focus, so the review dot keeps its lane
+   (components §4.4 draws no ⋯ on the selected row). */
+.page-row { position: relative; }
+
+.list-row.page-row .list-row-menu {
+  position: absolute;
+  right: 6px;
+  margin-right: 0;
+  opacity: 0;
+}
+
+.list-row.page-row:is(:hover, :focus-visible, :has(:focus-visible), :has([aria-expanded="true"])) .list-row-menu { opacity: 1; }
+.list-row.page-row:is(:hover, :focus-visible, :has(:focus-visible), :has([aria-expanded="true"])) .list-row-trailing { visibility: hidden; }
+
 .board-review-dot {
   display: block;
   width: 6px;

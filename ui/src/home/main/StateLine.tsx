@@ -51,7 +51,7 @@ export function StateLine({ project, state, summary, branch }: StateLineProps) {
       {line.detail.length > 0 ? (
         <span className="home-state-detail">
           {line.detail.map((part, index) => (
-            <span key={index} className={part.mono ? "home-mono" : undefined}>
+            <span key={index} className={part.mono ? "home-state-run home-mono" : "home-state-run"}>
               {part.text}
             </span>
           ))}

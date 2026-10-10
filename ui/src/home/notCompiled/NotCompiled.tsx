@@ -170,7 +170,7 @@ function Setup({ project, preview, folders, truncated }: {
       <ScopeCard project={project} preview={preview} folders={folders} truncated={truncated} />
       <PromiseNote preview={preview} />
       <div className="home-compile-row">
-        <Button variant="primary" busy={starting} disabled={nothing} {...(shortcut === undefined ? {} : { shortcut })} onClick={() => void compile()}>
+        <Button className="home-compile-button" variant="primary" busy={starting} disabled={nothing} {...(shortcut === undefined ? {} : { shortcut })} onClick={() => void compile()}>
           Compile
         </Button>
         <p className="home-compile-caption">{nothing ? "Check a folder to compile." : compileCaption(preview.files)}</p>

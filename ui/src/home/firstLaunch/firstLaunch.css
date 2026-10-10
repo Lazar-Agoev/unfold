@@ -1,11 +1,12 @@
-/* First launch (05): a 600px column, vertically centered in Home's main area. */
+/* First launch (05): a 600px column, vertically centered in Home's main area (the right padding
+   leaves room for the reserved scrollbar, main.css). */
 
 .home-first {
   display: flex;
   flex-direction: column;
   justify-content: center;
   min-height: 100%;
-  padding: 36px 96px 80px;
+  padding: 36px 88px 80px 96px;
 }
 
 .home-first-block {
@@ -125,10 +126,13 @@
   color: var(--color-muted);
 }
 
+/* Elided at the start: right-to-left layout around an isolated left-to-right path. */
 .home-first-before-path {
   flex: 1;
   min-width: 0;
   overflow: hidden;
+  direction: rtl;
+  text-align: left;
   font-family: var(--font-code);
   font-size: var(--text-12);
   line-height: var(--leading-16);

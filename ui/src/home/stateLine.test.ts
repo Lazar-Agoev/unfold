@@ -32,7 +32,7 @@ function summary(overrides: Partial<ProjectSummary> = {}, health: Partial<Projec
 }
 
 function text(line: StateLineModel): string {
-  const detail = line.detail.map((part) => part.text).join("");
+  const detail = line.detail.map((part) => part.text).join(" ");
   return [line.headline, detail, line.action ? `[${line.action.label}]` : ""].filter((part) => part !== "").join(" ");
 }
 
@@ -74,7 +74,7 @@ describe("Home's state line (07, V-25)", () => {
   });
 
   it("puts branch names in mono and joins the failed state's link to its detail", () => {
-    expect(lineFor({ kind: "not_compiled" }, { branch: "feat/cart-v2" }).detail).toEqual([{ text: "· branch " }, { text: "feat/cart-v2", mono: true }]);
+    expect(lineFor({ kind: "not_compiled" }, { branch: "feat/cart-v2" }).detail).toEqual([{ text: "· branch" }, { text: "feat/cart-v2", mono: true }]);
     expect(lineFor({ kind: "not_compiled" }, { branch: null }).detail).toEqual([]);
     expect(lineFor({ kind: "failed", message: "x" }).action?.joined).toBe(true);
     expect(lineFor({ kind: "compiling", done: 0, total: 0 }).action?.joined).toBe(false);

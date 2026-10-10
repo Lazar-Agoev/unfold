@@ -247,7 +247,9 @@ function headline(summary: ProjectSummary | undefined, compiling: boolean): stri
   if (summary.entrances === 0) {
     return compiling ? "Entrances show up here as the compile finds them." : "No entrances found yet. Add one, or check the project's settings.";
   }
-  return `${plural(summary.entrances, "entrance")} in ${plural(summary.applications, "application")}. Hover one to trace it on a new board.`;
+  // Entrances no launch reaches belong to no application: don't count "0 applications".
+  const where = summary.applications === 0 ? "" : ` in ${plural(summary.applications, "application")}`;
+  return `${plural(summary.entrances, "entrance")}${where}. Hover one to trace it on a new board.`;
 }
 
 export function HowItStarts({ project, summary }: { readonly project: ProjectId; readonly summary: ProjectSummary | undefined }) {

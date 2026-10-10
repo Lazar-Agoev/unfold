@@ -32,6 +32,7 @@ import {
   validateDraft,
   type EntranceDraft,
 } from "./entrance";
+import { Icon } from "../icons";
 import { LOCATOR_FORMS, locatorFor } from "./locators";
 import { SettingsProblemBox } from "./SettingsProblemBox";
 import "./settings.css";
@@ -42,7 +43,10 @@ const KIND_OPTIONS = ENTRANCE_KINDS.map(({ value, label }) => ({ value, label })
 function LocatorHelp() {
   return (
     <details className="settings-help">
-      <summary>Locator forms</summary>
+      <summary>
+        <Icon name="chevron-right-small" size={10} className="settings-help-chevron" />
+        Locator forms
+      </summary>
       <dl>
         {LOCATOR_FORMS.map(({ form, selects }) => (
           <div key={form} className="settings-help-row">

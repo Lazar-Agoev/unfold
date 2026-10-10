@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ScopeFolder, SkippedFolder } from "../../ipc";
+import type { ScopeFolder, SkipKind, SkippedFolder } from "../../ipc";
 import { fixture } from "../../test/engine";
 import { compileCaption, effectiveChoice, languageSentence, savedChoice, scopeCounts, scopeEdits, scopeRows, skippedRows } from "./model";
 
@@ -26,26 +26,28 @@ describe("what the first Compile reads (06)", () => {
     expect(languageSentence({ files: 0, languages: [] })).toBe("There are no TypeScript or Python files to read.");
   });
 
-  it("groups skipped folders by reason, two examples each", () => {
-    const skipped = (folderName: string, reasonText: string, files: number, wholeFolder = true): SkippedFolder => ({
+  it("groups skipped folders by reason, two examples each, in 06's words", () => {
+    const skipped = (folderName: string, reason: SkipKind, files: number, wholeFolder = true): SkippedFolder => ({
       folder: folderName,
-      reason: "default",
-      reasonText,
+      reason,
+      reasonText: "the engine's phrase",
       wholeFolder,
       files,
     });
     expect(
       skippedRows([
-        skipped("node_modules", "Skipped by default", 14000),
-        skipped("dist", "Skipped by default", 206),
-        skipped("build", "Skipped by default", 0),
-        skipped(".venv", "Ignored by .gitignore", 2931),
-        skipped(".", "JavaScript isn't graphed", 1, false),
+        skipped("node_modules", "default", 14000),
+        skipped("dist", "default", 206),
+        skipped("build", "default", 0),
+        skipped(".venv", "ignored", 2931),
+        skipped(".", "javascript", 1, false),
+        skipped("vendor", "excluded", 0),
       ]),
     ).toEqual([
       { reason: "Skipped by default", examples: "node_modules/ · dist/ · 1 more", count: "14,206 files" },
       { reason: "Ignored by .gitignore", examples: ".venv/", count: "2,931 files" },
       { reason: "JavaScript isn't graphed", examples: "top level", count: "1 file" },
+      { reason: "Excluded in settings", examples: "vendor/", count: "" },
     ]);
   });
 

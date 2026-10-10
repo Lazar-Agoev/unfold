@@ -64,6 +64,29 @@ afterEach(() => {
 });
 
 describe("the Home sidebar (home-sidebar.md)", () => {
+  it("draws every project state in the row's slot (07), the ones a screenshot run can't reach included", async () => {
+    rows = [
+      projectRow(API, "storefront-api", { state: { kind: "failed", message: "disk full" } }),
+      projectRow(WEB, "storefront-web", { state: { kind: "resting", last: { kind: "current" }, atMs: 0 } }),
+      projectRow("p-billing000", "billing-worker", { state: { kind: "unavailable", reason: "The folder is gone." } }),
+      projectRow("p-payments00", "payments-service", { state: { kind: "paused", changed: 2 } }),
+      projectRow("p-ledger0000", "ledger", { state: { kind: "not_compiled" } }),
+    ];
+    renderWithClient(<HomeSidebar />);
+    const slot = async (name: string) => {
+      const row = (await screen.findByText(name)).closest("[data-project-id]");
+      return row?.querySelector(".state-indicator") ?? null;
+    };
+    expect((await slot("storefront-api"))?.getAttribute("aria-label")).toBe("Compile failed");
+    // Resting: the moon, with the name undimmed (V-20).
+    const resting = await slot("storefront-web");
+    expect(resting?.getAttribute("aria-label")).toBe("Resting");
+    expect(resting?.querySelector("svg")?.getAttribute("width")).toBe("14");
+    expect((await slot("billing-worker"))?.getAttribute("aria-label")).toBe("The folder is gone.");
+    expect((await slot("payments-service"))?.getAttribute("aria-label")).toBe("Background updates paused");
+    expect((await slot("ledger"))?.getAttribute("aria-label")).toBe("Not compiled yet");
+  });
+
   it("shows the workspace, Recents and Drafts with the count, and every project with its state", async () => {
     renderWithClient(<HomeSidebar />);
     expect(await screen.findByText("Lazar's workspace")).toBeTruthy();

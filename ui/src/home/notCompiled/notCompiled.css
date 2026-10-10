@@ -189,7 +189,11 @@
   color: var(--color-muted);
 }
 
-/* Compile */
+/* Compile: 06 draws this button 2px roomier on each side than the kit's primary button. */
+.home-compile-button.button {
+  padding: 0 12px 0 14px;
+}
+
 .home-compile-row {
   display: flex;
   align-items: center;

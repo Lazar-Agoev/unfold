@@ -1,6 +1,7 @@
 /**
  * A call, construction, or import at its written range (architecture §10.3): hover a resolved one
- * for its signature and location, click to follow, ⌥-click to expand the callee inline. External
+ * for its signature and location, click to follow (in a card; the peek sheet adds the callee), ⌥-click
+ * to expand the callee inline where the caller allows it. External
  * occurrences show their module and unresolved ones a dashed underline whose tooltip gives the reason.
  */
 
@@ -12,7 +13,7 @@ import { useEngineQuery } from "../ipc/queries";
 import { linkNote, shortPath } from "./text";
 
 /** The hover's content: the target's first written line (its signature) and location, in the enclosing card's project. */
-function PeekContent({ targetKey, hint = "Click to open · ⌥-click to expand inline" }: { readonly targetKey: string; readonly hint?: string }) {
+function PeekContent({ targetKey, hint }: { readonly targetKey: string; readonly hint: string }) {
   const project = useScopeProject();
   const peek = useEngineQuery("peek", { project: project ?? "", key: targetKey }, { enabled: project !== null });
   return <PeekBody peek={peek.data} failed={peek.isError} hint={hint} />;
@@ -46,10 +47,12 @@ export interface CallLinkProps {
   readonly opened?: boolean;
   readonly onFollow?: (link: CallLinkModel, anchor: HTMLElement) => void;
   readonly onExpand?: (link: CallLinkModel) => void;
+  /** What the hover says a click does (the peek sheet adds the callee); defaults to following it. */
+  readonly hint?: string;
   readonly children: ReactNode;
 }
 
-export function CallLink({ link, opened = false, onFollow, onExpand, children }: CallLinkProps) {
+export function CallLink({ link, opened = false, onFollow, onExpand, hint, children }: CallLinkProps) {
   const target = link.resolution === "resolved" ? link.target : undefined;
   if (target !== undefined && onFollow) {
     const onClick = (event: MouseEvent<HTMLButtonElement>) => {
@@ -61,7 +64,7 @@ export function CallLink({ link, opened = false, onFollow, onExpand, children }:
       }
     };
     return (
-      <HoverCard content={<PeekContent targetKey={target} />} side="bottom" align="start">
+      <HoverCard content={<PeekContent targetKey={target} hint={hint ?? (onExpand ? "Click to open · ⌥-click to expand inline" : "Click to open")} />} side="bottom" align="start">
         <button
           type="button"
           className={`code-link resolved${opened ? " opened" : ""} nodrag nopan`}

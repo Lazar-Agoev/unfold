@@ -65,6 +65,7 @@ export function PagesSection({ board }: { readonly board: BoardRef }) {
         {(pages ?? []).map((page, index) => (
           <ListRow
             key={page.id}
+            className="page-row"
             role="option"
             aria-selected={page.id === active}
             tabIndex={0}

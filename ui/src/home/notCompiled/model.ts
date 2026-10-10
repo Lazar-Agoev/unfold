@@ -36,20 +36,35 @@ function folderName(entry: SkippedFolder): string {
   return entry.wholeFolder ? `${entry.folder}/` : entry.folder;
 }
 
-/** The Skipped table: one row per reason, in the engine's order. */
+/** The Skipped table's reasons, in the sentence case of 06 (the engine's `reasonText` is a lowercase phrase). */
+const SKIPPED_REASONS: Readonly<Record<SkipKind, string>> = {
+  default: "Skipped by default",
+  ignored: "Ignored by .gitignore",
+  excluded: "Excluded in settings",
+  not_included: "Outside the included folders",
+  language_off: "Language turned off in settings",
+  javascript: "JavaScript isn't graphed",
+  symlink: "Symbolic links not followed",
+  invalid_path: "Unsupported file names",
+};
+
+/**
+ * The Skipped table: one row per reason, in the engine's order. Discovery doesn't walk a folder it
+ * skips whole, so a reason whose folders hold no counted files shows no count rather than "0 files".
+ */
 export function skippedRows(skipped: readonly SkippedFolder[]): SkippedRow[] {
-  const byReason = new Map<string, SkippedFolder[]>();
+  const byReason = new Map<SkipKind, SkippedFolder[]>();
   for (const entry of skipped) {
-    byReason.set(entry.reasonText, [...(byReason.get(entry.reasonText) ?? []), entry]);
+    byReason.set(entry.reason, [...(byReason.get(entry.reason) ?? []), entry]);
   }
   return [...byReason].map(([reason, entries]) => {
     const names = entries.slice(0, EXAMPLES).map(folderName);
     const rest = entries.length - names.length;
     const files = entries.reduce((sum, entry) => sum + entry.files, 0);
     return {
-      reason,
+      reason: SKIPPED_REASONS[reason],
       examples: rest > 0 ? `${names.join(" · ")} · ${formatCount(rest)} more` : names.join(" · "),
-      count: plural(files, "file"),
+      count: files === 0 ? "" : plural(files, "file"),
     };
   });
 }

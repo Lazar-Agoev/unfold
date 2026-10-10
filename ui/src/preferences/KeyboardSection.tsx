@@ -104,7 +104,7 @@ export function KeyboardSection({ overrides, conflicts, platform, onChange }: Ke
           Reset All
         </Button>
       </div>
-      <div className="preferences-keys-list">
+      <div>
         {GROUPS.map(({ category, ids }) => (
           <div key={category} role="group" aria-label={category} className="preferences-keys-group">
             <div className="preferences-keys-category">{category}</div>

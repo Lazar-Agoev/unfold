@@ -91,6 +91,7 @@
   font-size: var(--text-13);
   line-height: var(--leading-20);
   color: var(--color-warn);
+  text-wrap: pretty;
 }
 
 .publish-conflict-icon {

@@ -69,7 +69,6 @@ function Name({ item }: { readonly item: ResultRowProps["item"] }) {
       const { text, ranges } = trimmedMatch(item.hit.match);
       return (
         <span className="add-row-name snippet">
-          {item.hit.match.column > 0 ? "…" : ""}
           {highlightRanges(text, ranges, "add-text-match")}
         </span>
       );

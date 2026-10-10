@@ -103,9 +103,32 @@
 }
 
 .settings-help summary {
-  cursor: pointer;
-  color: var(--color-accent-text);
+  display: flex;
+  align-items: center;
+  gap: 4px;
   width: fit-content;
+  list-style: none;
+  font-weight: 500;
+  color: var(--color-accent-text);
+  cursor: default;
+}
+
+.settings-help summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-help summary:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-chip);
+}
+
+.settings-help-chevron {
+  transition: transform var(--duration-fast) ease;
+}
+
+.settings-help[open] .settings-help-chevron {
+  transform: rotate(90deg);
 }
 
 .settings-help dl {

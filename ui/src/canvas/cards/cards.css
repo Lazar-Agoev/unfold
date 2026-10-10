@@ -154,6 +154,9 @@
   pointer-events: none;
 }
 
+/* The link handles' wrappers take no room in a card's flex column (the placeholder's gap). */
+.card-link-handles { display: contents; }
+
 /* Arrows enter at the header's center; side links at the same height, top and bottom links mid-edge. */
 .board-card .react-flow__handle.card-target,
 .card-link-handles.left > .react-flow__handle,

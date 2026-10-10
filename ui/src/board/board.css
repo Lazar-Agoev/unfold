@@ -26,6 +26,19 @@
   background: var(--color-chrome);
 }
 
+/* The title and publish state; on a narrow canvas they shorten to the room the lens leaves (TopBar). */
+.board-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.board-topbar-left.narrow {
+  max-width: var(--topbar-left-room);
+  overflow: hidden;
+}
+
 .board-topbar-title {
   min-width: 0;
   overflow: hidden;
@@ -48,7 +61,17 @@
   white-space: nowrap;
 }
 
+/* The state gives way before the title does. */
+.board-topbar-left.narrow .board-publish-state { flex-shrink: 10; min-width: 0; }
+
+.board-publish-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .board-publish-dot {
+  flex-shrink: 0;
   width: 6px;
   height: 6px;
   border-radius: var(--radius-full);
@@ -58,8 +81,11 @@
 .board-publish-dot.accent { background: var(--color-accent); }
 .board-topbar-spacer { flex: 1; }
 
+.board-topbar .button-trailing { stroke-width: 1.75; }
+
 .board-topbar .board-lens {
   position: absolute;
+  display: flex;
   top: 9px;
   left: calc((100% - var(--covered-right, 0px)) / 2);
   translate: -50%;
@@ -143,25 +169,61 @@
   pointer-events: none;
 }
 
-/* Dock */
-.board-dock {
+/* Dock: centered in a lane over the uncovered canvas, whose width decides which parts it shows. */
+.board-dock-lane {
   position: absolute;
+  right: var(--covered-right, 0px);
   bottom: 24px;
-  left: calc((100% - var(--covered-right, 0px)) / 2);
+  left: 0;
   z-index: 5;
+  display: flex;
+  justify-content: center;
+  padding: 0 16px;
+  container: dock-lane / inline-size;
+  pointer-events: none;
+}
+
+.board-dock {
   display: flex;
   align-items: center;
   gap: 4px;
-  max-width: calc(100% - var(--covered-right, 0px) - 32px);
+  max-width: 100%;
   padding: 4px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   background: var(--color-surface);
   box-shadow: var(--shadow-float);
-  translate: -50%;
+  pointer-events: auto;
+}
+
+@container dock-lane (width < 720px) {
+  .board-trail li:not(:last-child),
+  .board-trail-separator { display: none; }
+}
+
+@container dock-lane (width < 560px) {
+  .board-trail,
+  .board-dock-divider.before-trail { display: none; }
+}
+
+@container dock-lane (width < 440px) {
+  .board-dock-add .key-chip,
+  .board-dock-arrange .button-label { display: none; }
+}
+
+@container dock-lane (width < 350px) {
+  .board-dock-history,
+  .board-dock-divider.before-history { display: none; }
+}
+
+@container dock-lane (width < 290px) {
+  .board-dock-arrange,
+  .board-dock-divider.before-arrange { display: none; }
 }
 
 .board-dock .board-dock-add { padding-right: 6px; }
+.board-dock-add .icon { stroke-width: 2; }
+.board-dock .button-ghost .icon { width: 16px; height: 16px; }
 .board-dock-add .button-label { display: flex; align-items: center; gap: 6px; }
 
 .board-dock-divider {

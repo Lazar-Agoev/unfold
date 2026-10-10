@@ -194,12 +194,25 @@ export function definitionColumn(kind: string): string {
   return kind === "function" ? "FN" : kind.toUpperCase();
 }
 
-/** A text match's line without its indentation, its match ranges moved with it. */
+/** How far into a snippet its first match may start before the text before it is cut (the row shows ~50 characters). */
+const SNIPPET_LEAD = 32;
+/** How much of the text before the match a cut snippet keeps. */
+const SNIPPET_CONTEXT = 16;
+
+/**
+ * A text match's line as its row shows it: without its indentation, and cut to start a little before
+ * the first match when that lies past what the row shows (an ellipsis marks a cut, or a window of a
+ * very long line). The ranges move with the text.
+ */
 export function trimmedMatch(match: TextMatch): { readonly text: string; readonly ranges: readonly (readonly [number, number])[] } {
-  const indent = /^\s*/.exec(match.text)?.[0].length ?? 0;
+  const indent = match.column > 0 ? 0 : (/^\s*/.exec(match.text)?.[0].length ?? 0);
+  const first = Math.min(...match.ranges.map(([start]) => start));
+  const start = Number.isFinite(first) && first - indent > SNIPPET_LEAD ? first - SNIPPET_CONTEXT : indent;
+  const ellipsis = match.column > 0 || start > indent ? "…" : "";
+  const shift = ellipsis.length - start;
   return {
-    text: match.text.slice(indent),
-    ranges: match.ranges.map(([start, end]) => [start - indent, end - indent] as const),
+    text: ellipsis + match.text.slice(start),
+    ranges: match.ranges.map(([from, to]) => [from + shift, to + shift] as const),
   };
 }
 

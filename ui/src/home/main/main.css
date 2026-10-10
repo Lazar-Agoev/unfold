@@ -1,10 +1,12 @@
 /* Home's main area (01 "Artboard and regions"): it scrolls as one; the content column is the width
-   left after 56px on each side. */
+   left after 56px on each side. The scrollbar's 8px (base.css) is always reserved inside the right
+   56px, so the column keeps its width whether or not Home scrolls. */
 
 .home-main {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   background: var(--color-home);
 }
 
@@ -12,7 +14,7 @@
   display: flex;
   flex-direction: column;
   gap: 44px;
-  padding: 36px 56px 40px;
+  padding: 36px 48px 40px 56px;
 }
 
 .home-mono {
@@ -104,10 +106,20 @@
   white-space: nowrap;
 }
 
+/* The detail's runs are flex items 6px apart, each 16px tall (06 draws "· branch" and the mono "main"
+   that way), so a mono run doesn't grow the line. */
 .home-state-detail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
   overflow: hidden;
   color: var(--color-muted);
+}
+
+.home-state-run {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
 }
 

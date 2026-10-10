@@ -91,8 +91,9 @@ export function FirstLaunch({ removed }: { readonly removed: readonly RemovedPro
               {removed.map((folder) => (
                 <li key={folder.path} className="home-first-before-row">
                   <Icon name="folder" className="home-first-before-icon" />
+                  {/* The folder's name tells the rows apart, so a long path loses its start. */}
                   <span className="home-first-before-path" title={folder.path}>
-                    {displayPath(folder.path)}
+                    <bdi>{displayPath(folder.path)}</bdi>
                   </span>
                   <span className="home-first-before-when">{`last opened ${relativeTime(folder.removedAtMs)}`}</span>
                   <span className="home-first-before-action">
