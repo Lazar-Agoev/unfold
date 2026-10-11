@@ -666,6 +666,11 @@ If a folder is read-only, or sits on a network volume where SQLite's write-ahead
 
 ### 8.3 The graph database
 
+The executable schema and its current version live in
+[`crates/unfold-store/src/schema.rs`](../crates/unfold-store/src/schema.rs). For a storage
+change, start there and follow the store's `writer/` and `read/` modules. The SQL below explains
+the design; connection settings and query-specific indexes are maintained in the implementation.
+
 ```sql
 -- .unfold/local/cache/graph.sqlite. A cache: rebuilt whenever the engine version changes.
 PRAGMA journal_mode = WAL;

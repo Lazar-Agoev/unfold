@@ -5,8 +5,8 @@ and the rules every command follows. The **types** are not repeated here. They a
 Rust, in `crates/unfold-workspace` (the command table in `src/ipc/table.rs`, the handlers and their
 argument and result types in `src/commands/`), and generated into
 `ui/src/ipc/generated/index.ts` by `cargo xtask gen-ipc` ([architecture §12](architecture.md#12-commands-and-events),
-[U-25](decisions-and-tradeoffs.md#u-25-typed-commands-generated-from-rust)). The generated file is
-the source of truth for shapes; never edit it by hand. The window commands the main process handles
+[U-25](decisions-and-tradeoffs.md#u-25-typed-commands-generated-from-rust)). Rust owns the contract;
+the generated file is its TypeScript mirror for UI consumers. Never edit it by hand. The window commands the main process handles
 are typed in `desktop/src/shared/unfold-api.ts`.
 
 ## How a command travels
@@ -421,7 +421,7 @@ still land), and `window_closed` ([desktop/README.md](../desktop/README.md#the-a
    `/// What it does.` then `"my_command" => MyCommand(MyArgs) -> MyResult = module::my_command;`
    (add `, stream MyMessage` for a streamed command). If it writes boards or window state, add it to
    `CLOSING_WRITES` in `src/host.rs` and in the router.
-4. Run `cargo xtask gen-ipc`, then `pnpm --filter ui typecheck`. CI runs
+4. Run `cargo xtask gen-ipc`, then `pnpm --filter @unfold/ui typecheck`. CI runs
    `cargo xtask gen-ipc --check`, which fails when the generated file is stale.
 5. Test it through `Host` in `crates/unfold-workspace/tests/commands/`, add it to this catalogue,
    and, if events should refresh its results in the UI, to the invalidation rules in

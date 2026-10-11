@@ -8,14 +8,18 @@ Unfold is a desktop app for reading a codebase as a graph. You add your reposito
 
 | Doc | Read it for | What it explains |
 | --- | --- | --- |
-| [Architecture](docs/architecture.md) | What we're building. Start here | The product and its guarantees, the graph model, and the Rust engine (oxc for TypeScript, Ruff's parser for Python). How Compile and background updates work, the `.unfold/` folder, the SQLite graph, and the workspace's files, and the board and settings formats. The reader, the studio window and its workspace of live and resting projects, the Electron app's processes and the commands between the UI and the engine, and the repository layout. Testing, performance targets, and risks |
-| [Decisions and trade-offs](docs/decisions-and-tradeoffs.md) | Why it's built this way | How the design came about, including the studio redesign, then every decision (U-1 to U-51) with the options we weighed and their pros and cons, such as why the engine is Rust and the shell is Electron. It ends with what we rejected and what's still open |
+| [Architecture](docs/architecture.md) | The system-wide design | The product and its guarantees, the graph model, and the Rust engine (oxc for TypeScript, Ruff's parser for Python). How Compile and background updates work, the `.unfold/` folder, the SQLite graph, and the workspace's files, and the board and settings formats. The reader, the studio window and its workspace of live and resting projects, the Electron app's processes and the commands between the UI and the engine, and the repository layout. Testing, performance targets, and risks |
+| [Decisions and trade-offs](docs/decisions-and-tradeoffs.md) | Why it's built this way | How the design came about, including the studio redesign, then every decision (U-1 to U-63) with the options we weighed and their pros and cons, such as why the engine is Rust and the shell is Electron. It ends with what we rejected and what's still open |
 | [User guide](docs/user-guide.md) | Using the app | Adding projects, the first Compile, Home, boards and pages, following calls, Code and Flow, Add, the peek sheet, explaining a board, drafts, Publish and unpublished changes, boards across projects, several windows, settings, and what to commit |
 | [UI shell](docs/ui-shell.md) | The window as built | The renderer's modules and state, how it keeps current with the engine, the screens' details, overlays, the keyboard map, the theme, and where V1's parts went |
 | [Testing](docs/testing.md) | How it's checked | The kinds of tests, how to run every gate, the golden and divergence policies, and measured results against the proof of concept |
 | [All docs](docs/README.md) | Finding a fact | A map of every document and what each owns, including the reference documents below |
 
 ## Working on Unfold
+
+For a specific task, start with [the task map](docs/README.md#find-the-context-for-your-task)
+and [AGENTS.md](AGENTS.md). Read the owning code and relevant reference section; the full
+architecture and decision history are available when the task needs broader context.
 
 ### Prerequisites
 

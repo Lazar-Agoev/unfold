@@ -2,10 +2,16 @@
 
 Status: built (compiler records, store, reader, commands, and the board UI) · 2026-10-10
 
+This is the original design and implementation baseline, retained as history. "Today" below
+means before this feature was built; its version numbers are historical. For current behavior,
+start with [typed records](../graph-model.md#typed-records), [typed lines](../reader.md#typed-lines),
+and [typed-line commands](../ipc.md#typed-lines), then the owning code.
+
 On a board, the line between two cards should say what flows through the call it draws: what goes
 in, what comes back, and what can be thrown. Clicking a type opens its definition in place. This
-document describes the design (Paper file "Lazar's Playground", page "Upfold App 2"), what the
-compiler records today, and the facts, records, commands, and UI pieces that make the design work.
+document describes the design (Paper file "Lazar's Playground", page "Upfold App 2"), the
+compiler's pre-implementation capabilities, and the facts, records, commands, and UI pieces
+that make the design work.
 
 ## Contents
 
@@ -63,7 +69,7 @@ that test's listed exceptions with that reason.
 
 ## 2. Today
 
-Verified in the code on 2026-10-10.
+Pre-implementation baseline, verified in the code on 2026-10-10.
 
 | Part of the line | What the compiler records | Enough? |
 | --- | --- | --- |

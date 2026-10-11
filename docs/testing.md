@@ -32,6 +32,41 @@ blessing.
 | End-to-end journeys | `e2e/journeys/` (Playwright on the built app) | The studio, journey by journey, and a check that every row of the [UI shell](ui-shell.md)'s "Where V1's parts went" and keyboard tables has a home in them ([below](#end-to-end-journeys)) |
 | Budgets | `e2e/budgets/` (`just e2e-budgets`) | The [architecture §17](architecture.md#17-performance-targets) performance targets on this machine |
 
+## Choose checks for a local change
+
+Local validation should cover the changed behavior at the smallest layer that can prove it.
+Agents should choose the relevant checks before running them and stop once they pass. Broaden
+or repeat checks when a new edit, failure, or specific unresolved risk calls for it. The full
+gate list below is a reference, not a checklist for every task; the PR workflow configures
+the broad cross-platform gates.
+
+| Change | Local checks to start with | When to add app-level checks |
+| --- | --- | --- |
+| Docs or a proposal | Links, referenced paths, and consistency with the affected implementation | No app build or E2E for prose alone |
+| Isolated Rust logic, extraction, graph facts, or storage | Focused crate unit or integration tests; affected validation, canonical, or reference checks | Add a journey only if a changed app workflow needs verification beyond these tests |
+| UI component, state logic, or styling | Focused Vitest tests and UI typecheck; visual inspection when appearance changes | E2E for changed interactions or workflows that component tests cannot adequately verify |
+| IPC or events | Command tests through `Host`, generated-type checks, affected router/UI tests | E2E when real process transport, event ordering, or reconnection is part of the change |
+| Publish, restore, multi-window behavior, or background updates | Focused workspace/UI tests plus the matching journey when the change affects the integrated workflow | Run that journey's spec or test first |
+| Packaging, fuses, or packaged assets | Relevant build and packaged smoke test | Journeys if app behavior is also affected |
+| Performance | Focused measurements for the changed path | Run the matching budget tests when the change can affect a measured budget |
+
+Run E2E when the changed workflow needs the running app, a regression depends on Electron or
+rendered interactions that focused tests cannot reproduce, or the user explicitly asks.
+Routine docs, proposals, isolated logic, and styling without interaction changes do not
+trigger E2E. Select the relevant spec and optionally its test title; run the full suite only
+when explicitly requested or when broad app changes cannot be covered by a bounded set of
+journeys. A failing focused test is a reason to investigate that failure, not automatically
+to launch every suite. Report the checks run and any material coverage gap.
+
+`just e2e journeys/publish.spec.ts` invokes the release-addon, UI, and desktop builds, then
+runs the selected spec. The Playwright journeys run serially with one worker. While the
+built outputs still match the current sources, repeat only the test with
+`pnpm --filter @unfold/e2e test journeys/publish.spec.ts` (optionally `-g "<test title>"`).
+After changing code, rebuild the affected outputs before testing: Rust/addon changes need
+`just addon-release`, UI changes need `pnpm --filter @unfold/ui build`, and desktop changes
+need `pnpm --filter @unfold/desktop build`. Shared contract changes may require more than
+one of these. Existing output directories alone do not establish that a build is current.
+
 ## Running the gates locally
 
 | Gate | Command |
