@@ -3,7 +3,9 @@
  * per opened call occurrence with its closed label, the page's drawn links, and a camera that pans
  * and zooms without changing what any card shows. No minimap. Large pages render only the cards in
  * view. While a link is being drawn, the next card clicked ends it; Escape or a click on the canvas
- * cancels. A selected line shows its contract; Escape or a click on the canvas closes it.
+ * cancels. A selected line shows its contract; Escape or a click on the canvas closes it. A card in
+ * Diagram view sends one arrow to each card it calls; a type card, one from each field to each type it
+ * names on the page.
  */
 
 import {
@@ -39,6 +41,7 @@ import {
   type PageTarget,
 } from "../state/boards";
 import { ArrowEdge, type ArrowEdgeType } from "./ArrowEdge";
+import type { Arrow } from "./arrows";
 import type { BoardArrows } from "./useBoardArrows";
 import { CardNode, type CardNodeType } from "./cards/CardNode";
 import { TARGET_HANDLE } from "./cards/parts";
@@ -61,6 +64,12 @@ const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 1.5;
 /** Above this many cards, only the cards in view render. */
 const VISIBLE_ONLY_ABOVE = 40;
+
+/** Everything about an arrow its edge draws, as one string. */
+function arrowSignature(arrow: Arrow): string {
+  const calls = arrow.calls?.map((call) => `${call.source}\u0001${call.seq}\u0001${call.line}`).join("\u0002") ?? "";
+  return [arrow.source, arrow.sourceHandle, arrow.target, arrow.project, arrow.occurrence, arrow.seq, arrow.line ?? "", arrow.kind, arrow.dashed, calls, arrow.type?.text ?? ""].join("\u0000");
+}
 
 /** React Flow error 008 (an edge whose port isn't measured yet) is expected while cards load. */
 function onFlowError(code: string, message: string): void {
@@ -86,12 +95,13 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
   const focus = usePageView(target, (view) => view.focus);
   const linking = usePageView(target, (view) => view.linking !== null);
   const selectedLink = usePageView(target, ({ selection }) => (selection.kind === "link" ? selection.linkId : null));
-  const selectedLine = usePageView(target, ({ selection }) => (selection.kind === "line" ? selection.arrowId : null));
+  const selectedLine = usePageView(target, ({ selection }) => (selection.kind === "line" ? selection : null));
+  const listedCalls = usePageView(target, ({ selection }) => (selection.kind === "calls" ? selection.arrowId : null));
   const working = useWorkingItems(target);
   const [labelLayout] = useState(() => new LabelLayout());
   const [initialCamera] = useState(() => getPageView(target).camera);
 
-  const { arrows, ports, settled } = boardArrows;
+  const { arrows, ports, bodies, settled } = boardArrows;
   const labels = useLineLabels(arrows);
   const paneMenu = useContextMenu("Board actions");
 
@@ -104,9 +114,9 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
         return measured;
       }
       const card = cards.find((item) => item.id === id);
-      return fallbackSize(card !== undefined && "entrance" in card.ref);
+      return fallbackSize(card !== undefined && "entrance" in card.ref, bodies.get(id));
     },
-    [sizes, cards],
+    [sizes, cards, bodies],
   );
   const display = useMemo(() => reflow(cards, sizeOf, drag?.id), [cards, sizeOf, drag?.id]);
 
@@ -144,57 +154,64 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
     return list;
   }, [cards, display, drag, ports, target, nodeCache, working]);
 
-  const [edgeCache] = useState(() => new Map<string, ArrowEdgeType>());
+  const [edgeCache] = useState(() => new Map<string, { readonly signature: string; readonly edge: ArrowEdgeType }>());
   const arrowEdges = useMemo(() => {
     const live = new Set<string>();
     const list = arrows.map((arrow) => {
-      const cached = edgeCache.get(arrow.id);
       const handler = arrow.kind === "handler";
-      const label = handler ? undefined : labels.get(arrow.id);
-      const selected = arrow.id === selectedLine;
-      const kept = cached?.data;
-      const edge: ArrowEdgeType =
-        cached !== undefined &&
-        kept !== undefined &&
-        kept.label === label &&
-        kept.selected === selected &&
-        kept.page === target &&
-        (handler || (kept.line?.line === arrow.line && kept.line.project === arrow.project && kept.line.seq === arrow.seq))
-          ? cached
-          : {
-              id: arrow.id,
-              type: "arrow",
-              source: arrow.source,
-              sourceHandle: arrow.sourceHandle,
-              target: arrow.target,
-              targetHandle: TARGET_HANDLE,
-              className: "board-arrow-edge",
-              focusable: false,
-              selectable: false,
-              // A line without room for its label is itself a button (ArrowEdge), which an `img` would hide.
-              ...(handler ? {} : { ariaRole: "group" as const }),
-              data: {
-                dashed: arrow.dashed,
-                handler,
-                selected,
-                page: target,
-                ...(label !== undefined ? { label } : {}),
-                ...(handler
-                  ? {}
-                  : {
-                      line: {
-                        arrowId: arrow.id,
-                        project: arrow.project,
-                        source: arrow.sourceHandle,
-                        seq: arrow.seq,
-                        from: arrow.source,
-                        to: arrow.target,
-                        line: arrow.line,
-                      },
-                    }),
-              },
-            };
-      edgeCache.set(arrow.id, edge);
+      const label = handler || arrow.kind === "type" || arrow.calls ? undefined : labels.get(arrow.id);
+      const selected = arrow.id === selectedLine?.arrowId;
+      const listed = arrow.id === listedCalls;
+      // What the edge draws, so an unchanged arrow keeps its edge (and its label doesn't render again).
+      const signature = [
+        arrowSignature(arrow),
+        selected ? `${selectedLine.source}\u0001${selectedLine.seq}` : "",
+        String(listed),
+      ].join("\u0000");
+      const cached = edgeCache.get(arrow.id);
+      const kept = cached?.edge.data;
+      if (cached?.signature === signature && kept !== undefined && kept.label === label && kept.page === target) {
+        live.add(arrow.id);
+        return cached.edge;
+      }
+      const line = { arrowId: arrow.id, project: arrow.project, source: arrow.occurrence, seq: arrow.seq, from: arrow.source, to: arrow.target, line: arrow.line };
+      const edge: ArrowEdgeType = {
+        id: arrow.id,
+        type: "arrow",
+        source: arrow.source,
+        sourceHandle: arrow.sourceHandle,
+        target: arrow.target,
+        targetHandle: TARGET_HANDLE,
+        className: "board-arrow-edge",
+        focusable: false,
+        selectable: false,
+        // A line without room for its label is itself a button (ArrowEdge), which an `img` would hide.
+        ...(handler || arrow.kind === "type" ? {} : { ariaRole: "group" as const }),
+        data: {
+          dashed: arrow.dashed,
+          handler,
+          selected,
+          page: target,
+          ...(label !== undefined ? { label } : {}),
+          ...(arrow.type ? { type: arrow.type } : {}),
+          ...(arrow.calls
+            ? {
+                calls: {
+                  arrowId: arrow.id,
+                  project: arrow.project,
+                  from: arrow.source,
+                  to: arrow.target,
+                  calls: arrow.calls.map(({ source, seq, line: at }) => ({ source, seq, line: at })),
+                },
+                listed,
+                ...(selected ? { line: selectedLine } : {}),
+              }
+            : handler || arrow.kind === "type"
+              ? {}
+              : { line }),
+        },
+      };
+      edgeCache.set(arrow.id, { signature, edge });
       live.add(arrow.id);
       return edge;
     });
@@ -204,7 +221,7 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
       }
     }
     return list;
-  }, [arrows, edgeCache, labels, selectedLine, target]);
+  }, [arrows, edgeCache, labels, selectedLine, listedCalls, target]);
 
   // Links leave and enter by the sides facing each other, so they follow the cards as they move.
   const [linkCache] = useState(() => new Map<string, LinkEdgeType>());
@@ -295,7 +312,8 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
     };
   }, [linking, target]);
 
-  // Escape closes a selected line's contract (later registrations win, so it goes before the peek sheet's).
+  // Escape closes a selected line's contract, or lets go of an arrow's calls (later registrations win,
+  // so it goes before the peek sheet's).
   useRegisterActions([
     {
       id: "board.closeLine",
@@ -303,7 +321,7 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
       category: "Board",
       shortcuts: ["Escape"],
       showInAdd: false,
-      enabled: () => getPageView(target).selection.kind === "line",
+      enabled: () => ["line", "calls"].includes(getPageView(target).selection.kind),
       run: () => {
         select(target, { kind: "none" });
       },

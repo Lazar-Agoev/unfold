@@ -1,7 +1,8 @@
 /**
- * Project settings: an 880×700 dialog over the window with four sections. General (the shared name,
+ * Project settings: an 880×700 dialog over the window with five sections. General (the shared name,
  * the folder, background updates, where the graph is kept), Scope (the folder tree and its rules),
- * Detectors (a switch each, by language), and Python projects. Every change but background updates is staged and saved together with
+ * Detectors (a switch each, by language), Python projects, and Evidence files (the files boards may
+ * cite). Every change but background updates is staged and saved together with
  * `update_project_config`, all or nothing; Rust keeps the file's comments and formatting. Closing with
  * staged changes asks first.
  */
@@ -36,6 +37,7 @@ import {
   type PythonVersion,
   type SettingsDraft,
 } from "./projectSettings";
+import { EvidenceSection } from "./EvidenceSection";
 import { ScopeSection } from "./ScopeSection";
 import { SettingsProblemBox } from "./SettingsProblemBox";
 import "./projectSettings.css";
@@ -47,6 +49,7 @@ const SECTIONS: readonly { readonly id: ProjectSettingsSection; readonly label: 
   { id: "scope", label: "Scope" },
   { id: "detectors", label: "Detectors" },
   { id: "python", label: "Python projects" },
+  { id: "evidence", label: "Evidence files" },
 ];
 
 const VERSION_OPTIONS = PYTHON_VERSIONS.map((version) => ({ value: version, label: version }));
@@ -477,6 +480,26 @@ function SettingsForm({ project, name, config, initialSection, onClose }: FormPr
             update((previous) => ({ ...previous, python }));
           }}
         />
+      );
+      break;
+    case "evidence":
+      body = (
+        <>
+          <SectionHeading title="Evidence files">
+            Files boards can cite but Unfold doesn't compile, such as SQL migrations, a Prisma schema, or an OpenAPI spec. Unfold
+            hashes them on each update, so cited lines go to review when they change.
+          </SectionHeading>
+          {invalid ? (
+            <InvalidFile project={project} config={config} />
+          ) : (
+            <EvidenceSection
+              patterns={draft.evidence}
+              onChange={(evidence) => {
+                update((previous) => ({ ...previous, evidence }));
+              }}
+            />
+          )}
+        </>
       );
       break;
   }

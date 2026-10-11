@@ -5,19 +5,21 @@
 //! signatures, guards, health, Mermaid export, and the outline all read through them, so they
 //! are pure functions of the graphs.
 //!
-//! Build a [`BoardGraph`] with [`BoardGraph::load`] from a store snapshot (only the files some
-//! keys touch), with [`BoardGraph::from_graph`] from a whole in-memory graph, or piece by piece.
+//! Build a [`BoardGraph`] with [`BoardGraph::load`] from a store snapshot (only the files and
+//! inputs a page's references touch), with [`BoardGraph::from_graph`] from a whole in-memory
+//! graph, or piece by piece.
 
 use std::collections::BTreeMap;
 use std::path::Path;
 
 use rustc_hash::FxHashMap;
-use unfold_core::vocab::{Resolution, Role};
-use unfold_core::{Block, ByteRange, Entrance, FileGraph, Graph, Key, RepoPath};
+use unfold_core::vocab::{MemberKind, Resolution, Role};
+use unfold_core::{Block, ByteRange, Edge, Entrance, FileGraph, Graph, Key, LineIndex, RepoPath};
 use unfold_store::Reader;
 
-use super::model::{ProjectName, Signature};
+use super::model::{ProjectName, References, Signature};
 use crate::catalog;
+use crate::contracts::{FactSource, Facts, TypeDefinition, type_definition};
 use crate::error::Result;
 use crate::flow::{FlowContext, FlowModel, build_flow};
 use crate::index::{file_owners, file_subtree_ends};
@@ -100,8 +102,47 @@ impl<'a> BlockAt<'a> {
 
     /// The signature of the block's verified source.
     pub fn signature(&self) -> Option<Signature> {
-        self.file.bytes(self.block().range).map(Signature::of)
+        self.bytes().map(Signature::of)
     }
+
+    /// The block's verified source bytes.
+    pub fn bytes(&self) -> Option<&'a [u8]> {
+        self.file.bytes(self.block().range)
+    }
+
+    /// The occurrence edge of a `call` or `new` block (its edge 0).
+    pub fn occurrence(&self) -> Option<&'a Edge> {
+        self.file
+            .graph
+            .edges
+            .iter()
+            .find(|edge| edge.source == self.local && edge.seq == 0)
+    }
+
+    /// Whether a type link inside the block (the block's own included) resolves to the
+    /// declaration with `key`.
+    pub fn uses_type(&self, key: &str) -> bool {
+        let end = self.file.ends[self.local as usize];
+        self.file.graph.types.type_links.iter().any(|link| {
+            (self.local..end).contains(&link.block)
+                && link.resolution == Resolution::Resolved
+                && link.target.as_ref().is_some_and(|target| target.as_str() == key)
+        })
+    }
+}
+
+/// A line range of an input the graph records, as [`BoardGraph::lines`] finds it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lines<'a> {
+    /// The lines' verified bytes, from the start of the first through the end of the last
+    /// (its terminator included).
+    Bytes(&'a [u8]),
+    /// The input's bytes on disk differ from the hash the graph recorded, or can't be read.
+    Unverified,
+    /// The graph records no input at that path.
+    NotRecorded,
+    /// The input has fewer lines.
+    PastEnd,
 }
 
 /// The part of the graph a board reads.
@@ -113,6 +154,7 @@ pub struct BoardGraph {
     entrances: FxHashMap<Key, Entrance>,
     inputs: FxHashMap<RepoPath, Verified>,
     names: FxHashMap<Key, Box<str>>,
+    fields: FxHashMap<Key, Vec<Box<str>>>,
 }
 
 impl BoardGraph {
@@ -144,9 +186,25 @@ impl BoardGraph {
         self.entrances.insert(entrance.key.clone(), entrance);
     }
 
-    /// Adds a configuration input's verified bytes, for entrance evidence that lives there.
+    /// Adds an input's verified bytes: a configuration input holding entrance evidence, or an
+    /// evidence file anchors cite.
     pub fn add_input(&mut self, path: RepoPath, source: Verified) {
         self.inputs.insert(path, source);
+    }
+
+    /// Records the field names of the type declaration or class `key` (its own, then the ones
+    /// it inherits), which a table backed by it may mark.
+    pub fn add_fields(&mut self, key: Key, fields: Vec<Box<str>>) {
+        self.fields.insert(key, fields);
+    }
+
+    /// Records the fields of type `key` from its definition in `facts`, when it is a type
+    /// declaration or class.
+    fn define(&mut self, facts: &mut Facts<'_>, key: &str) -> Result<()> {
+        if let Some(definition) = type_definition(facts, key)? {
+            self.add_fields(definition.key.clone(), fields_of(&definition));
+        }
+        Ok(())
     }
 
     /// Records the qualified name of a definition whose file is not loaded.
@@ -154,7 +212,8 @@ impl BoardGraph {
         self.names.insert(key, name.into());
     }
 
-    /// Every file, entrance, and input of `graph`, with sources verified under `root`.
+    /// Every file, entrance, and input of `graph`, with sources verified under `root`, and the
+    /// fields of every type declaration and class.
     pub fn from_graph(graph: &Graph, root: &Path) -> Self {
         let mut loaded = Self::new();
         for file in &graph.files {
@@ -170,18 +229,31 @@ impl BoardGraph {
         for entrance in &graph.entrances {
             loaded.add_entrance(entrance.clone());
         }
+        let types: Vec<Key> = graph
+            .files
+            .iter()
+            .flat_map(|file| &file.blocks)
+            .filter(|block| block.kind.is_type_declaration())
+            .map(|block| block.key.clone())
+            .collect();
+        let mut facts = Facts::new(graph as &dyn FactSource, root);
+        for key in types {
+            // An in-memory graph answers every question: reading it never fails.
+            let _ = loaded.define(&mut facts, key.as_str());
+        }
         loaded
     }
 
-    /// What references `keys` (block and entrance keys of one project, as
-    /// [`super::Board::references`] or [`super::Page::references`] lists them) need from that
-    /// project's store snapshot: the files of the blocks and of the entrances' evidence, the
-    /// entrances, the inputs holding configuration evidence, and the qualified names of targets
-    /// outside those files. Sources are verified under `root`, the project's folder.
-    pub fn load(reader: &Reader, root: &Path, keys: &[&str]) -> Result<Self> {
+    /// What `references` (of one project, as [`super::Board::references`] or
+    /// [`super::Page::references`] lists them) need from that project's store snapshot: the
+    /// files of the blocks and of the entrances' evidence, the entrances, the inputs holding
+    /// configuration evidence and the evidence files anchors cite, the fields of the tables'
+    /// types, and the qualified names of targets outside those files. Sources are verified under
+    /// `root`, the project's folder.
+    pub fn load(reader: &Reader, root: &Path, references: &References<'_>) -> Result<Self> {
         let mut loaded = Self::new();
         let mut evidence: Vec<RepoPath> = Vec::new();
-        for &key in keys {
+        for &key in &references.keys {
             if key.starts_with("entrance:") {
                 if let Some(entrance) = reader.entrance(key)? {
                     evidence.push(entrance.evidence.path.clone());
@@ -203,6 +275,16 @@ impl BoardGraph {
                 Some(input) => loaded.add_input(path.clone(), verify_file(root, &path, Some(input.hash))),
                 None => loaded.load_file(reader, root, &path)?,
             }
+        }
+        // An anchor's file is read only when the graph records it as an input.
+        for &path in &references.files {
+            if let Some(input) = inputs.iter().find(|input| &input.path == path) {
+                loaded.add_input(path.clone(), verify_file(root, path, Some(input.hash)));
+            }
+        }
+        let mut facts = Facts::new(reader as &dyn FactSource, root);
+        for &table in &references.tables {
+            loaded.define(&mut facts, table)?;
         }
         let mut targets: Vec<Key> = Vec::new();
         for file in &loaded.files {
@@ -287,17 +369,45 @@ impl BoardGraph {
         }
     }
 
-    /// The signature of a reference's exact verified source: a block's range, or an entrance's
-    /// evidence. `None` when the reference is missing or its source does not verify.
-    pub fn signature(&self, key: &str) -> Option<Signature> {
+    /// A reference's exact verified source: a block's range, or an entrance's evidence. `None`
+    /// when the reference is missing or its source does not verify.
+    pub fn key_bytes(&self, key: &str) -> Option<&[u8]> {
         match self.block(key) {
-            Some(block) => block.signature(),
+            Some(block) => block.bytes(),
             None => {
                 let entrance = self.entrance(key)?;
                 self.bytes(&entrance.evidence.path, entrance.evidence.range)
-                    .map(Signature::of)
             }
         }
+    }
+
+    /// The signature of a reference's exact verified source ([`BoardGraph::key_bytes`]).
+    pub fn signature(&self, key: &str) -> Option<Signature> {
+        self.key_bytes(key).map(Signature::of)
+    }
+
+    /// Lines `first` through `last` (one-based, inclusive) of the input at `path`.
+    pub fn lines(&self, path: &RepoPath, [first, last]: [u32; 2]) -> Lines<'_> {
+        let snapshot = match self.inputs.get(path) {
+            None => return Lines::NotRecorded,
+            Some(Verified::Changed | Verified::Missing) => return Lines::Unverified,
+            Some(Verified::Current(snapshot)) => snapshot,
+        };
+        let index = LineIndex::new(snapshot.text());
+        let (Some(start), true) = (index.line_start(first), last <= index.line_count()) else {
+            return Lines::PastEnd;
+        };
+        let end = index.line_start(last + 1).unwrap_or(index.len());
+        snapshot
+            .bytes()
+            .get(start as usize..end as usize)
+            .map_or(Lines::PastEnd, Lines::Bytes)
+    }
+
+    /// The field names of type declaration or class `key`, its own then the ones it inherits,
+    /// when they were loaded.
+    pub fn fields(&self, key: &str) -> Option<&[Box<str>]> {
+        self.fields.get(key).map(Vec::as_slice)
     }
 
     /// The signature of the source from the start of `first` to the end of `last` (a group's
@@ -336,7 +446,7 @@ impl BoardGraph {
     }
 
     /// The edges owned by block `key`, in source order, as (occurrence key, edge).
-    pub fn owned_edges(&self, key: &str) -> Vec<(&Key, &unfold_core::Edge)> {
+    pub fn owned_edges(&self, key: &str) -> Vec<(&Key, &Edge)> {
         let Some(block) = self.block(key) else {
             return Vec::new();
         };
@@ -356,6 +466,24 @@ impl BoardGraph {
             Some(Role::Body | Role::Then | Role::Else | Role::Catch | Role::Finally)
         )
     }
+}
+
+/// The names of a definition's fields (properties), its own then the ones it inherits, each
+/// once.
+fn fields_of(definition: &TypeDefinition) -> Vec<Box<str>> {
+    let mut fields: Vec<Box<str>> = Vec::new();
+    let members = definition
+        .members
+        .iter()
+        .chain(definition.inherited.iter().flat_map(|group| &group.members));
+    for member in members.filter(|member| member.kind == MemberKind::Property) {
+        if let Some(name) = member.name.as_deref()
+            && !fields.iter().any(|known| &**known == name)
+        {
+            fields.push(name.into());
+        }
+    }
+    fields
 }
 
 /// The graphs a page reads: the board's own project's, and one per other connected project by

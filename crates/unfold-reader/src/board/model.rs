@@ -576,6 +576,14 @@ impl Anchor {
             Self::Key { project, .. } | Self::File { project, .. } => project.as_ref(),
         }
     }
+
+    /// The key, for a key anchor.
+    pub fn key(&self) -> Option<&Key> {
+        match self {
+            Self::Key { key, .. } => Some(key),
+            Self::File { .. } => None,
+        }
+    }
 }
 
 /// A link drawn between two items of a page (decision U-44): the graph does not join code
@@ -672,6 +680,40 @@ impl Link {
     /// Whether it is a `relates` connection.
     pub fn relates(&self) -> bool {
         self.kind == Some(LinkKind::Relates)
+    }
+}
+
+/// What a page or a board references in one project: what [`super::BoardGraph::load`] reads
+/// from that project's graph.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct References<'a> {
+    /// Block and entrance keys, without duplicates: cards, group members, and labels, then the
+    /// claims' keys (tables' types, connections' steps and carried types, and key anchors).
+    pub keys: Vec<&'a str>,
+    /// The types of tables backed by a type, whose fields a save checks marks against.
+    pub tables: Vec<&'a str>,
+    /// The evidence files anchors cite, without duplicates.
+    pub files: Vec<&'a RepoPath>,
+}
+
+impl<'a> References<'a> {
+    /// Adds what `other` references.
+    fn append(&mut self, other: References<'a>) {
+        self.keys.extend(other.keys);
+        self.tables.extend(other.tables);
+        self.files.extend(other.files);
+    }
+
+    /// Keeps the first of each repeated key, table, and file.
+    fn dedup(mut self) -> Self {
+        fn first<T: Copy + Eq + std::hash::Hash>(items: &mut Vec<T>) {
+            let mut seen = FxHashSet::default();
+            items.retain(|item| seen.insert(*item));
+        }
+        first(&mut self.keys);
+        first(&mut self.tables);
+        first(&mut self.files);
+        self
     }
 }
 
@@ -927,28 +969,70 @@ impl Page {
             .find(|entry| entry.project.as_ref() == project && entry.key.as_str() == key)
     }
 
-    /// Every key the page references in `project` (`None`: the board's own): cards, group
-    /// members, and labels, in that order, without duplicates.
-    pub fn references(&self, project: Option<&ProjectName>) -> Vec<&str> {
-        let mut seen = FxHashSet::default();
-        self.cards
+    /// The project of connection `link`'s step: its `from` card's project (`None`: the board's
+    /// own, also when the card is gone).
+    pub fn step_project(&self, link: &Link) -> Option<&ProjectName> {
+        self.card(&link.from).and_then(|card| card.reference.project())
+    }
+
+    /// Everything the page references in `project` (`None`: the board's own), without
+    /// duplicates: the keys of cards, group members, and labels, in that order, then of the
+    /// claims (tables' types, connections' steps and carried types, and key anchors); the types
+    /// of tables backed by one; and the evidence files anchors cite.
+    pub fn references(&self, project: Option<&ProjectName>) -> References<'_> {
+        let mut references = References::default();
+        references.keys.extend(
+            self.cards
+                .iter()
+                .filter(|card| card.reference.project() == project)
+                .map(|card| card.reference.key().as_str()),
+        );
+        references.keys.extend(
+            self.groups
+                .iter()
+                .filter(|group| self.group_project(group) == project)
+                .flat_map(|group| group.members.iter().map(Key::as_str)),
+        );
+        references.keys.extend(
+            self.labels
+                .iter()
+                .filter(|entry| entry.project.as_ref() == project)
+                .map(|entry| entry.key.as_str()),
+        );
+        for table in self
+            .resources
             .iter()
-            .filter(|card| card.reference.project() == project)
-            .map(|card| card.reference.key().as_str())
-            .chain(
-                self.groups
-                    .iter()
-                    .filter(|group| self.group_project(group) == project)
-                    .flat_map(|group| group.members.iter().map(Key::as_str)),
-            )
-            .chain(
-                self.labels
-                    .iter()
-                    .filter(|entry| entry.project.as_ref() == project)
-                    .map(|entry| entry.key.as_str()),
-            )
-            .filter(|key| seen.insert(*key))
-            .collect()
+            .filter(|resource| resource.project.as_ref() == project)
+            .filter_map(|resource| resource.type_key.as_ref())
+        {
+            references.keys.push(table.as_str());
+            references.tables.push(table.as_str());
+        }
+        for link in &self.links {
+            if let Some(step) = link.step.as_ref().filter(|_| self.step_project(link) == project) {
+                references.keys.push(step.as_str());
+            }
+            if let Some(carries) = link
+                .carries
+                .as_ref()
+                .filter(|_| link.carries_project.as_ref() == project)
+            {
+                references.keys.push(carries.as_str());
+            }
+        }
+        let anchors = self
+            .resources
+            .iter()
+            .flat_map(|resource| &resource.anchors)
+            .chain(self.links.iter().flat_map(|link| &link.anchors))
+            .filter(|anchor| anchor.project() == project);
+        for anchor in anchors {
+            match anchor {
+                Anchor::Key { key, .. } => references.keys.push(key.as_str()),
+                Anchor::File { file, .. } => references.files.push(file),
+            }
+        }
+        references.dedup()
     }
 }
 
@@ -1014,15 +1098,14 @@ impl Board {
         self.projects = self.used_projects();
     }
 
-    /// Every key any page references in `project` (`None`: the board's own), without
+    /// Everything any page references in `project` (`None`: the board's own), without
     /// duplicates: what [`super::BoardGraph::load`] needs to check the whole board.
-    pub fn references(&self, project: Option<&ProjectName>) -> Vec<&str> {
-        let mut seen = FxHashSet::default();
-        self.pages
-            .iter()
-            .flat_map(|page| page.references(project))
-            .filter(|key| seen.insert(*key))
-            .collect()
+    pub fn references(&self, project: Option<&ProjectName>) -> References<'_> {
+        let mut references = References::default();
+        for page in &self.pages {
+            references.append(page.references(project));
+        }
+        references.dedup()
     }
 }
 

@@ -157,6 +157,7 @@ describe("runMenuCommand", () => {
     const run = vi.fn();
     const registry = registryWith({ id: ActionIds.lensFlow, title: "Flow", category: "View", run });
     expect(runMenuCommand("lens_flow", registry)).toBe(true);
+    expect(runMenuCommand("lens_diagram", registry)).toBe(false);
     expect(runMenuCommand("undo", registry)).toBe(false);
     expect(runMenuCommand(42, registry)).toBe(false);
     expect(runMenuCommand("toggle_inspector", registry)).toBe(false);
@@ -175,6 +176,7 @@ describe("runMenuCommand", () => {
         "compile",
         "copy_diagnostics",
         "lens_code",
+        "lens_diagram",
         "lens_flow",
         "new_board",
         "new_page",

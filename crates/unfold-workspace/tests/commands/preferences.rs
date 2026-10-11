@@ -56,3 +56,22 @@ fn rejected_preferences_send_nothing() {
     );
     assert!(preference_messages(&harness).is_empty());
 }
+
+#[test]
+fn agents_connect_off_by_default_and_never_on_a_system_port() {
+    let harness = Harness::new("ts-orders", false);
+    let mut preferences = harness.ok(2, "get_preferences", json!({}));
+    assert_eq!(preferences["agents"], json!({"enabled": false, "port": 29180}));
+    for port in [json!(80), json!(70_000)] {
+        preferences["agents"] = json!({"enabled": true, "port": port});
+        assert_eq!(
+            harness.code(2, "set_preferences", json!({ "preferences": preferences })),
+            "invalid_args"
+        );
+    }
+    assert!(preference_messages(&harness).is_empty());
+
+    preferences["agents"] = json!({"enabled": true, "port": 31000});
+    let saved = harness.ok(2, "set_preferences", json!({ "preferences": preferences }));
+    assert_eq!(saved["agents"], json!({"enabled": true, "port": 31000}));
+}

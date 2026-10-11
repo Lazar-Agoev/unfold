@@ -16,7 +16,7 @@ const CONFIG: ProjectConfig = {
   text: "[scope]\nexclude = [\"scripts\"]\n",
   error: null,
   name: { value: "storefront-api", isDefault: true },
-  settings: { languages: null, include: [], exclude: ["scripts"], disabledDetectors: [], pythonProjects: [], entrances: [] },
+  settings: { languages: null, include: [], exclude: ["scripts"], disabledDetectors: [], pythonProjects: [], entrances: [], evidence: ["prisma/schema.prisma"] },
 };
 
 const ROOT: ScopeDir = {
@@ -104,6 +104,35 @@ describe("Project settings", () => {
           { op: "remove_scope_pattern", list: "exclude", pattern: "scripts" },
           { op: "exclude_from_graph", path: "src" },
           { op: "set_detector", detector: "celery.task", enabled: false },
+        ],
+      },
+    ]);
+  });
+
+  it("lists evidence files with Remove and adds one from the field", async () => {
+    const fake = install();
+    const dialog = await open("evidence");
+    const list = within(dialog).getByRole("list", { name: "Evidence files" });
+    expect(within(list).getByText("prisma/schema.prisma")).toBeTruthy();
+    const field = within(dialog).getByLabelText("Evidence file");
+    fireEvent.change(field, { target: { value: "../outside.sql" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+    expect(within(dialog).getByText(/must be inside this folder/)).toBeTruthy();
+    fireEvent.change(field, { target: { value: " db/migrations/*.sql " } });
+    fireEvent.submit(field);
+    expect(within(list).getByText("db/migrations/*.sql")).toBeTruthy();
+    expect(field).toHaveProperty("value", "");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove prisma/schema.prisma" }));
+    fireEvent.click(save(dialog));
+    await waitFor(() => {
+      expect(closed).toBe(1);
+    });
+    expect(fake.callsOf("update_project_config")).toEqual([
+      {
+        project: PROJECT,
+        edits: [
+          { op: "remove_evidence_pattern", pattern: "prisma/schema.prisma" },
+          { op: "add_evidence_pattern", pattern: "db/migrations/*.sql" },
         ],
       },
     ]);

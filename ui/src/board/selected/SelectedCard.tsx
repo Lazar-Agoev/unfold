@@ -1,14 +1,17 @@
 /**
  * Selected for a card: its name and location, its description (edited here or on the card), then for a
  * block Called by and Reached from (up to 3 each, then "N more · Show callers"), Not opened (up to 5
- * calls not on the page, each "+ Open"), and its groups. For an entrance, its handlers. A card of a
- * project that isn't connected shows what the board knows about it.
+ * calls not on the page, each "+ Open"), and its groups. A type card says where the type is used ("Used
+ * in N places", a popover of the places), instead of calls for a type declaration. For an entrance, its
+ * handlers. A card of a project that isn't connected shows what the board knows about it.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { cardQuery, showCallers } from "../../canvas";
+import { UsedIn } from "../../code/TypeDefinition";
 import { shortPath } from "../../code/text";
+import { declarationWord, isTypeKind } from "../../code/typeKinds";
 import { TextButton } from "../../components";
 import { useEngineQuery } from "../../ipc";
 import type { Card, CardView, OutgoingCall, ProjectId } from "../../ipc/generated";
@@ -155,6 +158,21 @@ function BlockRelations({ target, project, card, name }: { readonly target: Page
   );
 }
 
+/** Where a type card's type is written: "Used in N places", opening the places. */
+function TypeUses({ project, typeKey }: { readonly project: ProjectId; readonly typeKey: string }) {
+  const definition = useEngineQuery("type_definition", { project, key: typeKey });
+  if (!definition.data) {
+    return null;
+  }
+  return (
+    <div className="selected-relations">
+      <RelationRow label="Uses">
+        <UsedIn project={project} definition={definition.data} />
+      </RelationRow>
+    </div>
+  );
+}
+
 function EntranceHandlers({ target, card, model, name }: { readonly target: PageTarget; readonly card: Card; readonly model: Extract<CardView, { type: "entrance" }>; readonly name: string }) {
   const cards = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.cards);
   return (
@@ -258,7 +276,10 @@ export function SelectedCard({ target, card, project }: { readonly target: PageT
           }
         }}
       />
-      {project !== null && model?.type === "block" ? <BlockRelations target={target} project={project} card={card} name={name} /> : null}
+      {project !== null && model?.type === "block" && isTypeKind(model.header.kind) ? <TypeUses project={project} typeKey={key} /> : null}
+      {project !== null && model?.type === "block" && declarationWord(model.header.kind) === undefined ? (
+        <BlockRelations target={target} project={project} card={card} name={name} />
+      ) : null}
       {model?.type === "entrance" ? <EntranceHandlers target={target} card={card} model={model} name={name} /> : null}
       <CardGroups target={target} card={card} />
     </>

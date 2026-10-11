@@ -123,23 +123,32 @@ test.describe("the board", () => {
       await expect(forward).toBeDisabled();
     });
 
-    await test.step("the lens in the top bar shows every card in Code or Flow, and ⌘1 / ⌘2 switch it", async () => {
+    await test.step("the lens in the top bar shows every card as a Diagram node, in Flow, or in Code, and ⌘1 / ⌘2 / ⌘3 switch it", async () => {
+      const total = await cards(page).count();
+      await lens(page).getByRole("radio", { name: "Diagram" }).click();
+      await expect(boardView(page).locator(".diagram-card")).toHaveCount(total);
       await lens(page).getByRole("radio", { name: "Flow" }).click();
       await expectEveryBlockCardShows(page, "flow-view");
       await lens(page).getByRole("radio", { name: "Code" }).click();
       await expectEveryBlockCardShows(page, "code-view");
       await clickCanvas(page);
+      await page.keyboard.press("Meta+1");
+      await expect(lens(page).getByRole("radio", { name: "Diagram" })).toHaveAttribute("aria-checked", "true");
+      await expect(boardView(page).locator(".diagram-card")).toHaveCount(total);
       await page.keyboard.press("Meta+2");
       await expect(lens(page).getByRole("radio", { name: "Flow" })).toHaveAttribute("aria-checked", "true");
       await expectEveryBlockCardShows(page, "flow-view");
-      await page.keyboard.press("Meta+1");
+      await page.keyboard.press("Meta+3");
       await expect(lens(page).getByRole("radio", { name: "Code" })).toHaveAttribute("aria-checked", "true");
       await expectEveryBlockCardShows(page, "code-view");
     });
 
-    await test.step("a card's own Code | Flow switch changes only that card", async () => {
+    await test.step("a card's own Diagram | Flow | Code switch changes only that card", async () => {
       const requireUser = card(page, REQUIRE_USER);
-      await clickOnCanvas(page, requireUser.getByRole("radiogroup", { name: "View of requireUser" }).getByRole("radio", { name: "Flow" }));
+      const own = () => requireUser.getByRole("radiogroup", { name: "View of requireUser" });
+      await clickOnCanvas(page, own().getByRole("radio", { name: "Diagram" }));
+      await expect(requireUser).toHaveClass(/diagram-card/);
+      await clickOnCanvas(page, own().getByRole("radio", { name: "Flow" }));
       await expect(requireUser.locator(".flow-view")).toBeVisible();
       await expect(card(page, VALIDATE_BODY).locator(".code-view")).toBeVisible();
     });

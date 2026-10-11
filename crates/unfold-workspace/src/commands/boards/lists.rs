@@ -6,6 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use rayon::prelude::*;
+use unfold_core::vocab::BlockKind;
 use unfold_reader::board::files::{BoardFile, Place};
 use unfold_reader::board::{CardRef, ProjectName, card_links};
 
@@ -276,24 +277,41 @@ fn thumbnail(resolver: &mut Resolver<'_>, id: &str, working: &Working) -> Comman
         .iter()
         .map(|card| {
             let project = card.reference.project();
-            let lines = card
+            let block = card
                 .reference
                 .block_key()
-                .and_then(|key| graphs.get(project)?.block(key.as_str()))
+                .and_then(|key| graphs.get(project)?.block(key.as_str()));
+            let lines = block.map(|block| {
+                let lines = block.block().lines;
+                lines.end.saturating_sub(lines.start) + 1
+            });
+            let kind = match (&card.reference, block.map(|block| block.block().kind)) {
+                (CardRef::Entrance { .. }, _) => CardKind::Entrance,
+                (_, Some(BlockKind::Interface | BlockKind::TypeAlias | BlockKind::Enum)) => CardKind::Type,
+                (_, Some(BlockKind::Class)) => CardKind::Class,
+                _ => CardKind::Block,
+            };
+            let fields = block
+                .filter(|_| matches!(kind, CardKind::Type | CardKind::Class))
                 .map(|block| {
-                    let lines = block.block().lines;
-                    lines.end.saturating_sub(lines.start) + 1
+                    let members = block
+                        .file()
+                        .types
+                        .members
+                        .iter()
+                        .filter(|member| member.block == block.local())
+                        .count();
+                    // An alias with no members lists its aliased type.
+                    count(members.max(usize::from(block.block().kind == BlockKind::TypeAlias)))
                 });
             ThumbnailCard {
                 id: card.id.clone(),
                 at: card.at,
-                kind: match card.reference {
-                    CardRef::Entrance { .. } => CardKind::Entrance,
-                    CardRef::Block { .. } => CardKind::Block,
-                },
+                kind,
                 view: page.view_of(card),
                 folded: card.folded,
                 lines,
+                fields,
                 foreign: project.is_some(),
             }
         })

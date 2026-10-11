@@ -3,11 +3,11 @@ import type { Arrow } from "../arrows";
 import { LABELS_PER_CALL, labelRequests } from "./useLineLabels";
 
 function arrow(id: string, project: string, source: string, seq = 0, kind: Arrow["kind"] = "calls"): Arrow {
-  return { id, source: "a", sourceHandle: source, target: "b", project, seq, kind, dashed: kind === "references", order: 0, line: 1 };
+  return { id, source: "a", sourceHandle: source, target: "b", project, occurrence: source, seq, kind, dashed: kind === "references", order: 0, line: 1 };
 }
 
 describe("labelRequests", () => {
-  it("asks once per project for its distinct lines in order, and never for an entrance's handler", () => {
+  it("asks once per project for its distinct lines in order, and never for a handler, a type arrow, or several calls", () => {
     const requests = labelRequests([
       arrow("1", "q", "src/b.ts#f/call[0]"),
       arrow("2", "p", "src/a.ts#f/call[1]", 1, "references"),
@@ -16,6 +16,17 @@ describe("labelRequests", () => {
       // The same line drawn to a second card is asked for once.
       { ...arrow("5", "p", "src/a.ts#f/call[0]"), target: "c" },
       arrow("6", "p", "target:0", 0, "handler"),
+      { ...arrow("7", "p", "field:0", 0, "type"), sourceHandle: "field:0" },
+      // A Diagram node's arrow that stands for two calls reads "2 calls"; one that stands for one keeps its label.
+      {
+        ...arrow("8", "p", "src/a.ts#f/call[2]"),
+        sourceHandle: "node",
+        calls: [
+          { source: "src/a.ts#f/call[2]", seq: 0, line: 3, kind: "calls" },
+          { source: "src/a.ts#f/call[3]", seq: 0, line: 4, kind: "calls" },
+        ],
+      },
+      { ...arrow("9", "p", "src/a.ts#f/call[5]"), sourceHandle: "node" },
     ]);
     expect(requests).toEqual([
       {
@@ -24,6 +35,7 @@ describe("labelRequests", () => {
           { source: "src/a.ts#f/call[0]", seq: 0 },
           { source: "src/a.ts#f/call[1]", seq: 0 },
           { source: "src/a.ts#f/call[1]", seq: 1 },
+          { source: "src/a.ts#f/call[5]", seq: 0 },
         ],
       },
       { project: "q", lines: [{ source: "src/b.ts#f/call[0]", seq: 0 }] },

@@ -77,7 +77,7 @@
           "author": "agent:claude",
           "description": {
             "author": "agent:claude",
-            "signature": "",
+            "signature": "sha256:748a8d168edb924621d1c77f1824095621d7a650837cf0625ddf354406cbf49d",
             "text": "The Express API: requests come in, orders are placed or queued."
           },
           "direction": "down",
@@ -145,10 +145,40 @@
           "signature": "sha256:f26d21c71dc749abf8223caeaf97365e165a5c8aeb62b76a1aa13d27584b35db"
         },
         {
+          "key": "src/config.ts#variable:connection",
+          "kind": "variable",
+          "owner": "src/config.ts#",
+          "signature": "sha256:d471099440335a52aee616b83512cb1081afeae2f1e240bd7bde53523553ec91"
+        },
+        {
+          "key": "src/db/repository.ts#class:OrderRepository",
+          "kind": "class",
+          "owner": "src/db/repository.ts#",
+          "signature": "sha256:85937ce41e7fff17a2b16f53284ecf3cc5368fef27bae6e9e9ecf236bac5dfcc"
+        },
+        {
           "key": "src/jobs/process-order.ts#function:processOrder",
           "kind": "function",
           "owner": "src/jobs/process-order.ts#",
           "signature": "sha256:95ab2d47c23ca2c7670eeddc37e097ba50311f513756a1440c3e4d507e74620c"
+        },
+        {
+          "key": "src/jobs/report.ts#function:printReport",
+          "kind": "function",
+          "owner": "src/jobs/report.ts#",
+          "signature": "sha256:49e78f7026d9c6ca16383a9b32c9f6b4d9493150c97c9557bfac92a5f79d4c1c"
+        },
+        {
+          "key": "src/lib/slack.ts#variable:slack",
+          "kind": "variable",
+          "owner": "src/lib/slack.ts#",
+          "signature": "sha256:c90d37618f3d687c4bf95c60032cfe8a9c4fb37e72d85ae54ad1c234760c4f52"
+        },
+        {
+          "key": "src/queues/queues.ts#variable:ordersQueue",
+          "kind": "variable",
+          "owner": "src/queues/queues.ts#",
+          "signature": "sha256:096526da45820491cd54e89603ff8d14a803d3f2a3c473cb5029cda2abf1e3a4"
         },
         {
           "key": "src/routes/orders.ts#function:createOrder",
@@ -157,10 +187,22 @@
           "signature": "sha256:6f2bbed7bc305377d2f6121f38f0a9c68aec9409b5f6a533bcc25bcc609197ba"
         },
         {
+          "key": "src/routes/orders.ts#function:createOrder/expression_statement[0]",
+          "kind": "expression_statement",
+          "owner": "src/routes/orders.ts#function:createOrder",
+          "signature": "sha256:337f13d60f163402f77ae039aab05768b418844ef5d1011ecf2a0349139b22a4"
+        },
+        {
           "key": "src/routes/orders.ts#function:createOrder/if[0]",
           "kind": "if",
           "owner": "src/routes/orders.ts#function:createOrder",
           "signature": "sha256:eba575631a1b2cb75725933e26c3feec5c5cf9eb10dab0be0f7168b43d35dbc5"
+        },
+        {
+          "key": "src/routes/orders.ts#function:createOrder/if[0]/variable:job/call[0]",
+          "kind": "call",
+          "owner": "src/routes/orders.ts#function:createOrder",
+          "signature": "sha256:b547e64173cc4deaa81031c84a7bf81e2483ef96971d803109fb96d555697f6c"
         },
         {
           "key": "src/services/order-service.ts#class:OrderService/method:place",
@@ -169,10 +211,46 @@
           "signature": "sha256:74d246fe8920d24dde56b962e36f4001a96d57f1b0583692916edb20b422afe9"
         },
         {
+          "key": "src/services/order-service.ts#class:OrderService/method:place/expression_statement[0]/call[0]",
+          "kind": "call",
+          "owner": "src/services/order-service.ts#class:OrderService/method:place",
+          "signature": "sha256:e90c499ecd309afff043592aa860814ae8460c0335e94c9706ade8f4d242d61f"
+        },
+        {
+          "key": "src/services/order-service.ts#class:OrderService/method:place/expression_statement[1]",
+          "kind": "expression_statement",
+          "owner": "src/services/order-service.ts#class:OrderService/method:place",
+          "signature": "sha256:86ca7ef6efc30c6fa91e35d05b30ce9a1a1f9dcaa079503753acef38a4586941"
+        },
+        {
           "key": "src/services/payment.ts#class:StripeProvider/method:charge",
           "kind": "method",
           "owner": "src/services/payment.ts#class:StripeProvider",
           "signature": "sha256:4890290e03aec9059de41294cc0d816f19a5f0132113de73710ae06cefc3610f"
+        },
+        {
+          "key": "src/services/payment.ts#function:createProvider",
+          "kind": "function",
+          "owner": "src/services/payment.ts#",
+          "signature": "sha256:db2b47476e824f7c647a023de8edcde7a5273f562c469d6e0b84c385be799760"
+        },
+        {
+          "key": "src/types.ts#interface:Order",
+          "kind": "interface",
+          "owner": "src/types.ts#",
+          "signature": "sha256:5dc9eb6542e076822871d6361c187e92462cca3f4f1b3a093f67c20ac091e52e"
+        },
+        {
+          "key": "src/types.ts#interface:OrderDraft",
+          "kind": "interface",
+          "owner": "src/types.ts#",
+          "signature": "sha256:59e380976c83a90a44e18ddefd978317985bf73aee90671bb4a18b36e785a622"
+        },
+        {
+          "key": "src/types.ts#interface:OrderJob",
+          "kind": "interface",
+          "owner": "src/types.ts#",
+          "signature": "sha256:ed6f2e1a5d62a79b09f6675ec4028fac13f0361029e0b00686c0ed6a7eedabc1"
         }
       ],
       "id": "page-1",
@@ -188,7 +266,8 @@
           "from": "place-order",
           "id": "charge-stripe",
           "kind": "calls",
-          "step": "src/services/order-service.ts#class:OrderService/method:place/expression_statement[0]",
+          "signature": "sha256:7ba1c2aa96e0b525e606f69c508905ed98c30a2a132e3d1fc8e0d2bfaa3cf72b",
+          "step": "src/services/order-service.ts#class:OrderService/method:place/expression_statement[0]/call[0]",
           "to": "stripe-charge"
         },
         {
@@ -202,6 +281,7 @@
           "from": "customer",
           "id": "customer-posts",
           "kind": "http",
+          "signature": "sha256:75957bac7945e9b57c93ee4199f658b650ab7cf60165c179d55898dae2e68e93",
           "to": "post-orders"
         },
         {
@@ -225,7 +305,7 @@
           "channel": "orders",
           "description": {
             "author": "agent:claude",
-            "signature": "",
+            "signature": "sha256:dae7c97872d09469dee1d207647a50d4ffdcbddf69419477a3b2bc3ab090dac5",
             "text": "createOrder adds a place-order job to the orders queue."
           },
           "from": "create-order",
@@ -233,9 +313,10 @@
           "kind": "queue",
           "label": {
             "author": "agent:claude",
-            "signature": "",
+            "signature": "sha256:dae7c97872d09469dee1d207647a50d4ffdcbddf69419477a3b2bc3ab090dac5",
             "text": "place-order job"
           },
+          "signature": "sha256:dae7c97872d09469dee1d207647a50d4ffdcbddf69419477a3b2bc3ab090dac5",
           "step": "src/routes/orders.ts#function:createOrder/if[0]/variable:job/call[0]",
           "to": "orders-queue"
         },
@@ -244,6 +325,7 @@
           "from": "place-order",
           "id": "insert-order",
           "kind": "writes",
+          "signature": "sha256:e892f801fdc6345958c6ac6debe10d0da0b308a1eb87bc272b3d3d62989d61ed",
           "step": "src/services/order-service.ts#class:OrderService/method:place/expression_statement[1]",
           "to": "orders-table"
         },
@@ -264,9 +346,10 @@
           "kind": "other",
           "label": {
             "author": "agent:claude",
-            "signature": "",
+            "signature": "sha256:3d85e53193ddd5d27ac306a8d083cff90751d97a63211afa130eb4bbcff93eb2",
             "text": "posts to #orders"
           },
+          "signature": "sha256:3d85e53193ddd5d27ac306a8d083cff90751d97a63211afa130eb4bbcff93eb2",
           "step": "src/routes/orders.ts#function:createOrder/expression_statement[0]",
           "to": "slack"
         },
@@ -298,6 +381,7 @@
           "from": "orders-queue",
           "id": "worker-takes",
           "kind": "queue",
+          "signature": "sha256:477c8f78b79e52969243c6a92d1a036fade25f4867691c2b94d4ec897f3f3d49",
           "to": "worker"
         }
       ],
@@ -347,11 +431,7 @@
         {
           "anchors": [
             {
-              "file": "src/types.ts",
-              "lines": [
-                10,
-                14
-              ]
+              "key": "src/types.ts#interface:OrderDraft"
             }
           ],
           "at": [
@@ -378,7 +458,8 @@
           ],
           "id": "customers-table",
           "kind": "table",
-          "name": "customers"
+          "name": "customers",
+          "signature": "sha256:bc9919443a0af51697119826b189111ae31d91eb2208f5c3fe7bf0f9413cd633"
         },
         {
           "anchors": [
@@ -393,7 +474,8 @@
           "author": "agent:claude",
           "id": "orders-queue",
           "kind": "queue",
-          "name": "orders"
+          "name": "orders",
+          "signature": "sha256:638dc03d220da49a800cd471e13e6e3f7bf40c0d4ad5e1ea00854ae7e61965c9"
         },
         {
           "anchors": [
@@ -419,12 +501,13 @@
           ],
           "description": {
             "author": "agent:claude",
-            "signature": "",
+            "signature": "sha256:0f2a655cbb89de92821b19cb77264e4b2fc5dfdb7069a736a4807ed44e8014e1",
             "text": "Orders by id, in memory for each process."
           },
           "id": "orders-table",
           "kind": "table",
           "name": "orders",
+          "signature": "sha256:0f2a655cbb89de92821b19cb77264e4b2fc5dfdb7069a736a4807ed44e8014e1",
           "type": "src/types.ts#interface:Order"
         },
         {
@@ -440,7 +523,8 @@
           "author": "person:tester",
           "id": "redis",
           "kind": "cache",
-          "name": "Redis"
+          "name": "Redis",
+          "signature": "sha256:d029c62c63d4ec088b9add8e02bad0fdc3cfa9bb6c82387567b6a71acf1af2cf"
         },
         {
           "anchors": [
@@ -455,7 +539,8 @@
           "author": "person:tester",
           "id": "reports",
           "kind": "storage",
-          "name": "Orders report"
+          "name": "Orders report",
+          "signature": "sha256:573331c1628ffa338d341021f841fb4b36ef70ee2375b90df206aa00a980659d"
         },
         {
           "anchors": [
@@ -470,7 +555,8 @@
           "author": "agent:claude",
           "id": "slack",
           "kind": "external",
-          "name": "slack"
+          "name": "slack",
+          "signature": "sha256:8f9388d03f6a33cff2244c44d1be38259ab811a9e2d63a8283137923398fdce1"
         }
       ],
       "title": "How an order is placed"

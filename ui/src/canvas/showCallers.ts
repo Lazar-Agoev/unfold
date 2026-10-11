@@ -15,6 +15,7 @@ import {
   findCardByRef,
   findPage,
   getOpenBoard,
+  getPageView,
   editPage,
   keyDisplayName,
   pushFocusMove,
@@ -26,7 +27,7 @@ import { getProjectIndex, resolveRefProject } from "../state/workspace";
 import { cardQuery } from "./cardData";
 import { callerPlacement } from "./layout";
 import { measureText } from "./measure";
-import { estimatedBlockSize } from "./sizing";
+import { estimatedCardSize } from "./sizing";
 
 /** How many callers one Show callers adds at most (the engine's default page). */
 const CALLERS_LIMIT = 20;
@@ -68,7 +69,10 @@ export async function showCallers(target: PageTarget, cardId: string): Promise<v
   }
   const refProject = card.ref.project;
   const present = keys.flatMap((key) => findCardByRef(page, key, refProject)?.id ?? []);
-  const missing = keys.flatMap((key, index) => (findCardByRef(page, key, refProject) ? [] : [{ key, size: estimatedBlockSize(models[index], refProject !== undefined, measureText) }]));
+  // New cards show the page's lens, else its default view.
+  const shown = getPageView(target).lens ?? page.defaultView;
+  const size = (key: string, index: number) => estimatedCardSize({ key, model: models[index], view: shown, monogram: refProject !== undefined }, measureText);
+  const missing = keys.flatMap((key, index) => (findCardByRef(page, key, refProject) ? [] : [{ key, size: size(key, index) }]));
   const positions = callerPlacement(
     rect,
     missing.map((item) => item.size),

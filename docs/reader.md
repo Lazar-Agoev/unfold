@@ -360,7 +360,11 @@ the `try`'s body.
 ### Type definitions and uses
 
 A **type definition** is opened for an `interface`, `type_alias`, `enum`, or `class` block; any
-other key has none.
+other key has none. It is what a line's contract opens for a written type, and what a **type card**
+shows: a card of one of those blocks lists, in Diagram view (and in Flow for a type declaration),
+its aliased type, its members, and its inherited groups, and a `declared` span in a field's type that
+names another card of the same project draws a type arrow from that field to the card
+([UI shell](ui-shell.md#screens)).
 
 | Field | Contents |
 | --- | --- |
@@ -424,7 +428,7 @@ explanatory node, never old ranges applied to new bytes.
 | TypeScript `switch` (and a `case`, `default`, or `catch` shown alone), `try` with `finally` or without a handler; Python `with`, `match`, `case`, loops with `else`, and every `try` and `except` | An `opaque` node with a warning and no outgoing route |
 | A class | Its members as `definition` nodes, with no routes |
 | A file | One explanatory node: file initialization is not drawn |
-| TypeScript `interface`, `type_alias`, `enum` | Nothing: type declarations are not steps of a path |
+| TypeScript `interface`, `type_alias`, `enum` | Nothing: type declarations are not steps of a path (the app shows a type card's fields instead) |
 
 - Statements after a terminal or opaque node stay visible without an incoming route.
 - A labeled `break` or `continue` is opaque (the exact block text tells it from a plain one); one
@@ -539,7 +543,7 @@ workspace's board commands ([IPC](ipc.md#boards)) drive it.
 | page `frames[]` | `{id, title, description?, members, look, icon?, direction?, collapsed?, author}`. `members`: one or more distinct ids of cards, resources, notes, or frames of the page; an item is in at most one frame; frames never hold each other in a cycle and nest at most 3 deep. `look` is `box` or `zone`; `icon` one of `api`, `worker`, `schedule`, `cli`, `web`, `library`, `system`; `direction` `right` or `down`; `collapsed` written only when true |
 | page `resources[]` | `{id, kind, name, project?, type?, columns?, anchors, at, description?, author, signature?}`. `kind` is `table`, `queue`, `cache`, `storage`, `external`, or `actor`; `name` not blank. Only a table has a `type` (a block key; `project` is its project, and only with it) and `columns` (`{name, type?, key?, references?, optional?}`, names distinct; `key` is `primary`, `foreign`, or `unique`; only a foreign key has `references`). A table backed by a type lists marks only: `name`, `key`, `references` |
 | page `notes[]` | `{id, text, at, attach?, author}`: plain text of 1 to 400 characters, not blank; `attach` names a card, frame, resource, or link of the page, and then `at` is an offset from it |
-| anchor | `{key, project?}` (a block or entrance key) or `{file, lines: [first, last], project?}` (a path relative to the project's folder, lines 1-based and inclusive) |
+| anchor | `{key, project?}` (a block or entrance key) or `{file, lines: [first, last], project?}` (lines of an [evidence file](settings-and-scope.md#evidence-files), or of another input the graph records: a path relative to the project's folder, lines 1-based and inclusive) |
 | `publishes`, `baseRevision` | Only in an unpublished-changes copy ([below](#files-drafts-publish-and-unpublished-changes)): `"boards/<name>.json"`, matching the copy's file name, and the 64 lowercase hex digits of the revision it started from. Refused anywhere else |
 
 A **description** or **label** has `text` (not blank), `author` (`person:<username>` or `agent:<name>`), and
@@ -588,8 +592,8 @@ them is refused ("omit project for the board's own project").
   graph (`PageGraphs`, one `BoardGraph` per project, loaded for the keys the page references in it). Loading another
   project's graph never wakes it: a resting project is read through its read-only pool.
 - **Not connected.** A card from a project that isn't connected is a placeholder ("From storefront-web · not
-  connected"), never an error, and is never dropped. That project's labels, groups, and guards are kept as they are
-  and not checked.
+  connected"), never an error, and is never dropped. That project's labels, groups, guards, and the claims citing
+  it are kept as they are and not checked.
 - **Arrows** (opened calls) join only cards of one project, because the graph has no edges between projects. Cards
   of different projects are joined by drawn links.
 
@@ -604,16 +608,24 @@ facts' hash of the reference's project, so text can never be signed against sour
 | A group | From the start of its first member to the end of its last |
 | A label | The labeled block's range |
 | A drawn link's label | `"<from card's guard signature>\n<to card's guard signature>"` (each the hex digits) |
+| A resource card, and its description | Its type's block range (a table backed by a type), then each anchor's bytes, each followed by `\n` |
+| A connection (a link with a `kind` that cites code), and its description and label | Its step's block range, then each anchor's bytes, each followed by `\n` |
+| A frame's description | Its member cards' signatures (direct and in nested frames, sorted by card id), hex, joined with `\n` |
 
-When a signature no longer matches the verified bytes (or the bytes do not verify), the description or label is
-**outdated**. A link's label is signed when it is saved but never reported outdated: a drawn link is a person's claim,
-and health checks only that both ends still exist. A label on a link with a resource or frame end, and the
-descriptions and signatures of frames, resources, and connections, are kept as they are written.
+An anchor's bytes are a block's range, an entrance's evidence range, or an evidence file's lines (from the start of
+the first through the end of the last, its line break included), all verified against the hash the graph recorded.
+A save signs unsigned claims, and signs a resource card or connection again when what it cites changed.
+
+When a signature no longer matches the verified bytes (or the bytes do not verify), the description, label, or claim
+is **outdated**. A drawn link's label is signed when it is saved but never reported outdated: a drawn link is a
+person's claim, and health checks only that both ends still exist. A label on a drawn link with a resource or frame
+end, and a claim that cites no code (an `actor`, a `writes` connection without a step), aren't signed.
 
 ### Guards and reconnecting
 
-Every save records a guard for each referenced (project, key) of a connected project (cards, group members, labels):
-its kind, owner, and signature. Guards for references no longer used are dropped; guards of a project that isn't
+Every save records a guard for each referenced (project, key) of a connected project (cards, group members, labels,
+and what claims cite: tables' types, key anchors, connections' steps and carried types): its kind, owner, and
+signature. Guards for references no longer used are dropped; guards of a project that isn't
 connected are kept unchanged. After a graph update, references reconnect by key:
 
 - A **surviving key** reconnects. If its text no longer matches, the text is outdated.
@@ -622,7 +634,38 @@ connected are kept unchanged. After a graph update, references reconnect by key:
   `if[0]`) whose source changed, is **held for review** instead of attaching its text to different code. Held
   references cannot be described, and Mermaid draws them as "needs review".
 - **Renames and moves** leave the old key missing; the Reconnect repair points it at the new key, in the card's own
-  project.
+  project, everywhere on the page: cards, group members, labels, tables' types, anchors, and carried types.
+  **Reconnecting a card carries its connections' steps along**: a step under the old key moves to the same path
+  under the new key (`…#function:place/expression_statement[1]/call[0]` → `…#function:placeOrder/…`), with a fresh
+  guard.
+- **Evidence ranges** have no guard: they are missing when the graph no longer records the file or the file has
+  fewer lines, and outdated when the lines' bytes change. The Reconnect repair points one anchor, by its position,
+  at other lines or a key.
+
+### Grounding
+
+A save checks every claim that is new or changed in what it says or cites (not in its position or its texts), after
+its references were checked, so what it cites exists:
+
+- a table backed by a type marks only the type's fields (its properties, inherited ones included), and a `relates`
+  connection joins only columns its tables have (the fields of a table backed by a type);
+- every resource card an **agent** wrote (`agent:` author), except an `actor`, has an anchor, and so does an agent's
+  `http`, `rpc`, `queue`, `event`, or `calls` connection: a person's may lack them;
+- an agent's resource card's `name`, and the columns a table lists itself, appear in the verified bytes it cites
+  (its type's and its anchors'): a plain text search;
+- an agent's connection's `channel` appears in its step's or anchors' bytes, unless its `to` end is an entrance,
+  whose channel the save fills in for every connection: an `http` connection gets the route's `METHOD path`, a
+  `queue` connection the worker's queue;
+- an agent's `carries` is used, by a type link, inside the step's owner (the function it is in) or inside an
+  anchor's block (an entrance anchor's evidence block);
+- an agent's `calls` connection leaves from a call Unfold can't follow: its `step` is a `call` or `new` block whose
+  occurrence edge is unresolved or external.
+
+An agent's claim citing a project that isn't connected can't be grounded and is refused. A refusal is
+`board_problem` and says what failed, why, and what to do instead ("Can't add the table "orders": the column
+"customer_id" doesn't appear in its anchors (OrderRepository in src/db/repository.ts). Cite where the column is
+defined, or leave it out"). Claims carried over unchanged aren't checked again, so code that changes under a grounded
+claim makes it outdated, not refused.
 
 ### Groups
 
@@ -637,21 +680,29 @@ Health is computed per page, and every item names its page and, for labels and k
 
 | Kind | When | Repairs offered |
 | --- | --- | --- |
-| `missing` | A card's or label's key is not in its project's graph | Reconnect, remove the card or label |
-| `outdated` | A card, group, or label signature no longer matches | Re-sign (keep the text, accept the code), remove the description or label |
+| `missing` | A card's or label's key is not in its project's graph; a resource card's type or anchor is gone (an evidence range: the file isn't recorded, or has fewer lines) | Reconnect, remove the card, label, or resource card |
+| `outdated` | A card, group, or label signature no longer matches; a resource card's, connection's, or their texts' signature, or a frame description's, no longer matches | Re-sign (keep the text, accept the code), remove the description or label (a connection's description and label), remove the resource card or connection |
 | `brokenGroup` | A group breaks the group rules, or overlaps or nests with another | Ungroup |
-| `review` | A guarded reference (a card, a group member, a label) is held for review | Accept (save a fresh guard for the current code), Reconnect, remove or ungroup |
+| `review` | A guarded reference (a card, a group member, a label, a key a claim cites) is held for review | Accept (save a fresh guard for the current code), Reconnect, remove or ungroup |
 | `notConnected` | A card's `ref.project` resolves to no connected project | Remove the card |
-| `brokenLink` | A drawn link's end is a card that is missing from its connected project (a resource or frame end never is) | Remove the link |
+| `brokenLink` | A link's end is a card that is missing from its connected project (a resource or frame end never is); a connection's step is gone or not inside its card's block, its carried type is gone or isn't a type, or an anchor is gone | Reconnect (the step, type, or anchor), remove the link |
 
-A board's list label sums its items ("1 missing · 2 outdated · 1 not connected · 2 broken links"); a healthy board
-has none. `apply_repair` performs a repair on one page. Removing a card or a link removes what would dangle: a
+Each item names its page and its target (a card, group, label, link, resource card, or frame), and, for a reference
+that isn't the target itself, its key and project, and an anchor's position (`anchor`). Claims citing a project that
+isn't connected are kept unchecked, like its cards' labels and groups.
+
+A board's list label sums its items, claims' included ("1 missing · 2 outdated · 1 not connected · 2 broken links");
+a healthy board has none. `apply_repair` performs a repair on one page: `reconnect` (a key, page-wide),
+`reconnect_anchor` (one anchor of a resource card or connection, by position, to a key or an evidence range),
+`remove_card`, `remove_label`, `ungroup`, `remove_link`, `remove_resource`, `remove_description`, `resign`, and
+`accept`. Removing a card, a link, or a resource card removes what would dangle: a
 card's groups, the links that end at it, its place in a frame (a frame left with no members goes too, with the links
 to it), and the attachment of a note, which stays where it was, unattached (at the item's position plus its offset:
 a card's or resource's position, a link's ends' midpoint, a frame's members' top-left). Saving (`prepare_save`) re-checks only the pages that
 changed, restores guards an edit dropped (from the version being replaced), signs unsigned descriptions, labels,
-and link labels, saves guards, and refuses a board that introduces a missing reference, a broken group, a held
-reference, or a broken link that the previous version did not already have; problems carried over unchanged are
+link labels, and claims, saves guards, and refuses a board that introduces a missing reference, a broken group, a
+held reference, or a broken link that the previous version did not already have, or a new or changed claim that
+isn't [grounded](#grounding); problems carried over unchanged are
 kept, and a card that isn't connected is never a save error, so a board with a placeholder can still be moved or
 retitled.
 
@@ -730,7 +781,8 @@ unlabeled").
 handlers, and one Flow as Mermaid flowchart text ([architecture §10.5](architecture.md#105-boards)).
 
 - **Cards.** An entrance card is a stadium node with its label (or method and trigger); a Code-view
-  or Diagram-view card is a box with its qualified name, location, and description; a Flow-view card
+  or Diagram-view card is a box with its qualified name, location, and description, and so is a type
+  declaration (`interface`, `type_alias`, `enum`) in Flow view, which has no paths; a Flow-view card
   is a subgraph with its Flow, and its groups as nested subgraphs. A card from a project that isn't
   connected is a "From <name>, not connected" placeholder. An entrance export draws the entrance card
   and a Flow card for each distinct resolved target.
@@ -748,7 +800,10 @@ handlers, and one Flow as Mermaid flowchart text ([architecture §10.5](architec
   class.
 - **Arrows.** Inside a card, every route with its label (`on error` dashed). Between cards, solid
   arrows for calls and constructions and dashed arrows for imports and passed references, labeled
-  with the edge kind and leaving from the Flow node that shows the occurrence; an entrance points at
+  with the edge kind and leaving from the Flow node that shows the occurrence. A Diagram-view card
+  draws one arrow to each card it calls, as the app does: labeled with its first call's or
+  construction's kind (else its first edge's), or "N calls" for several, and dashed only when every
+  edge is; an entrance points at
   each handler (`handler`), with a dashed arrow to a placeholder for a target not on the page.
   Arrows from the graph join only cards of one project; links drawn on the page are dashed arrows with
   their label. A connection is labeled with its kind's word (`HTTP`, `RPC`, `queue`, `event`,
@@ -759,7 +814,8 @@ handlers, and one Flow as Mermaid flowchart text ([architecture §10.5](architec
   leaves from the Flow node that shows it; one that ends at a frame points at its subgraph.
 - **Labels are the app's** ([U-27](decisions-and-tradeoffs.md#u-27-the-reader-keeps-the-v71-rules)):
   the authored label or the fallback name, never exact source, plus a line per listed callback. An
-  outdated description or label is marked `(description outdated)`; references held for review,
+  outdated description, label, or frame description is marked `(description outdated)`, and an outdated
+  resource card or connection `(outdated)`; references held for review,
   missing references, and broken groups are drawn as "needs review" placeholders and never applied to
   changed code. Health items and Flow warnings become `%%` comments.
 - **Escaping.** The characters `&`, `<`, `>`, `"`, `#`, `|`, `\`, the backtick, `[`, `]`, `{`, and `}`
@@ -770,8 +826,9 @@ handlers, and one Flow as Mermaid flowchart text ([architecture §10.5](architec
 structurally: comment lines are dropped; node ids and shapes, subgraphs, classes, and every arrow
 must be equal line for line; node labels are compared wherever the PoC did not show source text
 (entrances, Code-view cards, placeholders, `End`). `tests/sample_board.rs` compares the sample
-board's diagram with the PoC's exactly; `tests/board_items.rs` snapshots the diagram of
-`testdata/boards/order-system.json`, which has every frame, resource, connection, and note shape. Snapshots of every Unfold diagram (`testdata/boards/*.mmd`,
+board's diagram with the PoC's exactly; `unfold-workspace`'s `tests/commands/claims.rs` saves
+`testdata/boards/order-system.json`, which has every frame, resource, connection, and note shape, on a compiled
+`ts-orders` (its typed records ground the claims) and snapshots the board and its diagram. Snapshots of every Unfold diagram (`testdata/boards/*.mmd`,
 `testdata/mermaid/*.json`) are parsed by the real Mermaid parser in `tools/oracles/check-mermaid.mjs`.
 
 ### Differences from the proof of concept

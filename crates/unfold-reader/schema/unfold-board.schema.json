@@ -229,7 +229,7 @@
         "kind": {
           "type": "string",
           "description": "The block kind, or `entrance:` and the entrance kind.",
-          "pattern": "^(file|function|class|method|constructor|getter|setter|variable|call|new|import|if|for|for_in|for_of|while|do_while|switch|case|default|try|catch|return|throw|break|continue|expression_statement|with|match|entrance:(process|command|http|worker|schedule|event))$"
+          "pattern": "^(file|function|class|method|constructor|getter|setter|variable|call|new|import|if|for|for_in|for_of|while|do_while|switch|case|default|try|catch|return|throw|break|continue|expression_statement|with|match|interface|type_alias|enum|entrance:(process|command|http|worker|schedule|event))$"
         },
         "owner": { "type": "string", "description": "The owner's block key; empty for an entrance." },
         "signature": { "$ref": "#/$defs/signature" }

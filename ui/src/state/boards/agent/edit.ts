@@ -24,6 +24,7 @@ import type {
   AgentReadResult,
 } from "@unfold/desktop/agent-api";
 import { produce } from "immer";
+import { isTypeKind, keyBlockKind } from "../../../code/typeKinds";
 import { showToast } from "../../../components/Toast";
 import { queryClient } from "../../../ipc/client";
 import type { Page } from "../../../ipc/generated";
@@ -117,11 +118,12 @@ export async function applyAgentEdit(request: AgentEditRequest): Promise<AgentEd
       index: projectIndex(await queryClient.query(engineQueryOptions("workspace", {}))),
       measured: board.pages[request.page]?.sizes ?? {},
     };
-    // Every card's model: its size, its calls, its outline and Flow steps.
+    // Every card's model (its size, its calls, its outline and Flow steps) and each type card's definition (its fields and type arrows).
     await Promise.all(
       page.cards.map(async (card) => {
         const project = cardProject(base, card);
-        return project === null ? null : base.data.loadModel(project, cardKey(card));
+        const key = cardKey(card);
+        return project === null ? null : Promise.all([base.data.loadModel(project, key), isTypeKind(keyBlockKind(key) ?? "") ? base.data.loadDefinition(project, key) : null]);
       }),
     );
     const applies: ApplyOp[] = [];

@@ -45,7 +45,7 @@ use std::sync::Arc;
 
 use unfold_reader::board::files::{BoardFile, Change, Loaded, Place, slug};
 use unfold_reader::board::{
-    Board, BoardError, Health, ProjectName, Repair, apply_repair, outline, parse_edit, prepare_save,
+    Anchor, Board, BoardError, Health, ProjectName, Repair, apply_repair, outline, parse_edit, prepare_save,
     serialize,
 };
 use unfold_reader::mermaid;
@@ -55,8 +55,8 @@ pub(crate) use self::health::{check_disk, refresh};
 pub use self::lists::{board_refs, board_thumbnails, drafts, list_boards, read_board};
 pub use self::session::BoardExtras;
 pub use self::types::{
-    BoardDocument, BoardEdit, BoardHealthView, BoardIdArgs, BoardList, BoardRefHit, BoardRefs, BoardState,
-    BoardSummary, CardKind, Drafts, LabelSpec, MoveBoardArgs, NewBoardArgs, OpenBoardResult,
+    AnchorSpec, BoardDocument, BoardEdit, BoardHealthView, BoardIdArgs, BoardList, BoardRefHit, BoardRefs,
+    BoardState, BoardSummary, CardKind, Drafts, LabelSpec, MoveBoardArgs, NewBoardArgs, OpenBoardResult,
     PublishBoardArgs, PublishOutcome, PublishedState, ReadBoardResult, RenameFolderArgs, RenamedFolder,
     RepairBoardArgs, RepairKindSpec, RepairSpec, Resolve, SaveBoardArgs, SaveBoardViewArgs,
     SetBoardFolderArgs, TargetSpec, Thumbnail, ThumbnailCard, ThumbnailPage, Thumbnails, ThumbnailsArgs,
@@ -498,19 +498,28 @@ pub fn repair_board(ctx: &Ctx<'_>, args: RepairBoardArgs) -> CommandResult<Board
         let mut sessions = held.boards().sessions();
         let (session, _) = held.session(&mut sessions, &mut resolver)?;
         let mut board = session.board.clone();
-        // Reconnecting reads the new key from its project's graph too.
-        let reconnect = match &repair {
-            Repair::Reconnect { project, to, .. } => Some((project.clone(), to.as_str())),
-            _ => None,
+        // Reconnecting reads the new key, or the new anchor, from its project's graph too.
+        let (reconnected, key, file) = match &repair {
+            Repair::Reconnect { project, to, .. } => (Some(project.as_ref()), Some(to.as_str()), None),
+            Repair::ReconnectAnchor { to, .. } => match to {
+                Anchor::Key { key, project } => (Some(project.as_ref()), Some(key.as_str()), None),
+                Anchor::File { file, project, .. } => (Some(project.as_ref()), None, Some(file)),
+            },
+            _ => (None, None, None),
         };
-        let graphs = resolver.graphs(&board.projects, |project| {
-            let mut keys = board.references(project);
-            if let Some((reconnected, to)) = &reconnect
-                && reconnected.as_ref() == project
-            {
-                keys.push(to);
+        let mut projects = board.projects.clone();
+        if let Some(Some(name)) = reconnected
+            && !projects.contains(name)
+        {
+            projects.push(name.clone());
+        }
+        let graphs = resolver.graphs(&projects, |project| {
+            let mut references = board.references(project);
+            if reconnected == Some(project) {
+                references.keys.extend(key);
+                references.files.extend(file);
             }
-            keys
+            references
         })?;
         let page = board
             .page_mut(&page_id)

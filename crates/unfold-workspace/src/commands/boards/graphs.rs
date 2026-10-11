@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use unfold_reader::board::files::Revision;
-use unfold_reader::board::{Board, BoardGraph, PageGraphs, ProjectName};
+use unfold_reader::board::{Board, BoardGraph, PageGraphs, ProjectName, References};
 use unfold_store::ReadPool;
 
 use crate::ipc::error::CommandResult;
@@ -64,10 +64,10 @@ impl Source {
         })
     }
 
-    /// The part of the graph `keys` need (empty without a graph).
-    fn load(&self, keys: &[&str]) -> CommandResult<BoardGraph> {
+    /// The part of the graph `references` need (empty without a graph).
+    fn load(&self, references: &References<'_>) -> CommandResult<BoardGraph> {
         match &self.pool {
-            Some(pool) => Ok(BoardGraph::load(&pool.get()?, &self.root, keys)?),
+            Some(pool) => Ok(BoardGraph::load(&pool.get()?, &self.root, references)?),
             None => Ok(BoardGraph::new()),
         }
     }
@@ -146,27 +146,27 @@ impl<'a> Resolver<'a> {
             .or_else(|| Source::new(id, root, None).ok())
     }
 
-    /// The graphs for the keys `references` lists per project (`None`: the board's own), for
-    /// a board or page whose cards name the projects `names`.
+    /// The graphs for what `references` lists per project (`None`: the board's own), for a
+    /// board or page whose items name the projects `names`.
     pub(super) fn graphs<'k>(
         &mut self,
         names: &[ProjectName],
-        references: impl Fn(Option<&ProjectName>) -> Vec<&'k str>,
+        references: impl Fn(Option<&ProjectName>) -> References<'k>,
     ) -> CommandResult<Graphs> {
         let mut graphs = Graphs {
             own: self.own.load(&references(None))?,
             others: BTreeMap::new(),
         };
         for name in names {
-            let keys = references(Some(name));
-            if keys.is_empty() {
+            let referenced = references(Some(name));
+            if referenced == References::default() {
                 continue;
             }
             let Some(source) = self.other(name).filter(|source| source.pool.is_some()) else {
                 continue;
             };
             // Another project's graph that can't be read is not connected, never an error.
-            if let Ok(graph) = source.load(&keys) {
+            if let Ok(graph) = source.load(&referenced) {
                 graphs.others.insert(name.clone(), graph);
             }
         }

@@ -152,6 +152,13 @@ doesn't walk). A language may ask for more before linking (`Language::requested_
 `tsconfig` `extends` target under `node_modules`); the engine reads them and asks again, for up to 16
 rounds. Any input change relinks.
 
+Evidence files (`[evidence] files`, [settings](settings-and-scope.md#evidence-files)) are found by discovery
+and read and hashed like configuration inputs, but never parsed and never given to languages: they shape
+nothing linking reads. Every update records each one it can read as an input with the role `evidence`; when
+an update doesn't relink, the kept graph takes their new records (`ChangeSummary::inputs_changed`), so a
+changed migration or schema never relinks. An unreadable one is listed as a problem but doesn't make the
+graph incomplete.
+
 Inputs are read before sources, because a file's settings hash can depend on them: the engine asks each
 language for the extraction options of its files in one batch (`Language::extraction_options`, which defaults
 to `settings_hash`), uses each result's hash as the file's settings hash, and hands the options back to
@@ -217,8 +224,8 @@ the cache can't supply are left for the next update. `UpdateRequest::reopen()` t
 hashes only files whose size or modification time differs. It relinks only when something changed: a file's
 facts, the file set, or what the graph was linked from. That is the `LinkBasis` every update reports
 (`UpdateOutcome::basis`) and the store keeps with the graph: a fingerprint of the engine and front-end
-versions, the folder, the effective settings and the settings file, every configuration input, and the
-unindexed and context files, with the problems linking found. A graph restored without its basis is relinked
+versions, the folder, the effective settings and the settings file, every configuration input (not the
+evidence files), and the unindexed and context files, with the problems linking found. A graph restored without its basis is relinked
 once. When nothing changed, the restored graph and its link problems are kept, and the workspace commits
 nothing (every disk stamp and the metadata are already stored). When the engine version changed, nothing
 matches and the reopen check recompiles in the background.

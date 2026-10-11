@@ -5,9 +5,12 @@
  * (`currency=str`). Three or more inputs fold to the first and a count (`(Cart, +2) → Receipt`).
  * A missing output is `?`; inputs the reader can't list are `(…)`. Where a label doesn't fit beside
  * the cards, shorter forms keep the output: `(+2) → Gateway`, then `→ Gateway`.
+ *
+ * An arrow from a Diagram node that stands for several calls reads `3 calls`; a type arrow's label is
+ * its field's written type (`CartItem[]`), cut short where it doesn't fit.
  */
 
-import type { LabelInput, LineLabel } from "../../ipc/generated";
+import type { LabelInput, LineLabel, TypeText } from "../../ipc/generated";
 
 /** How a part reads: a type, a parameter name without a type, punctuation, or something unknown. */
 export type LabelTone = "type" | "name" | "punct" | "unknown";
@@ -74,4 +77,26 @@ export function labelForms(label: LineLabel): LabelPart[][] {
   ];
   // A form that reads the same as a longer one adds nothing (`() → void` has no count to drop).
   return forms.filter((form, index) => forms.findIndex((other) => partsText(other) === partsText(form)) === index);
+}
+
+/** "3 calls": the label of an arrow that stands for several calls. */
+export function countText(count: number): string {
+  return `${count} ${count === 1 ? "call" : "calls"}`;
+}
+
+/** The one form of a count's label. */
+export function countForms(count: number): LabelPart[][] {
+  return [[{ text: countText(count), tone: "type" }]];
+}
+
+/** A written type longer than this many characters has a shorter form, cut with `…`. */
+export const TYPE_LABEL_SHORT = 24;
+
+/** A type arrow's forms: its field's written type, then (when long) its start and `…`. */
+export function typeForms(type: TypeText): LabelPart[][] {
+  const full: LabelPart[] = [{ text: type.text, tone: "type" }];
+  if (type.text.length <= TYPE_LABEL_SHORT) {
+    return [full];
+  }
+  return [full, [{ text: type.text.slice(0, TYPE_LABEL_SHORT - 1), tone: "type" }, { text: "…", tone: "punct" }]];
 }

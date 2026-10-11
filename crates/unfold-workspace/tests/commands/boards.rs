@@ -18,7 +18,7 @@ const HEALTH_CHECK: &str = "src/orders_playground/server.py#function:health_chec
 const CHECKOUT: &str = r#"entrance:["next.route","http","POST","/api/cart/checkout"]"#;
 
 /// A card for block or entrance `key` of the board's own project.
-fn card(id: &str, key: &str) -> Value {
+pub(crate) fn card(id: &str, key: &str) -> Value {
     let kind = if key.starts_with("entrance:") {
         "entrance"
     } else {
@@ -40,11 +40,11 @@ fn text(words: &str) -> Value {
 }
 
 /// What a window saves of a board it shows: its title and pages.
-fn edit_of(state: &Value) -> Value {
+pub(crate) fn edit_of(state: &Value) -> Value {
     json!({ "title": state["document"]["title"], "pages": state["document"]["pages"] })
 }
 
-fn id_of(state: &Value) -> String {
+pub(crate) fn id_of(state: &Value) -> String {
     state["id"].as_str().expect("a board id").to_owned()
 }
 
@@ -59,7 +59,7 @@ fn revision_of(text: &str) -> String {
 
 impl Harness {
     /// A new draft titled `title` in the first project, held by `window`.
-    fn draft(&self, window: u32, title: &str) -> Value {
+    pub(crate) fn draft(&self, window: u32, title: &str) -> Value {
         self.ok(
             window,
             "new_board",
@@ -68,7 +68,7 @@ impl Harness {
     }
 
     /// Saves `edit` as board `id` of the first project from `window`.
-    fn save(&self, window: u32, id: &str, edit: Value) -> Value {
+    pub(crate) fn save(&self, window: u32, id: &str, edit: Value) -> Value {
         self.ok(
             window,
             "save_board",
@@ -107,7 +107,7 @@ impl Harness {
         self.root.join(relative)
     }
 
-    fn read(&self, relative: &str) -> String {
+    pub(crate) fn read(&self, relative: &str) -> String {
         std::fs::read_to_string(self.path(relative)).expect("read a board file")
     }
 
@@ -359,8 +359,20 @@ fn frames_resources_connections_and_notes_are_saved_as_sent() {
     }]);
     let saved = harness.save(1, &id, edit.clone());
     let page = &saved["document"]["pages"][0];
-    for field in ["resources", "frames", "links", "notes"] {
+    for field in ["frames", "notes"] {
         assert_eq!(page[field], edit["pages"][0][field], "{field} carried through");
+    }
+    // The claims come back signed over the code they cite, and otherwise as sent.
+    for field in ["resources", "links"] {
+        let mut items = page[field].clone();
+        for item in items.as_array_mut().expect("items") {
+            let signature = item
+                .as_object_mut()
+                .and_then(|item| item.remove("signature"))
+                .expect("signed");
+            assert!(signature.as_str().is_some_and(|text| text.starts_with("sha256:")));
+        }
+        assert_eq!(items, edit["pages"][0][field], "{field} carried through");
     }
     assert_eq!(page["groups"][0]["author"], "agent:claude");
     assert_eq!(
@@ -1203,6 +1215,26 @@ fn drafts_span_every_project() {
 }
 
 #[test]
+fn a_type_declaration_in_flow_view_exports_as_a_box() {
+    let harness = Harness::compiled("ts-orders");
+    let board = harness.draft(1, "Types");
+    let id = id_of(&board);
+    let mut edit = edit_of(&board);
+    edit["pages"][0]["cards"] = json!([card("draft", "src/types.ts#interface:OrderDraft")]);
+    edit["pages"][0]["cards"][0]["view"] = json!("flow");
+    harness.save(1, &id, edit);
+    let mermaid = harness.ok(
+        1,
+        "export_mermaid_text",
+        json!({ "project": harness.project, "board": { "id": id, "page": "page-1" } }),
+    );
+    let text = mermaid["text"].as_str().expect("text");
+    // It has no paths: the app shows its fields, and the export its box, not an empty Flow.
+    assert!(!text.contains("subgraph"), "{text}");
+    assert!(text.contains("c0[\"OrderDraft · src/types.ts:10\"]"), "{text}");
+}
+
+#[test]
 fn thumbnails_draw_first_pages() {
     let harness = Harness::compiled("ts-orders");
     let board = harness.draft(1, "Thumbs");
@@ -1212,9 +1244,13 @@ fn thumbnails_draw_first_pages() {
         card("route", POST_ORDERS),
         card("create", CREATE_ORDER),
         card("place", PLACE_ORDER),
+        card("draft", "src/types.ts#interface:OrderDraft"),
+        card("status", "src/types.ts#type_alias:OrderStatus"),
+        card("worker", "src/lib/pool.ts#class:Worker"),
     ]);
     edit["pages"][0]["cards"][1]["folded"] = json!(true);
     edit["pages"][0]["cards"][2]["view"] = json!("flow");
+    edit["pages"][0]["cards"][3]["view"] = json!("diagram");
     edit["pages"]
         .as_array_mut()
         .expect("pages")
@@ -1247,6 +1283,16 @@ fn thumbnails_draw_first_pages() {
     assert!(shown("create")["lines"].as_u64().is_some_and(|lines| lines > 1));
     assert_eq!(shown("place")["view"], "flow");
     assert_eq!(shown("place")["folded"], false);
+    assert_eq!(shown("create")["fields"], Value::Null);
+    // Type cards: a declaration's and a class's own members; an alias that isn't an object, its type.
+    assert_eq!(shown("draft")["kind"], "type");
+    assert_eq!(shown("draft")["view"], "diagram");
+    assert_eq!(shown("draft")["fields"], 3);
+    assert_eq!(shown("status")["kind"], "type");
+    assert_eq!(shown("status")["fields"], 1);
+    // `Worker`'s fields are its constructor's parameter properties, `name` and `task`.
+    assert_eq!(shown("worker")["kind"], "class");
+    assert_eq!(shown("worker")["fields"], 2);
     assert!(cards.iter().all(|card| card["foreign"] == false));
     let edges = first["edges"].as_array().expect("edges");
     assert!(edges.contains(&json!(["route", "create"])), "{edges:?}");

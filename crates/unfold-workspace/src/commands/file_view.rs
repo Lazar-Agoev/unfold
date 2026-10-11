@@ -10,7 +10,10 @@
 //! | --- | --- | --- |
 //! | `current` | The bytes on disk are the ones the graph was built from | Colors, outline, folds, links |
 //! | `not_compiled` | The file changed since the graph was built (or the update is pending) | The current text with colors, labeled as not compiled yet, without graph links |
+//! | `evidence` | The file is an evidence file (`[evidence] files`) and its bytes are the ones the graph recorded | The text with line numbers |
 //! | `not_indexed` | The file isn't in the graph (another language, ignored, out of scope) | The text, with colors when the language is known |
+//!
+//! An evidence file whose bytes changed since the graph recorded them is `not_compiled`.
 //!
 //! A file that isn't UTF-8 text, or is larger than [`MAX_FILE_BYTES`], comes back without text.
 //!
@@ -26,7 +29,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unfold_core::highlight::Highlighter;
-use unfold_core::vocab::{FileState, Language};
+use unfold_core::vocab::{FileState, InputRole, Language};
 use unfold_core::{ByteRange, ContentHash, FileGraph, RepoPath, Snapshot, Utf16Index};
 use unfold_reader::code::{CallLink, CodeLine, CodeSpan, CodeText, FoldPolicy, OutlineItem, render};
 
@@ -62,6 +65,8 @@ pub enum GraphMatch {
     Current,
     /// The file changed since the graph was built; no graph links are drawn.
     NotCompiled,
+    /// The file is an evidence file, and the text is what the graph recorded.
+    Evidence,
     /// The file isn't in the graph.
     NotIndexed,
 }
@@ -204,19 +209,28 @@ pub(crate) fn render_page(
             Err(_) => None,
         })
     };
+    // The hash the graph recorded for the file as an evidence file, if it is one.
+    let evidence = || -> CommandResult<Option<ContentHash>> {
+        Ok(match workspace.readers() {
+            Ok(pool) => pool
+                .get()?
+                .inputs()?
+                .into_iter()
+                .find(|input| input.path == path && input.role == InputRole::Evidence)
+                .map(|input| input.hash),
+            Err(_) => None,
+        })
+    };
     let unshowable = |reason| -> CommandResult<FileView> {
         let graph = file_graph()?;
+        let recorded = if graph.is_some() { None } else { evidence()? };
         Ok(FileView {
             path: path.as_str().to_owned(),
             language: graph
                 .as_ref()
                 .map(|file| file.file.language)
                 .or_else(|| language_of(&path)),
-            graph: if graph.is_some() {
-                GraphMatch::NotCompiled
-            } else {
-                GraphMatch::NotIndexed
-            },
+            graph: unverified(graph.is_some(), recorded, None),
             file_state: graph.as_ref().map(|file| file.file.state),
             unshowable: Some(reason),
             line_count: 0,
@@ -263,14 +277,13 @@ pub(crate) fn render_page(
                     render(file, 0, snapshot.text(), highlighter, FoldPolicy::SourceTab)?,
                     GraphMatch::Current,
                 ),
-                None => (
-                    plain(snapshot.text(), highlighter),
-                    if graph.is_some() {
-                        GraphMatch::NotCompiled
-                    } else {
-                        GraphMatch::NotIndexed
-                    },
-                ),
+                None => {
+                    let recorded = if graph.is_some() { None } else { evidence()? };
+                    (
+                        plain(snapshot.text(), highlighter),
+                        unverified(graph.is_some(), recorded, Some(snapshot.hash())),
+                    )
+                }
             };
             let rendered = Arc::new(RenderedFile {
                 language,
@@ -284,6 +297,18 @@ pub(crate) fn render_page(
         }
     };
     Ok(page(&path, &rendered, range))
+}
+
+/// How text drawn without graph facts relates to the graph: a file the graph indexes changed
+/// since; an evidence file (the graph `recorded` its hash) is as recorded unless its bytes
+/// (`hash`, when read) differ; anything else isn't in the graph.
+fn unverified(indexed: bool, recorded: Option<ContentHash>, hash: Option<ContentHash>) -> GraphMatch {
+    match recorded {
+        _ if indexed => GraphMatch::NotCompiled,
+        Some(recorded) if hash.is_none_or(|hash| hash == recorded) => GraphMatch::Evidence,
+        Some(_) => GraphMatch::NotCompiled,
+        None => GraphMatch::NotIndexed,
+    }
 }
 
 /// The language whose highlighter colors a file outside the graph, by extension. JavaScript is
@@ -482,6 +507,23 @@ mod tests {
             cache.put(key(&format!("{index}.ts"), "x", 2), rendered("x"));
         }
         assert_eq!(cache.entries.len(), CACHED_FILES);
+    }
+
+    #[test]
+    fn evidence_files_are_shown_as_recorded_or_changed() {
+        let recorded = ContentHash::of(b"create table orders;\n");
+        let changed = ContentHash::of(b"create table customers;\n");
+        assert_eq!(
+            unverified(false, Some(recorded), Some(recorded)),
+            GraphMatch::Evidence
+        );
+        assert_eq!(unverified(false, Some(recorded), None), GraphMatch::Evidence);
+        assert_eq!(
+            unverified(false, Some(recorded), Some(changed)),
+            GraphMatch::NotCompiled
+        );
+        assert_eq!(unverified(true, None, Some(changed)), GraphMatch::NotCompiled);
+        assert_eq!(unverified(false, None, Some(changed)), GraphMatch::NotIndexed);
     }
 
     #[test]

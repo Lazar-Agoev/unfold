@@ -1,40 +1,49 @@
 /**
- * `add_cards`: puts functions, classes, and entrances on a page the way following a call places
- * them, and optionally their call trees (resolved calls only), saying where following stopped. A card
- * goes beside the item it is `near`, else beside a card that calls it or that it calls, else right of
- * everything; it never covers another card. Cards already on the page are kept, not duplicated.
+ * `add_cards`: puts functions, classes, types, and entrances on a page the way following a call places
+ * them, and optionally their call trees (resolved calls only) or the types their fields name, saying
+ * where following stopped. A card goes beside the item it is `near`, else beside a card that calls it,
+ * whose field names it, or that it calls, else right of everything; it never covers another card.
+ * Cards already on the page are kept, not duplicated.
  */
 
 import type { AddCardsOp, AgentCardResult, AgentCardSpec, AgentFollowStop, AgentItemResult } from "@unfold/desktop/agent-api";
-import { occurrencesOf } from "../../../canvas/arrows";
+import { fieldRows, occurrencesOf } from "../../../canvas/arrows";
 import { lastVerifiedCode } from "../../../canvas/cardData";
 import { FOLLOW_GAP, HEADER_PORT, clearSpot, followPlacement, newCardPlacement, type Rect, type Size } from "../../../canvas/layout";
-import { estimatedLineOffset } from "../../../canvas/sizing";
-import type { Card, CardRef, Key, Page, ProjectId, ProjectName } from "../../../ipc/generated";
+import { measureText } from "../../../canvas/measure";
+import { descriptionHeight, estimatedFieldOffset, estimatedLineOffset } from "../../../canvas/sizing";
+import { cardBody, isTypeKind, keyBlockKind, memberName } from "../../../code/typeKinds";
+import type { Card, CardRef, Key, Page, ProjectId, ProjectName, TypeDefinition, View } from "../../../ipc/generated";
 import { refProjectFor } from "../../workspace";
-import { addCard, cardKey, findCard, findCardByRef, setCardView } from "../document";
+import { addCard, cardKey, findCard, findCardByRef, keyDisplayName, setCardView } from "../document";
 import { cardProject, cardResult, cardSize, invalid, pageRects, type ApplyOp, type OpContext } from "./context";
 import type { AgentData } from "./data";
 
-/** How deep following goes at most: what a card calls, and what calls it. */
+/** How deep following goes at most: what a card calls, what calls it, and the types its fields name. */
 const MAX_CALLEES = 3;
 const MAX_CALLERS = 2;
+const MAX_TYPES = 2;
 /** The most cards following adds for one card. */
 const MAX_FOLLOWED = 40;
 
-/** One card following reaches: from which key, which way, how deep, and the calling line (callees). */
+/**
+ * One card following reaches: from which key, which way, how deep, and where it starts: the calling
+ * line (callees) or the field whose written type names it (types, its `fieldRows` id).
+ */
 interface FollowStep {
   readonly from: Key;
   readonly to: Key;
-  readonly direction: "callees" | "callers";
+  readonly direction: "callees" | "callers" | "types";
   readonly depth: number;
   readonly line?: number;
+  readonly row?: string;
 }
 
-/** What following adds for one card, in order, and where it stopped. */
+/** What following adds for one card, in order, where it stopped, and what the agent should know. */
 interface FollowPlan {
   readonly steps: FollowStep[];
   readonly stops: Map<Key, AgentFollowStop[]>;
+  readonly warnings: string[];
 }
 
 /** A level count clamped to 0–`max`. */
@@ -42,9 +51,44 @@ function levels(value: number | undefined, max: number): number {
   return Math.max(0, Math.min(max, Math.trunc(value ?? 0)));
 }
 
-/** Follows resolved calls from `root` to the depths asked for, breadth first, loading every card it reaches. */
+/** Where following a type's fields stops at a written type name that isn't a declaration in the project. */
+function typeStop(style: "external" | "builtin" | "unresolved", type: string, field: string | undefined, note: string | undefined): AgentFollowStop {
+  return { reason: style, type, ...(field !== undefined ? { field } : {}), ...(note !== undefined ? { note } : {}) };
+}
+
+/**
+ * The types the fields of type `key` name, in field order, each once with the first field that names it;
+ * and where following stops there: each external, builtin, or unresolved name once (as written, with
+ * the first field that writes it and its module or reason).
+ */
+function fieldTypes(definition: TypeDefinition): { reached: { target: Key; row: string }[]; blocked: AgentFollowStop[] } {
+  const reached: { target: Key; row: string }[] = [];
+  const blocked = new Map<string, AgentFollowStop>();
+  for (const { row, member, type } of fieldRows(definition)) {
+    for (const span of type?.spans ?? []) {
+      const text = type?.text.slice(span.start, span.end) ?? "";
+      if (span.style === "declared") {
+        if (span.target !== undefined && !reached.some((item) => item.target === span.target)) {
+          reached.push({ target: span.target, row });
+        }
+        continue;
+      }
+      const id = `${span.style}\u0000${text}`;
+      if (!blocked.has(id)) {
+        const field = member ? memberName(member) : undefined;
+        blocked.set(id, typeStop(span.style, text, field, span.style === "unresolved" ? span.note : (span.module ?? span.note)));
+      }
+    }
+  }
+  return { reached, blocked: [...blocked.values()] };
+}
+
+/**
+ * Follows resolved calls from `root` to the depths asked for, breadth first, and the types its fields
+ * name (from a type card), loading every card it reaches.
+ */
 async function planFollow(data: AgentData, project: ProjectId, root: Key, follow: NonNullable<AgentCardSpec["follow"]>): Promise<FollowPlan> {
-  const plan: FollowPlan = { steps: [], stops: new Map() };
+  const plan: FollowPlan = { steps: [], stops: new Map(), warnings: [] };
   const stop = (key: Key, entry: AgentFollowStop) => {
     plan.stops.set(key, [...(plan.stops.get(key) ?? []), entry]);
   };
@@ -91,8 +135,48 @@ async function planFollow(data: AgentData, project: ProjectId, root: Key, follow
       level = next;
     }
   };
+  const walkTypes = async (depthAsked: number) => {
+    if (depthAsked > 0 && !(await data.loadDefinition(project, root))) {
+      plan.warnings.push(`follow.types follows a type's fields, and ${keyDisplayName(root)} isn't a type declaration or a class, so no types were added for it.`);
+      return;
+    }
+    let level = depthAsked > 0 ? [root] : [];
+    for (let depth = 1; level.length > 0; depth += 1) {
+      const next: Key[] = [];
+      for (const key of level) {
+        const definition = await data.loadDefinition(project, key);
+        if (!definition) {
+          continue;
+        }
+        const { reached, blocked } = fieldTypes(definition);
+        if (depth <= depthAsked) {
+          blocked.forEach((entry) => {
+            stop(key, entry);
+          });
+        }
+        const fresh = reached.filter((item) => !seen.has(item.target));
+        if (depth > depthAsked) {
+          if (fresh.length > 0) {
+            stop(key, { reason: "depth", count: fresh.length });
+          }
+          continue;
+        }
+        const room = Math.max(0, MAX_FOLLOWED - plan.steps.length);
+        for (const { target, row } of fresh.slice(0, room)) {
+          seen.add(target);
+          plan.steps.push({ from: key, to: target, direction: "types", depth, row });
+          next.push(target);
+        }
+        if (fresh.length > room) {
+          stop(key, { reason: "limit", count: fresh.length - room });
+        }
+      }
+      level = next;
+    }
+  };
   await walk("callees", levels(follow.callees, MAX_CALLEES));
   await walk("callers", levels(follow.callers, MAX_CALLERS));
+  await walkTypes(levels(follow.types, MAX_TYPES));
   await Promise.all(plan.steps.map((step) => data.loadModel(project, step.to)));
   return plan;
 }
@@ -110,7 +194,7 @@ function refProject(ctx: OpContext, project: ProjectId): ProjectName | undefined
   return result.project;
 }
 
-/** Loads each card's model and follows its calls; returns how to apply the operation. */
+/** Loads each card's model (and a type's definition) and follows its calls or types; returns how to apply the operation. */
 export async function prepareAddCards(op: AddCardsOp, ctx: OpContext): Promise<ApplyOp> {
   const plans = new Map<AgentCardSpec, FollowPlan>();
   for (const spec of op.cards) {
@@ -118,14 +202,29 @@ export async function prepareAddCards(op: AddCardsOp, ctx: OpContext): Promise<A
     refProject(ctx, project);
     if (!(await ctx.data.loadModel(project, spec.key))) {
       const name = ctx.index.byId.get(project)?.name ?? project;
-      throw invalid(`${name} has no function, class, or entrance with the key “${spec.key}”. Keys come from search, list_entrances, read_code, or get_relations.`);
+      throw invalid(`${name} has no function, type, class, or entrance with the key “${spec.key}”. Keys come from search, list_entrances, read_code, or get_relations.`);
+    }
+    if (isTypeKind(keyBlockKind(spec.key) ?? "")) {
+      await ctx.data.loadDefinition(project, spec.key);
     }
     plans.set(spec, await planFollow(ctx.data, project, spec.key, spec.follow ?? {}));
   }
   return (page, applyCtx) => applyAddCards(page, op, plans, applyCtx);
 }
 
-/** The offset below a card's top of the port where it calls `key`, or undefined when it doesn't call it. */
+/** The offset below a type card's top of its field's row `row`, when it shows its fields on `page`. */
+function fieldOffset(ctx: OpContext, page: Page, card: Card, row: string): number | undefined {
+  const definition = ctx.data.definition(cardProject(ctx, card), cardKey(card));
+  if (!definition || cardBody(cardKey(card), card.view ?? page.defaultView) !== "fields") {
+    return undefined;
+  }
+  return estimatedFieldOffset(definition, row, descriptionHeight(card.description, null, measureText));
+}
+
+/**
+ * The offset below a card's top of the port where it calls `key`, or of its first field whose written
+ * type names `key`; undefined when it does neither.
+ */
 function portToward(ctx: OpContext, page: Page, card: Card, key: Key): number | undefined {
   const project = cardProject(ctx, card);
   const model = ctx.data.model(project, cardKey(card));
@@ -135,11 +234,16 @@ function portToward(ctx: OpContext, page: Page, card: Card, key: Key): number | 
   if (model?.type !== "block" || project === null) {
     return undefined;
   }
+  const definition = ctx.data.definition(project, cardKey(card));
+  const field = definition ? fieldRows(definition).find(({ type }) => type?.spans.some((span) => span.style === "declared" && span.target === key)) : undefined;
+  if (field) {
+    return fieldOffset(ctx, page, card, field.row) ?? HEADER_PORT;
+  }
   const occurrence = occurrencesOf(model, lastVerifiedCode(project, cardKey(card))).find((item) => item.target === key);
   if (!occurrence) {
     return undefined;
   }
-  const code = (card.view ?? page.defaultView) === "code";
+  const code = cardBody(cardKey(card), card.view ?? page.defaultView) === "code";
   return (code ? estimatedLineOffset(model, occurrence.line) : undefined) ?? HEADER_PORT;
 }
 
@@ -201,14 +305,17 @@ function newCardSpot(ctx: OpContext, page: Page, ref: CardRef, near: string | un
   return clearSpot(at, size, occupied);
 }
 
-/** Where a card following reached goes: right of its caller at the calling line, or left of its callee. */
+/**
+ * Where a card following reached goes: right of its caller at the calling line, or of the type whose
+ * field names it at that field's row; or left of its callee.
+ */
 function followedSpot(ctx: OpContext, page: Page, from: Card, step: FollowStep, size: Size): [number, number] {
   const rects = pageRects(ctx, page);
-  const rect = rects.get(from.id) ?? { x: from.at[0], y: from.at[1], ...cardSize(ctx, from) };
-  const code = (from.view ?? page.defaultView) === "code";
-  const offset =
-    step.line !== undefined && code ? (estimatedLineOffset(ctx.data.model(cardProject(ctx, from), cardKey(from)), step.line) ?? HEADER_PORT) : HEADER_PORT;
-  const at = step.direction === "callees" ? rightOf(rect, offset) : leftOf(rect, size);
+  const rect = rects.get(from.id) ?? { x: from.at[0], y: from.at[1], ...cardSize(ctx, page, from) };
+  const code = cardBody(cardKey(from), from.view ?? page.defaultView) === "code";
+  const line = step.line !== undefined && code ? estimatedLineOffset(ctx.data.model(cardProject(ctx, from), cardKey(from)), step.line) : undefined;
+  const field = step.row !== undefined ? fieldOffset(ctx, page, from, step.row) : undefined;
+  const at = step.direction === "callers" ? leftOf(rect, size) : rightOf(rect, line ?? field ?? HEADER_PORT);
   return clearSpot(at, size, [...rects.values()]);
 }
 
@@ -225,7 +332,11 @@ function applyAddCards(page: Page, op: AddCardsOp, plans: ReadonlyMap<AgentCardS
     }
   };
   // A plain copy of what was added: the page is a draft that doesn't outlive the edit.
-  const place = (ref: CardRef, at: [number, number]) => ({ id: addCard(page, { ref, at }), ref, at: [Math.round(at[0]), Math.round(at[1])] as const });
+  const place = (ref: CardRef, at: [number, number], view: View | undefined) => {
+    const id = addCard(page, { ref, at, ...(view !== undefined ? { view } : {}) });
+    return { id, ref, at: [Math.round(at[0]), Math.round(at[1])] as const };
+  };
+  const sized = (ref: CardRef, view: View | undefined) => cardSize(ctx, page, { id: "", ref, ...(view !== undefined ? { view } : {}) });
   for (const spec of op.cards) {
     const named = refProject(ctx, spec.project ?? ctx.board.project);
     const ref = refOf(spec.key, named);
@@ -238,13 +349,11 @@ function applyAddCards(page: Page, op: AddCardsOp, plans: ReadonlyMap<AgentCardS
       }
       note(existing, cardResult(ctx, existing, changed ? "updated" : "kept"));
     } else {
-      const card = place(ref, newCardSpot(ctx, page, ref, spec.near, cardSize(ctx, { id: "", ref })));
-      if (view !== undefined) {
-        setCardView(page, card.id, view);
-      }
+      const card = place(ref, newCardSpot(ctx, page, ref, spec.near, sized(ref, view)), view);
       note(card, cardResult(ctx, card, "created", { at: card.at }));
     }
     const plan = plans.get(spec);
+    ctx.warnings.push(...(plan?.warnings ?? []));
     for (const step of plan?.steps ?? []) {
       const from = findCardByRef(page, step.from, named);
       if (!from) {
@@ -256,8 +365,10 @@ function applyAddCards(page: Page, op: AddCardsOp, plans: ReadonlyMap<AgentCardS
         note(reached, cardResult(ctx, reached, "kept", { via }));
         continue;
       }
+      // A type reached from a type's fields shows as the type it was followed from was asked to.
       const toRef = refOf(step.to, named);
-      const card = place(toRef, followedSpot(ctx, page, from, step, cardSize(ctx, { id: "", ref: toRef })));
+      const toView = step.direction === "types" ? view : undefined;
+      const card = place(toRef, followedSpot(ctx, page, from, step, sized(toRef, toView)), toView);
       note(card, cardResult(ctx, card, "created", { at: card.at, via }));
     }
     for (const [key, stops] of plan?.stops ?? []) {

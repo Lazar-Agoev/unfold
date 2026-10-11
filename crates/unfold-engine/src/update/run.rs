@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use unfold_core::vocab::{FileState, InputRole};
-use unfold_core::{RepoPath, Snapshot};
+use unfold_core::{ContentHash, Graph, InputRecord, RepoPath, Snapshot};
 
 use super::build::{BuildInput, build};
 use super::cache::{CacheEntry, FactsKey, NewCacheEntry, decode_facts};
@@ -194,6 +194,11 @@ impl<'e, 'r> Run<'e, 'r> {
                     .entry(path.clone())
                     .or_insert_with(|| input.snapshot.clone());
             }
+            for (path, input) in evidence(&state.inputs) {
+                if let Ok(snapshot) = &input.content {
+                    snapshots.entry(path.clone()).or_insert_with(|| snapshot.clone());
+                }
+            }
             let all_read = state.files.iter().all(|(path, entry)| match entry.facts.state() {
                 FileState::Current => snapshots.contains_key(path),
                 FileState::LastGood => false,
@@ -213,6 +218,21 @@ impl<'e, 'r> Run<'e, 'r> {
             state.link_problems = link_problems(built.problems);
             state.complete = is_complete(&state);
         }
+        // Evidence files shape nothing linking reads: a graph kept as it was takes their new
+        // records as they are.
+        let evidence_changed = !relink && {
+            let records = evidence_records(&state.inputs);
+            let changed = !state
+                .graph
+                .inputs
+                .iter()
+                .filter(|input| input.role == InputRole::Evidence)
+                .eq(&records);
+            if changed {
+                state.graph = Arc::new(with_evidence(&state.graph, records));
+            }
+            changed
+        };
         self.stats.relinked = relink;
         self.stats.files_removed = old
             .files
@@ -222,7 +242,10 @@ impl<'e, 'r> Run<'e, 'r> {
         let summary = if relink {
             ChangeSummary::between(&old.graph, &state.graph)
         } else {
-            ChangeSummary::default()
+            ChangeSummary {
+                inputs_changed: evidence_changed,
+                ..ChangeSummary::default()
+            }
         };
         self.stats.count_graph(&state.graph);
         self.stats.total = started.elapsed();
@@ -351,7 +374,8 @@ impl<'e, 'r> Run<'e, 'r> {
             context: scan.context.iter().cloned().collect(),
             root: Some(self.engine.root.clone()),
         };
-        for (path, input) in &inputs {
+        // Evidence files are never read by languages.
+        for (path, input) in configuration(&inputs) {
             if let Ok(snapshot) = &input.content {
                 let input = ProjectInput {
                     role: input.role,
@@ -700,14 +724,64 @@ fn link_problems(found: Vec<LanguageProblem>) -> Vec<(Problem, bool)> {
     problems
 }
 
-/// Whether two sets of configuration inputs differ in path, role, or content.
+/// The configuration inputs of `inputs`: every one but the evidence files.
+pub(super) fn configuration(
+    inputs: &BTreeMap<RepoPath, InputEntry>,
+) -> impl Iterator<Item = (&RepoPath, &InputEntry)> {
+    inputs
+        .iter()
+        .filter(|(_, input)| input.role != InputRole::Evidence)
+}
+
+/// The evidence files of `inputs`.
+fn evidence(inputs: &BTreeMap<RepoPath, InputEntry>) -> impl Iterator<Item = (&RepoPath, &InputEntry)> {
+    inputs
+        .iter()
+        .filter(|(_, input)| input.role == InputRole::Evidence)
+}
+
+/// The graph records of the evidence files of `inputs` that could be read, in path order.
+pub(super) fn evidence_records(inputs: &BTreeMap<RepoPath, InputEntry>) -> Vec<InputRecord> {
+    evidence(inputs)
+        .filter_map(|(path, input)| {
+            let snapshot = input.content.as_ref().ok()?;
+            Some(InputRecord {
+                path: path.clone(),
+                role: InputRole::Evidence,
+                hash: snapshot.hash(),
+            })
+        })
+        .collect()
+}
+
+/// `graph` with its evidence input records replaced by `records`.
+fn with_evidence(graph: &Graph, records: Vec<InputRecord>) -> Graph {
+    let mut inputs: Vec<InputRecord> = graph
+        .inputs
+        .iter()
+        .filter(|input| input.role != InputRole::Evidence)
+        .cloned()
+        .chain(records)
+        .collect();
+    inputs.sort_by(|a, b| a.path.cmp(&b.path));
+    Graph {
+        files: graph.files.clone(),
+        inputs,
+        entrances: graph.entrances.clone(),
+    }
+}
+
+/// The content of an input as linking sees it: its role and its bytes' hash.
+fn fingerprint(entry: &InputEntry) -> (InputRole, Option<ContentHash>) {
+    (entry.role, entry.content.as_ref().ok().map(Snapshot::hash))
+}
+
+/// Whether two sets of configuration inputs differ in path, role, or content (evidence files
+/// don't count).
 fn inputs_differ(old: &BTreeMap<RepoPath, InputEntry>, new: &BTreeMap<RepoPath, InputEntry>) -> bool {
-    let fingerprint = |entry: &InputEntry| (entry.role, entry.content.as_ref().ok().map(Snapshot::hash));
-    old.len() != new.len()
-        || old
-            .iter()
-            .zip(new)
-            .any(|((a, x), (b, y))| a != b || fingerprint(x) != fingerprint(y))
+    !configuration(old)
+        .map(|(path, entry)| (path, fingerprint(entry)))
+        .eq(configuration(new).map(|(path, entry)| (path, fingerprint(entry))))
 }
 
 fn key<'a>(job: &Job<'a>) -> FactsKey<'a> {
@@ -744,20 +818,14 @@ fn input_entry(role: InputRole, stamp: Option<FileStamp>, read: Read, requested:
 
 /// Whether anything but the files that shapes the graph differs between two states: the
 /// settings, the settings file, the configuration inputs, or the unindexed or context files
-/// (what [`LinkBasis`] fingerprints).
+/// (what [`LinkBasis`] fingerprints). Evidence files shape nothing linking reads.
 fn context_differs(old: &State, new: &State) -> bool {
     let source_hash = |state: &State| state.settings.source.as_ref().map(Snapshot::hash);
-    let input = |entry: &InputEntry| (entry.role, entry.content.as_ref().ok().map(Snapshot::hash));
     old.settings.settings != new.settings.settings
         || source_hash(old) != source_hash(new)
         || old.unindexed != new.unindexed
         || old.context != new.context
-        || old.inputs.len() != new.inputs.len()
-        || old
-            .inputs
-            .iter()
-            .zip(&new.inputs)
-            .any(|((a, x), (b, y))| a != b || input(x) != input(y))
+        || inputs_differ(&old.inputs, &new.inputs)
 }
 
 /// Whether the indexed files, their languages, or their facts differ between two states.
@@ -775,7 +843,7 @@ fn is_complete(state: &State) -> bool {
         && state.discovery_problems.is_empty()
         && state.input_problems.is_empty()
         && state.link_problems.iter().all(|(_, incomplete)| !incomplete)
-        && state.inputs.values().all(|input| input.content.is_ok())
+        && configuration(&state.inputs).all(|(_, input)| input.content.is_ok())
         && state
             .files
             .values()

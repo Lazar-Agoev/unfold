@@ -24,6 +24,16 @@ describe("parseViewReport", () => {
       { kind: "link", id: "a-to-b" },
       { kind: "line", from: "a", to: "b", project: "p-orders0000", source: "src/a.ts#function:a/call[0]", seq: 0, line: 12 },
       { kind: "line", from: "a", to: "b", project: "p-orders0000", source: "src/a.ts#function:a/call[0]", seq: 1, line: null },
+      {
+        kind: "calls",
+        from: "a",
+        to: "b",
+        project: "p-orders0000",
+        calls: [
+          { source: "src/a.ts#function:a/call[0]", seq: 0, line: 12 },
+          { source: "src/a.ts#function:a/call[1]", seq: 0, line: 14 },
+        ],
+      },
     ];
     for (const selection of selections) {
       expect(parseViewReport({ ...REPORT, selection })?.selection).toEqual(selection);
@@ -41,6 +51,8 @@ describe("parseViewReport", () => {
       { ...REPORT, selection: { kind: "card" } },
       { ...REPORT, selection: { kind: "frame", id: "x" } },
       { ...REPORT, selection: { kind: "line", from: "a", to: "b", project: "p", source: "s", seq: 0.5, line: null } },
+      { ...REPORT, selection: { kind: "calls", from: "a", to: "b", project: "p", calls: [{ source: "s", seq: 0, line: "12" }] } },
+      { ...REPORT, selection: { kind: "calls", from: "a", to: "b", project: "p", calls: "s" } },
       { ...REPORT, visible: ["a", 1] },
       { ...REPORT, tabs: [ORDERS, { id: "b" }] },
       { ...REPORT, tabs: undefined },

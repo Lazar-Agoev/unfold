@@ -1,7 +1,7 @@
 /**
  * A block card: one definition (or another indexed block) of a project in Code or Flow. The header shows
- * the project monogram (a card from another project), `ƒ`, the name, the file, and the card's own Code |
- * Flow switch (saved with the board); a review banner and the description follow. A folded card
+ * the project monogram (a card from another project), `ƒ`, the name, the file, and the card's own Diagram
+ * | Flow | Code switch (saved with the board); a review banner and the description follow. A folded card
  * (double-click its header) shows only the header, and its arrows attach there. The body never scrolls:
  * the card sizes itself to its content. Flow shows the page's labels for the card's project and the
  * card's groups as step groups; a group's one `collapsed` field folds it in both views.
@@ -10,7 +10,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useUpdateNodeInternals } from "@xyflow/react";
 import { useLayoutEffect, useMemo, type ReactNode } from "react";
-import { Monogram, SegmentedControl, showToast } from "../../components";
+import { Monogram, showToast } from "../../components";
 import { CodeView } from "../../code/CodeView";
 import { defaultFolds, groupConflict, groupSelection } from "../../code/outline";
 import { shortPath } from "../../code/text";
@@ -30,8 +30,6 @@ import {
   labelsFor,
   lineOffsetIn,
   select,
-  setCardView,
-  setCardsFolded,
   setPendingGroup,
   updateGroup,
   updatePageView,
@@ -46,14 +44,9 @@ import { useMeasure } from "../measure";
 import { blockCardWidth, codeContentWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";
 import { InlineCallee } from "./InlineCallee";
-import { CardGlyph, CardHandles, CardNote, DescriptionStrip, HeaderPorts, renderPorts } from "./parts";
+import { CardGlyph, CardHandles, CardNote, DescriptionStrip, HeaderPorts, ViewSwitch, renderPorts, toggleCardFolded } from "./parts";
 import { ReviewBanner } from "./ReviewBanner";
 import { clickCard } from "./select";
-
-const VIEW_OPTIONS = [
-  { value: "code", label: "Code" },
-  { value: "flow", label: "Flow" },
-] as const;
 
 const NO_FOLDS: readonly string[] = [];
 const NO_KEYS: readonly string[] = [];
@@ -63,7 +56,8 @@ export interface BlockCardProps {
   /** The project the card resolves to. */
   readonly project: ProjectId;
   readonly card: Card & { readonly ref: { readonly block: string } };
-  readonly view: View;
+  /** Code or Flow: a Diagram node and a type card's fields are their own cards. */
+  readonly view: Exclude<View, "diagram">;
   readonly ports: readonly string[];
   readonly selected: boolean;
 }
@@ -248,20 +242,8 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
     setPendingGroup(target, null);
   };
 
-  const setView = (next: View) => {
-    editPage(target, (page) => {
-      setCardView(page, card.id, next);
-    });
-    updatePageView(target, (draft) => {
-      if (draft.lens !== null && !draft.lensExceptions.includes(card.id)) {
-        draft.lensExceptions.push(card.id);
-      }
-    });
-  };
   const toggleFolded = () => {
-    editPage(target, (page) => {
-      setCardsFolded(page, [card.id], !folded);
-    });
+    toggleCardFolded(target, card.id, folded);
   };
 
   let body: ReactNode;
@@ -378,16 +360,7 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
         <span className="card-location" title={model ? `${model.header.path}:${model.header.startLine}` : undefined}>
           {location}
         </span>
-        {!folded && model ? (
-          <div
-            className="nodrag"
-            onClick={(event) => {
-              event.stopPropagation();
-            }}
-          >
-            <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={setView} label={`View of ${name}`} variant="mini" />
-          </div>
-        ) : null}
+        {!folded && model ? <ViewSwitch target={target} cardId={card.id} view={view} name={name} /> : null}
         <HeaderPorts ids={headerPorts} />
       </header>
       <ReviewBanner target={target} project={project} cardId={card.id} />

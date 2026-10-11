@@ -61,7 +61,7 @@ A board opens in a tab at the top of the window, and the sidebar switches to it:
 - **Selected:** the card you selected: where it is, its description, who calls it, which entrances reach it, and the
   calls you haven't opened yet (**+ Open**).
 
-The bar above the canvas shows the page, whether the board is a draft or published, the **Code | Flow** switch,
+The bar above the canvas shows the page, whether the board is a draft or published, the **Diagram | Flow | Code** switch,
 **Share**, and **Publish**. The dock at the bottom has **Add**, Back and Forward, the trail of calls you followed,
 **Arrange**, and the zoom. ⌘B hides the sidebar.
 
@@ -80,15 +80,25 @@ can prove where it goes, so a link is always right.
 Use **Back** (⌘[) and **Forward** (⌘]) to retrace your steps, **Fit** (⇧1) to see everything, and ⌘= / ⌘- to zoom.
 **Show callers**, in a card's menu, adds the functions that call it to its left.
 
-## Code and Flow
+## Diagram, Flow, and Code
 
-Every card shows a function one of two ways:
+Every card shows a function one of three ways:
 
-- **Code**, its exact source, with folds and links;
-- **Flow**, a diagram of its steps, branches, and loops.
+- **Diagram**, one small box: what it is (`ƒ` for a function, or an entrance's kind, such as `HTTP`), its name,
+  where it is, and its description. Its calls to another card are one arrow, labeled with the call's signature, or
+  "3 calls" when there are several: click that to list them in Selected and open each one;
+- **Flow**, a diagram of its steps, branches, and loops;
+- **Code**, its exact source, with folds and links.
 
-The **Code | Flow** switch above the canvas (⌘1, ⌘2) sets it for the page. Each card also has its own switch, which
-is saved with the board.
+The **Diagram | Flow | Code** switch above the canvas (⌘1, ⌘2, ⌘3) sets it for the page. Each card also has its own
+switch, which is saved with the board, so a page can show the functions around the one that matters as boxes and
+that one in Flow.
+
+A **type** (an interface, a type alias, an enum, or a class) shows its fields in Diagram view: each field's name and
+written type, `?` and `readonly` as written, and the fields it inherits under the type they come from. Click a type
+in a field to read its definition in place. When a field's type is another type on the page, an arrow goes from that
+field to it, labeled with the type. A type with twelve fields or more shows the first eight; "N more" shows the rest.
+Selected says where a type is used ("Used in N places").
 
 ## Add
 
@@ -98,7 +108,7 @@ is saved with the board.
   marked.
 - As you type, it finds entrances, functions, files, and text, with a tab for each and a preview on the right.
   Functions include classes and types (`interface Cart`, `type CartId`, `enum Currency`); a type goes on the page
-  showing its code. On the Text tab you can match case, whole words, or a regular expression.
+  showing its fields. On the Text tab you can match case, whole words, or a regular expression.
 - **Enter** adds the selection to the page, and **⌘Enter** adds it on a new page. A file or a text match opens in the
   peek sheet instead. From Home, Enter starts a new board.
 - Type `>` first to run a command instead: everything the app can do is listed there, with its shortcut. ⇧⌘P opens
@@ -203,6 +213,8 @@ them with **Settings** on Home or in the project menu:
   `node_modules`.
 - **Detectors:** turn individual entrance detectors (Express routes, Celery tasks, and so on) on or off.
 - **Python projects:** where a Python project's imports start, its source roots, and the Python version.
+- **Evidence files:** files Unfold doesn't compile but boards may cite, such as SQL migrations or a Prisma schema
+  (`db/migrations/*.sql`). The peek sheet shows them as text with line numbers.
 
 Changes are saved together when you press **Save**. **Manual entrances:** if your code starts in a way Unfold
 doesn't detect, add it yourself with **Add entrance…** (on Home or in the project menu), or **Add as entrance…** in a
@@ -217,8 +229,32 @@ the functions that handle it. Manual entrances can be edited or removed from the
 App-wide **Preferences** (⌘,, or the gear at the bottom of Home's sidebar) set the theme, the command that opens a file
 in your own editor, whether background updates start on for new projects, how many threads a Compile uses, whether
 Unfold checks for new versions (the only time it uses the network; nothing about you or your code is sent), and your
-own key bindings. **Copy Diagnostics**, in the Help menu or the project menu, copies a summary for a bug report:
-versions and counts only, no code and no paths.
+own key bindings, and whether agents can connect ([below](#connecting-an-agent)). **Copy Diagnostics**, in the Help menu
+or the project menu, copies a summary for a bug report: versions and counts only, no code and no paths.
+
+## Connecting an agent
+
+Agents such as Claude Code and Codex connect to Unfold through its MCP server, which runs inside the app: they read the
+guide to working in Unfold, what you're looking at, and your projects.
+
+1. Open **Preferences**, turn on **Let agents connect** under **Agents**, and save. It's off until you do.
+2. Copy the command for your agent (Preferences shows both, with the port you chose) and run it once:
+
+   ```sh
+   # Claude Code, for every repository
+   claude mcp add --transport http --scope user unfold http://127.0.0.1:29180/mcp
+
+   # Codex
+   codex mcp add unfold --url http://127.0.0.1:29180/mcp
+   ```
+
+3. Ask your agent about a project. Unfold has to be running; if it wasn't when the agent's session started, reconnect
+   from the agent's MCP menu (`/mcp` in Claude Code).
+
+The server listens on port 29180 unless you choose another; Preferences says so when another program has the port.
+It also lists the agents that connected, with when each last acted, and turning the switch off disconnects them all.
+The server answers only programs on this computer, never web pages, and an agent can add a folder to your workspace
+only after you confirm it in Unfold.
 
 ## What to commit
 

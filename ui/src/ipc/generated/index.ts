@@ -31,6 +31,20 @@ status: AddStatus,
 project: ProjectRow, };
 
 /**
+ * Preferences › Agents: the MCP server the main process runs on `127.0.0.1` while it is on. Off
+ * until the person turns it on.
+ */
+export type AgentPreferences = { 
+/**
+ * Whether agents may connect: the server listens only while this is on.
+ */
+enabled: boolean, 
+/**
+ * The port the server listens on.
+ */
+port: number, };
+
+/**
  * What a resource card or a connection cites, which Unfold can verify: a block or entrance key,
  * or a line range of an evidence file, in the board's own project (`project` absent) or in the
  * project with that shared name.
@@ -54,6 +68,32 @@ file: RepoPath,
 lines: [number, number], 
 /**
  * Its project; absent for the board's own.
+ */
+project?: ProjectName, };
+
+/**
+ * An anchor a repair points a resource card or connection at: a block or entrance key, or
+ * lines of an evidence file, with the project's shared name for another project.
+ */
+export type AnchorSpec = { 
+/**
+ * The key.
+ */
+key: string, 
+/**
+ * The project's shared name; absent for the board's own.
+ */
+project?: ProjectName, } | { 
+/**
+ * The file, relative to its project's folder.
+ */
+file: string, 
+/**
+ * The first and last line, 1-based and inclusive.
+ */
+lines: [number, number], 
+/**
+ * The project's shared name; absent for the board's own.
  */
 project?: ProjectName, };
 
@@ -710,7 +750,7 @@ lens?: CardLens, };
 /**
  * What a card is.
  */
-export type CardKind = "entrance" | "block";
+export type CardKind = "entrance" | "type" | "class" | "block";
 
 /**
  * Which of a block card's models to build.
@@ -2029,7 +2069,7 @@ worktrees: number, };
 /**
  * How the shown text relates to the graph. See the [module documentation](self).
  */
-export type GraphMatch = "current" | "not_compiled" | "not_indexed";
+export type GraphMatch = "current" | "not_compiled" | "evidence" | "not_indexed";
 
 /**
  * The status-bar state.
@@ -2218,7 +2258,8 @@ signature: Signature, };
  */
 export type Health = { 
 /**
- * Every problem: per page, cards first, then groups, labels, and links.
+ * Every problem: per page, cards first, then groups, labels, links, resource cards, and
+ * frames.
  */
 items: Array<HealthItem>, 
 /**
@@ -2226,7 +2267,7 @@ items: Array<HealthItem>,
  */
 missing: number, 
 /**
- * The number of outdated descriptions and labels.
+ * The number of outdated descriptions, labels, resource cards, and connections.
  */
 outdated: number, 
 /**
@@ -2267,9 +2308,14 @@ target: Target,
  */
 project?: ProjectName, 
 /**
- * The reference involved, when it is not the target itself (a group member).
+ * The reference involved, when it is not the target itself (a group member; a resource
+ * card's or connection's anchor, type, step, or carried type).
  */
 key?: string, 
+/**
+ * The position of the anchor involved among its resource card's or connection's anchors.
+ */
+anchor?: number, 
 /**
  * The explanation.
  */
@@ -3120,7 +3166,11 @@ keyBindings: { [key in string]: string },
 /**
  * The update check.
  */
-updates: UpdatePreferences, };
+updates: UpdatePreferences, 
+/**
+ * Whether agents may connect to the app's local MCP server, and on which port.
+ */
+agents: AgentPreferences, };
 
 /**
  * What Add's preview pane and the map popover show for one result.
@@ -3874,7 +3924,7 @@ repair: RepairSpec, };
 /**
  * A repair the UI can offer for a health item; [`apply_repair`] performs it.
  */
-export type RepairKind = "reconnect" | "removeCard" | "removeLabel" | "ungroup" | "removeLink" | "removeDescription" | "resign" | "accept";
+export type RepairKind = "reconnect" | "removeCard" | "removeLabel" | "ungroup" | "removeLink" | "removeResource" | "removeDescription" | "resign" | "accept";
 
 /**
  * A repair on one page.
@@ -3911,11 +3961,27 @@ key: string, } | { "kind": "ungroup",
 /**
  * The group's id.
  */
-group: string, } | { "kind": "remove_link", 
+group: string, } | { "kind": "reconnect_anchor", 
+/**
+ * The resource card or connection.
+ */
+item: string, 
+/**
+ * The anchor's position among its anchors (a health item's `anchor`).
+ */
+anchor: number, 
+/**
+ * The new anchor.
+ */
+to: AnchorSpec, } | { "kind": "remove_link", 
 /**
  * The link's id.
  */
-link: string, } | { "kind": "remove_description", 
+link: string, } | { "kind": "remove_resource", 
+/**
+ * The resource card's id.
+ */
+resource: string, } | { "kind": "remove_description", 
 /**
  * Whose.
  */
@@ -4423,7 +4489,15 @@ enabled: boolean, } | { "op": "set_project_name",
 /**
  * The name; it must match `/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/`.
  */
-name: string | null, };
+name: string | null, } | { "op": "add_evidence_pattern", 
+/**
+ * The pattern: a file, a folder, or a glob, relative to the project's folder.
+ */
+pattern: string, } | { "op": "remove_evidence_pattern", 
+/**
+ * The pattern, as `project_config` lists it.
+ */
+pattern: string, };
 
 /**
  * A settings problem with its position.
@@ -4469,7 +4543,11 @@ pythonProjects: Array<PythonProjectView>,
 /**
  * Manual entrances, in file order.
  */
-entrances: Array<ManualEntranceView>, };
+entrances: Array<ManualEntranceView>, 
+/**
+ * `[evidence] files` patterns, as written.
+ */
+evidence: Array<string>, };
 
 /**
  * A project's shared name, as Project settings shows it.
@@ -4569,7 +4647,7 @@ path: string, };
 /**
  * What a health item or repair is about, on one page.
  */
-export type Target = { "card": string } | { "group": string } | { "label": ProjectKey } | { "link": string };
+export type Target = { "card": string } | { "group": string } | { "label": ProjectKey } | { "link": string } | { "resource": string } | { "frame": string };
 
 /**
  * What an entrance target is to its entrance.
@@ -4577,9 +4655,9 @@ export type Target = { "card": string } | { "group": string } | { "label": Proje
 export type TargetRole = "startup" | "handler";
 
 /**
- * What a repair is about (a card, group, label, or link) on its page.
+ * What a repair is about (a card, group, label, link, resource card, or frame) on its page.
  */
-export type TargetSpec = { "card": string } | { "group": string } | { "label": LabelSpec } | { "link": string };
+export type TargetSpec = { "card": string } | { "group": string } | { "label": LabelSpec } | { "link": string } | { "resource": string } | { "frame": string };
 
 /**
  * One handler or startup of an entrance, in registration order.
@@ -4793,6 +4871,11 @@ folded: boolean,
  * connected).
  */
 lines: number | null, 
+/**
+ * The rows a type card lists: its members, or an alias's aliased type (`None`: any other
+ * card).
+ */
+fields: number | null, 
 /**
  * Whether it comes from another project.
  */

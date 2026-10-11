@@ -24,6 +24,17 @@
   box-shadow: 0 0 0 1.5px var(--color-focus-ring);
 }
 
+/* "3 calls", while Selected lists them: in the accent, ringed. */
+.line-label.selected {
+  border-radius: var(--radius-chip);
+  box-shadow: 0 0 0 1.5px var(--color-accent);
+}
+
+.line-label.selected > span { color: var(--color-accent-text); }
+
+/* A type arrow's label (its field's written type) selects nothing. */
+.line-label.quiet { cursor: default; }
+
 .line-label > span { white-space: pre; }
 .line-label-type { color: var(--color-text); }
 .line-label-name { color: var(--color-muted); }

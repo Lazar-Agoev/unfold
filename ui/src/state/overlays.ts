@@ -34,7 +34,7 @@ export interface PeekTarget {
   readonly current?: number;
 }
 
-export type ProjectSettingsSection = "general" | "scope" | "detectors" | "python";
+export type ProjectSettingsSection = "general" | "scope" | "detectors" | "python" | "evidence";
 
 /** A definition the entrance editor starts from ("Add as entrance…" on a card): its header's facts. */
 export interface DefinitionRef {

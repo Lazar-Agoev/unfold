@@ -83,7 +83,7 @@ export const MAP_HOMES: Readonly<Record<string, readonly Home[]>> = {
   ],
   "Title bar board title, Code | Flow, Compile, Publish": [
     { spec: BOARDS, test: BOARD_MENU, step: "double-clicking the title in the sidebar header renames the board in place" },
-    { spec: BOARD, test: READING, step: "the lens in the top bar shows every card in Code or Flow, and ⌘1 / ⌘2 switch it" },
+    { spec: BOARD, test: READING, step: "the lens in the top bar shows every card as a Diagram node, in Flow, or in Code, and ⌘1 / ⌘2 / ⌘3 switch it" },
     { spec: FIRST_LAUNCH, test: NOT_COMPILED, step: "Compile writes the scope, shows progress, and fills Home in" },
     { spec: PROJECT_MENU, test: MENU_ITEMS, step: "Compile again runs a compile that the Activity log records" },
     { spec: PROJECT_MENU, test: MENU_ITEMS, step: "Rebuild from scratch rebuilds the graph" },
@@ -236,7 +236,7 @@ export const KEYBOARD_HOMES: Readonly<Record<string, readonly Home[]>> = {
     { spec: KEYBOARD, test: SHORTCUTS, step: "⌘O adds a project; ⇧⌘B compiles it from its not-compiled Home" },
     { spec: KEYBOARD, test: SHORTCUTS, step: "⇧⌘B compiles the board's project" },
   ],
-  "Code, Flow (the page's lens)": [{ spec: KEYBOARD, test: SHORTCUTS, step: "⌘1 and ⌘2 set the page's lens to Code and Flow" }],
+  "Diagram, Flow, Code (the page's lens)": [{ spec: KEYBOARD, test: SHORTCUTS, step: "⌘1, ⌘2, and ⌘3 set the page's lens to Diagram, Flow, and Code" }],
   "Toggle Sidebar": [{ spec: KEYBOARD, test: SHORTCUTS, step: "⌘B hides and shows the sidebar" }],
   "Back, Forward": [{ spec: KEYBOARD, test: SHORTCUTS, step: "⌘[ and ⌘] go back and forward" }],
   Fit: [{ spec: KEYBOARD, test: SHORTCUTS, step: "⇧1 fits; ⌘= and ⌘- zoom in and out" }],

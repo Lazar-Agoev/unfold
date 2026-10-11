@@ -35,13 +35,22 @@ importers:
 
   desktop:
     dependencies:
+      '@modelcontextprotocol/server':
+        specifier: 2.1.0
+        version: 2.1.0
       electron-updater:
         specifier: 6.8.9
         version: 6.8.9
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
     devDependencies:
       '@electron/fuses':
         specifier: 2.1.3
         version: 2.1.3
+      '@modelcontextprotocol/client':
+        specifier: 2.1.0
+        version: 2.1.0
       '@types/node':
         specifier: 24.19.1
         version: 24.19.1
@@ -969,6 +978,18 @@ packages:
   '@mermaid-js/parser@2.0.1':
     resolution: {integrity: sha512-j37dj/h6p6pots1L7pLPPNuABEEu9WP4OYg9pW1g+nYG331j0+3canE9OagtYdytYvdSAMG+2fKU5cxep6LgjA==}
     engines: {node: '>=22.12.0'}
+
+  '@modelcontextprotocol/client@2.1.0':
+    resolution: {integrity: sha512-mDVhoy5WjDb0U+4dQPzLcciC2erSex/GRVQqnoZdiuMoE3YiTZdiS7ezNcFwX4XEOWOaj7jZr0kLYnILnL8orA==}
+    engines: {node: '>=20'}
+
+  '@modelcontextprotocol/core@2.1.0':
+    resolution: {integrity: sha512-YdFj5gMRHr0gYNAhTbQDgjLHiEJdIAUYxomhKseUNye7ZGlISQmUoLh2sveFFCiQ7j2YMffT1kgSND0FSfIFjQ==}
+    engines: {node: '>=20'}
+
+  '@modelcontextprotocol/server@2.1.0':
+    resolution: {integrity: sha512-FdvwZU5N03O77Suh35JqjAqq5R1ZTEPFtwu6N4BgBq28qrQtrCnpbLL5U2pwYCuE194jAw0xnlOVmIqhfoYuUQ==}
+    engines: {node: '>=20'}
 
   '@napi-rs/cli@3.10.8':
     resolution: {integrity: sha512-hg7m8VwECTIIHxNzajDG8QgtTOEVAKiIVLCLCW90Th6Z5R/ijWjh16iaQrRvXj4ve/S2fcXYo5cctCWJ8aVxIg==}
@@ -2537,6 +2558,14 @@ packages:
     resolution: {integrity: sha512-kVscqXk4OCp68SZ0dkgEKVi6/8ij300KBWTJq32P/dYeWTSwK41WyTxalN1eRmA5Z9UU/LX9D7FWSmV9SAYx6g==}
     engines: {node: '>=0.10.0'}
 
+  eventsource-parser@3.1.1:
+    resolution: {integrity: sha512-EKN1vKAMcZ8MlYMpaNuxN6R9yakzH6uajHcHVTqWJzvu5pWw9DyhbP35HH8MVBQ+dZjAfDxk+A8NiR9KWaXiyQ==}
+    engines: {node: '>=18.0.0'}
+
+  eventsource@3.0.7:
+    resolution: {integrity: sha512-CRT1WTyuQoD771GW56XEZFQ/ZoSfWid1alKGDYMmkt2yl8UXrVR4pspqWNEcqKvVIzg6PAltWjxcSSPrboA4iA==}
+    engines: {node: '>=18.0.0'}
+
   expect-type@1.4.0:
     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
     engines: {node: '>=12.0.0'}
@@ -2830,6 +2859,9 @@ packages:
   jiti@2.7.0:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
+
+  jose@6.2.12:
+    resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -3141,6 +3173,10 @@ packages:
   picomatch@4.0.7:
     resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
     engines: {node: '>=12'}
+
+  pkce-challenge@5.0.1:
+    resolution: {integrity: sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ==}
+    engines: {node: '>=16.20.0'}
 
   pkijs@3.4.1:
     resolution: {integrity: sha512-Oo/NZcSWccq8KyoG7gLE9fnltgHns+pNCjCAp/WmjsUySi+sX7y4z4Xqu4fVb42CDHzRPl33fjzT15V1wvcyhA==}
@@ -4499,6 +4535,25 @@ snapshots:
   '@mermaid-js/parser@2.0.1':
     dependencies:
       '@chevrotain/types': 13.2.0
+
+  '@modelcontextprotocol/client@2.1.0':
+    dependencies:
+      '@modelcontextprotocol/core': 2.1.0
+      cross-spawn: 7.0.6
+      eventsource: 3.0.7
+      eventsource-parser: 3.1.1
+      jose: 6.2.12
+      pkce-challenge: 5.0.1
+      zod: 4.6.5
+
+  '@modelcontextprotocol/core@2.1.0':
+    dependencies:
+      zod: 4.6.5
+
+  '@modelcontextprotocol/server@2.1.0':
+    dependencies:
+      '@modelcontextprotocol/core': 2.1.0
+      zod: 4.6.5
 
   '@napi-rs/cli@3.10.8(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)(@types/node@24.19.1)':
     dependencies:
@@ -6170,6 +6225,12 @@ snapshots:
 
   esutils@2.0.3: {}
 
+  eventsource-parser@3.1.1: {}
+
+  eventsource@3.0.7:
+    dependencies:
+      eventsource-parser: 3.1.1
+
   expect-type@1.4.0: {}
 
   exponential-backoff@3.1.3: {}
@@ -6472,6 +6533,8 @@ snapshots:
       picocolors: 1.1.1
 
   jiti@2.7.0: {}
+
+  jose@6.2.12: {}
 
   js-tokens@4.0.0: {}
 
@@ -6787,6 +6850,8 @@ snapshots:
   picocolors@1.1.1: {}
 
   picomatch@4.0.7: {}
+
+  pkce-challenge@5.0.1: {}
 
   pkijs@3.4.1:
     dependencies:

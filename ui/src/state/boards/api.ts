@@ -14,7 +14,9 @@ import type { Card, CardRef, CardView, Key, ProjectId, ProjectName, View } from 
 import { cardQuery } from "../../canvas/cardData";
 import { fallbackSize, handlerPlacement, newCardPlacement, reflow, type Rect, type Size } from "../../canvas/layout";
 import { measureText } from "../../canvas/measure";
-import { entranceCardWidth, entranceHandlerRows, estimatedBlockSize, type EntranceWidthInput } from "../../canvas/sizing";
+import { entranceCardText, entranceTitle } from "../../canvas/entranceText";
+import { entranceHandlerRows, estimatedCardSize } from "../../canvas/sizing";
+import { cardBody } from "../../code/typeKinds";
 import { showToast } from "../../components/Toast";
 import { activateBoard } from "../tabStore";
 import { getProjectIndex, refProjectFor, resolveRefProject, useProjectIndex } from "../workspace";
@@ -38,7 +40,7 @@ import {
 } from "./document";
 import { cardRefKey, boardKey } from "./keys";
 import { newBoard } from "./open";
-import { editPage, getOpenBoard, pushFocusMove, requestCardFocus, select, setActivePage, useBoards } from "./store";
+import { editPage, getOpenBoard, getPageView, pushFocusMove, requestCardFocus, select, setActivePage, useBoards } from "./store";
 import type { BoardRef, OpenBoard, PageId, PageTarget } from "./types";
 
 /** A card ref for `key`, naming `project` when the card isn't from the board's own project. */
@@ -135,29 +137,7 @@ export function addBlock(target: PageTarget, project: ProjectId, key: Key, view?
   return cardId;
 }
 
-/** The entrance's title as the trail and a new board show it: its label, or `POST /orders`. */
-export function entranceTitle(card: Extract<CardView, { type: "entrance" }>): string {
-  const { header } = card;
-  if (header.label !== null && header.label.length > 0) {
-    return header.label;
-  }
-  if (header.method !== null && header.trigger !== null) {
-    return `${header.method} ${header.trigger}`;
-  }
-  return header.trigger ?? header.title;
-}
-
-/** What an entrance card shows: `POST` and `/orders` when it has both, else its title; where it is declared; its handlers. */
-export function entranceCardText(card: Extract<CardView, { type: "entrance" }>): EntranceWidthInput {
-  const { header, evidence } = card;
-  const method = header.method !== null && header.trigger !== null ? header.method : null;
-  return {
-    method,
-    title: method !== null ? (header.trigger ?? entranceTitle(card)) : entranceTitle(card),
-    location: `${evidence.path}${evidence.startLine !== null ? `:${evidence.startLine}` : ""}`,
-    handlers: card.targets.map((handler) => handler.name ?? handler.text),
-  };
-}
+export { entranceCardText, entranceTitle };
 
 /** An entrance's card model, read through the cache (its card then draws from it at once). */
 async function entranceModel(project: ProjectId, entranceKey: Key): Promise<Extract<CardView, { type: "entrance" }>> {
@@ -198,13 +178,14 @@ export async function openEntrance(target: PageTarget, project: ProjectId, entra
   const onPage = new Set(page.cards.filter((card) => card.ref.project === named.project).map(cardKey));
   const handlers = resolved.flatMap((key, index) => (onPage.has(key) ? [] : [{ key, model: models[index] }]));
   const foreign = named.project !== undefined;
-  const text = entranceCardText(view);
-  const width = entranceCardWidth(text, measureText);
-  const rows = entranceHandlerRows(text, foreign, width, measureText);
+  // The cards show the page's lens, else its default view: an entrance's handler rows, or a Diagram node's edge.
+  const shown = getPageView(target).lens ?? page.defaultView;
+  const { width } = estimatedCardSize({ key: entranceKey, model: view, view: shown, monogram: foreign }, measureText);
+  const rows = cardBody(entranceKey, shown) === "handlers" ? entranceHandlerRows(entranceCardText(view), foreign, width, measureText) : [];
   const positions = handlerPlacement(
     { x, y, width },
     handlers.map(({ key }) => rows[view.targets.findIndex((handler) => handler.target === key)]),
-    handlers.map(({ model }) => estimatedBlockSize(model, foreign, measureText)),
+    handlers.map(({ key, model }) => estimatedCardSize({ key, model, view: shown, monogram: foreign }, measureText)),
   );
   const opened = editPage(target, (draft) => [
     addCard(draft, { ref: refOf("entrance", entranceKey, named.project), at: [x, y] }),

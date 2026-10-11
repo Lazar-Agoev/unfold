@@ -3,7 +3,7 @@ import type { Thumbnail, ThumbnailCard } from "../../ipc";
 import { THUMB_HEIGHT, THUMB_WIDTH, cardSize, thumbnailDrawing } from "./thumbnail";
 
 function card(id: string, at: [number, number], overrides: Partial<ThumbnailCard> = {}): ThumbnailCard {
-  return { id, at, kind: "block", view: "code", folded: false, lines: 10, foreign: false, ...overrides };
+  return { id, at, kind: "block", view: "code", folded: false, lines: 10, fields: null, foreign: false, ...overrides };
 }
 
 function thumbnail(cards: ThumbnailCard[], edges: [string, string][] = [], links: [string, string][] = []): Thumbnail {
@@ -12,11 +12,30 @@ function thumbnail(cards: ThumbnailCard[], edges: [string, string][] = [], links
 
 describe("board thumbnails", () => {
   it("sizes cards with the canvas's fallback rules", () => {
-    expect(cardSize({ kind: "entrance", folded: false, lines: null })).toEqual({ width: 240, height: 160 });
-    expect(cardSize({ kind: "block", folded: true, lines: 40 })).toEqual({ width: 520, height: 44 });
-    expect(cardSize({ kind: "block", folded: false, lines: 10 })).toEqual({ width: 520, height: 244 });
-    expect(cardSize({ kind: "block", folded: false, lines: 99 }).height).toBe(44 + 20 * 24);
-    expect(cardSize({ kind: "block", folded: false, lines: null })).toEqual({ width: 520, height: 320 });
+    const size = (overrides: Partial<ThumbnailCard>) => cardSize(card("x", [0, 0], overrides));
+    expect(size({ kind: "entrance", lines: null })).toEqual({ width: 240, height: 160 });
+    expect(size({ folded: true, lines: 40 })).toEqual({ width: 520, height: 44 });
+    expect(size({ lines: 10 })).toEqual({ width: 520, height: 244 });
+    expect(size({ lines: 99 }).height).toBe(44 + 20 * 24);
+    expect(size({ lines: null })).toEqual({ width: 520, height: 320 });
+  });
+
+  it("sizes Diagram nodes and type cards as the canvas draws them", () => {
+    const size = (overrides: Partial<ThumbnailCard>) => cardSize(card("x", [0, 0], overrides));
+    // A Diagram node is compact, however long its function.
+    expect(size({ view: "diagram", lines: 80 })).toEqual({ width: 280, height: 64 });
+    expect(size({ kind: "entrance", view: "diagram", lines: null })).toEqual({ width: 280, height: 64 });
+    // A type card lists its fields in Diagram view, and a type declaration in Flow too.
+    const three = size({ kind: "type", view: "diagram", fields: 3 });
+    expect(three.width).toBe(320);
+    expect(size({ kind: "type", view: "flow", fields: 3 })).toEqual(three);
+    expect(size({ kind: "type", view: "diagram", fields: 4 }).height - three.height).toBe(20);
+    // Twelve fields or more fold behind "N more".
+    expect(size({ kind: "type", view: "diagram", fields: 40 }).height).toBe(size({ kind: "type", view: "diagram", fields: 12 }).height);
+    // A class keeps its Flow; any type card shows its source in Code.
+    expect(size({ kind: "class", view: "flow", fields: 3, lines: 10 })).toEqual({ width: 520, height: 244 });
+    expect(size({ kind: "type", view: "code", fields: 3, lines: 10 })).toEqual({ width: 520, height: 244 });
+    expect(size({ kind: "type", view: "diagram", fields: 3, folded: true })).toEqual({ width: 320, height: 44 });
   });
 
   it("fits the page into the box with margins, on half pixels", () => {

@@ -137,3 +137,55 @@
   line-height: var(--leading-16);
   color: var(--color-muted);
 }
+
+/* Agents: the port, the address and install commands to copy, and the connected agents. */
+.preferences-port .text-field-input {
+  width: 96px;
+  font-family: var(--font-code);
+  font-size: var(--text-12);
+}
+
+.preferences-commands {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.preferences-command {
+  display: grid;
+  grid-template-columns: 88px 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.preferences-command-label {
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+.preferences-command-text {
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: var(--radius-control);
+  background: var(--color-track-soft);
+  font-family: var(--font-code);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.preferences-agents {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.preferences-agents-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-13);
+  line-height: var(--leading-20);
+}

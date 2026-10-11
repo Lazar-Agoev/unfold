@@ -8,10 +8,10 @@ import type { AgentCardResult, AgentIdentity, AgentItemResult, AgentItemStatus }
 import type { Card, Page, ProjectId } from "../../../ipc/generated";
 import { fallbackSize, type Rect, type Size } from "../../../canvas/layout";
 import { measureText } from "../../../canvas/measure";
-import { entranceCardWidth, estimatedBlockSize } from "../../../canvas/sizing";
+import { estimatedCardSize } from "../../../canvas/sizing";
 import { authorName } from "../../../code/text";
 import { resolveRefProject, type ProjectIndex } from "../../workspace";
-import { cardRects, entranceCardText, entranceTitle } from "../api";
+import { cardRects, entranceTitle } from "../api";
 import { cardKey, findCard, keyDisplayName } from "../document";
 import type { BoardRef, CardSize } from "../types";
 import type { AgentData } from "./data";
@@ -103,25 +103,34 @@ export function cardOf(page: Page, id: string): Card {
 }
 
 /**
- * A card's size: as measured, else estimated from its model (a card not drawn yet, or a page no one
- * has shown), else a default.
+ * A card's size: as measured, else estimated from its model in the view it shows on `page` (a card not
+ * drawn yet, or a page no one has shown), else a default.
  */
-export function cardSize(ctx: OpContext, card: Pick<Card, "id" | "ref">): Size {
+export function cardSize(ctx: OpContext, page: Pick<Page, "defaultView">, card: Pick<Card, "id" | "ref" | "view" | "description">): Size {
   const measured = ctx.measured[card.id];
   if (measured) {
     return measured;
   }
-  const model = ctx.data.model(cardProject(ctx, card), cardKey(card));
-  if (model?.type === "entrance") {
-    return { width: entranceCardWidth(entranceCardText(model), measureText), height: fallbackSize(true).height };
-  }
-  return model ? estimatedBlockSize(model, card.ref.project !== undefined, measureText) : fallbackSize("entrance" in card.ref);
+  const project = cardProject(ctx, card);
+  const key = cardKey(card);
+  const definition = ctx.data.definition(project, key);
+  return estimatedCardSize(
+    {
+      key,
+      model: ctx.data.model(project, key),
+      view: card.view ?? page.defaultView,
+      monogram: card.ref.project !== undefined,
+      ...(card.description ? { description: card.description } : {}),
+      ...(definition ? { definition } : {}),
+    },
+    measureText,
+  );
 }
 
 /** Every card's rectangle on the page as it would be drawn. */
 export function pageRects(ctx: OpContext, page: Page): Map<string, Rect> {
   return cardRects(page.cards, (id) => {
     const card = findCard(page, id);
-    return card ? cardSize(ctx, card) : fallbackSize(false);
+    return card ? cardSize(ctx, page, card) : fallbackSize(false);
   });
 }

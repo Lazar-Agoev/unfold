@@ -30,20 +30,20 @@ pub enum ScopeStatus {
     Excluded,
 }
 
-/// A scope pattern that can't be used.
+/// A scope or evidence pattern that can't be used.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ScopePatternError {
     /// The pattern is empty.
-    #[error("a scope pattern must not be empty")]
+    #[error("a pattern must not be empty")]
     Empty,
     /// The pattern is absolute.
-    #[error("scope pattern `{0}` must be relative to the folder, not start with `/`")]
+    #[error("pattern `{0}` must be relative to the folder, not start with `/`")]
     Absolute(Box<str>),
     /// The pattern has a `.` or `..` component, which never matches a folder-relative path.
-    #[error("scope pattern `{0}` must not contain `.` or `..` components")]
+    #[error("pattern `{0}` must not contain `.` or `..` components")]
     Component(Box<str>),
     /// The glob syntax is invalid.
-    #[error("scope pattern `{pattern}` is not a valid glob: {reason}")]
+    #[error("pattern `{pattern}` is not a valid glob: {reason}")]
     Glob {
         /// The pattern.
         pattern: Box<str>,
@@ -108,7 +108,9 @@ impl Scope {
     }
 }
 
-fn compile<P>(patterns: P) -> Result<(Vec<Box<str>>, GlobSet), ScopePatternError>
+/// The patterns as written and the glob set that matches them (each pattern matching a path,
+/// a folder that contains it, or a glob, as [`Scope`] describes).
+pub(super) fn compile<P>(patterns: P) -> Result<(Vec<Box<str>>, GlobSet), ScopePatternError>
 where
     P: IntoIterator,
     P::Item: AsRef<str>,

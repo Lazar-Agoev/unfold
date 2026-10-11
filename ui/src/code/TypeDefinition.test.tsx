@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 import type { TypeDefinition as TypeDefinitionModel, TypeMember } from "../ipc/generated";
 import { engineKey } from "../ipc/queries";
 import { renderWithClient, testQueryClient } from "../test/render";
-import { TypeDefinition, memberName } from "./TypeDefinition";
+import { TypeDefinition } from "./TypeDefinition";
+import { memberName } from "./typeKinds";
 
 const P = "p-shop000000";
 const CART = "src/cart.ts#interface:Cart";

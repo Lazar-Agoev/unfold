@@ -75,15 +75,16 @@ function removeSelected(target: PageTarget): void {
 function useBoardActions(target: PageTarget): void {
   const { board } = target;
   const unlabeled = useUnlabeled(target);
-  // A selected line is derived from the cards: there is nothing of it to remove.
-  const hasSelection = () => !["none", "line"].includes(getPageView(target).selection.kind);
+  // A selected line (or an arrow's calls) is derived from the cards: there is nothing of it to remove.
+  const hasSelection = () => !["none", "line", "calls"].includes(getPageView(target).selection.kind);
   const setLens = (view: View) => () => {
     setPageLens(target, view);
   };
   useRegisterActions([
     { id: ActionIds.newPage, title: "New Page", category: "Board", icon: "page", run: () => void addPage(board) },
-    { id: ActionIds.lensCode, title: "Code", category: "View", run: setLens("code") },
+    { id: ActionIds.lensDiagram, title: "Diagram", category: "View", run: setLens("diagram") },
     { id: ActionIds.lensFlow, title: "Flow", category: "View", run: setLens("flow") },
+    { id: ActionIds.lensCode, title: "Code", category: "View", run: setLens("code") },
     {
       id: ActionIds.publish,
       title: "Publish",
@@ -181,7 +182,7 @@ function PageStage({ target }: { readonly target: PageTarget }) {
   const hasCamera = usePageView(target, (view) => view.camera !== null);
   const linking = usePageView(target, (view) => view.linking !== null);
   // Computed once here: the canvas draws them, Arrange orders by them.
-  const boardArrows = useBoardArrows(board.project, cards);
+  const boardArrows = useBoardArrows(target, cards);
   const { arrows } = boardArrows;
 
   // A page shown for the first time fits itself once its cards are measured.

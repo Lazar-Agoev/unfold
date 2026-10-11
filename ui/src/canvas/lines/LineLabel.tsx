@@ -5,14 +5,14 @@
  * and the widths of its forms (measured with the bundled font) to the page's label layout, which
  * places it at the first free spot along the curve, in a shorter form if it must, or not at all (the
  * line then takes the click itself, see `ArrowEdge`). A click selects the line, which opens the
- * contract.
+ * contract. An arrow that stands for several calls reads "3 calls"; a type arrow's label is its
+ * field's written type, quiet text that selects nothing.
  */
 
 import { useLayoutEffect, useMemo } from "react";
-import type { LineLabel as LineLabelModel } from "../../ipc/generated";
 import { LINE_LABEL_FONT, useMeasure } from "../measure";
 import { useLabelLayout } from "./labelLayout";
-import { labelForms, labelText, partsText } from "./labelText";
+import { partsText, type LabelPart } from "./labelText";
 import type { Curve, Placement } from "./placeLabels";
 import "./lines.css";
 
@@ -25,17 +25,21 @@ export interface LineLabelProps {
   readonly id: string;
   /** The curve the line draws, in canvas units. */
   readonly curve: Curve;
-  readonly label: LineLabelModel;
+  /** Its forms, longest first (`labelForms`, `countForms`, `typeForms`). */
+  readonly forms: readonly (readonly LabelPart[])[];
+  /** Its full text: its accessible name and tooltip. */
+  readonly full: string;
   /** Where the page's label layout puts it (`useLabelPlacement`): null or undefined draws nothing. */
   readonly placement: Placement | null | undefined;
-  readonly onSelect: () => void;
+  /** Selects the line; without it the label is quiet text. */
+  readonly onSelect?: () => void;
+  /** Whether what it selects is selected (an arrow's calls, listed in Selected). */
+  readonly selected?: boolean;
 }
 
-export function LineLabel({ id, curve, label, placement, onSelect }: LineLabelProps) {
+export function LineLabel({ id, curve, forms, full, placement, onSelect, selected = false }: LineLabelProps) {
   const layout = useLabelLayout();
   const measure = useMeasure();
-  const forms = useMemo(() => labelForms(label), [label]);
-  const full = useMemo(() => labelText(label, false), [label]);
   const widths = useMemo(() => forms.map((form) => Math.ceil(measure(partsText(form), LINE_LABEL_FONT)) + PADDING), [forms, measure]);
   useLayoutEffect(() => {
     layout.report(id, { curve, widths, height: LABEL_HEIGHT });
@@ -50,11 +54,24 @@ export function LineLabel({ id, curve, label, placement, onSelect }: LineLabelPr
   if (!placement || !parts) {
     return null;
   }
+  const style = { width: widths[placement.form], height: LABEL_HEIGHT, transform: `translate(-50%, -50%) translate(${placement.x}px, ${placement.y}px)` };
+  const text = parts.map((part, index) => (
+    <span key={index} className={`line-label-${part.tone}`}>
+      {part.text}
+    </span>
+  ));
+  if (!onSelect) {
+    return (
+      <span className="line-label quiet" style={style} title={full} data-arrow={id}>
+        {text}
+      </span>
+    );
+  }
   return (
     <button
       type="button"
-      className="line-label nodrag nopan"
-      style={{ width: widths[placement.form], height: LABEL_HEIGHT, transform: `translate(-50%, -50%) translate(${placement.x}px, ${placement.y}px)` }}
+      className={`line-label nodrag nopan${selected ? " selected" : ""}`}
+      style={style}
       aria-label={`Line ${full}`}
       title={full}
       data-arrow={id}
@@ -63,11 +80,7 @@ export function LineLabel({ id, curve, label, placement, onSelect }: LineLabelPr
         onSelect();
       }}
     >
-      {parts.map((part, index) => (
-        <span key={index} className={`line-label-${part.tone}`}>
-          {part.text}
-        </span>
-      ))}
+      {text}
     </button>
   );
 }

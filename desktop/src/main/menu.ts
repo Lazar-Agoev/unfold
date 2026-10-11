@@ -68,8 +68,9 @@ export function buildMenu(actions: MenuActions, options: { isMac: boolean; devTo
         forward("Home", "show_home", "CmdOrCtrl+0"),
         forward("Toggle Sidebar", "toggle_sidebar", "CmdOrCtrl+B"),
         { type: "separator" },
-        forward("Code", "lens_code", "CmdOrCtrl+1"),
+        forward("Diagram", "lens_diagram", "CmdOrCtrl+1"),
         forward("Flow", "lens_flow", "CmdOrCtrl+2"),
+        forward("Code", "lens_code", "CmdOrCtrl+3"),
         { type: "separator" },
         { role: "togglefullscreen" },
         ...(options.devTools

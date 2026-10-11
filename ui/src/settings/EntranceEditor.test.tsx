@@ -22,6 +22,7 @@ const CONFIG: ProjectConfig = {
     exclude: [],
     disabledDetectors: [],
     pythonProjects: [],
+    evidence: [],
     entrances: [
       { index: 0, kind: "command", trigger: "import", method: null, label: null, handler: ["src/jobs/import-orders.ts#importOrders"], startup: null, line: 4 },
       { index: 1, kind: "event", trigger: "SIGTERM", method: null, label: "Shut down", handler: ["src/server.ts#shutdown"], startup: null, line: 9 },

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AgentServerStatus } from "../shared/agent-api";
 import { IPC, PRELOAD_COMMANDS } from "../shared/transport";
 import { EngineRequestError } from "./engine-host";
 import type { FakeBrowserWindow } from "./fake-electron";
@@ -14,6 +15,12 @@ vi.mock("electron", async () => (await import("./fake-electron")).electronModule
 
 const UI = { kind: "dev", url: "http://localhost:5173/" } as const;
 const PROJECT = "p-7k2m9q4xab";
+const SERVER_STATUS: AgentServerStatus = {
+  state: "listening",
+  port: 29180,
+  address: "http://127.0.0.1:29180/mcp",
+  agents: [{ author: "agent:claude", name: "Claude", lastSeenMs: 2, lastActedMs: 1 }],
+};
 
 /** Records the main process's trusted engine requests and answers them per command. */
 class FakeEngine {
@@ -38,7 +45,8 @@ function setup() {
     false,
   );
   const agents = new AgentBridge({ windows: registry, views: new ViewTracker() });
-  registerWindowCommands({ registry, workspace: new Workspace(registry, engine), engine, ui: UI, agents });
+  const mcp = { status: () => SERVER_STATUS };
+  registerWindowCommands({ registry, workspace: new Workspace(registry, engine), engine, ui: UI, agents, mcp });
   const handler = ipcHandlers.get(IPC.windowCommand);
   if (!handler) {
     throw new Error("window commands not registered");
@@ -340,6 +348,11 @@ describe("the agent channel", () => {
     const board = { title: "Orders", place: "draft", changes: 0, revision: "r1", unsaved: false };
     expect(await invoke(entry, "agent_read_result", { requestId: sent.requestId, result: { ok: true, page, board } })).toEqual({ ok: true, value: null });
     expect(await read).toMatchObject({ ok: true, page, board });
+  });
+
+  it("agent_server_status reports the MCP server for Preferences › Agents", async () => {
+    const { open, invoke } = setup();
+    expect(await invoke(open(), "agent_server_status")).toEqual({ ok: true, value: SERVER_STATUS });
   });
 });
 

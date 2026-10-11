@@ -271,6 +271,25 @@
   align-self: flex-start;
 }
 
+/* Evidence files */
+
+.settings-evidence-pattern {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-code);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-evidence-add {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .settings-invalid {
   display: flex;
   flex-direction: column;

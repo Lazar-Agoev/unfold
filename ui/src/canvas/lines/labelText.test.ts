@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LabelInput, LineLabel, TypeText } from "../../ipc/generated";
-import { labelForms, labelParts, labelText, partsText } from "./labelText";
+import { TYPE_LABEL_SHORT, countForms, labelForms, labelParts, labelText, partsText, typeForms } from "./labelText";
 
 const type = (text: string): TypeText => ({ text, spans: [] });
 const typed = (text: string): LabelInput => ({ type: type(text) });
@@ -58,5 +58,17 @@ describe("labelText", () => {
     expect(forms(label([typed("str"), { keyword: "retries", type: type("int") }], "Gateway"))).toEqual(["(str, retries=int) → Gateway", "(+2) → Gateway", "→ Gateway"]);
     expect(forms(label([typed("Cart")], "Receipt", true))).toEqual(["(…) → Receipt", "→ Receipt"]);
     expect(forms(label([], "void"))).toEqual(["() → void", "→ void"]);
+  });
+
+  it("reads an arrow that stands for several calls as a count", () => {
+    expect(countForms(3).map(partsText)).toEqual(["3 calls"]);
+  });
+
+  it("labels a type arrow with its field's written type, cut short when it is long", () => {
+    expect(typeForms(type("CartItem[]")).map(partsText)).toEqual(["CartItem[]"]);
+    const long = typeForms(type("Record<string, Map<CartItem, Promise<Receipt>>>")).map(partsText);
+    expect(long[0]).toBe("Record<string, Map<CartItem, Promise<Receipt>>>");
+    expect(long[1]).toHaveLength(TYPE_LABEL_SHORT);
+    expect(long[1]?.endsWith("…")).toBe(true);
   });
 });

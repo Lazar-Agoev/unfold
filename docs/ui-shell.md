@@ -17,14 +17,14 @@ ui/src/
   home/          Home: its sidebar, first launch, not compiled, the overview, boards and thumbnails,
                  health and activity, the compiled toast
   board/         a board tab: its sidebar (header, Pages, On this page, Selected), the top bar, the dock
-  canvas/        the React Flow canvas: cards (block, entrance, placeholder), arrows, drawn links,
-                 layout and sizing, Arrange, Show callers
+  canvas/        the React Flow canvas: cards (block, Diagram node, type, entrance, placeholder), arrows,
+                 drawn links, layout and sizing, Arrange, Show callers
   code/ flow/    the Code and Flow renderers
   add/           Add: the map, search across projects, the preview, commands
   agent/         agents apart from any one board: the agent mark and bylines, Copy link, view reports
   peek/          the source peek sheet
   settings/      project settings, the entrance editor, Copy Diagnostics
-  preferences/   Preferences, with the keyboard section
+  preferences/   Preferences, with the agents and keyboard sections
   dialogs/       one host for every dialog: Publish, Discard changes, Delete, folder prompts
   menus/         the board, share, and project menus, project actions, the worktree switcher
   ipc/           the typed client, queries and invalidation, streams; generated/ (never edited)
@@ -78,9 +78,11 @@ App
   most half the sidebar's height, scrolls, and collapses.
 - **Selected** follows the page's selection. A card: its name, location, description, Called by and Reached from (up
   to three each, then "N more · Show callers"), the calls not on the page (up to five, each with **+ Open**), and its
-  groups; an entrance card lists its handlers. A Flow node: its label, the code name it replaces, and its paths. A
-  group ("Step group in" its card): its title, description, and Ungroup. A drawn link: its label, Edit label, and
-  Remove link. Bylines show the author only, because authored text carries no time; an agent's read "Claude · agent"
+  groups; an entrance card lists its handlers; a type card says where its type is used ("Used in N places", a
+  popover of the places, as in a line's contract) instead of calls for a type declaration (a class lists both). A
+  Flow node: its label, the code name it replaces, and its paths. A group ("Step group in" its card): its title,
+  description, and Ungroup. A drawn link: its label, Edit label, and Remove link. An arrow that stands for several
+  calls: its two cards and each call as written with its line, each opening its contract on the arrow. Bylines show the author only, because authored text carries no time; an agent's read "Claude · agent"
   with the agent mark, and a group shows who titled it ([Agents in the window](#agents-in-the-window)).
 - **The canvas** has the top bar (the page title and publish state, "Claude is working…" while an agent works on the
   page, the lens centered, Share and Publish) and the dock, both floating ([Overlays](#overlays)). Its context menu has Fit, Fold all cards, and Unfold all cards; a
@@ -88,6 +90,18 @@ App
   and Remove from page; a group's has Collapse or Expand group, Describe group…, Copy link, and Ungroup; a link's has
   Edit label, Copy link, and Remove link. A card that needs review shows a banner whose **Review** opens a popover of its problems, each repair with its
   effect and Apply (saved at once, undoable).
+- **Three views** (`cardBody` in `code/typeKinds.ts`). A card shows its own view (saved), else the page's lens,
+  else the page's default view. **Diagram** shows a card as one compact node (`canvas/cards/DiagramCard.tsx`): the
+  kind's mark (`ƒ`, or an entrance's kind: `HTTP`, `WORKER`, `SCHEDULE`, `COMMAND`), the name, `file:line`, the
+  card's switch (an entrance has none: it follows the lens), the review banner, and the whole description, wrapped,
+  with the agent mark when an agent wrote it; its arrows leave from its edge. A **type card**
+  (`canvas/cards/TypeCard.tsx`), a card of an interface, type alias, enum, or class, shows in Diagram view (and in
+  Flow, for a type declaration, which has no paths; a class keeps its Flow of members) its kind, name, `file:line`,
+  and its fields in one grid: each name as written (`readonly` drawn apart, `?`), its written type (`TypeText`,
+  whose declared names open their definitions in place, as in a line's contract), and ` = …` for a default or an
+  enum member's value; an alias that isn't an object shows its aliased type, and inherited fields follow under
+  "from <Type>" for each base. Twelve fields or more list the first eight and "N more". Code view is the source.
+  Folding is the same in every view: a folded card shows only its header.
 - **Groups in both views.** In Code a group is the magenta rail; in Flow it is a step group, a titled magenta region
   around its steps or, collapsed, one step ([reader: step groups](reader.md#step-groups)). Either view's chevron sets
   the group's one `collapsed` field (one undo step), so it folds in both. In Flow, the region's title or the collapsed
@@ -195,7 +209,9 @@ refetch when next shown.
 
 **Who reads what.** Lists use commands that don't wake a project (`list_boards`, `drafts`, `entrances`, `search`,
 `board_thumbnails`, `board_refs`), and Home reads `project_summary` only for the selected project. Thumbnails are
-fetched in chunks of 60 as their rows scroll into view and drawn as plain SVG with the canvas's fallback card sizes.
+fetched in chunks of 60 as their rows scroll into view and drawn as plain SVG with the canvas's fallback card sizes
+for the view each card shows: a Diagram node is compact, and a type card is as tall as the fields it lists
+(`fields`, with `kind` saying whether it is a type declaration or a class).
 Every page and board shares one `card {project, key}` query per definition; the UI applies each page's Flow labels
 itself, and keeps the last verified render of each card in memory.
 
@@ -235,6 +251,17 @@ The screens follow [architecture §11](architecture.md#11-the-desktop-app). Deta
   or a click on the canvas closes the contract. While a line is selected, an unfolded Code callee card tints
   the contract's `calleeLines` with `--color-step` and the caller's calling line keeps `--color-selection`;
   Selected shows the call as written and its two cards.
+- **Arrows from a Diagram node or a type card** (`canvas/arrows.ts`). They leave from the right edge of the header
+  (the `node` port), and all the calls from one card to another merge into one arrow. One call keeps its typed
+  label and contract; several read "N calls" (`countForms`), and clicking that selects the arrow (page selection
+  kind `calls`: the arrow, its two cards, and each call's occurrence, edge, and line): the label is ringed in the
+  accent, Selected lists the calls, and choosing one selects it as a `line` of the same arrow, so its contract
+  opens there. Escape lets go of either. A type card's **type arrows** go from a field's row (its `field:<row>`
+  port, or "N more" for a field it hides) to each other card of the same project its written type names (a
+  `declared` span), one per field and card, labeled with the written type (`typeForms`, cut with `…` past 24
+  characters) as quiet text that selects nothing; they are drawn like the graph's arrows. A field it inherits from
+  a base on the page leaves that to the base's card. All labels share the page's `LabelLayout`. Arrange counts
+  type arrows as it counts calls, so a type sits after the types that link to it.
 - **Health and activity** shows one list at a time. Health: the problems other than board health (Open shows the
   file in the peek sheet at its line; Settings opens project settings on the section the problem is about), then the
   boards that need review (Review opens the board on the page of its first item, with the card selected). Activity:
@@ -247,15 +274,17 @@ The screens follow [architecture §11](architecture.md#11-the-desktop-app). Deta
   shows its preview and the first other board page it is on. In command mode, `>` lists every enabled action under
   its group, or, with a query, ranked by title prefix, word start, substring, every word, then letters in order.
   Functions lists every definition: a type declaration reads with its kind before its name (`interface Cart`,
-  the kind in `--color-contour`) and `TYPE` in the kind column, and is added as a Code card.
+  the kind in `--color-contour`) and `TYPE` in the kind column, and is added as a type card in Diagram view.
 - **The peek sheet** (`peek/`) loads the file in pages of 200 lines as they scroll into view. Definitions (functions,
   classes, methods, constructors, accessors, interfaces, type aliases, enums) get `⊕`, the on-page mark, and a fold
-  chevron; folds start open. A type declaration's `⊕` adds it as a Code card. Its
+  chevron; folds start open. A type declaration's `⊕` adds it as a type card in Diagram view. An evidence file is text with line
+  numbers, its header reading "evidence file". Its
   keys: Escape closes (`peek.close`, not while typing) and ⇧⌘O opens the file in your editor (`peek.openInEditor`).
 - **Project settings** (`settings/`) is an 880 × 700 dialog over the window: General (the name, staged; background
   updates, applied at once; where the graph is stored), Scope (the tree loads one level at a time from `scope_dir`;
   folders excluded by a rule above them are locked; the rules list shows staged additions and struck-through staged
-  removals), Detectors, and Python projects. Save sends every staged edit in one `update_project_config`; Rust's
+  removals), Detectors, Python projects, and Evidence files (the `[evidence] files` patterns with Remove, and a field
+  that adds one after checking it is relative and inside the folder). Save sends every staged edit in one `update_project_config`; Rust's
   error, with its line and column, stays at the top of the section. When `.unfold/config.toml` doesn't parse, the
   sections show the error with Open in editor, and the name is read-only. Closing with staged edits asks first.
 - **Publish** (`dialogs/`) has three forms: a draft's first Publish (the file name, editable when `name_taken`
@@ -291,7 +320,7 @@ the main process owns argument parsing, links, defaults, and page revisions.
 
   | Operation | Does |
   | --- | --- |
-  | `add_cards` | Adds a block or an entrance by key (from any connected project), or keeps the card already there (its view changes when asked). A new card goes beside the item it is `near`, else right of a card that calls it, level with the calling line, else left of a card it calls, else right of everything; it never covers a card. `follow` adds what it calls (up to 3 levels) and what calls it (up to 2), resolved calls and constructions only, at most 40 cards per card; each card's result lists where following stopped: an external or unresolved call (as written, with its line and library or reason), resolved calls past the depth asked for, or callers past the 20 listed |
+  | `add_cards` | Adds a block or an entrance by key (from any connected project), or keeps the card already there (its view changes when asked). A new card goes beside the item it is `near`, else right of a card that calls it (level with the calling line) or whose field names it (level with the field), else left of a card it calls, else right of everything; it never covers a card. `follow` adds what it calls (up to 3 levels) and what calls it (up to 2), resolved calls and constructions only, and, from a type card, the types its fields name (`types`, up to 2 levels, in the view asked for the card), at most 40 cards per card; each card's result lists where following stopped: an external or unresolved call (as written, with its line and library or reason), an external, builtin, or unresolved type name (as written, with its field and module or reason), resolved calls or declared types past the depth asked for, or callers past the 20 listed. Following types from a card that isn't a type adds a warning |
   | `set_view` | A card's view (Diagram, Flow, or Code) and fold, a step group's collapse, and the page's default view |
   | `arrange` | Arrange by call depth, then moves: a position, or right of or below another card (moved clear of the rest) |
   | `remove_items` | Cards (with their step groups and the links that end at them), step groups, and links |
@@ -299,8 +328,9 @@ the main process owns argument parsing, links, defaults, and page revisions.
   | `describe` | Descriptions of cards and step groups, and labels of links |
   | `label_steps` | Flow labels of a card's steps (keys of its Flow model) |
 
-  Sizes come from what the canvas measured, else from the cards' models (`estimatedBlockSize`), and calling lines
-  from the Code rows (`estimatedLineOffset`), so placement and Arrange work on a page no one has shown.
+  Sizes come from what the canvas measured, else from the cards' models and type definitions in the view each
+  shows (`estimatedCardSize`), calling lines from the Code rows (`estimatedLineOffset`), and fields from a type
+  card's rows (`estimatedFieldOffset`), so placement and Arrange work on a page no one has shown.
 - **People's words are safe.** No operation replaces or removes a person's description, label, or group title or
   description unless the call sets `replacePeopleText` (`people_text` otherwise); a group title without an author
   counts as a person's. Text an agent writes again unchanged is kept, whoever wrote it.
@@ -322,13 +352,18 @@ the main process owns argument parsing, links, defaults, and page revisions.
   edit signs it with your name, and a group's new title is its writer's.
 - **View reports** (`agent/viewReport.ts`): `report_view` 150 ms after the tabs or a board session change (only when
   the report differs from the last), at once when the window gains focus, and after a resize: the active board and
-  page (none on Home), the selection (a card, a step: a card's Flow node or statement, a group, a link, or a line
-  with its occurrence), the lens (the page's, else its default view), the ids in view (cards whose rectangle meets
+  page (none on Home), the selection (a card, a step: a card's Flow node or statement, a group, a link, a line
+  with its occurrence, or the calls of an arrow that stands for several), the lens (the page's, else its default view), the ids in view (cards whose rectangle meets
   the canvas's visible area, all of them before the canvas has a camera; their groups; links with an end in view),
   and the board tabs.
 - **Copy link** (pages, cards, step groups, and links): copies `unfold://<project's shared name>/<board id>?page=<page
   id>&item=<item id>` (each part URI-encoded) with `copy_to_clipboard`, and toasts "Copied the link". Only the main
   process reads links; clicking one opens nothing.
+- **Preferences › Agents** (`preferences/AgentsSection.tsx`): the switch "Let agents connect", the port (an error when
+  another program has it or it isn't a whole number from 1024 to 65535), the address and the commands that add the
+  server to Claude Code and Codex, each with a copy button, and the agents connected since the server started, with
+  when each last acted. The switch and the port save with the dialog; the server's state comes from
+  `agent_server_status` and follows `agent_server_changed`.
 
 ## Overlays
 
@@ -370,7 +405,7 @@ each platform's style (`⇧⌘P`, `Ctrl+Shift+P`).
 | Close Window | `window.close` | ⇧⌘W | Ctrl+Shift+W |
 | Add Project… | `project.add` | ⌘O | Ctrl+O |
 | Compile (the selected project, or the active board's) | `project.compile` | ⇧⌘B | Ctrl+Shift+B |
-| Code, Flow (the page's lens) | `board.lensCode`, `board.lensFlow` | ⌘1, ⌘2 | Ctrl+1, Ctrl+2 |
+| Diagram, Flow, Code (the page's lens) | `board.lensDiagram`, `board.lensFlow`, `board.lensCode` | ⌘1, ⌘2, ⌘3 | Ctrl+1, Ctrl+2, Ctrl+3 |
 | Toggle Sidebar | `view.toggleSidebar` | ⌘B | Ctrl+B |
 | Back, Forward | `navigation.back`, `navigation.forward` | ⌘[, ⌘] | Ctrl+[, Ctrl+] |
 | Fit | `board.fit` | ⇧1 | Shift+1 |

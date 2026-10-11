@@ -5,9 +5,15 @@
  * Imports and passed references are dashed. An entrance points at each handler on the page. The
  * graph has no edges between projects, so arrows join only cards that resolve to the same project.
  * The board file holds no arrows; they are derived from the cards and their models.
+ *
+ * A card shown as a Diagram node or a type card's fields has no rows to leave from: its arrows leave
+ * from the node's edge, and all its calls to one card merge into one arrow. A type card's fields draw
+ * type arrows (design §4.2): from a field's row to each card on the page its written type names, one
+ * per field and card, labeled with the written type.
  */
 
-import type { CardView, CodeView, EdgeKind, Key, ProjectId } from "../ipc/generated";
+import type { CardView, CodeView, EdgeKind, Key, ProjectId, TypeDefinition, TypeMember, TypeText } from "../ipc/generated";
+import type { CardBody } from "../code/typeKinds";
 import { cardRefKey } from "../state/boards/keys";
 
 export interface ArrowCard {
@@ -16,39 +22,66 @@ export interface ArrowCard {
   /** The project the card resolves to; null for a card of a project that isn't connected. */
   readonly project: ProjectId | null;
   readonly entrance: boolean;
+  /** What its body shows (`cardBody`): a node's and a type card's arrows leave from the node's edge. */
+  readonly body: CardBody;
+}
+
+/** One call an arrow draws: its occurrence, its edge, and its calling line. */
+export interface ArrowCall {
+  readonly source: Key;
+  readonly seq: number;
+  readonly line: number;
+  readonly kind: EdgeKind;
 }
 
 export interface Arrow {
-  /** Stable: source card, occurrence, target card. */
+  /** Stable: source card, port, target card. */
   readonly id: string;
   readonly source: string;
-  /** The source card's port: the occurrence key, or `target:<position>` for an entrance handler. */
+  /**
+   * The source card's port: the occurrence key, `target:<position>` for an entrance handler, `node` for
+   * a Diagram node or a type card, or `field:<row>` for a type card's field.
+   */
   readonly sourceHandle: string;
   readonly target: string;
   /** The project both cards resolve to: the line's labels and contract are asked of it. */
   readonly project: ProjectId;
+  /** The occurrence it draws (with `seq`, the graph edge); a handler's or a type arrow's port. */
+  readonly occurrence: string;
   /** With the occurrence key, names the graph edge: 0 for the call itself, more for a passed reference. */
   readonly seq: number;
-  readonly kind: EdgeKind | "handler";
+  readonly kind: EdgeKind | "handler" | "type";
   readonly dashed: boolean;
   /** Source order inside the calling card. */
   readonly order: number;
   /** The calling line, when the occurrence has one. */
   readonly line: number | null;
+  /** Every call it stands for, in source order, when it leaves a node and joins several calls to one card. */
+  readonly calls?: readonly ArrowCall[];
+  /** A type arrow's label: the field's written type. */
+  readonly type?: TypeText;
 }
+
+/** The port a Diagram node's (or a type card's) arrows leave from: its header's right edge. */
+export const NODE_PORT = "node";
 
 /** The handle id of an entrance's target row. */
 export function targetHandle(position: number): string {
   return `target:${position}`;
 }
 
-interface Occurrence {
-  readonly source: string;
-  /** Code links are always the occurrence's own edge (0); a Flow chip names its edge. */
-  readonly seq: number;
+/** The port of a type card's field in row `row` (`0`, `from1/2`, `=`: see `fieldRows`). */
+export function fieldPort(row: string): string {
+  return `field:${row}`;
+}
+
+/** Whether a card's arrows leave from its node's edge (a Diagram node, or a type card's fields). */
+function leavesFromEdge(body: CardBody): boolean {
+  return body === "node" || body === "fields";
+}
+
+interface Occurrence extends ArrowCall {
   readonly target: string;
-  readonly kind: EdgeKind;
-  readonly line: number;
 }
 
 /** The resolved occurrences a block card shows: its Code links (or the last verified ones), else its Flow chips. */
@@ -66,37 +99,166 @@ export function occurrencesOf(view: Extract<CardView, { type: "block" }>, stale:
   );
 }
 
+/** One row of a type card's fields: its id, the member it shows, and its written type. */
+export interface FieldRow {
+  /** `=` for an alias's aliased type, `<index>` for a member, `from<g>/<index>` for a member inherited from base g. */
+  readonly row: string;
+  /** The member; null for an alias's aliased type. */
+  readonly member: TypeMember | null;
+  readonly type: TypeText | undefined;
+  /** For an inherited member, the index of the base it comes from. */
+  readonly base?: number;
+}
+
+/**
+ * The rows a type card lists, in order: an alias's aliased type, its own members, then the members it
+ * inherits, base by base.
+ */
+export function fieldRows(definition: TypeDefinition): FieldRow[] {
+  return [
+    ...(definition.aliased ? [{ row: "=", member: null, type: definition.aliased }] : []),
+    ...definition.members.map((member, index) => ({ row: String(index), member, type: member.type })),
+    ...definition.inherited.flatMap((group, base) =>
+      group.members.map((member, index) => ({ row: `from${base}/${index}`, member, type: member.type, base })),
+    ),
+  ];
+}
+
+/** The calls of `card` as arrows: one per occurrence, or, leaving a node's edge, one per card reached. */
+function callArrows(card: ArrowCard, project: ProjectId, occurrences: readonly Occurrence[], cardOf: (key: Key) => string | undefined): Arrow[] {
+  const byTarget = new Map<string, { order: number; calls: ArrowCall[] }>();
+  const arrows: Arrow[] = [];
+  const seen = new Set<string>();
+  occurrences.forEach((occurrence, order) => {
+    const targetCard = cardOf(occurrence.target);
+    if (targetCard === undefined || targetCard === card.id) {
+      return;
+    }
+    const dashed = occurrence.kind === "imports" || occurrence.kind === "references";
+    if (leavesFromEdge(card.body)) {
+      const merged = byTarget.get(targetCard) ?? { order, calls: [] };
+      if (!merged.calls.some((call) => call.source === occurrence.source && call.seq === occurrence.seq)) {
+        merged.calls.push({ source: occurrence.source, seq: occurrence.seq, line: occurrence.line, kind: occurrence.kind });
+      }
+      byTarget.set(targetCard, merged);
+      return;
+    }
+    const id = `${card.id}|${occurrence.source}|${targetCard}`;
+    if (!seen.has(id)) {
+      seen.add(id);
+      arrows.push({
+        id,
+        source: card.id,
+        sourceHandle: occurrence.source,
+        target: targetCard,
+        project,
+        occurrence: occurrence.source,
+        seq: occurrence.seq,
+        kind: occurrence.kind,
+        dashed,
+        order,
+        line: occurrence.line,
+      });
+    }
+  });
+  for (const [targetCard, { order, calls }] of byTarget) {
+    const first = calls.find((call) => call.kind === "calls" || call.kind === "constructs") ?? calls[0];
+    if (!first) {
+      continue;
+    }
+    arrows.push({
+      id: `${card.id}|${NODE_PORT}|${targetCard}`,
+      source: card.id,
+      sourceHandle: NODE_PORT,
+      target: targetCard,
+      project,
+      occurrence: first.source,
+      seq: first.seq,
+      kind: first.kind,
+      dashed: calls.every((call) => call.kind === "imports" || call.kind === "references"),
+      order,
+      line: first.line,
+      ...(calls.length > 1 ? { calls } : {}),
+    });
+  }
+  return arrows;
+}
+
+/** A type card's type arrows: from each field's row to each other card of the project its written type names. */
+function typeArrows(card: ArrowCard, project: ProjectId, definition: TypeDefinition, cardOf: (key: Key) => string | undefined): Arrow[] {
+  // A base on the page lists its own fields there, with their arrows.
+  const shownBases = new Set(
+    definition.inherited.flatMap((group, base) => {
+      const span = group.from.spans[0];
+      return span?.style === "declared" && span.target !== undefined && cardOf(span.target) !== undefined ? [base] : [];
+    }),
+  );
+  const arrows: Arrow[] = [];
+  fieldRows(definition).forEach(({ row, type, base }, order) => {
+    if (!type || (base !== undefined && shownBases.has(base))) {
+      return;
+    }
+    const reached = new Set<string>();
+    for (const span of type.spans) {
+      const targetCard = span.style === "declared" && span.target !== undefined ? cardOf(span.target) : undefined;
+      if (targetCard === undefined || targetCard === card.id || reached.has(targetCard)) {
+        continue;
+      }
+      reached.add(targetCard);
+      const port = fieldPort(row);
+      arrows.push({
+        id: `${card.id}|${port}|${targetCard}`,
+        source: card.id,
+        sourceHandle: port,
+        target: targetCard,
+        project,
+        occurrence: port,
+        seq: 0,
+        kind: "type",
+        dashed: false,
+        order,
+        line: null,
+        type,
+      });
+    }
+  });
+  return arrows;
+}
+
 /**
  * Every arrow on a page. `models` maps `cardRefKey(project, key)` to loaded card models (missing ones
- * draw no arrows yet); `stale` gives the last verified Code of a block whose source changed.
+ * draw no arrows yet); `stale` gives the last verified Code of a block whose source changed;
+ * `definitions` maps the same keys to the loaded definitions of the type cards that show their fields.
  */
 export function computeArrows(
   cards: readonly ArrowCard[],
   models: ReadonlyMap<string, CardView>,
   stale: (project: ProjectId, key: Key) => CodeView | undefined = () => undefined,
+  definitions: ReadonlyMap<string, TypeDefinition> = new Map(),
 ): Arrow[] {
-  const cardOf = new Map<string, string>();
+  const cardOfRef = new Map<string, string>();
   for (const card of cards) {
     const ref = card.project !== null ? cardRefKey(card.project, card.key) : null;
-    if (!card.entrance && ref !== null && !cardOf.has(ref)) {
-      cardOf.set(ref, card.id);
+    if (!card.entrance && ref !== null && !cardOfRef.has(ref)) {
+      cardOfRef.set(ref, card.id);
     }
   }
   const arrows: Arrow[] = [];
-  const seen = new Set<string>();
   for (const card of cards) {
     const { project } = card;
     const model = project !== null ? models.get(cardRefKey(project, card.key)) : undefined;
     if (!model || project === null) {
       continue;
     }
+    const cardOf = (key: Key) => cardOfRef.get(cardRefKey(project, key));
     if (model.type === "entrance") {
+      const seen = new Set<string>();
       for (const target of model.targets) {
-        const targetCard = target.resolution === "resolved" && target.target !== null ? cardOf.get(cardRefKey(project, target.target)) : undefined;
+        const targetCard = target.resolution === "resolved" && target.target !== null ? cardOf(target.target) : undefined;
         if (targetCard === undefined || targetCard === card.id) {
           continue;
         }
-        const handle = targetHandle(target.position);
+        const handle = leavesFromEdge(card.body) ? NODE_PORT : targetHandle(target.position);
         const id = `${card.id}|${handle}|${targetCard}`;
         if (!seen.has(id)) {
           seen.add(id);
@@ -106,6 +268,7 @@ export function computeArrows(
             sourceHandle: handle,
             target: targetCard,
             project,
+            occurrence: targetHandle(target.position),
             seq: 0,
             kind: "handler",
             dashed: false,
@@ -116,29 +279,11 @@ export function computeArrows(
       }
       continue;
     }
-    occurrencesOf(model, stale(project, card.key)).forEach((occurrence, order) => {
-      const targetCard = cardOf.get(cardRefKey(project, occurrence.target));
-      if (targetCard === undefined || targetCard === card.id) {
-        return;
-      }
-      const id = `${card.id}|${occurrence.source}|${targetCard}`;
-      if (seen.has(id)) {
-        return;
-      }
-      seen.add(id);
-      arrows.push({
-        id,
-        source: card.id,
-        sourceHandle: occurrence.source,
-        target: targetCard,
-        project,
-        seq: occurrence.seq,
-        kind: occurrence.kind,
-        dashed: occurrence.kind === "imports" || occurrence.kind === "references",
-        order,
-        line: occurrence.line,
-      });
-    });
+    arrows.push(...callArrows(card, project, occurrencesOf(model, stale(project, card.key)), cardOf));
+    const definition = card.body === "fields" ? definitions.get(cardRefKey(project, card.key)) : undefined;
+    if (definition) {
+      arrows.push(...typeArrows(card, project, definition, cardOf));
+    }
   }
   return arrows;
 }

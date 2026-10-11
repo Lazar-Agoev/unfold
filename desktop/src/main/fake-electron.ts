@@ -1,7 +1,7 @@
 /**
  * A stand-in for the `electron` module, for the main process's tests: enough for the window registry
- * to create, address, focus, close, and message windows, and for the window commands to show
- * dialogs. Tests install it with
+ * to create, address, focus, close, and message windows, for the window commands to show dialogs,
+ * and for the engine host to fork its utility process. Tests install it with
  * `vi.mock("electron", async () => (await import("./fake-electron")).electronModule)` and drive it
  * through the exports below.
  */
@@ -103,6 +103,35 @@ export class FakeBrowserWindow {
   }
 }
 
+/** The engine host's utility process: what the main process posted, and a way to answer. */
+export class FakeUtilityProcess {
+  /** Every message the main process posted, in order. */
+  readonly posted: unknown[] = [];
+  private readonly handlers = new Map<string, ((value: unknown) => void)[]>();
+
+  postMessage(message: unknown): void {
+    this.posted.push(message);
+  }
+  on(event: string, handler: (value: unknown) => void): void {
+    this.handlers.set(event, [...(this.handlers.get(event) ?? []), handler]);
+  }
+  once(event: string, handler: (value: unknown) => void): void {
+    this.on(event, handler);
+  }
+  kill(): void {
+    this.emit("exit", 0);
+  }
+  /** Simulates the process sending a message (`message`) or exiting (`exit`). */
+  emit(event: string, value: unknown): void {
+    for (const handler of this.handlers.get(event) ?? []) {
+      handler(value);
+    }
+  }
+}
+
+/** The utility processes forked, in order. */
+export const forked: FakeUtilityProcess[] = [];
+
 /** What the dialogs answer, and what they were asked. */
 export const dialogs = {
   /** The folder the picker returns; null cancels it. */
@@ -124,6 +153,7 @@ export const clipboardTexts: string[] = [];
 /** Forgets every window, handler, and dialog answer. */
 export function resetFakeElectron(): void {
   FakeBrowserWindow.focused = null;
+  forked.length = 0;
   ipcHandlers.clear();
   clipboardTexts.length = 0;
   dialogs.folder = null;
@@ -166,8 +196,14 @@ export const electronModule = {
     getPrimaryDisplay: () => ({ id: 1, workArea }),
     getAllDisplays: () => [{ id: 1, workArea }],
   },
+  utilityProcess: {
+    fork: () => {
+      const child = new FakeUtilityProcess();
+      forked.push(child);
+      return child;
+    },
+  },
   // Imported by modules under test, but never used by the tests.
   session: null,
   MessageChannelMain: null,
-  utilityProcess: null,
 };

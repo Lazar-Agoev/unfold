@@ -5,16 +5,19 @@
  *
  * The curve doesn't take the pointer. A call or reference line carries its closed label where the
  * page's label layout puts it, clear of the cards (docs/proposals/typed-lines.md §7); selected, the
- * label opens into the call's contract. A line whose label fits nowhere at rest takes the click
- * itself: a wide invisible stroke over the curve, named like the label would be.
+ * label opens into the call's contract. An arrow from a Diagram node that stands for several calls
+ * reads "3 calls" and selects them (Selected lists them, each opening its contract here). A type
+ * arrow, from a type card's field to the type it names, is drawn like a call's and labeled with the
+ * field's written type, which selects nothing. A line whose label fits nowhere at rest takes the
+ * click itself: a wide invisible stroke over the curve, named like the label would be.
  */
 
 import { EdgeLabelRenderer, getBezierPath, type Edge, type EdgeProps } from "@xyflow/react";
 import { memo, useMemo } from "react";
-import type { LineLabel as LineLabelModel } from "../ipc/generated";
-import { select, type PageTarget, type SelectedLine } from "../state/boards";
+import type { LineLabel as LineLabelModel, TypeText } from "../ipc/generated";
+import { select, type PageTarget, type SelectedCalls, type SelectedLine } from "../state/boards";
 import { useLabelLayout, useLabelPlacement } from "./lines/labelLayout";
-import { labelText } from "./lines/labelText";
+import { countForms, countText, labelForms, labelText, typeForms } from "./lines/labelText";
 import { LineContract } from "./lines/LineContract";
 import { LineLabel } from "./lines/LineLabel";
 import { bezierCurve } from "./lines/placeLabels";
@@ -23,13 +26,20 @@ interface ArrowData extends Record<string, unknown> {
   readonly dashed: boolean;
   /** An entrance's arrow to one of its handlers. */
   readonly handler: boolean;
-  /** The line's closed label: null when it has none, absent while loading (and for handler arrows). */
+  /** The line's closed label: null when it has none, absent while loading (and for other arrows). */
   readonly label?: LineLabelModel | null;
-  /** The page and the line as a selection, for a line that can carry a label. */
+  /** The page, for an arrow whose label selects something. */
   readonly page?: PageTarget;
+  /** The line it draws; for an arrow that stands for several calls, the one whose contract is open. */
   readonly line?: SelectedLine;
   /** Whether the line is selected (its contract is open). */
   readonly selected?: boolean;
+  /** The calls an arrow that stands for several selects (Selected lists them). */
+  readonly calls?: SelectedCalls;
+  /** Whether those calls are selected. */
+  readonly listed?: boolean;
+  /** A type arrow's label: the field's written type. */
+  readonly type?: TypeText;
 }
 
 export type ArrowEdgeType = Edge<ArrowData, "arrow">;
@@ -43,6 +53,39 @@ function arrowHead(x: number, y: number, length: number, width: number): string 
 const HEAD_LENGTH = 7;
 const HEAD_WIDTH = 8;
 
+/** What an arrow's label says and what clicking it selects. */
+interface Labeled {
+  readonly forms: ReturnType<typeof labelForms>;
+  readonly full: string;
+  readonly onSelect?: () => void;
+}
+
+function labeledOf(data: ArrowData | undefined): Labeled | null {
+  const { label, page, line, calls, type } = data ?? {};
+  if (type) {
+    return { forms: typeForms(type), full: type.text };
+  }
+  if (calls && page) {
+    return {
+      forms: countForms(calls.calls.length),
+      full: countText(calls.calls.length),
+      onSelect: () => {
+        select(page, { kind: "calls", ...calls });
+      },
+    };
+  }
+  if (label && page && line) {
+    return {
+      forms: labelForms(label),
+      full: labelText(label, false),
+      onSelect: () => {
+        select(page, { kind: "line", ...line });
+      },
+    };
+  }
+  return null;
+}
+
 export const ArrowEdge = memo(function ArrowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data }: EdgeProps<ArrowEdgeType>) {
   const endX = targetX - HEAD_LENGTH;
   const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX: endX, targetY, targetPosition });
@@ -53,13 +96,9 @@ export const ArrowEdge = memo(function ArrowEdge({ id, sourceX, sourceY, targetX
   );
   const placement = useLabelPlacement(useLabelLayout(), id);
   const tone = data?.handler ? " handler" : "";
-  const { label, page, line, selected = false } = data ?? {};
-  const labeled = label && page && line ? { label, page, line } : null;
-  const onSelect = labeled
-    ? () => {
-        select(labeled.page, { kind: "line", ...labeled.line });
-      }
-    : undefined;
+  const { page, line, selected = false, listed = false } = data ?? {};
+  const labeled = useMemo(() => labeledOf(data), [data]);
+  const onSelect = labeled?.onSelect;
   return (
     <>
       <g className={`board-arrow${tone}`}>
@@ -71,7 +110,7 @@ export const ArrowEdge = memo(function ArrowEdge({ id, sourceX, sourceY, targetX
             className="board-arrow-hit"
             role="button"
             tabIndex={0}
-            aria-label={`Line ${labelText(labeled.label, false)}`}
+            aria-label={`Line ${labeled.full}`}
             data-arrow={id}
             onClick={(event) => {
               event.stopPropagation();
@@ -84,15 +123,23 @@ export const ArrowEdge = memo(function ArrowEdge({ id, sourceX, sourceY, targetX
               }
             }}
           >
-            <title>{labelText(labeled.label, false)}</title>
+            <title>{labeled.full}</title>
           </path>
         ) : null}
       </g>
-      {labeled && onSelect ? (
+      {labeled ? (
         <EdgeLabelRenderer>
           {/* The label stays in the layout while its contract is open, so the others don't move. */}
-          <LineLabel id={id} curve={curve} label={labeled.label} placement={selected ? null : placement} onSelect={onSelect} />
-          {selected ? <LineContract target={labeled.page} line={labeled.line} x={labelX} y={labelY} curve={curve} /> : null}
+          <LineLabel
+            id={id}
+            curve={curve}
+            forms={labeled.forms}
+            full={labeled.full}
+            placement={selected ? null : placement}
+            selected={listed}
+            {...(onSelect ? { onSelect } : {})}
+          />
+          {selected && page && line ? <LineContract target={page} line={line} x={labelX} y={labelY} curve={curve} /> : null}
         </EdgeLabelRenderer>
       ) : null}
     </>

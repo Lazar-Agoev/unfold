@@ -39,7 +39,8 @@ pub enum FileClass {
     /// A file with a source extension that exists but isn't indexed. References into it
     /// resolve as `not_indexed` rather than `not_found`.
     Unindexed(Unindexed),
-    /// A configuration input whose bytes are fingerprinted.
+    /// An input whose bytes are fingerprinted: a configuration file, or an evidence file
+    /// (`[evidence] files`, which `[scope]` doesn't apply to: always [`ScopeStatus::InScope`]).
     Input(InputRole, ScopeStatus),
     /// Anything else (documentation, images, lockfiles, ...): not tracked.
     Other,
@@ -61,7 +62,9 @@ pub enum Unindexed {
 }
 
 /// Classifies `path`. Ignore files and symlinks are the walk's concern; this looks only at the
-/// path, the default exclusions, and the settings.
+/// path, the default exclusions, and the settings. A file that is nothing else to Unfold and
+/// matches `[evidence] files` is an evidence input; a source, context, configuration, or
+/// unindexed source-like file never is.
 pub fn classify(path: &RepoPath, settings: &Settings) -> FileClass {
     let text = path.as_str();
     if text == SETTINGS_PATH {
@@ -75,7 +78,11 @@ pub fn classify(path: &RepoPath, settings: &Settings) -> FileClass {
         return FileClass::Input(role, settings.scope.status(path));
     }
     let Some(kind) = source_kind(name) else {
-        return FileClass::Other;
+        return if settings.evidence.contains(path) {
+            FileClass::Input(InputRole::Evidence, ScopeStatus::InScope)
+        } else {
+            FileClass::Other
+        };
     };
     let language = match kind {
         SourceKind::JavaScript => return FileClass::Unindexed(Unindexed::JavaScript),
@@ -218,5 +225,34 @@ mod tests {
             FileClass::Unindexed(Unindexed::NotIncluded)
         );
         assert_eq!(class("src/a.py", &narrowed), FileClass::Source(Language::Python));
+    }
+
+    #[test]
+    fn evidence_files_are_inputs_unless_they_are_something_else() {
+        let settings = Settings::parse(
+            "[scope]\ninclude = [\"src\"]\n[evidence]\nfiles = [\"db\", \"package.json\", \"src/a.ts\", \"lib/*.js\"]\n",
+        )
+        .unwrap();
+        let evidence = FileClass::Input(InputRole::Evidence, ScopeStatus::InScope);
+        assert_eq!(
+            class("db/migrations/001.sql", &settings),
+            evidence,
+            "scope doesn't apply"
+        );
+        assert_eq!(class("db/schema.prisma", &settings), evidence);
+        assert_eq!(class("docs/a.sql", &settings), FileClass::Other);
+        assert_eq!(
+            class("package.json", &settings),
+            FileClass::Input(InputRole::Package, ScopeStatus::NotIncluded)
+        );
+        assert_eq!(
+            class("src/a.ts", &settings),
+            FileClass::Source(Language::TypeScript)
+        );
+        assert_eq!(
+            class("lib/a.js", &settings),
+            FileClass::Unindexed(Unindexed::JavaScript)
+        );
+        assert_eq!(class("db/node_modules/x.sql", &settings), FileClass::Other);
     }
 }

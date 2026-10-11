@@ -18,6 +18,7 @@
 //! | Python project | Adds or replaces the `[[python.project]]` table with that root, or removes it |
 //! | Detector toggle | Adds the detector to, or removes it from, `[detectors] disabled` |
 //! | Project name | Sets `[project] name`, keeping the value's comments; no name removes the `[project]` table |
+//! | Evidence files | Adds a pattern to `[evidence] files` (unless it is listed), or removes one exactly as written; an emptied list's key goes, and so does the emptied table |
 
 use serde::Deserialize;
 use toml_edit::{Array, ArrayOfTables, DocumentMut, Item, Table, Value};
@@ -90,6 +91,16 @@ pub enum SettingsEdit {
     SetProjectName {
         /// The name; it must match `/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/`.
         name: Option<String>,
+    },
+    /// Add a pattern to `[evidence] files`, unless it is listed already.
+    AddEvidencePattern {
+        /// The pattern: a file, a folder, or a glob, relative to the project's folder.
+        pattern: String,
+    },
+    /// Remove one `[evidence] files` pattern exactly as written.
+    RemoveEvidencePattern {
+        /// The pattern, as `project_config` lists it.
+        pattern: String,
     },
 }
 
@@ -255,7 +266,38 @@ fn apply(doc: &mut DocumentMut, edit: &SettingsEdit) -> Result<()> {
             Ok(())
         }
         SettingsEdit::SetProjectName { name } => set_project_name(doc, name.as_deref()),
+        SettingsEdit::AddEvidencePattern { pattern } => {
+            let files = array(table(doc, "evidence")?, "files")?;
+            if position(files, pattern).is_none() {
+                files.push(pattern.as_str());
+            }
+            Ok(())
+        }
+        SettingsEdit::RemoveEvidencePattern { pattern } => remove_evidence(doc, pattern),
     }
+}
+
+/// Removes `pattern`, exactly as written, from `[evidence] files`; an emptied list's key goes,
+/// and so does the `[evidence]` table it emptied.
+fn remove_evidence(doc: &mut DocumentMut, pattern: &str) -> Result<()> {
+    let missing = || WorkspaceError::SettingsConflict(format!("`{pattern}` is not in `[evidence] files`"));
+    let evidence = doc
+        .get_mut("evidence")
+        .and_then(Item::as_table_like_mut)
+        .ok_or_else(missing)?;
+    let files = evidence
+        .get_mut("files")
+        .and_then(Item::as_array_mut)
+        .ok_or_else(missing)?;
+    let index = position(files, pattern).ok_or_else(missing)?;
+    files.remove(index);
+    if files.is_empty() {
+        evidence.remove("files");
+    }
+    if evidence.is_empty() {
+        doc.remove("evidence");
+    }
+    Ok(())
 }
 
 /// Sets `[project] name`, or removes the `[project]` table (which holds only the name). A value
@@ -708,6 +750,53 @@ mod tests {
         let edit: SettingsEdit =
             serde_json::from_str(r#"{"op": "set_project_name", "name": null}"#).expect("deserialize");
         assert_eq!(edit, name(None));
+    }
+
+    #[test]
+    fn evidence_patterns_are_added_once_and_removed_as_written() {
+        let add = |pattern: &str| SettingsEdit::AddEvidencePattern {
+            pattern: pattern.into(),
+        };
+        let remove = |pattern: &str| SettingsEdit::RemoveEvidencePattern {
+            pattern: pattern.into(),
+        };
+        let added = apply_edits(
+            Some(COMMENTED),
+            &[
+                add("prisma/schema.prisma"),
+                add("db/migrations/*.sql"),
+                add("prisma/schema.prisma"),
+            ],
+        )
+        .expect("add");
+        assert!(added.text.starts_with(COMMENTED), "{}", added.text);
+        assert_eq!(
+            added.settings.evidence.patterns(),
+            ["prisma/schema.prisma".into(), "db/migrations/*.sql".into()]
+        );
+        let commented = added.text.replace("[evidence]\n", "[evidence]\n# for boards\n");
+        let removed = apply_edits(Some(&commented), &[remove("prisma/schema.prisma")]).expect("remove");
+        assert_eq!(
+            removed.settings.evidence.patterns(),
+            ["db/migrations/*.sql".into()]
+        );
+        assert!(removed.text.contains("# for boards"), "{}", removed.text);
+        let emptied = apply_edits(
+            Some(&added.text),
+            &[remove("prisma/schema.prisma"), remove("db/migrations/*.sql")],
+        )
+        .expect("remove");
+        assert_eq!(emptied.text, COMMENTED, "the emptied table goes");
+        let missing = apply_edits(Some(COMMENTED), &[remove("db")]).expect_err("not listed");
+        assert_eq!(missing.code(), "settings_conflict");
+        let outside = apply_edits(None, &[add("../secrets.sql")]).expect_err("confined");
+        assert!(matches!(
+            outside,
+            WorkspaceError::InvalidSettings { line: Some(_), .. }
+        ));
+        let edit: SettingsEdit =
+            serde_json::from_str(r#"{"op": "add_evidence_pattern", "pattern": "db"}"#).expect("deserialize");
+        assert_eq!(edit, add("db"));
     }
 
     #[test]

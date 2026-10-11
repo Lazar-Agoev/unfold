@@ -247,6 +247,64 @@ button.ecard-handler-name:hover { text-decoration: underline 1px; text-underline
 .ecard-handler-name.external,
 .ecard-handler-name.unresolved { color: var(--color-muted); cursor: help; }
 
+/* A Diagram node (design §4.1): the header, the review banner, and the whole description, nothing under
+   it; with neither, the header alone. */
+.diagram-card .card-description { border-bottom: 0; }
+.diagram-card:not(:has(.card-review, .card-description, .card-note)) .card-header { border-bottom-color: transparent; }
+
+/* A type card (design §4.2): the kind before the name, as a definition's header reads, then the fields.
+   Every type starts in one column after the widest name, as in a type's definition. */
+.tcard-kind {
+  flex-shrink: 0;
+  font: 13px/16px var(--font-code);
+  color: var(--color-contour);
+}
+
+.tcard-fields {
+  display: grid;
+  grid-template-columns: minmax(84px, max-content) minmax(0, 1fr);
+  padding: 8px 12px 10px;
+  font: 12px/16px var(--font-code);
+  font-feature-settings: "calt" 0, "liga" 0;
+  color: var(--color-text);
+}
+
+.tcard-name,
+.tcard-type { padding: 2px 0; }
+
+.tcard-name {
+  padding-right: 8px;
+  color: var(--color-contour);
+  white-space: pre;
+}
+
+.tcard-type { position: relative; min-width: 0; overflow-wrap: anywhere; }
+
+/* A field's type arrow leaves its row at the card's edge; "N more" holds the ports of the fields it hides. */
+.tcard-type > .react-flow__handle.card-port,
+.tcard-more > .react-flow__handle.card-port { top: 10px; right: -12px; }
+
+/* A type opened in place spans both columns. */
+.tcard-opened { grid-column: 1 / -1; padding: 2px 0 6px; }
+
+.tcard-more {
+  position: relative;
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  padding: 2px 0;
+  font: 11px/16px var(--font-ui);
+  color: var(--color-accent-text);
+  text-align: left;
+}
+
+.tcard-more:hover { text-decoration: underline; }
+
+.tcard-empty {
+  padding: 10px 12px;
+  font: 12px/16px var(--font-ui);
+  color: var(--color-muted);
+}
+
 /* Placeholder: a card of a project that isn't connected. */
 .board-card.placeholder-card {
   gap: 12px;

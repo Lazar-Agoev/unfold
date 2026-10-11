@@ -5,14 +5,16 @@
  *
  * The main process also sends the engine a few requests of its own ({@link EngineHost.request}),
  * which the engine host dispatches with `"trusted": true`: adding a project from a dialog, a drop,
- * or the command line, exporting to a path from a save dialog, and remembering windows.
+ * or the command line, exporting to a path from a save dialog, and remembering windows. The MCP
+ * server's requests for agents go without it ({@link EngineHost.untrusted}), as a window's do. The
+ * engine host also forwards the events the main process follows ({@link EngineHost.onEvent}).
  */
 
 import type { UtilityProcess } from "electron";
 import { MessageChannelMain, utilityProcess } from "electron";
 import type { AppFolders, EngineLost, HostToMain, MainToHost } from "../shared/transport";
 import { IPC, transportError } from "../shared/transport";
-import type { TransportError } from "../shared/unfold-api";
+import type { TransportError, UnfoldEvent } from "../shared/unfold-api";
 import type { WindowEntry } from "./windows";
 
 /** A failed main-process request, carrying the engine's `{code, message}`. */
@@ -52,6 +54,7 @@ export class EngineHost {
   private stopping = false;
   private nextRequestId = 1;
   private readonly requests = new Map<number, PendingRequest>();
+  private readonly eventListeners = new Set<(event: UnfoldEvent) => void>();
 
   constructor(private readonly options: EngineHostOptions) {}
 
@@ -124,6 +127,27 @@ export class EngineHost {
    * stops first, or `engine_unavailable` while it is down.
    */
   request(windowId: number, command: string, args: Readonly<Record<string, unknown>>): Promise<unknown> {
+    return this.send(windowId, command, args, true);
+  }
+
+  /**
+   * Runs one engine command for an agent, on behalf of window `windowId` (`0` for none), without
+   * `trusted`: the engine host refuses a main-process-only command with `untrusted`, as from a window.
+   * Rejects as {@link EngineHost.request} does.
+   */
+  untrusted(windowId: number, command: string, args: Readonly<Record<string, unknown>>): Promise<unknown> {
+    return this.send(windowId, command, args, false);
+  }
+
+  /** Follows the engine events the engine host forwards (`MAIN_EVENTS`). Returns an unsubscribe function. */
+  onEvent(listener: (event: UnfoldEvent) => void): () => void {
+    this.eventListeners.add(listener);
+    return () => {
+      this.eventListeners.delete(listener);
+    };
+  }
+
+  private send(windowId: number, command: string, args: Readonly<Record<string, unknown>>, trusted: boolean): Promise<unknown> {
     const child = this.child;
     if (!child) {
       const code = this.gaveUp ? "engine_unavailable" : "disconnected";
@@ -132,7 +156,7 @@ export class EngineHost {
     const id = this.nextRequestId++;
     return new Promise((resolve, reject) => {
       this.requests.set(id, { resolve, reject });
-      child.postMessage({ type: "request", id, windowId, command, args } satisfies MainToHost);
+      child.postMessage({ type: "request", id, windowId, command, args, trusted } satisfies MainToHost);
     });
   }
 
@@ -141,6 +165,12 @@ export class EngineHost {
   }
 
   private onHostMessage(message: HostToMain): void {
+    if (message.type === "event") {
+      for (const listener of this.eventListeners) {
+        listener(message.event);
+      }
+      return;
+    }
     const request = this.requests.get(message.id);
     this.requests.delete(message.id);
     if (message.ok) {

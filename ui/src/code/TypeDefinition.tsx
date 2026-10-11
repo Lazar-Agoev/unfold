@@ -9,16 +9,15 @@
 
 import { Fragment, useState, type ReactNode } from "react";
 import { ListRow, Popover } from "../components";
-import type { InheritedGroup, Key, ProjectId, TypeDefinition as TypeDefinitionModel, TypeKind, TypeMember } from "../ipc/generated";
+import type { InheritedGroup, Key, ProjectId, TypeDefinition as TypeDefinitionModel, TypeMember } from "../ipc/generated";
 import { useEngineQuery } from "../ipc/queries";
 import { openPeek } from "../state/overlays";
 import { TypeText } from "./TypeText";
+import { memberName, memberValue, typeKindWord } from "./typeKinds";
 import "./types.css";
 
 /** Types open inside types up to this depth; deeper names read as plain names. */
 export const MAX_TYPE_DEPTH = 4;
-
-const KIND_WORDS: Readonly<Record<TypeKind, string>> = { interface: "interface", type_alias: "type", enum: "enum", class: "class" };
 
 /** `src/cart.ts` and 4 → `cart.ts:4`. */
 export function placeText(path: string, line: number): string {
@@ -28,13 +27,6 @@ export function placeText(path: string, line: number): string {
 /** "Used in 6 places", "Used in 1 place". */
 export function usesText(count: number): string {
   return `Used in ${count} ${count === 1 ? "place" : "places"}`;
-}
-
-/** A member's name as written (`coupon?`, `[key]`, `()`), without `readonly`, which is drawn apart. */
-export function memberName(member: TypeMember): string {
-  const name =
-    member.name ?? (member.kind === "call" ? "()" : member.kind === "construct" ? "new ()" : member.kind === "index" ? "[key]" : "");
-  return `${name}${member.optional ? "?" : ""}`;
 }
 
 /** The two spaces every member's name is indented by. */
@@ -54,7 +46,7 @@ function baseNote(group: InheritedGroup): string | undefined {
 }
 
 /** The sub-heading over the members inherited from one base: `from OrderDraft`. */
-function FromBase({ group }: { readonly group: InheritedGroup }) {
+export function FromBase({ group }: { readonly group: InheritedGroup }) {
   const note = baseNote(group);
   return (
     <div className="type-def-from">
@@ -79,7 +71,8 @@ export interface TypeDefinitionProps {
   readonly onToggle: (row: string, span: number) => void;
 }
 
-function UsedIn({ project, definition }: { readonly project: ProjectId; readonly definition: TypeDefinitionModel }) {
+/** "Used in N places": a popover of the places the type is written, each opening the peek sheet at its line. */
+export function UsedIn({ project, definition }: { readonly project: ProjectId; readonly definition: TypeDefinitionModel }) {
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const uses = useEngineQuery("type_uses", { project, key: definition.key }, { enabled: anchor !== null });
   const close = () => {
@@ -182,13 +175,13 @@ export function TypeDefinition({ project, typeKey, row, depth, openTypes, onTogg
         {memberName(member)}
       </>,
       member.type,
-      member.value !== undefined ? (member.type ? ` = ${member.value}` : member.value) : member.default ? " = …" : null,
+      memberValue(member),
     );
   const rows = definition.aliased !== undefined || definition.members.length > 0 || definition.inherited.length > 0;
   return (
-    <div className="type-definition" role="group" aria-label={`${KIND_WORDS[definition.kind]} ${definition.name}`}>
+    <div className="type-definition" role="group" aria-label={`${typeKindWord(definition.kind)} ${definition.name}`}>
       <div className="type-def-row">
-        <span className="type-def-kind">{KIND_WORDS[definition.kind]} </span>
+        <span className="type-def-kind">{typeKindWord(definition.kind)} </span>
         <span className="type-def-name">{definition.name}</span>
         <span className="type-def-place">{placeText(definition.path, definition.line)}</span>
       </div>

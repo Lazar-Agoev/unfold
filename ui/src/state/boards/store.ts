@@ -196,7 +196,7 @@ export function setCamera(target: PageTarget, camera: Camera): void {
   });
 }
 
-/** Sets the page's lens (⌘1, ⌘2): every card shows that view until its own switch is used. */
+/** Sets the page's lens (⌘1, ⌘2, ⌘3): every card shows that view until its own switch is used. */
 export function setPageLens(target: PageTarget, lens: View | null): void {
   updatePageView(target, (view) => {
     view.lens = lens;
@@ -206,27 +206,17 @@ export function setPageLens(target: PageTarget, lens: View | null): void {
 
 /** The view a card shows: the page's lens (unless the card is an exception), its own switch, or the page default. */
 export function effectiveView(lens: View | null, cardView: View | undefined, defaultView: View, exception: boolean): View {
-  return shownView(lens !== null && !exception ? lens : (cardView ?? defaultView));
-}
-
-/** The view a saved view is drawn in: Diagram shows as Code until the Diagram view is built. */
-export function shownView(view: View): View {
-  switch (view) {
-    case "diagram":
-      return "code";
-    case "code":
-    case "flow":
-      return view;
-  }
+  return lens !== null && !exception ? lens : (cardView ?? defaultView);
 }
 
 export function select(target: PageTarget, selection: Selection): void {
   updatePageView(target, (view) => {
-    const sameLine = selection.kind === "line" && view.selection.kind === "line" && view.selection.arrowId === selection.arrowId;
+    const was = view.selection;
+    const sameLine = selection.kind === "line" && was.kind === "line" && was.arrowId === selection.arrowId && was.source === selection.source && was.seq === selection.seq;
     if (!sameLine && Object.keys(view.openTypes).length > 0) {
       view.openTypes = {};
     }
-    view.selection = selection;
+    view.selection = selection as Draft<Selection>;
   });
 }
 
@@ -237,10 +227,18 @@ export function select(target: PageTarget, selection: Selection): void {
  */
 export function toggleOpenType(target: PageTarget, row: string, span: number): void {
   updatePageView(target, (view) => {
-    const closing = view.openTypes[row] === span;
-    const kept = Object.entries(view.openTypes).filter(([key]) => key !== row && !key.startsWith(`${row}/`));
-    view.openTypes = Object.fromEntries(closing ? kept : [...kept, [row, span]]);
+    view.openTypes = toggledOpenTypes(view.openTypes, row, span);
   });
+}
+
+/**
+ * `openTypes` with span `span` of row `row` opened, or closed when it is the one open; closing or
+ * changing a row closes what was opened inside it (`<row>/…`).
+ */
+export function toggledOpenTypes(openTypes: Readonly<Record<string, number>>, row: string, span: number): Record<string, number> {
+  const closing = openTypes[row] === span;
+  const kept = Object.entries(openTypes).filter(([key]) => key !== row && !key.startsWith(`${row}/`));
+  return Object.fromEntries(closing ? kept : [...kept, [row, span]]);
 }
 
 let focusSeq = 0;
@@ -280,7 +278,7 @@ export function travel(target: PageTarget, direction: "back" | "forward"): Focus
   updatePageView(target, (draft) => {
     draft[direction].pop();
     draft[direction === "back" ? "forward" : "back"].push(here as Draft<FocusMove>);
-    draft.selection = move.selection;
+    draft.selection = move.selection as Draft<Selection>;
     draft.trail = [...move.trail];
     if (move.camera) {
       draft.camera = move.camera;

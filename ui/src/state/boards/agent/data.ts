@@ -1,6 +1,7 @@
 /**
- * What an agent's edit reads from the engine before it applies: card models (through the window's
- * query cache, so the cards draw from them at once), a definition's outgoing calls, and its callers.
+ * What an agent's edit reads from the engine before it applies: card models and type definitions
+ * (through the window's query cache, so the cards draw from them at once), a definition's outgoing
+ * calls, and its callers.
  * Everything is loaded first and read synchronously while the operations apply, so the edit can apply
  * again over the person's edits without asking the engine twice.
  */
@@ -8,7 +9,8 @@
 import type { AgentFollowStop } from "@unfold/desktop/agent-api";
 import { cardQuery, isMissing } from "../../../canvas/cardData";
 import { queryClient } from "../../../ipc/client";
-import type { Callers, CardView, EdgeKind, Key, OutgoingCall, ProjectId, Resolution } from "../../../ipc/generated";
+import type { Callers, CardView, EdgeKind, Key, OutgoingCall, ProjectId, Resolution, TypeDefinition } from "../../../ipc/generated";
+import { engineQueryOptions } from "../../../ipc/queries";
 import { call } from "../engine";
 import { cardRefKey } from "../keys";
 
@@ -55,6 +57,7 @@ function uniqueBy<T>(items: readonly T[], key: (item: T) => string): T[] {
 
 export class AgentData {
   private readonly models = new Map<string, CardView | null>();
+  private readonly definitions = new Map<string, TypeDefinition | null>();
   private readonly calls = new Map<string, FollowableCalls>();
   private readonly callerLists = new Map<string, Callers>();
 
@@ -82,6 +85,32 @@ export class AgentData {
   /** Every loaded model by `cardRefKey(project, key)`, as arrows are computed from them. */
   loadedModels(): Map<string, CardView> {
     return new Map([...this.models].flatMap(([ref, model]) => (model ? [[ref, model] as const] : [])));
+  }
+
+  /** Loads a type card's definition; null when the key isn't a type declaration or class in the project's graph. */
+  async loadDefinition(project: ProjectId, key: Key): Promise<TypeDefinition | null> {
+    const ref = cardRefKey(project, key);
+    if (!this.definitions.has(ref)) {
+      try {
+        this.definitions.set(ref, await queryClient.query(engineQueryOptions("type_definition", { project, key })));
+      } catch (error) {
+        if (!isMissing(error)) {
+          throw error;
+        }
+        this.definitions.set(ref, null);
+      }
+    }
+    return this.definitions.get(ref) ?? null;
+  }
+
+  /** A loaded type definition (undefined when it wasn't loaded, or the key isn't a type). */
+  definition(project: ProjectId | null, key: Key): TypeDefinition | undefined {
+    return project === null ? undefined : (this.definitions.get(cardRefKey(project, key)) ?? undefined);
+  }
+
+  /** Every loaded type definition by `cardRefKey(project, key)`, as type arrows are computed from them. */
+  loadedDefinitions(): Map<string, TypeDefinition> {
+    return new Map([...this.definitions].flatMap(([ref, definition]) => (definition ? [[ref, definition] as const] : [])));
   }
 
   /** What following goes through from a definition or an entrance (an entrance's handlers are its calls). */

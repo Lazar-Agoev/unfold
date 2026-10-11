@@ -4,6 +4,7 @@
  * functions over positions and measured sizes, so they are deterministic and testable without a DOM.
  */
 
+import type { CardBody } from "../code/typeKinds";
 import type { Card } from "../ipc/generated";
 import type { Arrow } from "./arrows";
 
@@ -42,9 +43,16 @@ export interface PlacedCard {
   readonly at: readonly [number, number];
 }
 
-/** A size for a card that hasn't been measured yet. */
-export function fallbackSize(entrance: boolean): Size {
-  return entrance ? { width: 240, height: 160 } : { width: 520, height: 320 };
+/** A size for a card that hasn't been measured yet: an entrance or a block, shown as `body` (`cardBody`). */
+export function fallbackSize(entrance: boolean, body?: CardBody): Size {
+  switch (body) {
+    case "node":
+      return { width: 280, height: 64 };
+    case "fields":
+      return { width: 320, height: 200 };
+    default:
+      return entrance ? { width: 240, height: 160 } : { width: 520, height: 320 };
+  }
 }
 
 /** A width clamped to `min`–`max` (default: a block card's), rounded up to whole pixels. */

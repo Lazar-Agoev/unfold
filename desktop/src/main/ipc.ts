@@ -3,7 +3,8 @@
  * commands never come here: they travel over each window's port to the engine host. A few window
  * commands end in an engine request the main process sends itself, with `"trusted": true`
  * (`add_project`, `export_mermaid`), because they involve a path only the main process may choose.
- * The agent channel's commands (`report_view` and the answers to agent requests) go to the agent bridge.
+ * The agent channel's commands (`report_view` and the answers to agent requests) go to the agent bridge;
+ * `agent_server_status` reads the MCP server's state for Preferences › Agents.
  */
 
 import { clipboard, ipcMain } from "electron";
@@ -18,6 +19,7 @@ import { EngineRequestError } from "./engine-host";
 import { exportFileName } from "./export-name";
 import { trustedSender } from "./security";
 import type { WindowEntry, WindowRegistry } from "./windows";
+import type { McpService } from "./mcp/service";
 import type { Workspace } from "./workspace";
 
 type Handler<C extends WindowCommand> = (
@@ -46,9 +48,10 @@ export interface WindowCommandServices {
   readonly engine: Pick<EngineHost, "request">;
   readonly ui: UiSource;
   readonly agents: Pick<AgentBridge, "views" | "settle">;
+  readonly mcp: Pick<McpService, "status">;
 }
 
-export function registerWindowCommands({ registry, workspace, engine, ui, agents }: WindowCommandServices): void {
+export function registerWindowCommands({ registry, workspace, engine, ui, agents, mcp }: WindowCommandServices): void {
   const handlers: { [C in WindowCommand]: Handler<C> } = {
     new_window: () => ({ windowId: registry.create().id }),
     focus_window: (_entry, args) => {
@@ -138,6 +141,7 @@ export function registerWindowCommands({ registry, workspace, engine, ui, agents
       agents.settle(entry.id, "open", args["requestId"], args["result"]);
       return null;
     },
+    agent_server_status: () => mcp.status(),
   };
 
   /** Commands the preload sends on the person's behalf, outside `window.unfold.window`. */

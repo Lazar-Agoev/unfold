@@ -1,16 +1,19 @@
 /**
  * How a page shows and where its cards are: `set_view` (each card's view and fold, whether a step
- * group is collapsed, the page's default view) and `arrange` (today's Arrange by call depth, then the
- * agent's moves). Arrange reads the arrows from the cards' models, and sizes and ports from what the
- * canvas measured, else estimates, so it works on a page no one has shown.
+ * group is collapsed, the page's default view) and `arrange` (today's Arrange by call depth, type cards
+ * after the types that link to them, then the agent's moves). Arrange reads the arrows from the cards'
+ * models and type definitions, and sizes and ports from what the canvas measured, else estimates, so it
+ * works on a page no one has shown.
  */
 
 import type { AgentItemResult, AgentMove, ArrangeOp, SetViewOp } from "@unfold/desktop/agent-api";
 import { computeArrows, type Arrow } from "../../../canvas/arrows";
 import { lastVerifiedCode } from "../../../canvas/cardData";
 import { FOLLOW_GAP, STACK_GAP, arrangedPositions, clearSpot } from "../../../canvas/layout";
-import { estimatedLineOffset } from "../../../canvas/sizing";
-import type { Page } from "../../../ipc/generated";
+import { measureText } from "../../../canvas/measure";
+import { descriptionHeight, estimatedFieldOffset, estimatedLineOffset } from "../../../canvas/sizing";
+import { cardBody } from "../../../code/typeKinds";
+import type { Card, Page } from "../../../ipc/generated";
 import { cardKey, findCard, moveCards, setCardView, setCardsFolded, setDefaultView, updateGroup } from "../document";
 import { cardOf, cardProject, cardResult, invalid, pageRects, type OpContext } from "./context";
 
@@ -69,15 +72,25 @@ function moveTarget(ctx: OpContext, page: Page, move: AgentMove): [number, numbe
 export function applyArrange(page: Page, op: ArrangeOp, ctx: OpContext): AgentItemResult[] {
   const before = new Map(page.cards.map((card) => [card.id, `${card.at[0]},${card.at[1]}`]));
   if (page.cards.length > 0) {
+    const bodyOf = (card: Card) => cardBody(cardKey(card), card.view ?? page.defaultView);
     const arrows = computeArrows(
-      page.cards.map((card) => ({ id: card.id, key: cardKey(card), project: cardProject(ctx, card), entrance: "entrance" in card.ref })),
+      page.cards.map((card) => ({ id: card.id, key: cardKey(card), project: cardProject(ctx, card), entrance: "entrance" in card.ref, body: bodyOf(card) })),
       ctx.data.loadedModels(),
       lastVerifiedCode,
+      ctx.data.loadedDefinitions(),
     );
+    // A calling line's row in a Code card, a field's row in a type card; else the header.
     const port = (arrow: Arrow) => {
       const card = findCard(page, arrow.source);
-      const code = card !== undefined && (card.view ?? page.defaultView) === "code";
-      return code && arrow.line !== null ? estimatedLineOffset(ctx.data.model(arrow.project, cardKey(card)), arrow.line) : undefined;
+      if (!card) {
+        return undefined;
+      }
+      if (arrow.kind === "type") {
+        const definition = ctx.data.definition(arrow.project, cardKey(card));
+        const row = arrow.sourceHandle.slice("field:".length);
+        return definition ? estimatedFieldOffset(definition, row, descriptionHeight(card.description, null, measureText)) : undefined;
+      }
+      return bodyOf(card) === "code" && arrow.line !== null ? estimatedLineOffset(ctx.data.model(arrow.project, cardKey(card)), arrow.line) : undefined;
     };
     const positions = arrangedPositions(page.cards, pageRects(ctx, page), arrows, port);
     moveCards(page, Object.fromEntries([...positions].map(([id, at]) => [id, [at.x, at.y] as const])));

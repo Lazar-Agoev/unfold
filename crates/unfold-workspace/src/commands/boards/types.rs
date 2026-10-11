@@ -2,8 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use unfold_core::{Key, RepoPath};
 use unfold_reader::board::files::{Place, Revision};
-use unfold_reader::board::{Board, Health, PageOutline, ProjectKey, ProjectName, Repair, Target, View};
+use unfold_reader::board::{
+    Anchor, Board, Health, PageOutline, ProjectKey, ProjectName, Repair, Target, View,
+};
 
 use crate::events::WindowId;
 use crate::ipc::error::{CommandError, CommandResult};
@@ -219,7 +222,12 @@ pub struct ThumbnailPage {
 pub enum CardKind {
     /// An entrance card.
     Entrance,
-    /// A block card.
+    /// A block card of a type declaration (an interface, type alias, or enum): a type card, which
+    /// shows its fields in Diagram and Flow view.
+    Type,
+    /// A block card of a class: a type card in Diagram view.
+    Class,
+    /// Any other block card.
     Block,
 }
 
@@ -240,6 +248,9 @@ pub struct ThumbnailCard {
     /// The block's line count (`None`: an entrance, a missing block, or a project that is not
     /// connected).
     pub lines: Option<u32>,
+    /// The rows a type card lists: its members, or an alias's aliased type (`None`: any other
+    /// card).
+    pub fields: Option<u32>,
     /// Whether it comes from another project.
     pub foreign: bool,
 }
@@ -476,7 +487,7 @@ pub struct LabelSpec {
     pub key: String,
 }
 
-/// What a repair is about (a card, group, label, or link) on its page.
+/// What a repair is about (a card, group, label, link, resource card, or frame) on its page.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum TargetSpec {
@@ -486,8 +497,39 @@ pub enum TargetSpec {
     Group(String),
     /// A Flow label.
     Label(LabelSpec),
-    /// A drawn link, by id.
+    /// A drawn link or a connection, by id.
     Link(String),
+    /// A resource card, by id.
+    Resource(String),
+    /// A frame, by id.
+    Frame(String),
+}
+
+/// An anchor a repair points a resource card or connection at: a block or entrance key, or
+/// lines of an evidence file, with the project's shared name for another project.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum AnchorSpec {
+    /// A block key (`path#…`) or an entrance key (`entrance:[…]`).
+    Key {
+        /// The key.
+        key: String,
+        /// The project's shared name; absent for the board's own.
+        #[serde(default)]
+        #[ts(optional, as = "Option<ProjectName>")]
+        project: Option<String>,
+    },
+    /// Lines of an evidence file.
+    File {
+        /// The file, relative to its project's folder.
+        file: String,
+        /// The first and last line, 1-based and inclusive.
+        lines: [u32; 2],
+        /// The project's shared name; absent for the board's own.
+        #[serde(default)]
+        #[ts(optional, as = "Option<ProjectName>")]
+        project: Option<String>,
+    },
 }
 
 /// One repair a health item offers (its `repairs`), with what it needs.
@@ -529,17 +571,33 @@ pub enum RepairKindSpec {
         /// The group's id.
         group: String,
     },
-    /// Remove a drawn link.
+    /// Point anchor `anchor` (its position) of resource card or connection `item` at `to`.
+    ReconnectAnchor {
+        /// The resource card or connection.
+        item: String,
+        /// The anchor's position among its anchors (a health item's `anchor`).
+        anchor: u32,
+        /// The new anchor.
+        to: AnchorSpec,
+    },
+    /// Remove a drawn link or a connection.
     RemoveLink {
         /// The link's id.
         link: String,
     },
-    /// Remove a card's, group's, or link's description, or a label.
+    /// Remove a resource card and the links to it.
+    RemoveResource {
+        /// The resource card's id.
+        resource: String,
+    },
+    /// Remove a card's, group's, resource card's, or frame's description, a label, a drawn
+    /// link's label, or a connection's description and label.
     RemoveDescription {
         /// Whose.
         target: TargetSpec,
     },
-    /// Keep a description's text and sign it against the current source.
+    /// Keep a description's text and sign it against the current source (a resource card or
+    /// connection with its texts).
     Resign {
         /// Whose.
         target: TargetSpec,
@@ -588,7 +646,50 @@ impl TargetSpec {
             Self::Group(id) => Target::Group(id),
             Self::Label(label) => Target::Label(label.into_key()?),
             Self::Link(id) => Target::Link(id),
+            Self::Resource(id) => Target::Resource(id),
+            Self::Frame(id) => Target::Frame(id),
         })
+    }
+}
+
+impl AnchorSpec {
+    /// The board's anchor (`invalid_args` for a malformed key, path, line range, or project
+    /// name).
+    fn into_anchor(self) -> CommandResult<Anchor> {
+        match self {
+            Self::Key { key, project } => {
+                if !key.starts_with("entrance:") && !key.contains('#') {
+                    return Err(CommandError::invalid_args(format!(
+                        "`{key}` is not a block key (`path#…`) or an entrance key (`entrance:[…]`)"
+                    )));
+                }
+                Ok(Anchor::Key {
+                    key: Key::from_text(&key),
+                    project: project_name(project)?,
+                })
+            }
+            Self::File {
+                file,
+                lines: [first, last],
+                project,
+            } => {
+                let file = RepoPath::new(&file).map_err(|_| {
+                    CommandError::invalid_args(format!(
+                        "`{file}` is not a path relative to the project's folder"
+                    ))
+                })?;
+                if first == 0 || last < first {
+                    return Err(CommandError::invalid_args(
+                        "an anchor's lines are 1-based, the last not before the first",
+                    ));
+                }
+                Ok(Anchor::File {
+                    file,
+                    lines: [first, last],
+                    project: project_name(project)?,
+                })
+            }
+        }
     }
 }
 
@@ -601,10 +702,16 @@ impl RepairKindSpec {
                 from,
                 to,
             },
+            Self::ReconnectAnchor { item, anchor, to } => Repair::ReconnectAnchor {
+                item,
+                index: anchor as usize,
+                to: to.into_anchor()?,
+            },
             Self::RemoveCard { card } => Repair::RemoveCard(card),
             Self::RemoveLabel { project, key } => Repair::RemoveLabel(LabelSpec { project, key }.into_key()?),
             Self::Ungroup { group } => Repair::Ungroup(group),
             Self::RemoveLink { link } => Repair::RemoveLink(link),
+            Self::RemoveResource { resource } => Repair::RemoveResource(resource),
             Self::RemoveDescription { target } => Repair::RemoveDescription(target.into_target()?),
             Self::Resign { target } => Repair::Resign(target.into_target()?),
             Self::Accept { project, key } => Repair::Accept(LabelSpec { project, key }.into_key()?),
@@ -667,6 +774,69 @@ mod tests {
         assert_eq!(
             bad_name.repair.into_repair().expect_err("bad name").code,
             "invalid_args"
+        );
+    }
+
+    #[test]
+    fn anchors_are_reconnected_by_position_to_a_key_or_lines() {
+        let repair = |to: serde_json::Value| {
+            serde_json::from_value::<RepairSpec>(serde_json::json!({
+                "page": "p", "kind": "reconnect_anchor", "item": "orders", "anchor": 1, "to": to
+            }))
+            .expect("parse")
+            .repair
+            .into_repair()
+        };
+        assert_eq!(
+            repair(serde_json::json!({ "file": "db/schema.sql", "lines": [2, 4], "project": "web" })),
+            Ok(Repair::ReconnectAnchor {
+                item: "orders".to_owned(),
+                index: 1,
+                to: Anchor::File {
+                    file: RepoPath::new("db/schema.sql").expect("path"),
+                    lines: [2, 4],
+                    project: ProjectName::parse("web"),
+                },
+            })
+        );
+        assert_eq!(
+            repair(serde_json::json!({ "key": "a.ts#variable:queue" })),
+            Ok(Repair::ReconnectAnchor {
+                item: "orders".to_owned(),
+                index: 1,
+                to: Anchor::Key {
+                    key: Key::from_text("a.ts#variable:queue"),
+                    project: None,
+                },
+            })
+        );
+        for bad in [
+            serde_json::json!({ "key": "queue" }),
+            serde_json::json!({ "file": "../schema.sql", "lines": [1, 1] }),
+            serde_json::json!({ "file": "db/schema.sql", "lines": [3, 2] }),
+            serde_json::json!({ "file": "db/schema.sql", "lines": [0, 2] }),
+        ] {
+            assert_eq!(
+                repair(bad.clone()).expect_err("refused").code,
+                "invalid_args",
+                "{bad}"
+            );
+        }
+        let removed: RepairSpec = serde_json::from_value(serde_json::json!({
+            "page": "p", "kind": "remove_resource", "resource": "orders"
+        }))
+        .expect("parse");
+        assert_eq!(
+            removed.repair.into_repair(),
+            Ok(Repair::RemoveResource("orders".to_owned()))
+        );
+        let resign: RepairSpec = serde_json::from_value(serde_json::json!({
+            "page": "p", "kind": "resign", "target": { "frame": "server" }
+        }))
+        .expect("parse");
+        assert_eq!(
+            resign.repair.into_repair(),
+            Ok(Repair::Resign(Target::Frame("server".to_owned())))
         );
     }
 }

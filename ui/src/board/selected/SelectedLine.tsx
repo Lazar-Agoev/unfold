@@ -31,7 +31,8 @@ export function writtenCallee(model: CardView | undefined, source: string, seq: 
   return null;
 }
 
-function End({ target, label, card, boardProject }: { readonly target: PageTarget; readonly label: string; readonly card: Card | undefined; readonly boardProject: string }) {
+/** One end of a line: its card, which a click brings into view. */
+export function End({ target, label, card, boardProject }: { readonly target: PageTarget; readonly label: string; readonly card: Card | undefined; readonly boardProject: string }) {
   if (!card) {
     return <RelationRow label={label}>a removed card</RelationRow>;
   }

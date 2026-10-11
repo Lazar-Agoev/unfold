@@ -10,6 +10,7 @@
 //! only the files it touches. The project's shared name ([`Settings::project_name`]) changes no
 //! compile, so neither hash includes it.
 
+mod evidence;
 mod folder;
 mod hash;
 mod parse;
@@ -22,6 +23,7 @@ use serde::Serialize;
 use unfold_core::vocab::{DetectorId, EntranceKind, HttpMethod, Language};
 use unfold_core::{ByteRange, RepoPath};
 
+pub use evidence::Evidence;
 pub use folder::{FolderPath, FolderPathError};
 pub use hash::{SettingsHash, SettingsHasher};
 pub use parse::SettingsError;
@@ -58,6 +60,8 @@ pub struct Settings {
     pub python_projects: Vec<PythonProject>,
     /// `[[entrance]]` tables, in file order.
     pub entrances: Vec<ManualEntrance>,
+    /// `[evidence] files`: the files boards may cite, hashed on each update but never compiled.
+    pub evidence: Evidence,
 }
 
 impl Default for Settings {
@@ -70,6 +74,7 @@ impl Default for Settings {
             disabled_detectors: Vec::new(),
             python_projects: Vec::new(),
             entrances: Vec::new(),
+            evidence: Evidence::default(),
         }
     }
 }

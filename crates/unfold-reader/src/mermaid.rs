@@ -2,22 +2,24 @@
 //! a Mermaid flowchart.
 //!
 //! - Each card becomes a node (an entrance, or a Code- or Diagram-view card as its name and
-//!   location) or a subgraph (a Flow-view card, with its groups as nested subgraphs). A card from
-//!   a project that is not connected is a "From <name>, not connected" placeholder.
+//!   location; a type declaration in Flow view too) or a subgraph (a Flow-view card, with its
+//!   groups as nested subgraphs). A card from a project that is not connected is a "From <name>,
+//!   not connected" placeholder.
 //! - Resource cards are nodes shaped by their kind; frames are subgraphs around their members,
 //!   nested as the frames are; notes are `%%` comments where they sit.
 //! - Arrows between cards of one project come from its graph: solid for calls and
-//!   constructions, dashed for imports and passed references; an entrance points at its
-//!   handlers. Links drawn on the page are dashed arrows with their label; a connection's line
+//!   constructions, dashed for imports and passed references; a Diagram-view card draws one
+//!   arrow to each card it calls ("3 calls"); an entrance points at its handlers. Links drawn on the page are dashed arrows with their label; a connection's line
 //!   and words follow its kind.
 //! - Node labels are exactly the app's: the board's authored label, or the fallback name from
 //!   the code, never exact source. An outdated description or label is marked
-//!   `(description outdated)`; references held for review and broken groups are drawn as
-//!   opaque "needs review" nodes instead of being applied to changed code.
+//!   `(description outdated)`, and so is an outdated frame description; an outdated resource
+//!   card or connection is marked `(outdated)`. References held for review and broken groups
+//!   are drawn as opaque "needs review" nodes instead of being applied to changed code.
 //! - Output is deterministic: it depends only on the page, the graphs, and verified sources.
 
 use rustc_hash::{FxHashMap, FxHashSet};
-use unfold_core::vocab::{EdgeKind, Resolution};
+use unfold_core::vocab::{BlockKind, EdgeKind, Resolution};
 use unfold_core::{Entrance, Key};
 
 use crate::board::{
@@ -29,6 +31,7 @@ use crate::notes::note;
 
 const CLASS_DEF: &str = "  classDef opaque fill:#fff4dc,stroke:#a66b10,stroke-dasharray:4 3";
 const OUTDATED: &str = " (description outdated)";
+const CLAIM_OUTDATED: &str = " (outdated)";
 
 /// Escapes text for a quoted Mermaid label: markup and syntax characters become entity codes
 /// (`#34;`), and line breaks become `<br/>`.
@@ -309,10 +312,11 @@ fn column_text(column: &Column) -> String {
     parts.join(" · ")
 }
 
-/// A resource card's node: its kind's shape around its kind and name, its columns, and its
-/// description.
-fn resource_node(id: &str, resource: &Resource) -> String {
-    let mut label = format!("{} · {}", resource.kind.as_str(), resource.name);
+/// A resource card's node: its kind's shape around its kind and name (marked when `outdated`),
+/// its columns, and its description.
+fn resource_node(id: &str, resource: &Resource, outdated: bool) -> String {
+    let mark = if outdated { CLAIM_OUTDATED } else { "" };
+    let mut label = format!("{} · {}{mark}", resource.kind.as_str(), resource.name);
     for column in &resource.columns {
         label.push('\n');
         label.push_str(&column_text(column));
@@ -338,13 +342,17 @@ fn note_comment(note: &Note) -> String {
 fn write_frame(
     lines: &mut Vec<String>,
     page: &Page,
-    index: usize,
-    depth: usize,
+    (index, depth): (usize, usize),
     blocks: &mut FxHashMap<&str, Vec<String>>,
+    outdated: &dyn Fn(&Target) -> bool,
 ) {
     let frame = &page.frames[index];
     let indent = "  ".repeat(depth);
-    let title = with_description(frame.title.clone(), frame.description.as_ref(), false);
+    let title = with_description(
+        frame.title.clone(),
+        frame.description.as_ref(),
+        outdated(&Target::Frame(frame.id.clone())),
+    );
     lines.push(format!("{indent}subgraph f{index}[\"{}\"]", escape(&title)));
     if let Some(direction) = frame.direction {
         let direction = match direction {
@@ -355,7 +363,7 @@ fn write_frame(
     }
     for member in &frame.members {
         if let Some(inner) = page.frames.iter().position(|item| &item.id == member) {
-            write_frame(lines, page, inner, depth + 1, blocks);
+            write_frame(lines, page, (inner, depth + 1), blocks, outdated);
         } else if let Some(block) = blocks.remove(member.as_str()) {
             lines.extend(block.into_iter().map(|line| format!("{indent}{line}")));
         }
@@ -393,8 +401,9 @@ fn kind_word(kind: LinkKind) -> Option<&'static str> {
 /// A link's arrow from `from` to `to`, drawn with its kind's line (solid for requests and
 /// writes, thick for queues, dotted for events, runtime calls, and drawn links, a plain line for
 /// `relates`; a `reads` arrow points back at the code that reads), and labeled with its kind's
-/// word, a relationship's cardinality and columns, its channel, and its label.
-fn connection(link: &Link, from: &str, to: &str) -> String {
+/// word, a relationship's cardinality and columns, its channel, and its label (marked when
+/// `outdated`).
+fn connection(link: &Link, from: &str, to: &str, outdated: bool) -> String {
     let kind = link.kind.unwrap_or(LinkKind::Other);
     let mut words: Vec<String> = kind_word(kind).map(str::to_owned).into_iter().collect();
     if let Some(cardinality) = link.cardinality {
@@ -407,7 +416,10 @@ fn connection(link: &Link, from: &str, to: &str) -> String {
     }
     words.extend(link.channel.iter().cloned());
     words.extend(link.label.iter().map(|label| label.text.clone()));
-    let label = words.join(" · ");
+    let mut label = words.join(" · ");
+    if outdated {
+        label.push_str(CLAIM_OUTDATED);
+    }
     let connector = match kind {
         LinkKind::Http | LinkKind::Rpc | LinkKind::Writes | LinkKind::Reads => "-->",
         LinkKind::Queue => "==>",
@@ -505,7 +517,12 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
             labels: labels.get(&project),
             graph,
         };
-        let flow = (page.view_of(card) == View::Flow)
+        // A type declaration has no paths: in Flow view it is a box, as its fields are in the app.
+        let declaration = matches!(
+            block.block().kind,
+            BlockKind::Interface | BlockKind::TypeAlias | BlockKind::Enum
+        );
+        let flow = (page.view_of(card) == View::Flow && !declaration)
             .then(|| graph.flow(key, &context))
             .flatten();
         let Some(flow) = flow else {
@@ -591,7 +608,11 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
     }
     for (index, resource) in page.resources.iter().enumerate() {
         let id = format!("r{index}");
-        blocks.insert(&resource.id, vec![format!("  {}", resource_node(&id, resource))]);
+        let outdated = is_outdated(&Target::Resource(resource.id.clone()));
+        blocks.insert(
+            &resource.id,
+            vec![format!("  {}", resource_node(&id, resource, outdated))],
+        );
         ports.insert(&resource.id, id);
     }
     for note in &page.notes {
@@ -617,7 +638,7 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
     }
     for (index, frame) in page.frames.iter().enumerate() {
         if !framed.contains(frame.id.as_str()) {
-            write_frame(&mut lines, page, index, 1, &mut blocks);
+            write_frame(&mut lines, page, (index, 1), &mut blocks, &is_outdated);
         }
     }
     for (index, card) in page.cards.iter().enumerate() {
@@ -674,6 +695,11 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
                 }
             }
         }
+        // A Diagram-view card draws one arrow to each card it calls: its first call's or
+        // construction's kind (else its first edge's), or "N calls", solid unless every edge is
+        // dashed.
+        let diagram = page.view_of(card) == View::Diagram;
+        let mut merged: Vec<(&String, &'static str, usize, bool)> = Vec::new();
         for (source, edge) in graph.owned_edges(key) {
             let Some(target_card) = edge
                 .target
@@ -686,12 +712,33 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
             let Some(port) = ports.get(target_card) else {
                 continue;
             };
+            let dashed = !matches!(edge.kind, EdgeKind::Calls | EdgeKind::Constructs);
+            if diagram {
+                match merged.iter_mut().find(|(to, ..)| *to == port) {
+                    Some((_, kind, calls, all_dashed)) => {
+                        if *all_dashed && !dashed {
+                            *kind = edge.kind.as_str();
+                        }
+                        *calls += 1;
+                        *all_dashed &= dashed;
+                    }
+                    None => merged.push((port, edge.kind.as_str(), 1, dashed)),
+                }
+                continue;
+            }
             let from = match holders.get(&(source.as_str(), edge.seq)) {
                 Some(node) => format!("{id}_n{node}"),
                 None => ports.get(card.id.as_str()).cloned().unwrap_or_else(|| id.clone()),
             };
-            let dashed = !matches!(edge.kind, EdgeKind::Calls | EdgeKind::Constructs);
             lines.push(format!("  {}", arrow(&from, dashed, edge.kind.as_str(), port)));
+        }
+        for (port, kind, calls, dashed) in merged {
+            let label = if calls == 1 {
+                kind.to_owned()
+            } else {
+                format!("{calls} calls")
+            };
+            lines.push(format!("  {}", arrow(&id, dashed, &label, port)));
         }
     }
     for link in &page.links {
@@ -702,9 +749,10 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
             .step
             .as_ref()
             .and_then(|step| step_node(page, &flows, &link.from, step));
+        let outdated = is_outdated(&Target::Link(link.id.clone()));
         lines.push(format!(
             "  {}",
-            connection(link, step.as_deref().unwrap_or(from), to)
+            connection(link, step.as_deref().unwrap_or(from), to, outdated)
         ));
     }
     for item in &health.items {

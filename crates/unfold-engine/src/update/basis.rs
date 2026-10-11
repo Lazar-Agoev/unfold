@@ -5,6 +5,7 @@
 use serde::{Deserialize, Serialize};
 use unfold_core::ContentHash;
 
+use super::run::configuration;
 use super::state::State;
 use super::{Engine, Problem, ProblemKind};
 use crate::ENGINE_VERSION;
@@ -16,7 +17,7 @@ use crate::settings::SettingsHasher;
 pub struct LinkBasis {
     /// A fingerprint of everything but the files' facts that linking reads: the engine and
     /// front-end versions, the folder, the effective settings and the settings file, every
-    /// configuration input, and the unindexed and context files.
+    /// configuration input (not the evidence files), and the unindexed and context files.
     fingerprint: ContentHash,
     /// The problems linking found, in order.
     problems: Vec<LinkProblem>,
@@ -96,7 +97,7 @@ fn fingerprint(engine: &Engine, state: &State) -> ContentHash {
     hasher
         .add_bytes(state.settings.settings.hash().as_bytes())
         .add(&state.settings.source.as_ref().map(|source| source.hash()));
-    for (path, input) in &state.inputs {
+    for (path, input) in configuration(&state.inputs) {
         let content = input.content.as_ref().ok().map(|snapshot| snapshot.hash());
         hasher.add(path).add(&input.role).add(&content);
     }

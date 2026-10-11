@@ -229,6 +229,18 @@ describe("EngineRouter: sink fan-out", () => {
     expect(gone.received()).toEqual([]);
   });
 
+  it("also hands the main process the events it follows", () => {
+    const toMain: unknown[] = [];
+    const router = new EngineRouter({ binding: new FakeBinding() }, () => undefined, (event) => toMain.push(event));
+    const port = new FakePort();
+    router.attach(1, port);
+    const preferences = { type: "preferences_changed", preferences: { agents: { enabled: true, port: 29180 } } };
+    router.handleSinkMessage(JSON.stringify({ kind: "broadcast", event: { type: "graph_updated", project: "p-aaaaaaaaaa" } }));
+    router.handleSinkMessage(JSON.stringify({ kind: "broadcast", event: preferences }));
+    expect(toMain).toEqual([preferences]);
+    expect(port.received()).toHaveLength(2);
+  });
+
   it("routes stream messages by request id and window, and drops late ones", async () => {
     const { binding, router } = setup();
     const [a, b] = [new FakePort(), new FakePort()];
@@ -352,6 +364,22 @@ describe("EngineRouter: trusted commands", () => {
     const garbled = router.trusted(0, "saved_windows", {});
     binding.dispatches.get(3)?.result.resolve("{");
     expect(await garbled).toMatchObject({ ok: false, error: { code: "internal" } });
+  });
+
+  it("dispatches the main process's requests for agents without trusted, refused as a window's would be", async () => {
+    const { binding, router } = setup();
+    const summary = router.untrusted(0, "project_summary", { project: "p-aaaaaaaaaa" });
+    const [dispatched] = [...binding.dispatches.values()];
+    expect(dispatched?.windowId).toBe(0);
+    expect(dispatched?.command).toEqual({ command: "project_summary", args: { project: "p-aaaaaaaaaa" } });
+    dispatched?.result.resolve('{"files":3}');
+    expect(await summary).toEqual({ ok: true, value: { files: 3 } });
+
+    for (const command of MAIN_PROCESS_ONLY) {
+      expect(await router.untrusted(0, command, { path: "/elsewhere" })).toMatchObject({ ok: false, error: { code: "untrusted" } });
+    }
+    expect(await router.untrusted(0, "workspace", { trusted: true })).toMatchObject({ ok: false, error: { code: "untrusted" } });
+    expect(binding.dispatches.size).toBe(1);
   });
 
   it("answers trusted requests with engine_unavailable when the addon is missing", async () => {

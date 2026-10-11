@@ -88,12 +88,15 @@ vocabulary! {
 }
 
 vocabulary! {
-    /// What a fingerprinted configuration input is.
+    /// What a fingerprinted input is: a configuration file that shaped the graph, or an
+    /// evidence file boards cite.
     InputRole, "input role" {
         UnfoldConfig = "unfold-config",
         Tsconfig = "tsconfig",
         Package = "package",
         Pyproject = "pyproject",
+        /// A file `[evidence] files` lists: hashed, never parsed, and never read by linking.
+        Evidence = "evidence",
     }
 }
 
@@ -728,7 +731,7 @@ mod tests {
         .join("\n");
         assert_eq!(
             crate::text::ContentHash::of(encoding.as_bytes()).to_string(),
-            "f1056a54d8780e17d67b288a66dcc66a93e732326b36435f641edd143c7e49a1",
+            "9177628621122457e2187c52ed231f0c8a514596409e17ffad94b6d8ee7a3d77",
             "a vocabulary's variant order changed: bump unfold-engine's ENGINE_VERSION so cached \
              facts are recomputed, then update this hash"
         );

@@ -1,8 +1,8 @@
 //! Boards (architecture §9.1, §10.5; decisions U-22, U-42): the `unfold-board`
 //! version 1 format with pages, its JSON Schema, strict parsing, deterministic serialization,
-//! signatures, guards, groups, drawn links and connections, frames, resource cards, notes, health
-//! with repairs per page and per project, page outlines, the unpublished-changes count, and the
-//! board files of a project.
+//! signatures, guards, groups, drawn links and connections, frames, resource cards, notes, the
+//! claims' signatures and grounding, health with repairs per page and per project, page
+//! outlines, the unpublished-changes count, and the board files of a project.
 //!
 //! ```text
 //! text ─parse─► Board ─health(Page, PageGraphs)─► Health, repairs
@@ -10,12 +10,14 @@
 //!                      └─outline(Page, PageGraphs), changes(working, published), mermaid::page
 //! ```
 //!
-//! A page's cards can come from several projects: each project's references are read through
-//! its own [`BoardGraph`] ([`BoardGraph::load`] with [`Board::references`] of that project),
-//! gathered in [`PageGraphs`]. Everything except [`files`] and [`BoardGraph::load`] is pure.
+//! A page's cards and claims can come from several projects: each project's references are read
+//! through its own [`BoardGraph`] ([`BoardGraph::load`] with [`Board::references`] of that
+//! project), gathered in [`PageGraphs`]. Everything except [`files`] and [`BoardGraph::load`] is
+//! pure.
 
 mod changes;
 mod check;
+mod claims;
 pub mod files;
 mod graph;
 mod items;
@@ -30,13 +32,13 @@ pub use check::{
     Health, HealthItem, HealthKind, ProjectKey, Repair, RepairKind, Target, apply_repair, board_health,
     current_guard, health,
 };
-pub use graph::{BlockAt, BoardGraph, PageGraphs};
+pub use graph::{BlockAt, BoardGraph, Lines, PageGraphs};
 pub use json::{serialize, serialize_changes};
 pub use model::{
     Anchor, Author, AuthorKind, Board, Card, CardRef, Cardinality, Column, ColumnKey, Description, FORMAT,
     Frame, FrameDirection, FrameIcon, FrameLook, Group, GuardEntry, LabelEntry, Link, LinkKind,
-    MAX_FRAME_DEPTH, MAX_NOTE_CHARACTERS, Note, Page, ProjectName, Resource, ResourceKind, SCHEMA, Signature,
-    VERSION, View, is_folder_path,
+    MAX_FRAME_DEPTH, MAX_NOTE_CHARACTERS, Note, Page, ProjectName, References, Resource, ResourceKind,
+    SCHEMA, Signature, VERSION, View, is_folder_path,
 };
 pub use outline::{CardLink, OutlineRow, PageOutline, Unlabeled, card_links, outline};
 pub use parse::{parse, parse_edit};
@@ -105,5 +107,7 @@ pub enum BoardError {
     },
 }
 
+#[cfg(test)]
+mod claims_tests;
 #[cfg(test)]
 mod tests;

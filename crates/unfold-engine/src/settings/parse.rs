@@ -12,8 +12,8 @@ use unfold_core::ByteRange;
 use unfold_core::vocab::{DetectorId, EntranceKind, HttpMethod, Language};
 
 use super::{
-    FolderPath, MAX_PROJECT_NAME, ManualEntrance, ManualTargets, PythonProject, PythonVersion, SETTINGS_PATH,
-    SETTINGS_VERSION, Scope, Settings, is_project_name,
+    Evidence, FolderPath, MAX_PROJECT_NAME, ManualEntrance, ManualTargets, PythonProject, PythonVersion,
+    SETTINGS_PATH, SETTINGS_VERSION, Scope, Settings, is_project_name,
 };
 use crate::locator::Locator;
 
@@ -59,6 +59,14 @@ struct RawSettings {
     detectors: Option<RawDetectors>,
     python: Option<RawPython>,
     entrance: Option<Vec<Spanned<RawEntrance>>>,
+    evidence: Option<RawEvidence>,
+}
+
+/// `[evidence]`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawEvidence {
+    files: Option<Vec<Spanned<String>>>,
 }
 
 /// `[project]`.
@@ -239,6 +247,10 @@ fn validate(raw: RawSettings, source: &Source<'_>) -> Result<Settings, SettingsE
         .enumerate()
         .map(|(index, entrance)| self::entrance(index, entrance, source))
         .collect::<Result<_, _>>()?;
+    let evidence = match raw.evidence.and_then(|evidence| evidence.files) {
+        Some(files) => evidence(files, source)?,
+        None => Evidence::default(),
+    };
     Ok(Settings {
         version: SETTINGS_VERSION,
         project_name,
@@ -247,6 +259,7 @@ fn validate(raw: RawSettings, source: &Source<'_>) -> Result<Settings, SettingsE
         disabled_detectors,
         python_projects,
         entrances,
+        evidence,
     })
 }
 
@@ -304,6 +317,14 @@ fn scope(raw: RawScope, source: &Source<'_>) -> Result<Scope, SettingsError> {
         exclude.iter().map(Spanned::get_ref),
     )
     .map_err(|error| source.error(0..0, error.to_string()))
+}
+
+fn evidence(files: Vec<Spanned<String>>, source: &Source<'_>) -> Result<Evidence, SettingsError> {
+    for pattern in &files {
+        Scope::check_pattern(pattern.get_ref())
+            .map_err(|error| source.error(pattern.span(), error.to_string()))?;
+    }
+    Evidence::new(files.iter().map(Spanned::get_ref)).map_err(|error| source.error(0..0, error.to_string()))
 }
 
 fn detectors(disabled: Vec<Spanned<String>>, source: &Source<'_>) -> Result<Vec<DetectorId>, SettingsError> {

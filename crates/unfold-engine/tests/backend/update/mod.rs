@@ -2,6 +2,7 @@
 //! `Arc<dyn Language>` (its files are named `.ts` so discovery classifies them as sources).
 
 mod cache;
+mod evidence;
 mod incremental;
 mod lifecycle;
 mod options;

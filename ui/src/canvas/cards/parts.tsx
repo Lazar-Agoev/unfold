@@ -1,17 +1,19 @@
 /**
  * Pieces every card shares: the ports arrows and links attach to (invisible: no port dots are drawn),
- * the kind glyph, the description strip (edited in place on double-click), and the note line a card body
- * shows while it loads or when its source is unavailable.
+ * the kind glyph, the card's own Diagram | Flow | Code switch, the description strip (edited in place on
+ * double-click), and the note line a card body shows while it loads or when its source is unavailable.
  */
 
 import { Handle, Position } from "@xyflow/react";
 import { useState, type ReactNode } from "react";
 import { AgentMark } from "../../agent";
+import { SegmentedControl } from "../../components";
 import { authorOf } from "../../code/text";
 import { Icon } from "../../icons";
-import type { BlockKind, Description } from "../../ipc/generated";
+import type { BlockKind, Description, View } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
-import { describeCard, type PageTarget } from "../../state/boards";
+import { describeCard, editPage, setCardView, setCardsFolded, updatePageView, type PageTarget } from "../../state/boards";
+import { NODE_PORT } from "../arrows";
 import { LINK_SIDES } from "../linkSides";
 
 /** The handle every arrow into a card attaches to: its header's left edge. */
@@ -25,6 +27,52 @@ export function renderPorts(ids: readonly string[]): ReactNode {
 /** Ports drawn at the header: every port of a folded card, and any the body can't place. */
 export function HeaderPorts({ ids }: { readonly ids: readonly string[] }) {
   return ids.length > 0 ? <span className="card-header-ports">{renderPorts(ids)}</span> : null;
+}
+
+/** The ports a Diagram node or a type card draws at its header: its node port, and every port while folded. */
+export function nodeHeaderPorts(ports: readonly string[], folded: boolean): string[] {
+  return ports.filter((id) => folded || id === NODE_PORT);
+}
+
+/** The three views, in the lens's order. */
+export const VIEW_OPTIONS = [
+  { value: "diagram", label: "Diagram" },
+  { value: "flow", label: "Flow" },
+  { value: "code", label: "Code" },
+] as const;
+
+/**
+ * A card's own Diagram | Flow | Code switch (saved with the board). Using it while the page's lens is
+ * on makes the card an exception, so it keeps its own view.
+ */
+export function ViewSwitch({ target, cardId, view, name }: { readonly target: PageTarget; readonly cardId: string; readonly view: View; readonly name: string }) {
+  const setView = (next: View) => {
+    editPage(target, (page) => {
+      setCardView(page, cardId, next);
+    });
+    updatePageView(target, (draft) => {
+      if (draft.lens !== null && !draft.lensExceptions.includes(cardId)) {
+        draft.lensExceptions.push(cardId);
+      }
+    });
+  };
+  return (
+    <div
+      className="nodrag"
+      onClick={(event) => {
+        event.stopPropagation();
+      }}
+    >
+      <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={setView} label={`View of ${name}`} variant="mini" />
+    </div>
+  );
+}
+
+/** Folds a card to its title, or unfolds it (a double-click on its header). */
+export function toggleCardFolded(target: PageTarget, cardId: string, folded: boolean): void {
+  editPage(target, (page) => {
+    setCardsFolded(page, [cardId], !folded);
+  });
 }
 
 const SIDE_POSITIONS = { left: Position.Left, right: Position.Right, top: Position.Top, bottom: Position.Bottom } as const;
@@ -67,10 +115,21 @@ export function CardNote({ warn = false, children }: { readonly warn?: boolean; 
 
 /**
  * The card's description: one line with **more**, in the authored color, and the agent mark when an
- * agent wrote it. Double-click edits it in place (Enter saves, Shift+Enter breaks the line, Escape keeps
- * the old text), which makes it yours; clearing it removes it.
+ * agent wrote it; a Diagram node's (`wrap`) shows all of it, wrapped. Double-click edits it in place
+ * (Enter saves, Shift+Enter breaks the line, Escape keeps the old text), which makes it yours; clearing
+ * it removes it.
  */
-export function DescriptionStrip({ target, cardId, description }: { readonly target: PageTarget; readonly cardId: string; readonly description: Description | undefined }) {
+export function DescriptionStrip({
+  target,
+  cardId,
+  description,
+  wrap = false,
+}: {
+  readonly target: PageTarget;
+  readonly cardId: string;
+  readonly description: Description | undefined;
+  readonly wrap?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const author = useAuthor();
@@ -113,26 +172,29 @@ export function DescriptionStrip({ target, cardId, description }: { readonly tar
       </div>
     );
   }
+  const shown = open || wrap;
   return (
     <div
-      className={`card-description nodrag${open ? " open" : ""}`}
+      className={`card-description nodrag${shown ? " open" : ""}`}
       onDoubleClick={(event) => {
         event.stopPropagation();
         setEditing(true);
       }}
     >
-      <p title={open ? undefined : description.text}>{description.text}</p>
+      <p title={shown ? undefined : description.text}>{description.text}</p>
       {writer.agent ? <AgentMark name={writer.name} /> : null}
-      <button
-        type="button"
-        className="card-more"
-        onClick={(event) => {
-          event.stopPropagation();
-          setOpen((value) => !value);
-        }}
-      >
-        {open ? "less" : "more"}
-      </button>
+      {wrap ? null : (
+        <button
+          type="button"
+          className="card-more"
+          onClick={(event) => {
+            event.stopPropagation();
+            setOpen((value) => !value);
+          }}
+        >
+          {open ? "less" : "more"}
+        </button>
+      )}
     </div>
   );
 }

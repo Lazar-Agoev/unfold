@@ -88,6 +88,63 @@ fn pages_are_slices_of_the_whole_file() {
 }
 
 #[test]
+fn evidence_files_show_as_text_with_line_numbers() {
+    let harness = Harness::new("ts-orders", false);
+    harness.ok(1, "select_project", json!({ "project": harness.project }));
+    let config = harness.ok(
+        1,
+        "update_project_config",
+        json!({ "project": harness.project, "edits": [{ "op": "add_evidence_pattern", "pattern": "db/*.sql" }] }),
+    );
+    assert_eq!(config["settings"]["evidence"], json!(["db/*.sql"]));
+    assert!(
+        config["text"]
+            .as_str()
+            .is_some_and(|text| text.ends_with("[evidence]\nfiles = [\"db/*.sql\"]\n")),
+        "{config}"
+    );
+    let read = harness.ok(1, "project_config", json!({ "project": harness.project }));
+    assert_eq!(read["settings"]["evidence"], json!(["db/*.sql"]));
+    let schema = "create table orders (\n  id text primary key,\n  customer_id text\n);\n";
+    harness.write("db/schema.sql", schema);
+    harness.ok(1, "compile", json!({ "project": harness.project }));
+
+    let view = |range: Value| {
+        let mut args = json!({ "project": harness.project, "path": "db/schema.sql" });
+        if !range.is_null() {
+            args["range"] = range;
+        }
+        harness.ok(1, "file_view", args)
+    };
+    let whole = view(Value::Null);
+    assert_eq!(whole["graph"], "evidence");
+    assert_eq!(whole["fileState"], Value::Null);
+    assert_eq!(whole["text"], schema);
+    assert_eq!(whole["lineCount"], 4);
+    assert_eq!(whole["outline"], json!([]));
+    assert_eq!(whole["links"], json!([]));
+    let page = view(json!({ "startLine": 2, "endLine": 3 }));
+    assert_eq!(page["text"], "  id text primary key,\n  customer_id text\n");
+    assert_eq!(page["lines"][0]["number"], 2);
+
+    // Changed bytes aren't what the graph recorded until the next update hashes them.
+    harness.write("db/schema.sql", "create table customers (id text);\n");
+    assert_eq!(view(Value::Null)["graph"], "not_compiled");
+    harness.ok(1, "compile", json!({ "project": harness.project }));
+    assert_eq!(view(Value::Null)["graph"], "evidence");
+    // A file no pattern lists is just not indexed.
+    harness.write("db/seed.txt", "seed\n");
+    assert_eq!(
+        harness.ok(
+            1,
+            "file_view",
+            json!({ "project": harness.project, "path": "db/seed.txt" })
+        )["graph"],
+        "not_indexed"
+    );
+}
+
+#[test]
 fn cards_peeks_relations_callers_and_previews_name_their_project() {
     let harness = Harness::compiled("ts-orders");
     harness.write("src/generated.ts", &generated(6));

@@ -10,9 +10,10 @@ import { AgentBridge } from "./agents/bridge";
 import { ViewTracker } from "./agents/views";
 import { addonPath, appFolders, folderArgument, uiDirectory } from "./app-paths";
 import type { UiSource } from "./app-url";
-import { chooseFolder } from "./dialogs";
+import { chooseFolder, confirmAgentAddProject } from "./dialogs";
 import { EngineHost } from "./engine-host";
 import { registerWindowCommands } from "./ipc";
+import { agentSettings, McpService } from "./mcp/service";
 import { buildMenu } from "./menu";
 import { registerAppScheme, serveUi } from "./protocol";
 import { hardenApp } from "./security";
@@ -111,11 +112,46 @@ if (!app.requestSingleInstanceLock()) {
     );
     const workspace = new Workspace(registry, engine);
     const agents = new AgentBridge({ windows: registry, views: new ViewTracker() });
+    const mcp = new McpService({
+      services: {
+        bridge: agents,
+        engine: (command, args) => engine.untrusted(0, command, args),
+        confirmAddProject: (agent, path) => {
+          const last = agents.views.lastUsed();
+          return confirmAgentAddProject((last === undefined ? undefined : registry.get(last))?.window ?? null, agent.name, path);
+        },
+        addProject: (path) => workspace.add(0, path),
+      },
+      version: app.getVersion(),
+      onStatus: (status) => {
+        for (const entry of registry.all()) {
+          registry.send(entry, { type: "agent_server_changed", status });
+        }
+      },
+    });
     engine.start();
     startUpdater(updateMode(currentUpdateEnvironment()), {
       enabled: () => engine.request(0, "get_preferences", {}).then(updatesEnabled, () => null),
       parentWindow: () => registry.focused()?.window ?? null,
     });
+    // Preferences › Agents: as saved at launch, then as the person changes it.
+    let preferencesChanged = false;
+    engine.onEvent((event) => {
+      if (event.type === "preferences_changed") {
+        preferencesChanged = true;
+        void mcp.configure(agentSettings(event["preferences"]));
+      }
+    });
+    engine.request(0, "get_preferences", {}).then(
+      (preferences) => {
+        if (!preferencesChanged) {
+          void mcp.configure(agentSettings(preferences));
+        }
+      },
+      (error: unknown) => {
+        console.error("[main] reading the preferences failed; agents can't connect:", error);
+      },
+    );
 
     addProjectRequest = (folder: string) => {
       void workspace.addProject(folder);
@@ -126,7 +162,7 @@ if (!app.requestSingleInstanceLock()) {
       });
     };
 
-    registerWindowCommands({ registry, workspace, engine, ui, agents });
+    registerWindowCommands({ registry, workspace, engine, ui, agents, mcp });
     Menu.setApplicationMenu(
       buildMenu(
         {
@@ -175,6 +211,7 @@ if (!app.requestSingleInstanceLock()) {
 
     app.on("before-quit", () => {
       workspace.setQuitting();
+      void mcp.close();
     });
 
     // Electron's main process ignores these by default; quitting gracefully lets the engine host land

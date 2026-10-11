@@ -414,9 +414,10 @@ describe("view state", () => {
     expect(store.effectiveView(view.lens, "code", "code", false)).toBe("flow");
     expect(store.effectiveView(view.lens, "code", "code", true)).toBe("code");
     expect(store.effectiveView(null, undefined, "flow", false)).toBe("flow");
-    // Diagram shows as Code until the Diagram view is built.
-    expect(store.effectiveView(null, "diagram", "flow", false)).toBe("code");
-    expect(store.effectiveView(null, undefined, "diagram", false)).toBe("code");
+    expect(store.effectiveView(null, "diagram", "flow", false)).toBe("diagram");
+    expect(store.effectiveView(null, undefined, "diagram", false)).toBe("diagram");
+    store.setPageLens(PAGE, "diagram");
+    expect(store.effectiveView(store.getPageView(PAGE).lens, "code", "flow", false)).toBe("diagram");
     expect(store.getOpenBoard(REF)?.edits).toBe(0);
   });
 });

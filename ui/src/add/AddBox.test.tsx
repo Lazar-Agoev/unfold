@@ -177,7 +177,7 @@ describe("the Add box", () => {
     });
   });
 
-  it("shows a type declaration with its kind and adds it as a Code card", async () => {
+  it("shows a type declaration with its kind and adds it as a type card in Diagram view", async () => {
     await act(async () => {
       await openBoard(BOARD);
     });
@@ -192,7 +192,7 @@ describe("the Add box", () => {
     expect(row.querySelector(".add-row-name")?.textContent).toBe("interface Cart");
     press("Enter");
     await waitFor(() => {
-      expect(adds.addBlock).toHaveBeenCalledWith({ board: BOARD, page: "page-1" }, ORDERS, CART, "code");
+      expect(adds.addBlock).toHaveBeenCalledWith({ board: BOARD, page: "page-1" }, ORDERS, CART, "diagram");
     });
   });
 

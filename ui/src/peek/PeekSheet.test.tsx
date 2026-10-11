@@ -28,12 +28,37 @@ const LIST_ORDERS = "src/routes/orders.ts#function:listOrders";
 const BOARD = { project: ORDERS, id: ".unfold/local/drafts/orders.json" };
 
 const TYPES_PATH = "src/types.ts";
+const SCHEMA_PATH = "db/schema.sql";
 const QUERY = "src/types.ts#interface:Query";
 
 /** A file whose first line declares an interface. */
 function typesView(): FileView {
   const view = fixture("file_view", "file_view_orders_page");
   return { ...view, path: TYPES_PATH, outline: [{ key: QUERY, kind: "interface", startLine: 1, endLine: 3, start: 0, end: 10, groupable: false }] };
+}
+
+/** An evidence file: text with line numbers, nothing compiled. */
+function schemaView(): FileView {
+  const text = "create table orders (\n  id text primary key\n);\n";
+  return {
+    ...fixture("file_view", "file_view_orders_page"),
+    path: SCHEMA_PATH,
+    language: null,
+    graph: "evidence",
+    lineCount: 3,
+    startLine: 1,
+    endLine: 3,
+    textStart: 0,
+    text,
+    lines: [
+      { number: 1, start: 0, end: 21, indent: 0 },
+      { number: 2, start: 22, end: 43, indent: 2 },
+      { number: 3, start: 44, end: 46, indent: 0 },
+    ],
+    spans: [],
+    outline: [],
+    links: [],
+  };
 }
 
 let engine: FakeEngine;
@@ -43,7 +68,8 @@ beforeEach(() => {
   engine = installFakeEngine({
     handlers: {
       workspace: () => workspaceView([projectRow(ORDERS, "storefront-api")]),
-      file_view: ({ path }) => (path === TYPES_PATH ? typesView() : fixture("file_view", "file_view_orders_page")),
+      file_view: ({ path }) =>
+        path === TYPES_PATH ? typesView() : path === SCHEMA_PATH ? schemaView() : fixture("file_view", "file_view_orders_page"),
       open_in_editor: () => ({ editor: "code" }) as never,
       open_board: () => ({
         status: "opened",
@@ -110,7 +136,7 @@ describe("the peek sheet", () => {
     expect(within(sheet()).getByText("Placing an order")).toBeTruthy();
   });
 
-  it("adds a type declaration from its ⊕ as a Code card", async () => {
+  it("adds a type declaration from its ⊕ as a type card in Diagram view", async () => {
     await act(async () => {
       await openBoard(BOARD);
     });
@@ -119,7 +145,18 @@ describe("the peek sheet", () => {
       openPeek({ project: ORDERS, path: TYPES_PATH });
     });
     fireEvent.click(await screen.findByRole("button", { name: "Add Query to the page" }));
-    expect(adds.addBlock).toHaveBeenCalledWith({ board: BOARD, page: "page-1" }, ORDERS, QUERY, "code");
+    expect(adds.addBlock).toHaveBeenCalledWith({ board: BOARD, page: "page-1" }, ORDERS, QUERY, "diagram");
+  });
+
+  it("shows an evidence file as text with line numbers", async () => {
+    renderWithClient(<PeekSheet />);
+    act(() => {
+      openPeek({ project: ORDERS, path: SCHEMA_PATH });
+    });
+    await screen.findByText("3 lines · evidence file");
+    const evidence = screen.getByRole("complementary", { name: `Source of ${SCHEMA_PATH}` });
+    expect(evidence.querySelector('[data-line="2"]')?.textContent).toBe("2  id text primary key");
+    expect(evidence.querySelector(".peek-add-button")).toBeNull();
   });
 
   it("opens at a text match: the current match and its line are marked, other matches tick the scrollbar", async () => {

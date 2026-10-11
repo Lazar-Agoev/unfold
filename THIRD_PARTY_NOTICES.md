@@ -44,6 +44,72 @@ code derives from, among them RustPython (MIT).
 **napi-rs** (MIT, Copyright (c) 2020 LongYinan) binds the Rust engine to Node-API: the `napi`,
 `napi-sys`, `napi-derive`, and `napi-build` crates.
 
+**The MCP TypeScript SDK** (`@modelcontextprotocol/server`, listed under npm packages below) serves
+the app's local MCP server for agents. Its published files carry code of its own dependencies, which
+the app ships with it: Ajv 8.18.0, ajv-formats 3.0.1, fast-deep-equal 3.1.3, and
+json-schema-traverse 1.0.0 (MIT, Copyright (c) Evgeny Poberezkin), content-type 1.0.5 (MIT,
+Copyright (c) 2015 Douglas Christopher Wilson), and fast-uri 3.1.0 (BSD-3-Clause).
+
+```text
+Copyright (c) 2015-2021 Evgeny Poberezkin (Ajv)
+Copyright (c) 2020 Evgeny Poberezkin (ajv-formats)
+Copyright (c) 2017 Evgeny Poberezkin (fast-deep-equal, json-schema-traverse)
+Copyright (c) 2015 Douglas Christopher Wilson (content-type)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+```text
+Copyright (c) 2011-2021, Gary Court until https://github.com/garycourt/uri-js/commit/a1acf730b4bba3f1097c9f52e7d9d3aba8cdcaae
+Copyright (c) 2021-present The Fastify team
+All rights reserved.
+
+The Fastify team members are listed at https://github.com/fastify/fastify#team.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * The names of any contributors may not be used to endorse or promote
+      products derived from this software without specific prior written
+      permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS AND CONTRIBUTORS BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+                                  *   *   *
+
+The complete list of contributors can be found at:
+- https://github.com/garycourt/uri-js/graphs/contributors
+```
+
 **TypeScript's `lib` files.** Unfold's tables of JavaScript globals, library types, and Node.js
 built-in modules are generated from TypeScript's `lib.*.d.ts` files (Apache License 2.0, Copyright
 (c) Microsoft Corporation) and from `@types/node` (MIT License, Copyright (c) Microsoft Corporation,
@@ -448,46 +514,49 @@ SOFTWARE.
 | --- | --- | --- | --- | --- |
 | @fontsource-variable/inter | 5.3.0 | OFL-1.1 | https://fontsource.org/fonts/inter | [160](#license-text-160) |
 | @fontsource-variable/jetbrains-mono | 5.3.0 | OFL-1.1 | https://fontsource.org/fonts/jetbrains-mono | [161](#license-text-161) |
-| @tanstack/query-core | 5.104.1 | MIT | https://tanstack.com/query | [162](#license-text-162) |
-| @tanstack/react-query | 5.104.1 | MIT | https://tanstack.com/query | [162](#license-text-162) |
-| @tanstack/react-virtual | 3.14.13 | MIT | https://tanstack.com/virtual | [162](#license-text-162) |
-| @tanstack/virtual-core | 3.17.11 | MIT | https://tanstack.com/virtual | [162](#license-text-162) |
-| @xyflow/react | 12.12.0 | MIT | https://reactflow.dev | [163](#license-text-163) |
-| @xyflow/system | 0.0.83 | MIT | https://github.com/xyflow/xyflow#readme | [163](#license-text-163) |
-| argparse | 2.0.1 | Python-2.0 | https://github.com/nodeca/argparse#readme | [164](#license-text-164) |
-| builder-util-runtime | 9.7.0 | MIT | https://github.com/electron-userland/electron-builder | [165](#license-text-165) |
-| classcat | 5.0.5 | MIT | https://github.com/jorgebucaran/classcat#readme | [166](#license-text-166) |
-| csstype | 3.2.3 | MIT | https://github.com/frenic/csstype#readme | [167](#license-text-167) |
-| d3-color | 3.1.0 | ISC | https://d3js.org/d3-color/ | [168](#license-text-168) |
-| d3-dispatch | 3.0.1 | ISC | https://d3js.org/d3-dispatch/ | [169](#license-text-169) |
-| d3-drag | 3.0.0 | ISC | https://d3js.org/d3-drag/ | [169](#license-text-169) |
-| d3-ease | 3.0.1 | BSD-3-Clause | https://d3js.org/d3-ease/ | [170](#license-text-170) |
-| d3-interpolate | 3.0.1 | ISC | https://d3js.org/d3-interpolate/ | [169](#license-text-169) |
-| d3-selection | 3.0.0 | ISC | https://d3js.org/d3-selection/ | [169](#license-text-169) |
-| d3-timer | 3.0.1 | ISC | https://d3js.org/d3-timer/ | [169](#license-text-169) |
-| d3-transition | 3.0.1 | ISC | https://d3js.org/d3-transition/ | [169](#license-text-169) |
-| d3-zoom | 3.0.0 | ISC | https://d3js.org/d3-zoom/ | [169](#license-text-169) |
-| debug | 4.4.3 | MIT | https://github.com/debug-js/debug#readme | [171](#license-text-171) |
-| electron-updater | 6.8.9 | MIT | https://github.com/electron-userland/electron-builder | [165](#license-text-165) |
-| fs-extra | 10.1.0 | MIT | https://github.com/jprichardson/node-fs-extra | [172](#license-text-172) |
-| graceful-fs | 4.2.11 | ISC | https://github.com/isaacs/node-graceful-fs#readme | [173](#license-text-173) |
-| immer | 11.1.21 | MIT | https://github.com/immerjs/immer#readme | [174](#license-text-174) |
-| js-yaml | 4.3.2 | MIT | https://github.com/nodeca/js-yaml#readme | [175](#license-text-175) |
-| jsonfile | 6.2.1 | MIT | https://github.com/jprichardson/node-jsonfile#readme | [176](#license-text-176) |
-| lazy-val | 1.0.5 | MIT | https://github.com/develar/lazy-val | [177](#license-text-177) |
-| lodash.escaperegexp | 4.1.2 | MIT | https://lodash.com/ | [178](#license-text-178) |
-| lodash.isequal | 4.5.0 | MIT | https://lodash.com/ | [179](#license-text-179) |
-| ms | 2.1.3 | MIT | https://github.com/vercel/ms#readme | [180](#license-text-180) |
-| react | 19.3.0 | MIT | https://react.dev/ | [181](#license-text-181) |
-| react-dom | 19.3.0 | MIT | https://react.dev/ | [181](#license-text-181) |
-| sax | 1.6.1 | BlueOak-1.0.0 | https://github.com/isaacs/sax-js#readme | [182](#license-text-182) |
-| scheduler | 0.28.0 | MIT | https://react.dev/ | [181](#license-text-181) |
-| semver | 7.7.4 | ISC | https://github.com/npm/node-semver#readme | [183](#license-text-183) |
-| tiny-typed-emitter | 2.1.0 | MIT | https://github.com/binier/tiny-typed-emitter#readme | [184](#license-text-184) |
-| universalify | 2.0.1 | MIT | https://github.com/RyanZim/universalify#readme | [185](#license-text-185) |
-| use-sync-external-store | 1.7.0 | MIT | https://github.com/react/react#readme | [181](#license-text-181) |
-| zustand | 4.5.7 | MIT | https://github.com/pmndrs/zustand | [186](#license-text-186) |
-| zustand | 5.0.15 | MIT | https://github.com/pmndrs/zustand | [186](#license-text-186) |
+| @modelcontextprotocol/core | 2.1.0 | MIT | https://modelcontextprotocol.io | [162](#license-text-162) |
+| @modelcontextprotocol/server | 2.1.0 | MIT | https://modelcontextprotocol.io | [162](#license-text-162) |
+| @tanstack/query-core | 5.104.1 | MIT | https://tanstack.com/query | [163](#license-text-163) |
+| @tanstack/react-query | 5.104.1 | MIT | https://tanstack.com/query | [163](#license-text-163) |
+| @tanstack/react-virtual | 3.14.13 | MIT | https://tanstack.com/virtual | [163](#license-text-163) |
+| @tanstack/virtual-core | 3.17.11 | MIT | https://tanstack.com/virtual | [163](#license-text-163) |
+| @xyflow/react | 12.12.0 | MIT | https://reactflow.dev | [164](#license-text-164) |
+| @xyflow/system | 0.0.83 | MIT | https://github.com/xyflow/xyflow#readme | [164](#license-text-164) |
+| argparse | 2.0.1 | Python-2.0 | https://github.com/nodeca/argparse#readme | [165](#license-text-165) |
+| builder-util-runtime | 9.7.0 | MIT | https://github.com/electron-userland/electron-builder | [166](#license-text-166) |
+| classcat | 5.0.5 | MIT | https://github.com/jorgebucaran/classcat#readme | [167](#license-text-167) |
+| csstype | 3.2.3 | MIT | https://github.com/frenic/csstype#readme | [168](#license-text-168) |
+| d3-color | 3.1.0 | ISC | https://d3js.org/d3-color/ | [169](#license-text-169) |
+| d3-dispatch | 3.0.1 | ISC | https://d3js.org/d3-dispatch/ | [170](#license-text-170) |
+| d3-drag | 3.0.0 | ISC | https://d3js.org/d3-drag/ | [170](#license-text-170) |
+| d3-ease | 3.0.1 | BSD-3-Clause | https://d3js.org/d3-ease/ | [171](#license-text-171) |
+| d3-interpolate | 3.0.1 | ISC | https://d3js.org/d3-interpolate/ | [170](#license-text-170) |
+| d3-selection | 3.0.0 | ISC | https://d3js.org/d3-selection/ | [170](#license-text-170) |
+| d3-timer | 3.0.1 | ISC | https://d3js.org/d3-timer/ | [170](#license-text-170) |
+| d3-transition | 3.0.1 | ISC | https://d3js.org/d3-transition/ | [170](#license-text-170) |
+| d3-zoom | 3.0.0 | ISC | https://d3js.org/d3-zoom/ | [170](#license-text-170) |
+| debug | 4.4.3 | MIT | https://github.com/debug-js/debug#readme | [172](#license-text-172) |
+| electron-updater | 6.8.9 | MIT | https://github.com/electron-userland/electron-builder | [166](#license-text-166) |
+| fs-extra | 10.1.0 | MIT | https://github.com/jprichardson/node-fs-extra | [173](#license-text-173) |
+| graceful-fs | 4.2.11 | ISC | https://github.com/isaacs/node-graceful-fs#readme | [174](#license-text-174) |
+| immer | 11.1.21 | MIT | https://github.com/immerjs/immer#readme | [175](#license-text-175) |
+| js-yaml | 4.3.2 | MIT | https://github.com/nodeca/js-yaml#readme | [176](#license-text-176) |
+| jsonfile | 6.2.1 | MIT | https://github.com/jprichardson/node-jsonfile#readme | [177](#license-text-177) |
+| lazy-val | 1.0.5 | MIT | https://github.com/develar/lazy-val | [178](#license-text-178) |
+| lodash.escaperegexp | 4.1.2 | MIT | https://lodash.com/ | [179](#license-text-179) |
+| lodash.isequal | 4.5.0 | MIT | https://lodash.com/ | [180](#license-text-180) |
+| ms | 2.1.3 | MIT | https://github.com/vercel/ms#readme | [181](#license-text-181) |
+| react | 19.3.0 | MIT | https://react.dev/ | [182](#license-text-182) |
+| react-dom | 19.3.0 | MIT | https://react.dev/ | [182](#license-text-182) |
+| sax | 1.6.1 | BlueOak-1.0.0 | https://github.com/isaacs/sax-js#readme | [183](#license-text-183) |
+| scheduler | 0.28.0 | MIT | https://react.dev/ | [182](#license-text-182) |
+| semver | 7.7.4 | ISC | https://github.com/npm/node-semver#readme | [184](#license-text-184) |
+| tiny-typed-emitter | 2.1.0 | MIT | https://github.com/binier/tiny-typed-emitter#readme | [185](#license-text-185) |
+| universalify | 2.0.1 | MIT | https://github.com/RyanZim/universalify#readme | [186](#license-text-186) |
+| use-sync-external-store | 1.7.0 | MIT | https://github.com/react/react#readme | [182](#license-text-182) |
+| zod | 4.6.5 | MIT | https://zod.dev | [187](#license-text-187) |
+| zustand | 4.5.7 | MIT | https://github.com/pmndrs/zustand | [188](#license-text-188) |
+| zustand | 5.0.15 | MIT | https://github.com/pmndrs/zustand | [188](#license-text-188) |
 
 ## License texts
 
@@ -10935,7 +11004,230 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ### License text 162
 
-<a id="license-text-162"></a>Used by: @tanstack/query-core 5.104.1, @tanstack/react-query 5.104.1, @tanstack/react-virtual 3.14.13, @tanstack/virtual-core 3.17.11
+<a id="license-text-162"></a>Used by: @modelcontextprotocol/core 2.1.0, @modelcontextprotocol/server 2.1.0
+
+```text
+The MCP project is undergoing a licensing transition from the MIT License to the Apache License, Version 2.0 ("Apache-2.0"). All new code and specification contributions to the project are licensed under Apache-2.0. Documentation contributions (excluding specifications) are licensed under CC-BY-4.0.
+
+Contributions for which relicensing consent has been obtained are licensed under Apache-2.0. Contributions made by authors who originally licensed their work under the MIT License and who have not yet granted explicit permission to relicense remain licensed under the MIT License.
+
+No rights beyond those granted by the applicable original license are conveyed for such contributions.
+
+---
+
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to the Licensor for inclusion in the Work by the copyright
+      owner or by an individual or Legal Entity authorized to submit on behalf
+      of the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+---
+
+MIT License
+
+Copyright (c) 2024-2025 Model Context Protocol a Series of LF Projects, LLC.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+Creative Commons Attribution 4.0 International (CC-BY-4.0)
+
+Documentation in this project (excluding specifications) is licensed under
+CC-BY-4.0. See https://creativecommons.org/licenses/by/4.0/legalcode for
+the full license text.
+```
+
+### License text 163
+
+<a id="license-text-163"></a>Used by: @tanstack/query-core 5.104.1, @tanstack/react-query 5.104.1, @tanstack/react-virtual 3.14.13, @tanstack/virtual-core 3.17.11
 
 ```text
 MIT License
@@ -10961,9 +11253,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 163
+### License text 164
 
-<a id="license-text-163"></a>Used by: @xyflow/react 12.12.0, @xyflow/system 0.0.83
+<a id="license-text-164"></a>Used by: @xyflow/react 12.12.0, @xyflow/system 0.0.83
 
 ```text
 MIT License
@@ -10989,9 +11281,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 164
+### License text 165
 
-<a id="license-text-164"></a>Used by: argparse 2.0.1
+<a id="license-text-165"></a>Used by: argparse 2.0.1
 
 ```text
 A. HISTORY OF THE SOFTWARE
@@ -11250,9 +11542,9 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
 OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### License text 165
+### License text 166
 
-<a id="license-text-165"></a>Used by: builder-util-runtime 9.7.0, electron-updater 6.8.9
+<a id="license-text-166"></a>Used by: builder-util-runtime 9.7.0, electron-updater 6.8.9
 
 ```text
 The MIT License (MIT)
@@ -11278,9 +11570,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 166
+### License text 167
 
-<a id="license-text-166"></a>Used by: classcat 5.0.5
+<a id="license-text-167"></a>Used by: classcat 5.0.5
 
 ```text
 Copyright © Jorge Bucaran <<https://jorgebucaran.com>>
@@ -11292,9 +11584,9 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### License text 167
+### License text 168
 
-<a id="license-text-167"></a>Used by: csstype 3.2.3
+<a id="license-text-168"></a>Used by: csstype 3.2.3
 
 ```text
 Copyright (c) 2017-2018 Fredrik Nicol
@@ -11318,9 +11610,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 168
+### License text 169
 
-<a id="license-text-168"></a>Used by: d3-color 3.1.0
+<a id="license-text-169"></a>Used by: d3-color 3.1.0
 
 ```text
 Copyright 2010-2022 Mike Bostock
@@ -11338,9 +11630,9 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### License text 169
+### License text 170
 
-<a id="license-text-169"></a>Used by: d3-dispatch 3.0.1, d3-drag 3.0.0, d3-interpolate 3.0.1, d3-selection 3.0.0, d3-timer 3.0.1, d3-transition 3.0.1, d3-zoom 3.0.0
+<a id="license-text-170"></a>Used by: d3-dispatch 3.0.1, d3-drag 3.0.0, d3-interpolate 3.0.1, d3-selection 3.0.0, d3-timer 3.0.1, d3-transition 3.0.1, d3-zoom 3.0.0
 
 ```text
 Copyright 2010-2021 Mike Bostock
@@ -11358,9 +11650,9 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### License text 170
+### License text 171
 
-<a id="license-text-170"></a>Used by: d3-ease 3.0.1
+<a id="license-text-171"></a>Used by: d3-ease 3.0.1
 
 ```text
 Copyright 2010-2021 Mike Bostock
@@ -11393,9 +11685,9 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### License text 171
+### License text 172
 
-<a id="license-text-171"></a>Used by: debug 4.4.3
+<a id="license-text-172"></a>Used by: debug 4.4.3
 
 ```text
 (The MIT License)
@@ -11419,9 +11711,9 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### License text 172
+### License text 173
 
-<a id="license-text-172"></a>Used by: fs-extra 10.1.0
+<a id="license-text-173"></a>Used by: fs-extra 10.1.0
 
 ```text
 (The MIT License)
@@ -11441,9 +11733,9 @@ OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHE
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### License text 173
+### License text 174
 
-<a id="license-text-173"></a>Used by: graceful-fs 4.2.11
+<a id="license-text-174"></a>Used by: graceful-fs 4.2.11
 
 ```text
 The ISC License
@@ -11463,9 +11755,9 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### License text 174
+### License text 175
 
-<a id="license-text-174"></a>Used by: immer 11.1.21
+<a id="license-text-175"></a>Used by: immer 11.1.21
 
 ```text
 MIT License
@@ -11491,9 +11783,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 175
+### License text 176
 
-<a id="license-text-175"></a>Used by: js-yaml 4.3.2
+<a id="license-text-176"></a>Used by: js-yaml 4.3.2
 
 ```text
 (The MIT License)
@@ -11519,9 +11811,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### License text 176
+### License text 177
 
-<a id="license-text-176"></a>Used by: jsonfile 6.2.1
+<a id="license-text-177"></a>Used by: jsonfile 6.2.1
 
 ```text
 (The MIT License)
@@ -11541,9 +11833,9 @@ OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHE
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### License text 177
+### License text 178
 
-<a id="license-text-177"></a>Used by: lazy-val 1.0.5
+<a id="license-text-178"></a>Used by: lazy-val 1.0.5
 
 ```text
 MIT License
@@ -11569,9 +11861,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 178
+### License text 179
 
-<a id="license-text-178"></a>Used by: lodash.escaperegexp 4.1.2
+<a id="license-text-179"></a>Used by: lodash.escaperegexp 4.1.2
 
 ```text
 Copyright jQuery Foundation and other contributors <https://jquery.org/>
@@ -11623,9 +11915,9 @@ licenses; we recommend you read them, as their terms may differ from the
 terms above.
 ```
 
-### License text 179
+### License text 180
 
-<a id="license-text-179"></a>Used by: lodash.isequal 4.5.0
+<a id="license-text-180"></a>Used by: lodash.isequal 4.5.0
 
 ```text
 Copyright JS Foundation and other contributors <https://js.foundation/>
@@ -11677,9 +11969,9 @@ licenses; we recommend you read them, as their terms may differ from the
 terms above.
 ```
 
-### License text 180
+### License text 181
 
-<a id="license-text-180"></a>Used by: ms 2.1.3
+<a id="license-text-181"></a>Used by: ms 2.1.3
 
 ```text
 The MIT License (MIT)
@@ -11705,9 +11997,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 181
+### License text 182
 
-<a id="license-text-181"></a>Used by: react 19.3.0, react-dom 19.3.0, scheduler 0.28.0, use-sync-external-store 1.7.0
+<a id="license-text-182"></a>Used by: react 19.3.0, react-dom 19.3.0, scheduler 0.28.0, use-sync-external-store 1.7.0
 
 ```text
 MIT License
@@ -11733,9 +12025,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 182
+### License text 183
 
-<a id="license-text-182"></a>Used by: sax 1.6.1
+<a id="license-text-183"></a>Used by: sax 1.6.1
 
 ```text
 # Blue Oak Model License
@@ -11795,9 +12087,9 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
 ```
 
-### License text 183
+### License text 184
 
-<a id="license-text-183"></a>Used by: semver 7.7.4
+<a id="license-text-184"></a>Used by: semver 7.7.4
 
 ```text
 The ISC License
@@ -11817,9 +12109,9 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### License text 184
+### License text 185
 
-<a id="license-text-184"></a>Used by: tiny-typed-emitter 2.1.0
+<a id="license-text-185"></a>Used by: tiny-typed-emitter 2.1.0
 
 ```text
 MIT License
@@ -11845,9 +12137,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### License text 185
+### License text 186
 
-<a id="license-text-185"></a>Used by: universalify 2.0.1
+<a id="license-text-186"></a>Used by: universalify 2.0.1
 
 ```text
 (The MIT License)
@@ -11872,9 +12164,37 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### License text 186
+### License text 187
 
-<a id="license-text-186"></a>Used by: zustand 4.5.7, zustand 5.0.15
+<a id="license-text-187"></a>Used by: zod 4.6.5
+
+```text
+MIT License
+
+Copyright (c) 2025 Colin McDonnell
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### License text 188
+
+<a id="license-text-188"></a>Used by: zustand 4.5.7, zustand 5.0.15
 
 ```text
 MIT License

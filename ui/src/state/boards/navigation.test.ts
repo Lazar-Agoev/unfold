@@ -245,8 +245,8 @@ describe("Arrange", () => {
     ]);
     const before = cards().map((card) => card.at);
     const arrows = [
-      { id: "1", source: "e", sourceHandle: "target:0", target: "b", project: "p", seq: 0, kind: "handler" as const, dashed: false, order: 0, line: null },
-      { id: "2", source: "b", sourceHandle: "src/b.ts#function:b/call[0]", target: "c", project: "p", seq: 0, kind: "calls" as const, dashed: false, order: 0, line: 3 },
+      { id: "1", source: "e", sourceHandle: "target:0", target: "b", project: "p", occurrence: "target:0", seq: 0, kind: "handler" as const, dashed: false, order: 0, line: null },
+      { id: "2", source: "b", sourceHandle: "src/b.ts#function:b/call[0]", target: "c", project: "p", occurrence: "src/b.ts#function:b/call[0]", seq: 0, kind: "calls" as const, dashed: false, order: 0, line: 3 },
     ];
     expect(arrangeBoard(PAGE, arrows, () => undefined)).toBe(3);
     const at = Object.fromEntries(cards().map((card) => [card.id, card.at]));

@@ -23,11 +23,20 @@ function boardRef(value: unknown): AgentBoardRef | null {
   return isRecord(value) && isString(value["project"]) && isString(value["id"]) ? { project: value["project"], id: value["id"] } : null;
 }
 
+/** One call of a `calls` selection: its occurrence, its edge, and its line. */
+function call(value: unknown): { source: string; seq: number; line: number | null } | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const { source, seq, line } = value;
+  return isString(source) && Number.isInteger(seq) && (line === null || Number.isInteger(line)) ? { source, seq: seq as number, line: line as number | null } : null;
+}
+
 function selection(value: unknown): ViewSelection | null {
   if (!isRecord(value)) {
     return null;
   }
-  const { kind, id, card, key, from, to, project, source, seq, line } = value;
+  const { kind, id, card, key, from, to, project, source, seq, line, calls } = value;
   switch (kind) {
     case "none":
       return { kind };
@@ -41,6 +50,11 @@ function selection(value: unknown): ViewSelection | null {
       return isString(from) && isString(to) && isString(project) && isString(source) && Number.isInteger(seq) && (line === null || Number.isInteger(line))
         ? { kind, from, to, project, source, seq: seq as number, line: line as number | null }
         : null;
+    case "calls": {
+      const listed = Array.isArray(calls) && calls.length <= MAX_IDS ? calls.map(call) : [null];
+      const valid = listed.filter((item) => item !== null);
+      return isString(from) && isString(to) && isString(project) && valid.length === listed.length ? { kind, from, to, project, calls: valid } : null;
+    }
     default:
       return null;
   }

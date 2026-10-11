@@ -591,6 +591,8 @@ The inputs that shape the graph are fingerprinted:
 
 When one changes, the files whose settings hash changed are extracted again, and linking runs again. For example, changing the Python grammar version touches every Python file.
 
+The files `[evidence] files` lists are fingerprinted too, as inputs with the role `evidence`, but they shape nothing: boards cite them. A changed evidence file only replaces its record in the graph; nothing is extracted or linked again ([settings and scope](settings-and-scope.md#evidence-files)).
+
 ### 7.8 Opening a project
 
 A project opens when it wakes ([§11.2](#112-live-and-resting-projects)). The graph in SQLite is usable at once. In the background, Unfold compares each file's size and modification time with the stored values, hashes only the files that differ, and runs one update. It also loads the cached per-file facts to rebuild the in-memory program, so the next save updates quickly. When nothing changed while the project rested (no file added, removed, or changed, and the same settings, configuration inputs, and engine), the stored graph is kept as it is: nothing is linked again or written. When an app update has changed the engine version, the cache no longer matches and Unfold recompiles in the background. Boards are unaffected.
@@ -644,7 +646,7 @@ Problems here are graph and settings problems only: files that don't parse or ca
 
 | What | macOS | Windows | Linux |
 | --- | --- | --- | --- |
-| Preferences: theme, keyboard, editor command, background defaults, thread limit | `~/Library/Application Support/Unfold/preferences.json` | `%APPDATA%\Unfold\preferences.json` | `~/.config/Unfold/preferences.json` |
+| Preferences: theme, keyboard, editor command, background defaults, thread limit, agents | `~/Library/Application Support/Unfold/preferences.json` | `%APPDATA%\Unfold\preferences.json` | `~/.config/Unfold/preferences.json` |
 | The workspace (`workspace.json`: projects, the default Home selection, recent boards, folders opened before) and the windows that come back at launch (`windows.json`) | `~/Library/Application Support/Unfold/` | `%APPDATA%\Unfold\` | `~/.config/Unfold/` |
 | Logs | `~/Library/Logs/Unfold/` | `%APPDATA%\Unfold\logs\` | `~/.config/Unfold/logs/` |
 | Fallback for folders Unfold can't write to | `~/Library/Caches/Unfold/folders/<hash of the path>/` | `%LOCALAPPDATA%\Unfold\folders\<hash>\` | `~/.cache/Unfold/folders/<hash>/` |
@@ -895,6 +897,10 @@ It is used for snapshots, parity with the proof of concept, determinism checks, 
   `signature`, which is `sha256:` followed by the hash of the exact selected source bytes. When the signature no
   longer matches, the description is marked outdated. A link label is signed over both ends, but never reported
   outdated.
+- **Claims** (resource cards and connections) cite code: anchors (block or entrance keys, or lines of an evidence
+  file), a table's type, a connection's step and carried type. They are signed over those bytes like
+  descriptions, go outdated or missing when the code changes, and a claim an agent writes is grounded at save: what
+  it names must appear in, or be used by, the code it cites ([reader: grounding](reader.md#grounding)).
 - **A group** is a run of consecutive sibling statements with the same parent and body role, inside one card.
   Groups never cross a body boundary, overlap, or nest.
 - **Writing** validates the whole board, serializes it deterministically (sorted keys, two-space indentation, final
@@ -957,8 +963,9 @@ handler = "ts-playground/src/server.ts#shutdown"
 | `detectors.disabled` | Detector IDs to turn off. `manual` can't be turned off |
 | `python.project` | `root`, `source_roots`, and the grammar `version` of each Python project |
 | `entrance` | `kind`; an optional `trigger` (an empty trigger is invalid); `method` for `http` only; an optional `label`; and either `handler` (one locator or a list) or, for `process`, `startup` |
+| `evidence.files` | Glob patterns relative to the folder: files boards may cite that Unfold hashes but never compiles |
 
-The app edits this file only through validated changes from Project settings (the name, scope, detectors, and Python projects), the first Compile's scope, and the manual entrance editor, and it preserves comments and formatting.
+The app edits this file only through validated changes from Project settings (the name, scope, detectors, Python projects, and evidence files), the first Compile's scope, and the manual entrance editor, and it preserves comments and formatting.
 
 ## 10. The reader
 
@@ -990,10 +997,12 @@ These are computed by `unfold-reader` from the stored graph. Nothing here adds f
 ### 10.2 Cards
 
 - An **entrance card** shows the declared entrance, its evidence, and its targets in registration order, without numbers.
-- A **block card** shows one definition, or another indexed block, in Code or Flow.
-- Cards open full and size themselves to their content: 360–880 px wide, with longer lines soft-wrapping. Nothing scrolls inside a card; you pan and zoom the canvas instead.
+- A **block card** shows one definition, or another indexed block, in one of three views: **Diagram**, one compact node (the kind's mark, the name, `file:line`, and the description), **Flow**, or **Code**. A card keeps its own view, else follows the page's lens, else the page's default view. An entrance card in Diagram view is a node too, marked with its kind (`HTTP`, `WORKER`, …).
+- A **type card** is a card of a type declaration (an interface, type alias, or enum) or a class. In Diagram view it lists its fields: each name as written, `readonly`, `?`, its written type (declared names open their definitions in place), a default (` = …`) or an enum member's value; an alias that isn't an object shows its aliased type, and inherited fields follow under the type they come from. A type declaration shows its fields in Flow too, since it has no paths; a class keeps its Flow. Code is the source.
+- Cards open full and size themselves to their content: 360–880 px wide (a Diagram node 240–400, a type card 280–560), with longer lines soft-wrapping. A type card of twelve fields or more lists the first eight and "N more". Nothing scrolls inside a card; you pan and zoom the canvas instead.
 - Opening an entrance adds its card and a full card for each resolved handler. Following a call opens the target 80 px to the right, with its header level with the calling line, or focuses the card if it is already open.
-- Each opened call has its own arrow, leaving from a port at the end of the calling line, even when several calls go to one card.
+- Each opened call has its own arrow, leaving from a port at the end of the calling line, even when several calls go to one card. A Diagram node has no lines: its arrows leave from its edge, and its calls to one card merge into one arrow, labeled with the call's signature, or "N calls", which lists them in Selected, each opening its contract.
+- A type card's field whose written type names another type card of the same project has a **type arrow** from its row to that card, labeled with the written type. Type arrows are compiled, drawn like call arrows, and Arrange places a type after the types that link to it.
 - A call or passed-reference line carries its signature at its midpoint (`(CartItem[]) → Promise<Hold>`). Clicking the label opens the call's contract in its place: what the call sends (each argument beside the parameter it fills), what comes back and where it lands, and what the callee throws. A written type in it opens its definition inline, with "Peek source" and "Used in N places". While a line is selected, the callee card marks the lines the contract reads ([proposal](proposals/typed-lines.md)).
 - A card folds to its title only when you fold it. Its arrows then attach to the header. Following a call into a folded card unfolds it.
 
@@ -1035,7 +1044,7 @@ Flow is not a runtime trace or proof that a branch runs. Short-circuit expressio
 - **Drafts.** Every board saves itself, a moment after each change, to its project's `.unfold/local/drafts/`. Each window's open boards come back with the window ([§11.10](#1110-several-windows-and-restore)).
 - **Publish.** A draft's first Publish shows the file it will write, `.unfold/boards/<slug-of-title>.json`, and never overwrites an existing one; the name is editable only when a file already has it. The board is validated, written, and its draft removed. Later edits are kept as unpublished changes on this machine until the next Publish writes them over the published file, so `git diff` shows finished edits only. Unfold never runs Git.
 - **Discard changes** returns to the published version. **Move back to drafts** reverses Publish. **Delete** asks first.
-- **Export** writes one page as Mermaid to a location you choose, or to the clipboard. SVG, PNG, and a Markdown walkthrough come in V2. Mermaid uses solid arrows for calls and constructions, dashed arrows for imports and passed references, and dashed labeled arrows for drawn links.
+- **Export** writes one page as Mermaid to a location you choose, or to the clipboard. SVG, PNG, and a Markdown walkthrough come in V2. Mermaid uses solid arrows for calls and constructions, dashed arrows for imports and passed references, and dashed labeled arrows for drawn links. A Diagram-view card is a box with one arrow to each card it calls, and a type declaration in Flow view is a box.
 - **Health** lists, per page, missing references, outdated descriptions, broken groups, guarded references that need review, cards from projects that aren't connected, and drawn links whose end is missing, and offers repairs.
 - **Agents** can read and write board files directly, just like people. The app validates a board file when it loads it and reloads it when the file changes. A description an agent writes is attributed `agent:<name>`. The graph database is not an interface for agents. A stable agent interface comes in V2.
 
@@ -1085,7 +1094,7 @@ says how to use it.
 | **Folder** | Yours, to organize a project's boards, like folders in Paper. Not the disk layout | A field on each board |
 | **Board** | A story about the code, such as "Order lifecycle": a draft or published. Can hold cards from other projects | `.unfold/boards/` (published) or `.unfold/local/drafts/` |
 | **Page** | One canvas inside a board: one trace, such as "Placing an order" | Inside the board file |
-| **Card** | An entrance or a definition, in Code or Flow | Inside a page |
+| **Card** | An entrance, a definition, or a type, in Diagram, Flow, or Code | Inside a page |
 
 Projects hold code. Boards hold stories ([U-38](decisions-and-tradeoffs.md#u-38-a-board-holds-pages)).
 
@@ -1151,7 +1160,7 @@ knows nothing about projects.
 │ ⌂ Home │ S Order lifecycle × │ S Worker retries │                                              │
 ├─────────────────────────────┬──────────────────────────────────────────────────────────────────┤
 │ ‹ storefront-api / Checkout │ Placing an order · Published · 2 unpublished changes             │
-│ Order lifecycle         ⋯   │                       [ Code | Flow ]          Share ▾   Publish │
+│ Order lifecycle         ⋯   │                  [ Diagram | Flow | Code ]     Share ▾   Publish │
 │                             ├──────────────────────────────────────────────────────────────────┤
 │ PAGES                    +  │                                                                  │
 │   ▣ Placing an order        │   ┌──────────────┐    ┌───────────────────┐                      │
@@ -1178,7 +1187,7 @@ knows nothing about projects.
   Reached from, and calls not opened yet). It is 264px wide by default, resizes from 220 to 360px,
   and ⌘B hides it.
 - **The canvas top bar** shows the page's title and the board's publish state ("Draft", "Published",
-  "Published · 2 unpublished changes"), the window's **Code | Flow** lens in the middle, and **Share**
+  "Published · 2 unpublished changes"), the window's **Diagram | Flow | Code** lens in the middle, and **Share**
   (Export Mermaid, Copy Mermaid) and **Publish** on the right.
 - **The dock** floats at the bottom of the canvas: **Add**, Back and Forward, the follow trail,
   **Arrange**, and the zoom (−, percentage, +, Fit).
@@ -1233,7 +1242,7 @@ Home).
 ### 11.5 Reading a board
 
 Opening a board opens it in a tab and switches the sidebar to it. A board starts with one page; **+**
-under Pages adds another. Following calls, ⌥-click inline expansion, Code and Flow, folds, groups,
+under Pages adds another. Following calls, ⌥-click inline expansion, Diagram, Flow, and Code, folds, groups,
 descriptions, and Flow labels work as [§10](#10-the-reader) describes. Descriptions and labels are
 written in **Selected** or on the card itself; "N Flow steps unlabeled · Label them", under On this
 page, steps through the nodes that still show code names. **Show callers**, in a card's menu, adds the
@@ -1342,17 +1351,18 @@ You can open as many windows as you want ([U-37](decisions-and-tradeoffs.md#u-37
 
 ### 11.12 Settings and preferences
 
-- **Project settings** (the project menu, or Settings on Home) open as a dialog with four sections:
+- **Project settings** (the project menu, or Settings on Home) open as a dialog with five sections:
   **General** (the shared name, the folder, background updates, and where the graph is stored),
   **Scope** (a check-box tree of the project's folders, with skipped folders shown and why, and the
-  scope rules), **Detectors** (one switch per detector, grouped by language), and **Python projects**.
+  scope rules), **Detectors** (one switch per detector, grouped by language), **Python projects**, and
+  **Evidence files** (the files boards may cite, each with Remove, and a field that adds one).
   Changes are staged and saved together into `.unfold/config.toml`, all or nothing, through Rust, which
   keeps comments and formatting ([settings and scope](settings-and-scope.md)).
 - **Manual entrances** are added with **Add entrance…** (the project menu, or How it starts on Home) or
   **Add as entrance…** in a function card's menu), and edited or removed from their row on Home.
 - **Preferences** (⌘,, or the gear at the bottom of Home's sidebar) are app-wide: theme, editor command,
-  background updates for newly compiled projects, the compile thread limit, update checks, and key
-  bindings.
+  background updates for newly compiled projects, the compile thread limit, update checks, whether agents
+  may connect (and on which port), and key bindings.
 
 ### 11.13 Keyboard
 
@@ -1424,6 +1434,7 @@ Each board command names its board, and Rust checks that the calling window hold
 - **Windows get no file, shell, process, or network access.** Every renderer runs with context isolation and Chromium's sandbox, with Node integration off. Its preload script exposes one object, `window.unfold`, which can only send Unfold's commands and receive its events.
 - **The main process trusts only what it created.** It loads the UI only from Unfold's own `app://` protocol, inside the app's signed archive. It blocks navigation, new windows, embedded webviews, and every permission request, such as the camera or notifications, and it checks the sender of every message it handles.
 - **Paths outside a project come only from the main process.** A folder picked in the folder picker, dropped on a window, or passed on the command line, and a file chosen in a save dialog, reach Rust only as trusted commands, which only the main process can send ([IPC](ipc.md#how-a-command-travels)). A window can never name a path outside a project; it can add back a folder the workspace removed only by its listed path.
+- **One local listener, for agents, off by default.** While Preferences › Agents has it on, the main process serves MCP at `http://127.0.0.1:<port>/mcp` (port 29180 unless the person picks another) for agents such as Claude Code and Codex. It listens on the loopback interface only; it refuses, with a bare 403, any request that carries an `Origin` header (a web page) and any whose `Host` isn't `127.0.0.1` or `localhost` at its port (DNS rebinding); it caps request bodies at 1 MiB and serves nothing but `/mcp`. It has no token: while it is on, any program on the machine can use it, and such programs can already read the repositories. Its engine requests are untrusted, like a window's, and its tools are fixed actions with no pass-through to the engine; the one that names a path outside a project, adding a project, runs only after the person confirms it in a native dialog. Turning it off closes every connection.
 - **Every path a command receives is checked, per project.** It must be relative to the folder of the project the command names, and Rust resolves it and rejects `..`, absolute paths, and symlinks that escape that folder. Discovery doesn't follow symlinks out of the folder.
 - **Strict content security policy.** All assets are local, and nothing is loaded from the network. Source and descriptions are rendered as text, never as HTML.
 - **The bundled runtime runs only Unfold.** Electron's fuses are set when the app is packaged: it can't be started as plain Node, it ignores `NODE_OPTIONS` and inspector flags, and it loads its code only from its own archive, whose integrity is checked on macOS and Windows.
@@ -1512,7 +1523,7 @@ unfold/
 │   └── src/
 │       ├── main/                   # index.ts, windows.ts, workspace.ts, window-placement.ts, menu.ts,
 │       │                           #   dialogs.ts, ipc.ts, engine-host.ts, protocol.ts, security.ts,
-│       │                           #   updater.ts
+│       │                           #   updater.ts; agents/ (the agent bridge); mcp/ (the MCP server)
 │       ├── preload/                # index.ts: window.unfold, and nothing else
 │       ├── engine-host/            # index.ts, router.ts, binding.ts: loads unfold-node, routes each
 │       │                           #   window's port, broadcasts events
@@ -1735,7 +1746,7 @@ A budget never passes by dropping files, call sites, or external or unresolved r
 | Last good | The facts from the last version of a file that parsed |
 | Board | A story about the code: titled pages of cards, groups, descriptions, labels, and drawn links over the graph |
 | Page | One canvas inside a board: one trace |
-| Card | An entrance or a definition on a page, in Code or Flow |
+| Card | An entrance, a definition, or a type on a page, in Diagram, Flow, or Code |
 | Folder | A name that organizes a project's boards, stored on each board; not the disk layout |
 | Draft | A board that lives only on this machine, in `.unfold/local/drafts/` |
 | Publish | Write a board to `.unfold/boards/`, so it can be committed |

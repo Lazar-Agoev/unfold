@@ -8,8 +8,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use unfold_reader::board::BoardGraph;
 use unfold_reader::board::files::write_atomic;
+use unfold_reader::board::{BoardGraph, References};
 use unfold_reader::mermaid;
 
 use super::{boards, count};
@@ -115,7 +115,11 @@ fn mermaid_of(
             let workspace = ctx.live(project)?;
             let reader = workspace.readers()?.get()?;
             // The entrance first, then the files of the handlers it draws.
-            let graph = BoardGraph::load(&reader, workspace.root(), &[key])?;
+            let entrance = References {
+                keys: vec![key],
+                ..References::default()
+            };
+            let graph = BoardGraph::load(&reader, workspace.root(), &entrance)?;
             let board = mermaid::entrance_board(&graph, key)
                 .ok_or_else(|| CommandError::not_found(format!("no entrance `{key}`")))?;
             let graph = BoardGraph::load(&reader, workspace.root(), &board.references(None))?;

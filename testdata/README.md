@@ -26,7 +26,8 @@ testdata/
 ├── detectors/<detector>/<case>/   # detector cases: sources, .unfold/config.toml, expected-entrances.txt
 ├── boards/
 │   ├── order-placement.json      # sample board, unfold-board v1
-│   └── order-placement*.mmd      # its Mermaid export (snapshots: as saved, and with every card in Flow)
+│   ├── order-placement*.mmd      # its Mermaid export (snapshots: as saved, and with every card in Flow)
+│   └── order-system.json, .mmd   # example board with frames, resource cards, connections, and notes; its export
 ├── mermaid/<playground>.json     # snapshots: Unfold's Mermaid for every entrance and every callable's Flow
 ├── workspace/commands/           # golden JSON of representative commands on ts-orders (unfold-workspace tests)
 ├── reference/                    # frozen PoC generations; see reference/README.md
@@ -191,6 +192,15 @@ and label attached and healthy, checks that it round-trips byte for byte, and sn
 (`order-placement.mmd`, identical to the PoC's apart from handler numbers, and `order-placement-flow.mmd`, every card
 switched to Flow). `UNFOLD_BLESS=1` rewrites the snapshots; `tools/oracles/check-mermaid.mjs` parses them and
 `testdata/mermaid/*.json` with the real Mermaid parser.
+
+## Example board (`boards/order-system.json`)
+
+Written for Unfold on `testdata/playgrounds/ts-orders`: Diagram views, an attributed step group, nested frames of
+both looks, every kind of resource card (a table backed by `interface Order`), connections of every line style, and
+notes, free and attached. `crates/unfold-workspace/tests/commands/claims.rs` saves it on a compiled copy of
+`ts-orders`, whose typed records ground its claims, and snapshots it (its golden is itself, with real signatures)
+and its Mermaid export (`order-system.mmd`); `UNFOLD_BLESS=1` rewrites both. `crates/unfold-reader/tests/board_items.rs`
+checks that it round-trips, counts its changes, and repairs without leaving anything dangling.
 
 ## Reference and corpora
 

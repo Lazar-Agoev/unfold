@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectConfig } from "../ipc";
-import { draftOf, draftProblems, editsBetween, newPythonProject, relativeToRoot, type SettingsDraft } from "./projectSettings";
+import { draftOf, draftProblems, editsBetween, evidenceProblem, newPythonProject, relativeToRoot, type SettingsDraft } from "./projectSettings";
 
 function config(overrides: Partial<NonNullable<ProjectConfig["settings"]>> = {}, name = { value: "orders", isDefault: true }): ProjectConfig {
   return {
@@ -8,7 +8,7 @@ function config(overrides: Partial<NonNullable<ProjectConfig["settings"]>> = {},
     text: "",
     error: null,
     name,
-    settings: { languages: null, include: [], exclude: [], disabledDetectors: [], pythonProjects: [], entrances: [], ...overrides },
+    settings: { languages: null, include: [], exclude: [], disabledDetectors: [], pythonProjects: [], entrances: [], evidence: [], ...overrides },
   };
 }
 
@@ -50,6 +50,23 @@ describe("project settings drafts", () => {
     expect(editsBetween(fromDefault, { ...fromDefault, name: " " })).toEqual([]);
     const named = draftOf(config({}, { value: "orders-api", isDefault: false }));
     expect(editsBetween(named, { ...named, name: "" })).toEqual([{ op: "set_project_name", name: null }]);
+  });
+
+  it("removes and adds evidence patterns", () => {
+    const saved = draftOf(config({ evidence: ["prisma/schema.prisma", "db"] }));
+    expect(saved.evidence).toEqual(["prisma/schema.prisma", "db"]);
+    expect(editsBetween(saved, { ...saved, evidence: ["db", "db/migrations/*.sql"] })).toEqual([
+      { op: "remove_evidence_pattern", pattern: "prisma/schema.prisma" },
+      { op: "add_evidence_pattern", pattern: "db/migrations/*.sql" },
+    ]);
+  });
+
+  it("checks an evidence pattern before it is added", () => {
+    expect(evidenceProblem("db/migrations/*.sql", ["db"])).toBeNull();
+    expect(evidenceProblem(" ", [])).not.toBeNull();
+    expect(evidenceProblem("/etc/hosts", [])).toContain("inside this folder");
+    expect(evidenceProblem("../secrets.sql", [])).toContain("inside this folder");
+    expect(evidenceProblem("db", ["db"])).toContain("listed already");
   });
 
   it("flags a bad name and Python rows that can't be saved", () => {

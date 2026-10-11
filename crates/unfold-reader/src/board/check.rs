@@ -12,16 +12,19 @@
 //! A card from a project with no graph is **not connected**: a placeholder, never an error, and
 //! its project's labels, groups, and guards are not checked. A drawn link is checked only for
 //! its ends: it is **broken** when an end's card is missing from its connected project (a
-//! resource or frame end is never missing); its label is never outdated (decision U-44).
+//! resource or frame end is never missing); its label is never outdated (decision U-44). The
+//! claims (resource cards, connections, and frame descriptions) are checked by [`claims`]: what
+//! they cite must still be there, and their signatures must still match.
 
 use std::fmt;
 
 use serde::Serialize;
 
 use super::BoardError;
+use super::claims;
 use super::graph::{BoardGraph, PageGraphs};
 use super::items::remove_items;
-use super::model::{Board, CardRef, Group, GuardEntry, Page, ProjectName, Signature, is_ordinal};
+use super::model::{Anchor, Board, CardRef, Group, GuardEntry, Page, ProjectName, Signature, is_ordinal};
 
 /// A Flow label's or a reference's address on a page: its key in a project.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
@@ -56,8 +59,12 @@ pub enum Target {
     Group(String),
     /// A Flow label, by project and block key.
     Label(ProjectKey),
-    /// A drawn link, by id.
+    /// A drawn link or a connection, by id.
     Link(String),
+    /// A resource card, by id.
+    Resource(String),
+    /// A frame, by id.
+    Frame(String),
 }
 
 impl fmt::Display for Target {
@@ -71,6 +78,8 @@ impl fmt::Display for Target {
                 key,
             }) => write!(f, "label of `{key}` in {project}"),
             Self::Link(id) => write!(f, "link `{id}`"),
+            Self::Resource(id) => write!(f, "resource `{id}`"),
+            Self::Frame(id) => write!(f, "frame `{id}`"),
         }
     }
 }
@@ -80,9 +89,11 @@ impl fmt::Display for Target {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum HealthKind {
-    /// A reference is not in its project's graph (a placeholder until repaired).
+    /// A reference (a card's, a label's, or a resource card's anchor or type) is not in its
+    /// project's graph (a placeholder until repaired).
     Missing,
-    /// A description's or label's source changed since it was signed.
+    /// A description's, label's, resource card's, or connection's source changed since it was
+    /// signed.
     Outdated,
     /// A group no longer meets the group rules.
     BrokenGroup,
@@ -90,7 +101,8 @@ pub enum HealthKind {
     Review,
     /// A card's project is not connected (a placeholder: "From <name>, not connected").
     NotConnected,
-    /// An end of a drawn link is a missing card.
+    /// An end of a link is a missing card, or a connection's step, carried type, or anchor is
+    /// gone.
     BrokenLink,
 }
 
@@ -107,9 +119,11 @@ pub enum RepairKind {
     RemoveLabel,
     /// Remove the group, keeping its statements.
     Ungroup,
-    /// Remove the drawn link.
+    /// Remove the link or connection.
     RemoveLink,
-    /// Remove the description.
+    /// Remove the resource card (and the links to it).
+    RemoveResource,
+    /// Remove the description (a connection's description and label).
     RemoveDescription,
     /// Keep the text and sign it against the current source.
     Resign,
@@ -132,10 +146,15 @@ pub struct HealthItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub project: Option<ProjectName>,
-    /// The reference involved, when it is not the target itself (a group member).
+    /// The reference involved, when it is not the target itself (a group member; a resource
+    /// card's or connection's anchor, type, step, or carried type).
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub key: Option<String>,
+    /// The position of the anchor involved among its resource card's or connection's anchors.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub anchor: Option<u32>,
     /// The explanation.
     pub message: String,
     /// The repairs to offer.
@@ -147,11 +166,12 @@ pub struct HealthItem {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Health {
-    /// Every problem: per page, cards first, then groups, labels, and links.
+    /// Every problem: per page, cards first, then groups, labels, links, resource cards, and
+    /// frames.
     pub items: Vec<HealthItem>,
     /// The number of missing references.
     pub missing: u32,
-    /// The number of outdated descriptions and labels.
+    /// The number of outdated descriptions, labels, resource cards, and connections.
     pub outdated: u32,
     /// The number of broken-group items.
     pub broken_groups: u32,
@@ -355,6 +375,7 @@ pub fn health(page: &Page, graphs: &PageGraphs<'_>) -> Health {
         target,
         project: project.cloned(),
         key: key.map(str::to_owned),
+        anchor: None,
         message: message.to_owned(),
         repairs: repairs.to_vec(),
     };
@@ -530,6 +551,9 @@ pub fn health(page: &Page, graphs: &PageGraphs<'_>) -> Health {
             ));
         }
     }
+    for item in claims::health(page, graphs) {
+        health.add(item);
+    }
     health
 }
 
@@ -561,7 +585,9 @@ fn overlap(graph: &BoardGraph, left: &Group, right: &Group) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Repair {
     /// Replace reference `from` with `to` in `project` everywhere on the page: card references,
-    /// group members, the label's key, and its guard (a fresh one is saved).
+    /// group members, the label's key, resource cards' types and anchors, connections' carried
+    /// types and anchors, and its guard (a fresh one is saved). A connection's step under `from`
+    /// (a card's statement or call) moves to the same path under `to`.
     Reconnect {
         /// The project (`None`: the board's own); it must be connected.
         project: Option<ProjectName>,
@@ -570,6 +596,16 @@ pub enum Repair {
         /// The key it should point at now.
         to: String,
     },
+    /// Replace anchor `index` of resource card or connection `item` with `to` (a key, or lines
+    /// of an evidence file), which must be in its project's graph.
+    ReconnectAnchor {
+        /// The resource card or connection.
+        item: String,
+        /// The anchor's position among its anchors.
+        index: usize,
+        /// The new anchor.
+        to: Anchor,
+    },
     /// Remove a card with what would dangle: the groups on it, the links drawn to or from it,
     /// its place in a frame, and the notes attached to it (they stay, unattached).
     RemoveCard(String),
@@ -577,11 +613,16 @@ pub enum Repair {
     RemoveLabel(ProjectKey),
     /// Remove a group.
     Ungroup(String),
-    /// Remove a drawn link (the notes attached to it stay, unattached).
+    /// Remove a drawn link or a connection (the notes attached to it stay, unattached).
     RemoveLink(String),
-    /// Remove a card's or group's description, a label, or a link's label.
+    /// Remove a resource card with what would dangle: the links to and from it, its place in a
+    /// frame, and the notes attached to it (they stay, unattached).
+    RemoveResource(String),
+    /// Remove a card's, group's, resource card's, or frame's description, a label, a drawn
+    /// link's label, or a connection's description and label.
     RemoveDescription(Target),
-    /// Sign a description, label, or link label against the current source, keeping its text.
+    /// Sign a description, label, link label, resource card, or connection (with its texts)
+    /// against the current source, keeping its text.
     Resign(Target),
     /// Save a fresh guard for a reference, accepting its current code.
     Accept(ProjectKey),
@@ -600,6 +641,7 @@ fn problem(page: &Page, target: Target, message: &str) -> BoardError {
 pub fn apply_repair(page: &mut Page, graphs: &PageGraphs<'_>, repair: &Repair) -> Result<(), BoardError> {
     match repair {
         Repair::Reconnect { project, from, to } => reconnect(page, graphs, project.as_ref(), from, to)?,
+        Repair::ReconnectAnchor { item, index, to } => reconnect_anchor(page, graphs, item, *index, to)?,
         Repair::RemoveCard(id) => {
             if page.card(id).is_some() {
                 remove_items(page, &[id]);
@@ -610,33 +652,15 @@ pub fn apply_repair(page: &mut Page, graphs: &PageGraphs<'_>, repair: &Repair) -
                 remove_items(page, &[id]);
             }
         }
-        Repair::RemoveLabel(label) => remove_label(page, label),
-        Repair::Ungroup(id) => page.groups.retain(|group| &group.id != id),
-        Repair::RemoveDescription(target) => match target {
-            Target::Card(id) => {
-                if let Some(card) = page.cards.iter_mut().find(|card| &card.id == id) {
-                    card.description = None;
-                }
-            }
-            Target::Group(id) => {
-                if let Some(group) = page.groups.iter_mut().find(|group| &group.id == id) {
-                    group.description = None;
-                }
-            }
-            Target::Label(label) => remove_label(page, label),
-            Target::Link(id) => {
-                if let Some(link) = page.links.iter_mut().find(|link| &link.id == id) {
-                    link.label = None;
-                }
-            }
-        },
-        Repair::Resign(target) => {
-            let signature = super::save::current_signature(page, graphs, target)?;
-            match super::save::description_mut(page, target) {
-                Some(description) => description.signature = Some(signature),
-                None => return Err(problem(page, target.clone(), "has no description to sign")),
+        Repair::RemoveResource(id) => {
+            if page.resource(id).is_some() {
+                remove_items(page, &[id]);
             }
         }
+        Repair::RemoveLabel(label) => remove_label(page, label),
+        Repair::Ungroup(id) => page.groups.retain(|group| &group.id != id),
+        Repair::RemoveDescription(target) => remove_description(page, target),
+        Repair::Resign(target) => super::save::resign(page, graphs, target)?,
         Repair::Accept(ProjectKey { project, key }) => {
             match graphs
                 .get(project.as_ref())
@@ -650,9 +674,85 @@ pub fn apply_repair(page: &mut Page, graphs: &PageGraphs<'_>, repair: &Repair) -
     Ok(())
 }
 
+fn remove_description(page: &mut Page, target: &Target) {
+    match target {
+        Target::Card(id) => {
+            if let Some(card) = page.cards.iter_mut().find(|card| &card.id == id) {
+                card.description = None;
+            }
+        }
+        Target::Group(id) => {
+            if let Some(group) = page.groups.iter_mut().find(|group| &group.id == id) {
+                group.description = None;
+            }
+        }
+        Target::Label(label) => remove_label(page, label),
+        Target::Link(id) => {
+            if let Some(link) = page.links.iter_mut().find(|link| &link.id == id) {
+                link.label = None;
+                link.description = None;
+            }
+        }
+        Target::Resource(id) => {
+            if let Some(resource) = page.resources.iter_mut().find(|resource| &resource.id == id) {
+                resource.description = None;
+            }
+        }
+        Target::Frame(id) => {
+            if let Some(frame) = page.frames.iter_mut().find(|frame| &frame.id == id) {
+                frame.description = None;
+            }
+        }
+    }
+}
+
 fn remove_label(page: &mut Page, label: &ProjectKey) {
     page.labels
         .retain(|entry| !(entry.project == label.project && entry.key.as_str() == label.key));
+}
+
+/// What a repair about reference (`project`, `key`) is about: the card showing it, else the
+/// resource card or connection citing it, else its label.
+fn target_of(page: &Page, project: Option<&ProjectName>, key: &str) -> Target {
+    let is = |anchor: &Anchor| {
+        anchor.project() == project && anchor.key().is_some_and(|known| known.as_str() == key)
+    };
+    if let Some(card) = page
+        .cards
+        .iter()
+        .find(|card| card.reference.project() == project && card.reference.key().as_str() == key)
+    {
+        return Target::Card(card.id.clone());
+    }
+    if let Some(resource) = page.resources.iter().find(|resource| {
+        (resource.project.as_ref() == project
+            && resource
+                .type_key
+                .as_ref()
+                .is_some_and(|known| known.as_str() == key))
+            || resource.anchors.iter().any(is)
+    }) {
+        return Target::Resource(resource.id.clone());
+    }
+    let cites = |link: &&super::model::Link| {
+        (page.step_project(link) == project && link.step.as_ref().is_some_and(|step| step.as_str() == key))
+            || (link.carries_project.as_ref() == project
+                && link
+                    .carries
+                    .as_ref()
+                    .is_some_and(|carries| carries.as_str() == key))
+            || link.anchors.iter().any(is)
+    };
+    match page.links.iter().find(cites) {
+        Some(link) => Target::Link(link.id.clone()),
+        None => Target::Label(ProjectKey::new(project, key)),
+    }
+}
+
+/// `key` with its prefix `from` replaced by `to`, when it is `from` or lies under it.
+fn moved(key: &str, from: &str, to: &str) -> Option<unfold_core::Key> {
+    let rest = key.strip_prefix(from)?;
+    (rest.is_empty() || rest.starts_with('/')).then(|| unfold_core::Key::from_text(&format!("{to}{rest}")))
 }
 
 fn reconnect(
@@ -672,20 +772,12 @@ fn reconnect(
         }
     });
     if !fits {
-        let target = page
-            .cards
-            .iter()
-            .find(|card| card.reference.project() == project && card.reference.key().as_str() == from)
-            .map_or_else(
-                || Target::Label(ProjectKey::new(project, from)),
-                |card| Target::Card(card.id.clone()),
-            );
         let message = if graph.is_none() {
             "the reference's project is not connected"
         } else {
             "the new reference is not in the graph or is a different kind of reference"
         };
-        return Err(problem(page, target, message));
+        return Err(problem(page, target_of(page, project, from), message));
     }
     let new_key = unfold_core::Key::from_text(to);
     for card in &mut page.cards {
@@ -724,12 +816,118 @@ fn reconnect(
             .iter_mut()
             .find(|entry| entry.project.as_ref() == project && entry.key.as_str() == from)
         {
-            entry.key = new_key;
+            entry.key = new_key.clone();
         }
     }
-    page.guards
-        .retain(|entry| !(entry.project.as_ref() == project && entry.key.as_str() == from));
-    if let Some(guard) = graph.and_then(|graph| current_guard(graph, project, to)) {
+    let same = |anchor_project: Option<&ProjectName>, key: &unfold_core::Key| {
+        anchor_project == project && key.as_str() == from
+    };
+    let reconnect_anchors = |anchors: &mut Vec<Anchor>| {
+        for anchor in anchors.iter_mut() {
+            if let Anchor::Key { key, project: at } = anchor
+                && same(at.as_ref(), key)
+            {
+                *key = new_key.clone();
+            }
+        }
+        // An anchor already citing the new key isn't repeated.
+        let mut seen = Vec::with_capacity(anchors.len());
+        anchors.retain(|anchor| {
+            let fresh = !seen.contains(anchor);
+            seen.push(anchor.clone());
+            fresh
+        });
+    };
+    for resource in &mut page.resources {
+        if let Some(table) = resource.type_key.as_mut()
+            && same(resource.project.as_ref(), table)
+        {
+            *table = new_key.clone();
+        }
+        reconnect_anchors(&mut resource.anchors);
+    }
+    // Steps move with their card: the same statement or call under the new key.
+    let step_projects: Vec<bool> = page
+        .links
+        .iter()
+        .map(|link| page.step_project(link) == project)
+        .collect();
+    let mut steps = Vec::new();
+    for (link, in_project) in page.links.iter_mut().zip(step_projects) {
+        if let Some(step) = link.step.as_mut().filter(|_| in_project)
+            && let Some(new_step) = moved(step.as_str(), from, to)
+        {
+            steps.push((std::mem::replace(step, new_step.clone()), new_step));
+        }
+        if let Some(carries) = link.carries.as_mut()
+            && same(link.carries_project.as_ref(), carries)
+        {
+            *carries = new_key.clone();
+        }
+        reconnect_anchors(&mut link.anchors);
+    }
+    page.guards.retain(|entry| {
+        entry.project.as_ref() != project
+            || (entry.key.as_str() != from && !steps.iter().any(|(old, _)| old == &entry.key))
+    });
+    let fresh = std::iter::once(new_key).chain(steps.into_iter().map(|(_, step)| step));
+    for key in fresh {
+        if let Some(guard) = graph.and_then(|graph| current_guard(graph, project, key.as_str())) {
+            put_guard(page, guard);
+        }
+    }
+    Ok(())
+}
+
+/// Replaces anchor `index` of resource card or connection `item` with `to`, which must be in
+/// its project's graph, and saves a fresh guard for a key.
+fn reconnect_anchor(
+    page: &mut Page,
+    graphs: &PageGraphs<'_>,
+    item: &str,
+    index: usize,
+    to: &Anchor,
+) -> Result<(), BoardError> {
+    let target = if page.resource(item).is_some() {
+        Target::Resource(item.to_owned())
+    } else {
+        Target::Link(item.to_owned())
+    };
+    let graph = graphs
+        .get(to.project())
+        .ok_or_else(|| problem(page, target.clone(), "the new anchor's project is not connected"))?;
+    let exists = match to {
+        Anchor::Key { key, .. } => graph.exists(key.as_str()),
+        Anchor::File { file, lines, .. } => {
+            matches!(graph.lines(file, *lines), super::graph::Lines::Bytes(_))
+        }
+    };
+    if !exists {
+        return Err(problem(
+            page,
+            target,
+            "the new anchor is not in the graph: cite a block or entrance key, or lines an evidence file has",
+        ));
+    }
+    let anchors = match &target {
+        Target::Resource(_) => page
+            .resources
+            .iter_mut()
+            .find(|resource| resource.id == item)
+            .map(|resource| &mut resource.anchors),
+        _ => page
+            .links
+            .iter_mut()
+            .find(|link| link.id == item)
+            .map(|link| &mut link.anchors),
+    };
+    let Some(slot) = anchors.and_then(|anchors| anchors.get_mut(index)) else {
+        return Err(problem(page, target, "has no anchor at that position"));
+    };
+    *slot = to.clone();
+    if let Anchor::Key { key, project } = to
+        && let Some(guard) = current_guard(graph, project.as_ref(), key.as_str())
+    {
         put_guard(page, guard);
     }
     Ok(())

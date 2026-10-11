@@ -7,6 +7,8 @@
  * - main → window: the shell events of {@link AgentShellEvent};
  * - window → main: the window commands of {@link AgentWindowCommands}.
  *
+ * Preferences › Agents reads the state of the MCP server agents connect to ({@link AgentServerStatus}).
+ *
  * The main process owns argument parsing, links, defaults, and page revisions; the window owns
  * placement, the document's rules, and the refusal texts. Every edit is one undo step of the board,
  * saved at once, and signed with the agent's identity.
@@ -45,15 +47,16 @@ export interface AgentCardSpec {
   readonly key: string;
   /** The project it is from, by id; absent: the board's own project. */
   readonly project?: string;
-  /** Its own view; absent: the page's default view. */
+  /** Its own view (types reached by following its fields too); absent: the page's default view. */
   readonly view?: AgentView;
   /** The id of an item on the page to place it beside; absent: beside the cards it relates to. */
   readonly near?: string;
   /**
    * Adds its call tree as well, following resolved calls only: what it calls (0–3 levels) and what
-   * calls it (0–2 levels). The result says where following stopped.
+   * calls it (0–2 levels); and, for a type or class, the types its fields name, transitively (0–2
+   * levels). The result says where following stopped.
    */
-  readonly follow?: { readonly callees?: number; readonly callers?: number };
+  readonly follow?: { readonly callees?: number; readonly callers?: number; readonly types?: number };
 }
 
 /** Puts cards on the page, near the cards they relate to; cards already there are kept, not duplicated. */
@@ -152,20 +155,25 @@ export type AgentOp = AddCardsOp | SetViewOp | ArrangeOp | RemoveItemsOp | Group
 /** What happened to an item: added, changed, already as asked, or taken off the page. */
 export type AgentItemStatus = "created" | "updated" | "kept" | "removed";
 
-/** Where following calls stopped, at one card. */
+/** Where following calls or a type's fields stopped, at one card. */
 export interface AgentFollowStop {
   /**
-   * `external` and `unresolved`: a call following can't go through; `depth`: resolved calls past the
-   * depth asked for; `limit`: callers past the most one step lists, or cards past the most one call adds.
+   * `external` and `unresolved`: a call or a field's type name following can't go through; `builtin`: a
+   * field's type is the language's own (`Date`, `str`); `depth`: resolved calls or declared types past
+   * the depth asked for; `limit`: callers past the most one step lists, or cards past the most one call adds.
    */
-  readonly reason: "external" | "unresolved" | "depth" | "limit";
+  readonly reason: "external" | "unresolved" | "builtin" | "depth" | "limit";
   /** The call as written (`ordersQueue.add`), for an external or unresolved call. */
   readonly call?: string;
   /** The calling line. */
   readonly line?: number;
-  /** An external call's library, or why a call is unresolved. */
+  /** A field's type name as written (`Money`, `Decimal`), for a type following can't go through. */
+  readonly type?: string;
+  /** The field that writes it (the first, when several do). */
+  readonly field?: string;
+  /** An external call's or type's library, or why it is unresolved. */
   readonly note?: string;
-  /** How many calls or callers were not followed (`depth`, `limit`). */
+  /** How many calls, callers, or types were not followed (`depth`, `limit`). */
   readonly count?: number;
 }
 
@@ -181,8 +189,8 @@ export interface AgentCardResult {
   readonly name: string;
   /** Its canvas position, when an operation placed or moved it. */
   readonly at?: readonly [number, number];
-  /** How following calls reached it: from which card, which way, and how many levels deep. */
-  readonly via?: { readonly from: string; readonly direction: "callees" | "callers"; readonly depth: number };
+  /** How following reached it: from which card, which way (calls, callers, or a type's fields), and how many levels deep. */
+  readonly via?: { readonly from: string; readonly direction: "callees" | "callers" | "types"; readonly depth: number };
   /** Where following stopped at this card. */
   readonly stops?: readonly AgentFollowStop[];
 }
@@ -322,12 +330,14 @@ export interface AgentFinish {
 /** A request as a shell event: its `type` and its fields (flattened, so it reads as any event does). */
 type ShellEventOf<T extends string, P> = { readonly type: T } & { readonly [K in keyof P]: P[K] };
 
-/** Shell events the main process sends a window for an agent. */
+/** Shell events the main process sends a window for an agent, and the agents' server's state. */
 export type AgentShellEvent =
   | ShellEventOf<"agent_edit", AgentEditRequest>
   | ShellEventOf<"agent_read", AgentReadRequest>
   | ShellEventOf<"agent_open_board", AgentOpenRequest>
-  | ShellEventOf<"agent_finish", AgentFinish>;
+  | ShellEventOf<"agent_finish", AgentFinish>
+  /** The MCP server started, stopped, or failed, or an agent connected or acted (sent to every window). */
+  | { readonly type: "agent_server_changed"; readonly status: AgentServerStatus };
 
 /** What is selected in a window's view. */
 export type ViewSelection =
@@ -347,6 +357,15 @@ export type ViewSelection =
       readonly source: string;
       readonly seq: number;
       readonly line: number | null;
+    }
+  /** An arrow from a Diagram node that stands for several calls to one card: the calls it draws, in source order. */
+  | {
+      readonly kind: "calls";
+      readonly from: string;
+      readonly to: string;
+      /** The project both cards resolve to. */
+      readonly project: string;
+      readonly calls: readonly { readonly source: string; readonly seq: number; readonly line: number | null }[];
     };
 
 /** What a window shows: its active board and page (none on Home), selection, lens, the items in view, and its board tabs. */
@@ -372,6 +391,41 @@ export interface AgentWindowCommands {
   agent_read_result: { args: { requestId: number; result: AgentReadResult }; result: null };
   /** The answer to an `agent_open_board`. */
   agent_open_board_result: { args: { requestId: number; result: AgentOpenResult }; result: null };
+  /** The MCP server's state, for Preferences › Agents (`agent_server_changed` follows it). */
+  agent_server_status: { args: Record<string, never>; result: AgentServerStatus };
+}
+
+// ---------------------------------------------------------------------------------------------
+// The MCP server (Preferences › Agents)
+
+/** An agent that has connected since the server started, by the identity its edits are signed with. */
+export interface ConnectedAgent {
+  readonly author: `agent:${string}`;
+  readonly name: string;
+  /** When it last sent the server anything (ms since the epoch). */
+  readonly lastSeenMs: number;
+  /** When it last called a tool; null when it has only connected. */
+  readonly lastActedMs: number | null;
+}
+
+/**
+ * What the MCP server is doing: `off` (Preferences › Agents has it off), `starting`, `listening` at
+ * `address`, `port_taken` (another program listens on the port), or `failed` (it couldn't listen,
+ * for `message`).
+ */
+export type AgentServerState = "off" | "starting" | "listening" | "port_taken" | "failed";
+
+/** The MCP server's state, the address agents connect to, and the agents that connected. */
+export interface AgentServerStatus {
+  readonly state: AgentServerState;
+  /** The port it listens on, or would. */
+  readonly port: number;
+  /** `http://127.0.0.1:<port>/mcp`. */
+  readonly address: string;
+  /** Why it failed (`failed` only). */
+  readonly message?: string;
+  /** The agents seen since it started listening, the one seen last first. */
+  readonly agents: readonly ConnectedAgent[];
 }
 
 /**

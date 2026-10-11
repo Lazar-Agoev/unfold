@@ -1,6 +1,7 @@
 /**
  * The closed labels of a page's lines: one `line_labels` call per project for every call and
- * reference arrow on the page (in chunks of 500, the command's limit; handler arrows have none).
+ * reference arrow on the page (in chunks of 500, the command's limit). Handler and type arrows have
+ * none, and neither has an arrow that stands for several calls (it reads "3 calls").
  * Labels stay shown while a changed page asks again; `graph_updated` of the project asks again.
  */
 
@@ -18,15 +19,20 @@ export function lineKey(project: ProjectId, source: string, seq: number): string
   return `${project}\u0000${source}\u0000${seq}`;
 }
 
+/** Whether an arrow draws one call or passed reference, whose line has a typed label. */
+export function hasLineLabel(arrow: Arrow): boolean {
+  return arrow.kind !== "handler" && arrow.kind !== "type" && arrow.calls === undefined;
+}
+
 /** The calls a page's arrows need: per project, its distinct lines in order, at most 500 per call. */
 export function labelRequests(arrows: readonly Arrow[]): { project: ProjectId; lines: LineRef[] }[] {
   const byProject = new Map<ProjectId, Map<string, LineRef>>();
   for (const arrow of arrows) {
-    if (arrow.kind === "handler") {
+    if (!hasLineLabel(arrow)) {
       continue;
     }
     const lines = byProject.get(arrow.project) ?? new Map<string, LineRef>();
-    lines.set(`${arrow.sourceHandle}\u0000${arrow.seq}`, { source: arrow.sourceHandle, seq: arrow.seq });
+    lines.set(`${arrow.occurrence}\u0000${arrow.seq}`, { source: arrow.occurrence, seq: arrow.seq });
     byProject.set(arrow.project, lines);
   }
   const requests: { project: ProjectId; lines: LineRef[] }[] = [];
@@ -55,7 +61,7 @@ export function useLineLabels(arrows: readonly Arrow[]): ReadonlyMap<string, Lin
     });
     const labels = new Map<string, LineLabel | null>();
     for (const arrow of arrows) {
-      const label = byLine.get(lineKey(arrow.project, arrow.sourceHandle, arrow.seq));
+      const label = hasLineLabel(arrow) ? byLine.get(lineKey(arrow.project, arrow.occurrence, arrow.seq)) : undefined;
       if (label !== undefined) {
         labels.set(arrow.id, label);
       }

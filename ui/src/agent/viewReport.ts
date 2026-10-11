@@ -26,6 +26,8 @@ function viewSelection(selection: Selection): ViewSelection {
       return { kind: "link", id: selection.linkId };
     case "line":
       return { kind: "line", from: selection.from, to: selection.to, project: selection.project, source: selection.source, seq: selection.seq, line: selection.line };
+    case "calls":
+      return { kind: "calls", from: selection.from, to: selection.to, project: selection.project, calls: selection.calls };
   }
 }
 

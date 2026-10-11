@@ -134,6 +134,14 @@ function LineText({ page, line, linked, marks, folded, onUnfold, onFollow }: Lin
   return <>{out}</>;
 }
 
+/** What the header says of the file's place in the graph. */
+const GRAPH_NOTES: Readonly<Record<FileView["graph"], string>> = {
+  current: "",
+  not_compiled: " · changed since the last update",
+  evidence: " · evidence file",
+  not_indexed: " · not indexed",
+};
+
 function revealLabel(platform: string): string {
   if (platform === "darwin") {
     return "Reveal in Finder";
@@ -147,8 +155,7 @@ function Header({ target, view, pinned, projectName }: { readonly target: PeekTa
     { id: "editor", label: "Open in editor", icon: "external-link", shortcut: "Mod+Shift+O", onSelect: () => void openInEditor(target.project, target.path, target.line) },
     { id: "reveal", label: revealLabel(platform), icon: "reveal", onSelect: () => void revealInFinder(target.project, target.path) },
   ];
-  const graph = view?.graph === "not_compiled" ? " · changed since the last update" : view?.graph === "not_indexed" ? " · not indexed" : "";
-  const meta = view && !view.unshowable ? `${plural(view.lineCount, "line")}${view.language ? ` · ${languageList([view.language])}` : ""}${graph}` : "";
+  const meta = view && !view.unshowable ? `${plural(view.lineCount, "line")}${view.language ? ` · ${languageList([view.language])}` : ""}${GRAPH_NOTES[view.graph]}` : "";
   return (
     <header className="peek-header">
       <Monogram name={projectName} size={20} />

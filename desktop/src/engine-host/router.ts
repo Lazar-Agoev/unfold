@@ -12,7 +12,10 @@
  * - Trusted commands: the main process's own requests ({@link EngineRouter.trusted}) are dispatched
  *   with `"trusted": true`. A window can never send one: its commands are rebuilt here from `command`
  *   and `args`, and a window message naming a {@link MAIN_PROCESS_ONLY} command or carrying `trusted`
- *   is refused with `untrusted` before it reaches Rust.
+ *   is refused with `untrusted` before it reaches Rust. The requests the main process makes for
+ *   agents ({@link EngineRouter.untrusted}) get exactly a window's treatment.
+ * - The main process follows a few events too ({@link MAIN_EVENTS}): broadcasts of those also go to
+ *   `toMain`.
  * - Closing writes outlive their window: detaching cancels the window's other requests but never a
  *   {@link CLOSING_WRITES} one. Every request is dispatched the moment it arrives, so by the time
  *   `detachWindow` is called each closing write the host has received (the window's own, and the
@@ -21,7 +24,7 @@
  */
 
 import type { HostToRenderer } from "../shared/transport";
-import { transportError } from "../shared/transport";
+import { MAIN_EVENTS, transportError } from "../shared/transport";
 import type { TransportError, UnfoldEvent } from "../shared/unfold-api";
 import type { EngineBinding } from "./binding";
 
@@ -35,8 +38,8 @@ export interface WindowPort {
 /** Either a loaded binding, or the reason it could not be loaded. */
 export type Engine = { readonly binding: EngineBinding } | { readonly unavailable: TransportError };
 
-/** The outcome of a trusted request, as plain data. */
-export type TrustedResult =
+/** The outcome of a main-process request, as plain data. */
+export type MainResult =
   | { readonly ok: true; readonly value: unknown }
   | { readonly ok: false; readonly error: TransportError };
 
@@ -104,6 +107,8 @@ export class EngineRouter {
     private readonly log: (message: string) => void = (message) => {
       console.error(`[engine-host] ${message}`);
     },
+    /** Receives the broadcasts of {@link MAIN_EVENTS}, for the main process. */
+    private readonly toMain: (event: UnfoldEvent) => void = () => undefined,
   ) {}
 
   /**
@@ -171,7 +176,28 @@ export class EngineRouter {
   }
 
   /** Runs a command the main process sent, with `"trusted": true`, on behalf of `windowId`. Never rejects. */
-  async trusted(windowId: number, command: string, args: Readonly<Record<string, unknown>>): Promise<TrustedResult> {
+  trusted(windowId: number, command: string, args: Readonly<Record<string, unknown>>): Promise<MainResult> {
+    return this.fromMain(windowId, command, args, true);
+  }
+
+  /**
+   * Runs a command the main process sent for an agent, without `trusted`: a {@link MAIN_PROCESS_ONLY}
+   * command, or one carrying `trusted`, is refused with `untrusted`, as a window's would be. Never
+   * rejects.
+   */
+  untrusted(windowId: number, command: string, args: Readonly<Record<string, unknown>>): Promise<MainResult> {
+    if (MAIN_PROCESS_ONLY.has(command) || Object.hasOwn(args, "trusted")) {
+      return Promise.resolve({ ok: false, error: transportError("untrusted", `${command} is not available to agents.`) });
+    }
+    return this.fromMain(windowId, command, args, false);
+  }
+
+  private async fromMain(
+    windowId: number,
+    command: string,
+    args: Readonly<Record<string, unknown>>,
+    trusted: boolean,
+  ): Promise<MainResult> {
     if (!("binding" in this.engine)) {
       return { ok: false, error: this.engine.unavailable };
     }
@@ -183,7 +209,7 @@ export class EngineRouter {
       json = await this.engine.binding.dispatch(
         windowId,
         this.nextRequestId++,
-        JSON.stringify({ command, args, trusted: true }),
+        JSON.stringify(trusted ? { command, args, trusted } : { command, args }),
       );
     } catch (error) {
       return { ok: false, error: errorFromRejection(error) };
@@ -230,6 +256,9 @@ export class EngineRouter {
       }
       for (const connection of this.connections.values()) {
         connection.port.post({ kind: "event", event });
+      }
+      if (MAIN_EVENTS.has(event.type)) {
+        this.toMain(event);
       }
       return;
     }

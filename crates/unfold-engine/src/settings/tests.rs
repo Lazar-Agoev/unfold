@@ -236,6 +236,39 @@ fn invalid_values_are_reported_precisely() {
 }
 
 #[test]
+fn evidence_files_are_confined_patterns() {
+    let settings =
+        Settings::parse("[evidence]\nfiles = [\"prisma/schema.prisma\", \"db/migrations/*.sql\"]\n").unwrap();
+    assert_eq!(
+        settings.evidence.patterns(),
+        ["prisma/schema.prisma".into(), "db/migrations/*.sql".into()]
+    );
+    assert!(
+        settings
+            .evidence
+            .contains(&RepoPath::new("db/migrations/001.sql").unwrap())
+    );
+    assert!(
+        Settings::parse("[evidence]\n")
+            .unwrap()
+            .evidence
+            .patterns()
+            .is_empty()
+    );
+    assert_ne!(
+        settings.hash(),
+        Settings::default().hash(),
+        "evidence patterns are settings"
+    );
+    assert_error("[evidence]\nfiles = [\"../secrets.sql\"]\n", 2, 10, "`..`");
+    assert_error("[evidence]\nfiles = [\"/etc/hosts\"]\n", 2, 10, "relative");
+    assert_error("[evidence]\nfiles = [\"db/[a\"]\n", 2, 10, "not a valid glob");
+    assert_error("[evidence]\nfiles = [\"\"]\n", 2, 10, "empty");
+    assert_error("[evidence]\nfiles = \"db/*.sql\"\n", 2, 9, "sequence");
+    assert_error("[evidence]\npatterns = []\n", 2, 1, "patterns");
+}
+
+#[test]
 fn python_projects_are_validated() {
     assert_error(
         "[[python.project]]\nversion = \"3.15\"\n",

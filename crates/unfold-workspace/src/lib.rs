@@ -99,7 +99,8 @@ pub use settings_edit::{
     EditedSettings, EntranceSpec, PythonProjectSpec, ScopeList, SettingsEdit, apply_edits,
 };
 pub use state::{
-    AppData, BoardView, LocalState, PageView, Preferences, Theme, UpdatePreferences, WindowBounds,
+    AgentPreferences, AppData, BoardView, LocalState, PageView, Preferences, Theme, UpdatePreferences,
+    WindowBounds,
 };
 pub use status::{GraphState, GraphStatus, ProjectState, WatchMode};
 pub use workspace::{OpenContext, SettingsEditOutcome, Workspace};

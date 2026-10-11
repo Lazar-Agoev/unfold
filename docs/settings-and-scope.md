@@ -1,12 +1,12 @@
 # Settings and scope
 
 This document describes `.unfold/config.toml`, how Unfold discovers the files in a project's folder, which
-folders it always skips, how `[scope]` and `languages` narrow what is graphed, and how settings are
-fingerprinted for the per-file facts cache. It expands [architecture §9.2](architecture.md#92-project-settings),
+folders it always skips, how `[scope]` and `languages` narrow what is graphed, which files boards may cite as
+evidence, and how settings are fingerprinted for the per-file facts cache. It expands [architecture §9.2](architecture.md#92-project-settings),
 [§7.7](architecture.md#77-settings-and-inputs), [U-16](decisions-and-tradeoffs.md#u-16-discovery-and-scope-without-running-git),
 and [U-23](decisions-and-tradeoffs.md#u-23-settings-in-toml-in-three-places).
 
-The code is `crates/unfold-engine/src/settings/` (the model, parsing, scope matching, hashing) and
+The code is `crates/unfold-engine/src/settings/` (the model, parsing, scope and evidence matching, hashing) and
 `crates/unfold-engine/src/discovery/` (the walk, classification, the skipped-files report).
 
 ## `.unfold/config.toml`
@@ -39,6 +39,9 @@ version = "3.12"
 kind = "event"
 trigger = "SIGTERM"
 handler = "src/server.ts#shutdown"
+
+[evidence]
+files = ["prisma/schema.prisma", "db/migrations/*.sql"]
 ```
 
 | Key | Type | Default | Rules |
@@ -51,11 +54,12 @@ handler = "src/server.ts#shutdown"
 | `detectors.disabled` | array of detector IDs | `[]` | Known IDs only ([graph model](graph-model.md)); `manual` can't be disabled |
 | `python.project` | array of tables | none | See [Python projects](#python-projects) |
 | `entrance` | array of tables | none | See [manual entrances](entrances.md#manual-entrances-and-locators) |
+| `evidence.files` | array of globs | `[]` | See [Evidence files](#evidence-files) |
 
 ### Strictness and errors
 
 Parsing is strict. Unknown keys anywhere (including inside `[project]`, `[scope]`, `[detectors]`, `[python]`,
-`[[python.project]]`, and `[[entrance]]`), wrong types, malformed TOML, and invalid values are
+`[[python.project]]`, `[[entrance]]`, and `[evidence]`), wrong types, malformed TOML, and invalid values are
 errors. Every error names the file, a one-based line, and a one-based column counted in
 characters, and carries the byte span of the offending key or value:
 
@@ -91,7 +95,9 @@ conflict (`settings_conflict`). The edits come from:
   (an empty name means the default); **Scope** is a tree of the project's folders whose check boxes become
   `exclude` and `include` patterns (each a folder path, escaped as a glob) and whose rules list removes a pattern as
   written; **Detectors** turns detectors on and off; **Python projects** sets and removes `[[python.project]]`
-  tables. Changes are staged and sent together with Save. Background updates, also in General, live in the
+  tables; **Evidence files** lists the `[evidence] files` patterns, each with Remove, and adds one from a field
+  (an emptied list removes the key, and an emptied table the table). Changes are staged and sent together with
+  Save. Background updates, also in General, live in the
   project's `state.json`, not here.
 - **The not-compiled Home's scope tree**, whose changes are kept in memory and written just before the first
   Compile, so nothing is written to a folder that was never compiled.
@@ -123,6 +129,23 @@ When more than one source root (or a module and a package of the same name) supp
 import's edge is `ambiguous` and the import is listed in Problems, without making the graph incomplete
 ([Python](languages/python.md#entrance-detectors-and-problems)).
 
+### Evidence files
+
+`[evidence] files` lists files Unfold doesn't compile but boards may cite: SQL migrations, Prisma schemas,
+OpenAPI specs, Terraform, docker-compose files. A board's resource cards and connections anchor to a line
+range of one ([reader: boards](reader.md#boards)).
+
+- The patterns follow [Scope](#scope)'s rules: a pattern matches a file, a folder that contains it, or a glob,
+  relative to the project's folder, and an empty pattern, one starting with `/`, one with a `.` or `..`
+  component, or invalid glob syntax is an error at its position. Duplicates are kept as written.
+- `[scope]` doesn't apply to evidence files, but ignore files and the always-excluded folders do. A file is
+  evidence only when it is nothing else to Unfold: a source, a context file, a configuration input, or an
+  unindexed source-like file keeps its class.
+- Every update hashes the evidence files it finds, without parsing them, and records each as an input with the
+  role `evidence` ([graph model: input](graph-model.md#input)). They shape nothing linking reads, so a changed
+  evidence file never relinks the graph: the update replaces its record and keeps the rest.
+- The patterns are settings: changing them is a settings change, and is part of `Settings::hash()`.
+
 ## Discovery
 
 Discovery walks the project's folder with the `ignore` crate (ripgrep's walker). It never runs Git and
@@ -149,7 +172,7 @@ works the same in a plain folder as in a repository.
 - **Unreadable entries** (a folder without permission, a malformed ignore file) become problems in the
   result; the walk carries on.
 - **Speed.** The walk is parallel and stats only files that matter (sources, context files, unindexed
-  source-like files, configuration inputs). Its output is sorted, so it doesn't depend on thread
+  source-like files, configuration inputs, evidence files). Its output is sorted, so it doesn't depend on thread
   count. On the proof of concept's `compilers/typescript` checkout (82,000 files outside
   `node_modules`, 2,900 folders, 20,036 TypeScript sources) a warm walk takes about 150 ms on a
   10-core Mac, about 280 ms on one thread.
@@ -161,7 +184,7 @@ works the same in a plain folder as in a repository.
 | Source | `.ts`, `.tsx`, `.mts`, `.cts`; `.py` | Indexed when its language is on and it is in scope |
 | Context | `.d.ts`, `.d.mts`, `.d.cts` | Read by TypeScript for declarations; never get blocks. Listed only when TypeScript is on, with their scope status |
 | Unindexed | Sources out of scope or with their language off; JavaScript (`.js`, `.mjs`, `.cjs`, `.jsx`) | They exist, so references into them are `not_indexed`, not `not_found`. JavaScript comes in V2 |
-| Input | `.unfold/config.toml` (at the folder root only), `tsconfig*.json`, `package.json`, `pyproject.toml` | Fingerprinted ([§7.7](architecture.md#77-settings-and-inputs)); each carries its scope status |
+| Input | `.unfold/config.toml` (at the folder root only), `tsconfig*.json`, `package.json`, `pyproject.toml`; and any other file `[evidence] files` matches | Fingerprinted ([§7.7](architecture.md#77-settings-and-inputs)); each configuration input carries its scope status, and an evidence file is always in scope ([Evidence files](#evidence-files)) |
 | Other | Everything else | Not tracked |
 
 Classification is by file-name suffix, as in the proof of concept. `.pyi` stubs are not sources: the
@@ -237,7 +260,7 @@ they depend only on values: comments, whitespace, key order, and the byte positi
 matter.
 
 - `Settings::hash()` covers everything that can change a compile: languages, scope, disabled
-  detectors, Python projects, and manual entrances (without their byte spans). The project name is
+  detectors, Python projects, manual entrances (without their byte spans), and the evidence patterns. The project name is
   left out: renaming the project re-extracts nothing.
 - Languages hash only what affects extracting one file, so a settings edit re-extracts only the files it
   touches. `Settings::python_hash(path)` covers the owning Python project (root, source roots, grammar

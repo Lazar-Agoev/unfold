@@ -1,7 +1,8 @@
 /**
  * Project settings' model: the form's staged state (the shared name, scope
- * lists, detectors, Python projects), the detectors people can switch, and the `SettingsEdit`s that
- * turn the settings the dialog opened with into the staged ones. Rust applies them all or none.
+ * lists, detectors, Python projects, evidence files), the detectors people can switch, and the
+ * `SettingsEdit`s that turn the settings the dialog opened with into the staged ones. Rust applies
+ * them all or none.
  */
 
 import type { DetectorId, ProjectConfig, PythonProjectView, SettingsEdit } from "../ipc";
@@ -125,6 +126,8 @@ export interface SettingsDraft {
   readonly scope: ScopeLists;
   readonly disabled: ReadonlySet<DetectorId>;
   readonly python: readonly PythonDraft[];
+  /** `[evidence] files` patterns, as written. */
+  readonly evidence: readonly string[];
 }
 
 /** The form's starting state from a project's config (an invalid file starts from the defaults). */
@@ -136,7 +139,23 @@ export function draftOf(config: ProjectConfig): SettingsDraft {
     scope: { include: settings?.include ?? [], exclude: settings?.exclude ?? [] },
     disabled: new Set(settings?.disabledDetectors ?? []),
     python: (settings?.pythonProjects ?? []).map(pythonDraft),
+    evidence: settings?.evidence ?? [],
   };
+}
+
+/**
+ * Why `pattern` can't be added to the evidence files, or null. Rust checks the glob itself; this
+ * catches what the field can say at once.
+ */
+export function evidenceProblem(pattern: string, listed: readonly string[]): string | null {
+  const trimmed = pattern.trim();
+  if (trimmed === "") {
+    return "Name a file, a folder, or a glob, such as db/migrations/*.sql.";
+  }
+  if (trimmed.startsWith("/") || trimmed.split("/").some((part) => part === "." || part === "..")) {
+    return "Evidence files must be inside this folder, written relative to it.";
+  }
+  return listed.includes(trimmed) ? "That pattern is listed already." : null;
 }
 
 function samePython(a: PythonDraft, b: PythonDraft): boolean {
@@ -191,6 +210,12 @@ export function editsBetween(saved: SettingsDraft, draft: SettingsDraft): Settin
         project: { root: normalizeFolder(project.root), sourceRoots: sourceRootList(project.sourceRoots), version: project.version },
       });
     }
+  }
+  for (const pattern of saved.evidence.filter((item) => !draft.evidence.includes(item))) {
+    edits.push({ op: "remove_evidence_pattern", pattern });
+  }
+  for (const pattern of draft.evidence.filter((item) => !saved.evidence.includes(item))) {
+    edits.push({ op: "add_evidence_pattern", pattern });
   }
   // An emptied field means the default name, which is the saved one when the file sets none.
   const name = draft.name.trim() === "" ? (saved.defaultName ?? "") : draft.name.trim();

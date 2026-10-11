@@ -4,9 +4,9 @@
  * - renderer -> host, over the window's MessagePort: {@link RendererToHost}
  * - host -> renderer, over the same port: {@link HostToRenderer}
  * - main <-> host, over the utility process's parent port: {@link MainToHost} and
- *   {@link HostToMain} (lifecycle, plus the main process's own trusted requests: adding a project
- *   from a dialog, a drop, or the command line, export to a path from a save dialog, and window
- *   restore; the main process never reads graph data)
+ *   {@link HostToMain} (lifecycle, the main process's own trusted requests: adding a project from a
+ *   dialog, a drop, or the command line, export to a path from a save dialog, and window restore;
+ *   the MCP server's untrusted requests for agents; and the events the main process follows)
  * - main <-> preload, over Electron IPC: the {@link IPC} channels
  */
 
@@ -54,9 +54,10 @@ export type MainToHost =
   | { readonly type: "detach"; readonly windowId: number }
   /**
    * A command the main process itself originates, run on behalf of window `windowId` (`0` for
-   * none) with `"trusted": true`: the only way the main-process-only commands (`add_project`,
-   * `export_mermaid`, `saved_windows`, `save_window_bounds`, `forget_window`) reach Rust.
-   * Answered with a {@link HostToMain} `result` carrying the same `id`.
+   * none). With `trusted`, it carries `"trusted": true`: the only way the main-process-only commands
+   * (`add_project`, `export_mermaid`, `saved_windows`, `save_window_bounds`, `forget_window`) reach
+   * Rust. Without it (the MCP server's requests for agents), it is refused or dispatched exactly as
+   * a window's would be. Answered with a {@link HostToMain} `result` carrying the same `id`.
    */
   | {
       readonly type: "request";
@@ -64,17 +65,26 @@ export type MainToHost =
       readonly windowId: number;
       readonly command: string;
       readonly args: Readonly<Record<string, unknown>>;
+      readonly trusted: boolean;
     }
   /** The app is quitting: detach every window, close every live project, then exit. */
   | { readonly type: "shutdown" };
 
 /**
  * Messages from the engine host to the main process, over the utility process's parent port: the
- * outcome of a main-process {@link MainToHost} `request`.
+ * outcome of a main-process {@link MainToHost} `request`, and the engine events the main process
+ * follows ({@link MAIN_EVENTS}).
  */
 export type HostToMain =
   | { readonly type: "result"; readonly id: number; readonly ok: true; readonly value: unknown }
-  | { readonly type: "result"; readonly id: number; readonly ok: false; readonly error: TransportError };
+  | { readonly type: "result"; readonly id: number; readonly ok: false; readonly error: TransportError }
+  | { readonly type: "event"; readonly event: UnfoldEvent };
+
+/**
+ * Engine events the engine host also sends the main process: `preferences_changed`, so it starts or
+ * stops the agents' server when Preferences › Agents changes.
+ */
+export const MAIN_EVENTS: ReadonlySet<string> = new Set(["preferences_changed"]);
 
 /** Electron IPC channels between the main process and the preload script. */
 export const IPC = {

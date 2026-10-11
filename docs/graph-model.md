@@ -17,7 +17,7 @@ and edges describe `crates/unfold-engine`'s shared backend.
 | Record | What it is |
 | --- | --- |
 | File | An indexed source file: path, language, state, the hash its facts came from, and its failure if it doesn't parse |
-| Input | A fingerprinted configuration file that shaped the graph: path, role, hash |
+| Input | A fingerprinted file: a configuration file that shaped the graph, or an evidence file boards cite; path, role, hash |
 | Block | A selected syntax entity with a byte range, a parent in the same file, a role, an optional name, lines, and a structural key |
 | Slot | The range of a written part of a block, whether or not that part has a block of its own |
 | Edge | A relationship sourced at one occurrence block: a call, a construction, an import, or a named callable passed as an argument |
@@ -46,7 +46,7 @@ blocks, slots, or edges; calls into it are `not_indexed`.
 | Field | Meaning |
 | --- | --- |
 | `path` | Folder-relative path; never also an indexed file |
-| `role` | `unfold-config`, `tsconfig`, `package`, or `pyproject` |
+| `role` | `unfold-config`, `tsconfig`, `package`, `pyproject`, or `evidence` |
 | `hash` | SHA-256 of its bytes |
 
 ### Block
@@ -486,6 +486,12 @@ different languages.
 | `tsconfig` | A `tsconfig.json` or a file in its `extends` chain |
 | `package` | A `package.json` the package detectors read |
 | `pyproject` | A `pyproject.toml` used by console scripts or Python project settings |
+| `evidence` | A file `[evidence] files` lists ([settings](settings-and-scope.md#evidence-files)): hashed, never parsed |
+
+Configuration inputs are the ones linking read. Evidence inputs shape nothing linking reads: every update
+records each evidence file it can read, and a changed one only replaces its record (the graph isn't linked
+again). An unreadable one is a problem but doesn't make the graph incomplete. Boards cite line ranges of
+evidence files and sign them against the recorded hash, as they sign code.
 
 ## Text, ranges, and lines
 

@@ -2,17 +2,22 @@
  * The canvas node for one card. Its data is only the page and the card's ports, so a card re-renders
  * when its own document entry, model, or ports change, never because another card did or because the
  * camera moved (zoom is a camera and never changes what a card shows). The card reads from the project
- * its ref resolves to; one from a project that isn't connected shows as a placeholder.
+ * its ref resolves to; one from a project that isn't connected shows as a placeholder. What it shows
+ * follows its view (`cardBody`): a Diagram node, a type card's fields, Code or Flow, or an entrance's
+ * handlers.
  */
 
 import type { Node, NodeProps } from "@xyflow/react";
 import { memo } from "react";
 import type { Card } from "../../ipc/generated";
-import { effectiveView, findPage, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
+import { cardBody } from "../../code/typeKinds";
+import { cardKey, effectiveView, findPage, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
 import { resolveRefProject, useProjectIndex } from "../../state/workspace";
 import { BlockCard } from "./BlockCard";
+import { DiagramCard } from "./DiagramCard";
 import { EntranceCard } from "./EntranceCard";
 import { PlaceholderCard } from "./PlaceholderCard";
+import { TypeCard } from "./TypeCard";
 import "./cards.css";
 
 interface CardNodeData extends Record<string, unknown> {
@@ -39,9 +44,17 @@ export const CardNode = memo(function CardNode({ id, data }: NodeProps<CardNodeT
   if (project === null) {
     return <PlaceholderCard target={target} card={card} projectName={card.ref.project ?? ""} selected={selected} />;
   }
+  const view = effectiveView(lens, card.view, defaultView, exception);
+  const body = cardBody(cardKey(card), view);
+  if (body === "node") {
+    return <DiagramCard target={target} project={project} card={card} ports={ports} selected={selected} />;
+  }
   if ("entrance" in card.ref) {
     return <EntranceCard target={target} project={project} card={card as Card & { ref: { entrance: string } }} ports={ports} selected={selected} />;
   }
-  const view = effectiveView(lens, card.view, defaultView, exception);
-  return <BlockCard target={target} project={project} card={card as Card & { ref: { block: string } }} view={view} ports={ports} selected={selected} />;
+  const block = card as Card & { ref: { block: string } };
+  if (body === "fields") {
+    return <TypeCard target={target} project={project} card={block} view={view === "flow" ? "flow" : "diagram"} ports={ports} selected={selected} />;
+  }
+  return <BlockCard target={target} project={project} card={block} view={body === "flow" ? "flow" : "code"} ports={ports} selected={selected} />;
 });

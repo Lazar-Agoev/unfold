@@ -1,10 +1,12 @@
 /**
- * A board thumbnail's drawing: the first page's cards as rectangles sized by the canvas's fallback rules,
+ * A board thumbnail's drawing: the first page's cards as rectangles sized by the canvas's fallback rules
+ * for the view each shows,
  * fitted into a 252×138 box with 22px margins, each with two to five text lines, joined by 1px edges. Pure
  * and memoized per `Thumbnail` object.
  */
 
 import { boundsOf, fallbackSize, type Rect } from "../../canvas/layout";
+import { fieldsCardHeight, shownFieldCount } from "../../canvas/sizing";
 import type { Thumbnail, ThumbnailCard } from "../../ipc";
 
 export const THUMB_WIDTH = 252;
@@ -42,16 +44,26 @@ export interface ThumbDrawing {
   readonly links: string;
 }
 
-/** The canvas size a card would have before it is measured. */
-export function cardSize(card: Pick<ThumbnailCard, "kind" | "folded" | "lines">): { width: number; height: number } {
-  if (card.kind === "entrance") {
-    return fallbackSize(true);
-  }
-  const { width } = fallbackSize(false);
+/**
+ * The canvas size a card would have before it is measured: a Diagram node, a type card's fields (in
+ * Diagram view, and in Flow for a type declaration), an entrance's card, or a block's lines.
+ */
+export function cardSize(card: Pick<ThumbnailCard, "kind" | "view" | "folded" | "lines" | "fields">): { width: number; height: number } {
+  const fields = card.fields !== null && (card.view === "diagram" || (card.view === "flow" && card.kind === "type"));
+  const body = fields ? "fields" : card.view === "diagram" ? "node" : undefined;
+  const { width, height } = fallbackSize(card.kind === "entrance", body);
   if (card.folded) {
     return { width, height: 44 };
   }
-  return card.lines === null ? fallbackSize(false) : { width, height: 44 + 20 * Math.min(card.lines, 24) };
+  if (fields) {
+    const rows = card.fields ?? 0;
+    const shown = shownFieldCount(rows, false);
+    return { width, height: fieldsCardHeight(shown, 0, rows - shown) };
+  }
+  if (body !== undefined || card.kind === "entrance") {
+    return { width, height };
+  }
+  return card.lines === null ? { width, height } : { width, height: 44 + 20 * Math.min(card.lines, 24) };
 }
 
 /** A stable 0..1 number for a string, so a card's line lengths don't change between renders. */

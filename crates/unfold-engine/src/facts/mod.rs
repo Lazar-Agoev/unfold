@@ -26,7 +26,7 @@ pub use typed::{TypeFacts, TypeRefFact, innermost};
 
 /// The engine's identity in facts-cache keys. It changes whenever the facts format or anything
 /// that shapes extracted facts changes, so stale cache entries never match.
-pub const ENGINE_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+facts.4");
+pub const ENGINE_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+facts.5");
 
 /// The syntactic shape of a recorded value, after transparent wrappers (parentheses, type
 /// assertions, ...) are unwrapped. Shapes drive the shared policy's no-candidate reasons,

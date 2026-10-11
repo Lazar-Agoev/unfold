@@ -45,9 +45,14 @@ export type Selection =
   | { readonly kind: "group"; readonly groupId: string }
   | { readonly kind: "link"; readonly linkId: string }
   /** A line between cards (its label opened into the call's contract). */
-  | ({ readonly kind: "line" } & SelectedLine);
+  | ({ readonly kind: "line" } & SelectedLine)
+  /** An arrow from a Diagram node that stands for several calls: Selected lists them. */
+  | ({ readonly kind: "calls" } & SelectedCalls);
 
-/** A selected line: its arrow, the graph edge it draws (`source` occurrence, `seq`), and its two cards. */
+/**
+ * A selected line: its arrow, the graph edge it draws (`source` occurrence, `seq`), and its two cards.
+ * A call of an arrow that stands for several opens its contract on that arrow.
+ */
 export interface SelectedLine {
   readonly arrowId: string;
   readonly project: ProjectId;
@@ -59,6 +64,25 @@ export interface SelectedLine {
   readonly to: string;
   /** The calling line, when the occurrence has one. */
   readonly line: number | null;
+}
+
+/** One call of a selected arrow that stands for several: its occurrence, its edge, and its calling line. */
+export interface SelectedCall {
+  readonly source: Key;
+  readonly seq: number;
+  readonly line: number | null;
+}
+
+/** A selected arrow from a Diagram node to a card it calls more than once: the calls it stands for, in source order. */
+export interface SelectedCalls {
+  readonly arrowId: string;
+  /** The project both cards resolve to. */
+  readonly project: ProjectId;
+  /** The calling card. */
+  readonly from: string;
+  /** The called card. */
+  readonly to: string;
+  readonly calls: readonly SelectedCall[];
 }
 
 /** One step of the breadcrumb trail ("POST /orders › createOrder"). */
@@ -93,7 +117,7 @@ export interface PendingGroup {
 
 /** View state of one page (created when the page is first shown). Survives unmounting. */
 export interface PageView {
-  /** The page's lens: null until the person uses the top Code/Flow switch on this page. */
+  /** The page's lens: null until the person uses the top Diagram | Flow | Code switch on this page. */
   lens: View | null;
   camera: Camera | null;
   selection: Selection;

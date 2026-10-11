@@ -1,8 +1,8 @@
 /**
  * The engine host: an Electron utility process that loads the Rust addon and routes each window's
  * port to it (architecture §4.1, U-31). The main process sends lifecycle messages, plus its own
- * trusted requests (adding a project, export to a dialog path, window restore), answered over the
- * parent port.
+ * trusted requests (adding a project, export to a dialog path, window restore) and the MCP server's
+ * untrusted ones, answered over the parent port, where the events the main process follows go too.
  */
 
 import type { MessagePortMain } from "electron";
@@ -44,7 +44,9 @@ function startEngine(addonPath: string, folders: AppFolders): EngineRouter {
       unavailable: transportError("engine_unavailable", `The Unfold engine could not be loaded: ${reason}`),
     };
   }
-  created = new EngineRouter(engine, log);
+  created = new EngineRouter(engine, log, (event) => {
+    postToMain({ type: "event", event });
+  });
   return created;
 }
 
@@ -93,9 +95,12 @@ function handleLifecycle(message: MainToHost, ports: MessagePortMain[]): void {
         postToMain({ type: "result", id, ok: false, error: transportError("disconnected", "The engine host has not started.") });
         return;
       }
-      void router.trusted(message.windowId, message.command, message.args).then((result) => {
-        postToMain({ type: "result", id, ...result });
-      });
+      const { windowId, command, args } = message;
+      void (message.trusted ? router.trusted(windowId, command, args) : router.untrusted(windowId, command, args)).then(
+        (result) => {
+          postToMain({ type: "result", id, ...result });
+        },
+      );
       return;
     }
     case "shutdown":

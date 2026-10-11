@@ -1,9 +1,9 @@
 /**
  * Preferences (app-wide, `preferences.json` through Rust; ⌘, and the sidebar's gear): theme, editor
  * command, the update check, whether background updates start on for newly compiled projects, the
- * compile thread limit, and key bindings by action id. The theme applies at once through `data-theme`;
- * everything saves with `set_preferences`. Saved theme and key bindings apply on load and whenever
- * the preferences change.
+ * compile thread limit, whether agents may connect (and on which port), and key bindings by action
+ * id. The theme applies at once through `data-theme`; everything saves with `set_preferences`. Saved
+ * theme and key bindings apply on load and whenever the preferences change.
  */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,6 +24,7 @@ import {
   type KeyBindings,
 } from "../keyboard";
 import { applyThemeOverride } from "../theme/theme";
+import { AgentsSection, parseAgentPort } from "./AgentsSection";
 import { KeyboardSection } from "./KeyboardSection";
 import "./PreferencesDialog.css";
 
@@ -92,15 +93,18 @@ function PreferencesForm({ saved, onDone }: { readonly saved: Preferences; reado
   const [background, setBackground] = useState(saved.backgroundUpdates);
   const [threads, setThreads] = useState(saved.threadLimit === null ? "" : String(saved.threadLimit));
   const [checkUpdates, setCheckUpdates] = useState(saved.updates.enabled);
+  const [agentsOn, setAgentsOn] = useState(saved.agents.enabled);
+  const [agentPort, setAgentPort] = useState(String(saved.agents.port));
   const [bindings, setBindings] = useState<KeyBindingOverrides>(() => parseKeyBindings(saved.keyBindings));
   const [saving, setSaving] = useState(false);
   const platform = usePlatform();
   const limit = parseThreadLimit(threads);
   const conflicts = useMemo(() => findConflicts(bindings, platform), [bindings, platform]);
-  const canSave = limit.ok && conflicts.size === 0;
+  const port = parseAgentPort(agentPort);
+  const canSave = limit.ok && port.ok && conflicts.size === 0;
 
   const save = async () => {
-    if (!limit.ok || !canSave) {
+    if (!limit.ok || !port.ok || !canSave) {
       return;
     }
     setSaving(true);
@@ -111,6 +115,7 @@ function PreferencesForm({ saved, onDone }: { readonly saved: Preferences; reado
       backgroundUpdates: background,
       threadLimit: limit.value,
       updates: { ...saved.updates, enabled: checkUpdates },
+      agents: { enabled: agentsOn, port: port.value },
       keyBindings: mergeKeyBindings(saved.keyBindings, bindings),
     };
     try {
@@ -210,6 +215,7 @@ function PreferencesForm({ saved, onDone }: { readonly saved: Preferences; reado
             hint="Applies to projects opened afterwards."
           />
         </section>
+        <AgentsSection enabled={agentsOn} port={agentPort} saved={saved.agents} onEnabledChange={setAgentsOn} onPortChange={setAgentPort} />
         <KeyboardSection overrides={bindings} conflicts={conflicts} platform={platform} onChange={setBindings} />
       </div>
     </Dialog>

@@ -16,6 +16,7 @@ const PREFERENCES: Preferences = {
   threadLimit: null,
   keyBindings: {},
   updates: { enabled: true },
+  agents: { enabled: false, port: 29180 },
 };
 
 let engine: FakeEngine | null = null;

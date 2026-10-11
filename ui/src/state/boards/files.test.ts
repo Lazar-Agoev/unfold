@@ -82,6 +82,28 @@ describe("repairs", () => {
     expect(repairEffect("ungroup", member, PAGE)).toContain('Removes the group "Queue it"');
     expect(repairEffect("removeLink", link, PAGE)).toBe("Removes the link. Both cards stay on the page.");
   });
+
+  it("repairs a resource card's anchor by key, and removes or re-signs the card", () => {
+    const withTable: Page = {
+      ...PAGE,
+      resources: [{ id: "orders", kind: "table", name: "orders", anchors: [{ key: `${KEY}/if[0]` }], at: [0, 0], author: "agent:claude" }],
+    };
+    const anchor: HealthItem = {
+      page: "page-2",
+      kind: "missing",
+      target: { resource: "orders" },
+      key: `${KEY}/if[0]`,
+      anchor: 0,
+      message: "Anchor is not in the graph",
+      repairs: ["reconnect", "removeResource"],
+    };
+    expect(itemsFor({ items: [anchor], missing: 1, outdated: 0, brokenGroups: 0, review: 0, notConnected: 0, brokenLinks: 0 }, "page-2", { resource: "orders" })).toEqual([anchor]);
+    expect(repairSpec("reconnect", anchor, withTable, `${KEY}/if[1]`)).toEqual({ page: "page-2", kind: "reconnect", from: `${KEY}/if[0]`, to: `${KEY}/if[1]` });
+    expect(repairSpec("removeResource", anchor, withTable)).toEqual({ page: "page-2", kind: "remove_resource", resource: "orders" });
+    expect(repairSpec("resign", { ...anchor, kind: "outdated" }, withTable)).toEqual({ page: "page-2", kind: "resign", target: { resource: "orders" } });
+    expect(repairEffect("removeResource", anchor, withTable)).toBe('Removes the table "orders" from the page, with the links to it.');
+    expect(repairEffect("removeDescription", anchor, withTable)).toBe('Removes the description of the table "orders". The resource card stays.');
+  });
 });
 
 describe("file operations on an open board", () => {

@@ -7,7 +7,7 @@ import type { Health, HealthItem, HealthKind, Key, Page, ProjectKey, ProjectName
 import { cardKey, findCard, keyDisplayName } from "./document";
 import type { PageId } from "./types";
 
-/** The items about one target (a card, group, label, or link) of a page, in the engine's order. */
+/** The items about one target (a card, group, label, link, resource card, or frame) of a page, in the engine's order. */
 export function itemsFor(health: Health | undefined, page: PageId, target: Target): HealthItem[] {
   return (health?.items ?? []).filter((item) => item.page === page && sameTarget(item.target, target));
 }
@@ -20,6 +20,8 @@ function sameTarget(a: Target, b: Target): boolean {
   if ("card" in a) return "card" in b && a.card === b.card;
   if ("group" in a) return "group" in b && a.group === b.group;
   if ("link" in a) return "link" in b && a.link === b.link;
+  if ("resource" in a) return "resource" in b && a.resource === b.resource;
+  if ("frame" in a) return "frame" in b && a.frame === b.frame;
   return "label" in b && sameLabel(a.label, b.label);
 }
 
@@ -36,7 +38,7 @@ export function kindWord(kind: HealthKind): string {
   return KIND_WORDS[kind];
 }
 
-/** What an item is about, in words: the card's name, the group's title, the labeled node, or the link. */
+/** What an item is about, in words: the card's name, the group's title, the labeled node, the link, the resource card, or the frame. */
 function targetName(target: Target, page: Page): string {
   if ("card" in target) {
     const card = findCard(page, target.card);
@@ -50,7 +52,24 @@ function targetName(target: Target, page: Page): string {
     const to = link ? findCard(page, link.to) : undefined;
     return to ? `the link to ${keyDisplayName(cardKey(to))}` : "the link";
   }
+  if ("resource" in target) {
+    const resource = (page.resources ?? []).find((item) => item.id === target.resource);
+    return resource ? `the ${resource.kind} "${resource.name}"` : "the resource card";
+  }
+  if ("frame" in target) {
+    const frame = (page.frames ?? []).find((item) => item.id === target.frame);
+    return frame ? `the frame "${frame.title}"` : "the frame";
+  }
   return `the Flow label of ${keyDisplayName(target.label.key)}`;
+}
+
+/** The kind of item a target is, in words, for "The … stays". */
+function targetNoun(target: Target): string {
+  if ("group" in target) return "group";
+  if ("link" in target) return "link";
+  if ("resource" in target) return "resource card";
+  if ("frame" in target) return "frame";
+  return "card";
 }
 
 /** The reference a reconnect or accept repair is about, with its project: the item's key, or its target's own key. */
@@ -71,6 +90,7 @@ const REPAIR_LABELS: Readonly<Record<RepairKind, string>> = {
   removeLabel: "Remove the label",
   ungroup: "Ungroup",
   removeLink: "Remove the link",
+  removeResource: "Remove the resource card",
   removeDescription: "Remove the description",
   resign: "Keep the text",
   accept: "Accept the current code",
@@ -94,8 +114,10 @@ export function repairEffect(kind: RepairKind, item: HealthItem, page: Page): st
       return `Removes the group "${name}". Its statements stay where they are.`;
     case "removeLink":
       return `Removes ${name}. Both cards stay on the page.`;
+    case "removeResource":
+      return `Removes ${name} from the page, with the links to it.`;
     case "removeDescription":
-      return `Removes the description of ${name}. The ${"group" in item.target ? "group" : "card"} stays.`;
+      return `Removes the description of ${name}. The ${targetNoun(item.target)} stays.`;
     case "resign":
       return `Keeps the text of ${name} as written and signs it against the current code, so it is no longer outdated.`;
     case "accept":
@@ -126,6 +148,8 @@ export function repairSpec(kind: RepairKind, item: HealthItem, page: Page, to?: 
       return "group" in target ? { ...at, kind: "ungroup", group: target.group } : null;
     case "removeLink":
       return "link" in target ? { ...at, kind: "remove_link", link: target.link } : null;
+    case "removeResource":
+      return "resource" in target ? { ...at, kind: "remove_resource", resource: target.resource } : null;
     case "removeDescription":
       return { ...at, kind: "remove_description", target };
     case "resign":

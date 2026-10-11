@@ -1576,7 +1576,7 @@ fn saving_carries_new_items_and_never_writes_a_dangling_reference() {
         }],
         at: [400.0, 0.0],
         description: Some(unsigned("Where uploads go")),
-        author: author(),
+        author: Author::person("tester").unwrap(),
         signature: None,
     });
     page.frames.push(Frame {
@@ -1602,8 +1602,23 @@ fn saving_carries_new_items_and_never_writes_a_dangling_reference() {
         "links to resources and frames aren't broken: {health:?}"
     );
     let page = &saved.pages[0];
-    assert_eq!(page.resources, board.pages[0].resources, "carried through");
-    assert_eq!(page.frames, board.pages[0].frames, "carried through");
+    // The claims are signed: the resource card and its description over its anchor's bytes, the
+    // frame's description over its member card's signature.
+    let run_bytes = format!(
+        "{}\n",
+        &SOURCE[SOURCE.find("function").unwrap()..SOURCE.rfind('}').unwrap() + 1]
+    );
+    let resource = Signature::of(run_bytes.as_bytes());
+    assert_eq!(page.resources[0].signature, Some(resource));
+    assert_eq!(
+        page.resources[0].description.as_ref().unwrap().signature,
+        Some(resource)
+    );
+    let members = graph.signature(RUN).unwrap().0.to_string();
+    assert_eq!(
+        page.frames[0].description.as_ref().unwrap().signature,
+        Some(Signature::of(members.as_bytes()))
+    );
     assert_eq!(
         page.link("writes").unwrap().label.as_ref().unwrap().signature,
         None,
@@ -1638,6 +1653,7 @@ fn saving_reuses_unchanged_pages_and_refreshes_projects() {
             target: Target::Card("run".to_owned()),
             project: None,
             key: None,
+            anchor: None,
             message: "kept".to_owned(),
             repairs: Vec::new(),
         }],
@@ -1711,8 +1727,8 @@ fn cards_from_other_projects_are_checked_against_their_own_graph() {
     });
     board.refresh_projects();
     assert_eq!(board.projects, [gone.clone(), web()]);
-    assert_eq!(board.references(Some(&web())), [RUN, FIRST]);
-    assert_eq!(board.references(None), [RUN]);
+    assert_eq!(board.references(Some(&web())).keys, [RUN, FIRST]);
+    assert_eq!(board.references(None).keys, [RUN]);
 
     // A project that is not connected is never a save error: its cards are placeholders, and
     // its text, groups, and guards are kept unchecked.
@@ -2232,6 +2248,7 @@ fn health_labels_name_every_kind() {
                     target: Target::Card(format!("{kind:?}-{index}")),
                     project: None,
                     key: None,
+                    anchor: None,
                     message: String::new(),
                     repairs: Vec::new(),
                 }],

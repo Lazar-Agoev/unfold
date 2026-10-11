@@ -117,12 +117,15 @@ test.describe("the keyboard", () => {
       await pagesList(page).getByRole("option").first().click();
     });
 
-    await test.step("⌘1 and ⌘2 set the page's lens to Code and Flow", async () => {
+    await test.step("⌘1, ⌘2, and ⌘3 set the page's lens to Diagram, Flow, and Code", async () => {
       await clickCanvas(page);
+      await page.keyboard.press("Meta+1");
+      await expect(lens(page).getByRole("radio", { name: "Diagram" })).toHaveAttribute("aria-checked", "true");
+      await expect(card(page, CREATE_ORDER)).toHaveClass(/diagram-card/);
       await page.keyboard.press("Meta+2");
       await expect(lens(page).getByRole("radio", { name: "Flow" })).toHaveAttribute("aria-checked", "true");
       await expect(card(page, CREATE_ORDER).locator(".flow-view")).toBeVisible();
-      await page.keyboard.press("Meta+1");
+      await page.keyboard.press("Meta+3");
       await expect(lens(page).getByRole("radio", { name: "Code" })).toHaveAttribute("aria-checked", "true");
       await expect(card(page, CREATE_ORDER).locator(".code-view")).toBeVisible();
     });

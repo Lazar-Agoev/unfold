@@ -1,10 +1,11 @@
 /**
  * Native dialogs. Paths outside a project come only from here (or from a drop or the command line):
- * the main process shows the dialog, and only the path the person chose leaves this process
- * (architecture §13).
+ * the main process shows the dialog, and only the path the person chose, or an agent's path the
+ * person agreed to, leaves this process (architecture §13).
  */
 
-import { basename, join } from "node:path";
+import { homedir } from "node:os";
+import { basename, join, sep } from "node:path";
 import type { BrowserWindow, MessageBoxOptions, OpenDialogOptions, SaveDialogOptions } from "electron";
 import { app, dialog } from "electron";
 
@@ -39,5 +40,25 @@ export async function confirmRemoveProject(parent: BrowserWindow, name: string):
     cancelId: 1,
   };
   const result = await dialog.showMessageBox(parent, options);
+  return result.response === 0;
+}
+
+/**
+ * Asks whether an agent may add a folder to the workspace (design §5.7): "Claude wants to add
+ * `~/repos/payments` to your workspace." Cancel is the default, so a stray Return doesn't agree.
+ * Resolves with whether the person chose Add.
+ */
+export async function confirmAgentAddProject(parent: BrowserWindow | null, agent: string, path: string): Promise<boolean> {
+  const home = homedir();
+  const shown = path === home || path.startsWith(`${home}${sep}`) ? `~${path.slice(home.length)}` : path;
+  const options: MessageBoxOptions = {
+    type: "question",
+    message: `${agent} wants to add \`${shown}\` to your workspace.`,
+    detail: "Unfold reads the folder and writes only in its .unfold folder.",
+    buttons: ["Add", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+  };
+  const result = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
   return result.response === 0;
 }

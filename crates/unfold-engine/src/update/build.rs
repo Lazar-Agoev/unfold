@@ -10,6 +10,7 @@ use unfold_core::validate::{Subject, Violation};
 use unfold_core::vocab::FileState;
 use unfold_core::{Entrance, FileGraph, FileTypes, Graph, InputRecord, RepoPath, Snapshot};
 
+use super::run::evidence_records;
 use super::state::State;
 use super::targets::FolderTargets;
 use super::{Engine, Stage, UpdateError, UpdateStats};
@@ -180,8 +181,8 @@ pub(crate) fn build(input: &BuildInput<'_>, stats: &mut UpdateStats) -> Result<B
 }
 
 /// The inputs that shaped the graph: the settings file when settings came from it, what each
-/// language says it read, and every input an entrance cites as evidence. Paths that aren't
-/// among the project inputs are ignored.
+/// language says it read, and every input an entrance cites as evidence (paths that aren't
+/// among the project inputs are ignored); then every evidence file that could be read.
 fn graph_inputs(
     state: &State,
     project: &ProjectInputs,
@@ -209,6 +210,7 @@ fn graph_inputs(
                 path,
             })
         })
+        .chain(evidence_records(&state.inputs))
         .collect()
 }
 

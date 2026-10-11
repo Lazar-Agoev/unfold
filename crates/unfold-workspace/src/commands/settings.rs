@@ -33,10 +33,13 @@ pub struct SetPreferencesArgs {
 
 /// The most compile threads a preference may ask for.
 const MAX_THREADS: u32 = 256;
+/// The lowest port agents may connect on: ports below it are reserved for system services.
+const MIN_AGENT_PORT: u16 = 1024;
 
 /// `set_preferences`: saves the preferences and sends `preferences_changed` (with them) to every
-/// window, so other windows apply a new theme or key bindings at once. The thread limit and
-/// background-update default apply to projects opened afterwards.
+/// window, so other windows apply a new theme or key bindings at once, and the main process starts
+/// or stops the agents' server. The thread limit and background-update default apply to projects
+/// opened afterwards.
 pub fn set_preferences(ctx: &Ctx<'_>, args: SetPreferencesArgs) -> CommandResult<Preferences> {
     let preferences = args.preferences;
     if preferences
@@ -45,6 +48,12 @@ pub fn set_preferences(ctx: &Ctx<'_>, args: SetPreferencesArgs) -> CommandResult
     {
         return Err(CommandError::invalid_args(format!(
             "the thread limit must be between 1 and {MAX_THREADS}"
+        )));
+    }
+    if preferences.agents.port < MIN_AGENT_PORT {
+        return Err(CommandError::invalid_args(format!(
+            "the agents' port must be between {MIN_AGENT_PORT} and {}",
+            u16::MAX
         )));
     }
     if preferences
@@ -125,6 +134,8 @@ pub struct SettingsView {
     pub python_projects: Vec<PythonProjectView>,
     /// Manual entrances, in file order.
     pub entrances: Vec<ManualEntranceView>,
+    /// `[evidence] files` patterns, as written.
+    pub evidence: Vec<String>,
 }
 
 impl From<&Settings> for SettingsView {
@@ -177,6 +188,12 @@ impl From<&Settings> for SettingsView {
                         line: entrance.line,
                     }
                 })
+                .collect(),
+            evidence: settings
+                .evidence
+                .patterns()
+                .iter()
+                .map(|pattern| pattern.to_string())
                 .collect(),
         }
     }
@@ -278,7 +295,7 @@ pub struct UpdateProjectConfigArgs {
 }
 
 /// `update_project_config`: applies validated edits (scope, manual entrances, Python projects,
-/// detector toggles, the shared name), keeping comments and formatting; an edit that would make
+/// detector toggles, the shared name, evidence files), keeping comments and formatting; an edit that would make
 /// the file invalid is refused with `invalid_settings` and nothing is written. Sends
 /// `config_changed`; a new shared name reaches `workspace.json` and every window
 /// (`workspace_changed`) as the host observes it.

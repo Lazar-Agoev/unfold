@@ -2,6 +2,7 @@
 //! of the playgrounds in temporary folders added as projects.
 
 mod boards;
+mod claims;
 mod common;
 mod diagnostics;
 mod git;

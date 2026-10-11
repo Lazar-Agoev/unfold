@@ -133,7 +133,7 @@ export function moveCards(page: Page, positions: Readonly<Record<string, readonl
   }
 }
 
-/** Sets a card's own Code/Flow switch (saved with the board). */
+/** Sets a card's own Diagram | Flow | Code switch (saved with the board). */
 export function setCardView(page: Page, cardId: string, view: View): void {
   const card = findCard(page, cardId);
   if (card) {

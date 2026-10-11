@@ -282,6 +282,8 @@ pub struct Preferences {
     pub key_bindings: BTreeMap<String, String>,
     /// The update check.
     pub updates: UpdatePreferences,
+    /// Whether agents may connect to the app's local MCP server, and on which port.
+    pub agents: AgentPreferences,
 }
 
 /// The update check (architecture §14): the app's only network use, which can be turned off.
@@ -298,6 +300,29 @@ impl Default for UpdatePreferences {
     }
 }
 
+/// The port agents connect to unless the person picks another.
+const DEFAULT_AGENT_PORT: u16 = 29180;
+
+/// Preferences › Agents: the MCP server the main process runs on `127.0.0.1` while it is on. Off
+/// until the person turns it on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AgentPreferences {
+    /// Whether agents may connect: the server listens only while this is on.
+    pub enabled: bool,
+    /// The port the server listens on.
+    pub port: u16,
+}
+
+impl Default for AgentPreferences {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: DEFAULT_AGENT_PORT,
+        }
+    }
+}
+
 impl Default for Preferences {
     fn default() -> Self {
         Self {
@@ -307,6 +332,7 @@ impl Default for Preferences {
             thread_limit: None,
             key_bindings: BTreeMap::new(),
             updates: UpdatePreferences::default(),
+            agents: AgentPreferences::default(),
         }
     }
 }
@@ -498,6 +524,22 @@ mod tests {
         let off: Preferences =
             serde_json::from_str(r#"{"updates":{"enabled":false}}"#).expect("parse preferences");
         assert!(!off.updates.enabled);
+    }
+
+    #[test]
+    fn agents_are_off_unless_turned_on() {
+        let defaults = Preferences::default().agents;
+        assert_eq!((defaults.enabled, defaults.port), (false, DEFAULT_AGENT_PORT));
+        let older: Preferences =
+            serde_json::from_str(r#"{"theme":"dark"}"#).expect("parse older preferences");
+        assert_eq!(older.agents, defaults);
+        let on: Preferences =
+            serde_json::from_str(r#"{"agents":{"enabled":true}}"#).expect("parse preferences");
+        assert!(on.agents.enabled);
+        assert_eq!(on.agents.port, DEFAULT_AGENT_PORT);
+        let moved: Preferences =
+            serde_json::from_str(r#"{"agents":{"enabled":true,"port":31000}}"#).expect("parse preferences");
+        assert_eq!(moved.agents.port, 31000);
     }
 
     #[test]
