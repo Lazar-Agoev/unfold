@@ -102,59 +102,63 @@ App
   cards and each call as written with its line, each opening its contract on the arrow. Bylines show the author only, because authored text carries no time; an agent's read "Claude · agent"
   with the agent mark, and a group shows who titled it ([Agents in the window](#agents-in-the-window)).
 - **The canvas** has the top bar (the page title and publish state, "Claude is working…" while an agent works on the
-  page, the lens centered, Share and Publish) and the dock, both floating ([Overlays](#overlays)). Its context menu has Fit, Fold all cards, and Unfold all cards; a
-  card's has Open source, Show callers, Draw link…, Add as entrance… (for blocks that can be handlers), Copy link,
-  and Remove from page; a group's has Collapse or Expand group, Describe group…, Copy link, and Ungroup; a link's
-  (a drawn link's or a connection's, on its line or its label) has Kind ▸ (every kind; a drawn link becomes a
-  connection, `relates` only between two tables, and `other` asks for its label), Edit label, Describe… (a
-  connection), Copy link, and Remove link or Remove connection; a frame's (on its title) has Rename…, Describe…,
-  Collapse or Expand, Copy link, and Remove frame (keep cards); a resource card's has Describe…, Copy link, and
-  Remove resource card; a note's has Edit, Copy link, and Remove note. A card that needs review shows a banner whose **Review** opens a popover of its problems, each repair with its
-  effect and Apply (saved at once, undoable).
-- **Three views** (`cardBody` in `code/typeKinds.ts`). A card shows its own view (saved), else the page's lens,
-  else the page's default view. **Diagram** shows a card as one compact node (`canvas/cards/DiagramCard.tsx`): the
-  kind's mark (`ƒ`, or an entrance's kind: `HTTP`, `WORKER`, `SCHEDULE`, `COMMAND`), the name, `file:line`, the
-  card's switch (an entrance has none: it follows the lens), the review banner, and the whole description, wrapped,
-  with the agent mark when an agent wrote it; its arrows leave from its edge. A **type card**
-  (`canvas/cards/TypeCard.tsx`), a card of an interface, type alias, enum, or class, shows in Diagram view (and in
-  Flow, for a type declaration, which has no paths; a class keeps its Flow of members) its kind, name, `file:line`,
-  and its fields in one grid: each name as written (`readonly` drawn apart, `?`), its written type (`TypeText`,
-  whose declared names open their definitions in place, as in a line's contract), and ` = …` for a default or an
-  enum member's value; an alias that isn't an object shows its aliased type, and inherited fields follow under
-  "from <Type>" for each base. Twelve fields or more list the first eight and "N more". Code view is the source.
-  Folding is the same in every view: a folded card shows only its header.
+  page, the lens centered, Share and Publish) and the dock, both floating ([Overlays](#overlays)). Its context menu
+  has Fit, Fold all cards, and Unfold all cards; a card's has Open source, Show callers, Draw link…, Add as
+  entrance… (for blocks that can be handlers), Copy link, Fold card (or Unfold card), and Remove from page; a
+  group's has Collapse or Expand group, Describe group…, Copy link, and Ungroup; a link's (a drawn link's or a
+  connection's, on its line or its label) has Kind ▸ (every kind; a drawn link becomes a connection, `relates` only
+  between two tables, and `other` asks for its label), Edit label, Describe… (a connection), Copy link, and Remove
+  link or Remove connection; a frame's (on its title) has Rename…, Describe…, Collapse or Expand, Copy link, and
+  Remove frame (keep cards); a resource card's has Describe…, Copy link, and Remove resource card; a note's has
+  Edit, Copy link, and Remove note. A card that needs review shows a banner whose **Review** opens a popover of its
+  problems, each repair with its effect and Apply (saved at once, undoable).
+- **Three views** (`cardBody` in `code/typeKinds.ts`,
+  [U-59](decisions-and-tradeoffs.md#u-59-the-diagram-view-and-type-cards)). A card shows its own view (saved), else
+  the page's lens, else the page's default view. **Diagram** shows a card as one compact node
+  (`canvas/cards/DiagramCard.tsx`): the kind's mark (`ƒ`, or an entrance's kind: `HTTP`, `WORKER`, `SCHEDULE`,
+  `COMMAND`), the name, `file:line`, the card's switch (an entrance has none: it follows the lens), the review
+  banner, and the whole description, wrapped, with the agent mark when an agent wrote it; its arrows leave from its
+  edge. A **type card** (`canvas/cards/TypeCard.tsx`), a card of an interface, type alias, enum, or class, shows in
+  Diagram view (and in Flow, for a type declaration, which has no paths; a class keeps its Flow of members) its
+  kind, name, `file:line`, and its fields in one grid: each name as written (`readonly` drawn apart, `?`), its
+  written type (`TypeText`, whose declared names open their definitions in place, as in a line's contract), and
+  ` = …` for a default or an enum member's value; an alias that isn't an object shows its aliased type, and
+  inherited fields follow under "from <Type>" for each base. Twelve fields or more list the first eight and "N more". Code
+  view is the source. Folding is the same in every view: a folded card shows only its header.
 - **Groups in both views.** In Code a group is the magenta rail; in Flow it is a step group, a titled magenta region
   around its steps or, collapsed, one step ([reader: step groups](reader.md#step-groups)). Either view's chevron sets
   the group's one `collapsed` field (one undo step), so it folds in both. In Flow, the region's title or the collapsed
   step selects the group, and right-click (or Shift+F10 on the chevron) opens its menu.
-- **Frames** (`canvas/frames/`, design [§4.4](proposals/agent-mcp-design.md#44-frames-units-services-and-zones)) are
-  React Flow nodes of their own, not parents of their members: `pageGeometry` computes each box from the inside out,
-  the bounds of what it shows (cards as reflowed, nested boxes, collapsed frames' nodes, and the notes attached to
-  them, where Arrange puts them) plus room for its title (a box: a 32px title bar and 12px under it, 16px sides; a
-  zone: a 56px band, 76px with a description, 24px sides).
-  An expanded frame sits behind the lines and cards (z-index below 0, outer frames below inner ones) and only its
-  title takes the pointer, so the canvas pans and cards are clicked through it. A **box** is outlined in
-  `--color-authored-line` with a tinted title bar (chevron, icon, title, its description beside it, the agent mark,
-  a review dot); a **zone** is a 5% authored tint with an 18px title and its description under it. The icon is one
-  of seven 16px glyphs (`frame-api`, `frame-worker`, `frame-schedule`, `frame-cli`, `frame-web`, `frame-library`,
-  `frame-system`), else the plain `frame`. A **collapsed** frame is one card-like node (240–400px, `frameNodeSize`)
-  at the top-left its box would have: its chevron, icon, title, description, and what it holds ("2 entrances · 3
-  functions · 1 table", every card and resource card inside it), placed by reflow like a card; nothing inside it is
-  drawn. The arrows and drawn links of what it hides attach to the outermost collapsed frame (`routeArrows`,
-  `routeLinks`): one call keeps its label and contract, lines that would draw on top of each other merge into one
-  with a quiet count ("3 calls · 1 field", "2 links"), and lines inside it aren't drawn. The chevron, the frame
-  menu, and Selected collapse and expand it (one undo step); nothing collapses by itself. The title selects the
-  frame (or ends a link being drawn there), renames in place on double-click, and drags the frame: what it holds
-  moves by the same amount, as one undo step. Focusing a card inside collapsed frames expands them.
-- **Resource cards** (`canvas/resources/`, design [§4.5](proposals/agent-mcp-design.md#45-resource-cards)) are nodes
-  of their own, authored and the same in every view: an edge in `--color-authored-line` and a tinted header with
-  the kind's 16px glyph (`resource-table`, `resource-queue`, `resource-cache`, `resource-storage`,
+- **Frames** (`canvas/frames/`, design [§4.4](proposals/agent-mcp-design.md#44-frames-units-services-and-zones),
+  [U-56](decisions-and-tradeoffs.md#u-56-frames-are-a-page-layer-of-boxes-and-zones)) are React Flow nodes of their
+  own, not parents of their members: `pageGeometry` computes each box from the inside out, the bounds of what it
+  shows (cards as reflowed, nested boxes, collapsed frames' nodes, and the notes attached to them, where Arrange
+  puts them) plus room for its title (a box: a 32px title bar and 12px under it, 16px sides; a zone: a 56px band,
+  76px with a description, 24px sides). An expanded frame sits behind the lines and cards (z-index below 0, outer
+  frames below inner ones) and only its title takes the pointer, so the canvas pans and cards are clicked through
+  it. A **box** is outlined in `--color-authored-line` with a tinted title bar (chevron, icon, title, its
+  description beside it, the agent mark, a review dot); a **zone** is a 5% authored tint with an 18px title and its
+  description under it. The icon is one of seven 16px glyphs (`frame-api`, `frame-worker`, `frame-schedule`,
+  `frame-cli`, `frame-web`, `frame-library`, `frame-system`), else the plain `frame`. A **collapsed** frame is one
+  card-like node (240–400px, `frameNodeSize`) at the top-left its box would have: its chevron, icon, title,
+  description, and what it holds ("2 entrances · 3 functions · 1 table", every card and resource card inside it),
+  placed by reflow like a card; nothing inside it is drawn. The arrows and drawn links of what it hides attach to
+  the outermost collapsed frame (`routeArrows`, `routeLinks`): one call keeps its label and contract, lines that
+  would draw on top of each other merge into one with a quiet count ("3 calls · 1 field", "2 links"), and lines
+  inside it aren't drawn. The chevron, the frame menu, and Selected collapse and expand it (one undo step); nothing
+  collapses by itself. The title selects the frame (or ends a link being drawn there), renames in place on
+  double-click, and drags the frame: what it holds moves by the same amount, as one undo step. Focusing a card
+  inside collapsed frames expands them.
+- **Resource cards** (`canvas/resources/`, design [§4.5](proposals/agent-mcp-design.md#45-resource-cards),
+  [U-57](decisions-and-tradeoffs.md#u-57-resource-cards-and-connections-are-anchored-signed-grounded-claims)) are
+  nodes of their own, authored and the same in every view: an edge in `--color-authored-line` and a tinted header
+  with the kind's 16px glyph (`resource-table`, `resource-queue`, `resource-cache`, `resource-storage`,
   `resource-external`, `resource-actor`) and word, the name in code type, and the agent mark; then the review banner
   ("Changed since it was drawn", "Cites code that is gone" · **Review**, the same repair popover as a card's: Keep
   the text, Reconnect…, which points a key or an evidence range's anchor at the definition chosen, and Remove the
   resource card) and the whole description, wrapped (double-click edits it). A **table** lists its columns in one
-  grid (`tableColumns`, `canvas/resources/columns.ts`): a table backed by a type lists the type's properties, its own
-  and then the ones it inherits (from `type_definition`), each with its written type (`TypeText`, whose declared
+  grid (`tableColumns`, `canvas/resources/columns.ts`): a table backed by a type lists the type's properties, its
+  own and then the ones it inherits (from `type_definition`), each with its written type (`TypeText`, whose declared
   names open their definitions in place) and `?` when optional, and lays the board's marks on them by name (`PK`,
   `FK → customers.id`, `unique`); a table that lists its own columns shows them as written. Up to 12 columns show,
   then "N more". 200–360px wide (a table 240–520px), `resourceCardSize`; dragging one moves it.
@@ -175,7 +179,7 @@ App
   the card's edge is dotted in the authored color, not the arrows' accent), and from the card's edge in Diagram; a
   relationship leaves and enters at its columns' rows. An end inside a collapsed frame attaches to the frame, and
   connections of one kind that the frame makes draw on top of each other merge ("queue · 2 connections"; links whose
-  ends are both drawn as themselves stay apart). A drawn link (no kind) keeps today's dashed gray look; its label
+  ends are both drawn as themselves stay apart). A drawn link (no kind) is a dashed gray curve; its label
   (its words, then its author) joins the same layout, so it never covers a card, a typed label, or a chip, and where
   it fits nowhere it isn't drawn at rest (Selected shows it). A merged line's label ("2 links") selects nothing. A
   click or Kind ▸ selects or changes either.
@@ -406,7 +410,8 @@ The screens follow [architecture §11](architecture.md#11-the-desktop-app). Deta
 The main process routes an agent's requests to the window that holds the board, or opens the board in a
 background tab first ([desktop/README.md](../desktop/README.md#the-agent-bridge)); the requests and answers are
 typed in `desktop/src/shared/agent-api.ts`. The window owns placement, the document's rules, and the refusal texts;
-the main process owns argument parsing, links, defaults, and page revisions.
+the main process owns argument parsing, links, defaults, and page revisions
+([U-54](decisions-and-tradeoffs.md#u-54-the-window-that-holds-a-board-applies-an-agents-edits)).
 
 - **Agent edits** (`state/boards/agent/`). For `agent_edit`, the window loads what the operations read (card
   models through the query cache, `relations` and `callers` for following calls), then applies them to the session's
@@ -441,8 +446,9 @@ the main process owns argument parsing, links, defaults, and page revisions.
 - **People's words are safe.** No operation replaces or removes a person's description, label, group or frame
   title, group or frame description, resource card, connection (a drawn link included: it has no author, so it is
   always a person's), or note unless the call sets `replacePeopleText` (`people_text` otherwise); a group title
-  without an author counts as a person's. One rule (`itemWords` in `agent/context.ts`) serves `remove_items`,
-  `delete_page`, and `connect`. An agent may change a person's frame's members, look, and collapse. Text an agent writes again unchanged is kept, whoever wrote it.
+  without an author counts as a person's. One rule (`itemWords` in `agent/context.ts`, with `lineWords` for a link
+  itself) serves `remove_items`, `delete_page`, `frame_cards` (a frame that moving another out would leave empty), and
+  `connect` ([U-55](decisions-and-tradeoffs.md#u-55-the-agent-mark-agents-never-write-as-people-and-re-sign-only-agents-work)). An agent may change a person's frame's members, look, and collapse. Text an agent writes again unchanged is kept, whoever wrote it.
 - **Reads and background tabs.** `agent_read` answers with the page as the window holds it (unsaved edits included),
   the board's title, publish state, and file revision, whether it has unsaved edits, and the sizes the canvas
   measured for the page's items (none before the page is drawn). `agent_open_board` opens a
@@ -496,7 +502,8 @@ the main process owns argument parsing, links, defaults, and page revisions.
 
 ## The render window
 
-A hidden window the main process keeps for page images and page checks ([desktop/README.md](../desktop/README.md#the-render-window)):
+A hidden window the main process keeps for page images and page checks ([desktop/README.md](../desktop/README.md#the-render-window),
+[U-60](decisions-and-tradeoffs.md#u-60-page-images-from-a-hidden-render-window-and-page-checks)):
 `render.html`, a second Vite entry, boots `render/main.tsx` with the theme, the query cache and its engine-event
 invalidation, and nothing else of the window (no session, tabs, sidebar, keyboard dispatch, or agent channel).
 

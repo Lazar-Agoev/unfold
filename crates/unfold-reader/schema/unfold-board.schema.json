@@ -290,7 +290,7 @@
         "to": { "$ref": "#/$defs/id", "description": "The card, resource, or frame it points at; another item than `from`." },
         "label": {
           "$ref": "#/$defs/description",
-          "description": "Its label, signed over the guard signatures of both ends."
+          "description": "Its label: signed over the code a connection cites (its step and anchors), else over the guard signatures of both ends."
         },
         "kind": {
           "enum": ["http", "rpc", "queue", "event", "writes", "reads", "calls", "relates", "other"],

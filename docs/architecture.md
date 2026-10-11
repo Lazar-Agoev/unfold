@@ -1,10 +1,10 @@
 # Unfold architecture
 
-Status: V1, with the studio window · 2026-10-09
+Status: V1, with the studio window · 2026-10-09; agents · 2026-10-11
 
 This document describes what we are building in the new `unfold` repository and how it fits together. It replaces the two earlier proposals, `desktop-app-design.md` and `unfold-desktop-from-scratch.md`, which were compared, merged, and removed. A companion document completes it:
 
-- [Decisions and trade-offs](decisions-and-tradeoffs.md) explains *why*: every decision (U-1 to U-51), the options we weighed, and the pros and cons of each.
+- [Decisions and trade-offs](decisions-and-tradeoffs.md) explains *why*: every decision (U-1 to U-63), the options we weighed, and the pros and cons of each.
 
 The proof of concept is the `graph-compiler` repository, whose product was called "Codegraph". It stays as a frozen reference. No code moves over. Its semantics, test data, measurements, and reader design do.
 
@@ -73,7 +73,7 @@ Each row links to its full reasoning in [Decisions and trade-offs](decisions-and
 | Area | Decision | IDs |
 | --- | --- | --- |
 | Product | One desktop app, a reader rather than an editor, started fresh in a new repository | U-1, U-2, U-4 |
-| Words | Unfold, Compile, Entrances, Workspace, Project, Board, Page, Draft, Publish, Export, Code, Flow | U-3, U-38 |
+| Words | Unfold, Compile, Entrances, Workspace, Project, Board, Page, Draft, Publish, Export, Diagram, Flow, Code | U-3, U-38 |
 | Engine | Rust | U-5 |
 | Shell | Electron, with the Rust engine as a native addon (napi-rs) | U-6 |
 | TypeScript | oxc's parser, semantic analysis, and resolver, with the proof of concept's native evidence rules and no type checker in V1 | U-7, U-8 |
@@ -98,6 +98,8 @@ Each row links to its full reasoning in [Decisions and trade-offs](decisions-and
 | Testing | A frozen PoC reference with a divergence ledger, independent oracles, and incremental-equals-full tests | U-33, U-34 |
 | Platforms | macOS, Windows, and Linux, all released in V1 and tested in CI from the first commit | U-35 |
 | Build order | A vertical slice first, then the proof of concept migrated one part per step, behind spikes and gates | U-36 |
+| Agents | One MCP server in the main process, on `127.0.0.1`, off until turned on, with no token and fixed tools; agents' edits applied by the window that holds the board, one undo step each; the agent mark; the current view and links; teaching through instructions, a guide, prompts, and descriptions | U-52, U-53, U-54, U-55, U-62, U-63 |
+| Pages for agents and people | The Diagram view and type cards; frames; resource cards and typed connections as anchored, grounded claims; evidence files; page images and checks; the board format stays version 1 | U-56, U-57, U-58, U-59, U-60, U-61 |
 
 ## 4. System overview
 
@@ -107,7 +109,7 @@ Each row links to its full reasoning in [Decisions and trade-offs](decisions-and
 flowchart LR
     Folder["Your projects<br/>(read only)"]
     subgraph App["Unfold"]
-        Main["Main process<br/>windows, menus,<br/>dialogs, updates"]
+        Main["Main process<br/>windows, menus,<br/>dialogs, updates,<br/>agents' MCP server"]
         subgraph Windows["One renderer per window"]
             UI1["Window<br/>React, React Flow"]
             UI2["Window<br/>React, React Flow"]
@@ -143,7 +145,7 @@ flowchart LR
 
 Unfold is an Electron app with three kinds of process ([U-31](decisions-and-tradeoffs.md#u-31-an-engine-host-and-locked-down-windows)):
 
-- **The main process**, in TypeScript, owns the app's lifecycle: windows, menus, native dialogs, the single-instance lock, and updates. It does no graph work and never waits on the engine.
+- **The main process**, in TypeScript, owns the app's lifecycle: windows, menus, native dialogs, the single-instance lock, and updates. While Preferences › Agents has it on, it also runs the MCP server that agents connect to, which reaches the engine with untrusted requests and boards through the windows that hold them, and it creates the hidden render window that draws page images ([§13](#13-security-and-privacy)). It holds no graph logic and never blocks on the engine: it awaits the engine host's answers like a window.
 - **The engine host** is an Electron utility process. It loads `unfold-node`, the Rust engine compiled as a Node-API addon, and holds the workspace's projects, with an open engine for each live one ([§11.2](#112-live-and-resting-projects)). Its JavaScript only routes messages between windows and the addon. If it stops, the main process restarts it and every window reconnects ([§11.11](#1111-background-updates-health-and-the-engine)).
 - **Each window** is a sandboxed Chromium renderer running the React UI. It reaches the engine host over its own message port, and it can call only Unfold's commands ([§12](#12-commands-and-events), [§13](#13-security-and-privacy)).
 
@@ -152,7 +154,7 @@ Unfold is an Electron app with three kinds of process ([U-31](decisions-and-trad
 | Process | Thread | Work |
 | --- | --- | --- |
 | Each window | UI thread | React rendering, card layout, and input |
-| Main process | Main thread | Windows, menus, dialogs, and updates |
+| Main process | Main thread | Windows, menus, dialogs, updates, and the agents' MCP server, which awaits the engine host's answers without blocking |
 | Engine host | JavaScript thread | Routes commands, results, and events between windows and the addon. It never blocks on long work: commands run on Rust threads and resolve as promises |
 | Engine host | Engine thread, one per live project | Owns the in-memory program for that project and runs one compile or update at a time |
 | Engine host | Rayon pool, shared | Parallel per-file extraction and resolution, with fewer threads and low priority for background updates |
@@ -591,7 +593,7 @@ The inputs that shape the graph are fingerprinted:
 
 When one changes, the files whose settings hash changed are extracted again, and linking runs again. For example, changing the Python grammar version touches every Python file.
 
-The files `[evidence] files` lists are fingerprinted too, as inputs with the role `evidence`, but they shape nothing: boards cite them. A changed evidence file only replaces its record in the graph; nothing is extracted or linked again ([settings and scope](settings-and-scope.md#evidence-files)).
+The files `[evidence] files` lists are fingerprinted too, as inputs with the role `evidence`, but they shape nothing: boards cite them. A changed evidence file only replaces its record in the graph; nothing is extracted or linked again ([settings and scope](settings-and-scope.md#evidence-files), [U-58](decisions-and-tradeoffs.md#u-58-evidence-files-are-inputs)).
 
 ### 7.8 Opening a project
 
@@ -686,7 +688,7 @@ CREATE TABLE files (
 
 CREATE TABLE inputs (                   -- configuration that shaped the graph
   path TEXT PRIMARY KEY,
-  role TEXT NOT NULL,                   -- 'unfold-config' | 'tsconfig' | 'package' | 'pyproject'
+  role TEXT NOT NULL,                   -- 'unfold-config' | 'tsconfig' | 'package' | 'pyproject' | 'evidence'
   hash BLOB NOT NULL
 );
 
@@ -895,12 +897,17 @@ It is used for snapshots, parity with the proof of concept, determinism checks, 
   projects the page items name, sorted.
 - **A description, label, or link label** has `text`, `author` (`person:<username>` or `agent:<name>`), and
   `signature`, which is `sha256:` followed by the hash of the exact selected source bytes. When the signature no
-  longer matches, the description is marked outdated. A link label is signed over both ends, but never reported
-  outdated.
+  longer matches, the description is marked outdated. A drawn link's label is signed over both ends, but never
+  reported outdated; a connection that cites code has its label signed over that code, and it goes outdated with
+  it.
 - **Claims** (resource cards and connections) cite code: anchors (block or entrance keys, or lines of an evidence
-  file), a table's type, a connection's step and carried type. They are signed over those bytes like
-  descriptions, go outdated or missing when the code changes, and a claim an agent writes is grounded at save: what
-  it names must appear in, or be used by, the code it cites ([reader: grounding](reader.md#grounding)).
+  file), a table's type, a connection's step and carried type. They are signed over their type's, step's, and
+  anchors' bytes like descriptions (a carried type is guarded, not signed), go outdated or missing when the code
+  changes, and a claim an agent writes is grounded at save: what it names must appear in, or be used by, the code it
+  cites ([reader: grounding](reader.md#grounding),
+  [U-57](decisions-and-tradeoffs.md#u-57-resource-cards-and-connections-are-anchored-signed-grounded-claims)). A
+  frame's description is signed over its member cards. New fields are optional and left out when empty, so the
+  format stays version 1 ([U-61](decisions-and-tradeoffs.md#u-61-the-board-format-stays-version-1)).
 - **A group** is a run of consecutive sibling statements with the same parent and body role, inside one card.
   Groups never cross a body boundary, overlap, or nest.
 - **Writing** validates the whole board, serializes it deterministically (sorted keys, two-space indentation, final
@@ -908,7 +915,8 @@ It is used for snapshots, parity with the proof of concept, determinism checks, 
 - **Reconnecting** after an update reuses surviving keys. A missing reference stays as a placeholder. An ordinal
   reference whose code changed is held for review. Renames and moves need a manual repair, which board health offers.
   A card from a project that isn't connected stays as a placeholder, unchecked.
-- **The top Code/Flow lens**, code folds, peeks, and each page's camera are view state and never go into the file.
+- **The top Diagram/Flow/Code lens**, code folds, peeks, and each page's camera are view state and never go into the
+  file.
 - **Unpublished changes** of a published board live in a copy of it in `.unfold/local/drafts/<name>.changes.json`,
   which also names the file it publishes and the revision it started from.
 
@@ -965,7 +973,7 @@ handler = "ts-playground/src/server.ts#shutdown"
 | `entrance` | `kind`; an optional `trigger` (an empty trigger is invalid); `method` for `http` only; an optional `label`; and either `handler` (one locator or a list) or, for `process`, `startup` |
 | `evidence.files` | Glob patterns relative to the folder: files boards may cite that Unfold hashes but never compiles |
 
-The app edits this file only through validated changes from Project settings (the name, scope, detectors, Python projects, and evidence files), the first Compile's scope, and the manual entrance editor, and it preserves comments and formatting.
+The app edits this file only through validated changes from Project settings (the name, scope, detectors, Python projects, and evidence files), the first Compile's scope, the manual entrance editor, and an agent's `update_project_settings`, and it preserves comments and formatting.
 
 ## 10. The reader
 
@@ -997,7 +1005,7 @@ These are computed by `unfold-reader` from the stored graph. Nothing here adds f
 ### 10.2 Cards
 
 - An **entrance card** shows the declared entrance, its evidence, and its targets in registration order, without numbers.
-- A **block card** shows one definition, or another indexed block, in one of three views: **Diagram**, one compact node (the kind's mark, the name, `file:line`, and the description), **Flow**, or **Code**. A card keeps its own view, else follows the page's lens, else the page's default view. An entrance card in Diagram view is a node too, marked with its kind (`HTTP`, `WORKER`, …).
+- A **block card** shows one definition, or another indexed block, in one of three views: **Diagram**, one compact node (the kind's mark, the name, `file:line`, and the description), **Flow**, or **Code**. A card keeps its own view, else follows the page's lens, else the page's default view. An entrance card in Diagram view is a node too, marked with its kind (`HTTP`, `WORKER`, …) ([U-59](decisions-and-tradeoffs.md#u-59-the-diagram-view-and-type-cards)).
 - A **type card** is a card of a type declaration (an interface, type alias, or enum) or a class. In Diagram view it lists its fields: each name as written, `readonly`, `?`, its written type (declared names open their definitions in place), a default (` = …`) or an enum member's value; an alias that isn't an object shows its aliased type, and inherited fields follow under the type they come from. A type declaration shows its fields in Flow too, since it has no paths; a class keeps its Flow. Code is the source.
 - Cards open full and size themselves to their content: 360–880 px wide (a Diagram node 240–560, a type card 280–560), with longer lines soft-wrapping. A type card of twelve fields or more lists the first eight and "N more". Nothing scrolls inside a card; you pan and zoom the canvas instead.
 - Opening an entrance adds its card and a full card for each resolved handler. Following a call opens the target 80 px to the right, with its header level with the calling line, or focuses the card if it is already open.
@@ -1005,10 +1013,10 @@ These are computed by `unfold-reader` from the stored graph. Nothing here adds f
 - A type card's field whose written type names another type card of the same project has a **type arrow** from its row to that card, labeled with the written type. Type arrows are compiled, drawn like call arrows, and Arrange places a type after the types that link to it.
 - A call or passed-reference line carries its signature at its midpoint (`(CartItem[]) → Promise<Hold>`). Clicking the label opens the call's contract in its place: what the call sends (each argument beside the parameter it fills), what comes back and where it lands, and what the callee throws. A written type in it opens its definition inline, with "Peek source" and "Used in N places". While a line is selected, the callee card marks the lines the contract reads ([proposal](proposals/typed-lines.md)).
 - A card folds to its title only when you fold it. Its arrows then attach to the header. Following a call into a folded card unfolds it.
-- A **frame** is a named, described box around cards, resource cards, notes, and other frames, nested up to three deep: a **box** (outlined, with a title bar) for a unit of a few functions or a service, or a **zone** (a tinted area with a large title) for an area that holds services, with an icon from a fixed set (`api`, `worker`, `schedule`, `cli`, `web`, `library`, `system`). A frame has no position of its own: its box is what it holds plus room for its title, so dragging it moves them. Collapsed, it is one node that says what it holds ("3 functions · 1 table"), and the arrows and links of what it hides attach to it, merged ("3 calls"). Nothing collapses by itself. Agents draw frames; people collapse, rename, describe, move, and remove them.
-- A **resource card** stands for what the code talks to that isn't a function: a table, a queue, a cache, storage, a service outside the workspace, or an actor. It is authored (the authored color, its kind's glyph and word, its name, its description, and the agent mark when an agent drew it) and looks the same in every view. A table backed by a type lists the type's fields as its columns, compiled, with the board's primary-key, foreign-key, and unique marks laid on; a table that lists its own columns shows them as written; up to 12 show, then "N more". Its anchors (block or entrance keys, or lines of an evidence file) are what it cites.
+- A **frame** is a named, described box around cards, resource cards, notes, and other frames, nested up to three deep: a **box** (outlined, with a title bar) for a unit of a few functions or a service, or a **zone** (a tinted area with a large title) for an area that holds services, with an icon from a fixed set (`api`, `worker`, `schedule`, `cli`, `web`, `library`, `system`). A frame has no position of its own: its box is what it holds plus room for its title, so dragging it moves them. Collapsed, it is one node that says what it holds ("3 functions · 1 table"), and the arrows and links of what it hides attach to it, merged ("3 calls"). Nothing collapses by itself. Agents draw frames; people collapse, rename, describe, move, and remove them ([U-56](decisions-and-tradeoffs.md#u-56-frames-are-a-page-layer-of-boxes-and-zones)).
+- A **resource card** stands for what the code talks to that isn't a function: a table, a queue, a cache, storage, a service outside the workspace, or an actor. It is authored (the authored color, its kind's glyph and word, its name, its description, and the agent mark when an agent drew it) and looks the same in every view. A table backed by a type lists the type's fields as its columns, compiled, with the board's primary-key, foreign-key, and unique marks laid on; a table that lists its own columns shows them as written; up to 12 show, then "N more". Its anchors (block or entrance keys, or lines of an evidence file) are what it cites ([U-57](decisions-and-tradeoffs.md#u-57-resource-cards-and-connections-are-anchored-signed-grounded-claims)).
 - A drawn link between two items becomes a **connection** when it has a kind: `http`, `rpc`, `queue`, `event`, `writes`, `reads`, `calls` (where a call the graph can't follow goes at runtime), `relates` (two tables' columns, with a cardinality), or `other`. Each kind has its own line in the authored color (solid, long dashes, dots, short dashes, thin with crow's-foot ends, dashed), a head where the data goes, and a chip with its kind's word and what travels (`queue · orders · OrderJob`), placed with the typed lines' labels so it never covers a card or another label. A connection leaves from its step's line in Code and its step in Flow, and from the card's edge in Diagram; clicking the carried type opens its definition. A connection is never compiled: it changes no Called by, Reached from, Flow, or dashed call. A link without a kind keeps the drawn link's dashed gray look.
-- A **note** is up to 400 characters of plain text on a page, free or attached to a card, frame, resource card, or connection, which it moves with. A note whose item is removed stays where it was.
+- A **note** is up to 400 characters of plain text on a page, free or attached to a card, frame, resource card, or link (a drawn link or a connection), which it moves with. A note whose item is removed stays where it was.
 - **Arrange** lays a page out by call depth from the inside out: each frame first, deepest first, to the right or downward as its direction says, then the page with each frame as one node, an arrow that crosses a frame's border counting at the cards it joins. Connections order their ends as data flows (a table after the code that writes it, before the code that reads it), each note attached to a card, resource card, or frame goes under its item, and each note on a link beside its line's middle, clear of the cards. It is deterministic: arranging again changes nothing.
 
 ### 10.3 Code view
@@ -1051,7 +1059,7 @@ Flow is not a runtime trace or proof that a branch runs. Short-circuit expressio
 - **Discard changes** returns to the published version. **Move back to drafts** reverses Publish. **Delete** asks first.
 - **Export** writes one page as Mermaid to a location you choose, or to the clipboard, or as a PNG image of the page as the board draws it (unsaved changes included), drawn by a hidden render window at twice its size. SVG and a Markdown walkthrough come in V2. Mermaid uses solid arrows for calls and constructions, dashed arrows for imports and passed references, and dashed labeled arrows for drawn links. A Diagram-view card is a box with one arrow to each card it calls, and a type declaration in Flow view is a box.
 - **Health** lists, per page, missing references, outdated descriptions, broken groups, guarded references that need review, cards from projects that aren't connected, drawn links whose end is missing, resource cards and connections whose cited code changed or is gone, and outdated frame descriptions, and offers repairs. A card or resource card shows its problems in a banner, a connection's chip a review dot, and Selected the repairs.
-- **Agents** can read and write board files directly, just like people. The app validates a board file when it loads it and reloads it when the file changes. A description an agent writes is attributed `agent:<name>`. The graph database is not an interface for agents. A stable agent interface comes in V2.
+- **Agents** work through Unfold's local MCP server ([§13](#13-security-and-privacy), [desktop/README.md](../desktop/README.md#the-mcp-server)): they read the graph and boards through its tools, and the window that holds a board applies their edits, as one undo step each, saved at once and checked like any save ([U-54](decisions-and-tradeoffs.md#u-54-the-window-that-holds-a-board-applies-an-agents-edits)). What an agent writes is attributed `agent:<name>` and carries the agent mark; agents re-sign only what an agent wrote ([U-55](decisions-and-tradeoffs.md#u-55-the-agent-mark-agents-never-write-as-people-and-re-sign-only-agents-work)). Agents can still read and write board files directly, just like people: the app validates a board file when it loads it and reloads it when the file changes. The graph database is not an interface for agents.
 
 ### 10.6 Freshness
 
@@ -1069,7 +1077,7 @@ Before any range is shown, the file's bytes are read, hashed, and compared with 
 
 These come from the v7.1 reader and from review comments on the Paper designs. They hold in every view:
 
-- Cards size to their content and never scroll inside. Every opened function is a full card with its own Code/Flow switch.
+- Cards size to their content and never scroll inside. Every opened function is a full card with its own Diagram/Flow/Code switch.
 - Calls in the code are the links, and an arrow leaves from the calling line. There is no per-card footer and no list of call chips.
 - Code shows exact verified source with IDE syntax colors and folds from the compiled structure.
 - There are no step numbers (1, 2, 2.1…) in any view.
@@ -1078,7 +1086,7 @@ These come from the v7.1 reader and from review comments on the Paper designs. T
 - A card folds to its title only when you fold it. Unfold never collapses anything by itself.
 - Zoom is a camera and never changes what a card shows. Fit always shows the whole board.
 - Nothing covers cards for long: there is no overview screen and no minimap, and floating chrome follows the overlay rule ([§11.3](#113-the-window)).
-- The top Code/Flow switch is a lens and never edits the board. A card's own switch is saved with the board.
+- The top Diagram/Flow/Code switch is a lens and never edits the board. A card's own switch is saved with the board.
 - The sidebar's Selected section never shows code.
 - The reader's colors are the Paper v7 tokens: an indigo accent (`#5862C0`), magenta for authored text, and the v7 syntax palette, in light and dark sets. The chrome around them has its own tokens ([U-51](decisions-and-tradeoffs.md#u-51-the-studios-visual-system)).
 
@@ -1320,8 +1328,9 @@ connected", with **Connect project**).
 The graph doesn't link code across projects: a `fetch("/api/orders")` in the web app is not an edge to
 the API's route. So a link between cards of two projects is **drawn by you** (Draw link… in a card's
 menu): a dashed arrow, with an optional label such as "calls over HTTP" that is signed like a
-description. Health checks only that both ends still exist. Any two cards of a page can be linked.
-Detecting such links automatically is a later step.
+description. Health checks only that both ends still exist. Any two cards, resource cards, or frames of a page can be
+linked, and Kind ▸ makes a link a connection (`http`, say), which cites code on both sides and is checked like a
+description. Detecting such links automatically is a later step.
 
 ### 11.10 Several windows and restore
 
@@ -1431,10 +1440,10 @@ Commands, events, and their payload types are defined once in Rust, in `unfold-w
 | [Project, Home, settings](ipc.md#project-home-and-settings) | Home's summary, the not-compiled preview and scope tree, entrances by application, Problems and the index log, Compile, background updates, project settings, preferences, diagnostics | Rust |
 | [Files and graph](ipc.md#files-and-graph) | A file for the peek sheet, cards, call peeks, relations, callers, previews, where a key is on boards | Rust |
 | [Search](ipc.md#search) | Names and text across projects | Rust |
-| [Boards](ipc.md#boards) | Listing, thumbnails, opening and claiming, saving, health and repairs, Publish, unpublished changes, folders | Rust |
+| [Boards](ipc.md#boards) | Listing, thumbnails, opening and claiming, saving, health and repairs, Publish, unpublished changes, folders (and, for agents' tools, reading a board without claiming it) | Rust |
 | [Export](ipc.md#export) | Mermaid to a file or the clipboard | The main process shows the save dialog, then Rust writes the file |
 | [Windows](ipc.md#windows) | What each window remembers | Rust |
-| [Window commands](ipc.md#window-commands-and-shell-events) | New windows, focusing, dialogs, moving a board to a new window, the clipboard, Export PNG and the render window's answers | The main process |
+| [Window commands](ipc.md#window-commands-and-shell-events) | New windows, focusing, dialogs, moving a board to a new window, the clipboard, Export PNG and the render window's answers, view reports, answers to agents' requests, and the agents' server state | The main process |
 
 Each board command names its board, and Rust checks that the calling window holds it. Commands that take an absolute path, or manage windows, run only when the main process sends them ([§13](#13-security-and-privacy)).
 
@@ -1442,9 +1451,9 @@ Each board command names its board, and Rust checks that the calling window hold
 
 - **Windows get no file, shell, process, or network access.** Every renderer runs with context isolation and Chromium's sandbox, with Node integration off. Its preload script exposes one object, `window.unfold`, which can only send Unfold's commands and receive its events.
 - **The main process trusts only what it created.** It loads the UI only from Unfold's own `app://` protocol, inside the app's signed archive. It blocks navigation, new windows, embedded webviews, and every permission request, such as the camera or notifications, and it checks the sender of every message it handles.
-- **The render window is a window like the others, with less it may do.** Page images (Share › Export PNG, an agent's screenshot) and page checks are drawn by a hidden window the main process creates on demand with every window's hardening, offscreen, loading the same `app://` UI under the same policy. It is attached to the engine for the cards' data like any window, but never opens or claims a board, and the one message it may send the main process is its answer to a render request. The main process writes the exported image to the path the person chose in the save dialog.
+- **The render window is a window like the others, with less it may do.** Page images (Share › Export PNG, an agent's screenshot) and page checks are drawn by a hidden window the main process creates on demand with every window's hardening, offscreen, loading the same `app://` UI under the same policy. It is attached to the engine for the cards' data like any window, but never opens or claims a board, and the one message it may send the main process is its answer to a render request. The main process writes the exported image to the path the person chose in the save dialog ([U-60](decisions-and-tradeoffs.md#u-60-page-images-from-a-hidden-render-window-and-page-checks)).
 - **Paths outside a project come only from the main process.** A folder picked in the folder picker, dropped on a window, or passed on the command line, and a file chosen in a save dialog, reach Rust only as trusted commands, which only the main process can send ([IPC](ipc.md#how-a-command-travels)). A window can never name a path outside a project; it can add back a folder the workspace removed only by its listed path.
-- **One local listener, for agents, off by default.** While Preferences › Agents has it on, the main process serves MCP at `http://127.0.0.1:<port>/mcp` (port 29180 unless the person picks another) for agents such as Claude Code and Codex. It listens on the loopback interface only; it refuses, with a bare 403, any request that carries an `Origin` header (a web page) and any whose `Host` isn't `127.0.0.1` or `localhost` at its port (DNS rebinding); it caps request bodies at 1 MiB and serves nothing but `/mcp`. It has no token: while it is on, any program on the machine can use it, and such programs can already read the repositories. Its engine requests are untrusted, like a window's, and its tools are fixed actions with no pass-through to the engine; the one that names a path outside a project, adding a project, runs only after the person confirms it in a native dialog. Turning it off closes every connection.
+- **One local listener, for agents, off by default.** While Preferences › Agents has it on, the main process serves MCP at `http://127.0.0.1:<port>/mcp` (port 29180 unless the person picks another) for agents such as Claude Code and Codex. It listens on the loopback interface only; it refuses, with a bare 403, any request that carries an `Origin` header (a web page) and any whose `Host` isn't `127.0.0.1` or `localhost` at its port (DNS rebinding); it caps request bodies at 1 MiB and serves nothing but `/mcp`. It has no token: while it is on, any program on the machine can use it, and such programs can already read the repositories. Its engine requests are untrusted, like a window's, and its tools are fixed actions with no pass-through to the engine; the one that names a path outside a project, adding a project, runs only after the person confirms it in a native dialog. Turning it off closes every connection ([U-52](decisions-and-tradeoffs.md#u-52-one-mcp-server-in-the-main-process-on-a-fixed-local-port-with-no-token), [U-53](decisions-and-tradeoffs.md#u-53-the-mcp-sdks-v2-server-stateless-with-no-sessions)).
 - **Every path a command receives is checked, per project.** It must be relative to the folder of the project the command names, and Rust resolves it and rejects `..`, absolute paths, and symlinks that escape that folder. Discovery doesn't follow symlinks out of the folder.
 - **Strict content security policy.** All assets are local, and nothing is loaded from the network. Source and descriptions are rendered as text, never as HTML.
 - **The bundled runtime runs only Unfold.** Electron's fuses are set when the app is packaged: it can't be started as plain Node, it ignores `NODE_OPTIONS` and inspector flags, and it loads its code only from its own archive, whose integrity is checked on macOS and Windows.
@@ -1537,7 +1546,8 @@ unfold/
 │       ├── preload/                # index.ts: window.unfold, and nothing else
 │       ├── engine-host/            # index.ts, router.ts, binding.ts: loads unfold-node, routes each
 │       │                           #   window's port, broadcasts events
-│       └── shared/                 # transport.ts, unfold-api.ts: the wire types and window.unfold
+│       └── shared/                 # transport.ts, unfold-api.ts: the wire types and window.unfold;
+│                                   #   agent-api.ts, render-api.ts: the agent and render protocols
 ├── ui/                             # React app, built with Vite
 │   ├── package.json
 │   ├── vite.config.ts
@@ -1570,7 +1580,8 @@ unfold/
 │   │                               #   Python policy cases
 │   ├── detectors/                  # <detector>/<case>/ with sources and expected entrances
 │   ├── playgrounds/                # ts-orders/ and py-orders/, copied from graph-compiler
-│   ├── boards/                     # the "Order placement" sample board, in unfold-board v1
+│   ├── boards/                     # the "Order placement" sample board, and order-system.json with
+│   │                               #   every frame, resource card, connection, and note, in unfold-board v1
 │   ├── reference/                  # frozen PoC generations, their canonical form, the reader
 │   │                               #   reference, divergences.toml
 │   └── corpora.lock.toml           # larger corpora pinned by URL and hash
@@ -1599,7 +1610,7 @@ unfold/
 
 | Package | Owns | Depends on |
 | --- | --- | --- |
-| `desktop` | The Electron main process, the preload script, and the engine host | Electron, electron-updater, the `unfold-node` addon, the generated IPC types |
+| `desktop` | The Electron main process, the preload script, and the engine host | Electron, electron-updater, the MCP SDK's server (`@modelcontextprotocol/server`) and zod, the `unfold-node` addon, the generated IPC types |
 | `ui` | The React app | React and the libraries in [§11.14](#1114-ui-technology-and-what-runs-where), the generated IPC types |
 | `e2e` | The UI and app journeys | Playwright |
 | `tools/oracles` | Developer-only oracles and the reader-reference export | TypeScript 6 and Pyright, as published packages |
@@ -1613,7 +1624,7 @@ unfold/
 5. `unfold-node` and `desktop/` hold no graph logic. Rust validates every command and `unfold-workspace` handles it. The engine host only routes messages.
 6. The UI never touches files or Node. It only calls typed commands through `window.unfold`.
 7. Test data lives in `testdata/`, never inside crates, so Rust tests, UI tests, and tools share one copy.
-8. The main process never handles graph data. It manages windows and the operating system's dialogs, and sends the engine host only lifecycle requests and paths chosen in dialogs.
+8. The main process holds no graph logic. It manages windows and the operating system's dialogs, and sends the engine host lifecycle requests, paths chosen in dialogs, and, for agents' tools, untrusted commands whose results it formats as text.
 9. The UI depends on `window.unfold`, not on Electron, and the engine knows nothing about Electron. Either could sit behind another host, such as an editor extension, without changes ([U-6](decisions-and-tradeoffs.md#u-6-electron-for-the-shell-with-the-rust-engine-as-a-native-addon)).
 
 ### 15.4 Everyday commands
@@ -1656,7 +1667,7 @@ unfold/
 | `unfold-reader` | Owner, catalog, closure, applications, relations, Flow lanes, the code render model, Mermaid, and boards (schema, signatures, guards, health, publishing) | Snapshots on both playgrounds; hand-written graph fixtures that don't depend on extraction; Mermaid checked by the real Mermaid parser |
 | `unfold-workspace` | Watcher batching, debounce, cancellation, last-good files, settings changes, reopening, the lock, the fallback location, the workspace and windows files, live and resting projects, Git's files and worktrees, command contracts, path confinement per project, board claims, unpublished changes, and cross-project boards | Integration tests on temporary folders |
 | `unfold-node` | The addon's surface: dispatch round trips, events from Rust threads, cancellation, detaching windows, shutdown, and panics returned as errors | Node tests against the built addon |
-| `desktop` | Window management and restore, engine-host restarts, sender checks, the `app://` protocol, and each window's security settings | Vitest for the main process, and generated TypeScript types that must compile against the preload script, the engine host, and the UI |
+| `desktop` | Window management and restore, engine-host restarts, sender checks, the `app://` protocol, each window's security settings, and agents: the MCP listener's refusals, every tool through a real MCP client, the agent bridge, page revisions, links, and the render window | Vitest for the main process, and generated TypeScript types that must compile against the preload script, the engine host, and the UI |
 | UI | Components and journeys | Vitest and Testing Library, using fixtures the Rust views generate; Playwright in Chromium against recorded command responses |
 | App | End-to-end journeys on built apps, including several windows, several projects, and a restart of the engine host | Playwright's Electron support, on macOS, Windows, and Linux |
 | Packaging | No Node or Python on `PATH`, paths with spaces and Unicode, read-only folders, execution sentinels, and the fuses and window settings read back from the packaged app | Packaged smoke tests on clean machines of each platform |
@@ -1730,7 +1741,7 @@ A budget never passes by dropping files, call sites, or external or unresolved r
 | Live, resting | A live project has its engine, watcher, and in-memory program open; a resting one is closed, answers lists and searches from its stored graph, and wakes when used |
 | Window | One Unfold window: the whole workspace, with its own tabs, sidebar, Home selection, and open boards |
 | Home | The first tab of every window: the selected project's entrances, boards, and health, or the first launch |
-| Main process | Electron's process that owns windows, menus, dialogs, and updates |
+| Main process | Electron's process that owns windows, menus, dialogs, and updates, and runs the agents' MCP server |
 | Engine host | The helper process that runs the Rust engine for every window |
 | Add | The one box that finds entrances, functions, files, and text in every project, and runs commands |
 | Peek sheet | The sheet over the canvas that shows a whole source file |
@@ -1747,6 +1758,7 @@ A budget never passes by dropping files, call sites, or external or unresolved r
 | Entrance | A declared way that a process or unit of work starts |
 | Trigger | The declared activating value: a command, route, queue, schedule, or event |
 | Evidence | The source or configuration range that declares an entrance |
+| Evidence file | A file a project lists so boards may cite its lines: hashed as an input, never compiled |
 | Detector | A rule that recognizes one kind of declaration |
 | Locator | A manual entrance's address: `path`, `path#name`, `path#Owner.member`, or `path:line` |
 | Owner | The function, class, or file whose activation an occurrence belongs to |
@@ -1754,7 +1766,7 @@ A budget never passes by dropping files, call sites, or external or unresolved r
 | Closure | Everything statically reached from some targets, "at least" |
 | Structural key | A path-like name for a block that survives most edits |
 | Last good | The facts from the last version of a file that parsed |
-| Board | A story about the code: titled pages of cards, groups, descriptions, labels, and drawn links over the graph |
+| Board | A story about the code: titled pages of cards, groups, descriptions, labels, drawn links, frames, resource cards, connections, and notes over the graph |
 | Page | One canvas inside a board: one trace |
 | Card | An entrance, a definition, or a type on a page, in Diagram, Flow, or Code |
 | Folder | A name that organizes a project's boards, stored on each board; not the disk layout |
@@ -1762,4 +1774,9 @@ A budget never passes by dropping files, call sites, or external or unresolved r
 | Publish | Write a board to `.unfold/boards/`, so it can be committed |
 | Unpublished changes | Edits to a published board, kept on this machine until the next Publish |
 | Drawn link | An arrow a person draws between two items, usually cards from different projects; with a kind it is a connection |
-| Lens | The top Code/Flow switch, which changes the view without editing the board |
+| Frame | A named box or zone around items of one page; frames nest and collapse |
+| Resource card | A table, queue, cache, storage, outside service, or actor on a page, citing the code it stands on |
+| Connection | A link with a kind (`http`, `queue`, `writes`, …), leaving from a step and citing code |
+| Note | Up to 400 characters of plain text on a page, free or attached to an item |
+| Agent | A coding agent, such as Claude Code or Codex, connected through the MCP server; what it writes carries the agent mark |
+| Lens | The top Diagram/Flow/Code switch, which changes the view without editing the board |

@@ -41,19 +41,22 @@ UI ◄── window.unfold.on(type, ...) ◄────────────
 - **Liveness.** Each project command either `wakes` its project (opens its engine and watcher, and
   extends its lease) or is served by a resting project from disk (`rests`); a few concern no project
   at all (`—`). Listing never wakes a project; using a result (any command that takes a key or a path
-  of a project) does. The rules are in [architecture §11.2](architecture.md#112-live-and-resting-projects).
+  of a project) does, except `read_board`, which only reads a board's file. The rules are in
+  [architecture §11.2](architecture.md#112-live-and-resting-projects).
 - **Trusted commands.** The engine host adds `"trusted": true` to a command **the main process**
-  sends, and never to one a window sends: the router rebuilds every window command from `command`
-  and `args`, and refuses a window message that names a trusted-only command or carries `trusted`
+  sends, and never to one a window sends: the router rebuilds every window command from `command` and
+  `args`, and refuses a window message that names a trusted-only command or carries `trusted`
   anywhere, with `untrusted`, before it reaches Rust. Trusted-only commands are the ones that take an
   absolute path (from a dialog, a drop, or the command line) or manage window lifecycle:
   `add_project`, `export_mermaid`, `saved_windows`, `save_window_bounds`, and `forget_window`
   (`MAIN_PROCESS_ONLY` in `desktop/src/engine-host/router.ts`). The main process sends its own
   requests over the utility process's parent port (`{type:"request", id, windowId, command, args,
   trusted}`, answered `{type:"result", id, ok, …}`; `desktop/src/shared/transport.ts`). Its MCP
-  server's requests for agents go with `trusted: false` and window `0`, and the router treats them as
-  a window's: a trusted-only command is refused with `untrusted`. A streamed one (`search_text`) sent
-  with `stream: true` gets each stream message as `{type:"stream", id, message}` before its result.
+  server's requests for agents go with `trusted: false` and window `0` (or, for a command that needs a
+  board's session, `board_health` and `export_mermaid_text`, the id of the window that holds the
+  board), and the router treats them as a window's: a trusted-only command is refused with
+  `untrusted`. A streamed one (`search_text`) sent with `stream: true` gets each stream message as
+  `{type:"stream", id, message}` before its result.
 - **Paths, per project.** Every path a window names is relative to the folder of the project the
   command names, `/`-separated, and confined there: `..`, absolute paths, backslashes, and symlinks
   that leave the folder are rejected with `invalid_path`
@@ -287,7 +290,7 @@ The main process handles the window and dialog commands (`window.unfold.window(c
 | `add_project` | The folder picker, then the trusted `add_project`; `null` when cancelled |
 | `confirm_remove_project` | The native confirmation ("Remove <name> from the workspace? Its .unfold folder stays."); the UI then calls `remove_project` |
 | `export_mermaid` | The save dialog, then the trusted `export_mermaid` for the calling window; `null` when cancelled |
-| `export_png` | `{project, board, page, title?}`: the save dialog, then the render window draws the page (unsaved edits included) at scale 2 and the main process writes the PNG; `{path, bytes}`, or `null` when cancelled |
+| `export_png` | `{project, board, page, title?}`: the save dialog, then the render window draws the page (unsaved edits included) at scale 2 and the main process writes the PNG; `{path, bytes}`, or `null` when cancelled. Refused with the render window's codes: `empty_page`, `render_timeout`, `render_failed` |
 | `move_tab_to_new_window` | Opens a window for a tab and resolves with its id at once; the UI then calls `move_board` and `transfer_board_state` |
 | `transfer_board_state` | Hands a board's window-side state (its unsaved version and undo history) to another window, which gets `board_state_transferred` |
 | `copy_to_clipboard` | Writes text to the clipboard (windows have no clipboard permission) |
@@ -370,6 +373,14 @@ The transport adds its own codes (`TransportErrorCode` in `desktop/src/shared/un
 `engine_unavailable` (the addon couldn't be loaded), `disconnected` (the engine host stopped while the
 request was in flight), `cancelled`, `invalid_message`, `invalid_command` (a window command the main
 process doesn't know), `untrusted`, and `internal`.
+
+Agents' requests to a window answer with the engine's codes and their own: `people_text` (the change would replace
+or remove a person's words), `unsaved_edits` and `board_conflict` (the person's pending edits can't be saved first),
+`page_changed` (the page changed while the change saved, and it no longer applies), `board_not_open`, and
+`page_not_found`; the agent bridge adds `revision_mismatch`, `timeout`, `unconfirmed` (a change timed out and may
+still land), and `window_closed` ([desktop/README.md](../desktop/README.md#the-agent-bridge),
+[the UI shell](ui-shell.md#agents-in-the-window)). The render window's are `empty_page`, `item_not_found`,
+`item_hidden`, `render_timeout`, and `render_failed` ([desktop/README.md](../desktop/README.md#the-render-window)).
 
 ## Payload limits
 

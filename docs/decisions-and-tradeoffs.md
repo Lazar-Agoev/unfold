@@ -1,12 +1,12 @@
 # Unfold decisions and trade-offs
 
-Status: decided · 2026-10-08; the studio redesign · 2026-10-09
+Status: decided · 2026-10-08; the studio redesign · 2026-10-09; agents · 2026-10-11
 
 This document records every decision behind Unfold. For each one it gives the question, the options we weighed, what we chose, why, and the pros and cons. It also preserves the discussion that led there. The two earlier proposals were removed after they were merged, so their arguments live on here.
 
 - [Architecture](architecture.md) describes what we are building.
 
-Decision IDs are U-1 to U-51. Because nothing has shipped, a decision that changes is revised in place, and the change is told in [How we got here](#how-we-got-here).
+Decision IDs are U-1 to U-63. Because nothing has shipped, a decision that changes is revised in place, and the change is told in [How we got here](#how-we-got-here).
 
 ## How we got here
 
@@ -136,6 +136,20 @@ preferences to keep. So the redesign replaced what it changed: no migration from
 for old shapes, no shims, deprecated aliases, or old action ids, and no code kept "for later". Code the new design
 doesn't use was deleted.
 
+### Agents in Unfold
+
+On 2026-10-10 you asked for coding agents to work inside Unfold the way Claude works inside Paper: set up projects,
+then build pages that explain code, with you watching. The [agent MCP design](proposals/agent-mcp-design.md) proposed
+what the app was missing (new views, step groups in Flow, type cards, frames, resource cards, typed connections,
+notes, evidence files, agent edits in the window, page images, and page checks), one local MCP server, its 34 tools,
+and the texts that teach agents to use them, with a recommended answer to each open question.
+
+It was built on 2026-10-11, in steps that each kept every gate green, and then reviewed. The design
+records the choices made while building; the lasting ones are U-52 to U-63. They revised U-3's names (a third
+view), U-21 (agents now read the graph through fixed tools), U-42's `projects` rule, and U-44 (a drawn link given a
+kind is a connection) in place. As with the redesign, nothing was migrated: the board format stays version 1, with new
+fields that are optional and left out when empty ([U-61](#u-61-the-board-format-stays-version-1)).
+
 ## Decision index
 
 | ID | Decision | Area |
@@ -191,6 +205,18 @@ doesn't use was deleted.
 | [U-49](#u-49-drafts-are-stored-per-project-and-listed-together) | Drafts are stored per project and listed together | The studio |
 | [U-50](#u-50-the-overlay-rule) | The overlay rule | The studio |
 | [U-51](#u-51-the-studios-visual-system) | The studio's visual system | The studio |
+| [U-52](#u-52-one-mcp-server-in-the-main-process-on-a-fixed-local-port-with-no-token) | One MCP server in the main process, on a fixed local port, with no token | Agents |
+| [U-53](#u-53-the-mcp-sdks-v2-server-stateless-with-no-sessions) | The MCP SDK's v2 server, stateless with no sessions | Agents |
+| [U-54](#u-54-the-window-that-holds-a-board-applies-an-agents-edits) | The window that holds a board applies an agent's edits | Agents |
+| [U-55](#u-55-the-agent-mark-agents-never-write-as-people-and-re-sign-only-agents-work) | The agent mark: agents never write as people, and re-sign only agents' work | Agents |
+| [U-56](#u-56-frames-are-a-page-layer-of-boxes-and-zones) | Frames are a page layer of boxes and zones | Agents |
+| [U-57](#u-57-resource-cards-and-connections-are-anchored-signed-grounded-claims) | Resource cards and connections are anchored, signed, grounded claims | Agents |
+| [U-58](#u-58-evidence-files-are-inputs) | Evidence files are inputs | Agents |
+| [U-59](#u-59-the-diagram-view-and-type-cards) | The Diagram view and type cards | Agents |
+| [U-60](#u-60-page-images-from-a-hidden-render-window-and-page-checks) | Page images from a hidden render window, and page checks | Agents |
+| [U-61](#u-61-the-board-format-stays-version-1) | The board format stays version 1 | Agents |
+| [U-62](#u-62-teaching-through-instructions-a-guide-prompts-and-descriptions) | Teaching through instructions, a guide, prompts, and descriptions | Agents |
+| [U-63](#u-63-the-current-view-and-links-that-only-the-server-reads) | The current view and links that only the server reads | Agents |
 
 ## Product
 
@@ -262,8 +288,8 @@ doesn't use was deleted.
 | An authored story | **Board**, holding **pages** ([U-38](#u-38-a-board-holds-pages)). One that lives only on this machine is a **Draft** |
 | The one box that finds code and runs commands | **Add** |
 | Making a board shareable through the repository | **Publish**. Writing it to a file elsewhere is **Export** |
-| The two ways to see a card | **Code** and **Flow** |
-| The top Code/Flow switch | The **lens** |
+| The three ways to see a card | **Diagram**, **Flow**, and **Code** ([U-59](#u-59-the-diagram-view-and-type-cards)) |
+| The top Diagram/Flow/Code switch | The **lens** |
 
 Nothing is named Codegraph anywhere: not folders, formats, IDs, or bundle names.
 
@@ -837,7 +863,8 @@ The graph database is private and can change in any release.
 - Compatibility work goes only where people commit files.
 
 **Cons**
-- Other tools can't consume the graph until a stable agent interface exists (V2).
+- Other tools can't consume the graph directly. Agents read it through the MCP server's fixed tools
+  ([U-52](#u-52-one-mcp-server-in-the-main-process-on-a-fixed-local-port-with-no-token)), not as a format.
 - Scripts that read the SQLite file directly will break across versions.
 
 ### U-22: A fresh board format
@@ -1324,8 +1351,9 @@ board held before: cards, groups, Flow labels, and guards, plus its drawn `links
 - **Links live on the page**, because they join cards and cards belong to a page.
 - **Labels and guards are arrays** of `{project?, key, …}` instead of maps keyed by block key, because the same key
   can exist in two projects; arrays keep the shape strict, sortable, and unambiguous.
-- **`projects` must equal** the set of names the cards use, so a hand-edited or agent-written board gets an error
-  instead of a silently wrong list.
+- **`projects` must equal** the set of names the page items use (cards, and since agents, resource cards' types,
+  anchors, and carried types), so a hand-edited or agent-written board gets an error instead of a silently wrong
+  list.
 - **The version stays 1**: there is one version and no history to number.
 - **No board-level description.** Nothing in the design shows one.
 - The writer stays deterministic, and the JSON Schema was rewritten.
@@ -1397,6 +1425,8 @@ design shows "Published · 2 unpublished changes".
   different projects are joined by **drawn links**: dashed arrows a person draws, with an optional label signed like a
   description. A link label is signed over both ends but never reported outdated; health checks only that both ends
   still exist (`brokenLink`).
+- A drawn link given a kind is a **connection**, which cites code and is signed and checked over it
+  ([U-57](#u-57-resource-cards-and-connections-are-anchored-signed-grounded-claims)).
 
 **Question.** A page that holds cards from several projects would show unrelated islands if nothing joined them.
 
@@ -1592,6 +1622,404 @@ design floats a dock and a lens over it and opens Add, sheets, and dialogs on to
 
 **Why.** The redesign is mostly a renderer change; its look should be exactly the reviewed designs, in both themes.
 
+## Agents
+
+These decisions came with agents in Unfold ([How we got here](#agents-in-unfold)). They describe how agents such as
+Claude Code and Codex connect to the app and work on boards, and the capabilities the app gained for them. The
+[agent MCP design](proposals/agent-mcp-design.md) holds the reasoning in full, and the choices made while building
+it.
+
+### U-52: One MCP server in the main process, on a fixed local port, with no token
+
+**Decided**
+- Agents connect through one MCP server that the app's main process runs at `http://127.0.0.1:<port>/mcp`. It is off
+  until Preferences › Agents turns it on; the port is 29180 unless the person picks another (not below 1024), and
+  Preferences says when another program holds it. Turning it off closes every connection.
+- It refuses, with an empty answer, any request that carries an `Origin` header (a web page) or whose `Host` isn't
+  `127.0.0.1` or `localhost` at its port (403), and any body over 1 MiB (413). It serves nothing but `/mcp`.
+- It has no token. Its engine requests are untrusted, like a window's, and its 34 tools are fixed actions with no
+  pass-through to the engine. Adding a project, the one tool that names a path outside a project, runs only after the
+  person confirms it in a native dialog.
+- Agents can't publish, delete, or discard boards, move one back to drafts, remove projects, change preferences, or
+  edit code.
+- The server routes each call to whoever owns its target: setup and code reads to the engine, a board's reads and
+  edits to the window that holds it ([U-54](#u-54-the-window-that-holds-a-board-applies-an-agents-edits)), and
+  images and checks to a hidden render window
+  ([U-60](#u-60-page-images-from-a-hidden-render-window-and-page-checks)).
+
+**Question.** How should agents reach the app? While Unfold is open it holds a lock on each live project
+([U-45](#u-45-live-and-resting-projects)), and one window holds each open board
+([U-37](#u-37-several-windows-one-window-per-board)).
+
+**Options**
+
+| Option | For | Against |
+| --- | --- | --- |
+| A separate MCP process or CLI that opens projects itself | Works without the app running | Fails exactly when Unfold is open: a live project is locked, and a board edited from outside reloads or asks which version to keep |
+| Agents edit board files directly, as before | Nothing to build | No graph, no view of what the person sees, no undo, and nothing checked before the file lands |
+| **A server in the main process, on a fixed local port** | Routes each call to what owns its target; installed once at user scope; the way Paper's server works | Works only while the app is open; one port to choose |
+| The same, with a token | Only programs that know the token connect | One more thing to install and keep; any program on the machine can already read the repositories |
+
+**Why.** The app owns what agents need: live projects, the boards its windows hold, and what the person is looking at.
+A server inside it can reach all three and still listen on this machine only.
+
+**Pros**
+- One command installs it in Claude Code or Codex, and it works for every repository.
+- Agents' edits arrive live in the person's window, and nothing leaves the machine.
+
+**Cons**
+- While it is on, any program on the machine can use it.
+- Agents can work only while Unfold is open.
+
+**Revisit if** people run Unfold on shared machines, where a token would be worth its cost.
+
+### U-53: The MCP SDK's v2 server, stateless with no sessions
+
+**Decided**
+- The server uses the official TypeScript SDK's v2 server package, `@modelcontextprotocol/server` 2.1.0, pinned
+  exactly with zod 4.6.5 and bundled into the main process. One handler serves the current revision (2026-07-28:
+  `server/discover`, and each request naming its client) and the older `initialize` handshake, statelessly on both.
+  There are no sessions.
+- It offers tools, prompts, and instructions; no resources, sampling, roots, or logging.
+- The client's name becomes the agent's identity: Claude Code is `agent:claude`, Codex `agent:codex`, and any other
+  client `agent:<its name, lowercased>`. On older revisions only `initialize` names the client, so the server
+  remembers that name by the request's `User-Agent`.
+- The libraries the SDK carries inside its published files are named in the third-party notices by hand.
+
+**Question.** The `@modelcontextprotocol/sdk` package most examples use (1.30.1, its newest release at the time)
+speaks revisions up to 2025-11-25 only: no discovery, and no client on each request.
+
+**Options**
+
+| Option | For | Against |
+| --- | --- | --- |
+| `@modelcontextprotocol/sdk` 1.x, with sessions | The package most examples use | No current revision; sessions to keep across requests and restarts |
+| **`@modelcontextprotocol/server` 2.x, stateless** | The current revision and the older handshake from one handler; nothing kept between requests | A newer line; its bundled libraries need hand-written notices |
+| Our own protocol code | No dependency | Protocol work the SDK does, to redo as MCP changes |
+
+**Why.** The current revision is stateless and names the client on every request, which suits a server that keeps
+nothing between calls, and the older handshake still serves clients that haven't moved.
+
+**Cons**
+- Two older clients that share one `User-Agent` read as the one that initialized last.
+- An SDK upgrade means checking the notices' list again.
+
+### U-54: The window that holds a board applies an agent's edits
+
+**Decided**
+- Every write tool is one **agent edit**, which the main process sends to the window that holds the board, opening
+  it in a background tab of the window used last when none does. The window applies it with the same document edits
+  a person's actions use, signed with the agent's identity, as **one undo step** named for the agent ("Claude ·
+  Frame cards").
+- It **saves at once** and makes the change an undo step only once the engine accepts it, so a refused edit leaves
+  the board and its history as they were, and the agent gets the engine's reason. The person's pending edits are
+  saved first; edits they make while it saves are kept, and the change applies again over them or answers
+  `page_changed`.
+- With `expectRevision` (the page's revision from an earlier result), the main process reads the page first and
+  refuses a stale edit (`revision_mismatch`).
+- Reads of a held board come from its window, unsaved edits included; a board no window holds is read from its file
+  without claiming it (`read_board`). Repairs, new drafts, page changes, and showing an item go through the holding
+  window too.
+
+**Question.** Who applies an agent's change to a board that a person may have open, with unsaved edits?
+
+**Options**
+
+| Option | For | Against |
+| --- | --- | --- |
+| The engine writes the board file | One writer | The holding window's document goes stale and its next save conflicts; the change is no undo step |
+| The main process saves on the window's behalf | No window code | The same: the window holds the document, its history, and the unsaved edits |
+| **The holding window, as one undo step, saved at once** | The person watches it arrive and undoes it like their own; the engine checks it as any save | The window loads what the operations need first, and must answer within 30 s |
+
+**Why.** One window holds a board at a time ([U-37](#u-37-several-windows-one-window-per-board)), and it owns the
+board's document, history, and unsaved edits. Applying agent edits there keeps one writer per board and makes an
+agent's work as reversible as a person's.
+
+**Pros**
+- Edits appear live, and one ⌘Z undoes one tool call.
+- A refused edit leaves no trace, not even a redo entry.
+
+**Cons**
+- A person's edit that lands between the server's read and the window's edit isn't caught by `expectRevision`.
+- Every edit needs a window, so the main process opens one when none holds the board.
+
+### U-55: The agent mark: agents never write as people, and re-sign only agents' work
+
+**Decided**
+- The app signs every agent edit with the identity the server derives from the client
+  ([U-53](#u-53-the-mcp-sdks-v2-server-stateless-with-no-sessions)); a tool can't choose its author.
+- What an agent writes carries the **agent mark**, a spark and the word "agent", wherever an author shows, on the
+  canvas too; its byline reads "Claude · agent". While an agent works on a page, the top bar says "Claude is
+  working…" and what it changed is outlined until it calls `finish_work`.
+- **People's words are safe.** No tool replaces or removes a person's description, label, title, resource card,
+  connection, drawn link, or note unless the call says the person asked (`replacePeopleText`, which only
+  `remove_items`, `describe`, `label_steps`, and `edit_pages` take).
+- **Agents re-sign or accept only what an agent wrote.** Accepting a card's new code covers its step groups and Flow
+  labels too. The engine's repair doesn't know who calls, so the `repair` tool enforces this.
+- Editing an agent's text makes it yours, as editing anyone's does.
+
+**Question.** Authorship was recorded but not shown: an agent's byline looked like a person's, and an agent writing
+the file could sign as anyone.
+
+**Options**
+
+| Option | For | Against |
+| --- | --- | --- |
+| Show authors as before | No work | "Claude" reads as a person, and teammates can't tell what a person vouched for |
+| A review queue for agents' changes | Nothing lands unseen | Undo, drafts, and Publish already review; a queue slows every edit |
+| **Sign agents as agents, mark their work, and keep sign-offs with people** | Teammates see who wrote what, after Publish too; an agent can finish "fix my boards" for its own words | A mark on the canvas, and rules the tools enforce |
+
+**Why.** Publishing is a person vouching for a board. Marking agents' work, and leaving people's words and sign-offs
+to people, keeps that vouch honest while letting agents repair what they wrote.
+
+**Pros**
+- Agent work reads as agent work in both themes and without color: the mark is a word.
+
+**Cons**
+- An agent asked to change a person's frame title, resource card, connection, or note has to ask the person: the
+  shaping tools don't take `replacePeopleText`.
+
+### U-56: Frames are a page layer of boxes and zones
+
+**Decided**
+- A **frame** is a named, described box around items of one page: cards, resource cards, notes, or other frames. A
+  **box** holds a unit or a service; a **zone** is a tinted area that holds services. Each has an icon from a fixed
+  set and a direction (right or down).
+- An item is in at most one frame; frames nest at most three deep, never in a cycle. An item joins a frame only from
+  no frame, the frame itself, or its parent.
+- A frame has no position of its own: its box is what it holds plus padding, so dragging it moves them. On the canvas
+  a frame is a node of its own behind the cards, not a React Flow parent node.
+- Collapsed, a frame is one node, and the arrows and links of what it hides attach to it and merge with a count.
+- Removing a frame keeps what it holds, in the frame that held it; a frame left with no members goes.
+- Agents make frames (`frame_cards`); people collapse, rename, describe, move, and remove them. Arrange lays a page out
+  from the inside out, a frame at a time.
+
+**Question.** You asked to "combine nodes into more logical groups", with "a background group that identifies the
+service", but *group* already meant a run of steps inside a card.
+
+**Options**
+
+| Option | For | Against |
+| --- | --- | --- |
+| Groups across cards | Your word | Clashes with groups of steps in Code and Flow |
+| **Frames: boxes and zones, nested, one per item** | Paper's word; a strict tree keeps layout and collapse simple | Shared code can't sit in two services' frames |
+| Frames that overlap (an item in several) | Shared code in each service | Collapse and layout become ambiguous |
+| React Flow parent nodes | The library's own grouping | Members' positions become relative to the frame, but frames have no position and cards keep theirs in the file |
+
+**Why.** A tree of frames over cards that keep their own positions draws services and units without changing what a
+card is, and collapses cleanly.
+
+**Cons**
+- Shared code goes in a frame of its own, which the tools suggest.
+- Frames don't span pages or boards.
+
+### U-57: Resource cards and connections are anchored, signed, grounded claims
+
+**Decided**
+- A **resource card** stands for what the code talks to that isn't a function: a table, queue, cache, storage, an
+  outside service, or an actor. A table backed by a type lists the type's fields as its columns, compiled; only its
+  key marks are authored.
+- A **connection** is a link with a kind (`http`, `rpc`, `queue`, `event`, `writes`, `reads`, `calls`, `relates`, or
+  `other`), which can leave from a step in its card and name its channel and the type it carries. A link without a
+  kind stays a drawn link and holds only a label.
+- Claims cite code through **anchors**: a block or entrance key, or lines of an evidence file
+  ([U-58](#u-58-evidence-files-are-inputs)). The save signs them over the bytes they cite and guards their keys, so
+  they go missing, outdated, or to review when the code changes, with repairs, as descriptions do.
+- An **agent's** new or changed claim is **grounded** at save: a resource card other than an actor, and an `http`,
+  `rpc`, `queue`, `event`, or `calls` connection, needs an anchor; a name, a table's own columns, and a typed channel
+  must appear in the bytes cited; a carried type must be used there; a `calls` step must be a call Unfold can't
+  follow. A refusal says what failed and what to cite instead. A person's claims are signed and checked, but may lack
+  anchors.
+- Claims never change the graph: Called by, Reached from, Flow, and dashed calls stay as compiled.
+
+**Question.** How can a page show what the graph can't prove, such as a queue between services, a table, or an HTTP
+call to another repository, without passing it off as compiled?
+
+**Options**
+
+| Option | For | Against |
+| --- | --- | --- |
+| Labeled drawn links only, as before | Built | No kind and no evidence; nothing checks them |
+| **Claims that cite code: signed, checked for health, and grounded for agents** | Every claim points at code Unfold verified, drift shows as outdated, and an agent can't draw what it can't cite | Grounding is a text search, not proof; agents must find anchors |
+| Detect queues, tables, and HTTP links in the engine | Compiled, not authored | Engine work with its own precision bar; a later step ([U-44](#u-44-boards-that-span-projects-with-drawn-links)) |
+| Ground people's claims too | One rule | A person sketching what should exist would be refused |
+
+**Why.** Authored claims leave the graph's precision alone ([U-4](#u-4-a-reader-not-an-editor),
+[U-44](#u-44-boards-that-span-projects-with-drawn-links)) while letting a page say how code talks, and anchors make
+each claim checkable and its drift visible.
+
+**Cons**
+- A grounded name proves that the name appears, not what the code does with it.
+- Drawn links stay unchecked, as before.
+
+**Revisit when** compiled data models or links between projects are designed.
+
+### U-58: Evidence files are inputs
+
+**Decided**
+- A project lists the files Unfold doesn't compile but boards may cite, such as SQL migrations, Prisma schemas, and
+  OpenAPI specs, under `[evidence] files` in `.unfold/config.toml`, with the scope's pattern rules.
+- The engine hashes each one on every update and records it as an input with the role `evidence`, as it records
+  `package.json`. Only a file that would otherwise be untracked becomes evidence. Evidence never reaches the
+  languages, never makes the graph incomplete, and never relinks it: a changed evidence file only replaces its input
+  record.
+- The peek sheet shows a verified evidence file as text with line numbers, and anchors cite its lines, signed and
+  checked like code.
+
+**Question.** A table declared in a Prisma schema or a migration has no compiled code to cite.
+
+**Options**
+
+| Option | For | Against |
+| --- | --- | --- |
+| Cite only compiled code | No new concept | Tables declared outside the code can't be grounded |
+| Parse schemas into tables | Compiled tables | Engine work with its own precision bar |
+| **Hash them as inputs, and cite their lines** | A role, not a record; anchors verify the same way as code's | Nothing checks what the lines mean, only that they haven't changed |
+
+**Why.** The graph already records inputs by hash ([graph model: input](graph-model.md#input)), so evidence files
+reuse it, and a citation to them is as checkable as one to code.
+
+### U-59: The Diagram view and type cards
+
+**Decided**
+- A card has a third view, **Diagram**: one compact node with its kind's mark, its name, `file:line`, and its
+  description. Its calls to one card merge into one arrow: one call keeps its typed label, several read "N calls"
+  and list in Selected. An entrance in Diagram view is a node marked with its kind.
+- The lens is **Diagram | Flow | Code**, on ⌘1, ⌘2, and ⌘3 in that order, so Code moved from ⌘1 to ⌘3. Each card
+  keeps its own switch.
+- A **type card** is a card of an interface, type alias, enum, or class. In Diagram view it lists its fields, the
+  inherited ones under the type they come from; an interface, type alias, or enum lists them in Flow too, and a class
+  keeps its Flow. A field whose type has a card of the same project has a compiled **type arrow** to it. Type
+  declarations are found by search, Add, and the peek sheet's `⊕`.
+- **Heritage links:** the names in `extends` and `implements` clauses, and Python's positional bases, are type links
+  marked with their heritage, so inherited fields are compiled.
+- Step groups are drawn in Flow too: a titled region, or one step when collapsed.
+
+**Question.** A page about a system needs boxes and arrows, and a data model needs types with their fields, but a card
+showed only Code or Flow.
+
+**Options**
+
+| Option | For | Against |
+| --- | --- | --- |
+| Code and Flow only | Nothing to build | Overview pages are walls of source |
+| **A third view per card, and type cards** | Context cards as nodes beside the function in Flow; types are compiled cards, not drawn shapes | A third lens position, and Code's key moved |
+| Types as resource cards | One kind of box for data | Their fields would be authored, and could drift from the code |
+
+**Why.** Diagram view is the box Mermaid export already drew for a card, now in the app, and type cards make data
+shapes compiled instead of drawn.
+
+### U-60: Page images from a hidden render window, and page checks
+
+**Decided**
+- Images of a page, for an agent's `get_screenshot` and for **Share › Export PNG**, are drawn by one hidden,
+  offscreen window that the main process creates on demand. It has every window's hardening and loads the same UI,
+  which draws the page with the same canvas, read-only, in the person's theme. It never opens or claims a board, and
+  the only message it may send is its answer.
+- **Page checks** measure the page as that window draws it, and report overlaps, crossings (lines under cards
+  included), density, unlabeled Flow steps, missing descriptions, claims that cite nothing, strays, and detailed
+  cards on overview pages, each with the tool that fixes it. `check` returns them beside the board's health. The
+  limits are in one file.
+
+**Question.** An agent can't see the canvas, and the canvas lays itself out by measuring text in a window, not in
+Rust.
+
+**Options**
+
+| Option | For | Against |
+| --- | --- | --- |
+| Capture a visible window | No new window | Moves the person's view, and only what fits on the screen |
+| Draw pages in Rust, as SVG | No browser needed | A second renderer that drifts from the canvas |
+| **A hidden offscreen window with the same canvas** | Exactly what the person sees, larger than the screen, at a fixed scale | One more window to harden and keep from hanging |
+| Images only, without checks | Less to build | An agent that can't see images can't review its page |
+
+**Why.** Only the canvas can draw and measure a page truly, and checks as data let any agent review its work,
+including one that can't see images.
+
+### U-61: The board format stays version 1
+
+**Decided**
+- `unfold-board` stays version 1. Pages gain optional `frames`, `resources`, and `notes`; links gain the connection
+  fields; cards and pages accept the `diagram` view; step groups gain an optional `author`. Every new array and field
+  is optional and left out of the file when empty, so every existing board reads and writes byte for byte as before.
+- Cards, step groups, frames, resource cards, links, and notes share one id space per page, and `projects` lists every
+  other project any item names.
+- The rules inside a page (frames' members, links' ends, notes' attachments, nesting) live in one checker that runs
+  when a file is parsed and again before every save.
+- A page's revision, which tools report and `expectRevision` takes, is the first 8 hex digits of a hash of the page as
+  the file writes it.
+
+**Question.** [U-42](#u-42-the-board-format-pages-folders-and-other-projects) keeps one version and no reader for
+older shapes. Should the new items change the version?
+
+**Options**
+
+| Option | For | Against |
+| --- | --- | --- |
+| Version 2, with a migration | An older build refuses new files by version | A migration and a second reader for a format that has never shipped |
+| **Version 1, with new fields optional and omitted when empty** | Every board, the sample included, round-trips unchanged; one reader | An older build refuses a file with the new fields as unknown fields, not by version |
+| A separate file for frames and claims | The board file stays as it was | Two files to keep in step and publish together |
+
+**Why.** Nothing has shipped ([How we got here](#the-studio-redesign)), and fields left out when empty keep existing
+files exactly as they are.
+
+### U-62: Teaching through instructions, a guide, prompts, and descriptions
+
+**Decided**
+- Short **instructions** (1,608 characters) arrive when an agent connects. Their first paragraph stands on its own
+  and ends with `get_guide({topic: "start"})`.
+- A **guide** of eight topics (`start`, `diagrams`, `connections`, `data-models`, `graph`, `writing`, `setup`, and
+  `repairs`) comes from `get_guide` on demand. `start` asks for a diagram brief before a new page, and makes review
+  mandatory: `check` and `get_screenshot` after each section.
+- **Tool descriptions** (at most 2,048 characters) say when to use a tool, the rules it enforces, and which topic to
+  read. **Results** start with a header naming the project, board, page, revision, and agent, and end with what to
+  do next; **refusals** say what failed, why, and what to call instead.
+- Six **prompts** are recipes the person starts, such as `/unfold:service-map`.
+- A test checks that every tool name and value the texts write is one the tools take, and a task suite with a rubric
+  is how the texts are tuned.
+
+**Question.** An agent knows only what reaches its context, and each client limits each channel.
+
+**Options**
+
+| Option | For | Against |
+| --- | --- | --- |
+| One long instructions text | Everything at once | Claude Code cuts instructions at 2,048 characters |
+| Documentation outside the app | Easy to write | Agents don't read it, and it drifts from the tools |
+| A skill or plugin per agent | Rich teaching | Something else to install and keep in step for each agent |
+| **Instructions, a guide on demand, descriptions, results, and prompts** | Each channel within its limits, and nothing to install; Paper's pattern | Teaching spread over many texts, which a test keeps consistent |
+
+**Why.** Paper's server shows the pattern works: the instructions are the table of contents, the guide is the book,
+and results and errors are the coach.
+
+**Cons**
+- The texts are product surface that needs tuning with real agents, on the person's machine.
+
+### U-63: The current view and links that only the server reads
+
+**Decided**
+- Each window reports its board, page, selection, lens, and the items in view to the main process when they change,
+  and tools default to the window used last, so "explain the selected card" needs nothing more. The selection can be
+  a card, a Flow step, a step group, a link, a line, a frame, a resource card, a note, or a Diagram node's merged
+  arrow.
+- **Copy link**, in the menus of pages and of every item, copies a reference such as
+  `unfold://ts-orders/.unfold/boards/order-placement.json?page=page-1&item=create-order`. Every tool that takes a
+  board, page, or item accepts one. Only the MCP server parses links; clicking one opens nothing.
+- Results give ids. Once an agent starts, it passes board and page ids, so it keeps working on the same page when the
+  person switches; it says names and `file:line` to the person, never ids or keys.
+
+**Question.** How does a person point an agent at a page, a card, or a line, and keep it there?
+
+**Options**
+
+| Option | For | Against |
+| --- | --- | --- |
+| Keys and paths typed in the chat | Nothing to build | People don't know keys |
+| Links that open Unfold from a browser | Clickable anywhere | A registered handler for something only agents need |
+| **Reports of the view, and links only the server reads** | Defaults follow what the person looks at, and a link pins one thing | A link to a draft stops working once it's published, because the board's id changes |
+
+**Why.** Defaults make the common case free, links make the rest explicit, and neither reaches outside the machine.
+
 ## Engineering
 
 ### U-32: Repository layout: a Cargo workspace and a pnpm UI
@@ -1759,6 +2187,15 @@ All of them update themselves. Every migration step runs on all three in CI from
 | Migrating V1 boards, or keeping old action ids | Considered | Nothing has shipped; no backward compatibility ([How we got here](#the-studio-redesign)) |
 | The same board open in several windows, kept in sync | Considered | A small collaborative editor, out of proportion for V1 (U-37) |
 | Releasing macOS first, and Windows and Linux in V2 | Proposal A, and our plan with Tauri | With Chromium everywhere, all three ship in V1 (U-35) |
+| A separate MCP process or CLI for agents | Considered | It would fail while Unfold has the project open (U-52) |
+| A token for the local MCP server | Considered | Any program on the machine can already read the repositories (U-52) |
+| `@modelcontextprotocol/sdk` 1.x, with sessions | Considered | It speaks revisions up to 2025-11-25 only (U-53) |
+| The engine or the main process writing agents' edits to the board file | Considered | The holding window's document and history would go stale (U-54) |
+| A review queue for agents' changes | Considered | Undo, drafts, Publish, and the agent mark review them (U-55) |
+| Frames as React Flow parent nodes, or an item in several frames | Considered | Positions would become relative to frames; collapse and layout ambiguous (U-56) |
+| Grounding people's claims | Considered | A person sketching what should exist would be refused (U-57) |
+| Board format version 2 for frames and claims | Considered | Nothing has shipped; optional fields keep every file as it was (U-61) |
+| Drawing page images in Rust | Considered | A second renderer that drifts from the canvas (U-60) |
 
 ## Still open
 
@@ -1772,4 +2209,6 @@ All of them update themselves. Every migration step runs on all three in CI from
 | Should Mermaid export optionally include source text? | Labels only | When someone asks |
 | The final keyboard shortcuts | The [keyboard map](ui-shell.md#keyboard) | The Step 10 review |
 | Dragging tabs from one window into another | Open in new window only | When someone needs it (U-37) |
-| Links between projects detected from the code (a client's call to a route) | Drawn links only | A later step (U-44) |
+| Links between projects detected from the code (a client's call to a route) | Drawn links, and `http` connections that cite both sides | A later step (U-44, U-57) |
+| Data models compiled from schemas (SQL, Prisma, ORM columns without annotations) | Tables backed by a type, or anchored to evidence files | After seeing which table sources agents cite most (U-57, U-58) |
+| Does the local MCP server need a token? | No token | If people run Unfold on shared machines (U-52) |

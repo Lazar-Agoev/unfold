@@ -525,7 +525,7 @@ workspace's board commands ([IPC](ipc.md#boards)) drive it.
 
 | Field | Rule |
 | --- | --- |
-| `format`, `version` | `"unfold-board"` and `1`. Anything else is refused; there is no other version and no reader for an older shape |
+| `format`, `version` | `"unfold-board"` and `1`. Anything else is refused; there is no other version and no reader for an older shape. Frames, resource cards, connections, and notes added only optional fields ([U-61](decisions-and-tradeoffs.md#u-61-the-board-format-stays-version-1)) |
 | `title` | Not blank |
 | `folder` | Optional: the board's folder ([below](#pages-cards-and-folders)); absent at the project's top level |
 | `projects` | Exactly the sorted set of other projects any item of any page names: cards' `ref.project`, resources' `project`, anchors' `project`, and links' `carriesProject`; `[]` when every item is the board's own project's. Anything else is refused |
@@ -607,7 +607,7 @@ facts' hash of the reference's project, so text can never be signed against sour
 | A card (and its guard) | The block's range, or an entrance's evidence range (in its source file or configuration input) |
 | A group | From the start of its first member to the end of its last |
 | A label | The labeled block's range |
-| A drawn link's label | `"<from card's guard signature>\n<to card's guard signature>"` (each the hex digits) |
+| A link's label when the link cites no code (a drawn link, or a connection without a step or anchors) | `"<from card's guard signature>\n<to card's guard signature>"` (each the hex digits) |
 | A resource card, and its description | Its type's block range (a table backed by a type), then each anchor's bytes, each followed by `\n` |
 | A connection (a link with a `kind` that cites code), and its description and label | Its step's block range, then each anchor's bytes, each followed by `\n` |
 | A frame's description | Its member cards' signatures (direct and in nested frames, sorted by card id), hex, joined with `\n` |
@@ -618,9 +618,10 @@ A save signs unsigned claims, and signs a resource card or connection again when
 starts citing code (a drawn link given a kind and a step, say) has its label signed again over that code.
 
 When a signature no longer matches the verified bytes (or the bytes do not verify), the description, label, or claim
-is **outdated**. A drawn link's label is signed when it is saved but never reported outdated: a drawn link is a
-person's claim, and health checks only that both ends still exist. A label on a drawn link with a resource or frame
-end, and a claim that cites no code (an `actor`, a `writes` connection without a step), aren't signed.
+is **outdated**. A drawn link's label (or that of a connection citing no code) is signed when it is saved but never
+reported outdated: such a link is a claim about its ends only, and health checks only that both ends still exist. A
+label on a drawn link with a resource or frame end, and a claim that cites no code (an `actor`, a `writes`
+connection without a step), aren't signed.
 
 ### Guards and reconnecting
 
@@ -646,7 +647,8 @@ connected are kept unchanged. After a graph update, references reconnect by key:
 ### Grounding
 
 A save checks every claim that is new or changed in what it says or cites (not in its position or its texts), after
-its references were checked, so what it cites exists:
+its references were checked, so what it cites exists
+([U-57](decisions-and-tradeoffs.md#u-57-resource-cards-and-connections-are-anchored-signed-grounded-claims)):
 
 - a table backed by a type marks only the type's fields (its properties, inherited ones included), and a `relates`
   connection joins only columns its tables have (the fields of a table backed by a type);
@@ -806,13 +808,16 @@ handlers, and one Flow as Mermaid flowchart text ([architecture §10.5](architec
   construction's kind (else its first edge's), or "N calls" for several, and dashed only when every
   edge is; an entrance points at
   each handler (`handler`), with a dashed arrow to a placeholder for a target not on the page.
-  Arrows from the graph join only cards of one project; links drawn on the page are dashed arrows with
-  their label. A connection is labeled with its kind's word (`HTTP`, `RPC`, `queue`, `event`,
-  `writes`, `reads`, `runtime call`, `relates`), a relationship's cardinality in words and its
-  columns, its channel, and its label, and drawn with its kind's line: solid for `http`, `rpc`, and
-  `writes`, thick for `queue`, dotted for `event`, `calls`, and `other`, and a plain line for
-  `relates`; a `reads` arrow points from the resource back at the code. A connection with a step
-  leaves from the Flow node that shows it; one that ends at a frame points at its subgraph.
+  Arrows from the graph join only cards of one project; links drawn on the page are dashed arrows
+  (`-.->`) with their label. A connection is labeled with its kind's word (`HTTP`, `RPC`, `queue`,
+  `event`, `writes`, `reads`, `runtime call`, `relates`), a relationship's cardinality in words and
+  its columns, its channel, and its label, and drawn with its kind's line: solid for `http`, `rpc`,
+  and `writes`, thick for `queue`, dashed (`-.->`, as drawn links) for `event`, `calls`, and
+  `other`, and a plain line for `relates`; a `reads` arrow points from the resource back at the code.
+  A connection with a step leaves from the Flow node that shows it; one that ends at a frame points
+  at its subgraph.
+- **Not exported:** type arrows and a type card's fields (a type card is a box), a connection's
+  carried type, and whether a step group is collapsed.
 - **Labels are the app's** ([U-27](decisions-and-tradeoffs.md#u-27-the-reader-keeps-the-v71-rules)):
   the authored label or the fallback name, never exact source, plus a line per listed callback. An
   outdated description, label, or frame description is marked `(description outdated)`, and an outdated

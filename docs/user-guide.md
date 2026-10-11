@@ -91,9 +91,9 @@ Every card shows a function one of three ways:
 - **Flow**, a diagram of its steps, branches, and loops;
 - **Code**, its exact source, with folds and links.
 
-The **Diagram | Flow | Code** switch above the canvas (⌘1, ⌘2, ⌘3) sets it for the page. Each card also has its own
-switch, which is saved with the board, so a page can show the functions around the one that matters as boxes and
-that one in Flow.
+The **Diagram | Flow | Code** switch above the canvas (⌘1, ⌘2, ⌘3) sets it for the page. Each function card also has
+its own switch, which is saved with the board, so a page can show the functions around the one that matters as boxes
+and that one in Flow; an entrance follows the page's.
 
 A **type** (an interface, a type alias, an enum, or a class) shows its fields in Diagram view: each field's name and
 written type, `?` and `readonly` as written, and the fields it inherits under the type they come from. Click a type
@@ -148,7 +148,7 @@ draws them for you ([Connecting an agent](#connecting-an-agent)); you adjust the
   Nothing collapses by itself.
 - **Rename** it by double-clicking its title. Right-click the title for its menu: Rename…, Describe… (write its
   description in Selected), Collapse or Expand, Copy link, and **Remove frame (keep cards)**, which leaves its cards
-  where they are. What you write is yours.
+  where they are, in the frame around it if there is one. What you write is yours.
 - **Move** it by dragging its title: everything in it moves with it, as one undo step.
 - **Arrange** (⇧A) lays out each frame's cards by call depth, to the right or downward as the frame says, then the
   page around the frames.
@@ -178,11 +178,11 @@ with the agent mark when an agent drew them, and look the same in Diagram, Flow,
   its label and description in Selected, or remove it. Connections are never compiled: Called by and Reached from
   list only what the code proves.
 - **Notes** are a sentence or two on the page: a caveat, a reading order, an open question. A note attached to a
-  card, frame, table, or connection moves with it; drag it to put it elsewhere beside its item. Double-click a note
-  to edit it, right-click to remove it. A note whose item is removed stays where it was.
+  card, frame, table or other resource card, or link moves with it; drag it to put it elsewhere beside its item.
+  Double-click a note to edit it, right-click to remove it. A note whose item is removed stays where it was.
 
 **Arrange** puts a table after the code that writes it and before the code that reads it, each note attached to a
-card, table, or frame under its item, and each note on a connection beside the middle of its line, clear of the
+card, resource card, or frame under its item, and each note on a link beside the middle of its line, clear of the
 cards. A note whose card has grown over it since is shown under the card.
 
 **When the code changes.** Descriptions and labels remember the code they were written for. If that code changes,
@@ -318,8 +318,8 @@ What an agent can set up and read:
   changes them only when you ask, and shows you the change.
 - **Boards.** Create a draft, empty or traced from an entrance, in a background tab of the window you used last, so
   your view doesn't move; add, rename, move, copy, and delete pages; file boards into folders, rename them, and copy
-  them. A change to a board is one undo step named for the agent ("Claude · Edit pages"), and a page with your words
-  on it is deleted only when you asked for that. When you ask to see something, or the work is done, the agent shows
+  them. A change to a board is one undo step, and a page with your words on it is deleted only when you asked for
+  that. When you ask to see something, or the work is done, the agent shows
   you the board, page, or card: the window comes forward with it selected, and Back returns you where you were.
 - **Code.** Search names and text, list how a project starts, and read a function (its source, Flow steps, throws,
   and each call with where it goes and its label), a type's fields, an entrance's handlers, a call's contract, a file,
@@ -333,10 +333,12 @@ What an agent can build:
   take items off it. Then shape it: step groups that make a long Flow read in a few named steps, frames around
   units, services, and zones, tables, queues, and other resource cards, typed connections (HTTP, queues, events,
   reads and writes), and notes; and explain it: descriptions and Flow labels.
-- **Grounded, every time.** A table, queue, or connection an agent adds must cite code (or lines of an evidence
-  file) whose text names it, and Unfold refuses what it can't find there, so the agent says what it found in the
-  chat instead of drawing it. Everything an agent writes carries the agent mark.
-- **One step at a time.** Each change is one undo step named for the agent ("Claude · Frame cards"), saved at once.
+- **Grounded, every time.** A table, queue, or other resource card an agent adds (an actor aside), and an HTTP,
+  RPC, queue, event, or runtime-call connection, must cite code (or lines of an evidence file) whose text names it,
+  and Unfold refuses what it can't find there, so the agent says what it found in the chat instead of drawing it;
+  checking the page flags any other connection that cites nothing. Everything an agent writes carries the agent
+  mark.
+- **One step at a time.** Each change is one undo step, saved at once.
   While it works, the page's top bar says "Claude is working…" and what it changed is outlined, until it finishes
   and its summary shows as a toast. It never replaces or removes your words unless you asked.
 - **Reviews.** An agent reads a page (everything on it, with the arrows Unfold draws and the Flow steps still
@@ -345,7 +347,8 @@ What an agent can build:
 - **Repairs.** After a refactor, an agent can reconnect cards to renamed code and remove what's gone. It re-signs or
   accepts only what an agent wrote: what you wrote is yours to sign off, so it tells you instead.
 
-Agents can't publish, discard, or delete boards, remove projects, change Preferences, or edit your code.
+Agents can't publish, discard, or delete boards, move them back to drafts, remove projects, change Preferences, or
+edit your code.
 
 How an agent learns this: when it connects, Unfold tells it what Unfold is and its rules, and it reads Unfold's
 guide (how to work, how to build a page that reads well, how to draw connections and data models, what the graph

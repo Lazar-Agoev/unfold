@@ -102,6 +102,10 @@ conflict (`settings_conflict`). The edits come from:
 - **The not-compiled Home's scope tree**, whose changes are kept in memory and written just before the first
   Compile, so nothing is written to a folder that was never compiled.
 - **The manual entrance editor**, which adds, replaces, or removes one `[[entrance]]` table.
+- **An agent's `update_project_settings`**, when the person asks for it through the MCP server: the same edits,
+  all or nothing, by their engine names (`set_detector`, `add_evidence_pattern`, …), and background updates after
+  them. The result shows the change to the file as a line diff
+  ([desktop/README.md](../desktop/README.md#the-mcp-server)).
 
 When the file doesn't parse, Project settings shows the error with Open in editor, and the edits that need a
 valid file wait until it is fixed.
@@ -133,7 +137,8 @@ import's edge is `ambiguous` and the import is listed in Problems, without makin
 
 `[evidence] files` lists files Unfold doesn't compile but boards may cite: SQL migrations, Prisma schemas,
 OpenAPI specs, Terraform, docker-compose files. A board's resource cards and connections anchor to a line
-range of one ([reader: boards](reader.md#boards)).
+range of one ([reader: boards](reader.md#boards),
+[U-58](decisions-and-tradeoffs.md#u-58-evidence-files-are-inputs)).
 
 - The patterns follow [Scope](#scope)'s rules: a pattern matches a file, a folder that contains it, or a glob,
   relative to the project's folder, and an empty pattern, one starting with `/`, one with a `.` or `..`
