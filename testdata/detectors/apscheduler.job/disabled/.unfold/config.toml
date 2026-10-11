@@ -1,9 +1,0 @@
-# Detector case: testdata/detectors/apscheduler.job/disabled.
-version = 1
-
-[[python.project]]
-root = "."
-source_roots = ["src"]
-
-[detectors]
-disabled = ["apscheduler.job"]

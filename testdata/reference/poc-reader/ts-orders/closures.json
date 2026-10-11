@@ -45,52 +45,6 @@
     "src/routes/orders.ts#function:createOrder",
     "src/services/order-service.ts#class:OrderService/method:place"
   ],
-  "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/jobs/import-orders.ts#importOrders\"]": [
-    "src/db/repository.ts#class:OrderRepository/method:insert",
-    "src/jobs/import-orders.ts#function:importOrders",
-    "src/lib/validate.ts#function:validateOrder",
-    "src/services/order-service.ts#class:OrderService/method:place"
-  ],
-  "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/jobs/retry-failed.ts#retryFailed\"]": [
-    "src/jobs/retry-failed.ts#function:retryFailed",
-    "src/jobs/send-email.ts#function:flushOutbox",
-    "src/jobs/send-email.ts#function:sendEmail",
-    "src/lib/retry.ts#function:withRetry"
-  ],
-  "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]": [
-    "src/cli.ts#function:main/switch[0]/case[1]",
-    "src/db/connection.ts#",
-    "src/db/connection.ts#function:connect",
-    "src/db/index.ts#",
-    "src/db/repository.ts#",
-    "src/db/repository.ts#class:OrderRepository",
-    "src/jobs/report.ts#",
-    "src/lib/logger.ts#",
-    "src/lib/validate.ts#",
-    "src/services/events.ts#",
-    "src/services/notifier.ts#",
-    "src/services/notifier.ts#class:Notifier",
-    "src/services/notifier.ts#class:Notifier/method:notify",
-    "src/services/notifier.ts#class:ReceiptNotifier",
-    "src/services/notifier.ts#function:notifyCustomer",
-    "src/services/order-service.ts#",
-    "src/services/order-service.ts#class:OrderService",
-    "src/services/order-service.ts#class:OrderService/constructor:constructor",
-    "src/services/payment.ts#",
-    "src/services/payment.ts#class:PaymentProvider",
-    "src/services/payment.ts#class:StripeProvider",
-    "src/services/payment.ts#function:createProvider",
-    "src/types.ts#"
-  ],
-  "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/jobs/retry-failed.ts#retryFailed\"]": [
-    "src/jobs/retry-failed.ts#function:retryFailed",
-    "src/jobs/send-email.ts#function:flushOutbox",
-    "src/jobs/send-email.ts#function:sendEmail",
-    "src/lib/retry.ts#function:withRetry"
-  ],
-  "entrance:[\"manual\",\"event\",\"\",\"SIGTERM\",\"src/server.ts#shutdown\"]": [
-    "src/server.ts#function:shutdown"
-  ],
   "entrance:[\"node-cron.schedule\",\"schedule\",\"\",\"*/15 * * * *\",\"(…)\"]": [
     "src/db/repository.ts#class:OrderRepository/method:list",
     "src/jobs/report.ts#function:reportMetrics",
@@ -365,5 +319,51 @@
     "src/types.ts#",
     "src/worker.ts#",
     "src/worker.ts#function:purge"
+  ],
+  "entrance:configured:import": [
+    "src/db/repository.ts#class:OrderRepository/method:insert",
+    "src/jobs/import-orders.ts#function:importOrders",
+    "src/lib/validate.ts#function:validateOrder",
+    "src/services/order-service.ts#class:OrderService/method:place"
+  ],
+  "entrance:configured:replay": [
+    "src/jobs/retry-failed.ts#function:retryFailed",
+    "src/jobs/send-email.ts#function:flushOutbox",
+    "src/jobs/send-email.ts#function:sendEmail",
+    "src/lib/retry.ts#function:withRetry"
+  ],
+  "entrance:configured:report": [
+    "src/cli.ts#function:main/switch[0]/case[1]",
+    "src/db/connection.ts#",
+    "src/db/connection.ts#function:connect",
+    "src/db/index.ts#",
+    "src/db/repository.ts#",
+    "src/db/repository.ts#class:OrderRepository",
+    "src/jobs/report.ts#",
+    "src/lib/logger.ts#",
+    "src/lib/validate.ts#",
+    "src/services/events.ts#",
+    "src/services/notifier.ts#",
+    "src/services/notifier.ts#class:Notifier",
+    "src/services/notifier.ts#class:Notifier/method:notify",
+    "src/services/notifier.ts#class:ReceiptNotifier",
+    "src/services/notifier.ts#function:notifyCustomer",
+    "src/services/order-service.ts#",
+    "src/services/order-service.ts#class:OrderService",
+    "src/services/order-service.ts#class:OrderService/constructor:constructor",
+    "src/services/payment.ts#",
+    "src/services/payment.ts#class:PaymentProvider",
+    "src/services/payment.ts#class:StripeProvider",
+    "src/services/payment.ts#function:createProvider",
+    "src/types.ts#"
+  ],
+  "entrance:configured:retry": [
+    "src/jobs/retry-failed.ts#function:retryFailed",
+    "src/jobs/send-email.ts#function:flushOutbox",
+    "src/jobs/send-email.ts#function:sendEmail",
+    "src/lib/retry.ts#function:withRetry"
+  ],
+  "entrance:configured:shutdown": [
+    "src/server.ts#function:shutdown"
   ]
 }

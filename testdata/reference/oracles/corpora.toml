@@ -9,7 +9,7 @@
 # languages  The languages compiled and checked.
 # committed  Whether the oracle files are committed here (default true); uncommitted ones are
 #            regenerated into target/oracles/ wherever the corpus is available.
-# settings   .unfold/config.toml written into the temporary copy of a corpus that has none.
+# settings   unfold.toml written into the temporary copy of a corpus that has none.
 # pyright    Python only: the proof of concept's saved Pyright rows (`rows`, relative to the PoC
 #            repository), the lock id whose `poc_source_sha256` they were computed for (`lock`),
 #            and prefix mappings from their paths to the folder's (`paths`).
@@ -44,8 +44,6 @@ folder = "fixtures/python-ranges"
 languages = ["python"]
 # The PoC indexed this corpus with source root fixtures/ (spikes/python/corpus.lock.json).
 settings = """
-version = 1
-
 [[python.project]]
 root = "."
 source_roots = ["fixtures"]
@@ -59,8 +57,6 @@ name = "fastapi-template"
 lock = "fastapi-full-stack-template-0.12.0"
 languages = ["python"]
 settings = """
-version = 1
-
 [[python.project]]
 root = "."
 source_roots = ["backend"]
@@ -91,8 +87,6 @@ lock = "codegraph-self"
 languages = ["typescript"]
 committed = false
 settings = """
-version = 1
-
 [scope]
 exclude = ["reports/**", "test/fixtures/**"]
 """

@@ -1,0 +1,5 @@
+# Detector case: testdata/detectors/pyproject.script/callable-instance.
+
+[[python.project]]
+root = "."
+source_roots = ["src", "legacy"]

@@ -91,9 +91,11 @@ resolved cross-file targets, boards, and canonical export use structural keys.
 | Unnamed child | `kind[n]`, counting earlier siblings of its kind, named or unnamed |
 | Nested child | Parent key plus `/step`; root children follow `#` directly |
 | Entrance | `entrance:` plus the canonical JSON identity tuple, with duplicate ordinal suffix |
+| Configured entrance | `entrance:configured:` plus its `[[entrance]]` table's `id` |
 
 Names escape `%`, `/`, `#`, `[`, and `]` using uppercase percent encoding. Keys are derived,
-never chosen: validation re-derives them. SQL interns keys for the database's lifetime.
+never chosen: validation re-derives them. The exception is a manual entrance, whose key is the
+`id` its `[[entrance]]` table declares, so it survives edits to the table's other values. SQL interns keys for the database's lifetime.
 Ordinal steps can shift after insertions; [board guards](reader.md#guards-and-reconnecting)
 prevent silently attaching an explanation to different code. Renames/moves require reconnecting.
 

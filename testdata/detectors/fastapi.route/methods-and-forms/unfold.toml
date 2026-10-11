@@ -1,0 +1,5 @@
+# Detector case: testdata/detectors/fastapi.route/methods-and-forms.
+
+[[python.project]]
+root = "."
+source_roots = ["src"]

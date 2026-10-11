@@ -36,7 +36,7 @@ fn sources(discovery: &Discovery) -> Vec<&str> {
 }
 
 /// The PoC's indexed files and inputs from a reference manifest, with path prefixes mapped to
-/// the Unfold folder (`codegraph.json` files become `.unfold/config.toml`).
+/// the Unfold folder (`codegraph.json` files become `unfold.toml`).
 fn reference(corpus: &str, prefixes: &[(&str, &str)]) -> (BTreeSet<String>, BTreeSet<String>) {
     let text = fs::read_to_string(
         testdata()
@@ -48,7 +48,7 @@ fn reference(corpus: &str, prefixes: &[(&str, &str)]) -> (BTreeSet<String>, BTre
     let manifest: serde_json::Value = serde_json::from_str(&text).unwrap();
     let map = |path: &str| -> String {
         if path.ends_with("codegraph.json") {
-            return ".unfold/config.toml".to_owned();
+            return "unfold.toml".to_owned();
         }
         prefixes
             .iter()
@@ -174,7 +174,7 @@ fn default_exclusions_are_never_walked() {
         (".pytest_cache/x.py", ""),
         (".ruff_cache/x.py", ""),
         (".git/hooks/x.ts", ""),
-        ("sub/.unfold/config.toml", "version = 1"),
+        ("sub/unfold.toml", ""),
         ("sub/.unfold/x.ts", ""),
         ("node_modules.ts", ""),
     ]);
@@ -182,7 +182,7 @@ fn default_exclusions_are_never_walked() {
     assert_eq!(sources(&discovery), ["a.ts", "node_modules.ts"]);
     assert!(
         discovery.inputs.is_empty(),
-        "a nested .unfold/ is never read: {:?}",
+        "a nested unfold.toml or .unfold/ is never read: {:?}",
         discovery.inputs
     );
     let pruned: Vec<String> = discovery
@@ -278,7 +278,7 @@ fn ignore_files_apply_at_every_level() {
 fn scope_and_languages_decide_what_is_indexed() {
     let dir = folder(&[
         (
-            ".unfold/config.toml",
+            "unfold.toml",
             "languages = [\"python\"]\n[scope]\ninclude = [\"app\"]\nexclude = [\"app/legacy/**\"]\n",
         ),
         ("app/main.py", ""),
@@ -318,13 +318,9 @@ fn scope_and_languages_decide_what_is_indexed() {
     assert_eq!(
         inputs,
         [
-            (
-                ".unfold/config.toml",
-                InputRole::UnfoldConfig,
-                ScopeStatus::InScope
-            ),
             ("app/pyproject.toml", InputRole::Pyproject, ScopeStatus::InScope),
             ("pyproject.toml", InputRole::Pyproject, ScopeStatus::NotIncluded),
+            ("unfold.toml", InputRole::UnfoldConfig, ScopeStatus::InScope),
         ]
     );
     let report: Vec<(String, SkipReason, u32)> = discovery

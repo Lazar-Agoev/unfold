@@ -259,7 +259,7 @@ review. Calls Unfold can't follow are facts about the code, not problems.
 
 ## Settings
 
-Settings for a project live in `.unfold/config.toml`, which is shared with your team through the repository. Open
+Settings for a project live in `unfold.toml`, which is shared with your team through the repository. Open
 them with **Settings** on Home or in the project menu:
 
 - **General:** the project's name, which boards of other projects use for it, and whether background updates are on.
@@ -314,7 +314,7 @@ What an agent can set up and read:
 
 - **Projects.** Add a folder (Unfold asks you first: "Claude wants to add `~/repos/payments` to your workspace."),
   compile it, and change its settings: scope, detectors, Python projects, manual entrances, the project's name,
-  background updates, and evidence files. Settings live in `.unfold/config.toml`, which your team shares, so an agent
+  background updates, and evidence files. Settings live in `unfold.toml`, which your team shares, so an agent
   changes them only when you ask, and shows you the change.
 - **Boards.** Create a draft, empty or traced from an entrance, in a background tab of the window you used last, so
   your view doesn't move; add, rename, move, copy, and delete pages; file boards into folders, rename them, and copy
@@ -372,10 +372,10 @@ and you can leave them out for what you're looking at:
 
 | Path | Commit it? |
 | --- | --- |
-| `.unfold/config.toml` | Yes: your team's shared settings. It appears only when you change a setting |
+| `unfold.toml` | Yes: your team's shared settings. It appears only when you change a setting |
 | `.unfold/boards/` | Yes: your published boards |
 | `.unfold/local/` | No. It holds the graph cache, your drafts and unpublished changes, and view state, and it contains its own `.gitignore`, so Git ignores it automatically |
 
 After a first Compile with default settings, Git sees nothing new. If your team would rather not share anything,
-add `.unfold/` to the repository's `.gitignore`; published boards then simply stay on each machine. The graph cache
+add `unfold.toml` and `.unfold/` to the repository's `.gitignore`; settings and published boards then simply stay on each machine. The graph cache
 (`.unfold/local/cache/`) is safe to delete at any time; drafts are not, so leave `.unfold/local/drafts/` alone.

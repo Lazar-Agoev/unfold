@@ -1,6 +1,6 @@
 /**
  * First-Compile scope changes, kept in memory per project until Compile writes them: nothing is
- * written to `.unfold/config.toml` before the person compiles.
+ * written to `unfold.toml` before the person compiles.
  */
 
 import { create } from "zustand";

@@ -1,0 +1,5 @@
+# Detector case: testdata/detectors/fastapi.route/annotation-fastapi.
+
+[[python.project]]
+root = "."
+source_roots = ["src"]

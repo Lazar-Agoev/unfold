@@ -101,7 +101,7 @@ mod tests {
             ("src/b.md", "b"),
             ("dist/out.js", "x"),
             ("node_modules/x/index.js", "x"),
-            (".unfold/config.toml", "version = 1"),
+            (".unfold/boards/a.json", "{}"),
             (".gitignore", "dist/\n"),
         ] {
             let full = root.join(path);

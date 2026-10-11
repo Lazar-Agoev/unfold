@@ -1,0 +1,5 @@
+# Detector case: testdata/detectors/apscheduler.job/hidden-registration-2.
+
+[[python.project]]
+root = "."
+source_roots = ["src"]

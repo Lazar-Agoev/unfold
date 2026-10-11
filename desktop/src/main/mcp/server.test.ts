@@ -172,7 +172,7 @@ const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>,
   project_config: () => ({
     exists: true,
     text: "",
-    settings: { languages: null, include: [], exclude: ["dist/**"], disabledDetectors: [], pythonProjects: [], entrances: [], evidence: ["docs/queues.md"] },
+    settings: { languages: null, include: [], exclude: ["dist/**"], disabledDetectors: [], pythonProjects: [], applications: [], entrances: [], overrides: [], evidence: ["docs/queues.md"] },
     error: null,
     name: { value: "ts-orders", isDefault: true },
   }),

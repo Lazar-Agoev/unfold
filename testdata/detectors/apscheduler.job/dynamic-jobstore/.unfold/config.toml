@@ -1,6 +1,0 @@
-# Detector case: testdata/detectors/apscheduler.job/dynamic-jobstore.
-version = 1
-
-[[python.project]]
-root = "."
-source_roots = ["src"]

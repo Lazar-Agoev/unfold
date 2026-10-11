@@ -1,0 +1,8 @@
+# Detector case: testdata/detectors/pyproject.script/disabled.
+
+[[python.project]]
+root = "."
+source_roots = ["src", "legacy"]
+
+[detectors]
+disabled = ["pyproject.script"]

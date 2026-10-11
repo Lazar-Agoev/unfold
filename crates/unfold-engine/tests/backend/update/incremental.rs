@@ -21,7 +21,7 @@ const PATHS: &[(&str, usize)] = &[
 
 const CONFIGS: &[Option<&str>] = &[
     None,
-    Some("[[entrance]]\nkind = \"command\"\ntrigger = \"go\"\nhandler = \"main.ts#go\"\n"),
+    Some("[[entrance]]\nid = \"go\"\nkind = \"command\"\ntrigger = \"go\"\nhandler = \"main.ts#go\"\n"),
     Some("[scope]\nexclude = [\"jobs/deep/**\"]\n"),
 ];
 
@@ -105,10 +105,10 @@ fn apply(folder: &Folder, edit: &Edit) -> Vec<String> {
         }
         Edit::Config(index) => {
             match CONFIGS[index] {
-                Some(text) => folder.write(".unfold/config.toml", text),
-                None => folder.remove(".unfold/config.toml"),
+                Some(text) => folder.write("unfold.toml", text),
+                None => folder.remove("unfold.toml"),
             }
-            vec![".unfold/config.toml".to_owned()]
+            vec!["unfold.toml".to_owned()]
         }
         Edit::Compile => Vec::new(),
     }

@@ -272,6 +272,10 @@ fn collect(root: &Path, found: impl Iterator<Item = Found>) -> Discovery {
             });
         }
     }
+    // The walk finds the settings file too unless an ignore file lists it; it counts either way.
+    discovery
+        .inputs
+        .retain(|input| input.role != InputRole::UnfoldConfig);
     if let Some(config) = settings_input(root) {
         discovery.inputs.push(config);
     }
@@ -312,7 +316,7 @@ fn lift(skips: &mut [SkipEvent], sources: &[SourceFile]) {
     }
 }
 
-/// `.unfold/config.toml`, which the walk never enters `.unfold/` to find.
+/// `unfold.toml`, whether or not an ignore file lists it.
 fn settings_input(root: &Path) -> Option<InputFile> {
     let metadata = std::fs::metadata(root.join(SETTINGS_PATH))
         .ok()

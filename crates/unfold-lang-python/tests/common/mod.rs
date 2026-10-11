@@ -103,7 +103,7 @@ pub fn compile_files_with(files: &[(&str, &str)], unindexed: &[&str], settings: 
     compile_snapshots(snapshots, unindexed, settings)
 }
 
-/// Compiles the folder at `root` with the engine, scoped by its `.unfold/config.toml`. The folder
+/// Compiles the folder at `root` with the engine, scoped by its `unfold.toml`. The folder
 /// is copied to a temporary directory first, so nothing can write into `testdata/`.
 pub fn compile_folder(root: &Path) -> Compiled {
     let temporary = tempfile::tempdir().expect("a temporary directory");

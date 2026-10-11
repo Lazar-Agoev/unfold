@@ -97,17 +97,17 @@ function settingsText(config: ProjectConfig): string[] {
   const name = `name ${config.name.value}${config.name.isDefault ? " (the default)" : ""}`;
   if (config.error) {
     const at = config.error.line === null ? "" : ` (line ${config.error.line})`;
-    return [`Settings (.unfold/config.toml): ${name}. The file is invalid${at}: ${config.error.message}`];
+    return [`Settings (unfold.toml): ${name}. The file is invalid${at}: ${config.error.message}`];
   }
   const settings = config.settings;
   if (!settings) {
-    return [`Settings: ${name}. No .unfold/config.toml yet: everything is the default.`];
+    return [`Settings: ${name}. No unfold.toml yet: everything is the default.`];
   }
   const entrances = settings.entrances.map(
-    (entrance) => `- manual entrance ${entrance.label ?? entrance.trigger ?? entrance.kind} → ${entrance.handler.join(", ")} (line ${entrance.line})`,
+    (entrance) => `- manual entrance ${entrance.id}: ${entrance.label ?? entrance.trigger ?? entrance.kind} → ${entrance.handler.join(", ")} (line ${entrance.line})`,
   );
   return [
-    `Settings (.unfold/config.toml): ${name}; languages ${settings.languages ? languagesText(settings.languages) : "all"}; include ${list(settings.include)}; exclude ${list(settings.exclude)}; detectors off ${list(settings.disabledDetectors)}; Python projects ${list(settings.pythonProjects.map((python) => python.root || "."))}; evidence files ${list(settings.evidence)}; ${count(settings.entrances.length, "manual entrance")}.`,
+    `Settings (unfold.toml): ${name}; languages ${settings.languages ? languagesText(settings.languages) : "all"}; include ${list(settings.include)}; exclude ${list(settings.exclude)}; detectors off ${list(settings.disabledDetectors)}; Python projects ${list(settings.pythonProjects.map((python) => python.root || "."))}; evidence files ${list(settings.evidence)}; ${count(settings.entrances.length, "manual entrance")}.`,
     ...entrances,
   ];
 }

@@ -96,54 +96,60 @@ export function validateDraft(draft: EntranceDraft): DraftProblems {
   };
 }
 
-/** The `EntranceSpec` a valid draft becomes: blanks are left out, `method` only for `http`. */
-export function specOf(draft: EntranceDraft): EntranceSpec {
+/**
+ * The `EntranceSpec` a valid draft becomes, with ID `id`: blanks are left out, `method` only for
+ * `http`. The fields the editor doesn't show are kept from `table`, the table being edited.
+ */
+export function specOf(draft: EntranceDraft, id: string, table: ManualEntranceView | null): EntranceSpec {
   const trigger = draft.trigger.trim();
   const label = draft.label.trim();
   const process = draft.kind === "process";
   return {
+    id,
     kind: draft.kind,
+    application: table?.application ?? null,
     trigger: trigger === "" ? null : trigger,
     method: draft.kind === "http" && draft.method !== "" ? draft.method : null,
     label: label === "" ? null : label,
+    description: table?.description ?? null,
     handler: process ? [] : draft.handlers.map((handler) => handler.trim()).filter((handler) => handler !== ""),
+    cwd: process ? (table?.cwd ?? null) : null,
+    command: process ? (table?.command ?? null) : null,
     startup: process ? draft.startup.trim() : null,
+    target: null,
+    pythonPaths: process ? (table?.pythonPaths ?? null) : null,
+    env: process ? (table?.env ?? {}) : {},
+    schedule: process ? (table?.schedule ?? null) : null,
   };
 }
 
 /**
+ * The ID of a new entrance: its trigger, else its label, else its kind, in kebab case, with `-2`,
+ * `-3`, … until it differs from every ID in `taken`.
+ */
+export function entranceId(draft: EntranceDraft, taken: readonly string[]): string {
+  const words = (text: string) =>
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 56)
+      .replace(/-+$/, "");
+  const base = words(draft.trigger) || words(draft.label) || draft.kind;
+  let id = base;
+  for (let suffix = 2; taken.includes(id); suffix += 1) {
+    id = `${base}-${suffix}`;
+  }
+  return id;
+}
+
+/**
  * The `[[entrance]]` table an Entrances-view row came from, or null when it isn't a manual entrance
- * (or the settings changed since). A manual entrance's key is `entrance:` and the JSON array
- * `[detector, kind, method, trigger, first target]`, with `#n` for the n-th repeat of the same
- * array, so the row is the n-th table with that kind, method, trigger, and first locator.
+ * (or the settings changed since). A manual entrance's key is `entrance:configured:<id>`.
  */
 export function manualTableOf(row: Pick<EntranceRow, "key" | "detector">, tables: readonly ManualEntranceView[]): ManualEntranceView | null {
-  if (row.detector !== "manual" || !row.key.startsWith("entrance:")) {
+  if (row.detector !== "manual") {
     return null;
   }
-  let body = row.key.slice("entrance:".length);
-  let repeat = 0;
-  const suffix = /\]#([1-9][0-9]*)$/.exec(body);
-  if (suffix?.[1] !== undefined) {
-    repeat = Number(suffix[1]);
-    body = body.slice(0, suffix.index + 1);
-  }
-  let parts: unknown;
-  try {
-    parts = JSON.parse(body);
-  } catch {
-    return null;
-  }
-  if (!Array.isArray(parts) || parts.length !== 5 || !parts.every((part) => typeof part === "string")) {
-    return null;
-  }
-  const [, kind, method, trigger, first] = parts as [string, string, string, string, string];
-  const matches = tables.filter(
-    (table) =>
-      table.kind === kind &&
-      (table.method ?? "") === method &&
-      (table.trigger ?? "") === trigger &&
-      (table.handler[0] ?? table.startup ?? "") === first,
-  );
-  return matches[repeat] ?? null;
+  return tables.find((table) => row.key === `entrance:configured:${table.id}`) ?? null;
 }

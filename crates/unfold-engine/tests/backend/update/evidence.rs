@@ -15,7 +15,7 @@ const SETTINGS: &str = "[evidence]\nfiles = [\"db\", \"openapi.yaml\"]\n";
 fn project(folder: &Folder) {
     folder.write("main.ts", &template(1, 0));
     folder.write("lib/util.ts", &template(0, 1));
-    folder.write(".unfold/config.toml", SETTINGS);
+    folder.write("unfold.toml", SETTINGS);
     folder.write("db/schema.sql", "create table orders (id text primary key);\n");
 }
 
@@ -89,8 +89,8 @@ fn evidence_files_are_hashed_inputs_and_changing_one_never_relinks() {
     assert_eq!(canonical(&removed), canonical(&compile(&mut fresh)));
 
     // A pattern is a setting: dropping it drops the file's record.
-    folder.write(".unfold/config.toml", "[evidence]\nfiles = [\"db\"]\n");
-    let unlisted = background(&mut engine, &[".unfold/config.toml"]);
+    folder.write("unfold.toml", "[evidence]\nfiles = [\"db\"]\n");
+    let unlisted = background(&mut engine, &["unfold.toml"]);
     assert!(evidence(&unlisted.graph).is_empty());
     assert!(unlisted.summary.inputs_changed);
 }

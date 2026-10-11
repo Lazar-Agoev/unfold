@@ -36,7 +36,7 @@ fn writes_the_documented_records() {
         r#"{"t":"edge","source":"src/orders.ts#function:createOrder/return[0]/call[0]","seq":1,"kind":"references","target":"src/helper.ts#function:helper","text":"helper","resolution":"resolved","position":1}"#,
         r#"{"t":"entrance","key":"entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"createOrder\"]","kind":"http","method":"POST","trigger":"/orders","trigger_status":"exact","detector":"express.route","evidence_path":"src/server.ts","evidence_range":[0,32],"evidence_block":"src/server.ts#expression_statement[0]/call[0]"}"#,
         r#"{"t":"target","entrance":"entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"createOrder\"]","position":0,"role":"handler","target":"src/orders.ts#function:createOrder","text":"createOrder","resolution":"resolved"}"#,
-        r#"{"t":"entrance","key":"entrance:[\"manual\",\"worker\",\"\",\"orders\",\"jobs/tasks.py#run\"]","kind":"worker","trigger":"orders","trigger_status":"exact","detector":"manual","evidence_path":".unfold/config.toml","evidence_range":[0,77],"evidence_pointer":"/entrance/0"}"#,
+        r#"{"t":"entrance","key":"entrance:configured:orders","kind":"worker","trigger":"orders","trigger_status":"exact","detector":"manual","evidence_path":"unfold.toml","evidence_range":[0,91],"evidence_pointer":"/entrance/0"}"#,
     ];
     for line in expected {
         assert!(lines.contains(&line), "missing {line}\nin:\n{text}");
@@ -189,8 +189,8 @@ fn rejects_records_that_do_not_belong_to_the_current_file() {
     );
 
     let target = good.replacen(
-        r#""entrance":"entrance:[\"manual\""#,
-        r#""entrance":"entrance:[\"other\""#,
+        r#""entrance":"entrance:configured:orders""#,
+        r#""entrance":"entrance:configured:other""#,
         1,
     );
     assert!(error(&target).message.contains("does not follow that entrance"));

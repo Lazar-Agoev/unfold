@@ -2,14 +2,15 @@
 //! location.
 //!
 //! ```text
-//! <folder>/.unfold/
-//! ├── config.toml        shared settings (written only when they differ from the defaults)
-//! ├── boards/            published boards
-//! └── local/             this machine only; its .gitignore contains "*"
-//!     ├── .gitignore
-//!     ├── cache/         disposable: graph.sqlite and the lock
-//!     ├── drafts/        unpublished boards
-//!     └── state.json     background updates, empty board folders, board view state
+//! <folder>/
+//! ├── unfold.toml        shared settings (written only when they differ from the defaults)
+//! └── .unfold/
+//!     ├── boards/        published boards
+//!     └── local/         this machine only; its .gitignore contains "*"
+//!         ├── .gitignore
+//!         ├── cache/     disposable: graph.sqlite and the lock
+//!         ├── drafts/    unpublished boards
+//!         └── state.json background updates, empty board folders, board view state
 //! ```
 //!
 //! [`Layout::discover`] decides where `local/` is **without writing anything**: opening and
@@ -19,7 +20,7 @@
 //! When the folder is read-only (detected by attempting the write), or sits on a network volume
 //! where SQLite's write-ahead log is unsafe, `local/` moves to
 //! `<fallbackCacheDir>/<hash of the canonical path>/`, and Home's state line and Project settings say so. Shared files
-//! (`config.toml`, `boards/`) stay in the folder either way.
+//! (`unfold.toml`, `boards/`) stay in the folder either way.
 
 use std::fmt::Write as _;
 use std::fs::OpenOptions;
@@ -36,7 +37,7 @@ use crate::volume::is_network_volume;
 /// The folder Unfold keeps everything about a repository in.
 pub const UNFOLD_DIR: &str = ".unfold";
 /// The shared settings file, relative to the folder.
-pub const CONFIG_PATH: &str = ".unfold/config.toml";
+pub const CONFIG_PATH: &str = "unfold.toml";
 /// The published boards folder, relative to the folder.
 pub const BOARDS_PATH: &str = ".unfold/boards";
 /// The machine-local folder, relative to the folder (when not in the fallback location).
@@ -227,7 +228,7 @@ impl Layout {
         self.root.join(UNFOLD_DIR)
     }
 
-    /// `<folder>/.unfold/config.toml`.
+    /// `<folder>/unfold.toml`.
     pub fn config(&self) -> PathBuf {
         self.root.join(CONFIG_PATH)
     }

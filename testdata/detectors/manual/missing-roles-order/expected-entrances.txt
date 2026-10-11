@@ -2,23 +2,23 @@
 # one not_found; a bare path is unsupported as a handler; a startup names the file or a block on a
 # line, but not a function by name.
 # (PoC schema2-manual: "missing/unindexed files, wrong roles, duplicates, and unknown triggers retain target order".)
-entrance	manual	http	POST	/x	exact	.unfold/config.toml:6
+entrance	manual	http	POST	/x	exact	unfold.toml:4
 	target	handler	resolved	main.ts#function:run	main.ts#run
 	target	handler	unresolved	not_found	main.ts#absent
 	target	handler	resolved	main.ts#function:run	main.ts#run
-entrance	manual	http	POST	/x	exact	.unfold/config.toml:13
+entrance	manual	http	POST	/x	exact	unfold.toml:12
 	target	handler	resolved	main.ts#function:run	main.ts#run
 	target	handler	unresolved	not_found	main.ts#absent
 	target	handler	resolved	main.ts#function:run	main.ts#run
-entrance	manual	worker	-	-	unknown	.unfold/config.toml:20
+entrance	manual	worker	-	-	unknown	unfold.toml:20
 	target	handler	unresolved	not_indexed	omitted.ts#run
-entrance	manual	worker	-	-	unknown	.unfold/config.toml:24
+entrance	manual	worker	-	-	unknown	unfold.toml:25
 	target	handler	unresolved	not_found	missing.ts#run
-entrance	manual	event	-	-	unknown	.unfold/config.toml:28
+entrance	manual	event	-	-	unknown	unfold.toml:30
 	target	handler	unresolved	unsupported	main.ts
-entrance	manual	process	-	-	unknown	.unfold/config.toml:32
+entrance	manual	process	-	-	unknown	unfold.toml:35
 	target	startup	unresolved	unsupported	main.ts#run
-entrance	manual	process	-	-	unknown	.unfold/config.toml:36
+entrance	manual	process	-	-	unknown	unfold.toml:40
 	target	startup	resolved	main.ts#	main.ts
-entrance	manual	process	-	-	unknown	.unfold/config.toml:40
+entrance	manual	process	-	-	unknown	unfold.toml:45
 	target	startup	resolved	main.ts#	main.ts:1

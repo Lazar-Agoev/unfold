@@ -144,6 +144,23 @@ total: number,
 entrances: Array<EntranceRow>, };
 
 /**
+ * An `[[application]]` table, as the editor submits it and the settings view lists it.
+ */
+export type ApplicationSpec = { 
+/**
+ * The application's ID.
+ */
+id: string, 
+/**
+ * The display name.
+ */
+name: string, 
+/**
+ * A description.
+ */
+description: string | null, };
+
+/**
  * Who wrote something: `person:<name>` or `agent:<name>`.
  */
 export type Author = string;
@@ -1043,7 +1060,7 @@ fallback: FallbackReason | null,
  */
 localPath: string, 
 /**
- * Whether `.unfold/config.toml` exists.
+ * Whether `unfold.toml` exists.
  */
 configExists: boolean, 
 /**
@@ -1381,9 +1398,17 @@ reaches: number | null, };
  */
 export type EntranceSpec = { 
 /**
+ * The ID its key derives from.
+ */
+id: string, 
+/**
  * The entrance kind, such as `command`.
  */
 kind: string, 
+/**
+ * The `[[application]]` it belongs to.
+ */
+application: string | null, 
 /**
  * The trigger, if any.
  */
@@ -1397,13 +1422,41 @@ method: string | null,
  */
 label: string | null, 
 /**
+ * A description.
+ */
+description: string | null, 
+/**
  * Handler locators, middleware first (every kind but `process`).
  */
 handler: Array<string>, 
 /**
+ * The working folder (`process` only).
+ */
+cwd: string | null, 
+/**
+ * The command line (`process` only).
+ */
+command: string | null, 
+/**
  * The startup locator (`process` only).
  */
-startup: string | null, };
+startup: string | null, 
+/**
+ * The launch target (`process` only).
+ */
+target: LaunchTargetSpec | null, 
+/**
+ * The import path, in order (`process` only).
+ */
+pythonPaths: Array<string> | null, 
+/**
+ * Declared environment variables (`process` only); empty writes none.
+ */
+env: { [key in string]: string }, 
+/**
+ * The schedule, as written (`process` only).
+ */
+schedule: string | null, };
 
 /**
  * The arguments of `entrances`.
@@ -2543,6 +2596,39 @@ startup: string | null,
 note: string | null, };
 
 /**
+ * A process's `target` table.
+ */
+export type LaunchTargetSpec = { "type": "file", 
+/**
+ * The folder-relative file.
+ */
+path: string, } | { "type": "python_module", 
+/**
+ * The dotted module name.
+ */
+module: string, } | { "type": "python_callable", 
+/**
+ * The dotted module name.
+ */
+module: string, 
+/**
+ * The callable's name.
+ */
+attribute: string, } | { "type": "python_asgi", 
+/**
+ * The dotted module name.
+ */
+module: string, 
+/**
+ * The application's name.
+ */
+attribute: string, 
+/**
+ * Whether the attribute is a factory.
+ */
+factory: boolean, };
+
+/**
  * The at-rest label of one arrow: what goes in and what comes back.
  */
 export type LineLabel = { 
@@ -2698,13 +2784,17 @@ items: Array<T>, };
  */
 export type ManualEntranceView = { 
 /**
- * Its position among the `[[entrance]]` tables (what edits name).
+ * Its ID (what edits name).
  */
-index: number, 
+id: string, 
 /**
  * The kind.
  */
 kind: EntranceKind, 
+/**
+ * The `[[application]]` it belongs to.
+ */
+application: string | null, 
 /**
  * The trigger.
  */
@@ -2718,17 +2808,62 @@ method: HttpMethod | null,
  */
 label: string | null, 
 /**
+ * The description.
+ */
+description: string | null, 
+/**
  * Handler locators, middleware first (every kind but `process`).
  */
 handler: Array<string>, 
+/**
+ * The working folder (`process`; `.` is the project's folder).
+ */
+cwd: string | null, 
+/**
+ * The command line (`process`).
+ */
+command: string | null, 
 /**
  * The startup locator (`process`).
  */
 startup: string | null, 
 /**
+ * The launch target (`process`).
+ */
+target: LaunchTargetSpec | null, 
+/**
+ * The import path, in order (`process`), when set.
+ */
+pythonPaths: Array<string> | null, 
+/**
+ * Declared environment variables (`process`).
+ */
+env: { [key in string]: string }, 
+/**
+ * The schedule, as written (`process`).
+ */
+schedule: string | null, 
+/**
  * The table's line in the file.
  */
 line: number, };
+
+/**
+ * An override's `match`: a launch detector, its input file, and the pointer into it.
+ */
+export type MatchSpec = { 
+/**
+ * `package.script`, `package.bin`, or `pyproject.script`.
+ */
+detector: string, 
+/**
+ * The input file, such as `apps/api/package.json`.
+ */
+path: string, 
+/**
+ * The pointer to the launch's member, such as `/scripts/start`.
+ */
+pointer: string, };
 
 /**
  * What a member of a type declaration or class is.
@@ -2998,6 +3133,31 @@ card: string,
  * Its call depth (0 for a root).
  */
 depth: number, };
+
+/**
+ * An `[[entrance_override]]` table, as the editor submits it and the settings view lists it.
+ */
+export type OverrideSpec = { 
+/**
+ * The detected launch it applies to.
+ */
+match: MatchSpec, 
+/**
+ * The `[[application]]` the launch belongs to.
+ */
+application: string | null, 
+/**
+ * A display label.
+ */
+label: string | null, 
+/**
+ * A description.
+ */
+description: string | null, 
+/**
+ * A schedule, as written.
+ */
+schedule: string | null, };
 
 /**
  * One page of a board.
@@ -3353,7 +3513,7 @@ export type ProjectArgs = {
 project: ProjectId, };
 
 /**
- * `.unfold/config.toml` as Project settings sees it.
+ * `unfold.toml` as Project settings sees it.
  */
 export type ProjectConfig = { 
 /**
@@ -3467,7 +3627,7 @@ entrances: number,
 files: number, };
 
 /**
- * A project's shared name (`[project] name` in its `.unfold/config.toml`, or its default):
+ * A project's shared name (`[project] name` in its `unfold.toml`, or its default):
  * a letter or digit, then up to 63 letters, digits, `.`, `_`, or `-`. Boards name other
  * projects by it.
  */
@@ -4459,17 +4619,33 @@ pattern: string, } | { "op": "add_entrance",
  */
 entrance: EntranceSpec, } | { "op": "replace_entrance", 
 /**
- * The table's position.
+ * The entrance's current ID.
  */
-index: number, 
+id: string, 
 /**
- * The new entrance.
+ * The new entrance, which may have a new ID.
  */
 entrance: EntranceSpec, } | { "op": "remove_entrance", 
 /**
- * The table's position.
+ * The entrance's ID.
  */
-index: number, } | { "op": "set_python_project", 
+id: string, } | { "op": "set_application", 
+/**
+ * The application.
+ */
+application: ApplicationSpec, } | { "op": "remove_application", 
+/**
+ * The application's ID.
+ */
+id: string, } | { "op": "set_override", 
+/**
+ * The override.
+ */
+override: OverrideSpec, } | { "op": "remove_override", 
+/**
+ * The override's `match`.
+ */
+match: MatchSpec, } | { "op": "set_python_project", 
 /**
  * The project.
  */
@@ -4541,9 +4717,17 @@ disabledDetectors: Array<DetectorId>,
  */
 pythonProjects: Array<PythonProjectView>, 
 /**
+ * Applications, in file order.
+ */
+applications: Array<ApplicationSpec>, 
+/**
  * Manual entrances, in file order.
  */
 entrances: Array<ManualEntranceView>, 
+/**
+ * Overrides of detected launches, in file order.
+ */
+overrides: Array<OverrideSpec>, 
 /**
  * `[evidence] files` patterns, as written.
  */
@@ -5560,11 +5744,11 @@ export interface Commands {
    */
   set_background_updates: { args: SetBackgroundUpdatesArgs; result: GraphStatus };
   /**
-   * A project's `.unfold/config.toml` and shared name.
+   * A project's `unfold.toml` and shared name.
    */
   project_config: { args: ProjectArgs; result: ProjectConfig };
   /**
-   * Applies validated edits to a project's `.unfold/config.toml`.
+   * Applies validated edits to a project's `unfold.toml`.
    */
   update_project_config: { args: UpdateProjectConfigArgs; result: ProjectConfig };
   /**

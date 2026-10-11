@@ -135,7 +135,7 @@ pub(crate) struct InputEntry {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SettingsState {
     pub(crate) settings: Settings,
-    /// The bytes of `.unfold/config.toml` the settings were parsed from; `None` for defaults.
+    /// The bytes of `unfold.toml` the settings were parsed from; `None` for defaults.
     pub(crate) source: Option<Snapshot>,
     /// The settings file's stamp at the last check (`None` when absent or unchecked).
     pub(crate) stamp: Option<FileStamp>,

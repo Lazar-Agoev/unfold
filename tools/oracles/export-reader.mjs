@@ -57,14 +57,25 @@ function mapPath(mappings, path) {
   return mapping && mapping.unfold + path.slice(mapping.poc.length);
 }
 
-/** Entrance keys of the corpus's canonical reference, grouped by their key without the `#n` ordinal. */
+/**
+ * Entrance keys of the corpus's canonical reference, in order, grouped by the PoC's key for them without
+ * the `#n` ordinal: `entrance:` and the JSON array of detector, kind, method, trigger, and first target
+ * text. (Unfold keys a manual entrance by its configured ID instead.)
+ */
 function canonicalEntranceKeys(canonicalPath) {
-  const groups = new Map();
+  const entrances = [];
+  const first = new Map();
   for (const line of readFileSync(canonicalPath, "utf8").split("\n")) {
-    if (!line.startsWith('{"t":"entrance"')) continue;
-    const { key } = JSON.parse(line);
-    const base = key.replace(/#\d+$/, "");
-    groups.set(base, [...(groups.get(base) ?? []), key]);
+    if (line.startsWith('{"t":"entrance"')) entrances.push(JSON.parse(line));
+    if (line.startsWith('{"t":"target"')) {
+      const target = JSON.parse(line);
+      if (target.position === 0) first.set(target.entrance, target.text);
+    }
+  }
+  const groups = new Map();
+  for (const entrance of entrances) {
+    const base = `entrance:${JSON.stringify([entrance.detector, entrance.kind, entrance.method ?? "", entrance.trigger ?? "", first.get(entrance.key) ?? ""])}`;
+    groups.set(base, [...(groups.get(base) ?? []), entrance.key]);
   }
   return groups;
 }

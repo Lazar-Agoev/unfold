@@ -2,23 +2,23 @@
 # constant arrow and an overloaded function resolve; a namespace member is not_found; a let, a data
 # constant, an alias, and a class handler are unsupported.
 # (PoC schema2-manual: "manual names follow exports/default/reexports and top-level concrete definitions".)
-entrance	manual	command	-	-	unknown	.unfold/config.toml:3
+entrance	manual	command	-	-	unknown	unfold.toml:1
 	target	handler	resolved	defs.ts#function:save	barrel.ts#renamed
-entrance	manual	command	-	-	unknown	.unfold/config.toml:7
+entrance	manual	command	-	-	unknown	unfold.toml:6
 	target	handler	resolved	defs.ts#function:default	barrel.ts#default
-entrance	manual	command	-	-	unknown	.unfold/config.toml:11
+entrance	manual	command	-	-	unknown	unfold.toml:11
 	target	handler	resolved	barrel.ts#function:local	barrel.ts#local
-entrance	manual	command	-	-	unknown	.unfold/config.toml:15
+entrance	manual	command	-	-	unknown	unfold.toml:16
 	target	handler	resolved	defs.ts#variable:arrow/function:arrow	defs.ts#arrow
-entrance	manual	command	-	-	unknown	.unfold/config.toml:19
+entrance	manual	command	-	-	unknown	unfold.toml:21
 	target	handler	resolved	defs.ts#function:overloaded	defs.ts#overloaded
-entrance	manual	command	-	-	unknown	.unfold/config.toml:23
+entrance	manual	command	-	-	unknown	unfold.toml:26
 	target	handler	unresolved	not_found	barrel.ts#secret
-entrance	manual	command	-	-	unknown	.unfold/config.toml:27
+entrance	manual	command	-	-	unknown	unfold.toml:31
 	target	handler	unresolved	unsupported	defs.ts#mutable
-entrance	manual	command	-	-	unknown	.unfold/config.toml:31
+entrance	manual	command	-	-	unknown	unfold.toml:36
 	target	handler	unresolved	unsupported	defs.ts#data
-entrance	manual	command	-	-	unknown	.unfold/config.toml:35
+entrance	manual	command	-	-	unknown	unfold.toml:41
 	target	handler	unresolved	unsupported	defs.ts#alias
-entrance	manual	command	-	-	unknown	.unfold/config.toml:39
+entrance	manual	command	-	-	unknown	unfold.toml:46
 	target	handler	unresolved	unsupported	defs.ts#Named

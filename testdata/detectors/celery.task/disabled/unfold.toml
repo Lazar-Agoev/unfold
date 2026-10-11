@@ -1,0 +1,8 @@
+# Detector case: testdata/detectors/celery.task/disabled.
+
+[[python.project]]
+root = "."
+source_roots = ["src"]
+
+[detectors]
+disabled = ["celery.task"]

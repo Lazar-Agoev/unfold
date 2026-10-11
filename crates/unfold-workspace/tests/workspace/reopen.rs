@@ -90,8 +90,8 @@ fn reopening_a_mixed_folder_re_extracts_only_what_its_configuration_touches() {
     let python = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/playgrounds/py-orders/src");
     copy_dir(&python, &playground.path("py/src"));
     playground.write(
-        ".unfold/config.toml",
-        "version = 1\n\n[[python.project]]\nroot = \"py\"\nsource_roots = [\"src\"]\n",
+        "unfold.toml",
+        "[[python.project]]\nroot = \"py\"\nsource_roots = [\"src\"]\n",
     );
     set_verbatim(&playground, true);
     let sink = RecordingSink::new();
@@ -162,9 +162,9 @@ fn reopening_an_unchanged_folder_neither_links_nor_commits() {
     close(workspace);
 
     // A change only linking sees, made while closed, links again and commits.
-    let config = std::fs::read_to_string(playground.path(".unfold/config.toml")).expect("settings");
+    let config = std::fs::read_to_string(playground.path("unfold.toml")).expect("settings");
     playground.write(
-        ".unfold/config.toml",
+        "unfold.toml",
         &format!("{config}\n[[entrance]]\nkind = \"command\"\ntrigger = \"go\"\nhandler = \"src/server.ts#shutdown\"\n"),
     );
     let (workspace, files) = reopen(&playground, &sink);

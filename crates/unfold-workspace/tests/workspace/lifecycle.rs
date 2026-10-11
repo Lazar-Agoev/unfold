@@ -45,7 +45,7 @@ fn opening_writes_nothing_and_the_first_compile_creates_local() {
     ] {
         assert!(playground.path(path).exists(), "{path} is missing");
     }
-    assert!(!playground.path(".unfold/config.toml").exists());
+    assert!(!playground.path("unfold.toml").exists());
     let saved: LocalState = serde_json::from_slice(
         &std::fs::read(playground.path(".unfold/local/state.json")).expect("state.json"),
     )

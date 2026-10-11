@@ -14,7 +14,7 @@
 # parity    false for a comparison aid that Unfold is not expected to reproduce (default true).
 # paths     Prefix mappings from PoC paths to folder paths; the longest matching `poc` prefix wins
 #           and every path must match one. Block keys follow the mapped paths.
-# settings  PoC `codegraph.json` files that became the folder's `.unfold/config.toml`, each with
+# settings  PoC `codegraph.json` files that became the folder's `unfold.toml`, each with
 #           the index of the `[[entrance]]` table that holds its first manual entrance.
 
 [[corpus]]

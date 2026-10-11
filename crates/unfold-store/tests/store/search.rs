@@ -141,7 +141,7 @@ fn search_rows_follow_updates() {
         .retain(|file| file.file.path.as_str() != "jobs/tasks.py");
     graph
         .entrances
-        .retain(|entrance| entrance.evidence.path.as_str() != ".unfold/config.toml");
+        .retain(|entrance| entrance.evidence.path.as_str() != "unfold.toml");
     graph.normalize();
     let after = Prepared::new(graph);
     store.writer.commit(&after.since(&before)).unwrap();

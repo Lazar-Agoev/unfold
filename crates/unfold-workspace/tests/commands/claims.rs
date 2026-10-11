@@ -262,9 +262,9 @@ const SCHEMA: &str = "create table customers (\n  id text primary key,\n  email 
 #[test]
 fn evidence_files_anchor_claims_that_go_outdated_when_the_file_changes() {
     let harness = Harness::new("ts-orders", false);
-    let config = harness.read(".unfold/config.toml");
+    let config = harness.read("unfold.toml");
     harness.write(
-        ".unfold/config.toml",
+        "unfold.toml",
         &format!("{config}\n[evidence]\nfiles = [\"db/*.sql\"]\n"),
     );
     harness.write("db/schema.sql", SCHEMA);
@@ -346,16 +346,16 @@ fn evidence_files_anchor_claims_that_go_outdated_when_the_file_changes() {
 #[test]
 fn an_anchor_reconnects_into_another_project() {
     let harness = Harness::new("ts-orders", false);
-    let config = harness.read(".unfold/config.toml");
+    let config = harness.read("unfold.toml");
     let evidence = "\n[evidence]\nfiles = [\"db/*.sql\"]\n";
-    harness.write(".unfold/config.toml", &format!("{config}{evidence}"));
+    harness.write("unfold.toml", &format!("{config}{evidence}"));
     harness.write("db/schema.sql", SCHEMA);
     harness.ok(1, "select_project", json!({ "project": harness.project }));
     harness.ok(1, "compile", json!({ "project": harness.project }));
     let (python, python_root) = harness.add("py-orders", "py-orders");
-    let python_config = std::fs::read_to_string(python_root.join(".unfold/config.toml")).expect("config");
+    let python_config = std::fs::read_to_string(python_root.join("unfold.toml")).expect("config");
     std::fs::write(
-        python_root.join(".unfold/config.toml"),
+        python_root.join("unfold.toml"),
         format!("{python_config}{evidence}"),
     )
     .expect("config");

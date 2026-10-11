@@ -49,7 +49,7 @@ goes at runtime, with its evidence (connections topic).
 - **Kinds**: process (a launch), command, http, worker, schedule, event. Detectors:
   package.json scripts and bins, Express routes, BullMQ workers, node-cron schedules,
   pyproject console scripts, FastAPI routes, Celery tasks, APScheduler jobs, and
-  entrances declared in `.unfold/config.toml` (setup topic).
+  entrances declared in `unfold.toml` (setup topic).
 - **Trigger**: exact, partial (only part known, such as a router mounted somewhere
   Unfold can't follow), or unknown ("GET unknown trigger").
 - **Applications** are named after how each one starts: the startup file (`server`,

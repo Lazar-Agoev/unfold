@@ -1,7 +1,7 @@
 {
   "type": "entrance",
   "header": {
-    "key": "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/jobs/import-orders.ts#importOrders\"]",
+    "key": "entrance:configured:import",
     "kind": "command",
     "title": "command import",
     "label": null,
@@ -12,13 +12,13 @@
     "language": null
   },
   "evidence": {
-    "path": ".unfold/config.toml",
-    "startLine": 6,
+    "path": "unfold.toml",
+    "startLine": 5,
     "endLine": 9,
     "pointer": "/entrance/0",
     "source": "current",
     "code": null,
-    "text": "[[entrance]]\nkind = \"command\"\ntrigger = \"import\"\nhandler = \"src/jobs/import-orders.ts#importOrders\""
+    "text": "[[entrance]]\nid = \"import\"\nkind = \"command\"\ntrigger = \"import\"\nhandler = \"src/jobs/import-orders.ts#importOrders\""
   },
   "targets": [
     {

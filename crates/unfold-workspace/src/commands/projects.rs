@@ -110,7 +110,7 @@ pub struct CompilePreview {
     /// Where the graph and drafts would be kept: `.unfold/local` in the folder, or the absolute
     /// fallback location.
     pub local_path: String,
-    /// Whether `.unfold/config.toml` exists.
+    /// Whether `unfold.toml` exists.
     pub config_exists: bool,
     /// Why the settings can't be used (the preview then uses the defaults).
     pub settings_error: Option<String>,

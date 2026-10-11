@@ -1,6 +1,0 @@
-# Detector case: testdata/detectors/celery.task/queues.
-version = 1
-
-[[python.project]]
-root = "."
-source_roots = ["src"]

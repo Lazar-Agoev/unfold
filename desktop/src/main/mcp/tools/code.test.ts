@@ -156,12 +156,13 @@ describe("read_code", () => {
   });
 
   it("reads an entrance: where it's declared and its handlers", async () => {
-    const { text } = await app().call(readCode, { key: 'entrance:["manual","command","","import","src/jobs/import-orders.ts#importOrders"]' });
-    expect(text.split("\n").slice(1, 9)).toEqual([
-      'Entrance command import (command, detector manual); key entrance:["manual","command","","import","src/jobs/import-orders.ts#importOrders"].',
+    const { text } = await app().call(readCode, { key: "entrance:configured:import" });
+    expect(text.split("\n").slice(1, 10)).toEqual([
+      "Entrance command import (command, detector manual); key entrance:configured:import.",
       "In cli.",
-      "Declared at .unfold/config.toml:6–9 (/entrance/0):",
-      "6 | [[entrance]]",
+      "Declared at unfold.toml:5–9 (/entrance/0):",
+      "5 | [[entrance]]",
+      '6 | id = "import"',
       '7 | kind = "command"',
       '8 | trigger = "import"',
       '9 | handler = "src/jobs/import-orders.ts#importOrders"',

@@ -12,8 +12,8 @@ use super::*;
 /// ranges, two functions named `f`, and two unnamed `if`s.
 const SOURCE: &str = "const é = \"𐐀\";\nfunction f() {}\nfunction f() {}\nif (é) {}\nif (é) {}\n";
 
-const SETTINGS: &str = "version = 1\n\n[[entrance]]\nkind = \"command\"\ntrigger = \"go\"\nhandler = \"src/a.ts#f\"\n\n\
-                        [[entrance]]\nkind = \"command\"\ntrigger = \"go\"\nhandler = \"src/a.ts#f\"  # again\n";
+const SETTINGS: &str = "[[entrance]]\nid = \"go\"\nkind = \"command\"\ntrigger = \"go\"\nhandler = \"src/a.ts#f\"\n\n\
+                        [[entrance]]\nid = \"go-again\"\nkind = \"command\"\ntrigger = \"go\"\nhandler = \"src/a.ts#f\"  # again\n";
 
 /// The UTF-16 range of the `occurrence`-th match of `needle` in `SOURCE`, as `start,end`.
 fn utf16(needle: &str, occurrence: usize) -> String {
@@ -31,9 +31,8 @@ fn sha256(bytes: &[u8]) -> String {
 fn synthetic(root: &Path) -> Corpus {
     let folder = root.join("folder");
     std::fs::create_dir_all(folder.join("src")).unwrap();
-    std::fs::create_dir_all(folder.join(".unfold")).unwrap();
     std::fs::write(folder.join("src/a.ts"), SOURCE).unwrap();
-    std::fs::write(folder.join(".unfold/config.toml"), SETTINGS).unwrap();
+    std::fs::write(folder.join("unfold.toml"), SETTINGS).unwrap();
 
     let raw = root.join("raw");
     std::fs::create_dir_all(&raw).unwrap();
@@ -156,7 +155,7 @@ fn converts_utf16_offsets_paths_and_duplicate_sibling_keys() {
 }
 
 #[test]
-fn manual_entrances_move_to_the_settings_file_with_derived_keys() {
+fn manual_entrances_move_to_the_settings_file_with_configured_keys() {
     let root = tempfile::tempdir().unwrap();
     let graph = convert_synthetic(root.path());
     let keys: Vec<&str> = graph
@@ -164,17 +163,11 @@ fn manual_entrances_move_to_the_settings_file_with_derived_keys() {
         .iter()
         .map(|entrance| entrance.key.as_str())
         .collect();
-    assert_eq!(
-        keys,
-        [
-            r#"entrance:["manual","command","","go","src/a.ts#f"]"#,
-            r#"entrance:["manual","command","","go","src/a.ts#f"]#1"#,
-        ]
-    );
+    assert_eq!(keys, ["entrance:configured:go", "entrance:configured:go-again"]);
     let first = &graph.entrances[0].evidence;
-    assert_eq!(first.path.as_str(), ".unfold/config.toml");
+    assert_eq!(first.path.as_str(), "unfold.toml");
     assert_eq!(first.pointer.as_deref(), Some("/entrance/0"));
-    assert!(slice(SETTINGS, first.range).starts_with("[[entrance]]\nkind"));
+    assert!(slice(SETTINGS, first.range).starts_with("[[entrance]]\nid"));
     let second = &graph.entrances[1].evidence;
     assert_eq!(second.pointer.as_deref(), Some("/entrance/1"));
     assert!(slice(SETTINGS, second.range).ends_with("handler = \"src/a.ts#f\""));
@@ -182,7 +175,7 @@ fn manual_entrances_move_to_the_settings_file_with_derived_keys() {
     assert_eq!(&*target.text, "src/a.ts#f");
     assert_eq!(target.target.as_ref().unwrap().as_str(), "src/a.ts#function:f");
     assert_eq!(graph.inputs.len(), 1);
-    assert_eq!(graph.inputs[0].path.as_str(), ".unfold/config.toml");
+    assert_eq!(graph.inputs[0].path.as_str(), "unfold.toml");
     // The export round-trips, at version 1 (references have no typed records).
     let mut text = Vec::new();
     canonical::write_version(&graph, 1, &mut text).unwrap();
@@ -197,7 +190,7 @@ fn manual_entrances_move_to_the_settings_file_with_derived_keys() {
 fn settings_that_disagree_with_the_generation_fail() {
     let root = tempfile::tempdir().unwrap();
     let corpus = synthetic(root.path());
-    let settings = root.path().join("folder/.unfold/config.toml");
+    let settings = root.path().join("folder/unfold.toml");
     std::fs::write(
         &settings,
         SETTINGS.replace("trigger = \"go\"\nhandler", "trigger = \"stop\"\nhandler"),

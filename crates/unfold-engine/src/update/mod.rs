@@ -88,7 +88,7 @@ pub enum Changes {
     /// Anything: discover the whole folder and check every file.
     All,
     /// Exactly these folder-relative paths (files or folders, created, changed, or deleted).
-    /// A change to `.unfold/config.toml` that alters the settings, to an ignore file, or to a
+    /// A change to `unfold.toml` that alters the settings, to an ignore file, or to a
     /// folder or symlink falls back to a full discovery.
     Paths(Vec<RepoPath>),
 }
@@ -184,7 +184,7 @@ impl<'a> UpdateRequest<'a> {
 /// What kind of problem a [`Problem`] is. File failures are on the files' records instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ProblemKind {
-    /// `.unfold/config.toml` can't be read or is invalid; the previous valid settings (or the
+    /// `unfold.toml` can't be read or is invalid; the previous valid settings (or the
     /// defaults) stay in effect.
     Settings,
     /// Discovery couldn't read part of the folder.

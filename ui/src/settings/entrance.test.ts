@@ -1,12 +1,30 @@
 import { describe, expect, it } from "vitest";
 import type { ManualEntranceView } from "../ipc/generated";
 import { diagnosticsText, shellVersions } from "./diagnostics";
-import { draftOf, emptyDraft, hasProblems, manualTableOf, specOf, validateDraft, type EntranceDraft } from "./entrance";
+import { draftOf, emptyDraft, entranceId, hasProblems, manualTableOf, specOf, validateDraft, type EntranceDraft } from "./entrance";
 import { canBeHandler, locatorFor, locatorLanguage, locatorProblem } from "./locators";
 import { problemText, settingsProblem } from "./edits";
 
-function table(index: number, kind: ManualEntranceView["kind"], trigger: string | null, handler: string[], extra: Partial<ManualEntranceView> = {}): ManualEntranceView {
-  return { index, kind, trigger, method: null, label: null, handler, startup: null, line: 10 + index * 4, ...extra };
+function table(id: string, kind: ManualEntranceView["kind"], trigger: string | null, handler: string[], extra: Partial<ManualEntranceView> = {}): ManualEntranceView {
+  return {
+    id,
+    kind,
+    application: null,
+    trigger,
+    method: null,
+    label: null,
+    description: null,
+    handler,
+    cwd: null,
+    command: null,
+    startup: null,
+    target: null,
+    pythonPaths: null,
+    env: {},
+    schedule: null,
+    line: 10,
+    ...extra,
+  };
 }
 
 describe("locators", () => {
@@ -58,20 +76,49 @@ describe("entrance drafts", () => {
 
   it("accepts a well-formed command and leaves blanks out of the spec", () => {
     expect(hasProblems(validateDraft(command))).toBe(false);
-    expect(specOf({ ...command, label: "  ", method: "POST" })).toEqual({
+    expect(specOf({ ...command, label: "  ", method: "POST" }, "report", null)).toEqual({
+      id: "report",
       kind: "command",
+      application: null,
       trigger: "report",
       method: null,
       label: null,
+      description: null,
       handler: ["src/cli.ts#report"],
+      cwd: null,
+      command: null,
       startup: null,
+      target: null,
+      pythonPaths: null,
+      env: {},
+      schedule: null,
     });
+  });
+
+  it("keeps the fields the editor doesn't show", () => {
+    const edited = table("serve", "process", null, [], { startup: "src/server.ts", command: "node dist/server.js", schedule: "@daily", description: "Serves." });
+    expect(specOf({ ...draftOf(edited), startup: "src/main.ts" }, "serve", edited)).toMatchObject({
+      id: "serve",
+      startup: "src/main.ts",
+      command: "node dist/server.js",
+      schedule: "@daily",
+      description: "Serves.",
+    });
+    expect(specOf({ ...draftOf(edited), kind: "event", handlers: ["src/a.ts#f"] }, "serve", edited)).toMatchObject({ command: null, schedule: null, env: {} });
+  });
+
+  it("names a new entrance after its trigger, label, or kind, uniquely", () => {
+    expect(entranceId(command, [])).toBe("report");
+    expect(entranceId({ ...command, trigger: "/orders/:id" }, [])).toBe("orders-id");
+    expect(entranceId({ ...command, trigger: "", label: "Nightly Export" }, [])).toBe("nightly-export");
+    expect(entranceId({ ...command, trigger: "" }, ["command"])).toBe("command-2");
+    expect(entranceId(command, ["report", "report-2"])).toBe("report-3");
   });
 
   it("keeps the method for HTTP only", () => {
     const http: EntranceDraft = { ...command, kind: "http", trigger: "/orders", method: "POST", handlers: ["src/auth.ts#requireUser", "", "src/routes/orders.ts#createOrder"] };
-    expect(specOf(http)).toMatchObject({ kind: "http", method: "POST", handler: ["src/auth.ts#requireUser", "src/routes/orders.ts#createOrder"] });
-    expect(specOf({ ...http, method: "" }).method).toBeNull();
+    expect(specOf(http, "orders", null)).toMatchObject({ kind: "http", method: "POST", handler: ["src/auth.ts#requireUser", "src/routes/orders.ts#createOrder"] });
+    expect(specOf({ ...http, method: "" }, "orders", null).method).toBeNull();
   });
 
   it("needs a startup for a process, and no handlers", () => {
@@ -80,7 +127,7 @@ describe("entrance drafts", () => {
     expect(validateDraft({ ...process, startup: "src/server.ts#" }).startup).toMatch(/name/);
     const ready = { ...process, startup: " src/server.ts " };
     expect(hasProblems(validateDraft(ready))).toBe(false);
-    expect(specOf(ready)).toMatchObject({ kind: "process", trigger: null, handler: [], startup: "src/server.ts" });
+    expect(specOf(ready, "process", null)).toMatchObject({ kind: "process", trigger: null, handler: [], startup: "src/server.ts" });
   });
 
   it("flags blank triggers, missing or bad handlers, and mixed languages", () => {
@@ -92,7 +139,7 @@ describe("entrance drafts", () => {
   });
 
   it("starts from an existing table", () => {
-    expect(draftOf(table(2, "process", null, [], { startup: "src/server.ts" }))).toEqual({
+    expect(draftOf(table("serve", "process", null, [], { startup: "src/server.ts" }))).toEqual({
       kind: "process",
       trigger: "",
       method: "",
@@ -105,38 +152,31 @@ describe("entrance drafts", () => {
 
 describe("manual entrance rows", () => {
   const tables = [
-    table(0, "command", "import", ["src/jobs/import.ts#importOrders"]),
-    table(1, "command", "retry", ["src/jobs/retry.ts#retry"]),
-    table(2, "command", "retry", ["src/jobs/retry.ts#retry"]),
-    table(3, "http", "/x", ["src/a.ts:12"], { method: "GET" }),
-    table(4, "process", null, [], { startup: "src/server.ts" }),
+    table("import", "command", "import", ["src/jobs/import.ts#importOrders"]),
+    table("retry", "command", "retry", ["src/jobs/retry.ts#retry"]),
+    table("retry-again", "command", "retry", ["src/jobs/retry.ts#retry"]),
   ];
 
-  it("finds the table a row came from, counting repeats", () => {
-    const key = (parts: string[]) => `entrance:${JSON.stringify(parts)}`;
-    expect(manualTableOf({ key: key(["manual", "command", "", "import", "src/jobs/import.ts#importOrders"]), detector: "manual" }, tables)?.index).toBe(0);
-    expect(manualTableOf({ key: key(["manual", "command", "", "retry", "src/jobs/retry.ts#retry"]), detector: "manual" }, tables)?.index).toBe(1);
-    expect(manualTableOf({ key: `${key(["manual", "command", "", "retry", "src/jobs/retry.ts#retry"])}#1`, detector: "manual" }, tables)?.index).toBe(2);
-    expect(manualTableOf({ key: key(["manual", "http", "GET", "/x", "src/a.ts:12"]), detector: "manual" }, tables)?.index).toBe(3);
-    expect(manualTableOf({ key: key(["manual", "process", "", "", "src/server.ts"]), detector: "manual" }, tables)?.index).toBe(4);
+  it("finds the table a row came from by its ID", () => {
+    expect(manualTableOf({ key: "entrance:configured:retry", detector: "manual" }, tables)?.id).toBe("retry");
+    expect(manualTableOf({ key: "entrance:configured:retry-again", detector: "manual" }, tables)?.id).toBe("retry-again");
   });
 
   it("ignores detected entrances and stale rows", () => {
     expect(manualTableOf({ key: 'entrance:["express.route","http","GET","/x","src/a.ts:12"]', detector: "express.route" }, tables)).toBeNull();
-    expect(manualTableOf({ key: 'entrance:["manual","command","","gone","src/x.ts#y"]', detector: "manual" }, tables)).toBeNull();
-    expect(manualTableOf({ key: "entrance:not json", detector: "manual" }, tables)).toBeNull();
+    expect(manualTableOf({ key: "entrance:configured:gone", detector: "manual" }, tables)).toBeNull();
   });
 });
 
 describe("settings problems", () => {
   it("splits the position out of Rust's message", () => {
-    const problem = settingsProblem("invalid_settings", ".unfold/config.toml:31:11: `src/a.ts#a.b.c` is not a valid locator");
+    const problem = settingsProblem("invalid_settings", "unfold.toml:31:11: `src/a.ts#a.b.c` is not a valid locator");
     expect(problem).toEqual({ code: "invalid_settings", message: "`src/a.ts#a.b.c` is not a valid locator", line: 31, column: 11 });
     expect(problemText(problem)).toBe("Line 31, column 11: `src/a.ts#a.b.c` is not a valid locator");
-    const prefixed = settingsProblem("invalid_settings", "fix .unfold/config.toml first: .unfold/config.toml:2:1: unknown field `bogus`");
+    const prefixed = settingsProblem("invalid_settings", "fix unfold.toml first: unfold.toml:2:1: unknown field `bogus`");
     expect(prefixed.line).toBe(2);
-    expect(prefixed.message).toBe("fix .unfold/config.toml first: unknown field `bogus`");
-    expect(settingsProblem("settings_conflict", "there is no manual entrance at position 9")).toMatchObject({ line: null, column: null });
+    expect(prefixed.message).toBe("fix unfold.toml first: unknown field `bogus`");
+    expect(settingsProblem("settings_conflict", "no `[[entrance]]` has the id `gone`")).toMatchObject({ line: null, column: null });
   });
 });
 

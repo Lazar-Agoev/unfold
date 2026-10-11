@@ -42,7 +42,7 @@ import { ScopeSection } from "./ScopeSection";
 import { SettingsProblemBox } from "./SettingsProblemBox";
 import "./projectSettings.css";
 
-const CONFIG_PATH = ".unfold/config.toml";
+const CONFIG_PATH = "unfold.toml";
 
 const SECTIONS: readonly { readonly id: ProjectSettingsSection; readonly label: string }[] = [
   { id: "general", label: "General" },

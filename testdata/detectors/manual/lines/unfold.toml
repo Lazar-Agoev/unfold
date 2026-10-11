@@ -1,0 +1,34 @@
+[[entrance]]
+id = "line-1"
+kind = "command"
+handler = "main.ts:1"
+
+[[entrance]]
+id = "line-2"
+kind = "command"
+handler = "main.ts:2"
+
+[[entrance]]
+id = "line-3"
+kind = "command"
+handler = "main.ts:3"
+
+[[entrance]]
+id = "line-5"
+kind = "command"
+handler = "main.ts:5"
+
+[[entrance]]
+id = "line-7"
+kind = "command"
+handler = "main.ts:7"
+
+[[entrance]]
+id = "line-10"
+kind = "command"
+handler = "main.ts:10"
+
+[[entrance]]
+id = "line-99"
+kind = "command"
+handler = "main.ts:99"

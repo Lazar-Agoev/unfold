@@ -322,15 +322,10 @@ mod tests {
     #[test]
     fn settings_problems_carry_their_position() {
         let dir = tempfile::tempdir().expect("temp dir");
-        std::fs::create_dir_all(dir.path().join(".unfold")).expect("mkdir");
-        std::fs::write(
-            dir.path().join(".unfold/config.toml"),
-            "version = 1\nbogus = true\n",
-        )
-        .expect("write");
+        std::fs::write(dir.path().join("unfold.toml"), "[scope]\nbogus = true\n").expect("write");
         let problem = Problem {
             kind: ProblemKind::Settings,
-            path: ".unfold/config.toml".into(),
+            path: "unfold.toml".into(),
             message: "invalid".into(),
         };
         let item = engine_problem(dir.path(), &problem);

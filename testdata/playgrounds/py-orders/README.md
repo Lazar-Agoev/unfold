@@ -6,7 +6,7 @@ imports, receivers, annotations, framework origins, and conservative body proof.
 
 This is test data. Tests compile temporary copies without importing the application,
 installing dependencies, connecting external services, or running Python. `pyproject.toml`
-and shared `.unfold/config.toml` declarations are analyzed inputs.
+and shared `unfold.toml` declarations are analyzed inputs.
 
 ## Expectations
 

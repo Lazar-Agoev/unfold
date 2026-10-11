@@ -1,0 +1,6 @@
+# Converted from the proof of concept fixture's codegraph.json.
+
+[[python.project]]
+root = "."
+source_roots = ["left", "right"]
+version = "3.14"

@@ -1,0 +1,5 @@
+# Detector case: testdata/detectors/fastapi.route/uncertain-arguments.
+
+[[python.project]]
+root = "."
+source_roots = ["src"]

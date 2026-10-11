@@ -144,7 +144,7 @@ describe("list_entrances", () => {
     expect(lines.slice(0, 3)).toEqual([
       "Unfold · ts-orders · as Claude",
       "cli (startup src/cli.ts; started by process orders (package.json), process cli (package.json)), entrances matching “o” (4):",
-      `- command import (command, manual) declared in .unfold/config.toml, reaches 7 definitions: key entrance:["manual","command","","import","src/jobs/import-orders.ts#importOrders"]`,
+      `- command import (command, manual) declared in unfold.toml, reaches 7 definitions: key entrance:configured:import`,
     ]);
     expect(lines).toContain("server (startup src/server.ts; started by process start (package.json), process dev (package.json)), entrances matching “o” (1–8 of 9):");
     expect(lines).toContain(`- worker unknown trigger (worker, bullmq.worker) declared in src/queues/report-worker.ts:6, reaches 0 definitions: key ${String(recorded<{ applications: { entrances: { key: string }[] }[] }>(entrances).applications[3]?.entrances[2]?.key)}`);
@@ -184,7 +184,7 @@ describe("list_entrances", () => {
       triggerStatus: "exact",
       label: null,
       detector: "manual",
-      path: ".unfold/config.toml",
+      path: "unfold.toml",
       line: null,
       language: null,
       group: null,

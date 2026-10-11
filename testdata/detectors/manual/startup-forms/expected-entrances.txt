@@ -1,10 +1,10 @@
 # A process startup names the file root (path) or the file block starting on a line (path:1), but
 # nothing by name (unsupported); a missing file is not_found.
-entrance	manual	process	-	-	unknown	.unfold/config.toml:3
+entrance	manual	process	-	-	unknown	unfold.toml:1
 	target	startup	resolved	src/server.ts#	src/server.ts
-entrance	manual	process	-	-	unknown	.unfold/config.toml:7
+entrance	manual	process	-	-	unknown	unfold.toml:6
 	target	startup	resolved	src/server.ts#	src/server.ts:1
-entrance	manual	process	-	-	unknown	.unfold/config.toml:11
+entrance	manual	process	-	-	unknown	unfold.toml:11
 	target	startup	unresolved	unsupported	src/server.ts#main
-entrance	manual	process	-	-	unknown	.unfold/config.toml:15
+entrance	manual	process	-	-	unknown	unfold.toml:16
 	target	startup	unresolved	not_found	src/absent.ts

@@ -8,10 +8,10 @@
         "entrance:[\"package.script\",\"process\",\"\",\"cli\",\"src/cli.ts\"]"
       ],
       "entrances": [
-        "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/jobs/import-orders.ts#importOrders\"]",
-        "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/jobs/retry-failed.ts#retryFailed\"]",
-        "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]",
-        "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/jobs/retry-failed.ts#retryFailed\"]"
+        "entrance:configured:import",
+        "entrance:configured:replay",
+        "entrance:configured:report",
+        "entrance:configured:retry"
       ]
     },
     {
@@ -41,7 +41,7 @@
         "entrance:[\"express.route\",\"http\",\"GET\",\"/orders\",\"listOrders\"]",
         "entrance:[\"express.route\",\"http\",\"GET\",\"/orders/:id\",\"asyncHandler()\"]",
         "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]",
-        "entrance:[\"manual\",\"event\",\"\",\"SIGTERM\",\"src/server.ts#shutdown\"]"
+        "entrance:configured:shutdown"
       ]
     },
     {

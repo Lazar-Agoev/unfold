@@ -10,12 +10,13 @@
 //! - Each file's block tree is rebuilt from `parent_id`; local IDs follow the CSV preorder and
 //!   keys come from core's [`KeyBuilder`]. Edge `seq` is the edge's position among its source's
 //!   rows. Block, edge, and target IDs become keys.
-//! - The PoC `codegraph.json` inputs listed as settings sources become one `.unfold/config.toml`
+//! - The PoC `codegraph.json` inputs listed as settings sources become one `unfold.toml`
 //!   input (role `unfold-config`, hashed from the folder). Each manual entrance's evidence
 //!   becomes its `[[entrance]]` table there ([`super::settings`]); its locator target text is
 //!   made relative to the folder and checked against the table.
 //! - Module labels that are repository paths are mapped like other paths.
-//! - Entrance keys are re-derived after sorting ([`Graph::normalize`]).
+//! - A manual entrance's key is its table's ID (`entrance:configured:<id>`); other entrance
+//!   keys are re-derived after sorting ([`Graph::normalize`]).
 //! - The result must pass core's validator against every snapshot, and its record counts must
 //!   equal the CSV row counts.
 
@@ -36,7 +37,7 @@ use super::poc::{EntranceRow, Generation, TargetRow};
 use super::settings::{ManualTable, manual_tables};
 
 /// Where Unfold keeps the settings that replace the PoC's `codegraph.json` files.
-pub(crate) const SETTINGS_PATH: &str = ".unfold/config.toml";
+pub(crate) const SETTINGS_PATH: &str = "unfold.toml";
 
 /// The converted graph and the number of records of each type.
 #[derive(Debug)]
@@ -304,7 +305,7 @@ impl<'a> Converter<'a> {
             blocks: generation.blocks.len(),
             slots: generation.slots.len(),
             edges: generation.edges.len(),
-            // The settings sources collapse into one `.unfold/config.toml`.
+            // The settings sources collapse into one `unfold.toml`.
             inputs: generation.manifest.inputs.len() - settings_inputs + usize::from(settings_inputs > 0),
             entrances: generation.entrances.len(),
             targets: generation.targets.len(),
@@ -525,8 +526,12 @@ impl<'a> Converter<'a> {
             None => self.source_evidence(row)?,
         };
         let entrance = Entrance {
-            // Derived by `Graph::normalize` once every entrance is in canonical order.
-            key: Key::from_text(""),
+            // A manual entrance's key is its table's ID; `Graph::normalize` derives the others
+            // once every entrance is in canonical order.
+            key: manual.map_or_else(
+                || Key::from_text(""),
+                |(_, table)| Key::configured_entrance(&table.id),
+            ),
             kind: row.kind.parse()?,
             label: row.label.clone(),
             method: row.method.as_deref().map(str::parse).transpose()?,
@@ -542,7 +547,7 @@ impl<'a> Converter<'a> {
         Ok(entrance)
     }
 
-    /// The `[[entrance]]` table (and its index) in `.unfold/config.toml` that replaces a manual
+    /// The `[[entrance]]` table (and its index) in `unfold.toml` that replaces a manual
     /// entrance's `codegraph.json` element `/entrypoints/<n>`.
     fn manual_table(
         &self,

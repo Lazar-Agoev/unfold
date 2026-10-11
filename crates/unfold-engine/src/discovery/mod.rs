@@ -136,7 +136,7 @@ pub struct Discovery {
     /// JavaScript. Files under ignored or always-excluded folders aren't walked and so aren't
     /// listed; [`exists_in_root`] answers for those.
     pub unindexed: Vec<UnindexedFile>,
-    /// Configuration inputs: `.unfold/config.toml`, `tsconfig*.json`, `package.json`, and
+    /// Configuration inputs: `unfold.toml`, `tsconfig*.json`, `package.json`, and
     /// `pyproject.toml`.
     pub inputs: Vec<InputFile>,
     /// What was skipped and why, aggregated by folder.

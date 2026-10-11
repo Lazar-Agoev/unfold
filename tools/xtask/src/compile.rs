@@ -160,7 +160,7 @@ mod tests {
     fn copies_folders_without_local_state() {
         let from = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(from.path().join(".unfold/local/cache")).unwrap();
-        std::fs::write(from.path().join(".unfold/config.toml"), "version = 1\n").unwrap();
+        std::fs::write(from.path().join("unfold.toml"), "languages = [\"python\"]\n").unwrap();
         std::fs::write(from.path().join(".unfold/local/cache/x"), "x").unwrap();
         std::fs::create_dir_all(from.path().join("src")).unwrap();
         std::fs::write(from.path().join("src/a.ts"), b"\xef\xbb\xbfa\r\n").unwrap();
@@ -170,7 +170,7 @@ mod tests {
             std::fs::read(to.path().join("src/a.ts")).unwrap(),
             b"\xef\xbb\xbfa\r\n"
         );
-        assert!(to.path().join(".unfold/config.toml").is_file());
+        assert!(to.path().join("unfold.toml").is_file());
         assert!(!to.path().join(".unfold/local").exists());
     }
 }

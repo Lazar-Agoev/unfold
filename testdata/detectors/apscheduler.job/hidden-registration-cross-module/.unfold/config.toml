@@ -1,6 +1,0 @@
-# Detector case: testdata/detectors/apscheduler.job/hidden-registration-cross-module.
-version = 1
-
-[[python.project]]
-root = "."
-source_roots = ["src"]

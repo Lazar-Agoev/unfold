@@ -65,7 +65,7 @@ fn syntax_newer_than_the_configured_version_fails() {
 #[test]
 fn the_configured_project_version_applies_per_file() {
     let settings = Settings::parse(
-        "version = 1\n[[python.project]]\nroot = \"old\"\nversion = \"3.12\"\n[[python.project]]\nroot = \"new\"\n",
+        "[[python.project]]\nroot = \"old\"\nversion = \"3.12\"\n[[python.project]]\nroot = \"new\"\n",
     )
     .unwrap();
     let text = "def make[T = int](): pass\n";

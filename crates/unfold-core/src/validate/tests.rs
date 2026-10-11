@@ -386,8 +386,17 @@ fn entrances_are_ordered_and_keyed() {
     graph.entrances[0].key = Key::from_text("entrance:wrong");
     assert_violation(
         &graph,
-        "key differs from its derivation `entrance:[\"manual\",\"worker\",\"\",\"orders\",\"jobs/tasks.py#run\"]`",
+        "key differs from its derivation `entrance:[\"package.script\",\"process\",\"\",\"start\",\"src/server.ts\"]`",
     );
+
+    let mut graph = sample().build();
+    entrance_mut(&mut graph, DetectorId::Manual).key =
+        Key::from_text(r#"entrance:["manual","worker","","orders","jobs/tasks.py#run"]"#);
+    assert_violation(&graph, "a manual entrance's key is `entrance:configured:<id>`");
+
+    let mut graph = sample().build();
+    entrance_mut(&mut graph, DetectorId::ExpressRoute).key = Key::configured_entrance("orders");
+    assert_violation(&graph, "key differs from its derivation");
 }
 
 fn entrance_mut(graph: &mut Graph, detector: DetectorId) -> &mut Entrance {
@@ -442,14 +451,14 @@ fn evidence_matches_its_source() {
     assert_violation(&graph, "is not a valid JSON pointer");
 
     let mut graph = sample().build();
-    graph.inputs[0].role = InputRole::Tsconfig;
+    graph.inputs[1].role = InputRole::Tsconfig;
     assert_violation(
         &graph,
         "manual evidence belongs in a unfold-config input, not tsconfig",
     );
 
     let mut graph = sample().build();
-    graph.inputs[1].hash = crate::text::ContentHash::of(b"changed");
+    graph.inputs[0].hash = crate::text::ContentHash::of(b"changed");
     assert_violation(&graph, "input package.json: fingerprint");
 
     let mut graph = sample().build();

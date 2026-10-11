@@ -221,7 +221,7 @@ describe("the lens", () => {
       return present(found);
     });
     expect(node.querySelector(".card-title")?.textContent).toBe("import");
-    expect(node.querySelector(".card-location")?.textContent).toBe(".unfold/config.toml:6");
+    expect(node.querySelector(".card-location")?.textContent).toBe("unfold.toml:5");
     // An entrance follows the lens: it has no switch of its own.
     expect(within(node).queryByRole("radiogroup")).toBeNull();
     const folded = cardElement(container, "create-order");

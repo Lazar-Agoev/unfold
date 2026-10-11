@@ -63,7 +63,7 @@ pub enum WorkspaceError {
         /// Why it was rejected.
         reason: &'static str,
     },
-    /// A settings edit would make `.unfold/config.toml` invalid, or the file is invalid now.
+    /// A settings edit would make `unfold.toml` invalid, or the file is invalid now.
     #[error("{message}")]
     InvalidSettings {
         /// What is wrong, with the file and position.

@@ -242,9 +242,7 @@ fn the_compile_preview_names_the_fallback_location_of_a_read_only_folder() {
 
     let harness = Harness::new("ts-orders", false);
     let chmod = |mode: u32| {
-        for dir in [harness.root.join(".unfold"), harness.root.clone()] {
-            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(mode)).expect("chmod");
-        }
+        std::fs::set_permissions(&harness.root, std::fs::Permissions::from_mode(mode)).expect("chmod");
     };
     chmod(0o555);
     let preview = harness.call(1, "compile_preview", json!({ "project": harness.project }));

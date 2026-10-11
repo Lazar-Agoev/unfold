@@ -1,0 +1,5 @@
+# Detector case: testdata/detectors/apscheduler.job/ids-per-scheduler.
+
+[[python.project]]
+root = "."
+source_roots = ["src"]

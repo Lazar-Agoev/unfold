@@ -1,15 +1,5 @@
 # Expected entrances for testdata/playgrounds/ts-orders: 25 entrances, 28 targets.
 # Derived from testdata/reference/poc/playground-ts-native/ (PoC 5c98a6e). Format: testdata/README.md.
-entrance	manual	command	-	import	exact	.unfold/config.toml:6
-	target	handler	resolved	src/jobs/import-orders.ts#function:importOrders	src/jobs/import-orders.ts#importOrders
-entrance	manual	command	-	report	exact	.unfold/config.toml:11
-	target	handler	resolved	src/cli.ts#function:main/switch[0]/case[1]	src/cli.ts:12
-entrance	manual	command	-	replay	exact	.unfold/config.toml:16
-	target	handler	resolved	src/jobs/retry-failed.ts#function:retryFailed	src/jobs/retry-failed.ts#retryFailed
-entrance	manual	command	-	retry	exact	.unfold/config.toml:21
-	target	handler	resolved	src/jobs/retry-failed.ts#function:retryFailed	src/jobs/retry-failed.ts#retryFailed
-entrance	manual	event	-	SIGTERM	exact	.unfold/config.toml:26
-	target	handler	resolved	src/server.ts#function:shutdown	src/server.ts#shutdown
 entrance	package.bin	process	-	orders	exact	package.json:5
 	target	startup	resolved	src/cli.ts#	dist/cli.js
 entrance	package.script	process	-	start	exact	package.json:9
@@ -53,3 +43,13 @@ entrance	express.route	http	GET	/health	exact	src/server.ts:12
 	target	handler	resolved	src/server.ts#function:healthCheck	healthCheck
 entrance	express.route	http	GET	-	unknown	src/server.ts:13
 	target	handler	resolved	src/server.ts#function:status	status
+entrance	manual	command	-	import	exact	unfold.toml:5
+	target	handler	resolved	src/jobs/import-orders.ts#function:importOrders	src/jobs/import-orders.ts#importOrders
+entrance	manual	command	-	report	exact	unfold.toml:11
+	target	handler	resolved	src/cli.ts#function:main/switch[0]/case[1]	src/cli.ts:12
+entrance	manual	command	-	replay	exact	unfold.toml:17
+	target	handler	resolved	src/jobs/retry-failed.ts#function:retryFailed	src/jobs/retry-failed.ts#retryFailed
+entrance	manual	command	-	retry	exact	unfold.toml:23
+	target	handler	resolved	src/jobs/retry-failed.ts#function:retryFailed	src/jobs/retry-failed.ts#retryFailed
+entrance	manual	event	-	SIGTERM	exact	unfold.toml:29
+	target	handler	resolved	src/server.ts#function:shutdown	src/server.ts#shutdown

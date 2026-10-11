@@ -13,7 +13,8 @@
 //!    [`TargetResolver`];
 //! 2. sorts entrances by evidence path, start, end, detector, kind, method, and trigger, keeping
 //!    detection order for ties;
-//! 3. derives entrance keys, numbering duplicates `#n` in that order.
+//! 3. derives entrance keys, numbering duplicates `#n` in that order; a configured entrance's key
+//!    is `entrance:configured:<id>`.
 
 pub mod locate;
 mod manual;
@@ -30,7 +31,7 @@ use crate::locator::Locator;
 use crate::program::{BlockRef, FactsSet, FileId, ValueRef};
 use crate::provenance::{self, Provenance};
 use crate::resolve::{Outcome, Resolver};
-use crate::settings::Settings;
+use crate::settings::{SETTINGS_PATH, Settings};
 
 pub use manual::manual_candidates;
 
@@ -106,6 +107,15 @@ pub enum CandidateEvidence {
         /// The member's byte range.
         range: ByteRange,
         /// The pointer into the parsed value.
+        pointer: Box<str>,
+    },
+    /// An `[[entrance]]` table of `unfold.toml`: its ID, its range, and its pointer.
+    Configured {
+        /// The table's `id`, which the entrance's key derives from.
+        id: Box<str>,
+        /// The table's byte range.
+        range: ByteRange,
+        /// The pointer, `/entrance/<index>`.
         pointer: Box<str>,
     },
 }
@@ -219,8 +229,12 @@ pub fn assemble(
                 module: fields.module,
             });
         }
+        let key = match &candidate.evidence {
+            CandidateEvidence::Configured { id, .. } => Key::configured_entrance(id),
+            _ => Key::from_text(""),
+        };
         entrances.push(Entrance {
-            key: Key::from_text(""),
+            key,
             kind: candidate.kind,
             label: candidate.label.filter(|label| !label.is_empty()),
             method: candidate.method,
@@ -257,6 +271,12 @@ fn evidence(program: &FactsSet, candidate: &EntranceCandidate) -> Result<Evidenc
         }
         CandidateEvidence::Input { path, range, pointer } => Ok(Evidence {
             path: path.clone(),
+            range: *range,
+            block: None,
+            pointer: Some(pointer.clone()),
+        }),
+        CandidateEvidence::Configured { range, pointer, .. } => Ok(Evidence {
+            path: RepoPath::new(SETTINGS_PATH).expect("the settings path is a valid folder-relative path"),
             range: *range,
             block: None,
             pointer: Some(pointer.clone()),

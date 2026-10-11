@@ -131,9 +131,9 @@ command_table! {
     "cancel_compile" => CancelCompile(ProjectArgs) -> compiling::CancelCompileResult = compiling::cancel_compile;
     /// Turns background updates on or off for a project.
     "set_background_updates" => SetBackgroundUpdates(compiling::SetBackgroundUpdatesArgs) -> GraphStatus = compiling::set_background_updates;
-    /// A project's `.unfold/config.toml` and shared name.
+    /// A project's `unfold.toml` and shared name.
     "project_config" => ProjectConfig(ProjectArgs) -> settings::ProjectConfig = settings::project_config;
-    /// Applies validated edits to a project's `.unfold/config.toml`.
+    /// Applies validated edits to a project's `unfold.toml`.
     "update_project_config" => UpdateProjectConfig(settings::UpdateProjectConfigArgs) -> settings::ProjectConfig = settings::update_project_config;
     /// The app preferences.
     "get_preferences" => GetPreferences(NoArgs) -> Preferences = settings::get_preferences;

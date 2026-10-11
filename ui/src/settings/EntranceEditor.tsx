@@ -1,6 +1,6 @@
 /**
  * The manual entrance editor (docs/engine.md#shared-config, docs/engine.md): add or edit one `[[entrance]]`
- * table in `.unfold/config.toml` (kind, trigger, method for HTTP, label, and handlers or, for a
+ * table in `unfold.toml` (kind, trigger, method for HTTP, label, and handlers or, for a
  * process, its startup), and confirm removing one. Locators are checked while typing; Rust checks
  * the whole file again when the edit is applied and keeps its comments and formatting. The graph
  * picks the change up in the background.
@@ -26,6 +26,7 @@ import {
   HTTP_METHODS,
   draftOf,
   emptyDraft,
+  entranceId,
   hasProblems,
   manualTableOf,
   specOf,
@@ -69,12 +70,14 @@ interface FormProps {
   readonly project: ProjectId;
   readonly initial: EntranceDraft;
   /** The table being edited, or null for a new one. */
-  readonly index: number | null;
+  readonly table: ManualEntranceView | null;
+  /** Every entrance's ID, which a new one's must differ from. */
+  readonly ids: readonly string[];
   readonly blocked: SettingsProblemText | null;
   readonly onDone: () => void;
 }
 
-function EntranceForm({ project, initial, index, blocked, onDone }: FormProps) {
+function EntranceForm({ project, initial, table, ids, blocked, onDone }: FormProps) {
   const client = useQueryClient();
   const summary = useEngineQuery("project_summary", { project });
   const formId = useId();
@@ -105,8 +108,9 @@ function EntranceForm({ project, initial, index, blocked, onDone }: FormProps) {
       return;
     }
     setSaving(true);
-    const entrance = specOf(draft);
-    const edit: SettingsEdit = index === null ? { op: "add_entrance", entrance } : { op: "replace_entrance", index, entrance };
+    const entrance = specOf(draft, table?.id ?? entranceId(draft, ids), table);
+    const edit: SettingsEdit =
+      table === null ? { op: "add_entrance", entrance } : { op: "replace_entrance", id: table.id, entrance };
     const outcome = await applySettingsEdits(project, [edit]);
     setSaving(false);
     if (!outcome.ok) {
@@ -116,7 +120,7 @@ function EntranceForm({ project, initial, index, blocked, onDone }: FormProps) {
     client.setQueryData<ProjectConfig>(engineKey("project_config", { project }), outcome.config);
     const paused = summary.data?.status.backgroundUpdates === false;
     showToast({
-      title: `${index === null ? "Added" : "Saved"} the entrance in .unfold/config.toml`,
+      title: `${table === null ? "Added" : "Saved"} the entrance in unfold.toml`,
       body: paused ? "Background updates are paused: compile to see it in the graph." : "The graph updates in the background.",
     });
     onDone();
@@ -126,8 +130,8 @@ function EntranceForm({ project, initial, index, blocked, onDone }: FormProps) {
     <Dialog
       open
       onClose={onDone}
-      title={index === null ? "Add entrance" : "Edit entrance"}
-      description="For entrances the detectors can't see, such as CLI dispatch or a signal handler. Saved in .unfold/config.toml, keeping its comments and formatting."
+      title={table === null ? "Add entrance" : "Edit entrance"}
+      description="For entrances the detectors can't see, such as CLI dispatch or a signal handler. Saved in unfold.toml, keeping its comments and formatting."
       width={520}
       placement="window"
       initialFocus={firstField}
@@ -137,7 +141,7 @@ function EntranceForm({ project, initial, index, blocked, onDone }: FormProps) {
             Cancel
           </Button>
           <Button variant="primary" type="submit" form={formId} busy={saving} disabled={saving || blocked !== null}>
-            {index === null ? "Add entrance" : "Save"}
+            {table === null ? "Add entrance" : "Save"}
           </Button>
         </>
       }
@@ -274,17 +278,17 @@ function EntranceForm({ project, initial, index, blocked, onDone }: FormProps) {
 }
 
 /** The table a request edits, once the settings are loaded. */
-function resolveTarget(request: EditorRequest, config: ProjectConfig): { draft: EntranceDraft; index: number | null } | null {
+function resolveTarget(request: EditorRequest, config: ProjectConfig): { draft: EntranceDraft; table: ManualEntranceView | null } | null {
   if (request.mode === "add") {
-    return { draft: emptyDraft(request.handler ? locatorFor(request.handler) : undefined), index: null };
+    return { draft: emptyDraft(request.handler ? locatorFor(request.handler) : undefined), table: null };
   }
   const table: ManualEntranceView | null = manualTableOf(request.entrance, config.settings?.entrances ?? []);
-  return table ? { draft: draftOf(table), index: table.index } : null;
+  return table ? { draft: draftOf(table), table } : null;
 }
 
 function blockedBy(config: ProjectConfig): SettingsProblemText | null {
   return config.error
-    ? { code: "invalid_settings", message: `Fix .unfold/config.toml first: ${config.error.message}`, line: null, column: null }
+    ? { code: "invalid_settings", message: `Fix unfold.toml first: ${config.error.message}`, line: null, column: null }
     : null;
 }
 
@@ -296,12 +300,19 @@ export function EntranceEditorDialog({ request, onClose }: { readonly request: E
   }
   const resolved = resolveTarget(request, config.data);
   return resolved ? (
-    <EntranceForm project={request.project} initial={resolved.draft} index={resolved.index} blocked={blockedBy(config.data)} onDone={onClose} />
+    <EntranceForm
+      project={request.project}
+      initial={resolved.draft}
+      table={resolved.table}
+      ids={config.data.settings?.entrances.map((entrance) => entrance.id) ?? []}
+      blocked={blockedBy(config.data)}
+      onDone={onClose}
+    />
   ) : (
     <ConfirmDialog
       open
       title="Entrance not found"
-      message="This entrance isn't in .unfold/config.toml any more. The graph may not have caught up with an edit yet."
+      message="This entrance isn't in unfold.toml any more. The graph may not have caught up with an edit yet."
       confirmLabel="OK"
       placement="window"
       onConfirm={onClose}
@@ -310,7 +321,7 @@ export function EntranceEditorDialog({ request, onClose }: { readonly request: E
   );
 }
 
-/** Asks before removing a manual entrance from a project's `.unfold/config.toml`. */
+/** Asks before removing a manual entrance from a project's `unfold.toml`. */
 export function RemoveEntranceDialog({ request, onClose }: { readonly request: RemoveRequest; readonly onClose: () => void }) {
   const { project, entrance } = request;
   return (
@@ -318,13 +329,13 @@ export function RemoveEntranceDialog({ request, onClose }: { readonly request: R
       open
       danger
       title="Remove entrance"
-      message={`Remove ${entrance.title} from .unfold/config.toml? Everyone who shares the repository loses it too.`}
+      message={`Remove ${entrance.title} from unfold.toml? Everyone who shares the repository loses it too.`}
       confirmLabel="Remove"
       placement="window"
       onCancel={onClose}
       onConfirm={() => {
         onClose();
-        void removeManualEntrance(project, entrance, (loaded) => manualTableOf(entrance, loaded.settings?.entrances ?? [])?.index ?? null);
+        void removeManualEntrance(project, entrance, (loaded) => manualTableOf(entrance, loaded.settings?.entrances ?? [])?.id ?? null);
       }}
     />
   );

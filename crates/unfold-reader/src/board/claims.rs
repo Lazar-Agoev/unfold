@@ -282,7 +282,7 @@ fn anchor_gone(graph: &BoardGraph, anchor: &Anchor, claim: &str) -> Option<Strin
             ..
         } => match graph.lines(file, [*first, *last]) {
             Lines::NotRecorded => Some(format!(
-                "Anchor {file} is not an evidence file of the project: list it under `[evidence] files` in .unfold/config.toml and compile, or reconnect the anchor"
+                "Anchor {file} is not an evidence file of the project: list it under `[evidence] files` in unfold.toml and compile, or reconnect the anchor"
             )),
             Lines::PastEnd => Some(format!(
                 "Anchor {file} has no lines {first}–{last}: the file got shorter. Reconnect the anchor to the lines it means now"

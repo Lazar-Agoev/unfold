@@ -8,7 +8,7 @@ function config(overrides: Partial<NonNullable<ProjectConfig["settings"]>> = {},
     text: "",
     error: null,
     name,
-    settings: { languages: null, include: [], exclude: [], disabledDetectors: [], pythonProjects: [], entrances: [], evidence: [], ...overrides },
+    settings: { languages: null, include: [], exclude: [], disabledDetectors: [], pythonProjects: [], applications: [], entrances: [], overrides: [], evidence: [], ...overrides },
   };
 }
 

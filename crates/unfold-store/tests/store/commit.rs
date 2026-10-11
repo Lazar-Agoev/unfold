@@ -120,7 +120,7 @@ fn removing_a_file_and_its_entrance_deletes_only_them() {
         .retain(|file| file.file.path.as_str() != "jobs/tasks.py");
     after
         .entrances
-        .retain(|entrance| entrance.evidence.path.as_str() != ".unfold/config.toml");
+        .retain(|entrance| entrance.evidence.path.as_str() != "unfold.toml");
     after.normalize();
 
     let stats = apply_delta(before, after);
@@ -210,7 +210,7 @@ fn replace_makes_the_store_exactly_the_update() {
         .retain(|file| file.file.path.as_str() != "jobs/tasks.py");
     after
         .entrances
-        .retain(|entrance| entrance.evidence.path.as_str() != ".unfold/config.toml");
+        .retain(|entrance| entrance.evidence.path.as_str() != "unfold.toml");
     after.normalize();
     let after = Prepared::new(after);
 

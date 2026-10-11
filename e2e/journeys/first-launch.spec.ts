@@ -114,7 +114,7 @@ test.describe("first launch", () => {
       await extra.uncheck();
       await expect(scope.getByText("34 of 35 files")).toBeVisible();
       // Nothing is written before Compile.
-      expect(readFileSync(join(folder, ".unfold", "config.toml"), "utf8")).not.toContain("extra");
+      expect(readFileSync(join(folder, "unfold.toml"), "utf8")).not.toContain("extra");
     });
 
     await test.step("the promise says what Compile does", async () => {
@@ -130,7 +130,7 @@ test.describe("first launch", () => {
       await expect(stateLine(page)).toContainText(/Graph current\s*· 34 files · TypeScript/);
       await expect(rowState(page, "ts-orders")).toHaveAttribute("data-state", "current");
       await expect(howItStarts(page).getByRole("region", { name: "server" })).toBeVisible();
-      expect(readFileSync(join(folder, ".unfold", "config.toml"), "utf8")).toContain("extra");
+      expect(readFileSync(join(folder, "unfold.toml"), "utf8")).toContain("extra");
       const found = await invoke<SearchResults>(page, "search", { query: "extraThing", kinds: ["definitions"] });
       expect(found.definitions.hits).toEqual([]);
       expect(existsSync(join(folder, ".unfold", "local"))).toBe(true);

@@ -15,7 +15,7 @@ use unfold_workspace::{
 pub const PATIENCE: Duration = Duration::from_secs(30);
 
 /// A copy of `testdata/playgrounds/<name>` in a temporary folder, plus a fallback cache folder
-/// beside it. `keep_unfold` keeps the playground's `.unfold/config.toml`.
+/// beside it. `keep_unfold` keeps the playground's `unfold.toml`.
 pub struct Playground {
     _dir: TempDir,
     pub root: PathBuf,
@@ -32,7 +32,7 @@ impl Playground {
             .join(name);
         copy_dir(&source, &root);
         if !keep_unfold {
-            std::fs::remove_dir_all(root.join(".unfold")).expect("remove .unfold");
+            std::fs::remove_file(root.join("unfold.toml")).expect("remove unfold.toml");
         }
         Self {
             _dir: dir,

@@ -266,7 +266,7 @@ impl BoardGraph {
             }
         }
         let inputs = reader.inputs()?;
-        // Several entrances (manual ones in `config.toml`, say) share one evidence file: read and
+        // Several entrances (manual ones in `unfold.toml`, say) share one evidence file: read and
         // verify it once.
         evidence.sort();
         evidence.dedup();

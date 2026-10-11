@@ -54,7 +54,7 @@
     },
     "projectName": {
       "type": "string",
-      "description": "A project's shared name (`[project] name` in its `.unfold/config.toml`, or its default).",
+      "description": "A project's shared name (`[project] name` in its `unfold.toml`, or its default).",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
     },
     "project": {

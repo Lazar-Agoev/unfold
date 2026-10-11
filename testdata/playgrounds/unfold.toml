@@ -1,0 +1,74 @@
+# Unfold settings for the mixed playground folder (ts-orders and py-orders together).
+# Converted from the proof of concept's root codegraph.json and py-playground/codegraph.json.
+# The PoC root "exclude": ["package.json"] named the graph-compiler repository's own tooling
+# package.json; this folder has no root package.json, so there is nothing to exclude.
+
+# Same indexed set as the PoC's mixed build: 34 TypeScript plus 50 Python sources.
+[scope]
+exclude = ["py-orders/legacy/**", "py-orders/scripts/**", "py-orders/tests/**"]
+
+[[python.project]]
+root = "py-orders"
+source_roots = ["src", "legacy"]
+
+# TypeScript entrances the detectors can't see: CLI dispatch and a signal handler.
+[[entrance]]
+id = "ts-import"
+kind = "command"
+trigger = "import"
+handler = "ts-orders/src/jobs/import-orders.ts#importOrders"
+
+[[entrance]]
+id = "ts-report"
+kind = "command"
+trigger = "report"
+handler = "ts-orders/src/cli.ts:12"
+
+[[entrance]]
+id = "ts-replay"
+kind = "command"
+trigger = "replay"
+handler = "ts-orders/src/jobs/retry-failed.ts#retryFailed"
+
+[[entrance]]
+id = "ts-retry"
+kind = "command"
+trigger = "retry"
+handler = "ts-orders/src/jobs/retry-failed.ts#retryFailed"
+
+[[entrance]]
+id = "ts-shutdown"
+kind = "event"
+trigger = "SIGTERM"
+handler = "ts-orders/src/server.ts#shutdown"
+
+# Python entrances the detectors can't see.
+[[entrance]]
+id = "py-import"
+kind = "command"
+trigger = "import"
+handler = "py-orders/src/orders_playground/jobs/import_orders.py#import_orders"
+
+[[entrance]]
+id = "py-report"
+kind = "command"
+trigger = "report"
+handler = "py-orders/src/orders_playground/cli.py#report_command"
+
+[[entrance]]
+id = "py-replay"
+kind = "command"
+trigger = "replay"
+handler = "py-orders/src/orders_playground/jobs/retry_failed.py#retry_failed"
+
+[[entrance]]
+id = "py-retry"
+kind = "command"
+trigger = "retry"
+handler = "py-orders/src/orders_playground/jobs/retry_failed.py#retry_failed"
+
+[[entrance]]
+id = "py-shutdown"
+kind = "event"
+trigger = "SIGTERM"
+handler = "py-orders/src/orders_playground/server.py#shutdown"

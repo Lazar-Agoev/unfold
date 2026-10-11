@@ -1,0 +1,2 @@
+[detectors]
+disabled = ["package.script"]

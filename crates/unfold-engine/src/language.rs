@@ -421,7 +421,7 @@ pub trait Linked: Send + Sync {
 
     /// The configuration inputs (from [`ProjectInputs::inputs`]) that shaped this language's
     /// part of the graph, such as the `tsconfig.json` chains it applied. They are recorded as
-    /// the graph's inputs, with `.unfold/config.toml` and every input an entrance cites as
+    /// the graph's inputs, with `unfold.toml` and every input an entrance cites as
     /// evidence.
     fn inputs_read(&self) -> Vec<RepoPath> {
         Vec::new()

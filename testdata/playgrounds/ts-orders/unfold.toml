@@ -1,0 +1,33 @@
+# Unfold settings for the ts-orders playground.
+# Converted from the proof of concept's root codegraph.json (paths were "ts-playground/...").
+
+# Entrances the detectors can't see: CLI dispatch and a signal handler.
+[[entrance]]
+id = "import"
+kind = "command"
+trigger = "import"
+handler = "src/jobs/import-orders.ts#importOrders"
+
+[[entrance]]
+id = "report"
+kind = "command"
+trigger = "report"
+handler = "src/cli.ts:12"
+
+[[entrance]]
+id = "replay"
+kind = "command"
+trigger = "replay"
+handler = "src/jobs/retry-failed.ts#retryFailed"
+
+[[entrance]]
+id = "retry"
+kind = "command"
+trigger = "retry"
+handler = "src/jobs/retry-failed.ts#retryFailed"
+
+[[entrance]]
+id = "shutdown"
+kind = "event"
+trigger = "SIGTERM"
+handler = "src/server.ts#shutdown"

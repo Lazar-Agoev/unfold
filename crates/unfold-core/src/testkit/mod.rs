@@ -411,6 +411,11 @@ impl GraphBuilder {
         EntranceRef(self.entrances.len() - 1)
     }
 
+    /// Gives a manual entrance its configured key, `entrance:configured:<id>`.
+    pub fn configure(&mut self, entrance: EntranceRef, id: &str) {
+        self.entrances[entrance.0].key = Key::configured_entrance(id);
+    }
+
     /// Adds the next target of `entrance`, with the role its kind requires.
     pub fn target(&mut self, entrance: EntranceRef, outcome: Outcome, text: &str) {
         let entrance = &mut self.entrances[entrance.0];

@@ -23,7 +23,7 @@ describe("add_project", () => {
       `Added ~/repos/ts-orders as the project ts-orders (id ${PROJECT}). Nothing is compiled yet.`,
       "A first Compile would read 34 files (34 TypeScript) and skip 2 source-like files.",
       "Skipped: . (JavaScript isn't graphed, 1 file); scripts (JavaScript isn't graphed, 1 file).",
-      "It has a .unfold/config.toml.",
+      "It has an unfold.toml.",
       "Next: compile_project builds its graph (ask the person first, unless they asked you to set it up). To leave folders out or turn detectors off, update_project_settings first.",
     ]);
   });
@@ -106,7 +106,7 @@ describe("update_project_settings", () => {
     name: { value: "ts-orders", isDefault: true },
   };
 
-  it("applies the edits all at once and returns the change to config.toml", async () => {
+  it("applies the edits all at once and returns the change to unfold.toml", async () => {
     const after = { ...before, text: '# Settings\n[scope]\nexclude = ["dist/**"]\n\n[detectors]\ndisabled = ["node-cron.schedule"]\n' };
     const applied: SettingsEdit[][] = [];
     const app = harness({
@@ -123,18 +123,37 @@ describe("update_project_settings", () => {
       project: "ts-orders",
       edits: [
         { op: "set_detector", detector: "node-cron.schedule", enabled: false },
-        { op: "add_entrance", entrance: { kind: "command", trigger: "import", handler: ["src/jobs/import.ts#importOrders"] } },
+        { op: "add_entrance", entrance: { id: "import", kind: "command", trigger: "import", handler: ["src/jobs/import.ts#importOrders"] } },
         { op: "set_background_updates", on: false },
       ],
     });
     expect(applied).toEqual([
       [
         { op: "set_detector", detector: "node-cron.schedule", enabled: false },
-        { op: "add_entrance", entrance: { kind: "command", trigger: "import", method: null, label: null, handler: ["src/jobs/import.ts#importOrders"], startup: null } },
+        {
+          op: "add_entrance",
+          entrance: {
+            id: "import",
+            kind: "command",
+            application: null,
+            trigger: "import",
+            method: null,
+            label: null,
+            description: null,
+            handler: ["src/jobs/import.ts#importOrders"],
+            cwd: null,
+            command: null,
+            startup: null,
+            target: null,
+            pythonPaths: null,
+            env: {},
+            schedule: null,
+          },
+        },
       ],
     ]);
     expect(text.split("\n").slice(1)).toEqual([
-      "Changed .unfold/config.toml of ts-orders:",
+      "Changed unfold.toml of ts-orders:",
       "```diff",
       ' exclude = ["dist/**"]',
       "+",
@@ -161,7 +180,7 @@ describe("update_project_settings", () => {
 
     const same = harness({ engine: { project_config: () => before, update_project_config: () => before } });
     expect((await same.call(updateProjectSettings, { project: "ts-orders", edits: [{ op: "exclude_from_graph", path: "dist" }] })).text).toContain(
-      "Nothing in .unfold/config.toml changed: the settings already said that.",
+      "Nothing in unfold.toml changed: the settings already said that.",
     );
     const twice = await same.call(updateProjectSettings, { project: "ts-orders", edits: [{ op: "set_background_updates", on: true }, { op: "set_background_updates", on: false }] });
     expect(twice.text).toBe("Can't change the settings: edits sets background updates more than once. Pass set_background_updates once.");

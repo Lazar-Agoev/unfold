@@ -83,7 +83,7 @@
     ],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+      "entrance:configured:report"
     ]
   },
   "src/db/repository.ts#class:OrderRepository": {
@@ -108,7 +108,7 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+      "entrance:configured:report"
     ]
   },
   "src/db/repository.ts#class:OrderRepository/method:cancel": {
@@ -213,7 +213,7 @@
     "reachedFrom": [
       "entrance:[\"bullmq.worker\",\"worker\",\"\",\"orders\",\"processOrder\"]",
       "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/jobs/import-orders.ts#importOrders\"]"
+      "entrance:configured:import"
     ]
   },
   "src/db/repository.ts#class:OrderRepository/method:list": {
@@ -502,7 +502,7 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/jobs/import-orders.ts#importOrders\"]"
+      "entrance:configured:import"
     ]
   },
   "src/jobs/process-order.ts#function:processOrder": {
@@ -690,8 +690,8 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/jobs/retry-failed.ts#retryFailed\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/jobs/retry-failed.ts#retryFailed\"]"
+      "entrance:configured:replay",
+      "entrance:configured:retry"
     ]
   },
   "src/jobs/send-email.ts#function:flushOutbox": {
@@ -716,8 +716,8 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/jobs/retry-failed.ts#retryFailed\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/jobs/retry-failed.ts#retryFailed\"]"
+      "entrance:configured:replay",
+      "entrance:configured:retry"
     ]
   },
   "src/jobs/send-email.ts#function:sendEmail": {
@@ -798,8 +798,8 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/jobs/retry-failed.ts#retryFailed\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/jobs/retry-failed.ts#retryFailed\"]"
+      "entrance:configured:replay",
+      "entrance:configured:retry"
     ]
   },
   "src/lib/async-handler.ts#function:asyncHandler": {
@@ -1013,8 +1013,8 @@
     ],
     "reachedFrom": [
       "entrance:[\"bullmq.worker\",\"worker\",\"\",\"emails\",\"(…)\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/jobs/retry-failed.ts#retryFailed\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/jobs/retry-failed.ts#retryFailed\"]"
+      "entrance:configured:replay",
+      "entrance:configured:retry"
     ]
   },
   "src/lib/slack.ts#variable:slack/method:post": {
@@ -1165,7 +1165,7 @@
     "reachedFrom": [
       "entrance:[\"bullmq.worker\",\"worker\",\"\",\"orders\",\"processOrder\"]",
       "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/jobs/import-orders.ts#importOrders\"]"
+      "entrance:configured:import"
     ]
   },
   "src/queues/email-worker.ts#variable:emailWorker/new[0]/function[0]": {
@@ -1699,7 +1699,7 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"event\",\"\",\"SIGTERM\",\"src/server.ts#shutdown\"]"
+      "entrance:configured:shutdown"
     ]
   },
   "src/server.ts#function:status": {
@@ -1793,7 +1793,7 @@
     "callers": [],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+      "entrance:configured:report"
     ]
   },
   "src/services/notifier.ts#class:Notifier/method:notify": {
@@ -1818,7 +1818,7 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+      "entrance:configured:report"
     ]
   },
   "src/services/notifier.ts#class:ReceiptNotifier": {
@@ -1832,7 +1832,7 @@
     ],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+      "entrance:configured:report"
     ]
   },
   "src/services/notifier.ts#class:ReceiptNotifier/method:send": {
@@ -1873,14 +1873,14 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+      "entrance:configured:report"
     ]
   },
   "src/services/order-service.ts#class:OrderService": {
     "callers": [],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+      "entrance:configured:report"
     ]
   },
   "src/services/order-service.ts#class:OrderService/constructor:constructor": {
@@ -1894,7 +1894,7 @@
     ],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+      "entrance:configured:report"
     ]
   },
   "src/services/order-service.ts#class:OrderService/getter:count": {
@@ -2122,7 +2122,7 @@
     "reachedFrom": [
       "entrance:[\"bullmq.worker\",\"worker\",\"\",\"orders\",\"processOrder\"]",
       "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/jobs/import-orders.ts#importOrders\"]"
+      "entrance:configured:import"
     ]
   },
   "src/services/order-service.ts#class:OrderService/method:remove": {
@@ -2160,7 +2160,7 @@
     "callers": [],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+      "entrance:configured:report"
     ]
   },
   "src/services/payment.ts#class:PaymentProvider/method:charge": {
@@ -2227,7 +2227,7 @@
     ],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+      "entrance:configured:report"
     ]
   },
   "src/services/payment.ts#class:StripeProvider/method:charge": {
@@ -2278,7 +2278,7 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]"
+      "entrance:configured:report"
     ]
   },
   "src/worker.ts#function:purge": {

@@ -123,7 +123,7 @@ export const MAP_HOMES: Readonly<Record<string, readonly Home[]>> = {
   "Entrances view": [
     { spec: HOME, test: COMPILED_HOME, step: "How it starts groups the entrances by application" },
     { spec: ADD, test: ADD_ON_BOARD, step: "the map shows each application's entrances and marks the one on the page" },
-    { spec: SETTINGS, test: ENTRANCES, step: "project menu › Add entrance… opens the editor; a command entrance is saved to config.toml" },
+    { spec: SETTINGS, test: ENTRANCES, step: "project menu › Add entrance… opens the editor; a command entrance is saved to unfold.toml" },
     { spec: SETTINGS, test: ENTRANCES, step: "Home's Add entrance opens the editor too" },
     { spec: SETTINGS, test: ENTRANCES, step: "its row's menu Edit… changes it" },
     { spec: SETTINGS, test: ENTRANCES, step: "its row's menu Remove… removes it after asking" },
@@ -201,7 +201,7 @@ export const MAP_HOMES: Readonly<Record<string, readonly Home[]>> = {
   ],
   "Folder Settings dialog": [
     { spec: SETTINGS, test: PROJECT_SETTINGS, step: "Home's Settings opens the settings dialog on General" },
-    { spec: SETTINGS, test: PROJECT_SETTINGS, step: "Save writes the rule to config.toml, keeping its comments, and a background update drops the folder" },
+    { spec: SETTINGS, test: PROJECT_SETTINGS, step: "Save writes the rule to unfold.toml, keeping its comments, and a background update drops the folder" },
     { spec: SETTINGS, test: PROJECT_SETTINGS, step: "Detectors: turning node-cron schedules off removes the schedules from How it starts" },
     { spec: SETTINGS, test: PROJECT_SETTINGS, step: "General: a new shared name renames the project everywhere and writes [project] name" },
   ],

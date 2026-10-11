@@ -33,9 +33,8 @@ pub const SERVER_TS: &str = "app.post(\"/orders\", createOrder);\n";
 /// `jobs/tasks.py`.
 pub const TASKS_PY: &str = "def run(handler):\n    handler()\n";
 
-/// `.unfold/config.toml`.
-pub const CONFIG_TOML: &str =
-    "[[entrance]]\nkind = \"worker\"\ntrigger = \"orders\"\nhandler = \"jobs/tasks.py#run\"\n";
+/// `unfold.toml`.
+pub const CONFIG_TOML: &str = "[[entrance]]\nid = \"orders\"\nkind = \"worker\"\ntrigger = \"orders\"\nhandler = \"jobs/tasks.py#run\"\n";
 
 /// `package.json`.
 pub const PACKAGE_JSON: &str = "{ \"scripts\": { \"start\": \"node src/server.ts\" } }\n";
@@ -293,7 +292,7 @@ pub fn sample() -> GraphBuilder {
         },
     );
 
-    g.input(".unfold/config.toml", InputRole::UnfoldConfig, CONFIG_TOML);
+    g.input("unfold.toml", InputRole::UnfoldConfig, CONFIG_TOML);
     g.input("package.json", InputRole::Package, PACKAGE_JSON);
 
     let evidence = g.source_evidence(route);
@@ -306,7 +305,7 @@ pub fn sample() -> GraphBuilder {
     );
     g.target(http, Outcome::Resolved(g.key(create)), "createOrder");
 
-    let evidence = g.config_evidence(".unfold/config.toml", CONFIG_TOML.trim_end(), "/entrance/0");
+    let evidence = g.config_evidence("unfold.toml", CONFIG_TOML.trim_end(), "/entrance/0");
     let worker = g.entrance(
         DetectorId::Manual,
         EntranceKind::Worker,
@@ -314,6 +313,7 @@ pub fn sample() -> GraphBuilder {
         Some("orders"),
         evidence,
     );
+    g.configure(worker, "orders");
     g.target(worker, Outcome::Resolved(g.key(run)), "jobs/tasks.py#run");
 
     let evidence = g.config_evidence(

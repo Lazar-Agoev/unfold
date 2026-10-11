@@ -131,7 +131,7 @@ impl Harness {
         }
     }
 
-    /// A host over a copy of `testdata/playgrounds/<name>` (with its `.unfold/config.toml`),
+    /// A host over a copy of `testdata/playgrounds/<name>` (with its `unfold.toml`),
     /// added as a project (resting, not compiled).
     pub fn new(name: &str, watch: bool) -> Self {
         Self::with(name, options(watch))

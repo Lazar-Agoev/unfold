@@ -246,7 +246,7 @@ fn disabling_a_detector_removes_only_its_entrances() {
     ] {
         let folder = tempfile::tempdir().expect("a temporary directory");
         copy_folder(&source, folder.path());
-        let settings = folder.path().join(".unfold/config.toml");
+        let settings = folder.path().join("unfold.toml");
         let mut text = std::fs::read_to_string(&settings).expect("read the settings");
         let list = detectors
             .iter()
@@ -423,8 +423,8 @@ fn packages_are_inputs_and_unreadable_ones_are_problems() {
     // With both package detectors disabled, nothing reads it.
     write(
         root,
-        ".unfold/config.toml",
-        "version = 1\n\n[detectors]\ndisabled = [\"package.script\", \"package.bin\"]\n",
+        "unfold.toml",
+        "[detectors]\ndisabled = [\"package.script\", \"package.bin\"]\n",
     );
     let disabled = compile(&mut engine);
     assert!(

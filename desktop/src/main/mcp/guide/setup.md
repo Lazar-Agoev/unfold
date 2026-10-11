@@ -1,6 +1,6 @@
 # Setting up: projects, Compile, settings, and boards
 
-Settings shape the graph and live in `.unfold/config.toml`, which the team shares
+Settings shape the graph and live in `unfold.toml`, which the team shares
 through the repository. Change them only when the person asks, and tell them the file
 changed: it shows in their git diff.
 
@@ -32,7 +32,7 @@ changed: it shows in their git diff.
 
 ## Settings
 update_project_settings takes edits that apply in order, all or nothing, and returns
-the change to `.unfold/config.toml` as a diff. An edit that would make the file
+the change to `unfold.toml` as a diff. An edit that would make the file
 invalid, or that a broader rule stands in the way of, is refused with the reason, and
 nothing changes. get_project lists the settings now. The graph follows at the next
 compile_project or background update.
@@ -56,8 +56,10 @@ version (3.12, 3.13, or 3.14); remove_python_project by root.
 
 ### Declared entrances
 For an entrance the detectors can't see, such as a command dispatched by hand or a
-signal handler: add_entrance, replace_entrance, and remove_entrance (by index, from 0,
-in get_project's list).
+signal handler: add_entrance, replace_entrance, and remove_entrance (by the id
+get_project lists).
+- id: a short name, unique among the manual entrances, such as import-orders. The
+  entrance's key comes from it, so it survives edits to everything else.
 - kind: process, command, http, worker, schedule, or event; trigger (the path, queue,
   schedule, command, or event name); method for http; an optional label.
 - handler: locators, middleware first (every kind but process); startup: one locator
@@ -97,7 +99,7 @@ use those schedules anymore."
 - compile_project({project: "ts-orders"}): the graph is current, and the result names
   its applications.
 - In chat: "ts-orders is compiled. I turned off the node-cron detector, so its two
-  schedules don't show. That setting is in .unfold/config.toml, which is shared, so
+  schedules don't show. That setting is in unfold.toml, which is shared, so
   it will show in your git diff."
 
 ## Boards

@@ -1,0 +1,5 @@
+# Detector case: testdata/detectors/celery.task/conf-update-5.
+
+[[python.project]]
+root = "."
+source_roots = ["src"]

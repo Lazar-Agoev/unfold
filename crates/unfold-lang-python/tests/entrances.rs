@@ -159,7 +159,7 @@ fn disabling_a_detector_removes_only_its_entrances() {
     ] {
         let folder = tempfile::tempdir().expect("a temporary directory");
         copy_folder(&source, folder.path());
-        let settings = folder.path().join(".unfold/config.toml");
+        let settings = folder.path().join("unfold.toml");
         let mut text = std::fs::read_to_string(&settings).expect("read the settings");
         text.push_str(&format!("\n[detectors]\ndisabled = [\"{detector}\"]\n"));
         std::fs::write(&settings, text).expect("write the settings");
@@ -344,8 +344,8 @@ fn owning_pyprojects_are_inputs_and_unreadable_ones_are_problems() {
     // A disabled detector never reads it.
     write(
         root,
-        ".unfold/config.toml",
-        "version = 1\n\n[detectors]\ndisabled = [\"pyproject.script\"]\n",
+        "unfold.toml",
+        "[detectors]\ndisabled = [\"pyproject.script\"]\n",
     );
     let disabled = compile(&mut engine);
     assert!(
@@ -368,8 +368,8 @@ fn ambiguous_module_roots_are_listed_without_making_the_graph_incomplete() {
     let root = folder.path();
     write(
         root,
-        ".unfold/config.toml",
-        "version = 1\n\n[[python.project]]\nroot = \".\"\nsource_roots = [\"left\", \"right\"]\n",
+        "unfold.toml",
+        "[[python.project]]\nroot = \".\"\nsource_roots = [\"left\", \"right\"]\n",
     );
     write(root, "left/service.py", "def main(): pass\n");
     write(root, "right/service.py", "def main(): pass\n");

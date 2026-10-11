@@ -51,7 +51,7 @@ pub struct OpenContext {
 /// The result of a settings edit.
 #[derive(Debug, Clone)]
 pub struct SettingsEditOutcome {
-    /// Whether `.unfold/config.toml` was written (unchanged text, or an absent file left at the
+    /// Whether `unfold.toml` was written (unchanged text, or an absent file left at the
     /// defaults, writes nothing).
     pub written: bool,
     /// The file's text after the edit.
@@ -332,7 +332,7 @@ impl Workspace {
         lock(&self.shared.index_log).entries()
     }
 
-    /// The text of `.unfold/config.toml`, or `None` when it doesn't exist.
+    /// The text of `unfold.toml`, or `None` when it doesn't exist.
     pub fn settings_text(&self) -> Result<Option<String>> {
         settings_text(&self.shared.root)
     }
@@ -352,7 +352,7 @@ impl Workspace {
         let unchanged = current.as_deref() == Some(edited.text.as_str())
             || (current.is_none() && edited.settings == Settings::default());
         if !unchanged {
-            // A `.unfold` link that leaves the folder must never be written through.
+            // An `unfold.toml` link that leaves the folder must never be written through.
             confine(&self.shared.root, crate::layout::CONFIG_PATH)?;
             let path = lock(&self.shared.layout).config();
             self.shared
@@ -450,7 +450,7 @@ impl Drop for Workspace {
     }
 }
 
-/// The text of `<root>/.unfold/config.toml`, or `None` when it doesn't exist.
+/// The text of `<root>/unfold.toml`, or `None` when it doesn't exist.
 pub(crate) fn settings_text(root: &Path) -> Result<Option<String>> {
     let path = root.join(crate::layout::CONFIG_PATH);
     match std::fs::read_to_string(&path) {

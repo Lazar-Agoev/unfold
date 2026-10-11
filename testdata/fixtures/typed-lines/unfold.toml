@@ -1,0 +1,7 @@
+# The typed-lines fixture: a TypeScript and a Python orders flow whose calls carry written
+# types, for the typed records (signatures, parameters, members, arguments, results, and type
+# links) and the app's typed lines.
+
+[[python.project]]
+root = "py"
+source_roots = ["src"]

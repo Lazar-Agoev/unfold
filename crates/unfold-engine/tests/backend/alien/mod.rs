@@ -146,7 +146,7 @@ pub struct Compiled {
     pub violations: Vec<Violation>,
 }
 
-pub const CONFIG: &str = ".unfold/config.toml";
+pub const CONFIG: &str = "unfold.toml";
 
 impl Project {
     pub fn new() -> Self {
@@ -164,7 +164,7 @@ impl Project {
         self
     }
 
-    /// `.unfold/config.toml`, whose `[[entrance]]` tables become manual entrances.
+    /// `unfold.toml`, whose `[[entrance]]` tables become manual entrances.
     pub fn config(mut self, text: &str) -> Self {
         self.config = Some(text.to_owned());
         self

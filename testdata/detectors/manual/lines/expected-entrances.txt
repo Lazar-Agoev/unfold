@@ -1,17 +1,17 @@
 # Line locators choose the outermost permitted block starting on the line: a function, sibling
 # functions (ambiguous), an if, a case, a default; a variable is unsupported; an empty line is
 # not_found. (PoC schema2-manual: "line locators choose outermost allowed ancestors".)
-entrance	manual	command	-	-	unknown	.unfold/config.toml:3
+entrance	manual	command	-	-	unknown	unfold.toml:1
 	target	handler	resolved	main.ts#function:outer	main.ts:1
-entrance	manual	command	-	-	unknown	.unfold/config.toml:7
+entrance	manual	command	-	-	unknown	unfold.toml:6
 	target	handler	unresolved	ambiguous	main.ts:2
-entrance	manual	command	-	-	unknown	.unfold/config.toml:11
+entrance	manual	command	-	-	unknown	unfold.toml:11
 	target	handler	resolved	main.ts#if[0]	main.ts:3
-entrance	manual	command	-	-	unknown	.unfold/config.toml:15
+entrance	manual	command	-	-	unknown	unfold.toml:16
 	target	handler	resolved	main.ts#switch[0]/case[0]	main.ts:5
-entrance	manual	command	-	-	unknown	.unfold/config.toml:19
+entrance	manual	command	-	-	unknown	unfold.toml:21
 	target	handler	resolved	main.ts#switch[0]/default[0]	main.ts:7
-entrance	manual	command	-	-	unknown	.unfold/config.toml:23
+entrance	manual	command	-	-	unknown	unfold.toml:26
 	target	handler	unresolved	unsupported	main.ts:10
-entrance	manual	command	-	-	unknown	.unfold/config.toml:27
+entrance	manual	command	-	-	unknown	unfold.toml:31
 	target	handler	unresolved	not_found	main.ts:99

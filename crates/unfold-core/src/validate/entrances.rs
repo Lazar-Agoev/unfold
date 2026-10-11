@@ -47,6 +47,9 @@ fn check_fields(checker: &mut Checker<'_>, entrance: &Entrance) {
             "trigger status is unknown exactly when the trigger is absent",
         );
     }
+    if entrance.detector == DetectorId::Manual && entrance.key.configured_id().is_none() {
+        checker.report(subject(), "a manual entrance's key is `entrance:configured:<id>`");
+    }
     match entrance.label.as_deref() {
         Some("") => checker.report(subject(), "label is empty"),
         Some(_) if entrance.detector != DetectorId::Manual => {

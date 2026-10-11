@@ -19,7 +19,7 @@
 //! | `files_changed` | The watcher saw files appear, change, or disappear |
 //! | `boards_changed` | Board files, folders, or a board's publish state changed |
 //! | `board_conflict` | The file an open board's session reads changed on disk outside the app (only the holder) |
-//! | `config_changed` | `.unfold/config.toml` changed |
+//! | `config_changed` | `unfold.toml` changed |
 //! | `preferences_changed` | `set_preferences` saved the app preferences |
 
 use serde::Serialize;
@@ -154,7 +154,7 @@ pub enum WorkspaceEvent {
         /// The revision on disk now, or `None` when the file is gone.
         disk_revision: Option<String>,
     },
-    /// `.unfold/config.toml` changed.
+    /// `unfold.toml` changed.
     ConfigChanged {
         /// The project.
         project: ProjectId,

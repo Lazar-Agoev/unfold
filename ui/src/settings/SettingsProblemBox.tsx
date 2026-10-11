@@ -1,4 +1,4 @@
-/** Rust's refusal of a settings change, with where in `.unfold/config.toml` it found the problem. */
+/** Rust's refusal of a settings change, with where in `unfold.toml` it found the problem. */
 
 import { useEffect, useRef } from "react";
 import { problemText, type SettingsProblemText } from "./edits";
@@ -14,7 +14,7 @@ export function SettingsProblemBox({ problem }: { readonly problem: SettingsProb
     <div ref={box} className="settings-problem" role="alert">
       <strong>{problem.code === "settings_conflict" ? "Can't make this change" : "Unfold can't save this"}</strong>
       <span>{problemText(problem)}</span>
-      {problem.line === null ? null : <span className="settings-problem-where">Position in .unfold/config.toml as it would be written.</span>}
+      {problem.line === null ? null : <span className="settings-problem-where">Position in unfold.toml as it would be written.</span>}
     </div>
   );
 }

@@ -61,7 +61,7 @@ The detailed rules belong to [graph model](graph-model.md), [engine](engine.md),
 
 | Location | Role |
 | --- | --- |
-| `.unfold/config.toml` | Shared project name, scope, detectors, Python roots, evidence, manual entrances |
+| `unfold.toml` | Shared project name, scope, detectors, Python roots, evidence, applications, manual entrances, overrides |
 | `.unfold/boards/` | Published boards, shared through the repository |
 | `.unfold/local/` | Ignored local state, drafts, unpublished edits, graph and facts cache |
 | OS app data | Connected projects, window restore, preferences, logs |

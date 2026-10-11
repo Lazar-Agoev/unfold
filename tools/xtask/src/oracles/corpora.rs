@@ -40,7 +40,7 @@ pub(crate) struct OracleCorpus {
     /// true). Uncommitted ones live in `target/oracles/` and are regenerated where the corpus is.
     #[serde(default = "default_true")]
     pub committed: bool,
-    /// `.unfold/config.toml` text for a corpus that has none of its own (lock corpora).
+    /// `unfold.toml` text for a corpus that has none of its own (lock corpora).
     pub settings: Option<String>,
     /// For Python: the saved proof-of-concept Pyright rows this corpus's oracle comes from.
     pub pyright: Option<PyrightRows>,
@@ -177,14 +177,13 @@ impl OracleCorpus {
     pub(crate) fn compile_copy(&self, source: &Path, into: &Path) -> anyhow::Result<Graph> {
         copy_corpus(source, into)?;
         if let Some(settings) = &self.settings {
-            let config = into.join(".unfold").join("config.toml");
+            let config = into.join("unfold.toml");
             if config.exists() {
                 bail!(
-                    "corpus `{}` has its own .unfold/config.toml and `settings` too",
+                    "corpus `{}` has its own unfold.toml and `settings` too",
                     self.name
                 );
             }
-            std::fs::create_dir_all(into.join(".unfold"))?;
             std::fs::write(&config, settings)
                 .with_context(|| format!("cannot write {}", config.display()))?;
         }

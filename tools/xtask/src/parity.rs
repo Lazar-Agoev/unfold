@@ -12,7 +12,7 @@
 //!    compiles in place, so nothing but blessing ever writes into `testdata/`.
 //! 2. The copy is compiled with the engine's `update()`, registering the language crates
 //!    `Corpus::languages` names. The folder carries the corpus's settings
-//!    (`.unfold/config.toml`), so no other options are needed.
+//!    (`unfold.toml`), so no other options are needed.
 //! 3. The resulting graph goes to [`check_differences`] and [`Ledger::check`]. Paths in the
 //!    graph are relative to the folder, which is what the reference uses.
 //!

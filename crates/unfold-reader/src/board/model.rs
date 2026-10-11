@@ -190,7 +190,7 @@ words! {
     }
 }
 
-/// A project's shared name (`[project] name` in its `.unfold/config.toml`, or its default):
+/// A project's shared name (`[project] name` in its `unfold.toml`, or its default):
 /// a letter or digit, then up to 63 letters, digits, `.`, `_`, or `-`. Boards name other
 /// projects by it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]

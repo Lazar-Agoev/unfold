@@ -1,0 +1,5 @@
+# Detector case: testdata/detectors/apscheduler.job/wrapped-handler.
+
+[[python.project]]
+root = "."
+source_roots = ["src"]

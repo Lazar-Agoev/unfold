@@ -21,8 +21,8 @@ use std::fmt;
 
 use launcher::{LAUNCHERS, Step, launcher};
 pub use path::{LAUNCH_EXTENSIONS, launch_file};
-pub use target::{LaunchTarget, PythonContext, PythonEntry};
 use shell::{Word, is_assignment, steps};
+pub use target::{LaunchTarget, PythonContext, PythonEntry};
 
 /// How deep script references may nest: eight references below the enumerated script.
 pub const MAX_SCRIPT_DEPTH: usize = 8;

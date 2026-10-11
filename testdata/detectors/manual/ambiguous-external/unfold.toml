@@ -1,0 +1,9 @@
+[[entrance]]
+id = "duplicate"
+kind = "command"
+handler = "barrel.ts#duplicate"
+
+[[entrance]]
+id = "remote"
+kind = "command"
+handler = "barrel.ts#remote"

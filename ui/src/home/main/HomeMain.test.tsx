@@ -218,7 +218,7 @@ describe("the compiled Home", () => {
 describe("Health and activity", () => {
   const PROBLEMS: ProblemItem[] = [
     { category: "doesnt_parse", path: "src/a.ts", line: 3, column: 1, message: "Unexpected token", fileState: "last_good" },
-    { category: "settings", path: ".unfold/config.toml", line: null, column: null, message: "[scope] exclude isn't a list", fileState: null },
+    { category: "settings", path: "unfold.toml", line: null, column: null, message: "[scope] exclude isn't a list", fileState: null },
   ];
 
   it("lists every problem with its action", async () => {

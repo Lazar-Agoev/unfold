@@ -2,7 +2,7 @@
 import "../test/dom";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ProjectConfig, SettingsEdit } from "../ipc/generated";
+import type { ManualEntranceView, ProjectConfig, SettingsEdit } from "../ipc/generated";
 import type { DialogRequest } from "../state/overlays";
 import { fixture, installFakeEngine, type FakeEngine } from "../test/engine";
 import { renderWithClient } from "../test/render";
@@ -11,9 +11,28 @@ import { EntranceEditorDialog, RemoveEntranceDialog } from "./EntranceEditor";
 
 const PROJECT = "p-1";
 
+const TABLE: ManualEntranceView = {
+  id: "",
+  kind: "command",
+  application: null,
+  trigger: null,
+  method: null,
+  label: null,
+  description: null,
+  handler: [],
+  cwd: null,
+  command: null,
+  startup: null,
+  target: null,
+  pythonPaths: null,
+  env: {},
+  schedule: null,
+  line: 1,
+};
+
 const CONFIG: ProjectConfig = {
   exists: true,
-  text: "# Shared settings.\nversion = 1\n",
+  text: "# Shared settings.\n",
   error: null,
   name: { value: "storefront-api", isDefault: true },
   settings: {
@@ -23,12 +42,17 @@ const CONFIG: ProjectConfig = {
     disabledDetectors: [],
     pythonProjects: [],
     evidence: [],
+    applications: [],
+    overrides: [],
     entrances: [
-      { index: 0, kind: "command", trigger: "import", method: null, label: null, handler: ["src/jobs/import-orders.ts#importOrders"], startup: null, line: 4 },
-      { index: 1, kind: "event", trigger: "SIGTERM", method: null, label: "Shut down", handler: ["src/server.ts#shutdown"], startup: null, line: 9 },
+      { ...TABLE, id: "import", kind: "command", trigger: "import", handler: ["src/jobs/import-orders.ts#importOrders"], line: 4 },
+      { ...TABLE, id: "shutdown", kind: "event", trigger: "SIGTERM", label: "Shut down", handler: ["src/server.ts#shutdown"], line: 9 },
     ],
   },
 };
+
+/** The spec fields the editor doesn't set. */
+const UNSHOWN = { application: null, description: null, cwd: null, command: null, target: null, pythonPaths: null, env: {}, schedule: null };
 
 let engine: FakeEngine | null = null;
 
@@ -91,7 +115,12 @@ describe("the manual entrance editor", () => {
     });
     expect(fake.callsOf("update_project_config")[0]).toEqual({
       project: PROJECT,
-      edits: [{ op: "add_entrance", entrance: { kind: "command", trigger: "report", method: null, label: null, handler: ["src/cli.ts#runReport"], startup: null } }],
+      edits: [
+        {
+          op: "add_entrance",
+          entrance: { ...UNSHOWN, id: "report", kind: "command", trigger: "report", method: null, label: null, handler: ["src/cli.ts#runReport"], startup: null },
+        },
+      ],
     });
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
@@ -121,7 +150,16 @@ describe("the manual entrance editor", () => {
     const [edit] = (fake.callsOf("update_project_config")[0]?.["edits"] ?? []) as SettingsEdit[];
     expect(edit).toEqual({
       op: "add_entrance",
-      entrance: { kind: "http", trigger: "/orders", method: "POST", label: null, handler: ["src/auth.ts#requireUser", "src/routes/orders.ts#createOrder"], startup: null },
+      entrance: {
+        ...UNSHOWN,
+        id: "orders",
+        kind: "http",
+        trigger: "/orders",
+        method: "POST",
+        label: null,
+        handler: ["src/auth.ts#requireUser", "src/routes/orders.ts#createOrder"],
+        startup: null,
+      },
     });
   });
 
@@ -155,7 +193,7 @@ describe("the manual entrance editor", () => {
   it("shows Rust's refusal with its line and column, and stays open", async () => {
     install(() => {
       // eslint-disable-next-line @typescript-eslint/only-throw-error -- the preload rejects with plain data
-      throw { code: "invalid_settings", message: ".unfold/config.toml:14:11: `src/cli.ts#x` names a file that isn't TypeScript or Python" };
+      throw { code: "invalid_settings", message: "unfold.toml:14:11: `src/cli.ts#x` names a file that isn't TypeScript or Python" };
     });
     const dialog = await openEditor(addFor("src/cli.ts", "x"));
     fireEvent.click(within(dialog).getByRole("button", { name: "Add entrance" }));
@@ -167,7 +205,7 @@ describe("the manual entrance editor", () => {
 
   it("edits the table an Entrances row came from", async () => {
     const fake = install();
-    const row = { key: 'entrance:["manual","event","","SIGTERM","src/server.ts#shutdown"]', detector: "manual" as const, title: "EVENT SIGTERM" };
+    const row = { key: "entrance:configured:shutdown", detector: "manual" as const, title: "EVENT SIGTERM" };
     const dialog = await openEditor({ kind: "entranceEditor", project: PROJECT, mode: "edit", entrance: row });
     expect(within(dialog).getByRole("heading", { name: "Edit entrance" })).toBeTruthy();
     expect(screen.getByLabelText<HTMLInputElement>("Trigger").value).toBe("SIGTERM");
@@ -178,18 +216,18 @@ describe("the manual entrance editor", () => {
       expect(fake.callsOf("update_project_config")).toHaveLength(1);
     });
     expect(fake.callsOf("update_project_config")[0]).toMatchObject({
-      edits: [{ op: "replace_entrance", index: 1, entrance: { kind: "event", trigger: "SIGINT", label: "Shut down" } }],
+      edits: [{ op: "replace_entrance", id: "shutdown", entrance: { id: "shutdown", kind: "event", trigger: "SIGINT", label: "Shut down" } }],
     });
   });
 
   it("removes a manual entrance after asking", async () => {
     const fake = install();
-    const entrance = { key: 'entrance:["manual","command","","import","src/jobs/import-orders.ts#importOrders"]', detector: "manual" as const, title: "import" };
+    const entrance = { key: "entrance:configured:import", detector: "manual" as const, title: "import" };
     renderWithClient(<RemoveEntranceDialog request={{ kind: "removeEntrance", project: PROJECT, entrance }} onClose={() => undefined} />);
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
     await waitFor(() => {
-      expect(fake.callsOf("update_project_config")).toEqual([{ project: PROJECT, edits: [{ op: "remove_entrance", index: 0 }] }]);
+      expect(fake.callsOf("update_project_config")).toEqual([{ project: PROJECT, edits: [{ op: "remove_entrance", id: "import" }] }]);
     });
   });
 });

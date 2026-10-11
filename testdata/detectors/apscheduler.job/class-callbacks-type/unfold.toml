@@ -1,0 +1,5 @@
+# Detector case: testdata/detectors/apscheduler.job/class-callbacks-type.
+
+[[python.project]]
+root = "."
+source_roots = ["src"]

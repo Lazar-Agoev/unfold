@@ -2,7 +2,7 @@
   "kind": "entrance",
   "project": "<project>",
   "header": {
-    "key": "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/jobs/import-orders.ts#importOrders\"]",
+    "key": "entrance:configured:import",
     "kind": "command",
     "title": "command import",
     "label": null,
@@ -21,8 +21,8 @@
     }
   ],
   "declared": {
-    "path": ".unfold/config.toml",
-    "line": 6
+    "path": "unfold.toml",
+    "line": 5
   },
   "reaches": 7,
   "externalModules": [

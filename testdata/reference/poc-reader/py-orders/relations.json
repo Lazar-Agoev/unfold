@@ -136,7 +136,7 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/db/connection.py#function:connect": {
@@ -161,14 +161,14 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/db/repository.py#class:OrderRepository": {
     "callers": [],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/db/repository.py#class:OrderRepository/constructor:__init__": {
@@ -182,7 +182,7 @@
     ],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/db/repository.py#class:OrderRepository/method:cancel": {
@@ -267,7 +267,7 @@
     "reachedFrom": [
       "entrance:[\"celery.task\",\"worker\",\"\",\"orders\",\"process_order\"]",
       "entrance:[\"fastapi.route\",\"http\",\"POST\",\"/orders\",\"require_user\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/orders_playground/jobs/import_orders.py#import_orders\"]"
+      "entrance:configured:import"
     ]
   },
   "src/orders_playground/db/repository.py#class:OrderRepository/method:list": {
@@ -1598,7 +1598,7 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/orders_playground/jobs/import_orders.py#import_orders\"]"
+      "entrance:configured:import"
     ]
   },
   "src/orders_playground/jobs/process_order.py#function:process_order": {
@@ -1734,8 +1734,8 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]"
+      "entrance:configured:replay",
+      "entrance:configured:retry"
     ]
   },
   "src/orders_playground/jobs/send_email.py#function:flush_outbox": {
@@ -1770,8 +1770,8 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]"
+      "entrance:configured:replay",
+      "entrance:configured:retry"
     ]
   },
   "src/orders_playground/jobs/send_email.py#function:send_email": {
@@ -1842,8 +1842,8 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]"
+      "entrance:configured:replay",
+      "entrance:configured:retry"
     ]
   },
   "src/orders_playground/lib/async_handler.py#function:async_handler": {
@@ -1919,7 +1919,7 @@
     ],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/lib/logger.py#class:Logger/method:error": {
@@ -1951,9 +1951,9 @@
     ],
     "reachedFrom": [
       "entrance:[\"celery.task\",\"worker\",\"\",\"emails\",\"email_task\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/orders_playground/jobs/import_orders.py#import_orders\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]"
+      "entrance:configured:import",
+      "entrance:configured:replay",
+      "entrance:configured:retry"
     ]
   },
   "src/orders_playground/lib/logger.py#class:Logger/method:info": {
@@ -2036,10 +2036,10 @@
       "entrance:[\"apscheduler.job\",\"schedule\",\"\",\"0 2 * * *\",\"cleanup_expired_orders\"]",
       "entrance:[\"celery.task\",\"worker\",\"\",\"\",\"print_report\"]",
       "entrance:[\"fastapi.route\",\"http\",\"POST\",\"/orders\",\"require_user\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/orders_playground/jobs/import_orders.py#import_orders\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]",
-      "entrance:[\"manual\",\"event\",\"\",\"SIGTERM\",\"src/orders_playground/server.py#shutdown\"]"
+      "entrance:configured:import",
+      "entrance:configured:replay",
+      "entrance:configured:retry",
+      "entrance:configured:shutdown"
     ]
   },
   "src/orders_playground/lib/logger.py#function:set_sink": {
@@ -2146,8 +2146,8 @@
     ],
     "reachedFrom": [
       "entrance:[\"celery.task\",\"worker\",\"\",\"emails\",\"email_task\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]"
+      "entrance:configured:replay",
+      "entrance:configured:retry"
     ]
   },
   "src/orders_playground/lib/slack.py#class:Slack": {
@@ -2443,7 +2443,7 @@
     "reachedFrom": [
       "entrance:[\"celery.task\",\"worker\",\"\",\"orders\",\"process_order\"]",
       "entrance:[\"fastapi.route\",\"http\",\"POST\",\"/orders\",\"require_user\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/orders_playground/jobs/import_orders.py#import_orders\"]"
+      "entrance:configured:import"
     ]
   },
   "src/orders_playground/queues/email_worker.py#function:email_task": {
@@ -2957,7 +2957,7 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"event\",\"\",\"SIGTERM\",\"src/orders_playground/server.py#shutdown\"]"
+      "entrance:configured:shutdown"
     ]
   },
   "src/orders_playground/server.py#function:status": {
@@ -2978,7 +2978,7 @@
     ],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/services/events.py#class:Events/method:emit": {
@@ -3015,7 +3015,7 @@
     "reachedFrom": [
       "entrance:[\"celery.task\",\"worker\",\"\",\"orders\",\"process_order\"]",
       "entrance:[\"fastapi.route\",\"http\",\"POST\",\"/orders\",\"require_user\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/orders_playground/jobs/import_orders.py#import_orders\"]"
+      "entrance:configured:import"
     ]
   },
   "src/orders_playground/services/events.py#class:Events/method:on": {
@@ -3050,14 +3050,14 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/services/notifier.py#class:Notifier": {
     "callers": [],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/services/notifier.py#class:Notifier/method:notify": {
@@ -3085,7 +3085,7 @@
     "callers": [],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/services/notifier.py#class:ReceiptNotifier/method:send": {
@@ -3126,14 +3126,14 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/services/order_service.py#class:OrderService": {
     "callers": [],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/services/order_service.py#class:OrderService/constructor:__init__": {
@@ -3147,7 +3147,7 @@
     ],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/services/order_service.py#class:OrderService/getter:count": {
@@ -3389,7 +3389,7 @@
     "reachedFrom": [
       "entrance:[\"celery.task\",\"worker\",\"\",\"orders\",\"process_order\"]",
       "entrance:[\"fastapi.route\",\"http\",\"POST\",\"/orders\",\"require_user\"]",
-      "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/orders_playground/jobs/import_orders.py#import_orders\"]"
+      "entrance:configured:import"
     ]
   },
   "src/orders_playground/services/order_service.py#class:OrderService/method:remove": {
@@ -3427,7 +3427,7 @@
     "callers": [],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/services/payment.py#class:PaymentProvider/method:charge": {
@@ -3484,7 +3484,7 @@
     ],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/services/payment.py#class:StripeProvider/method:charge": {
@@ -3545,28 +3545,28 @@
       }
     ],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/types.py#class:Order": {
     "callers": [],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/types.py#class:OrderDraft": {
     "callers": [],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/types.py#class:OrderItem": {
     "callers": [],
     "outgoing": [],
     "reachedFrom": [
-      "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]"
+      "entrance:configured:report"
     ]
   },
   "src/orders_playground/worker.py#function:main": {

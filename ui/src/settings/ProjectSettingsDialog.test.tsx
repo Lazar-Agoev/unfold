@@ -16,7 +16,7 @@ const CONFIG: ProjectConfig = {
   text: "[scope]\nexclude = [\"scripts\"]\n",
   error: null,
   name: { value: "storefront-api", isDefault: true },
-  settings: { languages: null, include: [], exclude: ["scripts"], disabledDetectors: [], pythonProjects: [], entrances: [], evidence: ["prisma/schema.prisma"] },
+  settings: { languages: null, include: [], exclude: ["scripts"], disabledDetectors: [], pythonProjects: [], applications: [], entrances: [], overrides: [], evidence: ["prisma/schema.prisma"] },
 };
 
 const ROOT: ScopeDir = {
@@ -141,7 +141,7 @@ describe("Project settings", () => {
   it("keeps the dialog and the staged changes when Rust refuses them", async () => {
     // Rejections are plain {code, message} data, as from the real preload.
     // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
-    install(() => Promise.reject({ code: "invalid_settings", message: ".unfold/config.toml:2:3: bad pattern" }));
+    install(() => Promise.reject({ code: "invalid_settings", message: "unfold.toml:2:3: bad pattern" }));
     const dialog = await open("general");
     fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "orders" } });
     fireEvent.click(save(dialog));

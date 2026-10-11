@@ -183,7 +183,7 @@ fn imports_resolve_packages_aliases_and_literal_stars() {
             ("right/service.py", "def work(): return 2\n"),
             ("main.py", "from service import work\nwork()\n"),
         ],
-        "version = 1\n[[python.project]]\nroot = \".\"\nsource_roots = [\"left\", \"right\"]\n",
+        "[[python.project]]\nroot = \".\"\nsource_roots = [\"left\", \"right\"]\n",
     );
     assert_eq!(reason(&ambiguous, "work"), Some(Reason::Ambiguous));
     assert_eq!(imports(&ambiguous, "main.py")[0].2, Some(Reason::Ambiguous));
@@ -336,7 +336,7 @@ fn type_parameter_scopes_and_type_aliases_shadow_callables() {
             "main.py",
             "def T(): return 1\ndef outer[T](value: T()): return T()\nclass Generic[T]:\n    def run(self): return T()\ndef target(): return 1\ntype target = int\ntarget()\n",
         )],
-        "version = 1\n[[python.project]]\nroot = \".\"\nversion = \"3.12\"\n",
+        "[[python.project]]\nroot = \".\"\nversion = \"3.12\"\n",
     );
     let t = calls(&compiled, "T");
     assert_eq!(t.len(), 3);
@@ -434,10 +434,9 @@ fn nfkc_equivalent_names_bind_and_blocks_keep_their_spelling() {
 fn the_policy_fixtures_compile_with_their_source_roots() {
     let root = tempfile::tempdir().expect("a temporary folder");
     copy(&testdata().join("fixtures/python/policy"), root.path());
-    std::fs::create_dir_all(root.path().join(".unfold")).expect("create .unfold");
     std::fs::write(
-        root.path().join(".unfold/config.toml"),
-        "version = 1\n[[python.project]]\nroot = \"single-root\"\nsource_roots = [\"src\"]\n[[python.project]]\nroot = \"duplicate-roots\"\nsource_roots = [\"left\", \"right\"]\n",
+        root.path().join("unfold.toml"),
+        "[[python.project]]\nroot = \"single-root\"\nsource_roots = [\"src\"]\n[[python.project]]\nroot = \"duplicate-roots\"\nsource_roots = [\"left\", \"right\"]\n",
     )
     .expect("write settings");
     let compiled = common::compile_folder_with_threads(root.path(), 2).valid();

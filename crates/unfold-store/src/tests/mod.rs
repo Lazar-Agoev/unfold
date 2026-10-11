@@ -39,7 +39,7 @@ fn changed_sample() -> Graph {
         .retain(|file| file.file.path.as_str() != "jobs/tasks.py");
     graph
         .entrances
-        .retain(|entrance| entrance.evidence.path.as_str() != ".unfold/config.toml");
+        .retain(|entrance| entrance.evidence.path.as_str() != "unfold.toml");
     let orders = graph
         .files
         .iter_mut()

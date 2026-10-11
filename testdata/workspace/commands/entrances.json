@@ -29,7 +29,7 @@
       "total": 4,
       "entrances": [
         {
-          "key": "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/jobs/import-orders.ts#importOrders\"]",
+          "key": "entrance:configured:import",
           "title": "command import",
           "kind": "command",
           "method": null,
@@ -37,14 +37,14 @@
           "triggerStatus": "exact",
           "label": null,
           "detector": "manual",
-          "path": ".unfold/config.toml",
+          "path": "unfold.toml",
           "line": null,
           "language": null,
           "group": null,
           "reaches": 7
         },
         {
-          "key": "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/jobs/retry-failed.ts#retryFailed\"]",
+          "key": "entrance:configured:replay",
           "title": "command replay",
           "kind": "command",
           "method": null,
@@ -52,14 +52,14 @@
           "triggerStatus": "exact",
           "label": null,
           "detector": "manual",
-          "path": ".unfold/config.toml",
+          "path": "unfold.toml",
           "line": null,
           "language": null,
           "group": null,
           "reaches": 6
         },
         {
-          "key": "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/cli.ts:12\"]",
+          "key": "entrance:configured:report",
           "title": "command report",
           "kind": "command",
           "method": null,
@@ -67,14 +67,14 @@
           "triggerStatus": "exact",
           "label": null,
           "detector": "manual",
-          "path": ".unfold/config.toml",
+          "path": "unfold.toml",
           "line": null,
           "language": null,
           "group": null,
           "reaches": 16
         },
         {
-          "key": "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/jobs/retry-failed.ts#retryFailed\"]",
+          "key": "entrance:configured:retry",
           "title": "command retry",
           "kind": "command",
           "method": null,
@@ -82,7 +82,7 @@
           "triggerStatus": "exact",
           "label": null,
           "detector": "manual",
-          "path": ".unfold/config.toml",
+          "path": "unfold.toml",
           "line": null,
           "language": null,
           "group": null,

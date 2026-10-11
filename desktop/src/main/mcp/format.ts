@@ -48,9 +48,12 @@ export function keyFile(key: string): string | undefined {
 
 /**
  * A readable name for a key, as boards show one: `OrderService.place`, `createOrder`, `POST /orders`
- * for an HTTP entrance, the path for a file.
+ * for an HTTP entrance, a configured entrance's id, the path for a file.
  */
 export function keyName(key: string): string {
+  if (key.startsWith("entrance:configured:")) {
+    return key.slice("entrance:configured:".length);
+  }
   if (key.startsWith("entrance:")) {
     try {
       const parts: unknown = JSON.parse(key.slice("entrance:".length));

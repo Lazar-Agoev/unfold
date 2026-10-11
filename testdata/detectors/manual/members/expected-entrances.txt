@@ -3,33 +3,33 @@
 # identifier-valued property, a data property, and a let object are unsupported; duplicates are
 # ambiguous; an override names its own body; a missing member is not_found.
 # (PoC schema2-manual: "manual members name explicit class/object bodies".)
-entrance	manual	event	-	-	unknown	.unfold/config.toml:3
+entrance	manual	event	-	-	unknown	unfold.toml:1
 	target	handler	resolved	main.ts#class:Base/method:run	main.ts#Base.run
-entrance	manual	event	-	-	unknown	.unfold/config.toml:7
+entrance	manual	event	-	-	unknown	unfold.toml:6
 	target	handler	resolved	main.ts#class:Base/method:staticRun	main.ts#Base.staticRun
-entrance	manual	event	-	-	unknown	.unfold/config.toml:11
+entrance	manual	event	-	-	unknown	unfold.toml:11
 	target	handler	resolved	main.ts#class:Base/method[2]	main.ts#Base.literal
-entrance	manual	event	-	-	unknown	.unfold/config.toml:15
+entrance	manual	event	-	-	unknown	unfold.toml:16
 	target	handler	unresolved	unsupported	main.ts#Base.constructor
-entrance	manual	event	-	-	unknown	.unfold/config.toml:19
+entrance	manual	event	-	-	unknown	unfold.toml:21
 	target	handler	unresolved	unsupported	main.ts#Base.value
-entrance	manual	event	-	-	unknown	.unfold/config.toml:23
+entrance	manual	event	-	-	unknown	unfold.toml:26
 	target	handler	unresolved	unsupported	main.ts#Base.field
-entrance	manual	event	-	-	unknown	.unfold/config.toml:27
+entrance	manual	event	-	-	unknown	unfold.toml:31
 	target	handler	resolved	main.ts#variable:obj/method:method	main.ts#obj.method
-entrance	manual	event	-	-	unknown	.unfold/config.toml:31
+entrance	manual	event	-	-	unknown	unfold.toml:36
 	target	handler	resolved	main.ts#variable:obj/function:arrow	main.ts#obj.arrow
-entrance	manual	event	-	-	unknown	.unfold/config.toml:35
+entrance	manual	event	-	-	unknown	unfold.toml:41
 	target	handler	resolved	main.ts#variable:obj/function[1]	main.ts#obj.literal
-entrance	manual	event	-	-	unknown	.unfold/config.toml:39
+entrance	manual	event	-	-	unknown	unfold.toml:46
 	target	handler	unresolved	unsupported	main.ts#obj.alias
-entrance	manual	event	-	-	unknown	.unfold/config.toml:43
+entrance	manual	event	-	-	unknown	unfold.toml:51
 	target	handler	unresolved	unsupported	main.ts#obj.data
-entrance	manual	event	-	-	unknown	.unfold/config.toml:47
+entrance	manual	event	-	-	unknown	unfold.toml:56
 	target	handler	unresolved	unsupported	main.ts#mutable.method
-entrance	manual	event	-	-	unknown	.unfold/config.toml:51
+entrance	manual	event	-	-	unknown	unfold.toml:61
 	target	handler	unresolved	ambiguous	main.ts#obj.duplicate
-entrance	manual	event	-	-	unknown	.unfold/config.toml:55
+entrance	manual	event	-	-	unknown	unfold.toml:66
 	target	handler	resolved	main.ts#class:Derived/method:run	main.ts#Derived.run
-entrance	manual	event	-	-	unknown	.unfold/config.toml:59
+entrance	manual	event	-	-	unknown	unfold.toml:71
 	target	handler	unresolved	not_found	main.ts#Base.missing

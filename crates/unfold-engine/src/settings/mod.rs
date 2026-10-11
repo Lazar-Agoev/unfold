@@ -1,4 +1,4 @@
-//! Project settings: the validated contents of `.unfold/config.toml` (docs/engine.md#shared-config).
+//! Project settings: the validated contents of `unfold.toml` (docs/engine.md#shared-config).
 //!
 //! [`Settings::load`] reads the file (defaults when it is absent) and [`Settings::parse`] checks
 //! it strictly: unknown keys, wrong types, and invalid values are errors with a line and column.
@@ -17,6 +17,7 @@ mod parse;
 mod project;
 mod scope;
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde::Serialize;
@@ -30,19 +31,15 @@ pub use parse::SettingsError;
 pub use project::{MAX_PROJECT_NAME, default_project_name, is_project_name};
 pub use scope::{Scope, ScopePatternError, ScopeStatus};
 
+use crate::launch::LaunchTarget;
 use crate::locator::Locator;
 
 /// Where the settings file lives, relative to the open folder.
-pub const SETTINGS_PATH: &str = ".unfold/config.toml";
-
-/// The settings format version this engine reads and writes.
-pub const SETTINGS_VERSION: u32 = 1;
+pub const SETTINGS_PATH: &str = "unfold.toml";
 
 /// The validated settings of one open folder. [`Settings::default`] is what an absent file means.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct Settings {
-    /// The settings format version; always [`SETTINGS_VERSION`] once parsed.
-    pub version: u32,
     /// `[project] name`: the shared name other projects' boards use for this one, always a
     /// valid name ([`is_project_name`]). `None` means the default the workspace makes from the
     /// folder ([`default_project_name`]). Not part of [`Settings::hash`]: a rename re-extracts
@@ -58,25 +55,14 @@ pub struct Settings {
     pub disabled_detectors: Vec<DetectorId>,
     /// `[[python.project]]` tables, sorted by root (roots are distinct).
     pub python_projects: Vec<PythonProject>,
-    /// `[[entrance]]` tables, in file order.
+    /// `[[application]]` tables, in file order (IDs are distinct).
+    pub applications: Vec<Application>,
+    /// `[[entrance]]` tables, in file order (IDs are distinct).
     pub entrances: Vec<ManualEntrance>,
+    /// `[[entrance_override]]` tables, in file order (matches are distinct).
+    pub overrides: Vec<EntranceOverride>,
     /// `[evidence] files`: the files boards may cite, hashed on each update but never compiled.
     pub evidence: Evidence,
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            version: SETTINGS_VERSION,
-            project_name: None,
-            languages: None,
-            scope: Scope::default(),
-            disabled_detectors: Vec::new(),
-            python_projects: Vec::new(),
-            entrances: Vec::new(),
-            evidence: Evidence::default(),
-        }
-    }
 }
 
 /// One `[[python.project]]` table.
@@ -127,18 +113,35 @@ impl PythonVersion {
     }
 }
 
+/// One `[[application]]` table: a declared group of launches.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Application {
+    /// The ID entrances and overrides name it by.
+    pub id: Box<str>,
+    /// The display name. Never blank.
+    pub name: Box<str>,
+    /// A description, with its line breaks. Never blank.
+    pub description: Option<Box<str>>,
+}
+
 /// One `[[entrance]]` table: an entrance the detectors can't see.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ManualEntrance {
+    /// The ID its key derives from, so the key survives edits to everything else.
+    pub id: Box<str>,
     /// The entrance kind.
     pub kind: EntranceKind,
+    /// The declared `[[application]]` it belongs to.
+    pub application: Option<Box<str>>,
     /// The trigger, if known. Never empty.
     pub trigger: Option<Box<str>>,
     /// The HTTP method; only `http` entrances have one.
     pub method: Option<HttpMethod>,
     /// A display label, which may be empty.
     pub label: Option<Box<str>>,
-    /// The handlers or the startup.
+    /// A description, with its line breaks. Never blank.
+    pub description: Option<Box<str>>,
+    /// The handlers, or what the process runs.
     pub targets: ManualTargets,
     /// The zero-based position of this `[[entrance]]` table in the file; the evidence pointer is
     /// `/entrance/<index>` (see [`ManualEntrance::pointer`]).
@@ -159,8 +162,63 @@ pub enum ManualTargets {
     /// `handler`: one locator or a nonempty ordered list (middleware first) for every kind
     /// except `process`.
     Handlers(Vec<Locator>),
-    /// `startup`: the one locator a `process` entrance starts with.
+    /// What a `process` entrance runs.
+    Process(Process),
+}
+
+/// The process fields of a `process` entrance. At least one of `command` and `start` is set.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Process {
+    /// `cwd`: the folder the command runs in; `.` when omitted.
+    pub cwd: FolderPath,
+    /// `command`: the command line as written. Never blank, and never run.
+    pub command: Option<Box<str>>,
+    /// `startup` or `target`: what the process starts, declared by hand.
+    pub start: Option<ProcessStart>,
+    /// `python_paths`: the import path, in search order, that replaces the inferred one.
+    pub python_paths: Option<Vec<FolderPath>>,
+    /// `env`: the declared environment, by name. The host's environment is never read.
+    pub env: BTreeMap<Box<str>, Box<str>>,
+    /// `schedule`, as written. Never blank.
+    pub schedule: Option<Box<str>>,
+}
+
+/// What a `process` entrance declares it starts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum ProcessStart {
+    /// `startup`: a locator.
     Startup(Locator),
+    /// `target`: a symbolic launch target.
+    Target(LaunchTarget),
+}
+
+/// One `[[entrance_override]]` table: metadata for a detected launch.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EntranceOverride {
+    /// `match`: the detected launch's evidence.
+    pub selector: OverrideMatch,
+    /// The declared `[[application]]` it belongs to.
+    pub application: Option<Box<str>>,
+    /// A display label.
+    pub label: Option<Box<str>>,
+    /// A description, with its line breaks. Never blank.
+    pub description: Option<Box<str>>,
+    /// A schedule, as written. Never blank.
+    pub schedule: Option<Box<str>>,
+    /// The one-based line of the table's header, for diagnostics. Not part of the settings hash.
+    #[serde(skip)]
+    pub line: u32,
+}
+
+/// The evidence an override matches: a launch detector, its input file, and the pointer into it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct OverrideMatch {
+    /// `package.script`, `package.bin`, or `pyproject.script`.
+    pub detector: DetectorId,
+    /// The input file, such as `apps/api/package.json`.
+    pub path: RepoPath,
+    /// The RFC 6901 pointer to the launch's member, such as `/scripts/start`.
+    pub pointer: Box<str>,
 }
 
 impl ManualEntrance {
@@ -170,18 +228,8 @@ impl ManualEntrance {
     }
 }
 
-impl ManualTargets {
-    /// The locators in declared order.
-    pub fn locators(&self) -> &[Locator] {
-        match self {
-            Self::Handlers(locators) => locators,
-            Self::Startup(locator) => std::slice::from_ref(locator),
-        }
-    }
-}
-
 impl Settings {
-    /// Reads `.unfold/config.toml` under `root`. An absent file means the defaults.
+    /// Reads `unfold.toml` under `root`. An absent file means the defaults.
     pub fn load(root: &Path) -> Result<Self, SettingsError> {
         let path = root.join(SETTINGS_PATH);
         match std::fs::read(&path) {

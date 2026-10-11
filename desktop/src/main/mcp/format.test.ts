@@ -5,6 +5,7 @@ describe("names", () => {
   it("name keys as boards do", () => {
     expect(keyName("src/services/order-service.ts#class:OrderService/method:place")).toBe("OrderService.place");
     expect(keyName("src/routes/orders.ts#function:createOrder/if[0]")).toBe("createOrder.if");
+    expect(keyName("entrance:configured:import-orders")).toBe("import-orders");
     expect(keyName('entrance:["express.route","http","POST","/orders","src/routes/orders.ts"]')).toBe("POST /orders");
     expect(keyName("src/routes/orders.ts#")).toBe("src/routes/orders.ts");
     expect(keyFile("src/routes/orders.ts#function:createOrder")).toBe("src/routes/orders.ts");

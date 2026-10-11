@@ -193,11 +193,8 @@ mod tests {
             class("pkg/tsconfig.build.json", &settings),
             input(InputRole::Tsconfig)
         );
-        assert_eq!(
-            class(".unfold/config.toml", &settings),
-            input(InputRole::UnfoldConfig)
-        );
-        assert_eq!(class("sub/.unfold/config.toml", &settings), FileClass::Other);
+        assert_eq!(class("unfold.toml", &settings), input(InputRole::UnfoldConfig));
+        assert_eq!(class("sub/unfold.toml", &settings), FileClass::Other);
         assert_eq!(class("node_modules/x/index.ts", &settings), FileClass::Other);
         assert_eq!(class("a/__pycache__/b.py", &settings), FileClass::Other);
     }

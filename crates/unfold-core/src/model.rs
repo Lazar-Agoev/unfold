@@ -154,7 +154,8 @@ pub struct EntranceTarget {
 /// A declared way that a process or unit of work starts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entrance {
-    /// The structural key, derived from the fields below and the entrance's order.
+    /// The structural key, derived from the fields below and the entrance's order; a manual
+    /// entrance's key is `entrance:configured:<id>`, from its `[[entrance]]` table's ID.
     pub key: Key,
     /// The entrance's kind.
     pub kind: EntranceKind,
@@ -183,6 +184,10 @@ impl Entrance {
             method: self.method,
             trigger: self.trigger.as_deref(),
             first_target: self.targets.first().map(|target| &*target.text),
+            configured: match self.detector {
+                DetectorId::Manual => self.key.configured_id(),
+                _ => None,
+            },
         }
     }
 
@@ -227,7 +232,8 @@ impl Graph {
     ///
     /// Entrances that tie on every ordering field keep their relative input order (detectors
     /// run in a fixed order), so the result is deterministic for deterministic producers.
-    /// Entrance keys are recomputed, so any keys already present are replaced.
+    /// Entrance keys are recomputed, so any keys already present are replaced, except that a
+    /// manual entrance keeps its configured key (`entrance:configured:<id>`).
     pub fn normalize(&mut self) {
         self.files.sort_by(|a, b| a.file.path.cmp(&b.file.path));
         self.inputs.sort_by(|a, b| a.path.cmp(&b.path));

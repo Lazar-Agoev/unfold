@@ -1,6 +1,6 @@
 /**
  * The change between two versions of a small text file, as diff lines: what `update_project_settings`
- * returns for `.unfold/config.toml` (design §8.1). Lines are matched by their longest common
+ * returns for `unfold.toml` (design §8.1). Lines are matched by their longest common
  * subsequence; each change keeps a line of context around it, and `…` stands for the lines between.
  */
 

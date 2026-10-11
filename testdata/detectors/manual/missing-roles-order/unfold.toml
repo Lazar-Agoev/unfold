@@ -1,0 +1,48 @@
+[scope]
+exclude = ["omitted.ts"]
+
+[[entrance]]
+id = "create"
+kind = "http"
+method = "POST"
+trigger = "/x"
+label = "Create"
+handler = ["main.ts#run", "main.ts#absent", "main.ts#run"]
+
+[[entrance]]
+id = "create-again"
+kind = "http"
+method = "POST"
+trigger = "/x"
+label = "Create"
+handler = ["main.ts#run", "main.ts#absent", "main.ts#run"]
+
+[[entrance]]
+id = "omitted-run"
+kind = "worker"
+handler = "omitted.ts#run"
+
+[[entrance]]
+id = "missing-run"
+kind = "worker"
+handler = "missing.ts#run"
+
+[[entrance]]
+id = "main"
+kind = "event"
+handler = "main.ts"
+
+[[entrance]]
+id = "start-run"
+kind = "process"
+startup = "main.ts#run"
+
+[[entrance]]
+id = "start-main"
+kind = "process"
+startup = "main.ts"
+
+[[entrance]]
+id = "start-line-1"
+kind = "process"
+startup = "main.ts:1"

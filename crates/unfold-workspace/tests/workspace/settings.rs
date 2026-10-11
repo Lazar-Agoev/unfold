@@ -21,7 +21,7 @@ fn excluding_and_including_keeps_comments_and_updates_the_graph() {
         }])
         .expect("exclude");
     assert!(outcome.written);
-    let text = std::fs::read_to_string(playground.path(".unfold/config.toml")).expect("read");
+    let text = std::fs::read_to_string(playground.path("unfold.toml")).expect("read");
     assert_eq!(text, outcome.text);
     assert!(text.starts_with("# Unfold settings for the ts-orders playground."));
     assert!(
@@ -93,18 +93,18 @@ fn an_invalid_settings_file_is_a_problem_with_a_position() {
     let playground = Playground::new("ts-orders", true);
     let sink = RecordingSink::new();
     let workspace = playground.open(&sink, false);
-    playground.write(".unfold/config.toml", "version = 1\n\n[scope]\nbogus = [\"x\"]\n");
+    playground.write("unfold.toml", "[scope]\nbogus = [\"x\"]\n");
     compile(&workspace);
     let problems = workspace.problems();
     let settings = problems
         .iter()
-        .find(|problem| problem.path == ".unfold/config.toml")
+        .find(|problem| problem.path == "unfold.toml")
         .expect("a settings problem");
-    assert_eq!(settings.line, Some(4), "{settings:?}");
+    assert_eq!(settings.line, Some(2), "{settings:?}");
     assert!(!workspace.status().complete);
     assert!(matches!(
         workspace.settings(),
-        Err(WorkspaceError::InvalidSettings { line: Some(4), .. })
+        Err(WorkspaceError::InvalidSettings { line: Some(2), .. })
     ));
 }
 

@@ -1,6 +1,0 @@
-# Detector case: testdata/detectors/pyproject.script/module-prefixes.
-version = 1
-
-[[python.project]]
-root = "."
-source_roots = ["src", "legacy"]

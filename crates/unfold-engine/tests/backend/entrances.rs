@@ -194,11 +194,13 @@ fn entrances_sort_by_evidence_and_number_duplicates() {
 fn manual_locators_resolve_against_declarations() {
     let source = "(fn work)\n(class Base (method ping))\n(if (ref flag) (ref a))\n(use helper \"lodash\")\n(sig over) (fn over)\n";
     let config = r#"[[entrance]]
+id = "work"
 kind = "command"
 trigger = "work"
 handler = "a.alien#work"
 
 [[entrance]]
+id = "many"
 kind = "command"
 trigger = "many"
 label = "Many targets"
@@ -216,6 +218,7 @@ handler = [
 ]
 
 [[entrance]]
+id = "serve"
 kind = "process"
 trigger = "serve"
 startup = "a.alien"

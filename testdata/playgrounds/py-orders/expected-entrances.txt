@@ -1,15 +1,5 @@
 # Expected entrances for testdata/playgrounds/py-orders: 25 entrances, 28 targets.
 # Derived from testdata/reference/poc/python-playground/ (PoC 5c98a6e). Format: testdata/README.md.
-entrance	manual	command	-	import	exact	.unfold/config.toml:16
-	target	handler	resolved	src/orders_playground/jobs/import_orders.py#function:import_orders	src/orders_playground/jobs/import_orders.py#import_orders
-entrance	manual	command	-	report	exact	.unfold/config.toml:21
-	target	handler	resolved	src/orders_playground/cli.py#function:report_command	src/orders_playground/cli.py#report_command
-entrance	manual	command	-	replay	exact	.unfold/config.toml:26
-	target	handler	resolved	src/orders_playground/jobs/retry_failed.py#function:retry_failed	src/orders_playground/jobs/retry_failed.py#retry_failed
-entrance	manual	command	-	retry	exact	.unfold/config.toml:31
-	target	handler	resolved	src/orders_playground/jobs/retry_failed.py#function:retry_failed	src/orders_playground/jobs/retry_failed.py#retry_failed
-entrance	manual	event	-	SIGTERM	exact	.unfold/config.toml:36
-	target	handler	resolved	src/orders_playground/server.py#function:shutdown	src/orders_playground/server.py#shutdown
 entrance	pyproject.script	process	-	orders-api	exact	pyproject.toml:18
 	target	startup	resolved	src/orders_playground/server.py#function:main	orders_playground.server:main
 entrance	pyproject.script	process	-	orders-api-dev	exact	pyproject.toml:19
@@ -53,3 +43,13 @@ entrance	fastapi.route	http	GET	/health	exact	src/orders_playground/server.py:16
 	target	handler	resolved	src/orders_playground/server.py#function:health_check	health_check
 entrance	fastapi.route	http	GET	-	unknown	src/orders_playground/server.py:21
 	target	handler	resolved	src/orders_playground/server.py#function:status	status
+entrance	manual	command	-	import	exact	unfold.toml:15
+	target	handler	resolved	src/orders_playground/jobs/import_orders.py#function:import_orders	src/orders_playground/jobs/import_orders.py#import_orders
+entrance	manual	command	-	report	exact	unfold.toml:21
+	target	handler	resolved	src/orders_playground/cli.py#function:report_command	src/orders_playground/cli.py#report_command
+entrance	manual	command	-	replay	exact	unfold.toml:27
+	target	handler	resolved	src/orders_playground/jobs/retry_failed.py#function:retry_failed	src/orders_playground/jobs/retry_failed.py#retry_failed
+entrance	manual	command	-	retry	exact	unfold.toml:33
+	target	handler	resolved	src/orders_playground/jobs/retry_failed.py#function:retry_failed	src/orders_playground/jobs/retry_failed.py#retry_failed
+entrance	manual	event	-	SIGTERM	exact	unfold.toml:39
+	target	handler	resolved	src/orders_playground/server.py#function:shutdown	src/orders_playground/server.py#shutdown

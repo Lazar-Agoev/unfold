@@ -66,7 +66,7 @@ function PreviewProblems({ project, preview }: { readonly project: ProjectId; re
       {rows.map((row) => (
         <HealthRowView
           key={row.id}
-          row={{ title: row.title, explanation: row.explanation, location: row.id === "settings" ? ".unfold/config.toml" : "" }}
+          row={{ title: row.title, explanation: row.explanation, location: row.id === "settings" ? "unfold.toml" : "" }}
           action={{ label: "Settings", run: () => { runHealthAction(project, { kind: "settings", section: row.section }); } }}
         />
       ))}

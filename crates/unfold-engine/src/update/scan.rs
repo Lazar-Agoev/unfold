@@ -60,7 +60,7 @@ pub(crate) struct Scan {
     pub(crate) problems: Option<Vec<Problem>>,
 }
 
-/// Loads `.unfold/config.toml` when it may have changed. An unreadable or invalid file keeps
+/// Loads `unfold.toml` when it may have changed. An unreadable or invalid file keeps
 /// `previous`'s settings in effect and records the problem.
 pub(crate) fn load_settings(
     root: &Path,
@@ -71,13 +71,7 @@ pub(crate) fn load_settings(
     let config = RepoPath::new(SETTINGS_PATH).expect("the settings path is a valid folder-relative path");
     let may_have_changed = match changes {
         Changes::All => true,
-        // The file itself, or a folder that holds it (`.unfold` replaced or removed whole).
-        Changes::Paths(paths) => paths.iter().any(|path| {
-            path == &config
-                || SETTINGS_PATH
-                    .strip_prefix(path.as_str())
-                    .is_some_and(|rest| rest.starts_with('/'))
-        }),
+        Changes::Paths(paths) => paths.contains(&config),
     };
     if !may_have_changed {
         return previous.clone();

@@ -1,0 +1,8 @@
+# Detector case: testdata/detectors/apscheduler.job/disabled.
+
+[[python.project]]
+root = "."
+source_roots = ["src"]
+
+[detectors]
+disabled = ["apscheduler.job"]

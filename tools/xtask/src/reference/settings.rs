@@ -1,4 +1,4 @@
-//! The `[[entrance]]` tables of a folder's `.unfold/config.toml`, with their byte ranges.
+//! The `[[entrance]]` tables of a folder's `unfold.toml`, with their byte ranges.
 //!
 //! PoC manual entrances were declared in `codegraph.json` (evidence: a JSON array element with
 //! pointer `/entrypoints/N`). In Unfold they are `[[entrance]]` tables, so the importer
@@ -18,6 +18,8 @@ use unfold_core::ByteRange;
 pub(crate) struct ManualTable {
     /// From the `[[` of its header through the end of its last value.
     pub range: ByteRange,
+    /// `id`.
+    pub id: String,
     /// `kind`.
     pub kind: String,
     /// `trigger`, if written.
@@ -82,6 +84,7 @@ pub(crate) fn manual_tables(text: &str) -> anyhow::Result<Vec<ManualTable>> {
         };
         tables.push(ManualTable {
             range: ByteRange::new(start, end)?,
+            id: string("id")?.with_context(|| format!("`[[entrance]]` table {index} has no id"))?,
             kind: string("kind")?.with_context(|| format!("`[[entrance]]` table {index} has no kind"))?,
             trigger: string("trigger")?,
             method: string("method")?,
@@ -116,14 +119,15 @@ mod tests {
 
     #[test]
     fn finds_tables_and_their_token_exact_ranges() {
-        let text = "version = 1\n\n# A comment.\n[[entrance]]\nkind = \"command\"\ntrigger = \"import\"\n\
-                    handler = \"src/a.ts#run\"  # trailing comment\n\n  [[ entrance ]]\nkind = \"http\"\n\
+        let text = "# A comment.\n[[entrance]]\nid = \"import\"\nkind = \"command\"\ntrigger = \"import\"\n\
+                    handler = \"src/a.ts#run\"  # trailing comment\n\n  [[ entrance ]]\nid = \"health\"\nkind = \"http\"\n\
                     method = \"GET\"\nlabel = \"Health\"\nhandler = [\"src/a.ts:3\", \"src/b.ts\"]\n";
         let tables = manual_tables(text).unwrap();
         assert_eq!(tables.len(), 2);
         let first = &tables[0];
         let slice = &text[first.range.as_usize()];
-        assert!(slice.starts_with("[[entrance]]\nkind"));
+        assert!(slice.starts_with("[[entrance]]\nid"));
+        assert_eq!(first.id, "import");
         assert!(slice.ends_with("handler = \"src/a.ts#run\""));
         assert_eq!(first.trigger.as_deref(), Some("import"));
         assert_eq!(first.targets, ["src/a.ts#run"]);
@@ -141,7 +145,8 @@ mod tests {
 
     #[test]
     fn rejects_tables_without_handlers() {
-        assert!(manual_tables("[[entrance]]\nkind = \"command\"\n").is_err());
-        assert!(manual_tables("version = 1\n").unwrap().is_empty());
+        assert!(manual_tables("[[entrance]]\nid = \"a\"\nkind = \"command\"\n").is_err());
+        assert!(manual_tables("[[entrance]]\nkind = \"command\"\nhandler = \"a.ts#f\"\n").is_err());
+        assert!(manual_tables("").unwrap().is_empty());
     }
 }

@@ -151,8 +151,8 @@ fn ignored_and_unindexed_paths_follow_discovery() {
     );
     // Settings that exclude a file make it unindexed: references to it are `not_indexed`.
     folder.write(".gitignore", "");
-    folder.write(".unfold/config.toml", "[scope]\nexclude = [\"lib/**\"]\n");
-    let excluded = background(&mut engine, &[".gitignore", ".unfold/config.toml"]);
+    folder.write("unfold.toml", "[scope]\nexclude = [\"lib/**\"]\n");
+    let excluded = background(&mut engine, &[".gitignore", "unfold.toml"]);
     assert_eq!(
         helper_edge(&excluded),
         (Resolution::Unresolved, Some(Reason::NotIndexed))
@@ -169,12 +169,12 @@ fn invalid_settings_keep_the_previous_ones() {
     let folder = Folder::new();
     folder.write("main.ts", &template(1, 0));
     folder.write("lib/util.ts", &template(0, 1));
-    folder.write(".unfold/config.toml", "[scope]\nexclude = [\"lib/**\"]\n");
+    folder.write("unfold.toml", "[scope]\nexclude = [\"lib/**\"]\n");
     let mut engine = engine(&folder);
     let first = compile(&mut engine);
     assert!(first.complete && first.problems.is_empty());
-    folder.write(".unfold/config.toml", "[scope\n");
-    let invalid = background(&mut engine, &[".unfold/config.toml"]);
+    folder.write("unfold.toml", "[scope\n");
+    let invalid = background(&mut engine, &["unfold.toml"]);
     assert!(!invalid.complete);
     assert_eq!(invalid.problems.len(), 1, "{:?}", invalid.problems);
     assert_eq!(invalid.graph, first.graph);
@@ -363,21 +363,4 @@ fn changed_paths_under_a_symlinked_folder_stay_out_of_scope() {
     let updated = background(&mut engine, &["link/a.ts"]);
     assert!(updated.graph.file("link/a.ts").is_none());
     assert_eq!(super::canonical(&updated), super::canonical(&compiled));
-}
-
-/// Settings reload when the watcher reports only the `.unfold` folder.
-#[test]
-fn reporting_the_settings_folder_reloads_the_settings() {
-    let folder = Folder::new();
-    folder.write("main.ts", &template(1, 0));
-    folder.write("lib/util.ts", &template(0, 1));
-    let mut engine = engine(&folder);
-    let before = compile(&mut engine);
-    assert!(before.graph.file("lib/util.ts").is_some());
-    folder.write(
-        ".unfold/config.toml",
-        "version = 1\n\n[scope]\nexclude = [\"lib/**\"]\n",
-    );
-    let after = background(&mut engine, &[".unfold"]);
-    assert!(after.graph.file("lib/util.ts").is_none());
 }

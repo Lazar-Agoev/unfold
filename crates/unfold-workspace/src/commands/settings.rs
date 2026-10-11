@@ -1,11 +1,13 @@
 //! Settings commands (docs/engine.md#shared-config, shared settings): the app preferences, a
-//! project's `.unfold/config.toml` with its shared name (read, and changed through validated
+//! project's `unfold.toml` with its shared name (read, and changed through validated
 //! edits that keep its comments), and what the UI needs to sign its edits.
+
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unfold_core::vocab::{DetectorId, EntranceKind, HttpMethod, Language};
-use unfold_engine::settings::{ManualTargets, Settings};
+use unfold_engine::settings::{ManualTargets, ProcessStart, Settings};
 
 use super::{NoArgs, ProjectArgs};
 use crate::error::WorkspaceError;
@@ -14,7 +16,7 @@ use crate::git;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::ProjectId;
-use crate::settings_edit::SettingsEdit;
+use crate::settings_edit::{ApplicationSpec, LaunchTargetSpec, OverrideSpec, SettingsEdit};
 use crate::state::Preferences;
 use crate::workspace::{load_settings, settings_text};
 
@@ -100,20 +102,36 @@ pub struct PythonProjectView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct ManualEntranceView {
-    /// Its position among the `[[entrance]]` tables (what edits name).
-    pub index: u32,
+    /// Its ID (what edits name).
+    pub id: String,
     /// The kind.
     pub kind: EntranceKind,
+    /// The `[[application]]` it belongs to.
+    pub application: Option<String>,
     /// The trigger.
     pub trigger: Option<String>,
     /// The HTTP method.
     pub method: Option<HttpMethod>,
     /// The label.
     pub label: Option<String>,
+    /// The description.
+    pub description: Option<String>,
     /// Handler locators, middleware first (every kind but `process`).
     pub handler: Vec<String>,
+    /// The working folder (`process`; `.` is the project's folder).
+    pub cwd: Option<String>,
+    /// The command line (`process`).
+    pub command: Option<String>,
     /// The startup locator (`process`).
     pub startup: Option<String>,
+    /// The launch target (`process`).
+    pub target: Option<LaunchTargetSpec>,
+    /// The import path, in order (`process`), when set.
+    pub python_paths: Option<Vec<String>>,
+    /// Declared environment variables (`process`).
+    pub env: BTreeMap<String, String>,
+    /// The schedule, as written (`process`).
+    pub schedule: Option<String>,
     /// The table's line in the file.
     pub line: u32,
 }
@@ -132,8 +150,12 @@ pub struct SettingsView {
     pub disabled_detectors: Vec<DetectorId>,
     /// Python projects.
     pub python_projects: Vec<PythonProjectView>,
+    /// Applications, in file order.
+    pub applications: Vec<ApplicationSpec>,
     /// Manual entrances, in file order.
     pub entrances: Vec<ManualEntranceView>,
+    /// Overrides of detected launches, in file order.
+    pub overrides: Vec<OverrideSpec>,
     /// `[evidence] files` patterns, as written.
     pub evidence: Vec<String>,
 }
@@ -167,28 +189,62 @@ impl From<&Settings> for SettingsView {
                     version: project.version.as_str().to_owned(),
                 })
                 .collect(),
+            applications: settings.applications.iter().map(ApplicationSpec::from).collect(),
             entrances: settings
                 .entrances
                 .iter()
                 .map(|entrance| {
-                    let (handler, startup) = match &entrance.targets {
-                        ManualTargets::Handlers(locators) => {
-                            (locators.iter().map(ToString::to_string).collect(), None)
-                        }
-                        ManualTargets::Startup(locator) => (Vec::new(), Some(locator.to_string())),
-                    };
-                    ManualEntranceView {
-                        index: u32::try_from(entrance.index).unwrap_or(u32::MAX),
+                    let text = |text: Option<&str>| text.map(str::to_owned);
+                    let mut view = ManualEntranceView {
+                        id: entrance.id.to_string(),
                         kind: entrance.kind,
-                        trigger: entrance.trigger.as_deref().map(str::to_owned),
+                        application: text(entrance.application.as_deref()),
+                        trigger: text(entrance.trigger.as_deref()),
                         method: entrance.method,
-                        label: entrance.label.as_deref().map(str::to_owned),
-                        handler,
-                        startup,
+                        label: text(entrance.label.as_deref()),
+                        description: text(entrance.description.as_deref()),
+                        handler: Vec::new(),
+                        cwd: None,
+                        command: None,
+                        startup: None,
+                        target: None,
+                        python_paths: None,
+                        env: BTreeMap::new(),
+                        schedule: None,
                         line: entrance.line,
+                    };
+                    match &entrance.targets {
+                        ManualTargets::Handlers(locators) => {
+                            view.handler = locators.iter().map(ToString::to_string).collect();
+                        }
+                        ManualTargets::Process(process) => {
+                            view.cwd = Some(process.cwd.as_str().to_owned());
+                            view.command = text(process.command.as_deref());
+                            match &process.start {
+                                Some(ProcessStart::Startup(locator)) => {
+                                    view.startup = Some(locator.to_string());
+                                }
+                                Some(ProcessStart::Target(target)) => {
+                                    view.target = Some(LaunchTargetSpec::from(target));
+                                }
+                                None => {}
+                            }
+                            view.python_paths = process
+                                .python_paths
+                                .as_ref()
+                                .map(|paths| paths.iter().map(|path| path.as_str().to_owned()).collect());
+                            view.env = process
+                                .env
+                                .iter()
+                                .map(|(name, value)| (name.to_string(), value.to_string()))
+                                .collect();
+                            view.schedule = text(process.schedule.as_deref());
+                        }
                     }
+                    view
                 })
                 .collect(),
+            overrides: settings.overrides.iter().map(OverrideSpec::from).collect(),
             evidence: settings
                 .evidence
                 .patterns()
@@ -209,7 +265,7 @@ pub struct SharedName {
     pub is_default: bool,
 }
 
-/// `.unfold/config.toml` as Project settings sees it.
+/// `unfold.toml` as Project settings sees it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectConfig {
@@ -294,8 +350,9 @@ pub struct UpdateProjectConfigArgs {
     pub edits: Vec<SettingsEdit>,
 }
 
-/// `update_project_config`: applies validated edits (scope, manual entrances, Python projects,
-/// detector toggles, the shared name, evidence files), keeping comments and formatting; an edit that would make
+/// `update_project_config`: applies validated edits (scope, applications, manual entrances,
+/// overrides, Python projects, detector toggles, the shared name, evidence files), keeping
+/// comments and formatting; an edit that would make
 /// the file invalid is refused with `invalid_settings` and nothing is written. Sends
 /// `config_changed`; a new shared name reaches `workspace.json` and every window
 /// (`workspace_changed`) as the host observes it.

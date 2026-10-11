@@ -1,0 +1,7 @@
+# Converted from the proof of concept fixture's codegraph.json.
+
+[[entrance]]
+id = "orders-worker"
+kind = "worker"
+trigger = "orders"
+handler = "src/worker.ts#processOrder"

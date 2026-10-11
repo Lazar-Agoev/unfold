@@ -1,0 +1,2 @@
+[detectors]
+disabled = ["node-cron.schedule"]

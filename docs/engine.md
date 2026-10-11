@@ -61,12 +61,12 @@ committed snapshots; multi-query reads use a read transaction.
 
 ## Shared config
 
-`.unfold/config.toml` is strict, UTF-8 TOML. Reject unknown keys, wrong types, invalid globs,
-unsupported values, and invalid manual declarations with source positions; never apply a
-partly valid config. A BOM is accepted while source spans retain its bytes.
+`unfold.toml`, at the project's root, is strict, UTF-8 TOML. Reject unknown keys, wrong types,
+invalid globs, unsupported values, bad or duplicate IDs, unknown application IDs, illegal field
+combinations, and invalid manual declarations with source positions; never apply a partly valid
+config. A BOM is accepted while source spans retain its bytes.
 
 ```toml
-version = 1
 languages = ["typescript", "python"]
 
 [project]
@@ -86,15 +86,48 @@ disabled = ["node-cron.schedule"]
 root = "."
 source_roots = ["src"]
 
+[[application]]
+id = "recipe-cost"
+name = "Recipe cost API"
+description = "Interactive recipe costing."
+
 [[entrance]]
+id = "recipe-cost-start"
+kind = "process"
+application = "recipe-cost"
+label = "Start API"
+cwd = "data-pipelines"
+command = "python3 -m uvicorn api:app --app-dir food-cost --port $PORT"
+python_paths = ["data-pipelines/food-cost", "data-pipelines"]
+env = { PYTHONPATH = "." }
+schedule = "30 7 * * *"
+
+[[entrance]]
+id = "report"
 kind = "command"
 trigger = "report"
 handler = "src/cli.ts#report"
+
+[[entrance_override]]
+match = { detector = "package.script", path = "apps/api/package.json", pointer = "/scripts/start" }
+application = "recipe-cost"
+label = "Start API"
 ```
 
 Omitted config uses defaults: TypeScript/Python enabled, all discovered sources in scope,
-all available detectors enabled, no manual entrances or evidence patterns. An explicit empty
-language list is invalid. Known detector IDs only; `manual` cannot be disabled.
+all available detectors enabled, no applications, manual entrances, overrides, or evidence
+patterns. An explicit empty language list is invalid. Known detector IDs only; `manual` cannot
+be disabled.
+
+`[[application]]` groups launches under a declared `id` and a nonblank `name` (at most 120
+characters), with an optional `description`. IDs of applications and of entrances are 1–64 ASCII
+letters/digits/`.`/`_`/`-`, starting with a letter/digit, and unique among their own tables.
+Descriptions are nonblank, at most 2,000 characters, and keep their line breaks.
+
+`[[entrance_override]]` adds metadata to a detected launch (`package.script`, `package.bin`, or
+`pyproject.script`), matched by its evidence: `match = { detector, path, pointer }`. It may set
+`application`, `label`, `description`, and `schedule`. Two overrides with the same match are an
+error; an override that matches nothing is a problem scoped to it, not an invalid file.
 
 Shared project names are 1–64 ASCII letters/digits/`.`/`_`/`-`, starting with a letter/digit.
 They identify cross-project board references. The default is derived from the main worktree's
@@ -105,7 +138,8 @@ Absent explicit roots, use `src/` for a src layout, otherwise the pyproject fold
 root can be excluded from indexing and still identify imports as `not_indexed`.
 
 `update_project_config` applies edits together, preserves formatting/comments, validates
-before writing, and refuses conflicts. Settings UI stages changes until Save. Background
+before writing, and refuses conflicts. It names applications and entrances by ID and overrides
+by their match, never by position; writing to a missing file creates `unfold.toml`. Settings UI stages changes until Save. Background
 update preferences are local state, not shared config.
 
 ## Discovery and scope
@@ -152,10 +186,27 @@ launcher flags, recursion limits, and examples are covered by the launch module 
 
 ## Manual entrances and locators
 
-`[[entrance]]` supports `process`, `command`, `http`, `worker`, `schedule`, and `event`.
-A process requires one `startup`; every other kind requires a locator or nonempty ordered
-`handler` list. Handler lists cannot mix languages. Only HTTP may have a supported uppercase
-`method`; an omitted trigger is unknown, an empty trigger invalid. Unknown keys are errors.
+`[[entrance]]` supports `process`, `command`, `http`, `worker`, `schedule`, and `event`. Every
+table has an `id`, and may name a declared `application`, a `label`, and a `description`.
+Every kind but `process` requires a locator or nonempty ordered `handler` list; handler lists
+cannot mix languages. Only HTTP may have a supported uppercase `method`; an omitted trigger is
+unknown, an empty trigger invalid. Unknown keys are errors.
+
+A process needs at least one of `command`, `startup`, and `target`, and takes the other process
+fields; no other kind may set them:
+
+| Key | Meaning |
+| --- | --- |
+| `cwd` | The folder the command runs in, relative to the project; `.` when omitted |
+| `command` | The command line as written; never run |
+| `startup` | A locator for what the process starts; exclusive with `target` |
+| `target` | `{ type = "file", path }`, `{ type = "python_module", module }`, `{ type = "python_callable", module, attribute }`, or `{ type = "python_asgi", module, attribute, factory = false }`; module and attribute are literal dotted names |
+| `python_paths` | Project-relative folders, in order, that replace the inferred import path |
+| `env` | Declared environment strings by variable name; the host environment is never read |
+| `schedule` | Nonblank text, at most 200 characters, shown as written |
+
+A manual entrance's key is `entrance:configured:<id>`, so it survives edits to its label,
+command, targets, and position.
 
 | Locator | Meaning |
 | --- | --- |
@@ -173,7 +224,8 @@ Constant object-literal function members agree with ordinary call resolution whe
 has evidence. Annotated or mutable object cases may differ deliberately: a manual locator
 selects a written direct member, while a call must prove its runtime binding. Line locators
 follow line numbers after edits; prefer names. Evidence is the config table's exact range and
-`/entrance/<index>` pointer.
+`/entrance/<index>` pointer. A process without a `startup` keeps one unsupported target, its
+command or target as written, until the launch planner reads it.
 
 ## Entrance detectors
 

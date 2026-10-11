@@ -71,67 +71,6 @@
     "src/orders_playground/services/events.py#class:Events/method:emit",
     "src/orders_playground/services/order_service.py#class:OrderService/method:place"
   ],
-  "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/orders_playground/jobs/import_orders.py#import_orders\"]": [
-    "src/orders_playground/db/repository.py#class:OrderRepository/method:insert",
-    "src/orders_playground/jobs/import_orders.py#function:import_orders",
-    "src/orders_playground/lib/logger.py#class:Logger/method:error",
-    "src/orders_playground/lib/logger.py#class:Logger/method:info",
-    "src/orders_playground/lib/validate.py#function:validate_order",
-    "src/orders_playground/services/events.py#class:Events/method:emit",
-    "src/orders_playground/services/order_service.py#class:OrderService/method:place"
-  ],
-  "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]": [
-    "src/orders_playground/jobs/retry_failed.py#function:retry_failed",
-    "src/orders_playground/jobs/send_email.py#function:flush_outbox",
-    "src/orders_playground/jobs/send_email.py#function:send_email",
-    "src/orders_playground/lib/logger.py#class:Logger/method:error",
-    "src/orders_playground/lib/logger.py#class:Logger/method:info",
-    "src/orders_playground/lib/retry.py#function:with_retry"
-  ],
-  "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]": [
-    "src/orders_playground/cli.py#function:report_command",
-    "src/orders_playground/db/__init__.py#",
-    "src/orders_playground/db/connection.py#",
-    "src/orders_playground/db/connection.py#function:connect",
-    "src/orders_playground/db/repository.py#",
-    "src/orders_playground/db/repository.py#class:OrderRepository",
-    "src/orders_playground/db/repository.py#class:OrderRepository/constructor:__init__",
-    "src/orders_playground/jobs/report.py#",
-    "src/orders_playground/lib/logger.py#",
-    "src/orders_playground/lib/logger.py#class:Logger",
-    "src/orders_playground/lib/validate.py#",
-    "src/orders_playground/services/__init__.py#",
-    "src/orders_playground/services/events.py#",
-    "src/orders_playground/services/events.py#class:Events",
-    "src/orders_playground/services/events.py#class:Events/method:on",
-    "src/orders_playground/services/notifier.py#",
-    "src/orders_playground/services/notifier.py#class:Notifier",
-    "src/orders_playground/services/notifier.py#class:ReceiptNotifier",
-    "src/orders_playground/services/notifier.py#function:notify_customer",
-    "src/orders_playground/services/order_service.py#",
-    "src/orders_playground/services/order_service.py#class:OrderService",
-    "src/orders_playground/services/order_service.py#class:OrderService/constructor:__init__",
-    "src/orders_playground/services/payment.py#",
-    "src/orders_playground/services/payment.py#class:PaymentProvider",
-    "src/orders_playground/services/payment.py#class:StripeProvider",
-    "src/orders_playground/services/payment.py#function:create_provider",
-    "src/orders_playground/types.py#",
-    "src/orders_playground/types.py#class:Order",
-    "src/orders_playground/types.py#class:OrderDraft",
-    "src/orders_playground/types.py#class:OrderItem"
-  ],
-  "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]": [
-    "src/orders_playground/jobs/retry_failed.py#function:retry_failed",
-    "src/orders_playground/jobs/send_email.py#function:flush_outbox",
-    "src/orders_playground/jobs/send_email.py#function:send_email",
-    "src/orders_playground/lib/logger.py#class:Logger/method:error",
-    "src/orders_playground/lib/logger.py#class:Logger/method:info",
-    "src/orders_playground/lib/retry.py#function:with_retry"
-  ],
-  "entrance:[\"manual\",\"event\",\"\",\"SIGTERM\",\"src/orders_playground/server.py#shutdown\"]": [
-    "src/orders_playground/lib/logger.py#class:Logger/method:info",
-    "src/orders_playground/server.py#function:shutdown"
-  ],
   "entrance:[\"pyproject.script\",\"process\",\"\",\"orders\",\"orders_playground.cli:main\"]": [
     "src/orders_playground/cli.py#",
     "src/orders_playground/cli.py#function:main",
@@ -460,5 +399,66 @@
     "src/orders_playground/worker.py#",
     "src/orders_playground/worker.py#function:main",
     "src/orders_playground/worker.py#function:purge"
+  ],
+  "entrance:configured:import": [
+    "src/orders_playground/db/repository.py#class:OrderRepository/method:insert",
+    "src/orders_playground/jobs/import_orders.py#function:import_orders",
+    "src/orders_playground/lib/logger.py#class:Logger/method:error",
+    "src/orders_playground/lib/logger.py#class:Logger/method:info",
+    "src/orders_playground/lib/validate.py#function:validate_order",
+    "src/orders_playground/services/events.py#class:Events/method:emit",
+    "src/orders_playground/services/order_service.py#class:OrderService/method:place"
+  ],
+  "entrance:configured:replay": [
+    "src/orders_playground/jobs/retry_failed.py#function:retry_failed",
+    "src/orders_playground/jobs/send_email.py#function:flush_outbox",
+    "src/orders_playground/jobs/send_email.py#function:send_email",
+    "src/orders_playground/lib/logger.py#class:Logger/method:error",
+    "src/orders_playground/lib/logger.py#class:Logger/method:info",
+    "src/orders_playground/lib/retry.py#function:with_retry"
+  ],
+  "entrance:configured:report": [
+    "src/orders_playground/cli.py#function:report_command",
+    "src/orders_playground/db/__init__.py#",
+    "src/orders_playground/db/connection.py#",
+    "src/orders_playground/db/connection.py#function:connect",
+    "src/orders_playground/db/repository.py#",
+    "src/orders_playground/db/repository.py#class:OrderRepository",
+    "src/orders_playground/db/repository.py#class:OrderRepository/constructor:__init__",
+    "src/orders_playground/jobs/report.py#",
+    "src/orders_playground/lib/logger.py#",
+    "src/orders_playground/lib/logger.py#class:Logger",
+    "src/orders_playground/lib/validate.py#",
+    "src/orders_playground/services/__init__.py#",
+    "src/orders_playground/services/events.py#",
+    "src/orders_playground/services/events.py#class:Events",
+    "src/orders_playground/services/events.py#class:Events/method:on",
+    "src/orders_playground/services/notifier.py#",
+    "src/orders_playground/services/notifier.py#class:Notifier",
+    "src/orders_playground/services/notifier.py#class:ReceiptNotifier",
+    "src/orders_playground/services/notifier.py#function:notify_customer",
+    "src/orders_playground/services/order_service.py#",
+    "src/orders_playground/services/order_service.py#class:OrderService",
+    "src/orders_playground/services/order_service.py#class:OrderService/constructor:__init__",
+    "src/orders_playground/services/payment.py#",
+    "src/orders_playground/services/payment.py#class:PaymentProvider",
+    "src/orders_playground/services/payment.py#class:StripeProvider",
+    "src/orders_playground/services/payment.py#function:create_provider",
+    "src/orders_playground/types.py#",
+    "src/orders_playground/types.py#class:Order",
+    "src/orders_playground/types.py#class:OrderDraft",
+    "src/orders_playground/types.py#class:OrderItem"
+  ],
+  "entrance:configured:retry": [
+    "src/orders_playground/jobs/retry_failed.py#function:retry_failed",
+    "src/orders_playground/jobs/send_email.py#function:flush_outbox",
+    "src/orders_playground/jobs/send_email.py#function:send_email",
+    "src/orders_playground/lib/logger.py#class:Logger/method:error",
+    "src/orders_playground/lib/logger.py#class:Logger/method:info",
+    "src/orders_playground/lib/retry.py#function:with_retry"
+  ],
+  "entrance:configured:shutdown": [
+    "src/orders_playground/lib/logger.py#class:Logger/method:info",
+    "src/orders_playground/server.py#function:shutdown"
   ]
 }

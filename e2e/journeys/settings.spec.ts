@@ -91,7 +91,7 @@ test.describe("project settings", () => {
   test("Scope excludes a folder, Detectors turn one off, and General renames the project", async ({ sandbox, launch }) => {
     const { page, folders } = await launchCompiled(launch, sandbox);
     const folder = folders[0] ?? "";
-    const config = join(folder, ".unfold", "config.toml");
+    const config = join(folder, "unfold.toml");
     const project = await projectId(page, "ts-orders");
     const settings = settingsDialog(page, "ts-orders");
 
@@ -113,7 +113,7 @@ test.describe("project settings", () => {
       await expect(scope.getByRole("region", { name: "Rules" }).locator(".scope-rule")).toContainText(["src/jobs"]);
     });
 
-    await test.step("Save writes the rule to config.toml, keeping its comments, and a background update drops the folder", async () => {
+    await test.step("Save writes the rule to unfold.toml, keeping its comments, and a background update drops the folder", async () => {
       const mark = await eventMark(page, "graph_updated");
       await saveSettings(page, settings);
       const text = readFile(config);
@@ -178,10 +178,10 @@ test.describe("project settings", () => {
 test.describe("the entrance editor", () => {
   test("add a manual entrance from the project menu, edit and remove it from Home, and start one from a card", async ({ sandbox, launch }) => {
     const { page, folders } = await launchCompiled(launch, sandbox);
-    const config = join(folders[0] ?? "", ".unfold", "config.toml");
+    const config = join(folders[0] ?? "", "unfold.toml");
     const editor = dialog(page, "Add entrance");
 
-    await test.step("project menu › Add entrance… opens the editor; a command entrance is saved to config.toml", async () => {
+    await test.step("project menu › Add entrance… opens the editor; a command entrance is saved to unfold.toml", async () => {
       await projectMenu(page, "ts-orders", "Add entrance…");
       await expect(editor).toBeVisible();
       await expect(editor.getByRole("radio", { name: "Command" })).toBeChecked();
@@ -189,7 +189,7 @@ test.describe("the entrance editor", () => {
       await enterText(editor.getByRole("textbox", { name: "Handler 1" }), "src/jobs/report.ts#reportMetrics");
       await editor.getByRole("button", { name: "Add entrance", exact: true }).click();
       await expect(editor).toBeHidden();
-      await dismiss(toast(page, "Added the entrance in .unfold/config.toml"));
+      await dismiss(toast(page, "Added the entrance in unfold.toml"));
       expect(readFile(config)).toContain('trigger = "metrics"');
     });
 
@@ -207,7 +207,7 @@ test.describe("the entrance editor", () => {
       await enterText(edit.getByRole("textbox", { name: "Trigger" }), "stats");
       await edit.getByRole("button", { name: "Save", exact: true }).click();
       await expect(edit).toBeHidden();
-      await dismiss(toast(page, "Saved the entrance in .unfold/config.toml"));
+      await dismiss(toast(page, "Saved the entrance in unfold.toml"));
       await expectUnreached(page, "COMMAND", "stats");
       await expect(entranceRow(page, "COMMAND", "metrics")).toHaveCount(0);
       const text = readFile(config);

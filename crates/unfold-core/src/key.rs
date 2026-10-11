@@ -7,6 +7,7 @@
 //! | Unnamed step | `kind[n]`: the zero-based position among siblings of that kind, named or not |
 //! | Nested block | The parent key, then `/step` (no `/` directly after the file's `#`) |
 //! | Entrance | `entrance:` plus a JSON array of detector, kind, method, trigger, and first target text, with `#n` for the n-th (n ≥ 1) earlier entrance with the same array |
+//! | Configured entrance | `entrance:configured:` plus the `[[entrance]]` table's `id`, whatever else the table says |
 //!
 //! These rules reproduce the proof of concept's keys exactly, so boards and references carry
 //! over unchanged.
@@ -50,6 +51,16 @@ impl Key {
     /// Whether this is an entrance key.
     pub fn is_entrance(&self) -> bool {
         self.0.starts_with(ENTRANCE_PREFIX)
+    }
+
+    /// The key of the configured entrance with `id`: `entrance:configured:<id>`.
+    pub fn configured_entrance(id: &str) -> Self {
+        Self(Arc::from(format!("{CONFIGURED_PREFIX}{id}")))
+    }
+
+    /// The ID of a configured entrance's key.
+    pub fn configured_id(&self) -> Option<&str> {
+        self.0.strip_prefix(CONFIGURED_PREFIX)
     }
 }
 
@@ -215,6 +226,7 @@ impl KeyBuilder {
 }
 
 const ENTRANCE_PREFIX: &str = "entrance:";
+const CONFIGURED_PREFIX: &str = "entrance:configured:";
 
 /// What an entrance contributes to its key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -229,11 +241,17 @@ pub struct EntranceShape<'a> {
     pub trigger: Option<&'a str>,
     /// The text of the entrance's first target, if it has one.
     pub first_target: Option<&'a str>,
+    /// The ID of a configured entrance, which alone makes its key.
+    pub configured: Option<&'a str>,
 }
 
-/// The ordinal-free key of one entrance: `entrance:` and a compact JSON array of detector,
-/// kind, method, trigger, and first target text, with absent values as empty strings.
+/// The ordinal-free key of one entrance: `entrance:configured:<id>` for a configured entrance,
+/// otherwise `entrance:` and a compact JSON array of detector, kind, method, trigger, and first
+/// target text, with absent values as empty strings.
 pub fn entrance_key_base(shape: &EntranceShape<'_>) -> String {
+    if let Some(id) = shape.configured {
+        return format!("{CONFIGURED_PREFIX}{id}");
+    }
     let parts = [
         shape.detector.as_str(),
         shape.kind.as_str(),
@@ -524,6 +542,7 @@ mod tests {
             method: Some(HttpMethod::Post),
             trigger: Some("/orders"),
             first_target: Some("requireUser"),
+            configured: None,
         };
         let worker = EntranceShape {
             detector: DetectorId::BullmqWorker,
@@ -531,6 +550,7 @@ mod tests {
             method: None,
             trigger: None,
             first_target: Some("new URL(\"../../report-processor.js\", import.meta.url)"),
+            configured: None,
         };
         let keys = entrance_keys([route, worker, route, route]);
         let keys: Vec<&str> = keys.iter().map(Key::as_str).collect();
@@ -547,6 +567,24 @@ mod tests {
     }
 
     #[test]
+    fn configured_entrance_keys_are_their_id() {
+        let shape = |trigger| EntranceShape {
+            detector: DetectorId::Manual,
+            kind: EntranceKind::Process,
+            method: None,
+            trigger,
+            first_target: Some("src/server.ts"),
+            configured: Some("api-start"),
+        };
+        let keys = entrance_keys([shape(Some("start")), shape(None)]);
+        assert_eq!(keys[0].as_str(), "entrance:configured:api-start");
+        assert_eq!(keys[0], Key::configured_entrance("api-start"));
+        assert_eq!(keys[0].configured_id(), Some("api-start"));
+        assert!(keys[0].is_entrance());
+        assert_eq!(Key::from_text(r#"entrance:["manual"]"#).configured_id(), None);
+    }
+
+    #[test]
     fn entrance_json_escaping_matches_json_stringify() {
         // serde_json escapes strings the same way JSON.stringify does.
         let tricky = "tab\t nl\n cr\r bs\\ q\" \u{1} \u{1f} \u{7f} \u{2028} é 😀 \u{8}\u{c}";
@@ -556,6 +594,7 @@ mod tests {
             method: None,
             trigger: Some(tricky),
             first_target: None,
+            configured: None,
         });
         let expected = serde_json::to_string(&["manual", "event", "", tricky, ""]).unwrap();
         assert_eq!(base, format!("entrance:{expected}"));

@@ -4,7 +4,7 @@
  * Adding a project is the one trusted request an agent can make, and only after the person confirms
  * it in a native dialog; it reports what a first Compile would read and skip. A compile is waited on
  * for at most 50 seconds, and goes on in Unfold after that. Settings edits apply all or nothing and
- * come back as the change to `.unfold/config.toml`, read before and after.
+ * come back as the change to `unfold.toml`, read before and after.
  */
 
 import { homedir } from "node:os";
@@ -42,7 +42,7 @@ function previewText(preview: CompilePreview): string[] {
   return [
     `A first Compile would read ${count(preview.files, "file")}${languages.length > 0 ? ` (${languages})` : ""}${preview.unindexed > 0 ? ` and skip ${count(preview.unindexed, "source-like file")}` : ""}.`,
     skipped.length > 0 ? `Skipped: ${skipped.join("; ")}.` : null,
-    preview.configExists ? (preview.settingsError ? `Its .unfold/config.toml is invalid: ${preview.settingsError}` : "It has a .unfold/config.toml.") : "It has no .unfold/config.toml yet: every setting is the default.",
+    preview.configExists ? (preview.settingsError ? `Its unfold.toml is invalid: ${preview.settingsError}` : "It has an unfold.toml.") : "It has no unfold.toml yet: every setting is the default.",
     preview.fallback ? `Its graph would live outside the folder (${preview.fallback.replaceAll("_", " ")}): ${preview.localPath}.` : null,
     ...preview.problems.map((problem) => `Problem: ${problem}`),
   ].filter((line): line is string => line !== null);
@@ -156,7 +156,10 @@ export const compileProject = defineTool({
 
 const folderPath = z.string().min(1).describe("A folder or file relative to the project's folder, / separated");
 
+const entranceId = z.string().min(1).describe("The manual entrance's id, as get_project lists it");
+
 const entranceSpec = z.object({
+  id: z.string().min(1).describe("A short id, unique among the manual entrances, such as import-orders: letters, digits, ., _, or -"),
   kind: z.enum(["process", "command", "http", "worker", "schedule", "event"]).describe("What starts it"),
   trigger: z.string().min(1).optional().describe("The path, queue, schedule, command, or event name"),
   method: z.string().min(1).optional().describe("The HTTP method (http only)"),
@@ -171,8 +174,8 @@ const settingsEdit = z.discriminatedUnion("op", [
   z.object({ op: z.literal("graph_only"), path: folderPath.describe("The one folder to graph") }),
   z.object({ op: z.literal("remove_scope_pattern"), list: z.enum(["include", "exclude"]), pattern: z.string().min(1).describe("The pattern exactly as get_project lists it") }),
   z.object({ op: z.literal("add_entrance"), entrance: entranceSpec }),
-  z.object({ op: z.literal("replace_entrance"), index: z.number().int().min(0).describe("The manual entrance's position in get_project's list, from 0"), entrance: entranceSpec }),
-  z.object({ op: z.literal("remove_entrance"), index: z.number().int().min(0).describe("The manual entrance's position in get_project's list, from 0") }),
+  z.object({ op: z.literal("replace_entrance"), id: entranceId, entrance: entranceSpec }),
+  z.object({ op: z.literal("remove_entrance"), id: entranceId }),
   z.object({
     op: z.literal("set_python_project"),
     root: folderPath.describe("The Python project's folder"),
@@ -194,9 +197,25 @@ function engineEdit(edit: Exclude<Edit, { op: "set_background_updates" }>): Sett
   switch (edit.op) {
     case "add_entrance":
     case "replace_entrance": {
-      const { kind, trigger, method, label, handler, startup } = edit.entrance;
-      const entrance = { kind, trigger: trigger ?? null, method: method ?? null, label: label ?? null, handler, startup: startup ?? null };
-      return edit.op === "add_entrance" ? { op: edit.op, entrance } : { op: edit.op, index: edit.index, entrance };
+      const { id, kind, trigger, method, label, handler, startup } = edit.entrance;
+      const entrance = {
+        id,
+        kind,
+        application: null,
+        trigger: trigger ?? null,
+        method: method ?? null,
+        label: label ?? null,
+        description: null,
+        handler,
+        cwd: null,
+        command: null,
+        startup: startup ?? null,
+        target: null,
+        pythonPaths: null,
+        env: {},
+        schedule: null,
+      };
+      return edit.op === "add_entrance" ? { op: edit.op, entrance } : { op: edit.op, id: edit.id, entrance };
     }
     case "set_python_project":
       return { op: edit.op, project: { root: edit.root, sourceRoots: edit.sourceRoots ?? null, version: edit.version ?? null } };
@@ -213,7 +232,7 @@ export const updateProjectSettings = defineTool({
   name: "update_project_settings",
   title: "Update project settings",
   description:
-    "Changes a project's settings, all or nothing, and returns the change to .unfold/config.toml as a diff. Settings shape the graph and are shared through the repository, so change them only when the person asks, and say in chat that the file changed (it shows in their git diff). edits apply in order: scope (exclude_from_graph, include_in_graph, graph_only one folder, remove_scope_pattern exactly as listed); detectors (set_detector by id, such as node-cron.schedule); Python projects (set_python_project with its root, optional sourceRoots and version; remove_python_project); manual entrances (add_entrance; replace_entrance and remove_entrance by index, from 0 in get_project's list); the project's shared name (set_project_name, null for the folder's name); evidence files (add_evidence_pattern, remove_evidence_pattern: files Unfold doesn't compile but boards may cite by lines, such as a migration or a Prisma schema; then read_file reads them); and set_background_updates (on or off, kept outside the file). An edit that would make the file invalid, or that needs a broader rule changed, is refused with the reason, and nothing changes. The graph follows at the next compile_project or background update. get_project shows the settings now. Agents can't change the app's preferences. Read get_guide(\"setup\") first.",
+    "Changes a project's settings, all or nothing, and returns the change to unfold.toml as a diff. Settings shape the graph and are shared through the repository, so change them only when the person asks, and say in chat that the file changed (it shows in their git diff). edits apply in order: scope (exclude_from_graph, include_in_graph, graph_only one folder, remove_scope_pattern exactly as listed); detectors (set_detector by id, such as node-cron.schedule); Python projects (set_python_project with its root, optional sourceRoots and version; remove_python_project); manual entrances (add_entrance with a new id; replace_entrance and remove_entrance by the id get_project lists); the project's shared name (set_project_name, null for the folder's name); evidence files (add_evidence_pattern, remove_evidence_pattern: files Unfold doesn't compile but boards may cite by lines, such as a migration or a Prisma schema; then read_file reads them); and set_background_updates (on or off, kept outside the file). An edit that would make the file invalid, or that needs a broader rule changed, is refused with the reason, and nothing changes. The graph follows at the next compile_project or background update. get_project shows the settings now. Agents can't change the app's preferences. Read get_guide(\"setup\") first.",
   input: z.object({
     project: z.string().min(1).describe("The project's name or id, or a link to one of its boards"),
     edits: z.array(settingsEdit).min(1).describe("The changes, in order"),
@@ -240,8 +259,8 @@ export const updateProjectSettings = defineTool({
       fileEdits.length === 0
         ? null
         : diff.length > 0
-          ? `Changed .unfold/config.toml of ${row.name}:\n${["```diff", ...diff, "```"].join("\n")}`
-          : "Nothing in .unfold/config.toml changed: the settings already said that.",
+          ? `Changed unfold.toml of ${row.name}:\n${["```diff", ...diff, "```"].join("\n")}`
+          : "Nothing in unfold.toml changed: the settings already said that.",
       updates === null ? null : `Background updates are ${updates.backgroundUpdates ? "on" : "off"} (kept in Unfold, not in the file).`,
       after.name.value !== row.name ? `The project is now named ${after.name.value}; links and other tools use the new name.` : null,
       diff.length > 0 ? "The file is shared through the repository: tell the person it changed. The graph follows at the next compile_project or background update." : null,

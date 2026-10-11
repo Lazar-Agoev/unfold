@@ -8,13 +8,13 @@ unless a section says otherwise.
 ```text
 testdata/
 ├── playgrounds/
-│   ├── .unfold/config.toml       # settings for the mixed folder (both playgrounds together)
+│   ├── unfold.toml               # settings for the mixed folder (both playgrounds together)
 │   ├── expected-entrances.txt    # mixed folder: 50 entrances, 56 targets
 │   ├── ts-orders/                # ← PoC ts-playground/ (Express, BullMQ, node-cron)
-│   │   ├── .unfold/config.toml
+│   │   ├── unfold.toml
 │   │   └── expected-entrances.txt   # 25 entrances, 28 targets
 │   └── py-orders/                # ← PoC py-playground/ (FastAPI, Celery, APScheduler)
-│       ├── .unfold/config.toml
+│       ├── unfold.toml
 │       └── expected-entrances.txt   # 25 entrances, 28 targets
 ├── fixtures/                     # small exact cases
 │   ├── worked/ classes/ entrances/ playground-v1/   # ← PoC compilers/codegraph/test/fixtures/…
@@ -23,7 +23,7 @@ testdata/
 │   ├── typed-lines/              # typed records: a TypeScript and a Python orders flow (written for Unfold)
 │   ├── typescript-evidence/      # TypeScript binding and evidence cases with expected edges (its README.md)
 │   └── typescript-typed/         # TypeScript typed-record cases with expected `.typed` records (written for Unfold)
-├── detectors/<detector>/<case>/   # detector cases: sources, .unfold/config.toml, expected-entrances.txt
+├── detectors/<detector>/<case>/   # detector cases: sources, unfold.toml, expected-entrances.txt
 ├── boards/
 │   ├── order-placement.json      # sample board, unfold-board v1
 │   ├── order-placement*.mmd      # its Mermaid export (snapshots: as saved, and with every card in Flow)
@@ -40,7 +40,7 @@ testdata/
 - **Never compile in place.** Tests copy a playground or fixture folder to a temporary directory (`tempfile`)
   before compiling, so nothing writes `.unfold/local/` or anything else into `testdata/`. Only blessing
   (`UNFOLD_BLESS=1`) writes here.
-- **`.unfold/local/` is never committed.** Only `.unfold/config.toml` (and published `.unfold/boards/`) belong in
+- **`.unfold/local/` is never committed.** Only `unfold.toml` (and published `.unfold/boards/`) belong in
   test folders.
 - **Bytes are exact.** Source hashes, board signatures, and offsets depend on exact bytes, and some fixtures are
   CRLF or Latin-1 on purpose. `testdata/.gitattributes` turns off line-ending conversion. Don't reformat anything.
@@ -59,13 +59,13 @@ Copied byte for byte. Every path in the PoC's frozen manifests exists here with 
 - **`py-orders`** ← `py-playground/`: `src/**` (50 Python sources), `legacy/**`, `tests/**`, `scripts/**`,
   `examples/**`, `pyproject.toml`, `README.md`.
 - **Mixed:** open `testdata/playgrounds/` itself to get the PoC's 84-source mixed build. The nested
-  `ts-orders/.unfold/` and `py-orders/.unfold/` belong to those subfolders and are not read then; the mixed settings
+  `ts-orders/unfold.toml` and `py-orders/unfold.toml` belong to those subfolders and are not read then; the mixed settings
   repeat their content with `ts-orders/` and `py-orders/` prefixes.
 
 ### Settings
 
-The PoC's `codegraph.json` files became `.unfold/config.toml` ([shared config](../docs/engine.md#shared-config)):
-each `entrypoints[]` item is an `[[entrance]]` table with the same `kind`, `trigger`, and `handler`, and locators keep
+The PoC's `codegraph.json` files became `unfold.toml` ([shared config](../docs/engine.md#shared-config)):
+each `entrypoints[]` item is an `[[entrance]]` table with the same `kind`, `trigger`, and `handler` and a new `id`, and locators keep
 the PoC forms (`path#name`, `path:line`). `python.sourceRoots` became `[[python.project]] source_roots`.
 
 - **The indexed set.** The PoC built its playground generations from an explicit file list: only `src/` in each
@@ -103,7 +103,7 @@ entrance<TAB>detector<TAB>kind<TAB>method<TAB>trigger<TAB>trigger_status<TAB>evi
 - An `entrance` line is followed by its `target` lines in position order (position 0 first).
 - `trigger_status` is `exact` or `unknown` (an unknown trigger is written `-`). `method` is set for `http` only.
 - `evidence_path:start_line` is the evidence file and the one-based line where the evidence range starts. For
-  manual entrances it is `.unfold/config.toml` and the line of that entrance's `[[entrance]]` header.
+  manual entrances it is `unfold.toml` and the line of that entrance's `[[entrance]]` header.
 - `what` depends on `resolution`: the target block's **structural key** for `resolved`, the module label for
   `external`, and the reason (`wrapper`, `unsupported`, `not_indexed`, …) for `unresolved`.
 - `target_text` is the target's written text (part of the entrance key). For manual entrances it is the locator as
@@ -120,8 +120,8 @@ the set of entrance lines and, per entrance, the ordered target lines; the line 
 Copied from `compilers/codegraph/test/fixtures/{worked,classes,entrances,playground-v1,python}`. Their expected rows
 are the reference generations in `reference/` (the `*-golden` folders went there, not here).
 
-- `entrances/codegraph.json` → `entrances/.unfold/config.toml` (one manual worker entrance).
-- `python/policy/{single-root,duplicate-roots}/codegraph.json` → `.unfold/config.toml` with
+- `entrances/codegraph.json` → `entrances/unfold.toml` (one manual worker entrance).
+- `python/policy/{single-root,duplicate-roots}/codegraph.json` → `unfold.toml` with
   `[[python.project]] root = "."`, the same `source_roots`, and `version = "3.14"`. Open each of those subfolders
   on its own.
 - `playground-v1/` is the PoC's frozen v1 release target; its graph root is `playground-v1/`, not
@@ -135,7 +135,7 @@ are the reference generations in `reference/` (the `*-golden` folders went there
 
 Written for Unfold (not carried over): one project with a TypeScript and a Python orders flow whose calls carry
 written types, for the typed records ([graph model](../docs/graph-model.md#typed-records)) and the app's typed
-lines. Open the folder itself; `.unfold/config.toml` makes `py/` a Python project with source root `src`.
+lines. Open the folder itself; `unfold.toml` makes `py/` a Python project with source root `src`.
 
 - `ts/` (`tsconfig.json` with NodeNext, `package.json` naming `stripe` as a dependency, nothing installed):
   `orders/create.ts` (`createOrder` calls `reserveInventory(cart.items)` and `chargePayment(cart, req.user)` inside
@@ -158,7 +158,7 @@ lines. Open the folder itself; `.unfold/config.toml` makes `py/` a Python projec
 
 ## Detector cases (`detectors/`)
 
-One folder per case under `detectors/<detector id>/`: the sources, a `.unfold/config.toml` (usually one
+One folder per case under `detectors/<detector id>/`: the sources, an `unfold.toml` (usually one
 `[[python.project]]` with `source_roots = ["src"]`), and an `expected-entrances.txt` in the format above whose comment
 lines say what the case pins. The Python cases (`pyproject.script`, `fastapi.route`, `celery.task`, `apscheduler.job`)
 were written for Unfold from the proof of concept's focused suites (`test/python-scripts.test.ts`,

@@ -1,0 +1,5 @@
+# Detector case: testdata/detectors/pyproject.script/aliases-namespaces-reexports.
+
+[[python.project]]
+root = "."
+source_roots = ["src", "legacy"]

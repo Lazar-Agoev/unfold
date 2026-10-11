@@ -8,10 +8,10 @@
         "entrance:[\"pyproject.script\",\"process\",\"\",\"orders-cli\",\"orders_playground.cli:main\"]"
       ],
       "entrances": [
-        "entrance:[\"manual\",\"command\",\"\",\"import\",\"src/orders_playground/jobs/import_orders.py#import_orders\"]",
-        "entrance:[\"manual\",\"command\",\"\",\"replay\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]",
-        "entrance:[\"manual\",\"command\",\"\",\"report\",\"src/orders_playground/cli.py#report_command\"]",
-        "entrance:[\"manual\",\"command\",\"\",\"retry\",\"src/orders_playground/jobs/retry_failed.py#retry_failed\"]"
+        "entrance:configured:import",
+        "entrance:configured:replay",
+        "entrance:configured:report",
+        "entrance:configured:retry"
       ]
     },
     {
@@ -41,7 +41,7 @@
         "entrance:[\"fastapi.route\",\"http\",\"GET\",\"/orders\",\"list_orders\"]",
         "entrance:[\"fastapi.route\",\"http\",\"GET\",\"/orders/{order_id}\",\"async_handler(get_order)\"]",
         "entrance:[\"fastapi.route\",\"http\",\"POST\",\"/orders\",\"require_user\"]",
-        "entrance:[\"manual\",\"event\",\"\",\"SIGTERM\",\"src/orders_playground/server.py#shutdown\"]"
+        "entrance:configured:shutdown"
       ]
     },
     {

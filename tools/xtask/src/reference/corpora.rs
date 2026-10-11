@@ -36,7 +36,7 @@ pub(crate) struct Corpus {
     pub parity: bool,
     /// Prefix mappings from PoC paths to folder paths.
     pub paths: Vec<PathMapping>,
-    /// PoC settings files that became the folder's `.unfold/config.toml`.
+    /// PoC settings files that became the folder's `unfold.toml`.
     #[serde(default)]
     pub settings: Vec<SettingsSource>,
 }
@@ -51,7 +51,7 @@ pub(crate) struct PathMapping {
     pub unfold: String,
 }
 
-/// One PoC `codegraph.json` that became part of `.unfold/config.toml`.
+/// One PoC `codegraph.json` that became part of `unfold.toml`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SettingsSource {

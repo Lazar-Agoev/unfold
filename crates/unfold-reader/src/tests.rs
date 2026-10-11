@@ -83,7 +83,7 @@ fn sample() -> Sample {
         "[project.scripts]\ncli = \"cli:main\"\n",
     );
     g.input(
-        ".unfold/config.toml",
+        "unfold.toml",
         InputRole::UnfoldConfig,
         "[[entrance]]\nkind = \"command\"\n[[entrance]]\nkind = \"worker\"\n",
     );
@@ -405,7 +405,7 @@ fn sample() -> Sample {
         EntranceKind::Command,
         None,
         Some("audit"),
-        g.config_evidence(".unfold/config.toml", "kind = \"command\"", "/entrance/0"),
+        g.config_evidence("unfold.toml", "kind = \"command\"", "/entrance/0"),
     );
     g.target(command, Outcome::Resolved(g.key(branch)), "src/routes.ts:7");
     let worker = g.entrance(
@@ -413,7 +413,7 @@ fn sample() -> Sample {
         EntranceKind::Worker,
         None,
         Some("orphans"),
-        g.config_evidence(".unfold/config.toml", "kind = \"worker\"", "/entrance/1"),
+        g.config_evidence("unfold.toml", "kind = \"worker\"", "/entrance/1"),
     );
     g.target(worker, Outcome::Resolved(g.key(orphan)), "src/routes.ts#orphan");
 

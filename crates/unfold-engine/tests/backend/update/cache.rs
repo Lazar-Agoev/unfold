@@ -86,8 +86,8 @@ fn a_settings_change_re_extracts_exactly_the_files_it_touches() {
     assert_eq!(language.count(), 6);
 
     // The four files under `pkg/` get a new settings hash; the others keep theirs.
-    folder.write(".unfold/config.toml", "[[python.project]]\nroot = \"pkg\"\n");
-    let changed = background(&mut engine, &[".unfold/config.toml"]);
+    folder.write("unfold.toml", "[[python.project]]\nroot = \"pkg\"\n");
+    let changed = background(&mut engine, &["unfold.toml"]);
     assert!(changed.stats.full_discovery);
     assert_eq!(language.count(), 4);
     assert_eq!(changed.stats.files_read, 4);
@@ -96,18 +96,18 @@ fn a_settings_change_re_extracts_exactly_the_files_it_touches() {
 
     // A manual entrance changes no file's settings hash.
     folder.write(
-        ".unfold/config.toml",
-        "[[python.project]]\nroot = \"pkg\"\n\n[[entrance]]\nkind = \"command\"\ntrigger = \"go\"\nhandler = \"main.ts#go\"\n",
+        "unfold.toml",
+        "[[python.project]]\nroot = \"pkg\"\n\n[[entrance]]\nid = \"go\"\nkind = \"command\"\ntrigger = \"go\"\nhandler = \"main.ts#go\"\n",
     );
-    let entrance = background(&mut engine, &[".unfold/config.toml"]);
+    let entrance = background(&mut engine, &["unfold.toml"]);
     assert_eq!(language.count(), 0);
     assert_eq!(entrance.graph.entrances.len(), 1);
     assert_eq!(entrance.summary.changed_entrances.len(), 1);
 
     // Removing the settings brings back the first hashes. The cache keeps only each path's
     // current entry, so those four files are extracted again.
-    folder.remove(".unfold/config.toml");
-    let removed = background(&mut engine, &[".unfold/config.toml"]);
+    folder.remove("unfold.toml");
+    let removed = background(&mut engine, &["unfold.toml"]);
     assert_eq!(language.count(), 4);
     assert_eq!(canonical(&removed), canonical(&first));
 }
@@ -212,8 +212,8 @@ fn a_restored_graph_is_linked_again_when_what_it_was_linked_from_changed() {
     let mut engine = engine_with(&folder, Counting::new(), Arc::clone(&cache), 2);
     let first = compile(&mut engine);
     folder.write(
-        ".unfold/config.toml",
-        "[[entrance]]\nkind = \"command\"\ntrigger = \"go\"\nhandler = \"main.ts#go\"\n",
+        "unfold.toml",
+        "[[entrance]]\nid = \"go\"\nkind = \"command\"\ntrigger = \"go\"\nhandler = \"main.ts#go\"\n",
     );
     let mut reopened = restored(&folder, &cache, &engine, &first, Some(first.basis.clone()));
     let outcome = reopened.update(UpdateRequest::reopen()).expect("reopen check");

@@ -555,7 +555,7 @@ fn evidence_anchors_go_outdated_when_their_file_changes() {
                 Some(0)
             ),
             (
-                "Anchor db/other.sql is not an evidence file of the project: list it under `[evidence] files` in .unfold/config.toml and compile, or reconnect the anchor",
+                "Anchor db/other.sql is not an evidence file of the project: list it under `[evidence] files` in unfold.toml and compile, or reconnect the anchor",
                 Some(1)
             ),
         ]

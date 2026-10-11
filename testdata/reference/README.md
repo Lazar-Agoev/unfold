@@ -37,7 +37,7 @@ reference/
 | `poc/python-playground` | The Python playground (`fixtures/python-playground-golden`) | `python/python/1.1.407-codegraph.1` | 50 Py | 888 / 1,598 / 393 | 25 / 28 | 152,651 B |
 
 Every source and input hash in these manifests matches the copies in `testdata/` (checked when the data was
-imported), except the PoC's `codegraph.json` files, which Unfold replaces with `.unfold/config.toml`.
+imported), except the PoC's `codegraph.json` files, which Unfold replaces with `unfold.toml`.
 
 ### How the PoC built each generation
 
@@ -79,18 +79,18 @@ Reference paths are relative to the PoC repository root (or the fixture root for
 | `ts-playground/…` | `testdata/playgrounds` (mixed) | `ts-orders/…` |
 | `py-playground/src/…`, `py-playground/pyproject.toml` | `testdata/playgrounds/py-orders` | `src/…`, `pyproject.toml` |
 | `py-playground/…` | `testdata/playgrounds` (mixed) | `py-orders/…` |
-| `codegraph.json` (root; TS manual entrances) | `ts-orders` / mixed | `.unfold/config.toml` |
-| `py-playground/codegraph.json` | `py-orders` / mixed | `.unfold/config.toml` |
-| `src/…`, `package.json`, `codegraph.json` (entrances corpus) | `testdata/fixtures/entrances` | same paths; `codegraph.json` → `.unfold/config.toml` |
+| `codegraph.json` (root; TS manual entrances) | `ts-orders` / mixed | `unfold.toml` |
+| `py-playground/codegraph.json` | `py-orders` / mixed | `unfold.toml` |
+| `src/…`, `package.json`, `codegraph.json` (entrances corpus) | `testdata/fixtures/entrances` | same paths; `codegraph.json` → `unfold.toml` |
 
 Which folder and settings pair with which corpus:
 
 | Corpus | Unfold folder | Settings |
 | --- | --- | --- |
-| `mixed-playground` | `testdata/playgrounds/` | `testdata/playgrounds/.unfold/config.toml` |
-| `playground-ts-native`, `playground-ts-checker` | `testdata/playgrounds/ts-orders/` | `ts-orders/.unfold/config.toml` |
-| `python-playground` | `testdata/playgrounds/py-orders/` | `py-orders/.unfold/config.toml` |
-| `entrances` | `testdata/fixtures/entrances/` | `entrances/.unfold/config.toml` |
+| `mixed-playground` | `testdata/playgrounds/` | `testdata/playgrounds/unfold.toml` |
+| `playground-ts-native`, `playground-ts-checker` | `testdata/playgrounds/ts-orders/` | `ts-orders/unfold.toml` |
+| `python-playground` | `testdata/playgrounds/py-orders/` | `py-orders/unfold.toml` |
+| `entrances` | `testdata/fixtures/entrances/` | `entrances/unfold.toml` |
 
 Other things that change with the folder:
 
@@ -99,14 +99,15 @@ Other things that change with the folder:
   mixed folder.
 - **Manual entrance target text** is the locator as written in the settings, so it follows the new paths
   (`ts-playground/src/cli.ts:12` → `src/cli.ts:12`). Python locators in the PoC were already relative to
-  `py-playground/`; in the mixed folder they gain `py-orders/`. Entrance keys contain the first target text, so the
-  five manual TypeScript entrance keys change accordingly. Launch target text (`dist/server.js`,
+  `py-playground/`; in the mixed folder they gain `py-orders/`. Launch target text (`dist/server.js`,
   `orders_playground.server:main`) and detector target text do not change.
+- **Manual entrance keys** are `entrance:configured:<id>`, the `id` of the entrance's `[[entrance]]` table, where
+  the PoC derived them from the entrance's fields.
 - **Manual entrance evidence** is `codegraph.json` with JSON pointer `/entrypoints/N` in the PoC; in Unfold it is the
-  matching `[[entrance]]` table of `.unfold/config.toml`, with its own range and pointer `/entrance/M`. The importer
+  matching `[[entrance]]` table of `unfold.toml`, with its own range and pointer `/entrance/M`. The importer
   re-derives it ([conversion rules](#conversion-rules)).
 - **Input fingerprints** for `codegraph.json` don't carry over: the importer replaces them with one
-  `.unfold/config.toml` input. Every other source and input hash does carry over.
+  `unfold.toml` input. Every other source and input hash does carry over.
 
 ## Offsets
 
@@ -131,7 +132,7 @@ directly comparable with the canonical export of compiling that folder.
 | `entrances` | `fixtures/entrances` | 5 | 31 | 46 | 15 | 2 | 4 | 4 |
 
 Every count equals the CSV row count (the manifest's for files). Inputs are the manifest's minus its `codegraph.json`
-files plus one `.unfold/config.toml`. Entrances in every reference match the folder's `expected-entrances.txt`.
+files plus one `unfold.toml`. Entrances in every reference match the folder's `expected-entrances.txt`.
 
 ### Commands
 
@@ -162,7 +163,7 @@ cargo xtask parity <corpus> [--actual <file.jsonl>] [--scope ...] [--ledger <fil
 One `[[corpus]]` per reference: `name`, `raw` (the generation, relative to this folder), `folder` (the testdata folder
 Unfold opens, relative to `testdata/`), `poc_root` (where the PoC built it, for `--poc`), `languages`, `parity`
 (default true), `paths` (prefix mappings; the longest matching `poc` prefix wins and every path must match one), and
-`settings` (the PoC `codegraph.json` files that became the folder's `.unfold/config.toml`, each with the index of the
+`settings` (the PoC `codegraph.json` files that became the folder's `unfold.toml`, each with the index of the
 `[[entrance]]` table holding its first manual entrance). The header comment in the file repeats this.
 
 ### Conversion rules
@@ -173,11 +174,12 @@ Unfold opens, relative to `testdata/`), `poc_root` (where the PoC built it, for 
    surrogate pair or falls outside the text fails the import. Lines are unit-independent and kept.
 4. **Blocks and keys.** Each file's tree is rebuilt from `parent_id` in CSV preorder, and keys come from core's
    `KeyBuilder`, so duplicate siblings get the same `[n]` ordinals as in the PoC. Edge `seq` is the edge's position
-   among its source's rows. Block, edge, and target IDs become keys; entrance keys are re-derived by
-   `Graph::normalize` after the canonical sort (`#n` numbering follows the new order).
-5. **Settings.** The `codegraph.json` inputs collapse into one `.unfold/config.toml` input (role `unfold-config`, hash
+   among its source's rows. Block, edge, and target IDs become keys; a manual entrance's key is its table's `id`,
+   and the other entrance keys are re-derived by `Graph::normalize` after the canonical sort (`#n` numbering follows
+   the new order).
+5. **Settings.** The `codegraph.json` inputs collapse into one `unfold.toml` input (role `unfold-config`, hash
    of the folder's file). A manual entrance with evidence `/entrypoints/N` in a settings source becomes table
-   `first_entrance + N`: evidence path `.unfold/config.toml`, pointer `/entrance/<index>`, and a range from the table
+   `first_entrance + N`: evidence path `unfold.toml`, pointer `/entrance/<index>`, and a range from the table
    header's `[[` through the end of its last value (token-exact: no trailing comment or whitespace). Its locator target
    text, which the PoC wrote relative to the `codegraph.json`, becomes relative to the folder. The importer fails unless
    the table declares the same kind, trigger, method, label, and locators.
@@ -187,7 +189,7 @@ Unfold opens, relative to `testdata/`), `poc_root` (where the PoC built it, for 
    record counts must equal the CSV rows.
 
 **Why rule 5 is a conversion rule and not ledger entries.** Moving manual entrances from `codegraph.json` to
-`.unfold/config.toml` is a format change the architecture prescribes, applied to every manual entrance of every
+`unfold.toml` is a format change the architecture prescribes, applied to every manual entrance of every
 corpus; it says nothing about whether the engine behaves like the PoC. Listing it in the ledger would add a dozen
 entries per corpus that never go away and would hide real regressions in manual evidence behind them. Instead the
 importer derives the evidence Unfold must produce from the folder's own settings file and checks that the table
@@ -295,7 +297,7 @@ cargo xtask oracles refresh [CORPUS...] [--language typescript|python] [--poc <g
   names skips lock corpora that aren't available (`--strict` fails instead); named corpora must be.
 - **Every corpus compiles from a temporary copy** (symbolic links left out; Unfold never follows a
   linked folder), with `settings` from `corpora.toml` written into the copy when the corpus has no
-  `.unfold/config.toml` of its own. Nothing is written where the corpus lives.
+  `unfold.toml` of its own. Nothing is written where the corpus lives.
 - **Why the large TypeScript oracle files aren't committed.** The 602-file corpus's answers are
   23 MB (100,000 call sites), regenerated whenever the engine's export changes block names. The
   corpus itself isn't in the repository either: its CI copy has to be downloaded, so the nightly
