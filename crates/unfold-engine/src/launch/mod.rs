@@ -15,11 +15,13 @@
 mod launcher;
 mod path;
 mod shell;
+mod target;
 
 use std::fmt;
 
 use launcher::{LAUNCHERS, Step, launcher};
 pub use path::{LAUNCH_EXTENSIONS, launch_file};
+pub use target::{LaunchTarget, PythonContext, PythonEntry};
 use shell::{Word, is_assignment, steps};
 
 /// How deep script references may nest: eight references below the enumerated script.
