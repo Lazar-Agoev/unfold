@@ -175,10 +175,12 @@ fn a_resting_project_answers_reads_from_its_stored_graph() {
         files["files"]["hits"][0]["path"], "src/services/order-service.ts",
         "files come from the stored graph"
     );
-    let map = harness.ok(1, "entrances", json!({ "project": harness.project }));
-    let row = map["applications"][0]["entrances"][0].clone();
-    assert!(row["key"].is_string(), "{map}");
-    assert_eq!(row["reaches"], Value::Null, "reach needs the live index");
+    let rows = harness.entrance_rows(None);
+    assert!(rows.iter().all(|row| row["key"].is_string()), "{rows:?}");
+    assert!(
+        rows.iter().all(|row| row["reaches"] == Value::Null),
+        "reach needs the live index"
+    );
     let text = harness.ok(1, "search_text", json!({ "query": "orderService" }));
     assert!(text["matches"].as_u64().is_some_and(|matches| matches > 0));
     let config = harness.ok(1, "project_config", json!({ "project": harness.project }));

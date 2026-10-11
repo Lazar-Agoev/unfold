@@ -145,7 +145,7 @@ rows to existing journey steps. It is optional context when changing those journ
 | Board menu `⋯` | The board header's menu; Fold all and Unfold all also in the canvas menu; Mermaid and PNG under Share |
 | Activity bar | Gone |
 | Files view (the disk tree and its marks and menu) | Finding a file: Add → Files. Scope actions: Project settings → Scope. Open in editor and Reveal in Finder: the peek sheet's menu and the project menu. Show callers: the card menu |
-| Entrances view | Home → How it starts, and Add's map. Add Entrance: the project menu and How it starts; editing and removing a manual entrance: its row on Home |
+| Entrances view | Home → How it starts, and Add's entrance browser. Add Entrance: the project menu and How it starts; editing and removing a manual entrance: its row on Home |
 | Search view (and match case, whole word, regex) | Add, with the same tabs and text options |
 | Boards view (boards, drafts, outline, the Flow-label stepper, groups, health and repairs) | Home's Boards and the sidebar's tree; On this page; "Label them"; the card's review banner and Home's Health |
 | Editor tabs; source tabs | Window tabs; the peek sheet |

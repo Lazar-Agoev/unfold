@@ -6,7 +6,8 @@
 import type { JSX } from "react";
 import { GroupFromLinesDialog } from "../board";
 import { PreferencesDialog } from "../preferences";
-import { EntranceEditorDialog, ProjectSettingsDialog, RemoveEntranceDialog } from "../settings";
+import { LaunchEditorDialog, RemoveEntranceDialog } from "../launches";
+import { ProjectSettingsDialog } from "../settings";
 import { closeDialog, useDialog, type DialogRequest } from "../state/overlays";
 import { DeleteBoardDialog, DiscardDialog } from "./BoardDialogs";
 import { MoveToFolderDialog, NewFolderDialog, RenameFolderDialog } from "./FolderDialogs";
@@ -20,8 +21,8 @@ function DialogFor({ request }: { readonly request: DialogRequest }): JSX.Elemen
       return <PreferencesDialog onClose={closeDialog} />;
     case "projectSettings":
       return <ProjectSettingsDialog project={request.project} section={request.section} onClose={closeDialog} />;
-    case "entranceEditor":
-      return <EntranceEditorDialog request={request} onClose={closeDialog} />;
+    case "launchEditor":
+      return <LaunchEditorDialog request={request} onClose={closeDialog} />;
     case "removeEntrance":
       return <RemoveEntranceDialog request={request} onClose={closeDialog} />;
     case "publish":

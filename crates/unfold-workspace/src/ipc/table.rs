@@ -12,8 +12,8 @@ use serde::Deserialize;
 
 use crate::commands::{
     NoArgs, ProjectArgs, ProjectKeyArgs, ProjectPathArgs, boards, compiling, deploy_import, diagnostics,
-    entrances, export, file_view, files, graph, projects, relations, search, settings, text_search, types,
-    windows, workspace,
+    entrances, export, file_view, files, graph, launches, projects, relations, search, settings, text_search,
+    types, windows, workspace,
 };
 use crate::compile::{CompileOutcome, CompileProgress};
 use crate::git::GitInfo;
@@ -120,8 +120,15 @@ command_table! {
     "compile_preview" => CompilePreview(ProjectArgs) -> projects::CompilePreview = projects::compile_preview;
     /// One level of the scope tree: folders only.
     "scope_dir" => ScopeDir(ProjectPathArgs) -> projects::ScopeDir = projects::scope_dir;
-    /// How a project starts: applications, launches, and entrances, paged and filtered.
-    "entrances" => Entrances(entrances::EntrancesArgs) -> entrances::EntranceMap = entrances::entrances;
+    /// The entrance catalog: applications by category with their launches, or one
+    /// application's (or the unreached) entrance rows, filtered and paged.
+    "entrances" => Entrances(entrances::EntrancesArgs) -> entrances::EntrancesView = entrances::entrances;
+    /// What Unfold reads from a draft launch: its parts, target, import path, and what it would
+    /// reach. Runs and writes nothing.
+    "check_launch" => CheckLaunch(launches::CheckLaunchArgs) -> launches::LaunchCheck = launches::check_launch;
+    /// Route and import counts, and the FastAPI applications no launch serves, for setting up
+    /// launches.
+    "launch_suggestions" => LaunchSuggestions(ProjectArgs) -> launches::LaunchSuggestions = launches::launch_suggestions;
     /// The project's `render.yaml` services as draft launches, for review. Runs and writes nothing.
     "import_deploy_files" => ImportDeployFiles(ProjectArgs) -> deploy_import::DeployImport = deploy_import::import_deploy_files;
     /// The Problems list, with the health of every board.

@@ -4,7 +4,7 @@
  * Search and Entrances views, the command palette, Go to File, and Go to Symbol.
  */
 
-import { addBox, addInput, addPreview, addResults, addTab, openAdd, result, selectResult } from "../src/add";
+import { addBox, addInput, addPreview, addResults, addTab, browseList, entranceRow, lookIn, lookInCount, lookInItem, openAdd, result, selectResult } from "../src/add";
 import { activeBoardRef, boardView, card, cards, pagesList } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { launchCompiled, PLACE, traceEntrance } from "../src/flows";
@@ -14,7 +14,7 @@ import { enterText } from "../src/window";
 const PY_PLACE = "src/orders_playground/services/order_service.py#class:OrderService/method:place";
 
 test.describe("Add", () => {
-  test("on a board: A, ⌘K and / open it, the map, Enter and ⌘Enter add, Escape closes", async ({ sandbox, launch }) => {
+  test("on a board: A, ⌘K and / open it, the entrance browser, Enter and ⌘Enter add, Escape closes", async ({ sandbox, launch }) => {
     const { page } = await launchCompiled(launch, sandbox);
     await traceEntrance(page, "POST", "/orders");
     const before = await cards(page).count();
@@ -28,23 +28,50 @@ test.describe("Add", () => {
       }
     });
 
-    await test.step("the map shows each application's entrances and marks the one on the page", async () => {
+    await test.step("LOOK IN unfolds the board's project; an application lists its launch and routes and marks the one on the page", async () => {
       await openAdd(page);
       await expect(addTab(page, "Entrances")).toHaveAttribute("aria-selected", "true");
       await expect(addBox(page).getByText("Adds to “Page 1”")).toBeVisible();
-      const map = addBox(page).getByRole("region", { name: "ts-orders" });
-      for (const application of ["cli", "scheduler", "server", "worker"]) {
-        await expect(map.getByRole("group", { name: application, exact: true })).toBeVisible();
-      }
-      const server = map.getByRole("group", { name: "server", exact: true });
-      await expect(server.getByRole("button", { name: "POST /orders on page" })).toBeVisible();
-      await expect(server.getByRole("button", { name: "GET /health", exact: true })).toBeVisible();
+      const project = lookInItem(page, "ts-orders");
+      await expect(project).toHaveAttribute("aria-expanded", "true");
+      await expect(project).toHaveAttribute("aria-selected", "true");
+      const total = await lookInCount(page, "All projects");
+      expect(total).toBeGreaterThan(0);
+      expect(await lookInCount(page, "ts-orders")).toBe(total);
+      await expect(lookIn(page).getByText("Services", { exact: true })).toBeVisible();
+
+      await lookInItem(page, "server").click();
+      await expect(lookInItem(page, "server")).toHaveAttribute("aria-selected", "true");
+      await expect(addBox(page).getByRole("heading", { name: "server", exact: true })).toBeVisible();
+      await expect(entranceRow(page, /^Launch npm run start/)).toBeVisible();
+      await expect(entranceRow(page, "POST /orders on page")).toBeVisible();
+      await expect(entranceRow(page, "GET /health")).toBeVisible();
     });
 
-    await test.step("choosing an entrance on the map adds it to the page", async () => {
-      await addBox(page).getByRole("group", { name: "server", exact: true }).getByRole("button", { name: "GET /health", exact: true }).click();
+    await test.step("the preview shows the selected launch's command and where it is declared", async () => {
+      await selectResult(page, entranceRow(page, /^Launch npm run start/));
+      const preview = addPreview(page);
+      await expect(preview.getByRole("heading", { name: "npm run start" })).toBeVisible();
+      await expect(preview.locator(".add-command-box")).toHaveText(/\$\s*npm run start$/);
+      await expect(preview).toContainText("Declared in");
+      await expect(preview).toContainText("package.json");
+      await expect(preview.getByRole("button", { name: /^Add to this page/ })).toBeVisible();
+    });
+
+    await test.step("clicking an entrance adds it to the page", async () => {
+      await entranceRow(page, "GET /health").click();
       await expect(addBox(page)).toBeHidden();
       await expect(boardView(page).getByRole("article", { name: "GET /health", exact: true })).toBeVisible();
+    });
+
+    await test.step("Add opens again on the application; Enter adds the selected route", async () => {
+      await openAdd(page);
+      await expect(lookInItem(page, "server")).toHaveAttribute("aria-selected", "true");
+      await expect(entranceRow(page, "GET /health on page")).toBeVisible();
+      await selectResult(page, entranceRow(page, "GET /orders"));
+      await addInput(page).press("Enter");
+      await expect(addBox(page)).toBeHidden();
+      await expect(boardView(page).getByRole("article", { name: "GET /orders", exact: true })).toBeVisible();
     });
 
     await test.step("Enter adds the selected function to the current page", async () => {
@@ -79,18 +106,23 @@ test.describe("Add", () => {
     const { page } = await launchCompiled(launch, sandbox, ["ts-orders", "py-orders"]);
     const python = await projectId(page, "py-orders");
 
-    await test.step("Look in limits the map to one project", async () => {
+    await test.step("Look in totals every project and lists their applications", async () => {
       await openAdd(page);
       await expect(addBox(page).getByText("Adds to a new draft")).toBeVisible();
-      await expect(addBox(page).getByRole("region", { name: "ts-orders" })).toBeVisible();
-      await expect(addBox(page).getByRole("region", { name: "py-orders" })).toBeVisible();
-      const lookIn = addBox(page).getByRole("radiogroup", { name: "Look in" });
-      await expect(lookIn.getByRole("radio", { name: /^All projects 36$/ })).toBeChecked();
-      await lookIn.getByRole("radio", { name: /^py-orders/ }).click();
-      await expect(addBox(page).getByRole("region", { name: "ts-orders" })).toBeHidden();
-      await expect(addBox(page).getByRole("region", { name: "py-orders" })).toBeVisible();
-      await lookIn.getByRole("radio", { name: /^All projects/ }).click();
-      await expect(addBox(page).getByRole("region", { name: "ts-orders" })).toBeVisible();
+      await expect(lookInItem(page, "All projects")).toHaveAttribute("aria-selected", "true");
+      await expect(addBox(page).getByRole("heading", { name: "All projects" })).toBeVisible();
+      const ts = await lookInCount(page, "ts-orders");
+      const py = await lookInCount(page, "py-orders");
+      expect(ts).toBeGreaterThan(0);
+      expect(py).toBeGreaterThan(0);
+      expect(await lookInCount(page, "All projects")).toBe(ts + py);
+      await expect(browseList(page).getByRole("option", { name: /^server, / }).first()).toBeVisible();
+
+      await lookInItem(page, "py-orders").click();
+      await expect(lookInItem(page, "py-orders")).toHaveAttribute("aria-expanded", "true");
+      await expect(addBox(page).getByRole("heading", { name: "py-orders" })).toBeVisible();
+      await lookInItem(page, "All projects").click();
+      await expect(addBox(page).getByRole("heading", { name: "All projects" })).toBeVisible();
     });
 
     await test.step("typing searches every project, with counts per kind and each row's project", async () => {

@@ -26,14 +26,19 @@ export interface DialogProps {
   readonly title: string;
   /** Under the title; it becomes the dialog's accessible description. */
   readonly description?: ReactNode;
-  /** 400 for confirmations, 520 for Publish, 880 for Project settings (with a close button and ruled header and footer). */
-  readonly width: 400 | 520 | 880;
+  /**
+   * 400 for confirmations, 520 for Publish, 880 for Project settings and 1000 for the launch editor
+   * (those two with a close button and ruled header and footer).
+   */
+  readonly width: 400 | 520 | 880 | 1000;
   /** A fixed height in px (Project settings: 700); otherwise it fits its content. */
   readonly height?: number;
   /** `window`: centered on the window, scrim over everything. `canvas`: centered on the canvas area, scrim over it alone. */
   readonly placement: "window" | "canvas";
   /** Buttons, right-aligned at the bottom. */
   readonly footer?: ReactNode;
+  /** A control in the header, before the close button (the launch editor's kind switch). */
+  readonly headerAction?: ReactNode;
   /** What takes focus when the dialog opens; defaults to the first focusable element. */
   readonly initialFocus?: RefObject<HTMLElement | null>;
   /** `alertdialog` for confirmations that interrupt. */
@@ -74,6 +79,7 @@ export function Dialog({
   height,
   placement,
   footer,
+  headerAction,
   initialFocus,
   role = "dialog",
   className,
@@ -97,7 +103,7 @@ export function Dialog({
   if (!open) {
     return null;
   }
-  const large = width === 880;
+  const large = width === 880 || width === 1000;
   return (
     <Portal>
       <div
@@ -140,6 +146,7 @@ export function Dialog({
                 </div>
               )}
             </div>
+            {headerAction}
             {large ? <IconButton icon="close" label="Close" onClick={onClose} /> : null}
           </div>
           {children === undefined ? null : <div className="dialog-body">{children}</div>}

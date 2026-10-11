@@ -3,9 +3,7 @@
  * position in `unfold.toml` that Rust found wrong. Rust keeps the file's comments and formatting.
  */
 
-import { showToast } from "../components";
 import { call, toUnfoldError, type ProjectConfig, type ProjectId, type SettingsEdit } from "../ipc";
-import type { ManualRow } from "../state/overlays";
 
 /** Why Rust refused a settings change, with its position when it named one. */
 export interface SettingsProblemText {
@@ -45,30 +43,4 @@ export async function applySettingsEdits(project: ProjectId, edits: readonly Set
 /** "Line 4, column 15: …" for a problem with a position. */
 export function problemText(problem: SettingsProblemText): string {
   return problem.line === null ? problem.message : `Line ${problem.line}, column ${problem.column ?? 1}: ${problem.message}`;
-}
-
-/** Removes a manual entrance by finding its table again, then applying the edit. */
-export async function removeManualEntrance(
-  project: ProjectId,
-  row: ManualRow,
-  findId: (config: ProjectConfig) => string | null,
-): Promise<boolean> {
-  try {
-    const config = await call("project_config", { project });
-    const id = findId(config);
-    if (id === null) {
-      showToast({ title: "That entrance isn't in unfold.toml any more.", tone: "danger" });
-      return false;
-    }
-    const outcome = await applySettingsEdits(project, [{ op: "remove_entrance", id }]);
-    if (!outcome.ok) {
-      showToast({ title: "Couldn't remove the entrance", body: problemText(outcome.problem), tone: "danger" });
-      return false;
-    }
-    showToast({ title: `Removed ${row.title}`, body: "The graph updates in the background." });
-    return true;
-  } catch (error) {
-    showToast({ title: "Couldn't remove the entrance", body: toUnfoldError(error).message, tone: "danger" });
-    return false;
-  }
 }

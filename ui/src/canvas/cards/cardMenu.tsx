@@ -9,7 +9,7 @@ import { copyLink } from "../../agent";
 import { useContextMenu, type MenuEntry } from "../../components";
 import type { ProjectId } from "../../ipc/generated";
 import { requestFocus } from "../../keyboard";
-import { canBeHandler } from "../../settings/locators";
+import { canBeHandler } from "../../launches";
 import { editGroup, editPage, findPage, getOpenBoard, removeCard, select, setCardsFolded, setLinking, ungroup, type PageTarget } from "../../state/boards";
 import { setSelectedCollapsed } from "../../state/layout";
 import { openDialog, openPeek, type DefinitionRef } from "../../state/overlays";
@@ -85,7 +85,7 @@ export function useCardMenu(
             icon: "entrance",
             onSelect: () => {
               if (source.definition) {
-                openDialog({ kind: "entranceEditor", project, mode: "add", handler: source.definition });
+                openDialog({ kind: "launchEditor", project, mode: "add", intent: "handler", handler: source.definition });
               }
             },
           } satisfies MenuEntry,

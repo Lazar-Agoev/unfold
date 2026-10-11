@@ -282,7 +282,9 @@ impl Project {
             })
             .collect();
         // Detection order: manual declarations first, then the language's detectors.
-        let mut candidates = entrances::manual_candidates(&settings);
+        let plans = entrances::launches::plans(&settings, &Default::default(), "");
+        let starts = entrances::launches::starts(&settings, &plans, &[linked.as_ref()]);
+        let mut candidates = entrances::manual_candidates(&settings, &starts);
         candidates.extend(entrances::detect(&resolver, &settings));
         let targets = Targets {
             program: &program,

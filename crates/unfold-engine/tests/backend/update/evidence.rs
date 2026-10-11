@@ -114,7 +114,7 @@ fn a_restored_graph_takes_new_evidence_without_linking_again() {
 
     let mut reopened = engine_with(&folder, Counting::new(), Arc::clone(&cache), 2);
     reopened
-        .restore(graph, disks, Some(first.basis.clone()))
+        .restore(graph, Default::default(), disks, Some(first.basis.clone()))
         .expect("restore");
     let outcome = reopened.update(UpdateRequest::reopen()).expect("reopen check");
     assert!(!relinked(&outcome), "the restored graph is kept");

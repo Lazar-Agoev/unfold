@@ -8,7 +8,7 @@
 //! # Shape
 //!
 //! ```text
-//! after each update (workspace):   project(&graph) ─► Projections ─► store commit
+//! after each update (workspace):   project(&graph, &launches) ─► Projections ─► store commit
 //! per request:                     ReaderCache::get(pool) ─► ReaderIndex ─► callers, reached-from, closures
 //!                                  Reader::file_graph(path) ─► outgoing(), code_view()
 //!                                  contracts::Facts(reader) ─► line_label(), call_contract(), type_definition()
@@ -38,6 +38,7 @@ pub mod contracts;
 mod error;
 pub mod flow;
 mod index;
+pub mod launches;
 pub mod mermaid;
 pub mod notes;
 mod project;

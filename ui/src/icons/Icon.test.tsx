@@ -34,6 +34,7 @@ const PLANNED = [
   "add-circle",
   "warning-circle",
   "warning-triangle",
+  "check-circle",
   "info",
   "shield",
   "publish",

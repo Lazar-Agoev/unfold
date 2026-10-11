@@ -270,10 +270,15 @@ them with **Settings** on Home or in the project menu:
 - **Evidence files:** files Unfold doesn't compile but boards may cite, such as SQL migrations or a Prisma schema
   (`db/migrations/*.sql`). The peek sheet shows them as text with line numbers.
 
-Changes are saved together when you press **Save**. **Manual entrances:** if your code starts in a way Unfold
-doesn't detect, add it yourself with **Add entrance…** (on Home or in the project menu), or **Add as entrance…** in a
-function card's menu. You pick the kind (command, HTTP route, worker, schedule, event, or process), its trigger, and
-the functions that handle it. Manual entrances can be edited or removed from their menu on Home.
+Changes are saved together when you press **Save**. **Launches and manual entrances:** describe how your code starts
+with **Add launch** on Home or **Add entrance…** in the project menu. **Starts a process** takes the command as you
+deploy it and the folder it runs in; beside it, Unfold shows what it reads from the command (what it starts and where
+its imports resolve from) and what saving changes. If Unfold can't read the command (such as `sh -c "…"`), set the
+target and import paths under **Analysis details**. **Handles a route, queue, or event** declares a handler entrance:
+its kind, trigger, and the functions that handle it, in order; **Add as entrance…** in a function card's menu starts
+one from that function. Either can join an application, which only groups them on Home and in Add. Unfold writes each
+to `unfold.toml` and never runs the command. Configured launches and entrances are edited or removed from their menu
+on Home; a detected launch's **Edit…** changes only its name, application, schedule, and description.
 
 **Remove from workspace**, in the project menu, takes a project out of Unfold. It never deletes the project's
 `.unfold/` folder.

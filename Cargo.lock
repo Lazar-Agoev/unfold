@@ -3095,6 +3095,7 @@ version = "0.1.0"
 dependencies = [
  "rusqlite",
  "rustc-hash",
+ "serde_json",
  "tempfile",
  "thiserror",
  "unfold-core",

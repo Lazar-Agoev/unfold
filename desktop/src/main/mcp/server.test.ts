@@ -177,10 +177,11 @@ const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>,
     name: { value: "ts-orders", isDefault: true },
   }),
   entrances: () => ({
+    view: "overview",
     project: PROJECT,
-    applications: [{ startup: "src/server.ts", name: "server", language: "typescript", path: "src/server.ts", launches: [], total: 3, entrances: [] }],
-    unreached: { total: 0, entrances: [] },
-    unindexedLaunches: [],
+    counts: { applications: 1, launches: 0, routes: 2, entrances: 3 },
+    categories: [{ category: "services", applications: [{ id: "src/server.ts#", name: "server", description: null, origin: "inferred", entrances: 3, routes: 2, alsoIn: [], launches: [] }] }],
+    unreached: 0,
   }),
   compile_preview: () => compilePreview,
   compile: () => ({ files: 12, changedFiles: 12, removedFiles: 0, changedEntrances: 3, complete: true, problems: 0, durationMs: 900 }),
@@ -391,7 +392,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
 
     const project = text(await client.callTool({ name: "get_project", arguments: { project: "ts-orders" } }));
     expect(project.split("\n")[0]).toBe("Unfold · ts-orders · as Claude");
-    expect(project).toContain("1 application, 3 entrances in all:\n- server (src/server.ts, TypeScript): 3 entrances");
+    expect(project).toContain("1 application, 3 entrances in all:\n- server (id src/server.ts#, no launch defined): 3 entrances");
     expect(project).toContain("evidence files docs/queues.md");
     expect(project).toContain(`- Order placement (id ${BOARD.id}): draft, 1 page, 1 card`);
   });

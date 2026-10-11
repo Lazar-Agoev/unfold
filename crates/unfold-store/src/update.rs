@@ -13,6 +13,7 @@
 //! | [`Update::inputs`] | The complete new input set, when any input changed | Usually `None` |
 //! | [`Update::entrances`] | Entrances added or changed (by key), and keys of entrances that disappeared | Usually empty |
 //! | [`Update::applications`], [`Update::memberships`] | The complete new sets, when they changed | Usually `None` |
+//! | [`Update::launches`] | The launch records beside the graph, when they changed | Usually `None` |
 //! | [`Update::meta`] | The graph metadata (producers, settings, time, completeness) | Every commit |
 //!
 //! A first compile is an update in which every file is new: [`FileChange::full`] for each file
@@ -50,9 +51,10 @@
 //! commits.
 
 use rustc_hash::{FxHashMap, FxHashSet};
-use unfold_core::vocab::{BlockKind, Language};
+use unfold_core::vocab::BlockKind;
 use unfold_core::{
-    Block, ContentHash, Edge, Entrance, FileGraph, FileRecord, FileTypes, InputRecord, Key, RepoPath, Slot,
+    Block, ContentHash, Edge, Entrance, FileGraph, FileRecord, FileTypes, InputRecord, Key, Launches,
+    RepoPath, Slot,
 };
 
 /// One commit's worth of changes. See the [module documentation](self).
@@ -70,6 +72,8 @@ pub struct Update<'a> {
     pub applications: Option<&'a [Application]>,
     /// The complete new set of memberships, or `None` when unchanged.
     pub memberships: Option<&'a [Membership]>,
+    /// The new launch records, or `None` when unchanged.
+    pub launches: Option<&'a Launches>,
     /// New graph metadata, or `None` to keep what is stored.
     pub meta: Option<GraphMeta>,
 }
@@ -83,6 +87,7 @@ impl Update<'_> {
             && self.entrances.is_empty()
             && self.applications.is_none()
             && self.memberships.is_none()
+            && self.launches.is_none()
             && self.meta.is_none()
     }
 }
@@ -232,26 +237,90 @@ pub struct Definition {
     pub label: Box<str>,
 }
 
-/// An application (docs/reader.md#derived-views): a distinct resolved startup among process entrances.
-/// It is identified by its startup key.
+/// An application (docs/reader.md#derived-views): an `[[application]]` table, or launches that
+/// start the same code.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Application {
-    /// The startup target's key: a file, or a Python console script's callable.
-    pub startup: Key,
+    /// The `[[application]]` ID; for an inferred application, its startup's key, or the key of
+    /// its one launch when that launch starts nothing Unfold resolved.
+    pub id: Box<str>,
     /// The display name.
     pub name: Box<str>,
-    /// The startup's language.
-    pub language: Language,
+    /// The description.
+    pub description: Option<Box<str>>,
+    /// Whether an `[[application]]` table declares it.
+    pub declared: bool,
+    /// Its category.
+    pub category: Category,
 }
 
-/// A non-process entrance that belongs to an application.
+/// An application's category, in display order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Category {
+    /// Some launch can't be read and has no target set by hand.
+    NeedsLook,
+    /// It has routes or serves an ASGI application.
+    Services,
+    /// Everything else.
+    Workers,
+    /// Some launch has a schedule, or it has scheduled entrances.
+    Scheduled,
+}
+
+/// Why an entrance belongs to an application.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Basis {
+    /// A launch's activation (or, for a route, its application binding) proves it.
+    Proven,
+    /// Configuration says so: an `application` key, or an override.
+    Declared,
+}
+
+/// An entrance (a launch or any other) that belongs to an application.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Membership {
     /// The entrance's key.
     pub entrance: Key,
-    /// The application's startup key.
-    pub application: Key,
+    /// The application's ID.
+    pub application: Box<str>,
+    /// Why it belongs.
+    pub basis: Basis,
 }
+
+macro_rules! text_vocab {
+    ($name:ident { $($variant:ident = $text:literal),+ $(,)? }) => {
+        impl $name {
+            /// The stored text.
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $text,)+
+                }
+            }
+        }
+
+        impl std::str::FromStr for $name {
+            type Err = ();
+
+            fn from_str(text: &str) -> Result<Self, ()> {
+                match text {
+                    $($text => Ok(Self::$variant),)+
+                    _ => Err(()),
+                }
+            }
+        }
+    };
+}
+
+text_vocab!(Category {
+    NeedsLook = "needs_look",
+    Services = "services",
+    Workers = "workers",
+    Scheduled = "scheduled",
+});
+text_vocab!(Basis {
+    Proven = "proven",
+    Declared = "declared",
+});
 
 /// Graph-wide metadata the engine records with each commit.
 #[derive(Debug, Clone, PartialEq, Eq)]

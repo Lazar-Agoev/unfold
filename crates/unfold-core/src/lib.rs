@@ -10,6 +10,7 @@
 pub mod canonical;
 pub mod highlight;
 pub mod key;
+pub mod launches;
 pub mod model;
 pub mod path;
 #[cfg(any(test, feature = "testkit"))]
@@ -20,6 +21,9 @@ pub mod validate;
 pub mod vocab;
 
 pub use key::{Key, KeyBuilder};
+pub use launches::{
+    DeclaredApplication, DeclaredMember, Launch, LaunchIssue, LaunchMode, LaunchPath, Launches,
+};
 pub use model::{
     Block, Edge, Entrance, EntranceTarget, Evidence, FileGraph, FileRecord, Graph, InputRecord, ModuleLabel,
     Slot,

@@ -10,7 +10,7 @@
 
 import { z } from "zod";
 import type { ToolContext } from "../context";
-import type { BlockKind, EntranceRow, ProjectRow, SearchHit, TextMatch } from "../engine-types";
+import type { AppRow, BlockKind, CatalogRow, EntranceScope, LaunchRow, ProjectRow, SearchHit, TextMatch } from "../engine-types";
 import { clip, count, keyName, place } from "../format";
 import { cant, cursorOffset, MAX_RESULT_CHARS, RESULT_ROOM, textResult } from "../results";
 import { projectOrView } from "../target";
@@ -182,21 +182,42 @@ export const search = defineTool({
 // ---------------------------------------------------------------------------------------------
 // list_entrances
 
-function entranceLine(entrance: EntranceRow): string {
+function entranceLine(entrance: CatalogRow): string {
   const declared = place(entrance.path, entrance.line);
   const reaches = entrance.reaches === null ? "" : `, reaches ${count(entrance.reaches, "definition")}`;
-  return `- ${entrance.label ?? entrance.title} (${entrance.kind}, ${entrance.detector}) declared in ${declared}${reaches}: key ${entrance.key}`;
+  return `- ${entrance.title} (${entrance.kind}) declared in ${declared}${reaches}: key ${entrance.key}`;
+}
+
+function launchText(launch: LaunchRow): string {
+  return `${launch.label ?? launch.command ?? launch.key} (${launch.declaredIn.path})`;
+}
+
+/** An application's heading: what it starts and the launches that start it. */
+function applicationHeading(item: AppRow): string {
+  const startup = item.launches.find((launch) => launch.starts !== null)?.starts?.path;
+  const launches = item.launches.map(launchText).join(", ");
+  const facts = [...(startup === undefined ? [] : [`startup ${startup}`]), launches.length > 0 ? `started by ${launches}` : "no launch defined"];
+  return `${item.name} (${facts.join("; ")})`;
+}
+
+/** A scope's entrance rows without its launch rows, and how many entrances it has. */
+function entranceRows(scope: EntranceScope | null): { readonly rows: readonly CatalogRow[]; readonly total: number } {
+  if (scope === null) {
+    return { rows: [], total: 0 };
+  }
+  const launches = scope.sections.filter((item) => item.kind === "launch").reduce((sum, item) => sum + item.count, 0);
+  return { rows: scope.rows.filter((row) => row.kind !== "process"), total: scope.total - launches };
 }
 
 export const listEntrances = defineTool({
   name: "list_entrances",
   title: "List entrances",
   description:
-    "How a project starts: its applications (named after their startup, such as server or worker), the launches that start each (package scripts and bins, console scripts), and each application's entrances: HTTP routes, queue workers, schedules, commands, and events, each with its key and where it's declared. Then the entrances no launch reaches, and launches into code Unfold doesn't index. application narrows it to one (its name or startup key, as get_project lists them); filter keeps entrances whose title, trigger, label, or path contains it, ignoring case. limit is per application (default 25, at most 100); pass the next cursor for more (a page of long lines shows fewer). Pass an entrance's key to read_code (its evidence and handlers), add_cards, or create_board's trace. The project must be compiled.",
+    "How a project starts: its applications (declared in unfold.toml, or named after their startup, such as server or worker), the launches that start each (configured commands, package scripts and bins, console scripts), and each application's entrances: HTTP routes, queue workers, schedules, commands, and events, each with its key and where it's declared. Then the entrances no launch reaches, and launches into code Unfold doesn't index. application narrows it to one (its name or id, as get_project lists them); filter keeps entrances whose title, trigger, handler, or path contains it, ignoring case. limit is per application (default 25, at most 100); pass the next cursor for more (a page of long lines shows fewer). Pass an entrance's key to read_code (its evidence and handlers), add_cards, or create_board's trace. The project must be compiled.",
   input: z.object({
     project: z.string().min(1).optional().describe("The project's name or id (default: the project of the board in view)"),
-    application: z.string().min(1).optional().describe("An application's name or startup key"),
-    filter: z.string().min(1).optional().describe("Text an entrance's title, trigger, label, or path contains"),
+    application: z.string().min(1).optional().describe("An application's name or id"),
+    filter: z.string().min(1).optional().describe("Text an entrance's title, trigger, handler, or path contains"),
     limit: z.number().int().min(1).max(100).default(25).describe("Entrances per application"),
     cursor: z.string().optional().describe("The cursor an earlier page gave"),
   }),
@@ -204,19 +225,27 @@ export const listEntrances = defineTool({
   async run({ project, application, filter, limit, cursor }, context) {
     const row = await projectOrView(context, project);
     const offset = cursorOffset(cursor);
-    const map = await context.engine("entrances", { project: row.id, perApplication: Math.min(MAX_ENGINE_LIMIT, offset + limit), ...(filter !== undefined ? { filter } : {}) });
-    const applications = application === undefined ? map.applications : map.applications.filter((item) => item.name === application || item.startup === application);
+    const overview = await context.engine("entrances", { project: row.id });
+    const all = overview.view === "overview" ? overview.categories.flatMap((group) => group.applications) : [];
+    const applications = application === undefined ? all : all.filter((item) => item.name === application || item.id === application);
     if (application !== undefined && applications.length === 0) {
-      throw cant("list the entrances", `${row.name} has no application “${application}”`, `Its applications: ${map.applications.map((item) => item.name).join(", ") || "none"}.`);
+      throw cant("list the entrances", `${row.name} has no application “${application}”`, `Its applications: ${all.map((item) => item.name).join(", ") || "none"}.`);
     }
+    const scope = async (args: { application: string } | { unreached: true }, launches: number): Promise<EntranceScope | null> => {
+      const view = await context.engine("entrances", { project: row.id, ...args, limit: Math.min(MAX_ENGINE_LIMIT, offset + limit + launches), ...(filter !== undefined ? { filter } : {}) });
+      return view.view === "scope" ? view : null;
+    };
+    const scopes = await Promise.all(applications.map((item) => scope({ application: item.id }, item.launches.length).then(entranceRows)));
+    const unreached = application === undefined && overview.view === "overview" && overview.unreached > 0 ? entranceRows(await scope({ unreached: true }, 0)) : null;
     const matching = filter === undefined ? "" : ` matching “${filter}”`;
-    const unindexed = application === undefined && map.unindexedLaunches.length > 0 ? `Launches into code Unfold doesn't index: ${map.unindexedLaunches.map((launch) => `${launch.title} (${launch.path})`).join(", ")}.` : null;
+    const notIndexed = applications.flatMap((item) => item.launches).filter((launch) => launch.status === "not_indexed");
+    const unindexed = application === undefined && notIndexed.length > 0 ? `Launches into code Unfold doesn't index: ${notIndexed.map(launchText).join(", ")}.` : null;
     const page = fitting(limit, unindexed?.length ?? 0, (size) => [
-      ...applications.map((item) => {
-        const launches = item.launches.map((launch) => `${launch.title} (${launch.path})`).join(", ");
-        return section(`${item.name} (startup ${item.path}${launches.length > 0 ? `; started by ${launches}` : ""}), entrances${matching}`, item.entrances, item.total, offset, size, entranceLine);
+      ...applications.map((item, index) => {
+        const { rows, total } = scopes[index] ?? { rows: [], total: 0 };
+        return section(`${applicationHeading(item)}, entrances${matching}`, rows, total, offset, size, entranceLine);
       }),
-      ...(application === undefined ? [section(`Not reached from a launch${matching}`, map.unreached.entrances, map.unreached.total, offset, size, entranceLine)] : []),
+      ...(unreached === null ? [] : [section(`Not reached from a launch${matching}`, unreached.rows, unreached.total, offset, size, entranceLine)]),
     ]);
     const lines = page.sections.flatMap((item) => item.lines);
     return textResult(

@@ -7,7 +7,8 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 use unfold_core::testkit::testdata_dir;
-use unfold_core::{Graph, canonical};
+use unfold_core::vocab::DetectorId;
+use unfold_core::{Graph, Key, Launch, LaunchMode, Launches, canonical};
 use unfold_reader::project;
 use unfold_store::{DiskStamp, EntranceChanges, FileChange, Store, StoreConfig, Update};
 
@@ -23,7 +24,8 @@ pub fn load(corpus: &str) -> Loaded {
     let text = std::fs::read_to_string(testdata_dir().join(format!("reference/canonical/{corpus}.jsonl")))
         .expect("read the canonical reference");
     let graph = canonical::read(&text).expect("parse the canonical reference");
-    let projections = project(&graph);
+    let launches = console_scripts(&graph);
+    let projections = project(&graph, &launches);
     let dir = tempfile::tempdir().expect("create a temporary directory");
     let mut store =
         Store::open(&dir.path().join("graph.sqlite"), &StoreConfig::new("test")).expect("open the store");
@@ -42,6 +44,7 @@ pub fn load(corpus: &str) -> Loaded {
         entrances: EntranceChanges::all(&graph.entrances),
         applications: Some(&projections.applications),
         memberships: Some(&projections.memberships),
+        launches: Some(&launches),
         ..Update::default()
     };
     store.writer.commit(&update).expect("commit the reference graph");
@@ -49,6 +52,44 @@ pub fn load(corpus: &str) -> Loaded {
         _dir: dir,
         store,
         graph,
+    }
+}
+
+/// The launch records the engine writes for console scripts: each runs its callable's module
+/// first.
+fn console_scripts(graph: &Graph) -> Launches {
+    let launches = graph
+        .entrances
+        .iter()
+        .filter(|entrance| entrance.detector == DetectorId::PyprojectScript)
+        .map(|entrance| {
+            let module = entrance
+                .targets
+                .first()
+                .and_then(|target| target.target.as_ref())
+                .and_then(|key| key.as_str().split_once('#'))
+                .filter(|(_, rest)| !rest.is_empty())
+                .map(|(path, _)| Key::from_text(&format!("{path}#")));
+            Launch {
+                entrance: entrance.key.clone(),
+                application: None,
+                label: None,
+                description: None,
+                schedule: None,
+                folder: ".".into(),
+                command: entrance.trigger.clone(),
+                mode: Some(LaunchMode::PythonCallable),
+                line: 1,
+                target_set_by_hand: false,
+                import_paths: Vec::new(),
+                problem: None,
+                seeds: module.into_iter().collect(),
+            }
+        })
+        .collect();
+    Launches {
+        launches,
+        ..Launches::default()
     }
 }
 

@@ -23,7 +23,7 @@
   "languages": [
     "typescript"
   ],
-  "applications": 4,
+  "applications": 5,
   "entrances": 18,
   "health": {
     "problems": 0,

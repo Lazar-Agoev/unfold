@@ -12,14 +12,25 @@ Start at [reader lib.rs](../crates/unfold-reader/src/lib.rs). Exact board shapes
 | Owner | Nearest activating file/class/function body context; `index.rs` and `file_owners` |
 | Definition catalog | Display names and selectable definitions, not every syntax block; `catalog.rs` |
 | Closure | Conservative static reachability from seeds; `closure.rs`, `reader_index.rs` |
-| Applications | Distinct resolved process startup targets and entrance membership; `applications.rs` |
+| Applications | Declared `[[application]]` groups and launches grouped by resolved startup, with membership (proven or declared) and category; `applications.rs` |
+| Launch wording | Launch state, folder label, what a launch starts, schedule gloss; `launches.rs` |
 | Relations | Callers/reached-from and outgoing relationships; `relations.rs` |
 
 Occurrences own edges; definitions own activation. Python class headers and nested function
 bodies require the existing owner rules. Reachability is a lower bound, not a runtime order
 or a promise that every dependency is known. External/unresolved relationships remain visible.
 
-`project(&graph)` computes definitions/applications/memberships for the store after updates.
+A launch activates its startup plus its record's seeds (packages a module initializes, the
+module of a callable or ASGI application). An ASGI launch owns exactly the routes bound to its
+application, mounts included; other routes belong to launches whose closure holds their
+application's module, and other entrances to launches whose closure holds their anchor. A
+configured entrance naming an application is a declared member. Categories, in display order:
+needs a look (a launch that can't be read and has no target set by hand), services (routes or an
+ASGI launch), scheduled, workers. The catalog counts unique declarations (evidence, method, and
+trigger), so a router two applications mount at one path counts once and shows "also in".
+
+`project(&graph, &launches)` computes definitions/applications/memberships for the store after
+updates, from the graph and the launch records the engine keeps beside it.
 `ReaderCache` holds an index for one committed graph version and caches closures by seed.
 Per-file view requests read stored facts and verified source; do not parse source in the reader
 or leak a whole graph into a UI response.

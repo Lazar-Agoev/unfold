@@ -5,7 +5,7 @@ import { expect } from "@playwright/test";
 import type { UnfoldApp } from "./app";
 import { boardView, card, expectCardsLoaded, follow } from "./board";
 import type { Fixtures } from "./fixtures";
-import { addProjectFromSidebar, entranceRow, firstCompile, homeTitle, projectRow, tabs } from "./home";
+import { addProjectFromSidebar, entranceRow, firstCompile, homeTitle, projectRow, showEntrances, tabs } from "./home";
 import type { PlaygroundName, Sandbox } from "./sandbox";
 
 export const CREATE_ORDER = "#function:createOrder";
@@ -51,6 +51,7 @@ export async function launchCompiled(
 /** Traces an entrance from Home's How it starts onto a new draft board and waits for its cards. */
 export async function traceEntrance(page: Page, kind: string, trigger: string): Promise<void> {
   const before = await tabs(page).count();
+  await showEntrances(page);
   await entranceRow(page, kind, trigger).click();
   await expect(tabs(page)).toHaveCount(before + 1);
   await expect(boardView(page).locator(".entrance-card")).toBeVisible();

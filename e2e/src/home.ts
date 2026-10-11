@@ -161,12 +161,30 @@ export function howItStarts(page: Page): Locator {
   return homeMain(page).getByRole("region", { name: "How it starts" });
 }
 
+/** An application's row in How it starts (with its launches, and its entrances while expanded), by name. */
+export function applicationRow(page: Page, name: string): Locator {
+  return howItStarts(page).getByRole("region", { name, exact: true });
+}
+
+/** Expands `application` in How it starts, or every application with entrances besides its launches. */
+export async function showEntrances(page: Page, application?: string): Promise<void> {
+  const scope = application === undefined ? howItStarts(page) : applicationRow(page, application);
+  await expect(howItStarts(page).locator(".home-launch-table")).toBeVisible();
+  for (const toggle of await scope.getByRole("button", { name: /'s entrances$/ }).all()) {
+    if ((await toggle.getAttribute("aria-expanded")) === "false") {
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    }
+  }
+}
+
 /**
- * An entrance's row in How it starts, by its kind column (`POST`, `COMMAND`) and trigger, optionally
- * in one application.
+ * An entrance's row in How it starts, by its kind column (`POST`, `COMMAND`, `LAUNCH`) and trigger,
+ * optionally in one application. Rows show while their application is expanded (`showEntrances`) or
+ * under "Not reached from a launch".
  */
 export function entranceRow(page: Page, kind: string, trigger: string, application?: string): Locator {
-  const scope = application === undefined ? howItStarts(page) : howItStarts(page).getByRole("region", { name: application, exact: true });
+  const scope = application === undefined ? howItStarts(page) : applicationRow(page, application);
   return scope.getByRole("button", { name: new RegExp(`^${escapeRegExp(kind)} ${escapeRegExp(trigger)}( |$)`) });
 }
 

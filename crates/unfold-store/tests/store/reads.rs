@@ -192,9 +192,11 @@ fn entrances_definitions_and_applications() {
 
     let applications = reader.applications().unwrap();
     assert_eq!(applications.len(), 1);
-    assert_eq!(applications[0].startup.as_str(), "src/server.ts#");
+    assert_eq!(&*applications[0].id, "src/server.ts#");
+    assert_eq!(reader.applications().unwrap(), prepared.applications);
     assert_eq!(reader.memberships().unwrap(), prepared.memberships);
-    assert_eq!(prepared.memberships.len(), 2);
+    assert_eq!(prepared.memberships.len(), 3);
+    assert_eq!(reader.launches().unwrap(), prepared.launches);
 }
 
 #[test]
@@ -227,7 +229,7 @@ fn definition_counts_and_entrance_applications_are_grouped() {
     );
     assert!(reader.definition_counts(&[]).unwrap().is_empty());
 
-    // Members name their application; the launch names the application it starts.
+    // Members name their application, launches included.
     let mut keys: Vec<&str> = prepared
         .graph
         .entrances

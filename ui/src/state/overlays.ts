@@ -5,7 +5,7 @@
  */
 
 import { create } from "zustand";
-import type { EntranceRow, ProjectId, TextMatch } from "../ipc/generated";
+import type { ApplicationSpec, ImportedLaunch, ProjectId, TextMatch } from "../ipc/generated";
 import { boardKey } from "./boards/keys";
 import { useBoards } from "./boards/store";
 import type { BoardRef, PageTarget } from "./boards/types";
@@ -36,7 +36,7 @@ export interface PeekTarget {
 
 export type ProjectSettingsSection = "general" | "scope" | "detectors" | "python" | "evidence";
 
-/** A definition the entrance editor starts from ("Add as entrance…" on a card): its header's facts. */
+/** A definition the launch editor starts a handler from ("Add as entrance…" on a card): its header's facts. */
 export interface DefinitionRef {
   readonly path: string;
   /** The block kind, such as `function` or `method`. */
@@ -46,15 +46,29 @@ export interface DefinitionRef {
   readonly line: number | null;
 }
 
-/** A manual entrance, as the rows that offer Edit… and Remove… know it. */
-export type ManualRow = Pick<EntranceRow, "key" | "detector" | "title">;
+/** What a new launch starts with: from a suggestion, a deploy file, or "Add launch". */
+export interface LaunchPrefill {
+  readonly id?: string;
+  readonly command?: string;
+  readonly cwd?: string;
+  readonly label?: string;
+  /** An existing application, or a new one the save also declares. */
+  readonly application?: ApplicationSpec;
+  readonly schedule?: string;
+  readonly description?: string;
+  readonly env?: Readonly<Record<string, string>>;
+  /** Where the command came from, such as `data-pipelines/Dockerfile.workers, CMD`. */
+  readonly copiedFrom?: string;
+}
 
 export type DialogRequest =
+  | { readonly kind: "launchEditor"; readonly project: ProjectId; readonly mode: "add"; readonly intent?: "process" | "handler"; readonly prefill?: LaunchPrefill; readonly handler?: DefinitionRef }
+  | { readonly kind: "launchEditor"; readonly project: ProjectId; readonly mode: "edit"; readonly id: string }
+  | { readonly kind: "launchEditor"; readonly project: ProjectId; readonly mode: "override"; readonly key: string }
+  | { readonly kind: "launchEditor"; readonly project: ProjectId; readonly mode: "review"; readonly launches: readonly ImportedLaunch[] }
   | { readonly kind: "preferences" }
   | { readonly kind: "projectSettings"; readonly project: ProjectId; readonly section?: ProjectSettingsSection }
-  | { readonly kind: "entranceEditor"; readonly project: ProjectId; readonly mode: "add"; readonly handler?: DefinitionRef }
-  | { readonly kind: "entranceEditor"; readonly project: ProjectId; readonly mode: "edit"; readonly entrance: ManualRow }
-  | { readonly kind: "removeEntrance"; readonly project: ProjectId; readonly entrance: ManualRow }
+  | { readonly kind: "removeEntrance"; readonly project: ProjectId; readonly id: string; readonly name: string }
   | { readonly kind: "publish"; readonly board: BoardRef }
   | { readonly kind: "discard"; readonly board: BoardRef }
   | { readonly kind: "deleteBoard"; readonly board: BoardRef }

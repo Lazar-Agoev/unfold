@@ -3,7 +3,7 @@ import entrances from "../../../../../testdata/workspace/commands/entrances.json
 import fileViewPage from "../../../../../testdata/workspace/commands/file_view_orders_page.json";
 import searchPlace from "../../../../../testdata/workspace/commands/search_place.json";
 import searchWorker from "../../../../../testdata/workspace/commands/search_worker.json";
-import type { FileView, SearchResults, TextSearchFile } from "../engine-types";
+import type { CatalogRow, EntranceScope, EntrancesView, FileView, SearchResults, TextSearchFile } from "../engine-types";
 import { listEntrances, search } from "./search";
 import { harness, PROJECT, projectRow, recorded } from "./testing";
 
@@ -135,37 +135,75 @@ describe("search", () => {
   });
 });
 
+/** A catalog row named after its application. */
+function catalogRow(application: string, index: number, kind: CatalogRow["kind"] = "command"): CatalogRow {
+  return {
+    key: `entrance:["manual","${kind}","","${application}-${index}","src/${"very-long-folder-name/".repeat(6)}jobs.ts#${application}${index}"]`,
+    id: null,
+    section: 0,
+    kind,
+    method: null,
+    trigger: `${application}-${index}`,
+    title: `${kind} ${application}-${index}`,
+    handler: null,
+    path: "unfold.toml",
+    line: null,
+    reaches: 3,
+    alsoIn: [],
+  };
+}
+
+/** The recorded overview, and for a scope `entries` rows per application (and unreached), its launch rows first. */
+function catalog(entries: number): (args: Readonly<Record<string, unknown>>) => EntrancesView {
+  const overview = recorded<EntrancesView>(entrances);
+  return (args) => {
+    const id = args["application"];
+    if (id === undefined && args["unreached"] === undefined) {
+      return overview;
+    }
+    const application = overview.view === "overview" ? overview.categories.flatMap((group) => group.applications).find((item) => item.id === id) : undefined;
+    const name = application?.name ?? "unreached";
+    const launches = (application?.launches ?? []).map((_, index) => catalogRow(name, index, "process"));
+    const rows = [...launches, ...Array.from({ length: entries }, (_, index) => catalogRow(name, index))];
+    const sections: EntranceScope["sections"] = [
+      ...(launches.length > 0 ? [{ title: "Launch", kind: "launch" as const, mountedFrom: null, alsoIn: [], count: launches.length }] : []),
+      { title: "Commands", kind: "command", mountedFrom: null, alsoIn: [], count: entries },
+    ];
+    const limit = Number(args["limit"]);
+    return { view: "scope", project: PROJECT, sections, rows: rows.slice(0, limit), total: rows.length, nextCursor: null };
+  };
+}
+
 describe("list_entrances", () => {
   it("lists each application with its launches and entrances, with keys", async () => {
-    const app = harness({ engine: { entrances: () => recorded(entrances) } });
+    const app = harness({ engine: { entrances: catalog(9) } });
     const { text } = await app.call(listEntrances, { project: "ts-orders", filter: "o" });
-    expect(app.engineCalls.at(-1)).toEqual(["entrances", { project: PROJECT, perApplication: 25, filter: "o" }]);
+    expect(app.engineCalls).toContainEqual(["entrances", { project: PROJECT }]);
+    expect(app.engineCalls).toContainEqual(["entrances", { project: PROJECT, application: "src/server.ts#", limit: 27, filter: "o" }]);
     const lines = text.split("\n");
-    expect(lines.slice(0, 3)).toEqual([
-      "Unfold · ts-orders · as Claude",
-      "cli (startup src/cli.ts; started by process orders (package.json), process cli (package.json)), entrances matching “o” (4):",
-      `- command import (command, manual) declared in unfold.toml, reaches 7 definitions: key entrance:configured:import`,
-    ]);
-    expect(lines).toContain("server (startup src/server.ts; started by process start (package.json), process dev (package.json)), entrances matching “o” (1–8 of 9):");
-    expect(lines).toContain(`- worker unknown trigger (worker, bullmq.worker) declared in src/queues/report-worker.ts:6, reaches 0 definitions: key ${String(recorded<{ applications: { entrances: { key: string }[] }[] }>(entrances).applications[3]?.entrances[2]?.key)}`);
-    expect(lines).toContain("Launches into code Unfold doesn't index: process legacy:export (package.json).");
+    expect(lines[0]).toBe("Unfold · ts-orders · as Claude");
+    expect(lines).toContain("server (startup src/server.ts; started by npm run start (package.json), npm run dev (package.json)), entrances matching “o” (9):");
+    expect(lines).toContain(`- command server-0 (command) declared in unfold.toml, reaches 3 definitions: key ${catalogRow("server", 0).key}`);
+    expect(lines).not.toContain(`- process server-0 (process) declared in unfold.toml, reaches 3 definitions: key ${catalogRow("server", 0, "process").key}`);
+    expect(lines).toContain("legacy:export (started by npm run legacy:export (package.json)), entrances matching “o” (9):");
+    expect(lines).toContain("Launches into code Unfold doesn't index: npm run legacy:export (package.json).");
     expect(lines.at(-1)).toBe("Next: read_code with an entrance's key shows its handlers; create_board with trace makes a board from it.");
   });
 
   it("narrows to one application, pages it, and names the applications when one isn't there", async () => {
-    const app = harness({ engine: { entrances: () => recorded(entrances) } });
+    const app = harness({ engine: { entrances: catalog(9) } });
     const server = await app.call(listEntrances, { project: "ts-orders", application: "server", limit: 3 });
-    expect(server.text).toContain("server (startup src/server.ts; started by process start (package.json), process dev (package.json)), entrances (1–3 of 9):");
+    expect(server.text).toContain("server (startup src/server.ts; started by npm run start (package.json), npm run dev (package.json)), entrances (1–3 of 9):");
     expect(server.text).toContain('More: list_entrances with cursor "3" for the next page.');
     expect(server.text).not.toContain("cli (");
     const missing = await app.call(listEntrances, { project: "ts-orders", application: "web" });
-    expect(missing.text).toBe("Can't list the entrances: ts-orders has no application “web”. Its applications: cli, scheduler, server, worker.");
+    expect(missing.text).toBe("Can't list the entrances: ts-orders has no application “web”. Its applications: server, cli, legacy:export, worker, scheduler.");
   });
 
   it("defaults to the project of the board in view", async () => {
     const app = harness({
       projects: [projectRow(PROJECT, "ts-orders"), projectRow("p-python0000", "py-orders")],
-      engine: { entrances: () => recorded(entrances) },
+      engine: { entrances: catalog(1) },
     });
     expect((await app.call(listEntrances, {})).text).toBe(
       "Can't tell which project you mean: the workspace has 2 projects and no board is in view. Pass project: a name or id from list_projects.",
@@ -175,28 +213,7 @@ describe("list_entrances", () => {
   });
 
   it("fits the largest page of several applications under the size guard, keeping its cursor", async () => {
-    const row = (application: string, index: number) => ({
-      key: `entrance:["manual","command","","${application}-${index}","src/${"very-long-folder-name/".repeat(6)}jobs.ts#${application}${index}"]`,
-      title: `command ${application}-${index}`,
-      kind: "command",
-      method: null,
-      trigger: `${application}-${index}`,
-      triggerStatus: "exact",
-      label: null,
-      detector: "manual",
-      path: "unfold.toml",
-      line: null,
-      language: null,
-      group: null,
-      reaches: 3,
-    });
-    const map = recorded<{ applications: { name: string; total: number; entrances: unknown[] }[]; unreached: { total: number; entrances: unknown[] } }>(entrances);
-    const big = {
-      ...map,
-      applications: map.applications.map((item) => ({ ...item, total: 150, entrances: Array.from({ length: 150 }, (_, index) => row(item.name, index)) })),
-      unreached: { total: 150, entrances: Array.from({ length: 150 }, (_, index) => row("unreached", index)) },
-    };
-    const app = harness({ engine: { entrances: () => big } });
+    const app = harness({ engine: { entrances: catalog(150) } });
     const { text } = await app.call(listEntrances, { project: "ts-orders", limit: 100 });
     expect(text).not.toContain("Cut here");
     const next = Number(/More: list_entrances with cursor "(\d+)"/.exec(text)?.[1]);
@@ -204,6 +221,5 @@ describe("list_entrances", () => {
     expect(next).toBeLessThan(100);
     // Every application shows the same rows, so the cursor skips none.
     expect(text.match(/^- command cli-/gm)).toHaveLength(next);
-    expect(text.match(/^- command unreached-/gm)).toHaveLength(next);
   });
 });

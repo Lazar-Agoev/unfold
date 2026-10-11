@@ -1,15 +1,15 @@
-//! Entrances with their targets, definitions, applications, and memberships.
+//! Entrances with their targets, definitions, applications, memberships, and launch records.
 
-use rusqlite::Row;
+use rusqlite::{OptionalExtension, Row};
 use rustc_hash::FxHashMap;
-use unfold_core::vocab::{EntranceKind, Resolution};
-use unfold_core::{Entrance, EntranceTarget, Evidence, Key, RepoPath};
+use unfold_core::{Entrance, EntranceTarget, Evidence, Key, Launches, RepoPath};
 
 use super::Reader;
 use super::graph::collect;
 use super::rows::{Cursor, DefinitionRow, Page};
 use crate::codec;
 use crate::error::Result;
+use crate::schema::meta_key;
 use crate::update::{Application, Membership};
 
 /// Which entrances to load.
@@ -191,28 +191,16 @@ impl Reader {
         })
     }
 
-    /// The name of the first application (by startup key) each entrance of `keys` belongs to:
-    /// through its memberships, or, for a launch, the application it starts (as the entrance map
-    /// files them). One query; an entrance without an application is left out. Sorted by key.
+    /// The name of the first application (by name) each entrance of `keys` belongs to. One
+    /// query; an entrance without an application is left out. Sorted by key.
     pub fn entrance_applications(&self, keys: &[&str]) -> Result<Vec<(Key, Box<str>)>> {
         if keys.is_empty() {
             return Ok(Vec::new());
         }
-        let list = placeholders(keys.len());
-        let (process, resolved) = (EntranceKind::Process.as_str(), Resolution::Resolved.as_str());
         let mut statement = self.conn().prepare_cached(&format!(
-            "SELECT ek.key, a.name, ak.key FROM entrances e JOIN keys ek ON ek.id = e.key_id \
-             JOIN memberships m ON m.entrance_id = e.key_id \
-             JOIN applications a ON a.startup_key_id = m.application_id \
-             JOIN keys ak ON ak.id = a.startup_key_id WHERE ek.key IN ({list}) \
-             UNION ALL \
-             SELECT ek.key, a.name, ak.key FROM entrances e JOIN keys ek ON ek.id = e.key_id \
-             JOIN entrance_targets t ON t.entrance_id = e.id \
-             AND t.position = (SELECT min(position) FROM entrance_targets WHERE entrance_id = e.id) \
-             JOIN applications a ON a.startup_key_id = t.target_key_id \
-             JOIN keys ak ON ak.id = a.startup_key_id \
-             WHERE e.kind = '{process}' AND t.resolution = '{resolved}' AND ek.key IN ({list}) \
-             ORDER BY 1, 3"
+            "SELECT ek.key, a.name FROM memberships m JOIN keys ek ON ek.id = m.entrance_id \
+             JOIN applications a ON a.id = m.application WHERE ek.key IN ({}) ORDER BY 1, 2",
+            placeholders(keys.len())
         ))?;
         let mut rows = collect(&mut statement, rusqlite::params_from_iter(keys), |row| {
             Ok((codec::key(row, 0)?, codec::text(row, 1)?.into()))
@@ -221,17 +209,18 @@ impl Reader {
         Ok(rows)
     }
 
-    /// Every application, ordered by startup key.
+    /// Every application, ordered by ID.
     pub fn applications(&self) -> Result<Vec<Application>> {
         let mut statement = self.conn().prepare_cached(
-            "SELECT k.key, a.name, a.language FROM applications a JOIN keys k ON k.id = a.startup_key_id \
-             ORDER BY k.key",
+            "SELECT id, name, description, declared, category FROM applications ORDER BY id",
         )?;
         collect(&mut statement, [], |row| {
             Ok(Application {
-                startup: codec::key(row, 0)?,
+                id: codec::text(row, 0)?.into(),
                 name: codec::text(row, 1)?.into(),
-                language: codec::vocab(row, 2, "language")?,
+                description: codec::opt_boxed(row, 2)?,
+                declared: row.get(3)?,
+                category: codec::vocab(row, 4, "category")?,
             })
         })
     }
@@ -239,14 +228,28 @@ impl Reader {
     /// Every membership, ordered by entrance key, then application.
     pub fn memberships(&self) -> Result<Vec<Membership>> {
         let mut statement = self.conn().prepare_cached(
-            "SELECT ek.key, ak.key FROM memberships m JOIN keys ek ON ek.id = m.entrance_id \
-             JOIN keys ak ON ak.id = m.application_id ORDER BY ek.key, ak.key",
+            "SELECT ek.key, m.application, m.basis FROM memberships m \
+             JOIN keys ek ON ek.id = m.entrance_id ORDER BY ek.key, m.application",
         )?;
         collect(&mut statement, [], |row| {
             Ok(Membership {
                 entrance: codec::key(row, 0)?,
-                application: codec::key(row, 1)?,
+                application: codec::text(row, 1)?.into(),
+                basis: codec::vocab(row, 2, "membership basis")?,
             })
         })
+    }
+
+    /// The launch records (empty before the first commit).
+    pub fn launches(&self) -> Result<Launches> {
+        let value: Option<String> = self
+            .conn()
+            .prepare_cached("SELECT value FROM meta WHERE key = ?1")?
+            .query_row([meta_key::LAUNCHES], |row| row.get(0))
+            .optional()?;
+        match value {
+            Some(text) => serde_json::from_str(&text).map_err(|_| codec::invalid("launch records", text)),
+            None => Ok(Launches::default()),
+        }
     }
 }

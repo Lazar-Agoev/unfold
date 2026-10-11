@@ -238,8 +238,12 @@ fn cards_peeks_relations_callers_and_previews_name_their_project() {
         "src/generated.ts#function:step0"
     );
 
-    let map = harness.ok(1, "entrances", json!({ "project": harness.project }));
-    let entrance = map["applications"][0]["entrances"][0]["key"].clone();
+    let entrance = harness
+        .entrance_rows(None)
+        .into_iter()
+        .find(|row| row["kind"] != "process")
+        .expect("an entrance")["key"]
+        .clone();
     let preview = harness.ok(
         1,
         "preview",

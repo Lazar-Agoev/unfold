@@ -4,8 +4,10 @@ use unfold_core::testkit::{BlockRef, GraphBuilder, Outcome};
 use unfold_core::vocab::{
     BlockKind as K, DetectorId, EdgeKind, EntranceKind, HttpMethod, InputRole, Language, Reason, Role,
 };
-use unfold_core::{ByteRange, Graph, Key};
-use unfold_store::{DiskStamp, EntranceChanges, FileChange, Membership, Store, StoreConfig, Update};
+use unfold_core::{ByteRange, DeclaredApplication, DeclaredMember, Graph, Key, Launch, Launches};
+use unfold_store::{
+    Basis, Category, DiskStamp, EntranceChanges, FileChange, Membership, Store, StoreConfig, Update,
+};
 
 use crate::catalog::label;
 use crate::relations::outgoing;
@@ -462,7 +464,7 @@ fn strings(keys: &[Key]) -> Vec<&str> {
 #[test]
 fn owners_follow_activation_scopes() {
     let s = sample();
-    let index = ReaderIndex::from_graph(&s.graph);
+    let index = ReaderIndex::from_graph(&s.graph, &Launches::default());
     let owner = |key: &Key| index.owner(key.as_str()).cloned();
     // A nested callback owns its own calls; the call it is passed to belongs to the function.
     let log_call = format!("{}/expression_statement[0]/call[0]", s.callback);
@@ -479,7 +481,7 @@ fn owners_follow_activation_scopes() {
 #[test]
 fn the_catalog_names_and_qualifies_definitions() {
     let s = sample();
-    let projections = project(&s.graph);
+    let projections = project(&s.graph, &Launches::default());
     let all: Vec<(&str, &str, &str)> = projections
         .definitions
         .iter()
@@ -568,7 +570,7 @@ fn targeted_unnamed_callables_join_the_catalog_with_their_labels() {
         "handler",
         Some(0),
     );
-    let projections = project(&g.build());
+    let projections = project(&g.build(), &Launches::default());
     let definitions = &projections.definitions[0];
     assert_eq!(definitions.len(), 1);
     assert_eq!(definitions[0].key, g.key(callable));
@@ -631,7 +633,7 @@ fn type_declarations_join_the_catalog_without_naming_what_they_hold() {
         "() => 1",
         Some(0),
     );
-    let projections = project(&g.build());
+    let projections = project(&g.build(), &Launches::default());
     let found: Vec<(&str, K, &str, &str)> = projections.definitions[0]
         .iter()
         .map(|definition| {
@@ -662,7 +664,7 @@ fn type_declarations_join_the_catalog_without_naming_what_they_hold() {
 #[test]
 fn closures_follow_resolved_edges_and_owned_classes() {
     let s = sample();
-    let index = ReaderIndex::from_graph(&s.graph);
+    let index = ReaderIndex::from_graph(&s.graph, &Launches::default());
     let reached = index.closure(&[s.app.as_str()]);
     let mut expected = vec![
         s.app.as_str(),
@@ -688,37 +690,65 @@ fn closures_follow_resolved_edges_and_owned_classes() {
     assert!(index.closure(&["src/absent.ts#"]).is_empty());
 }
 
+/// A launch record for the sample's entrance with `trigger`.
+fn record(graph: &Graph, trigger: &str, seeds: &[&Key]) -> Launch {
+    Launch {
+        entrance: entrance_key(graph, trigger),
+        application: None,
+        label: None,
+        description: None,
+        schedule: None,
+        folder: ".".into(),
+        command: Some(trigger.into()),
+        mode: None,
+        line: 1,
+        target_set_by_hand: false,
+        import_paths: Vec::new(),
+        problem: None,
+        seeds: seeds.iter().map(|&key| key.clone()).collect(),
+    }
+}
+
 #[test]
 fn applications_and_memberships() {
     let s = sample();
-    let projections = project(&s.graph);
-    let applications: Vec<(&str, &str)> = projections
+    // The console script runs its callable's module first.
+    let launches = Launches {
+        launches: vec![record(&s.graph, "cli", &[&s.cli])],
+        ..Launches::default()
+    };
+    let projections = project(&s.graph, &launches);
+    let applications: Vec<(&str, &str, Category)> = projections
         .applications
         .iter()
-        .map(|application| (application.startup.as_str(), &*application.name))
+        .map(|application| (&*application.id, &*application.name, application.category))
         .collect();
     assert_eq!(
         applications,
-        [(s.main.as_str(), "cli#main"), (s.app.as_str(), "app")]
+        [
+            (s.main.as_str(), "cli#main", Category::Workers),
+            (s.app.as_str(), "app", Category::Services)
+        ]
     );
     let route = entrance_key(&s.graph, "/orders");
     let command = entrance_key(&s.graph, "audit");
-    // The route's evidence is a top-level registration (owner: the file); the command's branch
-    // target anchors to its owner, `route`. The orphan worker belongs to no application.
+    // Each launch belongs to its application. The route's evidence is a top-level registration
+    // (owner: the file); the command's branch target anchors to its owner, `route`. The orphan
+    // worker belongs to no application.
+    let member = |entrance: Key, application: &Key| Membership {
+        entrance,
+        application: application.as_str().into(),
+        basis: Basis::Proven,
+    };
     let mut expected = vec![
-        Membership {
-            entrance: route,
-            application: s.app.clone(),
-        },
-        Membership {
-            entrance: command,
-            application: s.app.clone(),
-        },
+        member(entrance_key(&s.graph, "cli"), &s.main),
+        member(entrance_key(&s.graph, "start"), &s.app),
+        member(route, &s.app),
+        member(command, &s.app),
     ];
     expected.sort();
     assert_eq!(projections.memberships, expected);
-    // The console script seeds its callable and the module root.
-    let index = ReaderIndex::from_graph(&s.graph);
+    let index = ReaderIndex::from_graph(&s.graph, &launches);
     let closure = index
         .entrance_closure(entrance_key(&s.graph, "cli").as_str())
         .unwrap();
@@ -729,9 +759,56 @@ fn applications_and_memberships() {
 }
 
 #[test]
+fn declared_applications_group_launches_and_members() {
+    let s = sample();
+    let worker = entrance_key(&s.graph, "orphans");
+    let launches = Launches {
+        applications: vec![
+            DeclaredApplication {
+                id: "orders".into(),
+                name: "Orders".into(),
+                description: None,
+            },
+            DeclaredApplication {
+                id: "later".into(),
+                name: "Later".into(),
+                description: None,
+            },
+        ],
+        launches: vec![Launch {
+            application: Some("orders".into()),
+            schedule: Some("30 7 * * *".into()),
+            ..record(&s.graph, "start", &[])
+        }],
+        members: vec![DeclaredMember {
+            entrance: worker.clone(),
+            application: "orders".into(),
+        }],
+    };
+    let projections = project(&s.graph, &launches);
+    let applications: Vec<(&str, bool, Category)> = projections
+        .applications
+        .iter()
+        .map(|application| (&*application.id, application.declared, application.category))
+        .collect();
+    // A declared application without launches stays; routes make a service of a scheduled one.
+    assert!(applications.contains(&("later", true, Category::Workers)));
+    assert!(applications.contains(&("orders", true, Category::Services)));
+    let orders: Vec<(&str, Basis)> = projections
+        .memberships
+        .iter()
+        .filter(|membership| &*membership.application == "orders")
+        .map(|membership| (membership.entrance.as_str(), membership.basis))
+        .collect();
+    assert!(orders.contains(&(entrance_key(&s.graph, "start").as_str(), Basis::Declared)));
+    assert!(orders.contains(&(entrance_key(&s.graph, "/orders").as_str(), Basis::Proven)));
+    assert!(orders.contains(&(worker.as_str(), Basis::Declared)));
+}
+
+#[test]
 fn relations_callers_outgoing_and_reached_from() {
     let s = sample();
-    let index = ReaderIndex::from_graph(&s.graph);
+    let index = ReaderIndex::from_graph(&s.graph, &Launches::default());
     let callers = index.callers(s.helper.as_str()).unwrap();
     assert_eq!(callers.len(), 1);
     assert_eq!(callers[0].owner, s.run);
@@ -777,7 +854,7 @@ fn relations_callers_outgoing_and_reached_from() {
 }
 
 fn commit(store: &mut Store, graph: &Graph) {
-    let projections = project(graph);
+    let projections = project(graph, &Launches::default());
     let files = graph
         .files
         .iter()
@@ -807,9 +884,15 @@ fn the_index_loaded_from_the_store_matches_the_in_memory_one() {
     let mut store = Store::open(&dir.path().join("graph.sqlite"), &StoreConfig::new("test")).unwrap();
     commit(&mut store, &s.graph);
     let loaded = ReaderIndex::load(&store.readers.get().unwrap()).unwrap();
-    assert_eq!(loaded.index(), &GraphIndex::from_graph(&s.graph));
+    assert_eq!(
+        loaded.index(),
+        &GraphIndex::from_graph(&s.graph, &Launches::default())
+    );
     let reader = store.readers.get().unwrap();
-    assert_eq!(reader.applications().unwrap(), project(&s.graph).applications);
+    assert_eq!(
+        reader.applications().unwrap(),
+        project(&s.graph, &Launches::default()).applications
+    );
 
     // The cache loads once and reloads after invalidation.
     let cache = ReaderCache::new();
@@ -819,7 +902,7 @@ fn the_index_loaded_from_the_store_matches_the_in_memory_one() {
     cache.invalidate();
     let reloaded = cache.get(&store.readers).unwrap();
     assert!(!std::sync::Arc::ptr_eq(&first, &reloaded));
-    let installed = cache.install(ReaderIndex::from_graph(&s.graph));
+    let installed = cache.install(ReaderIndex::from_graph(&s.graph, &Launches::default()));
     assert!(std::sync::Arc::ptr_eq(
         &installed,
         &cache.get(&store.readers).unwrap()
@@ -849,7 +932,10 @@ fn the_index_loaded_from_the_store_matches_the_in_memory_one() {
 #[test]
 fn projections_are_deterministic_and_tolerate_broken_targets() {
     let s = sample();
-    assert_eq!(project(&s.graph), project(&s.graph.clone()));
+    assert_eq!(
+        project(&s.graph, &Launches::default()),
+        project(&s.graph.clone(), &Launches::default())
+    );
     // A resolved edge whose target is not indexed stops the walk instead of failing.
     let mut graph = s.graph.clone();
     for file in &mut graph.files {
@@ -859,10 +945,10 @@ fn projections_are_deterministic_and_tolerate_broken_targets() {
             }
         }
     }
-    let index = ReaderIndex::from_graph(&graph);
+    let index = ReaderIndex::from_graph(&graph, &Launches::default());
     assert!(!index.closure(&[s.run.as_str()]).contains(&s.helper));
     assert!(
-        project(&graph)
+        project(&graph, &Launches::default())
             .definitions
             .iter()
             .flatten()

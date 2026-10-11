@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 rusqlite = { workspace = true }
 rustc-hash = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 unfold-core = { workspace = true }
 

@@ -16,6 +16,7 @@
 //! 3. derives entrance keys, numbering duplicates `#n` in that order; a configured entrance's key
 //!    is `entrance:configured:<id>`.
 
+pub mod launches;
 pub mod locate;
 mod manual;
 

@@ -48,6 +48,7 @@ export const ICON_NAMES = [
   "add-circle",
   "warning-circle",
   "warning-triangle",
+  "check-circle",
   "info",
   "shield",
   "publish",
@@ -189,6 +190,8 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
     ],
   },
   // The state line's fallback note; also Health's quiet note.
+  // The launch editor's resolved start.
+  "check-circle": { box: 16, stroke: 1.3, shapes: [{ circle: [8, 8, 6.25] }, { d: "M5.5 8.2L7.2 9.8L10.5 6.5" }] },
   info: { box: 16, shapes: [{ circle: [8, 8, 6] }, { d: "M8 7.25V11" }, { circle: [8, 5, 0.9], filled: true }] },
   // The first-Compile promise.
   shield: { box: 16, shapes: [{ d: "M8 1.75L13 3.75V7.5C13 10.6 10.9 13.1 8 14.25C5.1 13.1 3 10.6 3 7.5V3.75L8 1.75Z" }] },

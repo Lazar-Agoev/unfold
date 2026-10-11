@@ -1,10 +1,11 @@
-//! Inputs, metadata, and statistics for the Index log.
+//! Inputs, metadata, statistics for the Index log, and import counts.
 
 use unfold_core::InputRecord;
+use unfold_core::vocab::Language;
 
 use super::Reader;
 use super::graph::collect;
-use super::rows::{IndexStats, StoredMeta};
+use super::rows::{ImportSummary, IndexStats, StoredMeta};
 use crate::codec;
 use crate::error::Result;
 use crate::schema::meta_key;
@@ -67,6 +68,33 @@ impl Reader {
             schema_version: get(meta_key::SCHEMA_VERSION).unwrap_or_default().to_owned(),
             engine_version: get(meta_key::ENGINE_VERSION).unwrap_or_default().to_owned(),
             graph,
+        })
+    }
+
+    /// The import edges of `language`'s files, in one snapshot.
+    pub fn import_summary(&self, language: Language) -> Result<ImportSummary> {
+        self.snapshot(|reader| {
+            let mut totals = reader.conn().prepare_cached(
+                "SELECT count(*), coalesce(sum(e.resolution = 'resolved'), 0) FROM edges e \
+                 JOIN files f ON f.id = e.file_id WHERE e.kind = 'imports' AND f.language = ?1",
+            )?;
+            let counts = collect(&mut totals, [language.as_str()], |row| {
+                Ok((codec::count(row, 0)?, codec::count(row, 1)?))
+            })?;
+            let (total, resolved) = counts.into_iter().next().unwrap_or_default();
+            let mut modules = reader.conn().prepare_cached(
+                "SELECT e.module, count(*) FROM edges e JOIN files f ON f.id = e.file_id \
+                 WHERE e.kind = 'imports' AND e.resolution = 'external' AND f.language = ?1 \
+                 AND e.module IS NOT NULL GROUP BY e.module ORDER BY 2 DESC, 1",
+            )?;
+            let external = collect(&mut modules, [language.as_str()], |row| {
+                Ok((codec::text(row, 0)?.into(), codec::count(row, 1)?))
+            })?;
+            Ok(ImportSummary {
+                resolved,
+                total,
+                external,
+            })
         })
     }
 

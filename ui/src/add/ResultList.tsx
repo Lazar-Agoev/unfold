@@ -1,6 +1,6 @@
 /**
- * Add's virtualized result list (search results and `>` commands): caps section headers and fixed-height
- * rows. The selection is driven from Add's input (focus never leaves it, so the caret stays where the
+ * Add's virtualized result list (search results, the entrance browser's list, and `>` commands): section
+ * headers (caps labels, or the caller's) and fixed-height rows. The selection is driven from Add's input (focus never leaves it, so the caret stays where the
  * person types), and the list keeps the selected row in view. A listbox the input points into with
  * `aria-activedescendant`.
  */
@@ -14,16 +14,21 @@ interface ListSection<T> {
   readonly items: readonly T[];
 }
 
-interface ResultListProps<T> {
+interface ResultListProps<T, S extends ListSection<T>> {
   /** The listbox's DOM id; options are `${id}-<index>`. */
   readonly id: string;
   readonly label: string;
-  readonly sections: readonly ListSection<T>[];
+  readonly sections: readonly S[];
   readonly getId: (item: T) => string;
   readonly getHeight: (item: T) => number;
   /** The row's accessible name. */
   readonly getText: (item: T) => string;
   readonly renderItem: (item: T, selected: boolean) => ReactNode;
+  /** A section's header and its height (its caps label, 24 tall, when absent). */
+  readonly renderHeader?: (section: S) => ReactNode;
+  readonly getHeaderHeight?: (section: S) => number;
+  /** Called when the last row comes into view (to load more). */
+  readonly onEnd?: () => void;
   readonly selectedId: string | null;
   readonly onActivate: (item: T, event: MouseEvent) => void;
   readonly className?: string;
@@ -35,11 +40,11 @@ const HEADER_HEIGHT = 24;
 /** The list's padding above the first and below the last row. */
 const LIST_PADDING = { start: 6, end: 8 } as const;
 
-type Row<T> = { readonly kind: "header"; readonly section: ListSection<T> } | { readonly kind: "item"; readonly item: T; readonly option: number };
+type Row<T, S> = { readonly kind: "header"; readonly section: S } | { readonly kind: "item"; readonly item: T; readonly option: number };
 
 /** The rows of the sections: a header, then the items, numbered as options. */
-function rowsOf<T>(sections: readonly ListSection<T>[]): Row<T>[] {
-  const rows: Row<T>[] = [];
+function rowsOf<T, S extends ListSection<T>>(sections: readonly S[]): Row<T, S>[] {
+  const rows: Row<T, S>[] = [];
   let option = 0;
   for (const section of sections) {
     if (section.items.length === 0) {
@@ -61,13 +66,13 @@ export function optionId(id: string, index: number): string {
 
 /** The list's full height: paddings, headers, and rows. */
 export function listHeight<T>(sections: readonly ListSection<T>[], getHeight: (item: T) => number): number {
-  return rowsOf(sections).reduce(
+  return rowsOf<T, ListSection<T>>(sections).reduce(
     (sum, row) => sum + (row.kind === "header" ? HEADER_HEIGHT : getHeight(row.item)),
     LIST_PADDING.start + LIST_PADDING.end,
   );
 }
 
-export function ResultList<T>({
+export function ResultList<T, S extends ListSection<T> = ListSection<T>>({
   id,
   label,
   sections,
@@ -75,13 +80,16 @@ export function ResultList<T>({
   getHeight,
   getText,
   renderItem,
+  renderHeader,
+  getHeaderHeight,
+  onEnd,
   selectedId,
   onActivate,
   className,
   height,
-}: ResultListProps<T>) {
+}: ResultListProps<T, S>) {
   const scroller = useRef<HTMLDivElement | null>(null);
-  const rows = useMemo(() => rowsOf(sections), [sections]);
+  const rows = useMemo(() => rowsOf<T, S>(sections), [sections]);
 
   // TanStack Virtual hands back fresh functions each render by design; the app doesn't use the React
   // Compiler, so its "can't memoize" notice doesn't apply.
@@ -91,7 +99,10 @@ export function ResultList<T>({
     getScrollElement: () => scroller.current,
     estimateSize: (index) => {
       const row = rows[index];
-      return row?.kind === "item" ? getHeight(row.item) : HEADER_HEIGHT;
+      if (row?.kind === "item") {
+        return getHeight(row.item);
+      }
+      return row && getHeaderHeight ? getHeaderHeight(row.section) : HEADER_HEIGHT;
     },
     getItemKey: (index) => {
       const row = rows[index];
@@ -118,10 +129,20 @@ export function ResultList<T>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedIndex]);
 
+  const virtualItems = virtualizer.getVirtualItems();
+  const atEnd = rows.length > 0 && virtualItems.at(-1)?.index === rows.length - 1;
+  useEffect(() => {
+    if (atEnd) {
+      onEnd?.();
+    }
+    // Once each time the end comes into view, or new rows end the list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [atEnd, rows.length]);
+
   return (
     <div ref={scroller} id={id} role="listbox" aria-label={label} className={className} style={height === undefined ? undefined : { height }}>
       <div className="add-list-spacer" style={{ height: virtualizer.getTotalSize() }}>
-        {virtualizer.getVirtualItems().map((virtual) => {
+        {virtualItems.map((virtual) => {
           const row = rows[virtual.index];
           if (!row) {
             return null;
@@ -130,7 +151,7 @@ export function ResultList<T>({
           if (row.kind === "header") {
             return (
               <div key={virtual.key} role="presentation" className="add-list-header" style={style}>
-                {row.section.label}
+                {renderHeader ? renderHeader(row.section) : row.section.label}
               </div>
             );
           }

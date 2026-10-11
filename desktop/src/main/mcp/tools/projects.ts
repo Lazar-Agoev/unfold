@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 import type { ToolContext } from "../context";
-import type { ApplicationEntrances, BoardSummary, GraphStatus, Language, ProjectConfig, ProjectRow, ProjectSummary } from "../engine-types";
+import type { AppRow, BoardSummary, GraphStatus, Language, ProjectConfig, ProjectRow, ProjectSummary } from "../engine-types";
 import { count, stateText } from "../format";
 import { textResult } from "../results";
 import { defineTool } from "../tool";
@@ -72,8 +72,10 @@ function graphText(status: GraphStatus): string {
   ].join(", ");
 }
 
-function applicationLine(application: ApplicationEntrances): string {
-  return `- ${application.name} (${application.path}, ${LANGUAGES[application.language]}): ${count(application.total, "entrance")}`;
+function applicationLine(application: AppRow): string {
+  const starts = application.launches.find((launch) => launch.starts !== null)?.starts;
+  const where = starts === undefined || starts === null ? (application.launches.length > 0 ? "not read" : "no launch defined") : `${starts.path}, ${starts.kind}`;
+  return `- ${application.name} (id ${application.id}, ${where}): ${count(application.entrances, "entrance")}`;
 }
 
 function healthText(health: ProjectSummary["health"]): string[] {
@@ -139,8 +141,8 @@ export const getProject = defineTool({
     ]);
     const compiled = summary.status.state.kind !== "not_compiled";
     const applications = compiled
-      ? await context.engine("entrances", { project: row.id, perApplication: 1 }).then(
-          (map) => map.applications,
+      ? await context.engine("entrances", { project: row.id }).then(
+          (view) => (view.view === "overview" ? view.categories.flatMap((group) => group.applications) : null),
           () => null,
         )
       : null;

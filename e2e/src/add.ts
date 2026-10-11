@@ -1,6 +1,7 @@
 /**
- * The Add box (A, ⌘K, /): the map before typing, search across projects with kind tabs and a preview,
- * and commands after `>`. Focus never leaves its input, so keys go to it.
+ * The Add box (A, ⌘K, /): the entrance browser before typing (LOOK IN, the scope's list, a preview),
+ * search across projects with kind tabs and a preview, and commands after `>`. Focus never leaves its
+ * input, so keys go to it.
  */
 
 import type { Locator, Page } from "@playwright/test";
@@ -29,6 +30,33 @@ export function addResults(page: Page): Locator {
 /** The preview of the selected result. */
 export function addPreview(page: Page): Locator {
   return addBox(page).getByRole("complementary", { name: "Preview" });
+}
+
+/** The entrance browser's LOOK IN. */
+export function lookIn(page: Page): Locator {
+  return addBox(page).getByRole("tree", { name: "Look in" });
+}
+
+/** A LOOK IN row by its name (All projects, a project, an application). */
+export function lookInItem(page: Page, name: string): Locator {
+  return lookIn(page).getByRole("treeitem", { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*[\\d,]*$`) });
+}
+
+/** The entrance count a LOOK IN row shows, once it has loaded. */
+export async function lookInCount(page: Page, name: string): Promise<number> {
+  const count = lookInItem(page, name).locator(".add-nav-count");
+  await expect(count).toHaveText(/^[\d,]+$/);
+  return Number((await count.innerText()).replaceAll(",", ""));
+}
+
+/** The browser's list of the selected scope. */
+export function browseList(page: Page): Locator {
+  return addBox(page).getByRole("listbox", { name: "Entrances" });
+}
+
+/** A row of the browser's list by its accessible name (`POST /orders on page`, `Launch npm run start`). */
+export function entranceRow(page: Page, name: string | RegExp): Locator {
+  return browseList(page).getByRole("option", { name, exact: typeof name === "string" });
 }
 
 /** Opens Add with its button (the dock's on a board, the sidebar's search on Home). */

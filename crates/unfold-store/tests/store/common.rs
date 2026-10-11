@@ -5,10 +5,10 @@ use std::fmt::Write as _;
 
 use tempfile::TempDir;
 use unfold_core::vocab::{BlockKind, EntranceKind, Resolution};
-use unfold_core::{ContentHash, FileGraph, Graph};
+use unfold_core::{ContentHash, DeclaredApplication, FileGraph, Graph, Launches};
 use unfold_store::{
-    Application, CandidateKind, Definition, DiskStamp, EntranceChanges, FileChange, GraphMeta, Membership,
-    Reader, Store, StoreConfig, Update,
+    Application, Basis, CandidateKind, Category, Definition, DiskStamp, EntranceChanges, FileChange,
+    GraphMeta, Membership, Reader, Store, StoreConfig, Update,
 };
 
 pub const ENGINE: &str = "engine-1";
@@ -27,53 +27,72 @@ pub struct Prepared {
     pub definitions: Vec<Vec<Definition>>,
     pub applications: Vec<Application>,
     pub memberships: Vec<Membership>,
+    pub launches: Launches,
 }
 
 impl Prepared {
     pub fn new(graph: Graph) -> Self {
         let definitions = graph.files.iter().map(definitions_of).collect();
-        let applications: Vec<Application> = graph
+        let launches: Vec<_> = graph
             .entrances
             .iter()
             .filter(|entrance| entrance.kind == EntranceKind::Process)
-            .filter_map(|entrance| {
-                let target = entrance.targets.first()?;
-                let startup = target.target.clone()?;
-                let file = graph
-                    .files
-                    .iter()
-                    .find(|file| startup.as_str().starts_with(file.file.path.as_str()))?;
-                Some(Application {
-                    startup,
-                    name: entrance.trigger.clone().unwrap_or_else(|| "app".into()),
-                    language: file.file.language,
-                })
-            })
+            .filter_map(|entrance| Some((entrance, entrance.targets.first()?.target.clone()?)))
             .collect();
-        // Every non-process entrance with a resolved target belongs to every application.
-        let mut memberships: Vec<Membership> = graph
-            .entrances
+        let applications: Vec<Application> = launches
             .iter()
-            .filter(|entrance| entrance.kind != EntranceKind::Process)
-            .filter(|entrance| {
-                entrance
-                    .targets
-                    .iter()
-                    .any(|target| target.resolution == Resolution::Resolved)
-            })
-            .flat_map(|entrance| {
-                applications.iter().map(|application| Membership {
-                    entrance: entrance.key.clone(),
-                    application: application.startup.clone(),
-                })
+            .map(|(entrance, startup)| Application {
+                id: startup.as_str().into(),
+                name: entrance.trigger.clone().unwrap_or_else(|| "app".into()),
+                description: None,
+                declared: false,
+                category: Category::Workers,
             })
             .collect();
+        // Each launch belongs to its application, and every non-process entrance with a resolved
+        // target to every application.
+        let mut memberships: Vec<Membership> = launches
+            .iter()
+            .map(|(entrance, startup)| Membership {
+                entrance: entrance.key.clone(),
+                application: startup.as_str().into(),
+                basis: Basis::Proven,
+            })
+            .collect();
+        memberships.extend(
+            graph
+                .entrances
+                .iter()
+                .filter(|entrance| entrance.kind != EntranceKind::Process)
+                .filter(|entrance| {
+                    entrance
+                        .targets
+                        .iter()
+                        .any(|target| target.resolution == Resolution::Resolved)
+                })
+                .flat_map(|entrance| {
+                    applications.iter().map(|application| Membership {
+                        entrance: entrance.key.clone(),
+                        application: application.id.clone(),
+                        basis: Basis::Proven,
+                    })
+                }),
+        );
         memberships.sort();
+        let launches = Launches {
+            applications: vec![DeclaredApplication {
+                id: "orders".into(),
+                name: "Orders".into(),
+                description: Some("Takes orders.\nShips them.".into()),
+            }],
+            ..Launches::default()
+        };
         Self {
             graph,
             definitions,
             applications,
             memberships,
+            launches,
         }
     }
 
@@ -95,6 +114,7 @@ impl Prepared {
             entrances: EntranceChanges::all(&self.graph.entrances),
             applications: Some(&self.applications),
             memberships: Some(&self.memberships),
+            launches: Some(&self.launches),
             meta: Some(meta(1)),
         }
     }
@@ -142,6 +162,7 @@ impl Prepared {
             entrances: EntranceChanges::between(&previous.graph.entrances, &self.graph.entrances),
             applications: (previous.applications != self.applications).then_some(&self.applications[..]),
             memberships: (previous.memberships != self.memberships).then_some(&self.memberships[..]),
+            launches: (previous.launches != self.launches).then_some(&self.launches),
             meta: Some(meta(2)),
         }
     }

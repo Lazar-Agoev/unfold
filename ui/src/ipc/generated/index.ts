@@ -111,37 +111,47 @@ username: string,
 engineVersion: string, };
 
 /**
- * An application: a distinct resolved startup and what belongs to it.
+ * Where an application comes from.
  */
-export type ApplicationEntrances = { 
+export type AppOrigin = "declared" | "inferred";
+
 /**
- * The startup's key (a file root, or a console script's callable).
+ * One application.
  */
-startup: string, 
+export type AppRow = { 
 /**
- * The name (`server`, `cli#main`).
+ * Its ID: the `[[application]]` ID, or the startup's key for an inferred one. `entrances`
+ * takes it as `application`.
+ */
+id: string, 
+/**
+ * Its name.
  */
 name: string, 
 /**
- * The startup's language.
+ * Its description.
  */
-language: Language, 
+description: string | null, 
 /**
- * The startup's file.
+ * Where it comes from.
  */
-path: string, 
+origin: AppOrigin, 
 /**
- * The launches that start it (at most 5).
+ * Its launches and unique handler entrances (Add's count).
  */
-launches: Array<LaunchRow>, 
+entrances: number, 
 /**
- * How many of its entrances match.
+ * Its unique route declarations.
  */
-total: number, 
+routes: number, 
 /**
- * The first matching entrances, sorted.
+ * The other applications that serve some of its routes, by name.
  */
-entrances: Array<EntranceRow>, };
+alsoIn: Array<string>, 
+/**
+ * Its launches; empty for "No launch defined".
+ */
+launches: Array<LaunchRow>, };
 
 /**
  * An `[[application]]` table, as the editor submits it and the settings view lists it.
@@ -835,9 +845,114 @@ applications: Array<string>, };
 export type Cardinality = "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many";
 
 /**
+ * The catalog's totals.
+ */
+export type CatalogCounts = { 
+/**
+ * Applications.
+ */
+applications: number, 
+/**
+ * Launches (process entrances).
+ */
+launches: number, 
+/**
+ * Unique route declarations.
+ */
+routes: number, 
+/**
+ * Unique launches and unique other entrances, unreached ones included.
+ */
+entrances: number, };
+
+/**
+ * One entrance row.
+ */
+export type CatalogRow = { 
+/**
+ * The entrance's key (open its card with it).
+ */
+key: string, 
+/**
+ * The `[[entrance]]` ID, for a configured entrance.
+ */
+id: string | null, 
+/**
+ * Its section's position in `sections`.
+ */
+section: number, 
+/**
+ * Its kind.
+ */
+kind: EntranceKind, 
+/**
+ * The HTTP method.
+ */
+method: HttpMethod | null, 
+/**
+ * The trigger.
+ */
+trigger: string | null, 
+/**
+ * Its title.
+ */
+title: string, 
+/**
+ * The first resolved handler's name (`create_run`).
+ */
+handler: string | null, 
+/**
+ * The evidence file.
+ */
+path: string, 
+/**
+ * The evidence's first line, for source evidence.
+ */
+line: number | null, 
+/**
+ * The functions and classes it reaches; `None` while the project rests.
+ */
+reaches: number | null, 
+/**
+ * The other applications it belongs to, by name.
+ */
+alsoIn: Array<string>, };
+
+/**
+ * An application category, in display order.
+ */
+export type Category = "needs_look" | "services" | "workers" | "scheduled";
+
+/**
+ * One category's applications, by name.
+ */
+export type CategoryGroup = { 
+/**
+ * The category.
+ */
+category: Category, 
+/**
+ * Its applications.
+ */
+applications: Array<AppRow>, };
+
+/**
  * The common outcome of every check of a folded `else if` chain.
  */
 export type ChainOutcome = "throw" | "return" | "mixed";
+
+/**
+ * The arguments of `check_launch`.
+ */
+export type CheckLaunchArgs = { 
+/**
+ * The project.
+ */
+project: ProjectId, 
+/**
+ * The launch as the editor holds it.
+ */
+draft: LaunchDraftSpec, };
 
 /**
  * One line of the shown text.
@@ -977,6 +1092,23 @@ code: string,
  * What went wrong, for people.
  */
 message: string, };
+
+/**
+ * A run of command words and what they mean.
+ */
+export type CommandPartView = { 
+/**
+ * The words as written.
+ */
+text: string, 
+/**
+ * What they mean.
+ */
+meaning: string, 
+/**
+ * They don't change what code runs.
+ */
+irrelevant: boolean, };
 
 /**
  * The arguments of `compile`.
@@ -1185,6 +1317,19 @@ path: string,
 line: number | null, };
 
 /**
+ * Where a launch is declared.
+ */
+export type DeclaredIn = { 
+/**
+ * The file (`unfold.toml`, `apps/api/package.json`).
+ */
+path: string, 
+/**
+ * The first line of its declaration.
+ */
+line: number | null, };
+
+/**
  * What the deploy files say, as draft launches.
  */
 export type DeployImport = { 
@@ -1271,6 +1416,11 @@ drafts: Array<BoardSummary>, };
 export type EdgeKind = "calls" | "constructs" | "imports" | "references";
 
 /**
+ * How a launch is edited.
+ */
+export type Editable = "configured" | "override";
+
+/**
  * An entrance card's header.
  */
 export type EntranceHeader = { 
@@ -1317,25 +1467,25 @@ language: Language | null, };
 export type EntranceKind = "process" | "command" | "http" | "worker" | "schedule" | "event";
 
 /**
- * How a project starts.
+ * The catalog without entrance rows: applications by category, with their launches.
  */
-export type EntranceMap = { 
+export type EntranceOverview = { 
 /**
  * The project.
  */
 project: ProjectId, 
 /**
- * Applications, ordered by startup key.
+ * The totals.
  */
-applications: Array<ApplicationEntrances>, 
+counts: CatalogCounts, 
 /**
- * "Not reached from a launch": non-process entrances that belong to no application.
+ * The categories that have applications, in display order.
  */
-unreached: UnreachedEntrances, 
+categories: Array<CategoryGroup>, 
 /**
- * "Launches into code that isn't indexed" (at most 50).
+ * "Not reached from a launch": entrances other than launches that belong to no application.
  */
-unindexedLaunches: Array<LaunchRow>, };
+unreached: number, };
 
 /**
  * An entrance a definition is reached from.
@@ -1367,61 +1517,54 @@ trigger: string | null,
 path: string, };
 
 /**
- * One entrance row: a fixed method column, the trigger, and a language tag.
+ * One scope's rows (an application, or the unreached entrances), filtered and paged.
  */
-export type EntranceRow = { 
+export type EntranceScope = { 
 /**
- * The entrance's key (open its card with it).
+ * The project.
  */
-key: string, 
+project: ProjectId, 
 /**
- * Its title.
+ * Every section of the filtered rows, in order; rows refer to them by position.
+ */
+sections: Array<EntranceSection>, 
+/**
+ * This page's rows, in order.
+ */
+rows: Array<CatalogRow>, 
+/**
+ * How many rows match.
+ */
+total: number, 
+/**
+ * The next page's cursor, when there is one.
+ */
+nextCursor: string | null, };
+
+/**
+ * A run of rows under one heading.
+ */
+export type EntranceSection = { 
+/**
+ * The heading (`Launch`, `/runs`, `Jobs and commands`).
  */
 title: string, 
 /**
- * Its kind.
+ * What it holds.
  */
-kind: EntranceKind, 
+kind: SectionKind, 
 /**
- * The HTTP method (the method column).
+ * The router file its routes are mounted from, when that isn't the application's file.
  */
-method: HttpMethod | null, 
+mountedFrom: string | null, 
 /**
- * The trigger.
+ * The other applications that serve its routes, by name.
  */
-trigger: string | null, 
+alsoIn: Array<string>, 
 /**
- * How much of the trigger is known ("path unknown").
+ * How many of the filtered rows it holds.
  */
-triggerStatus: TriggerStatus, 
-/**
- * The manual label.
- */
-label: string | null, 
-/**
- * The detector.
- */
-detector: DetectorId, 
-/**
- * The evidence file.
- */
-path: string, 
-/**
- * The evidence's first line, for source evidence.
- */
-line: number | null, 
-/**
- * The evidence file's language (the language tag), for source evidence.
- */
-language: Language | null, 
-/**
- * The first path segment of an HTTP trigger (`/orders/:id` → `orders`).
- */
-group: string | null, 
-/**
- * The definitions in its activation closure; `None` while the project rests.
- */
-reaches: number | null, };
+count: number, };
 
 /**
  * A manual entrance as the editor submits it (docs/engine.md#shared-config `[[entrance]]`).
@@ -1497,17 +1640,30 @@ export type EntrancesArgs = {
  */
 project: ProjectId, 
 /**
- * Entrance rows per application (8 when absent; 1 to 500).
- */
-perApplication?: number, 
-/**
- * Only the application with this startup key.
+ * The rows of the application with this ID.
  */
 application?: string, 
 /**
- * Only entrances whose title, trigger, label, or path contains this text (ignoring case).
+ * The rows of the entrances no launch reaches.
  */
-filter?: string, };
+unreached?: boolean, 
+/**
+ * Only rows whose title, trigger, handler, or path contains this text (ignoring case).
+ */
+filter?: string, 
+/**
+ * Rows per page (100 when absent; 1 to 500).
+ */
+limit?: number, 
+/**
+ * Where the page starts: the previous page's `nextCursor`.
+ */
+cursor?: string, };
+
+/**
+ * What `entrances` returns: the overview, or one scope's rows.
+ */
+export type EntrancesView = { "view": "overview" } & EntranceOverview | { "view": "scope" } & EntranceScope;
 
 /**
  * Where an entrance is declared.
@@ -2425,6 +2581,45 @@ export type Heritage = "extends" | "implements";
 export type HttpMethod = "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "ALL";
 
 /**
+ * Imports a draft's import path would newly resolve.
+ */
+export type ImportGain = { 
+/**
+ * How many ("18 more imports resolve to code in this repository").
+ */
+count: number, 
+/**
+ * The first few modules.
+ */
+examples: Array<string>, };
+
+/**
+ * One folder on a launch's import path.
+ */
+export type ImportPathRow = { 
+/**
+ * The project-relative folder (`.` for the project's folder).
+ */
+path: string, 
+/**
+ * Why it is there (`from --app-dir`, `the working folder`, `set by hand`).
+ */
+origin: string, };
+
+/**
+ * Import resolution counts.
+ */
+export type ImportStats = { 
+/**
+ * Imports that resolve to code in this repository.
+ */
+resolved: number, 
+/**
+ * Every import.
+ */
+total: number, };
+
+/**
  * One service as a draft launch.
  */
 export type ImportedLaunch = { 
@@ -2651,7 +2846,108 @@ language: Language,
 files: number, };
 
 /**
- * One launch (a process entrance): `npm run start`, a console script, a `bin` entry.
+ * What Unfold reads from a draft launch.
+ */
+export type LaunchCheck = { 
+/**
+ * The command's parts with their meanings ("What Unfold reads").
+ */
+parts: Array<CommandPartView>, 
+/**
+ * Why the launch can't be read, or doesn't add up.
+ */
+problem: LaunchProblemView | null, 
+/**
+ * For `sh -c "…"`: what the quoted command would fill in.
+ */
+suggestion: LaunchFill | null, 
+/**
+ * Whether the target is set by hand.
+ */
+targetSetByHand: boolean, 
+/**
+ * The Python import path, in search order.
+ */
+importPaths: Array<ImportPathRow>, 
+/**
+ * What the launch starts.
+ */
+starts: StartPreview | null, 
+/**
+ * Imports that would newly resolve to code in this repository.
+ */
+imports: ImportGain | null, 
+/**
+ * The routes that would join the launch's application.
+ */
+routes: RoutePreview | null, 
+/**
+ * Whether the preview comes from the graph as compiled (the project rests, or links
+ * without this draft), rather than linking with the draft.
+ */
+fromCurrentGraph: boolean, };
+
+/**
+ * A process launch being edited.
+ */
+export type LaunchDraftSpec = { 
+/**
+ * The `[[entrance]]` ID, when editing a saved launch.
+ */
+id?: string, 
+/**
+ * The command line.
+ */
+command?: string, 
+/**
+ * The working folder, project-relative (`.` when empty).
+ */
+cwd: string, 
+/**
+ * The target set by hand.
+ */
+target?: LaunchTargetSpec, 
+/**
+ * The import path set by hand, in order.
+ */
+pythonPaths?: Array<string>, 
+/**
+ * Declared environment variables.
+ */
+env: { [key in string]: string }, };
+
+/**
+ * What the quoted command of `sh -c "…"` fills in.
+ */
+export type LaunchFill = { 
+/**
+ * The quoted command's meaningful words (`uvicorn dashboard_builder.app:app`).
+ */
+quoted: string, 
+/**
+ * The target it starts.
+ */
+target: LaunchTargetSpec | null, 
+/**
+ * The import path it gives, in order.
+ */
+pythonPaths: Array<string>, };
+
+/**
+ * Why a launch can't be read.
+ */
+export type LaunchProblemView = { 
+/**
+ * A short status (`Can't read sh -c`).
+ */
+label: string, 
+/**
+ * The full explanation.
+ */
+message: string, };
+
+/**
+ * One launch (a process entrance).
  */
 export type LaunchRow = { 
 /**
@@ -2659,29 +2955,121 @@ export type LaunchRow = {
  */
 key: string, 
 /**
- * Its title.
+ * The `[[entrance]]` ID, for a configured launch.
  */
-title: string, 
+id: string | null, 
 /**
- * Its trigger (the script or command name).
+ * The label.
  */
-trigger: string | null, 
+label: string | null, 
 /**
- * The detector.
+ * The folder it runs in (`data-pipelines`, or the project's name for its folder).
  */
-detector: DetectorId, 
+folder: string, 
 /**
- * The evidence file (`package.json`, `pyproject.toml`, …).
+ * The command: as written for a configured launch, `npm run start`, a bin, or a console
+ * script for a detected one. `None` when a configured launch has only a target.
+ */
+command: string | null, 
+/**
+ * The schedule, as written.
+ */
+schedule: string | null, 
+/**
+ * The schedule in words (`daily at 07:30`), for a standard five-field cron.
+ */
+scheduleGloss: string | null, 
+/**
+ * The description.
+ */
+description: string | null, 
+/**
+ * Whether Unfold can follow it into the code.
+ */
+status: LaunchStatus, 
+/**
+ * Why it can't be read, in a few words (`Can't read sh -c`).
+ */
+problem: string | null, 
+/**
+ * More about the status (`evals/ is in .gitignore, so this code isn't indexed`).
+ */
+note: string | null, 
+/**
+ * Whether its target was set by hand.
+ */
+targetSetByHand: boolean, 
+/**
+ * What it starts, when that is indexed code.
+ */
+starts: LaunchStart | null, 
+/**
+ * Its Python import path, in search order.
+ */
+importPaths: Array<ImportPathRow>, 
+/**
+ * The functions and classes it reaches; `None` while the project rests.
+ */
+reaches: number | null, 
+/**
+ * The unique routes it serves; `None` when it serves none.
+ */
+routes: number | null, 
+/**
+ * Where it is declared.
+ */
+declaredIn: DeclaredIn, 
+/**
+ * How it is edited.
+ */
+editable: Editable, 
+/**
+ * The detected launch an `[[entrance_override]]` matches, for a detected launch.
+ */
+match: MatchSpec | null, };
+
+/**
+ * What a launch starts.
+ */
+export type LaunchStart = { 
+/**
+ * The file.
  */
 path: string, 
 /**
- * The startup as written.
+ * The binding or callable it names (`app`), if any.
  */
-startup: string | null, 
+name: string | null, 
 /**
- * Why the startup isn't indexed code (its module or reason), for an unindexed launch.
+ * What it is (`FastAPI application`, `Python script`, `Python module`, `Node file`).
  */
-note: string | null, };
+kind: string, };
+
+/**
+ * Whether Unfold can follow a launch into the code.
+ */
+export type LaunchStatus = "ok" | "unreadable" | "not_indexed" | "not_found";
+
+/**
+ * What Add suggests for setting up launches.
+ */
+export type LaunchSuggestions = { 
+/**
+ * Unique route declarations.
+ */
+routes: number, 
+/**
+ * Python imports that resolve to code in this repository, of all Python imports.
+ */
+imports: ImportStats, 
+/**
+ * Unresolved imports that look like folders of this repository (`shared`, `api`, `utils`).
+ */
+localLooking: Array<string>, 
+/**
+ * FastAPI applications no launch serves.
+ */
+apps: Array<SuggestedApp>, };
 
 /**
  * A process's `target` table.
@@ -4339,6 +4727,23 @@ export type Role = "body" | "parameter" | "condition" | "then" | "else" | "initi
 export type RouteKind = "sequence" | "yes" | "no" | "elseIf" | "each" | "again" | "next" | "test" | "continue" | "done" | "break" | "return" | "error";
 
 /**
+ * The routes a draft's application would serve.
+ */
+export type RoutePreview = { 
+/**
+ * Unique route declarations.
+ */
+count: number, 
+/**
+ * The application that already serves them, by name.
+ */
+application: string | null, 
+/**
+ * The router files other applications also mount.
+ */
+shared: Array<SharedRouter>, };
+
+/**
  * The arguments of `save_board`.
  */
 export type SaveBoardArgs = { 
@@ -4548,7 +4953,7 @@ kind: string,
  */
 line: number | null, 
 /**
- * The name of the first application (by startup key) an entrance belongs to, as
+ * The name of the first application (by name) an entrance belongs to, as
  * `entrances` names applications; `None` for a definition or an entrance in none.
  */
 application: string | null, 
@@ -4594,6 +4999,11 @@ projects: Array<ProjectMatches>,
  * How long the search took, in milliseconds.
  */
 tookMs: number, };
+
+/**
+ * What a section holds.
+ */
+export type SectionKind = "launch" | "http" | "worker" | "schedule" | "command" | "event";
 
 /**
  * The arguments of `select_project`.
@@ -4840,6 +5250,23 @@ value: string,
 isDefault: boolean, };
 
 /**
+ * A router file several applications mount.
+ */
+export type SharedRouter = { 
+/**
+ * The router file.
+ */
+path: string, 
+/**
+ * How many of the routes come from it.
+ */
+routes: number, 
+/**
+ * The other applications that mount it, by name.
+ */
+alsoIn: Array<string>, };
+
+/**
  * `sha256:` and the hash of the exact selected source bytes.
  */
 export type Signature = string;
@@ -4907,6 +5334,56 @@ files: number, };
  * The freshness of a file's source, as the UI shows it.
  */
 export type SourceState = "current" | "changed" | "missing";
+
+/**
+ * What a draft starts.
+ */
+export type StartPreview = { 
+/**
+ * The file.
+ */
+path: string, 
+/**
+ * The binding or callable it names (`app`), if any.
+ */
+name: string | null, 
+/**
+ * What it is (`A FastAPI application with 2 routes`).
+ */
+description: string, 
+/**
+ * Whether Unfold can follow it into the code.
+ */
+status: LaunchStatus, 
+/**
+ * Why not, when it can't.
+ */
+reason: string | null, };
+
+/**
+ * A FastAPI application no launch serves, with a launch that would.
+ */
+export type SuggestedApp = { 
+/**
+ * Its file.
+ */
+path: string, 
+/**
+ * The binding (`app`).
+ */
+attribute: string, 
+/**
+ * The suggested working folder (`.` for the project's folder).
+ */
+folder: string, 
+/**
+ * The suggested command (`uvicorn dashboard_builder.app:app`).
+ */
+command: string, 
+/**
+ * Its unique route declarations.
+ */
+routes: number, };
 
 /**
  * The arguments of `switch_worktree`.
@@ -5424,19 +5901,6 @@ reason: PairingReason,
 note: string, };
 
 /**
- * Entrances that belong to no application.
- */
-export type UnreachedEntrances = { 
-/**
- * How many match.
- */
-total: number, 
-/**
- * The first matching ones, sorted.
- */
-entrances: Array<EntranceRow>, };
-
-/**
  * Why a file has no text to show.
  */
 export type Unshowable = "binary" | "too_large";
@@ -5813,9 +6277,20 @@ export interface Commands {
    */
   scope_dir: { args: ProjectPathArgs; result: ScopeDir };
   /**
-   * How a project starts: applications, launches, and entrances, paged and filtered.
+   * The entrance catalog: applications by category with their launches, or one
+   * application's (or the unreached) entrance rows, filtered and paged.
    */
-  entrances: { args: EntrancesArgs; result: EntranceMap };
+  entrances: { args: EntrancesArgs; result: EntrancesView };
+  /**
+   * What Unfold reads from a draft launch: its parts, target, import path, and what it would
+   * reach. Runs and writes nothing.
+   */
+  check_launch: { args: CheckLaunchArgs; result: LaunchCheck };
+  /**
+   * Route and import counts, and the FastAPI applications no launch serves, for setting up
+   * launches.
+   */
+  launch_suggestions: { args: ProjectArgs; result: LaunchSuggestions };
   /**
    * The project's `render.yaml` services as draft launches, for review. Runs and writes nothing.
    */
@@ -6078,6 +6553,8 @@ export const COMMAND_NAMES = [
   "compile_preview",
   "scope_dir",
   "entrances",
+  "check_launch",
+  "launch_suggestions",
   "import_deploy_files",
   "problems",
   "index_log",

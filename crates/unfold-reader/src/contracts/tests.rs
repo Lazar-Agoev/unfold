@@ -11,8 +11,8 @@ use unfold_core::vocab::{
     Resolution, ResultBinding, Role, SlotName as S,
 };
 use unfold_core::{
-    Argument, ByteRange, CallResult, FileTypes, Graph, Key, ModuleLabel, Pairing, Parameter, Signature,
-    TypeLink, WrittenType,
+    Argument, ByteRange, CallResult, FileTypes, Graph, Key, Launches, ModuleLabel, Pairing, Parameter,
+    Signature, TypeLink, WrittenType,
 };
 
 use super::text::type_text;
@@ -1235,7 +1235,7 @@ fn type_declarations_are_passed_through_catalogued_and_outlined() {
     assert_eq!(owners[go.local_id() as usize], local.local_id());
     assert_eq!(owners[shape.local_id() as usize], local.local_id());
     // In the catalog; a declaration inside a function is named after it.
-    let projections = project(&graph);
+    let projections = project(&graph, &Launches::default());
     let names: Vec<(&str, &str)> = projections.definitions[0]
         .iter()
         .map(|definition| (&*definition.label, &*definition.qualified_name))

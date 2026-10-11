@@ -8,11 +8,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use unfold_core::vocab::{FileState, InputRole, Language as LanguageId};
-use unfold_core::{ContentHash, FileRecord, Graph, RepoPath, Snapshot};
+use unfold_core::{ContentHash, FileRecord, Graph, Launches, RepoPath, Snapshot};
 
 use super::{LinkBasis, Problem};
 use crate::discovery::FileStamp;
 use crate::facts::FileFacts;
+use crate::language::ProjectInputs;
 use crate::settings::{Settings, SettingsHash};
 
 /// What the engine last saw on disk for a file: the cheap check (size and modification time)
@@ -175,5 +176,9 @@ pub(crate) struct State {
     /// For a restored graph, what it was linked from, when the store kept it.
     pub(crate) restored: Option<LinkBasis>,
     pub(crate) graph: Arc<Graph>,
+    /// The launch records of `graph`.
+    pub(crate) launches: Arc<Launches>,
+    /// What the languages saw beside the files at the last update or restore.
+    pub(crate) project: Arc<ProjectInputs>,
     pub(crate) complete: bool,
 }

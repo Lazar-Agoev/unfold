@@ -1,14 +1,16 @@
 /**
  * Home of a compiled project (docs/ui-shell.md#screens): the header with the branch and worktree switcher, How it
- * starts and Trace, the Boards section, the sidebar's tree, Recents and Drafts; then Health and
+ * starts (applications by category, an expanded application, Not reached) and Trace, the Boards section, the sidebar's tree, Recents and Drafts; then Health and
  * activity for a project with a file that doesn't parse.
  */
 
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { boardView } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { traceEntrance } from "../src/flows";
 import {
+  applicationRow,
   boardTab,
   compileButton,
   entranceRow,
@@ -21,18 +23,21 @@ import {
   rowState,
   showHome,
   sidebar,
+  showEntrances,
   sidebarBoard,
   stateLine,
   tabs,
 } from "../src/home";
 import { writeFile } from "../src/sandbox";
-import { enterText } from "../src/window";
 
 test.describe("Home", () => {
   test("a compiled project's Home: header, How it starts, Trace, Boards, the sidebar tree, Recents and Drafts", async ({ sandbox, launch }) => {
     const folder = sandbox.playground("ts-orders");
     // A repository on a feature branch: Unfold reads Git's files (it never runs Git).
     writeFile(join(folder, ".git", "HEAD"), "ref: refs/heads/feature-x\n");
+    // A command entrance no launch reaches, for "Not reached from a launch".
+    const config = join(folder, "unfold.toml");
+    writeFile(config, `${readFileSync(config, "utf8")}\n[[entrance]]\nid = "metrics"\nkind = "command"\ntrigger = "metrics"\nhandler = "src/jobs/report.ts#reportMetrics"\n`);
     const app = await launch({ args: [folder] });
     const page = await app.firstWindow();
     await expect(homeTitle(page)).toHaveText("ts-orders");
@@ -55,34 +60,40 @@ test.describe("Home", () => {
       await expect(worktrees).toBeHidden();
     });
 
-    await test.step("How it starts groups the entrances by application", async () => {
-      await expect(howItStarts(page).getByText("18 entrances in 4 applications.", { exact: false })).toBeVisible();
-      for (const application of ["cli", "scheduler", "server", "worker"]) {
-        await expect(howItStarts(page).getByRole("region", { name: application, exact: true })).toBeVisible();
+    await test.step("How it starts lists the applications by category, each launch as folder $ command", async () => {
+      await expect(howItStarts(page).getByText(/^\d+ applications · 7 launches · \d+ routes\. Hover a row to trace it on a new board\.$/)).toBeVisible();
+      for (const band of ["Services", "Workers", "Scheduled"]) {
+        await expect(howItStarts(page).getByRole("heading", { name: band, level: 3 })).toBeVisible();
       }
-      await expect(entranceRow(page, "COMMAND", "import", "cli")).toBeVisible();
-      await expect(entranceRow(page, "WORKER", "emails", "worker")).toBeVisible();
+      for (const application of ["cli", "scheduler", "server", "worker"]) {
+        await expect(applicationRow(page, application)).toBeVisible();
+      }
+      const server = applicationRow(page, "server");
+      await expect(server.locator(".home-launch-folder").first()).toHaveText("ts-orders $");
+      await expect(server).toContainText("npm run start");
+      await expect(server).toContainText("npm run dev");
+      await expect(server.getByText(/^\d+ routes$/)).toBeVisible();
+      // A launch into code that isn't indexed keeps its row, and says so.
+      await expect(howItStarts(page).locator(".home-launch").filter({ hasText: "npm run legacy:export" })).toContainText("not indexed");
     });
 
-    await test.step("an application with more than eight entrances shows eight, then N more · Filter", async () => {
-      const server = howItStarts(page).getByRole("region", { name: "server", exact: true });
-      await expect(server.locator(".home-entrance-row")).toHaveCount(8);
-      await expect(server.getByText("1 more route")).toBeVisible();
-      await server.getByRole("button", { name: "Filter", exact: true }).click();
-      await expect(server.locator(".home-entrance-row")).toHaveCount(9);
-      await enterText(server.getByRole("searchbox", { name: "Filter server's entrances" }), "health");
-      await expect(server.locator(".home-entrance-row")).toHaveCount(2);
+    await test.step("expanding an application lists its launches, then its routes by path", async () => {
+      const server = applicationRow(page, "server");
+      await expect(server.getByRole("button", { name: /^LAUNCH / })).toHaveCount(0);
+      await showEntrances(page, "server");
+      await expect(server.getByRole("button", { name: /^LAUNCH / })).toHaveCount(2);
+      await expect(entranceRow(page, "POST", "/orders", "server")).toBeVisible();
       await expect(entranceRow(page, "GET", "/health/live", "server")).toBeVisible();
-      await server.getByRole("button", { name: "Show fewer" }).click();
-      await expect(server.locator(".home-entrance-row")).toHaveCount(8);
+      await expect(entranceRow(page, "DELETE", "/orders/:id", "server")).toBeVisible();
+      await expect(server.locator(".home-scope-heading-title", { hasText: "/orders" })).toBeVisible();
     });
 
-    await test.step("Launches into code that isn't indexed expands from collapsed", async () => {
-      const launches = howItStarts(page).getByRole("button", { name: /^Launches into code that isn't indexed · 1/ });
-      await expect(launches).toHaveAttribute("aria-expanded", "false");
-      await launches.click();
-      await expect(launches).toHaveAttribute("aria-expanded", "true");
-      await expect(howItStarts(page).locator(".home-collapsed-body .home-launch-row")).toHaveCount(1);
+    await test.step("Not reached from a launch expands to the entrances no application serves", async () => {
+      const unreached = howItStarts(page).getByRole("button", { name: /^Not reached from a launch · \d+$/ });
+      await expect(unreached).toHaveAttribute("aria-expanded", "false");
+      await unreached.click();
+      await expect(unreached).toHaveAttribute("aria-expanded", "true");
+      await expect(entranceRow(page, "COMMAND", "metrics")).toBeVisible();
     });
 
     await test.step("Trace opens an entrance on a new page of a new draft board", async () => {

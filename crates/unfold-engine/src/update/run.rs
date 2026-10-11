@@ -21,6 +21,7 @@ use super::{
 };
 use crate::ENGINE_VERSION;
 use crate::discovery::FileStamp;
+use crate::entrances::launches;
 use crate::language::{
     ExtractionOptions, Language, LanguageId, LanguageProblem, ProjectInput, ProjectInputs,
 };
@@ -160,6 +161,8 @@ impl<'e, 'r> Run<'e, 'r> {
             linked: true,
             restored: None,
             graph: Arc::clone(&old.graph),
+            launches: Arc::clone(&old.launches),
+            project: Arc::default(),
             complete: false,
         };
         // Whether the old graph was linked from the context this update sees (everything but
@@ -215,6 +218,7 @@ impl<'e, 'r> Run<'e, 'r> {
             let built = build(&input, &mut self.stats)?;
             cancel.check()?;
             state.graph = Arc::new(built.graph);
+            state.launches = Arc::new(built.launches);
             state.link_problems = link_problems(built.problems);
             state.complete = is_complete(&state);
         }
@@ -251,9 +255,11 @@ impl<'e, 'r> Run<'e, 'r> {
         self.stats.total = started.elapsed();
         let mut problems = standing_problems(&state);
         problems.append(&mut self.cache_problems);
+        state.project = Arc::new(project);
         let outcome = UpdateOutcome {
             previous: Arc::clone(&old.graph),
             graph: Arc::clone(&state.graph),
+            launches: Arc::clone(&state.launches),
             summary,
             stats: self.stats,
             problems,
@@ -358,8 +364,9 @@ impl<'e, 'r> Run<'e, 'r> {
         inputs
     }
 
-    /// The project inputs languages link with, after the inputs they request are read; also
-    /// returns every input entry for the new state.
+    /// The project inputs languages link with, after the inputs they request are read, with the
+    /// Python contexts of the configured launches; also returns every input entry for the new
+    /// state.
     fn project_inputs(
         &mut self,
         base: &State,
@@ -427,6 +434,8 @@ impl<'e, 'r> Run<'e, 'r> {
                 inputs.insert(path, entry);
             }
         }
+        let plans = launches::plans(&project.settings, &project.inputs, &self.engine.root_text);
+        project.python_contexts = launches::contexts(&plans);
         (project, inputs)
     }
 

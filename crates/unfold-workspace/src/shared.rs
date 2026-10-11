@@ -30,7 +30,7 @@ use std::time::{Duration, Instant};
 use notify::RecommendedWatcher;
 use notify_debouncer_full::{Debouncer, NoCache};
 use unfold_core::{ContentHash, RepoPath};
-use unfold_engine::CancelToken;
+use unfold_engine::{CancelToken, Engine, FactsSet, ProjectInputs};
 use unfold_reader::ReaderCache;
 use unfold_store::ReadPool;
 
@@ -160,6 +160,23 @@ pub(crate) struct Shared {
     pub(crate) settings_edit: Mutex<()>,
     pub(crate) own_writes: OwnWrites,
     pub(crate) watcher: Mutex<Option<Debouncer<RecommendedWatcher, NoCache>>>,
+    /// What the engine's current graph was linked from, published by the engine thread.
+    pub(crate) linked_from: Mutex<Option<Arc<LinkInputs>>>,
+}
+
+/// The program and project inputs an engine's graph was linked from, so a command can link a
+/// language again on demand (a launch preview) without the engine thread.
+pub(crate) struct LinkInputs {
+    pub(crate) program: FactsSet,
+    pub(crate) project: Arc<ProjectInputs>,
+}
+
+impl LinkInputs {
+    /// What `engine`'s current graph was linked from.
+    pub(crate) fn of(engine: &Engine) -> Self {
+        let (program, project) = engine.link_inputs();
+        Self { program, project }
+    }
 }
 
 impl Shared {
@@ -208,6 +225,7 @@ impl Shared {
             settings_edit: Mutex::new(()),
             own_writes: OwnWrites::default(),
             watcher: Mutex::new(None),
+            linked_from: Mutex::new(None),
         }
     }
 

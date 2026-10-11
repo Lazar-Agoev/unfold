@@ -73,92 +73,156 @@ fn the_summary_counts_the_graph_and_its_health() {
 #[test]
 fn entrances_are_paged_filtered_and_ordered_per_application() {
     let harness = Harness::compiled("ts-orders");
-    let map = harness.ok(1, "entrances", json!({ "project": harness.project }));
-    assert_eq!(map["project"], harness.project);
-    let applications = map["applications"].as_array().expect("applications");
-    assert!(!applications.is_empty());
-    let mut checked = false;
-    for application in applications {
-        let rows = application["entrances"].as_array().expect("rows");
-        let total = application["total"].as_u64().expect("total") as usize;
-        assert!(rows.len() <= 8 && rows.len() == total.min(8), "{application}");
-        assert!(
-            application["launches"]
-                .as_array()
-                .is_some_and(|launches| launches.len() <= 5)
+    let overview = harness.ok(1, "entrances", json!({ "project": harness.project }));
+    assert_eq!(overview["view"], "overview");
+    assert_eq!(overview["project"], harness.project);
+    let categories = overview["categories"].as_array().expect("categories");
+    let order: Vec<&str> = categories
+        .iter()
+        .filter_map(|category| category["category"].as_str())
+        .collect();
+    assert_eq!(order, ["services", "workers", "scheduled"], "display order");
+    let applications: Vec<Value> = categories
+        .iter()
+        .flat_map(|category| category["applications"].as_array().cloned().unwrap_or_default())
+        .collect();
+    assert_eq!(overview["counts"]["applications"], applications.len());
+    let launches: usize = applications
+        .iter()
+        .map(|application| application["launches"].as_array().map_or(0, Vec::len))
+        .sum();
+    assert_eq!(overview["counts"]["launches"], launches);
+    for launch in applications
+        .iter()
+        .flat_map(|application| application["launches"].as_array().cloned().unwrap_or_default())
+    {
+        assert_eq!(
+            launch["folder"], "ts-orders",
+            "the project's folder shows its name"
         );
-        for row in rows {
-            assert!(row["reaches"].is_u64(), "a live project counts reach: {row}");
-            if row["kind"] == "http" && row["trigger"].as_str().is_some_and(|trigger| trigger.len() > 1) {
-                assert!(row["group"].is_string(), "{row}");
-            } else if row["kind"] != "http" {
-                assert_eq!(row["group"], Value::Null);
-            }
+        assert!(
+            launch["command"]
+                .as_str()
+                .is_some_and(|command| !command.is_empty())
+        );
+        assert_eq!(launch["editable"], "override");
+        assert_eq!(launch["match"]["path"], "package.json");
+        assert!(
+            launch["reaches"].is_u64(),
+            "a live project counts reach: {launch}"
+        );
+    }
+
+    let server = applications
+        .iter()
+        .find(|application| application["routes"].as_u64().is_some_and(|routes| routes > 0))
+        .expect("an application with routes");
+    let scope = |args: Value| {
+        let mut args = args;
+        args["project"] = json!(harness.project);
+        args["application"] = server["id"].clone();
+        harness.ok(1, "entrances", args)
+    };
+    let all = scope(json!({ "limit": 500 }));
+    assert_eq!(all["view"], "scope");
+    let rows = all["rows"].as_array().expect("rows");
+    assert_eq!(all["total"], rows.len());
+    assert_eq!(all["nextCursor"], Value::Null);
+    assert_eq!(server["entrances"], rows.len(), "launches and handlers");
+    let sections = all["sections"].as_array().expect("sections");
+    assert_eq!(sections[0]["title"], "Launch");
+    let kinds: Vec<&str> = rows
+        .iter()
+        .map(|row| {
+            sections[row["section"].as_u64().expect("section") as usize]["kind"]
+                .as_str()
+                .expect("kind")
+        })
+        .collect();
+    let rank = |kind: &str| {
+        ["launch", "http", "worker", "schedule", "command", "event"]
+            .iter()
+            .position(|known| *known == kind)
+    };
+    assert!(
+        kinds.windows(2).all(|pair| rank(pair[0]) <= rank(pair[1])),
+        "{kinds:?}"
+    );
+    for section in sections.iter().filter(|section| section["kind"] == "http") {
+        assert!(
+            section["title"]
+                .as_str()
+                .is_some_and(|title| title.starts_with('/')),
+            "{section}"
+        );
+    }
+    assert!(rows.iter().all(|row| row["reaches"].is_u64()));
+
+    // Pages follow each other through the cursor, in the same order.
+    let mut paged = Vec::new();
+    let mut cursor = Value::Null;
+    loop {
+        let mut args = json!({ "limit": 2 });
+        if !cursor.is_null() {
+            args["cursor"] = cursor.clone();
         }
-        // HTTP rows come first.
-        let kinds: Vec<bool> = rows.iter().map(|row| row["kind"] != "http").collect();
-        let mut sorted = kinds.clone();
-        sorted.sort_unstable();
-        assert_eq!(kinds, sorted);
-        if total > 1 {
-            let one = harness.ok(
-                1,
-                "entrances",
-                json!({ "project": harness.project, "perApplication": 1, "application": application["startup"] }),
-            );
-            assert_eq!(one["applications"].as_array().map(Vec::len), Some(1));
-            assert_eq!(
-                one["applications"][0]["entrances"].as_array().map(Vec::len),
-                Some(1)
-            );
-            assert_eq!(one["applications"][0]["total"], application["total"]);
-            assert_eq!(one["unreached"]["entrances"], json!([]));
-            checked = true;
+        let page = scope(args);
+        assert_eq!(page["total"], all["total"]);
+        assert_eq!(
+            page["sections"], all["sections"],
+            "sections don't depend on the page"
+        );
+        paged.extend(page["rows"].as_array().cloned().unwrap_or_default());
+        cursor = page["nextCursor"].clone();
+        if cursor.is_null() {
+            break;
         }
     }
-    assert!(checked, "an application with several entrances: {map}");
+    assert_eq!(&paged, rows);
 
-    let first = applications
+    // The filter applies before paging.
+    let http = rows.iter().find(|row| row["kind"] == "http").expect("a route");
+    let filter = http["title"].as_str().expect("title").to_uppercase();
+    let filtered = scope(json!({ "filter": filter, "limit": 1 }));
+    let needle = filter.to_lowercase();
+    let matching = rows
         .iter()
-        .flat_map(|application| application["entrances"].as_array().cloned().unwrap_or_default())
-        .next()
-        .expect("an entrance");
-    let filter = first["title"].as_str().expect("title").to_uppercase();
-    let filtered = harness.ok(
-        1,
-        "entrances",
-        json!({ "project": harness.project, "filter": filter, "perApplication": 500 }),
-    );
-    let rows: Vec<Value> = filtered["applications"]
-        .as_array()
-        .expect("applications")
-        .iter()
-        .flat_map(|application| application["entrances"].as_array().cloned().unwrap_or_default())
-        .chain(
-            filtered["unreached"]["entrances"]
-                .as_array()
-                .cloned()
-                .unwrap_or_default(),
-        )
-        .collect();
-    assert!(rows.iter().any(|row| row["key"] == first["key"]));
-    assert!(rows.iter().all(|row| {
-        let needle = filter.to_lowercase();
-        [&row["title"], &row["trigger"], &row["label"], &row["path"]]
-            .iter()
-            .filter_map(|value| value.as_str())
-            .any(|text| text.to_lowercase().contains(&needle))
-    }));
+        .filter(|row| {
+            [&row["title"], &row["trigger"], &row["handler"], &row["path"]]
+                .iter()
+                .filter_map(|value| value.as_str())
+                .any(|text| text.to_lowercase().contains(&needle))
+        })
+        .count();
+    assert_eq!(filtered["total"], matching);
+    assert_eq!(filtered["rows"][0]["key"], http["key"]);
+
     for bad in [0, 501] {
         assert_eq!(
             harness.code(
                 1,
                 "entrances",
-                json!({ "project": harness.project, "perApplication": bad })
+                json!({ "project": harness.project, "limit": bad })
             ),
             "invalid_args"
         );
     }
+    assert_eq!(
+        harness.code(
+            1,
+            "entrances",
+            json!({ "project": harness.project, "application": server["id"], "unreached": true })
+        ),
+        "invalid_args"
+    );
+    assert_eq!(
+        harness.code(
+            1,
+            "entrances",
+            json!({ "project": harness.project, "application": "nope" })
+        ),
+        "not_found"
+    );
 }
 
 #[test]

@@ -55,20 +55,34 @@ fn compare_catalog(reader: &Reader, expected: &Value, differences: &mut Differen
 
 fn compare_applications(reader: &Reader, graph: &Graph, expected: &Value, differences: &mut Differences) {
     let memberships = reader.memberships().expect("read memberships");
+    let kind: BTreeMap<&str, EntranceKind> = graph
+        .entrances
+        .iter()
+        .map(|entrance| (entrance.key.as_str(), entrance.kind))
+        .collect();
+    let members = |id: &str, process: bool| {
+        sorted(
+            memberships
+                .iter()
+                .filter(|m| {
+                    &*m.application == id && (kind[m.entrance.as_str()] == EntranceKind::Process) == process
+                })
+                .map(|m| m.entrance.to_string()),
+        )
+    };
+    // The PoC's applications are distinct resolved startups; a launch that starts nothing
+    // resolved is an application of its own here, and an unindexed launch there.
     let applications: Vec<Value> = reader
         .applications()
         .expect("read applications")
         .iter()
+        .filter(|application| !application.id.starts_with("entrance:"))
         .map(|application| {
-            let launches = graph.entrances.iter().filter(|entrance| {
-                entrance.kind == EntranceKind::Process
-                    && entrance.targets.first().and_then(|target| target.target.as_ref()) == Some(&application.startup)
-            });
             json!({
-                "startup": application.startup.as_str(),
+                "startup": &*application.id,
                 "name": &*application.name,
-                "launches": sorted(launches.map(|entrance| entrance.key.to_string())),
-                "entrances": sorted(memberships.iter().filter(|m| m.application == application.startup).map(|m| m.entrance.to_string())),
+                "launches": members(&application.id, true),
+                "entrances": members(&application.id, false),
             })
         })
         .collect();

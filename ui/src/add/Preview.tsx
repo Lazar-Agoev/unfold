@@ -9,8 +9,8 @@ import type { ReactNode } from "react";
 import { CodeText } from "../code/CodeText";
 import { spanRanges } from "../code/segments";
 import { Button, Monogram } from "../components";
-import { useEngineQuery, type CodeLine, type CodeSpan, type Preview as PreviewModel } from "../ipc";
-import { methodColumn, triggerText } from "../lib/entrances";
+import { useEngineQuery, type CodeLine, type CodeSpan, type EntranceHeader, type Preview as PreviewModel } from "../ipc";
+import { methodColumn } from "../lib/entrances";
 import { plural } from "../lib/format";
 import { baseName, type ResultItem } from "./search";
 
@@ -143,6 +143,17 @@ function Status({ children }: { readonly children: ReactNode }) {
   return <p className="add-preview-status">{children}</p>;
 }
 
+/** An entrance's trigger as people read it: the label, the trigger (`/orders…` when partial), or "path unknown". */
+function triggerText(header: EntranceHeader): string {
+  if (header.label) {
+    return header.label;
+  }
+  if (header.trigger !== null && header.triggerStatus !== "unknown") {
+    return header.triggerStatus === "partial" ? `${header.trigger}…` : header.trigger;
+  }
+  return header.kind === "http" ? "path unknown" : "trigger unknown";
+}
+
 function KeyedPreview({ item, projectName }: { readonly item: Extract<PreviewItem, { type: "entrance" | "function" }>; readonly projectName: string }) {
   const preview = useEngineQuery("preview", { project: item.hit.project, key: item.hit.key });
   const data = preview.data;
@@ -199,6 +210,43 @@ function FilePreview({ item, projectName }: { readonly item: Extract<PreviewItem
   );
 }
 
+/** The preview's buttons: the Enter action, and New page (⌘Enter) on a board page. */
+export function AddButtons({ label, newPage, disabled, onActivate }: { readonly label: string; readonly newPage: boolean; readonly disabled: boolean; readonly onActivate: (newPage: boolean) => void }) {
+  return (
+    <div className="add-preview-buttons">
+      <Button
+        variant="primary"
+        className="add-preview-primary"
+        shortcut="Enter"
+        disabled={disabled}
+        onMouseDown={(event) => {
+          event.preventDefault();
+        }}
+        onClick={() => {
+          onActivate(false);
+        }}
+      >
+        {label}
+      </Button>
+      {newPage ? (
+        <Button
+          variant="secondary"
+          shortcut="Mod+Enter"
+          disabled={disabled}
+          onMouseDown={(event) => {
+            event.preventDefault();
+          }}
+          onClick={() => {
+            onActivate(true);
+          }}
+        >
+          New page
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 export function Preview({ item, projectName, onPage, blocked, onActivate }: PreviewProps) {
   if (item === null) {
     return <aside className="add-preview" aria-label="Preview" />;
@@ -211,37 +259,7 @@ export function Preview({ item, projectName, onPage, blocked, onActivate }: Prev
       {opens ? <FilePreview item={item} projectName={name} /> : <KeyedPreview item={item} projectName={name} />}
       <div className="add-preview-spacer" />
       {blocked !== null && !opens ? <Status>{blocked}</Status> : null}
-      <div className="add-preview-buttons">
-        <Button
-          variant="primary"
-          className="add-preview-primary"
-          shortcut="Enter"
-          disabled={blocked !== null && !opens}
-          onMouseDown={(event) => {
-            event.preventDefault();
-          }}
-          onClick={() => {
-            onActivate(false);
-          }}
-        >
-          {opens ? "Open file" : onPage ? "Add to this page" : "Add to a new draft"}
-        </Button>
-        {onPage && !opens ? (
-          <Button
-            variant="secondary"
-            shortcut="Mod+Enter"
-            disabled={blocked !== null}
-            onMouseDown={(event) => {
-              event.preventDefault();
-            }}
-            onClick={() => {
-              onActivate(true);
-            }}
-          >
-            New page
-          </Button>
-        ) : null}
-      </div>
+      <AddButtons label={opens ? "Open file" : onPage ? "Add to this page" : "Add to a new draft"} newPage={onPage && !opens} disabled={blocked !== null && !opens} onActivate={onActivate} />
     </aside>
   );
 }

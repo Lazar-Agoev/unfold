@@ -7,7 +7,7 @@ use std::sync::Arc;
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use unfold_core::vocab::FileState;
-use unfold_core::{FileRecord, Graph, RepoPath};
+use unfold_core::{FileRecord, Graph, Launches, RepoPath};
 
 use super::cache::{CacheStatus, FactsKey, decode_facts};
 use super::run::{Run, options_of};
@@ -30,7 +30,7 @@ pub struct RestoreStats {
 }
 
 impl Engine {
-    /// Restores the state of a previous session: `graph` is the stored graph, `disks` the
+    /// Restores the state of a previous session: `graph` is the stored graph, `launches` its launch records, `disks` the
     /// stored disk state of its files, and `basis` what the graph was linked from
     /// ([`super::UpdateOutcome::basis`]), if it was kept. Each file's facts come from the cache
     /// by the hash its facts came from and its settings hash, which the extraction options give
@@ -42,13 +42,14 @@ impl Engine {
     pub fn restore(
         &mut self,
         graph: Graph,
+        launches: Launches,
         disks: impl IntoIterator<Item = (RepoPath, DiskState)>,
         basis: Option<LinkBasis>,
     ) -> Result<RestoreStats, UpdateError> {
         let disks: FxHashMap<RepoPath, DiskState> = disks.into_iter().collect();
         let pool = self.pool(UpdateKind::Background)?;
         let this = &*self;
-        let (state, stats) = pool.install(|| this.restored(graph, &disks, basis));
+        let (state, stats) = pool.install(|| this.restored(graph, launches, &disks, basis));
         self.set_state(state);
         Ok(stats)
     }
@@ -56,6 +57,7 @@ impl Engine {
     fn restored(
         &self,
         graph: Graph,
+        launches: Launches,
         disks: &FxHashMap<RepoPath, DiskState>,
         basis: Option<LinkBasis>,
     ) -> (State, RestoreStats) {
@@ -144,6 +146,8 @@ impl Engine {
             restored: basis,
             complete,
             graph: Arc::new(graph),
+            launches: Arc::new(launches),
+            project: Arc::new(project),
             ..State::default()
         };
         (state, stats)

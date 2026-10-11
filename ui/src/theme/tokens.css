@@ -65,6 +65,12 @@
   --color-review: #d97706;
   --color-warn: #8a5a00;
   --color-warn-fill: #fff3d6;
+  /* The launch editor's warning card and its outcome box */
+  --color-warn-line: #f3e6c4;
+  --color-success-fill: #eef7f0;
+  --color-success-line: #d3ebd9;
+  --color-success-text: #14622f;
+  --color-success-body: #2f5b3c;
   --color-success: #16a34a;
   --color-danger: #dc2626;
   --color-on-danger: #ffffff;
@@ -215,6 +221,11 @@
     --color-review: #f59e0b;
     --color-warn: #f5c66a;
     --color-warn-fill: rgb(217 119 6 / 0.16);
+    --color-warn-line: rgb(245 198 106 / 0.24);
+    --color-success-fill: #16261c;
+    --color-success-line: #24402d;
+    --color-success-text: #7ee2a2;
+    --color-success-body: #b9d9c3;
     --color-success: #4ade80;
     --color-danger: #f87171;
     --color-on-danger: #151619;
@@ -309,6 +320,11 @@
   --color-review: #f59e0b;
   --color-warn: #f5c66a;
   --color-warn-fill: rgb(217 119 6 / 0.16);
+  --color-warn-line: rgb(245 198 106 / 0.24);
+  --color-success-fill: #16261c;
+  --color-success-line: #24402d;
+  --color-success-text: #7ee2a2;
+  --color-success-body: #b9d9c3;
   --color-success: #4ade80;
   --color-danger: #f87171;
   --color-on-danger: #151619;

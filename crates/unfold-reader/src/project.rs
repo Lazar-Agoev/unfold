@@ -1,12 +1,13 @@
 //! The reader projections the store keeps (crates/unfold-store/src/schema.rs): definitions per file,
-//! applications, and memberships, computed from a whole graph after every update.
+//! applications, and memberships, computed from a whole graph and its launch records after every
+//! update.
 //!
-//! [`project`] is a pure function of the graph: one index pass, one catalog pass, and one
-//! closure per application. The workspace compares the result with the previous projections and
+//! [`project`] is a pure function of the graph and launch records: one index pass, one catalog
+//! pass, and one closure per distinct launch seed set. The workspace compares the result with the previous projections and
 //! commits what changed (per-file definitions in `FileChange::definitions`, the small sets
 //! whole).
 
-use unfold_core::Graph;
+use unfold_core::{Graph, Launches};
 use unfold_store::{Application, Definition, Membership};
 
 use crate::applications::applications;
@@ -18,7 +19,7 @@ use crate::index::GraphIndex;
 pub struct Projections {
     /// Each file's definitions in preorder, aligned with the graph's files.
     pub definitions: Vec<Vec<Definition>>,
-    /// Applications, sorted by startup key.
+    /// Applications, sorted by ID.
     pub applications: Vec<Application>,
     /// Memberships, sorted by entrance key, then application.
     pub memberships: Vec<Membership>,
@@ -31,10 +32,10 @@ impl Projections {
     }
 }
 
-/// Computes the projections of `graph`.
-pub fn project(graph: &Graph) -> Projections {
-    let index = GraphIndex::from_graph(graph);
-    let (applications, memberships) = applications(graph, &index);
+/// Computes the projections of `graph` and its launch records.
+pub fn project(graph: &Graph, launches: &Launches) -> Projections {
+    let index = GraphIndex::from_graph(graph, launches);
+    let (applications, memberships) = applications(graph, &index, launches);
     Projections {
         definitions: catalog(graph, &index),
         applications,

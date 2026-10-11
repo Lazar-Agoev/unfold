@@ -40,7 +40,7 @@ use std::sync::Arc;
 use rayon::ThreadPool;
 use unfold_core::validate::Violation;
 use unfold_core::vocab::Language as LanguageId;
-use unfold_core::{Graph, RepoPath};
+use unfold_core::{Graph, Launches, RepoPath};
 
 pub use basis::LinkBasis;
 pub use cache::{
@@ -55,8 +55,9 @@ pub use summary::ChangeSummary;
 use crate::cancel::{CancelToken, Cancelled};
 use crate::discovery::{DiscoverOptions, DiscoveryError};
 use crate::error::BackendError;
-use crate::language::{Language, Producer};
+use crate::language::{Language, Producer, ProjectInputs};
 use crate::program::ProgramError;
+use crate::program::{FactsSet, ProgramFile};
 use crate::settings::Settings;
 use state::State;
 
@@ -258,6 +259,8 @@ pub struct UpdateOutcome {
     pub previous: Arc<Graph>,
     /// The new graph, normalized and validated.
     pub graph: Arc<Graph>,
+    /// The new graph's launch records.
+    pub launches: Arc<Launches>,
     /// What changed, for `graph_updated`.
     pub summary: ChangeSummary,
     /// What the update did, for the Index log.
@@ -434,6 +437,24 @@ impl Engine {
     /// The current graph (empty before the first update).
     pub fn graph(&self) -> &Arc<Graph> {
         &self.state.graph
+    }
+
+    /// The current graph's launch records.
+    pub fn launches(&self) -> &Arc<Launches> {
+        &self.state.launches
+    }
+
+    /// The program and the project inputs the current graph was linked from (or, after a
+    /// restore, would be linked from), for linking again on demand, as a launch preview does.
+    pub fn link_inputs(&self) -> (FactsSet, Arc<ProjectInputs>) {
+        let files = self.state.files.iter().map(|(path, entry)| ProgramFile {
+            path: path.clone(),
+            language: entry.language,
+            facts: entry.facts.program(),
+        });
+        // The state's files have distinct paths and fit a program.
+        let program = FactsSet::new(files).unwrap_or_default();
+        (program, Arc::clone(&self.state.project))
     }
 
     /// The effective settings.

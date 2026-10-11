@@ -27,7 +27,7 @@ use crate::options::{WorkspaceOptions, store_version};
 use crate::problems::{IndexLogEntry, ProblemItem};
 use crate::projects::ProjectId;
 use crate::settings_edit::{SettingsEdit, apply_edits};
-use crate::shared::{Job, Shared, lock};
+use crate::shared::{Job, LinkInputs, Shared, lock};
 use crate::state::{LocalState, read_json, write_atomically, write_json};
 use crate::status::{Activity, GraphCounts, GraphStatus, ProjectState};
 use crate::storage::open_store;
@@ -314,6 +314,11 @@ impl Workspace {
     pub fn reader_index(&self) -> Result<Arc<ReaderIndex>> {
         let pool = self.readers()?;
         Ok(self.shared.reader_cache.get(&pool)?)
+    }
+
+    /// What the engine's current graph was linked from, once it has a graph.
+    pub(crate) fn linked_from(&self) -> Option<Arc<LinkInputs>> {
+        lock(&self.shared.linked_from).clone()
     }
 
     /// The Problems list.

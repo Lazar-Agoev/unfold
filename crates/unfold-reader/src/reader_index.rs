@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use rustc_hash::FxHashMap;
 use unfold_core::vocab::EntranceKind;
-use unfold_core::{Graph, Key};
+use unfold_core::{Graph, Key, Launches};
 use unfold_store::{ReadPool, Reader};
 
 use crate::applications::{entrance_seeds, keys};
@@ -42,14 +42,15 @@ impl ReaderIndex {
                     builder.add_file(&file);
                 }
             }
-            Ok(builder.finish(&reader.entrances()?))
+            Ok(builder.finish(&reader.entrances()?, &reader.launches()?))
         })?;
         Ok(Self::new(index))
     }
 
-    /// Builds the structure from an in-memory graph, such as the one just committed.
-    pub fn from_graph(graph: &Graph) -> Self {
-        Self::new(GraphIndex::from_graph(graph))
+    /// Builds the structure from an in-memory graph and its launch records, such as the ones
+    /// just committed.
+    pub fn from_graph(graph: &Graph, launches: &Launches) -> Self {
+        Self::new(GraphIndex::from_graph(graph, launches))
     }
 
     fn new(index: GraphIndex) -> Self {
@@ -87,7 +88,7 @@ impl ReaderIndex {
         let id = self.index.id(key)?;
         let entrances = self.index.entrances();
         Some(reached_from(&self.index, id, |position, id| {
-            entrance_seeds(&self.index, &entrances[position])
+            entrance_seeds(&entrances[position])
                 .into_iter()
                 .any(|seed| self.seed_closure(seed).binary_search(&id).is_ok())
         }))
@@ -100,8 +101,8 @@ impl ReaderIndex {
         keys(&self.index, &self.closure_ids(&ids))
     }
 
-    /// The activation closure of the entrance with `key`: a process entrance's application
-    /// seeds, or every resolved target of any other entrance. `None` when the entrance does not
+    /// The activation closure of the entrance with `key`: a launch's startup and seeds, or every
+    /// resolved target of any other entrance. `None` when the entrance does not
     /// exist.
     pub fn entrance_closure(&self, key: &str) -> Option<Vec<Key>> {
         let entrance = self
@@ -109,7 +110,7 @@ impl ReaderIndex {
             .entrances()
             .iter()
             .find(|entrance| entrance.key.as_str() == key)?;
-        let seeds = entrance_seeds(&self.index, entrance);
+        let seeds = entrance_seeds(entrance);
         Some(keys(&self.index, &self.closure_ids(&seeds)))
     }
 

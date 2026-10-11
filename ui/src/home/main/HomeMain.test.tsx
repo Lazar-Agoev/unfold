@@ -8,6 +8,7 @@ import { initialLayout, useLayout, type HomeView } from "../../state/layout";
 import { useDialog, usePeekTarget } from "../../state/overlays";
 import { useTabs } from "../../state/tabs";
 import { useWindowStore } from "../../state/window";
+import { OVERVIEW } from "../../test/entrances";
 import { fixture, installFakeEngine, type EngineHandlers, type FakeEngine } from "../../test/engine";
 import { renderWithClient } from "../../test/render";
 import { projectRow, workspaceView } from "../../test/workspace";
@@ -31,7 +32,7 @@ function start(workspace: WorkspaceView, handlers: EngineHandlers = {}, view: Ho
       workspace: () => workspace,
       select_project: () => null,
       ...(row ? { project_summary: () => summaryOf(row) } : {}),
-      entrances: ({ project }) => ({ ...fixture("entrances", "entrances"), project }),
+      entrances: ({ project }) => ({ ...OVERVIEW, project }),
       list_boards: ({ project }) => ({ ...fixture("list_boards", "list_boards"), project, boards: fixture("list_boards", "list_boards").boards.map((board) => ({ ...board, project })) }),
       board_thumbnails: () => ({ thumbnails: [] }),
       compile_preview: () => fixture("compile_preview", "compile_preview"),
@@ -182,26 +183,19 @@ describe("the compiled Home", () => {
     expect(await screen.findByRole("heading", { name: "ts-orders" })).toBeTruthy();
     expect(screen.getByText("~/code/ts-orders")).toBeTruthy();
     expect(await screen.findByText("Graph current")).toBeTruthy();
-    expect(await screen.findByText("18 entrances in 4 applications. Hover one to trace it on a new board.")).toBeTruthy();
-    expect(await screen.findByRole("region", { name: "cli" })).toBeTruthy();
+    expect(await screen.findByText("4 applications · 5 launches · 14 routes. Hover a row to trace it on a new board.")).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "Invoice HITL API" })).toBeTruthy();
     expect(await screen.findByText("Order placement")).toBeTruthy();
     expect(screen.getByText("All files parse")).toBeTruthy();
     expect(screen.getByText("1 launch into code that isn't indexed")).toBeTruthy();
   });
 
-  it("expands an application to every entrance with a filter", async () => {
+  it("expands an application to its entrances", async () => {
     const fake = start(workspaceView([projectRow(P, "ts-orders")]));
     renderWithClient(<HomeMain />);
-    const server = await screen.findAllByRole("region");
-    const withMore = server.find((region) => within(region).queryByRole("button", { name: "Filter" }));
-    if (!withMore) {
-      // Every application of the fixture fits in eight rows: nothing to expand.
-      expect(fake.callsOf("entrances")).toEqual([{ project: P, perApplication: 8 }]);
-      return;
-    }
-    fireEvent.click(within(withMore).getByRole("button", { name: "Filter" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Invoice HITL API's entrances" }));
     await waitFor(() => {
-      expect(fake.callsOf("entrances").some((args) => args["perApplication"] === 500 && typeof args["application"] === "string")).toBe(true);
+      expect(fake.callsOf("entrances")).toContainEqual({ project: P, application: "invoice-hitl", limit: 12 });
     });
   });
 

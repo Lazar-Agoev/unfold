@@ -600,12 +600,14 @@ impl EntranceKind {
 
 impl TargetRole {
     /// The block kinds a resolved target with this role may name, given its entrance's detector.
-    /// A startup is a file root, except a `pyproject.script` console callable; a manual handler
-    /// may also be a branch (`if`, `case`, `default`) for explicit CLI dispatch.
+    /// A startup is a file root, except a `pyproject.script` console callable and a configured
+    /// launch's callable or application binding; a manual handler may also be a branch (`if`,
+    /// `case`, `default`) for explicit CLI dispatch.
     pub const fn target_kinds(self, detector: DetectorId) -> &'static [BlockKind] {
         use BlockKind as K;
         match (self, detector) {
             (Self::Startup, DetectorId::PyprojectScript) => &[K::Function, K::Method],
+            (Self::Startup, DetectorId::Manual) => &[K::File, K::Function, K::Method, K::Class, K::Variable],
             (Self::Startup, _) => &[K::File],
             (Self::Handler, DetectorId::Manual) => &[K::Function, K::Method, K::If, K::Case, K::Default],
             (Self::Handler, _) => &[K::Function, K::Method],

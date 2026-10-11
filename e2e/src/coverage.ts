@@ -35,7 +35,7 @@ const PUBLISH = "publish.spec.ts";
 const PUBLISHING = "a draft, its first Publish, unpublished changes, Discard changes, and Move back to drafts";
 
 const ADD = "add.spec.ts";
-const ADD_ON_BOARD = "on a board: A, ⌘K and / open it, the map, Enter and ⌘Enter add, Escape closes";
+const ADD_ON_BOARD = "on a board: A, ⌘K and / open it, the entrance browser, Enter and ⌘Enter add, Escape closes";
 const ADD_SEARCH = "search across two projects: kind tabs and counts, the preview, Look in, and Enter from Home";
 const ADD_TEXT = "text search: match case, whole word, and regular expressions";
 const ADD_COMMANDS = "commands: `>`, ⇧⌘P, ⌘P on Files, ⌘T on Functions, and Copy Diagnostics";
@@ -121,10 +121,10 @@ export const MAP_HOMES: Readonly<Record<string, readonly Home[]>> = {
     { spec: BOARD, test: CANVAS, step: "Show callers on a card adds the cards that call it" },
   ],
   "Entrances view": [
-    { spec: HOME, test: COMPILED_HOME, step: "How it starts groups the entrances by application" },
-    { spec: ADD, test: ADD_ON_BOARD, step: "the map shows each application's entrances and marks the one on the page" },
-    { spec: SETTINGS, test: ENTRANCES, step: "project menu › Add entrance… opens the editor; a command entrance is saved to unfold.toml" },
-    { spec: SETTINGS, test: ENTRANCES, step: "Home's Add entrance opens the editor too" },
+    { spec: HOME, test: COMPILED_HOME, step: "How it starts lists the applications by category, each launch as folder $ command" },
+    { spec: ADD, test: ADD_ON_BOARD, step: "LOOK IN unfolds the board's project; an application lists its launch and routes and marks the one on the page" },
+    { spec: SETTINGS, test: ENTRANCES, step: "project menu › Add entrance… opens the launch editor; a CLI command entrance is saved to unfold.toml" },
+    { spec: SETTINGS, test: ENTRANCES, step: "Home's Add launch opens the editor too" },
     { spec: SETTINGS, test: ENTRANCES, step: "its row's menu Edit… changes it" },
     { spec: SETTINGS, test: ENTRANCES, step: "its row's menu Remove… removes it after asking" },
     { spec: SETTINGS, test: ENTRANCES, step: "a card's Add as entrance… prefills the handler with the card's definition" },

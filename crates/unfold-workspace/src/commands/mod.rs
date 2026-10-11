@@ -24,6 +24,7 @@ pub mod file_view;
 pub mod files;
 mod fileset;
 pub mod graph;
+pub mod launches;
 pub mod projects;
 pub mod relations;
 pub mod search;

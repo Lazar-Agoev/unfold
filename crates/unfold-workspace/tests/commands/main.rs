@@ -9,6 +9,7 @@ mod diagnostics;
 mod git;
 mod goldens;
 mod home;
+mod launches;
 mod liveness;
 mod preferences;
 mod search;

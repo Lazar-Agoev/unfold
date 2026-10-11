@@ -20,7 +20,7 @@
 //!   commit writes rows proportional to the change, in one transaction. See [`update`].
 //! - **Stable identity.** Structural keys are interned in the `keys` table and keep their IDs
 //!   for the life of the database (structural keys); an in-memory mirror avoids per-key queries.
-//!   Entrance and application row IDs are their keys' IDs.
+//!   Entrance row IDs are their keys' IDs.
 //! - **A cache.** A database written by another schema or engine version, or a damaged one, is
 //!   discarded and recreated on open ([`Opened`]); there are no migrations (cache rebuild policy).
 //!   The database is private and may change in any release (shared file contracts).
@@ -47,15 +47,16 @@ mod tests;
 
 pub use error::{Result, StoreError};
 pub use read::rows::{
-    Cursor, DefinitionRow, FileRow, IncomingEdge, IndexStats, LocatedBlock, Page, SearchCandidate,
-    StoredMeta, TypeUse,
+    Cursor, DefinitionRow, FileRow, ImportSummary, IncomingEdge, IndexStats, LocatedBlock, Page,
+    SearchCandidate, StoredMeta, TypeUse,
 };
 pub use read::{ReadPool, Reader};
 pub use schema::SCHEMA_VERSION;
 pub use search::CandidateKind;
 pub use store::{Opened, RecreateReason, Store, StoreConfig};
 pub use update::{
-    Application, Definition, DiskStamp, EntranceChanges, FileChange, GraphMeta, Membership, Structure, Update,
+    Application, Basis, Category, Definition, DiskStamp, EntranceChanges, FileChange, GraphMeta, Membership,
+    Structure, Update,
 };
 pub use writer::facts::{CachedFacts, FactsStatus, NewFacts};
 pub use writer::{CommitStats, Writer};

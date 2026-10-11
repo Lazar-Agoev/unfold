@@ -1,9 +1,9 @@
 //! Writing the folder-wide records: entrances and their targets, inputs, applications,
-//! memberships, and metadata.
+//! memberships, launch records, and metadata.
 
 use rusqlite::Connection;
 use rustc_hash::FxHashSet;
-use unfold_core::{Entrance, InputRecord, Key};
+use unfold_core::{Entrance, InputRecord, Key, Launches};
 
 use super::graph::Apply;
 use crate::error::Result;
@@ -142,7 +142,7 @@ impl Apply<'_, '_> {
         Ok(())
     }
 
-    /// Replaces the applications. An application's ID is its startup key's ID.
+    /// Replaces the applications.
     pub(crate) fn write_applications(
         &mut self,
         conn: &Connection,
@@ -150,13 +150,16 @@ impl Apply<'_, '_> {
     ) -> Result<()> {
         conn.prepare_cached("DELETE FROM applications")?.execute([])?;
         let mut insert = conn.prepare_cached(
-            "INSERT INTO applications (id, startup_key_id, name, language) VALUES (?1, ?1, ?2, ?3)",
+            "INSERT INTO applications (id, name, description, declared, category) VALUES (?1, ?2, ?3, ?4, ?5)",
         )?;
         for application in applications {
-            let id = self
-                .mirror
-                .intern(&application.startup, &mut self.st.insert_key)?;
-            insert.execute((id, &*application.name, application.language.as_str()))?;
+            insert.execute((
+                &*application.id,
+                &*application.name,
+                application.description.as_deref(),
+                application.declared,
+                application.category.as_str(),
+            ))?;
         }
         Ok(())
     }
@@ -164,12 +167,12 @@ impl Apply<'_, '_> {
     /// Replaces the memberships.
     pub(crate) fn write_memberships(&mut self, conn: &Connection, memberships: &[Membership]) -> Result<()> {
         conn.prepare_cached("DELETE FROM memberships")?.execute([])?;
-        let mut insert =
-            conn.prepare_cached("INSERT INTO memberships (entrance_id, application_id) VALUES (?1, ?2)")?;
+        let mut insert = conn.prepare_cached(
+            "INSERT INTO memberships (entrance_id, application, basis) VALUES (?1, ?2, ?3)",
+        )?;
         for membership in memberships {
             let entrance = self.intern(&membership.entrance)?;
-            let application = self.intern(&membership.application)?;
-            insert.execute((entrance, application))?;
+            insert.execute((entrance, &*membership.application, membership.basis.as_str()))?;
         }
         Ok(())
     }
@@ -177,6 +180,18 @@ impl Apply<'_, '_> {
     fn intern(&mut self, key: &Key) -> Result<i64> {
         self.mirror.intern(key, &mut self.st.insert_key)
     }
+}
+
+/// Writes the launch records.
+pub(crate) fn write_launches(conn: &Connection, launches: &Launches) -> Result<()> {
+    // Strings, numbers, and keys: serializing can't fail.
+    let text = serde_json::to_string(launches).unwrap_or_default();
+    conn.prepare_cached(
+        "INSERT INTO meta (key, value) VALUES (?1, ?2) \
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+    )?
+    .execute((meta_key::LAUNCHES, text))?;
+    Ok(())
 }
 
 /// Writes the graph metadata.

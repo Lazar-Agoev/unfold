@@ -6,7 +6,7 @@
 //! 1. removed files;
 //! 2. changed files (row, then blocks and slots, edges, and definitions as the change says);
 //! 3. entrance removals and upserts;
-//! 4. inputs, applications, and memberships, when supplied;
+//! 4. inputs, applications, memberships, and launch records, when supplied;
 //! 5. metadata.
 //!
 //! [`Writer::replace`] applies an update that describes the whole graph the same way, and also
@@ -30,6 +30,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use rusqlite::Connection;
+use unfold_core::Launches;
 
 use self::graph::Apply;
 use self::mirror::Mirror;
@@ -172,7 +173,7 @@ impl Writer {
 
     /// Makes the stored graph exactly `update`, in one transaction: like [`Writer::commit`],
     /// and every stored file not in [`Update::files`] and every stored entrance not in
-    /// `entrances.upserts` is removed; `None` inputs, applications, or memberships mean empty
+    /// `entrances.upserts` is removed; `None` inputs, applications, memberships, or launches mean empty
     /// sets. For a full rewrite of a database whose contents the caller does not track, such as
     /// after a failed commit: readers keep the previous graph until this one commits.
     pub fn replace(&mut self, update: &Update<'_>) -> Result<CommitStats> {
@@ -282,6 +283,11 @@ impl Writer {
         }
         if let Some(memberships) = mode.set(update.memberships) {
             apply.write_memberships(conn, memberships)?;
+        }
+        match (update.launches, mode) {
+            (Some(launches), _) => catalog::write_launches(conn, launches)?,
+            (None, Mode::Replace) => catalog::write_launches(conn, &Launches::default())?,
+            (None, Mode::Delta) => {}
         }
         if let Some(meta) = &update.meta {
             catalog::write_meta(conn, meta)?;

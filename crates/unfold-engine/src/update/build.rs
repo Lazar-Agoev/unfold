@@ -6,9 +6,10 @@ use std::time::Instant;
 
 use rayon::prelude::*;
 
+use rustc_hash::FxHashMap;
 use unfold_core::validate::{Subject, Violation};
-use unfold_core::vocab::FileState;
-use unfold_core::{Entrance, FileGraph, FileTypes, Graph, InputRecord, RepoPath, Snapshot};
+use unfold_core::vocab::{DetectorId, FileState};
+use unfold_core::{Entrance, FileGraph, FileTypes, Graph, InputRecord, Launches, RepoPath, Snapshot};
 
 use super::run::evidence_records;
 use super::state::State;
@@ -16,7 +17,9 @@ use super::targets::FolderTargets;
 use super::{Engine, Stage, UpdateError, UpdateStats};
 use crate::cancel::CancelToken;
 use crate::edges::{FileLinks, program_links_checked};
-use crate::entrances::{self, manual_candidates};
+use crate::entrances::{
+    self, CandidateEvidence, EntranceCandidate, TargetCandidate, launches, manual_candidates,
+};
 use crate::error::BackendError;
 use crate::language::{Language, LanguageProblem, Linked, ProjectInputs};
 use crate::program::{BlockRef, FactsSet, FileId, ProgramFile};
@@ -38,10 +41,13 @@ pub(crate) struct BuildInput<'a> {
     pub(crate) cancel: &'a CancelToken,
 }
 
-/// What the build stages produce: the validated graph and the problems linking found.
+/// What the build stages produce: the validated graph, its launch records, and the problems
+/// linking found.
 pub(crate) struct Built {
     pub(crate) graph: Graph,
-    /// Every language's [`Linked::problems`], in language order.
+    pub(crate) launches: Launches,
+    /// Every language's [`Linked::problems`], in language order, then the overrides that match no
+    /// detected launch.
     pub(crate) problems: Vec<LanguageProblem>,
 }
 
@@ -96,9 +102,12 @@ pub(crate) fn build(input: &BuildInput<'_>, stats: &mut UpdateStats) -> Result<B
     cancel.check()?;
 
     let started = Instant::now();
+    let linked_refs: Vec<&dyn Linked> = linked.iter().map(|linked| linked.as_ref()).collect();
+    let plans = launches::plans(settings, &project.inputs, &engine.root_text);
+    let starts = launches::starts(settings, &plans, &linked_refs);
     // Detection order: manual declarations, then each language's detectors in language order.
     let mut candidates = if state.settings.source.is_some() {
-        manual_candidates(settings)
+        manual_candidates(settings, &starts)
     } else {
         Vec::new()
     };
@@ -106,7 +115,7 @@ pub(crate) fn build(input: &BuildInput<'_>, stats: &mut UpdateStats) -> Result<B
         cancel.check()?;
         candidates.extend(entrances::detect(resolver, settings));
     }
-    let linked_refs: Vec<&dyn Linked> = linked.iter().map(|linked| linked.as_ref()).collect();
+    let script_modules = script_modules(&candidates);
     let targets = FolderTargets {
         root: &engine.root,
         root_text: &engine.root_text,
@@ -116,6 +125,15 @@ pub(crate) fn build(input: &BuildInput<'_>, stats: &mut UpdateStats) -> Result<B
     };
     let resolver_refs: Vec<&Resolver<'_>> = resolvers.iter().collect();
     let entrances = entrances::assemble(&program, &resolver_refs, &targets, candidates)?;
+    let records = launches::RecordInput {
+        settings,
+        plans: &plans,
+        starts: &starts,
+        inputs: &project.inputs,
+        program: &program,
+        script_modules: &script_modules,
+    };
+    let (launches, orphans) = launches::records(&records, &entrances);
     stats.stages.insert(Stage::Detect, started.elapsed());
     cancel.check()?;
 
@@ -176,8 +194,40 @@ pub(crate) fn build(input: &BuildInput<'_>, stats: &mut UpdateStats) -> Result<B
     if !violations.is_empty() {
         return Err(UpdateError::Validation(violations));
     }
-    let problems = linked_refs.iter().flat_map(|linked| linked.problems()).collect();
-    Ok(Built { graph, problems })
+    let problems = linked_refs
+        .iter()
+        .flat_map(|linked| linked.problems())
+        .chain(orphans)
+        .collect();
+    Ok(Built {
+        graph,
+        launches,
+        problems,
+    })
+}
+
+/// The module root each console script's callable is defined in, by the script's evidence path
+/// and pointer: what the script runs before calling it.
+fn script_modules(candidates: &[EntranceCandidate]) -> FxHashMap<(RepoPath, Box<str>), BlockRef> {
+    candidates
+        .iter()
+        .filter(|candidate| candidate.detector == DetectorId::PyprojectScript)
+        .filter_map(
+            |candidate| match (&candidate.evidence, candidate.targets.first()) {
+                (
+                    CandidateEvidence::Input { path, pointer, .. },
+                    Some(TargetCandidate::Block { block, .. }),
+                ) if block.local != 0 => {
+                    let root = BlockRef {
+                        file: block.file,
+                        local: 0,
+                    };
+                    Some(((path.clone(), pointer.clone()), root))
+                }
+                _ => None,
+            },
+        )
+        .collect()
 }
 
 /// The inputs that shaped the graph: the settings file when settings came from it, what each

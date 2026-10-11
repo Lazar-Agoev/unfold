@@ -1,7 +1,8 @@
 /**
  * Settings (docs/engine.md#shared-config): Project settings (Scope, Detectors, General's name, and the guard on
- * unsaved edits), the manual entrance editor (from the project menu, from Home, and from a card), and
- * Preferences (the theme, and a key binding stored by action id).
+ * unsaved edits), the launch editor (a handler entrance from the project menu, Home, and a card; a
+ * configured Python launch with its live preview), and Preferences (the theme, and a key binding
+ * stored by action id).
  */
 
 import { join } from "node:path";
@@ -10,6 +11,7 @@ import { card, cardMenu } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { CREATE_ORDER, launchCompiled, traceEntrance } from "../src/flows";
 import {
+  applicationRow,
   dialog,
   entranceRow,
   expectGraphCurrent,
@@ -20,6 +22,7 @@ import {
   projectMenu,
   projectRow,
   showHome,
+  showEntrances,
   sidebar,
   stateLine,
   toast,
@@ -82,6 +85,19 @@ async function expectUnreached(page: Page, kind: string, trigger: string): Promi
   await expect(entranceRow(page, kind, trigger)).toBeVisible();
 }
 
+/** Waits until How it starts shows ts-orders' node-cron schedule, expanding the applications as they load. */
+async function expectSchedule(page: Page): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        await showEntrances(page);
+        return await entranceRow(page, "SCHEDULE", "*/15 * * * *").count();
+      },
+      { timeout: 30_000 },
+    )
+    .toBeGreaterThan(0);
+}
+
 async function definitionNames(page: Page, project: string, query: string): Promise<string[]> {
   const found = await invoke<SearchResults>(page, "search", { query, kinds: ["definitions"], projects: [project] });
   return found.definitions.hits.map((hit) => hit.name);
@@ -127,7 +143,7 @@ test.describe("project settings", () => {
     });
 
     await test.step("Detectors: turning node-cron schedules off removes the schedules from How it starts", async () => {
-      await expect(entranceRow(page, "SCHEDULE", "*/15 * * * *")).toBeVisible();
+      await expectSchedule(page);
       await projectMenu(page, "ts-orders", "Settings…");
       const detectors = await showSection(settings, "Detectors");
       await detectors.getByRole("switch", { name: "node-cron schedules" }).click();
@@ -135,6 +151,7 @@ test.describe("project settings", () => {
       await saveSettings(page, settings);
       expect(readFile(config)).toContain("node-cron.schedule");
       await expect(entranceRow(page, "SCHEDULE", "*/15 * * * *")).toHaveCount(0, { timeout: 30_000 });
+      await showEntrances(page);
       await expect(entranceRow(page, "POST", "/orders")).toBeVisible();
     });
 
@@ -143,7 +160,7 @@ test.describe("project settings", () => {
       const detectors = await showSection(settings, "Detectors");
       await detectors.getByRole("switch", { name: "node-cron schedules" }).click();
       await saveSettings(page, settings);
-      await expect(entranceRow(page, "SCHEDULE", "*/15 * * * *")).toBeVisible({ timeout: 30_000 });
+      await expectSchedule(page);
     });
 
     await test.step("closing with a staged edit asks to discard it", async () => {
@@ -175,22 +192,27 @@ test.describe("project settings", () => {
   });
 });
 
-test.describe("the entrance editor", () => {
+test.describe("the launch editor", () => {
   test("add a manual entrance from the project menu, edit and remove it from Home, and start one from a card", async ({ sandbox, launch }) => {
     const { page, folders } = await launchCompiled(launch, sandbox);
     const config = join(folders[0] ?? "", "unfold.toml");
     const editor = dialog(page, "Add entrance");
 
-    await test.step("project menu › Add entrance… opens the editor; a command entrance is saved to unfold.toml", async () => {
+    await test.step("project menu › Add entrance… opens the launch editor; a CLI command entrance is saved to unfold.toml", async () => {
       await projectMenu(page, "ts-orders", "Add entrance…");
+      const launchEditor = dialog(page, "Add launch");
+      await expect(launchEditor).toBeVisible();
+      await launchEditor.getByRole("radio", { name: "Handles a route, queue, or event" }).click();
       await expect(editor).toBeVisible();
-      await expect(editor.getByRole("radio", { name: "Command" })).toBeChecked();
+      await expect(editor.getByRole("combobox", { name: "Kind" })).toHaveValue("command");
       await enterText(editor.getByRole("textbox", { name: "Trigger" }), "metrics");
       await enterText(editor.getByRole("textbox", { name: "Handler 1" }), "src/jobs/report.ts#reportMetrics");
-      await editor.getByRole("button", { name: "Add entrance", exact: true }).click();
+      await editor.getByRole("button", { name: "Save entrance", exact: true }).click();
       await expect(editor).toBeHidden();
-      await dismiss(toast(page, "Added the entrance in unfold.toml"));
-      expect(readFile(config)).toContain('trigger = "metrics"');
+      await dismiss(toast(page, "metrics is saved in unfold.toml."));
+      const text = readFile(config);
+      expect(text).toContain('id = "metrics"');
+      expect(text).toContain('trigger = "metrics"');
     });
 
     await test.step("the manual entrance shows on Home under How it starts (not reached from a launch)", async () => {
@@ -207,10 +229,12 @@ test.describe("the entrance editor", () => {
       await enterText(edit.getByRole("textbox", { name: "Trigger" }), "stats");
       await edit.getByRole("button", { name: "Save", exact: true }).click();
       await expect(edit).toBeHidden();
-      await dismiss(toast(page, "Saved the entrance in unfold.toml"));
+      await dismiss(toast(page, "stats is saved in unfold.toml."));
       await expectUnreached(page, "COMMAND", "stats");
       await expect(entranceRow(page, "COMMAND", "metrics")).toHaveCount(0);
       const text = readFile(config);
+      // The ID stays; only the trigger changes.
+      expect(text).toContain('id = "metrics"');
       expect(text).toContain('trigger = "stats"');
       expect(text).not.toContain('trigger = "metrics"');
     });
@@ -218,7 +242,7 @@ test.describe("the entrance editor", () => {
     await test.step("its row's menu Remove… removes it after asking", async () => {
       await entranceRow(page, "COMMAND", "stats").click({ button: "right" });
       await page.getByRole("menu", { name: "Entrance menu" }).getByRole("menuitem", { name: "Remove…" }).click();
-      const confirm = dialog(page, "Remove entrance");
+      const confirm = dialog(page, "Remove from unfold.toml");
       await expect(confirm).toBeVisible();
       await confirm.getByRole("button", { name: "Remove", exact: true }).click();
       await expect(entranceRow(page, "COMMAND", "stats")).toHaveCount(0);
@@ -227,11 +251,12 @@ test.describe("the entrance editor", () => {
       expect(readFile(config)).toContain('trigger = "import"');
     });
 
-    await test.step("Home's Add entrance opens the editor too", async () => {
-      await howItStarts(page).getByRole("button", { name: "Add entrance", exact: true }).click();
-      await expect(editor).toBeVisible();
-      await editor.getByRole("button", { name: "Cancel", exact: true }).click();
-      await expect(editor).toBeHidden();
+    await test.step("Home's Add launch opens the editor too", async () => {
+      await howItStarts(page).getByRole("button", { name: "Add launch", exact: true }).click();
+      const launchEditor = dialog(page, "Add launch");
+      await expect(launchEditor).toBeVisible();
+      await launchEditor.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(launchEditor).toBeHidden();
     });
 
     await test.step("a card's Add as entrance… prefills the handler with the card's definition", async () => {
@@ -242,6 +267,48 @@ test.describe("the entrance editor", () => {
       await editor.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(editor).toBeHidden();
       await showHome(page);
+    });
+  });
+
+  test("add a configured Python launch with its command, previewing what Unfold reads", async ({ sandbox, launch }) => {
+    const { page, folders } = await launchCompiled(launch, sandbox, ["py-orders"]);
+    const config = join(folders[0] ?? "", "unfold.toml");
+    const editor = dialog(page, "Add launch");
+
+    await test.step("the editor previews the command's parts, what it starts, and its import path", async () => {
+      await projectMenu(page, "py-orders", "Add entrance…");
+      await expect(editor).toBeVisible();
+      await expect(editor.getByRole("textbox", { name: "Command" })).toBeFocused();
+      await enterText(editor.getByRole("textbox", { name: "Command" }), "uvicorn orders_playground.server:app --host 0.0.0.0 --port $PORT");
+      await editor.getByRole("button", { name: "Runs in py-orders" }).click();
+      await editor.getByRole("button", { name: "src", exact: true }).click();
+      await expect(editor.getByRole("button", { name: "Runs in src" })).toBeVisible();
+      const preview = editor.getByRole("complementary", { name: "What Unfold reads" });
+      await expect(preview.getByText("orders_playground.server:app", { exact: true })).toBeVisible();
+      await expect(preview.getByRole("heading", { name: "Starts" })).toBeVisible();
+      await expect(preview).toContainText("src/orders_playground/server.py");
+      await expect(preview.getByRole("heading", { name: "Imports resolve from, in order" })).toBeVisible();
+    });
+
+    await test.step("saving writes the launch and its new application to unfold.toml, keeping its comments", async () => {
+      await editor.getByRole("combobox", { name: "Application" }).selectOption({ label: "New application…" });
+      await enterText(editor.getByRole("textbox", { name: "Application" }), "Orders API");
+      await enterText(editor.getByRole("textbox", { name: "Launch name" }), "Start API");
+      await editor.getByRole("button", { name: "Save launch", exact: true }).click();
+      await expect(editor).toBeHidden();
+      await expect(toast(page, "Start API is saved in unfold.toml.")).toBeVisible();
+      const text = readFile(config);
+      expect(text).toContain("# Unfold settings for the py-orders playground.");
+      expect(text).toContain('id = "orders-api"');
+      expect(text).toContain('name = "Orders API"');
+      expect(text).toContain('id = "orders-api-start-api"');
+      expect(text).toContain('command = "uvicorn orders_playground.server:app --host 0.0.0.0 --port $PORT"');
+      expect(text).toContain('cwd = "src"');
+    });
+
+    await test.step("How it starts lists the launch under its application", async () => {
+      await expect(applicationRow(page, "Orders API")).toBeVisible({ timeout: 30_000 });
+      await expect(applicationRow(page, "Orders API")).toContainText("uvicorn orders_playground.server:app");
     });
   });
 });

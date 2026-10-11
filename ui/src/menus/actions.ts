@@ -177,7 +177,7 @@ export function openSettings(project: ProjectId, section?: ProjectSettingsSectio
 }
 
 export function addEntrance(project: ProjectId): void {
-  openDialog({ kind: "entranceEditor", project, mode: "add" });
+  openDialog({ kind: "launchEditor", project, mode: "add" });
 }
 
 /** Health and activity: the project's Home on its Health view. */

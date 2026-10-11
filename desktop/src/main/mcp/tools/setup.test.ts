@@ -52,7 +52,7 @@ describe("compile_project", () => {
     expect(app.engineCalls[1]).toEqual(["compile", { project: PROJECT, mode: "from_scratch" }]);
     expect(text.split("\n").slice(1)).toEqual([
       "Compiled ts-orders in 3.2 s: 34 files (34 added or changed, 0 removed), 18 entrances changed; 0 problems.",
-      "4 applications: cli, scheduler, server, worker.",
+      "5 applications: server, cli, legacy:export, worker, scheduler.",
       "Next: list_entrances to see how it starts, or search to find code.",
     ]);
   });

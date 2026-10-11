@@ -1,0 +1,71 @@
+languages = ["python"]
+
+[[application]]
+id = "invoice-hitl-api"
+name = "Invoice HITL API"
+description = "Invoice upload and human review."
+
+[[application]]
+id = "billing"
+name = "Billing"
+
+[[entrance]]
+id = "invoice-hitl-api"
+kind = "process"
+application = "invoice-hitl-api"
+label = "Start API"
+cwd = "data-pipelines"
+command = "uvicorn api.main:app --host 0.0.0.0 --port 8000"
+
+[[entrance]]
+id = "dashboard-builder"
+kind = "process"
+cwd = "data-pipelines"
+command = "sh -c \"uvicorn dashboard_builder.app:app --port $PORT\""
+
+[[entrance]]
+id = "dashboard-builder-fixed"
+kind = "process"
+cwd = "data-pipelines"
+command = "sh -c \"uvicorn dashboard_builder.app:app --port $PORT\""
+target = { type = "python_asgi", module = "dashboard_builder.app", attribute = "app" }
+
+[[entrance]]
+id = "recipe-cost-api"
+kind = "process"
+command = "python3 -m uvicorn api:app --app-dir food-cost --host 0.0.0.0 --port $PORT"
+
+[[entrance]]
+id = "token-refresh-daily"
+kind = "process"
+label = "Token refresh"
+cwd = "data-pipelines"
+command = "python jobs/token_refresh.py"
+schedule = "30 7 * * *"
+
+[[entrance]]
+id = "review-worker"
+kind = "process"
+command = "python -m worker.main"
+
+[[entrance]]
+id = "purchase-ingestion-eval"
+kind = "process"
+command = "python -m evals.run"
+
+[[entrance]]
+id = "nightly-invoices"
+kind = "command"
+application = "billing"
+trigger = "invoices"
+handler = "data-pipelines/jobs/token_refresh.py#refresh"
+
+[[entrance_override]]
+match = { detector = "pyproject.script", path = "pyproject.toml", pointer = "/project/scripts/review" }
+application = "billing"
+label = "Review poller"
+schedule = "0 5,11,17,23 * * *"
+
+[[entrance_override]]
+match = { detector = "pyproject.script", path = "pyproject.toml", pointer = "/project/scripts/missing" }
+label = "Gone"

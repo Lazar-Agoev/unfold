@@ -137,9 +137,9 @@ test.describe("the project menu", () => {
       await expect(settings).toBeHidden();
     });
 
-    await test.step("Add entrance… opens the entrance editor", async () => {
+    await test.step("Add entrance… opens the launch editor", async () => {
       await projectMenu(page, "ts-orders", "Add entrance…");
-      const editor = dialog(page, "Add entrance");
+      const editor = dialog(page, "Add launch");
       await expect(editor).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(editor).toBeHidden();

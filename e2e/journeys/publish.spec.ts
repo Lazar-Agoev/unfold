@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { activeBoardRef, boardMenu, boardView, clickCanvas, expectCardsLoaded, layerRow, publishState, readBoard, type BoardFile } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { launchCompiled, traceEntrance } from "../src/flows";
-import { boardTab, dialog, entranceRow, homeMain, homeTab, showHome, sidebar, toast } from "../src/home";
+import { boardTab, dialog, entranceRow, homeMain, homeTab, showEntrances, showHome, sidebar, toast } from "../src/home";
 import { boardFiles, describeSelected, DRAFTS, expectBoardFile, firstDescription, PUBLISHED } from "../src/lifecycle";
 
 const DRAFT_ID = /^\.unfold\/local\/drafts\/board-\d+(-\d+)?\.json$/;
@@ -37,6 +37,7 @@ test.describe("publishing", () => {
     let traced = "";
     await test.step("a new board is a draft, on this machine only, saved with its cards in place", async () => {
       // Leave the board as soon as the trace draws it: nothing may move its cards after that step.
+      await showEntrances(page);
       await entranceRow(page, "POST", "/orders").click();
       await expect(boardView(page).locator(".entrance-card")).toBeAttached();
       const { id } = await activeBoardRef(page);

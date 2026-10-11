@@ -130,7 +130,9 @@ fn reopening_restores_facts_and_checks_stamps() {
     folder.write("lib/util.ts", &template(2, 1));
 
     let mut reopened = engine_with(&folder, Arc::clone(&language), cache, 2);
-    let restored = reopened.restore(graph, disks, None).expect("restore");
+    let restored = reopened
+        .restore(graph, Default::default(), disks, None)
+        .expect("restore");
     assert_eq!((restored.files, restored.restored, restored.missing), (6, 6, 0));
     assert_eq!(reopened.graph().files.len(), 6);
     let outcome = reopened.update(UpdateRequest::reopen()).expect("reopen check");
@@ -160,7 +162,9 @@ fn restored(
         .filter_map(|file| Some((file.file.path.clone(), engine.disk_state(&file.file.path)?)))
         .collect();
     let mut reopened = engine_with(folder, Counting::new(), Arc::clone(cache), 2);
-    reopened.restore(graph, disks, basis).expect("restore");
+    reopened
+        .restore(graph, Default::default(), disks, basis)
+        .expect("restore");
     reopened
 }
 

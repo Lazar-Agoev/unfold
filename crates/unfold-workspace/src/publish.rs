@@ -26,7 +26,9 @@ pub(crate) fn committed(
     rescanned: bool,
 ) -> CompileOutcome {
     let graph = &outcome.graph;
-    shared.reader_cache.install(ReaderIndex::from_graph(graph));
+    shared
+        .reader_cache
+        .install(ReaderIndex::from_graph(graph, &outcome.launches));
     let mut languages: Vec<_> = graph.files.iter().map(|file| file.file.language).collect();
     languages.sort();
     languages.dedup();

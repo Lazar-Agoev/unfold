@@ -378,7 +378,7 @@ fn application_names(reader: &Reader, entrance: &str) -> CommandResult<Vec<Strin
         .filter_map(|membership| {
             applications
                 .iter()
-                .find(|application| application.startup == membership.application)
+                .find(|application| application.id == membership.application)
                 .map(|application| application.name.to_string())
         })
         .collect())

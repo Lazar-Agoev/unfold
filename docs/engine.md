@@ -242,8 +242,18 @@ Constant object-literal function members agree with ordinary call resolution whe
 has evidence. Annotated or mutable object cases may differ deliberately: a manual locator
 selects a written direct member, while a call must prove its runtime binding. Line locators
 follow line numbers after edits; prefer names. Evidence is the config table's exact range and
-`/entrance/<index>` pointer. A process without a `startup` keeps one unsupported target, its
-command or target as written, until the launch planner reads it.
+`/entrance/<index>` pointer.
+
+A process without a `startup` is planned before linking, and each Python plan's entry and import
+path become one of the linker's launch contexts. After linking, its one startup target resolves:
+a file like a package script's launch path, a Python target through the Python linker with that
+launch's context (a module, a package's `__main__`, or a top-level binding). A launch Unfold can't
+read keeps one unsupported target, its command as written. Beside the graph, the engine keeps a
+record per launch: its presentation (label, description, schedule, application), folder and
+command, import path with origins, problem, whether its target was set by hand, and the blocks it
+runs first (the packages a module initializes, the module of a callable or application). A
+detected launch's record takes the presentation of the `[[entrance_override]]` matching its
+detector, file, and pointer; an override that matches nothing is a problem.
 
 ## Entrance detectors
 

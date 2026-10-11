@@ -42,7 +42,7 @@ use crate::events::WorkspaceEvent;
 use crate::facts_cache::StoreFactsCache;
 use crate::lock::FolderLock;
 use crate::publish;
-use crate::shared::{Job, Running, Shared, fallback_of, lock};
+use crate::shared::{Job, LinkInputs, Running, Shared, fallback_of, lock};
 use crate::state::write_json;
 use crate::status::{Activity, WatchMode};
 use crate::storage::open_store;
@@ -404,8 +404,9 @@ impl EngineThread {
         let restored = loaded.and_then(|loaded| {
             let engine = self.engine.as_mut().ok_or(WorkspaceError::NotCompiled)?;
             engine
-                .restore(loaded.graph, loaded.disks, loaded.basis)
+                .restore(loaded.graph, loaded.launches, loaded.disks, loaded.basis)
                 .map_err(|error| WorkspaceError::Update(error.to_string()))?;
+            *lock(&self.shared.linked_from) = Some(Arc::new(LinkInputs::of(engine)));
             Ok(loaded.committed)
         });
         match restored {
@@ -529,6 +530,7 @@ impl EngineThread {
             )?),
         };
         let outcome = engine.adopt(prepared).map_err(update_error)?;
+        *lock(&shared.linked_from) = Some(Arc::new(LinkInputs::of(engine)));
         let stats = match next {
             Some((stats, next)) => {
                 self.committed = Some(next);

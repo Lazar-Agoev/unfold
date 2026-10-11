@@ -9,7 +9,7 @@
 
 use rustc_hash::FxHashMap;
 use unfold_core::vocab::{BlockKind, DetectorId, EdgeKind, EntranceKind, Language, Resolution, Role};
-use unfold_core::{Block, Entrance, FileGraph, Graph, Key, RepoPath};
+use unfold_core::{Block, Entrance, FileGraph, Graph, Key, Launches, RepoPath};
 
 /// A block's number in an index: its position across all files, in graph (path, then preorder)
 /// order.
@@ -110,6 +110,10 @@ pub(crate) struct EntranceFact {
     pub first: BlockId,
     /// Every target resolved to an indexed block, in position order.
     pub resolved: Box<[BlockId]>,
+    /// The application binding a route's mount chain reaches, or [`NONE`].
+    pub binding: BlockId,
+    /// For a launch, the indexed blocks it runs besides its startup ([`unfold_core::Launch::seeds`]).
+    pub seeds: Box<[BlockId]>,
 }
 
 /// Items grouped into numbered buckets, in insertion order within each bucket.
@@ -171,14 +175,14 @@ pub struct GraphIndex {
 }
 
 impl GraphIndex {
-    /// Indexes `graph`. Block numbers follow its file order, so block `i` of file `f` is
+    /// Indexes `graph` with its launch records. Block numbers follow its file order, so block `i` of file `f` is
     /// [`GraphIndex::file_start`]`(f) + i`.
-    pub fn from_graph(graph: &Graph) -> Self {
+    pub fn from_graph(graph: &Graph, launches: &Launches) -> Self {
         let mut builder = GraphIndexBuilder::new();
         for file in &graph.files {
             builder.add_file(file);
         }
-        builder.finish(&graph.entrances)
+        builder.finish(&graph.entrances, launches)
     }
 
     /// The number of blocks.
@@ -369,8 +373,9 @@ impl GraphIndexBuilder {
         }
     }
 
-    /// Resolves edge and entrance targets to block numbers and groups edges and classes.
-    pub fn finish(mut self, entrances: &[Entrance]) -> GraphIndex {
+    /// Resolves edge and entrance targets (and launch seeds) to block numbers and groups edges
+    /// and classes.
+    pub fn finish(mut self, entrances: &[Entrance], launches: &Launches) -> GraphIndex {
         let by_key: FxHashMap<Key, BlockId> = self
             .keys
             .iter()
@@ -398,6 +403,11 @@ impl GraphIndexBuilder {
             .filter(|&id| self.kind[id] == BlockKind::Class && self.owner[id] != to_u32(id))
             .map(|id| (self.owner[id], to_u32(id)))
             .collect();
+        let seeds: FxHashMap<&str, &[Key]> = launches
+            .launches
+            .iter()
+            .map(|launch| (launch.entrance.as_str(), &launch.seeds[..]))
+            .collect();
         let entrances = entrances
             .iter()
             .map(|entrance| {
@@ -415,6 +425,12 @@ impl GraphIndexBuilder {
                     evidence_block: lookup(entrance.evidence.block.as_ref()).unwrap_or(NONE),
                     first: entrance.targets.first().and_then(resolved).unwrap_or(NONE),
                     resolved: entrance.targets.iter().filter_map(resolved).collect(),
+                    binding: lookup(entrance.binding.as_ref()).unwrap_or(NONE),
+                    seeds: seeds
+                        .get(entrance.key.as_str())
+                        .map_or_else(Box::default, |seeds| {
+                            seeds.iter().filter_map(|key| lookup(Some(key))).collect()
+                        }),
                 }
             })
             .collect();

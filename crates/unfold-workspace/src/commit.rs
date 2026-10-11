@@ -8,7 +8,7 @@
 //!   changed (`FileChange::between` compares structure and edges; definitions and stamps are
 //!   compared here against the committed ones);
 //! - removed files, entrance changes by key (`EntranceChanges::between`), and the inputs,
-//!   applications, and memberships when they changed;
+//!   applications, memberships, and launch records when they changed;
 //! - the graph metadata, every time.
 //!
 //! When the workspace doesn't know what the store holds (a first compile, a recreated or cleared
@@ -23,7 +23,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rustc_hash::FxHashMap;
-use unfold_core::{ContentHash, Graph, RepoPath};
+use unfold_core::{ContentHash, Graph, Launches, RepoPath};
 use unfold_engine::discovery::FileStamp;
 use unfold_engine::update::DiskState;
 use unfold_engine::{CancelToken, Engine, LinkBasis, PreparedUpdate, UpdateOutcome};
@@ -36,13 +36,14 @@ use unfold_store::{
 use crate::error::{Result, WorkspaceError};
 
 /// What the store holds besides the graph the engine remembers: each file's disk stamp, the
-/// reader projections, and the graph metadata. It lets a commit skip rows that didn't change.
+/// reader projections, the launch records, and the graph metadata. It lets a commit skip rows that didn't change.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Committed {
     stamps: FxHashMap<RepoPath, DiskStamp>,
     definitions: FxHashMap<RepoPath, Vec<Definition>>,
     applications: Vec<Application>,
     memberships: Vec<Membership>,
+    launches: Arc<Launches>,
     meta: Option<GraphMeta>,
 }
 
@@ -130,6 +131,7 @@ pub(crate) fn unchanged(engine: &Engine, prepared: &PreparedUpdate, committed: &
         ..graph_meta(engine, prepared)
     };
     Arc::ptr_eq(graph, &outcome.previous)
+        && outcome.launches == committed.launches
         && meta == *stored
         && committed.stamps.len() == graph.files.len()
         && graph.files.iter().all(|file| {
@@ -153,7 +155,7 @@ pub(crate) fn commit(
     let cancelled = || cancel.is_some_and(CancelToken::is_cancelled);
     let outcome = prepared.outcome();
     let graph = &outcome.graph;
-    let projections = project(graph);
+    let projections = project(graph, &outcome.launches);
     if cancelled() {
         return Err(WorkspaceError::Cancelled);
     }
@@ -185,6 +187,7 @@ pub(crate) fn commit(
         definitions: FxHashMap::with_capacity_and_hasher(graph.files.len(), Default::default()),
         applications,
         memberships,
+        launches: Arc::clone(&outcome.launches),
         meta: Some(meta),
     };
     for ((file, stamp), definitions) in graph.files.iter().zip(stamps).zip(definitions) {
@@ -218,6 +221,7 @@ fn build<'a>(
             entrances: EntranceChanges::all(&graph.entrances),
             applications: Some(&projections.applications),
             memberships: Some(&projections.memberships),
+            launches: Some(&outcome.launches),
             meta: Some(meta),
         };
     };
@@ -262,14 +266,16 @@ fn build<'a>(
             .then_some(&projections.applications[..]),
         memberships: (committed.memberships != projections.memberships)
             .then_some(&projections.memberships[..]),
+        launches: (committed.launches != outcome.launches).then_some(&*outcome.launches),
         meta: Some(meta),
     }
 }
 
-/// The committed graph, its files' disk states, what it was linked from, and what the store
+/// The committed graph, its launch records, its files' disk states, what it was linked from, and what the store
 /// holds, read in one snapshot: what reopening a folder restores the engine from.
 pub(crate) struct Loaded {
     pub(crate) graph: Graph,
+    pub(crate) launches: Launches,
     pub(crate) disks: Vec<(RepoPath, DiskState)>,
     pub(crate) basis: Option<LinkBasis>,
     pub(crate) committed: Committed,
@@ -279,12 +285,14 @@ pub(crate) struct Loaded {
 pub(crate) fn load(reader: &Reader) -> Result<Loaded> {
     Ok(reader.snapshot(|reader| {
         let graph = reader.graph()?;
+        let launches = reader.launches()?;
         let rows = reader.files()?;
         let meta = reader.meta()?.graph;
         let basis = meta.as_ref().and_then(|meta| LinkBasis::decode(&meta.link_basis));
         let mut committed = Committed {
             applications: reader.applications()?,
             memberships: reader.memberships()?,
+            launches: Arc::new(launches.clone()),
             meta,
             ..Committed::default()
         };
@@ -320,6 +328,7 @@ pub(crate) fn load(reader: &Reader) -> Result<Loaded> {
         }
         Ok(Loaded {
             graph,
+            launches,
             disks,
             basis,
             committed,

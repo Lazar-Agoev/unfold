@@ -21,26 +21,12 @@ const ORDER: &str = "src/types.ts#interface:Order";
 
 /// The key of the worker entrance on queue `queue`.
 fn worker(harness: &Harness, queue: &str) -> String {
-    let map = harness.ok(
-        1,
-        "entrances",
-        json!({ "project": harness.project, "filter": queue, "perApplication": 500 }),
-    );
-    let rows = map["applications"]
-        .as_array()
-        .expect("applications")
-        .iter()
-        .flat_map(|application| application["entrances"].as_array().expect("entrances").clone())
-        .chain(
-            map["unreached"]["entrances"]
-                .as_array()
-                .expect("unreached")
-                .clone(),
-        );
-    rows.into_iter()
+    harness
+        .entrance_rows(Some(queue))
+        .into_iter()
         .find(|row| row["kind"] == "worker" && row["trigger"] == queue)
         .and_then(|row| row["key"].as_str().map(str::to_owned))
-        .unwrap_or_else(|| panic!("no worker on {queue} in {map}"))
+        .unwrap_or_else(|| panic!("no worker on {queue}"))
 }
 
 /// An agent's connection.

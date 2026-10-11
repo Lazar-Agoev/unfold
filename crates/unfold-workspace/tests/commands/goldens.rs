@@ -72,19 +72,18 @@ fn representative_commands_match_their_goldens() {
     );
     golden(&harness, "callers_create_order", "callers", create_order.clone());
     golden(&harness, "preview_create_order", "preview", create_order);
-    let entrance = map["applications"]
-        .as_array()
+    let application = &map["categories"][0]["applications"][0];
+    golden(
+        &harness,
+        "entrances_first_application",
+        "entrances",
+        json!({ "application": application["id"], "limit": 4 }),
+    );
+    let entrance = harness
+        .entrance_rows(None)
         .into_iter()
-        .flatten()
-        .flat_map(|application| application["entrances"].as_array().cloned().unwrap_or_default())
-        .chain(
-            map["unreached"]["entrances"]
-                .as_array()
-                .cloned()
-                .unwrap_or_default(),
-        )
-        .next()
-        .expect("ts-orders has entrances");
+        .find(|row| row["id"] == "import")
+        .expect("ts-orders configures the import command");
     golden(
         &harness,
         "card_first_entrance",

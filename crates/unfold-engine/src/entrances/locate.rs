@@ -12,7 +12,7 @@
 
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
-use unfold_core::vocab::{DetectorId, Reason, TargetRole};
+use unfold_core::vocab::{BlockKind, DetectorId, Reason, TargetRole};
 
 use super::TargetResolver;
 use crate::error::BackendError;
@@ -82,11 +82,20 @@ fn failure(reason: Reason) -> Outcome {
     Outcome::unresolved(reason)
 }
 
+/// The block kinds a locator may name for a target with `role`: a `startup` locator names a
+/// file (a configured launch's callable or application comes from its `target` instead).
+fn locator_kinds(role: TargetRole) -> &'static [BlockKind] {
+    match role {
+        TargetRole::Startup => &[BlockKind::File],
+        TargetRole::Handler => role.target_kinds(DetectorId::Manual),
+    }
+}
+
 /// A block permitted for a manual target with `role`, or `unsupported`.
 fn resolved(program: &FactsSet, block: BlockRef, role: TargetRole) -> Outcome {
     let permitted = program
         .block(block)
-        .is_some_and(|found| role.target_kinds(DetectorId::Manual).contains(&found.kind));
+        .is_some_and(|found| locator_kinds(role).contains(&found.kind));
     if permitted {
         Outcome::Resolved(block)
     } else {
@@ -97,7 +106,7 @@ fn resolved(program: &FactsSet, block: BlockRef, role: TargetRole) -> Outcome {
 /// The outermost permitted block starting on `line`.
 fn at_line(program: &FactsSet, file: FileId, line: u64, role: TargetRole) -> Outcome {
     let blocks = program.facts(file).map_or(&[][..], |facts| facts.graph.blocks());
-    let kinds = role.target_kinds(DetectorId::Manual);
+    let kinds = locator_kinds(role);
     let on_line: Vec<u32> = blocks
         .iter()
         .filter(|block| u64::from(block.lines.start) == line)

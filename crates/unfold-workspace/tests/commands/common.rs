@@ -217,6 +217,32 @@ impl Harness {
         }
     }
 
+    /// Every entrance row of the first project (`filter`ed): each application's rows, then the
+    /// unreached ones, one full page each.
+    pub fn entrance_rows(&self, filter: Option<&str>) -> Vec<Value> {
+        let overview = self.ok(1, "entrances", json!({ "project": self.project }));
+        let mut scopes: Vec<Value> = overview["categories"]
+            .as_array()
+            .expect("categories")
+            .iter()
+            .flat_map(|category| category["applications"].as_array().cloned().unwrap_or_default())
+            .map(|application| json!({ "application": application["id"] }))
+            .collect();
+        scopes.push(json!({ "unreached": true }));
+        scopes
+            .into_iter()
+            .flat_map(|mut scope| {
+                scope["project"] = json!(self.project);
+                scope["limit"] = json!(500);
+                if let Some(filter) = filter {
+                    scope["filter"] = json!(filter);
+                }
+                let page = self.ok(1, "entrances", scope);
+                page["rows"].as_array().cloned().unwrap_or_default()
+            })
+            .collect()
+    }
+
     /// A project's row in `workspace`.
     pub fn row(&self, project: &str) -> Value {
         let workspace = self.ok(1, "workspace", json!({}));

@@ -1,9 +1,11 @@
 /**
- * Locators as people type them in the manual entrance editor (docs/engine.md, "Locator
+ * Locators as people type them in the launch editor's handler list (docs/engine.md, "Locator
  * grammar"): a syntax check that mirrors Rust's `Locator::parse` so mistakes show while typing, and
  * the locator a definition gets when it is added as an entrance. Rust stays the judge: it validates
  * again when the edit is applied and resolves locators on every compile.
  */
+
+import type { DefinitionRef } from "../state/overlays";
 
 /** The forms a locator can take, for the editor's inline help. */
 export const LOCATOR_FORMS: readonly { readonly form: string; readonly selects: string }[] = [
@@ -83,16 +85,6 @@ export function locatorLanguage(text: string): "typescript" | "python" | null {
     return "typescript";
   }
   return null;
-}
-
-/** What the editor needs to know about a definition to point a locator at it. */
-export interface DefinitionRef {
-  readonly path: string;
-  /** The block kind, such as `function` or `method`. */
-  readonly kind: string;
-  readonly name: string;
-  readonly qualifiedName: string;
-  readonly line: number | null;
 }
 
 const NAMED_KINDS: ReadonlySet<string> = new Set(["function", "class", "variable"]);

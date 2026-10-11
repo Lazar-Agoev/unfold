@@ -14,6 +14,9 @@
 //! a parameter's `optional` (1) and `default` (2); a member's `optional` (1), `readonly` (2),
 //! and `default` (4).
 //!
+//! The launch records beside the graph (`unfold_core::Launches`) are small and read whole, so
+//! they are one JSON value in `meta`.
+//!
 //! The search table uses FTS5's `trigram` tokenizer, so a query matches anywhere inside an
 //! identifier (`order` finds `createOrder` and `OrderService`), which word tokenizers cannot do
 //! for camel-case names. Ranking is the workspace's job; the index only supplies candidates.
@@ -27,7 +30,7 @@ use crate::error::Result;
 
 /// The version of the schema below. Bump it whenever a table, column, index, or the meaning of
 /// a stored value changes; existing databases are then rebuilt.
-pub const SCHEMA_VERSION: u32 = 4;
+pub const SCHEMA_VERSION: u32 = 5;
 
 /// Every table and index, created in one transaction.
 const DDL: &str = r"
@@ -146,9 +149,10 @@ CREATE TABLE entrance_targets (
 CREATE TABLE definitions (key_id INTEGER PRIMARY KEY, file_id INTEGER, local_id INTEGER,
                           kind TEXT, qualified_name TEXT);
 CREATE INDEX definitions_by_file ON definitions (file_id, local_id);
-CREATE TABLE applications (id INTEGER PRIMARY KEY, startup_key_id INTEGER, name TEXT, language TEXT);
-CREATE TABLE memberships (entrance_id INTEGER, application_id INTEGER,
-                          PRIMARY KEY (entrance_id, application_id));
+CREATE TABLE applications (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT,
+                           declared INTEGER NOT NULL, category TEXT NOT NULL);
+CREATE TABLE memberships (entrance_id INTEGER NOT NULL, application TEXT NOT NULL, basis TEXT NOT NULL,
+                          PRIMARY KEY (entrance_id, application));
 
 CREATE TABLE file_facts (
   path TEXT NOT NULL, hash BLOB NOT NULL, engine TEXT NOT NULL, settings_hash BLOB NOT NULL,
@@ -171,6 +175,7 @@ pub(crate) mod meta_key {
     pub const COMPILED_AT: &str = "compiled_at";
     pub const COMPLETE: &str = "complete";
     pub const LINK_BASIS: &str = "link_basis";
+    pub const LAUNCHES: &str = "launches";
 }
 
 /// Creates every table in an empty database and records the versions.

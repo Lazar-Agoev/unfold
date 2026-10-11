@@ -65,6 +65,8 @@ const TEXT_PAIRS: readonly (readonly [string, string])[] = [
   ["danger", "surface"],
   ["danger", "home"],
   ["warn", "warn-fill"],
+  ["success-text", "success-fill"],
+  ["success-body", "success-fill"],
   ["warn", "home"],
   ["authored", "surface"],
   ["authored", "authored-tint"],

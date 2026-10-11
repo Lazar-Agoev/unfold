@@ -112,8 +112,8 @@ async function within<T>(work: Promise<T>, seconds: number, signal: AbortSignal)
 
 /** What a finished compile did, and the applications it found. */
 async function compiledText(context: ToolContext, row: ProjectRow, outcome: CompileOutcome): Promise<string[]> {
-  const map = await context.engine("entrances", { project: row.id, perApplication: 1 }).catch(() => null);
-  const applications = map?.applications.map((application) => application.name) ?? [];
+  const view = await context.engine("entrances", { project: row.id }).catch(() => null);
+  const applications = view?.view === "overview" ? view.categories.flatMap((group) => group.applications.map((application) => application.name)) : [];
   return [
     `Compiled ${row.name} in ${(outcome.durationMs / 1000).toFixed(1)} s: ${count(outcome.files, "file")} (${outcome.changedFiles} added or changed, ${outcome.removedFiles} removed), ${count(outcome.changedEntrances, "entrance")} changed${outcome.complete ? "" : ", incomplete (some files don't parse)"}; ${count(outcome.problems, "problem")}.`,
     applications.length > 0 ? `${count(applications.length, "application")}: ${applications.join(", ")}.` : "No applications: nothing Unfold detects starts it.",

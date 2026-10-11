@@ -97,7 +97,7 @@ pub struct SearchHit {
     pub kind: String,
     /// A definition's first line.
     pub line: Option<u32>,
-    /// The name of the first application (by startup key) an entrance belongs to, as
+    /// The name of the first application (by name) an entrance belongs to, as
     /// `entrances` names applications; `None` for a definition or an entrance in none.
     pub application: Option<String>,
     /// The rank score (higher is better).

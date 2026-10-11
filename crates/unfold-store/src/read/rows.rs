@@ -166,6 +166,18 @@ pub struct IndexStats {
     pub database_bytes: u64,
 }
 
+/// The import edges of one language's files.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ImportSummary {
+    /// Imports that resolve to an indexed file.
+    pub resolved: u64,
+    /// Every import.
+    pub total: u64,
+    /// The module labels of external imports with how many imports name each, most named
+    /// first (ties by label).
+    pub external: Vec<(Box<str>, u64)>,
+}
+
 /// The `meta` table.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredMeta {
