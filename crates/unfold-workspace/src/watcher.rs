@@ -1,4 +1,4 @@
-//! The file watcher (architecture §7.5): `notify` with `notify-debouncer-full`, filtered through
+//! The file watcher (docs/engine.md#updates): `notify` with `notify-debouncer-full`, filtered through
 //! discovery's ignore rules.
 //!
 //! The folder is watched recursively. Each debounced batch of events is sorted into:

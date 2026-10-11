@@ -1,5 +1,5 @@
 //! Determinism: the canonical export of a compiled folder is identical whatever the number of
-//! threads and whatever order the files are supplied in (architecture §6.8). Extraction,
+//! threads and whatever order the files are supplied in (docs/graph-model.md#order-and-canonical-export). Extraction,
 //! linking (whose tables are built in parallel), and edge resolution all run on the rayon pool
 //! the test installs.
 

@@ -1,4 +1,4 @@
-# Every night on macOS, Windows, and Linux (architecture §15.5): full parity, long property tests,
+# Every night on macOS, Windows, and Linux (docs/testing.md#broad-gates): full parity, long property tests,
 # the performance budgets, and the packaged app end to end. Actions are pinned to commit SHAs.
 name: nightly
 

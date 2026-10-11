@@ -1,6 +1,6 @@
 /**
  * Routes messages between window ports and the engine binding. This is all the engine host does:
- * it holds no graph logic and knows nothing about projects (architecture §15.3 rule 5).
+ * it holds no graph logic and knows nothing about projects (docs/architecture.md#ownership rule 5).
  *
  * - Each window has one port. `invoke` becomes `dispatch` at once, with a host-wide request id (the
  *   addon's `cancel` takes only a request id, so ids must be unique across windows). Every window

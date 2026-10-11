@@ -1,5 +1,5 @@
 /**
- * The manual entrance editor (architecture §9.2, docs/entrances.md): add or edit one `[[entrance]]`
+ * The manual entrance editor (docs/engine.md#shared-config, docs/engine.md): add or edit one `[[entrance]]`
  * table in `.unfold/config.toml` (kind, trigger, method for HTTP, label, and handlers or, for a
  * process, its startup), and confirm removing one. Locators are checked while typing; Rust checks
  * the whole file again when the edit is applied and keeps its comments and formatting. The graph

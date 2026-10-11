@@ -1,4 +1,4 @@
-//! Settings commands (architecture §9.2, decision U-23): the app preferences, a
+//! Settings commands (docs/engine.md#shared-config, shared settings): the app preferences, a
 //! project's `.unfold/config.toml` with its shared name (read, and changed through validated
 //! edits that keep its comments), and what the UI needs to sign its edits.
 

@@ -194,7 +194,7 @@ impl Workspace {
         self.shared.status()
     }
 
-    /// The project's row state now (architecture §7.9).
+    /// The project's row state now (crates/unfold-workspace/src/status.rs).
     pub fn project_state(&self) -> ProjectState {
         self.shared.project_states().0
     }
@@ -399,7 +399,7 @@ impl Workspace {
         Ok(state)
     }
 
-    /// Checks a path a command named against the project's folder (architecture §13).
+    /// Checks a path a command named against the project's folder (docs/architecture.md#security).
     pub fn confine(&self, path: &str) -> Result<ConfinedPath> {
         confine(&self.shared.root, path)
     }

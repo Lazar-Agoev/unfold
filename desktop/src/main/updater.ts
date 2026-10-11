@@ -1,5 +1,5 @@
 /**
- * Updates (architecture §13, §14): electron-updater against GitHub Releases, the app's only network
+ * Updates (docs/architecture.md#security): electron-updater against GitHub Releases, the app's only network
  * use. Every download must match the SHA-512 hash in the release's manifest (electron-updater checks
  * it); on macOS an update installs only if it carries the running app's code signature (Squirrel.Mac
  * checks the designated requirement), and on Windows only if it is Authenticode-signed by a

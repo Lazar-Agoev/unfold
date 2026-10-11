@@ -213,7 +213,7 @@ export async function removeProject(row: Pick<ProjectRow, "id" | "name">): Promi
   }
 }
 
-/** Switches the project to another worktree's folder (decision U-41); this window's tabs of it close first. */
+/** Switches the project to another worktree's folder (worktree metadata); this window's tabs of it close first. */
 export async function switchWorktree(row: Pick<ProjectRow, "id" | "name">, path: string, branch: string): Promise<void> {
   try {
     await closeBoardsOfProject(row.id);

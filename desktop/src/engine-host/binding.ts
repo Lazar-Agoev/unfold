@@ -1,6 +1,6 @@
 /**
  * The engine host's view of the Rust addon (`unfold-node`). This mirrors the addon's exports exactly;
- * the addon has no other surface (architecture §12, U-25).
+ * the addon has no other surface (docs/ipc.md#how-a-command-travels, generated command types).
  */
 
 import { createRequire } from "node:module";

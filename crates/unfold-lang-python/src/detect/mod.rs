@@ -1,4 +1,4 @@
-//! The Python entrance detectors (architecture §6.6): `pyproject.script`, `fastapi.route`,
+//! The Python entrance detectors (docs/engine.md#entrance-detectors): `pyproject.script`, `fastapi.route`,
 //! `celery.task`, and `apscheduler.job`, carried over from the proof of concept's
 //! `frontend/python/detectors/` with their exact bounds.
 //!
@@ -10,7 +10,7 @@
 //! unknown triggers, never guesses. Detectors only add entrances: blocks, slots, and edges are
 //! the same with them on or off.
 //!
-//! See `docs/entrances.md` for each detector's forms, bounds, evidence, and refusals.
+//! See `docs/engine.md` for each detector's forms, bounds, evidence, and refusals.
 
 mod apscheduler;
 mod celery;

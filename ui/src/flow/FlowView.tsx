@@ -1,5 +1,5 @@
 /**
- * The Flow view of a card (architecture §10.4): "Paths from written structure", a Mermaid-style
+ * The Flow view of a card (docs/reader.md#flow-view): "Paths from written structure", a Mermaid-style
  * diagram of the reader's Flow model. Each node shows its compiler-derived type and a plain label
  * (the board's, else a fallback name with a dotted underline), never raw code. Step groups are
  * authored: a magenta region titled with the group's title, or, collapsed, one step. Geometry comes

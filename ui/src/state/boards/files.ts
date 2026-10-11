@@ -88,12 +88,12 @@ export async function duplicateBoard(ref: BoardRef): Promise<BoardSummary> {
   return call("duplicate_board", { project: ref.project, id: ref.id });
 }
 
-/** Moves any board, open or not, into a folder (null: the top level). The folder is Rust's (U-47). */
+/** Moves any board, open or not, into a folder (null: the top level). The folder is Rust's (board folder metadata). */
 export async function setBoardFolder(ref: BoardRef, folder: string | null): Promise<BoardSummary> {
   return call("set_board_folder", { project: ref.project, id: ref.id, folder });
 }
 
-/** Renames an open board: the title is an edit like any other (one undo step), saved at once (U-43). */
+/** Renames an open board: the title is an edit like any other (one undo step), saved at once (unpublished edits). */
 export async function renameBoard(ref: BoardRef, title: string): Promise<void> {
   const trimmed = title.trim();
   if (trimmed.length === 0 || getOpenBoard(ref)?.document.title === trimmed) {

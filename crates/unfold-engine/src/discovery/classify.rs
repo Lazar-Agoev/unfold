@@ -5,7 +5,7 @@ use unfold_core::vocab::{InputRole, Language};
 
 use crate::settings::{SETTINGS_PATH, ScopeStatus, Settings};
 
-/// Folder names that are never walked, wherever they appear (U-16).
+/// Folder names that are never walked, wherever they appear (file discovery).
 pub const DEFAULT_EXCLUDED: &[&str] = &[
     "node_modules",
     ".venv",

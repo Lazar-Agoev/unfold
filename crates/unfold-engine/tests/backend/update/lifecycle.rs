@@ -1,4 +1,4 @@
-//! File states across updates (U-15), changed paths, cancellation, and failed updates.
+//! File states across updates (last-good facts), changed paths, cancellation, and failed updates.
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;

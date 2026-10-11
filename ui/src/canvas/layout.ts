@@ -1,5 +1,5 @@
 /**
- * Board geometry (TypeScript lays out, architecture §11.14): reflow when cards change size, where a
+ * Board geometry (TypeScript lays out, docs/ui-shell.md#theme-and-components): reflow when cards change size, where a
  * followed card opens, where an entrance's handlers and new cards go, and Arrange by call depth. Pure
  * functions over positions and measured sizes, so they are deterministic and testable without a DOM.
  */

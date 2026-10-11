@@ -1,4 +1,4 @@
-//! Mermaid export (architecture §10.5, decision U-27): a board page, an entrance, or one Flow as
+//! Mermaid export (docs/reader.md#boards, reader semantics): a board page, an entrance, or one Flow as
 //! a Mermaid flowchart.
 //!
 //! - Each card becomes a node (an entrance, or a Code- or Diagram-view card as its name and

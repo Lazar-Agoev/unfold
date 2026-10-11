@@ -1,4 +1,4 @@
-//! The precision and recall gates ([architecture §16](../../../../docs/architecture.md#16-testing)):
+//! The precision and recall gates ([docs/testing.md#choose-checks-for-a-local-change](../../../../docs/testing.md#choose-checks-for-a-local-change)):
 //! every resolved call, construction, and named reference in Unfold's graph must name the
 //! oracle's target, and recall is measured exactly as the proof of concept did (sites the oracle
 //! resolves that Unfold resolves to the same target, over sites the oracle resolves).

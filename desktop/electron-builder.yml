@@ -1,4 +1,4 @@
-# electron-builder: how Unfold is packaged (architecture §13, §14).
+# electron-builder: how Unfold is packaged (docs/architecture.md#security).
 #
 #   just bundle       # installers for this platform (unsigned without certificates)
 #   just bundle-dir   # the unpacked app only, for the packaged smoke test
@@ -10,7 +10,7 @@
 # - Windows: WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD (Authenticode certificate).
 # Without certificates the build is unsigned (macOS arm64 builds get an ad-hoc signature).
 
-# PLACEHOLDER (U-3): the bundle identifier and the Windows app ID are chosen together with the
+# PLACEHOLDER (release naming): the bundle identifier and the Windows app ID are chosen together with the
 # trademark check of the name Unfold. Changing appId later changes where Windows installs the app
 # and which macOS keychain items it owns, so settle it before the first public release.
 appId: dev.unfold.app
@@ -68,7 +68,7 @@ buildDependenciesFromSource: false
 removePackageScripts: true
 removePackageKeywords: true
 
-# Electron's fuses (architecture §13), flipped in the Electron binary before signing.
+# Electron's fuses (docs/architecture.md#security), flipped in the Electron binary before signing.
 electronFuses:
   # Can't be started as plain Node (ELECTRON_RUN_AS_NODE is ignored). The engine host is a
   # utilityProcess, which doesn't need it.
@@ -91,7 +91,7 @@ electronFuses:
   resetAdHocDarwinSignature: true
 
 # Updates come from GitHub Releases (desktop/src/main/updater.ts). PLACEHOLDER owner and repository
-# until the project's public home is settled (U-3); keep RELEASES_URL in update-policy.ts in step.
+# until the project's public home is settled (release naming); keep RELEASES_URL in update-policy.ts in step.
 # electron-builder writes this into <resources>/app-update.yml; `just bundle` never publishes.
 publish:
   provider: github

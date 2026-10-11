@@ -1,5 +1,5 @@
 /**
- * Where the closed labels of a page's lines sit (docs/proposals/typed-lines.md §7). A label never
+ * Where the closed labels of a page's lines sit (docs/reader.md). A label never
  * covers a card or another label: it tries points along its own curve (the midpoint, then 0.4 and
  * 0.6, 0.3 and 0.7, …), then small steps above and below them into free canvas, then hanging beside
  * those points (to the right, then the left, level or a step above or below), and takes the first

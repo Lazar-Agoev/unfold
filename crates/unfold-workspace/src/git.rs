@@ -1,4 +1,4 @@
-//! Branches and worktrees from Git's own files (decision U-41). Unfold never runs
+//! Branches and worktrees from Git's own files (worktree metadata). Unfold never runs
 //! Git: it reads `.git`, `HEAD`, `commondir`, and `worktrees/*/gitdir` as files, each capped at
 //! 4 KiB, and a file it can't read means "no repository" for that step, never a failed command.
 //!
@@ -15,7 +15,7 @@
 //! identity:  (canonical commondir, subpath): one project row per repository
 //! ```
 //!
-//! HEAD is read on every call (decision U-41): nothing watches `.git`.
+//! HEAD is read on every call (worktree metadata): nothing watches `.git`.
 
 use std::io::Read as _;
 use std::path::{Component, Path, PathBuf};
@@ -266,7 +266,7 @@ pub(crate) fn info(project: &Path) -> Option<GitInfo> {
     })
 }
 
-/// The default shared name of the canonical project folder `project` (decision U-40): for a
+/// The default shared name of the canonical project folder `project` (shared project names): for a
 /// repository whose common folder is `.git`, the main worktree's folder name when the project is
 /// a worktree's root (so every worktree of one repository shares it); otherwise the project
 /// folder's name. A name that isn't a valid project name becomes its slug.

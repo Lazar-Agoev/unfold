@@ -1,5 +1,5 @@
 /**
- * Reading a board (architecture §11.5): following calls and ⌥-click inline, On this page, Selected, the trail
+ * Reading a board (docs/reader.md#boards): following calls and ⌥-click inline, On this page, Selected, the trail
  * with Back and Forward, the lens and a card's own view; pages, descriptions, groups, Flow labels, and
  * undo and redo across pages; Show callers, a drawn link, Arrange, the zoom and Fit, and the canvas and
  * card menus.

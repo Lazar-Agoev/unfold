@@ -1,5 +1,5 @@
 //! `cargo xtask parity <corpus> [--actual <file.jsonl>]`: the reference gate
-//! ([architecture §16](../../../docs/architecture.md#16-testing)). Compares an actual canonical
+//! ([docs/testing.md#choose-checks-for-a-local-change](../../../docs/testing.md#choose-checks-for-a-local-change)). Compares an actual canonical
 //! export with `testdata/reference/canonical/<corpus>.jsonl`, then checks the differences
 //! against the divergence ledger ([`crate::ledger`]): it fails on any unlisted difference and on
 //! any stale ledger entry.

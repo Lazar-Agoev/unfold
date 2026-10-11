@@ -9,7 +9,7 @@ use unfold_core::vocab::{DetectorId, EntranceKind, FileState, Language as Langua
 
 use super::UpdateKind;
 
-/// One stage of the pipeline (architecture §6.1).
+/// One stage of the pipeline (docs/engine.md#updates).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Stage {
     /// Settings, then the files in scope: a full discovery or the changed paths.

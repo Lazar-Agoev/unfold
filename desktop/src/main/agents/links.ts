@@ -2,7 +2,7 @@
  * Links (D9): `unfold://<project's shared name>/<board id>?page=<page id>&item=<item id>`, which a
  * window's Copy link builds and a person pastes into an agent's chat. Only the main process reads
  * them: it parses the text, then resolves the shared name against the workspace (the first project
- * with that name, U-40). A link names things and carries no code.
+ * with that name, shared project names). A link names things and carries no code.
  */
 
 import type { AgentLink } from "../../shared/agent-api";

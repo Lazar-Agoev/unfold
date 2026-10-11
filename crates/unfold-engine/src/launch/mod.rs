@@ -1,5 +1,5 @@
 //! The launch-command grammar: what module a `package.json` script starts, read from its text
-//! and never executed (architecture §6.5, `docs/entrances.md`).
+//! and never executed (docs/graph-model.md#value-policy-and-reason-order, `docs/engine.md`).
 //!
 //! A script is a POSIX shell subset of `&&`/`;` steps. Steps may set environment variables
 //! (leading assignments, `env`, `cross-env`), change directory (`cd`), reference other scripts

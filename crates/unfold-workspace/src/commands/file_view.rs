@@ -1,4 +1,4 @@
-//! `file_view`: what the peek sheet renders (architecture §11.7, decision U-48).
+//! `file_view`: what the peek sheet renders (docs/ui-shell.md#screens, source peek).
 //!
 //! The peek sheet shows a whole file, read-only, through the same render model as Code cards:
 //! syntax colors, the statement outline with its folds, and calls as links. Long files are

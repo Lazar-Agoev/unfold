@@ -1,5 +1,5 @@
 /**
- * Home of a compiled project (architecture §11.4): the header with the branch and worktree switcher, How it
+ * Home of a compiled project (docs/ui-shell.md#screens): the header with the branch and worktree switcher, How it
  * starts and Trace, the Boards section, the sidebar's tree, Recents and Drafts; then Health and
  * activity for a project with a file that doesn't parse.
  */

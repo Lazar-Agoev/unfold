@@ -1,4 +1,4 @@
-//! The `unfold-board` version 1 document (architecture §9.1, decisions U-22, U-42, U-44).
+//! The `unfold-board` version 1 document (docs/reader.md#boards, decisions board format, board references, cross-project boards).
 //!
 //! A board is a titled list of **pages**, optionally filed in a folder. Each page holds authored
 //! choices only: references to blocks and entrances by structural key (in the board's own
@@ -586,7 +586,7 @@ impl Anchor {
     }
 }
 
-/// A link drawn between two items of a page (decision U-44): the graph does not join code
+/// A link drawn between two items of a page (cross-project boards): the graph does not join code
 /// across projects, so people and agents do. A link with a `kind` is a **connection**: a typed
 /// line that says how its ends talk, with its evidence; one without is drawn as `other`, with an
 /// optional signed label ("calls over HTTP").

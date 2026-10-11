@@ -1,5 +1,5 @@
 //! A first-compile-sized commit: about 260k blocks, 520k slots, and 100k edges in 600 files,
-//! the size of TypeScript's compiler source (architecture §17).
+//! the size of TypeScript's compiler source (docs/testing.md#budgets).
 //!
 //! Ignored by default. Run it optimized:
 //! `cargo test -p unfold-store --release --test store -- --ignored --nocapture bench`

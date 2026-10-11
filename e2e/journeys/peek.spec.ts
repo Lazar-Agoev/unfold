@@ -1,5 +1,5 @@
 /**
- * The source peek sheet (architecture §11.7, decision U-48): a whole file, read-only, sliding in from the right
+ * The source peek sheet (docs/ui-shell.md#screens, source peek): a whole file, read-only, sliding in from the right
  * over the canvas, with folds, call links, and a `⊕` beside each definition that adds it to the page.
  * A pin keeps it open and narrows the canvas instead; Escape closes it. It replaces V1's source tabs.
  */

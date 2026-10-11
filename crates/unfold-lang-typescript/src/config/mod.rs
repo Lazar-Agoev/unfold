@@ -1,5 +1,5 @@
 //! Project configuration: each TypeScript file's nearest `tsconfig.json`, its `extends` chain,
-//! and the compiler options the chain sets (architecture §6.3).
+//! and the compiler options the chain sets (docs/languages/typescript.md#project-configuration).
 //!
 //! - **Nearest.** A file uses the `tsconfig.json` in its folder or the closest ancestor folder
 //!   inside the open folder (other `tsconfig*.json` files only matter when extended). A file

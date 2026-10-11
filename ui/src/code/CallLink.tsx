@@ -1,5 +1,5 @@
 /**
- * A call, construction, or import at its written range (architecture §10.3): hover a resolved one
+ * A call, construction, or import at its written range (docs/reader.md#code-view): hover a resolved one
  * for its signature and location, click to follow (in a card; the peek sheet adds the callee), ⌥-click
  * to expand the callee inline where the caller allows it. External
  * occurrences show their module and unresolved ones a dashed underline whose tooltip gives the reason.

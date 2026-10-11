@@ -1,4 +1,4 @@
-//! The Problems list and the Index log (decision U-28, architecture §11.11).
+//! The Problems list and the Index log (problem reporting, docs/engine.md#project-lifecycle).
 //!
 //! Problems lists only real problems:
 //!
@@ -112,7 +112,7 @@ impl Problems {
     }
 }
 
-/// How many of `problems` make the project's `problems` state (architecture §7.9): graph and
+/// How many of `problems` make the project's `problems` state (crates/unfold-workspace/src/status.rs): graph and
 /// settings problems and a failed compile, not board health.
 pub(crate) fn project_problem_count(problems: &[ProblemItem]) -> u32 {
     let count = problems

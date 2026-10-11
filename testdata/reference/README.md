@@ -1,8 +1,8 @@
 # Reference outputs from the proof of concept
 
 The folders under `poc/` hold raw generations from the proof of concept (product name "Codegraph"), copied
-unchanged. They are the behavioral reference for parity checks ([architecture §16](../../docs/architecture.md#16-testing),
-[U-33](../../docs/decisions-and-tradeoffs.md#u-33-correctness-evidence-frozen-poc-reference-divergence-ledger-independent-oracles)).
+unchanged. They are the behavioral reference for parity checks ([docs/testing.md#choose-checks-for-a-local-change](../../docs/testing.md#choose-checks-for-a-local-change),
+[testing policy](../../docs/testing.md#precision-and-recall-gates)).
 Never edit them. `cargo xtask reference import` converts them into Unfold's canonical form in `canonical/`
 ([below](#canonical-references)), and `cargo xtask parity` compares Unfold's output with that form, allowing only the
 differences listed in [`divergences.toml`](#the-divergence-ledger).
@@ -111,14 +111,14 @@ Other things that change with the folder:
 ## Offsets
 
 The PoC records `offset_unit: "utf16"`: offsets are zero-based, half-open UTF-16 code-unit positions, and lines are
-one-based. Unfold stores UTF-8 byte offsets ([architecture §5.3](../../docs/architecture.md#53-text-ranges-and-lines)),
+one-based. Unfold stores UTF-8 byte offsets ([source coordinates](../../docs/graph-model.md#text-ranges-and-lines)),
 so the importer converts every offset using the source file's text. In the playgrounds only
 `py-orders/src/orders_playground/features/unicode.py` contains non-ASCII text; in every other file the two units are
 equal.
 
 ## Canonical references
 
-`canonical/<corpus>.jsonl` is each generation in Unfold's canonical export (`docs/graph-model.md`, "Canonical export"),
+`canonical/<corpus>.jsonl` is each generation in Unfold's canonical export (`docs/graph-model.md`, "Order and canonical export"),
 written by core's canonical writer, with the paths of the testdata folder Unfold opens for that corpus. Each file is
 directly comparable with the canonical export of compiling that folder.
 
@@ -192,7 +192,7 @@ corpus; it says nothing about whether the engine behaves like the PoC. Listing i
 entries per corpus that never go away and would hide real regressions in manual evidence behind them. Instead the
 importer derives the evidence Unfold must produce from the folder's own settings file and checks that the table
 declares the same entrance, so a mismatch is caught at import time. The range definition above is the reference's
-assumption about the manual detector: if `docs/entrances.md` settles on a different table range, change
+assumption about the manual detector: if the manual-evidence range contract in `docs/engine.md` changes, update
 `tools/xtask/src/reference/settings.rs` to match and re-import, rather than adding divergences.
 
 **Left to the ledger.** Differences that come from Unfold's own behavior, not from the format: the C-2 fix
@@ -202,7 +202,7 @@ fingerprinted, such as `tsconfig.json` (role `tsconfig`) in `ts-orders` and `fix
 ## The divergence ledger
 
 `divergences.toml` lists every allowed difference between a reference and Unfold's output, with its reason
-([U-33](../../docs/decisions-and-tradeoffs.md#u-33-correctness-evidence-frozen-poc-reference-divergence-ledger-independent-oracles)).
+([testing policy](../../docs/testing.md#precision-and-recall-gates)).
 It holds 55 entries: the C-2 object-literal member calls and the C-8 dynamic-import call in `playground-ts-native` and
 `mixed-playground`, and the `tsconfig.json` inputs Unfold fingerprints there and in `entrances`; `python-playground`
 has none. The policy is in [docs/testing.md](../../docs/testing.md#the-divergence-ledger).
@@ -250,13 +250,13 @@ Mermaid of the sample board (`board-order-placement.mmd`, from the PoC's `codegr
 - **Checked by** `crates/unfold-reader/tests/reference.rs`, which commits `canonical/playground-ts-native.jsonl` and
   `canonical/python-playground.jsonl` to a temporary store with Unfold's projections and compares every view. They are
   identical; the rules are in [`docs/reader.md`](../../docs/reader.md). `flow_reference.rs`, `mermaid_reference.rs`,
-  and `sample_board.rs` compare Flows and Mermaid, allowing only the differences `docs/reader.md` lists (labels instead
-  of exact source in Mermaid, decision U-27; no handler numbers).
+  and `sample_board.rs` compare Flows and Mermaid, allowing only the documented reference differences (labels instead
+  of exact source in Mermaid, reader semantics; no handler numbers).
 
 ## Oracles
 
-The precision and recall gates ([architecture §16](../../docs/architecture.md#16-testing),
-[U-33](../../docs/decisions-and-tradeoffs.md#u-33-correctness-evidence-frozen-poc-reference-divergence-ledger-independent-oracles)):
+The precision and recall gates ([docs/testing.md#choose-checks-for-a-local-change](../../docs/testing.md#choose-checks-for-a-local-change),
+[testing policy](../../docs/testing.md#precision-and-recall-gates)):
 every call, construction, and named reference Unfold resolves must name the target an independent
 oracle names, and recall stays at or above a floor that only rises. The oracles' answers are cached
 here, keyed by a hash of each corpus, so `cargo xtask oracles check` needs no Node.

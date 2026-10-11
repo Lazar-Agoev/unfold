@@ -35,7 +35,7 @@ function loadedByRef<T>(wanted: readonly (readonly [string, unknown])[], data: r
   return map;
 }
 
-/** The arrows of a page; its cards resolve by shared name (U-40), and each shows its own view. */
+/** The arrows of a page; its cards resolve by shared name (shared project names), and each shows its own view. */
 export function useBoardArrows(target: PageTarget, cards: readonly Card[]): BoardArrows {
   const index = useProjectIndex();
   const boardProject = target.board.project;

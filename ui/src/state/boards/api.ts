@@ -5,7 +5,7 @@
  * on-page marks). Each change is one undo step and
  * autosaves.
  *
- * A card's project is its `ref.project` resolved against the current workspace (U-40); a card from the
+ * A card's project is its `ref.project` resolved against the current workspace (shared project names); a card from the
  * board's own project has no `ref.project`.
  */
 

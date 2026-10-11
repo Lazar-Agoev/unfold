@@ -1,4 +1,4 @@
-//! Activation closures (architecture §10.1): the blocks statically reached at least from a set
+//! Activation closures (docs/reader.md#derived-views): the blocks statically reached at least from a set
 //! of seeds. It is a conservative static set, shown as "reached at least from", never a claim
 //! about what runs.
 //!

@@ -1,4 +1,4 @@
-//! Module resolution: where a specifier written in a TypeScript file leads (architecture §6.3,
+//! Module resolution: where a specifier written in a TypeScript file leads (docs/languages/typescript.md#project-configuration,
 //! "Modules"). It follows TypeScript's rules with each file's nearest configuration, over an
 //! in-memory view of the folder ([`vfs`]), never the disk, the network, or installed packages:
 //!

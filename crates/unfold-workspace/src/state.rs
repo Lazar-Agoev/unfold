@@ -1,5 +1,5 @@
-//! Remembered state, in JSON files Rust owns (architecture §8.1–8.2, decisions
-//! U-23, U-46). The UI never uses browser storage; everything it remembers lives here.
+//! Remembered state, in JSON files Rust owns (docs/architecture.md#storage–8.2, decisions
+//! shared settings, app-data state). The UI never uses browser storage; everything it remembers lives here.
 //!
 //! - **Per app** (the app-data folder the desktop shell passes at init): `preferences.json`
 //!   (theme, editor command, background-update default, thread limit, key bindings),
@@ -168,7 +168,7 @@ pub struct LocalState {
     pub version: u32,
     /// Whether background updates are on for the project.
     pub background_updates: bool,
-    /// Board folders with no board in them, sorted (decision U-47).
+    /// Board folders with no board in them, sorted (board folder metadata).
     pub empty_folders: Vec<String>,
     /// View state by board id, least recently written first (the file keeps that order).
     pub boards: IndexMap<String, BoardView>,
@@ -286,7 +286,7 @@ pub struct Preferences {
     pub agents: AgentPreferences,
 }
 
-/// The update check (architecture §14): the app's only network use, which can be turned off.
+/// The update check (desktop/README.md#packaging): the app's only network use, which can be turned off.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
 pub struct UpdatePreferences {

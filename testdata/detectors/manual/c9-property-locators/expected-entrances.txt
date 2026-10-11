@@ -1,4 +1,4 @@
-# C-9 (docs/entrances.md, Decisions): a function-valued property of a constant object literal is a
+# C-9 (docs/engine.md, Decisions): a function-valued property of a constant object literal is a
 # locator target (obj.arrow, obj.method) and an ordinary call reaches the same body (C-2); a locator
 # names the declaration as written even where a call refuses it: an annotated object (calls stay
 # unknown_receiver) and a reassigned member (calls are mutable_binding). The calls' edges are pinned

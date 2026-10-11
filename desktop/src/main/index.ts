@@ -1,6 +1,6 @@
 /**
  * The main process: the app's lifecycle, windows, menus, dialogs, and the single-instance lock. It
- * does no graph work and never waits on the engine (architecture §4.1).
+ * does no graph work and never waits on the engine (docs/architecture.md#processes).
  */
 
 import { statSync } from "node:fs";

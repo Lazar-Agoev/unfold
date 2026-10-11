@@ -1,5 +1,5 @@
 /**
- * The text of a line's closed label (docs/proposals/typed-lines.md §7): `(CartItem[]) → Promise<Hold>`.
+ * The text of a line's closed label (docs/reader.md): `(CartItem[]) → Promise<Hold>`.
  * One input per argument (a passed reference: per parameter of the passed callable), each the type it
  * receives, else the parameter's name in gray, else `…`; a Python keyword keeps its name
  * (`currency=str`). Three or more inputs fold to the first and a count (`(Cart, +2) → Receipt`).

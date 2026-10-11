@@ -1,4 +1,4 @@
-//! Search candidates from the FTS5 index (architecture §8.5).
+//! Search candidates from the FTS5 index (crates/unfold-store/src/read/search.rs).
 
 use std::fmt::Write as _;
 

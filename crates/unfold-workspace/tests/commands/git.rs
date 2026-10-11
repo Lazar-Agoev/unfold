@@ -1,4 +1,4 @@
-//! Branches and worktrees from fake `.git` folders and files (decision U-41): the row's branch,
+//! Branches and worktrees from fake `.git` folders and files (worktree metadata): the row's branch,
 //! one row per repository, `git_info`, and switching a row to another worktree.
 
 use std::path::Path;

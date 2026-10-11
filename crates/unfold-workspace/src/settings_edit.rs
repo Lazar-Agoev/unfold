@@ -1,5 +1,5 @@
 //! Validated edits to `.unfold/config.toml` that keep its comments and formatting (architecture
-//! §9.2, decision U-23).
+//! §9.2, shared settings).
 //!
 //! Each [`SettingsEdit`] changes the TOML document through `toml_edit`, so everything the edit
 //! doesn't touch (comments, blank lines, key order, quoting) stays byte for byte. The result is
@@ -123,7 +123,7 @@ impl ScopeList {
     }
 }
 
-/// A manual entrance as the editor submits it (architecture §9.2 `[[entrance]]`).
+/// A manual entrance as the editor submits it (docs/engine.md#shared-config `[[entrance]]`).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
 pub struct EntranceSpec {

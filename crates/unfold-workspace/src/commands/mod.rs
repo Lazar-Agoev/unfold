@@ -1,4 +1,4 @@
-//! Every command handler, by area (architecture §12, docs/ipc.md), with its argument and result
+//! Every command handler, by area (docs/ipc.md#how-a-command-travels, docs/ipc.md), with its argument and result
 //! types.
 //!
 //! Handlers are plain functions `fn(&Ctx, Args) -> CommandResult<Result>` that the command

@@ -1,5 +1,5 @@
 /**
- * Locators as people type them in the manual entrance editor (docs/entrances.md, "Locator
+ * Locators as people type them in the manual entrance editor (docs/engine.md, "Locator
  * grammar"): a syntax check that mirrors Rust's `Locator::parse` so mistakes show while typing, and
  * the locator a definition gets when it is added as an entrance. Rust stays the judge: it validates
  * again when the edit is applied and resolves locators on every compile.

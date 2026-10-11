@@ -1,5 +1,5 @@
 /**
- * Several windows on one workspace (architecture §11.10, decision U-37) and the engine host
+ * Several windows on one workspace (desktop/README.md#transport-and-windows, window restore) and the engine host
  * restarting (§11.11): New Window; two windows, each with its own board, both updating after a save; a
  * board held by another window focuses that window; Open in new window (from a tab and from the board
  * menu) keeps the board's undo history; windows and tabs come back after quitting; and a killed engine host reconnects

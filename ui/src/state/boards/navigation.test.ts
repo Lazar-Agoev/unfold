@@ -55,7 +55,7 @@ beforeEach(() => {
   toast.showToast.mockClear();
   store.resetBoards();
   queryClient.clear();
-  // Two projects share the name "orders": the first in workspace order is the one refs name (U-40).
+  // Two projects share the name "orders": the first in workspace order is the one refs name (shared project names).
   queryClient.setQueryData(engineKey("workspace", {}), workspaceView([projectRow(P, "orders"), projectRow(Q, "payments"), projectRow(SAME, "orders")]));
   tabs.useTabs.setState({ boards: [REF], active: "home" });
 });

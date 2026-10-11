@@ -1,4 +1,4 @@
-//! TypeScript generation for the command table (decision U-25): every payload type's
+//! TypeScript generation for the command table (generated command types): every payload type's
 //! declaration (from its `ts_rs::TS` derive), the `Commands` map (name → `{ args, result,
 //! stream? }`), the `Events` map keyed by `type`, and the sink and error shapes, as one module
 //! the UI, the preload script, and the engine host import. `cargo xtask gen-ipc` writes it to

@@ -1,5 +1,5 @@
 /**
- * A type's definition, opened inline under the row that wrote it (docs/proposals/typed-lines.md §7):
+ * A type's definition, opened inline under the row that wrote it (docs/reader.md):
  * its kind and name, `file:line`, its members with their own types (which open nested, up to four
  * deep; every type of one definition starts in the same column, after its widest name), the members it
  * inherits under a quiet "from <Type>" for each base (a base with no declaration says where it comes from

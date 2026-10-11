@@ -1,4 +1,4 @@
-/** The platform the window runs on, which decides ⌘ versus Ctrl (architecture §11.13). */
+/** The platform the window runs on, which decides ⌘ versus Ctrl (docs/ui-shell.md#keyboard). */
 
 import type { WindowInfo } from "../ipc/unfold";
 import { useWindowStore } from "../state/window";

@@ -1,4 +1,4 @@
-//! The TypeScript entrance detectors (architecture §6.5, §6.6): `package.script`, `package.bin`,
+//! The TypeScript entrance detectors (docs/graph-model.md#value-policy-and-reason-order): `package.script`, `package.bin`,
 //! `bullmq.worker`, `express.route`, and `node-cron.schedule`, carried over from the proof of
 //! concept's package launches and `frontend/typescript-shared/detectors/` with their exact bounds.
 //!
@@ -9,7 +9,7 @@
 //! guess. Handlers resolve through the shared handler policy. Detectors only add entrances:
 //! blocks, slots, and edges are the same with them on or off.
 //!
-//! See `docs/entrances.md` for each detector's forms, bounds, evidence, and refusals.
+//! See `docs/engine.md` for each detector's forms, bounds, evidence, and refusals.
 
 mod bullmq;
 mod cron;

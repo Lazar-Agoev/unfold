@@ -1,4 +1,4 @@
-//! Applications and membership (architecture §10.1).
+//! Applications and membership (docs/reader.md#derived-views).
 //!
 //! - An **application** is a distinct resolved startup among process entrances: a file, or the
 //!   callable a Python console script names. Launches that start the same target share one

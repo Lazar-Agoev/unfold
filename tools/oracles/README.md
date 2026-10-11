@@ -50,8 +50,8 @@ Outputs go to `testdata/reference/poc-reader/<playground>/` (`--out` overrides t
 
 `crates/unfold-reader/tests/reference.rs` loads the canonical graphs into a temporary store and
 compares every view with these files; `flow_reference.rs` compares the Flow of every definition,
-`mermaid_reference.rs` every entrance diagram (structurally, modulo the labels decision U-27
-changed), and `sample_board.rs` the sample board's diagram. `docs/reader.md` lists exactly what
+`mermaid_reference.rs` every entrance diagram (structurally, modulo the labels reader semantics
+changed), and `sample_board.rs` the sample board's diagram. `testdata/reference/divergences.toml` records the deliberate differences in what
 each comparison allows to differ.
 
 ## Checks
@@ -74,7 +74,7 @@ node tools/oracles/check-board-schema.mjs   # or: pnpm --filter @unfold/oracles 
 ## TypeScript checker oracle
 
 `typescript-oracle.mjs` is the independent precision oracle for TypeScript
-([U-33](../../docs/decisions-and-tradeoffs.md#u-33-correctness-evidence-frozen-poc-reference-divergence-ledger-independent-oracles)).
+([testing policy](../../docs/testing.md#precision-and-recall-gates)).
 It asks the published `typescript` package, pinned exactly in `package.json` (6.0.3, the version
 the proof of concept's checker-backed producer used), what every call, construction, and named
 argument of a corpus targets, and writes one JSONL file that `cargo xtask oracles check` compares

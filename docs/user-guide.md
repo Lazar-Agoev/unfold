@@ -44,7 +44,7 @@ Home is the first tab of every window. It shows the project selected in the side
 
 The line under the project's name says where things stand: "Graph current · 84 files · TypeScript + Python ·
 updated 2 min ago", "Updating · 2 files changed", "1 file doesn't parse", and so on. The project's row in the
-sidebar shows the same thing as one small mark ([every state](architecture.md#79-what-a-projects-state-says)).
+sidebar shows the same thing as one small mark ([every state](../crates/unfold-workspace/src/status.rs)).
 The project menu (`⋯` on its row or on Home) has Compile, Rebuild from scratch, Pause background updates, Settings,
 Health and activity, and Remove from workspace.
 
@@ -160,7 +160,7 @@ keep the text or remove it.
 
 Some of what a page explains isn't a function: the table an order is saved in, the queue between two services, the
 customer who starts it all. An agent adds these for you, each citing the code (or the lines of an
-[evidence file](settings-and-scope.md#evidence-files)) that shows it is there; they are drawn in the authored color,
+[evidence file](engine.md#discovery-and-scope)) that shows it is there; they are drawn in the authored color,
 with the agent mark when an agent drew them, and look the same in Diagram, Flow, and Code.
 
 - **Resource cards** are tables, queues, caches, storage, services outside your code, and actors, each with its

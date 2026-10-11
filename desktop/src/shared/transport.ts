@@ -33,7 +33,7 @@ export type HostToRenderer =
       readonly error?: TransportError;
     };
 
-/** App folders (architecture §8.2), chosen by the main process and handed to `addon.init`. */
+/** App folders (docs/architecture.md#storage), chosen by the main process and handed to `addon.init`. */
 export interface AppFolders {
   readonly appDataDir: string;
   readonly logsDir: string;

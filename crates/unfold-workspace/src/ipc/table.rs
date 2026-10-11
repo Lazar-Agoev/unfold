@@ -1,5 +1,5 @@
 //! The command table: every command's name, argument type, result type, stream message type,
-//! and handler, in one list (architecture §12, decision U-25).
+//! and handler, in one list (docs/ipc.md#how-a-command-travels, generated command types).
 //!
 //! [`Request`] is the serde-tagged request (`{"command": "<name>", "args": {…}}`) the addon's
 //! `dispatch` receives; [`Request::run`] calls the handler and serializes its result. The same

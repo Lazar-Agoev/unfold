@@ -1,5 +1,5 @@
 /**
- * Copy Diagnostics (architecture §13): Rust's redacted summary (versions, platform, counts; no
+ * Copy Diagnostics (docs/architecture.md#security): Rust's redacted summary (versions, platform, counts; no
  * source, no paths), with the app, Electron, and Chromium versions only the window knows, put on
  * the clipboard by the main process (windows have no clipboard permission).
  */

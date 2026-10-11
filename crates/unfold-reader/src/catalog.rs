@@ -1,4 +1,4 @@
-//! The definition catalog (architecture §10.1): every function-like, class, or type declaration
+//! The definition catalog (docs/reader.md#derived-views): every function-like, class, or type declaration
 //! (`interface`, `type_alias`, `enum`) block that has a name or is the target of a resolved edge
 //! or entrance, with its qualified name and display label.
 //!

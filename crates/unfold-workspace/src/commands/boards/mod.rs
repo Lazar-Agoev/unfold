@@ -1,4 +1,4 @@
-//! Board commands (docs/ipc.md › Boards; decisions U-42, U-43, U-44, U-47, U-49).
+//! Board commands (docs/ipc.md › Boards; decisions board references, unpublished edits, cross-project boards, board folder metadata, local drafts).
 //!
 //! A board belongs to a project and is addressed as `{project, id}`, its id being its public
 //! file's path ([`files`]). It is open in one window at a time: `open_board` and `new_board`
@@ -7,14 +7,14 @@
 //! `delete_board`, and a closing window release it. Every other command about one board checks
 //! that the calling window holds it, except `read_board`, which reads a board's working file
 //! without claiming it, and the folder commands: a board's folder is metadata Rust owns
-//! (decision U-47), never part of what a window saves, so they work on any board.
+//! (board folder metadata), never part of what a window saves, so they work on any board.
 //!
 //! The project keeps a **session** per open board ([`session`]): the working version last
 //! loaded or saved. A window autosaves its edits (`save_board`, a [`BoardEdit`]): Rust checks
 //! them against the graphs of every project the cards come from ([`graphs`]: no new missing
 //! reference, broken group, held reference, or broken link), signs new descriptions, labels, and
 //! link labels, and writes the board's **working file**: a draft; or, for a published board, its
-//! changes copy, so teammates see nothing until Publish (decision U-43). A save is refused with
+//! changes copy, so teammates see nothing until Publish (unpublished edits). A save is refused with
 //! `board_conflict` when the working file changed on disk since the session's revision, unless
 //! `force`; the holding window also gets a `board_conflict` event as soon as the watcher sees the
 //! change ([`health::check_disk`]).

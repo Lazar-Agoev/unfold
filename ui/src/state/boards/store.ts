@@ -4,7 +4,7 @@
  *
  * - Every edit is one undo step (bursts with a `coalesce` key merge); a step remembers the page it
  *   changed, and undo or redo shows that page. One history per board, across its pages.
- * - Edits autosave a moment later through `save_board` as a `BoardEdit` (title and pages only, U-47);
+ * - Edits autosave a moment later through `save_board` as a `BoardEdit` (title and pages only, board folder metadata);
  *   saves never overlap, and edits made during one are saved right after.
  * - Outside edits arrive as `board_conflict`: a board without unsaved edits reloads, one with unsaved
  *   edits gets a `conflict` for the person to resolve.
@@ -535,7 +535,7 @@ function shared<T>(previous: T, next: T): T {
   return replaceEqualDeep(previous, next);
 }
 
-/** What `save_board` takes: the title and pages, never `folder` or `projects` (Rust's, U-47). */
+/** What `save_board` takes: the title and pages, never `folder` or `projects` (Rust's, board folder metadata). */
 function boardEdit(document: BoardDocument) {
   return { title: document.title, pages: document.pages };
 }

@@ -1,6 +1,6 @@
 /**
  * The workspace: its projects as every window shows them, this window's selection, and
- * how a board's cards find their project by shared name (U-40).
+ * how a board's cards find their project by shared name (shared project names).
  *
  * The `workspace` query is replaced by `workspace_changed` and patched by `project_state`, so the
  * project index below changes identity exactly when the workspace does, and every card resolves again
@@ -16,7 +16,7 @@ import { useWindowStore } from "./window";
 
 const WORKSPACE_KEY = engineKey("workspace", {});
 
-/** The workspace, kept current (refetched when the window gains focus: branches change outside, U-41). */
+/** The workspace, kept current (refetched when the window gains focus: branches change outside, worktree metadata). */
 export function useWorkspace(): WorkspaceView | undefined {
   return useEngineQuery("workspace", {}, { refetchOnWindowFocus: true }).data;
 }
@@ -30,7 +30,7 @@ function getWorkspace(): WorkspaceView | undefined {
 export interface ProjectIndex {
   readonly rows: readonly ProjectRow[];
   readonly byId: ReadonlyMap<ProjectId, ProjectRow>;
-  /** The first row in workspace order wins a shared name (U-40). */
+  /** The first row in workspace order wins a shared name (shared project names). */
   readonly byName: ReadonlyMap<ProjectName, ProjectId>;
 }
 
@@ -125,7 +125,7 @@ export async function addProjectFromPicker(): Promise<ProjectId | null> {
   return added.project;
 }
 
-/** Adds back a folder "Opened before" lists (U-46), then selects it. */
+/** Adds back a folder "Opened before" lists (app-data state), then selects it. */
 export async function readdProject(path: string): Promise<ProjectId> {
   const added = await call("readd_project", { path });
   await selectProject(added.project.id);

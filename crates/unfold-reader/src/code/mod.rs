@@ -1,8 +1,8 @@
-//! The Code render model (architecture §10.3): what a Code card or a source tab renders for one
+//! The Code render model (docs/reader.md#code-view): what a Code card or a source tab renders for one
 //! block or a whole file.
 //!
 //! The model crosses IPC as JSON, so it is compact and every offset is a UTF-16 code-unit offset
-//! relative to the start of the shown text (decision U-12). It is built only from bytes verified
+//! relative to the start of the shown text (text coordinates). It is built only from bytes verified
 //! against the facts' hash ([`crate::source`]); a changed or missing file yields a state with no
 //! text, never old ranges applied to new bytes.
 //!

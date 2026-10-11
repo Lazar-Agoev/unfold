@@ -1,5 +1,5 @@
 //! The graphs a board reads: its own project's, and one per other project its
-//! cards name, resolved by shared name (decision U-40) and read from that project's stored graph
+//! cards name, resolved by shared name (shared project names) and read from that project's stored graph
 //! without waking it (the live pool, or a resting project's read-only pool). A name that
 //! resolves to no project, or to one with no usable graph, is **not connected**: its cards are
 //! placeholders.

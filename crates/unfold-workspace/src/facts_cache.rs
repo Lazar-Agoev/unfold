@@ -9,7 +9,7 @@
 //! - The engine calls the cache from its update, which runs on the engine thread's behalf, and
 //!   the commit follows the update on the same thread. The two never overlap, so the mutex is
 //!   never contended; it only proves exclusive access to the compiler.
-//! - "One writer per folder" (architecture §4.2) stays literally true. A second writer would
+//! - "One writer per folder" (docs/ipc.md#the-addons-surface) stays literally true. A second writer would
 //!   compete for SQLite's write lock with the commit (`SQLITE_BUSY` handling, busy timeouts)
 //!   for no benefit.
 //! - The writer prunes each path to its current and last good entries under its own engine

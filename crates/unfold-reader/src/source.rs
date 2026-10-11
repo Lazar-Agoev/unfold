@@ -1,4 +1,4 @@
-//! Verified source (architecture §10.6, decision U-17).
+//! Verified source (docs/reader.md#signatures, source verification).
 //!
 //! Before any stored range is shown, the file's bytes are read and hashed, and the hash is
 //! compared with the hash the facts came from. Only when they match are those same bytes used,

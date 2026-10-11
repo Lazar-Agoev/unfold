@@ -1,4 +1,4 @@
-//! The per-file facts cache contract (architecture §8.4) and an in-memory implementation.
+//! The per-file facts cache contract (docs/engine.md#facts-cache-and-failures) and an in-memory implementation.
 //!
 //! Entries are serialized [`FileFacts`] (or a serialized failure) keyed by path, content hash,
 //! engine version, and the file's settings hash. For each path a cache keeps at most two

@@ -1,5 +1,5 @@
 /**
- * A written type (`TypeText`, docs/proposals/typed-lines.md §5): its text with one span per type name
+ * A written type (`TypeText`, docs/reader.md): its text with one span per type name
  * in it. A `declared` name is underlined and opens its definition (`onToggle`); an `external` one
  * has a dotted underline whose tooltip names its package and never opens; a `builtin` one reads like
  * punctuation; an `unresolved` one has a dashed underline whose tooltip says why. Between names,

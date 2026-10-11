@@ -1,4 +1,4 @@
-//! Compile commands (architecture §7.1, §11.11): Compile and Rebuild from scratch
+//! Compile commands (docs/engine.md#updates): Compile and Rebuild from scratch
 //! with streamed progress, cancelling, the background-update switch, Problems, and the Index
 //! log. A running compile keeps its project live.
 
@@ -106,7 +106,7 @@ pub fn set_background_updates(ctx: &Ctx<'_>, args: SetBackgroundUpdatesArgs) -> 
     Ok(workspace.status())
 }
 
-/// `problems`: the Problems list (decision U-28): files that don't parse or can't be read,
+/// `problems`: the Problems list (problem reporting): files that don't parse or can't be read,
 /// settings errors, discovery and input problems, a failed compile, and the health of every
 /// board of the project (at most 5,000).
 pub fn problems(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<Vec<ProblemItem>> {

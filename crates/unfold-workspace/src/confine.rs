@@ -1,4 +1,4 @@
-//! Path confinement (architecture §13): the one check every path a command names goes through.
+//! Path confinement (docs/architecture.md#security): the one check every path a command names goes through.
 //!
 //! A window can never name a path outside its open folder. [`confine`] accepts only
 //! folder-relative, `/`-separated paths with no empty, `.`, or `..` component, no backslash, no

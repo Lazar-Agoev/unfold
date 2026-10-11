@@ -1,4 +1,4 @@
-//! Project settings: the validated contents of `.unfold/config.toml` (architecture §9.2).
+//! Project settings: the validated contents of `.unfold/config.toml` (docs/engine.md#shared-config).
 //!
 //! [`Settings::load`] reads the file (defaults when it is absent) and [`Settings::parse`] checks
 //! it strictly: unknown keys, wrong types, and invalid values are errors with a line and column.

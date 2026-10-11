@@ -1,6 +1,6 @@
 /**
  * A line's closed label: the call's signature in small mono on the canvas color, so the line under it
- * is hidden and the text stays readable (docs/proposals/typed-lines.md §7). Like a drawn link's label
+ * is hidden and the text stays readable (docs/reader.md). Like a drawn link's label
  * it sits in the edge-label layer, over the cards, so it must never cover one: it reports its curve
  * and the widths of its forms (measured with the bundled font) to the page's label layout, which
  * places it at the first free spot along the curve, in a shorter form if it must, or not at all (the

@@ -1,5 +1,5 @@
 //! Checking a page against the current graphs: group validity, guarded references, and health
-//! with its repairs (architecture §9.1, §10.5).
+//! with its repairs (docs/reader.md#boards).
 //!
 //! A page's references are checked per project, each against that project's graph from
 //! [`PageGraphs`], with the same rules. **Reconnecting** after a graph update is a matter of
@@ -12,7 +12,7 @@
 //! A card from a project with no graph is **not connected**: a placeholder, never an error, and
 //! its project's labels, groups, and guards are not checked. A drawn link is checked only for
 //! its ends: it is **broken** when an end's card is missing from its connected project (a
-//! resource or frame end is never missing); its label is never outdated (decision U-44). The
+//! resource or frame end is never missing); its label is never outdated (cross-project boards). The
 //! claims (resource cards, connections, and frame descriptions) are checked by [`claims`]: what
 //! they cite must still be there, and their signatures must still match.
 

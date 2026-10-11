@@ -1,6 +1,6 @@
 /**
  * The privileged `app://` scheme that serves the built UI from inside the app, with a strict content
- * security policy on every response (architecture §13).
+ * security policy on every response (docs/architecture.md#security).
  */
 
 import { readFile } from "node:fs/promises";

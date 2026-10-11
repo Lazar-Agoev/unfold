@@ -1,4 +1,4 @@
-//! The reader projections the store keeps (architecture §8.3): definitions per file,
+//! The reader projections the store keeps (crates/unfold-store/src/schema.rs): definitions per file,
 //! applications, and memberships, computed from a whole graph after every update.
 //!
 //! [`project`] is a pure function of the graph: one index pass, one catalog pass, and one

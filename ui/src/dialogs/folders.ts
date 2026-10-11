@@ -1,4 +1,4 @@
-/** Board folder paths (architecture §9.1): checking one, and joining a folder name onto its parent. */
+/** Board folder paths (docs/reader.md#boards): checking one, and joining a folder name onto its parent. */
 
 const CONTROL = /\p{Cc}/u;
 

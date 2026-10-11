@@ -1,7 +1,7 @@
 # Test data
 
 Inputs and expected outputs for Unfold's tests. Crates never hold test data of their own
-([architecture §15](../docs/architecture.md#15-repository-layout)). Everything here was carried over from the
+([docs/architecture.md#ownership](../docs/architecture.md#ownership)). Everything here was carried over from the
 proof of concept (PoC) at `/Users/lazaragoev/Desktop/repos/graph-compiler`, commit `5c98a6e` (2026-10-08),
 unless a section says otherwise.
 
@@ -64,7 +64,7 @@ Copied byte for byte. Every path in the PoC's frozen manifests exists here with 
 
 ### Settings
 
-The PoC's `codegraph.json` files became `.unfold/config.toml` ([architecture §9.2](../docs/architecture.md#92-project-settings)):
+The PoC's `codegraph.json` files became `.unfold/config.toml` ([shared config](../docs/engine.md#shared-config)):
 each `entrypoints[]` item is an `[[entrance]]` table with the same `kind`, `trigger`, and `handler`, and locators keep
 the PoC forms (`path#name`, `path:line`). `python.sourceRoots` became `[[python.project]] source_roots`.
 
@@ -108,7 +108,7 @@ entrance<TAB>detector<TAB>kind<TAB>method<TAB>trigger<TAB>trigger_status<TAB>evi
   `external`, and the reason (`wrapper`, `unsupported`, `not_indexed`, …) for `unresolved`.
 - `target_text` is the target's written text (part of the entrance key). For manual entrances it is the locator as
   written in the settings file.
-- Lines are in the [architecture §6.8](../docs/architecture.md#68-determinism) entrance order: evidence path (byte
+- Lines are in the [canonical order](../docs/graph-model.md#order-and-canonical-export) entrance order: evidence path (byte
   order), start, end, detector, kind, method, trigger. Manual entrances sort in table order.
 
 Structural keys follow the PoC derivation (`path#`, `kind:name` with `%`, `/`, `#`, `[`, `]` percent-escaped and
@@ -177,7 +177,7 @@ tab, or line break inside a trigger or text (`\\`, `\t`, `\n`, `\r`).
 ## Sample board (`boards/order-placement.json`)
 
 Converted once from the PoC's `codegraph/boards/order-placement.board.json` (`codegraph-board` v3) to `unfold-board`
-v1 ([architecture §9.1](../docs/architecture.md#91-board-files), [U-22](../docs/decisions-and-tradeoffs.md#u-22-a-fresh-board-format)):
+v1 ([board format](../docs/reader.md#boards), [reader rules](../docs/reader.md#boards)):
 `format` and `version` replaced, each card's `state` renamed `view`, the board's `blocks` renamed `labels`, and
 everything else kept (positions, groups, descriptions, guards, signatures, authors, texts). It targets
 `testdata/playgrounds/ts-orders` opened alone, so every block key, guard owner, and group member lost its

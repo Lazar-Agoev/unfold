@@ -88,7 +88,7 @@ impl Update<'_> {
 }
 
 /// What the file looked like on disk at the last check: the cheap change test on reopen
-/// compares size and modification time before hashing (architecture §7.8).
+/// compares size and modification time before hashing (docs/engine.md#project-lifecycle).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct DiskStamp {
     /// The SHA-256 of the bytes on disk; differs from the facts' hash for a `last_good` file,
@@ -214,7 +214,7 @@ impl<'a> EntranceChanges<'a> {
     }
 }
 
-/// A reader definition (architecture §10.1): a block in the definition catalog, with its
+/// A reader definition (docs/reader.md#derived-views): a block in the definition catalog, with its
 /// qualified name and the label search shows. The reader computes these; the store keeps
 /// them and indexes them for search.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -232,7 +232,7 @@ pub struct Definition {
     pub label: Box<str>,
 }
 
-/// An application (architecture §10.1): a distinct resolved startup among process entrances.
+/// An application (docs/reader.md#derived-views): a distinct resolved startup among process entrances.
 /// It is identified by its startup key.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Application {

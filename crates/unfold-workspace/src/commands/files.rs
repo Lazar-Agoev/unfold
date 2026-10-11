@@ -42,7 +42,7 @@ pub enum OpenedWith {
 ///
 /// The fallback never hands the file to its default app: a `.py` file's default app can be a
 /// launcher that runs it, and `.command`, `.bat`, or `.js` files run when "opened", while Unfold
-/// never runs the code it indexes (architecture §13).
+/// never runs the code it indexes (docs/architecture.md#security).
 pub fn open_in_editor(ctx: &Ctx<'_>, args: OpenInEditorArgs) -> CommandResult<OpenedWith> {
     let workspace = ctx.live(&args.project)?;
     let path = existing(&workspace, &args.path)?;

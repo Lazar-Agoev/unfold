@@ -84,7 +84,7 @@ pub struct IncomingEdge {
     pub position: Option<u32>,
 }
 
-/// A stored definition (architecture §10.1).
+/// A stored definition (docs/reader.md#derived-views).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefinitionRow {
     /// The block's key.

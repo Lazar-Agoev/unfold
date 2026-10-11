@@ -1,4 +1,4 @@
-//! The engine thread of one live project (architecture §4.2): it owns the [`Engine`] and the
+//! The engine thread of one live project (docs/ipc.md#the-addons-surface): it owns the [`Engine`] and the
 //! store's [`Writer`], and runs one compile or update at a time.
 //!
 //! Each piece of work follows the same path: prepare the update (`Engine::prepare`), commit its
@@ -503,7 +503,7 @@ impl EngineThread {
             other => WorkspaceError::Update(other.to_string()),
         };
         // A Compile the user cancels stops even while committing (the cancel acknowledgement
-        // budget, architecture §17); background work that newer changes cancel always commits
+        // budget, docs/testing.md#budgets); background work that newer changes cancel always commits
         // once it has started committing (§7.5), so a stream of edits can't starve it.
         let commit_cancel = matches!(kind, RunKind::Compile | RunKind::Rebuild).then(|| cancel.clone());
         let request = kind.request().with_cancel(cancel).with_progress(&on_progress);

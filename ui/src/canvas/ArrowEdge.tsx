@@ -4,7 +4,7 @@
  * handler is the gray contour. Imports and passed references are dashed. Memoized.
  *
  * The curve doesn't take the pointer. A call or reference line carries its closed label where the
- * page's label layout puts it, clear of the cards (docs/proposals/typed-lines.md §7); selected, the
+ * page's label layout puts it, clear of the cards (docs/reader.md); selected, the
  * label opens into the call's contract. An arrow from a Diagram node that stands for several calls
  * reads "3 calls" and selects them (Selected lists them, each opening its contract here). A type
  * arrow, from a type card's field to the type it names, is drawn like a call's and labeled with the

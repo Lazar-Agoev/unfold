@@ -1,5 +1,5 @@
 /**
- * Agents (docs/proposals/agent-mcp-design.md §5, §6, §8.3) on a compiled `ts-orders`: Preferences ›
+ * Agents (docs/ipc.md) on a compiled `ts-orders`: Preferences ›
  * Agents turns the local MCP server on; the server refuses web pages and other hosts; a real MCP
  * client, connected as Claude Code, lists the tools and prompts and builds the page of design §1.3
  * the way an agent would, while the window shows each piece as it lands: cards, frames, step groups,

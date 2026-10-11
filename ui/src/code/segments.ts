@@ -1,6 +1,6 @@
 /**
  * Splits a range of shown text into runs with one syntax class and at most one call link each.
- * Offsets are UTF-16 code units, which are JavaScript string indices (U-12), so they slice the text
+ * Offsets are UTF-16 code units, which are JavaScript string indices (text coordinates), so they slice the text
  * directly.
  */
 

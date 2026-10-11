@@ -1,5 +1,5 @@
 /*
- * Frames are authored, so they use the authored tokens (U-51): a box is outlined in the authored line
+ * Frames are authored, so they use the authored tokens (theme tokens): a box is outlined in the authored line
  * with a tinted title bar; a zone is a faint authored tint with a large title and no border; a
  * collapsed frame is a card-like node. Sizes follow `framePadding` (geometry.ts) and `frameNodeSize`
  * (sizing.ts).

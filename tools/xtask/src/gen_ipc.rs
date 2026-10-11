@@ -1,4 +1,4 @@
-//! `cargo xtask gen-ipc`: writes the TypeScript types of the command table (decision U-25) to
+//! `cargo xtask gen-ipc`: writes the TypeScript types of the command table (generated command types) to
 //! `ui/src/ipc/generated/index.ts`; `--check` fails when that file is stale (CI).
 
 use anyhow::{Result, anyhow};

@@ -1014,7 +1014,7 @@ problems: number,
 durationMs: number, };
 
 /**
- * What a new project's Home shows before anything is written (architecture §11.4).
+ * What a new project's Home shows before anything is written (docs/ui-shell.md#screens).
  */
 export type CompilePreview = { 
 /**
@@ -1377,7 +1377,7 @@ group: string | null,
 reaches: number | null, };
 
 /**
- * A manual entrance as the editor submits it (architecture §9.2 `[[entrance]]`).
+ * A manual entrance as the editor submits it (docs/engine.md#shared-config `[[entrance]]`).
  */
 export type EntranceSpec = { 
 /**
@@ -2604,7 +2604,7 @@ source: string,
 seq: number, };
 
 /**
- * A link drawn between two items of a page (decision U-44): the graph does not join code
+ * A link drawn between two items of a page (cross-project boards): the graph does not join code
  * across projects, so people and agents do. A link with a `kind` is a **connection**: a typed
  * line that says how its ends talk, with its evidence; one without is drawn as `other`, with an
  * optional signed label ("calls over HTTP").
@@ -3415,7 +3415,7 @@ boards: Array<BoardHealthCount>, };
 
 /**
  * A project's id: `p-` and 10 characters of `[a-z2-7]`, random, assigned when the project is
- * added (decision U-40). It survives restarts and worktree switches.
+ * added (shared project names). It survives restarts and worktree switches.
  */
 export type ProjectId = string;
 
@@ -3520,7 +3520,7 @@ state: ProjectState,
 git: GitSummary | null, };
 
 /**
- * A project's state, as its row shows it (architecture §7.9): one indicator per row.
+ * A project's state, as its row shows it: one indicator per row.
  *
  * A live project's state is derived from its [`GraphStatus`] and its problem count (the Problems
  * list less board health), first match wins: `failed` > `compiling` > `updating` > `paused` >
@@ -5165,7 +5165,7 @@ entrances: Array<EntranceRow>, };
 export type Unshowable = "binary" | "too_large";
 
 /**
- * The update check (architecture §14): the app's only network use, which can be turned off.
+ * The update check (desktop/README.md#packaging): the app's only network use, which can be turned off.
  */
 export type UpdatePreferences = { 
 /**
@@ -5291,7 +5291,7 @@ board: string,
 page: string | null, };
 
 /**
- * Which file an open board's session reads (decision U-43).
+ * Which file an open board's session reads (unpublished edits).
  */
 export type WorkingFile = "draft" | "changes" | "published";
 

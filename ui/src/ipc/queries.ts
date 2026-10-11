@@ -34,7 +34,7 @@ export function engineQueryOptions<C extends CommandName>(command: C, args: Comm
 
 export interface EngineQueryOptions {
   readonly enabled?: boolean;
-  /** Ask again whenever the window gains focus (only `workspace` does, U-41). */
+  /** Ask again whenever the window gains focus (only `workspace` does, worktree metadata). */
   readonly refetchOnWindowFocus?: boolean;
 }
 

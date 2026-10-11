@@ -1,5 +1,5 @@
 //! The Compile action as callers see it: a mode, a progress callback, and a ticket that
-//! resolves when the compile commits, fails, or is cancelled (architecture §7.1, §12 `compile`).
+//! resolves when the compile commits, fails, or is cancelled (docs/engine.md#updates `compile`).
 
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;

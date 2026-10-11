@@ -1,5 +1,5 @@
 /**
- * The selected line's contract, opened in place of its label (docs/proposals/typed-lines.md §7):
+ * The selected line's contract, opened in place of its label (docs/reader.md):
  * what the call sends (each argument as written beside the parameter it fills), what comes back and
  * where it lands, and what the callee throws (with "catch" when the call sits in a `try` that
  * catches). The caller's side is on the left, the callee's on the right. It opens clear of the

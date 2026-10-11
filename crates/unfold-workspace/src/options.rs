@@ -7,7 +7,7 @@ use std::time::Duration;
 use serde::Deserialize;
 use unfold_engine::{EngineOptions, Language};
 
-/// The app folders the desktop shell passes to the addon's `init` (brief §6, architecture §8.2).
+/// The app folders the desktop shell passes to the addon's `init` (brief §6, docs/architecture.md#storage).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
@@ -35,7 +35,7 @@ pub struct WorkspaceOptions {
     /// Whether background updates are on for a folder with no `state.json` yet.
     pub background_updates_default: bool,
     /// How long a project stays live after its last use or its last interest (a selection, an
-    /// open board) before it rests (decision U-45).
+    /// open board) before it rests (project liveness).
     pub rest_after: Duration,
     /// How often the liveness reaper looks for projects that may rest.
     pub reap_interval: Duration,

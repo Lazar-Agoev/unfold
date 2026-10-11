@@ -6,7 +6,7 @@
 //! the `import` blocks that exist only if linking keeps them ([`GraphFacts::conditional`]). The payload is
 //! opaque bytes that only the owning language crate reads (its local bindings, declarations,
 //! exports, class shapes, census data, ...). Neither part holds a syntax tree, so the whole
-//! program can be relinked from cached facts without parsing anything (architecture §6.2, §7.3).
+//! program can be relinked from cached facts without parsing anything (docs/architecture.md#ownership).
 //!
 //! Facts serialize compactly with postcard ([`FileFacts::to_bytes`]). They are cached by path,
 //! content hash, [`ENGINE_VERSION`], and settings hash.

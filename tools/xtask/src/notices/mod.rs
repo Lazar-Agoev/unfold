@@ -1,4 +1,4 @@
-//! `cargo xtask notices`: writes `THIRD_PARTY_NOTICES.md` (architecture §14, migration Step 11),
+//! `cargo xtask notices`: writes `THIRD_PARTY_NOTICES.md` (desktop/README.md#packaging, migration Step 11),
 //! which ships inside the app. It covers:
 //! - the Rust crates linked into the engine addon (`unfold-node` and its normal dependencies, on
 //!   every platform), from `cargo metadata`;

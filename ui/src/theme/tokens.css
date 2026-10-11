@@ -1,6 +1,6 @@
 /*
  * Design tokens: the studio chrome and the reader's card, syntax, and Flow colors, in light and dark
- * sets (docs/ui-shell.md#theme; decision U-51 in docs/decisions-and-tradeoffs.md).
+ * sets (docs/ui-shell.md#theme-and-components).
  *
  * The dark set is designed, not inverted. Syntax and Flow node colors keep the reader's values in both
  * sets. The theme follows the OS; `data-theme="light" | "dark"` on <html> overrides it.

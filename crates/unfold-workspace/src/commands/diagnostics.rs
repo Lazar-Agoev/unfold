@@ -1,5 +1,5 @@
 //! `diagnostics`: the redacted summary **Copy Diagnostics** puts on the clipboard for bug reports
-//! (architecture §13).
+//! (docs/architecture.md#security).
 //!
 //! The summary is built only from versions, platform names, vocabulary words (languages, file
 //! states, detector IDs, problem kinds, watch modes), and counts. It never holds source, file

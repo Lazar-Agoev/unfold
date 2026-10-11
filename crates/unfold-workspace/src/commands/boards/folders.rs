@@ -1,4 +1,4 @@
-//! Board folders (decision U-47).
+//! Board folders (board folder metadata).
 //!
 //! A board sits in a folder through its `folder` field; the sidebar builds the tree from the
 //! boards. A folder with no board in or under it is kept in `state.json`'s `emptyFolders` until a

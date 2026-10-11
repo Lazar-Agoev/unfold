@@ -1,5 +1,5 @@
 /**
- * Text measurement with the bundled fonts (architecture §11.14: the UI and code fonts ship with the
+ * Text measurement with the bundled fonts (docs/ui-shell.md#theme-and-components: the UI and code fonts ship with the
  * app, so text measures the same everywhere). Card widths and Flow geometry are computed from
  * these widths before anything renders. Measurements wait for the fonts: until they load, widths
  * come from a character-width estimate and the epoch changes once they are ready.

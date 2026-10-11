@@ -120,7 +120,7 @@ fn a_file_that_breaks_keeps_its_last_good_facts_until_fixed() {
     assert!(workspace.problems().is_empty());
 }
 
-/// Rebuild from scratch drops last-good facts (architecture §7.1): a broken file becomes
+/// Rebuild from scratch drops last-good facts (docs/engine.md#updates): a broken file becomes
 /// failed, and a later edit that is still broken doesn't bring the last good version back from
 /// the facts cache.
 #[test]

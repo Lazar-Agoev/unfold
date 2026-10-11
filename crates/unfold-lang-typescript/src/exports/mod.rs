@@ -1,5 +1,5 @@
 //! Export tables: what each module exports at run time, with re-export chains followed
-//! (architecture §6.3; the proof of concept's native `modules.ts` export queries).
+//! (docs/languages/typescript.md#project-configuration; the proof of concept's native `modules.ts` export queries).
 //!
 //! An export name links to the declarations it was written with:
 //!

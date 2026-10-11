@@ -2,7 +2,7 @@
 //!
 //! Every entrance diagram of both playgrounds is compared with the PoC reader's
 //! (`codegraph export --entrance <key> --mermaid`, in `testdata/reference/poc-reader/<playground>/
-//! mermaid.json`) **modulo the labels decision U-27 changed**. Both texts are reduced to their
+//! mermaid.json`) **modulo the labels reader semantics changed**. Both texts are reduced to their
 //! structure and the structures must be equal line for line:
 //!
 //! - comment lines (`%% …`, warnings and health notes, whose wording differs) are dropped;

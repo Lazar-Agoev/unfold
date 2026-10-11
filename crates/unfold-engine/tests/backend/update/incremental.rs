@@ -1,6 +1,6 @@
 //! Determinism and incremental-equals-full: the graph depends only on the effective inputs,
 //! not on input order, thread count, or the sequence of updates that led to them
-//! (architecture §6.8, §7.2).
+//! (docs/graph-model.md#order-and-canonical-export).
 
 use std::sync::Arc;
 

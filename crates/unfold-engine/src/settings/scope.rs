@@ -4,7 +4,7 @@ use globset::{Glob, GlobBuilder, GlobSet, GlobSetBuilder};
 use serde::{Serialize, Serializer};
 use unfold_core::RepoPath;
 
-/// Which files are graphed, on top of the default exclusions (architecture §9.2, U-16).
+/// Which files are graphed, on top of the default exclusions (docs/engine.md#shared-config, file discovery).
 ///
 /// A pattern matches a path when it equals the path, names a folder that contains it, or
 /// matches it as a glob. Globs are `/`-aware: `*` and `?` stay within one component, `**`

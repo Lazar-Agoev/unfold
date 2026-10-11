@@ -1,7 +1,7 @@
 /**
  * The window factory and registry. Every window gets a numeric id (used on the wire to the engine)
  * and a stable key (its remembered state in `windows.json` survives restarts). Every window shows
- * the whole workspace (architecture §11.10, U-37).
+ * the whole workspace (desktop/README.md#transport-and-windows, window restore).
  */
 
 import { randomUUID } from "node:crypto";
@@ -45,7 +45,7 @@ export interface WindowHooks {
 }
 
 /**
- * Every window's web preferences (architecture §13): the preload and nothing else, context isolation,
+ * Every window's web preferences (docs/architecture.md#security): the preload and nothing else, context isolation,
  * the sandbox, no Node, no webviews, no spellchecker. The render window starts from these too.
  */
 export function hardenedPreferences(devTools: boolean): WebPreferences {

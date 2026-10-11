@@ -545,7 +545,7 @@ impl<'e, 'r> Run<'e, 'r> {
         }
     }
 
-    /// The facts of a file whose bytes don't parse or can't be read (U-15): its last good
+    /// The facts of a file whose bytes don't parse or can't be read (last-good facts): its last good
     /// facts under the same settings, from memory or the cache, or none at all.
     fn fall_back(&mut self, pending: &Pending<'_>, failure: Box<str>) -> Facts {
         if let Some((hash, facts)) = pending

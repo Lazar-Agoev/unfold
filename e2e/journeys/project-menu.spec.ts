@@ -1,5 +1,5 @@
 /**
- * The project menu (`⋯` on a project's sidebar row and on its Home; architecture §11.4, §11.11):
+ * The project menu (`⋯` on a project's sidebar row and on its Home; docs/ui-shell.md#screens):
  * Compile again, Rebuild from scratch, Cancel, Pause and Resume background updates, Settings…,
  * Add entrance…, Health and activity, Reveal in Finder, Copy diagnostics, and Remove from workspace…,
  * with Help › Copy Diagnostics and File › Remove Project from the application menu.

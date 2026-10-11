@@ -1,4 +1,4 @@
-//! The per-file facts cache (architecture §8.4): serialized `FileFacts` keyed by path, content
+//! The per-file facts cache (docs/engine.md#facts-cache-and-failures): serialized `FileFacts` keyed by path, content
 //! hash, engine version, and settings hash.
 //!
 //! The store treats facts as opaque bytes. Each entry also records whether the bytes parsed
@@ -104,7 +104,7 @@ fn decode(row: &Row<'_>) -> Result<CachedFacts> {
 impl Writer {
     /// Deletes every cached entry for `paths`, current and last good, leaving the graph as it
     /// is: after Rebuild from scratch, the files that don't parse lose their last-good facts
-    /// (architecture §7.1).
+    /// (docs/engine.md#updates).
     pub fn forget_facts(&mut self, paths: &[&RepoPath]) -> Result<()> {
         self.recover()?;
         let tx = self.conn.unchecked_transaction()?;
@@ -182,7 +182,7 @@ impl Writer {
     }
 
     /// The most recent parsed entry for `path` under the running engine and these settings:
-    /// what a file that stopped parsing falls back to (architecture §7.6).
+    /// what a file that stopped parsing falls back to (docs/engine.md#facts-cache-and-failures).
     pub fn last_good_facts(
         &self,
         path: &RepoPath,

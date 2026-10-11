@@ -1,6 +1,6 @@
 //! The divergence ledger, `testdata/reference/divergences.toml`: every allowed difference between
 //! the PoC reference and Unfold's output, with its reason
-//! ([U-33](../../../docs/decisions-and-tradeoffs.md)).
+//! ([architecture](../../../docs/architecture.md#guarantees)).
 //!
 //! The ledger is checked against the differences of one corpus at a time. A difference is split
 //! into units: one for a missing or extra record, one per changed field. Every unit must be

@@ -1,5 +1,5 @@
 /**
- * Where things live: the app folders of architecture §8.2, the built UI, and the engine addon.
+ * Where things live: the app folders of docs/architecture.md#storage, the built UI, and the engine addon.
  * Pure functions of their inputs, so they are tested without Electron.
  */
 
@@ -16,7 +16,7 @@ export interface BasePaths {
 }
 
 /**
- * The app folders Rust receives in `addon.init` (architecture §8.2):
+ * The app folders Rust receives in `addon.init` (docs/architecture.md#storage):
  * - app data (preferences, the workspace, remembered windows) is Electron's user-data folder;
  * - logs are `~/Library/Logs/Unfold` on macOS and `<user data>/logs` elsewhere;
  * - fallback caches for folders Unfold can't write to sit under the platform's cache folder.

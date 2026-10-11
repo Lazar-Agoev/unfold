@@ -1,5 +1,5 @@
 /**
- * The Code view of a card (architecture §10.3, 02 §4.3): the exact verified slice with syntax colors in
+ * The Code view of a card (docs/reader.md#code-view, 02 §4.3): the exact verified slice with syntax colors in
  * 20px rows, folds from the gutter, calls as links, board groups on a magenta rail, and a port at the
  * card's edge for each calling line that has an arrow (the row gets the step fill). While a line
  * between cards is selected, the callee's lines its contract reads get the step fill, and the caller's

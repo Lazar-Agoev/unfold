@@ -1,4 +1,4 @@
-//! What a graph was linked from (architecture §7.8): kept with the stored graph so that the
+//! What a graph was linked from (docs/engine.md#project-lifecycle): kept with the stored graph so that the
 //! reopen check can trust a restored graph without linking it again when nothing it was linked
 //! from changed while the folder was closed.
 

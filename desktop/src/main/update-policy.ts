@@ -1,12 +1,12 @@
 /**
- * The update policy (architecture §14), as pure functions so it is tested without Electron: which
+ * The update policy (desktop/README.md#packaging), as pure functions so it is tested without Electron: which
  * builds update and how, whether the person allows the check, and where a release's page is.
  * `updater.ts` applies it.
  */
 
 /**
  * Where releases are published. PLACEHOLDER until the repository's final home is chosen with the
- * trademark check (U-3); keep it in step with `publish` in `electron-builder.yml`.
+ * trademark check (release naming); keep it in step with `publish` in `electron-builder.yml`.
  */
 export const RELEASES_URL = "https://github.com/unfold-placeholder/unfold/releases";
 

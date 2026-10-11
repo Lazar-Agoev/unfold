@@ -274,7 +274,7 @@ fn a_cancelled_rebuild_keeps_the_previous_graph() {
         let result = ticket.wait();
         let acknowledged = asked.elapsed();
         // Generous for an unoptimized build under a parallel test run; the release budget
-        // (250 ms, architecture §17) is measured by the e2e budgets.
+        // (250 ms, docs/testing.md#budgets) is measured by the e2e budgets.
         assert!(
             acknowledged < std::time::Duration::from_secs(1),
             "{delay} ms: {acknowledged:?}"

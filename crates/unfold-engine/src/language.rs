@@ -1,4 +1,4 @@
-//! The contract between the engine and a language front end (architecture §6.2).
+//! The contract between the engine and a language front end (docs/architecture.md#ownership).
 //!
 //! A language answers narrow questions; the shared backend owns the policy. Each language
 //! implements two traits:

@@ -5,7 +5,7 @@ import { defineConfig } from "@playwright/test";
  * `crates/unfold-node`); `just e2e` builds them first. Each test gets its own user-data folder,
  * home, and copies of the playgrounds, so tests never share state.
  *
- * Two projects: `journeys` (the suite CI runs) and `budgets` (architecture §17 measurements, run on
+ * Two projects: `journeys` (the suite CI runs) and `budgets` (docs/testing.md#budgets measurements, run on
  * demand with `pnpm --filter @unfold/e2e budgets` and the release addon).
  */
 export default defineConfig({

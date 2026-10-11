@@ -1,4 +1,4 @@
-/* Typed lines: a line's closed label and its contract (docs/proposals/typed-lines.md §1). */
+/* Typed lines: a line's closed label and its contract (docs/reader.md). */
 
 /* The closed label: small mono on the canvas color, no border, so it hides the line under it. Sized
    to its text as measured with the bundled font (LineLabel.tsx). */

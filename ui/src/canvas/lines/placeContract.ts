@@ -1,5 +1,5 @@
 /**
- * Where a line's contract opens (docs/proposals/typed-lines.md §7): clear of the caller's calling line
+ * Where a line's contract opens (docs/reader.md): clear of the caller's calling line
  * and the callee's marked lines, so what it reads stays in view. It tries being centered on points
  * along its curve (the label's point first, then 0.4 and 0.6, 0.3 and 0.7, …), then hanging just
  * below each of them (centered, then to its left, then to its right), and takes the first spot that

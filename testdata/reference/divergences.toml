@@ -1,5 +1,5 @@
 # The divergence ledger: every allowed difference between a frozen PoC reference
-# (canonical/<corpus>.jsonl) and what Unfold produces for that corpus's folder (U-33).
+# (canonical/<corpus>.jsonl) and what Unfold produces for that corpus's folder (precision and reference checks).
 # `cargo xtask parity <corpus> --actual <file.jsonl>` fails on any difference not listed here,
 # and on any entry here that no longer occurs ("stale entry"). Format: README.md in this folder.
 #
@@ -57,7 +57,7 @@ key = "ts-orders/tsconfig.json"
 change = "extra"
 reason = "Unfold fingerprints each tsconfig.json and its extends chain as a graph input (architecture §7.7); the PoC recorded none"
 
-# C-2: members of constant object literals resolve (architecture §6.9). Each edge was unresolved
+# C-2: members of constant object literals resolve (docs/testing.md#the-divergence-ledger). Each edge was unresolved
 # `unknown_receiver` in the native reference; its new target equals the checker-backed reference.
 
 [[divergence]]

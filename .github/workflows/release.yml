@@ -2,7 +2,7 @@
 # (Authenticode), and Linux (AppImage, .deb, .rpm, with checksums), each smoke-tested, then one
 # draft GitHub Release holding every installer and the updater's manifests (latest*.yml and
 # blockmaps). A maintainer publishes the draft once the journeys pass on all three platforms
-# (architecture §14); electron-updater only sees published releases.
+# (desktop/README.md#packaging); electron-updater only sees published releases.
 #
 # Secrets (repository settings > Secrets and variables > Actions). PLACEHOLDERS until the
 # certificates from Step 0 are issued; without them the signing jobs fail rather than ship unsigned.

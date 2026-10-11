@@ -1,6 +1,6 @@
 //! Project commands for Home and Project settings: the summary behind Home's
 //! header and Health line, what a Compile would graph and skip (a new project's Home,
-//! architecture §11.4), and one level of the scope tree.
+//! docs/ui-shell.md#screens), and one level of the scope tree.
 
 use serde::Serialize;
 use ts_rs::TS;
@@ -93,7 +93,7 @@ pub struct SkippedFolder {
     pub files: u32,
 }
 
-/// What a new project's Home shows before anything is written (architecture §11.4).
+/// What a new project's Home shows before anything is written (docs/ui-shell.md#screens).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CompilePreview {

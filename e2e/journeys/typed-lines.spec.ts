@@ -1,5 +1,5 @@
 /**
- * Typed lines (docs/proposals/typed-lines.md §7) on the `typed-lines` fixture: a line between cards
+ * Typed lines (docs/reader.md) on the `typed-lines` fixture: a line between cards
  * carries its call's signature at rest; clicking the label opens the call's contract in its place,
  * with what it sends, returns, and throws; a written type opens its definition under its row, and
  * "Used in" lists where it is used; Escape closes the contract. The same in the dark theme.

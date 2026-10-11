@@ -12,7 +12,7 @@ const APP_RENDER_URL = `${APP_SCHEME}://${APP_HOST}/render.html`;
 
 /**
  * The production policy: every asset comes from the app itself, there are no inline scripts or
- * styles, and nothing is loaded from the network (architecture §13).
+ * styles, and nothing is loaded from the network (docs/architecture.md#security).
  */
 export const APP_CONTENT_SECURITY_POLICY = [
   "default-src 'none'",

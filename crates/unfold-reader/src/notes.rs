@@ -1,4 +1,4 @@
-//! The short texts that explain an external or unresolved occurrence (architecture §10.1).
+//! The short texts that explain an external or unresolved occurrence (docs/reader.md#derived-views).
 //!
 //! External occurrences show their module; unresolved ones show a compact reason. The wording
 //! is the proof of concept's. A guess never replaces either: the reader never upgrades an

@@ -1,5 +1,5 @@
 /**
- * Agents (docs/proposals/agent-mcp-design.md §5): turning the app's MCP server on in Preferences ›
+ * Agents (docs/ipc.md): turning the app's MCP server on in Preferences ›
  * Agents, and an MCP client that talks to it over HTTP the way Claude Code does (the official SDK's
  * client, named `claude-code`, so the app signs its edits as Claude). Raw requests check the
  * server's guards, which a client never trips.

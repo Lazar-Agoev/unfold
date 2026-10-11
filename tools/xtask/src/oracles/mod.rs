@@ -1,6 +1,6 @@
 //! `cargo xtask oracles check|refresh`: the precision and recall gates
-//! ([architecture §16](../../../../docs/architecture.md#16-testing),
-//! [U-33](../../../../docs/decisions-and-tradeoffs.md#u-33-correctness-evidence-frozen-poc-reference-divergence-ledger-independent-oracles)).
+//! ([docs/testing.md#choose-checks-for-a-local-change](../../../../docs/testing.md#choose-checks-for-a-local-change),
+//! [testing policy](../../../../docs/testing.md#precision-and-recall-gates)).
 //!
 //! - `check` compiles each corpus in `testdata/reference/oracles/corpora.toml` from a temporary
 //!   copy (or reads `--actual`) and compares it with the cached oracle files: every resolved call,

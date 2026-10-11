@@ -1,4 +1,4 @@
-//! Board files of a project (architecture §8.1, §10.5; decision U-43): published boards
+//! Board files of a project (docs/architecture.md#storage; unpublished edits): published boards
 //! in `.unfold/boards/`, drafts and the changes copies of published boards in the drafts
 //! directory (`.unfold/local/drafts/`, or its fallback location outside the folder), written
 //! atomically, never overwriting a published file by accident, with change detection for edits
@@ -83,7 +83,7 @@ impl BoardFile {
         })
     }
 
-    /// A draft. Its name never ends in `.changes`, which marks changes copies (decision U-43).
+    /// A draft. Its name never ends in `.changes`, which marks changes copies (unpublished edits).
     pub fn draft(name: &str) -> Result<Self, BoardError> {
         check_name(name)?;
         if name.ends_with(CHANGES_SUFFIX) {

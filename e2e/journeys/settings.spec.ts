@@ -1,5 +1,5 @@
 /**
- * Settings (architecture §11.12): Project settings (Scope, Detectors, General's name, and the guard on
+ * Settings (docs/engine.md#shared-config): Project settings (Scope, Detectors, General's name, and the guard on
  * unsaved edits), the manual entrance editor (from the project menu, from Home, and from a card), and
  * Preferences (the theme, and a key binding stored by action id).
  */

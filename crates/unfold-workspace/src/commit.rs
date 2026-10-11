@@ -1,5 +1,5 @@
 //! Turning an engine update into one store commit, and loading the committed graph back on
-//! reopen (architecture §4.3 step 4, §7.8).
+//! reopen (docs/engine.md#updates step 4, §7.8).
 //!
 //! After each successful update the engine thread holds the previous and the new graph. The
 //! commit describes only what differs from what the store holds ([`Committed`]):

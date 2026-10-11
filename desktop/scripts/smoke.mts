@@ -1,5 +1,5 @@
 /**
- * The packaged-app smoke test (architecture §13 and §16 "Packaging", migration Step 11). Run it after
+ * The packaged-app smoke test (docs/architecture.md#security and §16 "Packaging", migration Step 11). Run it after
  * `just bundle-dir` (`just smoke`, or `UNFOLD_APP=<app or executable> node scripts/smoke.mts`).
  *
  * 1. Reads the Electron fuses back from the packaged binary.
@@ -62,7 +62,7 @@ const EXPECTED_PREFERENCES: Readonly<Record<string, boolean>> = {
   safeDialogs: true,
 };
 
-/** What the preload exposes, and nothing more (architecture §13). */
+/** What the preload exposes, and nothing more (docs/architecture.md#security). */
 const UNFOLD_KEYS = ["addDroppedFolder", "invoke", "on", "onConnection", "stream", "window"];
 
 // --- Reporting ---------------------------------------------------------------------------------

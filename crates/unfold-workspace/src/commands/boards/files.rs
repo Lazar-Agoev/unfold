@@ -1,4 +1,4 @@
-//! A project's board files by board id (decision U-43): which file a board's working version
+//! A project's board files by board id (unpublished edits): which file a board's working version
 //! is in, reading it, and writing it.
 //!
 //! A board's **id** is its public file's folder-relative path: `.unfold/local/drafts/<name>.json`
@@ -256,7 +256,7 @@ impl<'a> Files<'a> {
             .free_draft(&format!("board-{}", crate::commit::now_ms()))?)
     }
 
-    /// Writes `board` as board `file`'s working version (decision U-43): the draft; or for a
+    /// Writes `board` as board `file`'s working version (unpublished edits): the draft; or for a
     /// published board its changes copy, started from published revision `base` when the copy
     /// is new, and deleted (the board back on its published file) when the working version
     /// equals the published one.

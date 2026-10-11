@@ -1,7 +1,7 @@
 /**
  * Native dialogs. Paths outside a project come only from here (or from a drop or the command line):
  * the main process shows the dialog, and only the path the person chose, or an agent's path the
- * person agreed to, leaves this process (architecture §13).
+ * person agreed to, leaves this process (docs/architecture.md#security).
  */
 
 import { homedir } from "node:os";

@@ -1,5 +1,5 @@
 /**
- * Boards that span projects (architecture §11.9, decision U-44): a page of a ts-orders board holds a card from
+ * Boards that span projects (docs/reader.md#cards-from-other-projects, cross-project boards): a page of a ts-orders board holds a card from
  * py-orders, found with Add across both; a link between them is drawn by hand and labeled; when
  * py-orders' shared name changes, its card becomes a placeholder until the name matches again.
  */

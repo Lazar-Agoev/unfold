@@ -1,6 +1,6 @@
 /**
  * The manual entrance editor's model: a draft of one `[[entrance]]` table, its validation (the same
- * rules Rust applies, docs/entrances.md "Declarations"), the `EntranceSpec` it becomes, and how an
+ * rules Rust applies, docs/engine.md "Declarations"), the `EntranceSpec` it becomes, and how an
  * Entrances-view row finds the table it came from.
  */
 

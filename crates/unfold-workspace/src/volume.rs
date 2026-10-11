@@ -1,4 +1,4 @@
-//! Detecting network volumes, where SQLite's write-ahead log is unsafe (architecture §8.2) and
+//! Detecting network volumes, where SQLite's write-ahead log is unsafe (docs/architecture.md#storage) and
 //! file-system events are unreliable (§7.5).
 //!
 //! The check reads the file-system type with `statfs` (through `nix`, so this crate stays free

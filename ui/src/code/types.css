@@ -1,4 +1,4 @@
-/* Written types (TypeText) and the definitions they open (TypeDefinition): docs/proposals/typed-lines.md §1. */
+/* Written types (TypeText) and the definitions they open (TypeDefinition): docs/reader.md. */
 
 .type-text { overflow-wrap: anywhere; }
 .type-word,

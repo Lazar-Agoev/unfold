@@ -1,5 +1,5 @@
 /**
- * One place for the app's hardening (architecture §13, U-31): windows can't navigate, open windows,
+ * One place for the app's hardening (docs/architecture.md#security, process hardening): windows can't navigate, open windows,
  * attach webviews, or get any permission; nothing loads from the network; and every IPC message is
  * checked to come from the main frame of a window this process created, showing Unfold's own UI.
  */

@@ -1,4 +1,4 @@
-//! The `.unfold/` layout of one folder (architecture §8.1–8.2, decision U-18) and its fallback
+//! The `.unfold/` layout of one folder (docs/architecture.md#storage–8.2, project storage) and its fallback
 //! location.
 //!
 //! ```text

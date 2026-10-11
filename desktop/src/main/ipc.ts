@@ -1,5 +1,5 @@
 /**
- * Window and dialog commands, the only IPC the main process answers (architecture §12). Engine
+ * Window and dialog commands, the only IPC the main process answers (docs/ipc.md#how-a-command-travels). Engine
  * commands never come here: they travel over each window's port to the engine host. A few window
  * commands end in an engine request the main process sends itself, with `"trusted": true`
  * (`add_project`, `export_mermaid`), because they involve a path only the main process may choose.

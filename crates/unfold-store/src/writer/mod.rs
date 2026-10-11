@@ -291,7 +291,7 @@ impl Writer {
     }
 
     /// Deletes the graph, the facts cache, and the search index, keeping the schema and
-    /// versions: Rebuild from scratch (architecture §7.1). Key IDs start again from 1.
+    /// versions: Rebuild from scratch (docs/engine.md#updates). Key IDs start again from 1.
     /// Readers keep working and see an empty graph once this commits.
     pub fn clear(&mut self) -> Result<()> {
         self.recover()?;

@@ -1,4 +1,4 @@
-//! Live and resting projects (decision U-45): what wakes a project, when it rests, what
+//! Live and resting projects (project liveness): what wakes a project, when it rests, what
 //! keeps it live, and how a resting project answers reads from its stored graph.
 
 use std::collections::BTreeSet;

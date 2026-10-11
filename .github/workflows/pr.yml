@@ -1,4 +1,4 @@
-# Every pull request and every push to main, on macOS, Windows, and Linux (architecture §15.5).
+# Every pull request and every push to main, on macOS, Windows, and Linux (docs/testing.md#broad-gates).
 # Actions are pinned to commit SHAs (the comment names the release).
 name: pr
 

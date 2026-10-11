@@ -1,5 +1,5 @@
 //! The emit map: which source each compiled output comes from, so a launch such as
-//! `node dist/server.js` starts `src/server.ts` (architecture §6.3, "Emit map"; the proof of
+//! `node dist/server.js` starts `src/server.ts` (docs/languages/typescript.md#project-configuration, "Emit map"; the proof of
 //! concept's `source/emit.ts`). Nothing is emitted, and outputs never need to exist.
 //!
 //! Every distinct nearest `tsconfig.json` of an indexed TypeScript file contributes, in path

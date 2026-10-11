@@ -1,4 +1,4 @@
-//! Boards (architecture §9.1, §10.5; decisions U-22, U-42): the `unfold-board`
+//! Boards (docs/reader.md#boards; decisions board format, board references): the `unfold-board`
 //! version 1 format with pages, its JSON Schema, strict parsing, deterministic serialization,
 //! signatures, guards, groups, drawn links and connections, frames, resource cards, notes, the
 //! claims' signatures and grounding, health with repairs per page and per project, page

@@ -1,5 +1,5 @@
 //! Discovery and scope: which files in the open folder Unfold indexes, reads as context, knows
-//! to exist, or fingerprints as configuration (architecture §6.1, U-16).
+//! to exist, or fingerprints as configuration (docs/engine.md#updates, file discovery).
 //!
 //! [`discover`] walks the folder with the `ignore` crate, so `.gitignore`, `.ignore`,
 //! `.git/info/exclude`, and the global Git excludes file apply exactly as in ripgrep, without
@@ -48,7 +48,7 @@ impl Default for DiscoverOptions {
     }
 }
 
-/// Size and modification time: the cheap check before hashing a file again (U-17).
+/// Size and modification time: the cheap check before hashing a file again (source verification).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FileStamp {
     /// The size in bytes.

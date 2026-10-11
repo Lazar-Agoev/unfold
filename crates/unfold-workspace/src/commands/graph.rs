@@ -1,4 +1,4 @@
-//! Graph commands for one card (architecture §10.2–10.4): `card` (an entrance
+//! Graph commands for one card (docs/reader.md#boards–10.4): `card` (an entrance
 //! or block card with its Code and Flow models), `peek` (the hover over a call link), and
 //! `preview` (Add's preview pane and the map popover). Each wakes the card's project.
 

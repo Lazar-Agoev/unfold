@@ -1,4 +1,4 @@
-//! Relations of one definition (architecture §10.1): its callers, its outgoing occurrences, and
+//! Relations of one definition (docs/reader.md#derived-views): its callers, its outgoing occurrences, and
 //! the entrances it is reached from.
 //!
 //! - **Callers** reverse resolved edges and map each occurrence to its owner.

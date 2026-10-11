@@ -1,5 +1,5 @@
 //! `update(changes)`: the single entry point that keeps one folder's graph current
-//! (architecture §4.3, §6.1, §7.2–7.8; decisions U-13, U-14, U-15, U-17).
+//! (docs/engine.md#updates–7.8; decisions background updates, facts caching, last-good facts, source verification).
 //!
 //! An [`Engine`] is the long-lived, in-memory program of one open folder. Every action is an
 //! update over it:
@@ -18,7 +18,7 @@
 //! site, detect and assemble entrances, and validate the new graph with the core validator
 //! and each language's census. Only a successful update replaces the engine's state; a
 //! cancelled or failed one leaves the previous graph, facts, and fingerprints untouched.
-//! `docs/compiling.md` describes the rules.
+//! `docs/engine.md` describes the rules.
 
 mod basis;
 mod build;
@@ -97,7 +97,7 @@ pub enum Changes {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Verify {
     /// Compare size and modification time with the last check, and read and hash only files
-    /// that differ (U-17's cheap check, for reopening and watcher events).
+    /// that differ (source verification's cheap check, for reopening and watcher events).
     Stamps,
     /// Read and hash every file that may have changed.
     Contents,

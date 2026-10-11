@@ -1,5 +1,5 @@
 /**
- * Arrows between cards (architecture §10.2): one per opened call occurrence, that is, every
+ * Arrows between cards (docs/reader.md#boards): one per opened call occurrence, that is, every
  * occurrence shown in a card whose resolved target has a card on the board. Each leaves from its own
  * port (the end of the calling line, or the Flow node), even when several calls go to one card.
  * Imports and passed references are dashed. An entrance points at each handler on the page. The

@@ -1,5 +1,5 @@
 /**
- * Starts and supervises the engine host (architecture §4.1, U-31). The main process hands every
+ * Starts and supervises the engine host (docs/architecture.md#processes, process hardening). The main process hands every
  * window its own MessagePort to the engine host and then stays out of the data path. If the engine
  * host exits, it is restarted and every window is re-attached with fresh ports.
  *

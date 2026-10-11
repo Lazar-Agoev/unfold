@@ -1,4 +1,4 @@
-//! The Flow model (architecture §10.4): **paths from written structure**.
+//! The Flow model (docs/reader.md#flow-view): **paths from written structure**.
 //!
 //! Flow is derived from saved blocks, roles, slots, and source order only, never by re-parsing
 //! the source. It is not a runtime trace: short-circuit expressions stay as written, labeled

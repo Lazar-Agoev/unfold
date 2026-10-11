@@ -1,7 +1,7 @@
 /**
  * Architecture §17's budgets, measured on the built app on this machine (run with the release
  * addon: `just e2e-budgets`), including idle memory with three projects connected, all live and
- * with resting applied (decision U-45). Each test measures rows and records them in
+ * with resting applied (project liveness). Each test measures rows and records them in
  * `test-results/budgets.json`; docs/testing.md keeps the table.
  *
  * The 602-file corpus is TypeScript 6.0.3's `src` (testdata/corpora.lock.toml), read from
@@ -468,7 +468,7 @@ test("idle memory with three projects connected: all live, then resting", async 
     detail: live.processes,
   });
 
-  // A window always shows one project on Home, which stays live (decision U-45); once their five-minute leases
+  // A window always shows one project on Home, which stays live (project liveness); once their five-minute leases
   // run out, the other two rest.
   await expect
     .poll(async () => (await workspace(page)).projects.map((row) => row.live), { timeout: 480_000, intervals: [5_000] })

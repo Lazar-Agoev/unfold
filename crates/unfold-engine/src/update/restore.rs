@@ -1,4 +1,4 @@
-//! Reopening a folder (architecture §7.8): rebuilding the in-memory program from the stored
+//! Reopening a folder (docs/engine.md#project-lifecycle): rebuilding the in-memory program from the stored
 //! graph and the facts cache, without parsing, so the next update is fast.
 
 use std::collections::BTreeMap;

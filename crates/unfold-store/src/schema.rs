@@ -1,7 +1,7 @@
-//! The database schema (architecture §8.3) and the connection settings.
+//! The executable database schema and connection settings.
 //!
-//! The tables match the architecture exactly. Beyond the indexes it lists (`edges_by_target`
-//! and the `UNIQUE` constraints), the store adds only the indexes its queries need:
+//! The tables persist the core graph records and reader projections. In addition to
+//! `edges_by_target` and the `UNIQUE` constraints, these indexes serve specific queries:
 //!
 //! | Index | Query |
 //! | --- | --- |

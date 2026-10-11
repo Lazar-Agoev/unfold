@@ -1,6 +1,6 @@
 /**
  * The engine host: an Electron utility process that loads the Rust addon and routes each window's
- * port to it (architecture §4.1, U-31). The main process sends lifecycle messages, plus its own
+ * port to it (docs/architecture.md#processes, process hardening). The main process sends lifecycle messages, plus its own
  * trusted requests (adding a project, export to a dialog path, window restore) and the MCP server's
  * untrusted ones, answered over the parent port, where the events the main process follows go too.
  */

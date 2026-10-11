@@ -1,4 +1,4 @@
-//! The typed IPC contract between the UI and the engine (architecture §12, decision U-25).
+//! The typed IPC contract between the UI and the engine (docs/ipc.md#how-a-command-travels, generated command types).
 //!
 //! - [`table`]: the command table, one line per command, and the [`table::Request`] the addon's
 //!   `dispatch` parses.

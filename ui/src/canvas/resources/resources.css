@@ -1,5 +1,5 @@
 /*
- * Resource cards (design §4.5) are authored, so they use the authored tokens (U-51) and never look like
+ * Resource cards (design §4.5) are authored, so they use the authored tokens (theme tokens) and never look like
  * code cards: an authored edge and a tinted header with the kind's glyph and word, the name in code
  * type. A table's columns share one grid, as a type card's fields do. Sizes follow `resourceCardSize`
  * (sizing.ts).

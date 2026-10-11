@@ -1,7 +1,7 @@
 //! The state one project's threads share: the scheduler queue, the status model, problems, the
 //! Index log, the reader pool, remembered state, and the event sink.
 //!
-//! # Scheduling (architecture §7.5)
+//! # Scheduling (docs/engine.md#updates)
 //!
 //! [`Sched`] is the engine thread's queue, guarded by one mutex with one condition variable
 //! (`wake`) that every change notifies:

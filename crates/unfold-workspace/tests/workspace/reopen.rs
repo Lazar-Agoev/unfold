@@ -1,4 +1,4 @@
-//! Reopening with the store-backed facts cache (architecture §7.8): a folder whose files didn't
+//! Reopening with the store-backed facts cache (docs/engine.md#project-lifecycle): a folder whose files didn't
 //! change reads and extracts nothing on reopen, whatever configuration shapes their facts
 //! (TypeScript caches facts under each file's `tsconfig.json`-derived extraction options), and
 //! a configuration edit made while the folder was closed re-extracts exactly the files it

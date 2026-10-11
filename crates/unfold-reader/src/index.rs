@@ -19,7 +19,7 @@ pub type BlockId = u32;
 pub(crate) const NONE: BlockId = u32::MAX;
 
 /// Whether a block of `child_role` under a parent of `parent_kind` belongs to that parent's
-/// activation (architecture §10.1): every child of a file; a class's children except Python
+/// activation (docs/reader.md#derived-views): every child of a file; a class's children except Python
 /// header expressions; a callable's body and parameters. Nothing else owns: the owner walk
 /// passes through statements and through TypeScript `interface`, `type_alias`, and `enum`
 /// blocks (calls in an enum member's initializer belong to the enum's owner).

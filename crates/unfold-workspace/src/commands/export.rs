@@ -1,4 +1,4 @@
-//! Mermaid export (architecture §10.5, §13): one board page or one entrance as a
+//! Mermaid export (docs/reader.md#boards): one board page or one entrance as a
 //! Mermaid flowchart, written to a file the person chose in the main process's save dialog, or
 //! returned as text for the clipboard. A page's drawn links are dashed arrows with their labels,
 //! and a card from a project that is not connected is a "From <name>, not connected"

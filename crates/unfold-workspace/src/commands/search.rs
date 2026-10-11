@@ -1,5 +1,5 @@
 //! `search`: definitions, entrances, and files by name across the workspace's projects
-//! (decisions U-30, U-45). It also serves Add's name search and quick open. Definitions are the
+//! (decisions cross-project search, project liveness). It also serves Add's name search and quick open. Definitions are the
 //! catalog's: functions, methods, classes, and type declarations, each hit naming its block
 //! kind; `definitionKinds` narrows them (to types: `interface`, `type_alias`, `enum`, `class`).
 //!

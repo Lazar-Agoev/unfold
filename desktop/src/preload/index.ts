@@ -1,5 +1,5 @@
 /**
- * The preload script: exposes `window.unfold` and nothing else (architecture §13).
+ * The preload script: exposes `window.unfold` and nothing else (docs/architecture.md#security).
  *
  * Engine commands travel over a MessagePort to the engine host, which the main process hands over
  * (again after every engine-host restart or reload). Invokes made before a port

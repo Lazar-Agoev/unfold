@@ -1,4 +1,4 @@
-//! The per-folder lock (architecture §8.7, decision U-37): `local/cache/lock` keeps a second
+//! The per-folder lock (docs/engine.md#facts-cache-and-failures, window restore): `local/cache/lock` keeps a second
 //! copy of Unfold (another version, a development build) from opening a folder this copy has
 //! open. Windows within one copy share the folder's workspace and never contend for it.
 //!
