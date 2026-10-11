@@ -18,6 +18,8 @@ pub(super) struct Word {
     pub assignment: bool,
     /// It was written without any quote or escape.
     pub plain: bool,
+    /// The word as written, quotes included, without line continuations.
+    pub raw: String,
 }
 
 impl Word {
@@ -173,6 +175,7 @@ pub(super) fn steps(script: &str) -> Result<Vec<Vec<Word>>, Refusal> {
             expansion,
             assignment: is_assignment(&raw),
             plain,
+            raw,
         });
         needs_step = false;
     }

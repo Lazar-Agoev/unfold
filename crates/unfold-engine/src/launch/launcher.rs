@@ -8,8 +8,8 @@ use super::{LaunchCommand, Refusal};
 /// What one launcher step means.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Step {
-    /// The step launches a module.
-    Launch(LaunchCommand),
+    /// The step launches a module, written at this index of the step's arguments.
+    Launch(LaunchCommand, usize),
     /// The step runs something else (or no module): it has no startup.
     Other,
 }
@@ -367,10 +367,13 @@ pub(super) fn launcher(command: &str, args: &[Word], cwd: &str) -> Result<Step, 
         if text.is_empty() {
             return Err(Refusal::new("Empty module path"));
         }
-        return Ok(Step::Launch(LaunchCommand {
-            path: text.into(),
-            cwd: cwd.into(),
-        }));
+        return Ok(Step::Launch(
+            LaunchCommand {
+                path: text.into(),
+                cwd: cwd.into(),
+            },
+            index - 1,
+        ));
     }
     Ok(Step::Other)
 }

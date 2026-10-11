@@ -184,6 +184,24 @@ script-reference recursion, working directories, ignored lifecycle hooks, and pr
 A launch outside the project or through `node_modules` supplies no entrance. Exact grammar,
 launcher flags, recursion limits, and examples are covered by the launch module and its tests.
 
+Configured process commands share the tokenizer, refusals, and package lookup (a configured
+`npm run start` selects `cwd/package.json`), with one stricter rule: exactly one launching step,
+the last. Preparatory steps may precede it; `node a.js && node b.js` is unsupported. They also
+read Python: `python`/`python3`/`python3.N` with only `-u`, `-B`, `-O`, `-OO`, then a script
+(file target, script mode) or `-m module`; and Uvicorn, as `uvicorn module:attr` or
+`python -m uvicorn module:attr`, with `--app-dir`, `--factory`, and pinned server options.
+Unknown options are unsupported. Expansions are allowed only in server option values and in
+program arguments after the target. `sh -c "…"`/`bash -c` is unsupported ("Can't read sh -c"),
+but its plan suggests the quoted command's target and import path.
+
+Each Python launch's import path, in order: the script's folder (script); the working folder
+(`-m`); the app dir, default the working folder (`uvicorn`); the app dir then the working folder
+(`python -m uvicorn`). Then `PYTHONPATH` entries: a leading `PYTHONPATH=…` assignment, else the
+declared `env`, resolved from the working folder (empty entry = working folder; expansions are
+unsupported). Explicit `python_paths` replace the whole list. An explicit `target` is used as
+written; with a readable command, the two must agree or the launch reports a problem and has no
+target. The plan also lists the command's parts with plain meanings for the launch editor.
+
 ## Manual entrances and locators
 
 `[[entrance]]` supports `process`, `command`, `http`, `worker`, `schedule`, and `event`. Every

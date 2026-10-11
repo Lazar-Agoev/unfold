@@ -11,9 +11,14 @@
 //! Everything here is pure: package contents come in through [`PackageScripts`], and the result
 //! is a [`LaunchCommand`] (a path and the directory it is relative to) or a [`Refusal`] carrying
 //! the proof of concept's reason.
+//!
+//! Configured process commands use the same grammar and package lookup through [`plan_launch`],
+//! which also reads Python and Uvicorn launches and yields a [`LaunchPlan`].
 
 mod launcher;
 mod path;
+mod plan;
+mod python;
 mod shell;
 mod target;
 
@@ -21,6 +26,10 @@ use std::fmt;
 
 use launcher::{LAUNCHERS, Step, launcher};
 pub use path::{LAUNCH_EXTENSIONS, launch_file};
+pub use plan::{
+    CommandPart, ImportPath, ImportPathOrigin, LaunchDraft, LaunchPlan, LaunchProblem, Suggestion,
+    plan_launch,
+};
 use shell::{Word, is_assignment, steps};
 pub use target::{LaunchTarget, PythonContext, PythonEntry};
 
@@ -182,71 +191,40 @@ impl Interpreter<'_> {
         let mut cwd = dirname(package);
         let mut result = None;
         for step in steps(text)? {
-            let mut index = step.iter().take_while(|word| word.assignment).count();
-            let Some(first) = step.get(index) else {
+            let Some(command) = command(&step)? else {
                 result = None;
                 continue;
             };
-            let mut command = first.literal("command")?;
-            if first.plain && CONTROL_WORDS.contains(&command) {
-                return Err(Refusal::new(format!("Unsupported shell control word {command}")));
-            }
-            if SHELL_BUILTINS.contains(&command) {
-                return Err(Refusal::new(format!("Unsupported shell builtin {command}")));
-            }
-            if command == "env" || command == "cross-env" {
-                index += 1;
-                index += step[index..]
-                    .iter()
-                    .take_while(|word| is_assignment(&word.text))
-                    .count();
-                let Some(wrapped) = step.get(index) else {
-                    result = None;
-                    continue;
-                };
-                command = wrapped.literal("command")?;
-                if command.starts_with('-') {
-                    return Err(Refusal::new("Environment wrapper options are unsupported"));
-                }
-                if command == "cd" || SHELL_BUILTINS.contains(&command) {
-                    return Err(Refusal::new(format!(
-                        "Environment wrapper cannot model shell builtin {command}"
-                    )));
-                }
-            }
-            let args = &step[index + 1..];
-            if command == "cd" {
-                let [directory] = args else {
-                    return Err(Refusal::new("cd requires one literal directory"));
-                };
-                let directory = directory.literal("cd path")?;
-                if directory.is_empty() || directory.starts_with('-') {
-                    return Err(Refusal::new("Unsupported cd directory"));
-                }
-                cwd = resolve(&cwd, directory);
+            if command.name == "cd" {
+                cwd = change_directory(&cwd, command.args)?;
                 result = None;
                 continue;
             }
-            result = match self.reference(command, args, package, &cwd)? {
-                Some(reference) => {
-                    let child = reference.name.literal("script name")?;
-                    if child.starts_with('-') {
-                        return Err(Refusal::new("Script reference options are unsupported"));
+            result = match self.reference(command.name, command.args, package, &cwd)? {
+                Some(reference) => self.follow(&reference, depth)?,
+                None if LAUNCHERS.contains(&command.name) => {
+                    match launcher(command.name, command.args, &cwd)? {
+                        Step::Launch(launch, _) => Some(launch),
+                        Step::Other => None,
                     }
-                    if reference.rest.first().is_some_and(|word| word.text != "--") {
-                        return Err(Refusal::new("Script arguments require --"));
-                    }
-                    self.script(&reference.package, child, depth + 1)?
                 }
-                None if LAUNCHERS.contains(&command) => match launcher(command, args, &cwd)? {
-                    Step::Launch(launch) => Some(launch),
-                    Step::Other => None,
-                },
                 // Ordinary preparatory commands are ignored; their effects aren't modeled.
                 None => None,
             };
         }
         Ok(result)
+    }
+
+    /// Interprets the script a reference names, one level below `depth`.
+    fn follow(&mut self, reference: &Reference<'_>, depth: usize) -> Result<Option<LaunchCommand>, Refusal> {
+        let child = reference.name.literal("script name")?;
+        if child.starts_with('-') {
+            return Err(Refusal::new("Script reference options are unsupported"));
+        }
+        if reference.rest.first().is_some_and(|word| word.text != "--") {
+            return Err(Refusal::new("Script arguments require --"));
+        }
+        self.script(&reference.package, child, depth + 1)
     }
 
     /// Recognizes a package-manager script reference.
@@ -327,6 +305,68 @@ impl Interpreter<'_> {
             _ => path.to_owned(),
         }
     }
+}
+
+/// A step's command: the word after its leading assignments and any `env`/`cross-env` wrapper.
+struct Command<'w> {
+    /// The command's name.
+    name: &'w str,
+    /// The words before it: assignments, and the wrapper with its own assignments.
+    prefix: &'w [Word],
+    /// The words after it.
+    args: &'w [Word],
+}
+
+/// Finds a step's command, refusing shell syntax and builtins whose effect can't be modeled.
+/// `None` for a step that only sets variables.
+fn command(step: &[Word]) -> Result<Option<Command<'_>>, Refusal> {
+    let mut index = step.iter().take_while(|word| word.assignment).count();
+    let Some(first) = step.get(index) else {
+        return Ok(None);
+    };
+    let mut name = first.literal("command")?;
+    if first.plain && CONTROL_WORDS.contains(&name) {
+        return Err(Refusal::new(format!("Unsupported shell control word {name}")));
+    }
+    if SHELL_BUILTINS.contains(&name) {
+        return Err(Refusal::new(format!("Unsupported shell builtin {name}")));
+    }
+    if name == "env" || name == "cross-env" {
+        index += 1;
+        index += step[index..]
+            .iter()
+            .take_while(|word| is_assignment(&word.text))
+            .count();
+        let Some(wrapped) = step.get(index) else {
+            return Ok(None);
+        };
+        name = wrapped.literal("command")?;
+        if name.starts_with('-') {
+            return Err(Refusal::new("Environment wrapper options are unsupported"));
+        }
+        if name == "cd" || SHELL_BUILTINS.contains(&name) {
+            return Err(Refusal::new(format!(
+                "Environment wrapper cannot model shell builtin {name}"
+            )));
+        }
+    }
+    Ok(Some(Command {
+        name,
+        prefix: &step[..index],
+        args: &step[index + 1..],
+    }))
+}
+
+/// The working directory after `cd` with `args` from `cwd`.
+fn change_directory(cwd: &str, args: &[Word]) -> Result<String, Refusal> {
+    let [directory] = args else {
+        return Err(Refusal::new("cd requires one literal directory"));
+    };
+    let directory = directory.literal("cd path")?;
+    if directory.is_empty() || directory.starts_with('-') {
+        return Err(Refusal::new("Unsupported cd directory"));
+    }
+    Ok(resolve(cwd, directory))
 }
 
 /// The directory of a `/`-separated path (`.` for a bare name).
