@@ -182,6 +182,17 @@ pub fn compile_snapshots(
     unindexed: Vec<RepoPath>,
     settings: &Settings,
 ) -> Compiled {
+    let inputs = ProjectInputs {
+        settings: settings.clone(),
+        unindexed,
+        ..ProjectInputs::default()
+    };
+    compile_with_inputs(snapshots, &inputs)
+}
+
+/// [`compile_snapshots`] with every project input given, such as launch contexts.
+pub fn compile_with_inputs(snapshots: BTreeMap<RepoPath, Snapshot>, inputs: &ProjectInputs) -> Compiled {
+    let settings = &inputs.settings;
     let python = Python;
     let mut files = Vec::new();
     let mut records = BTreeMap::new();
@@ -222,12 +233,7 @@ pub fn compile_snapshots(
         records.insert(path.clone(), record);
     }
     let program = FactsSet::new(files).expect("distinct paths");
-    let inputs = ProjectInputs {
-        settings: settings.clone(),
-        unindexed,
-        ..ProjectInputs::default()
-    };
-    let linked = python.link(&program, &inputs);
+    let linked = python.link(&program, inputs);
     let resolver = Resolver::new(&program, linked.as_ref());
     let mut links: BTreeMap<_, _> = program_links(&resolver).expect("links").into_iter().collect();
     let graphs = program
@@ -271,8 +277,8 @@ pub fn testdata() -> std::path::PathBuf {
 }
 
 /// Renders a graph's entrances in the `expected-entrances.txt` format (`testdata/README.md`):
-/// one `entrance` line per entrance, followed by its `target` lines in position order. Evidence
-/// lines are read from the files under `root`.
+/// one `entrance` line per entrance, followed by its `binding` line (when it has one) and its
+/// `target` lines in position order. Evidence lines are read from the files under `root`.
 pub fn render_entrances(root: &Path, graph: &Graph) -> String {
     use unfold_core::LineIndex;
     use unfold_core::vocab::Resolution;
@@ -289,6 +295,9 @@ pub fn render_entrances(root: &Path, graph: &Graph) -> String {
             "entrance\t{}\t{}\t{method}\t{trigger}\t{}\t{}:{line}\n",
             entrance.detector, entrance.kind, entrance.trigger_status, evidence.path
         ));
+        if let Some(binding) = &entrance.binding {
+            out.push_str(&format!("\tbinding\t{binding}\n"));
+        }
         for target in &entrance.targets {
             let what = match target.resolution {
                 Resolution::Resolved => target

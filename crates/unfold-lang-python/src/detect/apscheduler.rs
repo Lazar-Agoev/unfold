@@ -633,6 +633,7 @@ impl Jobs<'_, '_, '_, '_> {
                         .map_or(Trigger::Unknown, |schedule| Trigger::Exact(schedule.into())),
                     label: None,
                     evidence: CandidateEvidence::Block(registration.evidence),
+                    binding: None,
                     targets: vec![target],
                 }
             })

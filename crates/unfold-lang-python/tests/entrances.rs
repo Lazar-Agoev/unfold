@@ -397,8 +397,8 @@ fn ambiguous_module_roots_are_listed_without_making_the_graph_incomplete() {
     assert!(fixed.problems.is_empty(), "{:?}", fixed.problems);
 }
 
-/// The entrance blocks (an entrance line and its target lines) of a rendering whose entrance
-/// is Python's: a Python detector's, or a manual one targeting `py-orders/`.
+/// The entrance blocks (an entrance line and its binding and target lines) of a rendering whose
+/// entrance is Python's: a Python detector's, or a manual one targeting `py-orders/`.
 fn python_blocks(text: &str) -> Vec<String> {
     let mut blocks: Vec<String> = Vec::new();
     for line in entrance_records(text) {

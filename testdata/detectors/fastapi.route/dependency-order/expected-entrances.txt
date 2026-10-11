@@ -1,6 +1,7 @@
 # Expected entrances for testdata/detectors/fastapi.route/dependency-order. Format: testdata/README.md.
 # Dependencies keep declared order across app, mount, router, and route settings (PoC: "Dependencies keep declared order...").
 entrance	fastapi.route	http	POST	/x	exact	src/app.py:10
+	binding	src/app.py#variable:app
 	target	handler	resolved	src/app.py#function:application	application
 	target	handler	resolved	src/app.py#function:mounting	mounting
 	target	handler	resolved	src/app.py#function:router_dep	router_dep

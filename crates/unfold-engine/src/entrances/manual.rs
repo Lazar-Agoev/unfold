@@ -28,6 +28,7 @@ pub fn manual_candidates(settings: &Settings) -> Vec<EntranceCandidate> {
                 range: entrance.span,
                 pointer: entrance.pointer().into(),
             },
+            binding: None,
             targets: match &entrance.targets {
                 ManualTargets::Handlers(locators) => {
                     locators.iter().cloned().map(TargetCandidate::Locator).collect()

@@ -99,6 +99,7 @@ impl RecordType {
                 "evidence_range",
                 "evidence_block",
                 "evidence_pointer",
+                "binding",
             ],
             Self::Target => &["role", "target", "text", "resolution", "reason", "module"],
         }
@@ -362,6 +363,7 @@ pub(crate) fn diff(expected: &Graph, actual: &Graph, scopes: &[Scope]) -> anyhow
                 c.field("evidence_range", &e.evidence.range, &a.evidence.range);
                 c.field("evidence_block", &e.evidence.block, &a.evidence.block);
                 c.field("evidence_pointer", &e.evidence.pointer, &a.evidence.pointer);
+                c.field("binding", &e.binding, &a.binding);
             },
             &mut out,
         )?;

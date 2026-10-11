@@ -3,4 +3,5 @@
 entrance	fastapi.route	http	HEAD	/health	exact	src/app.py:6
 	target	handler	resolved	src/app.py#function:install/function:health	health
 entrance	fastapi.route	http	GET	/api/own/x	exact	src/shared.py:4
+	binding	src/app.py#variable:app
 	target	handler	resolved	src/shared.py#function:handler	handler

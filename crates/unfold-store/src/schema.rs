@@ -27,7 +27,7 @@ use crate::error::Result;
 
 /// The version of the schema below. Bump it whenever a table, column, index, or the meaning of
 /// a stored value changes; existing databases are then rebuilt.
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 /// Every table and index, created in one transaction.
 const DDL: &str = r"
@@ -130,7 +130,8 @@ CREATE TABLE entrances (
   evidence_path TEXT NOT NULL,
   evidence_start_byte INTEGER NOT NULL, evidence_end_byte INTEGER NOT NULL,
   evidence_block_key_id INTEGER,
-  evidence_pointer TEXT
+  evidence_pointer TEXT,
+  binding_key_id INTEGER
 );
 CREATE INDEX entrances_by_evidence ON entrances (evidence_path);
 

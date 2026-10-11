@@ -166,6 +166,9 @@ pub struct EntranceCandidate {
     pub label: Option<Box<str>>,
     /// Where it is declared.
     pub evidence: CandidateEvidence,
+    /// The block binding the application a route's mount chain reaches (see
+    /// [`Entrance::binding`]).
+    pub binding: Option<BlockRef>,
     /// Its targets in declaration order; at least one.
     pub targets: Vec<TargetCandidate>,
 }
@@ -242,6 +245,10 @@ pub fn assemble(
             trigger_status,
             detector,
             evidence,
+            binding: candidate
+                .binding
+                .and_then(|block| program.block(block))
+                .map(|block| block.key.clone()),
             targets: resolved,
         });
     }

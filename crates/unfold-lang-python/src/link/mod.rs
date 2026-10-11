@@ -15,6 +15,7 @@ mod census;
 pub(crate) mod children;
 mod classes;
 mod decorators;
+mod launch;
 mod members;
 mod memo;
 pub(crate) mod modules;
@@ -36,9 +37,10 @@ use unfold_engine::evidence::{
     OriginDeclaration, ParameterFact, Stability, ValueContext,
 };
 use unfold_engine::facts::CallContext;
+use unfold_engine::launch::{LaunchTarget, PythonContext};
 use unfold_engine::{
-    BlockRef, CallRef, DeclRef, FactsSet, FileId, Invocation, LanguageId, LanguageProblem, Linked,
-    ProjectInputs, TypeRef, ValueRef,
+    BlockRef, CallRef, ContextPreview, DeclRef, FactsSet, FileId, Invocation, LanguageId, LanguageProblem,
+    LaunchResolution, Linked, ProjectInputs, TypeRef, ValueRef,
 };
 
 pub use census::PythonCensus;
@@ -53,7 +55,8 @@ use crate::detect::{Sites, Source, SourceCandidates};
 use crate::payload::ImportSyntax;
 use crate::stdlib::module_label;
 
-/// An import whose module more than one source root (or file and package) could supply.
+/// An import whose module more than one source root could supply, or that the launches reaching
+/// its file resolve differently.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AmbiguousImport {
     /// The importing file.
@@ -375,6 +378,14 @@ impl Linked for PythonLinked<'_> {
         self.scripts().inputs.clone()
     }
 
+    fn launch_target(&self, target: &LaunchTarget, context: &PythonContext) -> Option<LaunchResolution> {
+        Some(self.launch(target, context))
+    }
+
+    fn context_preview(&self, context: &PythonContext) -> Option<ContextPreview> {
+        Some(self.preview(context))
+    }
+
     fn detectors(&self) -> Vec<Box<dyn EntranceDetector + '_>> {
         crate::detect::detectors(self)
     }
@@ -383,8 +394,8 @@ impl Linked for PythonLinked<'_> {
         Some(&self.census)
     }
 
-    /// Imports several source roots could supply, and `pyproject.toml` files the console-script
-    /// detector can't read.
+    /// Imports several source roots could supply (or launches resolve differently), and
+    /// `pyproject.toml` files the console-script detector can't read.
     fn problems(&self) -> Vec<LanguageProblem> {
         let mut problems: Vec<LanguageProblem> = self
             .ambiguous
@@ -392,7 +403,7 @@ impl Linked for PythonLinked<'_> {
             .map(|import| LanguageProblem {
                 path: import.path.clone(),
                 message: format!(
-                    "import `{}` is ambiguous: more than one source root (or a module and a package) supplies it",
+                    "import `{}` is ambiguous: more than one source root (or launches that reach this file) supply different modules",
                     import.specifier
                 )
                 .into(),

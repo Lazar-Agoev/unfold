@@ -52,6 +52,7 @@ impl EntranceDetector for Launches {
                 range: ByteRange { start, end },
                 pointer: pointer.into(),
             },
+            binding: None,
             targets: vec![TargetCandidate::Launch {
                 path: path.into(),
                 cwd: "".into(),

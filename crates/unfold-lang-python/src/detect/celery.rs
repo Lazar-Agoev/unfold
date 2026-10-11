@@ -503,6 +503,7 @@ impl Tasks<'_, '_, '_, '_> {
                         .map_or(Trigger::Unknown, |queue| Trigger::Exact(queue.into())),
                     label: None,
                     evidence: CandidateEvidence::Block(registration.evidence),
+                    binding: None,
                     targets,
                 }
             })

@@ -5,6 +5,7 @@
 //! [`NodeId`](crate::bind::ir::NodeId) in the declaring file.
 
 use smallvec::SmallVec;
+use unfold_core::vocab::BlockKind;
 use unfold_engine::evidence::{
     Candidate, ClassMember, ClassShape, ConcreteTarget, Evidence, Export, ExternalLocation, ImportBinding,
     ImportTarget, LocatorMembers, MemberFact, ModuleTarget, Origin, OriginDeclaration, ParameterFact,
@@ -206,6 +207,34 @@ impl Binder<'_> {
             file: node.file,
             local,
         })
+    }
+
+    /// The block that binds a module-level name: a `def` or `class` block, or the `variable`
+    /// block of an assignment written directly in the module (`app = FastAPI()`). This is what
+    /// a `module:attribute` launch target and a FastAPI route's application binding resolve to.
+    pub(crate) fn binding_block(&self, node: NodeRef) -> Option<BlockRef> {
+        let fact = self.program.node(node)?;
+        match fact.kind {
+            NodeKind::Function(_) | NodeKind::Class(_) => self.block_of(node),
+            NodeKind::Assignment { .. } if fact.scope == MODULE_SCOPE => {
+                let binding = self.program.binding(self.program.binding_of(node)?);
+                let name = self.program.text(binding.name);
+                let blocks = self.program.facts.facts(node.file)?.graph.blocks();
+                let mut statements = blocks.iter().filter(|block| {
+                    block.parent == Some(0)
+                        && block.kind == BlockKind::Variable
+                        && block.name.as_deref() == Some(name)
+                });
+                match (statements.next(), statements.next()) {
+                    (Some(block), None) => Some(BlockRef {
+                        file: node.file,
+                        local: block.local_id,
+                    }),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
     }
 
     /// A declaration's concrete body for a context (see [`unfold_engine::Linked::concrete_target`]).

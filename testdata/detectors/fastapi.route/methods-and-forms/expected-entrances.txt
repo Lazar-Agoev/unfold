@@ -1,16 +1,23 @@
 # Expected entrances for testdata/detectors/fastapi.route/methods-and-forms. Format: testdata/README.md.
 # All seven verbs, decorator and applied forms, keyword path and func, and a call registration with no handler.
 entrance	fastapi.route	http	GET	/v1/g	exact	src/app.py:6
+	binding	src/app.py#variable:app
 	target	handler	resolved	src/app.py#function:g	g
 entrance	fastapi.route	http	POST	/v1/p	exact	src/app.py:8
+	binding	src/app.py#variable:app
 	target	handler	resolved	src/app.py#function:p	p
 entrance	fastapi.route	http	PUT	/v1/u	exact	src/app.py:10
+	binding	src/app.py#variable:app
 	target	handler	resolved	src/app.py#function:endpoint	endpoint
 entrance	fastapi.route	http	PATCH	/v1/a	exact	src/app.py:11
+	binding	src/app.py#variable:app
 	target	handler	resolved	src/app.py#function:endpoint	endpoint
 entrance	fastapi.route	http	DELETE	/v1/d	exact	src/app.py:12
+	binding	src/app.py#variable:app
 	target	handler	resolved	src/app.py#function:endpoint	endpoint
 entrance	fastapi.route	http	OPTIONS	/v1/o	exact	src/app.py:13
+	binding	src/app.py#variable:app
 	target	handler	resolved	src/app.py#function:endpoint	endpoint
 entrance	fastapi.route	http	HEAD	/v1/h	exact	src/app.py:14
+	binding	src/app.py#variable:app
 	target	handler	resolved	src/app.py#function:endpoint	endpoint

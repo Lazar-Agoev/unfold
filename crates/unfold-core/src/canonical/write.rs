@@ -206,6 +206,8 @@ struct EntranceOut<'a> {
     evidence_block: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     evidence_pointer: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    binding: Option<&'a str>,
 }
 
 #[derive(Serialize)]
@@ -451,6 +453,7 @@ fn write_entrance(writer: &mut LineWriter<'_, impl io::Write>, entrance: &Entran
         evidence_range: entrance.evidence.range,
         evidence_block: entrance.evidence.block.as_ref().map(|key| key.as_str()),
         evidence_pointer: entrance.evidence.pointer.as_deref(),
+        binding: entrance.binding.as_ref().map(|key| key.as_str()),
     })?;
     let mut targets: Vec<_> = entrance.targets.iter().collect();
     targets.sort_by_key(|target| target.position);

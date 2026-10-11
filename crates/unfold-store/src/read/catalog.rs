@@ -34,6 +34,7 @@ fn decode_entrance(row: &Row<'_>) -> Result<(i64, Entrance)> {
             block: codec::opt_key(row, 11)?,
             pointer: codec::opt_boxed(row, 12)?,
         },
+        binding: codec::opt_key(row, 13)?,
         targets: Vec::new(),
     };
     Ok((row.get(0)?, entrance))
@@ -105,9 +106,10 @@ impl Reader {
             let conn = reader.conn();
             let mut statement = conn.prepare_cached(&format!(
                 "SELECT e.id, k.key, e.kind, e.label, e.method, e.trigger, e.trigger_status, e.detector, \
-                 e.evidence_path, e.evidence_start_byte, e.evidence_end_byte, bk.key, e.evidence_pointer \
-                 FROM entrances e JOIN keys k ON k.id = e.key_id \
-                 LEFT JOIN keys bk ON bk.id = e.evidence_block_key_id WHERE {filter}"
+                 e.evidence_path, e.evidence_start_byte, e.evidence_end_byte, bk.key, e.evidence_pointer, \
+                 ak.key FROM entrances e JOIN keys k ON k.id = e.key_id \
+                 LEFT JOIN keys bk ON bk.id = e.evidence_block_key_id \
+                 LEFT JOIN keys ak ON ak.id = e.binding_key_id WHERE {filter}"
             ))?;
             let mut entrances = collect(&mut statement, [value], decode_entrance)?;
             let index: FxHashMap<i64, usize> = entrances

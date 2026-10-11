@@ -427,6 +427,7 @@ impl Reader {
                     "evidence_range",
                     "evidence_block",
                     "evidence_pointer",
+                    "binding",
                 ],
             ),
             "target" => (
@@ -684,6 +685,7 @@ impl Reader {
                 block: key(raw.evidence_block),
                 pointer: boxed(raw.evidence_pointer),
             },
+            binding: key(raw.binding),
             targets: Vec::new(),
         };
         self.graph.entrances.push(entrance);

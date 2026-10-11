@@ -373,6 +373,7 @@ impl<'e, 'r> Run<'e, 'r> {
             unindexed: scan.unindexed.iter().cloned().collect(),
             context: scan.context.iter().cloned().collect(),
             root: Some(self.engine.root.clone()),
+            python_contexts: Vec::new(),
         };
         // Evidence files are never read by languages.
         for (path, input) in configuration(&inputs) {

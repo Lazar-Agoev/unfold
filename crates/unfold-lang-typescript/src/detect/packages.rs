@@ -274,6 +274,7 @@ impl Launches<'_> {
                 range: member.range,
                 pointer: pointer.into(),
             },
+            binding: None,
             targets: vec![TargetCandidate::Launch {
                 path: path.into(),
                 cwd: cwd.into(),

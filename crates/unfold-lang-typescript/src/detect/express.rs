@@ -146,6 +146,7 @@ pub(super) fn detect(source: &Source<'_, '_, '_>) -> Vec<EntranceCandidate> {
                 trigger,
                 label: None,
                 evidence: CandidateEvidence::Block(route.call.block()),
+                binding: None,
                 targets: targets.clone(),
             });
         }

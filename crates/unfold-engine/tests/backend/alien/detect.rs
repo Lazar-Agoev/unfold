@@ -89,6 +89,7 @@ impl EntranceDetector for Routes<'_> {
                         file,
                         local: call.block,
                     }),
+                    binding: None,
                     targets,
                 });
             }

@@ -406,6 +406,7 @@ impl GraphBuilder {
             },
             detector,
             evidence,
+            binding: None,
             targets: Vec::new(),
         });
         EntranceRef(self.entrances.len() - 1)

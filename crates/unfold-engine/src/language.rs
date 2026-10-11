@@ -28,7 +28,9 @@ use crate::evidence::{
     OriginDeclaration, ParameterFact, Stability, ValueContext,
 };
 use crate::facts::{FileFacts, Invocation};
+use crate::launch::{LaunchTarget, PythonContext};
 use crate::program::{BlockRef, CallRef, DeclRef, FactsSet, FileId, TypeRef, ValueRef};
+use crate::resolve::Outcome;
 use crate::settings::{Settings, SettingsHash};
 
 /// A language's identity in the graph model (`typescript` or `python`).
@@ -92,6 +94,10 @@ pub struct ProjectInputs {
     /// or always-excluded folders, which are never walked); see [`ProjectInputs::exists`].
     /// `None` outside a real folder, as in tests that link in memory.
     pub root: Option<PathBuf>,
+    /// The import contexts of the folder's Python launches. Python resolves the imports of every
+    /// file a launch reaches with that launch's import path; files no launch reaches keep their
+    /// project's source roots.
+    pub python_contexts: Vec<PythonContext>,
 }
 
 impl ProjectInputs {
@@ -178,6 +184,32 @@ pub struct LanguageProblem {
     /// are missing), rather than describing a fact about the code (an ambiguous import, whose
     /// edges are already `ambiguous`).
     pub incomplete: bool,
+}
+
+/// A launch target resolved in one import context ([`Linked::launch_target`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaunchResolution {
+    /// What starts: a file's root block, a module's file (a package's `__main__.py`), or the
+    /// block of a module's top-level binding.
+    pub target: Outcome,
+    /// The root blocks of the files the launch also runs first, in import order: the packages a
+    /// module target imports on the way, and the module of a callable or ASGI target.
+    pub seeds: Vec<BlockRef>,
+}
+
+/// What a Python import context reaches and resolves, against the linked answers
+/// ([`Linked::context_preview`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ContextPreview {
+    /// The indexed files the context reaches, sorted.
+    pub reached: Vec<RepoPath>,
+    /// How many imports in those files resolve to an indexed file under the context.
+    pub resolved: u32,
+    /// How many of the same imports resolve to an indexed file in the linked graph.
+    pub resolved_now: u32,
+    /// The modules of imports that resolve under the context but not in the linked graph:
+    /// the first few, sorted.
+    pub newly_resolved: Vec<Box<str>>,
 }
 
 /// Where an emitted output path comes from, through a language's emit map (TypeScript's
@@ -431,6 +463,19 @@ pub trait Linked: Send + Sync {
     /// `node dist/server.js`.
     fn emitted_source(&self, _output: &RepoPath) -> EmitSource {
         EmitSource::Unknown
+    }
+
+    /// A launch target resolved with a Python import context, which need not be one of
+    /// [`ProjectInputs::python_contexts`]. `None` when the language doesn't run Python launches.
+    fn launch_target(&self, _target: &LaunchTarget, _context: &PythonContext) -> Option<LaunchResolution> {
+        None
+    }
+
+    /// What a Python import context (such as a launch being edited) would reach, and how it
+    /// would resolve the imports there compared with the linked answers. `None` when the
+    /// language doesn't run Python launches.
+    fn context_preview(&self, _context: &PythonContext) -> Option<ContextPreview> {
+        None
     }
 
     // --- Entrances and validation -----------------------------------------------------------

@@ -83,6 +83,7 @@ pub(crate) fn scripts(binder: &Binder<'_>, inputs: &ProjectInputs) -> Scripts {
                     range: script.range,
                     pointer: script.pointer,
                 },
+                binding: None,
                 targets: vec![target],
             });
         }
@@ -189,7 +190,7 @@ fn resolve(binder: &Binder<'_>, context: FileId, module: &str, attribute: &str) 
     let parts: Vec<&str> = module.split('.').collect();
     for length in 1..parts.len() {
         let prefix = exact(binder, modules.lookup(context, &parts[..length].join(".")));
-        if prefix.ambiguous || package_sibling(binder, &prefix) {
+        if prefix.ambiguous {
             return Err(Reason::Ambiguous);
         }
         if prefix.missing
@@ -200,7 +201,7 @@ fn resolve(binder: &Binder<'_>, context: FileId, module: &str, attribute: &str) 
         }
     }
     let target = Arc::new(exact(binder, modules.lookup(context, module)));
-    if target.ambiguous || package_sibling(binder, &target) {
+    if target.ambiguous {
         return Err(Reason::Ambiguous);
     }
     if target.missing || target.external.is_some() {
@@ -281,17 +282,6 @@ fn exact(binder: &Binder<'_>, module: ModuleValue) -> ModuleValue {
         directories,
         ..module
     }
-}
-
-/// Whether a module file has a same-named package beside it, which Python would import
-/// instead.
-fn package_sibling(binder: &Binder<'_>, module: &ModuleValue) -> bool {
-    module.paths.iter().any(|path| {
-        !path.ends_with("/__init__.py")
-            && path
-                .strip_suffix(".py")
-                .is_some_and(|stem| binder.modules.exact_file(&format!("{stem}/__init__.py")))
-    })
 }
 
 /// A module's attribute as `getattr` sees it: a binding at the top level of the module's file.

@@ -539,6 +539,7 @@ impl<'a> Converter<'a> {
             trigger_status: row.trigger_status.parse()?,
             detector: row.detector.parse()?,
             evidence,
+            binding: None,
             targets,
         };
         if let Some((index, table)) = manual {

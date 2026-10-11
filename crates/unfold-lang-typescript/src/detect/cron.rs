@@ -52,6 +52,7 @@ pub(super) fn detect(source: &Source<'_, '_, '_>) -> Vec<EntranceCandidate> {
             trigger: literal_trigger(expression.literal()),
             label: None,
             evidence: CandidateEvidence::Block(call.block()),
+            binding: None,
             targets: vec![target],
         });
     }

@@ -8,8 +8,8 @@ use crate::model::{Block, FileGraph, Graph};
 use crate::typed::FileTypes;
 use crate::vocab::BlockKind;
 
-/// `graph` as version 1 describes it: no typed records, and no `interface`, `type_alias`, or
-/// `enum` blocks (or their slots). A block nested in a removed one (a call in an enum member's
+/// `graph` as version 1 describes it: no typed records, no entrance application bindings, and
+/// no `interface`, `type_alias`, or `enum` blocks (or their slots). A block nested in a removed one (a call in an enum member's
 /// initializer) moves up to the removed block's parent, and every key is derived again, so the
 /// call under `enum:Status/` is keyed as it was before type declarations were blocks. Edge and
 /// entrance targets, and entrance evidence blocks, follow the new keys.
@@ -30,6 +30,7 @@ pub fn version_one(graph: &Graph) -> Graph {
     }
     let mut entrances = graph.entrances.clone();
     for entrance in &mut entrances {
+        entrance.binding = None;
         if let Some(block) = &mut entrance.evidence.block {
             *block = rename(block);
         }

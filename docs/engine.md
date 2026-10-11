@@ -242,7 +242,7 @@ handler body proof. `exact`, `partial`, and `unknown` describe written trigger k
 | `bullmq.worker` | Proven Worker construction | Written queue and processor; unsupported options/wrappers may prevent body proof |
 | `node-cron.schedule` | Proven cron schedule registration | Literal schedule text; shared handler policy |
 | `pyproject.script` | Python project console-script declarations | Static module/member resolution through configured roots |
-| `fastapi.route` | Supported decorators/applied factories on proven app/router | Declared dependencies before endpoint; uncertain Depends/mounts stay explicit |
+| `fastapi.route` | Supported decorators/applied factories on proven app/router | Declared dependencies before endpoint; uncertain Depends/mounts stay explicit; each branch records the application binding it reaches |
 | `celery.task` | Supported task decorators/applied factories on proven Celery app | Queue is trigger, not task name; shared registry/configuration uncertainty refuses body proof |
 | `apscheduler.job` | APScheduler 3 BlockingScheduler `add_job` | Exact cron only from proven five-field `from_crontab`; mutation/hidden registration invalidates body proof |
 | `manual` | Valid shared declarations | Never disabled; resolve locators on every compile |

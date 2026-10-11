@@ -25,8 +25,8 @@ impl Apply<'_, '_> {
             conn.prepare_cached("DELETE FROM entrance_targets WHERE entrance_id = ?1")?;
         let mut insert_entrance = conn.prepare_cached(
             "INSERT INTO entrances (id, key_id, kind, label, method, trigger, trigger_status, detector, \
-             evidence_path, evidence_start_byte, evidence_end_byte, evidence_block_key_id, evidence_pointer) \
-             VALUES (?1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+             evidence_path, evidence_start_byte, evidence_end_byte, evidence_block_key_id, evidence_pointer, \
+             binding_key_id) VALUES (?1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         )?;
         let mut insert_target = conn.prepare_cached(
             "INSERT INTO entrance_targets (entrance_id, position, role, target_key_id, target_text, \
@@ -43,6 +43,9 @@ impl Apply<'_, '_> {
             let evidence_block = self
                 .mirror
                 .intern_opt(evidence.block.as_ref(), &mut self.st.insert_key)?;
+            let binding = self
+                .mirror
+                .intern_opt(entrance.binding.as_ref(), &mut self.st.insert_key)?;
             insert_entrance.execute((
                 id,
                 entrance.kind.as_str(),
@@ -56,6 +59,7 @@ impl Apply<'_, '_> {
                 evidence.range.end,
                 evidence_block,
                 evidence.pointer.as_deref(),
+                binding,
             ))?;
             for target in &entrance.targets {
                 let target_id = self

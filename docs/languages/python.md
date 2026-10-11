@@ -39,9 +39,31 @@ infer constructions from capitalized names.
 The deepest configured Python project owns a file. Its roots and grammar affect the per-file
 settings hash. Without explicit roots, use the supported src-layout/pyproject defaults.
 Module candidates may exist outside indexing; distinguish `not_indexed` from `not_found`.
-Multiple roots or module/package collisions can be ambiguous and reported without inventing
+Within one folder a regular package (`name/__init__.py`) comes before a same-named
+`name.py`. Several roots supplying a module stay ambiguous and are reported without inventing
 a preferred module. Respect relative-import levels, aliases, package identity, and stdlib
 classification; never load the real interpreter's import path as proof.
+
+### Launch contexts
+
+Each configured Python launch gives an import context: its entry (a script, or a module with
+the packages it initializes; a package entry also reaches its `__main__.py`) and its ordered
+import path. Linking walks the launch's imports from the entry to find the files it reaches,
+looking modules up as Python does: dotted parts one at a time through the package each prefix
+found, the first root with a regular package or module settling the search, and namespace
+portions accumulating until something settles it. A script has no package, so its relative
+imports are `not_found` in that launch; a `-m` module keeps its package identity.
+
+There is one graph. A file some launch reaches resolves each import under every launch that
+reaches it: when they all agree, the edge is the normal one; when they disagree, it is
+`unresolved`/`ambiguous` and listed as a problem. Calls and references through those imports
+follow the same decision. Files no launch reaches keep their project's source roots.
+
+After linking, a launch target resolves within its context: a file to its root block, a module
+to its file (a package to `__main__.py`, after its `__init__.py`), and a callable or ASGI
+`module:attribute` to the block of the module's top-level binding (`not_found` when the module
+doesn't bind it). FastAPI routes record the same block as their application `binding`, so an
+ASGI launch owns exactly the routes mounted on its application.
 
 A `from package import name` is not automatically a module load: it may name an ordinary
 attribute. Supported structural child-module proofs select import blocks at link time.

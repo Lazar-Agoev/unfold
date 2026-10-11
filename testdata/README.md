@@ -19,6 +19,7 @@ testdata/
 ├── fixtures/                     # small exact cases
 │   ├── worked/ classes/ entrances/ playground-v1/   # ← PoC compilers/codegraph/test/fixtures/…
 │   ├── python/policy/            # ← PoC fixtures/python (binder positives and refusals)
+│   ├── python-launches/          # Python launch contexts, launch targets, application bindings (written for Unfold)
 │   ├── python-ranges/            # Unicode/CRLF range corpus (see corpora.lock.toml)
 │   ├── typed-lines/              # typed records: a TypeScript and a Python orders flow (written for Unfold)
 │   ├── typescript-evidence/      # TypeScript binding and evidence cases with expected edges (its README.md)
@@ -97,10 +98,13 @@ comments. An empty field is written as `-`; no field contains a tab.
 
 ```text
 entrance<TAB>detector<TAB>kind<TAB>method<TAB>trigger<TAB>trigger_status<TAB>evidence_path:start_line
+<TAB>binding<TAB>application_binding_key
 <TAB>target<TAB>role<TAB>resolution<TAB>what<TAB>target_text
 ```
 
-- An `entrance` line is followed by its `target` lines in position order (position 0 first).
+- An `entrance` line is followed by its `binding` line, when it has an application binding (a FastAPI route whose
+  mounts reach an application: the structural key of the block binding it), then its `target` lines in position
+  order (position 0 first). The TypeScript cases have no `binding` lines.
 - `trigger_status` is `exact` or `unknown` (an unknown trigger is written `-`). `method` is set for `http` only.
 - `evidence_path:start_line` is the evidence file and the one-based line where the evidence range starts. For
   manual entrances it is `unfold.toml` and the line of that entrance's `[[entrance]]` header.

@@ -1,5 +1,6 @@
 # Expected entrances for testdata/playgrounds/py-orders: 25 entrances, 28 targets.
 # Derived from testdata/reference/poc/python-playground/ (PoC 5c98a6e). Format: testdata/README.md.
+# The binding lines are Unfold's: the PoC recorded no application bindings.
 entrance	pyproject.script	process	-	orders-api	exact	pyproject.toml:18
 	target	startup	resolved	src/orders_playground/server.py#function:main	orders_playground.server:main
 entrance	pyproject.script	process	-	orders-api-dev	exact	pyproject.toml:19
@@ -23,16 +24,21 @@ entrance	celery.task	worker	-	-	unknown	src/orders_playground/queues/report_work
 entrance	fastapi.route	http	GET	/admin/stats	exact	src/orders_playground/routes/admin.py:12
 	target	handler	resolved	src/orders_playground/routes/admin.py#function:admin_stats	admin_stats
 entrance	fastapi.route	http	GET	/health/live	exact	src/orders_playground/routes/health.py:4
+	binding	src/orders_playground/server.py#variable:app
 	target	handler	resolved	src/orders_playground/routes/health.py#expression_statement[0]/call[0]/function[0]	lambda: {"status": "alive"}
 entrance	fastapi.route	http	GET	/orders	exact	src/orders_playground/routes/orders.py:41
+	binding	src/orders_playground/server.py#variable:app
 	target	handler	resolved	src/orders_playground/routes/orders.py#function:list_orders	list_orders
 entrance	fastapi.route	http	GET	/orders/{order_id}	exact	src/orders_playground/routes/orders.py:42
+	binding	src/orders_playground/server.py#variable:app
 	target	handler	unresolved	wrapper	async_handler(get_order)
 entrance	fastapi.route	http	POST	/orders	exact	src/orders_playground/routes/orders.py:43
+	binding	src/orders_playground/server.py#variable:app
 	target	handler	resolved	src/orders_playground/routes/middleware.py#function:require_user	require_user
 	target	handler	resolved	src/orders_playground/routes/middleware.py#function:validate_body	validate_body
 	target	handler	resolved	src/orders_playground/routes/orders.py#function:create_order	create_order
 entrance	fastapi.route	http	DELETE	/orders/{order_id}	exact	src/orders_playground/routes/orders.py:44
+	binding	src/orders_playground/server.py#variable:app
 	target	handler	resolved	src/orders_playground/routes/middleware.py#function:require_user	require_user
 	target	handler	resolved	src/orders_playground/routes/orders.py#function:cancel_order	cancel_order
 entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/orders_playground/scheduler.py:9
@@ -40,8 +46,10 @@ entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/orders_playground/schedu
 entrance	apscheduler.job	schedule	-	*/15 * * * *	exact	src/orders_playground/scheduler.py:10
 	target	handler	resolved	src/orders_playground/scheduler.py#expression_statement[1]/call[0]/function[0]	lambda: report_metrics()
 entrance	fastapi.route	http	GET	/health	exact	src/orders_playground/server.py:16
+	binding	src/orders_playground/server.py#variable:app
 	target	handler	resolved	src/orders_playground/server.py#function:health_check	health_check
 entrance	fastapi.route	http	GET	-	unknown	src/orders_playground/server.py:21
+	binding	src/orders_playground/server.py#variable:app
 	target	handler	resolved	src/orders_playground/server.py#function:status	status
 entrance	manual	command	-	import	exact	unfold.toml:15
 	target	handler	resolved	src/orders_playground/jobs/import_orders.py#function:import_orders	src/orders_playground/jobs/import_orders.py#import_orders

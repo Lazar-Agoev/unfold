@@ -5,7 +5,7 @@ use super::{Checker, Subject};
 use crate::key::entrance_keys;
 use crate::model::{Entrance, EntranceTarget};
 use crate::text::{LABEL_MAX_UTF16, utf16_len};
-use crate::vocab::{DetectorId, EntranceKind, InputRole, Language, Resolution, TriggerStatus};
+use crate::vocab::{BlockKind, DetectorId, EntranceKind, InputRole, Language, Resolution, TriggerStatus};
 
 pub(super) fn check(checker: &mut Checker<'_>) {
     let graph = checker.graph;
@@ -20,6 +20,7 @@ pub(super) fn check(checker: &mut Checker<'_>) {
         }
         check_fields(checker, entrance);
         check_evidence(checker, entrance);
+        check_binding(checker, entrance);
         check_targets(checker, entrance);
     }
 }
@@ -202,6 +203,30 @@ fn check_evidence(checker: &mut Checker<'_>, entrance: &Entrance) {
             }
             Some(_) => {}
         }
+    }
+}
+
+/// An application binding belongs to an http entrance and names a block that can bind an
+/// application: a variable, function, or class.
+fn check_binding(checker: &mut Checker<'_>, entrance: &Entrance) {
+    let Some(key) = &entrance.binding else {
+        return;
+    };
+    let subject = || Subject::Entrance(entrance.key.clone());
+    if entrance.kind != EntranceKind::Http {
+        checker.report(subject(), "only an http entrance has an application binding");
+    }
+    match checker.resolve(key) {
+        Some((_, block))
+            if matches!(
+                block.kind,
+                BlockKind::Variable | BlockKind::Function | BlockKind::Class
+            ) => {}
+        Some(_) => checker.report(
+            subject(),
+            format!("binding `{key}` is not a variable, function, or class block"),
+        ),
+        None => checker.report(subject(), format!("binding `{key}` is not a block in the graph")),
     }
 }
 

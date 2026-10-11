@@ -1,7 +1,9 @@
 # Expected entrances for testdata/detectors/fastapi.route/wrapped-class-callbacks. Format: testdata/README.md.
 # A wrapped class keeps wrapper for callbacks and dependencies.
 entrance	fastapi.route	http	GET	/callback	exact	src/app.py:11
+	binding	src/app.py#variable:app
 	target	handler	unresolved	wrapper	Commands.run
 entrance	fastapi.route	http	GET	/dependency	exact	src/app.py:12
+	binding	src/app.py#variable:app
 	target	handler	unresolved	wrapper	Commands.run
 	target	handler	resolved	src/app.py#function:endpoint	endpoint

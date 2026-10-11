@@ -6,7 +6,10 @@
 //! five deep (each mount branch is its own entrance); a router with unknown, absent, or
 //! annotation-only mounts keeps a `partial` local path, and a dynamic or bytes path is
 //! `unknown`. Literal `dependencies=[Depends(...)]` lists of the application, mounts, router,
-//! and route come first as handler targets, in declaration order, then the endpoint.
+//! and route come first as handler targets, in declaration order, then the endpoint. Each
+//! branch that reaches an application records its binding: the block of the module-level
+//! assignment the application is (`app = FastAPI()`), which an ASGI launch target
+//! `module:app` resolves to.
 
 use rustc_hash::FxHashMap;
 use unfold_core::vocab::{DetectorId, EntranceKind, HttpMethod, Reason};
@@ -94,6 +97,8 @@ struct Mount {
 struct RoutePath {
     trigger: Trigger,
     dependencies: Vec<ExprRef>,
+    /// The block binding the application the mount chain reaches.
+    binding: Option<BlockRef>,
 }
 
 /// A target before it becomes a candidate target, keeping the expression it was written as.
@@ -339,6 +344,7 @@ impl Routes<'_, '_, '_, '_> {
         vec![RoutePath {
             trigger: local.map_or(Trigger::Unknown, |local| Trigger::Partial(local.into())),
             dependencies,
+            binding: None,
         }]
     }
 
@@ -358,6 +364,7 @@ impl Routes<'_, '_, '_, '_> {
         let fallback = |declarations: Vec<ExprRef>| RoutePath {
             trigger: local.map_or(Trigger::Unknown, |local| Trigger::Partial(local.into())),
             dependencies: declarations,
+            binding: None,
         };
         let Walk {
             current,
@@ -373,18 +380,27 @@ impl Routes<'_, '_, '_, '_> {
         let mut all = self.dependency_declarations(current.factory);
         all.extend(declarations);
         if current.spec.kind == "application" {
+            let binding = match current.identity {
+                Identity::Node(node) => self.source().binder.binding_block(node),
+                Identity::Call(_) => None,
+            };
             let path = match local {
                 None => RoutePath {
                     trigger: Trigger::Unknown,
                     dependencies: all,
+                    binding,
                 },
-                Some(_) if !literal => fallback(all),
+                Some(_) if !literal => RoutePath {
+                    binding,
+                    ..fallback(all)
+                },
                 Some(local) => {
                     let mut trigger: String = prefixes.concat();
                     trigger.push_str(local);
                     RoutePath {
                         trigger: Trigger::Exact(trigger.into()),
                         dependencies: all,
+                        binding,
                     }
                 }
             };
@@ -490,6 +506,7 @@ impl Routes<'_, '_, '_, '_> {
                     trigger: path.trigger,
                     label: None,
                     evidence: CandidateEvidence::Block(site.block),
+                    binding: path.binding,
                     targets: all.into_iter().map(|target| self.candidate(target)).collect(),
                 });
             }

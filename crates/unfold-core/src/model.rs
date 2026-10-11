@@ -171,6 +171,10 @@ pub struct Entrance {
     pub detector: DetectorId,
     /// Where it is declared.
     pub evidence: Evidence,
+    /// The application its registration's mount chain reaches, for a route: the key of the
+    /// block binding the application object (what a `module:attribute` ASGI launch target
+    /// resolves to); absent when unknown or not a route.
+    pub binding: Option<Key>,
     /// Its targets in declaration order (not execution order).
     pub targets: Vec<EntranceTarget>,
 }

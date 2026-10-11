@@ -21,7 +21,10 @@ Exact record fields are owned by [model.rs](../crates/unfold-core/src/model.rs) 
 Edges originate at occurrences (`call`, `new`, `import`), not at functions. Function-level
 owners, callers, closures, applications, and relations are [reader projections](reader.md#derived-views).
 Entrance handlers remain in declaration order, including middleware; this is not execution
-order. Every entrance has targets; a process has exactly one startup target.
+order. Every entrance has targets; a process has exactly one startup target. An HTTP route may
+record its application `binding`: the key of the block binding the application object its
+mount chain reaches (`app = FastAPI()`), which a `module:attribute` ASGI launch target resolves
+to. Each mount branch is its own entrance with its own binding.
 
 A file is `current`, `last_good`, or `failed`. Current and last-good files carry facts;
 a failed file carries no graph or typed records. Last-good facts refer to their own hash,
@@ -135,7 +138,9 @@ The complete checks live in [validate/](../crates/unfold-core/src/validate/mod.r
 - Typed record cardinalities match slots/blocks. Parameter/member indices are contiguous;
   ranges belong to their written annotations. Pairings agree with resolution and parameter bounds.
 - Entrance evidence belongs to a recorded source/input and its exact declaration range or
-  configuration pointer. Target roles, positions, kinds, and keys are consistent.
+  configuration pointer. Target roles, positions, kinds, and keys are consistent. An
+  application binding belongs to an `http` entrance and names a variable, function, or class
+  block.
 - Language census checks ensure every required selected occurrence has been represented;
   never improve recall by silently dropping difficult occurrences.
 
