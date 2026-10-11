@@ -38,6 +38,7 @@ import type { BoardRef } from "../types";
 import { prepareAddCards } from "./cards";
 import { AgentRefusal, cardProject, type ApplyOp, type OpContext } from "./context";
 import { AgentData } from "./data";
+import { applyFrameCards } from "./frames";
 import { applyGroupSteps } from "./groups";
 import { applyArrange, applySetView } from "./layout";
 import { applyRemoveItems } from "./remove";
@@ -70,10 +71,12 @@ async function prepare(op: AgentOp, ctx: OpContext): Promise<ApplyOp> {
       return (page, run) => applyDescribe(page, op, run);
     case "label_steps":
       return (page, run) => applyLabelSteps(page, op, run);
+    case "frame_cards":
+      return (page, run) => applyFrameCards(page, op, run);
   }
 }
 
-/** The items an edit changed, as its working marks outline them: cards, groups and their cards, links, a label's card. */
+/** The items an edit changed, as its working marks outline them: cards, groups and their cards, links, a label's card, frames. */
 function changedItems(items: readonly AgentItemResult[]): string[] {
   return items.flatMap((item) => {
     if (item.status !== "created" && item.status !== "updated") {
@@ -82,6 +85,7 @@ function changedItems(items: readonly AgentItemResult[]): string[] {
     switch (item.kind) {
       case "card":
       case "link":
+      case "frame":
         return [item.id];
       case "group":
         return [item.id, item.card];

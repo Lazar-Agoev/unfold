@@ -22,6 +22,7 @@ describe("parseViewReport", () => {
       { kind: "step", card: "create-order", key: "src/a.ts#function:a/if[0]" },
       { kind: "group", id: "checks" },
       { kind: "link", id: "a-to-b" },
+      { kind: "frame", id: "server" },
       { kind: "line", from: "a", to: "b", project: "p-orders0000", source: "src/a.ts#function:a/call[0]", seq: 0, line: 12 },
       { kind: "line", from: "a", to: "b", project: "p-orders0000", source: "src/a.ts#function:a/call[0]", seq: 1, line: null },
       {
@@ -49,7 +50,8 @@ describe("parseViewReport", () => {
       { ...REPORT, page: 3 },
       { ...REPORT, lens: "table" },
       { ...REPORT, selection: { kind: "card" } },
-      { ...REPORT, selection: { kind: "frame", id: "x" } },
+      { ...REPORT, selection: { kind: "frame" } },
+      { ...REPORT, selection: { kind: "resource", id: "x" } },
       { ...REPORT, selection: { kind: "line", from: "a", to: "b", project: "p", source: "s", seq: 0.5, line: null } },
       { ...REPORT, selection: { kind: "calls", from: "a", to: "b", project: "p", calls: [{ source: "s", seq: 0, line: "12" }] } },
       { ...REPORT, selection: { kind: "calls", from: "a", to: "b", project: "p", calls: "s" } },

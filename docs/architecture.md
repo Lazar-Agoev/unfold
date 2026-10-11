@@ -1005,6 +1005,8 @@ These are computed by `unfold-reader` from the stored graph. Nothing here adds f
 - A type card's field whose written type names another type card of the same project has a **type arrow** from its row to that card, labeled with the written type. Type arrows are compiled, drawn like call arrows, and Arrange places a type after the types that link to it.
 - A call or passed-reference line carries its signature at its midpoint (`(CartItem[]) → Promise<Hold>`). Clicking the label opens the call's contract in its place: what the call sends (each argument beside the parameter it fills), what comes back and where it lands, and what the callee throws. A written type in it opens its definition inline, with "Peek source" and "Used in N places". While a line is selected, the callee card marks the lines the contract reads ([proposal](proposals/typed-lines.md)).
 - A card folds to its title only when you fold it. Its arrows then attach to the header. Following a call into a folded card unfolds it.
+- A **frame** is a named, described box around cards, resource cards, notes, and other frames, nested up to three deep: a **box** (outlined, with a title bar) for a unit of a few functions or a service, or a **zone** (a tinted area with a large title) for an area that holds services, with an icon from a fixed set (`api`, `worker`, `schedule`, `cli`, `web`, `library`, `system`). A frame has no position of its own: its box is what it holds plus room for its title, so dragging it moves them. Collapsed, it is one node that says what it holds ("3 functions · 1 table"), and the arrows and links of what it hides attach to it, merged ("3 calls"). Nothing collapses by itself. Agents draw frames; people collapse, rename, describe, move, and remove them.
+- **Arrange** lays a page out by call depth from the inside out: each frame first, deepest first, to the right or downward as its direction says, then the page with each frame as one node, an arrow that crosses a frame's border counting at the cards it joins. It is deterministic: arranging again changes nothing.
 
 ### 10.3 Code view
 
@@ -1044,7 +1046,7 @@ Flow is not a runtime trace or proof that a branch runs. Short-circuit expressio
 - **Drafts.** Every board saves itself, a moment after each change, to its project's `.unfold/local/drafts/`. Each window's open boards come back with the window ([§11.10](#1110-several-windows-and-restore)).
 - **Publish.** A draft's first Publish shows the file it will write, `.unfold/boards/<slug-of-title>.json`, and never overwrites an existing one; the name is editable only when a file already has it. The board is validated, written, and its draft removed. Later edits are kept as unpublished changes on this machine until the next Publish writes them over the published file, so `git diff` shows finished edits only. Unfold never runs Git.
 - **Discard changes** returns to the published version. **Move back to drafts** reverses Publish. **Delete** asks first.
-- **Export** writes one page as Mermaid to a location you choose, or to the clipboard. SVG, PNG, and a Markdown walkthrough come in V2. Mermaid uses solid arrows for calls and constructions, dashed arrows for imports and passed references, and dashed labeled arrows for drawn links. A Diagram-view card is a box with one arrow to each card it calls, and a type declaration in Flow view is a box.
+- **Export** writes one page as Mermaid to a location you choose, or to the clipboard, or as a PNG image of the page as the board draws it (unsaved changes included), drawn by a hidden render window at twice its size. SVG and a Markdown walkthrough come in V2. Mermaid uses solid arrows for calls and constructions, dashed arrows for imports and passed references, and dashed labeled arrows for drawn links. A Diagram-view card is a box with one arrow to each card it calls, and a type declaration in Flow view is a box.
 - **Health** lists, per page, missing references, outdated descriptions, broken groups, guarded references that need review, cards from projects that aren't connected, and drawn links whose end is missing, and offers repairs.
 - **Agents** can read and write board files directly, just like people. The app validates a board file when it loads it and reloads it when the file changes. A description an agent writes is attributed `agent:<name>`. The graph database is not an interface for agents. A stable agent interface comes in V2.
 
@@ -1183,12 +1185,13 @@ knows nothing about projects.
   each with its state indicator and its tree of folders and boards. In a board tab it holds that board:
   its header (back to Home, the project and folder, the title, and the board menu), its **Pages**,
   **On this page** (the cards in follow order, indented by call depth, with their groups and drawn
-  links), and **Selected** (the selected card, Flow node, group, or link: its description, Called by,
-  Reached from, and calls not opened yet). It is 264px wide by default, resizes from 220 to 360px,
+  links, and frames as headings over what they hold), and **Selected** (the selected card, Flow node,
+  group, link, or frame: its description, Called by, Reached from, and calls not opened yet; a frame's
+  members and the links in and out of it). It is 264px wide by default, resizes from 220 to 360px,
   and ⌘B hides it.
 - **The canvas top bar** shows the page's title and the board's publish state ("Draft", "Published",
   "Published · 2 unpublished changes"), the window's **Diagram | Flow | Code** lens in the middle, and **Share**
-  (Export Mermaid, Copy Mermaid) and **Publish** on the right.
+  (Export Mermaid, Copy Mermaid, Export PNG) and **Publish** on the right.
 - **The dock** floats at the bottom of the canvas: **Add**, Back and Forward, the follow trail,
   **Arrange**, and the zoom (−, percentage, +, Fit).
 - **Sheets and dialogs.** The peek sheet slides over the right of the canvas
@@ -1243,10 +1246,12 @@ Home).
 
 Opening a board opens it in a tab and switches the sidebar to it. A board starts with one page; **+**
 under Pages adds another. Following calls, ⌥-click inline expansion, Diagram, Flow, and Code, folds, groups,
-descriptions, and Flow labels work as [§10](#10-the-reader) describes. Descriptions and labels are
+frames, descriptions, and Flow labels work as [§10](#10-the-reader) describes. Descriptions and labels are
 written in **Selected** or on the card itself; "N Flow steps unlabeled · Label them", under On this
 page, steps through the nodes that still show code names. **Show callers**, in a card's menu, adds the
-cards of the definitions that call it to its left. A card that needs review shows a banner ("Changed
+cards of the definitions that call it to its left. A frame's chevron collapses and expands it; its title
+renames it in place (double-click), drags it with everything in it, and opens its menu (Rename…,
+Describe…, Collapse or Expand, Copy link, Remove frame (keep cards)). A card that needs review shows a banner ("Changed
 since it was described · Review") that lists its problems and their repairs, and its page and its row
 on the page carry a mark.
 
@@ -1388,8 +1393,9 @@ keys. Windows and Linux use Ctrl in place of ⌘.
 - **Rust computes everything that needs the graph or the source bytes**: the code render model in UTF-16,
   highlighting, folds, links, the Flow model, relations, closures, health, thumbnails' contents, search,
   and Mermaid.
-- **TypeScript does layout**, because layout needs measured sizes: card sizing, reflow, Arrange by call
-  depth, arrow and link routing, thumbnails' rectangles, and the placement of nodes inside Flow.
+- **TypeScript does layout**, because layout needs measured sizes: card sizing, reflow, frames' boxes,
+  Arrange by call depth (frames from the inside out), arrow and link routing, thumbnails' rectangles, and
+  the placement of nodes inside Flow.
 - **The UI uses no Node APIs and no browser storage.** It reaches the rest of the app only through
   `window.unfold` ([§12](#12-commands-and-events)), and everything it remembers goes through Rust.
 
@@ -1425,7 +1431,7 @@ Commands, events, and their payload types are defined once in Rust, in `unfold-w
 | [Boards](ipc.md#boards) | Listing, thumbnails, opening and claiming, saving, health and repairs, Publish, unpublished changes, folders | Rust |
 | [Export](ipc.md#export) | Mermaid to a file or the clipboard | The main process shows the save dialog, then Rust writes the file |
 | [Windows](ipc.md#windows) | What each window remembers | Rust |
-| [Window commands](ipc.md#window-commands-and-shell-events) | New windows, focusing, dialogs, moving a board to a new window, the clipboard | The main process |
+| [Window commands](ipc.md#window-commands-and-shell-events) | New windows, focusing, dialogs, moving a board to a new window, the clipboard, Export PNG and the render window's answers | The main process |
 
 Each board command names its board, and Rust checks that the calling window holds it. Commands that take an absolute path, or manage windows, run only when the main process sends them ([§13](#13-security-and-privacy)).
 
@@ -1433,6 +1439,7 @@ Each board command names its board, and Rust checks that the calling window hold
 
 - **Windows get no file, shell, process, or network access.** Every renderer runs with context isolation and Chromium's sandbox, with Node integration off. Its preload script exposes one object, `window.unfold`, which can only send Unfold's commands and receive its events.
 - **The main process trusts only what it created.** It loads the UI only from Unfold's own `app://` protocol, inside the app's signed archive. It blocks navigation, new windows, embedded webviews, and every permission request, such as the camera or notifications, and it checks the sender of every message it handles.
+- **The render window is a window like the others, with less it may do.** Page images (Share › Export PNG, an agent's screenshot) and page checks are drawn by a hidden window the main process creates on demand with every window's hardening, offscreen, loading the same `app://` UI under the same policy. It is attached to the engine for the cards' data like any window, but never opens or claims a board, and the one message it may send the main process is its answer to a render request. The main process writes the exported image to the path the person chose in the save dialog.
 - **Paths outside a project come only from the main process.** A folder picked in the folder picker, dropped on a window, or passed on the command line, and a file chosen in a save dialog, reach Rust only as trusted commands, which only the main process can send ([IPC](ipc.md#how-a-command-travels)). A window can never name a path outside a project; it can add back a folder the workspace removed only by its listed path.
 - **One local listener, for agents, off by default.** While Preferences › Agents has it on, the main process serves MCP at `http://127.0.0.1:<port>/mcp` (port 29180 unless the person picks another) for agents such as Claude Code and Codex. It listens on the loopback interface only; it refuses, with a bare 403, any request that carries an `Origin` header (a web page) and any whose `Host` isn't `127.0.0.1` or `localhost` at its port (DNS rebinding); it caps request bodies at 1 MiB and serves nothing but `/mcp`. It has no token: while it is on, any program on the machine can use it, and such programs can already read the repositories. Its engine requests are untrusted, like a window's, and its tools are fixed actions with no pass-through to the engine; the one that names a path outside a project, adding a project, runs only after the person confirms it in a native dialog. Turning it off closes every connection.
 - **Every path a command receives is checked, per project.** It must be relative to the folder of the project the command names, and Rust resolves it and rejects `..`, absolute paths, and symlinks that escape that folder. Discovery doesn't follow symlinks out of the folder.

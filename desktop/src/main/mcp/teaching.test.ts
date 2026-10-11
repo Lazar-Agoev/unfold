@@ -31,8 +31,11 @@ describe("the tools' definitions", () => {
 
   it("load get_guide and get_current_view with the session, and mark reads read-only", () => {
     expect(TOOLS.filter((tool) => tool.alwaysLoad).map((tool) => tool.name)).toEqual(["get_guide", "get_current_view"]);
-    for (const name of ["get_guide", "get_current_view", "list_projects", "get_project"]) {
+    for (const name of ["get_guide", "get_current_view", "list_projects", "get_project", "search", "list_entrances", "read_code", "read_call", "read_file", "get_relations"]) {
       expect(TOOLS.find((tool) => tool.name === name)?.annotations.readOnlyHint, name).toBe(true);
+    }
+    for (const name of ["add_project", "compile_project", "update_project_settings", "create_board", "organize_boards", "edit_pages", "show"]) {
+      expect(TOOLS.find((tool) => tool.name === name)?.annotations, name).toMatchObject({ readOnlyHint: false, destructiveHint: expect.any(Boolean) as boolean });
     }
   });
 

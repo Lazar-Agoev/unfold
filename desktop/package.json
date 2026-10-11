@@ -12,6 +12,9 @@
     },
     "./agent-api": {
       "types": "./src/shared/agent-api.ts"
+    },
+    "./render-api": {
+      "types": "./src/shared/render-api.ts"
     }
   },
   "scripts": {

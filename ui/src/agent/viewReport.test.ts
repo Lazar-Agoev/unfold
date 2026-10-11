@@ -53,6 +53,16 @@ describe("visibleItems", () => {
     expect(visibleItems(PAGE, rects, null, { width: 1000, height: 800 })).toEqual(["a", "b", "a-checks", "a-to-b"]);
     expect(visibleItems(PAGE, rects, { x: 0, y: 0, zoom: 1 }, null)).toHaveLength(4);
   });
+
+  it("lists the frames in view, and leaves out what a collapsed frame hides", () => {
+    const framed: Page = { ...PAGE, frames: [{ id: "server", title: "server", members: ["b"], look: "box", author: "agent:claude", collapsed: true }] };
+    const drawn = new Map([
+      ["a", { x: 0, y: 0, width: 500, height: 300 }],
+      ["server", { x: 1990, y: 0, width: 280, height: 90 }],
+    ]);
+    expect(visibleItems(framed, drawn, null, null)).toEqual(["a", "a-checks", "a-to-b", "server"]);
+    expect(visibleItems(framed, drawn, { x: -1800, y: 0, zoom: 1 }, { width: 1000, height: 800 })).toEqual(["server"]);
+  });
 });
 
 describe("currentView", () => {
@@ -82,6 +92,7 @@ describe("currentView", () => {
       [{ kind: "card", cardId: "a", key: null }, { kind: "card", id: "a" }],
       [{ kind: "group", groupId: "a-checks" }, { kind: "group", id: "a-checks" }],
       [{ kind: "link", linkId: "a-to-b" }, { kind: "link", id: "a-to-b" }],
+      [{ kind: "frame", frameId: "server" }, { kind: "frame", id: "server" }],
     ] as const) {
       store.select(TARGET, selection);
       expect(currentView(null).selection).toEqual(reported);

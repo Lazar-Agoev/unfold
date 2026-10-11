@@ -9,7 +9,7 @@ import { agentSettings, McpService } from "./service";
 vi.mock("electron", async () => (await import("../fake-electron")).electronModule);
 
 const services = {
-  bridge: new AgentBridge({ windows: { get: () => undefined, all: () => [], create: () => { throw new Error("no windows"); }, deliver: () => undefined }, views: new ViewTracker() }),
+  bridge: new AgentBridge({ windows: { get: () => undefined, all: () => [], create: () => { throw new Error("no windows"); }, deliver: () => undefined, focus: () => undefined }, views: new ViewTracker() }),
   engine: () => Promise.resolve(null),
   confirmAddProject: () => Promise.resolve(false),
   addProject: () => Promise.reject(new Error("not asked")),

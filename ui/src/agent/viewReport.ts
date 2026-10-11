@@ -24,6 +24,8 @@ function viewSelection(selection: Selection): ViewSelection {
       return { kind: "group", id: selection.groupId };
     case "link":
       return { kind: "link", id: selection.linkId };
+    case "frame":
+      return { kind: "frame", id: selection.frameId };
     case "line":
       return { kind: "line", from: selection.from, to: selection.to, project: selection.project, source: selection.source, seq: selection.seq, line: selection.line };
     case "calls":
@@ -36,21 +38,24 @@ function overlaps(a: Rect, b: Rect): boolean {
 }
 
 /**
- * The ids of a page's cards, step groups (their card in view), and links (an end in view) that the
- * canvas shows through `camera` at `size`; all of them before the canvas has a camera or a size.
+ * The ids of a page's cards, step groups (their card in view), links (an end in view), and frames
+ * that the canvas shows through `camera` at `size` (`rects` holds what is drawn: a card inside a
+ * collapsed frame isn't); all of them before the canvas has a camera or a size.
  */
 export function visibleItems(page: Page, rects: ReadonlyMap<string, Rect>, camera: Camera | null, size: Size | null): string[] {
   const area = camera && size ? { x: -camera.x / camera.zoom, y: -camera.y / camera.zoom, width: size.width / camera.zoom, height: size.height / camera.zoom } : null;
-  const cards = new Set(
-    page.cards.flatMap((card) => {
-      const rect = rects.get(card.id);
-      return !area || (rect && overlaps(rect, area)) ? [card.id] : [];
-    }),
-  );
+  const shown = (id: string) => {
+    const rect = rects.get(id);
+    return rect !== undefined && (!area || overlaps(rect, area));
+  };
+  const cards = new Set(page.cards.flatMap((card) => (shown(card.id) ? [card.id] : [])));
+  const frames = (page.frames ?? []).flatMap((frame) => (shown(frame.id) ? [frame.id] : []));
+  const ends = new Set([...cards, ...frames]);
   return [
     ...cards,
     ...page.groups.flatMap((group) => (cards.has(group.card) ? [group.id] : [])),
-    ...page.links.flatMap((link) => (cards.has(link.from) || cards.has(link.to) ? [link.id] : [])),
+    ...page.links.flatMap((link) => (ends.has(link.from) || ends.has(link.to) ? [link.id] : [])),
+    ...frames,
   ];
 }
 

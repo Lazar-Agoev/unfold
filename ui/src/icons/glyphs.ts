@@ -2,8 +2,8 @@
  * The icon set's drawings. Path data is the designs' own, verbatim, in the viewBox each was drawn in:
  * the custom 16px icons of Home, the 24px icons of the board, Add, the peek sheet, and Publish, and the
  * 10px disclosure chevrons. The Lucide-style icons of Project settings and Health (check, close, folder,
- * warning, info) are redrawn in the 16px style. Strokes are `currentColor`, 1.5 unless noted, with
- * round caps and joins.
+ * warning, info) are redrawn in the 16px style, and the frames' icons are drawn in it. Strokes are
+ * `currentColor`, 1.5 unless noted, with round caps and joins.
  */
 
 /** One shape of an icon. Filled shapes (the dots of `dots`, `info`) have no stroke. */
@@ -60,6 +60,14 @@ export const ICON_NAMES = [
   "back",
   "forward",
   "agent",
+  "frame",
+  "frame-api",
+  "frame-worker",
+  "frame-schedule",
+  "frame-cli",
+  "frame-web",
+  "frame-library",
+  "frame-system",
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];
@@ -190,4 +198,23 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   forward: { box: 16, shapes: [{ d: "M3 8H12.5M8.5 4L12.5 8L8.5 12" }] },
   // The agent mark beside an agent's name: a small four-point spark.
   agent: { box: 10, stroke: 1.2, shapes: [{ d: "M5 1.5L5.9 4.1L8.5 5L5.9 5.9L5 8.5L4.1 5.9L1.5 5L4.1 4.1Z" }] },
+  // Frames: a frame without an icon (a box with its title bar), then what a frame is.
+  frame: { box: 16, shapes: [{ rect: [2.5, 3, 11, 10, 1.5] }, { d: "M2.5 6H13.5" }] },
+  // An API: a request out and its reply back.
+  "frame-api": { box: 16, shapes: [{ d: "M2.5 6H11.5M9 3.5L11.5 6L9 8.5" }, { d: "M13.5 10H4.5M7 7.5L4.5 10L7 12.5" }] },
+  // A worker: jobs in a line, taken one at a time.
+  "frame-worker": { box: 16, shapes: [{ d: "M2.5 4.5H8.5M2.5 8H8.5M2.5 11.5H8.5" }, { d: "M11 5.5L13.5 8L11 10.5" }] },
+  // A schedule: a calendar page.
+  "frame-schedule": { box: 16, shapes: [{ rect: [2.5, 3.5, 11, 10, 1.5] }, { d: "M2.5 6.5H13.5M5.5 2V4.5M10.5 2V4.5" }] },
+  // A command line: a prompt in a window.
+  "frame-cli": { box: 16, shapes: [{ rect: [2, 3, 12, 10, 1.5] }, { d: "M4.75 6.25L6.75 8L4.75 9.75M8.25 10H11" }] },
+  // The web: a globe.
+  "frame-web": { box: 16, shapes: [{ circle: [8, 8, 5.5] }, { d: "M2.5 8H13.5" }, { d: "M8 2.5C9.75 4.25 9.75 11.75 8 13.5C6.25 11.75 6.25 4.25 8 2.5Z" }] },
+  // A library: a package.
+  "frame-library": { box: 16, shapes: [{ d: "M8 2.5L13.5 5V11L8 13.5L2.5 11V5L8 2.5Z" }, { d: "M2.5 5L8 7.5L13.5 5M8 7.5V13.5" }] },
+  // A system: servers in a rack.
+  "frame-system": {
+    box: 16,
+    shapes: [{ rect: [2.5, 2.5, 11, 4.5, 1] }, { rect: [2.5, 9, 11, 4.5, 1] }, { circle: [5, 4.75, 0.75], filled: true }, { circle: [5, 11.25, 0.75], filled: true }],
+  },
 };

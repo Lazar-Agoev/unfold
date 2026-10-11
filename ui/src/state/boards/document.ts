@@ -4,8 +4,9 @@
  * rather than set to `undefined`, matching what the file holds (`folded` only when true, `description`
  * and `label` only when there is text).
  *
- * Card, group, and link ids are unique together within their page; page ids within the board. Both
- * match `/^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/`.
+ * Cards, groups, links, frames, resource cards, and notes share one id space per page; page ids are
+ * unique within the board. Both match `/^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/`. Removing an item takes
+ * what would dangle with it, as the engine does.
  */
 
 import type { BoardDocument, Card, CardRef, Description, Group, Key, LabelEntry, Link, Page, ProjectName, View } from "../../ipc/generated";
@@ -116,19 +117,127 @@ export function addCard(page: Page, card: NewCard): string {
   return id;
 }
 
-/** Removes a card, the groups inside it, and the links that end at it. */
-export function removeCard(page: Page, cardId: string): void {
-  page.cards = page.cards.filter((card) => card.id !== cardId);
-  page.groups = page.groups.filter((group) => group.card !== cardId);
-  page.links = page.links.filter((link) => link.from !== cardId && link.to !== cardId);
+/**
+ * What removing `ids` takes with it, the engine's removal cascade (`remove_items`): the groups of a
+ * removed card, the links that end at a removed item, and a frame whose members are all removed (then
+ * its links, and so on). Includes `ids` themselves.
+ */
+function removalCascade(page: Page, ids: readonly string[]): Set<string> {
+  const removed = new Set(ids);
+  for (let before = -1; before !== removed.size; ) {
+    before = removed.size;
+    for (const group of page.groups) {
+      if (removed.has(group.card)) {
+        removed.add(group.id);
+      }
+    }
+    for (const link of page.links) {
+      if (removed.has(link.from) || removed.has(link.to)) {
+        removed.add(link.id);
+      }
+    }
+    for (const frame of page.frames ?? []) {
+      if (frame.members.every((member) => removed.has(member))) {
+        removed.add(frame.id);
+      }
+    }
+  }
+  return removed;
 }
 
-/** Moves cards; ids not on the page are ignored. */
-export function moveCards(page: Page, positions: Readonly<Record<string, readonly [number, number]>>): void {
-  for (const card of page.cards) {
-    const at = positions[card.id];
+/** The most items a position walks through: a link's end frames, and their nested frames. */
+const POSITION_DEPTH = 5;
+
+/**
+ * Where item `id` is as far as the file says (the engine's rule): a card's or resource card's
+ * position, the top-left of a frame's cards, resource cards, and nested frames, or the midpoint of a
+ * link's ends; undefined for anything else.
+ */
+function itemPosition(page: Page, id: string, depth = 0): [number, number] | undefined {
+  if (depth > POSITION_DEPTH) {
+    return undefined;
+  }
+  const placed = page.cards.find((card) => card.id === id) ?? (page.resources ?? []).find((resource) => resource.id === id);
+  if (placed) {
+    return [placed.at[0], placed.at[1]];
+  }
+  const frame = (page.frames ?? []).find((item) => item.id === id);
+  if (frame) {
+    const corners = frame.members.flatMap((member) => {
+      const at = itemPosition(page, member, depth + 1);
+      return at ? [at] : [];
+    });
+    return corners.length > 0 ? [Math.min(...corners.map(([x]) => x)), Math.min(...corners.map(([, y]) => y))] : undefined;
+  }
+  const link = page.links.find((item) => item.id === id);
+  const from = link ? itemPosition(page, link.from, depth + 1) : undefined;
+  const to = link ? itemPosition(page, link.to, depth + 1) : undefined;
+  return from && to ? [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2] : undefined;
+}
+
+/**
+ * Removes items with everything that would dangle (`removalCascade`), and takes them out of the
+ * frames that hold them. A note attached to a removed item stays where it was, unattached. Returns
+ * the ids removed, in the order of the page's lists.
+ */
+export function removeItems(page: Page, ids: readonly string[]): string[] {
+  const removed = removalCascade(page, ids);
+  for (const note of page.notes ?? []) {
+    if (note.attach !== undefined && removed.has(note.attach) && !removed.has(note.id)) {
+      const [x, y] = itemPosition(page, note.attach) ?? [0, 0];
+      note.at = [x + note.at[0], y + note.at[1]];
+      delete note.attach;
+    }
+  }
+  const gone: string[] = [];
+  const kept = <T extends { readonly id: string }>(items: readonly T[]): T[] =>
+    items.filter((item) => {
+      if (removed.has(item.id)) {
+        gone.push(item.id);
+        return false;
+      }
+      return true;
+    });
+  page.cards = kept(page.cards);
+  page.groups = kept(page.groups);
+  page.links = kept(page.links);
+  if (page.frames) {
+    page.frames = kept(page.frames);
+    for (const frame of page.frames) {
+      frame.members = frame.members.filter((member) => !removed.has(member));
+    }
+  }
+  if (page.resources) {
+    page.resources = kept(page.resources);
+  }
+  if (page.notes) {
+    page.notes = kept(page.notes);
+  }
+  // The file leaves out empty lists of these.
+  if (page.frames?.length === 0) {
+    delete page.frames;
+  }
+  if (page.resources?.length === 0) {
+    delete page.resources;
+  }
+  if (page.notes?.length === 0) {
+    delete page.notes;
+  }
+  return gone;
+}
+
+/** Removes a card, the groups inside it, the links that end at it, and a frame it leaves empty. */
+export function removeCard(page: Page, cardId: string): void {
+  removeItems(page, [cardId]);
+}
+
+/** Moves cards, resource cards, and unattached notes; other ids are ignored. Positions are rounded. */
+export function moveItems(page: Page, positions: Readonly<Record<string, readonly [number, number]>>): void {
+  const placed = [...page.cards, ...(page.resources ?? []), ...(page.notes ?? []).filter((note) => note.attach === undefined)];
+  for (const item of placed) {
+    const at = positions[item.id];
     if (at && Number.isFinite(at[0]) && Number.isFinite(at[1])) {
-      card.at = [Math.round(at[0]), Math.round(at[1])];
+      item.at = [Math.round(at[0]), Math.round(at[1])];
     }
   }
 }
@@ -157,7 +266,7 @@ export function setCardsFolded(page: Page, cardIds: readonly string[], folded: b
 }
 
 /** A new, unsigned description (the next save signs it from verified source). */
-function description(text: string, author: string): Description {
+export function description(text: string, author: string): Description {
   return { text, author, signature: "" };
 }
 
@@ -277,9 +386,10 @@ export function removeGroup(page: Page, groupId: string): void {
   page.groups = page.groups.filter((group) => group.id !== groupId);
 }
 
-/** Draws a link between two different cards of the page and returns its id (undefined if it can't). */
+/** Draws a link between two different cards or frames of the page and returns its id (undefined if it can't). */
 export function addLink(page: Page, from: string, to: string): string | undefined {
-  if (from === to || !findCard(page, from) || !findCard(page, to)) {
+  const end = (id: string) => findCard(page, id) !== undefined || (page.frames ?? []).some((frame) => frame.id === id);
+  if (from === to || !end(from) || !end(to)) {
     return undefined;
   }
   const id = uniqueId(page, `${from}-to-${to}`);
@@ -301,8 +411,9 @@ export function setLinkLabel(page: Page, linkId: string, text: string, author: s
   }
 }
 
+/** Removes a link; a note attached to it stays where it was. */
 export function removeLink(page: Page, linkId: string): void {
-  page.links = page.links.filter((link) => link.id !== linkId);
+  removeItems(page, [linkId]);
 }
 
 /** Sets the view of the page's cards that have none of their own. */
@@ -349,7 +460,7 @@ export function renamePage(document: BoardDocument, pageId: PageId, title: strin
   }
 }
 
-/** Copies a page (cards, groups, labels, guards, links) right after it, titled "<title> copy". */
+/** Copies a page (everything on it) right after it, titled "<title> copy". */
 export function duplicatePage(document: BoardDocument, pageId: PageId): PageId | undefined {
   const index = document.pages.findIndex((page) => page.id === pageId);
   const source = document.pages[index];

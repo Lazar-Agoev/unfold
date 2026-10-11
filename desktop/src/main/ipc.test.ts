@@ -1,10 +1,13 @@
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentServerStatus } from "../shared/agent-api";
 import { IPC, PRELOAD_COMMANDS } from "../shared/transport";
 import { EngineRequestError } from "./engine-host";
-import type { FakeBrowserWindow } from "./fake-electron";
-import { clipboardTexts, dialogs, ipcHandlers, resetFakeElectron } from "./fake-electron";
+import { clipboardTexts, dialogs, FakeBrowserWindow, ipcHandlers, resetFakeElectron } from "./fake-electron";
 import { AgentBridge } from "./agents/bridge";
+import type { ScreenshotOutcome, ScreenshotRequest } from "./agents/render";
 import { ViewTracker } from "./agents/views";
 import { registerWindowCommands } from "./ipc";
 import type { WindowEntry } from "./windows";
@@ -37,8 +40,28 @@ class FakeEngine {
   }
 }
 
+/** Stands in for the page renderer: owns one render window, and records what it was asked to draw. */
+class FakeRenderer {
+  readonly window = new FakeBrowserWindow({ width: 1600, height: 1000 });
+  readonly settled: [unknown, unknown][] = [];
+  readonly shots: ScreenshotRequest[] = [];
+  outcome: ScreenshotOutcome = { ok: true, png: Buffer.from("a png"), width: 4, height: 2 };
+
+  owns(contents: unknown): boolean {
+    return contents === this.window.webContents;
+  }
+  settle(requestId: unknown, result: unknown): void {
+    this.settled.push([requestId, result]);
+  }
+  screenshot(request: ScreenshotRequest): Promise<ScreenshotOutcome> {
+    this.shots.push(request);
+    return Promise.resolve(this.outcome);
+  }
+}
+
 function setup() {
   const engine = new FakeEngine();
+  const renderer = new FakeRenderer();
   const registry = new WindowRegistry(
     UI,
     { onLoaded: () => undefined, onClosed: () => undefined, onPlacementChanged: () => undefined, onFocused: () => undefined },
@@ -46,7 +69,7 @@ function setup() {
   );
   const agents = new AgentBridge({ windows: registry, views: new ViewTracker() });
   const mcp = { status: () => SERVER_STATUS };
-  registerWindowCommands({ registry, workspace: new Workspace(registry, engine), engine, ui: UI, agents, mcp });
+  registerWindowCommands({ registry, workspace: new Workspace(registry, engine), engine, ui: UI, agents, mcp, renderer });
   const handler = ipcHandlers.get(IPC.windowCommand);
   if (!handler) {
     throw new Error("window commands not registered");
@@ -56,11 +79,11 @@ function setup() {
     entry.window.finishLoad();
     return entry;
   };
-  const invoke = (entry: WindowEntry, command: string, args: unknown = {}, frame?: { url: string }) => {
-    const window = entry.window as unknown as FakeBrowserWindow;
+  const invoke = (entry: { readonly window: unknown }, command: string, args: unknown = {}, frame?: { url: string }) => {
+    const window = entry.window as FakeBrowserWindow;
     return handler({ sender: window.webContents, senderFrame: frame ?? window.mainFrame }, command, args);
   };
-  return { engine, registry, agents, open, invoke };
+  return { engine, registry, agents, renderer, open, invoke };
 }
 
 beforeEach(() => {
@@ -243,6 +266,68 @@ describe("export_mermaid", () => {
     }
     expect(dialogs.shown).toEqual([]);
     expect(engine.commands()).toEqual([]);
+  });
+});
+
+describe("export_png", () => {
+  const ARGS = { project: PROJECT, board: ".unfold/boards/orders.json", page: "page-1", title: "Orders - Placing an order" };
+
+  it("draws the page at twice the size and writes it where the person chose", async () => {
+    const { open, invoke, renderer } = setup();
+    const path = join(mkdtempSync(join(tmpdir(), "unfold-png-")), "orders.png");
+    dialogs.savePath = path;
+
+    expect(await invoke(open(), "export_png", ARGS)).toEqual({ ok: true, value: { path, bytes: 5 } });
+    expect(dialogs.shown).toEqual([
+      {
+        kind: "save",
+        options: {
+          title: "Export",
+          defaultPath: "/Users/me/Documents/Orders - Placing an order.png",
+          filters: [{ name: "PNG image", extensions: ["png"] }],
+          properties: ["createDirectory", "showOverwriteConfirmation"],
+        },
+      },
+    ]);
+    expect(renderer.shots).toEqual([{ board: { project: PROJECT, id: ".unfold/boards/orders.json" }, page: "page-1", scale: 2 }]);
+    expect(readFileSync(path, "utf8")).toBe("a png");
+  });
+
+  it("draws nothing when the dialog is cancelled, and is named after the board without a title", async () => {
+    const { open, invoke, renderer } = setup();
+    expect(await invoke(open(), "export_png", { ...ARGS, title: undefined })).toEqual({ ok: true, value: null });
+    expect(dialogs.shown[0]?.options["defaultPath"]).toBe("/Users/me/Documents/orders.png");
+    expect(renderer.shots).toEqual([]);
+  });
+
+  it("rejects with why the page couldn't be drawn, and refuses malformed args", async () => {
+    const { open, invoke, renderer } = setup();
+    const entry = open();
+    dialogs.savePath = join(mkdtempSync(join(tmpdir(), "unfold-png-")), "never.png");
+    renderer.outcome = { ok: false, code: "render_timeout", message: "Unfold couldn't draw the page within 30 s." };
+    expect(await invoke(entry, "export_png", ARGS)).toEqual({ ok: false, error: { code: "render_timeout", message: "Unfold couldn't draw the page within 30 s." } });
+    for (const args of [{ project: PROJECT, board: "b" }, { ...ARGS, title: 3 }]) {
+      expect(await invoke(entry, "export_png", args)).toMatchObject({ ok: false, error: { code: "invalid_command" } });
+    }
+  });
+});
+
+describe("the render window", () => {
+  it("may only answer render requests, which go to the renderer", async () => {
+    const { invoke, renderer } = setup();
+    const result = { ok: true, bounds: { x: 0, y: 0, width: 10, height: 10 } };
+    expect(await invoke(renderer, "render_ready", { requestId: 3, result })).toEqual({ ok: true, value: null });
+    expect(renderer.settled).toEqual([[3, result]]);
+    for (const command of ["window_info", "copy_to_clipboard", "export_png"]) {
+      expect(await invoke(renderer, command, { text: "x" })).toMatchObject({ ok: false, error: { code: "invalid_command" } });
+    }
+    expect(clipboardTexts).toEqual([]);
+  });
+
+  it("is the only window that may answer them", async () => {
+    const { open, invoke, renderer } = setup();
+    expect(await invoke(open(), "render_ready", { requestId: 3, result: { ok: true } })).toMatchObject({ ok: false, error: { code: "invalid_command" } });
+    expect(renderer.settled).toEqual([]);
   });
 });
 

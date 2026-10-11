@@ -140,6 +140,8 @@
 
 .layer-row.group .layer-label,
 .layer-row.link .layer-label { font: 13px/20px var(--font-ui); }
+/* A frame is a heading: its title in the UI face, in the authored color (it is authored). */
+.layer-row.frame .layer-label { font: 600 13px/20px var(--font-ui); color: var(--color-authored); }
 .layer-row.selected .layer-label { font-weight: 600; }
 .layer-row.link.selected .layer-label { font-weight: 500; }
 .layer-row.muted .layer-label { color: var(--color-muted); }

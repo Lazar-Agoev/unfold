@@ -6,7 +6,7 @@
 
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import type { BaseWindow, Rectangle, WebContents } from "electron";
+import type { BaseWindow, Rectangle, WebContents, WebPreferences } from "electron";
 import { BrowserWindow, nativeTheme, screen } from "electron";
 import type { ShellEvent } from "../shared/unfold-api";
 import { IPC } from "../shared/transport";
@@ -42,6 +42,28 @@ export interface WindowHooks {
    * it comes back where it is.
    */
   onPlacementChanged(entry: WindowEntry): void;
+}
+
+/**
+ * Every window's web preferences (architecture §13): the preload and nothing else, context isolation,
+ * the sandbox, no Node, no webviews, no spellchecker. The render window starts from these too.
+ */
+export function hardenedPreferences(devTools: boolean): WebPreferences {
+  return {
+    preload: join(__dirname, "../preload/index.js"),
+    contextIsolation: true,
+    sandbox: true,
+    nodeIntegration: false,
+    nodeIntegrationInWorker: false,
+    nodeIntegrationInSubFrames: false,
+    webviewTag: false,
+    spellcheck: false,
+    webSecurity: true,
+    allowRunningInsecureContent: false,
+    navigateOnDragDrop: false,
+    safeDialogs: true,
+    devTools,
+  };
 }
 
 const CASCADE_OFFSET = 24;
@@ -81,21 +103,7 @@ export class WindowRegistry {
       ...(process.platform === "darwin"
         ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 14, y: 13 } }
         : {}),
-      webPreferences: {
-        preload: join(__dirname, "../preload/index.js"),
-        contextIsolation: true,
-        sandbox: true,
-        nodeIntegration: false,
-        nodeIntegrationInWorker: false,
-        nodeIntegrationInSubFrames: false,
-        webviewTag: false,
-        spellcheck: false,
-        webSecurity: true,
-        allowRunningInsecureContent: false,
-        navigateOnDragDrop: false,
-        safeDialogs: true,
-        devTools: this.devTools,
-      },
+      webPreferences: hardenedPreferences(this.devTools),
     });
 
     const entry: WindowEntry = { id: this.nextId++, window, key: restore?.key ?? randomUUID(), loaded: false };
@@ -153,6 +161,11 @@ export class WindowRegistry {
 
   get(id: number): WindowEntry | undefined {
     return this.entries.get(id);
+  }
+
+  /** An id from the windows' sequence for a window the registry doesn't list (the render window), so engine window ids never collide. */
+  reserveId(): number {
+    return this.nextId++;
   }
 
   all(): WindowEntry[] {

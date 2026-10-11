@@ -1,12 +1,13 @@
-/** Arrange by call depth on a page: one undoable move of every card. */
+/** Arrange on a page, from the inside out (`arrangePage`): one undoable move of every card. */
 
-import { displayedRects, editPage, findPage, getOpenBoard, moveCards, type PageTarget } from "../state/boards";
+import { editPage, findPage, getOpenBoard, moveItems, type PageTarget } from "../state/boards";
+import { arrangePage } from "./arrangePage";
 import type { Arrow } from "./arrows";
-import { arrangedPositions } from "./layout";
+import { fallbackItemSize, pageGeometry } from "./frames/geometry";
 
 /**
- * Lays the page out in columns by call depth (`arrangedPositions`) as one edit. `portOffset` gives an
- * arrow's measured port offset below its card's top. Returns how many cards moved.
+ * Lays the page out (`arrangePage`) as one edit, with the sizes the canvas measured. `portOffset`
+ * gives an arrow's measured port offset below its card's top. Returns how many cards moved.
  */
 export function arrangeBoard(target: PageTarget, arrows: readonly Arrow[], portOffset: (arrow: Arrow) => number | undefined): number {
   const board = getOpenBoard(target.board);
@@ -14,19 +15,20 @@ export function arrangeBoard(target: PageTarget, arrows: readonly Arrow[], portO
   if (!board || !page || page.cards.length === 0) {
     return 0;
   }
-  const positions = arrangedPositions(page.cards, displayedRects(board, target.page), arrows, portOffset);
+  const sizes = board.pages[target.page]?.sizes ?? {};
+  const sizeOf = (id: string) => sizes[id] ?? fallbackItemSize(page, id);
+  const positions = arrangePage({ page, rects: pageGeometry(page, sizeOf).rects, sizeOf, arrows, portOffset });
   const moves: Record<string, [number, number]> = {};
-  let moved = 0;
-  for (const card of page.cards) {
-    const at = positions.get(card.id);
-    if (at && (at.x !== card.at[0] || at.y !== card.at[1])) {
-      moves[card.id] = [at.x, at.y];
-      moved += 1;
+  for (const item of [...page.cards, ...(page.resources ?? [])]) {
+    const at = positions.get(item.id);
+    if (at && (at.x !== item.at[0] || at.y !== item.at[1])) {
+      moves[item.id] = [at.x, at.y];
     }
   }
+  const moved = Object.keys(moves).length;
   if (moved > 0) {
     editPage(target, (draft) => {
-      moveCards(draft, moves);
+      moveItems(draft, moves);
     });
   }
   return moved;

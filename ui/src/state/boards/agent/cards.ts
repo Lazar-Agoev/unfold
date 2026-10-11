@@ -2,8 +2,9 @@
  * `add_cards`: puts functions, classes, types, and entrances on a page the way following a call places
  * them, and optionally their call trees (resolved calls only) or the types their fields name, saying
  * where following stopped. A card goes beside the item it is `near`, else beside a card that calls it,
- * whose field names it, or that it calls, else right of everything; it never covers another card.
- * Cards already on the page are kept, not duplicated.
+ * whose field names it, or that it calls, else right of everything (of the frame it goes into); it
+ * never covers another card, or a frame it isn't in. Cards already on the page are kept, not
+ * duplicated. With `frame`, the cards it adds go into that frame.
  */
 
 import type { AddCardsOp, AgentCardResult, AgentCardSpec, AgentFollowStop, AgentItemResult } from "@unfold/desktop/agent-api";
@@ -15,7 +16,9 @@ import { descriptionHeight, estimatedFieldOffset, estimatedLineOffset } from "..
 import { cardBody, isTypeKind, keyBlockKind, memberName } from "../../../code/typeKinds";
 import type { Card, CardRef, Key, Page, ProjectId, ProjectName, TypeDefinition, View } from "../../../ipc/generated";
 import { refProjectFor } from "../../workspace";
+import { framePadding } from "../../../canvas/frames/geometry";
 import { addCard, cardKey, findCard, findCardByRef, keyDisplayName, setCardView } from "../document";
+import { addToFrame, findFrame, frameChain } from "../frames";
 import { cardProject, cardResult, cardSize, invalid, pageRects, type ApplyOp, type OpContext } from "./context";
 import type { AgentData } from "./data";
 
@@ -269,10 +272,19 @@ function nearCard(page: Page, id: string): Card {
   return card;
 }
 
-/** Where a new card for `key` goes: beside `near`, else beside a related card, else right of everything; never covering a card. */
-function newCardSpot(ctx: OpContext, page: Page, ref: CardRef, near: string | undefined, size: Size): [number, number] {
+/** What a new card going into frame `frame` (if any) keeps clear of: every card and node, and the boxes of the frames it isn't in. */
+function occupiedFor(page: Page, rects: ReadonlyMap<string, Rect>, frame: string | undefined): Rect[] {
+  const within = new Set(frame !== undefined ? [frame, ...frameChain(page, frame).map((item) => item.id)] : []);
+  return [...rects].flatMap(([id, rect]) => (within.has(id) ? [] : [rect]));
+}
+
+/**
+ * Where a new card for `key` goes: beside `near`, else beside a related card, else right of everything
+ * (inside `frame`, right of what it holds); never covering a card, or a frame it doesn't go into.
+ */
+function newCardSpot(ctx: OpContext, page: Page, ref: CardRef, near: string | undefined, size: Size, frame: string | undefined): [number, number] {
   const rects = pageRects(ctx, page);
-  const occupied = [...rects.values()];
+  const occupied = occupiedFor(page, rects, frame);
   const key = cardKey({ ref });
   const sameProject = (card: Card) => card.ref.project === ref.project;
   const model = ctx.data.model(cardProject(ctx, { ref }), key);
@@ -298,6 +310,12 @@ function newCardSpot(ctx: OpContext, page: Page, ref: CardRef, near: string | un
       at ??= beside(card);
     }
   }
+  const box = frame !== undefined ? rects.get(frame) : undefined;
+  const holder = frame !== undefined ? findFrame(page, frame) : undefined;
+  if (!at && box && holder) {
+    const padding = framePadding(holder);
+    at = { x: box.x + box.width - padding.right + FOLLOW_GAP, y: box.y + padding.top };
+  }
   if (!at) {
     const [x, y] = newCardPlacement(occupied);
     at = { x, y };
@@ -309,14 +327,14 @@ function newCardSpot(ctx: OpContext, page: Page, ref: CardRef, near: string | un
  * Where a card following reached goes: right of its caller at the calling line, or of the type whose
  * field names it at that field's row; or left of its callee.
  */
-function followedSpot(ctx: OpContext, page: Page, from: Card, step: FollowStep, size: Size): [number, number] {
+function followedSpot(ctx: OpContext, page: Page, from: Card, step: FollowStep, size: Size, frame: string | undefined): [number, number] {
   const rects = pageRects(ctx, page);
   const rect = rects.get(from.id) ?? { x: from.at[0], y: from.at[1], ...cardSize(ctx, page, from) };
   const code = cardBody(cardKey(from), from.view ?? page.defaultView) === "code";
   const line = step.line !== undefined && code ? estimatedLineOffset(ctx.data.model(cardProject(ctx, from), cardKey(from)), step.line) : undefined;
   const field = step.row !== undefined ? fieldOffset(ctx, page, from, step.row) : undefined;
   const at = step.direction === "callers" ? leftOf(rect, size) : rightOf(rect, line ?? field ?? HEADER_PORT);
-  return clearSpot(at, size, [...rects.values()]);
+  return clearSpot(at, size, occupiedFor(page, rects, frame));
 }
 
 function refOf(key: Key, project: ProjectName | undefined): CardRef {
@@ -340,7 +358,12 @@ function applyAddCards(page: Page, op: AddCardsOp, plans: ReadonlyMap<AgentCardS
   for (const spec of op.cards) {
     const named = refProject(ctx, spec.project ?? ctx.board.project);
     const ref = refOf(spec.key, named);
-    const { view } = spec;
+    const { view, frame } = spec;
+    if (frame !== undefined && !findFrame(page, frame)) {
+      throw invalid(`There is no frame with id “${frame}” on this page to put the cards in. read_page lists the page's frames; frame_cards makes one.`);
+    }
+    const into = frame !== undefined ? { frame } : {};
+    const created: string[] = [];
     const existing = findCardByRef(page, spec.key, named);
     if (existing) {
       const changed = view !== undefined && existing.view !== view;
@@ -349,8 +372,9 @@ function applyAddCards(page: Page, op: AddCardsOp, plans: ReadonlyMap<AgentCardS
       }
       note(existing, cardResult(ctx, existing, changed ? "updated" : "kept"));
     } else {
-      const card = place(ref, newCardSpot(ctx, page, ref, spec.near, sized(ref, view)), view);
-      note(card, cardResult(ctx, card, "created", { at: card.at }));
+      const card = place(ref, newCardSpot(ctx, page, ref, spec.near, sized(ref, view), frame), view);
+      note(card, cardResult(ctx, card, "created", { at: card.at, ...into }));
+      created.push(card.id);
     }
     const plan = plans.get(spec);
     ctx.warnings.push(...(plan?.warnings ?? []));
@@ -368,8 +392,12 @@ function applyAddCards(page: Page, op: AddCardsOp, plans: ReadonlyMap<AgentCardS
       // A type reached from a type's fields shows as the type it was followed from was asked to.
       const toRef = refOf(step.to, named);
       const toView = step.direction === "types" ? view : undefined;
-      const card = place(toRef, followedSpot(ctx, page, from, step, sized(toRef, toView)), toView);
-      note(card, cardResult(ctx, card, "created", { at: card.at, via }));
+      const card = place(toRef, followedSpot(ctx, page, from, step, sized(toRef, toView), frame), toView);
+      note(card, cardResult(ctx, card, "created", { at: card.at, via, ...into }));
+      created.push(card.id);
+    }
+    if (frame !== undefined) {
+      addToFrame(page, frame, created);
     }
     for (const [key, stops] of plan?.stops ?? []) {
       const card = findCardByRef(page, key, named);

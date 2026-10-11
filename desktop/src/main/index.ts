@@ -7,6 +7,7 @@ import { statSync } from "node:fs";
 import { join } from "node:path";
 import { app, Menu } from "electron";
 import { AgentBridge } from "./agents/bridge";
+import { PageRenderer } from "./agents/render";
 import { ViewTracker } from "./agents/views";
 import { addonPath, appFolders, folderArgument, uiDirectory } from "./app-paths";
 import type { UiSource } from "./app-url";
@@ -86,7 +87,7 @@ if (!app.requestSingleInstanceLock()) {
         { userData: app.getPath("userData"), home: app.getPath("home") },
         process.env,
       ),
-      windows: () => registry.all(),
+      windows: () => [...registry.all(), ...renderer.entries()],
     });
     const registry = new WindowRegistry(
       ui,
@@ -112,10 +113,11 @@ if (!app.requestSingleInstanceLock()) {
     );
     const workspace = new Workspace(registry, engine);
     const agents = new AgentBridge({ windows: registry, views: new ViewTracker() });
+    const renderer: PageRenderer = new PageRenderer({ ui, bridge: agents, engine, reserveId: () => registry.reserveId() });
     const mcp = new McpService({
       services: {
         bridge: agents,
-        engine: (command, args) => engine.untrusted(0, command, args),
+        engine: (command, args, onStream) => engine.untrusted(0, command, args, onStream),
         confirmAddProject: (agent, path) => {
           const last = agents.views.lastUsed();
           return confirmAgentAddProject((last === undefined ? undefined : registry.get(last))?.window ?? null, agent.name, path);
@@ -162,7 +164,7 @@ if (!app.requestSingleInstanceLock()) {
       });
     };
 
-    registerWindowCommands({ registry, workspace, engine, ui, agents, mcp });
+    registerWindowCommands({ registry, workspace, engine, ui, agents, mcp, renderer });
     Menu.setApplicationMenu(
       buildMenu(
         {
@@ -211,6 +213,7 @@ if (!app.requestSingleInstanceLock()) {
 
     app.on("before-quit", () => {
       workspace.setQuitting();
+      renderer.close();
       void mcp.close();
     });
 

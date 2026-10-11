@@ -5,13 +5,17 @@
  */
 
 import type { AgentCardResult, AgentIdentity, AgentItemResult, AgentItemStatus } from "@unfold/desktop/agent-api";
+import { computeArrows, type Arrow } from "../../../canvas/arrows";
+import { lastVerifiedCode } from "../../../canvas/cardData";
+import { cardBody } from "../../../code/typeKinds";
 import type { Card, Page, ProjectId } from "../../../ipc/generated";
-import { fallbackSize, type Rect, type Size } from "../../../canvas/layout";
+import { fallbackItemSize, pageGeometry } from "../../../canvas/frames/geometry";
+import type { Rect, Size } from "../../../canvas/layout";
 import { measureText } from "../../../canvas/measure";
 import { estimatedCardSize } from "../../../canvas/sizing";
 import { authorName } from "../../../code/text";
 import { resolveRefProject, type ProjectIndex } from "../../workspace";
-import { cardRects, entranceTitle } from "../api";
+import { entranceTitle } from "../api";
 import { cardKey, findCard, keyDisplayName } from "../document";
 import type { BoardRef, CardSize } from "../types";
 import type { AgentData } from "./data";
@@ -127,10 +131,29 @@ export function cardSize(ctx: OpContext, page: Pick<Page, "defaultView">, card: 
   );
 }
 
-/** Every card's rectangle on the page as it would be drawn. */
-export function pageRects(ctx: OpContext, page: Page): Map<string, Rect> {
-  return cardRects(page.cards, (id) => {
-    const card = findCard(page, id);
-    return card ? cardSize(ctx, page, card) : fallbackSize(false);
-  });
+/** The page's arrows between cards (calls, handlers, type arrows), from the loaded models, each card in the view it shows. */
+export function pageArrows(ctx: OpContext, page: Page): Arrow[] {
+  return computeArrows(
+    page.cards.map((card) => ({
+      id: card.id,
+      key: cardKey(card),
+      project: cardProject(ctx, card),
+      entrance: "entrance" in card.ref,
+      body: cardBody(cardKey(card), card.view ?? page.defaultView),
+    })),
+    ctx.data.loadedModels(),
+    lastVerifiedCode,
+    ctx.data.loadedDefinitions(),
+  );
+}
+
+/** An item's size: a card's (`cardSize`), else as measured, else estimated (a collapsed frame's node, a resource card). */
+export function itemSize(ctx: OpContext, page: Page, id: string): Size {
+  const card = findCard(page, id);
+  return card ? cardSize(ctx, page, card) : (ctx.measured[id] ?? fallbackItemSize(page, id));
+}
+
+/** Every drawn item's rectangle on the page as it would be drawn: cards, frames' boxes, collapsed frames' nodes. */
+export function pageRects(ctx: OpContext, page: Page): ReadonlyMap<string, Rect> {
+  return pageGeometry(page, (id) => itemSize(ctx, page, id)).rects;
 }

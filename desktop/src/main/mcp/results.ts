@@ -83,12 +83,28 @@ export interface Paged<T> {
  * the first page). A cursor that isn't one is a {@link ToolError}.
  */
 export function paged<T>(items: readonly T[], cursor: string | undefined, size: number): Paged<T> {
-  const start = cursor === undefined ? 0 : Number(cursor);
-  if (!Number.isSafeInteger(start) || start < 0 || (start > 0 && start >= items.length)) {
-    throw new ToolError(`“${cursor ?? ""}” isn't a cursor of this list. Leave cursor out for the first page, or pass the next cursor a result gave.`);
+  const start = cursorOffset(cursor);
+  if (start > 0 && start >= items.length) {
+    throw badCursor(cursor);
   }
   const end = Math.min(start + size, items.length);
   return { items: items.slice(start, end), total: items.length, ...(end < items.length ? { next: String(end) } : {}) };
+}
+
+function badCursor(cursor: string | undefined): ToolError {
+  return new ToolError(`“${cursor ?? ""}” isn't a cursor of this list. Leave cursor out for the first page, or pass the next cursor a result gave.`);
+}
+
+/**
+ * Where a page starts: 0 without a cursor, else the offset a cursor holds. A cursor that isn't one is
+ * a {@link ToolError}. For lists a tool pages itself (several at once, or from the engine's pages).
+ */
+export function cursorOffset(cursor: string | undefined): number {
+  const start = cursor === undefined ? 0 : Number(cursor);
+  if (!Number.isSafeInteger(start) || start < 0) {
+    throw badCursor(cursor);
+  }
+  return start;
 }
 
 /** The line that says how to get the next page, or null on the last page. */
@@ -96,9 +112,19 @@ export function nextLine(page: Paged<unknown>, tool: string): string | null {
   return page.next === undefined ? null : `Showing ${page.items.length} of ${page.total}. Next page: ${tool} with cursor "${page.next}".`;
 }
 
-/** A refusal a tool answers with: its message says what failed, why, and what to do instead. */
+/**
+ * A refusal a tool answers with: its message says what failed, why, and what to do instead. `code` is
+ * the engine's or window's error code when the refusal is theirs, so a tool can teach more for it.
+ */
 export class ToolError extends Error {
   override readonly name = "ToolError";
+
+  constructor(
+    message: string,
+    readonly code?: string,
+  ) {
+    super(message);
+  }
 }
 
 /**

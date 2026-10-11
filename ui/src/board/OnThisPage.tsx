@@ -1,15 +1,16 @@
 /**
  * On this page: the page's cards in follow order, indented by call depth, with their groups and drawn
- * links, a review mark where something needs review, "not connected" on a card whose project isn't, and
- * a project monogram column when the page mixes projects. A click brings the card into view (a focus
- * move: Back returns), selects a group, or selects a link. The last line steps through the Flow nodes
- * still showing code names.
+ * links, frames as headings over what they hold, a review mark where something needs review, "not
+ * connected" on a card whose project isn't, "collapsed" on a collapsed frame, and a project monogram
+ * column when the page mixes projects. A click brings the card into view (a focus move: Back returns),
+ * selects a group, selects a link, or selects a frame and brings it into view. The last line steps
+ * through the Flow nodes still showing code names.
  */
 
 import { useMemo, type RefObject } from "react";
 import { KindGlyph, Monogram, SectionLabel, TextButton } from "../components";
 import { plural } from "../lib/format";
-import { findPage, focusCard, pushFocusMove, requestCardFocus, select, useOpenBoard, usePageView, type PageTarget, type Selection } from "../state/boards";
+import { findPage, focusCard, focusFrame, pushFocusMove, requestCardFocus, select, useOpenBoard, usePageView, type PageTarget, type Selection } from "../state/boards";
 import { resolveRefProject, useProjectIndex, useProjectRow } from "../state/workspace";
 import { pageRows, type PageRow } from "./pageRows";
 import { stepUnlabeled, useUnlabeled } from "./unlabeled";
@@ -27,6 +28,8 @@ function isSelected(row: PageRow, selection: Selection): boolean {
       return selection.kind === "group" && selection.groupId === row.id;
     case "link":
       return selection.kind === "link" && selection.linkId === row.id;
+    case "frame":
+      return selection.kind === "frame" && selection.frameId === row.id;
   }
 }
 
@@ -37,6 +40,8 @@ function activate(target: PageTarget, row: PageRow): void {
   } else if (row.kind === "group") {
     select(target, { kind: "group", groupId: row.id });
     requestCardFocus(target, [row.group.card], "center");
+  } else if (row.kind === "frame") {
+    focusFrame(target, row.id);
   } else {
     select(target, { kind: "link", linkId: row.id });
     requestCardFocus(target, [row.link.from, row.link.to], "fit");
@@ -45,8 +50,10 @@ function activate(target: PageTarget, row: PageRow): void {
 
 function LayerRow({ target, row, selected, monogram }: { readonly target: PageTarget; readonly row: PageRow; readonly selected: boolean; readonly monogram: boolean }) {
   const glyph = row.kind === "card" ? (row.entrance ? "entrance" : "function") : row.kind;
+  const icon = row.kind === "frame" && row.frame.icon !== undefined ? (`frame-${row.frame.icon}` as const) : undefined;
   const muted = row.kind === "card" && !row.connected;
-  const label = row.kind === "card" ? row.name : row.kind === "group" ? row.group.title : row.label;
+  const label = row.kind === "card" ? row.name : row.kind === "group" ? row.group.title : row.kind === "frame" ? row.frame.title : row.label;
+  const note = muted ? "not connected" : row.kind === "frame" && row.frame.collapsed === true ? "collapsed" : null;
   return (
     <div
       role="option"
@@ -68,16 +75,13 @@ function LayerRow({ target, row, selected, monogram }: { readonly target: PageTa
         <span className="layer-monogram">{row.kind === "card" ? <Monogram name={row.project} size={14} /> : null}</span>
       ) : null}
       <span className="layer-glyph" style={row.depth > 0 ? { marginLeft: row.depth * INDENT } : undefined}>
-        <KindGlyph kind={glyph} selected={selected} />
+        <KindGlyph kind={glyph} {...(icon !== undefined ? { icon } : {})} selected={selected} />
       </span>
       <span className="layer-label" title={label}>
         {label}
       </span>
-      {muted ? (
-        <span className="layer-note">not connected</span>
-      ) : (
-        <span className="layer-trailing">{row.review ? <span className="board-review-dot" aria-label="Needs review" /> : null}</span>
-      )}
+      {note !== null ? <span className="layer-note">{note}</span> : null}
+      {muted ? null : <span className="layer-trailing">{row.review ? <span className="board-review-dot" aria-label="Needs review" /> : null}</span>}
     </div>
   );
 }

@@ -1,15 +1,17 @@
 /**
  * The rows of On this page: the page's cards in follow order indented by call depth (from the page's
  * outline as of the last save; cards added since go last at depth 0), each card's groups nested under
- * it, and each drawn link right after its `from` card's groups, one level deeper. Pure, so it is
- * tested without a DOM.
+ * it, and each drawn link right after its `from` card's groups, one level deeper. Frames are headings
+ * where their first card comes in follow order, with what they hold indented under them (nested
+ * frames nested), each card indented by its call depth from the shallowest card beside it. Pure, so
+ * it is tested without a DOM.
  */
 
-import type { Card, Group, HealthItem, Link, Page, PageOutline, ProjectName } from "../ipc/generated";
+import type { Card, Frame, Group, HealthItem, Link, Page, PageOutline, ProjectName } from "../ipc/generated";
 import { cardKey, keyDisplayName } from "../state/boards";
 
 interface RowBase {
-  /** Unique within the page: card, group, and link ids share one namespace. */
+  /** Unique within the page: card, group, link, and frame ids share one namespace. */
   readonly id: string;
   readonly depth: number;
   /** Something about the row needs review. */
@@ -28,7 +30,8 @@ export type PageRow =
       readonly connected: boolean;
     })
   | (RowBase & { readonly kind: "group"; readonly group: Group })
-  | (RowBase & { readonly kind: "link"; readonly link: Link; readonly label: string });
+  | (RowBase & { readonly kind: "link"; readonly link: Link; readonly label: string })
+  | (RowBase & { readonly kind: "frame"; readonly frame: Frame });
 
 interface PageRows {
   readonly rows: readonly PageRow[];
@@ -72,13 +75,14 @@ export function pageRows(page: Page, outline: PageOutline | undefined, context: 
         return [];
       }
       const { target } = item;
-      return "card" in target ? [target.card] : "group" in target ? [target.group] : "link" in target ? [target.link] : [];
+      return "card" in target ? [target.card] : "group" in target ? [target.group] : "link" in target ? [target.link] : "frame" in target ? [target.frame] : [];
     }),
   );
   const names = new Map(page.cards.map((card) => [card.id, keyDisplayName(cardKey(card))]));
+  const frames = new Map((page.frames ?? []).map((frame) => [frame.id, frame]));
   const rows: PageRow[] = [];
   const projects = new Set<ProjectName>();
-  for (const { card, depth } of followOrder(outline, page.cards)) {
+  const cardRow = (card: Card, depth: number) => {
     const project = card.ref.project ?? context.boardProject;
     projects.add(project);
     rows.push({
@@ -99,10 +103,34 @@ export function pageRows(page: Page, outline: PageOutline | undefined, context: 
     }
     for (const link of page.links) {
       if (link.from === card.id) {
-        const label = link.label?.text ?? `link to ${names.get(link.to) ?? link.to}`;
+        const label = link.label?.text ?? `link to ${names.get(link.to) ?? frames.get(link.to)?.title ?? link.to}`;
         rows.push({ kind: "link", id: link.id, depth: depth + 1, review: marked.has(link.id), link, label });
       }
     }
-  }
+  };
+
+  const follow = followOrder(outline, page.cards);
+  const order = new Map(follow.map(({ card, depth }, index) => [card.id, { card, depth, index }]));
+  const held = new Set([...frames.values()].flatMap((frame) => frame.members));
+  // Where a frame comes: where its first card comes in follow order (last when it holds none).
+  const first = (id: string, seen: ReadonlySet<string>): number =>
+    order.get(id)?.index ?? Math.min(Number.POSITIVE_INFINITY, ...(seen.has(id) ? [] : (frames.get(id)?.members ?? []).map((member) => first(member, new Set([...seen, id])))));
+  const listed = new Set<string>();
+  const emit = (ids: readonly string[], level: number) => {
+    const items = ids.filter((id) => !listed.has(id) && (order.has(id) || frames.has(id))).sort((a, b) => first(a, new Set()) - first(b, new Set()));
+    const shallowest = Math.min(...items.flatMap((id) => order.get(id)?.depth ?? []));
+    for (const id of items) {
+      listed.add(id);
+      const card = order.get(id);
+      const frame = frames.get(id);
+      if (card) {
+        cardRow(card.card, level === 0 ? card.depth : level + card.depth - shallowest);
+      } else if (frame) {
+        rows.push({ kind: "frame", id, depth: level, review: marked.has(id), frame });
+        emit(frame.members, level + 1);
+      }
+    }
+  };
+  emit([...follow.map(({ card }) => card.id), ...frames.keys()].filter((id) => !held.has(id)), 0);
   return { rows, multiProject: projects.size > 1 };
 }

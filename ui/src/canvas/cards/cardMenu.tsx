@@ -16,7 +16,7 @@ import { openDialog, openPeek, type DefinitionRef } from "../../state/overlays";
 import { showCallers } from "../showCallers";
 
 /** Expands the sidebar's Selected section on the page's selection and focuses one of its fields. */
-function showInSelected(field: string): void {
+export function showInSelected(field: string): void {
   setSelectedCollapsed(false);
   requestFocus(field);
 }

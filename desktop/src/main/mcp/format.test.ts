@@ -1,0 +1,51 @@
+import { describe, expect, it } from "vitest";
+import { cardText, keyFile, keyName, labelText, place, typeText } from "./format";
+
+describe("names", () => {
+  it("name keys as boards do", () => {
+    expect(keyName("src/services/order-service.ts#class:OrderService/method:place")).toBe("OrderService.place");
+    expect(keyName("src/routes/orders.ts#function:createOrder/if[0]")).toBe("createOrder.if");
+    expect(keyName('entrance:["express.route","http","POST","/orders","src/routes/orders.ts"]')).toBe("POST /orders");
+    expect(keyName("src/routes/orders.ts#")).toBe("src/routes/orders.ts");
+    expect(keyFile("src/routes/orders.ts#function:createOrder")).toBe("src/routes/orders.ts");
+    expect(keyFile('entrance:["x"]')).toBeUndefined();
+    expect(place("src/a.ts", 3, 9)).toBe("src/a.ts:3–9");
+    expect(place("package.json", null)).toBe("package.json");
+  });
+
+  it("write types with what their names link to, and labels unfolded", () => {
+    expect(
+      typeText({
+        text: "Map<string, Money>",
+        spans: [
+          { start: 0, end: 3, style: "builtin" },
+          { start: 4, end: 10, style: "builtin" },
+          { start: 12, end: 17, style: "unresolved", note: "a variable, not a type" },
+        ],
+      }),
+    ).toBe("Map<string, Money> (Money: unresolved, a variable, not a type)");
+    expect(typeText({ text: "Queue<OrderJob>", spans: [{ start: 0, end: 5, style: "external", module: "bullmq", note: "bullmq" }] })).toBe("Queue<OrderJob> (Queue: from bullmq)");
+    expect(labelText({ inputs: [{ type: { text: "Cart", spans: [] } }, { name: "user" }, { keyword: "currency", type: { text: "str", spans: [] } }, {}], inputsUnknown: false, output: { text: "Receipt", spans: [] } })).toBe(
+      "(Cart, user, currency=str, …) → Receipt",
+    );
+    expect(labelText({ inputs: [], inputsUnknown: true })).toBe("(…) → ?");
+  });
+
+  it("say where following stopped at a card", () => {
+    expect(
+      cardText({
+        kind: "card",
+        id: "place",
+        status: "created",
+        key: "k",
+        project: "p",
+        name: "OrderService.place",
+        stops: [
+          { reason: "unresolved", call: "this.payments.charge", line: 18, note: "overridden by a subclass" },
+          { reason: "depth", count: 3 },
+          { reason: "builtin", type: "Date", field: "createdAt" },
+        ],
+      }),
+    ).toBe("OrderService.place (card id place, created); stopped: this.payments.charge (line 18) is unresolved: overridden by a subclass; 3 more not followed, past the depth asked; Date (createdAt) is built in");
+  });
+});

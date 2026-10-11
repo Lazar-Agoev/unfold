@@ -98,6 +98,8 @@ const COMMAND_NAME = /^[a-z][a-z0-9_]*$/;
 export class EngineRouter {
   private readonly connections = new Map<number, Connection>();
   private readonly requests = new Map<number, Request>();
+  /** The main process's streamed requests in flight: host request id -> where their stream messages go. */
+  private readonly mainStreams = new Map<number, { readonly windowId: number; readonly onStream: (message: unknown) => void }>();
   /** Each window's latest detach, until it settles. */
   private readonly detaches = new Map<number, Promise<void>>();
   private nextRequestId = 1;
@@ -182,14 +184,19 @@ export class EngineRouter {
 
   /**
    * Runs a command the main process sent for an agent, without `trusted`: a {@link MAIN_PROCESS_ONLY}
-   * command, or one carrying `trusted`, is refused with `untrusted`, as a window's would be. Never
-   * rejects.
+   * command, or one carrying `trusted`, is refused with `untrusted`, as a window's would be. A
+   * streamed command's messages go to `onStream`, each before the result. Never rejects.
    */
-  untrusted(windowId: number, command: string, args: Readonly<Record<string, unknown>>): Promise<MainResult> {
+  untrusted(
+    windowId: number,
+    command: string,
+    args: Readonly<Record<string, unknown>>,
+    onStream?: (message: unknown) => void,
+  ): Promise<MainResult> {
     if (MAIN_PROCESS_ONLY.has(command) || Object.hasOwn(args, "trusted")) {
       return Promise.resolve({ ok: false, error: transportError("untrusted", `${command} is not available to agents.`) });
     }
-    return this.fromMain(windowId, command, args, false);
+    return this.fromMain(windowId, command, args, false, onStream);
   }
 
   private async fromMain(
@@ -197,6 +204,7 @@ export class EngineRouter {
     command: string,
     args: Readonly<Record<string, unknown>>,
     trusted: boolean,
+    onStream?: (message: unknown) => void,
   ): Promise<MainResult> {
     if (!("binding" in this.engine)) {
       return { ok: false, error: this.engine.unavailable };
@@ -204,15 +212,21 @@ export class EngineRouter {
     if (!COMMAND_NAME.test(command)) {
       return { ok: false, error: transportError("invalid_message", `Malformed command name: ${command}.`) };
     }
+    const requestId = this.nextRequestId++;
+    if (onStream) {
+      this.mainStreams.set(requestId, { windowId, onStream });
+    }
     let json: string;
     try {
       json = await this.engine.binding.dispatch(
         windowId,
-        this.nextRequestId++,
+        requestId,
         JSON.stringify(trusted ? { command, args, trusted } : { command, args }),
       );
     } catch (error) {
       return { ok: false, error: errorFromRejection(error) };
+    } finally {
+      this.mainStreams.delete(requestId);
     }
     try {
       return { ok: true, value: JSON.parse(json) as unknown };
@@ -264,6 +278,11 @@ export class EngineRouter {
     }
     if (message["kind"] === "stream") {
       const requestId = message["requestId"];
+      const fromMain = typeof requestId === "number" ? this.mainStreams.get(requestId) : undefined;
+      if (fromMain && fromMain.windowId === message["windowId"]) {
+        fromMain.onStream(message["message"]);
+        return;
+      }
       const request = typeof requestId === "number" ? this.requests.get(requestId) : undefined;
       if (!request || request.connection.windowId !== message["windowId"]) {
         return; // The request finished or its window went away; late stream messages are expected.

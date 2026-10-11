@@ -382,6 +382,19 @@ describe("EngineRouter: trusted commands", () => {
     expect(binding.dispatches.size).toBe(1);
   });
 
+  it("hands an agent's streamed command its stream messages, before its result", async () => {
+    const { binding, router } = setup();
+    const heard: unknown[] = [];
+    const found = router.untrusted(0, "search_text", { query: "orders" }, (message) => heard.push(message));
+    const [[requestId, dispatched]] = [...binding.dispatches.entries()] as [[number, Dispatch]];
+    router.handleSinkMessage(JSON.stringify({ kind: "stream", windowId: 0, requestId, message: { path: "src/a.ts" } }));
+    router.handleSinkMessage(JSON.stringify({ kind: "stream", windowId: 3, requestId, message: { path: "another window's" } }));
+    dispatched.result.resolve('{"files":1}');
+    expect(await found).toEqual({ ok: true, value: { files: 1 } });
+    router.handleSinkMessage(JSON.stringify({ kind: "stream", windowId: 0, requestId, message: { path: "too late" } }));
+    expect(heard).toEqual([{ path: "src/a.ts" }]);
+  });
+
   it("answers trusted requests with engine_unavailable when the addon is missing", async () => {
     const router = new EngineRouter({ unavailable: UNAVAILABLE }, () => undefined);
     expect(await router.trusted(0, "saved_windows", {})).toEqual({ ok: false, error: UNAVAILABLE });

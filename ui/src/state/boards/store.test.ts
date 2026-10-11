@@ -13,7 +13,7 @@ const toast = vi.hoisted(() => ({ showToast: vi.fn() }));
 vi.mock("./engine", () => engine);
 vi.mock("../../components/Toast", () => toast);
 
-const { addCard, moveCards, setCardsFolded, setTitle } = await import("./document");
+const { addCard, moveItems, setCardsFolded, setTitle } = await import("./document");
 const store = await import("./store");
 const { closeBoard, closeBoardsOfProject, openBoard, reclaimBoards } = await import("./open");
 const { addPage } = await import("./pages");
@@ -314,8 +314,8 @@ describe("undo and redo", () => {
   it("undoes one edit at a time, merges a coalesced burst, and keeps at most 200 steps", () => {
     store.adoptBoardState(state());
     const id = edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] })) ?? "";
-    store.editPage(PAGE, (draft) => { moveCards(draft, { [id]: [10, 0] }); }, { coalesce: "drag" });
-    store.editPage(PAGE, (draft) => { moveCards(draft, { [id]: [20, 0] }); }, { coalesce: "drag" });
+    store.editPage(PAGE, (draft) => { moveItems(draft, { [id]: [10, 0] }); }, { coalesce: "drag" });
+    store.editPage(PAGE, (draft) => { moveItems(draft, { [id]: [20, 0] }); }, { coalesce: "drag" });
     edit((draft) => { setCardsFolded(draft, [id], true); });
     expect(store.getOpenBoard(REF)?.history.past).toHaveLength(3);
     store.undo(REF);
@@ -368,7 +368,7 @@ describe("undo and redo", () => {
 
   it("makes a repair one undo step", () => {
     store.adoptBoardState(state(doc([{ id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }])));
-    edit((draft) => { moveCards(draft, { a: [10, 0] }); });
+    edit((draft) => { moveItems(draft, { a: [10, 0] }); });
     const beforeRepair = store.getOpenBoard(REF)?.document;
     store.useBoards.setState((draft) => {
       const open = Object.values(draft.boards)[0];

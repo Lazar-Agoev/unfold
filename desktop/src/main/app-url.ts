@@ -8,6 +8,7 @@ import { extname, resolve, sep } from "node:path";
 export const APP_SCHEME = "app";
 const APP_HOST = "unfold";
 const APP_ENTRY_URL = `${APP_SCHEME}://${APP_HOST}/index.html`;
+const APP_RENDER_URL = `${APP_SCHEME}://${APP_HOST}/render.html`;
 
 /**
  * The production policy: every asset comes from the app itself, there are no inline scripts or
@@ -52,6 +53,11 @@ export type UiSource = { readonly kind: "app"; readonly dir: string } | { readon
 /** The URL a new window loads. */
 export function entryUrl(source: UiSource): string {
   return source.kind === "app" ? APP_ENTRY_URL : source.url;
+}
+
+/** The URL the hidden render window loads (page images and page checks). */
+export function renderUrl(source: UiSource): string {
+  return source.kind === "app" ? APP_RENDER_URL : new URL("render.html", source.url).toString();
 }
 
 /** True when `url` belongs to the UI the main process loaded (the only frames it trusts). */

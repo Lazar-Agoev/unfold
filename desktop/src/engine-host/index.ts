@@ -96,7 +96,13 @@ function handleLifecycle(message: MainToHost, ports: MessagePortMain[]): void {
         return;
       }
       const { windowId, command, args } = message;
-      void (message.trusted ? router.trusted(windowId, command, args) : router.untrusted(windowId, command, args)).then(
+      const onStream =
+        message.stream === true
+          ? (streamed: unknown) => {
+              postToMain({ type: "stream", id, message: streamed });
+            }
+          : undefined;
+      void (message.trusted ? router.trusted(windowId, command, args) : router.untrusted(windowId, command, args, onStream)).then(
         (result) => {
           postToMain({ type: "result", id, ...result });
         },

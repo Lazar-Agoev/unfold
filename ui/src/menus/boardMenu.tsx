@@ -12,7 +12,7 @@ import { engineKey, queryClient, useEngineQuery, type BoardList, type BoardSumma
 import { openMoveToFolder } from "../dialogs";
 import { foldAll, getOpenBoard, useOpenBoard, type BoardRef, type PageId, type PageTarget } from "../state/boards";
 import { openDialog } from "../state/overlays";
-import { copyMermaid, duplicate, exportMermaid, moveBackToDrafts, moveToFolder, openInNewWindow, renameBoardInPlace } from "./actions";
+import { copyMermaid, duplicate, exportMermaid, exportPng, moveBackToDrafts, moveToFolder, openInNewWindow, renameBoardInPlace } from "./actions";
 
 /** What the menu needs to know about a board. */
 export interface BoardFacts {
@@ -59,6 +59,7 @@ export function shareMenuEntries(target: PageTarget): MenuEntry[] {
   return [
     { id: "export-mermaid", label: "Export Mermaid…", onSelect: () => void exportMermaid(target) },
     { id: "copy-mermaid", label: "Copy Mermaid", onSelect: () => void copyMermaid(target) },
+    { id: "export-png", label: "Export PNG…", onSelect: () => void exportPng(target) },
   ];
 }
 

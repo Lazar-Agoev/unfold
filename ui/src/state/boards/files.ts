@@ -1,6 +1,6 @@
 /**
  * Board file operations: Publish, Discard changes, Move back to drafts, Delete,
- * Duplicate, Move to folder, Rename, health repairs, Mermaid export, and board folders. Operations on
+ * Duplicate, Move to folder, Rename, health repairs, Mermaid and PNG export, and board folders. Operations on
  * an open board first write what is unsaved, because the engine works from the version this window
  * last saved; an id that changes (first Publish, Move back to drafts) keeps the session (undo history,
  * page views) and the tab.
@@ -131,6 +131,22 @@ export async function exportPageMermaid(target: PageTarget): Promise<ExportedFil
     board: target.board.id,
     page: target.page,
     ...(title !== undefined ? { title } : {}),
+  });
+}
+
+/**
+ * Exports a page as a PNG image through the save dialog, drawn as this window has it (unsaved edits
+ * included), named `<board title> - <page title>`; null when cancelled.
+ */
+export async function exportPagePng(target: PageTarget): Promise<ExportedFile | null> {
+  await flushBoard(target.board);
+  const document = getOpenBoard(target.board)?.document;
+  const page = document ? findPage(document, target.page) : undefined;
+  return windowCommand("export_png", {
+    project: target.board.project,
+    board: target.board.id,
+    page: target.page,
+    ...(document && page ? { title: `${document.title} - ${page.title}` } : {}),
   });
 }
 

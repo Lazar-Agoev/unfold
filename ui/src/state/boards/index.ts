@@ -1,7 +1,7 @@
 /**
  * The window's open boards: sessions keyed by `BoardRef`, pages, edits as
  * undo steps across pages, autosave of `BoardEdit`, view state per page, cards from any connected
- * project, health and repairs, file operations, and Move to New Window. Screens import from here.
+ * project, frames, health and repairs, file operations, and Move to New Window. Screens import from here.
  */
 
 export {
@@ -9,14 +9,17 @@ export {
   addLink,
   describeCard,
   displayedRects,
+  editFrame,
   editGroup,
   entranceCardText,
   entranceTitle,
   focusCard,
+  focusFrame,
   foldAll,
   labelNode,
   openEntrance,
   removeCard,
+  removeFrame,
   removeLink,
   setLinkLabel,
   traceEntrance,
@@ -33,12 +36,13 @@ export {
   findPage,
   keyDisplayName,
   labelsFor,
-  moveCards,
+  moveItems,
   setCardView,
   setCardsFolded,
   updateGroup,
   type GroupChange,
 } from "./document";
+export { MAX_FRAME_DEPTH, findFrame, frameItems, frameOf, moveFrame } from "./frames";
 export { installAgentChannel, setAgentChannelReady } from "./agent/channel";
 export { useWorkingAgents, useWorkingItems, workingText } from "./agent/working";
 export { installBoardEvents } from "./events";
@@ -49,6 +53,7 @@ export {
   deleteFolder,
   duplicateBoard,
   exportPageMermaid,
+  exportPagePng,
   isValidName,
   publishBoard,
   publishedPath,

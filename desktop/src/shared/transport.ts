@@ -57,7 +57,9 @@ export type MainToHost =
    * none). With `trusted`, it carries `"trusted": true`: the only way the main-process-only commands
    * (`add_project`, `export_mermaid`, `saved_windows`, `save_window_bounds`, `forget_window`) reach
    * Rust. Without it (the MCP server's requests for agents), it is refused or dispatched exactly as
-   * a window's would be. Answered with a {@link HostToMain} `result` carrying the same `id`.
+   * a window's would be. Answered with a {@link HostToMain} `result` carrying the same `id`; with
+   * `stream` (an untrusted streamed command, such as `search_text`), each stream message first comes
+   * as a `stream` message with that `id`.
    */
   | {
       readonly type: "request";
@@ -66,18 +68,20 @@ export type MainToHost =
       readonly command: string;
       readonly args: Readonly<Record<string, unknown>>;
       readonly trusted: boolean;
+      readonly stream?: true;
     }
   /** The app is quitting: detach every window, close every live project, then exit. */
   | { readonly type: "shutdown" };
 
 /**
  * Messages from the engine host to the main process, over the utility process's parent port: the
- * outcome of a main-process {@link MainToHost} `request`, and the engine events the main process
- * follows ({@link MAIN_EVENTS}).
+ * outcome of a main-process {@link MainToHost} `request` (after its stream messages, when it asked
+ * for them), and the engine events the main process follows ({@link MAIN_EVENTS}).
  */
 export type HostToMain =
   | { readonly type: "result"; readonly id: number; readonly ok: true; readonly value: unknown }
   | { readonly type: "result"; readonly id: number; readonly ok: false; readonly error: TransportError }
+  | { readonly type: "stream"; readonly id: number; readonly message: unknown }
   | { readonly type: "event"; readonly event: UnfoldEvent };
 
 /**

@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
@@ -16,6 +17,13 @@ export default defineConfig({
     // Chromium supports modulepreload natively; the polyfill would be extra code.
     modulePreload: { polyfill: false },
     sourcemap: true,
+    // The window's UI, and the hidden render window that draws pages for images and checks.
+    rollupOptions: {
+      input: {
+        index: fileURLToPath(new URL("index.html", import.meta.url)),
+        render: fileURLToPath(new URL("render.html", import.meta.url)),
+      },
+    },
   },
   test: {
     include: ["src/**/*.test.{ts,tsx}"],

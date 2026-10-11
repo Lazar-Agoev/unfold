@@ -307,7 +307,7 @@ function outlinesOf(outlines: readonly PageOutline[]): Record<PageId, PageOutlin
   return Object.fromEntries(outlines.map((outline) => [outline.page, outline]));
 }
 
-function freshBoard(state: BoardState, page: PageId | null): OpenBoard {
+function freshBoard(state: BoardState, page: PageId | null, readOnly: boolean): OpenBoard {
   const saved = state.view?.pages ?? {};
   const pages: Record<PageId, PageView> = {};
   for (const { id } of state.document.pages) {
@@ -338,17 +338,22 @@ function freshBoard(state: BoardState, page: PageId | null): OpenBoard {
     activePage,
     pages,
     viewDirty: false,
+    ...(readOnly ? { readOnly } : {}),
   };
 }
 
 /**
  * Adds a board this window now holds (from `open_board`, `new_board`, or a moved session), showing
  * `page` (else the page its saved view names, else the first). With `replaces` (Publish and Move back
- * to drafts change the id), the replaced session's history and view carry over.
+ * to drafts change the id), the replaced session's history and view carry over. A `readOnly` board
+ * (the render window's, which holds no claim) is shown, never saved.
  */
-export function adoptBoardState(state: BoardState, options: { readonly replaces?: BoardRef; readonly page?: PageId | null } = {}): BoardRef {
+export function adoptBoardState(
+  state: BoardState,
+  options: { readonly replaces?: BoardRef; readonly page?: PageId | null; readonly readOnly?: boolean } = {},
+): BoardRef {
   const replaced = options.replaces ? getOpenBoard(options.replaces) : undefined;
-  const board = freshBoard(state, options.page ?? null);
+  const board = freshBoard(state, options.page ?? null, options.readOnly === true);
   if (replaced) {
     board.history = replaced.history;
     board.pages = replaced.pages;
@@ -507,9 +512,12 @@ function cancelTimers(ref: BoardRef): void {
   cancelViewTimer(ref);
 }
 
-/** Saves a moment after the last change; repeated changes push the save back. */
+/** Saves a moment after the last change; repeated changes push the save back. A read-only board never saves. */
 function scheduleSave(ref: BoardRef): void {
   cancelSaveTimer(ref);
+  if (getOpenBoard(ref)?.readOnly) {
+    return;
+  }
   saveTimers.set(
     boardKey(ref),
     setTimeout(() => {
@@ -792,6 +800,9 @@ function boardView(board: OpenBoard): BoardView {
 
 function scheduleViewSave(ref: BoardRef): void {
   cancelViewTimer(ref);
+  if (getOpenBoard(ref)?.readOnly) {
+    return;
+  }
   viewTimers.set(
     boardKey(ref),
     setTimeout(() => {

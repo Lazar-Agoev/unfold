@@ -64,7 +64,7 @@ describe("the board menu", () => {
       "Delete…",
     ]);
     const share = items(entries).find((entry) => entry.id === "share");
-    expect(share?.submenu?.map((entry) => ("label" in entry ? entry.label : ""))).toEqual(["Export Mermaid…", "Copy Mermaid"]);
+    expect(share?.submenu?.map((entry) => ("label" in entry ? entry.label : ""))).toEqual(["Export Mermaid…", "Copy Mermaid", "Export PNG…"]);
     expect(items(entries).find((entry) => entry.id === "delete")?.danger).toBe(true);
   });
 

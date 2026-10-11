@@ -12,6 +12,7 @@ import {
   copyPageMermaid,
   duplicateBoard,
   exportPageMermaid,
+  exportPagePng,
   getOpenBoard,
   moveBoardToNewWindow,
   openBoard,
@@ -122,6 +123,17 @@ export async function exportMermaid(target: PageTarget): Promise<void> {
     }
   } catch (error) {
     fail("Couldn't export Mermaid", error);
+  }
+}
+
+export async function exportPng(target: PageTarget): Promise<void> {
+  try {
+    const written = await exportPagePng(target);
+    if (written) {
+      showToast({ title: "Exported PNG", body: written.path });
+    }
+  } catch (error) {
+    fail("Couldn't export the page as PNG", error);
   }
 }
 

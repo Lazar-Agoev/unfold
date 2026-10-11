@@ -6,8 +6,9 @@
  * A missing output is `?`; inputs the reader can't list are `(…)`. Where a label doesn't fit beside
  * the cards, shorter forms keep the output: `(+2) → Gateway`, then `→ Gateway`.
  *
- * An arrow from a Diagram node that stands for several calls reads `3 calls`; a type arrow's label is
- * its field's written type (`CartItem[]`), cut short where it doesn't fit.
+ * An arrow from a Diagram node that stands for several calls reads `3 calls`, one that joins several
+ * at a collapsed frame `3 calls · 1 field`; a type arrow's label is its field's written type
+ * (`CartItem[]`), cut short where it doesn't fit.
  */
 
 import type { LabelInput, LineLabel, TypeText } from "../../ipc/generated";
@@ -87,6 +88,11 @@ export function countText(count: number): string {
 /** The one form of a count's label. */
 export function countForms(count: number): LabelPart[][] {
   return [[{ text: countText(count), tone: "type" }]];
+}
+
+/** "3 calls · 1 field": the label of an arrow that joins several at a collapsed frame. */
+export function mergedText(calls: number, fields: number): string {
+  return [calls > 0 ? countText(calls) : null, fields > 0 ? `${fields} ${fields === 1 ? "field" : "fields"}` : null].filter((part) => part !== null).join(" · ");
 }
 
 /** A written type longer than this many characters has a shorter form, cut with `…`. */

@@ -60,6 +60,13 @@ export interface Arrow {
   readonly calls?: readonly ArrowCall[];
   /** A type arrow's label: the field's written type. */
   readonly type?: TypeText;
+  /**
+   * When it joins several arrows at a collapsed frame (`routeArrows`): how many calls (handlers
+   * included) and how many fields' type links it stands for.
+   */
+  readonly merged?: { readonly calls: number; readonly fields: number };
+  /** The cards it joins, when an end attaches to a collapsed frame instead (`routeArrows`). */
+  readonly cards?: { readonly from: string; readonly to: string };
 }
 
 /** The port a Diagram node's (or a type card's) arrows leave from: its header's right edge. */

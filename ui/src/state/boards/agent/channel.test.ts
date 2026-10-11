@@ -70,6 +70,20 @@ describe("the agent channel", () => {
     expect(toast.showToast).toHaveBeenCalledWith({ title: "Claude · Done" });
   });
 
+  it("answers board requests: creating, editing pages, and showing", async () => {
+    setAgentChannelReady();
+    engine.emit({ type: "agent_edit_board", requestId: 7, board: BOARD, agent: CLAUDE, title: "Edit pages", ops: [{ op: "add_page", title: "More" }] });
+    engine.emit({ type: "agent_show", requestId: 8, board: BOARD, item: "a" });
+    engine.emit({ type: "agent_create_board", requestId: 9, project: P, copyOf: "other.json" });
+    await vi.waitFor(() => {
+      expect(engine.windowCalls.map((entry) => entry.command).sort()).toEqual(["agent_create_board_result", "agent_edit_board_result", "agent_show_result"]);
+    });
+    const answers = new Map(engine.windowCalls.map((entry) => [entry.command, entry.args]));
+    expect(answers.get("agent_edit_board_result")).toMatchObject({ requestId: 7, result: { ok: true, results: [{ op: "add_page", status: "created", title: "More" }] } });
+    expect(answers.get("agent_show_result")).toEqual({ requestId: 8, result: { ok: true, page: "page-1" } });
+    expect(answers.get("agent_create_board_result")).toMatchObject({ requestId: 9, result: { ok: false, code: "board_not_open" } });
+  });
+
   it("drops the working marks of a board the window no longer holds", () => {
     markWorking({ board: REF, page: "page-1" }, CLAUDE, ["a"]);
     const marks = () => [...renderHook(() => useWorkingItems({ board: REF, page: "page-1" })).result.current];

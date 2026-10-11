@@ -1,5 +1,5 @@
 /**
- * What agents write: `describe` (descriptions of cards and step groups, and labels of links) and
+ * What agents write: `describe` (descriptions of cards, step groups, and frames, and labels of links) and
  * `label_steps` (Flow labels of a card's steps). Every text is signed with the agent's identity and
  * signed against the code at the next save. Replacing a person's text is refused unless the call says
  * the person asked for it; text that doesn't change is kept as it is, whoever wrote it.
@@ -8,7 +8,9 @@
 import type { AgentItemResult, AgentItemStatus, DescribeOp, LabelStepsOp } from "@unfold/desktop/agent-api";
 import type { Page } from "../../../ipc/generated";
 import { cardKey, findCard, setCardDescription, setLabel, setLinkLabel, updateGroup } from "../document";
+import { findFrame, updateFrame } from "../frames";
 import { AgentRefusal, cardName, cardOf, cardProject, cardResult, guardPeopleText, invalid, type OpContext } from "./context";
+import { frameResult } from "./frames";
 
 /** `created` for new text, `kept` for the same text, `updated` for new words. */
 function statusOf(before: string | undefined, text: string): AgentItemStatus {
@@ -46,6 +48,15 @@ export function applyDescribe(page: Page, op: DescribeOp, ctx: OpContext): Agent
       updateGroup(page, group.id, { description: { text, author } });
       return { kind: "group", id: group.id, status: statusOf(before?.text, text), card: group.card, name: group.title };
     }
+    const frame = findFrame(page, item.id);
+    if (frame) {
+      const before = frame.description;
+      if (before && before.text !== text) {
+        guardPeopleText(`the description of the frame “${frame.title}”`, before.author, op.replacePeopleText);
+      }
+      updateFrame(page, frame.id, { description: { text, author } });
+      return frameResult(ctx, page, frame, statusOf(before?.text, text));
+    }
     const link = page.links.find((entry) => entry.id === item.id);
     if (link) {
       const before = link.label;
@@ -55,7 +66,7 @@ export function applyDescribe(page: Page, op: DescribeOp, ctx: OpContext): Agent
       setLinkLabel(page, link.id, text, author);
       return { kind: "link", id: link.id, status: statusOf(before?.text, text), from: link.from, to: link.to, name: text };
     }
-    throw invalid(`There is no card, step group, or link with id “${item.id}” on this page. read_page lists the page's ids.`);
+    throw invalid(`There is no card, step group, frame, or link with id “${item.id}” on this page. read_page lists the page's ids.`);
   });
 }
 

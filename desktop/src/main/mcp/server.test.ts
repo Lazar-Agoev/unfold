@@ -1,6 +1,11 @@
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import cardCreateOrder from "../../../../testdata/workspace/commands/card_create_order.json";
+import compilePreview from "../../../../testdata/workspace/commands/compile_preview.json";
+import fileViewPage from "../../../../testdata/workspace/commands/file_view_orders_page.json";
+import relationsCreateOrder from "../../../../testdata/workspace/commands/relations_create_order.json";
+import searchPlace from "../../../../testdata/workspace/commands/search_place.json";
 import type { AgentPage, AgentShellEvent, ViewReport } from "../../shared/agent-api";
 import { AgentBridge, type AgentWindows } from "../agents/bridge";
 import { pageRevision } from "../agents/revision";
@@ -85,8 +90,10 @@ const BOARDS: BoardList = {
   ],
 };
 
-/** The engine's answers by command, as untrusted requests reach it. */
-const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>) => unknown>> = {
+const CREATE_ORDER = "src/routes/orders.ts#function:createOrder";
+
+/** The engine's answers by command, as untrusted requests reach it (a streamed command's messages go to `stream`). */
+const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>, stream: (message: unknown) => void) => unknown>> = {
   workspace: () => WORKSPACE,
   list_boards: (args) => (args["project"] === PROJECT ? BOARDS : { ...BOARDS, boards: [] }),
   project_summary: () => SUMMARY,
@@ -103,21 +110,67 @@ const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>)
     unreached: { total: 0, entrances: [] },
     unindexedLaunches: [],
   }),
+  compile_preview: () => compilePreview,
+  compile: () => ({ files: 12, changedFiles: 12, removedFiles: 0, changedEntrances: 3, complete: true, problems: 0, durationMs: 900 }),
+  update_project_config: () => ({ exists: true, text: '[detectors]\ndisabled = ["node-cron.schedule"]\n', settings: null, error: null, name: { value: "ts-orders", isDefault: true } }),
+  peek: () => ({ key: "entrance:x" }),
+  search: () => ({ ...searchPlace, projects: [] }),
+  search_text: (_args, stream) => {
+    stream({ project: PROJECT, path: "src/routes/orders.ts", matches: [{ line: 12, text: "res.json(await repo.list());", column: 0, ranges: [[0, 3]] }] });
+    return { files: 1, matches: 1, searched: 12, truncated: false, filesTruncated: false, projects: [] };
+  },
+  file_view: () => fileViewPage,
+  card: () => cardCreateOrder,
+  relations: () => relationsCreateOrder,
+  line_labels: () => [],
+  board_refs: () => ({ refs: [], truncated: false }),
+  call_contract: () => ({
+    source: `${CREATE_ORDER}/variable:order/call[0]`,
+    seq: 0,
+    target: "src/services/order-service.ts#class:OrderService/method:place",
+    callerLine: 32,
+    sends: [],
+    returns: { binding: "variable", text: "order", awaited: true },
+    throws: [],
+    caught: false,
+    calleeLines: [],
+  }),
 };
 
-/** A window that holds the board and answers reads at once, as the UI does. */
+const BOARD_INFO = { title: "Order placement", place: "draft", changes: 0, revision: "r1" } as const;
+
+/** What the window answers each agent request with, as the UI does: the window command's kind and result. */
+function windowAnswer(request: AgentShellEvent): ["read" | "open" | "create" | "board" | "show", unknown] | null {
+  switch (request.type) {
+    case "agent_read":
+      return ["read", { ok: true, page: PAGE, board: { ...BOARD_INFO, unsaved: false } }];
+    case "agent_open_board":
+      return ["open", { ok: true }];
+    case "agent_create_board":
+      return ["create", { ok: true, board: BOARD, info: BOARD_INFO, folder: null, pages: [{ id: "page-1", title: "Placing an order" }] }];
+    case "agent_edit_board":
+      return ["board", { ok: true, board: BOARD_INFO, pages: [{ id: "page-1", title: "Placing an order" }], results: [{ op: "add_page", status: "created", page: "page-2", title: "More" }] }];
+    case "agent_show":
+      return ["show", { ok: true, page: "page-1" }];
+    default:
+      return null;
+  }
+}
+
+/** A window that holds the board and answers agent requests at once, as the UI does. */
 function fakeWindows(bridge: () => AgentBridge): AgentWindows {
   const entry = { id: 1, loaded: true } as WindowEntry;
   return {
     get: (id) => (id === 1 ? entry : undefined),
     all: () => [entry],
     create: () => entry,
+    focus: () => undefined,
     deliver: (_entry, event) => {
       const request = event as AgentShellEvent & { requestId: number };
-      if (request.type === "agent_read") {
-        const board = { title: "Order placement", place: "draft", changes: 0, revision: "r1", unsaved: false };
+      const answer = windowAnswer(request);
+      if (answer) {
         queueMicrotask(() => {
-          bridge().settle(1, "read", request.requestId, { ok: true, page: PAGE, board });
+          bridge().settle(1, answer[0], request.requestId, answer[1]);
         });
       }
     },
@@ -152,11 +205,11 @@ async function start(overrides: Partial<McpServices> = {}, options: Partial<Cons
   const service = new McpService({
     services: {
       bridge,
-      engine: (command, args) => {
+      engine: (command, args, onStream) => {
         calls.push([command, args]);
         const answer = ANSWERS[command];
         return answer
-          ? Promise.resolve(answer(args))
+          ? Promise.resolve(answer(args, (message) => onStream?.(message)))
           : Promise.reject(new EngineRequestError({ code: "not_found", message: `no fake for ${command}` }));
       },
       confirmAddProject: () => Promise.resolve(false),
@@ -200,7 +253,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
     const { tools } = await client.listTools();
     expect(tools.map((tool) => tool.name)).toEqual(TOOLS.map((tool) => tool.name));
     for (const tool of tools) {
-      expect(tool.annotations?.readOnlyHint).toBe(true);
+      expect(tool.annotations, tool.name).toMatchObject(TOOLS.find((defined) => defined.name === tool.name)?.annotations ?? {});
       expect(tool._meta?.["anthropic/alwaysLoad"]).toBe(["get_guide", "get_current_view"].includes(tool.name) ? true : undefined);
     }
     expect((await client.listPrompts()).prompts).toEqual([]);
@@ -248,6 +301,42 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
     expect(project).toContain("1 application, 3 entrances in all:\n- server (src/server.ts, TypeScript): 3 entrances");
     expect(project).toContain("evidence files docs/queues.md");
     expect(project).toContain(`- Order placement (id ${BOARD.id}): draft, 1 page, 1 card`);
+  });
+
+  it("calls each tool that sets up, navigates, and reads code", async () => {
+    const { url } = await start({
+      confirmAddProject: () => Promise.resolve(true),
+      addProject: () => Promise.resolve({ status: "added", project: PROJECT }),
+    });
+    const client = await connect(url, era);
+    const calls: [string, Record<string, unknown>][] = [
+      ["add_project", { path: "/code/ts-orders" }],
+      ["compile_project", { project: "ts-orders" }],
+      ["update_project_settings", { project: "ts-orders", edits: [{ op: "set_detector", detector: "node-cron.schedule", enabled: false }] }],
+      ["create_board", { project: "ts-orders", title: "Order placement", pages: ["Placing an order"] }],
+      ["organize_boards", { project: "ts-orders", ops: [{ op: "rename", board: BOARD.id, title: "Orders" }] }],
+      ["edit_pages", { board: BOARD.id, project: "ts-orders", ops: [{ op: "add", title: "More" }] }],
+      ["show", { board: BOARD.id, project: "ts-orders", page: "page-1" }],
+      ["search", { query: "place", kinds: ["functions", "text"] }],
+      ["list_entrances", { project: "ts-orders" }],
+      ["read_code", { key: CREATE_ORDER, project: "ts-orders" }],
+      ["read_call", { source: `${CREATE_ORDER}/variable:order/call[0]`, project: "ts-orders" }],
+      ["read_file", { project: "ts-orders", path: "src/routes/orders.ts" }],
+      ["get_relations", { key: CREATE_ORDER, project: "ts-orders" }],
+    ];
+    for (const [name, args] of calls) {
+      const result = await client.callTool({ name, arguments: args });
+      expect(result.isError, `${name}: ${text(result)}`).not.toBe(true);
+      expect(text(result), name).toMatch(/^Unfold · (ts-orders.* · )?as Claude\n/);
+    }
+  });
+
+  it("refuses an op agents can't do, saying why", async () => {
+    const { url } = await start();
+    const client = await connect(url, era);
+    const result = await client.callTool({ name: "organize_boards", arguments: { project: "ts-orders", ops: [{ op: "delete", board: BOARD.id }] } });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("Agents can't delete, publish, or discard boards");
   });
 
   it("refuses with errors that say what to do instead", async () => {

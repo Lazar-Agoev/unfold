@@ -1,6 +1,6 @@
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { APP_CONTENT_SECURITY_POLICY, contentType, isUiUrl, resolveAppFile } from "./app-url";
+import { APP_CONTENT_SECURITY_POLICY, contentType, isUiUrl, renderUrl, resolveAppFile } from "./app-url";
 
 const ui = resolve("/app/ui");
 
@@ -35,6 +35,17 @@ describe("isUiUrl", () => {
     const source = { kind: "dev", url: "http://localhost:5173/" } as const;
     expect(isUiUrl(source, "http://localhost:5173/src/main.tsx")).toBe(true);
     expect(isUiUrl(source, "http://localhost:5174/")).toBe(false);
+  });
+});
+
+describe("renderUrl", () => {
+  it("is the render entry of the UI the windows load, which counts as the UI", () => {
+    const app = { kind: "app", dir: "/ui" } as const;
+    const dev = { kind: "dev", url: "http://localhost:5173/" } as const;
+    expect(renderUrl(app)).toBe("app://unfold/render.html");
+    expect(renderUrl(dev)).toBe("http://localhost:5173/render.html");
+    expect(isUiUrl(app, renderUrl(app))).toBe(true);
+    expect(isUiUrl(dev, renderUrl(dev))).toBe(true);
   });
 });
 

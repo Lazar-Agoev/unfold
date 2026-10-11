@@ -103,6 +103,7 @@ export const MAP_HOMES: Readonly<Record<string, readonly Home[]>> = {
     { spec: BOARDS, test: BOARD_MENU, step: "Rename… in the board menu renames it in the header too" },
     { spec: BOARDS, test: BOARD_MENU, step: "Share › Export Mermaid… writes the page through the save dialog" },
     { spec: BOARDS, test: BOARD_MENU, step: "Share › Copy Mermaid puts the same page on the clipboard" },
+    { spec: BOARDS, test: BOARD_MENU, step: "Share › Export PNG… draws the page in the render window and writes it through the save dialog" },
     { spec: BOARDS, test: BOARD_MENU, step: "Fold all cards and Unfold all cards" },
     { spec: BOARD, test: CANVAS, step: "the canvas menu folds and unfolds every card" },
     { spec: BOARD, test: CANVAS, step: "the card menu folds a card and removes it from the page" },

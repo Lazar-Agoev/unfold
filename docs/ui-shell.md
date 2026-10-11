@@ -16,9 +16,10 @@ ui/src/
                  wiring, the frame's actions, folder drops
   home/          Home: its sidebar, first launch, not compiled, the overview, boards and thumbnails,
                  health and activity, the compiled toast
-  board/         a board tab: its sidebar (header, Pages, On this page, Selected), the top bar, the dock
-  canvas/        the React Flow canvas: cards (block, Diagram node, type, entrance, placeholder), arrows,
-                 drawn links, layout and sizing, Arrange, Show callers
+  board/         a board tab: its sidebar (header, Pages, On this page, Selected), the top bar, the dock;
+                 checks/, the page checks
+  canvas/        the React Flow canvas: cards (block, Diagram node, type, entrance, placeholder), frames,
+                 arrows, drawn links, layout and sizing, Arrange, Show callers
   code/ flow/    the Code and Flow renderers
   add/           Add: the map, search across projects, the preview, commands
   agent/         agents apart from any one board: the agent mark and bylines, Copy link, view reports
@@ -37,6 +38,7 @@ ui/src/
   lib/           pure helpers: formatting, entrance and file text
   theme/         tokens.css, base.css, theme.ts (bundled fonts)
   test/          test helpers: a fake engine, rendering, a workspace fixture
+  render/        the render window's entry (render.html): one page drawn read-only, for images and checks
 ```
 
 Screens (`home`, `board`, `add`, `peek`, `settings`, `preferences`, `dialogs`, `menus`) import from `state/`,
@@ -74,21 +76,26 @@ App
   place on double-click, and the board menu), **Pages** (each page with a review mark; a page's menu has Rename,
   Duplicate page, Copy link, Move up, Move down, and Delete page…), **On this page** (the cards in follow order indented by
   call depth, their groups, and drawn links after their `from` card; a project-initial column only when the page
-  holds cards from more than one project; "N Flow steps unlabeled · Label them"), and **Selected**, which takes at
-  most half the sidebar's height, scrolls, and collapses.
+  holds cards from more than one project; frames as headings where their first card comes, with what they hold
+  indented under them, nested frames nested, and "collapsed" on a collapsed one; "N Flow steps unlabeled · Label
+  them"), and **Selected**, which takes at most half the sidebar's height, scrolls, and collapses.
 - **Selected** follows the page's selection. A card: its name, location, description, Called by and Reached from (up
   to three each, then "N more · Show callers"), the calls not on the page (up to five, each with **+ Open**), and its
   groups; an entrance card lists its handlers; a type card says where its type is used ("Used in N places", a
   popover of the places, as in a line's contract) instead of calls for a type declaration (a class lists both). A
   Flow node: its label, the code name it replaces, and its paths. A group ("Step group in" its card): its title,
-  description, and Ungroup. A drawn link: its label, Edit label, and Remove link. An arrow that stands for several
-  calls: its two cards and each call as written with its line, each opening its contract on the arrow. Bylines show the author only, because authored text carries no time; an agent's read "Claude · agent"
+  description, and Ungroup. A drawn link: its label, Edit label, and Remove link. A frame: its title (renamed in
+  place, which makes it yours), its look and the frame that holds it, who drew it, its description with the repairs
+  its health offers, what it holds (each brought into view by a click), the links that cross its border ("→" out,
+  "←" in, with their labels), Collapse or Expand, and Remove frame. An arrow that stands for several calls: its two
+  cards and each call as written with its line, each opening its contract on the arrow. Bylines show the author only, because authored text carries no time; an agent's read "Claude · agent"
   with the agent mark, and a group shows who titled it ([Agents in the window](#agents-in-the-window)).
 - **The canvas** has the top bar (the page title and publish state, "Claude is working…" while an agent works on the
   page, the lens centered, Share and Publish) and the dock, both floating ([Overlays](#overlays)). Its context menu has Fit, Fold all cards, and Unfold all cards; a
   card's has Open source, Show callers, Draw link…, Add as entrance… (for blocks that can be handlers), Copy link,
   and Remove from page; a group's has Collapse or Expand group, Describe group…, Copy link, and Ungroup; a link's has
-  Edit label, Copy link, and Remove link. A card that needs review shows a banner whose **Review** opens a popover of its problems, each repair with its
+  Edit label, Copy link, and Remove link; a frame's (on its title) has Rename…, Describe…, Collapse or Expand, Copy
+  link, and Remove frame (keep cards). A card that needs review shows a banner whose **Review** opens a popover of its problems, each repair with its
   effect and Apply (saved at once, undoable).
 - **Three views** (`cardBody` in `code/typeKinds.ts`). A card shows its own view (saved), else the page's lens,
   else the page's default view. **Diagram** shows a card as one compact node (`canvas/cards/DiagramCard.tsx`): the
@@ -106,6 +113,24 @@ App
   around its steps or, collapsed, one step ([reader: step groups](reader.md#step-groups)). Either view's chevron sets
   the group's one `collapsed` field (one undo step), so it folds in both. In Flow, the region's title or the collapsed
   step selects the group, and right-click (or Shift+F10 on the chevron) opens its menu.
+- **Frames** (`canvas/frames/`, design [§4.4](proposals/agent-mcp-design.md#44-frames-units-services-and-zones)) are
+  React Flow nodes of their own, not parents of their members: `pageGeometry` computes each box from the inside out,
+  the bounds of what it shows (cards as reflowed, nested boxes, collapsed frames' nodes) plus room for its title (a
+  box: a 32px title bar and 12px under it, 16px sides; a zone: a 56px band, 76px with a description, 24px sides).
+  An expanded frame sits behind the lines and cards (z-index below 0, outer frames below inner ones) and only its
+  title takes the pointer, so the canvas pans and cards are clicked through it. A **box** is outlined in
+  `--color-authored-line` with a tinted title bar (chevron, icon, title, its description beside it, the agent mark,
+  a review dot); a **zone** is a 5% authored tint with an 18px title and its description under it. The icon is one
+  of seven 16px glyphs (`frame-api`, `frame-worker`, `frame-schedule`, `frame-cli`, `frame-web`, `frame-library`,
+  `frame-system`), else the plain `frame`. A **collapsed** frame is one card-like node (240–400px, `frameNodeSize`)
+  at the top-left its box would have: its chevron, icon, title, description, and what it holds ("2 entrances · 3
+  functions · 1 table", every card and resource card inside it), placed by reflow like a card; nothing inside it is
+  drawn. The arrows and drawn links of what it hides attach to the outermost collapsed frame (`routeArrows`,
+  `routeLinks`): one call keeps its label and contract, lines that would draw on top of each other merge into one
+  with a quiet count ("3 calls · 1 field", "2 links"), and lines inside it aren't drawn. The chevron, the frame
+  menu, and Selected collapse and expand it (one undo step); nothing collapses by itself. The title selects the
+  frame (or ends a link being drawn there), renames in place on double-click, and drags the frame: what it holds
+  moves by the same amount, as one undo step. Focusing a card inside collapsed frames expands them.
 
 ## State
 
@@ -151,6 +176,8 @@ Each window is its own renderer with its own stores. Nothing is shared between w
     they stop. The lens is the active page's, shown as the lens or else the page's default view; a card's own switch
     overrides it.
   - Publish and Move back to drafts change a board's id; the session and its tab follow the new id.
+  - A read-only session (`adoptBoardState(state, {readOnly: true})`, the render window's) is drawn like any other
+    and never saved: no autosave, no view save.
 - **Moving a board to a new window.** Open in new window saves what it can, opens a window
   (`move_tab_to_new_window`), moves the claim (`move_board`), and hands the session (the document, the undo history,
   the active page, and each page's camera and lens) to the new window (`transfer_board_state`), which adopts it once
@@ -262,6 +289,17 @@ The screens follow [architecture §11](architecture.md#11-the-desktop-app). Deta
   characters) as quiet text that selects nothing; they are drawn like the graph's arrows. A field it inherits from
   a base on the page leaves that to the base's card. All labels share the page's `LabelLayout`. Arrange counts
   type arrows as it counts calls, so a type sits after the types that link to it.
+- **Arrange** (`canvas/arrangePage.ts`, design [§4.12](proposals/agent-mcp-design.md#412-layout)) works from the
+  inside out. Each frame, deepest first, lays out what it holds with `arrange` (columns by call depth, to the right;
+  a frame whose `direction` is `down` transposes it, each callee under its caller's left edge) and takes the size that
+  fits them plus its padding. The level above treats the frame as one node: an arrow that crosses its border leaves
+  at its card's port (offset by where that card sits in the frame) and enters at the card it reaches, so a callee
+  outside sits level with the calling line inside. A collapsed frame is one node of its own size, with what it holds
+  laid out inside it for when it opens. Connections order their ends as data flows (a `reads` connection's resource
+  card before the code that reads it, any other after the side that acts); drawn links don't count, and notes aren't
+  placed (an attached note moves with its item). Each level orders its items entrances first, then left to right and
+  top to bottom as they are now, so arranging again changes nothing, and a page without frames arranges exactly as
+  it did before frames.
 - **Health and activity** shows one list at a time. Health: the problems other than board health (Open shows the
   file in the peek sheet at its line; Settings opens project settings on the section the problem is about), then the
   boards that need review (Review opens the board on the page of its first item, with the card selected). Activity:
@@ -293,6 +331,9 @@ The screens follow [architecture §11](architecture.md#11-the-desktop-app). Deta
   `publish_board` answers `conflict`. Publish is disabled for a published board without changes. Discard changes and
   Delete ask first; Move back to drafts doesn't.
 - **Menus** (`menus/`) share one style: 28px items, their shortcuts, separators, and submenus that open to the right.
+  Share has Export Mermaid…, Copy Mermaid, and Export PNG… (the page drawn by the [render window](#the-render-window)
+  at twice its size, unsaved edits included, saved through the save dialog as `<board title> - <page title>.png`;
+  "Exported PNG" toasts the path).
   The project menu shows every item in every state, with the ones that don't apply disabled. The board menu works on
   boards this window doesn't hold too (Home and the sidebar right-click it): Share and folding are then disabled,
   Rename… opens the board first, and Open in new window opens it here first.
@@ -320,28 +361,40 @@ the main process owns argument parsing, links, defaults, and page revisions.
 
   | Operation | Does |
   | --- | --- |
-  | `add_cards` | Adds a block or an entrance by key (from any connected project), or keeps the card already there (its view changes when asked). A new card goes beside the item it is `near`, else right of a card that calls it (level with the calling line) or whose field names it (level with the field), else left of a card it calls, else right of everything; it never covers a card. `follow` adds what it calls (up to 3 levels) and what calls it (up to 2), resolved calls and constructions only, and, from a type card, the types its fields name (`types`, up to 2 levels, in the view asked for the card), at most 40 cards per card; each card's result lists where following stopped: an external or unresolved call (as written, with its line and library or reason), an external, builtin, or unresolved type name (as written, with its field and module or reason), resolved calls or declared types past the depth asked for, or callers past the 20 listed. Following types from a card that isn't a type adds a warning |
-  | `set_view` | A card's view (Diagram, Flow, or Code) and fold, a step group's collapse, and the page's default view |
-  | `arrange` | Arrange by call depth, then moves: a position, or right of or below another card (moved clear of the rest) |
-  | `remove_items` | Cards (with their step groups and the links that end at them), step groups, and links |
+  | `add_cards` | Adds a block or an entrance by key (from any connected project), or keeps the card already there (its view changes when asked). A new card goes beside the item it is `near`, else right of a card that calls it (level with the calling line) or whose field names it (level with the field), else left of a card it calls, else right of everything (with `frame`, right of what that frame holds); it never covers a card, or a frame it doesn't go into. With `frame`, the cards it adds go into that frame. `follow` adds what it calls (up to 3 levels) and what calls it (up to 2), resolved calls and constructions only, and, from a type card, the types its fields name (`types`, up to 2 levels, in the view asked for the card), at most 40 cards per card; each card's result lists where following stopped: an external or unresolved call (as written, with its line and library or reason), an external, builtin, or unresolved type name (as written, with its field and module or reason), resolved calls or declared types past the depth asked for, or callers past the 20 listed. Following types from a card that isn't a type adds a warning |
+  | `set_view` | A card's view (Diagram, Flow, or Code) and fold, a step group's or a frame's collapse, and the page's default view |
+  | `arrange` | Arrange from the inside out (`arrangePage`), or one frame's inside (`frame`; its box keeps its corner, and `direction` becomes the frame's), else the page's top level in `direction`; then moves of cards and frames: a position (a frame's box corner), or right of or below another card or frame (moved clear of everything it isn't in) |
+  | `remove_items` | Cards (with their step groups and the links that end at them), step groups, links, and frames: a frame's members stay, in the frame that held it, unless `keepMembers` is false. A frame left with no members goes too |
   | `group_steps` | Step groups of one card by line range or step keys, created or updated by id, under the gutter's rule (`groupSelection`): whole statements of one branch, never overlapping another group. The result names the statements each group took; a warning says when a range took more lines than asked; a refusal says why a range breaks the rule and lists the statements there |
-  | `describe` | Descriptions of cards and step groups, and labels of links |
+  | `describe` | Descriptions of cards, step groups, and frames, and labels of links |
   | `label_steps` | Flow labels of a card's steps (keys of its Flow model) |
+  | `frame_cards` | Frames created or updated by id: title, description, members, look, icon, parent, direction, and collapse. Members come from no frame, the frame itself, or its `parent`; an item already in another frame, a member that isn't a card, resource card, note, or frame, a cycle, and nesting past three deep are refused, saying why. On an update, the items it no longer lists go to the frame that holds it. The result names each frame with its look, icon, parent, and members (a frame it emptied is `removed`), and a warning notes a card in no frame that cards in two or more frames call (shared code) |
 
   Sizes come from what the canvas measured, else from the cards' models and type definitions in the view each
-  shows (`estimatedCardSize`), calling lines from the Code rows (`estimatedLineOffset`), and fields from a type
-  card's rows (`estimatedFieldOffset`), so placement and Arrange work on a page no one has shown.
-- **People's words are safe.** No operation replaces or removes a person's description, label, or group title or
-  description unless the call sets `replacePeopleText` (`people_text` otherwise); a group title without an author
-  counts as a person's. Text an agent writes again unchanged is kept, whoever wrote it.
+  shows (`estimatedCardSize`) and a collapsed frame's words (`frameNodeSize`), calling lines from the Code rows
+  (`estimatedLineOffset`), and fields from a type card's rows (`estimatedFieldOffset`), so placement and Arrange
+  work on a page no one has shown.
+- **People's words are safe.** No operation replaces or removes a person's description, label, group or frame
+  title, or group or frame description unless the call sets `replacePeopleText` (`people_text` otherwise); a group
+  title without an author counts as a person's. An agent may change a person's frame's members, look, and collapse. Text an agent writes again unchanged is kept, whoever wrote it.
 - **Reads and background tabs.** `agent_read` answers with the page as the window holds it (unsaved edits included),
   the board's title, publish state, and file revision, and whether it has unsaved edits. `agent_open_board` opens a
   board with `openBoard(ref, {background: true})`: its tab is added without switching to it, a board open here keeps
   its page, and a window that holds the board is left alone (the answer names it). The channel is installed before
   the window renders, and requests wait until the window's own state is restored.
+- **Boards as a whole** (`state/boards/agent/boards.ts`). `agent_create_board` creates a draft here, so this window
+  claims it: `new_board` with the first page's title, then one `save_board` with the other pages, before the board
+  becomes a background tab, so creating it is no undo step (or, with `copyOf`, saves the board this window holds,
+  `duplicate_board`, and opens the copy in a background tab). `agent_edit_board` adds, renames, moves, duplicates,
+  and deletes pages and sets the board's title as one undo step through `saveStep`, with the page tabs' own edits;
+  a board keeps at least one page, deleting a page with a person's words on it (a description, label, title, or
+  note) is refused unless `replacePeopleText`, and a deleted active page hands over to the first page.
+  `agent_show` activates the board's tab and page and, for an item, records a focus move (Back returns), selects it
+  (a card, step group, or link), and centers its cards (a frame's members, a resource card's or note's neighbours);
+  the main process then brings the window to the front.
 - **Working marks** (`state/boards/agent/working.ts`): while an agent works on a page, the top bar says "Claude is
-  working…" (the agent glyph and muted text; "Claude and Codex are working…"), the cards it changed (a group's or a
-  label's card too) have a soft outline (`--color-authored-line`, 2px, 3px off the card), and the links it labeled a
+  working…" (the agent glyph and muted text; "Claude and Codex are working…"), the cards and frames it changed (a
+  group's or a label's card too) have a soft outline (`--color-authored-line`, 2px, 3px off the card), and the links it labeled a
   soft band (`--color-authored-tint`). `agent_finish` clears that agent's marks on the board and toasts "Claude ·
   <summary>". Session state only: never saved, never an undo step, and dropped when the board leaves the window.
 - **The agent mark** (`agent/AgentMark.tsx`): the `agent` glyph (a 10px spark) and the word "agent", in the color of
@@ -352,11 +405,11 @@ the main process owns argument parsing, links, defaults, and page revisions.
   edit signs it with your name, and a group's new title is its writer's.
 - **View reports** (`agent/viewReport.ts`): `report_view` 150 ms after the tabs or a board session change (only when
   the report differs from the last), at once when the window gains focus, and after a resize: the active board and
-  page (none on Home), the selection (a card, a step: a card's Flow node or statement, a group, a link, a line
-  with its occurrence, or the calls of an arrow that stands for several), the lens (the page's, else its default view), the ids in view (cards whose rectangle meets
-  the canvas's visible area, all of them before the canvas has a camera; their groups; links with an end in view),
-  and the board tabs.
-- **Copy link** (pages, cards, step groups, and links): copies `unfold://<project's shared name>/<board id>?page=<page
+  page (none on Home), the selection (a card, a step: a card's Flow node or statement, a group, a link, a frame, a
+  line with its occurrence, or the calls of an arrow that stands for several), the lens (the page's, else its default view), the ids in view (cards and frames whose
+  drawn rectangle meets the canvas's visible area, all drawn ones before the canvas has a camera, never what a
+  collapsed frame hides; their groups; links with an end in view), and the board tabs.
+- **Copy link** (pages, cards, step groups, links, and frames): copies `unfold://<project's shared name>/<board id>?page=<page
   id>&item=<item id>` (each part URI-encoded) with `copy_to_clipboard`, and toasts "Copied the link". Only the main
   process reads links; clicking one opens nothing.
 - **Preferences › Agents** (`preferences/AgentsSection.tsx`): the switch "Let agents connect", the port (an error when
@@ -364,6 +417,34 @@ the main process owns argument parsing, links, defaults, and page revisions.
   server to Claude Code and Codex, each with a copy button, and the agents connected since the server started, with
   when each last acted. The switch and the port save with the dialog; the server's state comes from
   `agent_server_status` and follows `agent_server_changed`.
+
+## The render window
+
+A hidden window the main process keeps for page images and page checks ([desktop/README.md](../desktop/README.md#the-render-window)):
+`render.html`, a second Vite entry, boots `render/main.tsx` with the theme, the query cache and its engine-event
+invalidation, and nothing else of the window (no session, tabs, sidebar, keyboard dispatch, or agent channel).
+
+- **A page, handed whole** (`render/jobs.ts`). `render_page` carries the page, the board's title, and its health; the
+  window forgets the page before it and adopts this one as a one-page, read-only board session, measured at a camera
+  that keeps every item's position in view. It reads Preferences for the person's theme, as every window does.
+- **Drawn as a board tab draws it** (`render/RenderPage.tsx`): the same `BoardCanvas`, cards, arrows, labels, frames,
+  and review banners, without the top bar, dock, banners, selection, lens, or working marks: each card shows its own
+  view, else the page's default view. Card data comes through the window's own engine port; it opens no board.
+- **Settled** (`render/quiet.ts`): every node the canvas drew is measured, every card model has loaded, nothing is
+  fetching, the fonts are in, and nothing has moved for 250 ms (20 s at most, then `render_timeout`). The window then
+  answers `render_ready`: for an image, the bounds of the page's drawn items or of one card, frame, resource card, or
+  note (`render/target.ts`; refused when the page is empty, the item isn't drawn, or a collapsed frame hides it); for
+  a check, the page checks. For an image, `render_frame` follows with the camera; once the window is the size it
+  names, the canvas takes it, settles again, and the window answers.
+- **The page as drawn** (`render/geometry.ts`): each node's measured box at its absolute position, each line's path
+  sampled from its SVG, and each card drawn in Flow with its visible steps and its steps still showing names from
+  the code (counted as the page's outline counts them).
+- **Page checks** (`board/checks/`, pure, limits in `thresholds.ts`): overlap (items on top of each other, a frame
+  and what it holds aside), crossings (more than three between lines, or any line through a frame that holds
+  neither end), density (over 30 visible items on a page, 12 in a frame, 12 steps in a Flow card), unlabeled
+  steps, missing words (frames, step groups, and resource cards without a description), evidence (resource cards
+  and connections that cite no code), strays (no line, connection, or frame), and views (more than three Code or
+  Flow cards on an overview page). Each is `{kind, items, message, suggestion}`, naming the tool that fixes it.
 
 ## Overlays
 
@@ -506,7 +587,7 @@ Every region and command had a new home; nothing was dropped.
 | Title bar folder switcher (recent folders, Open Folder, New Window, Folder Settings, Close Folder, Preferences) | Home's sidebar: the projects, Add project, the project menu, the gear; recent folders became Recents (recent boards) |
 | Title bar board title, Code \| Flow, Compile, Publish | The board header (rename in place); the canvas top bar's lens and Publish; Compile on a new project's Home, then the project menu |
 | Inspector, and its toggle | The board sidebar's Selected section, and editing on the card; ⌘B toggles the whole sidebar |
-| Board menu `⋯` | The board header's menu; Fold all and Unfold all also in the canvas menu; Mermaid under Share |
+| Board menu `⋯` | The board header's menu; Fold all and Unfold all also in the canvas menu; Mermaid and PNG under Share |
 | Activity bar | Gone |
 | Files view (the disk tree and its marks and menu) | Finding a file: Add → Files. Scope actions: Project settings → Scope. Open in editor and Reveal in Finder: the peek sheet's menu and the project menu. Show callers: the card menu |
 | Entrances view | Home → How it starts, and Add's map. Add Entrance: the project menu and How it starts; editing and removing a manual entrance: its row on Home |

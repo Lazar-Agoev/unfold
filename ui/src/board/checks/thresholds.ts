@@ -1,0 +1,27 @@
+/**
+ * Every limit the page checks apply, in one place (design §7.4's review checklist: about 12 visible
+ * items per frame, 30 per page, and 12 visible steps per Flow card).
+ */
+
+export const THRESHOLDS = {
+  /** Visible items a frame holds before it is too dense. */
+  frameItems: 12,
+  /** Visible items a page holds before it is too dense. */
+  pageItems: 30,
+  /** Visible steps a Flow card shows before it is too dense. */
+  flowSteps: 12,
+  /** Crossings between lines a page may have before it asks for a rearrangement. */
+  lineCrossings: 3,
+  /** How far two boxes must overlap on both axes, in canvas units, to count (touching borders don't). */
+  overlap: 2,
+  /** Lines that cross this close to either line's ends (where they leave and enter cards) don't count. */
+  endSlack: 12,
+  /** A page with frames, or with at least this many visible cards, is an overview page. */
+  overviewCards: 8,
+  /** Cards in Flow or Code an overview page holds before it asks for the Diagram view. */
+  overviewDetailed: 3,
+  /** The room a frame leaves around its members, when the canvas doesn't draw the frame itself. */
+  framePadding: 24,
+  /** Names a finding lists before "and N more". */
+  listedNames: 6,
+} as const;

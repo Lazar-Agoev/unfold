@@ -43,6 +43,7 @@ function selection(value: unknown): ViewSelection | null {
     case "card":
     case "group":
     case "link":
+    case "frame":
       return isString(id) ? { kind, id } : null;
     case "step":
       return isString(card) && isString(key) ? { kind, card, key } : null;

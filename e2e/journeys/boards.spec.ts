@@ -1,6 +1,6 @@
 /**
  * A board's life outside publishing (architecture §11.8, decision U-47): renaming in place,
- * the board menu (Duplicate, Share as Mermaid, Fold all, Delete), folders and Move to folder, and edits
+ * the board menu (Duplicate, Share as Mermaid and PNG, Fold all, Delete), folders and Move to folder, and edits
  * made to a board's file outside the app (a clean board reloads; a deleted file shows the banner), and a
  * save that fails (the banner's Retry).
  */
@@ -65,6 +65,18 @@ test.describe("boards", () => {
       await boardMenu(page, "Share", "Copy Mermaid");
       await expect(toast(page, "Copied the page as Mermaid")).toBeVisible();
       expect(await app.clipboardText()).toBe(readFileSync(join(sandbox.root, "orders.mmd"), "utf8"));
+    });
+
+    await test.step("Share › Export PNG… draws the page in the render window and writes it through the save dialog", async () => {
+      const file = join(sandbox.root, "orders.png");
+      await app.stubSaveDialog(file);
+      await boardMenu(page, "Share", "Export PNG…");
+      await expect(toast(page, "Exported PNG")).toBeVisible({ timeout: 30_000 });
+      // A PNG's signature, then its header's width and height.
+      const png = readFileSync(file);
+      expect([...png.subarray(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      expect(png.readUInt32BE(16)).toBeGreaterThan(100);
+      expect(png.readUInt32BE(20)).toBeGreaterThan(100);
     });
 
     await test.step("Fold all cards and Unfold all cards", async () => {

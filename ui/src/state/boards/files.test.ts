@@ -10,7 +10,7 @@ const engine = vi.hoisted(() => ({
 vi.mock("./engine", () => engine);
 vi.mock("../../components/Toast", () => ({ showToast: vi.fn() }));
 
-const { copyPageMermaid, deleteBoard, isValidName, publishBoard, publishedPath, slugOf, unpublishBoard } = await import("./files");
+const { copyPageMermaid, deleteBoard, exportPagePng, isValidName, publishBoard, publishedPath, slugOf, unpublishBoard } = await import("./files");
 const { itemsFor, repairEffect, repairSpec } = await import("./health");
 const store = await import("./store");
 const tabs = await import("../tabStore");
@@ -163,5 +163,10 @@ describe("file operations on an open board", () => {
     await copyPageMermaid({ board: ref, page: "page-2" });
     expect(engine.call).toHaveBeenCalledWith("export_mermaid_text", { project: P, board: { id: draft, page: "page-2" } });
     expect(engine.windowCommand).toHaveBeenCalledWith("copy_to_clipboard", { text: "flowchart LR" });
+  });
+
+  it("exports a page as PNG, named after the board and the page", async () => {
+    await exportPagePng({ board: ref, page: "page-2" });
+    expect(engine.windowCommand).toHaveBeenCalledWith("export_png", { project: P, board: draft, page: "page-2", title: "Order placement - Page page-2" });
   });
 });

@@ -8,8 +8,9 @@
  * label opens into the call's contract. An arrow from a Diagram node that stands for several calls
  * reads "3 calls" and selects them (Selected lists them, each opening its contract here). A type
  * arrow, from a type card's field to the type it names, is drawn like a call's and labeled with the
- * field's written type, which selects nothing. A line whose label fits nowhere at rest takes the
- * click itself: a wide invisible stroke over the curve, named like the label would be.
+ * field's written type, which selects nothing. An arrow that joins several at a collapsed frame reads
+ * "3 calls" too, as quiet text. A line whose label fits nowhere at rest takes the click itself: a wide
+ * invisible stroke over the curve, named like the label would be.
  */
 
 import { EdgeLabelRenderer, getBezierPath, type Edge, type EdgeProps } from "@xyflow/react";
@@ -17,7 +18,7 @@ import { memo, useMemo } from "react";
 import type { LineLabel as LineLabelModel, TypeText } from "../ipc/generated";
 import { select, type PageTarget, type SelectedCalls, type SelectedLine } from "../state/boards";
 import { useLabelLayout, useLabelPlacement } from "./lines/labelLayout";
-import { countForms, countText, labelForms, labelText, typeForms } from "./lines/labelText";
+import { countForms, countText, labelForms, labelText, mergedText, typeForms } from "./lines/labelText";
 import { LineContract } from "./lines/LineContract";
 import { LineLabel } from "./lines/LineLabel";
 import { bezierCurve } from "./lines/placeLabels";
@@ -40,6 +41,8 @@ interface ArrowData extends Record<string, unknown> {
   readonly listed?: boolean;
   /** A type arrow's label: the field's written type. */
   readonly type?: TypeText;
+  /** What an arrow that joins several at a collapsed frame stands for: its quiet count label. */
+  readonly merged?: { readonly calls: number; readonly fields: number };
 }
 
 export type ArrowEdgeType = Edge<ArrowData, "arrow">;
@@ -61,9 +64,13 @@ interface Labeled {
 }
 
 function labeledOf(data: ArrowData | undefined): Labeled | null {
-  const { label, page, line, calls, type } = data ?? {};
+  const { label, page, line, calls, type, merged } = data ?? {};
   if (type) {
     return { forms: typeForms(type), full: type.text };
+  }
+  if (merged) {
+    const full = mergedText(merged.calls, merged.fields);
+    return { forms: [[{ text: full, tone: "type" }]], full };
   }
   if (calls && page) {
     return {

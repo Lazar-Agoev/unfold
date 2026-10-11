@@ -1,7 +1,8 @@
 /**
  * A stand-in for the `electron` module, for the main process's tests: enough for the window registry
- * to create, address, focus, close, and message windows, for the window commands to show dialogs,
- * and for the engine host to fork its utility process. Tests install it with
+ * to create, address, focus, close, and message windows, for the render window to be sized and
+ * captured, for the window commands to show dialogs, and for the engine host to fork its utility
+ * process. Tests install it with
  * `vi.mock("electron", async () => (await import("./fake-electron")).electronModule)` and drive it
  * through the exports below.
  */
@@ -17,14 +18,24 @@ interface Rect {
   height: number;
 }
 
+/** What a fake capture returns: an image of the captured size at the window's scale. */
+export interface FakeImage {
+  getSize(scaleFactor: number): { width: number; height: number };
+  toPNG(options: { scaleFactor: number }): Buffer;
+}
+
 export class FakeBrowserWindow {
   static focused: FakeBrowserWindow | null = null;
+  /** The largest content size a window may take (a screen's limit), or null for any. */
+  static largest: { width: number; height: number } | null = null;
   static getFocusedWindow(): FakeBrowserWindow | null {
     return FakeBrowserWindow.focused;
   }
 
   /** Shell events sent to the window's UI, in order. */
   readonly sent: unknown[] = [];
+  /** Every capture: its rectangle and options. */
+  readonly captures: { rect: Rect; options: unknown }[] = [];
   readonly mainFrame = { url: "http://localhost:5173/" };
   readonly webContents = {
     mainFrame: this.mainFrame,
@@ -34,15 +45,28 @@ export class FakeBrowserWindow {
     send: (_channel: string, event: unknown) => {
       this.sent.push(event);
     },
+    capturePage: (rect: Rect, options: unknown): Promise<FakeImage> => {
+      this.captures.push({ rect, options });
+      const scale = this.scale();
+      return Promise.resolve({
+        getSize: (factor: number) => ({ width: rect.width * factor, height: rect.height * factor }),
+        toPNG: ({ scaleFactor }: { scaleFactor: number }) => Buffer.from(`png ${rect.width * scale}x${rect.height * scale} at ${scaleFactor}`),
+      });
+    },
   };
   readonly bounds: Rect;
+  /** The URL the window loaded. */
+  url: string | null = null;
+  contentSize: [number, number];
   maximized = false;
   private destroyed = false;
   private readonly handlers = new Map<string, (() => void)[]>();
   private readonly contentsHandlers = new Map<string, () => void>();
 
-  constructor(options: Partial<Rect> & { width: number; height: number }) {
+  constructor(readonly options: Partial<Rect> & { width: number; height: number; webPreferences?: Record<string, unknown> }) {
     this.bounds = { x: options.x ?? 0, y: options.y ?? 0, width: options.width, height: options.height };
+    this.contentSize = [options.width, options.height];
+    createdWindows.push(this);
   }
 
   on(event: string, handler: () => void): void {
@@ -51,8 +75,16 @@ export class FakeBrowserWindow {
   once(event: string, handler: () => void): void {
     this.on(event, handler);
   }
-  loadURL(): Promise<void> {
+  loadURL(url: string): Promise<void> {
+    this.url = url;
     return Promise.resolve();
+  }
+  setContentSize(width: number, height: number): void {
+    const largest = FakeBrowserWindow.largest;
+    this.contentSize = largest ? [Math.min(width, largest.width), Math.min(height, largest.height)] : [width, height];
+  }
+  getContentSize(): number[] {
+    return [...this.contentSize];
   }
   isDestroyed(): boolean {
     return this.destroyed;
@@ -95,6 +127,16 @@ export class FakeBrowserWindow {
   finishLoad(): void {
     this.contentsHandlers.get("did-finish-load")?.();
   }
+  /** Simulates the renderer emitting a contents event (`render-process-gone`, …). */
+  emitContents(event: string): void {
+    this.contentsHandlers.get(event)?.();
+  }
+  /** The offscreen device scale factor the window was created with (1 when not offscreen). */
+  private scale(): number {
+    const offscreen = this.options.webPreferences?.["offscreen"];
+    const factor = typeof offscreen === "object" && offscreen !== null ? (offscreen as { deviceScaleFactor?: number }).deviceScaleFactor : undefined;
+    return factor ?? 1;
+  }
   /** Simulates Electron emitting a window event (`ready-to-show`, `move`, …). */
   emit(event: string): void {
     for (const handler of this.handlers.get(event) ?? []) {
@@ -132,6 +174,9 @@ export class FakeUtilityProcess {
 /** The utility processes forked, in order. */
 export const forked: FakeUtilityProcess[] = [];
 
+/** Every window created, in order. */
+export const createdWindows: FakeBrowserWindow[] = [];
+
 /** What the dialogs answer, and what they were asked. */
 export const dialogs = {
   /** The folder the picker returns; null cancels it. */
@@ -153,6 +198,8 @@ export const clipboardTexts: string[] = [];
 /** Forgets every window, handler, and dialog answer. */
 export function resetFakeElectron(): void {
   FakeBrowserWindow.focused = null;
+  FakeBrowserWindow.largest = null;
+  createdWindows.length = 0;
   forked.length = 0;
   ipcHandlers.clear();
   clipboardTexts.length = 0;

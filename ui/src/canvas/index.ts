@@ -1,5 +1,5 @@
 /**
- * The board canvas: the React Flow canvas of a page with its cards, arrows, drawn links, and
+ * The board canvas: the React Flow canvas of a page with its cards, frames, arrows, drawn links, and
  * placeholders; Arrange and Show callers; the card data and geometry. Screens import from here.
  */
 

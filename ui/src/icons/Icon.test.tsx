@@ -46,6 +46,14 @@ const PLANNED = [
   "back",
   "forward",
   "agent",
+  "frame",
+  "frame-api",
+  "frame-worker",
+  "frame-schedule",
+  "frame-cli",
+  "frame-web",
+  "frame-library",
+  "frame-system",
 ];
 
 describe("Icon", () => {

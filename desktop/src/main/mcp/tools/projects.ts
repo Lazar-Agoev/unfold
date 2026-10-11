@@ -6,7 +6,8 @@
 
 import { z } from "zod";
 import type { ToolContext } from "../context";
-import type { ApplicationEntrances, BoardSummary, GraphStatus, Language, ProjectConfig, ProjectRow, ProjectState, ProjectSummary } from "../engine-types";
+import type { ApplicationEntrances, BoardSummary, GraphStatus, Language, ProjectConfig, ProjectRow, ProjectSummary } from "../engine-types";
+import { count, stateText } from "../format";
 import { textResult } from "../results";
 import { defineTool } from "../tool";
 
@@ -14,30 +15,6 @@ import { defineTool } from "../tool";
 const MAX_BOARDS = 40;
 
 const LANGUAGES: Readonly<Record<Language, string>> = { typescript: "TypeScript", python: "Python" };
-
-/** A project's state in words: `current`, `compiling (120 of 400 files)`, `resting (last: current)`. */
-function stateText(state: ProjectState): string {
-  switch (state.kind) {
-    case "current":
-      return "current";
-    case "compiling":
-      return `compiling (${state.done} of ${state.total})`;
-    case "updating":
-      return state.files === null ? "updating" : `updating (${state.files} files)`;
-    case "problems":
-      return `problems (${state.count})`;
-    case "paused":
-      return `paused (${state.changed} files changed)`;
-    case "not_compiled":
-      return "not compiled";
-    case "failed":
-      return `failed: ${state.message}`;
-    case "resting":
-      return `resting (last: ${stateText(state.last)})`;
-    case "unavailable":
-      return `unavailable: ${state.reason}`;
-  }
-}
 
 function branchText(git: { readonly branch: string | null; readonly detached: string | null } | null): string | null {
   if (git?.branch) {
@@ -48,11 +25,6 @@ function branchText(git: { readonly branch: string | null; readonly detached: st
 
 function languagesText(languages: readonly Language[]): string {
   return languages.length > 0 ? languages.map((language) => LANGUAGES[language]).join(", ") : "no source files";
-}
-
-/** `1 board`, `3 boards`. */
-function count(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }
 
 /** One project's row in `list_projects`. */

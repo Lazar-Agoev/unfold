@@ -18,7 +18,7 @@ function setup(overrides: Partial<McpServices> = {}) {
   const confirmations: [string, string][] = [];
   const added: string[] = [];
   const services: McpServices = {
-    bridge: new AgentBridge({ windows: { get: () => undefined, all: () => [], create: () => { throw new Error("no windows"); }, deliver: () => undefined }, views: new ViewTracker() }),
+    bridge: new AgentBridge({ windows: { get: () => undefined, all: () => [], create: () => { throw new Error("no windows"); }, deliver: () => undefined, focus: () => undefined }, views: new ViewTracker() }),
     engine: (command) => {
       engineCalls.push(command);
       return Promise.resolve({ projects: ROWS });
@@ -79,7 +79,7 @@ describe("adding a project", () => {
     const { context } = setup({
       addProject: () => Promise.reject(new EngineRequestError({ code: "not_a_folder", message: "`/tmp/x` is not a folder" })),
     });
-    await expect(context.addProject("/tmp/x")).rejects.toThrow(new ToolError("`/tmp/x` is not a folder."));
+    await expect(context.addProject("/tmp/x")).rejects.toThrow(new ToolError("`/tmp/x` is not a folder.", "not_a_folder"));
   });
 });
 
@@ -89,7 +89,7 @@ describe("engine requests", () => {
       engine: () => Promise.reject(new EngineRequestError({ code: "not_compiled", message: "the project has no graph yet" })),
     });
     await expect(context.engine("entrances", { project: "p-aaaaaaaaaa" })).rejects.toThrow(
-      new ToolError("The project has no graph yet. Call compile_project first (ask the person, unless they asked you to set things up)."),
+      new ToolError("The project has no graph yet. Call compile_project first (ask the person, unless they asked you to set things up).", "not_compiled"),
     );
   });
 });

@@ -5,8 +5,6 @@
  */
 
 import type { CardBody } from "../code/typeKinds";
-import type { Card } from "../ipc/generated";
-import type { Arrow } from "./arrows";
 
 /** Block cards size to their content between these widths. */
 export const CARD_MIN_WIDTH = 280;
@@ -190,6 +188,8 @@ export interface ArrangeCall {
   readonly source: string;
   readonly target: string;
   readonly port: number;
+  /** Where it enters the target, below its top (default: its header, `HEADER_PORT`). */
+  readonly entry?: number;
   /** Source order inside the calling card, for ties. */
   readonly order: number;
 }
@@ -197,8 +197,8 @@ export interface ArrangeCall {
 /**
  * Lays cards out left to right by call depth from the cards nothing calls (entrances first).
  * `cards` comes in priority order; every root starts a band, and bands stack downward. A callee
- * sits in the column after its deepest caller, level with the first calling line when there is
- * room. Cards without calls go in one row underneath. The result depends only on the cards, their
+ * sits in the column after its deepest caller, its entry (its header) level with the first calling
+ * line when there is room. Cards without calls go in one row underneath. The result depends only on the cards, their
  * sizes, and the calls, never on where cards are now, so arranging twice changes nothing.
  */
 export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCall[], origin: Point = { x: 0, y: 0 }): Map<string, Point> {
@@ -320,7 +320,7 @@ export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCa
           const first = [...callers].sort(
             (a, b) => (preorder.get(a.source) ?? 0) - (preorder.get(b.source) ?? 0) || a.port - b.port,
           )[0];
-          const firstY = first ? (positions.get(first.source)?.y ?? bandTop) + first.port - HEADER_PORT : bandTop;
+          const firstY = first ? (positions.get(first.source)?.y ?? bandTop) + first.port - (first.entry ?? HEADER_PORT) : bandTop;
           const lowestCaller = Math.min(...callers.map((call) => positions.get(call.source)?.y ?? bandTop));
           return { card, want: Math.max(bandTop, lowestCaller, firstY), order };
         })
@@ -355,38 +355,4 @@ export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCa
     }
   }
   return positions;
-}
-
-/**
- * Where Arrange puts a page's cards: columns by call depth from its entrances (then the cards nothing
- * calls), in a stable order: entrances first, then left to right and top to bottom as `rects` shows
- * them. `portOffset` gives an arrow's port offset below its card's top (the header's when unknown).
- */
-export function arrangedPositions(
-  cards: readonly Card[],
-  rects: ReadonlyMap<string, Rect>,
-  arrows: readonly Arrow[],
-  portOffset: (arrow: Arrow) => number | undefined,
-): Map<string, Point> {
-  const ordered = [...cards].sort((a, b) => {
-    const entrance = Number("block" in a.ref) - Number("block" in b.ref);
-    const ra = rects.get(a.id);
-    const rb = rects.get(b.id);
-    return entrance || (ra?.x ?? 0) - (rb?.x ?? 0) || (ra?.y ?? 0) - (rb?.y ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-  });
-  const all = [...rects.values()];
-  const origin = { x: Math.min(...all.map((rect) => rect.x)), y: Math.min(...all.map((rect) => rect.y)) };
-  return arrange(
-    ordered.map((card) => {
-      const rect = rects.get(card.id);
-      return { id: card.id, width: rect?.width ?? 520, height: rect?.height ?? 320 };
-    }),
-    arrows.map((arrow) => ({
-      source: arrow.source,
-      target: arrow.target,
-      port: portOffset(arrow) ?? HEADER_PORT,
-      order: arrow.order,
-    })),
-    origin,
-  );
 }

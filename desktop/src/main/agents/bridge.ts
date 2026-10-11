@@ -3,15 +3,20 @@
  * open in one window at a time, and that window makes its edits, the way it makes the person's, so
  * the bridge routes each request to the window that holds the board (from the windows' view
  * reports). An edit of a board no window holds opens it first, in a background tab of the window used
- * last (a new window when none is open). Every request has a timeout; a window that closes before it
- * answers fails its requests with `window_closed`.
+ * last (a new window when none is open); a new board is created there too, so that window holds it.
+ * Every request has a timeout; a window that closes before it answers fails its requests with
+ * `window_closed`.
  *
  * Page revisions are checked here (D4): an edit that passes `expectRevision` reads the page from the
  * holding window first and is refused when it changed.
  */
 
 import type {
+  AgentBoardEditRequest,
+  AgentBoardEditResult,
   AgentBoardRef,
+  AgentCreateRequest,
+  AgentCreateSuccess,
   AgentEditRequest,
   AgentEditSuccess,
   AgentFailure,
@@ -19,6 +24,7 @@ import type {
   AgentOpenResult,
   AgentReadSuccess,
   AgentShellEvent,
+  AgentShowResult,
 } from "../../shared/agent-api";
 import type { WindowEntry, WindowRegistry } from "../windows";
 import { pageRevision } from "./revision";
@@ -39,8 +45,14 @@ export type AgentReadOutcome = (AgentReadSuccess & { readonly revision: string }
 /** The window that holds the board now, or a refusal. */
 export type AgentOpenOutcome = { readonly ok: true; readonly windowId: number } | AgentFailure;
 
+/** A board a window created and holds, with the window's id, or a refusal. */
+export type AgentCreateOutcome = (AgentCreateSuccess & { readonly windowId: number }) | AgentFailure;
+
+/** The page a window showed and the window's id, or a refusal. */
+export type AgentShowOutcome = { readonly ok: true; readonly windowId: number; readonly page?: string } | AgentFailure;
+
 /** What the bridge needs of the window registry. */
-export type AgentWindows = Pick<WindowRegistry, "get" | "all" | "create" | "deliver">;
+export type AgentWindows = Pick<WindowRegistry, "get" | "all" | "create" | "deliver" | "focus">;
 
 export interface AgentBridgeOptions {
   readonly windows: AgentWindows;
@@ -50,7 +62,7 @@ export interface AgentBridgeOptions {
 }
 
 /** The requests a window answers, by the window command it answers with. */
-type RequestKind = "edit" | "read" | "open";
+type RequestKind = "edit" | "read" | "open" | "create" | "board" | "show";
 
 interface Pending {
   readonly windowId: number;
@@ -67,17 +79,30 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function hasPage(result: Readonly<Record<string, unknown>>): boolean {
+  const page = result["page"];
+  return isRecord(page) && typeof page["id"] === "string" && isRecord(result["board"]);
+}
+
+/** What a successful answer of each kind must hold, beyond `ok: true`. */
+const SHAPES: Readonly<Record<RequestKind, (result: Readonly<Record<string, unknown>>) => boolean>> = {
+  edit: (result) => hasPage(result) && Array.isArray(result["items"]) && Array.isArray(result["warnings"]),
+  read: hasPage,
+  open: () => true,
+  create: (result) => {
+    const board = result["board"];
+    return isRecord(board) && typeof board["project"] === "string" && typeof board["id"] === "string" && isRecord(result["info"]) && Array.isArray(result["pages"]);
+  },
+  board: (result) => isRecord(result["board"]) && Array.isArray(result["pages"]) && Array.isArray(result["results"]),
+  show: (result) => typeof result["page"] === "string",
+};
+
 /** A window's answer, checked enough that callers can rely on its shape. */
 function checked(kind: RequestKind, result: unknown): unknown {
   if (isRecord(result) && result["ok"] === false && typeof result["code"] === "string" && typeof result["message"] === "string") {
     return result;
   }
-  const page = isRecord(result) ? result["page"] : undefined;
-  const valid =
-    isRecord(result) &&
-    result["ok"] === true &&
-    (kind === "open" || (isRecord(page) && typeof page["id"] === "string" && isRecord(result["board"]))) &&
-    (kind !== "edit" || (Array.isArray(result["items"]) && Array.isArray(result["warnings"])));
+  const valid = isRecord(result) && result["ok"] === true && SHAPES[kind](result);
   return valid ? result : failure("internal", "The window answered with a malformed result.");
 }
 
@@ -155,8 +180,7 @@ export class AgentBridge {
     if (holder) {
       return { ok: true, windowId: holder.id };
     }
-    const last = this.views.lastUsed();
-    const entry = (last !== undefined ? this.windows.get(last) : undefined) ?? this.windows.all()[0] ?? this.windows.create();
+    const entry = this.lastUsed();
     const result = (await this.ask(entry, "open", { type: "agent_open_board", ...target })) as AgentOpenResult;
     if (result.ok) {
       this.views.holds(entry.id, target.board);
@@ -173,6 +197,79 @@ export class AgentBridge {
       );
     }
     return { ok: false, code: result.code, message: result.message };
+  }
+
+  /**
+   * Creates a draft for an agent, which a window then holds in a background tab: an empty one in the
+   * window used last (a new window when none is open), or a copy of `copyOf` in the window that holds
+   * that board (opening it first).
+   */
+  async create(request: Omit<AgentCreateRequest, "requestId">): Promise<AgentCreateOutcome> {
+    let entry: WindowEntry | undefined;
+    if (request.copyOf === undefined) {
+      entry = this.lastUsed();
+    } else {
+      const opened = await this.open({ board: { project: request.project, id: request.copyOf } });
+      if (!opened.ok) {
+        return opened;
+      }
+      entry = this.windows.get(opened.windowId);
+    }
+    if (!entry) {
+      return this.closed();
+    }
+    const result = (await this.ask(entry, "create", { type: "agent_create_board", ...request })) as AgentCreateSuccess | AgentFailure;
+    if (!result.ok) {
+      return result;
+    }
+    this.views.holds(entry.id, result.board);
+    return { ...result, windowId: entry.id };
+  }
+
+  /**
+   * Changes a board's pages or title as one undo step, in the window that holds it (opening it in a
+   * background tab first).
+   */
+  async editBoard(request: Omit<AgentBoardEditRequest, "requestId">): Promise<AgentBoardEditResult> {
+    for (let attempt = 0; ; attempt += 1) {
+      const opened = await this.open({ board: request.board });
+      if (!opened.ok) {
+        return opened;
+      }
+      const entry = this.windows.get(opened.windowId);
+      if (!entry) {
+        return this.closed();
+      }
+      const result = (await this.ask(entry, "board", { type: "agent_edit_board", ...request })) as AgentBoardEditResult;
+      // A report that still listed a board the window closed: open it again, once.
+      if (!result.ok && result.code === "board_not_open" && attempt === 0) {
+        this.views.released(entry.id, request.board);
+        continue;
+      }
+      return result;
+    }
+  }
+
+  /**
+   * Shows a board to the person (design §6.3 `show`). In the `background`, the board gets a tab
+   * (opened as for an edit) and nothing moves; otherwise the window that holds it switches to its tab
+   * and `page`, selects and centers `item`, and comes to the front.
+   */
+  async show(target: { readonly board: AgentBoardRef; readonly page?: string; readonly item?: string }, background: boolean): Promise<AgentShowOutcome> {
+    const opened = await this.open({ board: target.board, ...(target.page !== undefined ? { page: target.page } : {}) });
+    if (!opened.ok || background) {
+      return opened;
+    }
+    const entry = this.windows.get(opened.windowId);
+    if (!entry) {
+      return this.closed();
+    }
+    const result = (await this.ask(entry, "show", { type: "agent_show", ...target })) as AgentShowResult;
+    if (!result.ok) {
+      return result;
+    }
+    this.windows.focus(entry);
+    return { ok: true, windowId: entry.id, page: result.page };
   }
 
   /**
@@ -214,6 +311,12 @@ export class AgentBridge {
         pending.resolve(this.closed());
       }
     }
+  }
+
+  /** The window used last, else the first window, else a new one. */
+  private lastUsed(): WindowEntry {
+    const last = this.views.lastUsed();
+    return (last !== undefined ? this.windows.get(last) : undefined) ?? this.windows.all()[0] ?? this.windows.create();
   }
 
   private holderOf(board: AgentBoardRef): WindowEntry | undefined {

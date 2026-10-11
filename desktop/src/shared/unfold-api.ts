@@ -8,6 +8,7 @@
  */
 
 import type { AgentShellEvent, AgentWindowCommands } from "./agent-api";
+import type { RenderShellEvent, RenderWindowCommands } from "./render-api";
 
 /** An error a command was rejected with. Plain data, so it survives the context bridge. */
 export interface TransportError {
@@ -102,7 +103,9 @@ export type ShellEvent =
    */
   | { readonly type: "project_add_failed"; readonly path: string; readonly message: string }
   /** An agent's edit, read, background open, or finish (`agent-api.ts`). */
-  | AgentShellEvent;
+  | AgentShellEvent
+  /** A page for the render window to draw, or the camera to capture it with (`render-api.ts`). */
+  | RenderShellEvent;
 
 /** A running streamed command. */
 export interface StreamHandle {
@@ -123,7 +126,7 @@ export interface WindowInfo {
   readonly platform: "darwin" | "win32" | "linux";
 }
 
-/** What `export_mermaid` wrote. */
+/** What `export_mermaid` or `export_png` wrote. */
 export interface ExportedFile {
   readonly path: string;
   readonly bytes: number;
@@ -141,8 +144,8 @@ export interface DroppedFile {
   readonly name: string;
 }
 
-/** Window and dialog commands, handled by the main process (the agent channel's too). */
-export interface WindowCommands extends AgentWindowCommands {
+/** Window and dialog commands, handled by the main process (the agent channel's and the render window's too). */
+export interface WindowCommands extends AgentWindowCommands, RenderWindowCommands {
   /** Open another window on the workspace (it shows the workspace's selected project). */
   new_window: { args: Record<string, never>; result: { windowId: number } };
   /**
@@ -178,6 +181,13 @@ export interface WindowCommands extends AgentWindowCommands {
       | { project: string; entrance: string; title?: string };
     result: ExportedFile | null;
   };
+  /**
+   * Export a page of a board this window holds as a PNG image: the main process shows the save dialog
+   * (default name from `title`, `.png`), draws the page in the render window (unsaved edits included)
+   * at twice the size, and writes the file. Resolves with null when the dialog is cancelled; rejects
+   * with the reason the page couldn't be drawn (`render_timeout`, …).
+   */
+  export_png: { args: { project: string; board: string; page: string; title?: string }; result: ExportedFile | null };
   /**
    * Open a new window for a tab. Resolves with its id at once: the UI then calls `move_board` to it
    * and `transfer_board_state`.

@@ -21,6 +21,7 @@ import {
   canUndo,
   copyPageMermaid,
   exportPageMermaid,
+  exportPagePng,
   findCard,
   findPage,
   foldAll,
@@ -28,6 +29,7 @@ import {
   getPageView,
   redo,
   removeCard,
+  removeFrame,
   removeLink,
   requestCardFocus,
   setPageLens,
@@ -59,7 +61,10 @@ function selectedBlockCard(target: PageTarget): string | null {
   return card && "block" in card.ref ? card.id : null;
 }
 
-/** Removes whatever is selected on the page: a card, a group (ungrouped), or a link (not a line between cards). */
+/**
+ * Removes whatever is selected on the page: a card, a group (ungrouped), a link (not a line between
+ * cards), or a frame (keeping what it holds).
+ */
 function removeSelected(target: PageTarget): void {
   const { selection } = getPageView(target);
   if (selection.kind === "card") {
@@ -68,6 +73,8 @@ function removeSelected(target: PageTarget): void {
     ungroup(target, selection.groupId);
   } else if (selection.kind === "link") {
     removeLink(target, selection.linkId);
+  } else if (selection.kind === "frame") {
+    removeFrame(target, selection.frameId);
   }
 }
 
@@ -170,6 +177,22 @@ function useBoardActions(target: PageTarget): void {
         }
       },
     },
+    {
+      id: "board.exportPng",
+      title: "Export PNG…",
+      category: "Share",
+      group: "Share",
+      run: async () => {
+        try {
+          const written = await exportPagePng(target);
+          if (written) {
+            showToast({ title: "Exported PNG", body: written.path });
+          }
+        } catch (error) {
+          showToast({ title: "Couldn't export the page as PNG", body: toUnfoldError(error).message, tone: "danger" });
+        }
+      },
+    },
   ]);
 }
 
@@ -178,6 +201,8 @@ function PageStage({ target }: { readonly target: PageTarget }) {
   const store = useStoreApi();
   const { board } = target;
   const cards = useOpenBoard(board, (open) => findPage(open.document, target.page)?.cards) ?? EMPTY_CARDS;
+  const frames = useOpenBoard(board, (open) => findPage(open.document, target.page)?.frames);
+  const resources = useOpenBoard(board, (open) => findPage(open.document, target.page)?.resources);
   const links = useOpenBoard(board, (open) => findPage(open.document, target.page)?.links);
   const hasCamera = usePageView(target, (view) => view.camera !== null);
   const linking = usePageView(target, (view) => view.linking !== null);
@@ -241,7 +266,7 @@ function PageStage({ target }: { readonly target: PageTarget }) {
 
   return (
     <>
-      <BoardCanvas target={target} cards={cards} links={links} boardArrows={boardArrows} />
+      <BoardCanvas target={target} cards={cards} frames={frames} resources={resources} links={links} boardArrows={boardArrows} />
       <div className="board-notices">
         <BoardBanner board={board} />
         {linking ? (

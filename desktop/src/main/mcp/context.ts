@@ -13,7 +13,7 @@ import { parseLink, resolveLink, type ResolvedLink } from "../agents/links";
 import { pageRevision } from "../agents/revision";
 import type { ViewTracker } from "../agents/views";
 import { EngineRequestError } from "../engine-host";
-import type { CommandArgs, CommandName, CommandResult, ProjectRow } from "./engine-types";
+import type { CommandArgs, CommandName, CommandResult, ProjectRow, StreamCommandName, StreamMessage } from "./engine-types";
 import { cant, header, ToolError, type ResultPlace } from "./results";
 
 /** What the MCP server needs of the app. */
@@ -21,10 +21,10 @@ export interface McpServices {
   /** Routes reads, edits, opens, and finishes to the windows. */
   readonly bridge: AgentBridge;
   /**
-   * Runs one engine command for an agent: untrusted, for no window. Rejects with an
-   * `EngineRequestError`.
+   * Runs one engine command for an agent: untrusted, for no window. A streamed command's messages go
+   * to `onStream`, each before it settles. Rejects with an `EngineRequestError`.
    */
-  readonly engine: (command: string, args: Readonly<Record<string, unknown>>) => Promise<unknown>;
+  readonly engine: (command: string, args: Readonly<Record<string, unknown>>, onStream?: (message: unknown) => void) => Promise<unknown>;
   /** Asks the person whether `agent` may add the folder `path`; resolves with whether they agreed. */
   readonly confirmAddProject: (agent: AgentIdentity, path: string) => Promise<boolean>;
   /** Adds a folder the person agreed to as a project (the trusted `add_project`). */
@@ -43,6 +43,8 @@ export interface ToolContext {
   readonly signal: AbortSignal;
   /** Runs an engine command, untrusted. A failure is a {@link ToolError} that says what to do. */
   engine<C extends CommandName>(command: C, args: CommandArgs<C>): Promise<CommandResult<C>>;
+  /** Runs a streamed engine command (`search_text`), handing each message to `onMessage` before it settles. */
+  stream<C extends StreamCommandName>(command: C, args: CommandArgs<C>, onMessage: (message: StreamMessage<C>) => void): Promise<CommandResult<C>>;
   /** The workspace's projects, in its order (read once per call). */
   projects(): Promise<readonly ProjectRow[]>;
   /** A project by id, by shared name, or by a link to one of its boards. */
@@ -77,7 +79,7 @@ function engineError(error: unknown): unknown {
   const { code, message } = error.error;
   const reason = message.charAt(0).toUpperCase() + message.slice(1).replace(/\.?$/, ".");
   const hint = ENGINE_HINTS[code];
-  return new ToolError(hint === undefined ? reason : `${reason} ${hint}`);
+  return new ToolError(hint === undefined ? reason : `${reason} ${hint}`, code);
 }
 
 /** The context of one tool call. */
@@ -91,6 +93,15 @@ export function toolContext(services: McpServices, agent: AgentIdentity, signal:
     async engine(command, args) {
       try {
         return (await services.engine(command, args)) as CommandResult<typeof command>;
+      } catch (error) {
+        throw engineError(error);
+      }
+    },
+    async stream(command, args, onMessage) {
+      try {
+        return (await services.engine(command, args, (message) => {
+          onMessage(message as StreamMessage<typeof command>);
+        })) as CommandResult<typeof command>;
       } catch (error) {
         throw engineError(error);
       }

@@ -1,0 +1,335 @@
+/**
+ * An agent's requests about a board as a whole (design §6.3): creating a draft this window then holds
+ * in a background tab, changing a held board's pages and title as one undo step, and showing a board
+ * to the person.
+ *
+ * A new draft is created here, not in the main process, so this window claims it. Its pages are
+ * written with it, before it becomes a tab, so creating a board is no undo step. Page and title
+ * changes use the same pure edits as the page tabs' menus, saved at once (`saveStep`); deleting a
+ * page that holds a person's words is refused unless the call says the person asked for it.
+ */
+
+import type {
+  AgentBoardEditRequest,
+  AgentBoardEditResult,
+  AgentBoardOp,
+  AgentBoardOpResult,
+  AgentCreateRequest,
+  AgentCreateResult,
+  AgentFailure,
+  AgentPageSummary,
+  AgentShowRequest,
+  AgentShowResult,
+} from "@unfold/desktop/agent-api";
+import { produce, type Draft } from "immer";
+import type { BoardDocument, BoardState, Page } from "../../../ipc/generated";
+import { toUnfoldError } from "../../../ipc/unfold";
+import { activateBoard, assertTabRoom, openBoardTab } from "../../tabStore";
+import { addPage, deletePage, duplicatePage, findCard, findPage, renamePage, setTitle } from "../document";
+import { call } from "../engine";
+import { openBoard } from "../open";
+import { adoptBoardState, flushBoard, getOpenBoard, pushFocusMove, requestCardFocus, saveStep, select, setActivePage } from "../store";
+import type { BoardRef, PageTarget, Selection } from "../types";
+import { AgentRefusal, guardPeopleText, invalid } from "./context";
+
+function failure(code: string, message: string): AgentFailure {
+  return { ok: false, code, message };
+}
+
+function pagesOf(document: BoardDocument): AgentPageSummary[] {
+  return document.pages.map((page) => ({ id: page.id, title: page.title }));
+}
+
+function boardInfo(board: Pick<BoardState, "document" | "place" | "published" | "revision">) {
+  return { title: board.document.title, place: board.place, changes: board.published?.changes ?? 0, revision: board.revision };
+}
+
+/** What `save_board` takes: the title and pages. */
+function edited(document: BoardDocument) {
+  return { title: document.title, pages: document.pages };
+}
+
+/** Copies a board this window holds into a new draft, opened in a background tab. */
+async function copyBoard(source: BoardRef): Promise<BoardRef> {
+  if (!getOpenBoard(source)) {
+    throw new AgentRefusal("board_not_open", "This window doesn't hold the board to copy.");
+  }
+  await flushBoard(source);
+  const copy = await call("duplicate_board", source);
+  const opened = await openBoard({ project: source.project, id: copy.id }, { background: true });
+  if (opened.status !== "opened") {
+    throw new AgentRefusal("held", "Another window holds the copy.");
+  }
+  return opened.ref;
+}
+
+/** A new draft with its named pages, saved before it becomes a background tab. */
+async function newDraft(request: AgentCreateRequest): Promise<BoardRef> {
+  const { project } = request;
+  const [first, ...more] = request.pages ?? [];
+  const state = await call("new_board", {
+    project,
+    ...(request.title !== undefined ? { title: request.title } : {}),
+    ...(request.folder !== undefined ? { folder: request.folder } : {}),
+    ...(first !== undefined ? { pageTitle: first } : {}),
+  });
+  let saved = state;
+  if (more.length > 0) {
+    const document = produce(state.document, (draft) => {
+      for (const title of more) {
+        addPage(draft, { title });
+      }
+    });
+    saved = await savePages(state, document);
+  }
+  const ref = adoptBoardState(saved);
+  openBoardTab(ref, { activate: false });
+  return ref;
+}
+
+/** Saves a new draft's other pages; when that fails, the draft is let go with its first page. */
+async function savePages(state: BoardState, document: BoardDocument): Promise<BoardState> {
+  const { project } = state;
+  try {
+    return await call("save_board", { project, id: state.id, board: edited(document) });
+  } catch (error) {
+    // Nothing holds the half-made draft in a tab: let it go, and say what happened.
+    await call("close_board", { project, id: state.id }).catch(() => undefined);
+    const { message } = toUnfoldError(error);
+    throw new AgentRefusal("board_problem", `The draft “${state.document.title}” was created with one page, but its other pages couldn't be saved: ${message}`);
+  }
+}
+
+/** Creates a draft for an agent and holds it in a background tab (this window doesn't switch to it). */
+export async function createBoardForAgent(request: AgentCreateRequest): Promise<AgentCreateResult> {
+  try {
+    assertTabRoom();
+    const ref = request.copyOf === undefined ? await newDraft(request) : await copyBoard({ project: request.project, id: request.copyOf });
+    const board = getOpenBoard(ref);
+    if (!board) {
+      return failure("board_not_open", "The new draft closed before it could be read.");
+    }
+    return { ok: true, board: { project: ref.project, id: ref.id }, info: boardInfo(board), folder: board.document.folder ?? null, pages: pagesOf(board.document) };
+  } catch (error) {
+    if (error instanceof AgentRefusal) {
+      return failure(error.code, error.message);
+    }
+    const { code, message } = toUnfoldError(error);
+    return failure(code, message);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Pages and title
+
+function pageOf(document: Draft<BoardDocument>, id: string): Draft<Page> {
+  const page = document.pages.find((item) => item.id === id);
+  if (!page) {
+    throw new AgentRefusal("page_not_found", `The board has no page with id “${id}”. Its pages: ${document.pages.map((item) => `${item.title} (id ${item.id})`).join(", ")}.`);
+  }
+  return page;
+}
+
+function titleOf(text: string, what: string): string {
+  const title = text.trim();
+  if (title.length === 0) {
+    throw invalid(`${what} can't be blank.`);
+  }
+  return title;
+}
+
+/** Every text on a page and who wrote it, named as a person would find it. */
+function authoredTexts(page: Page): [string, string | undefined][] {
+  const card = (id: string) => `card “${id}”`;
+  return [
+    ...page.cards.flatMap((item): [string, string | undefined][] => (item.description ? [[`the description of ${card(item.id)}`, item.description.author]] : [])),
+    ...page.groups.flatMap((group): [string, string | undefined][] => [
+      [`the step group “${group.title}”`, group.author],
+      ...(group.description ? ([[`the description of the step group “${group.title}”`, group.description.author]] as [string, string][]) : []),
+    ]),
+    ...page.labels.map((label): [string, string | undefined] => [`the label “${label.text}”`, label.author]),
+    ...page.links.flatMap((link): [string, string | undefined][] => [
+      ...(link.label ? ([[`the label “${link.label.text}”`, link.label.author]] as [string, string][]) : []),
+      ...(link.description ? ([[`the description of link “${link.id}”`, link.description.author]] as [string, string][]) : []),
+    ]),
+    ...(page.frames ?? []).flatMap((frame): [string, string | undefined][] => [
+      [`the frame “${frame.title}”`, frame.author],
+      ...(frame.description ? ([[`the description of the frame “${frame.title}”`, frame.description.author]] as [string, string][]) : []),
+    ]),
+    ...(page.resources ?? []).flatMap((resource): [string, string | undefined][] => [
+      [`the ${resource.kind} “${resource.name}”`, resource.author],
+      ...(resource.description ? ([[`the description of “${resource.name}”`, resource.description.author]] as [string, string][]) : []),
+    ]),
+    ...(page.notes ?? []).map((note): [string, string | undefined] => [`the note “${note.text}”`, note.author]),
+  ];
+}
+
+/** Applies one operation to the draft document and says what it did. */
+function applyBoardOp(document: Draft<BoardDocument>, op: AgentBoardOp, replacePeopleText: boolean | undefined): AgentBoardOpResult {
+  switch (op.op) {
+    case "add_page": {
+      if (op.after !== undefined) {
+        pageOf(document, op.after);
+      }
+      const title = titleOf(op.title, "A page's title");
+      const id = addPage(document, { title, ...(op.after !== undefined ? { after: op.after } : {}) });
+      return { op: op.op, status: "created", page: id, title };
+    }
+    case "rename_page": {
+      const page = pageOf(document, op.page);
+      const title = titleOf(op.title, "A page's title");
+      if (page.title === title) {
+        return { op: op.op, status: "kept", page: page.id, title };
+      }
+      renamePage(document, page.id, title);
+      return { op: op.op, status: "updated", page: page.id, title };
+    }
+    case "move_page": {
+      const page = pageOf(document, op.page);
+      const from = document.pages.indexOf(page);
+      if (!Number.isInteger(op.to) || op.to < 0 || op.to >= document.pages.length) {
+        throw invalid(`A page moves to a position from 0 (first) to ${document.pages.length - 1} (last); ${op.to} isn't one.`);
+      }
+      if (from !== op.to) {
+        document.pages.splice(from, 1);
+        document.pages.splice(op.to, 0, page);
+      }
+      return { op: op.op, status: from === op.to ? "kept" : "updated", page: page.id, title: page.title };
+    }
+    case "duplicate_page": {
+      const source = pageOf(document, op.page);
+      const id = duplicatePage(document, source.id);
+      const copy = id === undefined ? undefined : document.pages.find((page) => page.id === id);
+      if (!copy) {
+        throw invalid(`The page “${source.title}” couldn't be copied.`);
+      }
+      if (op.title !== undefined) {
+        copy.title = titleOf(op.title, "A page's title");
+      }
+      return { op: op.op, status: "created", page: copy.id, title: copy.title };
+    }
+    case "delete_page": {
+      const page = pageOf(document, op.page);
+      if (document.pages.length === 1) {
+        throw invalid(`“${page.title}” is the board's only page, and a board keeps at least one. Add another page first, or rename this one.`);
+      }
+      for (const [what, author] of authoredTexts(page)) {
+        guardPeopleText(`${what} on the page “${page.title}”`, author, replacePeopleText);
+      }
+      const removed = { op: op.op, status: "removed", page: page.id, title: page.title } as const;
+      deletePage(document, page.id);
+      return removed;
+    }
+    case "set_title": {
+      const title = titleOf(op.title, "A board's title");
+      if (document.title === title) {
+        return { op: op.op, status: "kept", title };
+      }
+      setTitle(document, title);
+      return { op: op.op, status: "updated", title };
+    }
+  }
+}
+
+/** Changes a held board's pages and title as one undo step, saved at once. */
+export async function editBoardForAgent(request: AgentBoardEditRequest): Promise<AgentBoardEditResult> {
+  const ref: BoardRef = { project: request.board.project, id: request.board.id };
+  const board = getOpenBoard(ref);
+  if (!board) {
+    return failure("board_not_open", "This window doesn't hold the board.");
+  }
+  try {
+    const outcome = await saveStep(ref, board.activePage, `${request.agent.name} · ${request.title}`, (document) => {
+      let results: AgentBoardOpResult[] = [];
+      const next = produce(document, (draft) => {
+        results = request.ops.map((op) => applyBoardOp(draft, op, request.replacePeopleText));
+      });
+      return { document: next, value: results };
+    });
+    if (!outcome.ok) {
+      return failure(outcome.error.code, outcome.error.message);
+    }
+    const now = getOpenBoard(ref);
+    if (now && !findPage(now.document, now.activePage)) {
+      // The page the window showed was deleted: show the first page.
+      const first = now.document.pages[0];
+      if (first) {
+        setActivePage(ref, first.id);
+      }
+    }
+    return { ok: true, board: boardInfo(outcome.state), pages: pagesOf(outcome.state.document), results: outcome.value };
+  } catch (error) {
+    if (error instanceof AgentRefusal) {
+      return failure(error.code, error.message);
+    }
+    const { code, message } = toUnfoldError(error);
+    return failure(code, message);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Showing
+
+/** What showing an item selects, and the cards the camera brings into view. */
+function itemFocus(page: Page, id: string): { readonly selection: Selection | null; readonly cards: string[] } | null {
+  const isCard = (cardId: string) => findCard(page, cardId) !== undefined;
+  if (isCard(id)) {
+    return { selection: { kind: "card", cardId: id, key: null }, cards: [id] };
+  }
+  const group = page.groups.find((item) => item.id === id);
+  if (group) {
+    return { selection: { kind: "group", groupId: id }, cards: [group.card] };
+  }
+  const link = page.links.find((item) => item.id === id);
+  if (link) {
+    return { selection: { kind: "link", linkId: id }, cards: [link.from, link.to].filter(isCard) };
+  }
+  const frames = page.frames ?? [];
+  const members = (frameId: string): string[] =>
+    (frames.find((frame) => frame.id === frameId)?.members ?? []).flatMap((member) => (isCard(member) ? [member] : members(member)));
+  if (frames.some((frame) => frame.id === id)) {
+    return { selection: null, cards: members(id) };
+  }
+  if ((page.resources ?? []).some((resource) => resource.id === id)) {
+    const ends = page.links.flatMap((item) => (item.from === id ? [item.to] : item.to === id ? [item.from] : []));
+    return { selection: null, cards: ends.filter(isCard) };
+  }
+  const note = (page.notes ?? []).find((item) => item.id === id);
+  if (note) {
+    return { selection: null, cards: note.attach === undefined ? [] : (itemFocus(page, note.attach)?.cards ?? []) };
+  }
+  return null;
+}
+
+/**
+ * Shows a held board to the person: its tab, the page, and the item selected and centered (Back
+ * returns to where they were). The main process brings the window to the front.
+ */
+export function showForAgent(request: AgentShowRequest): AgentShowResult {
+  const ref: BoardRef = { project: request.board.project, id: request.board.id };
+  const board = getOpenBoard(ref);
+  if (!board) {
+    return failure("board_not_open", "This window doesn't hold the board.");
+  }
+  const page = findPage(board.document, request.page ?? board.activePage);
+  if (!page) {
+    return failure("page_not_found", `The board has no page with id “${request.page ?? ""}”. Its pages: ${board.document.pages.map((item) => `${item.title} (id ${item.id})`).join(", ")}.`);
+  }
+  const focus = request.item === undefined ? null : itemFocus(page, request.item);
+  if (request.item !== undefined && !focus) {
+    return failure("invalid_op", `There is no item with id “${request.item}” on the page “${page.title}”. read_page lists the page's ids.`);
+  }
+  const target: PageTarget = { board: ref, page: page.id };
+  activateBoard(ref);
+  setActivePage(ref, page.id);
+  if (focus) {
+    pushFocusMove(target);
+    if (focus.selection) {
+      select(target, focus.selection);
+    }
+    if (focus.cards.length > 0) {
+      requestCardFocus(target, focus.cards, focus.cards.length === 1 ? "center" : "fit");
+    }
+  }
+  return { ok: true, page: page.id };
+}

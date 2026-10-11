@@ -57,9 +57,10 @@ A board opens in a tab at the top of the window, and the sidebar switches to it:
 
 - **Pages:** the board's pages. **+** adds one (⌥⌘N); a page's `⋯` menu renames, duplicates, reorders, or deletes
   it.
-- **On this page:** the cards in the order you followed them, indented by call depth, with their groups and links.
+- **On this page:** the cards in the order you followed them, indented by call depth, with their groups and links,
+  and [frames](#frames) as headings with their cards under them.
 - **Selected:** the card you selected: where it is, its description, who calls it, which entrances reach it, and the
-  calls you haven't opened yet (**+ Open**).
+  calls you haven't opened yet (**+ Open**). For a frame: its description, what it holds, and the links in and out.
 
 The bar above the canvas shows the page, whether the board is a draft or published, the **Diagram | Flow | Code** switch,
 **Share**, and **Publish**. The dock at the bottom has **Add**, Back and Forward, the trail of calls you followed,
@@ -135,6 +136,26 @@ Boards are for explaining a path to someone else (or to yourself later):
 
 Everything you write is signed with your name. ⌘Z and ⇧⌘Z undo and redo board edits, on any page.
 
+## Frames
+
+A **frame** is a named box around cards: a unit of a few functions ("Request checks"), a service ("Order API"), or,
+drawn as a tinted **zone** with a large title, an area that holds services ("Backend"). Its icon says what it is (an
+API, a worker, a schedule, a command line, the web, a library, or a system). Frames nest up to three deep. An agent
+draws them for you ([Connecting an agent](#connecting-an-agent)); you adjust them:
+
+- **Collapse** a frame with its chevron: it becomes one box with its title, description, and what it holds ("3
+  functions · 1 table"), and the arrows and links of what's inside attach to it. The chevron expands it again.
+  Nothing collapses by itself.
+- **Rename** it by double-clicking its title. Right-click the title for its menu: Rename…, Describe… (write its
+  description in Selected), Collapse or Expand, Copy link, and **Remove frame (keep cards)**, which leaves its cards
+  where they are. What you write is yours.
+- **Move** it by dragging its title: everything in it moves with it, as one undo step.
+- **Arrange** (⇧A) lays out each frame's cards by call depth, to the right or downward as the frame says, then the
+  page around the frames.
+
+A frame's description remembers the code of the cards in it: when that code changes, Selected says so and offers to
+keep the text or remove it.
+
 **When the code changes.** Descriptions and labels remember the code they were written for. If that code changes,
 the card shows "Changed since it was described · Review", which lists what happened and offers repairs. Nothing is
 ever silently deleted.
@@ -154,7 +175,9 @@ the board menu, goes back to the published version. If someone else's version ar
 a change to the same board), Publish asks whether to keep yours or take theirs.
 
 **Move back to drafts**, in the board menu, takes a board out of the repository again. **Share** exports the page as
-a Mermaid diagram (`.mmd`), which renders in GitHub, GitLab, and many wikis, or copies it.
+a Mermaid diagram (`.mmd`), which renders in GitHub, GitLab, and many wikis, or copies it. **Share › Export PNG…**
+saves the page as an image, drawn as the board shows it (your unsaved changes included) at twice its size, named
+`<board> - <page>.png`.
 
 ## Boards across projects
 
@@ -255,6 +278,24 @@ The server listens on port 29180 unless you choose another; Preferences says so 
 It also lists the agents that connected, with when each last acted, and turning the switch off disconnects them all.
 The server answers only programs on this computer, never web pages, and an agent can add a folder to your workspace
 only after you confirm it in Unfold.
+
+What an agent can set up and read:
+
+- **Projects.** Add a folder (Unfold asks you first: "Claude wants to add `~/repos/payments` to your workspace."),
+  compile it, and change its settings: scope, detectors, Python projects, manual entrances, the project's name,
+  background updates, and evidence files. Settings live in `.unfold/config.toml`, which your team shares, so an agent
+  changes them only when you ask, and shows you the change.
+- **Boards.** Create a draft, empty or traced from an entrance, in a background tab of the window you used last, so
+  your view doesn't move; add, rename, move, copy, and delete pages; file boards into folders, rename them, and copy
+  them. A change to a board is one undo step named for the agent ("Claude · Edit pages"), and a page with your words
+  on it is deleted only when you asked for that. When you ask to see something, or the work is done, the agent shows
+  you the board, page, or card: the window comes forward with it selected, and Back returns you where you were.
+- **Code.** Search names and text, list how a project starts, and read a function (its source, Flow steps, throws,
+  and each call with where it goes and its label), a type's fields, an entrance's handlers, a call's contract, a file,
+  and who calls what. Reading changes nothing and never moves your view, and an agent sees source only when it is
+  the file Unfold compiled.
+
+Agents can't publish, discard, or delete boards, remove projects, change Preferences, or edit your code.
 
 ## What to commit
 

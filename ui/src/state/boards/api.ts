@@ -12,7 +12,8 @@ import { useMemo } from "react";
 import { queryClient } from "../../ipc/client";
 import type { Card, CardRef, CardView, Key, ProjectId, ProjectName, View } from "../../ipc/generated";
 import { cardQuery } from "../../canvas/cardData";
-import { fallbackSize, handlerPlacement, newCardPlacement, reflow, type Rect, type Size } from "../../canvas/layout";
+import { fallbackItemSize, pageGeometry } from "../../canvas/frames/geometry";
+import { handlerPlacement, newCardPlacement, type Rect } from "../../canvas/layout";
 import { measureText } from "../../canvas/measure";
 import { entranceCardText, entranceTitle } from "../../canvas/entranceText";
 import { entranceHandlerRows, estimatedCardSize } from "../../canvas/sizing";
@@ -38,6 +39,7 @@ import {
   updateGroup,
   type GroupChange,
 } from "./document";
+import { frameChain, removeFrame as removeFrameFrom, updateFrame, type FrameChange } from "./frames";
 import { cardRefKey, boardKey } from "./keys";
 import { newBoard } from "./open";
 import { editPage, getOpenBoard, getPageView, pushFocusMove, requestCardFocus, select, setActivePage, useBoards } from "./store";
@@ -49,23 +51,14 @@ function refOf(kind: "block" | "entrance", key: Key, project: ProjectName | unde
   return kind === "block" ? { block: key, ...named } : { entrance: key, ...named };
 }
 
-/** Each card's rectangle with its saved position reflowed by `sizeOf`, as the canvas draws them. */
-export function cardRects(cards: readonly Card[], sizeOf: (id: string) => Size): Map<string, Rect> {
-  const positions = reflow(cards, sizeOf);
-  return new Map(cards.map((card) => [card.id, { ...(positions.get(card.id) ?? { x: card.at[0], y: card.at[1] }), ...sizeOf(card.id) }]));
-}
-
-/** Every card's rectangle on a page as the canvas shows it (saved positions reflowed by measured sizes). */
-export function displayedRects(board: OpenBoard, pageId: PageId): Map<string, Rect> {
+/**
+ * Every drawn item's rectangle on a page as the canvas shows it (saved positions reflowed by measured
+ * sizes): its cards, frames' boxes, and collapsed frames' nodes (`pageGeometry`).
+ */
+export function displayedRects(board: OpenBoard, pageId: PageId): ReadonlyMap<string, Rect> {
   const page = findPage(board.document, pageId);
   const sizes = board.pages[pageId]?.sizes ?? {};
-  if (!page) {
-    return new Map();
-  }
-  return cardRects(page.cards, (id) => {
-    const card = findCard(page, id);
-    return sizes[id] ?? fallbackSize(card !== undefined && "entrance" in card.ref);
-  });
+  return page ? pageGeometry(page, (id) => sizes[id] ?? fallbackItemSize(page, id)).rects : new Map();
 }
 
 /** Shows a page: its board's tab and the page itself. */
@@ -74,18 +67,25 @@ function showPage(target: PageTarget): void {
   setActivePage(target.board, target.page);
 }
 
-/** Brings an existing card into view and selects it, unfolding it if it was folded to its title. */
+/**
+ * Brings an existing card into view and selects it, unfolding it if it was folded to its title and
+ * expanding the collapsed frames around it.
+ */
 export function focusCard(target: PageTarget, cardId: string): void {
   const board = getOpenBoard(target.board);
   const page = board ? findPage(board.document, target.page) : undefined;
   const card = page ? findCard(page, cardId) : undefined;
-  if (!card) {
+  if (!page || !card) {
     return;
   }
-  if (card.folded === true) {
+  const around = frameChain(page, cardId).filter((frame) => frame.collapsed === true);
+  if (card.folded === true || around.length > 0) {
     // Following into a folded card opens it; the reader never folds anything by itself.
     editPage(target, (draft) => {
       setCardsFolded(draft, [cardId], false);
+      for (const frame of around) {
+        updateFrame(draft, frame.id, { collapsed: false });
+      }
     });
   }
   select(target, { kind: "card", cardId, key: null });
@@ -287,10 +287,34 @@ export function ungroup(target: PageTarget, groupId: string): void {
   });
 }
 
-/** Removes a card from the page, with its groups and links. */
+/** Removes a card from the page, with its groups and links (and a frame it leaves empty). */
 export function removeCard(target: PageTarget, cardId: string): void {
   editPage(target, (page) => {
     removeCardFrom(page, cardId);
+  });
+}
+
+/** Selects a frame and brings it into view. */
+export function focusFrame(target: PageTarget, frameId: string): void {
+  select(target, { kind: "frame", frameId });
+  requestCardFocus(target, [frameId], "fit");
+}
+
+/** Renames, describes, or collapses a frame; typing in one field merges into one undo step. */
+export function editFrame(target: PageTarget, frameId: string, change: FrameChange): void {
+  editPage(
+    target,
+    (page) => {
+      updateFrame(page, frameId, change);
+    },
+    change.collapsed === undefined ? { coalesce: `frame:${frameId}` } : {},
+  );
+}
+
+/** Removes a frame from the page; what it holds stays, in the frame that held it. */
+export function removeFrame(target: PageTarget, frameId: string): void {
+  editPage(target, (page) => {
+    removeFrameFrom(page, frameId);
   });
 }
 

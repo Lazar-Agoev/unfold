@@ -44,6 +44,7 @@ export type Selection =
   | { readonly kind: "card"; readonly cardId: string; readonly key: Key | null }
   | { readonly kind: "group"; readonly groupId: string }
   | { readonly kind: "link"; readonly linkId: string }
+  | { readonly kind: "frame"; readonly frameId: string }
   /** A line between cards (its label opened into the call's contract). */
   | ({ readonly kind: "line" } & SelectedLine)
   /** An arrow from a Diagram node that stands for several calls: Selected lists them. */
@@ -194,6 +195,8 @@ export interface OpenBoard {
   pages: Record<PageId, PageView>;
   /** The page, a camera, or a lens changed since the last `save_board_view`. */
   viewDirty: boolean;
+  /** Shown read-only (the render window's page, which holds no claim): nothing of it is ever saved. */
+  readonly readOnly?: true;
 }
 
 /** What Move to New Window carries (plain JSON): the board as saved, its unsaved document, its history and view. */

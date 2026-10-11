@@ -5,10 +5,11 @@
 const MAX_STEM = 80;
 
 /**
- * `<title>.mmd` for a board or entrance title: characters that file systems reject become `-`, and
- * a board ID (`.unfold/boards/order-placement.json`) gives its file name's stem.
+ * `<title>.mmd` (or another `extension`) for a board, page, or entrance title: characters that file
+ * systems reject become `-`, and a board ID (`.unfold/boards/order-placement.json`) gives its file
+ * name's stem.
  */
-export function exportFileName(title: string | undefined): string {
+export function exportFileName(title: string | undefined, extension = "mmd"): string {
   const text = title ?? "";
   const name = /\.json$/i.test(text) ? (text.split("/").at(-1) ?? "").slice(0, -".json".length) : text;
   const stem = name
@@ -18,5 +19,5 @@ export function exportFileName(title: string | undefined): string {
     .replace(/^[.-]+|[.-]+$/g, "")
     .slice(0, MAX_STEM)
     .trim();
-  return `${stem || "board"}.mmd`;
+  return `${stem || "board"}.${extension}`;
 }

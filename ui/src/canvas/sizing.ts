@@ -1,20 +1,20 @@
 /**
  * Card widths: block cards size to their content between 280 and 880 px, entrance cards between 200
- * and 320 px, Diagram nodes between 240 and 400 px, and type cards between 280 and 560 px, measured
- * with the bundled fonts; longer lines soft-wrap and nothing scrolls inside a card. Heights follow from
+ * and 320 px, Diagram nodes and collapsed frames' nodes between 240 and 400 px, and type cards between
+ * 280 and 560 px, measured with the bundled fonts; longer lines soft-wrap and nothing scrolls inside a card. Heights follow from
  * the content and are measured by the canvas; before a card is drawn, its height and an entrance card's
  * handler rows are estimated from its model, so cards a step opens are placed in that step. The
  * constants follow cards.css, code.css, and types.css.
  */
 
-import type { CardView, CodeText, Description, Key, TypeDefinition, View } from "../ipc/generated";
+import type { CardView, CodeText, Description, Frame, Key, TypeDefinition, View } from "../ipc/generated";
 import type { Measure } from "../flow/layout";
 import { shortPath } from "../code/text";
 import { cardBody, keyTypeWord, memberName, memberValue, typeKindWord } from "../code/typeKinds";
 import { fieldRows } from "./arrows";
 import { entranceCardText, entranceTitle } from "./entranceText";
 import { ENTRANCE_MAX_WIDTH, ENTRANCE_MIN_WIDTH, clampCardWidth, fallbackSize, type Size } from "./layout";
-import { CODE_FONT, DESCRIPTION_FONT, LOCATION_FONT, METHOD_FONT, TITLE_FONT } from "./measure";
+import { CODE_FONT, DESCRIPTION_FONT, FRAME_TITLE_FONT, LOCATION_FONT, MARK_FONT, METHOD_FONT, TITLE_FONT } from "./measure";
 
 /** The card's border, left and right. */
 const BORDER = 2;
@@ -354,4 +354,35 @@ export function estimatedCardSize(input: EstimateInput, measure: Measure): Size 
     return { width, height: definition ? typeCardHeight(definition, descriptionHeight(description, null, measure)) : fallbackSize(false, body).height };
   }
   return estimatedBlockSize(model, monogram, measure);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Collapsed frames
+
+/** A collapsed frame's node sizes to its header between these widths; its description wraps inside. */
+const FRAME_NODE_MIN_WIDTH = 240;
+const FRAME_NODE_MAX_WIDTH = 400;
+/** Its header's chevron, icon, and the agent mark's glyph with its gap (frames.css). */
+const TOGGLE = 12;
+const ICON = 16;
+const MARK_GLYPH = 12;
+/** Its body's block padding, the gap before what it holds, and that line. */
+const FRAME_BODY_PADDING = 18;
+const HOLDS_GAP = 4;
+const HOLDS_LINE = 16;
+
+/** A collapsed frame's node width: its chevron, icon, title, and agent mark, clamped to 240–400. */
+export function frameNodeWidth(title: string, agent: boolean, measure: Measure): number {
+  const mark = agent ? GAP + MARK_GLYPH + measure("agent", MARK_FONT) : 0;
+  const header = PADDING * 2 + BORDER + TOGGLE + GAP + ICON + GAP + measure(title, FRAME_TITLE_FONT) + mark;
+  return clampCardWidth(header, FRAME_NODE_MIN_WIDTH, FRAME_NODE_MAX_WIDTH);
+}
+
+/** A collapsed frame's node: its width, and its header, wrapped description, and what it holds. */
+export function frameNodeSize(frame: Pick<Frame, "title" | "author" | "description">, measure: Measure): Size {
+  const width = frameNodeWidth(frame.title, frame.author.startsWith("agent:"), measure);
+  const room = Math.max(1, width - BORDER - PADDING * 2);
+  const lines = (frame.description?.text.split("\n") ?? []).reduce((count, paragraph) => count + Math.max(1, Math.ceil(measure(paragraph, DESCRIPTION_FONT) / room)), 0);
+  const header = HEADER_PADDING * 2 + TITLE_LINE + RULE;
+  return { width, height: BORDER + header + FRAME_BODY_PADDING + lines * DESCRIPTION_LINE + (lines > 0 ? HOLDS_GAP : 0) + HOLDS_LINE };
 }

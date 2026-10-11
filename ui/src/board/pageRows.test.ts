@@ -71,4 +71,24 @@ describe("On this page", () => {
     const own = pageRows(page("page-1", cards.slice(0, 3)), outline, context);
     expect(own.multiProject).toBe(false);
   });
+
+  it("lists frames as headings where their first card comes, what they hold under them, nested", () => {
+    const framed = page("page-1", cards, {
+      frames: [
+        { id: "system", title: "System", members: ["server", "charge"], look: "zone", author: "agent:claude" },
+        { id: "server", title: "Server", members: ["post-orders", "create-order"], look: "box", author: "agent:claude" },
+        { id: "empty", title: "Notes", members: ["a-note"], look: "box", author: "agent:claude" },
+      ],
+    });
+    const { rows } = pageRows(framed, outline, { ...context, items: [{ page: "page-1", kind: "outdated", target: { frame: "server" }, message: "Changed", repairs: [] }] });
+    expect(rows.map((row) => [row.kind, row.id, row.depth, row.review])).toEqual([
+      ["frame", "system", 0, false],
+      ["frame", "server", 1, true],
+      ["card", "post-orders", 2, false],
+      ["card", "create-order", 3, false],
+      ["card", "charge", 1, false],
+      ["card", "receipt", 0, false],
+      ["frame", "empty", 0, false],
+    ]);
+  });
 });

@@ -1,7 +1,8 @@
 /**
  * The agent channel (design §5.5, §5.6): how the main process has a window apply an agent's edits to
- * a board it holds, read a page it holds, open a board in a background tab, and end a piece of work,
- * and what each window reports about its view. Types only, so the UI imports them as
+ * a board it holds, read a page it holds, open a board in a background tab, create a board, change a
+ * board's pages and title, show a board to the person, and end a piece of work, and what each window
+ * reports about its view. Types only, so the UI imports them as
  * `@unfold/desktop/agent-api`.
  *
  * - main → window: the shell events of {@link AgentShellEvent};
@@ -38,8 +39,8 @@ export interface AgentPage {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Operations: one per write tool, with resolved arguments. Later tools add their own (frames,
-// resources, connections, notes).
+// Operations: one per write tool, with resolved arguments. Later tools add their own (resources,
+// connections, notes).
 
 /** One card `add_cards` puts on a page. */
 export interface AgentCardSpec {
@@ -51,6 +52,8 @@ export interface AgentCardSpec {
   readonly view?: AgentView;
   /** The id of an item on the page to place it beside; absent: beside the cards it relates to. */
   readonly near?: string;
+  /** The id of a frame of the page the cards it adds (following included) go into; cards already on the page stay where they are. */
+  readonly frame?: string;
   /**
    * Adds its call tree as well, following resolved calls only: what it calls (0–3 levels) and what
    * calls it (0–2 levels); and, for a type or class, the types its fields name, transitively (0–2
@@ -65,45 +68,97 @@ export interface AddCardsOp {
   readonly cards: readonly AgentCardSpec[];
 }
 
-/** How one item shows: a card's view and fold, or whether a step group is collapsed. */
+/** How one item shows: a card's view and fold, or whether a step group or a frame is collapsed. */
 export interface AgentViewSpec {
-  /** A card's or a step group's id. */
+  /** A card's, a step group's, or a frame's id. */
   readonly id: string;
   /** A card's view. */
   readonly view?: AgentView;
   /** Whether a card is folded to its title. */
   readonly folded?: boolean;
-  /** Whether a step group is collapsed. */
+  /** Whether a step group or a frame is collapsed. */
   readonly collapsed?: boolean;
 }
 
-/** Sets how cards and step groups show, and the page's default view. */
+/** Sets how cards, step groups, and frames show, and the page's default view. */
 export interface SetViewOp {
   readonly op: "set_view";
   readonly items: readonly AgentViewSpec[];
   readonly defaultView?: AgentView;
 }
 
-/** Where a card goes after Arrange: a canvas position, or just right of or below another card. */
+/**
+ * Where a card or a frame goes after Arrange: a canvas position (a frame's: its box's top-left), or
+ * just right of or below another card or frame. A frame moves with everything in it.
+ */
 export type AgentMove = { readonly id: string } & (
   | { readonly at: readonly [number, number] }
   | { readonly rightOf: string }
   | { readonly below: string }
 );
 
-/** Arranges the page by call depth (today's Arrange), then applies the moves in order. */
+/** The way a frame, or the page, lays its items out. */
+export type AgentDirection = "right" | "down";
+
+/**
+ * Arranges the page from the inside out (each frame, deepest first, by call depth and connections in
+ * its direction; then the page, each frame one node), or only the frame `frame`, whose box keeps its
+ * top-left; then applies the moves in order. `direction` lays out the page's top level for this call,
+ * or, with `frame`, becomes that frame's direction.
+ */
 export interface ArrangeOp {
   readonly op: "arrange";
+  readonly frame?: string;
+  readonly direction?: AgentDirection;
   readonly moves?: readonly AgentMove[];
 }
 
 /**
  * Takes items off the page: cards (with their step groups and the links that end at them), step
- * groups, and links. Refused when that removes text a person wrote, unless `replacePeopleText`.
+ * groups, links, and frames. A removed frame's members stay, in the frame that held it, unless
+ * `keepMembers` is false, which removes them too. What would dangle goes as well: a frame left with
+ * no members, and the links to it. Refused when that removes text a person wrote, unless
+ * `replacePeopleText`.
  */
 export interface RemoveItemsOp {
   readonly op: "remove_items";
   readonly ids: readonly string[];
+  readonly keepMembers?: boolean;
+  readonly replacePeopleText?: boolean;
+}
+
+/** How a frame is drawn: an outlined box with a title bar, or a tinted zone with a large title. */
+export type AgentFrameLook = "box" | "zone";
+
+/** What a frame is, as its icon. */
+export type AgentFrameIcon = "api" | "worker" | "schedule" | "cli" | "web" | "library" | "system";
+
+/** One frame `frame_cards` creates or updates. */
+export interface AgentFrameSpec {
+  /** An existing frame's id updates it; a new id names the new frame; absent: one from the title. */
+  readonly id?: string;
+  readonly title: string;
+  readonly description?: string;
+  /**
+   * The ids of the cards, resource cards, notes, and frames it holds, in order (at least one). An
+   * item can be in one frame: members may come from no frame, from this frame, or from `parent`. On
+   * an update, the items it held that aren't listed move to the frame that holds it (or out of every
+   * frame).
+   */
+  readonly members: readonly string[];
+  /** Absent: `box` for a new frame, unchanged for an existing one. */
+  readonly look?: AgentFrameLook;
+  readonly icon?: AgentFrameIcon;
+  /** The frame to nest it in; null takes it out of the frame that holds it; absent: unchanged (the page for a new frame). */
+  readonly parent?: string | null;
+  readonly direction?: AgentDirection;
+  readonly collapsed?: boolean;
+}
+
+/** Gathers items of a page into frames, or updates frames by id. Frames nest at most three deep. */
+export interface FrameCardsOp {
+  readonly op: "frame_cards";
+  readonly frames: readonly AgentFrameSpec[];
   readonly replacePeopleText?: boolean;
 }
 
@@ -129,7 +184,7 @@ export interface GroupStepsOp {
   readonly replacePeopleText?: boolean;
 }
 
-/** Writes descriptions of cards and step groups, and labels of links. */
+/** Writes descriptions of cards, step groups, and frames, and labels of links. */
 export interface DescribeOp {
   readonly op: "describe";
   readonly items: readonly { readonly id: string; readonly text: string }[];
@@ -147,7 +202,7 @@ export interface LabelStepsOp {
 }
 
 /** An agent's operation on a page, tagged by `op`. */
-export type AgentOp = AddCardsOp | SetViewOp | ArrangeOp | RemoveItemsOp | GroupStepsOp | DescribeOp | LabelStepsOp;
+export type AgentOp = AddCardsOp | SetViewOp | ArrangeOp | RemoveItemsOp | GroupStepsOp | DescribeOp | LabelStepsOp | FrameCardsOp;
 
 // ---------------------------------------------------------------------------------------------
 // Results
@@ -193,6 +248,8 @@ export interface AgentCardResult {
   readonly via?: { readonly from: string; readonly direction: "callees" | "callers" | "types"; readonly depth: number };
   /** Where following stopped at this card. */
   readonly stops?: readonly AgentFollowStop[];
+  /** The frame an operation put it in (`add_cards` with `frame`). */
+  readonly frame?: string;
 }
 
 /** A statement a step group holds. */
@@ -240,8 +297,32 @@ export interface AgentLabelResult {
   readonly name: string;
 }
 
+/** An item a frame holds: its id, what it is, and Unfold's name for it (a frame's title). */
+export interface AgentFrameMember {
+  readonly id: string;
+  readonly kind: "card" | "frame" | "resource" | "note";
+  readonly name: string;
+}
+
+/** A frame an operation created, changed, kept, or removed. */
+export interface AgentFrameResult {
+  readonly kind: "frame";
+  readonly id: string;
+  readonly status: AgentItemStatus;
+  /** Its title. */
+  readonly name: string;
+  readonly look: AgentFrameLook;
+  readonly icon?: AgentFrameIcon;
+  readonly direction?: AgentDirection;
+  readonly collapsed?: boolean;
+  /** The frame it is nested in. */
+  readonly parent?: string;
+  /** What it holds, in order. */
+  readonly members: readonly AgentFrameMember[];
+}
+
 /** One item in an edit's result, tagged by `kind`. */
-export type AgentItemResult = AgentCardResult | AgentGroupResult | AgentLinkResult | AgentLabelResult;
+export type AgentItemResult = AgentCardResult | AgentGroupResult | AgentLinkResult | AgentLabelResult | AgentFrameResult;
 
 /** The board a page is on, as the window holds it. */
 export interface AgentBoardInfo {
@@ -291,6 +372,61 @@ export type AgentReadResult = AgentReadSuccess | AgentFailure;
 export type AgentOpenResult = { readonly ok: true } | (AgentFailure & { readonly heldBy?: number });
 
 // ---------------------------------------------------------------------------------------------
+// Boards as a whole: creating one, its pages and title, and showing it to the person
+
+/** A page of a board: its id and title. */
+export interface AgentPageSummary {
+  readonly id: string;
+  readonly title: string;
+}
+
+/**
+ * One change to a board's pages or title. A page added or duplicated goes after `after` (a page id;
+ * absent: right after the page it copies, or last); `move_page` puts a page at `to` (0 is first).
+ * The only page of a board is never deleted.
+ */
+export type AgentBoardOp =
+  | { readonly op: "add_page"; readonly title: string; readonly after?: string }
+  | { readonly op: "rename_page"; readonly page: string; readonly title: string }
+  | { readonly op: "move_page"; readonly page: string; readonly to: number }
+  | { readonly op: "duplicate_page"; readonly page: string; readonly title?: string }
+  | { readonly op: "delete_page"; readonly page: string }
+  | { readonly op: "set_title"; readonly title: string };
+
+/** What one {@link AgentBoardOp} did: the page it made or changed (`page` absent for the title), and its title. */
+export interface AgentBoardOpResult {
+  readonly op: AgentBoardOp["op"];
+  readonly status: AgentItemStatus;
+  readonly page?: string;
+  readonly title: string;
+}
+
+/** An applied and saved board edit: the board, its pages in order, and what each operation did. */
+export interface AgentBoardEditSuccess {
+  readonly ok: true;
+  readonly board: AgentBoardInfo;
+  readonly pages: readonly AgentPageSummary[];
+  readonly results: readonly AgentBoardOpResult[];
+}
+
+export type AgentBoardEditResult = AgentBoardEditSuccess | AgentFailure;
+
+/** A draft a window created and holds in a background tab: its id, folder, and pages. */
+export interface AgentCreateSuccess {
+  readonly ok: true;
+  readonly board: AgentBoardRef;
+  readonly info: AgentBoardInfo;
+  /** Its folder, or null at the project's top level. */
+  readonly folder: string | null;
+  readonly pages: readonly AgentPageSummary[];
+}
+
+export type AgentCreateResult = AgentCreateSuccess | AgentFailure;
+
+/** The window shows a board: the page it switched to. */
+export type AgentShowResult = { readonly ok: true; readonly page: string } | AgentFailure;
+
+// ---------------------------------------------------------------------------------------------
 // Requests (shell events) and replies (window commands)
 
 /** Applies `ops` to a page of a board the window holds, as one undo step named "<agent> · <title>". */
@@ -319,6 +455,46 @@ export interface AgentOpenRequest {
   readonly page?: string;
 }
 
+/**
+ * Creates a draft in `project` and opens it in a background tab (the window claims it): empty, with
+ * one page per title in `pages` ("Page 1" when absent), or, with `copyOf`, a copy of a board of the
+ * project the window holds ("<title> copy", in the same folder).
+ */
+export interface AgentCreateRequest {
+  readonly requestId: number;
+  readonly project: string;
+  readonly title?: string;
+  /** Its folder (absent: the project's top level). */
+  readonly folder?: string;
+  readonly pages?: readonly string[];
+  /** The id of the board to copy. */
+  readonly copyOf?: string;
+}
+
+/**
+ * Changes a held board's pages or title as one undo step named "<agent> · <title>", saved at once.
+ * Deleting a page that holds text a person wrote is refused unless `replacePeopleText`.
+ */
+export interface AgentBoardEditRequest {
+  readonly requestId: number;
+  readonly board: AgentBoardRef;
+  readonly agent: AgentIdentity;
+  /** The tool's title, which names the undo step ("Edit pages"). */
+  readonly title: string;
+  readonly ops: readonly AgentBoardOp[];
+  readonly replacePeopleText?: boolean;
+}
+
+/** Shows a held board to the person: its tab, a page, and an item selected and centered. */
+export interface AgentShowRequest {
+  readonly requestId: number;
+  readonly board: AgentBoardRef;
+  /** The page (absent: the page the board shows). */
+  readonly page?: string;
+  /** An item of the page to select and center. */
+  readonly item?: string;
+}
+
 /** Ends an agent's piece of work on a board: its working marks clear and its summary shows as a toast. */
 export interface AgentFinish {
   readonly board: AgentBoardRef;
@@ -336,6 +512,9 @@ export type AgentShellEvent =
   | ShellEventOf<"agent_read", AgentReadRequest>
   | ShellEventOf<"agent_open_board", AgentOpenRequest>
   | ShellEventOf<"agent_finish", AgentFinish>
+  | ShellEventOf<"agent_create_board", AgentCreateRequest>
+  | ShellEventOf<"agent_edit_board", AgentBoardEditRequest>
+  | ShellEventOf<"agent_show", AgentShowRequest>
   /** The MCP server started, stopped, or failed, or an agent connected or acted (sent to every window). */
   | { readonly type: "agent_server_changed"; readonly status: AgentServerStatus };
 
@@ -346,6 +525,7 @@ export type ViewSelection =
   /** A Flow step or a statement of a card. */
   | { readonly kind: "step"; readonly card: string; readonly key: string }
   | { readonly kind: "group"; readonly id: string }
+  | { readonly kind: "frame"; readonly id: string }
   | { readonly kind: "link"; readonly id: string }
   /** A line between two cards: a call (`seq` 0) or a passed reference, by its occurrence. */
   | {
@@ -375,7 +555,7 @@ export interface ViewReport {
   readonly selection: ViewSelection;
   /** The page's lens, or its default view. */
   readonly lens?: AgentView;
-  /** The ids of the page's cards, step groups, and links in view. */
+  /** The ids of the page's cards, step groups, links, and frames in view. */
   readonly visible: readonly string[];
   /** Every board tab of the window, in order: the boards it holds. */
   readonly tabs: readonly AgentBoardRef[];
@@ -391,6 +571,12 @@ export interface AgentWindowCommands {
   agent_read_result: { args: { requestId: number; result: AgentReadResult }; result: null };
   /** The answer to an `agent_open_board`. */
   agent_open_board_result: { args: { requestId: number; result: AgentOpenResult }; result: null };
+  /** The answer to an `agent_create_board`. */
+  agent_create_board_result: { args: { requestId: number; result: AgentCreateResult }; result: null };
+  /** The answer to an `agent_edit_board`. */
+  agent_edit_board_result: { args: { requestId: number; result: AgentBoardEditResult }; result: null };
+  /** The answer to an `agent_show`. */
+  agent_show_result: { args: { requestId: number; result: AgentShowResult }; result: null };
   /** The MCP server's state, for Preferences › Agents (`agent_server_changed` follows it). */
   agent_server_status: { args: Record<string, never>; result: AgentServerStatus };
 }

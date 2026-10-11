@@ -1,17 +1,18 @@
 /**
  * Selected: what is selected on the page, pinned to the bottom of the board sidebar under a rule. A
- * card, a Flow node inside one, a group, a drawn link, a line between cards, or the calls an arrow from
- * a Diagram node stands for; a hint when nothing is. It takes at most half
+ * card, a Flow node inside one, a group, a drawn link, a frame, a line between cards, or the calls an
+ * arrow from a Diagram node stands for; a hint when nothing is. It takes at most half
  * the sidebar's height and scrolls on its own; its collapse is remembered per window.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { cardQuery } from "../../canvas";
 import { IconButton, SectionLabel } from "../../components";
-import { cardKey, findCard, findPage, useOpenBoard, usePageView, useResolvedCardProject, type PageTarget } from "../../state/boards";
+import { cardKey, findCard, findFrame, findPage, useOpenBoard, usePageView, useResolvedCardProject, type PageTarget } from "../../state/boards";
 import { setSelectedCollapsed, useLayout } from "../../state/layout";
 import { SelectedCalls } from "./SelectedCalls";
 import { SelectedCard } from "./SelectedCard";
+import { SelectedFrame } from "./SelectedFrame";
 import { SelectedGroup } from "./SelectedGroup";
 import { SelectedLine } from "./SelectedLine";
 import { SelectedLink } from "./SelectedLink";
@@ -51,13 +52,19 @@ function SelectedBody({ target }: { readonly target: PageTarget }) {
       return <SelectedLink key={link.id} target={target} link={link} />;
     }
   }
+  if (page && selection.kind === "frame") {
+    const frame = findFrame(page, selection.frameId);
+    if (frame) {
+      return <SelectedFrame key={frame.id} target={target} frame={frame} />;
+    }
+  }
   if (page && selection.kind === "line") {
     return <SelectedLine key={selection.arrowId} target={target} line={selection} />;
   }
   if (page && selection.kind === "calls") {
     return <SelectedCalls key={selection.arrowId} target={target} calls={selection} />;
   }
-  return <p className="selected-note">Select a card, a group, or a link to see it here.</p>;
+  return <p className="selected-note">Select a card, a group, a frame, or a link to see it here.</p>;
 }
 
 export function SelectedSection({ target }: { readonly target: PageTarget }) {

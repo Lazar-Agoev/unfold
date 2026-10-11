@@ -1,0 +1,5 @@
+/* The render window: the canvas fills the window, with nothing around it. */
+.render-stage {
+  position: fixed;
+  inset: 0;
+}

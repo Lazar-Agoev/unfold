@@ -1,31 +1,41 @@
-/** What a click on a card does: select it (or a node inside it), or, in link mode, finish the link. */
+/** What a click on a card or a frame does: select it (or a node inside a card), or, in link mode, finish the link. */
 
 import type { Key } from "../../ipc/generated";
 import { requestFocus } from "../../keyboard";
-import { addLink, getPageView, select, setLinking, type PageTarget } from "../../state/boards";
+import { addLink, getPageView, select, setLinking, type PageTarget, type Selection } from "../../state/boards";
 import { setSelectedCollapsed } from "../../state/layout";
 
 /** The focus target of the selected link's label field in the sidebar. */
 export const LINK_LABEL_FIELD = "selected.linkLabel";
 
 /**
- * Selects a card (`key`: a Flow node or statement in it). While a link is being drawn, a click on
- * another card draws it and selects it, with its label field focused; a click on the first card waits.
+ * Selects `selection` (of item `id`). While a link is being drawn, a click on another card or frame
+ * draws it and selects it, with its label field focused; a click on where it starts waits.
  */
-export function clickCard(target: PageTarget, cardId: string, key: Key | null): void {
+function clickItem(target: PageTarget, id: string, selection: Selection): void {
   const linking = getPageView(target).linking;
   if (!linking) {
-    select(target, { kind: "card", cardId, key });
+    select(target, selection);
     return;
   }
-  if (linking.from === cardId) {
+  if (linking.from === id) {
     return;
   }
   setLinking(target, null);
-  const linkId = addLink(target, linking.from, cardId);
+  const linkId = addLink(target, linking.from, id);
   if (linkId !== undefined) {
     select(target, { kind: "link", linkId });
     setSelectedCollapsed(false);
     requestFocus(LINK_LABEL_FIELD);
   }
+}
+
+/** Selects a card (`key`: a Flow node or statement in it), or finishes the link being drawn there. */
+export function clickCard(target: PageTarget, cardId: string, key: Key | null): void {
+  clickItem(target, cardId, { kind: "card", cardId, key });
+}
+
+/** Selects a frame, or finishes the link being drawn there. */
+export function clickFrame(target: PageTarget, frameId: string): void {
+  clickItem(target, frameId, { kind: "frame", frameId });
 }

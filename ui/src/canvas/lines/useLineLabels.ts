@@ -1,7 +1,8 @@
 /**
  * The closed labels of a page's lines: one `line_labels` call per project for every call and
  * reference arrow on the page (in chunks of 500, the command's limit). Handler and type arrows have
- * none, and neither has an arrow that stands for several calls (it reads "3 calls").
+ * none, and neither has an arrow that stands for several calls (it reads "3 calls"), at a Diagram
+ * node or a collapsed frame.
  * Labels stay shown while a changed page asks again; `graph_updated` of the project asks again.
  */
 
@@ -21,7 +22,7 @@ export function lineKey(project: ProjectId, source: string, seq: number): string
 
 /** Whether an arrow draws one call or passed reference, whose line has a typed label. */
 export function hasLineLabel(arrow: Arrow): boolean {
-  return arrow.kind !== "handler" && arrow.kind !== "type" && arrow.calls === undefined;
+  return arrow.kind !== "handler" && arrow.kind !== "type" && arrow.calls === undefined && arrow.merged === undefined;
 }
 
 /** The calls a page's arrows need: per project, its distinct lines in order, at most 500 per call. */

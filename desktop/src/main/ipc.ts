@@ -4,13 +4,16 @@
  * commands end in an engine request the main process sends itself, with `"trusted": true`
  * (`add_project`, `export_mermaid`), because they involve a path only the main process may choose.
  * The agent channel's commands (`report_view` and the answers to agent requests) go to the agent bridge;
- * `agent_server_status` reads the MCP server's state for Preferences › Agents.
+ * `agent_server_status` reads the MCP server's state for Preferences › Agents. The render window may
+ * send only `render_ready`, its answers; `export_png` has it draw a page for the person.
  */
 
+import { writeFile } from "node:fs/promises";
 import { clipboard, ipcMain } from "electron";
 import type { ExportedFile, TransportError, WindowCommand, WindowCommands, WindowInfo } from "../shared/unfold-api";
 import { IPC, PRELOAD_COMMANDS, transportError, type WindowReply } from "../shared/transport";
 import type { AgentBridge } from "./agents/bridge";
+import type { PageRenderer } from "./agents/render";
 import { parseViewReport } from "./agents/views";
 import type { UiSource } from "./app-url";
 import { chooseExportPath, chooseFolder, confirmRemoveProject } from "./dialogs";
@@ -49,9 +52,10 @@ export interface WindowCommandServices {
   readonly ui: UiSource;
   readonly agents: Pick<AgentBridge, "views" | "settle">;
   readonly mcp: Pick<McpService, "status">;
+  readonly renderer: Pick<PageRenderer, "owns" | "settle" | "screenshot">;
 }
 
-export function registerWindowCommands({ registry, workspace, engine, ui, agents, mcp }: WindowCommandServices): void {
+export function registerWindowCommands({ registry, workspace, engine, ui, agents, mcp, renderer }: WindowCommandServices): void {
   const handlers: { [C in WindowCommand]: Handler<C> } = {
     new_window: () => ({ windowId: registry.create().id }),
     focus_window: (_entry, args) => {
@@ -98,6 +102,23 @@ export function registerWindowCommands({ registry, workspace, engine, ui, agents
       }
       return (await engineRequest(entry.id, "export_mermaid", { ...source.args, path })) as ExportedFile;
     },
+    export_png: async (entry, args) => {
+      const { project, board, page, title } = args;
+      if (typeof project !== "string" || typeof board !== "string" || typeof page !== "string" || (title !== undefined && typeof title !== "string")) {
+        throw invalid("export_png: pass {project, board, page} (strings), and an optional title.");
+      }
+      const path = await chooseExportPath(entry.window, exportFileName(title ?? board, "png"), "png");
+      if (path === null) {
+        return null;
+      }
+      // Twice the size, so it stays sharp on a high-density screen or in a document.
+      const image = await renderer.screenshot({ board: { project, id: board }, page, scale: 2 });
+      if (!image.ok) {
+        throw new CommandError({ code: image.code, message: image.message });
+      }
+      await writeFile(path, image.png);
+      return { path, bytes: image.png.length };
+    },
     move_tab_to_new_window: () => ({ windowId: registry.create().id }),
     transfer_board_state: (entry, args) => {
       const toWindow = args["toWindow"];
@@ -141,7 +162,22 @@ export function registerWindowCommands({ registry, workspace, engine, ui, agents
       agents.settle(entry.id, "open", args["requestId"], args["result"]);
       return null;
     },
+    agent_create_board_result: (entry, args) => {
+      agents.settle(entry.id, "create", args["requestId"], args["result"]);
+      return null;
+    },
+    agent_edit_board_result: (entry, args) => {
+      agents.settle(entry.id, "board", args["requestId"], args["result"]);
+      return null;
+    },
+    agent_show_result: (entry, args) => {
+      agents.settle(entry.id, "show", args["requestId"], args["result"]);
+      return null;
+    },
     agent_server_status: () => mcp.status(),
+    render_ready: () => {
+      throw invalid("render_ready: only the render window answers render requests.");
+    },
   };
 
   /** Commands the preload sends on the person's behalf, outside `window.unfold.window`. */
@@ -173,6 +209,13 @@ export function registerWindowCommands({ registry, workspace, engine, ui, agents
 
   ipcMain.handle(IPC.windowCommand, async (event, command: unknown, args: unknown): Promise<WindowReply> => {
     const sender = trustedSender(ui, event);
+    if (sender && renderer.owns(sender)) {
+      if (command !== "render_ready" || !isRecord(args)) {
+        return { ok: false, error: transportError("invalid_command", "The render window may only answer render requests.") };
+      }
+      renderer.settle(args["requestId"], args["result"]);
+      return { ok: true, value: null };
+    }
     const entry = sender ? registry.forWebContents(sender) : undefined;
     if (!entry) {
       return { ok: false, error: transportError("invalid_command", "Window commands are accepted only from Unfold windows.") };

@@ -52,7 +52,8 @@ UI ◄── window.unfold.on(type, ...) ◄────────────
   requests over the utility process's parent port (`{type:"request", id, windowId, command, args,
   trusted}`, answered `{type:"result", id, ok, …}`; `desktop/src/shared/transport.ts`). Its MCP
   server's requests for agents go with `trusted: false` and window `0`, and the router treats them as
-  a window's: a trusted-only command is refused with `untrusted`.
+  a window's: a trusted-only command is refused with `untrusted`. A streamed one (`search_text`) sent
+  with `stream: true` gets each stream message as `{type:"stream", id, message}` before its result.
 - **Paths, per project.** Every path a window names is relative to the folder of the project the
   command names, `/`-separated, and confined there: `..`, absolute paths, backslashes, and symlinks
   that leave the folder are rejected with `invalid_path`
@@ -286,6 +287,7 @@ The main process handles the window and dialog commands (`window.unfold.window(c
 | `add_project` | The folder picker, then the trusted `add_project`; `null` when cancelled |
 | `confirm_remove_project` | The native confirmation ("Remove <name> from the workspace? Its .unfold folder stays."); the UI then calls `remove_project` |
 | `export_mermaid` | The save dialog, then the trusted `export_mermaid` for the calling window; `null` when cancelled |
+| `export_png` | `{project, board, page, title?}`: the save dialog, then the render window draws the page (unsaved edits included) at scale 2 and the main process writes the PNG; `{path, bytes}`, or `null` when cancelled |
 | `move_tab_to_new_window` | Opens a window for a tab and resolves with its id at once; the UI then calls `move_board` and `transfer_board_state` |
 | `transfer_board_state` | Hands a board's window-side state (its unsaved version and undo history) to another window, which gets `board_state_transferred` |
 | `copy_to_clipboard` | Writes text to the clipboard (windows have no clipboard permission) |
@@ -294,16 +296,23 @@ The main process handles the window and dialog commands (`window.unfold.window(c
 | `agent_edit_result` | `{requestId, result}`: the answer to an `agent_edit` (`{ok: true, page, board, items, warnings}` or `{ok: false, code, message}`) |
 | `agent_read_result` | `{requestId, result}`: the answer to an `agent_read` (`{ok: true, page, board}` or a refusal) |
 | `agent_open_board_result` | `{requestId, result}`: the answer to an `agent_open_board` (`{ok: true}`, or a refusal with `heldBy`) |
+| `agent_create_board_result` | `{requestId, result}`: the answer to an `agent_create_board` (`{ok: true, board, info, folder, pages}`: the draft this window now holds, or a refusal) |
+| `agent_edit_board_result` | `{requestId, result}`: the answer to an `agent_edit_board` (`{ok: true, board, pages, results}`: the board as saved, its pages in order, and what each operation did, or a refusal) |
+| `agent_show_result` | `{requestId, result}`: the answer to an `agent_show` (`{ok: true, page}`, or a refusal) |
+| `render_ready` | `{requestId, result}`: the render window's answer to `render_page` (`{ok: true, bounds?, checks?}`) or `render_frame` (`{ok: true}`), or a refusal; only the render window may send it, and it may send nothing else |
 | `agent_server_status` | The MCP server's state for Preferences › Agents: `{state, port, address, message?, agents}` (`off`, `starting`, `listening`, `port_taken`, or `failed`; each connected agent with when it was last seen and last acted) |
 
 `window.unfold.addDroppedFolder(file)` adds a folder dropped on the window as a project. Shell events
 arrive through `window.unfold.on` like engine events: `menu_command` (an application-menu item the
 window runs as an action), `board_state_transferred`, `focus_board`, `project_added` (select it),
 `project_add_failed` (say why), and the agent channel's `agent_edit`, `agent_read`,
-`agent_open_board`, `agent_finish`, and `agent_server_changed` (the MCP server's state, sent to every
+`agent_open_board`, `agent_create_board`, `agent_edit_board`, `agent_show`, `agent_finish`, and
+`agent_server_changed` (the MCP server's state, sent to every
 window when it changes) (`desktop/src/shared/agent-api.ts`; how they travel is in
 [desktop/README.md](../desktop/README.md#the-agent-bridge), what the window does with them in
-[the UI shell](ui-shell.md#agents-in-the-window)).
+[the UI shell](ui-shell.md#agents-in-the-window)). The render window gets `render_page` (a page to draw, for an
+image or the page checks) and `render_frame` (the camera to capture it with) (`desktop/src/shared/render-api.ts`;
+[desktop/README.md](../desktop/README.md#the-render-window), [the UI shell](ui-shell.md#the-render-window)).
 
 ## Events
 

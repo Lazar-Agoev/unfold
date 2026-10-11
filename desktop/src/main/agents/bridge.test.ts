@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentEditSuccess, AgentShellEvent, ViewReport } from "../../shared/agent-api";
-import type { FakeBrowserWindow } from "../fake-electron";
-import { resetFakeElectron } from "../fake-electron";
+import { FakeBrowserWindow, resetFakeElectron } from "../fake-electron";
 import type { WindowEntry } from "../windows";
 import { WindowRegistry } from "../windows";
 import { AgentBridge, type AgentEditInput } from "./bridge";
@@ -251,6 +250,85 @@ describe("answers", () => {
     bridge.settle(holder.id, "edit", "1", SAVED);
     bridge.settle(holder.id, "edit", sent.requestId, { ok: true, page: PAGE });
     expect(await outcome).toEqual({ ok: false, code: "internal", message: "The window answered with a malformed result." });
+  });
+});
+
+describe("boards as a whole", () => {
+  const CREATED = { ok: true, board: BOARD, info: BOARD_INFO, folder: null, pages: [{ id: "page-1", title: "Page 1" }] };
+
+  it("has the window used last create a draft, which it then holds", async () => {
+    const { bridge, views, open } = setup();
+    const other = open();
+    const last = open();
+    last.window.focus();
+    const outcome = bridge.create({ project: BOARD.project, title: "Order placement", pages: ["Page 1"] });
+    const sent = await request(last, 1);
+    expect(sent).toMatchObject({ type: "agent_create_board", project: BOARD.project, title: "Order placement", pages: ["Page 1"] });
+    bridge.settle(last.id, "create", sent.requestId, CREATED);
+    expect(await outcome).toEqual({ ...CREATED, windowId: last.id });
+    expect(views.holder(BOARD)).toBe(last.id);
+    expect(requests(other)).toEqual([]);
+  });
+
+  it("copies a board in the window that holds it", async () => {
+    const { bridge, views, open } = setup();
+    const holder = open();
+    const last = open();
+    views.report(holder.id, report([BOARD]));
+    last.window.focus();
+    const copy = { ...CREATED, board: { project: BOARD.project, id: ".unfold/local/drafts/orders-copy.json" } };
+    const outcome = bridge.create({ project: BOARD.project, copyOf: BOARD.id });
+    const sent = await request(holder, 1);
+    expect(sent).toMatchObject({ type: "agent_create_board", copyOf: BOARD.id });
+    bridge.settle(holder.id, "create", sent.requestId, copy);
+    expect(await outcome).toMatchObject({ ok: true, windowId: holder.id });
+    expect(views.holder(copy.board)).toBe(holder.id);
+    expect(requests(last)).toEqual([]);
+  });
+
+  it("edits a board's pages in the window that holds it, opening it there first when none does", async () => {
+    const { bridge, open } = setup();
+    const last = open();
+    last.window.focus();
+    const edit = { board: BOARD, agent: EDIT.agent, title: "Edit pages", ops: [{ op: "add_page", title: "More" }] } as const;
+    const outcome = bridge.editBoard(edit);
+    const opening = await request(last, 1);
+    bridge.settle(last.id, "open", opening.requestId, { ok: true });
+    const sent = await request(last, 2);
+    expect(sent).toMatchObject({ type: "agent_edit_board", ...edit });
+    const done = { ok: true, board: BOARD_INFO, pages: [{ id: "page-1", title: "Page 1" }, { id: "page-2", title: "More" }], results: [{ op: "add_page", status: "created", page: "page-2", title: "More" }] };
+    bridge.settle(last.id, "board", sent.requestId, done);
+    expect(await outcome).toEqual(done);
+
+    const malformed = bridge.editBoard(edit);
+    const again = await request(last, 3);
+    bridge.settle(last.id, "board", again.requestId, { ok: true, board: BOARD_INFO });
+    expect(await malformed).toMatchObject({ ok: false, code: "internal" });
+  });
+
+  it("shows a board: the holding window switches to it and comes to the front, or a background tab only", async () => {
+    const { bridge, views, open } = setup();
+    const holder = open();
+    const last = open();
+    views.report(holder.id, report([BOARD]));
+    last.window.focus();
+
+    const shown = bridge.show({ board: BOARD, page: "page-1", item: "create-order" }, false);
+    const sent = await request(holder, 1);
+    expect(sent).toMatchObject({ type: "agent_show", board: BOARD, page: "page-1", item: "create-order" });
+    bridge.settle(holder.id, "show", sent.requestId, { ok: true, page: "page-1" });
+    expect(await shown).toEqual({ ok: true, windowId: holder.id, page: "page-1" });
+    expect(FakeBrowserWindow.focused).toBe(holder.window);
+
+    last.window.focus();
+    const refused = bridge.show({ board: BOARD, item: "nope" }, false);
+    const second = await request(holder, 2);
+    bridge.settle(holder.id, "show", second.requestId, { ok: false, code: "invalid_op", message: "No item nope." });
+    expect(await refused).toMatchObject({ ok: false, code: "invalid_op" });
+    expect(FakeBrowserWindow.focused).toBe(last.window);
+
+    expect(await bridge.show({ board: BOARD }, true)).toEqual({ ok: true, windowId: holder.id });
+    expect(requests(holder)).toHaveLength(2);
   });
 });
 
