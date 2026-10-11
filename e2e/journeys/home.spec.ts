@@ -72,7 +72,7 @@ test.describe("Home", () => {
       await expect(server.locator(".home-launch-folder").first()).toHaveText("ts-orders $");
       await expect(server).toContainText("npm run start");
       await expect(server).toContainText("npm run dev");
-      await expect(server.getByText(/^\d+ routes$/)).toBeVisible();
+      await expect(server.getByText(/^\d+ routes$/)).toHaveCount(2);
       // A launch into code that isn't indexed keeps its row, and says so.
       await expect(howItStarts(page).locator(".home-launch").filter({ hasText: "npm run legacy:export" })).toContainText("not indexed");
     });

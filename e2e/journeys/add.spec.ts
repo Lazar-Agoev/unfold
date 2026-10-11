@@ -42,7 +42,7 @@ test.describe("Add", () => {
 
       await lookInItem(page, "server").click();
       await expect(lookInItem(page, "server")).toHaveAttribute("aria-selected", "true");
-      await expect(addBox(page).getByRole("heading", { name: "server", exact: true })).toBeVisible();
+      await expect(addBox(page).locator(".add-browse-header").getByRole("heading", { name: "server", exact: true })).toBeVisible();
       await expect(entranceRow(page, /^Launch npm run start/)).toBeVisible();
       await expect(entranceRow(page, "POST /orders on page")).toBeVisible();
       await expect(entranceRow(page, "GET /health")).toBeVisible();
@@ -217,7 +217,7 @@ test.describe("Add", () => {
       await expect(line("src/cli.ts", 19)).toBeVisible();
       await expect(line("src/lib/retry.ts", 11)).toBeVisible();
       await expect(line("src/cli.ts", 18)).toBeHidden();
-      await expect(addTab(page, "Text")).toHaveText(/^Text\s*6$/);
+      await expect(addTab(page, "Text")).toHaveText(/^Text\s*8$/);
     });
   });
 

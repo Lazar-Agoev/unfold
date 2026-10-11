@@ -39,8 +39,8 @@
                 "kind": "Node file"
               },
               "importPaths": [],
-              "reaches": 33,
-              "routes": null,
+              "reaches": 37,
+              "routes": 8,
               "declaredIn": {
                 "path": "package.json",
                 "line": 9
@@ -71,8 +71,8 @@
                 "kind": "Node file"
               },
               "importPaths": [],
-              "reaches": 33,
-              "routes": null,
+              "reaches": 37,
+              "routes": 8,
               "declaredIn": {
                 "path": "package.json",
                 "line": 10

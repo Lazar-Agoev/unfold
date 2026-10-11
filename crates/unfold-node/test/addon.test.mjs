@@ -142,8 +142,11 @@ describe("unfold-node addon", { skip: built ? false : "the addon is not built: r
     await sinkMessage((m) => m.kind === "stream" && m.windowId === 1 && m.requestId === requestId);
     await sinkMessage((m) => broadcast(m, "graph_updated"));
 
-    const map = await dispatch(2, "entrances", { project });
-    const entrance = [...map.applications.flatMap((app) => app.entrances), ...map.unreached.entrances][0];
+    const overview = await dispatch(2, "entrances", { project });
+    const application = overview.categories.flatMap((category) => category.applications)[0];
+    assert.ok(application, "ts-orders has applications");
+    const scope = await dispatch(2, "entrances", { project, application: application.id });
+    const entrance = scope.rows.find((row) => row.kind !== "launch");
     assert.ok(entrance, "ts-orders has entrances");
     const card = await dispatch(2, "card", { project, key: entrance.key });
     assert.equal(typeof card.type, "string");

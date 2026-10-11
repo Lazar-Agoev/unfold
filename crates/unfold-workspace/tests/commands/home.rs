@@ -117,6 +117,13 @@ fn entrances_are_paged_filtered_and_ordered_per_application() {
         .iter()
         .find(|application| application["routes"].as_u64().is_some_and(|routes| routes > 0))
         .expect("an application with routes");
+    // An Express server isn't an ASGI application: each launch serves the routes its
+    // application proves it reaches.
+    let server_launches = server["launches"].as_array().expect("launches");
+    assert_eq!(server_launches.len(), 2, "npm run start and npm run dev");
+    for launch in server_launches {
+        assert_eq!(launch["routes"], server["routes"], "{launch}");
+    }
     let scope = |args: Value| {
         let mut args = args;
         args["project"] = json!(harness.project);

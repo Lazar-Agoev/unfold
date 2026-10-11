@@ -30,7 +30,7 @@ use unfold_reader::ReaderIndex;
 use unfold_reader::launches::{LaunchState, folder_label, launch_state, schedule_gloss, start_kind};
 use unfold_reader::mermaid::entrance_title;
 use unfold_reader::notes::reason_text;
-use unfold_store::{Application, Membership, Reader};
+use unfold_store::{Application, Basis, Membership, Reader};
 
 use super::count;
 use crate::error::WorkspaceError;
@@ -360,6 +360,8 @@ pub(crate) struct Catalog {
     /// Each application's members, by application position (entrance positions, in canonical
     /// order).
     members: Vec<Vec<usize>>,
+    /// Each application's proven members, by application position (a subset of its members).
+    proven: Vec<Vec<usize>>,
     /// Each entrance's declaration, by entrance position: entrances with equal numbers are one
     /// declaration (a route two applications mount from one router at the same path).
     pub(crate) declaration: Vec<u32>,
@@ -399,6 +401,7 @@ impl Catalog {
             .collect();
         let mut apps_of = vec![Vec::new(); entrances.len()];
         let mut members = vec![Vec::new(); applications.len()];
+        let mut proven = vec![Vec::new(); applications.len()];
         for membership in memberships {
             if let (Some(&entrance), Some(&application)) = (
                 position.get(membership.entrance.as_str()),
@@ -406,9 +409,13 @@ impl Catalog {
             ) {
                 apps_of[entrance].push(application);
                 members[application].push(entrance);
+                if membership.basis == Basis::Proven {
+                    proven[application].push(entrance);
+                }
             }
         }
         members.iter_mut().for_each(|list| list.sort_unstable());
+        proven.iter_mut().for_each(|list| list.sort_unstable());
         // A registration is the evidence and method; a declaration adds the trigger.
         let mut registrations: FxHashMap<(&str, u32, u32, &str, Option<HttpMethod>), u32> =
             FxHashMap::default();
@@ -440,6 +447,7 @@ impl Catalog {
             launches,
             apps_of,
             members,
+            proven,
             declaration,
             registration,
         }
@@ -597,13 +605,27 @@ impl Context<'_> {
         let startup = start
             .filter(|target| target.resolution == Resolution::Resolved)
             .and_then(|target| target.target.as_ref());
-        let served: Vec<usize> = startup.map_or_else(Vec::new, |startup| {
+        let bound: Vec<usize> = startup.map_or_else(Vec::new, |startup| {
             (0..catalog.entrances.len())
                 .filter(|&other| {
                     catalog.is_route(other) && catalog.entrances[other].binding.as_ref() == Some(startup)
                 })
                 .collect()
         });
+        // An ASGI launch serves the routes bound to its application; any other launch, the
+        // routes its application proves it reaches (membership is per application).
+        let served: Vec<usize> = if record.and_then(|launch| launch.mode) == Some(LaunchMode::PythonAsgi) {
+            bound.clone()
+        } else {
+            let mut served: Vec<usize> = catalog.apps_of[position]
+                .iter()
+                .flat_map(|&application| catalog.proven[application].iter().copied())
+                .filter(|&other| catalog.is_route(other))
+                .collect();
+            served.sort_unstable();
+            served.dedup();
+            served
+        };
         let routes = catalog.unique(served.iter().copied());
         let starts = match startup {
             Some(key) => self.reader.block(key.as_str())?.map(|located| LaunchStart {
@@ -614,7 +636,7 @@ impl Context<'_> {
                 kind: start_kind(
                     record.and_then(|launch| launch.mode),
                     located.language,
-                    routes > 0,
+                    !bound.is_empty(),
                 )
                 .to_owned(),
             }),
