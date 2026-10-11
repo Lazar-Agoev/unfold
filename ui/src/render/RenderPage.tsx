@@ -50,6 +50,7 @@ export function RenderPage({ job }: { readonly job: RenderJob }) {
   const cards = useOpenBoard(target.board, (open) => findPage(open.document, target.page)?.cards) ?? EMPTY_CARDS;
   const frames = useOpenBoard(target.board, (open) => findPage(open.document, target.page)?.frames);
   const resources = useOpenBoard(target.board, (open) => findPage(open.document, target.page)?.resources);
+  const notes = useOpenBoard(target.board, (open) => findPage(open.document, target.page)?.notes);
   const links = useOpenBoard(target.board, (open) => findPage(open.document, target.page)?.links);
   const boardArrows = useBoardArrows(target, cards);
   const frame = useRenderJob((state) => state.frame);
@@ -144,7 +145,7 @@ export function RenderPage({ job }: { readonly job: RenderJob }) {
 
   return (
     <div ref={container} className="render-stage">
-      <BoardCanvas target={target} cards={cards} frames={frames} resources={resources} links={links} boardArrows={boardArrows} />
+      <BoardCanvas target={target} cards={cards} frames={frames} resources={resources} notes={notes} links={links} boardArrows={boardArrows} />
     </div>
   );
 }

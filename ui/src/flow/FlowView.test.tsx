@@ -10,6 +10,7 @@ import { engineKey } from "../ipc/queries";
 import * as store from "../state/boards/store";
 import { fixture, installFakeEngine, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../test/workspace";
+import { stepPort } from "../code/outline";
 import { FlowView, flowPortNodes } from "./FlowView";
 import { layoutFlow, type Measure, type StepGroup } from "./layout";
 
@@ -89,6 +90,25 @@ describe("the Flow view's step groups", () => {
   it("marks the selected group's region", () => {
     const { container } = renderFlow([queue], "queue-it");
     expect(container.querySelector(".flow-region.kind-group.selected")).not.toBeNull();
+  });
+
+  it("puts a connection's step port on the step showing its call, the statement holding it, or the collapsed group hiding it", () => {
+    const { layout } = renderFlow([place]);
+    const chip = flow.nodes.find((node) => node.key?.startsWith(`${IF}/`) === true && (node.chips?.length ?? 0) > 0)?.chips?.[0];
+    const holder = layout.nodes.find((placed) => placed.node.chips?.some((item) => item.source === chip?.source));
+    const statement = layout.nodes.find((placed) => placed.node.key === `${IF}/variable:job`);
+    expect(chip && holder && statement).toBeTruthy();
+    const ports = new Map([
+      [stepPort(chip?.source ?? ""), FN],
+      [stepPort(`${IF}/variable:job/await[0]`), FN],
+      [stepPort(`${FN}/expression_statement[1]`), FN],
+      [stepPort("src/elsewhere.ts#function:other"), FN],
+    ]);
+    const { byNode, unplaced } = flowPortNodes(layout, ports);
+    expect(byNode.get(holder?.id ?? "")).toContain(stepPort(chip?.source ?? ""));
+    expect(byNode.get(statement?.id ?? "")).toContain(stepPort(`${IF}/variable:job/await[0]`));
+    expect(byNode.get("group:place-it")).toEqual([stepPort(`${FN}/expression_statement[1]`)]);
+    expect(unplaced).toEqual([stepPort("src/elsewhere.ts#function:other")]);
   });
 
   it("puts the ports of the steps a collapsed group hides on its step", () => {

@@ -30,6 +30,7 @@ import {
   redo,
   removeCard,
   removeFrame,
+  removeItem,
   removeLink,
   requestCardFocus,
   setPageLens,
@@ -62,8 +63,8 @@ function selectedBlockCard(target: PageTarget): string | null {
 }
 
 /**
- * Removes whatever is selected on the page: a card, a group (ungrouped), a link (not a line between
- * cards), or a frame (keeping what it holds).
+ * Removes whatever is selected on the page: a card, a group (ungrouped), a link or a connection (not a
+ * line between cards), a frame (keeping what it holds), a resource card, or a note.
  */
 function removeSelected(target: PageTarget): void {
   const { selection } = getPageView(target);
@@ -75,6 +76,10 @@ function removeSelected(target: PageTarget): void {
     removeLink(target, selection.linkId);
   } else if (selection.kind === "frame") {
     removeFrame(target, selection.frameId);
+  } else if (selection.kind === "resource") {
+    removeItem(target, selection.resourceId);
+  } else if (selection.kind === "note") {
+    removeItem(target, selection.noteId);
   }
 }
 
@@ -203,6 +208,7 @@ function PageStage({ target }: { readonly target: PageTarget }) {
   const cards = useOpenBoard(board, (open) => findPage(open.document, target.page)?.cards) ?? EMPTY_CARDS;
   const frames = useOpenBoard(board, (open) => findPage(open.document, target.page)?.frames);
   const resources = useOpenBoard(board, (open) => findPage(open.document, target.page)?.resources);
+  const notes = useOpenBoard(board, (open) => findPage(open.document, target.page)?.notes);
   const links = useOpenBoard(board, (open) => findPage(open.document, target.page)?.links);
   const hasCamera = usePageView(target, (view) => view.camera !== null);
   const linking = usePageView(target, (view) => view.linking !== null);
@@ -266,7 +272,7 @@ function PageStage({ target }: { readonly target: PageTarget }) {
 
   return (
     <>
-      <BoardCanvas target={target} cards={cards} frames={frames} resources={resources} links={links} boardArrows={boardArrows} />
+      <BoardCanvas target={target} cards={cards} frames={frames} resources={resources} notes={notes} links={links} boardArrows={boardArrows} />
       <div className="board-notices">
         <BoardBanner board={board} />
         {linking ? (
@@ -275,7 +281,7 @@ function PageStage({ target }: { readonly target: PageTarget }) {
           </p>
         ) : null}
       </div>
-      {cards.length === 0 ? <p className="board-empty">Open an entrance or a definition to start this page.</p> : null}
+      {cards.length === 0 && resources === undefined && notes === undefined ? <p className="board-empty">Open an entrance or a definition to start this page.</p> : null}
       <Dock target={target} hasCards={cards.length > 0} onTravel={onTravel} onZoomIn={onZoomIn} onZoomOut={onZoomOut} onFit={onFit} onArrange={onArrange} />
     </>
   );

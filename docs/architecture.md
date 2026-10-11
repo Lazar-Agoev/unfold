@@ -1006,7 +1006,10 @@ These are computed by `unfold-reader` from the stored graph. Nothing here adds f
 - A call or passed-reference line carries its signature at its midpoint (`(CartItem[]) → Promise<Hold>`). Clicking the label opens the call's contract in its place: what the call sends (each argument beside the parameter it fills), what comes back and where it lands, and what the callee throws. A written type in it opens its definition inline, with "Peek source" and "Used in N places". While a line is selected, the callee card marks the lines the contract reads ([proposal](proposals/typed-lines.md)).
 - A card folds to its title only when you fold it. Its arrows then attach to the header. Following a call into a folded card unfolds it.
 - A **frame** is a named, described box around cards, resource cards, notes, and other frames, nested up to three deep: a **box** (outlined, with a title bar) for a unit of a few functions or a service, or a **zone** (a tinted area with a large title) for an area that holds services, with an icon from a fixed set (`api`, `worker`, `schedule`, `cli`, `web`, `library`, `system`). A frame has no position of its own: its box is what it holds plus room for its title, so dragging it moves them. Collapsed, it is one node that says what it holds ("3 functions · 1 table"), and the arrows and links of what it hides attach to it, merged ("3 calls"). Nothing collapses by itself. Agents draw frames; people collapse, rename, describe, move, and remove them.
-- **Arrange** lays a page out by call depth from the inside out: each frame first, deepest first, to the right or downward as its direction says, then the page with each frame as one node, an arrow that crosses a frame's border counting at the cards it joins. It is deterministic: arranging again changes nothing.
+- A **resource card** stands for what the code talks to that isn't a function: a table, a queue, a cache, storage, a service outside the workspace, or an actor. It is authored (the authored color, its kind's glyph and word, its name, its description, and the agent mark when an agent drew it) and looks the same in every view. A table backed by a type lists the type's fields as its columns, compiled, with the board's primary-key, foreign-key, and unique marks laid on; a table that lists its own columns shows them as written; up to 12 show, then "N more". Its anchors (block or entrance keys, or lines of an evidence file) are what it cites.
+- A drawn link between two items becomes a **connection** when it has a kind: `http`, `rpc`, `queue`, `event`, `writes`, `reads`, `calls` (where a call the graph can't follow goes at runtime), `relates` (two tables' columns, with a cardinality), or `other`. Each kind has its own line in the authored color (solid, long dashes, dots, short dashes, thin with crow's-foot ends, dashed), a head where the data goes, and a chip with its kind's word and what travels (`queue · orders · OrderJob`), placed with the typed lines' labels so it never covers a card or another label. A connection leaves from its step's line in Code and its step in Flow, and from the card's edge in Diagram; clicking the carried type opens its definition. A connection is never compiled: it changes no Called by, Reached from, Flow, or dashed call. A link without a kind keeps the drawn link's dashed gray look.
+- A **note** is up to 400 characters of plain text on a page, free or attached to a card, frame, resource card, or connection, which it moves with. A note whose item is removed stays where it was.
+- **Arrange** lays a page out by call depth from the inside out: each frame first, deepest first, to the right or downward as its direction says, then the page with each frame as one node, an arrow that crosses a frame's border counting at the cards it joins. Connections order their ends as data flows (a table after the code that writes it, before the code that reads it), and each attached note goes under its item. It is deterministic: arranging again changes nothing.
 
 ### 10.3 Code view
 
@@ -1047,7 +1050,7 @@ Flow is not a runtime trace or proof that a branch runs. Short-circuit expressio
 - **Publish.** A draft's first Publish shows the file it will write, `.unfold/boards/<slug-of-title>.json`, and never overwrites an existing one; the name is editable only when a file already has it. The board is validated, written, and its draft removed. Later edits are kept as unpublished changes on this machine until the next Publish writes them over the published file, so `git diff` shows finished edits only. Unfold never runs Git.
 - **Discard changes** returns to the published version. **Move back to drafts** reverses Publish. **Delete** asks first.
 - **Export** writes one page as Mermaid to a location you choose, or to the clipboard, or as a PNG image of the page as the board draws it (unsaved changes included), drawn by a hidden render window at twice its size. SVG and a Markdown walkthrough come in V2. Mermaid uses solid arrows for calls and constructions, dashed arrows for imports and passed references, and dashed labeled arrows for drawn links. A Diagram-view card is a box with one arrow to each card it calls, and a type declaration in Flow view is a box.
-- **Health** lists, per page, missing references, outdated descriptions, broken groups, guarded references that need review, cards from projects that aren't connected, and drawn links whose end is missing, and offers repairs.
+- **Health** lists, per page, missing references, outdated descriptions, broken groups, guarded references that need review, cards from projects that aren't connected, drawn links whose end is missing, resource cards and connections whose cited code changed or is gone, and outdated frame descriptions, and offers repairs. A card or resource card shows its problems in a banner, a connection's chip a review dot, and Selected the repairs.
 - **Agents** can read and write board files directly, just like people. The app validates a board file when it loads it and reloads it when the file changes. A description an agent writes is attributed `agent:<name>`. The graph database is not an interface for agents. A stable agent interface comes in V2.
 
 ### 10.6 Freshness
@@ -1546,8 +1549,8 @@ unfold/
 │       │                           #   and thumbnails, health and activity
 │       ├── board/                  # a board tab: its sidebar (Pages, On this page, Selected), the
 │       │                           #   canvas top bar, the dock
-│       ├── canvas/                 # React Flow canvas, cards, arrows, drawn links, placeholders,
-│       │                           #   Arrange, Show callers
+│       ├── canvas/                 # React Flow canvas, cards, frames, resource cards, notes, arrows,
+│       │                           #   drawn links and connections, placeholders, Arrange, Show callers
 │       ├── code/, flow/            # the Code and Flow renderers
 │       ├── add/                    # Add: the map, search across projects, preview, commands
 │       ├── peek/                   # the source peek sheet
@@ -1758,5 +1761,5 @@ A budget never passes by dropping files, call sites, or external or unresolved r
 | Draft | A board that lives only on this machine, in `.unfold/local/drafts/` |
 | Publish | Write a board to `.unfold/boards/`, so it can be committed |
 | Unpublished changes | Edits to a published board, kept on this machine until the next Publish |
-| Drawn link | An arrow a person draws between two cards, usually from different projects |
+| Drawn link | An arrow a person draws between two items, usually cards from different projects; with a kind it is a connection |
 | Lens | The top Code/Flow switch, which changes the view without editing the board |

@@ -1,32 +1,42 @@
 /**
  * The window's open boards: sessions keyed by `BoardRef`, pages, edits as
  * undo steps across pages, autosave of `BoardEdit`, view state per page, cards from any connected
- * project, frames, health and repairs, file operations, and Move to New Window. Screens import from here.
+ * project, frames, resource cards, connections, notes, health and repairs, file operations, and Move to
+ * New Window. Screens import from here.
  */
 
 export {
   addBlock,
   addLink,
   describeCard,
+  describeLink,
+  describeResource,
   displayedRects,
   editFrame,
   editGroup,
+  editNote,
   entranceCardText,
   entranceTitle,
   focusCard,
   focusFrame,
+  focusItem,
   foldAll,
   labelNode,
   openEntrance,
   removeCard,
   removeFrame,
+  removeItem,
   removeLink,
+  setLinkKind,
   setLinkLabel,
   traceEntrance,
   ungroup,
   usePageKeys,
   useResolvedCardProject,
 } from "./api";
+export { CONNECTION_KINDS } from "./connections";
+export { NOTE_MAX, findNote, noteLength, placeNote } from "./notes";
+export { findResource } from "./resources";
 export {
   addCard,
   addGroup,

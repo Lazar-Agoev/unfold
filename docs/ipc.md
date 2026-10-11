@@ -294,11 +294,12 @@ The main process handles the window and dialog commands (`window.unfold.window(c
 | `window_info` | The calling window's id, stable key, and platform |
 | `report_view` | The window's view for agents: `{board?, page?, selection, lens?, visible, tabs}`; the main process keeps the last one per window |
 | `agent_edit_result` | `{requestId, result}`: the answer to an `agent_edit` (`{ok: true, page, board, items, warnings}` or `{ok: false, code, message}`) |
-| `agent_read_result` | `{requestId, result}`: the answer to an `agent_read` (`{ok: true, page, board}` or a refusal) |
+| `agent_read_result` | `{requestId, result}`: the answer to an `agent_read` (`{ok: true, page, board, sizes}`: the page as the window holds it, and the sizes its canvas measured, or a refusal) |
 | `agent_open_board_result` | `{requestId, result}`: the answer to an `agent_open_board` (`{ok: true}`, or a refusal with `heldBy`) |
 | `agent_create_board_result` | `{requestId, result}`: the answer to an `agent_create_board` (`{ok: true, board, info, folder, pages}`: the draft this window now holds, or a refusal) |
 | `agent_edit_board_result` | `{requestId, result}`: the answer to an `agent_edit_board` (`{ok: true, board, pages, results}`: the board as saved, its pages in order, and what each operation did, or a refusal) |
 | `agent_show_result` | `{requestId, result}`: the answer to an `agent_show` (`{ok: true, page}`, or a refusal) |
+| `agent_repair_result` | `{requestId, result}`: the answer to an `agent_repair` (`{ok: true, page, board}`: the page as repaired and saved, or a refusal) |
 | `render_ready` | `{requestId, result}`: the render window's answer to `render_page` (`{ok: true, bounds?, checks?}`) or `render_frame` (`{ok: true}`), or a refusal; only the render window may send it, and it may send nothing else |
 | `agent_server_status` | The MCP server's state for Preferences › Agents: `{state, port, address, message?, agents}` (`off`, `starting`, `listening`, `port_taken`, or `failed`; each connected agent with when it was last seen and last acted) |
 
@@ -306,7 +307,7 @@ The main process handles the window and dialog commands (`window.unfold.window(c
 arrive through `window.unfold.on` like engine events: `menu_command` (an application-menu item the
 window runs as an action), `board_state_transferred`, `focus_board`, `project_added` (select it),
 `project_add_failed` (say why), and the agent channel's `agent_edit`, `agent_read`,
-`agent_open_board`, `agent_create_board`, `agent_edit_board`, `agent_show`, `agent_finish`, and
+`agent_open_board`, `agent_create_board`, `agent_edit_board`, `agent_show`, `agent_repair`, `agent_finish`, and
 `agent_server_changed` (the MCP server's state, sent to every
 window when it changes) (`desktop/src/shared/agent-api.ts`; how they travel is in
 [desktop/README.md](../desktop/README.md#the-agent-bridge), what the window does with them in

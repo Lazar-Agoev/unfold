@@ -117,7 +117,9 @@ if (!app.requestSingleInstanceLock()) {
     const mcp = new McpService({
       services: {
         bridge: agents,
+        renderer,
         engine: (command, args, onStream) => engine.untrusted(0, command, args, onStream),
+        engineAs: (windowId, command, args) => engine.untrusted(windowId, command, args),
         confirmAddProject: (agent, path) => {
           const last = agents.views.lastUsed();
           return confirmAgentAddProject((last === undefined ? undefined : registry.get(last))?.window ?? null, agent.name, path);

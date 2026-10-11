@@ -8,7 +8,8 @@
  * `window_closed`.
  *
  * Page revisions are checked here (D4): an edit that passes `expectRevision` reads the page from the
- * holding window first and is refused when it changed.
+ * holding window first and is refused when it changed. The bridge also remembers which boards each
+ * agent edited or repaired until it finishes its work on them, so `finish_work` knows where to finish.
  */
 
 import type {
@@ -23,6 +24,8 @@ import type {
   AgentFinish,
   AgentOpenResult,
   AgentReadSuccess,
+  AgentRepairRequest,
+  AgentRepairResult,
   AgentShellEvent,
   AgentShowResult,
 } from "../../shared/agent-api";
@@ -51,6 +54,9 @@ export type AgentCreateOutcome = (AgentCreateSuccess & { readonly windowId: numb
 /** The page a window showed and the window's id, or a refusal. */
 export type AgentShowOutcome = { readonly ok: true; readonly windowId: number; readonly page?: string } | AgentFailure;
 
+/** A repaired page with its new revision, or a refusal. */
+export type AgentRepairOutcome = (Extract<AgentRepairResult, { ok: true }> & { readonly revision: string }) | AgentFailure;
+
 /** What the bridge needs of the window registry. */
 export type AgentWindows = Pick<WindowRegistry, "get" | "all" | "create" | "deliver" | "focus">;
 
@@ -62,7 +68,7 @@ export interface AgentBridgeOptions {
 }
 
 /** The requests a window answers, by the window command it answers with. */
-type RequestKind = "edit" | "read" | "open" | "create" | "board" | "show";
+type RequestKind = "edit" | "read" | "open" | "create" | "board" | "show" | "repair";
 
 interface Pending {
   readonly windowId: number;
@@ -84,6 +90,11 @@ function hasPage(result: Readonly<Record<string, unknown>>): boolean {
   return isRecord(page) && typeof page["id"] === "string" && isRecord(result["board"]);
 }
 
+/** A board's key in maps: its project and id. */
+function boardKey(board: AgentBoardRef): string {
+  return `${board.project}\u0000${board.id}`;
+}
+
 /** What a successful answer of each kind must hold, beyond `ok: true`. */
 const SHAPES: Readonly<Record<RequestKind, (result: Readonly<Record<string, unknown>>) => boolean>> = {
   edit: (result) => hasPage(result) && Array.isArray(result["items"]) && Array.isArray(result["warnings"]),
@@ -95,6 +106,7 @@ const SHAPES: Readonly<Record<RequestKind, (result: Readonly<Record<string, unkn
   },
   board: (result) => isRecord(result["board"]) && Array.isArray(result["pages"]) && Array.isArray(result["results"]),
   show: (result) => typeof result["page"] === "string",
+  repair: hasPage,
 };
 
 /** A window's answer, checked enough that callers can rely on its shape. */
@@ -111,6 +123,8 @@ export class AgentBridge {
   private readonly windows: AgentWindows;
   private readonly timeoutMs: number;
   private readonly pending = new Map<number, Pending>();
+  /** The boards each agent (by author) edited since it last finished, by `boardKey`. */
+  private readonly worked = new Map<string, Map<string, AgentBoardRef>>();
   private nextId = 1;
 
   constructor(options: AgentBridgeOptions) {
@@ -154,7 +168,11 @@ export class AgentBridge {
         this.views.released(entry.id, request.board);
         continue;
       }
-      return result.ok ? { ...result, revision: pageRevision(result.page) } : result;
+      if (!result.ok) {
+        return result;
+      }
+      this.recordWork(request.agent.author, request.board);
+      return { ...result, revision: pageRevision(result.page) };
     }
   }
 
@@ -230,24 +248,8 @@ export class AgentBridge {
    * Changes a board's pages or title as one undo step, in the window that holds it (opening it in a
    * background tab first).
    */
-  async editBoard(request: Omit<AgentBoardEditRequest, "requestId">): Promise<AgentBoardEditResult> {
-    for (let attempt = 0; ; attempt += 1) {
-      const opened = await this.open({ board: request.board });
-      if (!opened.ok) {
-        return opened;
-      }
-      const entry = this.windows.get(opened.windowId);
-      if (!entry) {
-        return this.closed();
-      }
-      const result = (await this.ask(entry, "board", { type: "agent_edit_board", ...request })) as AgentBoardEditResult;
-      // A report that still listed a board the window closed: open it again, once.
-      if (!result.ok && result.code === "board_not_open" && attempt === 0) {
-        this.views.released(entry.id, request.board);
-        continue;
-      }
-      return result;
-    }
+  editBoard(request: Omit<AgentBoardEditRequest, "requestId">): Promise<AgentBoardEditResult> {
+    return this.askHolder({ board: request.board }, "board", { type: "agent_edit_board", ...request }) as Promise<AgentBoardEditResult>;
   }
 
   /**
@@ -273,10 +275,29 @@ export class AgentBridge {
   }
 
   /**
+   * Applies one repair a health item offers (`repair_board`), as one undo step in the window that holds
+   * the board (opening it in a background tab first).
+   */
+  async repair(request: Omit<AgentRepairRequest, "requestId">): Promise<AgentRepairOutcome> {
+    const result = (await this.askHolder({ board: request.board, page: request.page }, "repair", { type: "agent_repair", ...request })) as AgentRepairResult;
+    if (!result.ok) {
+      return result;
+    }
+    this.recordWork(request.agent.author, request.board);
+    return { ...result, revision: pageRevision(result.page) };
+  }
+
+  /** The boards an agent edited or repaired since it last finished work on them, in the order it started. */
+  workedOn(author: string): AgentBoardRef[] {
+    return [...(this.worked.get(author)?.values() ?? [])];
+  }
+
+  /**
    * Ends an agent's piece of work on a board: the window that holds it (else the window used last)
    * clears the agent's working marks and shows its summary as a toast.
    */
   finish(finish: AgentFinish): void {
+    this.worked.get(finish.agent.author)?.delete(boardKey(finish.board));
     const last = this.views.lastUsed();
     const entry = this.holderOf(finish.board) ?? (last !== undefined ? this.windows.get(last) : undefined);
     if (entry) {
@@ -313,6 +334,30 @@ export class AgentBridge {
     }
   }
 
+  /**
+   * Asks the window that holds the board (opening it in a background tab first, on `page` when given).
+   * A window whose report still listed a board it closed answers `board_not_open`: the board is opened
+   * again, once.
+   */
+  private async askHolder(target: { readonly board: AgentBoardRef; readonly page?: string }, kind: RequestKind, event: DistributiveOmit<AgentShellEvent, "requestId">): Promise<unknown> {
+    for (let attempt = 0; ; attempt += 1) {
+      const opened = await this.open(target);
+      if (!opened.ok) {
+        return opened;
+      }
+      const entry = this.windows.get(opened.windowId);
+      if (!entry) {
+        return this.closed();
+      }
+      const result = (await this.ask(entry, kind, event)) as AgentFailure | { readonly ok: true };
+      if (!result.ok && result.code === "board_not_open" && attempt === 0) {
+        this.views.released(entry.id, target.board);
+        continue;
+      }
+      return result;
+    }
+  }
+
   /** The window used last, else the first window, else a new one. */
   private lastUsed(): WindowEntry {
     const last = this.views.lastUsed();
@@ -322,6 +367,12 @@ export class AgentBridge {
   private holderOf(board: AgentBoardRef): WindowEntry | undefined {
     const holder = this.views.holder(board);
     return holder === undefined ? undefined : this.windows.get(holder);
+  }
+
+  private recordWork(author: string, board: AgentBoardRef): void {
+    const boards = this.worked.get(author) ?? new Map<string, AgentBoardRef>();
+    boards.set(boardKey(board), board);
+    this.worked.set(author, boards);
   }
 
   private closed(): AgentFailure {

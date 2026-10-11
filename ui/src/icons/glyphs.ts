@@ -68,6 +68,13 @@ export const ICON_NAMES = [
   "frame-web",
   "frame-library",
   "frame-system",
+  "resource-table",
+  "resource-queue",
+  "resource-cache",
+  "resource-storage",
+  "resource-external",
+  "resource-actor",
+  "note",
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];
@@ -217,4 +224,14 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
     box: 16,
     shapes: [{ rect: [2.5, 2.5, 11, 4.5, 1] }, { rect: [2.5, 9, 11, 4.5, 1] }, { circle: [5, 4.75, 0.75], filled: true }, { circle: [5, 11.25, 0.75], filled: true }],
   },
+  // Resource cards: a table (rows under a header, a key column), a queue (items in a line, going on),
+  // a cache (a bolt), storage (a bucket), a service outside the workspace (a cloud), and an actor (a person).
+  "resource-table": { box: 16, shapes: [{ rect: [2.5, 3, 11, 10, 1.5] }, { d: "M2.5 6.5H13.5M6.5 6.5V13" }] },
+  "resource-queue": { box: 16, shapes: [{ rect: [2, 5.5, 3, 5, 0.75] }, { rect: [6, 5.5, 3, 5, 0.75] }, { d: "M11 8H14M12.5 6.5L14 8L12.5 9.5" }] },
+  "resource-cache": { box: 16, shapes: [{ d: "M9 2L4 9H8L7 14L12 7H8L9 2Z" }] },
+  "resource-storage": { box: 16, shapes: [{ d: "M2.5 4.5H13.5M3.5 4.5L4.5 13.5H11.5L12.5 4.5" }, { d: "M6 7.5H10" }] },
+  "resource-external": { box: 16, shapes: [{ d: "M4.5 12.5H11.5A2.5 2.5 0 0 0 11.8 7.5A3.5 3.5 0 0 0 5 7A2.75 2.75 0 0 0 4.5 12.5Z" }] },
+  "resource-actor": { box: 16, shapes: [{ circle: [8, 5, 2.5] }, { d: "M3 13.5C3 10.75 5.25 9 8 9C10.75 9 13 10.75 13 13.5" }] },
+  // A note: a sheet with its corner turned and two lines of text.
+  note: { box: 16, shapes: [{ d: "M3 2.5H13V10L10 13.5H3V2.5Z" }, { d: "M13 10H10V13.5" }, { d: "M5.5 6H10.5M5.5 8.5H9" }] },
 };

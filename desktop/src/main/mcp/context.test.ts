@@ -4,6 +4,7 @@ import { ViewTracker } from "../agents/views";
 import { EngineRequestError } from "../engine-host";
 import { toolContext, type McpServices } from "./context";
 import { ToolError } from "./results";
+import { NO_RENDERER } from "./tools/testing";
 
 vi.mock("electron", async () => (await import("../fake-electron")).electronModule);
 
@@ -19,10 +20,12 @@ function setup(overrides: Partial<McpServices> = {}) {
   const added: string[] = [];
   const services: McpServices = {
     bridge: new AgentBridge({ windows: { get: () => undefined, all: () => [], create: () => { throw new Error("no windows"); }, deliver: () => undefined, focus: () => undefined }, views: new ViewTracker() }),
+    renderer: NO_RENDERER,
     engine: (command) => {
       engineCalls.push(command);
       return Promise.resolve({ projects: ROWS });
     },
+    engineAs: () => Promise.reject(new Error("no window commands here")),
     confirmAddProject: (agent, path) => {
       confirmations.push([agent.name, path]);
       return Promise.resolve(true);

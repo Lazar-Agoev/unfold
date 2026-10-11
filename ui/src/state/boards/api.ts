@@ -1,7 +1,8 @@
 /**
  * What screens do to a page's cards: add a definition or an entrance (from any
- * connected project), bring a card into view, author descriptions, labels, groups, and links, and read
- * which project-qualified keys a page shows (for the on-page marks). Each change is one undo step and
+ * connected project), bring a card, resource card, or note into view, author descriptions, labels,
+ * groups, links and connections, and notes, and read which project-qualified keys a page shows (for the
+ * on-page marks). Each change is one undo step and
  * autosaves.
  *
  * A card's project is its `ref.project` resolved against the current workspace (U-40); a card from the
@@ -10,7 +11,7 @@
 
 import { useMemo } from "react";
 import { queryClient } from "../../ipc/client";
-import type { Card, CardRef, CardView, Key, ProjectId, ProjectName, View } from "../../ipc/generated";
+import type { Card, CardRef, CardView, Key, LinkKind, ProjectId, ProjectName, View } from "../../ipc/generated";
 import { cardQuery } from "../../canvas/cardData";
 import { fallbackItemSize, pageGeometry } from "../../canvas/frames/geometry";
 import { handlerPlacement, newCardPlacement, type Rect } from "../../canvas/layout";
@@ -31,6 +32,7 @@ import {
   keyDisplayName,
   removeCard as removeCardFrom,
   removeGroup,
+  removeItems,
   removeLink as removeLinkFrom,
   setCardDescription,
   setCardsFolded,
@@ -39,7 +41,10 @@ import {
   updateGroup,
   type GroupChange,
 } from "./document";
+import { setConnectionKind, setLinkDescription } from "./connections";
 import { frameChain, removeFrame as removeFrameFrom, updateFrame, type FrameChange } from "./frames";
+import { findNote, setNoteText } from "./notes";
+import { findResource, setResourceDescription } from "./resources";
 import { cardRefKey, boardKey } from "./keys";
 import { newBoard } from "./open";
 import { editPage, getOpenBoard, getPageView, pushFocusMove, requestCardFocus, select, setActivePage, useBoards } from "./store";
@@ -349,4 +354,71 @@ export function removeLink(target: PageTarget, linkId: string): void {
   editPage(target, (page) => {
     removeLinkFrom(page, linkId);
   });
+}
+
+/** Gives a link a kind (a drawn link becomes a connection), which makes you the one who drew it. */
+export function setLinkKind(target: PageTarget, linkId: string, kind: LinkKind, author: string): void {
+  editPage(target, (page) => {
+    setConnectionKind(page, linkId, kind, author);
+  });
+}
+
+/** Sets or clears (blank text) a connection's description; typing merges into one undo step. */
+export function describeLink(target: PageTarget, linkId: string, text: string, author: string): void {
+  editPage(
+    target,
+    (page) => {
+      setLinkDescription(page, linkId, text, author);
+    },
+    { coalesce: `link-description:${linkId}` },
+  );
+}
+
+/** Sets or clears (blank text) a resource card's description; typing merges into one undo step. */
+export function describeResource(target: PageTarget, resourceId: string, text: string, author: string): void {
+  editPage(
+    target,
+    (page) => {
+      setResourceDescription(page, resourceId, text, author);
+    },
+    { coalesce: `resource:${resourceId}` },
+  );
+}
+
+/** Rewrites a note (blank text keeps the old); typing merges into one undo step. */
+export function editNote(target: PageTarget, noteId: string, text: string, author: string): void {
+  editPage(
+    target,
+    (page) => {
+      setNoteText(page, noteId, text, author);
+    },
+    { coalesce: `note:${noteId}` },
+  );
+}
+
+/** Removes a resource card or a note from the page, with the links to it; a note attached to it stays where it was. */
+export function removeItem(target: PageTarget, id: string): void {
+  editPage(target, (page) => {
+    removeItems(page, [id]);
+  });
+}
+
+/** Selects a resource card or a note and brings it into view, expanding the collapsed frames around it. */
+export function focusItem(target: PageTarget, id: string): void {
+  const board = getOpenBoard(target.board);
+  const page = board ? findPage(board.document, target.page) : undefined;
+  const resource = page ? findResource(page, id) : undefined;
+  if (!page || (!resource && !findNote(page, id))) {
+    return;
+  }
+  const around = frameChain(page, id).filter((frame) => frame.collapsed === true);
+  if (around.length > 0) {
+    editPage(target, (draft) => {
+      for (const frame of around) {
+        updateFrame(draft, frame.id, { collapsed: false });
+      }
+    });
+  }
+  select(target, resource ? { kind: "resource", resourceId: id } : { kind: "note", noteId: id });
+  requestCardFocus(target, [id], "center");
 }

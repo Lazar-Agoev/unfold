@@ -8,15 +8,17 @@ import type { AgentCardResult, AgentIdentity, AgentItemResult, AgentItemStatus }
 import { computeArrows, type Arrow } from "../../../canvas/arrows";
 import { lastVerifiedCode } from "../../../canvas/cardData";
 import { cardBody } from "../../../code/typeKinds";
-import type { Card, Page, ProjectId } from "../../../ipc/generated";
-import { fallbackItemSize, pageGeometry } from "../../../canvas/frames/geometry";
+import type { Card, Page, ProjectId, ProjectName, Resource } from "../../../ipc/generated";
+import { estimatedResourceSize, fallbackItemSize, pageGeometry } from "../../../canvas/frames/geometry";
+import { tableColumns, type TableColumn } from "../../../canvas/resources/columns";
 import type { Rect, Size } from "../../../canvas/layout";
 import { measureText } from "../../../canvas/measure";
 import { estimatedCardSize } from "../../../canvas/sizing";
 import { authorName } from "../../../code/text";
-import { resolveRefProject, type ProjectIndex } from "../../workspace";
+import { refProjectFor, resolveRefProject, type ProjectIndex } from "../../workspace";
 import { entranceTitle } from "../api";
 import { cardKey, findCard, keyDisplayName } from "../document";
+import { findResource } from "../resources";
 import type { BoardRef, CardSize } from "../types";
 import type { AgentData } from "./data";
 
@@ -68,6 +70,19 @@ export function guardPeopleText(what: string, author: string | undefined, replac
       `Can't change ${what}: ${who} wrote it. People's words are safe; pass replacePeopleText only when the person asked for that change.`,
     );
   }
+}
+
+/** The name a board file gives `project` (a `ref.project`, a resource's or an anchor's `project`): undefined for the board's own project, or a refusal. */
+export function refProject(ctx: Pick<OpContext, "index" | "board">, project: ProjectId): ProjectName | undefined {
+  const row = ctx.index.byId.get(project);
+  if (!row) {
+    throw invalid(`No project with the id “${project}” is in the workspace. list_projects shows the projects and their ids.`);
+  }
+  const result = refProjectFor(ctx.index, ctx.board.project, project);
+  if (!result.ok) {
+    throw invalid(`${row.name} has the same name as this board's project, so nothing of it can be added. Ask the person to rename one of them in its settings.`);
+  }
+  return result.project;
 }
 
 /** The project a card reads from, or null for a project that isn't connected. */
@@ -147,10 +162,29 @@ export function pageArrows(ctx: OpContext, page: Page): Arrow[] {
   );
 }
 
-/** An item's size: a card's (`cardSize`), else as measured, else estimated (a collapsed frame's node, a resource card). */
+/** The project a resource card's type is in (its `project`, else the board's own), or null when it isn't connected. */
+export function resourceProject(ctx: Pick<OpContext, "index" | "board">, resource: Pick<Resource, "project">): ProjectId | null {
+  return resolveRefProject(ctx.index, ctx.board.project, resource.project);
+}
+
+/** A table's columns as its card shows them: its type's fields (loaded for the edit) with its marks, or its own. */
+export function resourceColumns(ctx: OpContext, resource: Resource): TableColumn[] {
+  const definition = resource.type !== undefined ? ctx.data.definition(resourceProject(ctx, resource), resource.type) : undefined;
+  return tableColumns(resource, definition);
+}
+
+/**
+ * An item's size: a card's (`cardSize`), else as measured, else estimated (a collapsed frame's node, a
+ * resource card with its columns, a note).
+ */
 export function itemSize(ctx: OpContext, page: Page, id: string): Size {
   const card = findCard(page, id);
-  return card ? cardSize(ctx, page, card) : (ctx.measured[id] ?? fallbackItemSize(page, id));
+  if (card) {
+    return cardSize(ctx, page, card);
+  }
+  const measured = ctx.measured[id];
+  const resource = measured ? undefined : findResource(page, id);
+  return measured ?? (resource ? estimatedResourceSize(resource, resourceColumns(ctx, resource)) : fallbackItemSize(page, id));
 }
 
 /** Every drawn item's rectangle on the page as it would be drawn: cards, frames' boxes, collapsed frames' nodes. */

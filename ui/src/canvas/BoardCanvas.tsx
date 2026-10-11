@@ -1,13 +1,15 @@
 /**
  * A page's canvas (React Flow): cards as custom nodes at their reflowed positions, frames as nodes
- * behind what they hold (`pageGeometry`), one memoized arrow per opened call occurrence with its closed
- * label, the page's drawn links, and a camera that pans and zooms without changing what any card
- * shows. No minimap. Large pages render only the cards in view. While a link is being drawn, the next
- * card or frame clicked ends it; Escape or a click on the canvas cancels. A selected line shows its
- * contract; Escape or a click on the canvas closes it. A card in Diagram view sends one arrow to each
- * card it calls; a type card, one from each field to each type it names on the page. A collapsed
- * frame is one node: what it holds isn't drawn, and their arrows and links attach to it, merged
- * (`routeArrows`, `routeLinks`). Dragging a frame moves everything in it, as one undo step.
+ * behind what they hold (`pageGeometry`), resource cards and notes as nodes of their own, one memoized
+ * arrow per opened call occurrence with its closed label, the page's drawn links and connections, and a
+ * camera that pans and zooms without changing what any card shows. No minimap. Large pages render only
+ * the cards in view. While a link is being drawn, the next card, resource card, or frame clicked ends
+ * it; Escape or a click on the canvas cancels. A selected line shows its contract; Escape or a click on
+ * the canvas closes it. A card in Diagram view sends one arrow to each card it calls; a type card, one
+ * from each field to each type it names on the page. A connection leaves from its step's line in Code
+ * and Flow (`lineHandles`), a relationship from a table's column. A collapsed frame is one node: what
+ * it holds isn't drawn, and their arrows and links attach to it, merged (`routeArrows`, `routeLinks`).
+ * Dragging a frame moves everything in it, as one undo step; an attached note moves with its item.
  */
 
 import {
@@ -19,57 +21,70 @@ import {
   type OnMove,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import type { Card, Frame, Link, Resource } from "../ipc/generated";
+import type { Card, Frame, Health, Link, LinkKind, Note, Resource } from "../ipc/generated";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { copyLink } from "../agent";
 import { useContextMenu } from "../components";
 import { authorOf } from "../code/text";
 import { useRegisterActions } from "../keyboard";
+import { useAuthor } from "../state/author";
 import {
   MAX_FRAME_DEPTH,
   displayedRects,
   editPage,
   findFrame,
+  findNote,
   findPage,
+  findResource,
   foldAll,
   getOpenBoard,
   getPageView,
+  itemsFor,
+  keyDisplayName,
   moveFrame,
   moveItems,
-  removeLink,
+  placeNote,
   requestCardFocus,
   select,
   setCamera,
   setLinking,
   updatePageView,
+  useOpenBoard,
   usePageView,
   useWorkingItems,
   type PageTarget,
 } from "../state/boards";
+import { resolveRefProject, useProjectIndex, type ProjectIndex } from "../state/workspace";
 import { ArrowEdge, type ArrowEdgeType } from "./ArrowEdge";
 import { portsByCard, type Arrow } from "./arrows";
 import type { BoardArrows } from "./useBoardArrows";
 import { CardNode, type CardNodeType } from "./cards/CardNode";
 import { TARGET_HANDLE } from "./cards/parts";
+import { claimProblem } from "./cards/ReviewBanner";
+import { chipForms, chipText } from "./connections/chip";
+import { ConnectionEdge, type ConnectionData, type ConnectionEdgeType } from "./connections/ConnectionEdge";
+import { linkMenuEntries } from "./connections/linkMenu";
+import { lineHandles, relatedColumns, stepPorts } from "./connections/routing";
 import { FrameNode, type FrameNodeType } from "./frames/FrameNode";
-import { collapsedPlaces, fallbackItemSize, pageGeometry, type Drag } from "./frames/geometry";
-import { routeArrows, routeLinks } from "./frames/routes";
+import { attachPoint, collapsedPlaces, fallbackItemSize, pageGeometry, type Drag } from "./frames/geometry";
+import { routeArrows, routeLinks, type RoutedLink } from "./frames/routes";
 import { boundsOf, type Rect } from "./layout";
 import { LabelLayout, LabelLayoutContext } from "./lines/labelLayout";
 import { useLineLabels } from "./lines/useLineLabels";
 import { LinkEdge, type LinkEdgeType } from "./LinkEdge";
-import { linkEnds } from "./linkSides";
+import { NoteNode, type NoteNodeType } from "./notes/NoteNode";
+import { ResourceNode, type ResourceNodeType } from "./resources/ResourceNode";
 import "./canvas.css";
 
-type CanvasNode = CardNodeType | FrameNodeType;
-type CanvasEdge = ArrowEdgeType | LinkEdgeType;
+type CanvasNode = CardNodeType | FrameNodeType | ResourceNodeType | NoteNodeType;
+type CanvasEdge = ArrowEdgeType | LinkEdgeType | ConnectionEdgeType;
 
-const nodeTypes = { card: CardNode, frame: FrameNode };
-const edgeTypes = { arrow: ArrowEdge, link: LinkEdge };
+const nodeTypes = { card: CardNode, frame: FrameNode, resource: ResourceNode, note: NoteNode };
+const edgeTypes = { arrow: ArrowEdge, link: LinkEdge, connection: ConnectionEdge };
 const NO_PORTS: readonly string[] = [];
 const NO_LINKS: readonly Link[] = [];
 const NO_FRAMES: readonly Frame[] = [];
 const NO_RESOURCES: readonly Resource[] = [];
+const NO_NOTES: readonly Note[] = [];
 /** Fit leaves room for the dock at the bottom, so nothing covers a card. */
 const FIT_PADDING = { top: "32px", right: "40px", bottom: "96px", left: "40px" } as const;
 const MIN_ZOOM = 0.05;
@@ -91,6 +106,48 @@ function onFlowError(code: string, message: string): void {
   }
 }
 
+/** What a connection's edge reads besides the line: the page, its health, the projects, the selection, and agents' work. */
+interface ConnectionContext {
+  readonly target: PageTarget;
+  readonly page: { readonly resources?: readonly Resource[] | undefined };
+  readonly health: Health | undefined;
+  readonly index: ProjectIndex;
+  readonly selectedLink: string | null;
+  readonly working: ReadonlySet<string>;
+}
+
+/** What a connection's edge draws: its kind, chip, author, selection, health, ends' marks, and carried type. */
+function connectionData(routed: RoutedLink, kind: LinkKind, context: ConnectionContext): ConnectionData {
+  const { link } = routed;
+  const { target, page } = context;
+  const subject = link ? (findResource(page, link.to) ?? findResource(page, link.from))?.name : undefined;
+  const forms = chipForms({
+    kind,
+    ...(link?.channel !== undefined ? { channel: link.channel } : {}),
+    ...(link?.carries !== undefined ? { carries: keyDisplayName(link.carries) } : {}),
+    ...(link?.label ? { label: link.label.text } : {}),
+    ...(subject !== undefined ? { subject } : {}),
+    ...(link?.cardinality !== undefined ? { cardinality: link.cardinality } : {}),
+    ...(routed.count > 1 ? { count: routed.count } : {}),
+  });
+  const writer = link?.author !== undefined ? authorOf(link.author) : null;
+  const issue = link ? itemsFor(context.health, target.page, { link: link.id })[0] : undefined;
+  const project = link?.carries !== undefined ? resolveRefProject(context.index, target.board.project, link.carriesProject) : null;
+  return {
+    target,
+    kind,
+    forms,
+    full: chipText(forms[0] ?? []),
+    agent: writer?.agent === true ? writer.name : null,
+    selected: routed.id === context.selectedLink,
+    working: context.working.has(routed.id),
+    problem: issue ? claimProblem(issue) : null,
+    ...(link ? { linkId: link.id } : {}),
+    ...(link?.cardinality !== undefined ? { cardinality: link.cardinality } : {}),
+    ...(link?.carries !== undefined && project !== null ? { carries: { project, key: link.carries } } : {}),
+  };
+}
+
 export interface BoardCanvasProps {
   /** The page shown (a stable object while it is the same page). */
   readonly target: PageTarget;
@@ -98,15 +155,17 @@ export interface BoardCanvasProps {
   readonly cards: readonly Card[];
   /** The page's frames. */
   readonly frames?: readonly Frame[] | undefined;
-  /** The page's resource cards (frames hold them). */
+  /** The page's resource cards. */
   readonly resources?: readonly Resource[] | undefined;
-  /** The page's drawn links. */
+  /** The page's notes. */
+  readonly notes?: readonly Note[] | undefined;
+  /** The page's drawn links and connections. */
   readonly links: readonly Link[] | undefined;
   /** The arrows and ports derived from the cards' models (`useBoardArrows`, computed by the tab). */
   readonly boardArrows: BoardArrows;
 }
 
-export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_RESOURCES, links = NO_LINKS, boardArrows }: BoardCanvasProps) {
+export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_RESOURCES, notes = NO_NOTES, links = NO_LINKS, boardArrows }: BoardCanvasProps) {
   const flow = useReactFlow<CanvasNode, CanvasEdge>();
   const sizes = usePageView(target, (view) => view.sizes);
   const focus = usePageView(target, (view) => view.focus);
@@ -115,15 +174,26 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
   const selectedLine = usePageView(target, ({ selection }) => (selection.kind === "line" ? selection : null));
   const listedCalls = usePageView(target, ({ selection }) => (selection.kind === "calls" ? selection.arrowId : null));
   const working = useWorkingItems(target);
+  const health = useOpenBoard(target.board, (board) => board.health);
+  const author = useAuthor();
+  const index = useProjectIndex();
   const [labelLayout] = useState(() => new LabelLayout());
   const [initialCamera] = useState(() => getPageView(target).camera);
 
   const { bodies, settled } = boardArrows;
-  const framed = useMemo(() => ({ cards, frames, resources }), [cards, frames, resources]);
+  const framed = useMemo(() => ({ cards, frames, resources, notes, links }), [cards, frames, resources, notes, links]);
   // What a collapsed frame hides is drawn as the frame: its arrows and links attach there.
   const shownAs = useMemo(() => collapsedPlaces(framed), [framed]);
   const arrows = useMemo(() => routeArrows(boardArrows.arrows, shownAs), [boardArrows.arrows, shownAs]);
-  const ports = useMemo(() => portsByCard(arrows), [arrows]);
+  // A card's ports: its arrows', and the steps its connections leave from (in Code or Flow).
+  const ports = useMemo(() => {
+    const merged = portsByCard(arrows);
+    for (const [card, steps] of stepPorts(links, shownAs, (id) => bodies.get(id))) {
+      merged.set(card, [...(merged.get(card) ?? []), ...steps].sort());
+    }
+    return merged;
+  }, [arrows, links, shownAs, bodies]);
+  const columns = useMemo(() => relatedColumns(links, shownAs), [links, shownAs]);
   const labels = useLineLabels(arrows);
   const paneMenu = useContextMenu("Board actions");
 
@@ -210,7 +280,43 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
     }
     return list;
   }, [cards, display, ports, target, nodeCache, working]);
-  const nodes = useMemo((): CanvasNode[] => [...frameNodes, ...cardNodes], [frameNodes, cardNodes]);
+  // Resource cards (with the columns relationships use) and notes.
+  const [itemCache] = useState(() => new Map<string, { readonly signature: string; readonly node: ResourceNodeType | NoteNodeType }>());
+  const itemNodes = useMemo(() => {
+    const live = new Set<string>();
+    const cached = (id: string, signature: string, make: () => ResourceNodeType | NoteNodeType) => {
+      const known = itemCache.get(id);
+      const node = known?.signature === signature ? known.node : make();
+      itemCache.set(id, { signature, node });
+      live.add(id);
+      return node;
+    };
+    const placed = (id: string) => {
+      const at = display.get(id);
+      const className = working.has(id) ? "agent-working" : undefined;
+      return at ? { at, extra: className !== undefined ? { className } : {}, signature: [at.x, at.y, className].join("\u0001") } : undefined;
+    };
+    const list = [
+      ...resources.flatMap((resource) => {
+        const spot = placed(resource.id);
+        const used = columns.get(resource.id) ?? NO_PORTS;
+        return spot
+          ? [cached(resource.id, `${spot.signature}\u0001${used.join("\u0000")}`, (): ResourceNodeType => ({ id: resource.id, type: "resource", position: spot.at, dragHandle: ".resource-drag", ...spot.extra, data: { target, columns: used } }))]
+          : [];
+      }),
+      ...notes.flatMap((note) => {
+        const spot = placed(note.id);
+        return spot ? [cached(note.id, spot.signature, (): NoteNodeType => ({ id: note.id, type: "note", position: spot.at, dragHandle: ".note-drag", ...spot.extra, data: { target } }))] : [];
+      }),
+    ];
+    for (const id of [...itemCache.keys()]) {
+      if (!live.has(id)) {
+        itemCache.delete(id);
+      }
+    }
+    return list;
+  }, [resources, notes, display, columns, working, target, itemCache]);
+  const nodes = useMemo((): CanvasNode[] => [...frameNodes, ...cardNodes, ...itemNodes], [frameNodes, cardNodes, itemNodes]);
 
   const [edgeCache] = useState(() => new Map<string, { readonly signature: string; readonly edge: ArrowEdgeType }>());
   const arrowEdges = useMemo(() => {
@@ -283,50 +389,39 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
     return list;
   }, [arrows, edgeCache, labels, selectedLine, listedCalls, target]);
 
-  // Links leave and enter by the sides facing each other, so they follow the cards as they move. Links
-  // that join at a collapsed frame merge into one that counts them.
-  const [linkCache] = useState(() => new Map<string, LinkEdgeType>());
+  // Drawn links leave and enter by the sides facing each other, so they follow the cards as they move;
+  // a connection leaves from its step or column (`lineHandles`). Lines that join at a collapsed frame
+  // merge into one that counts them.
+  const [linkCache] = useState(() => new Map<string, { readonly signature: string; readonly edge: LinkEdgeType | ConnectionEdgeType }>());
   const linkEdges = useMemo(() => {
     const live = new Set<string>();
-    const list = routeLinks(links, shownAs).flatMap(({ id, from: start, to: end, link, count }): LinkEdgeType[] => {
-      const from = display.get(start);
-      const to = display.get(end);
+    const list = routeLinks(links, shownAs).flatMap((routed): (LinkEdgeType | ConnectionEdgeType)[] => {
+      const from = display.get(routed.from);
+      const to = display.get(routed.to);
       if (!from || !to) {
         return [];
       }
-      const ends = linkEnds(from, to);
-      const label = link ? (link.label?.text ?? null) : `${count} links`;
-      const writer = link?.label ? authorOf(link.label.author) : null;
-      const author = writer?.name ?? null;
-      const agent = writer?.agent ?? false;
-      const busy = working.has(id);
-      const selected = id === selectedLink;
-      const cached = linkCache.get(id);
-      const edge: LinkEdgeType =
-        cached?.source === start &&
-        cached.target === end &&
-        cached.sourceHandle === `link-out-${ends.from}` &&
-        cached.targetHandle === `link-in-${ends.to}` &&
-        cached.data?.label === label &&
-        cached.data.author === author &&
-        cached.data.agent === agent &&
-        cached.data.working === busy &&
-        cached.data.selected === selected
-          ? cached
-          : {
-              id,
-              type: "link",
-              source: start,
-              sourceHandle: `link-out-${ends.from}`,
-              target: end,
-              targetHandle: `link-in-${ends.to}`,
-              className: "board-link-edge",
-              focusable: false,
-              selectable: false,
-              data: { target, selected, label, author, agent, working: busy },
-            };
-      linkCache.set(id, edge);
-      live.add(id);
+      const handles = lineHandles(routed.link, routed, from, to, (id) => bodies.get(id));
+      const kind = routed.link?.kind ?? routed.kind;
+      const ends = { id: routed.id, source: routed.from, sourceHandle: handles.source, target: routed.to, targetHandle: handles.target, focusable: false, selectable: false };
+      let made: { readonly signature: string; readonly make: () => LinkEdgeType | ConnectionEdgeType };
+      if (kind === undefined) {
+        const { link } = routed;
+        const label = link ? (link.label?.text ?? null) : `${routed.count} links`;
+        const writer = link?.label ? authorOf(link.label.author) : null;
+        const data = { target, selected: routed.id === selectedLink, label, author: writer?.name ?? null, agent: writer?.agent ?? false, working: working.has(routed.id) };
+        made = { signature: JSON.stringify([ends, data.selected, label, data.author, data.agent, data.working]), make: () => ({ ...ends, type: "link", className: "board-link-edge", data }) };
+      } else {
+        const data = connectionData(routed, kind, { target, page: framed, health, index, selectedLink, working });
+        made = {
+          signature: JSON.stringify([ends, kind, data.full, data.forms.map(chipText), data.agent, data.selected, data.working, data.problem, data.cardinality, data.carries]),
+          make: () => ({ ...ends, type: "connection", className: "board-connection-edge", data }),
+        };
+      }
+      const known = linkCache.get(routed.id);
+      const edge = known?.signature === made.signature ? known.edge : made.make();
+      linkCache.set(routed.id, { signature: made.signature, edge });
+      live.add(routed.id);
       return [edge];
     });
     for (const id of [...linkCache.keys()]) {
@@ -335,7 +430,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       }
     }
     return list;
-  }, [links, shownAs, display, selectedLink, target, linkCache, working]);
+  }, [links, shownAs, display, bodies, selectedLink, target, linkCache, working, framed, health, index]);
   const edges = useMemo((): CanvasEdge[] => [...arrowEdges, ...linkEdges], [arrowEdges, linkEdges]);
 
   // The cards (and collapsed frames) as drawn, which the lines' labels keep clear of.
@@ -421,6 +516,15 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
             moveFrame(page, node.id, dx, dy);
           });
         }
+      } else if (node.type === "note" && findNote(framed, node.id)?.attach !== undefined) {
+        // An attached note keeps its attachment, at its new offset from what it is attached to as drawn.
+        const attach = findNote(framed, node.id)?.attach;
+        const from = attach !== undefined ? attachPoint(framed, pageGeometry(framed, sizeOf).rects, attach) : undefined;
+        if (attach !== undefined && from) {
+          editPage(target, (page) => {
+            placeNote(page, node.id, [node.position.x - from.x, node.position.y - from.y], attach);
+          });
+        }
       } else {
         editPage(target, (page) => {
           moveItems(page, { [node.id]: [node.position.x, node.position.y] });
@@ -499,21 +603,17 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
           select(target, { kind: "none" });
         }}
         onEdgeClick={(_event, edge) => {
-          if (edge.type === "link" && links.some((link) => link.id === edge.id)) {
+          if (edge.type !== "arrow" && links.some((link) => link.id === edge.id)) {
             select(target, { kind: "link", linkId: edge.id });
           }
         }}
         onEdgeContextMenu={(event, edge) => {
-          if (edge.type !== "link" || !links.some((link) => link.id === edge.id)) {
+          if (edge.type === "arrow" || !links.some((link) => link.id === edge.id)) {
             return;
           }
           event.preventDefault();
           select(target, { kind: "link", linkId: edge.id });
-          paneMenu.open({ x: event.clientX, y: event.clientY }, [
-            { id: "copy-link", label: "Copy link", onSelect: () => void copyLink(target, edge.id) },
-            { kind: "separator", id: "s1" },
-            { id: "remove", label: "Remove link", danger: true, onSelect: () => { removeLink(target, edge.id); } },
-          ]);
+          paneMenu.open({ x: event.clientX, y: event.clientY }, linkMenuEntries(target, edge.id, author));
         }}
         onPaneContextMenu={(event) => {
           event.preventDefault();

@@ -77,6 +77,8 @@ export interface GroupStep {
   readonly id: string;
   /** How many steps it hides. */
   readonly steps: number;
+  /** The keys of the statements it holds, so what leaves from inside them leaves from it. */
+  readonly members: readonly Key[];
   readonly returns: boolean;
   readonly throws: boolean;
 }
@@ -311,7 +313,7 @@ function sizeGroupStep(run: GroupRun, ctx: Context): Sized {
     labelLines: lines,
     width: ctx.laneWidth,
     height: m.padY * 2 + m.typeRow + m.rowGap + lines * m.labelLine + marks,
-    group: { id: group.id, steps: hidden.length, returns: group.returns, throws: group.throws },
+    group: { id: group.id, steps: hidden.length, members: group.members, returns: group.returns, throws: group.throws },
   };
 }
 

@@ -5,7 +5,7 @@
  */
 
 import type { CallToolResult } from "@modelcontextprotocol/server";
-import type { AgentIdentity } from "../../shared/agent-api";
+import type { AgentFailure, AgentIdentity } from "../../shared/agent-api";
 
 /** A tool's answer: MCP's `CallToolResult` (text blocks, and images). */
 export type ToolResult = CallToolResult;
@@ -133,6 +133,22 @@ export class ToolError extends Error {
  */
 export function cant(what: string, why: string, instead: string): ToolError {
   return new ToolError(`Can't ${what}: ${why.replace(/\.$/, "")}. ${instead}`);
+}
+
+/** What to do about a window's refusal, by its code. */
+const WINDOW_HINTS: Readonly<Record<string, string>> = {
+  too_many_tabs: "Ask the person to close a board tab, then try again.",
+  unsaved_edits: "The person's own edits are being saved; try again in a moment.",
+  board_conflict: "The board changed on disk and the person hasn't chosen which version to keep; ask them to, then try again.",
+  page_changed: "read_page reads it.",
+  window_closed: "Try again.",
+  timeout: "Unfold may be busy; try again.",
+};
+
+/** A window's (or the bridge's) refusal as a refusal that teaches, keeping its code. */
+export function windowRefusal(failure: AgentFailure): ToolError {
+  const hint = WINDOW_HINTS[failure.code];
+  return new ToolError(hint === undefined ? failure.message : `${failure.message} ${hint}`, failure.code);
 }
 
 /** The result of a refusal. */

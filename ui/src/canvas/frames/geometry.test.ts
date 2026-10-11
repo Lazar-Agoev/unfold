@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { Card, Frame } from "../../ipc/generated";
+import type { Card, Frame, Note, Resource } from "../../ipc/generated";
 import { STACK_GAP, fallbackSize } from "../layout";
 import { estimateText } from "../measure";
 import { frameNodeSize } from "../sizing";
-import { collapsedPlaces, fallbackItemSize, framePadding, pageGeometry, type FramedPage } from "./geometry";
+import { attachPoint, collapsedPlaces, fallbackItemSize, framePadding, pageGeometry, type FramedPage } from "./geometry";
 
 const card = (id: string, at: [number, number]): Card => ({ id, ref: { block: `src/a.ts#function:${id}` }, at });
 const frame = (id: string, members: string[], extra: Partial<Frame> = {}): Frame => ({ id, title: id, members, look: "box", author: "agent:claude", ...extra });
@@ -94,16 +94,79 @@ describe("dragging", () => {
 });
 
 describe("sizes before anything is measured", () => {
-  it("come from the card, the collapsed frame's words, or a resource card's default", () => {
+  it("come from the card, the collapsed frame's words, a resource card's words and columns, or a note's words", () => {
+    const orders: Resource = {
+      id: "orders",
+      kind: "table",
+      name: "orders",
+      columns: [{ name: "id", type: "string", key: "primary" }, { name: "customerId", type: "string" }],
+      anchors: [],
+      at: [0, 0],
+      author: "agent:claude",
+    };
     const page: FramedPage = {
       cards: [{ id: "route", ref: { entrance: "entrance:[]" }, at: [0, 0] }, card("a", [0, 0])],
       frames: [frame("server", ["a"], { collapsed: true })],
-      resources: [{ id: "orders", kind: "table", name: "orders", anchors: [], at: [0, 0], author: "agent:claude" }],
+      resources: [orders, { ...orders, id: "queue", kind: "queue", name: "orders" }],
+      notes: [{ id: "n", text: "The client gets a job id, not the order.", at: [0, 0], author: "agent:claude" }],
     };
     expect(fallbackItemSize(page, "route")).toEqual(fallbackSize(true));
     expect(fallbackItemSize(page, "a", "node")).toEqual(fallbackSize(false, "node"));
     const estimated = frameNodeSize(frame("server", ["a"]), estimateText);
     expect(estimated.width).toBeGreaterThanOrEqual(240);
-    expect(fallbackItemSize(page, "orders")).toEqual({ width: 240, height: 80 });
+    const table = fallbackItemSize(page, "orders");
+    const queue = fallbackItemSize(page, "queue");
+    expect(table.width).toBeGreaterThanOrEqual(240);
+    // Two column rows (20px each) and the grid's padding over the queue's header alone.
+    expect(table.height - queue.height).toBe(18 + 2 * 20);
+    expect(fallbackItemSize(page, "n").width).toBeGreaterThanOrEqual(140);
+  });
+});
+
+describe("notes", () => {
+  const note = (id: string, at: [number, number], extra: Partial<Note> = {}): Note => ({ id, text: id, at, author: "agent:claude", ...extra });
+  const NOTE = { width: 160, height: 40 };
+  const sized = (page: FramedPage) => (id: string) => ((page.notes ?? []).some((item) => item.id === id) ? NOTE : sizeOf(page)(id));
+
+  it("stand where they are put when free, and a frame holding one takes it in", () => {
+    const page: FramedPage = { cards: [card("a", [0, 0])], notes: [note("free", [0, 300])], frames: [frame("server", ["a", "free"])] };
+    const { rects } = pageGeometry(page, sized(page));
+    expect(rects.get("free")).toEqual({ x: 0, y: 300, ...NOTE });
+    expect(rects.get("server")).toEqual({ x: -BOX.left, y: -BOX.top, width: 200 + BOX.left + BOX.right, height: 340 + BOX.top + BOX.bottom });
+  });
+
+  it("move with the card, resource card, frame, or link they are attached to", () => {
+    const resource: Resource = { id: "orders", kind: "table", name: "orders", anchors: [], at: [600, 0], author: "agent:claude" };
+    const page: FramedPage = {
+      cards: [card("a", [0, 0]), card("b", [400, 200])],
+      resources: [resource],
+      frames: [frame("server", ["b"])],
+      links: [{ id: "l", from: "a", to: "b" }],
+      notes: [note("on-card", [0, 120], { attach: "a" }), note("on-table", [10, -50], { attach: "orders" }), note("on-frame", [0, -80], { attach: "server" }), note("on-link", [0, 30], { attach: "l" })],
+    };
+    const sizes = (id: string) => (id === "orders" ? NODE : sized(page)(id));
+    const { rects } = pageGeometry(page, sizes);
+    expect(rects.get("on-card")).toMatchObject({ x: 0, y: 120 });
+    expect(rects.get("on-table")).toMatchObject({ x: 610, y: -50 });
+    // A frame's offset starts where what it holds starts (its box's corner inside its padding).
+    expect(rects.get("on-frame")).toMatchObject({ x: 400, y: 120 });
+    // A link's starts at the midpoint of its ends' corners.
+    expect(rects.get("on-link")).toMatchObject({ x: 200, y: 130 });
+    // Dragging the card takes its note along.
+    const dragged = pageGeometry(page, sizes, { id: "a", x: 50, y: 500 }).rects;
+    expect(dragged.get("on-card")).toMatchObject({ x: 50, y: 620 });
+    expect(attachPoint(page, dragged, "a")).toEqual({ x: 50, y: 500 });
+  });
+
+  it("aren't drawn inside a collapsed frame, nor on an item it hides", () => {
+    const page: FramedPage = {
+      cards: [card("a", [0, 0])],
+      frames: [frame("server", ["a", "inside"], { collapsed: true })],
+      notes: [note("inside", [0, 300]), note("on-hidden", [0, 120], { attach: "a" })],
+    };
+    const { rects, shownAs } = pageGeometry(page, sized(page));
+    expect(shownAs.get("inside")).toBe("server");
+    expect(rects.has("inside")).toBe(false);
+    expect(rects.has("on-hidden")).toBe(false);
   });
 });

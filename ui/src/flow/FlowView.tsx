@@ -8,6 +8,7 @@
 
 import { useId, type MouseEvent, type ReactNode } from "react";
 import type { FlowCallback, FlowModel, FlowNode } from "../ipc/generated";
+import { isWithin, portStep } from "../code/outline";
 import { linkNote } from "../code/text";
 import { Icon } from "../icons";
 import { followableCall, nodeTypeName, roundedPath, type FlowLayout, type GroupStep, type PlacedNode } from "./layout";
@@ -36,14 +37,40 @@ export interface FlowViewProps {
   readonly renderPorts?: (ids: readonly string[]) => ReactNode;
 }
 
-/** Which placed node shows an occurrence: its chip's node, or the node listing the callback that owns it. */
+/**
+ * Which placed node shows an occurrence (its chip's node, or the node listing the callback that owns
+ * it) or a connection's step (`stepNode`).
+ */
+/**
+ * The node a connection's step leaves from: the node showing its call, else the collapsed step group
+ * hiding it, else the innermost node that is or holds it.
+ */
+function stepNode(layout: FlowLayout, step: string): PlacedNode | undefined {
+  const chip = layout.nodes.find((placed) => !placed.summary && placed.node.chips?.some((item) => item.source === step));
+  if (chip) {
+    return chip;
+  }
+  const group = layout.nodes.find((placed) => placed.group?.members.some((member) => isWithin(step, member)));
+  let holder: PlacedNode | undefined;
+  for (const placed of layout.nodes) {
+    const key = placed.node.key;
+    if (!placed.summary && key !== undefined && isWithin(step, key) && (holder?.node.key === undefined || key.length > holder.node.key.length)) {
+      holder = placed;
+    }
+  }
+  return group ?? holder;
+}
+
 export function flowPortNodes(layout: FlowLayout, occurrences: ReadonlyMap<string, string>): { byNode: Map<string, string[]>; unplaced: string[] } {
   const byNode = new Map<string, string[]>();
   const unplaced: string[] = [];
   for (const [occurrence, owner] of occurrences) {
+    const step = portStep(occurrence);
     const holder =
-      layout.nodes.find((placed) => !placed.summary && placed.node.chips?.some((chip) => chip.source === occurrence)) ??
-      layout.nodes.find((placed) => placed.node.callbacks?.some((callback) => callback.key === owner));
+      step !== undefined
+        ? stepNode(layout, step)
+        : (layout.nodes.find((placed) => !placed.summary && placed.node.chips?.some((chip) => chip.source === occurrence)) ??
+          layout.nodes.find((placed) => placed.node.callbacks?.some((callback) => callback.key === owner)));
     if (holder) {
       const list = byNode.get(holder.id) ?? [];
       list.push(occurrence);

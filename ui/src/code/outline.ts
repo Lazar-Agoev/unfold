@@ -133,3 +133,32 @@ export function groupConflict(
 function linesOverlap(a: { startLine: number; endLine: number }, b: { startLine: number; endLine: number }): boolean {
   return a.startLine <= b.endLine && b.startLine <= a.endLine;
 }
+
+/** What a connection's port id starts with: it leaves from a step, a statement or call of the card (design §4.7). */
+const STEP_PORT = "step:";
+
+/** The port of a connection leaving from step `key`. */
+export function stepPort(key: string): string {
+  return `${STEP_PORT}${key}`;
+}
+
+/** The step a connection's port leaves from; undefined for any other port (an occurrence, a field, the node). */
+export function portStep(port: string): string | undefined {
+  return port.startsWith(STEP_PORT) ? port.slice(STEP_PORT.length) : undefined;
+}
+
+/** Whether `key` is `outer` or a block inside it. */
+export function isWithin(key: string, outer: string): boolean {
+  return key === outer || key.startsWith(`${outer}/`);
+}
+
+/** The innermost outline item that is `key` or holds it, if any. */
+export function innermostItem(outline: readonly OutlineItem[], key: string): OutlineItem | undefined {
+  let found: OutlineItem | undefined;
+  for (const item of outline) {
+    if (isWithin(key, item.key) && (!found || item.key.length > found.key.length)) {
+      found = item;
+    }
+  }
+  return found;
+}

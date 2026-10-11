@@ -5,7 +5,7 @@
  * card merge. A line that only moved an end keeps its id, label, and contract. Pure.
  */
 
-import type { Link } from "../../ipc/generated";
+import type { Link, LinkKind } from "../../ipc/generated";
 import { NODE_PORT, type Arrow } from "../arrows";
 
 /** Groups items by key, in the order each key first appears. */
@@ -53,26 +53,35 @@ export function routeArrows(arrows: readonly Arrow[], shownAs: ReadonlyMap<strin
   });
 }
 
-/** A drawn link between what is drawn: one of the page's links, or several merged (`count`). */
-interface RoutedLink {
-  /** The link's id; a merged one's is `<from>|links|<to>`. */
+/** A link between what is drawn: one of the page's links, or several merged (`count`). */
+export interface RoutedLink {
+  /** The link's id; a merged one's is `<from>|links|<to>` (drawn links) or `<from>|<kind>|<to>` (connections). */
   readonly id: string;
   readonly from: string;
   readonly to: string;
   /** The link, when it stands for one. */
   readonly link?: Link;
   readonly count: number;
+  /** The kind of the connections a merged one stands for; absent for drawn links. */
+  readonly kind?: LinkKind;
 }
 
-/** The page's drawn links between what is drawn. */
+/**
+ * The page's links between what is drawn. Drawn links that would draw on top of each other merge into
+ * one; connections merge only with connections of their kind.
+ */
 export function routeLinks(links: readonly Link[], shownAs: ReadonlyMap<string, string>): RoutedLink[] {
   const moved = links.map((link) => ({ link, from: shownAs.get(link.from) ?? link.from, to: shownAs.get(link.to) ?? link.to }));
-  return grouped(moved, ({ from, to }) => (from === to ? null : `${from}|links|${to}`)).flatMap((group): RoutedLink[] => {
+  return grouped(moved, ({ link, from, to }) => (from === to ? null : `${from}|${link.kind ?? "links"}|${to}`)).flatMap((group): RoutedLink[] => {
     const [first] = group;
     if (!first) {
       return [];
     }
     const { from, to } = first;
-    return group.length === 1 ? [{ id: first.link.id, from, to, link: first.link, count: 1 }] : [{ id: `${from}|links|${to}`, from, to, count: group.length }];
+    const { kind } = first.link;
+    if (group.length === 1) {
+      return [{ id: first.link.id, from, to, link: first.link, count: 1 }];
+    }
+    return [{ id: `${from}|${kind ?? "links"}|${to}`, from, to, count: group.length, ...(kind !== undefined ? { kind } : {}) }];
   });
 }

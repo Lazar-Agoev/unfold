@@ -4,7 +4,7 @@
  * tools so every result reads the same.
  */
 
-import type { AgentCardResult } from "../../shared/agent-api";
+import type { AgentCardResult, AgentIdentity } from "../../shared/agent-api";
 import type { LineLabel, ProjectState, TypeText } from "./engine-types";
 
 /** `1 board`, `3 boards`; `plural` when adding an `s` isn't it. */
@@ -67,12 +67,42 @@ export function keyName(key: string): string {
   return names.slice(-2).join(".") || (keyFile(key) ?? key);
 }
 
+/** The block kind a key ends in (`function`, `if`, `interface`); `entrance` for an entrance key. */
+export function keyKind(key: string): string {
+  if (key.startsWith("entrance:")) {
+    return "entrance";
+  }
+  const step = key.slice(key.indexOf("#") + 1).split("/").at(-1) ?? "";
+  return step.replace(/[:[].*$/, "");
+}
+
+/**
+ * Who wrote something, for the agent: `you` (the calling agent), `Codex (an agent)`, `Lazar (a
+ * person)`, or `a person` when no author is recorded (a step group titled before titles were signed).
+ */
+export function authorText(author: string | undefined, agent: AgentIdentity): string {
+  if (author === undefined) {
+    return "a person";
+  }
+  if (author === agent.author) {
+    return "you";
+  }
+  const name = author.replace(/^(agent|person):/, "");
+  const shown = name.charAt(0).toUpperCase() + name.slice(1);
+  return author.startsWith("agent:") ? `${shown} (an agent)` : `${shown} (a person)`;
+}
+
 /** `src/orders.ts:12`, or `src/orders.ts:12–20` for a range; the path alone without a line. */
 export function place(path: string, line?: number | null, end?: number | null): string {
   if (line === undefined || line === null) {
     return path;
   }
   return end !== undefined && end !== null && end !== line ? `${path}:${line}–${end}` : `${path}:${line}`;
+}
+
+/** Facts joined with `; `, leaving out the ones that are absent or empty. */
+export function joined(parts: readonly (string | null | undefined | false)[]): string {
+  return parts.filter((part): part is string => typeof part === "string" && part.length > 0).join("; ");
 }
 
 /** Text cut to `max` characters, with `…` where it was cut. */
@@ -137,10 +167,11 @@ function stopText(stop: NonNullable<AgentCardResult["stops"]>[number]): string {
 }
 
 /**
- * A card an edit placed, as a result line: `createOrder (card id create-order, created)`, with where
- * following stopped at it.
+ * A card an edit placed, as a result line: `createOrder (card id create-order, created)`, with the
+ * frame it went into and where following stopped at it.
  */
 export function cardText(card: AgentCardResult): string {
   const stops = card.stops ?? [];
-  return `${card.name} (card id ${card.id}, ${card.status})${stops.length > 0 ? `; stopped: ${stops.map(stopText).join("; ")}` : ""}`;
+  const frame = card.frame === undefined ? "" : `, in frame ${card.frame}`;
+  return `${card.name} (card id ${card.id}, ${card.status}${frame})${stops.length > 0 ? `; stopped: ${stops.map(stopText).join("; ")}` : ""}`;
 }

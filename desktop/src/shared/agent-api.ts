@@ -1,8 +1,8 @@
 /**
  * The agent channel (design §5.5, §5.6): how the main process has a window apply an agent's edits to
  * a board it holds, read a page it holds, open a board in a background tab, create a board, change a
- * board's pages and title, show a board to the person, and end a piece of work, and what each window
- * reports about its view. Types only, so the UI imports them as
+ * board's pages and title, show a board to the person, apply a health repair, and end a piece of
+ * work, and what each window reports about its view. Types only, so the UI imports them as
  * `@unfold/desktop/agent-api`.
  *
  * - main → window: the shell events of {@link AgentShellEvent};
@@ -39,8 +39,7 @@ export interface AgentPage {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Operations: one per write tool, with resolved arguments. Later tools add their own (resources,
-// connections, notes).
+// Operations: one per write tool, with resolved arguments.
 
 /** One card `add_cards` puts on a page. */
 export interface AgentCardSpec {
@@ -88,8 +87,9 @@ export interface SetViewOp {
 }
 
 /**
- * Where a card or a frame goes after Arrange: a canvas position (a frame's: its box's top-left), or
- * just right of or below another card or frame. A frame moves with everything in it.
+ * Where a card, resource card, note, or frame goes after Arrange: a canvas position (a frame's: its
+ * box's top-left), or just right of or below another item. A frame moves with everything in it; an
+ * attached note stays attached, at a new offset.
  */
 export type AgentMove = { readonly id: string } & (
   | { readonly at: readonly [number, number] }
@@ -115,10 +115,11 @@ export interface ArrangeOp {
 
 /**
  * Takes items off the page: cards (with their step groups and the links that end at them), step
- * groups, links, and frames. A removed frame's members stay, in the frame that held it, unless
- * `keepMembers` is false, which removes them too. What would dangle goes as well: a frame left with
- * no members, and the links to it. Refused when that removes text a person wrote, unless
- * `replacePeopleText`.
+ * groups, links and connections, frames, resource cards (with the links that end at them), and
+ * notes. A removed frame's members stay, in the frame that held it, unless `keepMembers` is false,
+ * which removes them too. What would dangle goes as well: a frame left with no members, and the links
+ * to it; a note attached to a removed item stays where it was, free. Refused when that removes text a
+ * person wrote, unless `replacePeopleText`.
  */
 export interface RemoveItemsOp {
   readonly op: "remove_items";
@@ -184,7 +185,7 @@ export interface GroupStepsOp {
   readonly replacePeopleText?: boolean;
 }
 
-/** Writes descriptions of cards, step groups, and frames, and labels of links. */
+/** Writes descriptions of cards, step groups, frames, resource cards, and connections, and labels of drawn links. */
 export interface DescribeOp {
   readonly op: "describe";
   readonly items: readonly { readonly id: string; readonly text: string }[];
@@ -201,8 +202,143 @@ export interface LabelStepsOp {
   readonly replacePeopleText?: boolean;
 }
 
+/** What a resource card stands for (design §4.5): a table, a queue, a cache, storage, a service outside the workspace, or who starts things. */
+export type AgentResourceKind = "table" | "queue" | "cache" | "storage" | "external" | "actor";
+
+/**
+ * What an authored claim cites (design §4.9): a block's or an entrance's key, or lines of an evidence
+ * file (relative to its project's folder; 1-based and inclusive), in `project` (by id; absent: the
+ * board's own project).
+ */
+export type AgentAnchor =
+  | { readonly key: string; readonly project?: string }
+  | { readonly file: string; readonly lines: readonly [number, number]; readonly project?: string };
+
+/**
+ * A column of a table card: its name, its type as written, and its marks (primary key, foreign key
+ * with what it `references`, unique; optional). A table backed by a type holds marks only (`name`,
+ * `key`, `references`), naming fields of the type.
+ */
+export interface AgentColumn {
+  readonly name: string;
+  readonly type?: string;
+  readonly key?: "primary" | "foreign" | "unique";
+  readonly references?: string;
+  readonly optional?: boolean;
+}
+
+/** One resource card `add_resources` creates or updates. */
+export interface AgentResourceSpec {
+  /**
+   * An existing resource card's id updates it; a new id names the new card; absent: the card of the
+   * same kind and name already on the page, else a new one with an id from the name.
+   */
+  readonly id?: string;
+  readonly kind: AgentResourceKind;
+  /** The technical name (`orders`); it must appear in what the card cites. */
+  readonly name: string;
+  /** A table's type: a type declaration's or class's key, whose fields are its columns. */
+  readonly type?: string;
+  /** The type's project, by id; absent: the board's own project. */
+  readonly project?: string;
+  readonly description?: string;
+  /** A table's columns: its own (without `type`), or marks on the type's fields. On an update, `type` and `columns` are replaced together when either is given. */
+  readonly columns?: readonly AgentColumn[];
+  /** What it cites; on an update, replaced when given. */
+  readonly anchors?: readonly AgentAnchor[];
+  /** The id of a frame of the page to put it in. */
+  readonly frame?: string;
+  /** The id of an item of the page to place it beside; absent: by data flow, beside the code it connects to, else right of everything. */
+  readonly near?: string;
+}
+
+/** Adds resource cards to a page, or updates them by id. */
+export interface AddResourcesOp {
+  readonly op: "add_resources";
+  readonly resources: readonly AgentResourceSpec[];
+  readonly replacePeopleText?: boolean;
+}
+
+/** What a connection says (design §4.7); `other` needs a label. */
+export type AgentConnectionKind = "http" | "rpc" | "queue" | "event" | "writes" | "reads" | "calls" | "relates" | "other";
+
+/** How many rows of one table a row of the other relates to (`relates` only). */
+export type AgentCardinality = "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many";
+
+/** One connection `connect` draws or updates. */
+export interface AgentConnectionSpec {
+  /**
+   * An existing link's id updates it; a new id names the new connection; absent: the connection of
+   * the same kind, ends, step, and columns already on the page, else a new one.
+   */
+  readonly id?: string;
+  readonly kind: AgentConnectionKind;
+  /** The id of the side that acts: a card, a resource card, or a frame of the page. */
+  readonly from: string;
+  /** The id of the other side: a card, a resource card, or a frame of the page. */
+  readonly to: string;
+  /** The key of the statement or call it leaves from, inside `from`'s block. */
+  readonly step?: string;
+  /** `relates` only: the columns it joins. */
+  readonly fromColumn?: string;
+  readonly toColumn?: string;
+  readonly cardinality?: AgentCardinality;
+  /** What travels (a route, a queue, an event); filled in by the save when `to` is an entrance. */
+  readonly channel?: string;
+  /** The key of the type it carries. */
+  readonly carries?: string;
+  /** The carried type's project, by id; absent: the board's own project. */
+  readonly carriesProject?: string;
+  /** A short label for what travels; on an update, replaced when given. */
+  readonly label?: string;
+  /** The evidence in words; on an update, replaced when given. */
+  readonly description?: string;
+  /** What it cites on the receiving side. */
+  readonly anchors?: readonly AgentAnchor[];
+}
+
+/**
+ * Draws connections, or updates them by id: everything a connection says (its kind, ends, step,
+ * columns, cardinality, channel, carried type, and anchors) is replaced as a whole.
+ */
+export interface ConnectOp {
+  readonly op: "connect";
+  readonly connections: readonly AgentConnectionSpec[];
+  readonly replacePeopleText?: boolean;
+}
+
+/** One note `add_notes` adds or updates. */
+export interface AgentNoteSpec {
+  /** An existing note's id updates it; a new id names the new note; absent: the same text on the same item is kept, else a new note. */
+  readonly id?: string;
+  /** Plain text, 1 to 400 characters. */
+  readonly text: string;
+  /** The id of a card, frame, resource card, or link of the page it moves with; absent: free (on an update: where it is). */
+  readonly attach?: string;
+  /** The id of an item of the page to place a free note beside; absent: beside what it's attached to, else right of everything. */
+  readonly near?: string;
+}
+
+/** Adds notes to a page, attached or free, or updates them by id. */
+export interface AddNotesOp {
+  readonly op: "add_notes";
+  readonly notes: readonly AgentNoteSpec[];
+  readonly replacePeopleText?: boolean;
+}
+
 /** An agent's operation on a page, tagged by `op`. */
-export type AgentOp = AddCardsOp | SetViewOp | ArrangeOp | RemoveItemsOp | GroupStepsOp | DescribeOp | LabelStepsOp | FrameCardsOp;
+export type AgentOp =
+  | AddCardsOp
+  | SetViewOp
+  | ArrangeOp
+  | RemoveItemsOp
+  | GroupStepsOp
+  | DescribeOp
+  | LabelStepsOp
+  | FrameCardsOp
+  | AddResourcesOp
+  | ConnectOp
+  | AddNotesOp;
 
 // ---------------------------------------------------------------------------------------------
 // Results
@@ -275,7 +411,7 @@ export interface AgentGroupResult {
   readonly statements?: readonly AgentStatement[];
 }
 
-/** A drawn link an operation labeled or removed. */
+/** A drawn link or a connection an operation drew, labeled, described, or removed. */
 export interface AgentLinkResult {
   readonly kind: "link";
   readonly id: string;
@@ -284,6 +420,45 @@ export interface AgentLinkResult {
   readonly to: string;
   /** Its label, if it has one. */
   readonly name?: string;
+  /** A connection's kind; absent for a drawn link. */
+  readonly connection?: AgentConnectionKind;
+  /** The key of the step it leaves from. */
+  readonly step?: string;
+  /** What travels, as saved: the save fills it in when `to` is an entrance. */
+  readonly channel?: string;
+  /** The key of the type it carries. */
+  readonly carries?: string;
+}
+
+/** A resource card an operation added, changed, kept, described, or removed. */
+export interface AgentResourceResult {
+  readonly kind: "resource";
+  readonly id: string;
+  readonly status: AgentItemStatus;
+  readonly resource: AgentResourceKind;
+  /** Its name (`orders`). */
+  readonly name: string;
+  /** A table's type key. */
+  readonly type?: string;
+  /** A table's columns as its card shows them: its type's fields with the marks laid on, or its own. */
+  readonly columns?: readonly AgentColumn[];
+  /** Its canvas position, when an operation placed it. */
+  readonly at?: readonly [number, number];
+  /** The frame an operation put it in. */
+  readonly frame?: string;
+}
+
+/** A note an operation added, changed, kept, or removed. */
+export interface AgentNoteResult {
+  readonly kind: "note";
+  readonly id: string;
+  readonly status: AgentItemStatus;
+  /** Its first 40 characters. */
+  readonly name: string;
+  /** The item it moves with. */
+  readonly attach?: string;
+  /** Its canvas position (an offset from what it's attached to), when an operation placed it. */
+  readonly at?: readonly [number, number];
 }
 
 /** A Flow label an operation wrote or kept. */
@@ -322,7 +497,14 @@ export interface AgentFrameResult {
 }
 
 /** One item in an edit's result, tagged by `kind`. */
-export type AgentItemResult = AgentCardResult | AgentGroupResult | AgentLinkResult | AgentLabelResult | AgentFrameResult;
+export type AgentItemResult =
+  | AgentCardResult
+  | AgentGroupResult
+  | AgentLinkResult
+  | AgentLabelResult
+  | AgentFrameResult
+  | AgentResourceResult
+  | AgentNoteResult;
 
 /** The board a page is on, as the window holds it. */
 export interface AgentBoardInfo {
@@ -364,6 +546,8 @@ export interface AgentReadSuccess {
   readonly page: AgentPage;
   /** The board, and whether the window has edits not saved yet. */
   readonly board: AgentBoardInfo & { readonly unsaved: boolean };
+  /** The sizes the canvas measured for the page's items, by id, in canvas units (none before the page is drawn). */
+  readonly sizes?: Readonly<Record<string, { readonly width: number; readonly height: number }>>;
 }
 
 export type AgentReadResult = AgentReadSuccess | AgentFailure;
@@ -425,6 +609,9 @@ export type AgentCreateResult = AgentCreateSuccess | AgentFailure;
 
 /** The window shows a board: the page it switched to. */
 export type AgentShowResult = { readonly ok: true; readonly page: string } | AgentFailure;
+
+/** A repair the window applied and saved: the page and its board as saved. */
+export type AgentRepairResult = { readonly ok: true; readonly page: AgentPage; readonly board: AgentBoardInfo } | AgentFailure;
 
 // ---------------------------------------------------------------------------------------------
 // Requests (shell events) and replies (window commands)
@@ -495,6 +682,22 @@ export interface AgentShowRequest {
   readonly item?: string;
 }
 
+/**
+ * Applies one repair a health item offers, on a page of a held board, the way Review applies one: the
+ * board's unsaved edits are saved first, the engine repairs and saves (`repair_board`), and the result
+ * is one undo step. `items` are marked as the agent's work.
+ */
+export interface AgentRepairRequest {
+  readonly requestId: number;
+  readonly board: AgentBoardRef;
+  readonly page: string;
+  readonly agent: AgentIdentity;
+  /** `repair_board`'s repair (the UI's generated `RepairSpec`, on `page`); plain JSON on this side. */
+  readonly repair: { readonly page: string; readonly kind: string; readonly [field: string]: unknown };
+  /** The ids of the page's items the repair changed, to outline. */
+  readonly items: readonly string[];
+}
+
 /** Ends an agent's piece of work on a board: its working marks clear and its summary shows as a toast. */
 export interface AgentFinish {
   readonly board: AgentBoardRef;
@@ -515,6 +718,7 @@ export type AgentShellEvent =
   | ShellEventOf<"agent_create_board", AgentCreateRequest>
   | ShellEventOf<"agent_edit_board", AgentBoardEditRequest>
   | ShellEventOf<"agent_show", AgentShowRequest>
+  | ShellEventOf<"agent_repair", AgentRepairRequest>
   /** The MCP server started, stopped, or failed, or an agent connected or acted (sent to every window). */
   | { readonly type: "agent_server_changed"; readonly status: AgentServerStatus };
 
@@ -526,6 +730,9 @@ export type ViewSelection =
   | { readonly kind: "step"; readonly card: string; readonly key: string }
   | { readonly kind: "group"; readonly id: string }
   | { readonly kind: "frame"; readonly id: string }
+  | { readonly kind: "resource"; readonly id: string }
+  | { readonly kind: "note"; readonly id: string }
+  /** A drawn link or a connection. */
   | { readonly kind: "link"; readonly id: string }
   /** A line between two cards: a call (`seq` 0) or a passed reference, by its occurrence. */
   | {
@@ -555,7 +762,7 @@ export interface ViewReport {
   readonly selection: ViewSelection;
   /** The page's lens, or its default view. */
   readonly lens?: AgentView;
-  /** The ids of the page's cards, step groups, links, and frames in view. */
+  /** The ids of the page's cards, step groups, links, frames, resource cards, and notes in view. */
   readonly visible: readonly string[];
   /** Every board tab of the window, in order: the boards it holds. */
   readonly tabs: readonly AgentBoardRef[];
@@ -577,6 +784,8 @@ export interface AgentWindowCommands {
   agent_edit_board_result: { args: { requestId: number; result: AgentBoardEditResult }; result: null };
   /** The answer to an `agent_show`. */
   agent_show_result: { args: { requestId: number; result: AgentShowResult }; result: null };
+  /** The answer to an `agent_repair`. */
+  agent_repair_result: { args: { requestId: number; result: AgentRepairResult }; result: null };
   /** The MCP server's state, for Preferences › Agents (`agent_server_changed` follows it). */
   agent_server_status: { args: Record<string, never>; result: AgentServerStatus };
 }

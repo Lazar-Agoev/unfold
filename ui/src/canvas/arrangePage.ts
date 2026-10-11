@@ -6,13 +6,14 @@
  * its own size, and what it holds is laid out inside it too, ready for when it opens. Type cards rank
  * by their type arrows, as calls. A connection orders its ends as data flows: a `reads` connection's
  * resource card goes before the code that reads it, any other after the side that acts; drawn links
- * don't count. Notes aren't placed: an attached note moves with its item.
+ * don't count. A note attached to a card, resource card, or frame goes under it (several in id order),
+ * and the item takes room for them; free notes and notes on links aren't placed.
  *
  * It is deterministic: the order of the items depends only on what they are and where they are now,
  * so arranging again changes nothing. A page without frames arranges exactly as it did before frames.
  */
 
-import type { Frame, FrameDirection, Link } from "../ipc/generated";
+import type { Frame, FrameDirection, Link, Note } from "../ipc/generated";
 import type { Arrow } from "./arrows";
 import { framePadding, type FramedPage } from "./frames/geometry";
 import { HEADER_PORT, arrange, boundsOf, type ArrangeCall, type Point, type Rect, type Size } from "./layout";
@@ -21,7 +22,7 @@ export interface ArrangeInput {
   readonly page: FramedPage & { readonly links: readonly Link[] };
   /** Each drawn item's rectangle now (`pageGeometry`): it orders the items, and the page keeps its top-left. */
   readonly rects: ReadonlyMap<string, Rect>;
-  /** The sizes of cards, resource cards, and collapsed frames' nodes. */
+  /** The sizes of cards, resource cards, notes, and collapsed frames' nodes. */
   readonly sizeOf: (id: string) => Size;
   /** The page's arrows between cards (`computeArrows`): calls, handlers, and type arrows. */
   readonly arrows: readonly Arrow[];
@@ -48,12 +49,15 @@ interface Drawn {
   readonly own: boolean;
 }
 
-/** A node at one level: a card, a resource card, or a frame as one block. */
+/** The gap between an item and a note under it. */
+const NOTE_GAP = 12;
+
+/** A node at one level: a card, a resource card, or a frame as one block, with the notes under it. */
 interface Block {
   readonly id: string;
   readonly size: Size;
   readonly entrance: boolean;
-  /** Where each card and resource card inside goes, from the block's top-left. */
+  /** Where each card, resource card, and note inside goes, from the block's top-left. */
   readonly offsets: ReadonlyMap<string, Point>;
   /** Where each item inside is drawn, from the block's top (a frame's own nodes only). */
   readonly drawn: ReadonlyMap<string, Drawn>;
@@ -83,7 +87,7 @@ function layoutLevel(blocks: readonly Block[], calls: readonly ArrangeCall[], di
   return new Map([...flipped].map(([id, point]) => [id, { x: point.y, y: point.x }]));
 }
 
-/** Where Arrange puts the page's cards and resource cards (the ones it moves). */
+/** Where Arrange puts the page's cards, resource cards, and the notes attached to them (the ones it moves). */
 export function arrangePage(input: ArrangeInput): Map<string, Point> {
   const { page, rects, sizeOf } = input;
   const frames = new Map((page.frames ?? []).map((frame) => [frame.id, frame]));
@@ -97,6 +101,26 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
     }
   }
   const entrances = new Set(page.cards.flatMap((card) => ("entrance" in card.ref ? [card.id] : [])));
+  // The notes that go under each card, resource card, and frame.
+  const notesOf = new Map<string, Note[]>();
+  for (const note of [...(page.notes ?? [])].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+    if (note.attach !== undefined && (leaves.has(note.attach) || frames.has(note.attach))) {
+      notesOf.set(note.attach, [...(notesOf.get(note.attach) ?? []), note]);
+    }
+  }
+  /** An item of `size` with its notes under it: the room both take, and where each note goes. */
+  const withNotes = (id: string, size: Size): { size: Size; notes: [string, Point][] } => {
+    let height = size.height;
+    let width = size.width;
+    const notes: [string, Point][] = [];
+    for (const note of notesOf.get(id) ?? []) {
+      const own = sizeOf(note.id);
+      notes.push([note.id, { x: 0, y: height + NOTE_GAP }]);
+      height += NOTE_GAP + own.height;
+      width = Math.max(width, own.width);
+    }
+    return { size: { width, height }, notes };
+  };
 
   // Where an item is now: as drawn, else its saved position, else (a hidden frame) the top-left of what it holds.
   const corners = new Map<string, Point>();
@@ -191,10 +215,14 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
         drawn.set(id, collapsed ? { top: y, own: false } : { top: y + place.top, own: place.own });
       }
     }
-    const size =
+    const own =
       frame.collapsed === true
         ? sizeOf(frame.id)
         : { width: (content?.width ?? 0) + padding.left + padding.right, height: (content?.height ?? 0) + padding.top + padding.bottom };
+    const { size, notes } = withNotes(frame.id, own);
+    for (const [id, point] of notes) {
+      offsets.set(id, point);
+    }
     return { id: frame.id, size, entrance: [...offsets.keys()].some((id) => entrances.has(id)), offsets, drawn };
   };
   const blockOf = (id: string, seen: ReadonlySet<string>): Block | undefined => {
@@ -203,10 +231,11 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
       return known;
     }
     const frame = frames.get(id);
+    const leaf = leaves.has(id) ? withNotes(id, sizeOf(id)) : undefined;
     const block: Block | undefined = frame
       ? frameBlock(frame, seen)
-      : leaves.has(id)
-        ? { id, size: sizeOf(id), entrance: entrances.has(id), offsets: new Map(), drawn: new Map() }
+      : leaf
+        ? { id, size: leaf.size, entrance: entrances.has(id), offsets: new Map(leaf.notes), drawn: new Map() }
         : undefined;
     if (block) {
       blocks.set(id, block);

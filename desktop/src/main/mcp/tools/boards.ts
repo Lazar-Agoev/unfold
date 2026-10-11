@@ -9,28 +9,13 @@
  */
 
 import { z } from "zod";
-import type { AgentBoardOp, AgentBoardOpResult, AgentBoardRef, AgentFailure, AgentPageSummary } from "../../../shared/agent-api";
+import type { AgentBoardOp, AgentBoardOpResult, AgentBoardRef, AgentPageSummary } from "../../../shared/agent-api";
 import type { ToolContext } from "../context";
 import type { Page, ProjectRow } from "../engine-types";
 import { cardText, keyName } from "../format";
-import { cant, textResult, ToolError } from "../results";
+import { cant, textResult, ToolError, windowRefusal } from "../results";
 import { pagePlace, readPage, resolveBoard } from "../target";
 import { defineTool } from "../tool";
-
-/** What to do about a window's refusal, by its code. */
-const WINDOW_HINTS: Readonly<Record<string, string>> = {
-  too_many_tabs: "Ask the person to close a board tab, then try again.",
-  unsaved_edits: "The person's own edits are being saved; try again in a moment.",
-  board_conflict: "The board changed on disk and the person hasn't chosen which version to keep; ask them to, then try again.",
-  window_closed: "Try again.",
-  timeout: "Unfold may be busy; try again.",
-};
-
-/** A window's refusal as a refusal that teaches. */
-function refused(failure: AgentFailure): ToolError {
-  const hint = WINDOW_HINTS[failure.code];
-  return new ToolError(hint === undefined ? failure.message : `${failure.message} ${hint}`, failure.code);
-}
 
 function pagesText(pages: readonly AgentPageSummary[]): string {
   return pages.map((page, index) => `${index + 1}. ${page.title} (page id ${page.id})`).join("\n");
@@ -87,7 +72,7 @@ export const createBoard = defineTool({
       ...(pages !== undefined ? { pages } : {}),
     });
     if (!created.ok) {
-      throw refused(created);
+      throw windowRefusal(created);
     }
     const [first] = created.pages;
     const traceLines = trace !== undefined && first ? await traced(context, created.board, first.id, trace) : [];
@@ -159,7 +144,7 @@ async function organize(context: ToolContext, row: ProjectRow, op: OrganizeOp): 
       const board = await boardOf(context, row, op.board);
       const edit = await context.bridge.editBoard({ board, agent: context.agent, title: "Rename board", ops: [{ op: "set_title", title: op.title }] });
       if (!edit.ok) {
-        throw refused(edit);
+        throw windowRefusal(edit);
       }
       return edit.results[0]?.status === "kept" ? `“${op.title}” (board id ${board.id}) already has that title.` : `Renamed board ${board.id} to “${edit.board.title}” (one undo step in its window).`;
     }
@@ -167,7 +152,7 @@ async function organize(context: ToolContext, row: ProjectRow, op: OrganizeOp): 
       const board = await boardOf(context, row, op.board);
       const copy = await context.bridge.create({ project, copyOf: board.id });
       if (!copy.ok) {
-        throw refused(copy);
+        throw windowRefusal(copy);
       }
       return `Copied board ${board.id} to the draft “${copy.info.title}” (board id ${copy.board.id})${copy.folder !== null ? ` in ${copy.folder}` : ""}, open in a background tab.`;
     }
@@ -262,7 +247,7 @@ export const editPages = defineTool({
       ...(replacePeopleText !== undefined ? { replacePeopleText } : {}),
     });
     if (!edit.ok) {
-      throw refused(edit);
+      throw windowRefusal(edit);
     }
     return textResult(
       context.header({ project: target.project.name, board: { title: edit.board.title, draft: edit.board.place === "draft" } }),
@@ -313,7 +298,7 @@ export const show = defineTool({
       mode === "background",
     );
     if (!shown.ok) {
-      throw refused(shown);
+      throw windowRefusal(shown);
     }
     const read = await readPage(context, target.board, shown.page ?? target.page);
     const where = `the page “${read.page.title}” of “${read.title}”`;

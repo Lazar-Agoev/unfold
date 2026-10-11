@@ -43,8 +43,11 @@ export type Selection =
   /** A card, or a Flow node or statement inside it (`key`). */
   | { readonly kind: "card"; readonly cardId: string; readonly key: Key | null }
   | { readonly kind: "group"; readonly groupId: string }
+  /** A drawn link or a connection. */
   | { readonly kind: "link"; readonly linkId: string }
   | { readonly kind: "frame"; readonly frameId: string }
+  | { readonly kind: "resource"; readonly resourceId: string }
+  | { readonly kind: "note"; readonly noteId: string }
   /** A line between cards (its label opened into the call's contract). */
   | ({ readonly kind: "line" } & SelectedLine)
   /** An arrow from a Diagram node that stands for several calls: Selected lists them. */

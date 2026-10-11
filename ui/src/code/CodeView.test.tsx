@@ -6,9 +6,9 @@ import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { CallLink, CardView, CodeText } from "../ipc/generated";
 import { fixture } from "../test/engine";
-import { CodeView, portAnchors } from "./CodeView";
+import { CodeView, portAnchors, portSpot } from "./CodeView";
 import type { OutlineItem } from "../ipc/generated";
-import { defaultFolds, foldHiding, groupConflict, groupSelection } from "./outline";
+import { defaultFolds, foldHiding, groupConflict, groupSelection, stepPort } from "./outline";
 import { linkRanges, segmentRange, spanRanges } from "./segments";
 import { linkNote } from "./text";
 
@@ -204,6 +204,19 @@ describe("Code view", () => {
     expect(container.querySelectorAll(".code-row")).toHaveLength(code.lines.length - 4);
     fireEvent.click(screen.getByRole("button", { name: "Unfold 4 lines · returns" }));
     expect(toggle).toHaveBeenCalledWith(IF);
+  });
+
+  it("places a connection's step port at its call's line, or at the line of the statement that is or holds it", () => {
+    const job = code.links.find((link) => link.text === "ordersQueue.add");
+    const statement = code.outline.find((item) => item.key === `${IF}/variable:job`);
+    expect(job && statement).toBeTruthy();
+    expect(portSpot(code, stepPort(job?.source ?? ""))).toEqual({ line: job?.line, offset: job?.span?.[0] });
+    expect(portSpot(code, stepPort(`${IF}/variable:job`))).toEqual({ line: statement?.startLine, offset: statement?.start });
+    // A key under a statement the outline doesn't list is placed at that statement.
+    expect(portSpot(code, stepPort(`${IF}/variable:job/await[0]`))?.line).toBe(statement?.startLine);
+    expect(portSpot(code, stepPort("src/elsewhere.ts#function:other"))).toBeUndefined();
+    const anchors = portAnchors(code, new Set([stepPort(`${IF}/variable:job`)]), new Set([IF]), []);
+    expect(anchors.get(`fold:${IF}`)).toEqual([stepPort(`${IF}/variable:job`)]);
   });
 
   it("draws a board group on a magenta rail with its title", () => {

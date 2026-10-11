@@ -115,20 +115,22 @@ export function CardNote({ warn = false, children }: { readonly warn?: boolean; 
 
 /**
  * The card's description: one line with **more**, in the authored color, and the agent mark when an
- * agent wrote it; a Diagram node's (`wrap`) shows all of it, wrapped. Double-click edits it in place
- * (Enter saves, Shift+Enter breaks the line, Escape keeps the old text), which makes it yours; clearing
- * it removes it.
+ * agent wrote it; a Diagram node's or a resource card's (`wrap`) shows all of it, wrapped. Double-click
+ * edits it in place (Enter saves, Shift+Enter breaks the line, Escape keeps the old text), which makes
+ * it yours; clearing it removes it. `onSave` writes it for an item that isn't a card.
  */
 export function DescriptionStrip({
   target,
   cardId,
   description,
   wrap = false,
+  onSave,
 }: {
   readonly target: PageTarget;
   readonly cardId: string;
   readonly description: Description | undefined;
   readonly wrap?: boolean;
+  readonly onSave?: (text: string, author: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -141,7 +143,11 @@ export function DescriptionStrip({
     const finish = (text: string | null) => {
       setEditing(false);
       if (text !== null && text.trim() !== description.text) {
-        describeCard(target, cardId, text.trim(), author);
+        if (onSave) {
+          onSave(text.trim(), author);
+        } else {
+          describeCard(target, cardId, text.trim(), author);
+        }
       }
     };
     return (

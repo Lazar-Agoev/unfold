@@ -49,8 +49,10 @@ function targetName(target: Target, page: Page): string {
   }
   if ("link" in target) {
     const link = page.links.find((item) => item.id === target.link);
-    const to = link ? findCard(page, link.to) : undefined;
-    return to ? `the link to ${keyDisplayName(cardKey(to))}` : "the link";
+    const card = link ? findCard(page, link.to) : undefined;
+    const to = card ? keyDisplayName(cardKey(card)) : link ? ((page.resources ?? []).find((item) => item.id === link.to)?.name ?? (page.frames ?? []).find((item) => item.id === link.to)?.title) : undefined;
+    const what = link?.kind !== undefined ? `the ${link.kind} connection` : "the link";
+    return to !== undefined ? `${what} to ${to}` : what;
   }
   if ("resource" in target) {
     const resource = (page.resources ?? []).find((item) => item.id === target.resource);
@@ -135,8 +137,16 @@ export function repairSpec(kind: RepairKind, item: HealthItem, page: Page, to?: 
   const at = { page: item.page };
   switch (kind) {
     case "reconnect": {
+      if (to === undefined || to.length === 0) {
+        return null;
+      }
       const from = itemReference(item, page);
-      return from !== null && to !== undefined && to.length > 0 ? { ...at, kind: "reconnect", ...named(from.project), from: from.key, to } : null;
+      if (from !== null) {
+        return { ...at, kind: "reconnect", ...named(from.project), from: from.key, to };
+      }
+      // An evidence range has no key: its claim's anchor is pointed at the key chosen, by position.
+      const claim = "resource" in target ? target.resource : "link" in target ? target.link : undefined;
+      return claim !== undefined && item.anchor !== undefined ? { ...at, kind: "reconnect_anchor", item: claim, anchor: item.anchor, to: { key: to, ...named(item.project) } } : null;
     }
     case "removeCard":
       return "card" in target ? { ...at, kind: "remove_card", card: target.card } : null;

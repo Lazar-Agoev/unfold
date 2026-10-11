@@ -14,7 +14,7 @@ import type { CallLink as CallLinkModel, CodeLine, CodeText as CodeTextModel, Gr
 import { Icon } from "../icons";
 import { CallLink } from "./CallLink";
 import { CodeText } from "./CodeText";
-import { foldHiding, lineAt, outlineChildren } from "./outline";
+import { foldHiding, innermostItem, lineAt, outlineChildren, portStep } from "./outline";
 import { linkRanges, spanRanges } from "./segments";
 import "./code.css";
 
@@ -66,6 +66,21 @@ interface RowInfo {
   readonly skip: number;
 }
 
+/**
+ * Where a port's line is, and where on it: an occurrence's (its call's underline), or a connection's
+ * step (a call, else the statement that is or holds it); undefined for a port the text doesn't show.
+ */
+export function portSpot(code: CodeTextModel, id: string): { readonly line: number; readonly offset: number } | undefined {
+  const step = portStep(id);
+  const key = step ?? id;
+  const link = code.links.find((candidate) => candidate.source === key);
+  if (link) {
+    return { line: link.line, offset: link.span?.[0] ?? code.lines.find((line) => line.number === link.line)?.start ?? 0 };
+  }
+  const item = step !== undefined ? innermostItem(code.outline, step) : undefined;
+  return item ? { line: item.startLine, offset: item.start } : undefined;
+}
+
 /** Where each port sits: `line:N`, `fold:<key>` (a folded row hides it), or `group:<id>` (a collapsed group). */
 export function portAnchors(
   code: CodeTextModel,
@@ -76,12 +91,11 @@ export function portAnchors(
   const anchors = new Map<string, string[]>();
   const byKey = new Map(code.outline.map((item) => [item.key, item]));
   for (const id of ports) {
-    const link = code.links.find((candidate) => candidate.source === id);
-    if (!link) {
+    const spot = portSpot(code, id);
+    if (!spot) {
       continue;
     }
-    const lineStart = code.lines.find((line) => line.number === link.line)?.start ?? 0;
-    const offset = link.span?.[0] ?? lineStart;
+    const { offset } = spot;
     const group = groups.find(
       (candidate) =>
         candidate.collapsed &&
@@ -91,7 +105,7 @@ export function portAnchors(
         }),
     );
     const fold = group ? undefined : foldHiding(code.outline, folds, offset);
-    const anchor = group ? `group:${group.id}` : fold ? `fold:${fold.key}` : `line:${link.line}`;
+    const anchor = group ? `group:${group.id}` : fold ? `fold:${fold.key}` : `line:${spot.line}`;
     const list = anchors.get(anchor) ?? [];
     list.push(id);
     anchors.set(anchor, list);

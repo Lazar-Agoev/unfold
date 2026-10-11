@@ -231,13 +231,28 @@ export function removeCard(page: Page, cardId: string): void {
   removeItems(page, [cardId]);
 }
 
-/** Moves cards, resource cards, and unattached notes; other ids are ignored. Positions are rounded. */
+/**
+ * Moves cards, resource cards, and notes; other ids are ignored. Positions are rounded. A note attached
+ * to an item goes to the canvas position given: its offset is taken from where its item is once the
+ * others moved (the engine's rule, `itemPosition`).
+ */
 export function moveItems(page: Page, positions: Readonly<Record<string, readonly [number, number]>>): void {
-  const placed = [...page.cards, ...(page.resources ?? []), ...(page.notes ?? []).filter((note) => note.attach === undefined)];
-  for (const item of placed) {
-    const at = positions[item.id];
-    if (at && Number.isFinite(at[0]) && Number.isFinite(at[1])) {
+  const wanted = (id: string) => {
+    const at = positions[id];
+    return at && Number.isFinite(at[0]) && Number.isFinite(at[1]) ? at : undefined;
+  };
+  const attached = (page.notes ?? []).filter((note) => note.attach !== undefined);
+  for (const item of [...page.cards, ...(page.resources ?? []), ...(page.notes ?? []).filter((note) => note.attach === undefined)]) {
+    const at = wanted(item.id);
+    if (at) {
       item.at = [Math.round(at[0]), Math.round(at[1])];
+    }
+  }
+  for (const note of attached) {
+    const at = wanted(note.id);
+    const from = at && note.attach !== undefined ? itemPosition(page, note.attach) : undefined;
+    if (at && from) {
+      note.at = [Math.round(at[0] - from[0]), Math.round(at[1] - from[1])];
     }
   }
 }
@@ -386,9 +401,9 @@ export function removeGroup(page: Page, groupId: string): void {
   page.groups = page.groups.filter((group) => group.id !== groupId);
 }
 
-/** Draws a link between two different cards or frames of the page and returns its id (undefined if it can't). */
+/** Draws a link between two different cards, resource cards, or frames of the page and returns its id (undefined if it can't). */
 export function addLink(page: Page, from: string, to: string): string | undefined {
-  const end = (id: string) => findCard(page, id) !== undefined || (page.frames ?? []).some((frame) => frame.id === id);
+  const end = (id: string) => findCard(page, id) !== undefined || [...(page.frames ?? []), ...(page.resources ?? [])].some((item) => item.id === id);
   if (from === to || !end(from) || !end(to)) {
     return undefined;
   }

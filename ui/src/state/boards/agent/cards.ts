@@ -15,11 +15,10 @@ import { measureText } from "../../../canvas/measure";
 import { descriptionHeight, estimatedFieldOffset, estimatedLineOffset } from "../../../canvas/sizing";
 import { cardBody, isTypeKind, keyBlockKind, memberName } from "../../../code/typeKinds";
 import type { Card, CardRef, Key, Page, ProjectId, ProjectName, TypeDefinition, View } from "../../../ipc/generated";
-import { refProjectFor } from "../../workspace";
 import { framePadding } from "../../../canvas/frames/geometry";
 import { addCard, cardKey, findCard, findCardByRef, keyDisplayName, setCardView } from "../document";
 import { addToFrame, findFrame, frameChain } from "../frames";
-import { cardProject, cardResult, cardSize, invalid, pageRects, type ApplyOp, type OpContext } from "./context";
+import { cardProject, cardResult, cardSize, invalid, pageRects, refProject, type ApplyOp, type OpContext } from "./context";
 import type { AgentData } from "./data";
 
 /** How deep following goes at most: what a card calls, what calls it, and the types its fields name. */
@@ -182,19 +181,6 @@ async function planFollow(data: AgentData, project: ProjectId, root: Key, follow
   await walkTypes(levels(follow.types, MAX_TYPES));
   await Promise.all(plan.steps.map((step) => data.loadModel(project, step.to)));
   return plan;
-}
-
-/** The `ref.project` a card from `project` gets on this board, or a refusal. */
-function refProject(ctx: OpContext, project: ProjectId): ProjectName | undefined {
-  const row = ctx.index.byId.get(project);
-  if (!row) {
-    throw invalid(`No project with the id “${project}” is in the workspace. list_projects shows the projects and their ids.`);
-  }
-  const result = refProjectFor(ctx.index, ctx.board.project, project);
-  if (!result.ok) {
-    throw invalid(`${row.name} has the same name as this board's project, so its cards can't be added. Ask the person to rename one of them in its settings.`);
-  }
-  return result.project;
 }
 
 /** Loads each card's model (and a type's definition) and follows its calls or types; returns how to apply the operation. */

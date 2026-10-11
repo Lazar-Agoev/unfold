@@ -1,4 +1,4 @@
-/** Arrange on a page, from the inside out (`arrangePage`): one undoable move of every card. */
+/** Arrange on a page, from the inside out (`arrangePage`): one undoable move of every card, resource card, and attached note. */
 
 import { editPage, findPage, getOpenBoard, moveItems, type PageTarget } from "../state/boards";
 import { arrangePage } from "./arrangePage";
@@ -7,7 +7,7 @@ import { fallbackItemSize, pageGeometry } from "./frames/geometry";
 
 /**
  * Lays the page out (`arrangePage`) as one edit, with the sizes the canvas measured. `portOffset`
- * gives an arrow's measured port offset below its card's top. Returns how many cards moved.
+ * gives an arrow's measured port offset below its card's top. Returns how many cards and resource cards moved.
  */
 export function arrangeBoard(target: PageTarget, arrows: readonly Arrow[], portOffset: (arrow: Arrow) => number | undefined): number {
   const board = getOpenBoard(target.board);
@@ -26,6 +26,13 @@ export function arrangeBoard(target: PageTarget, arrows: readonly Arrow[], portO
     }
   }
   const moved = Object.keys(moves).length;
+  // The notes under them follow, at their new offsets.
+  for (const note of page.notes ?? []) {
+    const at = positions.get(note.id);
+    if (at && note.attach !== undefined) {
+      moves[note.id] = [at.x, at.y];
+    }
+  }
   if (moved > 0) {
     editPage(target, (draft) => {
       moveItems(draft, moves);

@@ -270,8 +270,8 @@ export async function editBoardForAgent(request: AgentBoardEditRequest): Promise
 // ---------------------------------------------------------------------------------------------
 // Showing
 
-/** What showing an item selects, and the cards the camera brings into view. */
-function itemFocus(page: Page, id: string): { readonly selection: Selection | null; readonly cards: string[] } | null {
+/** What showing an item selects, and the items the camera brings into view. */
+function itemFocus(page: Page, id: string): { readonly selection: Selection; readonly cards: string[] } | null {
   const isCard = (cardId: string) => findCard(page, cardId) !== undefined;
   if (isCard(id)) {
     return { selection: { kind: "card", cardId: id, key: null }, cards: [id] };
@@ -282,21 +282,19 @@ function itemFocus(page: Page, id: string): { readonly selection: Selection | nu
   }
   const link = page.links.find((item) => item.id === id);
   if (link) {
-    return { selection: { kind: "link", linkId: id }, cards: [link.from, link.to].filter(isCard) };
+    return { selection: { kind: "link", linkId: id }, cards: [link.from, link.to] };
   }
   const frames = page.frames ?? [];
   const members = (frameId: string): string[] =>
     (frames.find((frame) => frame.id === frameId)?.members ?? []).flatMap((member) => (isCard(member) ? [member] : members(member)));
   if (frames.some((frame) => frame.id === id)) {
-    return { selection: null, cards: members(id) };
+    return { selection: { kind: "frame", frameId: id }, cards: members(id) };
   }
   if ((page.resources ?? []).some((resource) => resource.id === id)) {
-    const ends = page.links.flatMap((item) => (item.from === id ? [item.to] : item.to === id ? [item.from] : []));
-    return { selection: null, cards: ends.filter(isCard) };
+    return { selection: { kind: "resource", resourceId: id }, cards: [id] };
   }
-  const note = (page.notes ?? []).find((item) => item.id === id);
-  if (note) {
-    return { selection: null, cards: note.attach === undefined ? [] : (itemFocus(page, note.attach)?.cards ?? []) };
+  if ((page.notes ?? []).some((item) => item.id === id)) {
+    return { selection: { kind: "note", noteId: id }, cards: [id] };
   }
   return null;
 }
@@ -324,9 +322,7 @@ export function showForAgent(request: AgentShowRequest): AgentShowResult {
   setActivePage(ref, page.id);
   if (focus) {
     pushFocusMove(target);
-    if (focus.selection) {
-      select(target, focus.selection);
-    }
+    select(target, focus.selection);
     if (focus.cards.length > 0) {
       requestCardFocus(target, focus.cards, focus.cards.length === 1 ? "center" : "fit");
     }

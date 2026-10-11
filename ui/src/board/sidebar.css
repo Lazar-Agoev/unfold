@@ -228,6 +228,13 @@
 
 .selected-link:hover { text-decoration: underline; }
 
+/* A resource card's kind: its glyph and word, in the authored color, before its byline. */
+.selected-kind { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-family: var(--font-ui); }
+.selected-kind > .icon { color: var(--color-authored); }
+
+/* A type opened in place under its row (a table's type, a connection's carried type). */
+.selected-definition { padding: 0 8px 4px; }
+
 .selected-link-identity {
   display: flex;
   align-items: center;

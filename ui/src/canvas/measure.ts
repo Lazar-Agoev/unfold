@@ -120,3 +120,7 @@ export const LINE_LABEL_FONT = '11px "JetBrains Mono Variable", ui-monospace, mo
 /** A collapsed frame's title, and the agent mark's word beside it (frames.css). */
 export const FRAME_TITLE_FONT = '600 13px "Inter Variable", system-ui, sans-serif';
 export const MARK_FONT = '11px "Inter Variable", system-ui, sans-serif';
+/** A connection's chip (connections.css): its kind's word, its words, and the code it names. */
+export const CHIP_WORD_FONT = '600 11px "Inter Variable", system-ui, sans-serif';
+export const CHIP_TEXT_FONT = '11px "Inter Variable", system-ui, sans-serif';
+export const CHIP_CODE_FONT = '11px "JetBrains Mono Variable", ui-monospace, monospace';

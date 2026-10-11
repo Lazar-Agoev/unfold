@@ -1,16 +1,18 @@
 /**
- * Health on a card: a full-width banner under the header ("Changed since it was described · Review"),
- * and the repair popover its Review opens: each problem with its repairs, every repair explained
- * before it is applied (`repairEffect`), Apply saving it at once as one undo step. Reconnect first
- * asks for the definition (or entrance) the reference became.
+ * Health on a card or a resource card: a full-width banner under the header ("Changed since it was
+ * described · Review"), and the repair popover its Review opens: each problem with its repairs, every
+ * repair explained before it is applied (`repairEffect`), Apply saving it at once as one undo step.
+ * Reconnect first asks for the definition (or entrance) the reference became. Selected opens the same
+ * popover for a connection's problems (`ReviewButton`).
  */
 
 import { useMemo, useState } from "react";
 import { Button, Popover, SearchField, TextButton, showToast } from "../../components";
 import { useEngineQuery } from "../../ipc";
-import type { HealthItem, HealthKind, Page, ProjectId, RepairKind } from "../../ipc/generated";
+import type { HealthItem, HealthKind, Page, ProjectId, RepairKind, Target } from "../../ipc/generated";
 import { toUnfoldError } from "../../ipc/unfold";
-import { cardKey, findCard, findPage, kindWord, repairBoard, repairEffect, repairLabel, repairSpec, useOpenBoard, type PageTarget } from "../../state/boards";
+import { cardKey, findCard, findPage, itemsFor, kindWord, repairBoard, repairEffect, repairLabel, repairSpec, useOpenBoard, type PageTarget } from "../../state/boards";
+import { resolveRefProject, useProjectIndex } from "../../state/workspace";
 
 /** What the banner says about a card's first problem. */
 const BANNER_TEXT: Readonly<Record<HealthKind, string>> = {
@@ -21,6 +23,21 @@ const BANNER_TEXT: Readonly<Record<HealthKind, string>> = {
   notConnected: "From a project that isn't connected",
   brokenLink: "A link lost its other end",
 };
+
+/** What the banner says about a claim's (a resource card's, a connection's) first problem. */
+const CLAIM_TEXT: Readonly<Record<HealthKind, string>> = {
+  review: "Changed since it was drawn",
+  outdated: "Changed since it was drawn",
+  missing: "Cites code that is gone",
+  brokenGroup: "A group no longer matches the code",
+  notConnected: "Cites a project that isn't connected",
+  brokenLink: "Lost an end or what it cites",
+};
+
+/** What a claim's review mark says about its first problem (a connection's chip, Selected). */
+export function claimProblem(item: HealthItem): string {
+  return CLAIM_TEXT[item.kind];
+}
 
 const NO_ITEMS: readonly HealthItem[] = [];
 
@@ -35,6 +52,16 @@ function useCardHealth(target: PageTarget, cardId: string): readonly HealthItem[
     );
     return items.length > 0 ? items : NO_ITEMS;
   }, [health, groups, target.page, cardId]);
+}
+
+/** The health items about a claim (a resource card or a link) on its page. */
+function useClaimHealth(target: PageTarget, item: Target): readonly HealthItem[] {
+  const health = useOpenBoard(target.board, (board) => board.health);
+  const key = JSON.stringify(item);
+  return useMemo(() => {
+    const items = itemsFor(health, target.page, JSON.parse(key) as Target);
+    return items.length > 0 ? items : NO_ITEMS;
+  }, [health, target.page, key]);
 }
 
 function ReconnectPicker({ project, entrance, value, onChange }: { readonly project: ProjectId; readonly entrance: boolean; readonly value: string; readonly onChange: (key: string) => void }) {
@@ -90,7 +117,10 @@ function RepairRow({
 }) {
   const [to, setTo] = useState("");
   const [busy, setBusy] = useState(false);
+  const index = useProjectIndex();
   const spec = repairSpec(kind, item, page, to);
+  // What a claim cites may be in another project: Reconnect searches there.
+  const searchProject = item.project !== undefined ? (resolveRefProject(index, target.board.project, item.project) ?? project) : project;
   const apply = async () => {
     if (!spec) {
       return;
@@ -112,7 +142,7 @@ function RepairRow({
         <strong>{repairLabel(kind).replace(/…$/, "")}</strong>
         <span>{repairEffect(kind, item, page)}</span>
       </div>
-      {kind === "reconnect" ? <ReconnectPicker project={project} entrance={entrance} value={to} onChange={setTo} /> : null}
+      {kind === "reconnect" ? <ReconnectPicker project={searchProject} entrance={entrance} value={to} onChange={setTo} /> : null}
       <Button variant="secondary" size="sm" busy={busy} disabled={!spec} onClick={() => void apply()}>
         Apply
       </Button>
@@ -155,17 +185,14 @@ function RepairPopover({
   );
 }
 
-/** The banner under a card's header while something about it needs review (nothing otherwise). */
-export function ReviewBanner({ target, project, cardId }: { readonly target: PageTarget; readonly project: ProjectId; readonly cardId: string }) {
-  const items = useCardHealth(target, cardId);
+/** "Review", opening the repair popover of `items` (nothing when there are none). */
+export function ReviewButton({ target, project, items }: { readonly target: PageTarget; readonly project: ProjectId; readonly items: readonly HealthItem[] }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const first = items[0];
-  if (!first) {
+  if (items.length === 0) {
     return null;
   }
   return (
-    <div className="card-review nodrag" role="status">
-      <span className="card-review-text">{BANNER_TEXT[first.kind]}</span>
+    <>
       <TextButton
         className="card-review-action"
         aria-expanded={anchor !== null}
@@ -188,6 +215,30 @@ export function ReviewBanner({ target, project, cardId }: { readonly target: Pag
           }}
         />
       ) : null}
-    </div>
+    </>
   );
+}
+
+/** The banner under a resource card's header while something about it needs review (nothing otherwise). */
+export function ClaimReviewBanner({ target, project, item }: { readonly target: PageTarget; readonly project: ProjectId; readonly item: Target }) {
+  const items = useClaimHealth(target, item);
+  const first = items[0];
+  return first ? (
+    <div className="card-review nodrag" role="status">
+      <span className="card-review-text">{CLAIM_TEXT[first.kind]}</span>
+      <ReviewButton target={target} project={project} items={items} />
+    </div>
+  ) : null;
+}
+
+/** The banner under a card's header while something about it needs review (nothing otherwise). */
+export function ReviewBanner({ target, project, cardId }: { readonly target: PageTarget; readonly project: ProjectId; readonly cardId: string }) {
+  const items = useCardHealth(target, cardId);
+  const first = items[0];
+  return first ? (
+    <div className="card-review nodrag" role="status">
+      <span className="card-review-text">{BANNER_TEXT[first.kind]}</span>
+      <ReviewButton target={target} project={project} items={items} />
+    </div>
+  ) : null;
 }

@@ -156,9 +156,39 @@ draws them for you ([Connecting an agent](#connecting-an-agent)); you adjust the
 A frame's description remembers the code of the cards in it: when that code changes, Selected says so and offers to
 keep the text or remove it.
 
+## Tables, queues, connections, and notes
+
+Some of what a page explains isn't a function: the table an order is saved in, the queue between two services, the
+customer who starts it all. An agent adds these for you, each citing the code (or the lines of an
+[evidence file](settings-and-scope.md#evidence-files)) that shows it is there; they are drawn in the authored color,
+with the agent mark when an agent drew them, and look the same in Diagram, Flow, and Code.
+
+- **Resource cards** are tables, queues, caches, storage, services outside your code, and actors, each with its
+  kind's glyph, its name, and a description. A **table** lists its columns: when the code declares its shape (an
+  interface, a dataclass, a model), the columns are that type's fields, so they follow the code, with marks for the
+  primary key (`PK`), foreign keys (`FK → customers.id`), and unique columns; up to 12 show, then "N more". Select a
+  resource card to see what it cites (click one to open it in the peek sheet), its type (click to open its
+  definition), and the lines in and out of it.
+- **Connections** are lines that say how two things talk when the graph can't show it: an HTTP request, a queue, an
+  event, reads and writes, a call that goes somewhere only at runtime, a relationship between two tables, or
+  anything else. Each kind has its own line (long dashes for a queue, dots for an event, crow's feet for a
+  relationship) and a chip that says what travels: `queue · orders · OrderJob`. Click the type's name on the chip to
+  read its definition. A connection leaves from the line where it happens (in Code and Flow) and from the card's
+  edge in Diagram. Right-click a link for **Kind ▸** to change what it is (a drawn link becomes a connection), edit
+  its label and description in Selected, or remove it. Connections are never compiled: Called by and Reached from
+  list only what the code proves.
+- **Notes** are a sentence or two on the page: a caveat, a reading order, an open question. A note attached to a
+  card, frame, table, or connection moves with it; drag it to put it elsewhere beside its item. Double-click a note
+  to edit it, right-click to remove it. A note whose item is removed stays where it was.
+
+**Arrange** puts a table after the code that writes it and before the code that reads it, and each attached note
+under its item.
+
 **When the code changes.** Descriptions and labels remember the code they were written for. If that code changes,
-the card shows "Changed since it was described · Review", which lists what happened and offers repairs. Nothing is
-ever silently deleted.
+the card shows "Changed since it was described · Review", which lists what happened and offers repairs. A resource
+card or connection remembers the code it cites the same way: "Changed since it was drawn · Review" offers to keep it
+as it is, reconnect it to the code it moved to, or remove it; a connection's chip shows a review dot, and Selected
+its repairs. Nothing is ever silently deleted.
 
 ## Drafts and publishing
 
@@ -184,7 +214,7 @@ saves the page as an image, drawn as the board shows it (your unsaved changes in
 A page can hold cards from any project in your workspace, for example the web app's checkout handler next to the
 API route it calls: add them with Add, which searches every project. The graph never links code across
 repositories, so draw the link yourself: **Draw link…** in a card's menu, then click the other card, and give the
-link a label such as "calls over HTTP".
+link a label such as "calls over HTTP". Right-click it for **Kind ▸ HTTP** to make it a typed connection.
 
 A teammate who hasn't added one of those projects sees its cards as placeholders, with **Connect project** to add it.
 Projects are matched by name: a project's name is its folder's name unless you change it in its settings. A board
@@ -258,7 +288,7 @@ or the project menu, copies a summary for a bug report: versions and counts only
 ## Connecting an agent
 
 Agents such as Claude Code and Codex connect to Unfold through its MCP server, which runs inside the app: they read the
-guide to working in Unfold, what you're looking at, and your projects.
+guide to working in Unfold, what you're looking at, your projects and boards, and build pages that explain the code.
 
 1. Open **Preferences**, turn on **Let agents connect** under **Agents**, and save. It's off until you do.
 2. Copy the command for your agent (Preferences shows both, with the port you chose) and run it once:
@@ -294,6 +324,25 @@ What an agent can set up and read:
   and each call with where it goes and its label), a type's fields, an entrance's handlers, a call's contract, a file,
   and who calls what. Reading changes nothing and never moves your view, and an agent sees source only when it is
   the file Unfold compiled.
+
+What an agent can build:
+
+- **Pages.** Put functions, types, and entrances on a page by key, following calls, callers, or a type's fields to
+  a depth (it says where following stopped); choose each card's view and fold; arrange the page or one frame; and
+  take items off it. Then shape it: step groups that make a long Flow read in a few named steps, frames around
+  units, services, and zones, tables, queues, and other resource cards, typed connections (HTTP, queues, events,
+  reads and writes), and notes; and explain it: descriptions and Flow labels.
+- **Grounded, every time.** A table, queue, or connection an agent adds must cite code (or lines of an evidence
+  file) whose text names it, and Unfold refuses what it can't find there, so the agent says what it found in the
+  chat instead of drawing it. Everything an agent writes carries the agent mark.
+- **One step at a time.** Each change is one undo step named for the agent ("Claude · Frame cards"), saved at once.
+  While it works, the page's top bar says "Claude is working…" and what it changed is outlined, until it finishes
+  and its summary shows as a toast. It never replaces or removes your words unless you asked.
+- **Reviews.** An agent reads a page (everything on it, with the arrows Unfold draws and the Flow steps still
+  unlabeled), checks it (health problems and layout and wording issues, each with a fix), and looks at an image of
+  it drawn the way you see it, without moving your view.
+- **Repairs.** After a refactor, an agent can reconnect cards to renamed code and remove what's gone. It re-signs or
+  accepts only what an agent wrote: what you wrote is yours to sign off, so it tells you instead.
 
 Agents can't publish, discard, or delete boards, remove projects, change Preferences, or edit your code.
 

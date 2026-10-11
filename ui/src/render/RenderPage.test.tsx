@@ -174,6 +174,31 @@ describe("the render window", () => {
     });
   });
 
+  it("checks the resource cards and connections it draws: strays, evidence, and missing words", async () => {
+    const sent = job("check", {}, {
+      resources: [
+        { id: "orders", kind: "table", name: "orders", anchors: [], at: [0, 400], author: "agent:claude" },
+        { id: "sessions", kind: "cache", name: "sessions", anchors: [{ key: KEY }], at: [1200, 400], author: "agent:claude", description: { text: "Who is signed in.", author: "agent:claude", signature: "" } },
+      ],
+      links: [{ id: "writes", from: "create-order", to: "orders", kind: "writes", author: "agent:claude" }],
+    });
+    const { container } = draw(sent);
+    const result = await answerTo(sent.requestId);
+    expect(container.querySelector('[data-resource-id="orders"]')).not.toBeNull();
+    expect(container.querySelector('.react-flow__edge[data-id="writes"]')).not.toBeNull();
+    expect(result.ok && "checks" in result ? result.checks.map((check) => [check.kind, check.items]) : result).toEqual([
+      ["missingWords", ["orders"]],
+      ["evidence", ["orders", "writes"]],
+      ["strays", ["gone", "sessions"]],
+    ]);
+  });
+
+  it("frames a resource card or a note as it frames a card", async () => {
+    const sent = job("image", { item: "orders" }, { resources: [{ id: "orders", kind: "queue", name: "orders", anchors: [], at: [0, 600], author: "agent:claude" }] });
+    draw(sent);
+    expect(await answerTo(sent.requestId)).toEqual({ ok: true, bounds: { x: 0, y: 600, width: 400, height: 220 } });
+  });
+
   it("frames one item, and refuses an item that isn't drawn", async () => {
     const card = job("image", { item: "gone" });
     draw(card);

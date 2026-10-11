@@ -44,6 +44,8 @@ function selection(value: unknown): ViewSelection | null {
     case "group":
     case "link":
     case "frame":
+    case "resource":
+    case "note":
       return isString(id) ? { kind, id } : null;
     case "step":
       return isString(card) && isString(key) ? { kind, card, key } : null;

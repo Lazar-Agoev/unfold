@@ -332,7 +332,44 @@ describe("boards as a whole", () => {
   });
 });
 
+describe("repairing", () => {
+  it("has the window that holds the board apply the repair, and comes back with the page's revision", async () => {
+    const { bridge, views, open } = setup();
+    const holder = open();
+    views.report(holder.id, report([BOARD]));
+    const repair = { board: BOARD, page: "page-1", agent: EDIT.agent, repair: { page: "page-1", kind: "remove_card", card: "a" }, items: [] };
+    const outcome = bridge.repair(repair);
+    const sent = await request(holder, 1);
+    expect(sent).toMatchObject({ type: "agent_repair", ...repair });
+    bridge.settle(holder.id, "repair", sent.requestId, { ok: true, page: PAGE, board: BOARD_INFO });
+    expect(await outcome).toEqual({ ok: true, page: PAGE, board: BOARD_INFO, revision: pageRevision(PAGE) });
+
+    const refused = bridge.repair(repair);
+    const again = await request(holder, 2);
+    bridge.settle(holder.id, "repair", again.requestId, { ok: false, code: "board_problem", message: "No such card." });
+    expect(await refused).toEqual({ ok: false, code: "board_problem", message: "No such card." });
+  });
+});
+
 describe("finishing", () => {
+  it("remembers the boards each agent edited or repaired until it finishes them", async () => {
+    const { bridge, views, open } = setup();
+    const holder = open();
+    views.report(holder.id, report([BOARD]));
+    const codex = { author: "agent:codex", name: "Codex" } as const;
+    const edited = bridge.edit(EDIT);
+    bridge.settle(holder.id, "edit", (await request(holder, 1)).requestId, SAVED);
+    await edited;
+    const refused = bridge.edit({ ...EDIT, board: { project: "p-orders0000", id: "other.json" }, agent: codex });
+    bridge.settle(holder.id, "open", (await request(holder, 2)).requestId, { ok: false, code: "not_found", message: "No board." });
+    await refused;
+
+    expect(bridge.workedOn("agent:claude")).toEqual([BOARD]);
+    expect(bridge.workedOn("agent:codex")).toEqual([]);
+    bridge.finish({ board: BOARD, agent: EDIT.agent, summary: "Done" });
+    expect(bridge.workedOn("agent:claude")).toEqual([]);
+  });
+
   it("tells the window that holds the board, else the window used last", () => {
     const { bridge, views, open } = setup();
     const holder = open();

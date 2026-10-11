@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Link } from "../../ipc/generated";
+import type { Link, LinkKind } from "../../ipc/generated";
 import { NODE_PORT, type Arrow } from "../arrows";
 import { mergedText } from "../lines/labelText";
 import { hasLineLabel } from "../lines/useLineLabels";
@@ -58,6 +58,16 @@ describe("drawn links at collapsed frames", () => {
     expect(routed).toEqual([
       { id: "one", from: "x", to: "checks", link: link("one", "x", "a"), count: 1 },
       { id: "api|links|y", from: "api", to: "y", count: 2 },
+    ]);
+  });
+
+  it("merge connections only with connections of their kind, which the merged line keeps", () => {
+    const connection = (id: string, kind: LinkKind): Link => ({ ...link(id, "c", "y"), kind, author: "agent:claude" });
+    const routed = routeLinks([connection("q1", "queue"), connection("q2", "queue"), connection("e1", "event"), link("drawn", "c", "y")], SHOWN);
+    expect(routed).toEqual([
+      { id: "api|queue|y", from: "api", to: "y", count: 2, kind: "queue" },
+      { id: "e1", from: "api", to: "y", link: connection("e1", "event"), count: 1 },
+      { id: "drawn", from: "api", to: "y", link: link("drawn", "c", "y"), count: 1 },
     ]);
   });
 });

@@ -23,6 +23,8 @@ describe("parseViewReport", () => {
       { kind: "group", id: "checks" },
       { kind: "link", id: "a-to-b" },
       { kind: "frame", id: "server" },
+      { kind: "resource", id: "orders-table" },
+      { kind: "note", id: "async-note" },
       { kind: "line", from: "a", to: "b", project: "p-orders0000", source: "src/a.ts#function:a/call[0]", seq: 0, line: 12 },
       { kind: "line", from: "a", to: "b", project: "p-orders0000", source: "src/a.ts#function:a/call[0]", seq: 1, line: null },
       {
@@ -51,7 +53,8 @@ describe("parseViewReport", () => {
       { ...REPORT, lens: "table" },
       { ...REPORT, selection: { kind: "card" } },
       { ...REPORT, selection: { kind: "frame" } },
-      { ...REPORT, selection: { kind: "resource", id: "x" } },
+      { ...REPORT, selection: { kind: "table", id: "x" } },
+      { ...REPORT, selection: { kind: "note" } },
       { ...REPORT, selection: { kind: "line", from: "a", to: "b", project: "p", source: "s", seq: 0.5, line: null } },
       { ...REPORT, selection: { kind: "calls", from: "a", to: "b", project: "p", calls: [{ source: "s", seq: 0, line: "12" }] } },
       { ...REPORT, selection: { kind: "calls", from: "a", to: "b", project: "p", calls: "s" } },

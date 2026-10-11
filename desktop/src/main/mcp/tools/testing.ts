@@ -1,8 +1,9 @@
 /**
- * Test support for the tools: a fake engine that answers by command and records each request, one
- * fake window that answers the agent channel's requests as a test says, and a call that runs one tool
- * as the server does (its arguments checked by its schema, a refusal as an error result, the size
- * guard). Engine answers recorded from real commands live in `testdata/workspace/commands/`.
+ * Test support for the tools: a fake engine that answers by command and records each request (for no
+ * window, or as the window holding a board), one fake window that answers the agent channel's requests
+ * as a test says, a fake render window, and a call that runs one tool as the server does (its
+ * arguments checked by its schema, a refusal as an error result, the size guard). Engine answers
+ * recorded from real commands live in `testdata/workspace/commands/`.
  */
 
 import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
@@ -13,7 +14,7 @@ import { AgentBridge, type AgentWindows } from "../../agents/bridge";
 import { ViewTracker } from "../../agents/views";
 import { EngineRequestError } from "../../engine-host";
 import type { WindowEntry } from "../../windows";
-import { toolContext, type ToolContext } from "../context";
+import { toolContext, type PageImages, type ToolContext } from "../context";
 import type { ProjectRow, WorkspaceView } from "../engine-types";
 import { errorResult, fitResult, ToolError, type ToolResult } from "../results";
 import type { Tool } from "../tool";
@@ -46,6 +47,8 @@ export interface HarnessOptions {
   readonly projects?: readonly ProjectRow[];
   /** The window's answer to an agent request; undefined leaves it unanswered (it times out). */
   readonly window?: (request: AgentShellEvent) => unknown;
+  /** The render window's answers (default: every request fails as `render_failed`). */
+  readonly renderer?: Partial<PageImages>;
   /** Whether the person agrees to add a folder, and what adding it gives. */
   readonly confirm?: boolean;
   readonly added?: AddedProject;
@@ -59,13 +62,23 @@ export interface Called {
   readonly result: ToolResult;
 }
 
-const KINDS: Readonly<Record<string, "edit" | "read" | "open" | "create" | "board" | "show">> = {
+const KINDS: Readonly<Record<string, "edit" | "read" | "open" | "create" | "board" | "show" | "repair">> = {
   agent_edit: "edit",
   agent_read: "read",
   agent_open_board: "open",
   agent_create_board: "create",
   agent_edit_board: "board",
   agent_show: "show",
+  agent_repair: "repair",
+};
+
+const NO_RENDER = { ok: false, code: "render_failed", message: "No fake render window answers in this test." } as const;
+
+/** A render window that fails every request (`render_failed`), for tests that draw nothing. */
+export const NO_RENDERER: PageImages = {
+  screenshot: () => Promise.resolve(NO_RENDER),
+  check: () => Promise.resolve(NO_RENDER),
+  checkBoard: () => Promise.resolve(NO_RENDER),
 };
 
 /** A fake app for tools: engine, window, views, and the requests each received. */
@@ -73,6 +86,8 @@ export function harness(options: HarnessOptions = {}) {
   const projects = options.projects ?? [projectRow(PROJECT, "ts-orders")];
   const workspace: WorkspaceView = { projects: [...projects], selected: projects[0]?.id ?? null, recentBoards: [], removed: [] };
   const engineCalls: [string, Readonly<Record<string, unknown>>][] = [];
+  /** Engine requests sent as a window: its id, the command, and the arguments. */
+  const windowCalls: [number, string, Readonly<Record<string, unknown>>][] = [];
   const requests: AgentShellEvent[] = [];
   const focused: number[] = [];
   const confirmations: string[] = [];
@@ -101,22 +116,33 @@ export function harness(options: HarnessOptions = {}) {
   const answers: Readonly<Record<string, Answer>> = { workspace: () => workspace, ...options.engine };
   const agent = options.agent ?? { author: "agent:claude", name: "Claude" };
 
+  const renderer: PageImages = { ...NO_RENDERER, ...options.renderer };
+
+  function answer(command: string, commandArgs: Readonly<Record<string, unknown>>, onStream?: (message: unknown) => void): Promise<unknown> {
+    const answered = answers[command];
+    if (!answered) {
+      return Promise.reject(refusal("not_found", `no fake answer for ${command}`));
+    }
+    try {
+      return Promise.resolve(answered(commandArgs, (message) => onStream?.(message)));
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
   /** A tool call's context, as the server makes one per call. */
   function context(): ToolContext {
     return toolContext(
       {
         bridge,
+        renderer,
         engine: (command, commandArgs, onStream) => {
           engineCalls.push([command, commandArgs]);
-          const answer = answers[command];
-          if (!answer) {
-            return Promise.reject(refusal("not_found", `no fake answer for ${command}`));
-          }
-          try {
-            return Promise.resolve(answer(commandArgs, (message) => onStream?.(message)));
-          } catch (error) {
-            return Promise.reject(error instanceof Error ? error : new Error(String(error)));
-          }
+          return answer(command, commandArgs, onStream);
+        },
+        engineAs: (windowId, command, commandArgs) => {
+          windowCalls.push([windowId, command, commandArgs]);
+          return answer(command, commandArgs);
         },
         confirmAddProject: (_agent, path) => {
           confirmations.push(path);
@@ -166,6 +192,7 @@ export function harness(options: HarnessOptions = {}) {
     views,
     bridge,
     engineCalls,
+    windowCalls,
     requests,
     focused,
     confirmations,

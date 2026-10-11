@@ -52,6 +52,8 @@ function selectionText(page: Page, selection: ViewSelection): string {
     case "group":
     case "link":
     case "frame":
+    case "resource":
+    case "note":
       return `Selected: ${describeItem(page, selection.id)}.`;
     case "step":
       return `Selected: the step ${selection.key} of card ${selection.card}.`;

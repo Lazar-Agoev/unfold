@@ -484,10 +484,14 @@ describe("reading and opening for an agent", () => {
     store.editPage(TARGET, (draft) => {
       draft.title = "Placing an order";
     });
+    store.updatePageView(TARGET, (view) => {
+      view.sizes["create-order"] = { width: 520, height: 310 };
+    });
     expect(readAgentPage({ requestId: 1, board: REF, page: "page-1" })).toMatchObject({
       ok: true,
       page: { id: "page-1", title: "Placing an order" },
       board: { title: "Order placement", place: "draft", changes: 0, revision: "r1", unsaved: true },
+      sizes: { "create-order": { width: 520, height: 310 } },
     });
     expect(readAgentPage({ requestId: 1, board: REF, page: "page-2" })).toMatchObject({ ok: false, code: "page_not_found" });
   });

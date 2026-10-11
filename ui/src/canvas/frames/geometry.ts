@@ -1,23 +1,38 @@
 /**
- * Where a page's frames are (design §4.4). A frame has no position of its own: its box is the bounds
- * of what it holds plus room for its title, computed from the inside out, so it follows its members as
- * they move and reflow. A collapsed frame is one node, drawn where the top-left of its box would be;
- * what it holds isn't drawn, and the arrows and links of those items attach to it instead (the
- * outermost collapsed frame, when they nest). Pure, so it is tested without a DOM.
+ * Where a page's frames and notes are (design §4.4, §4.8). A frame has no position of its own: its box
+ * is the bounds of what it holds plus room for its title, computed from the inside out, so it follows
+ * its members as they move and reflow. A collapsed frame is one node, drawn where the top-left of its
+ * box would be; what it holds isn't drawn, and the arrows and links of those items attach to it instead
+ * (the outermost collapsed frame, when they nest). A free note is placed like a card; an attached note
+ * sits at its offset from what it is attached to, so it moves with it. Pure, so it is tested without a
+ * DOM.
  */
 
 import type { CardBody } from "../../code/typeKinds";
-import type { Card, Frame, Resource } from "../../ipc/generated";
+import type { Card, Frame, Link, Note, Resource } from "../../ipc/generated";
 import { boundsOf, fallbackSize, reflow, type Point, type Rect, type Size } from "../layout";
 import { measureText } from "../measure";
-import { frameNodeSize } from "../sizing";
+import { tableColumns } from "../resources/columns";
+import { RESOURCE_WORDS } from "../resources/kinds";
+import { frameNodeSize, noteSize, resourceCardSize } from "../sizing";
 
-/** A resource card before it is drawn. */
-const RESOURCE_SIZE: Size = { width: 240, height: 80 };
+/** A resource card's size before it is drawn, from what the page says (a table backed by a type lists its columns once drawn). */
+export function estimatedResourceSize(resource: Resource, columns = tableColumns(resource, null)): Size {
+  return resourceCardSize(
+    {
+      word: RESOURCE_WORDS[resource.kind],
+      name: resource.name,
+      agent: resource.author.startsWith("agent:"),
+      columns,
+      ...(resource.description ? { description: resource.description } : {}),
+    },
+    measureText,
+  );
+}
 
 /**
  * A size for an item that hasn't been measured: a card's (an entrance or a block shown as `body`), a
- * collapsed frame's node (estimated from its words), or a resource card's.
+ * collapsed frame's node (estimated from its words), a resource card's, or a note's.
  */
 export function fallbackItemSize(page: FramedPage, id: string, body?: CardBody): Size {
   const card = page.cards.find((item) => item.id === id);
@@ -25,7 +40,15 @@ export function fallbackItemSize(page: FramedPage, id: string, body?: CardBody):
     return fallbackSize("entrance" in card.ref, body);
   }
   const frame = (page.frames ?? []).find((item) => item.id === id);
-  return frame ? frameNodeSize(frame, measureText) : RESOURCE_SIZE;
+  if (frame) {
+    return frameNodeSize(frame, measureText);
+  }
+  const note = (page.notes ?? []).find((item) => item.id === id);
+  if (note) {
+    return noteSize(note.text, measureText);
+  }
+  const resource = (page.resources ?? []).find((item) => item.id === id);
+  return resource ? estimatedResourceSize(resource) : fallbackSize(false);
 }
 
 /** The room a frame leaves around what it holds: its title band on top, then each side. */
@@ -60,11 +83,14 @@ function padded(rect: Rect, padding: FramePadding): Rect {
   return { x: rect.x - padding.left, y: rect.y - padding.top, width: rect.width + padding.left + padding.right, height: rect.height + padding.top + padding.bottom };
 }
 
-/** The items of a page geometry reads: cards and resource cards have positions, frames hold them. */
+/** The items of a page geometry reads: cards, resource cards, and notes have positions, frames hold them, notes attach to them. */
 export interface FramedPage {
   readonly cards: readonly Card[];
   readonly frames?: readonly Frame[] | undefined;
   readonly resources?: readonly Resource[] | undefined;
+  readonly notes?: readonly Note[] | undefined;
+  /** The links a note can be attached to. */
+  readonly links?: readonly Link[] | undefined;
 }
 
 /** A frame as drawn: its box (or, collapsed, its node), and how many frames hold it. */
@@ -76,17 +102,17 @@ interface DrawnFrame {
 }
 
 interface PageGeometry {
-  /** Every drawn item's rectangle: cards and resource cards, frames' boxes, collapsed frames' nodes. */
+  /** Every drawn item's rectangle: cards, resource cards, and notes, frames' boxes, collapsed frames' nodes. */
   readonly rects: ReadonlyMap<string, Rect>;
   /** The frames drawn (none inside a collapsed frame), outermost first. */
   readonly frames: readonly DrawnFrame[];
   /** Each item inside a collapsed frame, and the collapsed frame drawn in its place. */
   readonly shownAs: ReadonlyMap<string, string>;
-  /** The nodes drawn inside each expanded frame (cards, resource cards, collapsed frames), nested ones included. */
+  /** The nodes drawn inside each expanded frame (cards, resource cards, free notes, collapsed frames), nested ones included. */
   readonly inside: ReadonlyMap<string, readonly string[]>;
 }
 
-/** An item being dragged, at the pointer: a card, a resource card, or a frame (which moves what it holds). */
+/** An item being dragged, at the pointer: a card, a resource card, a note, or a frame (which moves what it holds). */
 export interface Drag {
   readonly id: string;
   readonly x: number;
@@ -128,7 +154,8 @@ class FrameTree {
 export function collapsedPlaces(page: FramedPage): Map<string, string> {
   const tree = new FrameTree(page.frames ?? []);
   const places = new Map<string, string>();
-  for (const id of [...page.cards.map((card) => card.id), ...(page.resources ?? []).map((resource) => resource.id), ...tree.byId.keys()]) {
+  const placed = [...page.cards, ...(page.resources ?? []), ...(page.notes ?? [])];
+  for (const id of [...placed.map((item) => item.id), ...tree.byId.keys()]) {
     const around = tree.collapsedAround(id);
     if (around) {
       places.set(id, around.id);
@@ -138,14 +165,41 @@ export function collapsedPlaces(page: FramedPage): Map<string, string> {
 }
 
 /**
- * The page's geometry: cards and resource cards at their saved positions reflowed by `sizeOf` (as
- * `reflow` does without frames), each collapsed frame as a node in that reflow, and each expanded
- * frame's box around what it shows. `sizeOf` sizes cards, resource cards, and collapsed frames' nodes.
- * While `drag` moves an item, it follows the pointer; a dragged frame takes what it holds along.
+ * Where an attached note's offset starts from, as the file's rule reads on what is drawn: a card's or
+ * resource card's top-left, the top-left of what a frame holds (its box's or node's corner inside its
+ * padding), or the midpoint of a link's ends' points. Undefined for an item that isn't drawn.
+ */
+export function attachPoint(page: FramedPage, rects: ReadonlyMap<string, Rect>, id: string, depth = 0): Point | undefined {
+  const link = (page.links ?? []).find((item) => item.id === id);
+  if (link) {
+    const from = depth < POINT_DEPTH ? attachPoint(page, rects, link.from, depth + 1) : undefined;
+    const to = depth < POINT_DEPTH ? attachPoint(page, rects, link.to, depth + 1) : undefined;
+    return from && to ? { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 } : undefined;
+  }
+  const rect = rects.get(id);
+  const frame = (page.frames ?? []).find((item) => item.id === id);
+  if (!rect || !frame) {
+    return rect ? { x: rect.x, y: rect.y } : undefined;
+  }
+  const padding = framePadding(frame);
+  return { x: rect.x + padding.left, y: rect.y + padding.top };
+}
+
+/** How many links and frames `attachPoint` walks through at most. */
+const POINT_DEPTH = 5;
+
+/**
+ * The page's geometry: cards, resource cards, and free notes at their saved positions reflowed by
+ * `sizeOf` (as `reflow` does without frames), each collapsed frame as a node in that reflow, each
+ * expanded frame's box around what it shows, and each attached note at its offset from its item. A
+ * note on an item that isn't drawn isn't drawn either. `sizeOf` sizes cards, resource cards, notes,
+ * and collapsed frames' nodes. While `drag` moves an item, it follows the pointer; a dragged frame
+ * takes what it holds along.
  */
 export function pageGeometry(page: FramedPage, sizeOf: (id: string) => Size, drag?: Drag | null): PageGeometry {
   const tree = new FrameTree(page.frames ?? []);
-  const leaves: readonly (Card | Resource)[] = [...page.cards, ...(page.resources ?? [])];
+  const attached = (page.notes ?? []).filter((note) => note.attach !== undefined);
+  const leaves: readonly (Card | Resource | Note)[] = [...page.cards, ...(page.resources ?? []), ...(page.notes ?? []).filter((note) => note.attach === undefined)];
   const shownAs = collapsedPlaces(page);
 
   // Where a collapsed frame's node goes: where its box's top-left would be, from the saved positions.
@@ -229,6 +283,15 @@ export function pageGeometry(page: FramedPage, sizeOf: (id: string) => Size, dra
       const point = placed(id);
       return held.has(id) ? { x: point.x + dx, y: point.y + dy } : point;
     });
+  }
+
+  // Attached notes last: at their offset from what they are attached to, or at the pointer while dragged.
+  for (const note of attached) {
+    const from = note.attach !== undefined && !shownAs.has(note.id) ? attachPoint(page, rects, note.attach) : undefined;
+    if (from) {
+      const at = drag?.id === note.id ? drag : { x: from.x + note.at[0], y: from.y + note.at[1] };
+      rects.set(note.id, { x: at.x, y: at.y, ...sizeOf(note.id) });
+    }
   }
 
   const frames = [...tree.byId.values()]

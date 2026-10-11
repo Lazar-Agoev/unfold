@@ -1,4 +1,7 @@
-/** What a click on a card or a frame does: select it (or a node inside a card), or, in link mode, finish the link. */
+/**
+ * What a click on a card, a frame, a resource card, or a note does: select it (or a node inside a
+ * card), or, in link mode, finish the link there (a note can't end one).
+ */
 
 import type { Key } from "../../ipc/generated";
 import { requestFocus } from "../../keyboard";
@@ -38,4 +41,16 @@ export function clickCard(target: PageTarget, cardId: string, key: Key | null): 
 /** Selects a frame, or finishes the link being drawn there. */
 export function clickFrame(target: PageTarget, frameId: string): void {
   clickItem(target, frameId, { kind: "frame", frameId });
+}
+
+/** Selects a resource card, or finishes the link being drawn there. */
+export function clickResource(target: PageTarget, resourceId: string): void {
+  clickItem(target, resourceId, { kind: "resource", resourceId });
+}
+
+/** Selects a note (a link being drawn waits: a note can't end one). */
+export function clickNote(target: PageTarget, noteId: string): void {
+  if (!getPageView(target).linking) {
+    select(target, { kind: "note", noteId });
+  }
 }

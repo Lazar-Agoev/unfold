@@ -19,7 +19,8 @@ ui/src/
   board/         a board tab: its sidebar (header, Pages, On this page, Selected), the top bar, the dock;
                  checks/, the page checks
   canvas/        the React Flow canvas: cards (block, Diagram node, type, entrance, placeholder), frames,
-                 arrows, drawn links, layout and sizing, Arrange, Show callers
+                 resource cards, notes, arrows, drawn links and connections, layout and sizing, Arrange,
+                 Show callers
   code/ flow/    the Code and Flow renderers
   add/           Add: the map, search across projects, the preview, commands
   agent/         agents apart from any one board: the agent mark and bylines, Copy link, view reports
@@ -75,16 +76,26 @@ App
 - **The board sidebar** has the board header (back to Home, the project and folder, the title, which renames in
   place on double-click, and the board menu), **Pages** (each page with a review mark; a page's menu has Rename,
   Duplicate page, Copy link, Move up, Move down, and Delete page…), **On this page** (the cards in follow order indented by
-  call depth, their groups, and drawn links after their `from` card; a project-initial column only when the page
-  holds cards from more than one project; frames as headings where their first card comes, with what they hold
-  indented under them, nested frames nested, and "collapsed" on a collapsed one; "N Flow steps unlabeled · Label
-  them"), and **Selected**, which takes at most half the sidebar's height, scrolls, and collapses.
+  call depth, their groups, and drawn links and connections after their `from` card (a connection as its kind and
+  label: "queue · place-order job"); then the resource cards, each with the connections leaving it; a
+  project-initial column only when the page holds cards from more than one project; frames as headings where their
+  first card comes, with what they hold indented under them, nested frames nested, and "collapsed" on a collapsed
+  one; "N Flow steps unlabeled · Label them"), and **Selected**, which takes at most half the sidebar's height, scrolls, and collapses.
 - **Selected** follows the page's selection. A card: its name, location, description, Called by and Reached from (up
   to three each, then "N more · Show callers"), the calls not on the page (up to five, each with **+ Open**), and its
   groups; an entrance card lists its handlers; a type card says where its type is used ("Used in N places", a
   popover of the places, as in a line's contract) instead of calls for a type declaration (a class lists both). A
   Flow node: its label, the code name it replaces, and its paths. A group ("Step group in" its card): its title,
-  description, and Ungroup. A drawn link: its label, Edit label, and Remove link. A frame: its title (renamed in
+  description, and Ungroup. A drawn link: its kind (a menu that makes it a connection), its label, its ends, Edit
+  label, and Remove link. A connection, apart from compiled relations: its kind (a menu; changing it makes it
+  yours), who drew it, its label, its ends, the step it leaves from (`file:line`, opening the source), a
+  relationship's columns and cardinality, its channel, the type it carries (its definition opens in place), what
+  it cites, its description with what needs review and **Review**, and Remove connection. A resource card: its
+  name, its kind and who drew it, its description with what needs review and **Review**, the type a table is
+  backed by (its definition opens in place), what it cites (a key opens the peek sheet at its block, an evidence
+  range at its lines), the lines in and out of it, and Remove resource card. A note: what it is attached to (or
+  that it is free), its text (edited in place, which makes it yours, with how many of its 400 characters it uses),
+  and Remove note. A frame: its title (renamed in
   place, which makes it yours), its look and the frame that holds it, who drew it, its description with the repairs
   its health offers, what it holds (each brought into view by a click), the links that cross its border ("→" out,
   "←" in, with their labels), Collapse or Expand, and Remove frame. An arrow that stands for several calls: its two
@@ -93,9 +104,12 @@ App
 - **The canvas** has the top bar (the page title and publish state, "Claude is working…" while an agent works on the
   page, the lens centered, Share and Publish) and the dock, both floating ([Overlays](#overlays)). Its context menu has Fit, Fold all cards, and Unfold all cards; a
   card's has Open source, Show callers, Draw link…, Add as entrance… (for blocks that can be handlers), Copy link,
-  and Remove from page; a group's has Collapse or Expand group, Describe group…, Copy link, and Ungroup; a link's has
-  Edit label, Copy link, and Remove link; a frame's (on its title) has Rename…, Describe…, Collapse or Expand, Copy
-  link, and Remove frame (keep cards). A card that needs review shows a banner whose **Review** opens a popover of its problems, each repair with its
+  and Remove from page; a group's has Collapse or Expand group, Describe group…, Copy link, and Ungroup; a link's
+  (a drawn link's or a connection's, on its line or its label) has Kind ▸ (every kind; a drawn link becomes a
+  connection, `relates` only between two tables, and `other` asks for its label), Edit label, Describe… (a
+  connection), Copy link, and Remove link or Remove connection; a frame's (on its title) has Rename…, Describe…,
+  Collapse or Expand, Copy link, and Remove frame (keep cards); a resource card's has Describe…, Copy link, and
+  Remove resource card; a note's has Edit, Copy link, and Remove note. A card that needs review shows a banner whose **Review** opens a popover of its problems, each repair with its
   effect and Apply (saved at once, undoable).
 - **Three views** (`cardBody` in `code/typeKinds.ts`). A card shows its own view (saved), else the page's lens,
   else the page's default view. **Diagram** shows a card as one compact node (`canvas/cards/DiagramCard.tsx`): the
@@ -131,6 +145,41 @@ App
   menu, and Selected collapse and expand it (one undo step); nothing collapses by itself. The title selects the
   frame (or ends a link being drawn there), renames in place on double-click, and drags the frame: what it holds
   moves by the same amount, as one undo step. Focusing a card inside collapsed frames expands them.
+- **Resource cards** (`canvas/resources/`, design [§4.5](proposals/agent-mcp-design.md#45-resource-cards)) are nodes
+  of their own, authored and the same in every view: an edge in `--color-authored-line` and a tinted header with
+  the kind's 16px glyph (`resource-table`, `resource-queue`, `resource-cache`, `resource-storage`,
+  `resource-external`, `resource-actor`) and word, the name in code type, and the agent mark; then the review banner
+  ("Changed since it was drawn", "Cites code that is gone" · **Review**, the same repair popover as a card's: Keep
+  the text, Reconnect…, which points a key or an evidence range's anchor at the definition chosen, and Remove the
+  resource card) and the whole description, wrapped (double-click edits it). A **table** lists its columns in one
+  grid (`tableColumns`, `canvas/resources/columns.ts`): a table backed by a type lists the type's properties, its own
+  and then the ones it inherits (from `type_definition`), each with its written type (`TypeText`, whose declared
+  names open their definitions in place) and `?` when optional, and lays the board's marks on them by name (`PK`,
+  `FK → customers.id`, `unique`); a table that lists its own columns shows them as written. Up to 12 columns show,
+  then "N more". 200–360px wide (a table 240–520px), `resourceCardSize`; dragging one moves it.
+- **Connections** (`canvas/connections/`, design [§4.7](proposals/agent-mcp-design.md#47-connections)) are links with
+  a kind, drawn in the authored color with the kind's line (`connections.css`): solid for HTTP, RPC, reads, and
+  writes; long dashes for a queue; dots for an event; short dashes for a runtime call (`calls`); thin with
+  crow's-foot ends for a relationship (`relates`: a bar for one, a crow's foot for many); dashed for `other`. A
+  filled head points where the data goes: into `to`, but back into the code for `reads`; a relationship has none.
+  Its chip (`chipForms`) reads the kind's word and what travels: the channel (for reads and writes without one, the
+  table), the carried type's name (dotted; a click opens its definition in a popover, as on a typed line), and the
+  label (`queue · orders · OrderJob · place-order job`, `writes · orders`, `runtime call`, `N : 1` for a
+  relationship, the label for `other`), with the agent mark and a review dot while something about it needs review.
+  Chips join the typed lines' `LabelLayout` (shorter forms drop the label, then the type, then all but the word),
+  so they never cover a card, a typed label, or each other; a chip that fits nowhere isn't drawn at rest and the
+  line takes the click. A connection with a `step` leaves from that step's line in Code and its Flow step (a
+  `step:<key>` port the card places: the call's row, else the statement that is or holds it, else the collapsed
+  step group hiding it; `portSpot`, `flowPortNodes`), and from the card's edge in Diagram; a relationship leaves
+  and enters at its columns' rows. An end inside a collapsed frame attaches to the frame, and connections of one
+  kind that would draw on top of each other merge ("queue · 2 connections"). A drawn link (no kind) keeps today's
+  dashed gray look and its label outside the layout. A click or Kind ▸ selects or changes either.
+- **Notes** (`canvas/notes/`, design [§4.8](proposals/agent-mcp-design.md#48-notes)) are short authored text on the
+  authored tint with who wrote it underneath (140–260px wide, `noteSize`). A free note is placed like a card (and
+  reflows like one); a note attached to a card, resource card, frame, or link sits at its offset from that item's
+  corner (a frame's: where what it holds starts; a link's: the midpoint of its ends' corners, `attachPoint`), so it
+  moves with it, and isn't drawn while a collapsed frame hides it or its item. Dragging an attached note gives it a
+  new offset and keeps it attached; double-clicking edits it; removing its item leaves it where it was, free.
 
 ## State
 
@@ -296,8 +345,9 @@ The screens follow [architecture §11](architecture.md#11-the-desktop-app). Deta
   at its card's port (offset by where that card sits in the frame) and enters at the card it reaches, so a callee
   outside sits level with the calling line inside. A collapsed frame is one node of its own size, with what it holds
   laid out inside it for when it opens. Connections order their ends as data flows (a `reads` connection's resource
-  card before the code that reads it, any other after the side that acts); drawn links don't count, and notes aren't
-  placed (an attached note moves with its item). Each level orders its items entrances first, then left to right and
+  card before the code that reads it, any other after the side that acts: a table after the code that writes it,
+  before the code that reads it); drawn links don't count. A note attached to a card, resource card, or frame goes
+  under it, 12px apart in id order, and the item takes room for them; free notes and notes on links aren't placed. Each level orders its items entrances first, then left to right and
   top to bottom as they are now, so arranging again changes nothing, and a page without frames arranges exactly as
   it did before frames.
 - **Health and activity** shows one list at a time. Health: the problems other than board health (Open shows the
@@ -363,22 +413,26 @@ the main process owns argument parsing, links, defaults, and page revisions.
   | --- | --- |
   | `add_cards` | Adds a block or an entrance by key (from any connected project), or keeps the card already there (its view changes when asked). A new card goes beside the item it is `near`, else right of a card that calls it (level with the calling line) or whose field names it (level with the field), else left of a card it calls, else right of everything (with `frame`, right of what that frame holds); it never covers a card, or a frame it doesn't go into. With `frame`, the cards it adds go into that frame. `follow` adds what it calls (up to 3 levels) and what calls it (up to 2), resolved calls and constructions only, and, from a type card, the types its fields name (`types`, up to 2 levels, in the view asked for the card), at most 40 cards per card; each card's result lists where following stopped: an external or unresolved call (as written, with its line and library or reason), an external, builtin, or unresolved type name (as written, with its field and module or reason), resolved calls or declared types past the depth asked for, or callers past the 20 listed. Following types from a card that isn't a type adds a warning |
   | `set_view` | A card's view (Diagram, Flow, or Code) and fold, a step group's or a frame's collapse, and the page's default view |
-  | `arrange` | Arrange from the inside out (`arrangePage`), or one frame's inside (`frame`; its box keeps its corner, and `direction` becomes the frame's), else the page's top level in `direction`; then moves of cards and frames: a position (a frame's box corner), or right of or below another card or frame (moved clear of everything it isn't in) |
-  | `remove_items` | Cards (with their step groups and the links that end at them), step groups, links, and frames: a frame's members stay, in the frame that held it, unless `keepMembers` is false. A frame left with no members goes too |
+  | `arrange` | Arrange from the inside out (`arrangePage`), or one frame's inside (`frame`; its box keeps its corner, and `direction` becomes the frame's), else the page's top level in `direction`; then moves of cards, resource cards, notes, and frames: a position (a frame's box corner; an attached note stays attached, at a new offset), or right of or below another item (moved clear of everything it isn't in) |
+  | `remove_items` | Cards (with their step groups and the links that end at them), step groups, links and connections, frames, resource cards (with the links that end at them), and notes: a frame's members stay, in the frame that held it, unless `keepMembers` is false. A frame left with no members goes too; a note attached to what goes stays where it was, free |
   | `group_steps` | Step groups of one card by line range or step keys, created or updated by id, under the gutter's rule (`groupSelection`): whole statements of one branch, never overlapping another group. The result names the statements each group took; a warning says when a range took more lines than asked; a refusal says why a range breaks the rule and lists the statements there |
-  | `describe` | Descriptions of cards, step groups, and frames, and labels of links |
+  | `describe` | Descriptions of cards, step groups, frames, resource cards, and connections, and labels of drawn links (a note is its own text: `add_notes` rewrites it) |
   | `label_steps` | Flow labels of a card's steps (keys of its Flow model) |
   | `frame_cards` | Frames created or updated by id: title, description, members, look, icon, parent, direction, and collapse. Members come from no frame, the frame itself, or its `parent`; an item already in another frame, a member that isn't a card, resource card, note, or frame, a cycle, and nesting past three deep are refused, saying why. On an update, the items it no longer lists go to the frame that holds it. The result names each frame with its look, icon, parent, and members (a frame it emptied is `removed`), and a warning notes a card in no frame that cards in two or more frames call (shared code) |
+  | `add_resources` | Resource cards created or updated by id (else the card of the same kind and name): kind, name, a table's `type` (loaded first; a key the project hasn't is refused) or own `columns` (on an update, the two are replaced together), anchors (kept when left out), and description; `frame` puts it in a frame, and a new one goes right of the item it is `near`, else right of what the frame holds, else right of everything, covering nothing. A type or columns on anything but a table, types or `optional` on a type-backed table's marks, and `references` off a foreign key are refused. The result names each card with its columns as the card shows them |
+  | `connect` | Connections drawn or updated by id (else the connection of the same kind, ends, step, and columns): kind, ends (cards, resource cards, or frames), `step` (inside the `from` card's block), a relationship's columns (each a column of its table) and cardinality, channel, carried type, anchors, label, and description; everything a connection says is replaced as a whole. An `other` connection without a label is refused. The save fills in the channel of one ending at an entrance, and the result carries it as saved |
+  | `add_notes` | Notes added or updated by id (else the same text on the same item is kept): 1 to 400 characters, attached to a card, frame, resource card, or link (placed beside it, as an offset) or free (beside the item it is `near`, else right of everything). Without `attach`, an update leaves a note where it is |
 
   Sizes come from what the canvas measured, else from the cards' models and type definitions in the view each
   shows (`estimatedCardSize`) and a collapsed frame's words (`frameNodeSize`), calling lines from the Code rows
   (`estimatedLineOffset`), and fields from a type card's rows (`estimatedFieldOffset`), so placement and Arrange
   work on a page no one has shown.
 - **People's words are safe.** No operation replaces or removes a person's description, label, group or frame
-  title, or group or frame description unless the call sets `replacePeopleText` (`people_text` otherwise); a group
-  title without an author counts as a person's. An agent may change a person's frame's members, look, and collapse. Text an agent writes again unchanged is kept, whoever wrote it.
+  title, group or frame description, resource card, connection (a drawn link included), or note unless the call sets
+  `replacePeopleText` (`people_text` otherwise); a group title without an author counts as a person's. An agent may change a person's frame's members, look, and collapse. Text an agent writes again unchanged is kept, whoever wrote it.
 - **Reads and background tabs.** `agent_read` answers with the page as the window holds it (unsaved edits included),
-  the board's title, publish state, and file revision, and whether it has unsaved edits. `agent_open_board` opens a
+  the board's title, publish state, and file revision, whether it has unsaved edits, and the sizes the canvas
+  measured for the page's items (none before the page is drawn). `agent_open_board` opens a
   board with `openBoard(ref, {background: true})`: its tab is added without switching to it, a board open here keeps
   its page, and a window that holds the board is left alone (the answer names it). The channel is installed before
   the window renders, and requests wait until the window's own state is restored.
@@ -390,26 +444,32 @@ the main process owns argument parsing, links, defaults, and page revisions.
   a board keeps at least one page, deleting a page with a person's words on it (a description, label, title, or
   note) is refused unless `replacePeopleText`, and a deleted active page hands over to the first page.
   `agent_show` activates the board's tab and page and, for an item, records a focus move (Back returns), selects it
-  (a card, step group, or link), and centers its cards (a frame's members, a resource card's or note's neighbours);
-  the main process then brings the window to the front.
+  (a card, step group, link, frame, resource card, or note), and centers it (a step group's card, a link's two ends,
+  a frame's members); the main process then brings the window to the front.
+- **Repairs** (`state/boards/agent/repair.ts`). `agent_repair` applies the `repair_board` repair the main process
+  chose (it found the health item and checked that the agent may sign off on it) the way Review applies one
+  (`repairBoard`): the board's unsaved edits are saved first, the engine repairs and saves, and the result is one
+  undo step. The items it changed are marked as the agent's work; the answer is the page as saved.
 - **Working marks** (`state/boards/agent/working.ts`): while an agent works on a page, the top bar says "Claude is
-  working…" (the agent glyph and muted text; "Claude and Codex are working…"), the cards and frames it changed (a
-  group's or a label's card too) have a soft outline (`--color-authored-line`, 2px, 3px off the card), and the links it labeled a
-  soft band (`--color-authored-tint`). `agent_finish` clears that agent's marks on the board and toasts "Claude ·
+  working…" (the agent glyph and muted text; "Claude and Codex are working…"), the cards, frames, resource cards,
+  and notes it changed (a group's or a label's card too) have a soft outline (`--color-authored-line`, 2px, 3px off
+  the card), and the links and connections it drew or labeled a soft band (`--color-authored-tint`). `agent_finish` clears that agent's marks on the board and toasts "Claude ·
   <summary>". Session state only: never saved, never an undo step, and dropped when the board leaves the window.
 - **The agent mark** (`agent/AgentMark.tsx`): the `agent` glyph (a 10px spark) and the word "agent", in the color of
   the text around it. `authorName` reads an agent as "Codex · agent" in plain text; `<Author>` draws "Claude · agent"
   with the mark in Selected's bylines (descriptions, Flow labels, a link's "drawn by", a group's "titled by") and on a
   placeholder card. On the canvas, an agent's card description carries the mark (titled "Written by Claude, an
-  agent"), and an agent's link label chip shows its name and the mark. Editing an agent's text makes it yours: the
+  agent"), and so do an agent's resource card (in its header), connection (on its chip), and note (in its byline);
+  an agent's drawn link label chip shows its name and the mark. Editing an agent's text makes it yours: the
   edit signs it with your name, and a group's new title is its writer's.
 - **View reports** (`agent/viewReport.ts`): `report_view` 150 ms after the tabs or a board session change (only when
   the report differs from the last), at once when the window gains focus, and after a resize: the active board and
-  page (none on Home), the selection (a card, a step: a card's Flow node or statement, a group, a link, a frame, a
-  line with its occurrence, or the calls of an arrow that stands for several), the lens (the page's, else its default view), the ids in view (cards and frames whose
-  drawn rectangle meets the canvas's visible area, all drawn ones before the canvas has a camera, never what a
-  collapsed frame hides; their groups; links with an end in view), and the board tabs.
-- **Copy link** (pages, cards, step groups, links, and frames): copies `unfold://<project's shared name>/<board id>?page=<page
+  page (none on Home), the selection (a card, a step: a card's Flow node or statement, a group, a link or a
+  connection, a frame, a resource card, a note, a line with its occurrence, or the calls of an arrow that stands
+  for several), the lens (the page's, else its default view), the ids in view (cards, frames, resource cards, and
+  notes whose drawn rectangle meets the canvas's visible area, all drawn ones before the canvas has a camera, never
+  what a collapsed frame hides; their groups; links with an end in view), and the board tabs.
+- **Copy link** (pages, cards, step groups, links and connections, frames, resource cards, and notes): copies `unfold://<project's shared name>/<board id>?page=<page
   id>&item=<item id>` (each part URI-encoded) with `copy_to_clipboard`, and toasts "Copied the link". Only the main
   process reads links; clicking one opens nothing.
 - **Preferences › Agents** (`preferences/AgentsSection.tsx`): the switch "Let agents connect", the port (an error when

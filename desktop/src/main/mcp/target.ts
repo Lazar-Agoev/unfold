@@ -39,11 +39,14 @@ export interface ReadPage {
   readonly revision: string;
   /** The window has edits it hasn't saved yet. */
   readonly unsaved: boolean;
+  /** The sizes the window's canvas measured for the page's items, by id (empty when no window drew it). */
+  readonly sizes: Readonly<Record<string, { readonly width: number; readonly height: number }>>;
 }
 
 const LINK = /^\s*unfold:\/\//i;
 
-function isLink(text: string | undefined): boolean {
+/** Whether text is a link the person pasted (`unfold://…`). */
+export function isLink(text: string | undefined): boolean {
   return text !== undefined && LINK.test(text);
 }
 
@@ -156,7 +159,14 @@ export async function readPage(context: ToolContext, board: AgentBoardRef, page:
   if (page !== undefined) {
     const held = await context.bridge.read({ board, page });
     if (held.ok) {
-      return { page: held.page as unknown as Page, title: held.board.title, draft: held.board.place === "draft", revision: held.revision, unsaved: held.board.unsaved };
+      return {
+        page: held.page as unknown as Page,
+        title: held.board.title,
+        draft: held.board.place === "draft",
+        revision: held.revision,
+        unsaved: held.board.unsaved,
+        sizes: held.sizes ?? {},
+      };
     }
     if (held.code !== "board_not_open") {
       throw new ToolError(held.message, held.code);
@@ -171,7 +181,7 @@ export async function readPage(context: ToolContext, board: AgentBoardRef, page:
       `Its pages: ${file.document.pages.map((item) => `${item.title} (id ${item.id})`).join(", ")}.`,
     );
   }
-  return { page: found, title: file.document.title, draft: file.place === "draft", revision: context.revision(found), unsaved: false };
+  return { page: found, title: file.document.title, draft: file.place === "draft", revision: context.revision(found), unsaved: false, sizes: {} };
 }
 
 /** The header place of a page that was read. */

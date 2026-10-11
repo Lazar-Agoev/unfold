@@ -84,6 +84,19 @@ describe("the agent channel", () => {
     expect(answers.get("agent_create_board_result")).toMatchObject({ requestId: 9, result: { ok: false, code: "board_not_open" } });
   });
 
+  it("answers a repair with the page as saved", async () => {
+    resetAgentChannel();
+    engine.uninstall();
+    engine = installFakeEngine({ handlers: { repair_board: (args) => boardState(args.project, args.id, boardDocument(), { revision: "r3" }) } });
+    installAgentChannel();
+    setAgentChannelReady();
+    engine.emit({ type: "agent_repair", requestId: 10, board: BOARD, page: "page-1", agent: CLAUDE, repair: { page: "page-1", kind: "remove_card", card: "a" }, items: [] });
+    await vi.waitFor(() => {
+      expect(engine.windowCalls.map((entry) => entry.command)).toEqual(["agent_repair_result"]);
+    });
+    expect(engine.windowCalls[0]?.args).toMatchObject({ requestId: 10, result: { ok: true, page: { id: "page-1" }, board: { revision: "r3" } } });
+  });
+
   it("drops the working marks of a board the window no longer holds", () => {
     markWorking({ board: REF, page: "page-1" }, CLAUDE, ["a"]);
     const marks = () => [...renderHook(() => useWorkingItems({ board: REF, page: "page-1" })).result.current];

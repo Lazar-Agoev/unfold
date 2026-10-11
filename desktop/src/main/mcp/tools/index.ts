@@ -6,13 +6,18 @@
 import type { Prompt } from "../prompt";
 import type { Tool } from "../tool";
 import { createBoard, editPages, organizeBoards, show } from "./boards";
+import { addCards, arrangePage, removeItems, setView } from "./build";
 import { readCall } from "./calls";
 import { getRelations, readCode } from "./code";
 import { readFile } from "./files";
+import { finishWork, repair } from "./finish";
 import { getGuide } from "./guide";
+import { listBoards, readPage } from "./pages";
 import { getProject, listProjects } from "./projects";
+import { check, getScreenshot } from "./review";
 import { listEntrances, search } from "./search";
 import { addProject, compileProject, updateProjectSettings } from "./setup";
+import { addNotes, addResources, connect, describe, frameCards, groupSteps, labelSteps } from "./shape";
 import { getCurrentView } from "./view";
 
 export const TOOLS: readonly Tool[] = [
@@ -33,6 +38,23 @@ export const TOOLS: readonly Tool[] = [
   readCall,
   readFile,
   getRelations,
+  listBoards,
+  readPage,
+  check,
+  getScreenshot,
+  addCards,
+  setView,
+  arrangePage,
+  removeItems,
+  groupSteps,
+  frameCards,
+  addResources,
+  connect,
+  addNotes,
+  describe,
+  labelSteps,
+  repair,
+  finishWork,
 ];
 
 export const PROMPTS: readonly Prompt[] = [];

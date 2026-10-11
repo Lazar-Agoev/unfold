@@ -36,12 +36,15 @@ import { openBoard } from "../open";
 import { getOpenBoard, isDirty, saveStep } from "../store";
 import type { BoardRef } from "../types";
 import { prepareAddCards } from "./cards";
-import { AgentRefusal, cardProject, type ApplyOp, type OpContext } from "./context";
+import { applyConnect } from "./connections";
+import { AgentRefusal, cardProject, resourceProject, type ApplyOp, type OpContext } from "./context";
 import { AgentData } from "./data";
 import { applyFrameCards } from "./frames";
 import { applyGroupSteps } from "./groups";
 import { applyArrange, applySetView } from "./layout";
+import { applyAddNotes } from "./notes";
 import { applyRemoveItems } from "./remove";
+import { prepareAddResources } from "./resources";
 import { applyDescribe, applyLabelSteps } from "./text";
 import { finishWorking, markWorking } from "./working";
 
@@ -73,10 +76,19 @@ async function prepare(op: AgentOp, ctx: OpContext): Promise<ApplyOp> {
       return (page, run) => applyLabelSteps(page, op, run);
     case "frame_cards":
       return (page, run) => applyFrameCards(page, op, run);
+    case "add_resources":
+      return prepareAddResources(op, ctx);
+    case "connect":
+      return (page, run) => applyConnect(page, op, run);
+    case "add_notes":
+      return (page, run) => applyAddNotes(page, op, run);
   }
 }
 
-/** The items an edit changed, as its working marks outline them: cards, groups and their cards, links, a label's card, frames. */
+/**
+ * The items an edit changed, as its working marks outline them: cards, groups and their cards, links,
+ * a label's card, frames, resource cards, and notes.
+ */
 function changedItems(items: readonly AgentItemResult[]): string[] {
   return items.flatMap((item) => {
     if (item.status !== "created" && item.status !== "updated") {
@@ -86,12 +98,22 @@ function changedItems(items: readonly AgentItemResult[]): string[] {
       case "card":
       case "link":
       case "frame":
+      case "resource":
+      case "note":
         return [item.id];
       case "group":
         return [item.id, item.card];
       case "label":
         return [item.card];
     }
+  });
+}
+
+/** Results as the save left them: a connection's channel, which the save fills in when it ends at an entrance. */
+function asSaved(items: readonly AgentItemResult[], saved: Page): AgentItemResult[] {
+  return items.map((item) => {
+    const link = item.kind === "link" && item.status !== "removed" ? saved.links.find((entry) => entry.id === item.id) : undefined;
+    return link?.channel !== undefined && item.kind === "link" ? { ...item, channel: link.channel } : item;
   });
 }
 
@@ -122,14 +144,19 @@ export async function applyAgentEdit(request: AgentEditRequest): Promise<AgentEd
       index: projectIndex(await queryClient.query(engineQueryOptions("workspace", {}))),
       measured: board.pages[request.page]?.sizes ?? {},
     };
-    // Every card's model (its size, its calls, its outline and Flow steps) and each type card's definition (its fields and type arrows).
-    await Promise.all(
-      page.cards.map(async (card) => {
+    // Every card's model (its size, its calls, its outline and Flow steps), each type card's definition
+    // (its fields and type arrows), and the type of each table backed by one (its columns).
+    await Promise.all([
+      ...page.cards.map(async (card) => {
         const project = cardProject(base, card);
         const key = cardKey(card);
         return project === null ? null : Promise.all([base.data.loadModel(project, key), isTypeKind(keyBlockKind(key) ?? "") ? base.data.loadDefinition(project, key) : null]);
       }),
-    );
+      ...(page.resources ?? []).map((resource) => {
+        const project = resourceProject(base, resource);
+        return resource.type !== undefined && project !== null ? base.data.loadDefinition(project, resource.type) : null;
+      }),
+    ]);
     const applies: ApplyOp[] = [];
     for (const op of request.ops) {
       applies.push(await prepare(op, { ...base, warnings: [] }));
@@ -162,7 +189,7 @@ export async function applyAgentEdit(request: AgentEditRequest): Promise<AgentEd
       ok: true,
       page: saved,
       board: boardInfo({ title: state.document.title, place: state.place, changes: state.published?.changes ?? 0, revision: state.revision }),
-      items: outcome.value.items,
+      items: asSaved(outcome.value.items, saved),
       warnings: outcome.value.warnings,
     };
   } catch (error) {
@@ -191,6 +218,7 @@ export function readAgentPage(request: AgentReadRequest): AgentReadResult {
       ...boardInfo({ title: board.document.title, place: board.place, changes: board.published?.changes ?? 0, revision: board.revision }),
       unsaved: isDirty(board),
     },
+    sizes: board.pages[request.page]?.sizes ?? {},
   };
 }
 

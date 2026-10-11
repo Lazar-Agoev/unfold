@@ -1,7 +1,8 @@
 /**
  * Card widths: block cards size to their content between 280 and 880 px, entrance cards between 200
- * and 320 px, Diagram nodes and collapsed frames' nodes between 240 and 400 px, and type cards between
- * 280 and 560 px, measured with the bundled fonts; longer lines soft-wrap and nothing scrolls inside a card. Heights follow from
+ * and 320 px, Diagram nodes and collapsed frames' nodes between 240 and 400 px, type cards between
+ * 280 and 560 px, resource cards between 200 and 360 px (tables 240 to 520), and notes between 140
+ * and 260 px, measured with the bundled fonts; longer lines soft-wrap and nothing scrolls inside a card. Heights follow from
  * the content and are measured by the canvas; before a card is drawn, its height and an entrance card's
  * handler rows are estimated from its model, so cards a step opens are placed in that step. The
  * constants follow cards.css, code.css, and types.css.
@@ -15,6 +16,7 @@ import { fieldRows } from "./arrows";
 import { entranceCardText, entranceTitle } from "./entranceText";
 import { ENTRANCE_MAX_WIDTH, ENTRANCE_MIN_WIDTH, clampCardWidth, fallbackSize, type Size } from "./layout";
 import { CODE_FONT, DESCRIPTION_FONT, FRAME_TITLE_FONT, LOCATION_FONT, MARK_FONT, METHOD_FONT, TITLE_FONT } from "./measure";
+import { columnTypeText, listedColumns, markText, type TableColumn } from "./resources/columns";
 
 /** The card's border, left and right. */
 const BORDER = 2;
@@ -385,4 +387,69 @@ export function frameNodeSize(frame: Pick<Frame, "title" | "author" | "descripti
   const lines = (frame.description?.text.split("\n") ?? []).reduce((count, paragraph) => count + Math.max(1, Math.ceil(measure(paragraph, DESCRIPTION_FONT) / room)), 0);
   const header = HEADER_PADDING * 2 + TITLE_LINE + RULE;
   return { width, height: BORDER + header + FRAME_BODY_PADDING + lines * DESCRIPTION_LINE + (lines > 0 ? HOLDS_GAP : 0) + HOLDS_LINE };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Resource cards and notes
+
+/** A resource card sizes to its header between these widths; a table, to its columns too. */
+const RESOURCE_MIN_WIDTH = 200;
+const RESOURCE_MAX_WIDTH = 360;
+const TABLE_MIN_WIDTH = 240;
+const TABLE_MAX_WIDTH = 520;
+/** A resource card's header (no switch), and its columns' grid: block padding, a row, the gaps between columns, "N more". */
+const RESOURCE_HEADER = HEADER_PADDING * 2 + TITLE_LINE + RULE;
+const COLUMNS_PADDING = 18;
+const COLUMN_ROW = 20;
+const COLUMN_GAP = 8;
+const COLUMN_NAME_MIN = 64;
+
+/** What sizing a resource card reads: its kind's word, its name, who drew it, its description, and a table's columns. */
+export interface ResourceSizeInput {
+  readonly word: string;
+  readonly name: string;
+  readonly agent: boolean;
+  readonly description?: Description;
+  /** A table's columns (`tableColumns`); none for any other kind. */
+  readonly columns: readonly TableColumn[];
+}
+
+/** A resource card's width: its header (glyph, kind's word, name, agent mark) and a table's widest column. */
+export function resourceCardWidth(input: ResourceSizeInput, measure: Measure): number {
+  const mark = input.agent ? GAP + MARK_GLYPH + measure("agent", MARK_FONT) : 0;
+  const header = PADDING * 2 + BORDER + ICON + GAP + measure(input.word, MARK_FONT) + GAP + measure(input.name, TITLE_FONT) + mark;
+  if (input.columns.length === 0) {
+    return clampCardWidth(header, RESOURCE_MIN_WIDTH, RESOURCE_MAX_WIDTH);
+  }
+  const widest = (texts: readonly string[], min = 0) => Math.max(min, ...texts.map((text) => measure(text, CODE_FONT)));
+  const name = widest(input.columns.map((column) => `${column.name}${column.optional ? "?" : ""}`), COLUMN_NAME_MIN) + COLUMN_GAP;
+  const type = widest(input.columns.map(columnTypeText));
+  const marks = Math.max(0, ...input.columns.map((column) => measure(markText(column), LOCATION_FONT)));
+  const grid = PADDING * 2 + BORDER + name + type + (marks > 0 ? COLUMN_GAP + marks : 0);
+  return clampCardWidth(Math.max(header, grid), TABLE_MIN_WIDTH, TABLE_MAX_WIDTH);
+}
+
+/** A resource card's size before it is drawn: its header, its whole description wrapped, and a table's listed columns. */
+export function resourceCardSize(input: ResourceSizeInput, measure: Measure): Size {
+  const width = resourceCardWidth(input, measure);
+  const { shown, hidden } = listedColumns(input.columns, false);
+  const columns = shown.length > 0 ? COLUMNS_PADDING + shown.length * COLUMN_ROW + (hidden > 0 ? MORE_ROW : 0) : 0;
+  return { width, height: BORDER + RESOURCE_HEADER + descriptionHeight(input.description, width, measure) + columns };
+}
+
+/** A note sizes to its text between these widths. */
+const NOTE_MIN_WIDTH = 140;
+const NOTE_MAX_WIDTH = 260;
+/** A note's padding (notes.css), the gap above its byline, and the byline's line. */
+const NOTE_PADDING_X = 10;
+const NOTE_PADDING_Y = 8;
+const NOTE_BYLINE = 4 + 16;
+
+/** A note's size: its text wrapped between 140 and 260 px, and its byline. */
+export function noteSize(text: string, measure: Measure): Size {
+  const longest = Math.max(0, ...text.split("\n").map((paragraph) => measure(paragraph, DESCRIPTION_FONT)));
+  const width = clampCardWidth(BORDER + NOTE_PADDING_X * 2 + longest, NOTE_MIN_WIDTH, NOTE_MAX_WIDTH);
+  const room = Math.max(1, width - BORDER - NOTE_PADDING_X * 2);
+  const lines = text.split("\n").reduce((count, paragraph) => count + Math.max(1, Math.ceil(measure(paragraph, DESCRIPTION_FONT) / room)), 0);
+  return { width, height: BORDER + NOTE_PADDING_Y * 2 + lines * DESCRIPTION_LINE + NOTE_BYLINE };
 }

@@ -276,8 +276,8 @@ describe("Flow layout with step groups", () => {
     const direct = placed(layout, "group:place-it");
     const condition = placed(layout, "2");
     expect(queued?.label).toBe("Queue it for a worker, reply 202");
-    expect(queued?.group).toEqual({ id: "queue-it", steps: 3, returns: true, throws: false });
-    expect(direct?.group).toEqual({ id: "place-it", steps: 3, returns: false, throws: false });
+    expect(queued?.group).toMatchObject({ id: "queue-it", steps: 3, returns: true, throws: false });
+    expect(direct?.group).toMatchObject({ id: "place-it", steps: 3, returns: false, throws: false });
     expect(queued && condition && queued.x > condition.x).toBe(true);
     expect(direct?.x).toBe(condition?.x);
     expect(layout.regions).toEqual([]);
@@ -376,7 +376,7 @@ describe("Flow layout with step groups", () => {
       "group:log-and-stop>1>next",
       "group:log-and-stop>group:fail>break",
     ]);
-    expect(placed(shut, "group:fail")?.group).toEqual({ id: "fail", steps: 1, returns: false, throws: true });
+    expect(placed(shut, "group:fail")?.group).toMatchObject({ id: "fail", steps: 1, returns: false, throws: true });
     const open = layoutFlow(loop, { ...options, groups: [loopBody] });
     const repeats = open.regions.find((region) => region.kind === "loop");
     const body = regionOf(open, "log-and-stop");

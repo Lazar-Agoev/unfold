@@ -1,5 +1,6 @@
 /**
- * What agents write: `describe` (descriptions of cards, step groups, and frames, and labels of links) and
+ * What agents write: `describe` (descriptions of cards, step groups, frames, resource cards, and
+ * connections, and labels of drawn links) and
  * `label_steps` (Flow labels of a card's steps). Every text is signed with the agent's identity and
  * signed against the code at the next save. Replacing a person's text is refused unless the call says
  * the person asked for it; text that doesn't change is kept as it is, whoever wrote it.
@@ -8,9 +9,14 @@
 import type { AgentItemResult, AgentItemStatus, DescribeOp, LabelStepsOp } from "@unfold/desktop/agent-api";
 import type { Page } from "../../../ipc/generated";
 import { cardKey, findCard, setCardDescription, setLabel, setLinkLabel, updateGroup } from "../document";
+import { setLinkDescription } from "../connections";
 import { findFrame, updateFrame } from "../frames";
+import { findNote } from "../notes";
+import { findResource, setResourceDescription } from "../resources";
 import { AgentRefusal, cardName, cardOf, cardProject, cardResult, guardPeopleText, invalid, type OpContext } from "./context";
+import { linkResult } from "./connections";
 import { frameResult } from "./frames";
+import { resourceName, resourceResult } from "./resources";
 
 /** `created` for new text, `kept` for the same text, `updated` for new words. */
 function statusOf(before: string | undefined, text: string): AgentItemStatus {
@@ -57,7 +63,25 @@ export function applyDescribe(page: Page, op: DescribeOp, ctx: OpContext): Agent
       updateFrame(page, frame.id, { description: { text, author } });
       return frameResult(ctx, page, frame, statusOf(before?.text, text));
     }
+    const resource = findResource(page, item.id);
+    if (resource) {
+      const before = resource.description;
+      if (before && before.text !== text) {
+        guardPeopleText(`the description of ${resourceName(resource)}`, before.author, op.replacePeopleText);
+      }
+      setResourceDescription(page, resource.id, text, author);
+      return resourceResult(ctx, page, resource, statusOf(before?.text, text));
+    }
     const link = page.links.find((entry) => entry.id === item.id);
+    if (link?.kind !== undefined) {
+      // A connection's description gives its evidence in words; its label says what travels (connect).
+      const before = link.description;
+      if (before && before.text !== text) {
+        guardPeopleText(`the description of the ${link.kind} connection`, before.author, op.replacePeopleText);
+      }
+      setLinkDescription(page, link.id, text, author);
+      return linkResult(link, statusOf(before?.text, text));
+    }
     if (link) {
       const before = link.label;
       if (before && before.text !== text) {
@@ -66,7 +90,10 @@ export function applyDescribe(page: Page, op: DescribeOp, ctx: OpContext): Agent
       setLinkLabel(page, link.id, text, author);
       return { kind: "link", id: link.id, status: statusOf(before?.text, text), from: link.from, to: link.to, name: text };
     }
-    throw invalid(`There is no card, step group, frame, or link with id “${item.id}” on this page. read_page lists the page's ids.`);
+    if (findNote(page, item.id)) {
+      throw invalid(`“${item.id}” is a note: its text is what it says. add_notes with its id rewrites it.`);
+    }
+    throw invalid(`There is no card, step group, frame, resource card, or link with id “${item.id}” on this page. read_page lists the page's ids.`);
   });
 }
 

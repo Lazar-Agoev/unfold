@@ -12,8 +12,8 @@ import { pageRevision } from "../agents/revision";
 import { ViewTracker } from "../agents/views";
 import { EngineRequestError } from "../engine-host";
 import type { WindowEntry } from "../windows";
-import type { McpServices } from "./context";
-import type { BoardList, ProjectSummary, WorkspaceView } from "./engine-types";
+import type { McpServices, PageImages } from "./context";
+import type { BoardHealthView, BoardList, Page, ProjectSummary, ReadBoardResult, WorkspaceView } from "./engine-types";
 import { INSTRUCTIONS } from "./instructions";
 import { definePrompt } from "./prompt";
 import { McpService } from "./service";
@@ -92,6 +92,78 @@ const BOARDS: BoardList = {
 
 const CREATE_ORDER = "src/routes/orders.ts#function:createOrder";
 
+/** The board as its file holds it. */
+const FILE: ReadBoardResult = {
+  project: PROJECT,
+  id: BOARD.id,
+  place: "draft",
+  name: "orders",
+  document: { format: "unfold-board", version: 1, title: "Order placement", projects: [], pages: [PAGE as unknown as Page] },
+  revision: "r1",
+  published: null,
+  heldBy: null,
+};
+
+/** The board's health: the card is missing. */
+const HEALTH: BoardHealthView = {
+  health: {
+    items: [{ page: "page-1", kind: "missing", target: { card: "create-order" }, message: "src/orders.ts#function:createOrder is not in the graph.", repairs: ["reconnect", "removeCard"] }],
+    missing: 1,
+    outdated: 0,
+    brokenGroups: 0,
+    review: 0,
+    notConnected: 0,
+    brokenLinks: 0,
+  },
+  outlines: [{ page: "page-1", rows: [{ card: "create-order", depth: 0 }], unlabeled: [] }],
+  label: "1 missing",
+};
+
+/** Every tool of design §6.11, in its order. */
+const SIGNATURES = [
+  "get_guide",
+  "get_current_view",
+  "list_projects",
+  "get_project",
+  "add_project",
+  "compile_project",
+  "update_project_settings",
+  "create_board",
+  "organize_boards",
+  "edit_pages",
+  "show",
+  "search",
+  "list_entrances",
+  "read_code",
+  "read_call",
+  "read_file",
+  "get_relations",
+  "list_boards",
+  "read_page",
+  "check",
+  "get_screenshot",
+  "add_cards",
+  "set_view",
+  "arrange_page",
+  "remove_items",
+  "group_steps",
+  "frame_cards",
+  "add_resources",
+  "connect",
+  "add_notes",
+  "describe",
+  "label_steps",
+  "repair",
+  "finish_work",
+];
+
+/** A render window that draws a 1×1 image and finds nothing to fix. */
+const RENDERER: PageImages = {
+  screenshot: () => Promise.resolve({ ok: true, png: Buffer.from("png"), width: 1, height: 1 }),
+  check: ({ page }) => Promise.resolve({ ok: true, title: "Order placement", page, pageTitle: "Placing an order", health: [], checks: [] }),
+  checkBoard: () => Promise.resolve({ ok: true, title: "Order placement", pages: [{ page: "page-1", pageTitle: "Placing an order", health: [], checks: [] }] }),
+};
+
 /** The engine's answers by command, as untrusted requests reach it (a streamed command's messages go to `stream`). */
 const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>, stream: (message: unknown) => void) => unknown>> = {
   workspace: () => WORKSPACE,
@@ -124,6 +196,10 @@ const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>,
   relations: () => relationsCreateOrder,
   line_labels: () => [],
   board_refs: () => ({ refs: [], truncated: false }),
+  read_board: () => FILE,
+  drafts: () => ({ drafts: BOARDS.boards }),
+  board_health: () => HEALTH,
+  export_mermaid_text: () => ({ text: "flowchart LR\n  c0[createOrder]\n" }),
   call_contract: () => ({
     source: `${CREATE_ORDER}/variable:order/call[0]`,
     seq: 0,
@@ -140,8 +216,12 @@ const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>,
 const BOARD_INFO = { title: "Order placement", place: "draft", changes: 0, revision: "r1" } as const;
 
 /** What the window answers each agent request with, as the UI does: the window command's kind and result. */
-function windowAnswer(request: AgentShellEvent): ["read" | "open" | "create" | "board" | "show", unknown] | null {
+function windowAnswer(request: AgentShellEvent): ["edit" | "read" | "open" | "create" | "board" | "show" | "repair", unknown] | null {
   switch (request.type) {
+    case "agent_edit":
+      return ["edit", { ok: true, page: PAGE, board: BOARD_INFO, items: [{ kind: "card", id: "create-order", status: "kept", key: CREATE_ORDER, project: PROJECT, name: "createOrder" }], warnings: [] }];
+    case "agent_repair":
+      return ["repair", { ok: true, page: PAGE, board: BOARD_INFO }];
     case "agent_read":
       return ["read", { ok: true, page: PAGE, board: { ...BOARD_INFO, unsaved: false } }];
     case "agent_open_board":
@@ -205,12 +285,18 @@ async function start(overrides: Partial<McpServices> = {}, options: Partial<Cons
   const service = new McpService({
     services: {
       bridge,
+      renderer: RENDERER,
       engine: (command, args, onStream) => {
         calls.push([command, args]);
         const answer = ANSWERS[command];
         return answer
           ? Promise.resolve(answer(args, (message) => onStream?.(message)))
           : Promise.reject(new EngineRequestError({ code: "not_found", message: `no fake for ${command}` }));
+      },
+      engineAs: (_windowId, command, args) => {
+        calls.push([command, args]);
+        const answer = ANSWERS[command];
+        return answer ? Promise.resolve(answer(args, () => undefined)) : Promise.reject(new EngineRequestError({ code: "not_found", message: `no fake for ${command}` }));
       },
       confirmAddProject: () => Promise.resolve(false),
       addProject: () => Promise.reject(new Error("no tool adds projects yet")),
@@ -331,6 +417,42 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
     }
   });
 
+  it("calls each tool that reads, checks, builds, and repairs boards", async () => {
+    const { url, views } = await start();
+    views.report(1, { board: BOARD, page: "page-1", selection: { kind: "none" }, lens: "flow", visible: [], tabs: [BOARD] });
+    const client = await connect(url, era);
+    const at = { board: BOARD.id, project: "ts-orders", page: "page-1" };
+    const calls: [string, Record<string, unknown>][] = [
+      ["list_boards", { project: "ts-orders" }],
+      ["read_page", at],
+      ["read_page", { ...at, format: "mermaid" }],
+      ["check", at],
+      ["add_cards", { ...at, cards: [{ key: CREATE_ORDER }] }],
+      ["set_view", { ...at, items: [{ id: "create-order", view: "flow" }] }],
+      ["arrange_page", at],
+      ["remove_items", { ...at, ids: ["create-order"] }],
+      ["group_steps", { ...at, card: "create-order", groups: [{ title: "Read the draft", lines: [26, 26] }] }],
+      ["frame_cards", { ...at, frames: [{ title: "server", members: ["create-order"] }] }],
+      ["add_resources", { ...at, resources: [{ kind: "table", name: "orders", anchors: [{ key: "src/db/repository.ts#class:OrderRepository" }] }] }],
+      ["connect", { ...at, connections: [{ kind: "writes", from: "create-order", to: "orders", description: "It inserts the order." }] }],
+      ["add_notes", { ...at, notes: [{ text: "The client gets a job id, not the order." }] }],
+      ["describe", { ...at, items: [{ id: "create-order", text: "Places the order." }] }],
+      ["label_steps", { ...at, card: "create-order", labels: [{ step: `${CREATE_ORDER}/variable:draft`, text: "Read the draft" }] }],
+      ["repair", { ...at, item: "create-order", repair: "remove_card" }],
+      ["finish_work", { summary: "Built the order flow" }],
+    ];
+    for (const [name, args] of calls) {
+      const result = await client.callTool({ name, arguments: args });
+      expect(result.isError, `${name}: ${text(result)}`).not.toBe(true);
+      expect(text(result), name).toMatch(/^Unfold · (ts-orders.* · )?as Claude\n/);
+    }
+    const shot = await client.callTool({ name: "get_screenshot", arguments: at });
+    expect(shot.content).toEqual([
+      { type: "text", text: `Unfold · ts-orders › Order placement (draft) › Placing an order · rev ${pageRevision(PAGE)} · as Claude\nThe page (page id page-1), 1×1 px.` },
+      { type: "image", data: Buffer.from("png").toString("base64"), mimeType: "image/png" },
+    ]);
+  });
+
   it("refuses an op agents can't do, saying why", async () => {
     const { url } = await start();
     const client = await connect(url, era);
@@ -349,6 +471,25 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
     );
     const invalid = await client.callTool({ name: "get_guide", arguments: { topic: "everything" } });
     expect(invalid.isError).toBe(true);
+  });
+});
+
+describe("the tools", () => {
+  it("are exactly the 34 of design §6.11, in its order", () => {
+    expect(TOOLS.map((tool) => tool.name)).toEqual(SIGNATURES);
+  });
+
+  it("mark board reads read-only, removals destructive, and creating or updating by id idempotent", () => {
+    const hints = (name: string) => TOOLS.find((tool) => tool.name === name)?.annotations;
+    for (const name of ["list_boards", "read_page", "check", "get_screenshot"]) {
+      expect(hints(name), name).toEqual({ readOnlyHint: true });
+    }
+    for (const name of ["add_cards", "set_view", "arrange_page", "group_steps", "frame_cards", "add_resources", "connect", "add_notes", "describe", "label_steps", "finish_work"]) {
+      expect(hints(name), name).toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: true });
+    }
+    for (const name of ["remove_items", "repair"]) {
+      expect(hints(name), name).toEqual({ readOnlyHint: false, destructiveHint: true, idempotentHint: false });
+    }
   });
 });
 

@@ -1,0 +1,89 @@
+/*
+ * Connections (design §4.7) are authored: every one is in the authored color, and its kind shows in
+ * its line's pattern and its chip's word, never in color alone. Selected, it is the accent at 1.75px.
+ * The chip's sizes follow `chipWidth` (ConnectionEdge.tsx): 20px high, 8px of padding, an 11px text.
+ */
+
+.board-connection { color: var(--color-authored); cursor: pointer; }
+.board-connection.selected { color: var(--color-accent); }
+
+.connection-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.board-connection.selected .connection-line { stroke-width: 1.75; }
+
+/* Each kind's line: solid (HTTP, RPC, reads, writes), long dashes (a queue), dots (an event), short
+   dashes (a runtime call), thin (a relationship), dashed as drawn links (other). */
+.kind-queue .connection-line { stroke-dasharray: 10 5; }
+.kind-event .connection-line { stroke-width: 2; stroke-linecap: round; stroke-dasharray: 0.1 5; }
+.kind-calls .connection-line { stroke-dasharray: 4 3; }
+.kind-relates .connection-line { stroke-width: 1; }
+.kind-other .connection-line { stroke-dasharray: 5 4; }
+
+.connection-head { fill: currentColor; }
+
+.connection-foot {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.25;
+}
+
+.connection-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+}
+
+/* While an agent that changed it is working: a soft authored band under the line. */
+.board-connection.working .connection-hit { stroke: var(--color-authored-tint); stroke-width: 10; }
+
+/* The chip: placed by the label layout, over the lines, never over a card. */
+.connection-chip {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid var(--color-authored-line);
+  border-radius: var(--radius-chip);
+  background: var(--color-surface);
+  font: 11px/16px var(--font-ui);
+  white-space: nowrap;
+  color: var(--color-authored);
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.connection-chip > span { white-space: pre; }
+.chip-word { font-weight: 600; }
+.chip-code { font-family: var(--font-code); font-feature-settings: "calt" 0, "liga" 0; }
+.chip-sep { color: var(--color-muted); }
+
+/* The carried type's name opens its definition, as a written type does on a typed line. */
+.chip-carries {
+  text-decoration: underline 1px dotted;
+  text-underline-position: from-font;
+}
+
+.connection-chip .agent-mark { margin-left: 4px; }
+
+.chip-review {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-review);
+}
+
+.connection-chip:focus-visible { outline: none; box-shadow: 0 0 0 1.5px var(--color-focus-ring); }
+
+.connection-chip.selected {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-ring);
+}
+
+.connection-carries { padding: 8px 12px; }

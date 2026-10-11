@@ -142,12 +142,12 @@ describe("the board sidebar", () => {
   it("collapses Selected, remembered in the window layout", () => {
     open();
     renderSidebar();
-    expect(screen.getByText("Select a card, a group, a frame, or a link to see it here.")).not.toBeNull();
+    expect(screen.getByText("Select a card, a group, a frame, a resource card, a note, or a link to see it here.")).not.toBeNull();
     act(() => {
       screen.getByRole("button", { name: "Hide Selected" }).click();
     });
     expect(useLayout.getState().selectedCollapsed).toBe(true);
-    expect(screen.queryByText("Select a card, a group, a frame, or a link to see it here.")).toBeNull();
+    expect(screen.queryByText("Select a card, a group, a frame, a resource card, a note, or a link to see it here.")).toBeNull();
     act(() => {
       screen.getByRole("button", { name: "Show Selected" }).click();
     });

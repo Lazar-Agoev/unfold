@@ -11,7 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useUpdateNodeInternals } from "@xyflow/react";
 import { useLayoutEffect, useMemo, type ReactNode } from "react";
 import { Monogram, showToast } from "../../components";
-import { CodeView } from "../../code/CodeView";
+import { CodeView, portSpot } from "../../code/CodeView";
 import { defaultFolds, groupConflict, groupSelection } from "../../code/outline";
 import { shortPath } from "../../code/text";
 import { FlowView, flowPortNodes } from "../../flow/FlowView";
@@ -156,7 +156,7 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
     : view === "flow" && flowPorts
       ? flowPorts.unplaced
       : shown
-        ? ports.filter((id) => !shown.links.some((link) => link.source === id))
+        ? ports.filter((id) => portSpot(shown, id) === undefined)
         : ports;
 
   const portsKey = ports.join("\u0000");

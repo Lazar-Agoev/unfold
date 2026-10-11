@@ -54,6 +54,13 @@ const PLANNED = [
   "frame-web",
   "frame-library",
   "frame-system",
+  "resource-table",
+  "resource-queue",
+  "resource-cache",
+  "resource-storage",
+  "resource-external",
+  "resource-actor",
+  "note",
 ];
 
 describe("Icon", () => {

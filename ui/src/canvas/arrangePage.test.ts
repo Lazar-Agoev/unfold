@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Card, Frame, Link, Resource } from "../ipc/generated";
+import type { Card, Frame, Link, Note, Resource } from "../ipc/generated";
 import { arrangePage, type ArrangeInput } from "./arrangePage";
 import type { Arrow } from "./arrows";
 import { framePadding, pageGeometry, type FramedPage } from "./frames/geometry";
@@ -29,12 +29,13 @@ interface Setup {
   readonly cards: readonly Card[];
   readonly frames?: readonly Frame[];
   readonly resources?: readonly Resource[];
+  readonly notes?: readonly Note[];
   readonly links?: readonly Link[];
   readonly arrows: readonly Arrow[];
 }
 
-function input({ cards, frames = [], resources = [], links = [], arrows }: Setup, extra: Partial<ArrangeInput> = {}): ArrangeInput {
-  const page = { cards, frames, resources, links };
+function input({ cards, frames = [], resources = [], notes = [], links = [], arrows }: Setup, extra: Partial<ArrangeInput> = {}): ArrangeInput {
+  const page = { cards, frames, resources, notes, links };
   return { page, rects: pageGeometry(page, sizeOf).rects, sizeOf, arrows, portOffset, ...extra };
 }
 
@@ -166,5 +167,32 @@ describe("Arrange with frames", () => {
     const positions = arrangePage(input({ cards: CARDS, resources, links, arrows: ARROWS }));
     expect(placed(positions, "orders").x).toBeGreaterThan(placed(positions, "insert").x);
     expect(placed(positions, "loose").x).toBeGreaterThan(placed(positions, "orders").x);
+  });
+
+  it("puts the notes attached to a card, resource card, or frame under it, the item taking room for them; others stay", () => {
+    const resources: Resource[] = [{ id: "orders", kind: "table", name: "orders", anchors: [], at: [0, 0], author: "agent:claude" }];
+    const note = (id: string, attach?: string): Note => ({ id, text: id, at: [5, 5], author: "agent:claude", ...(attach !== undefined ? { attach } : {}) });
+    const notes = [note("b-on-create", "create"), note("a-on-create", "create"), note("on-orders", "orders"), note("on-server", "server"), note("on-link", "w"), note("free")];
+    const links: Link[] = [{ id: "w", from: "insert", to: "orders", kind: "writes", author: "agent:claude" }];
+    const frames = [frame("server", ["route"])];
+    const setup = { cards: CARDS, frames, resources, notes, links, arrows: ARROWS };
+    const positions = arrangePage(input(setup));
+    const create = placed(positions, "create");
+    // Under the card, in id order, 12px apart (notes are 280 × 90 here).
+    expect(placed(positions, "a-on-create")).toMatchObject({ x: create.x, y: create.y + 400 + 12 });
+    expect(placed(positions, "b-on-create")).toMatchObject({ x: create.x, y: create.y + 400 + 12 + 90 + 12 });
+    expect(placed(positions, "on-orders").y).toBe(placed(positions, "orders").y + 90 + 12);
+    // A frame's note goes under its box.
+    const route = placed(positions, "route");
+    const padding = framePadding(frame("server", []));
+    expect(placed(positions, "on-server")).toMatchObject({ x: route.x - padding.left, y: route.y - padding.top + padding.top + 160 + padding.bottom + 12 });
+    expect(positions.has("on-link")).toBe(false);
+    expect(positions.has("free")).toBe(false);
+    // Nothing the column holds under createOrder overlaps its notes.
+    const below = [...positions].filter(([id, at]) => SIZES[id] !== undefined && id !== "create" && at.x === create.x && at.y > create.y);
+    for (const [, at] of below) {
+      expect(at.y).toBeGreaterThanOrEqual(create.y + 400 + 2 * (12 + 90));
+    }
+    expect(arrangePage(input(setup))).toEqual(positions);
   });
 });

@@ -5,12 +5,15 @@ import type { AgentServerStatus } from "../../shared/agent-api";
 import { AgentBridge } from "../agents/bridge";
 import { ViewTracker } from "../agents/views";
 import { agentSettings, McpService } from "./service";
+import { NO_RENDERER } from "./tools/testing";
 
 vi.mock("electron", async () => (await import("../fake-electron")).electronModule);
 
 const services = {
   bridge: new AgentBridge({ windows: { get: () => undefined, all: () => [], create: () => { throw new Error("no windows"); }, deliver: () => undefined, focus: () => undefined }, views: new ViewTracker() }),
+  renderer: NO_RENDERER,
   engine: () => Promise.resolve(null),
+  engineAs: () => Promise.resolve(null),
   confirmAddProject: () => Promise.resolve(false),
   addProject: () => Promise.reject(new Error("not asked")),
 };

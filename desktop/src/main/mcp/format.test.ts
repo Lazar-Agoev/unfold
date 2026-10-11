@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardText, keyFile, keyName, labelText, place, typeText } from "./format";
+import { authorText, cardText, joined, keyFile, keyKind, keyName, labelText, place, typeText } from "./format";
 
 describe("names", () => {
   it("name keys as boards do", () => {
@@ -47,5 +47,20 @@ describe("names", () => {
         ],
       }),
     ).toBe("OrderService.place (card id place, created); stopped: this.payments.charge (line 18) is unresolved: overridden by a subclass; 3 more not followed, past the depth asked; Date (createdAt) is built in");
+    expect(cardText({ kind: "card", id: "a", status: "kept", key: "k", project: "p", name: "a", frame: "server" })).toBe("a (card id a, kept, in frame server)");
+  });
+
+  it("name a key's kind, who wrote something, and facts", () => {
+    expect(keyKind("src/cart.ts#interface:Cart")).toBe("interface");
+    expect(keyKind("src/routes/orders.ts#function:createOrder/if[0]")).toBe("if");
+    expect(keyKind('entrance:["x"]')).toBe("entrance");
+    const claude = { author: "agent:claude", name: "Claude" } as const;
+    expect([authorText("agent:claude", claude), authorText("agent:codex", claude), authorText("person:lazar", claude), authorText(undefined, claude)]).toEqual([
+      "you",
+      "Codex (an agent)",
+      "Lazar (a person)",
+      "a person",
+    ]);
+    expect(joined(["a", null, "", undefined, false, "b"])).toBe("a; b");
   });
 });

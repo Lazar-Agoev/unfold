@@ -17,8 +17,11 @@ import { cardBody } from "../../../code/typeKinds";
 import type { Page } from "../../../ipc/generated";
 import { cardKey, findCard, moveItems, setCardView, setCardsFolded, setDefaultView, updateGroup } from "../document";
 import { findFrame, frameChain, frameItems, moveFrame, updateFrame } from "../frames";
+import { findNote } from "../notes";
+import { findResource } from "../resources";
 import { cardResult, invalid, itemSize, pageArrows, pageRects, type OpContext } from "./context";
 import { frameResult } from "./frames";
+import { resourceResult } from "./resources";
 
 export function applySetView(page: Page, op: SetViewOp, ctx: OpContext): AgentItemResult[] {
   const results = op.items.map((item): AgentItemResult => {
@@ -66,20 +69,21 @@ export function applySetView(page: Page, op: SetViewOp, ctx: OpContext): AgentIt
   return results;
 }
 
-/** A card or a frame of the page, by id, or a refusal. */
-function movable(page: Page, id: string): "card" | "frame" {
-  if (findCard(page, id)) {
-    return "card";
-  }
+/** A card, resource card, note, or frame of the page, by id, or a refusal. */
+function movable(page: Page, id: string): "item" | "frame" {
   if (findFrame(page, id)) {
     return "frame";
   }
-  throw invalid(`There is no card or frame with id “${id}” on this page. read_page lists the page's ids.`);
+  if (findCard(page, id) || findResource(page, id) || findNote(page, id)) {
+    return "item";
+  }
+  throw invalid(`There is no card, resource card, note, or frame with id “${id}” on this page. read_page lists the page's ids.`);
 }
 
 /**
- * Applies one move: a card goes to the position, a frame's box to it (everything in it moves along);
- * beside another card or frame, it never covers what it isn't in.
+ * Applies one move: a card, resource card, or note goes to the position (an attached note stays
+ * attached, at a new offset), a frame's box to it (everything in it moves along); beside another
+ * item, it never covers what it isn't in.
  */
 function applyMove(ctx: OpContext, page: Page, move: AgentMove): void {
   const kind = movable(page, move.id);
@@ -111,7 +115,7 @@ function applyMove(ctx: OpContext, page: Page, move: AgentMove): void {
 }
 
 export function applyArrange(page: Page, op: ArrangeOp, ctx: OpContext): AgentItemResult[] {
-  const before = new Map(page.cards.map((card) => [card.id, `${card.at[0]},${card.at[1]}`]));
+  const before = new Map([...page.cards, ...(page.resources ?? [])].map((item) => [item.id, `${item.at[0]},${item.at[1]}`]));
   const frame = op.frame !== undefined ? findFrame(page, op.frame) : undefined;
   if (op.frame !== undefined && !frame) {
     throw invalid(`There is no frame with id “${op.frame}” on this page to arrange. read_page lists the page's frames.`);
@@ -151,9 +155,12 @@ export function applyArrange(page: Page, op: ArrangeOp, ctx: OpContext): AgentIt
   for (const move of op.moves ?? []) {
     applyMove(ctx, page, move);
   }
-  const moved = page.cards.flatMap((card) =>
-    before.get(card.id) === `${card.at[0]},${card.at[1]}` ? [] : [cardResult(ctx, card, "updated", { at: [card.at[0], card.at[1]] })],
-  );
+  const moved = [
+    ...page.cards.flatMap((card) => (before.get(card.id) === `${card.at[0]},${card.at[1]}` ? [] : [cardResult(ctx, card, "updated", { at: [card.at[0], card.at[1]] })])),
+    ...(page.resources ?? []).flatMap((resource) =>
+      before.get(resource.id) === `${resource.at[0]},${resource.at[1]}` ? [] : [resourceResult(ctx, page, resource, "updated", { at: [resource.at[0], resource.at[1]] })],
+    ),
+  ];
   const arranged = frame ? findFrame(page, frame.id) : undefined;
   return turned && arranged ? [frameResult(ctx, page, arranged, "updated"), ...moved] : moved;
 }

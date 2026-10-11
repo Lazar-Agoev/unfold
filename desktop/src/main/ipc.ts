@@ -174,6 +174,10 @@ export function registerWindowCommands({ registry, workspace, engine, ui, agents
       agents.settle(entry.id, "show", args["requestId"], args["result"]);
       return null;
     },
+    agent_repair_result: (entry, args) => {
+      agents.settle(entry.id, "repair", args["requestId"], args["result"]);
+      return null;
+    },
     agent_server_status: () => mcp.status(),
     render_ready: () => {
       throw invalid("render_ready: only the render window answers render requests.");
