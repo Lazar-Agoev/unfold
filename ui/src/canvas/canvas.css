@@ -65,6 +65,9 @@
   stroke-width: 16;
 }
 
+/* While an agent that changed it is working: a soft authored band under the line. */
+.board-link.working .board-link-hit { stroke: var(--color-authored-tint); stroke-width: 10; }
+
 .board-link-head { fill: currentColor; }
 
 .board-link-start {

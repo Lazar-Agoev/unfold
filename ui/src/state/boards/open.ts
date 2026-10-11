@@ -26,11 +26,13 @@ export type OpenOutcome = { readonly status: "opened"; readonly ref: BoardRef } 
 
 const opening = new Map<string, Promise<OpenOutcome>>();
 
-async function claim(ref: BoardRef, activate: boolean, page: PageId | undefined): Promise<OpenOutcome> {
+async function claim(ref: BoardRef, activate: boolean, page: PageId | undefined, focusHolder: boolean): Promise<OpenOutcome> {
   assertTabRoom(ref);
   const result = await call("open_board", { project: ref.project, id: ref.id });
   if (result.status === "held") {
-    await windowCommand("focus_window", { windowId: result.heldBy, board: { project: ref.project, board: ref.id } });
+    if (focusHolder) {
+      await windowCommand("focus_window", { windowId: result.heldBy, board: { project: ref.project, board: ref.id } });
+    }
     return { status: "held", heldBy: result.heldBy };
   }
   const opened = adoptBoardState(result.board, { page: page ?? null });
@@ -40,13 +42,19 @@ async function claim(ref: BoardRef, activate: boolean, page: PageId | undefined)
 
 /**
  * Opens a board in a tab of this window (claiming it), on `page` when given, or shows its tab if it is
- * already open here. A board another window holds is focused there instead. Rejects with
- * `too_many_tabs` when the window already has 100 board tabs.
+ * already open here. A board another window holds is focused there instead. In the `background` (for
+ * an agent) the tab is added without switching to it, a board open here keeps the page it shows, and
+ * a window that holds the board is left alone. Rejects with `too_many_tabs` when the window already
+ * has 100 board tabs.
  */
-export async function openBoard(ref: BoardRef, options: { readonly activate?: boolean; readonly page?: PageId } = {}): Promise<OpenOutcome> {
-  const activate = options.activate ?? true;
+export async function openBoard(
+  ref: BoardRef,
+  options: { readonly activate?: boolean; readonly page?: PageId; readonly background?: boolean } = {},
+): Promise<OpenOutcome> {
+  const background = options.background === true;
+  const activate = !background && (options.activate ?? true);
   if (getOpenBoard(ref)) {
-    if (options.page !== undefined) {
+    if (options.page !== undefined && !background) {
       setActivePage(ref, options.page);
     }
     openBoardTab(ref, { activate });
@@ -56,7 +64,7 @@ export async function openBoard(ref: BoardRef, options: { readonly activate?: bo
   const key = boardKey(ref);
   let pending = opening.get(key);
   if (!pending) {
-    pending = claim(ref, activate, options.page).finally(() => {
+    pending = claim(ref, activate, options.page, !background).finally(() => {
       opening.delete(key);
     });
     opening.set(key, pending);

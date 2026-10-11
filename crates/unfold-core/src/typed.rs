@@ -8,7 +8,7 @@
 //! | [`Member`] | Written member of an `interface`, `type_alias`, `enum`, or `class` block |
 //! | [`Argument`] | `argument` slot of a `call` or `new` block: expansion, keyword, and pairing |
 //! | [`CallResult`] | `call` or `new` block: where its value lands |
-//! | [`TypeLink`] | Type name written in a recorded annotation, with how it resolved |
+//! | [`TypeLink`] | Type name written in a recorded annotation or a heritage clause, with how it resolved |
 //!
 //! Records refer to blocks of their own file by local ID (and to other files' blocks by key),
 //! like slots and edges. Written texts are cut to 120 UTF-16 units; ranges are token-exact UTF-8
@@ -19,7 +19,9 @@ use serde::{Deserialize, Serialize};
 use crate::key::Key;
 use crate::model::ModuleLabel;
 use crate::text::ByteRange;
-use crate::vocab::{Expansion, MemberKind, PairingReason, ParameterKind, Reason, Resolution, ResultBinding};
+use crate::vocab::{
+    Expansion, Heritage, MemberKind, PairingReason, ParameterKind, Reason, Resolution, ResultBinding,
+};
 
 /// A type as written: its text (cut to 120 UTF-16 units) and its full range.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -132,7 +134,8 @@ pub struct CallResult {
     pub bound: Option<u32>,
 }
 
-/// A type name written in a recorded annotation, and the declaration it resolves to.
+/// A type name written in a recorded annotation or a heritage clause, and the declaration it
+/// resolves to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TypeLink {
     /// The innermost block whose range contains the name.
@@ -149,6 +152,10 @@ pub struct TypeLink {
     pub reason: Option<Reason>,
     /// The module label, exactly when external.
     pub module: Option<ModuleLabel>,
+    /// When the name is a base of its block (a `class` or `interface`) in a heritage clause:
+    /// whether the block extends or implements it. Absent for every other name, a type argument
+    /// written in a heritage clause included.
+    pub heritage: Option<Heritage>,
 }
 
 /// One file's typed records, each in canonical order: signatures, parameters, members,
@@ -165,7 +172,7 @@ pub struct FileTypes {
     pub arguments: Vec<Argument>,
     /// One per `call` or `new` block.
     pub results: Vec<CallResult>,
-    /// Every type name in a recorded annotation.
+    /// Every type name in a recorded annotation or a heritage clause.
     pub type_links: Vec<TypeLink>,
 }
 

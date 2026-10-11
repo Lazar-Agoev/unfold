@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://unfold.dev/schemas/unfold-board-1.schema.json",
   "title": "unfold-board version 1",
-  "description": "An Unfold board: titled pages of cards that reference blocks and entrances by structural key (in the board's own project, or in another project named by its shared name), their positions and views, groups of consecutive sibling statements, attributed descriptions and Flow labels, guards that keep references from reattaching to different code, and links drawn between cards. A changes copy of a published board (`.unfold/local/drafts/<name>.changes.json`) also names the board it publishes and the revision it started from. Unknown fields are rejected.",
+  "description": "An Unfold board: titled pages of cards that reference blocks and entrances by structural key (in the board's own project, or in another project named by its shared name), their positions and views, groups of consecutive sibling statements, attributed descriptions and Flow labels, guards that keep references from reattaching to different code, links drawn between items (connections, when they have a kind), frames around items, resource cards, and notes. A changes copy of a published board (`.unfold/local/drafts/<name>.changes.json`) also names the board it publishes and the revision it started from. Unknown fields are rejected.",
   "type": "object",
   "additionalProperties": false,
   "required": ["format", "pages", "projects", "title", "version"],
@@ -21,7 +21,7 @@
     },
     "projects": {
       "type": "array",
-      "description": "The shared names of the other projects the cards come from: exactly the set of `ref.project` values, sorted.",
+      "description": "The shared names of the other projects the board's items name: exactly the set of the cards' `ref.project`, the resources' `project`, the anchors' `project`, and the links' `carriesProject` values, sorted.",
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/projectName" }
     },
@@ -49,7 +49,7 @@
     },
     "id": {
       "type": "string",
-      "description": "A page, card, group, or link id. Card, group, and link ids are unique together within their page.",
+      "description": "A page or item id. Card, group, frame, resource, link, and note ids are unique together within their page.",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
     },
     "projectName": {
@@ -62,7 +62,14 @@
       "description": "The project the key is in; absent for the board's own project."
     },
     "view": {
-      "enum": ["code", "flow"]
+      "enum": ["code", "flow", "diagram"]
+    },
+    "position": {
+      "type": "array",
+      "description": "A canvas position.",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }],
+      "minItems": 2,
+      "maxItems": 2
     },
     "signature": {
       "type": "string",
@@ -125,8 +132,23 @@
         },
         "links": {
           "type": "array",
-          "description": "Links drawn between two cards of the page.",
+          "description": "Links drawn between two cards, resources, or frames of the page; a link with a `kind` is a connection.",
           "items": { "$ref": "#/$defs/link" }
+        },
+        "frames": {
+          "type": "array",
+          "description": "Named boxes around items of the page, sorted by id. Written only when there are some.",
+          "items": { "$ref": "#/$defs/frame" }
+        },
+        "resources": {
+          "type": "array",
+          "description": "Resource cards, sorted by id. Written only when there are some.",
+          "items": { "$ref": "#/$defs/resource" }
+        },
+        "notes": {
+          "type": "array",
+          "description": "Notes, sorted by id. Written only when there are some.",
+          "items": { "$ref": "#/$defs/note" }
         }
       }
     },
@@ -159,13 +181,7 @@
             }
           ]
         },
-        "at": {
-          "type": "array",
-          "description": "The canvas position.",
-          "prefixItems": [{ "type": "number" }, { "type": "number" }],
-          "minItems": 2,
-          "maxItems": 2
-        },
+        "at": { "$ref": "#/$defs/position" },
         "view": { "$ref": "#/$defs/view" },
         "folded": { "type": "boolean", "description": "Written only when true." },
         "description": { "$ref": "#/$defs/description" }
@@ -187,7 +203,8 @@
           "items": { "$ref": "#/$defs/blockKey" }
         },
         "collapsed": { "type": "boolean" },
-        "description": { "$ref": "#/$defs/description" }
+        "description": { "$ref": "#/$defs/description" },
+        "author": { "$ref": "#/$defs/author", "description": "Who wrote the title; absent on groups titled before titles were attributed." }
       }
     },
     "label": {
@@ -218,18 +235,184 @@
         "signature": { "$ref": "#/$defs/signature" }
       }
     },
+    "anchor": {
+      "description": "What a resource card or a connection cites: a block or entrance key, or lines of an evidence file, with the project when it is not the board's own.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["key"],
+          "properties": {
+            "key": {
+              "type": "string",
+              "description": "A block key or an entrance key.",
+              "pattern": "^entrance:|^[^#]+#"
+            },
+            "project": { "$ref": "#/$defs/project" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "lines"],
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "An evidence file, relative to its project's folder, `/`-separated, without `.` or `..` parts.",
+              "pattern": "^(?![A-Za-z]:)(?!\\.\\.?(?:/|$))[^/\\\\\\u0000]+(?:/(?!\\.\\.?(?:/|$))[^/\\\\\\u0000]+)*$"
+            },
+            "lines": {
+              "type": "array",
+              "description": "The first and last line, 1-based and inclusive.",
+              "prefixItems": [
+                { "type": "integer", "minimum": 1 },
+                { "type": "integer", "minimum": 1 }
+              ],
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "project": { "$ref": "#/$defs/project" }
+          }
+        }
+      ]
+    },
     "link": {
       "type": "object",
       "additionalProperties": false,
       "required": ["from", "id", "to"],
+      "dependentRequired": {
+        "kind": ["author"],
+        "carriesProject": ["carries"]
+      },
       "properties": {
         "id": { "$ref": "#/$defs/id" },
-        "from": { "$ref": "#/$defs/id", "description": "The card it starts at." },
-        "to": { "$ref": "#/$defs/id", "description": "The card it points at; another card than `from`." },
+        "from": { "$ref": "#/$defs/id", "description": "The card, resource, or frame it starts at: the side that acts." },
+        "to": { "$ref": "#/$defs/id", "description": "The card, resource, or frame it points at; another item than `from`." },
         "label": {
           "$ref": "#/$defs/description",
           "description": "Its label, signed over the guard signatures of both ends."
+        },
+        "kind": {
+          "enum": ["http", "rpc", "queue", "event", "writes", "reads", "calls", "relates", "other"],
+          "description": "How its ends talk; absent for a drawn link (`other`)."
+        },
+        "step": { "$ref": "#/$defs/blockKey", "description": "The statement or call inside the `from` card's block it leaves from (a block card's)." },
+        "fromColumn": { "$ref": "#/$defs/text", "description": "For `relates`: the column of the `from` table." },
+        "toColumn": { "$ref": "#/$defs/text", "description": "For `relates`: the column of the `to` table." },
+        "channel": { "$ref": "#/$defs/text", "description": "What travels: the route, the queue, or the event." },
+        "carries": { "$ref": "#/$defs/blockKey", "description": "The type it carries: a type declaration or class key." },
+        "carriesProject": { "$ref": "#/$defs/project", "description": "The project of `carries`; absent for the board's own." },
+        "cardinality": {
+          "enum": ["one-to-one", "one-to-many", "many-to-one", "many-to-many"],
+          "description": "For `relates`: how many rows of each table it joins."
+        },
+        "anchors": {
+          "type": "array",
+          "description": "The evidence for the receiving side. Written only when there are some.",
+          "items": { "$ref": "#/$defs/anchor" }
+        },
+        "description": { "$ref": "#/$defs/description" },
+        "author": { "$ref": "#/$defs/author", "description": "Who drew it; required with `kind`." },
+        "signature": { "$ref": "#/$defs/textSignature" }
+      },
+      "if": {
+        "not": { "type": "object", "required": ["kind"], "properties": { "kind": { "const": "relates" } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": { "fromColumn": false, "toColumn": false, "cardinality": false }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["author", "id", "look", "members", "title"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "$ref": "#/$defs/text" },
+        "description": { "$ref": "#/$defs/description" },
+        "members": {
+          "type": "array",
+          "description": "The ids of the cards, resources, notes, and frames of the page it holds. An item is in at most one frame; frames nest at most 3 deep, without cycles.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "look": { "enum": ["box", "zone"] },
+        "icon": { "enum": ["api", "worker", "schedule", "cli", "web", "library", "system"] },
+        "direction": { "enum": ["right", "down"] },
+        "collapsed": { "type": "boolean", "description": "Written only when true." },
+        "author": { "$ref": "#/$defs/author" }
+      }
+    },
+    "column": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "dependentSchemas": {
+        "references": { "type": "object", "required": ["key"], "properties": { "key": { "const": "foreign" } } }
+      },
+      "properties": {
+        "name": { "$ref": "#/$defs/text", "description": "Unique in its table." },
+        "type": { "$ref": "#/$defs/text", "description": "The type as written." },
+        "key": { "enum": ["primary", "foreign", "unique"] },
+        "references": { "$ref": "#/$defs/text", "description": "What a foreign key references." },
+        "optional": { "type": "boolean", "description": "Written only when true." }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchors", "at", "author", "id", "kind", "name"],
+      "dependentRequired": {
+        "project": ["type"]
+      },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["table", "queue", "cache", "storage", "external", "actor"] },
+        "name": { "$ref": "#/$defs/text", "description": "The technical name, such as `orders`." },
+        "project": { "$ref": "#/$defs/project", "description": "The project of `type`; absent for the board's own." },
+        "type": { "$ref": "#/$defs/blockKey", "description": "For a table: the type declaration or class that declares its shape." },
+        "columns": {
+          "type": "array",
+          "description": "For a table: its columns (names unique), or, for a table backed by a type, marks only. Written only when there are some.",
+          "items": { "$ref": "#/$defs/column" }
+        },
+        "anchors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/anchor" }
+        },
+        "at": { "$ref": "#/$defs/position" },
+        "description": { "$ref": "#/$defs/description" },
+        "author": { "$ref": "#/$defs/author" },
+        "signature": { "$ref": "#/$defs/textSignature" }
+      },
+      "allOf": [
+        {
+          "if": { "not": { "type": "object", "properties": { "kind": { "const": "table" } } } },
+          "then": { "type": "object", "properties": { "type": false, "columns": false } }
+        },
+        {
+          "if": { "type": "object", "required": ["type"] },
+          "then": {
+            "type": "object",
+            "properties": {
+              "columns": { "type": "array", "items": { "type": "object", "properties": { "type": false, "optional": false } } }
+            }
+          }
         }
+      ]
+    },
+    "note": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at", "author", "id", "text"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "text": { "type": "string", "pattern": "\\S", "maxLength": 400, "description": "Plain text, at most 400 characters." },
+        "at": { "$ref": "#/$defs/position", "description": "The canvas position; an offset from the attached item's top-left (a link's midpoint) when attached." },
+        "attach": { "$ref": "#/$defs/id", "description": "The card, frame, resource, or link it is attached to." },
+        "author": { "$ref": "#/$defs/author" }
       }
     }
   }

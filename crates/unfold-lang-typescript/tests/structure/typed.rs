@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use unfold_core::testkit::{assert_golden, testdata_dir};
 use unfold_core::typed::{Pairing, TypeLink};
-use unfold_core::vocab::{PairingReason, Reason, Resolution};
+use unfold_core::vocab::{Heritage, PairingReason, Reason, Resolution};
 use unfold_core::{Graph, canonical};
 use unfold_engine::discovery::DiscoverOptions;
 use unfold_engine::update::MemoryFactsCache;
@@ -89,6 +89,64 @@ fn results() {
 #[test]
 fn type_names() {
     check("type-names");
+}
+
+#[test]
+fn heritage() {
+    check("heritage");
+}
+
+#[test]
+fn heritage_names_are_bases_and_their_type_arguments_plain_links() {
+    let source =
+        std::fs::read_to_string(testdata_dir().join(FOLDER).join("heritage.ts")).expect("read the case");
+    let compiled = compile_source("a.ts", &source).valid();
+    let links = links(&compiled, "a.ts");
+    let heritage = |block: &str| -> Vec<(&str, Option<Heritage>)> {
+        links
+            .iter()
+            .filter(|link| {
+                compiled.file("a.ts").blocks[link.block as usize].key.as_str() == format!("a.ts#{block}")
+            })
+            .map(|link| (&*link.text, link.heritage))
+            .collect()
+    };
+    use Heritage::{Extends, Implements};
+    assert_eq!(
+        heritage("interface:Both"),
+        [
+            ("Base", Some(Extends)),
+            ("Named", Some(Extends)),
+            ("Missing", Some(Extends))
+        ],
+        "the interface's own type parameter `T` is no link"
+    );
+    assert_eq!(
+        heritage("class:Leaf"),
+        [
+            ("Root", Some(Extends)),
+            ("Named", Some(Implements)),
+            ("Base", Some(Implements)),
+            ("Leaf", None),
+            ("Leaf", None),
+        ],
+        "the class's type parameter `L` is no link; `Leaf<L>` in a type argument is a plain link"
+    );
+    assert_eq!(
+        heritage("class:Mixed"),
+        [],
+        "`mixin(Root)` is a call, not a type name"
+    );
+    assert_eq!(heritage("class:Ambient"), [], "an ambient class is no block");
+    assert_eq!(heritage("class:Qualified"), [("ns.Inner", Some(Extends))]);
+    resolved(link(&links, "ns.Inner"), "a.ts#class:Inner");
+    external(link(&links, "Error"), "global");
+    unresolved(link(&links, "Missing"), Reason::UnknownName);
+    assert_eq!(
+        heritage("variable:made/class:made"),
+        [("Root", Some(Extends))],
+        "a class expression's base"
+    );
 }
 
 /// The type links of `path`, in canonical order.
@@ -348,7 +406,7 @@ fn the_typed_lines_fixture_matches_its_snapshot() {
             .iter()
             .filter(|file| file.file.path.as_str().starts_with("ts/"))
             .count(),
-        7
+        9
     );
     let snapshot = canonical_lines(graph, |record| {
         let field = |name: &str| record.get(name).and_then(serde_json::Value::as_str);

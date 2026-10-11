@@ -1,4 +1,4 @@
-import type { Draft } from "immer";
+import { produce, type Draft } from "immer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BoardDocument, BoardState, Page, SaveBoardArgs } from "../../ipc/generated";
 import { UnfoldError } from "../../ipc/unfold";
@@ -212,6 +212,104 @@ describe("editing and autosave", () => {
   });
 });
 
+describe("a step saved at once (an agent's edit)", () => {
+  const A = { block: "src/a.ts#function:a" } as const;
+  const addA = (document: BoardDocument) => ({
+    document: produce(document, (draft) => {
+      const target = draft.pages[0];
+      if (target) {
+        addCard(target, { ref: A, at: [0, 0] });
+      }
+    }),
+    value: "added",
+  });
+
+  it("saves without waiting for the autosave, and becomes one named undo step once the engine accepts it", async () => {
+    store.adoptBoardState(state());
+    engine.call.mockImplementation(savesAs("r2"));
+    const outcome = await store.saveStep(REF, "page-1", "Claude · Add cards", addA);
+    expect(outcome).toMatchObject({ ok: true, value: "added", state: { revision: "r2" } });
+    expect(engine.call.mock.calls.map(([command]) => command as string)).toEqual(["save_board"]);
+    const board = store.getOpenBoard(REF);
+    expect(board?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["a"]);
+    expect(board?.history.past).toEqual([{ document: doc(), page: "page-1", name: "Claude · Add cards" }]);
+    expect(board && store.isDirty(board)).toBe(false);
+    expect(board?.revision).toBe("r2");
+    store.undo(REF);
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards).toEqual([]);
+  });
+
+  it("leaves the board as it was when the engine refuses, and says why", async () => {
+    store.adoptBoardState(state());
+    engine.call.mockRejectedValueOnce(new UnfoldError({ code: "board_problem", message: "The key is gone." }));
+    const outcome = await store.saveStep(REF, "page-1", "Claude · Add cards", addA);
+    expect(outcome).toEqual({ ok: false, error: new UnfoldError({ code: "board_problem", message: "The key is gone." }) });
+    const board = store.getOpenBoard(REF);
+    expect(board?.document).toEqual(doc());
+    expect(board?.history).toMatchObject({ past: [], future: [] });
+    expect(board?.saveError).toBeNull();
+    expect(toast.showToast).not.toHaveBeenCalled();
+  });
+
+  it("saves the person's pending edit first, and refuses while their edits can't be saved or a conflict is open", async () => {
+    store.adoptBoardState(state());
+    engine.call.mockImplementation(savesAs("r2"));
+    edit((draft) => addCard(draft, { ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
+    await store.saveStep(REF, "page-1", "Claude · Add cards", addA);
+    const saves = engine.call.mock.calls.map(([, args]) => (args as SaveBoardArgs).board.pages[0]?.cards.map((card) => card.id));
+    expect(saves).toEqual([["b"], ["b", "a"]]);
+    expect(store.getOpenBoard(REF)?.history.past.map((entry) => entry.name)).toEqual([undefined, "Claude · Add cards"]);
+
+    engine.call.mockRejectedValueOnce(new UnfoldError({ code: "io", message: "Disk full." }));
+    edit((draft) => addCard(draft, { ref: { block: "src/c.ts#function:c" }, at: [900, 0] }));
+    expect(await store.saveStep(REF, "page-1", "Claude · Add cards", addA)).toMatchObject({ ok: false, error: { code: "unsaved_edits", message: "Disk full." } });
+  });
+
+  it("applies the change again over edits the person made while it saved, and saves them after", async () => {
+    store.adoptBoardState(state());
+    let release: (() => void) | undefined;
+    engine.call.mockImplementation(
+      (_command: string, args: SaveBoardArgs) =>
+        new Promise((resolve) => {
+          release = () => {
+            resolve(state({ ...doc(), pages: args.board.pages as BoardDocument["pages"] }, "r2"));
+          };
+        }),
+    );
+    const outcome = store.saveStep(REF, "page-1", "Claude · Add cards", addA);
+    await vi.advanceTimersByTimeAsync(0);
+    edit((draft) => addCard(draft, { ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
+    release?.();
+    expect(await outcome).toMatchObject({ ok: true });
+    const board = store.getOpenBoard(REF);
+    expect(board?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["b", "a"]);
+    expect(board?.history.past.map((entry) => entry.name)).toEqual([undefined, "Claude · Add cards"]);
+    expect(board && store.isDirty(board)).toBe(true);
+    await vi.advanceTimersByTimeAsync(store.AUTOSAVE_MS);
+    release?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect((engine.call.mock.calls[1]?.[1] as SaveBoardArgs).board.pages[0]?.cards.map((card) => card.id)).toEqual(["b", "a"]);
+  });
+
+  it("never runs two saves at once: a second step waits for the first", async () => {
+    store.adoptBoardState(state());
+    engine.call.mockImplementation(savesAs("r2"));
+    const addB = (document: BoardDocument) => ({
+      document: produce(document, (draft) => {
+        const target = draft.pages[0];
+        if (target) {
+          addCard(target, { ref: { block: "src/b.ts#function:b" }, at: [600, 0] });
+        }
+      }),
+      value: "b",
+    });
+    const [first, second] = await Promise.all([store.saveStep(REF, "page-1", "Claude · A", addA), store.saveStep(REF, "page-1", "Codex · B", addB)]);
+    expect([first.ok, second.ok]).toEqual([true, true]);
+    const saves = engine.call.mock.calls.map(([, args]) => (args as SaveBoardArgs).board.pages[0]?.cards.map((card) => card.id));
+    expect(saves).toEqual([["a"], ["a", "b"]]);
+  });
+});
+
 describe("undo and redo", () => {
   it("undoes one edit at a time, merges a coalesced burst, and keeps at most 200 steps", () => {
     store.adoptBoardState(state());
@@ -316,6 +414,9 @@ describe("view state", () => {
     expect(store.effectiveView(view.lens, "code", "code", false)).toBe("flow");
     expect(store.effectiveView(view.lens, "code", "code", true)).toBe("code");
     expect(store.effectiveView(null, undefined, "flow", false)).toBe("flow");
+    // Diagram shows as Code until the Diagram view is built.
+    expect(store.effectiveView(null, "diagram", "flow", false)).toBe("code");
+    expect(store.effectiveView(null, undefined, "diagram", false)).toBe("code");
     expect(store.getOpenBoard(REF)?.edits).toBe(0);
   });
 });

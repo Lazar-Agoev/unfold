@@ -1,5 +1,7 @@
 //! `search`: definitions, entrances, and files by name across the workspace's projects
-//! (decisions U-30, U-45). It also serves Add's name search and quick open.
+//! (decisions U-30, U-45). It also serves Add's name search and quick open. Definitions are the
+//! catalog's: functions, methods, classes, and type declarations, each hit naming its block
+//! kind; `definitionKinds` narrows them (to types: `interface`, `type_alias`, `enum`, `class`).
 //!
 //! One request is one fan-out in Rust: every project in "Look in" (all of them by default) is
 //! searched in parallel, and the results are merged. In each project, definitions and entrances
@@ -23,6 +25,7 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use unfold_core::vocab::BlockKind;
 use unfold_store::{CandidateKind, ReadPool, SearchCandidate};
 
 use super::{FileSet, count};
@@ -42,7 +45,7 @@ const CANDIDATES: usize = 2_000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchKind {
-    /// Definitions (functions, methods, classes, …).
+    /// Definitions (functions, methods, classes, interfaces, type aliases, enums, …).
     Definitions,
     /// Entrances.
     Entrances,
@@ -60,6 +63,11 @@ pub struct SearchArgs {
     #[serde(default)]
     #[ts(optional)]
     pub kinds: Option<Vec<SearchKind>>,
+    /// Only definitions of these block kinds (every catalog kind when absent): `["interface",
+    /// "type_alias", "enum", "class"]` finds types.
+    #[serde(default)]
+    #[ts(optional)]
+    pub definition_kinds: Option<Vec<BlockKind>>,
     /// Results per kind across every project (50 when absent, at most 500).
     #[serde(default)]
     #[ts(optional)]
@@ -84,7 +92,8 @@ pub struct SearchHit {
     pub qualified_name: String,
     /// The file (an entrance's evidence file).
     pub path: String,
-    /// The block kind or entrance kind.
+    /// A definition's block kind (`function`, `class`, `interface`, `type_alias`, …), or an
+    /// entrance's kind.
     pub kind: String,
     /// A definition's first line.
     pub line: Option<u32>,
@@ -208,6 +217,12 @@ pub fn search(ctx: &Ctx<'_>, args: SearchArgs) -> CommandResult<SearchResults> {
     );
     let query = args.query.trim().to_owned();
     let projects = look_in(ctx, args.projects.as_deref())?;
+    let definition_kinds: Vec<&str> = args
+        .definition_kinds
+        .iter()
+        .flatten()
+        .map(|kind| kind.as_str())
+        .collect();
     if query.is_empty() {
         return Ok(SearchResults {
             query,
@@ -220,7 +235,7 @@ pub fn search(ctx: &Ctx<'_>, args: SearchArgs) -> CommandResult<SearchResults> {
     }
     let found: Vec<ProjectFound> = projects
         .par_iter()
-        .map(|project| search_project(ctx, project, &query, limit, wanted))
+        .map(|project| search_project(ctx, project, &query, &definition_kinds, limit, wanted))
         .collect::<CommandResult<_>>()?;
     ctx.check_cancelled()?;
     let totals = projects
@@ -371,11 +386,13 @@ fn merge<T: Clone>(
     }
 }
 
-/// Searches one project: its stored graph for definitions and entrances, and its files.
+/// Searches one project: its stored graph for definitions (of `definition_kinds`, every kind
+/// when empty) and entrances, and its files.
 fn search_project(
     ctx: &Ctx<'_>,
     project: &ProjectHandle<'_>,
     query: &str,
+    definition_kinds: &[&str],
     limit: usize,
     (definitions, entrances, files): (bool, bool, bool),
 ) -> CommandResult<ProjectFound> {
@@ -388,12 +405,17 @@ fn search_project(
         && (definitions || entrances)
     {
         let reader = pool.get()?;
-        for (wanted, kind, slot) in [
-            (definitions, CandidateKind::Definition, &mut found.definitions),
-            (entrances, CandidateKind::Entrance, &mut found.entrances),
+        for (wanted, kind, item_kinds, slot) in [
+            (
+                definitions,
+                CandidateKind::Definition,
+                definition_kinds,
+                &mut found.definitions,
+            ),
+            (entrances, CandidateKind::Entrance, &[][..], &mut found.entrances),
         ] {
             if wanted {
-                let candidates = reader.search(query, kind, CANDIDATES)?;
+                let candidates = reader.search(query, kind, item_kinds, CANDIDATES)?;
                 slot.total = candidates.len();
                 slot.capped = candidates.len() >= CANDIDATES;
                 slot.hits = rank(project.id(), &pattern, &mut matcher, candidates, limit);

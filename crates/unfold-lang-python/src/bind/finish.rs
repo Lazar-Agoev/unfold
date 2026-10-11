@@ -73,7 +73,8 @@ impl<'a> Builder<'a> {
                     .text
                     .get(range.start as usize..range.end as usize)
                     .unwrap_or_default();
-                (TypeRefFact::new(range, text, name.qualified), name.expr)
+                let reference = TypeRefFact::new(range, text, name.qualified).with_heritage(name.heritage);
+                (reference, name.expr)
             })
             .collect();
         types.sort_by_key(|(reference, _)| reference.range);

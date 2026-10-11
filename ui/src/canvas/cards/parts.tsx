@@ -6,6 +6,8 @@
 
 import { Handle, Position } from "@xyflow/react";
 import { useState, type ReactNode } from "react";
+import { AgentMark } from "../../agent";
+import { authorOf } from "../../code/text";
 import { Icon } from "../../icons";
 import type { BlockKind, Description } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
@@ -64,8 +66,9 @@ export function CardNote({ warn = false, children }: { readonly warn?: boolean; 
 }
 
 /**
- * The card's description: one line with **more**, in the authored color. Double-click edits it in place
- * (Enter saves, Shift+Enter breaks the line, Escape keeps the old text); clearing it removes it.
+ * The card's description: one line with **more**, in the authored color, and the agent mark when an
+ * agent wrote it. Double-click edits it in place (Enter saves, Shift+Enter breaks the line, Escape keeps
+ * the old text), which makes it yours; clearing it removes it.
  */
 export function DescriptionStrip({ target, cardId, description }: { readonly target: PageTarget; readonly cardId: string; readonly description: Description | undefined }) {
   const [open, setOpen] = useState(false);
@@ -74,6 +77,7 @@ export function DescriptionStrip({ target, cardId, description }: { readonly tar
   if (!description) {
     return null;
   }
+  const writer = authorOf(description.author);
   if (editing && author !== null) {
     const finish = (text: string | null) => {
       setEditing(false);
@@ -118,6 +122,7 @@ export function DescriptionStrip({ target, cardId, description }: { readonly tar
       }}
     >
       <p title={open ? undefined : description.text}>{description.text}</p>
+      {writer.agent ? <AgentMark name={writer.name} /> : null}
       <button
         type="button"
         className="card-more"

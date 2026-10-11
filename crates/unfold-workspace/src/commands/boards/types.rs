@@ -37,8 +37,8 @@ impl BoardDocument {
 }
 
 /// What a window saves: the title and the pages. The folder, the `projects`
-/// list, and the file framing are Rust's. Labels, guards, and links are optional on input;
-/// signatures may be `""` (signed on save).
+/// list, and the file framing are Rust's. Labels, guards, and links (and frames, resources, and
+/// notes, as in the file) are optional on input; signatures may be `""` (signed on save).
 #[derive(Debug, Clone, PartialEq, Deserialize, TS)]
 #[serde(transparent)]
 #[ts(
@@ -95,6 +95,28 @@ pub struct BoardState {
     pub label: Option<String>,
     /// The view state remembered in `state.json`.
     pub view: Option<BoardView>,
+}
+
+/// A board as its working file holds it, read without opening it (`read_board`).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadBoardResult {
+    /// The board's project.
+    pub project: ProjectId,
+    /// The board's id.
+    pub id: String,
+    /// Published or draft.
+    pub place: Place,
+    /// The public file's name without `.json`.
+    pub name: String,
+    /// The working version: the draft, the changes copy, or the published file.
+    pub document: BoardDocument,
+    /// The working file's revision.
+    pub revision: String,
+    /// For a published board, its publish state, as `open_board` reports it; `None` for a draft.
+    pub published: Option<PublishedState>,
+    /// The window that has it open, if any.
+    pub held_by: Option<WindowId>,
 }
 
 /// A board's health and outlines.

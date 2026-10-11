@@ -7,13 +7,13 @@
 use serde::{Deserialize, Serialize};
 use unfold_core::text::{ByteRange, short_label};
 use unfold_core::typed::{CallResult, Member, Parameter, Signature};
-use unfold_core::vocab::{BlockKind, ResultBinding, SlotName};
+use unfold_core::vocab::{BlockKind, Heritage, ResultBinding, SlotName};
 use unfold_core::{Block, Slot};
 
 use super::FactsError;
 
-/// One type name written in a recorded annotation: `Cart`, or a qualified name whole
-/// (`Stripe.PaymentIntent`), without type arguments. Its language resolves it with
+/// One type name written in a recorded annotation or a heritage clause: `Cart`, or a qualified
+/// name whole (`Stripe.PaymentIntent`), without type arguments. Its language resolves it with
 /// [`Linked::type_evidence`](crate::Linked::type_evidence), from what its payload records at the
 /// same index.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,6 +26,9 @@ pub struct TypeRefFact {
     pub text: Box<str>,
     /// Whether it is a qualified name (`a.B`), whose root is a namespace or module.
     pub qualified: bool,
+    /// When it names a base of its block (a class or interface) in a heritage clause: whether
+    /// the block extends or implements it.
+    pub heritage: Option<Heritage>,
 }
 
 impl TypeRefFact {
@@ -36,7 +39,14 @@ impl TypeRefFact {
             range,
             text: short_label(text).into(),
             qualified,
+            heritage: None,
         }
+    }
+
+    /// The same name, as a base its class or interface extends or implements.
+    #[must_use]
+    pub fn with_heritage(self, heritage: Option<Heritage>) -> Self {
+        Self { heritage, ..self }
     }
 }
 
@@ -52,7 +62,7 @@ pub struct TypeFacts {
     pub members: Vec<Member>,
     /// One per `call` or `new` block.
     pub results: Vec<CallResult>,
-    /// Every type name of a recorded annotation, in the language's order.
+    /// Every type name of a recorded annotation or a heritage clause, in the language's order.
     pub type_refs: Vec<TypeRefFact>,
 }
 
@@ -175,7 +185,13 @@ impl TypeFacts {
             }
         }
         for reference in &self.type_refs {
-            if kind(reference.block).is_none() || reference.range.is_empty() {
+            let base = reference.heritage.is_none_or(|_| {
+                matches!(
+                    kind(reference.block),
+                    Some(BlockKind::Class | BlockKind::Interface)
+                )
+            });
+            if kind(reference.block).is_none() || reference.range.is_empty() || !base {
                 return Err(bad("type reference", reference.block));
             }
         }

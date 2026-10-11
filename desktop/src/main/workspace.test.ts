@@ -52,6 +52,7 @@ function setup() {
       onPlacementChanged: (entry) => {
         workspace.savePlacement(entry);
       },
+      onFocused: () => undefined,
     },
     false,
   );

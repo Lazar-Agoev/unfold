@@ -577,6 +577,89 @@ fn targeted_unnamed_callables_join_the_catalog_with_their_labels() {
 }
 
 #[test]
+fn type_declarations_join_the_catalog_without_naming_what_they_hold() {
+    let mut g = GraphBuilder::new();
+    let file = g.file(
+        "src/t.ts",
+        Language::TypeScript,
+        "function f() {\n  interface Local { a: string }\n}\nenum E { A = register(() => 1) }\n",
+    );
+    let function = add(
+        &mut g,
+        file,
+        K::Function,
+        Role::Body,
+        Some("f"),
+        "function f() {\n  interface Local { a: string }\n}",
+    );
+    let local = add(
+        &mut g,
+        function,
+        K::Interface,
+        Role::Body,
+        Some("Local"),
+        "interface Local { a: string }",
+    );
+    let enumeration = add(
+        &mut g,
+        file,
+        K::Enum,
+        Role::Body,
+        Some("E"),
+        "enum E { A = register(() => 1) }",
+    );
+    let call = add(
+        &mut g,
+        enumeration,
+        K::Call,
+        Role::Body,
+        None,
+        "register(() => 1)",
+    );
+    let callback = add(&mut g, call, K::Function, Role::Argument, None, "() => 1");
+    g.edge(
+        call,
+        EdgeKind::Calls,
+        Outcome::Unresolved(Reason::UnknownName),
+        "register",
+        None,
+    );
+    g.edge(
+        call,
+        EdgeKind::References,
+        Outcome::Resolved(g.key(callback)),
+        "() => 1",
+        Some(0),
+    );
+    let projections = project(&g.build());
+    let found: Vec<(&str, K, &str, &str)> = projections.definitions[0]
+        .iter()
+        .map(|definition| {
+            (
+                definition.key.as_str(),
+                definition.kind,
+                &*definition.qualified_name,
+                &*definition.label,
+            )
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (g.key(function).as_str(), K::Function, "f", "f"),
+            (g.key(local).as_str(), K::Interface, "f.Local", "Local"),
+            (g.key(enumeration).as_str(), K::Enum, "E", "E"),
+            (
+                g.key(callback).as_str(),
+                K::Function,
+                "callback to register",
+                "callback to register"
+            ),
+        ]
+    );
+}
+
+#[test]
 fn closures_follow_resolved_edges_and_owned_classes() {
     let s = sample();
     let index = ReaderIndex::from_graph(&s.graph);

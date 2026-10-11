@@ -1,12 +1,15 @@
 //! Mermaid export (architecture §10.5, decision U-27): a board page, an entrance, or one Flow as
 //! a Mermaid flowchart.
 //!
-//! - Each card becomes a node (an entrance, or a Code-view card as its name and location) or a
-//!   subgraph (a Flow-view card, with its groups as nested subgraphs). A card from a project
-//!   that is not connected is a "From <name>, not connected" placeholder.
+//! - Each card becomes a node (an entrance, or a Code- or Diagram-view card as its name and
+//!   location) or a subgraph (a Flow-view card, with its groups as nested subgraphs). A card from
+//!   a project that is not connected is a "From <name>, not connected" placeholder.
+//! - Resource cards are nodes shaped by their kind; frames are subgraphs around their members,
+//!   nested as the frames are; notes are `%%` comments where they sit.
 //! - Arrows between cards of one project come from its graph: solid for calls and
 //!   constructions, dashed for imports and passed references; an entrance points at its
-//!   handlers. Links drawn on the page are dashed arrows with their label.
+//!   handlers. Links drawn on the page are dashed arrows with their label; a connection's line
+//!   and words follow its kind.
 //! - Node labels are exactly the app's: the board's authored label, or the fallback name from
 //!   the code, never exact source. An outdated description or label is marked
 //!   `(description outdated)`; references held for review and broken groups are drawn as
@@ -18,8 +21,8 @@ use unfold_core::vocab::{EdgeKind, Resolution};
 use unfold_core::{Entrance, Key};
 
 use crate::board::{
-    Board, BoardGraph, Card, CardRef, Description, HealthKind, Page, PageGraphs, ProjectKey, ProjectName,
-    Target, View, health,
+    Board, BoardGraph, Card, CardRef, Column, ColumnKey, Description, FrameDirection, HealthKind, Link,
+    LinkKind, Note, Page, PageGraphs, ProjectKey, ProjectName, Resource, ResourceKind, Target, View, health,
 };
 use crate::flow::{FlowContext, FlowModel, FlowNode, FlowNodeKind};
 use crate::notes::note;
@@ -62,6 +65,11 @@ enum Shape {
     Circle,
     Flag,
     Box,
+    Cylinder,
+    Lean,
+    LeanLeft,
+    Trapezoid,
+    DoubleCircle,
 }
 
 impl Shape {
@@ -79,6 +87,20 @@ impl Shape {
             | FlowNodeKind::Opaque => Self::Box,
         }
     }
+
+    /// A resource card's shape: a table is a cylinder, a queue a parallelogram, a cache the
+    /// other parallelogram, storage a trapezoid, an outside service a hexagon, an actor a double
+    /// circle.
+    fn of_resource(kind: ResourceKind) -> Self {
+        match kind {
+            ResourceKind::Table => Self::Cylinder,
+            ResourceKind::Queue => Self::Lean,
+            ResourceKind::Cache => Self::LeanLeft,
+            ResourceKind::Storage => Self::Trapezoid,
+            ResourceKind::External => Self::Hexagon,
+            ResourceKind::Actor => Self::DoubleCircle,
+        }
+    }
 }
 
 fn shape(id: &str, shape: Shape, label: &str) -> String {
@@ -91,6 +113,11 @@ fn shape(id: &str, shape: Shape, label: &str) -> String {
         Shape::Circle => format!("{id}((\"{label}\"))"),
         Shape::Flag => format!("{id}>\"{label}\"]"),
         Shape::Box => format!("{id}[\"{label}\"]"),
+        Shape::Cylinder => format!("{id}[(\"{label}\")]"),
+        Shape::Lean => format!("{id}[/\"{label}\"/]"),
+        Shape::LeanLeft => format!("{id}[\\\"{label}\"\\]"),
+        Shape::Trapezoid => format!("{id}[/\"{label}\"\\]"),
+        Shape::DoubleCircle => format!("{id}(((\"{label}\")))"),
     }
 }
 
@@ -114,7 +141,11 @@ fn node_line(prefix: &str, node: &FlowNode) -> String {
 }
 
 fn arrow(from: &str, dashed: bool, label: &str, to: &str) -> String {
-    let connector = if dashed { "-.->" } else { "-->" };
+    line(from, if dashed { "-.->" } else { "-->" }, label, to)
+}
+
+/// A line drawn with `connector` (`-->`, `-.->`, `==>`, `---`), with its label when it has one.
+fn line(from: &str, connector: &str, label: &str, to: &str) -> String {
     if label.is_empty() {
         format!("{from} {connector} {to}")
     } else {
@@ -259,6 +290,137 @@ fn health_kind(kind: HealthKind) -> &'static str {
     }
 }
 
+/// A column of a table card: its name, its type, and its marks.
+fn column_text(column: &Column) -> String {
+    let mut parts = vec![match &column.written_type {
+        Some(written) => format!("{}: {written}", column.name),
+        None => column.name.clone(),
+    }];
+    match (column.key, &column.references) {
+        (Some(ColumnKey::Primary), _) => parts.push("PK".to_owned()),
+        (Some(ColumnKey::Foreign), Some(references)) => parts.push(format!("FK → {references}")),
+        (Some(ColumnKey::Foreign), None) => parts.push("FK".to_owned()),
+        (Some(ColumnKey::Unique), _) => parts.push("unique".to_owned()),
+        (None, _) => {}
+    }
+    if column.optional {
+        parts.push("optional".to_owned());
+    }
+    parts.join(" · ")
+}
+
+/// A resource card's node: its kind's shape around its kind and name, its columns, and its
+/// description.
+fn resource_node(id: &str, resource: &Resource) -> String {
+    let mut label = format!("{} · {}", resource.kind.as_str(), resource.name);
+    for column in &resource.columns {
+        label.push('\n');
+        label.push_str(&column_text(column));
+    }
+    if let Some(description) = &resource.description {
+        label.push('\n');
+        label.push_str(&description.text);
+    }
+    shape(id, Shape::of_resource(resource.kind), &label)
+}
+
+/// A note as a comment line, naming what it is attached to.
+fn note_comment(note: &Note) -> String {
+    match &note.attach {
+        Some(target) => format!("%% Note on {target}: {}", comment(&note.text)),
+        None => format!("%% Note: {}", comment(&note.text)),
+    }
+}
+
+/// Writes frame `index` of `page` as subgraph `f<index>`, `depth` levels deep, around its
+/// members' lines (taken from `blocks`) in member order; frames inside it are written the same
+/// way.
+fn write_frame(
+    lines: &mut Vec<String>,
+    page: &Page,
+    index: usize,
+    depth: usize,
+    blocks: &mut FxHashMap<&str, Vec<String>>,
+) {
+    let frame = &page.frames[index];
+    let indent = "  ".repeat(depth);
+    let title = with_description(frame.title.clone(), frame.description.as_ref(), false);
+    lines.push(format!("{indent}subgraph f{index}[\"{}\"]", escape(&title)));
+    if let Some(direction) = frame.direction {
+        let direction = match direction {
+            FrameDirection::Right => "LR",
+            FrameDirection::Down => "TB",
+        };
+        lines.push(format!("{indent}  direction {direction}"));
+    }
+    for member in &frame.members {
+        if let Some(inner) = page.frames.iter().position(|item| &item.id == member) {
+            write_frame(lines, page, inner, depth + 1, blocks);
+        } else if let Some(block) = blocks.remove(member.as_str()) {
+            lines.extend(block.into_iter().map(|line| format!("{indent}{line}")));
+        }
+    }
+    lines.push(format!("{indent}end"));
+}
+
+/// The Flow node of card `card` that shows `step` (its statement, or the statement holding the
+/// call), when the card is drawn as a Flow.
+fn step_node(page: &Page, flows: &FxHashMap<&str, FlowModel>, card: &str, step: &Key) -> Option<String> {
+    let flow = flows.get(card)?;
+    let index = page.cards.iter().position(|item| item.id == card)?;
+    let node = flow
+        .nodes
+        .iter()
+        .find(|node| node.key.as_ref() == Some(step) || node.chips.iter().any(|chip| &chip.source == step))?;
+    Some(format!("c{index}_n{}", node.id))
+}
+
+/// A connection's words: `HTTP`, `queue`, `runtime call`, … (none for a drawn link).
+fn kind_word(kind: LinkKind) -> Option<&'static str> {
+    match kind {
+        LinkKind::Http => Some("HTTP"),
+        LinkKind::Rpc => Some("RPC"),
+        LinkKind::Queue => Some("queue"),
+        LinkKind::Event => Some("event"),
+        LinkKind::Writes => Some("writes"),
+        LinkKind::Reads => Some("reads"),
+        LinkKind::Calls => Some("runtime call"),
+        LinkKind::Relates => Some("relates"),
+        LinkKind::Other => None,
+    }
+}
+
+/// A link's arrow from `from` to `to`, drawn with its kind's line (solid for requests and
+/// writes, thick for queues, dotted for events, runtime calls, and drawn links, a plain line for
+/// `relates`; a `reads` arrow points back at the code that reads), and labeled with its kind's
+/// word, a relationship's cardinality and columns, its channel, and its label.
+fn connection(link: &Link, from: &str, to: &str) -> String {
+    let kind = link.kind.unwrap_or(LinkKind::Other);
+    let mut words: Vec<String> = kind_word(kind).map(str::to_owned).into_iter().collect();
+    if let Some(cardinality) = link.cardinality {
+        words.push(cardinality.as_str().replace('-', " "));
+    }
+    match (&link.from_column, &link.to_column) {
+        (Some(from), Some(to)) => words.push(format!("{from} → {to}")),
+        (Some(column), None) | (None, Some(column)) => words.push(column.clone()),
+        (None, None) => {}
+    }
+    words.extend(link.channel.iter().cloned());
+    words.extend(link.label.iter().map(|label| label.text.clone()));
+    let label = words.join(" · ");
+    let connector = match kind {
+        LinkKind::Http | LinkKind::Rpc | LinkKind::Writes | LinkKind::Reads => "-->",
+        LinkKind::Queue => "==>",
+        LinkKind::Relates => "---",
+        LinkKind::Event | LinkKind::Calls | LinkKind::Other => "-.->",
+    };
+    if kind == LinkKind::Reads {
+        line(to, connector, &label, from)
+    } else {
+        line(from, connector, &label, to)
+    }
+}
+
 /// One page as a diagram.
 fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
     let health = health(page, graphs);
@@ -293,27 +455,30 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
     let mut first_card: FxHashMap<(Option<&ProjectName>, &str), &str> = FxHashMap::default();
     let mut ports: FxHashMap<&str, String> = FxHashMap::default();
     let mut flows: FxHashMap<&str, FlowModel> = FxHashMap::default();
+    // Each item's lines, written where the item sits: at the top level or inside its frame.
+    let mut blocks: FxHashMap<&str, Vec<String>> = FxHashMap::default();
     for (index, card) in page.cards.iter().enumerate() {
         let id = format!("c{index}");
         let target = Target::Card(card.id.clone());
+        let out = blocks.entry(card.id.as_str()).or_default();
         let key = card.reference.key().as_str();
         let project = card.reference.project();
         let Some(graph) = graphs.get(project) else {
             let name = project.map_or("", ProjectName::as_str);
-            lines.push(format!(
+            out.push(format!(
                 "  {}",
                 shape(&id, Shape::Box, &format!("From {name}, not connected"))
             ));
-            lines.push(format!("  class {id} opaque"));
+            out.push(format!("  class {id} opaque"));
             ports.insert(&card.id, id);
             continue;
         };
         if broken.contains(&target) {
-            lines.push(format!(
+            out.push(format!(
                 "  {}",
                 shape(&id, Shape::Box, &format!("Reference needs review: {key}"))
             ));
-            lines.push(format!("  class {id} opaque"));
+            out.push(format!("  class {id} opaque"));
             ports.insert(&card.id, id);
             continue;
         }
@@ -321,17 +486,17 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
             let title = graph
                 .entrance(key)
                 .map_or_else(|| format!("Missing entrance: {key}"), entrance_title);
-            lines.push(format!("  {}", shape(&id, Shape::Stadium, &title)));
+            out.push(format!("  {}", shape(&id, Shape::Stadium, &title)));
             ports.insert(&card.id, id);
             continue;
         }
         first_card.entry((project, key)).or_insert(&card.id);
         let Some(block) = graph.block(key) else {
-            lines.push(format!(
+            out.push(format!(
                 "  {}",
                 shape(&id, Shape::Box, &format!("Missing definition: {key}"))
             ));
-            lines.push(format!("  class {id} opaque"));
+            out.push(format!("  class {id} opaque"));
             ports.insert(&card.id, id);
             continue;
         };
@@ -350,14 +515,14 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
                 block.block().lines.start
             );
             let label = with_description(location, card.description.as_ref(), is_outdated(&target));
-            lines.push(format!("  {}", shape(&id, Shape::Box, &label)));
+            out.push(format!("  {}", shape(&id, Shape::Box, &label)));
             ports.insert(&card.id, id);
             continue;
         };
         ports.insert(&card.id, format!("{id}_n{}", flow.start));
         let title = with_description(name, card.description.as_ref(), is_outdated(&target));
-        lines.push(format!("  subgraph {id}_card[\"{}\"]", escape(&title)));
-        lines.push("    direction TB".to_owned());
+        out.push(format!("  subgraph {id}_card[\"{}\"]", escape(&title)));
+        out.push("    direction TB".to_owned());
         let card_groups: Vec<_> = page.groups.iter().filter(|group| group.card == card.id).collect();
         let groups: Vec<_> = card_groups
             .iter()
@@ -367,7 +532,7 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
         let prefix = format!("{id}_");
         for node in &flow.nodes {
             if node.key.as_ref().is_none_or(|key| !grouped.contains(key)) {
-                lines.push(format!("    {}", node_line(&prefix, node)));
+                out.push(format!("    {}", node_line(&prefix, node)));
             }
         }
         for (index, group) in groups.iter().enumerate() {
@@ -384,31 +549,31 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
                 group.description.as_ref(),
                 is_outdated(&Target::Group(group.id.clone())),
             );
-            lines.push(format!("    subgraph {id}_g{index}[\"{}\"]", escape(&title)));
+            out.push(format!("    subgraph {id}_g{index}[\"{}\"]", escape(&title)));
             for node in members {
-                lines.push(format!("      {}", node_line(&prefix, node)));
+                out.push(format!("      {}", node_line(&prefix, node)));
             }
-            lines.push("    end".to_owned());
+            out.push("    end".to_owned());
         }
         for route in &flow.routes {
             let (from, to) = (
                 format!("{prefix}n{}", route.from),
                 format!("{prefix}n{}", route.to),
             );
-            lines.push(format!(
+            out.push(format!(
                 "    {}",
                 arrow(&from, route.kind.dashed(), route.kind.label(), &to)
             ));
         }
         for node in flow.nodes.iter().filter(|node| node.kind == FlowNodeKind::Opaque) {
-            lines.push(format!("    class {prefix}n{} opaque", node.id));
+            out.push(format!("    class {prefix}n{} opaque", node.id));
         }
         let broken_groups = card_groups
             .iter()
             .filter(|group| broken.contains(&Target::Group(group.id.clone())));
         for (index, group) in broken_groups.enumerate() {
             let review = format!("{id}_review{index}");
-            lines.push(format!(
+            out.push(format!(
                 "    {}",
                 shape(
                     &review,
@@ -416,13 +581,44 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
                     &format!("Group needs review: {}", group.title)
                 )
             ));
-            lines.push(format!("    class {review} opaque"));
+            out.push(format!("    class {review} opaque"));
         }
         for warning in &flow.warnings {
-            lines.push(format!("    %% {}", comment(warning.message)));
+            out.push(format!("    %% {}", comment(warning.message)));
         }
-        lines.push("  end".to_owned());
+        out.push("  end".to_owned());
         flows.insert(&card.id, flow);
+    }
+    for (index, resource) in page.resources.iter().enumerate() {
+        let id = format!("r{index}");
+        blocks.insert(&resource.id, vec![format!("  {}", resource_node(&id, resource))]);
+        ports.insert(&resource.id, id);
+    }
+    for note in &page.notes {
+        blocks.insert(&note.id, vec![format!("  {}", note_comment(note))]);
+    }
+    for (index, frame) in page.frames.iter().enumerate() {
+        ports.insert(&frame.id, format!("f{index}"));
+    }
+    let framed: FxHashSet<&str> = page
+        .frames
+        .iter()
+        .flat_map(|frame| frame.members.iter().map(String::as_str))
+        .collect();
+    let top = page
+        .cards
+        .iter()
+        .map(|card| card.id.as_str())
+        .chain(page.resources.iter().map(|resource| resource.id.as_str()))
+        .chain(page.notes.iter().map(|note| note.id.as_str()))
+        .filter(|id| !framed.contains(id));
+    for id in top {
+        lines.extend(blocks.remove(id).unwrap_or_default());
+    }
+    for (index, frame) in page.frames.iter().enumerate() {
+        if !framed.contains(frame.id.as_str()) {
+            write_frame(&mut lines, page, index, 1, &mut blocks);
+        }
     }
     for (index, card) in page.cards.iter().enumerate() {
         let id = format!("c{index}");
@@ -499,10 +695,17 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
         }
     }
     for link in &page.links {
-        if let (Some(from), Some(to)) = (ports.get(link.from.as_str()), ports.get(link.to.as_str())) {
-            let label = link.label.as_ref().map_or("", |label| label.text.as_str());
-            lines.push(format!("  {}", arrow(from, true, label, to)));
-        }
+        let (Some(from), Some(to)) = (ports.get(link.from.as_str()), ports.get(link.to.as_str())) else {
+            continue;
+        };
+        let step = link
+            .step
+            .as_ref()
+            .and_then(|step| step_node(page, &flows, &link.from, step));
+        lines.push(format!(
+            "  {}",
+            connection(link, step.as_deref().unwrap_or(from), to)
+        ));
     }
     for item in &health.items {
         lines.push(format!(

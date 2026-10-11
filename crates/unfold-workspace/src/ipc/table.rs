@@ -186,6 +186,8 @@ command_table! {
     "list_boards" => ListBoards(ProjectArgs) -> boards::BoardList = boards::list_boards;
     /// What the thumbnails of a project's boards draw.
     "board_thumbnails" => BoardThumbnails(boards::ThumbnailsArgs) -> boards::Thumbnails = boards::board_thumbnails;
+    /// A board as its working file holds it, without opening it.
+    "read_board" => ReadBoard(boards::BoardIdArgs) -> boards::ReadBoardResult = boards::read_board;
     /// Opens a board in the calling window, or names the window that has it.
     "open_board" => OpenBoard(boards::BoardIdArgs) -> boards::OpenBoardResult = boards::open_board;
     /// Creates an empty draft and opens it in the calling window.

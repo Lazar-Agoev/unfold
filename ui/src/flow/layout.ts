@@ -2,12 +2,13 @@
  * Geometry for the Flow view (architecture §10.4, §11.8: Rust computes structure, TypeScript lays
  * it out). A small structured layout of the reader's lane tree, top to bottom like a Mermaid
  * flowchart: conditions put `no` in their own lane and `yes` to the right, loops and try/catch get
- * regions, folded "▸ N checks" chains collapse into one summary. Routes come from the model and are
- * drawn as orthogonal paths by their kind. The result depends only on the model, the open chains,
- * the labels, and the text measurer, so the same input always lays out the same way.
+ * regions, folded "▸ N checks" chains collapse into one summary, and step groups get a titled region
+ * or, collapsed, one step. Routes come from the model and are drawn as orthogonal paths by their
+ * kind. The result depends only on the model, the open chains, the labels, the step groups, and the
+ * text measurer, so the same input always lays out the same way.
  */
 
-import type { FlowItem, FlowModel, FlowNode, RouteKind } from "../ipc/generated";
+import type { FlowItem, FlowModel, FlowNode, Key, RouteKind } from "../ipc/generated";
 
 /** Measures the width of `text` in pixels for a CSS font shorthand. */
 export type Measure = (text: string, font: string) => number;
@@ -16,6 +17,7 @@ const FLOW_FONTS = {
   label: '500 13px "Inter Variable", system-ui, sans-serif',
   name: '600 12.5px "JetBrains Mono Variable", ui-monospace, monospace',
   pill: '600 12.5px "Inter Variable", system-ui, sans-serif',
+  groupTitle: '600 12px "Inter Variable", system-ui, sans-serif',
 } as const;
 
 /** Room a measured line keeps so subpixel rounding never wraps it. */
@@ -48,8 +50,36 @@ const FLOW_SPACING = {
   join: 15,
 } as const;
 
+/**
+ * A step group region's title band (flow.css keeps the same numbers): the title's top inset, line
+ * height, and gap above the first step; its left inset (after the toggle) and right inset.
+ */
+const GROUP_TITLE = { top: 6, line: 16, below: 8, left: 26, right: 10 } as const;
+
 /** Lane widths tried, widest first, until the diagram fits the card's maximum width. */
 const LANE_WIDTHS = [232, 216, 200, 184, 168, 152, 140] as const;
+
+/** A step group of the card (reader.md "Groups"), as Flow draws it. */
+export interface StepGroup {
+  readonly id: string;
+  readonly title: string;
+  /** Its statements' keys, in source order. */
+  readonly members: readonly Key[];
+  readonly collapsed: boolean;
+  /** Whether a statement inside can return (outside nested callables). */
+  readonly returns: boolean;
+  /** Whether a statement inside can throw (outside nested callables). */
+  readonly throws: boolean;
+}
+
+/** What the step of a collapsed step group stands for. */
+export interface GroupStep {
+  readonly id: string;
+  /** How many steps it hides. */
+  readonly steps: number;
+  readonly returns: boolean;
+  readonly throws: boolean;
+}
 
 export interface PlacedNode {
   /** `"3"` for model node 3; `"chain:3"` for the summary of the folded chain headed by node 3. */
@@ -68,10 +98,15 @@ export interface PlacedNode {
   readonly chainFolded?: boolean;
   /** For a chain summary: what its checks end in. */
   readonly summary?: boolean;
+  /**
+   * For the step of a collapsed step group (`"group:<id>"`): the group. Its `node` carries the chips
+   * and callbacks of every step it hides, so arrows from those steps leave from it.
+   */
+  readonly group?: GroupStep;
 }
 
 interface FlowRegion {
-  readonly kind: "loop" | "try" | "catch";
+  readonly kind: "loop" | "try" | "catch" | "group";
   readonly title: string;
   readonly subtitle?: string;
   readonly x: number;
@@ -80,6 +115,8 @@ interface FlowRegion {
   readonly height: number;
   /** For a loop: its header node's id. */
   readonly header?: string;
+  /** For a step group: its id. */
+  readonly group?: string;
 }
 
 export interface Point {
@@ -112,6 +149,8 @@ export interface FlowLayoutOptions {
   readonly labels?: Readonly<Record<string, string>>;
   /** Chain heads (by block key) the person opened; other chains of three or more checks fold. */
   readonly openChains?: ReadonlySet<string>;
+  /** The card's step groups (unbroken ones): each a titled region around its steps, or one step when collapsed. */
+  readonly groups?: readonly StepGroup[];
   readonly measure: Measure;
   /** The widest the diagram may be (the card's maximum width less its border). */
   readonly maxWidth: number;
@@ -194,6 +233,7 @@ interface Sized {
   readonly height: number;
   readonly chainFolded?: boolean;
   readonly summary?: boolean;
+  readonly group?: GroupStep;
 }
 
 interface Context {
@@ -245,6 +285,36 @@ function sizeNode(node: FlowNode, ctx: Context, id = String(node.id), overrides:
   return { id, node, label: label.text, fallback: label.fallback, labelLines: lines, width: ctx.laneWidth, height, ...overrides };
 }
 
+/** The step of a collapsed step group: its type row, its title as the label, and a row for its marks. */
+function sizeGroupStep(run: GroupRun, ctx: Context): Sized {
+  const m = FLOW_METRICS;
+  const { group } = run;
+  const hidden = run.nodes.flatMap((id) => {
+    const node = nodeAt(ctx, id);
+    return node ? [node] : [];
+  });
+  const node: FlowNode = {
+    id: hidden[0]?.id ?? -1,
+    kind: "statement",
+    label: group.title,
+    lane: hidden[0]?.lane ?? 0,
+    chips: hidden.flatMap((item) => item.chips ?? []),
+    callbacks: hidden.flatMap((item) => item.callbacks ?? []),
+  };
+  const lines = wrapLines(group.title, ctx.laneWidth - m.padX * 2 - SLACK, FLOW_FONTS.label, ctx.options.measure);
+  const marks = group.returns || group.throws ? m.rowGap + m.noteRow : 0;
+  return {
+    id: `group:${group.id}`,
+    node,
+    label: group.title,
+    fallback: false,
+    labelLines: lines,
+    width: ctx.laneWidth,
+    height: m.padY * 2 + m.typeRow + m.rowGap + lines * m.labelLine + marks,
+    group: { id: group.id, steps: hidden.length, returns: group.returns, throws: group.throws },
+  };
+}
+
 // ---------------------------------------------------------------------------------------------
 // Structured placement
 
@@ -270,15 +340,32 @@ function single(sized: Sized): Block {
   return { width: sized.width, height: sized.height, nodes: [{ ...sized, x: 0, y: 0 }], regions: [] };
 }
 
-/** Nodes hidden by folded chains, mapped to the node that stands for them. */
+/** A step group found in the lane tree: a run of consecutive items of one list. */
+interface GroupRun {
+  readonly group: StepGroup;
+  /** How many items it covers, from the one it is keyed by. */
+  readonly length: number;
+  /** Every model node of its items. */
+  readonly nodes: readonly number[];
+}
+
+/** What the layout folds: chains of checks into summaries, and step groups. */
 interface Folding {
+  /** Nodes hidden by a folded chain or a collapsed step group, mapped to the node that stands for them. */
   readonly representative: Map<number, string>;
   /** Folded chain heads by node id, with their summary's outcome. */
   readonly folded: Map<number, NonNullable<FlowNode["outcome"]>>;
+  /** Step groups by the first item of their run. */
+  readonly runs: Map<FlowItem, GroupRun>;
 }
 
 function nodeAt(ctx: Context, id: number): FlowNode | undefined {
   return ctx.model.nodes[id];
+}
+
+/** The block an item of the lane tree shows. */
+function itemKey(item: FlowItem, ctx: Context): Key | undefined {
+  return item.type === "try" ? item.key : nodeAt(ctx, item.node)?.key;
 }
 
 function collectNodes(items: readonly FlowItem[], into: number[]): void {
@@ -314,6 +401,7 @@ function chainOf(head: Extract<FlowItem, { type: "branch" }>): Extract<FlowItem,
   return chain;
 }
 
+/** Plans the folding of every list the diagram shows; a list's step groups after its own chains. */
 function planFolding(ctx: Context, items: readonly FlowItem[], folding: Folding): void {
   for (const item of items) {
     if (item.type === "branch") {
@@ -345,6 +433,42 @@ function planFolding(ctx: Context, items: readonly FlowItem[], folding: Folding)
       planFolding(ctx, item.body, folding);
       planFolding(ctx, item.handler, folding);
     }
+  }
+  planGroups(ctx, items, folding);
+}
+
+/**
+ * The step groups among `items`: a group is drawn where its members are consecutive items of this
+ * list, in order (the group rule makes every valid group such a run; a group whose statements Flow
+ * doesn't show, inside an opaque node or a folded chain, isn't drawn). A collapsed group's step stands
+ * for every node of its run, folded chains included.
+ */
+function planGroups(ctx: Context, items: readonly FlowItem[], folding: Folding): void {
+  const groups = ctx.options.groups ?? [];
+  if (groups.length === 0) {
+    return;
+  }
+  const matches = (group: StepGroup, at: number) =>
+    group.members.every((member, offset) => {
+      const item = items[at + offset];
+      return item !== undefined && itemKey(item, ctx) === member;
+    });
+  for (let index = 0; index < items.length; index += 1) {
+    const first = items[index];
+    const key = first ? itemKey(first, ctx) : undefined;
+    const group = key !== undefined ? groups.find((candidate) => candidate.members[0] === key) : undefined;
+    if (!first || !group || !matches(group, index)) {
+      continue;
+    }
+    const nodes: number[] = [];
+    collectNodes(items.slice(index, index + group.members.length), nodes);
+    folding.runs.set(first, { group, length: group.members.length, nodes });
+    if (group.collapsed) {
+      for (const id of nodes) {
+        folding.representative.set(id, `group:${group.id}`);
+      }
+    }
+    index += group.members.length - 1;
   }
 }
 
@@ -487,15 +611,28 @@ function layoutItem(item: FlowItem, ctx: Context, folding: Folding): Block {
   }
 }
 
-function layoutSeq(items: readonly FlowItem[], ctx: Context, folding: Folding, depth = 0): Block {
-  const block = emptyBlock();
-  // The reader caps nesting at 100 levels (deeper code is one opaque node), so this recursion is bounded.
-  if (depth > 200) {
-    return block;
+/** A step group: a titled region around its items, or, collapsed, one step. */
+function layoutGroup(run: GroupRun, items: readonly FlowItem[], ctx: Context, folding: Folding): Block {
+  if (run.group.collapsed) {
+    return single(sizeGroupStep(run, ctx));
   }
+  const s = FLOW_SPACING;
+  const t = GROUP_TITLE;
+  const inner = stack(items.map((item) => layoutItem(item, ctx, folding)));
+  const width = Math.max(inner.width, ctx.laneWidth) + s.regionPad * 2;
+  const lines = wrapLines(run.group.title, width - t.left - t.right - SLACK, FLOW_FONTS.groupTitle, ctx.options.measure);
+  const top = t.top + lines * t.line + t.below;
+  const height = top + inner.height + s.regionBottom;
+  const block: Block = { width, height, nodes: [], regions: [{ kind: "group", title: run.group.title, group: run.group.id, x: 0, y: 0, width, height }] };
+  shift(inner, s.regionPad, top, block);
+  return block;
+}
+
+/** Blocks one below another, `vgap` apart; empty blocks take no room. */
+function stack(children: readonly Block[]): Block {
+  const block = emptyBlock();
   let y = 0;
-  for (const item of items) {
-    const child = layoutItem(item, ctx, folding);
+  for (const child of children) {
     if (child.nodes.length === 0 && child.regions.length === 0) {
       continue;
     }
@@ -508,6 +645,29 @@ function layoutSeq(items: readonly FlowItem[], ctx: Context, folding: Folding, d
   }
   block.height = y;
   return block;
+}
+
+function layoutSeq(items: readonly FlowItem[], ctx: Context, folding: Folding, depth = 0): Block {
+  // The reader caps nesting at 100 levels (deeper code is one opaque node), so this recursion is bounded.
+  if (depth > 200) {
+    return emptyBlock();
+  }
+  const children: Block[] = [];
+  let index = 0;
+  while (index < items.length) {
+    const item = items[index];
+    const run = item ? folding.runs.get(item) : undefined;
+    if (run) {
+      children.push(layoutGroup(run, items.slice(index, index + run.length), ctx, folding));
+      index += run.length;
+    } else {
+      if (item) {
+        children.push(layoutItem(item, ctx, folding));
+      }
+      index += 1;
+    }
+  }
+  return stack(children);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -545,7 +705,17 @@ const ROUTE_LABELS: Readonly<Partial<Record<RouteKind, string>>> = {
   error: "on error",
 };
 
-/** The visible routes: hidden chain nodes are replaced by their representative, duplicates dropped. */
+/**
+ * Routes that keep their kind when they leave a collapsed step group: a return (to End), a transfer
+ * out of a loop, a step back to a loop header, and `on error`. Every other route out of the group
+ * describes a step inside it (a condition's yes or no, a loop's done) and leaves as plain sequence.
+ */
+const LEAVES_GROUP: ReadonlySet<RouteKind> = new Set(["return", "break", "continue", "next", "test", "error"]);
+
+/**
+ * The visible routes: nodes hidden by a folded chain or a collapsed step group are replaced by their
+ * representative, routes inside one representative dropped, duplicates dropped.
+ */
 function visibleRoutes(model: FlowModel, folding: Folding): { from: string; to: string; kind: RouteKind }[] {
   const seen = new Set<string>();
   const routes: { from: string; to: string; kind: RouteKind }[] = [];
@@ -568,6 +738,9 @@ function visibleRoutes(model: FlowModel, folding: Folding): { from: string; to: 
     } else if (folding.folded.has(Number(from)) && route.from !== Number(from)) {
       // The last check's `no` now leaves from the folded head.
       kind = "no";
+    }
+    if (from.startsWith("group:") && !LEAVES_GROUP.has(kind)) {
+      kind = "sequence";
     }
     const id = `${from}>${to}>${kind}`;
     if (seen.has(id)) {
@@ -599,10 +772,15 @@ function routeEdge(
     !others.some((box) => x > box.x - 1 && x < box.right + 1 && box.y < Math.max(y1, y2) && box.bottom > Math.min(y1, y2));
   const rowClear = (y: number, x1: number, x2: number) =>
     !others.some((box) => y > box.y - 1 && y < box.bottom + 1 && box.x < Math.max(x1, x2) && box.right > Math.min(x1, x2));
+  const inside = (node: PlacedNode, region: FlowRegion) =>
+    node.x >= region.x && node.x < region.x + region.width && node.y >= region.y && node.y < region.y + region.height;
   const loopAround = (node: PlacedNode) =>
+    regions.filter((region) => region.kind === "loop" && inside(node, region)).sort((a, b) => a.width * a.height - b.width * b.height)[0];
+  // A route into a step group's region turns above it, so it crosses the group's title band straight down.
+  const turn =
     regions
-      .filter((region) => region.kind === "loop" && node.x >= region.x && node.x < region.x + region.width && node.y >= region.y && node.y < region.y + region.height)
-      .sort((a, b) => a.width * a.height - b.width * b.height)[0];
+      .filter((region) => region.kind === "group" && region.y > s.bottom && inside(target, region) && !inside(source, region))
+      .reduce((top, region) => Math.min(top, region.y), t.y) - join;
   let points: Point[];
   const kind = route.kind;
   if (kind === "error") {
@@ -631,14 +809,14 @@ function routeEdge(
     points = [{ x: s.cx, y: s.bottom }, { x: t.cx, y: t.y }];
   } else if ((kind === "yes" || kind === "elseIf") && t.cx > s.cx && columnClear(t.cx, s.cy, t.y)) {
     points = [{ x: s.right, y: s.cy }, { x: t.cx, y: s.cy }, { x: t.cx, y: t.y }];
-  } else if (columnClear(s.cx, s.bottom, t.y - join) && rowClear(t.y - join, s.cx, t.cx)) {
-    points = [{ x: s.cx, y: s.bottom }, { x: s.cx, y: t.y - join }, { x: t.cx, y: t.y - join }, { x: t.cx, y: t.y }];
+  } else if (columnClear(s.cx, s.bottom, turn) && rowClear(turn, s.cx, t.cx)) {
+    points = [{ x: s.cx, y: s.bottom }, { x: s.cx, y: turn }, { x: t.cx, y: turn }, { x: t.cx, y: t.y }];
   } else {
     // Out of a loop (done, break) or past a blocked column: along the right side.
     const region = kind === "done" || kind === "break" ? loopAround(source) : undefined;
     const blocking = others.filter((box) => box.bottom > s.cy && box.y < t.y).reduce((right, box) => Math.max(right, box.right), s.right);
     const gx = region ? region.x + region.width - FLOW_SPACING.regionPad / 2 : blocking + FLOW_SPACING.regionPad / 2;
-    points = [{ x: s.right, y: s.cy }, { x: gx, y: s.cy }, { x: gx, y: t.y - join }, { x: t.cx, y: t.y - join }, { x: t.cx, y: t.y }];
+    points = [{ x: s.right, y: s.cy }, { x: gx, y: s.cy }, { x: gx, y: turn }, { x: t.cx, y: turn }, { x: t.cx, y: t.y }];
   }
   const label = ROUTE_LABELS[kind] ?? null;
   const first = points[0];
@@ -664,7 +842,7 @@ function routeEdge(
 
 function layoutAt(model: FlowModel, options: FlowLayoutOptions, laneWidth: number): FlowLayout {
   const ctx: Context = { model, options, laneWidth };
-  const folding: Folding = { representative: new Map(), folded: new Map() };
+  const folding: Folding = { representative: new Map(), folded: new Map(), runs: new Map() };
   planFolding(ctx, model.tree, folding);
   const s = FLOW_SPACING;
   const diagram = emptyBlock();

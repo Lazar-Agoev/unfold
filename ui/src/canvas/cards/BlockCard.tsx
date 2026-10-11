@@ -3,7 +3,8 @@
  * the project monogram (a card from another project), `ƒ`, the name, the file, and the card's own Code |
  * Flow switch (saved with the board); a review banner and the description follow. A folded card
  * (double-click its header) shows only the header, and its arrows attach there. The body never scrolls:
- * the card sizes itself to its content. Flow shows the page's labels for the card's project.
+ * the card sizes itself to its content. Flow shows the page's labels for the card's project and the
+ * card's groups as step groups; a group's one `collapsed` field folds it in both views.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -14,17 +15,21 @@ import { CodeView } from "../../code/CodeView";
 import { defaultFolds, groupConflict, groupSelection } from "../../code/outline";
 import { shortPath } from "../../code/text";
 import { FlowView, flowPortNodes } from "../../flow/FlowView";
+import { stepGroups } from "../../flow/groups";
 import { useEngineQuery } from "../../ipc/queries";
 import { layoutFlow } from "../../flow/layout";
 import type { CallLink, Card, CodeText, CodeView as CodeViewModel, ProjectId, View } from "../../ipc/generated";
 import {
   addGroup,
+  editGroup,
   editPage,
   findPage,
   followCall,
+  getPageView,
   keyDisplayName,
   labelsFor,
   lineOffsetIn,
+  select,
   setCardView,
   setCardsFolded,
   setPendingGroup,
@@ -123,10 +128,12 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
 
   // Laid out only while the card shows Flow: measuring and placing nodes is the costly part of a card.
   const flowModel = view === "flow" ? (model?.flow ?? null) : null;
+  const flowGroups = useMemo(() => (flowModel && shown ? stepGroups(groups, shown.outline) : []), [flowModel, groups, shown]);
   const flowLayout = useMemo(
-    () => (flowModel ? layoutFlow(flowModel, { labels: labelText, openChains: chainSet, measure, maxWidth: CARD_MAX_WIDTH - 2 }) : null),
-    [flowModel, labelText, chainSet, measure],
+    () => (flowModel ? layoutFlow(flowModel, { labels: labelText, openChains: chainSet, groups: flowGroups, measure, maxWidth: CARD_MAX_WIDTH - 2 }) : null),
+    [flowModel, labelText, chainSet, flowGroups, measure],
   );
+  const selectedGroup = usePageView(target, ({ selection }) => (selection.kind === "group" ? selection.groupId : null));
 
   const name = model?.header.qualifiedName ?? keyDisplayName(key);
   const location = model ? shortPath(model.header.path) : "";
@@ -166,6 +173,14 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
 
   const selectKey = (blockKey: string) => {
     clickCard(target, card.id, blockKey);
+  };
+  // A step group in Flow selects the group, unless a link is being drawn to this card.
+  const selectGroup = (groupId: string) => {
+    if (getPageView(target).linking) {
+      clickCard(target, card.id, null);
+    } else {
+      select(target, { kind: "group", groupId });
+    }
   };
   const follow = (targetKey: string, anchor: HTMLElement, line?: number) => {
     const offset = lineOffsetIn(anchor);
@@ -273,6 +288,15 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
             draft.flowChains[card.id] = toggled(draft.flowChains[card.id] ?? [], chainKey);
           });
         }}
+        selectedGroup={selectedGroup}
+        onSelectGroup={selectGroup}
+        onToggleGroup={(groupId) => {
+          const group = groups.find((item) => item.id === groupId);
+          if (group) {
+            editGroup(target, groupId, { collapsed: !group.collapsed });
+          }
+        }}
+        onGroupMenu={menu.openGroupMenu}
         ports={flowPorts.byNode}
         renderPorts={renderPorts}
       />

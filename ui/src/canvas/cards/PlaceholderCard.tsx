@@ -6,7 +6,7 @@
 
 import { Button, Monogram } from "../../components";
 import type { Card } from "../../ipc/generated";
-import { authorName } from "../../code/text";
+import { Author } from "../../agent";
 import { cardKey, keyDisplayName, type PageTarget } from "../../state/boards";
 import { addProjectFromPicker } from "../../state/workspace";
 import { useCardMenu } from "./cardMenu";
@@ -50,9 +50,13 @@ export function PlaceholderCard({ target, card, projectName, selected }: Placeho
       </div>
       <p className="placeholder-name">{block ? `ƒ ${name}` : name}</p>
       <p className="placeholder-note">
-        {author !== undefined
-          ? `${authorName(author)} added this card. Connect the project to read it.`
-          : `This card is from ${projectName}. Connect the project to read it.`}
+        {author !== undefined ? (
+          <>
+            <Author author={author} /> added this card. Connect the project to read it.
+          </>
+        ) : (
+          `This card is from ${projectName}. Connect the project to read it.`
+        )}
       </p>
       <Button
         variant="secondary"

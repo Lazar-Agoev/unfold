@@ -183,10 +183,8 @@ fn label(project: Option<ProjectName>, key: &str, text: &str) -> LabelEntry {
 
 fn link(id: &str, from: &str, to: &str, text: Option<&str>) -> Link {
     Link {
-        id: id.to_owned(),
-        from: from.to_owned(),
-        to: to.to_owned(),
         label: text.map(unsigned),
+        ..Link::new(id, from, to)
     }
 }
 
@@ -206,6 +204,7 @@ fn group(members: &[&str]) -> Group {
         members: members.iter().map(|key| Key::from_text(key)).collect(),
         collapsed: false,
         description: None,
+        author: None,
     }
 }
 
@@ -302,7 +301,7 @@ fn parsing_rejects_everything_outside_the_format_with_a_path() {
         (
             MINIMAL.replace("\"code\"", "\"canvas\""),
             "/pages/0/defaultView",
-            "\"code\" or \"flow\"",
+            "\"code\", \"flow\", or \"diagram\"",
         ),
         (MINIMAL.replace("\"T\"", "\"  \""), "/title", "must not be empty"),
         (
@@ -446,12 +445,12 @@ fn parsing_rejects_everything_outside_the_format_with_a_path() {
         (
             with_page_fields(r#""groups":[],"links":[{"from":"run","id":"l","to":"run"}]"#),
             "/pages/0/links/0/to",
-            "another card",
+            "another item",
         ),
         (
             with_page_fields(r#""groups":[],"links":[{"from":"nope","id":"l","to":"run"}]"#),
             "/pages/0/links/0/from",
-            "unknown card",
+            "unknown item `nope`",
         ),
         (
             with_page_fields(r#""groups":[],"links":[{"from":"run","id":"run","to":"run"}]"#),
@@ -491,6 +490,530 @@ fn parsing_rejects_everything_outside_the_format_with_a_path() {
     );
     assert!(matches!(parse("[1,"), Err(BoardError::Syntax { line: 1, .. })));
     assert_eq!(invalid("[]").0, "/");
+}
+
+/// `MINIMAL` with a second card `two`, a table `t` listing column `id`, and `fields` in the page.
+fn with_items(fields: &str) -> String {
+    MINIMAL.replace(
+        "\"groups\":[]",
+        &format!(
+            r#""groups":[],"resources":[{{"anchors":[],"at":[0,0],"author":"agent:x","columns":[{{"name":"id"}}],"id":"t","kind":"table","name":"t"}}]{fields}"#
+        ),
+    )
+    .replace(
+        "\"cards\":[",
+        r#""cards":[{"at":[0,0],"id":"two","ref":{"entrance":"entrance:x"}},"#,
+    )
+}
+
+#[test]
+fn parsing_checks_frames_resources_connections_and_notes() {
+    let frame = |id: &str, members: &str| {
+        format!(r#"{{"author":"agent:x","id":"{id}","look":"box","members":[{members}],"title":"F"}}"#)
+    };
+    let resource = |fields: &str| {
+        with_page_fields(&format!(
+            r#""groups":[],"resources":[{{"anchors":[],"at":[0,0],"author":"agent:x","id":"r","name":"r",{fields}}}]"#
+        ))
+    };
+    let anchor = |anchor: &str| {
+        with_page_fields(&format!(
+            r#""groups":[],"resources":[{{"anchors":[{anchor}],"at":[0,0],"author":"agent:x","id":"r","kind":"queue","name":"r"}}]"#
+        ))
+    };
+    let note = |fields: &str| {
+        with_items(&format!(
+            r#","notes":[{{"at":[0,0],"author":"agent:x","id":"n",{fields}}}]"#
+        ))
+    };
+    let long = "x".repeat(MAX_NOTE_CHARACTERS + 1);
+    let cases = [
+        // Frames.
+        (
+            with_items(&format!(r#","frames":[{}]"#, frame("f", ""))),
+            "/pages/0/frames/0/members",
+            "at least one item",
+        ),
+        (
+            with_items(&format!(r#","frames":[{}]"#, frame("f", r#""run","run""#))),
+            "/pages/0/frames/0/members/1",
+            "repeats an earlier member",
+        ),
+        (
+            with_items(&format!(r#","frames":[{}]"#, frame("f", r#""nope""#))),
+            "/pages/0/frames/0/members/0",
+            "unknown item `nope`",
+        ),
+        (
+            with_items(r#","frames":[{"author":"agent:x","id":"f","look":"box","members":["run"],"title":" "}]"#),
+            "/pages/0/frames/0/title",
+            "must not be empty",
+        ),
+        (
+            with_items(r#","frames":[{"author":"agent:x","id":"f","look":"round","members":["run"],"title":"F"}]"#),
+            "/pages/0/frames/0/look",
+            "must be \"box\" or \"zone\"",
+        ),
+        (
+            with_items(r#","frames":[{"author":"agent:x","icon":"db","id":"f","look":"box","members":["run"],"title":"F"}]"#),
+            "/pages/0/frames/0/icon",
+            "\"library\", or \"system\"",
+        ),
+        (
+            with_items(r#","frames":[{"id":"f","look":"box","members":["run"],"title":"F"}]"#),
+            "/pages/0/frames/0",
+            "missing field `author`",
+        ),
+        (
+            with_items(&format!(
+                r#","frames":[{},{}]"#,
+                frame("f", r#""run""#),
+                frame("g", r#""run""#)
+            )),
+            "/pages/0/frames/1/members/0",
+            "already in frame `f`",
+        ),
+        (
+            with_items(&format!(
+                r#","frames":[{},{}]"#,
+                frame("f", r#""g""#),
+                frame("g", r#""f""#)
+            )),
+            "/pages/0/frames/0",
+            "inside itself",
+        ),
+        (
+            with_items(&format!(r#","frames":[{}]"#, frame("f", r#""f""#))),
+            "/pages/0/frames/0",
+            "inside itself",
+        ),
+        (
+            with_items(&format!(
+                r#","frames":[{},{},{},{}]"#,
+                frame("a", r#""run""#),
+                frame("b", r#""a""#),
+                frame("c", r#""b""#),
+                frame("d", r#""c""#)
+            )),
+            "/pages/0/frames/0",
+            "nested 4 frames deep",
+        ),
+        (
+            with_page_fields(&format!(
+                r#""groups":[{{"card":"run","collapsed":false,"id":"g","members":["main.ts#a"],"title":"G"}}],"frames":[{}]"#,
+                frame("f", r#""g""#)
+            )),
+            "/pages/0/frames/0/members/0",
+            "`g` is a group; a frame holds cards, resources, notes, and frames",
+        ),
+        (
+            with_items(&format!(r#","frames":[{}]"#, frame("run", r#""two""#))),
+            "/pages/0/frames/0/id",
+            "duplicate id `run`",
+        ),
+        // Resource cards and anchors.
+        (resource(r#""kind":"db""#), "/pages/0/resources/0/kind", "\"external\", or \"actor\""),
+        (
+            resource(r#""kind":"queue","columns":[]"#),
+            "/pages/0/resources/0/columns",
+            "only a table",
+        ),
+        (
+            resource(r#""kind":"queue","type":"a.ts#interface:A""#),
+            "/pages/0/resources/0/type",
+            "only a table",
+        ),
+        (
+            resource(r#""kind":"table","project":"web""#),
+            "/pages/0/resources/0/project",
+            "only with `type`",
+        ),
+        (
+            resource(r#""kind":"table","columns":[{"name":"id"},{"name":"id"}]"#),
+            "/pages/0/resources/0/columns/1/name",
+            "repeats column `id`",
+        ),
+        (
+            resource(r#""kind":"table","type":"a.ts#interface:A","columns":[{"name":"id","type":"string"}]"#),
+            "/pages/0/resources/0/columns/0/type",
+            "marks only",
+        ),
+        (
+            resource(r#""kind":"table","columns":[{"name":"id","references":"a.id"}]"#),
+            "/pages/0/resources/0/columns/0/references",
+            "only a foreign key",
+        ),
+        (
+            with_page_fields(r#""groups":[],"resources":[{"at":[0,0],"author":"agent:x","id":"r","kind":"actor","name":"r"}]"#),
+            "/pages/0/resources/0",
+            "missing field `anchors`",
+        ),
+        (
+            anchor(r#"{"key":"a.ts#b","file":"a.sql","lines":[1,1]}"#),
+            "/pages/0/resources/0/anchors/0",
+            "exactly one of `key` or `file`",
+        ),
+        (
+            anchor(r#"{"key":"orders"}"#),
+            "/pages/0/resources/0/anchors/0/key",
+            "entrance key",
+        ),
+        (
+            anchor(r#"{"key":"a.ts#b","lines":[1,2]}"#),
+            "/pages/0/resources/0/anchors/0/lines",
+            "only a file anchor",
+        ),
+        (
+            anchor(r#"{"file":"../a.sql","lines":[1,2]}"#),
+            "/pages/0/resources/0/anchors/0/file",
+            "relative to the project's folder",
+        ),
+        (
+            anchor(r#"{"file":"a.sql"}"#),
+            "/pages/0/resources/0/anchors/0",
+            "missing field `lines`",
+        ),
+        (
+            anchor(r#"{"file":"a.sql","lines":[0,2]}"#),
+            "/pages/0/resources/0/anchors/0/lines/0",
+            "line number",
+        ),
+        (
+            anchor(r#"{"file":"a.sql","lines":[5,2]}"#),
+            "/pages/0/resources/0/anchors/0/lines/1",
+            "before the first line",
+        ),
+        (
+            anchor(r#"{"file":"a.sql","lines":[2]}"#),
+            "/pages/0/resources/0/anchors/0/lines",
+            "two line numbers",
+        ),
+        // Connections.
+        (
+            with_items(r#","links":[{"author":"agent:x","from":"run","id":"l","kind":"ftp","to":"t"}]"#),
+            "/pages/0/links/0/kind",
+            "\"relates\", or \"other\"",
+        ),
+        (
+            with_items(r#","links":[{"from":"run","id":"l","kind":"http","to":"t"}]"#),
+            "/pages/0/links/0",
+            "missing field `author`",
+        ),
+        (
+            with_items(r#","links":[{"author":"agent:x","from":"run","fromColumn":"id","id":"l","kind":"writes","to":"t"}]"#),
+            "/pages/0/links/0/fromColumn",
+            "only a `relates` connection",
+        ),
+        (
+            with_items(r#","links":[{"cardinality":"one-to-one","from":"run","id":"l","to":"t"}]"#),
+            "/pages/0/links/0/cardinality",
+            "only a `relates` connection",
+        ),
+        (
+            with_items(r#","links":[{"author":"agent:x","from":"run","id":"l","kind":"relates","to":"t"}]"#),
+            "/pages/0/links/0/from",
+            "must be a table",
+        ),
+        (
+            with_items(&format!(
+                r#","frames":[{}],"links":[{{"author":"agent:x","from":"t","id":"l","kind":"relates","to":"f","toColumn":"id"}}]"#,
+                frame("f", r#""two""#)
+            )),
+            "/pages/0/links/0/to",
+            "must be a table",
+        ),
+        (
+            with_items(r#","links":[{"author":"agent:x","from":"t","fromColumn":"nope","id":"l","kind":"relates","to":"t2"}]"#)
+                .replace(
+                    r#""resources":["#,
+                    r#""resources":[{"anchors":[],"at":[0,0],"author":"agent:x","id":"t2","kind":"table","name":"t2"},"#,
+                ),
+            "/pages/0/links/0/fromColumn",
+            "names no column of table `t`",
+        ),
+        (
+            with_items(r#","links":[{"author":"agent:x","from":"t","id":"l","kind":"writes","step":"main.ts#function:run/if[0]","to":"run"}]"#),
+            "/pages/0/links/0/step",
+            "must be a block card",
+        ),
+        (
+            with_items(r#","links":[{"author":"agent:x","from":"two","id":"l","kind":"calls","step":"main.ts#function:run/if[0]","to":"run"}]"#),
+            "/pages/0/links/0/step",
+            "must be a block card",
+        ),
+        (
+            with_items(r#","links":[{"carriesProject":"web","from":"run","id":"l","to":"t"}]"#),
+            "/pages/0/links/0/carriesProject",
+            "only with `carries`",
+        ),
+        (
+            with_items(r#","notes":[{"at":[0,0],"author":"agent:x","id":"n","text":"N"}],"links":[{"from":"run","id":"l","to":"n"}]"#),
+            "/pages/0/links/0/to",
+            "`n` is a note; a link joins cards, resources, and frames",
+        ),
+        // Notes.
+        (
+            note(&format!(r#""text":"{long}""#)),
+            "/pages/0/notes/0/text",
+            "at most 400 characters",
+        ),
+        (note(r#""text":" ""#), "/pages/0/notes/0/text", "must not be empty"),
+        (
+            note(r#""text":"N","attach":"nope""#),
+            "/pages/0/notes/0/attach",
+            "unknown item `nope`",
+        ),
+        (
+            with_page_fields(
+                r#""groups":[{"card":"run","collapsed":false,"id":"g","members":["main.ts#a"],"title":"G"}],"notes":[{"at":[0,0],"attach":"g","author":"agent:x","id":"n","text":"N"}]"#,
+            ),
+            "/pages/0/notes/0/attach",
+            "`g` is a group; a note attaches to a card, frame, resource, or link",
+        ),
+        // Step groups name who wrote their title.
+        (
+            with_page_fields(
+                r#""groups":[{"author":"robot","card":"run","collapsed":false,"id":"g","members":["main.ts#a"],"title":"G"}]"#,
+            ),
+            "/pages/0/groups/0/author",
+            "person:<name>",
+        ),
+    ];
+    for (text, path, message) in cases {
+        let (actual_path, actual_message) = invalid(&text);
+        assert_eq!(actual_path, path, "{text}\n{actual_message}");
+        assert!(
+            actual_message.contains(message),
+            "{actual_message} lacks {message}"
+        );
+    }
+
+    // Everything at once reads: Diagram views, frames nested three deep, links to tables and
+    // frames, a relationship between columns, and notes on a link and a frame.
+    let valid = with_items(&format!(
+        r#","frames":[{},{},{}],"links":[{{"anchors":[{{"file":"db/schema.sql","lines":[3,9]}},{{"key":"entrance:x","project":"web"}}],"author":"agent:x","channel":"orders","from":"run","id":"l","kind":"queue","step":"main.ts#function:run/if[0]","to":"c"}},{{"author":"person:a","cardinality":"one-to-many","from":"t","fromColumn":"id","id":"m","kind":"relates","to":"u","toColumn":"order_id"}}],"notes":[{{"at":[0,0],"attach":"l","author":"agent:x","id":"n","text":"{}"}},{{"at":[1,1],"attach":"c","author":"agent:x","id":"o","text":"Free"}}]"#,
+        frame("a", r#""run","n""#),
+        frame("b", r#""a""#),
+        frame("c", r#""b","t""#),
+        "y".repeat(MAX_NOTE_CHARACTERS),
+    ))
+    .replace("\"defaultView\":\"code\"", "\"defaultView\":\"diagram\"")
+    .replace("\"id\":\"two\",", "\"id\":\"two\",\"view\":\"diagram\",")
+    .replace(
+        r#""resources":["#,
+        r#""resources":[{"anchors":[],"at":[0,0],"author":"agent:x","id":"u","kind":"table","name":"u","project":"web","type":"a.ts#interface:Item"},"#,
+    )
+    .replace("\"projects\":[]", "\"projects\":[\"web\"]");
+    let error = parse(&valid).err();
+    assert!(error.is_none(), "{error:?}");
+    let parsed = parse(&valid).unwrap();
+    assert_eq!(
+        parsed.projects,
+        [web()],
+        "anchors' and types' projects are the board's projects"
+    );
+    assert_eq!(parsed.pages[0].default_view, View::Diagram);
+    assert_eq!(parsed.pages[0].card("two").unwrap().view, Some(View::Diagram));
+    assert!(
+        parsed.pages[0].link("m").unwrap().relates(),
+        "a type-backed table's column"
+    );
+}
+
+#[test]
+fn new_items_are_written_only_when_present() {
+    // Empty arrays and false flags on input are the defaults: they're never written.
+    let text = with_page_fields(
+        r#""groups":[{"author":"person:a","card":"run","collapsed":false,"id":"g","members":["main.ts#a"],"title":"G"}],"frames":[],"notes":[],"resources":[],"links":[{"anchors":[],"from":"run","id":"l","to":"run2"}]"#,
+    )
+    .replace(
+        "\"cards\":[",
+        r#""cards":[{"at":[0,0],"id":"run2","ref":{"entrance":"entrance:x"}},"#,
+    );
+    let written = serialize(&parse(&text).unwrap());
+    for absent in ["\"frames\"", "\"notes\"", "\"resources\"", "\"anchors\""] {
+        assert!(!written.contains(absent), "{absent} in {written}");
+    }
+    assert!(written.contains("\"author\": \"person:a\""), "the group's author");
+
+    // One of each item, written canonically: keys sorted, items by id, optional fields only
+    // when present.
+    let mut page = Page::new("p", "P");
+    page.cards.push(run_card("run", None));
+    let agent = author();
+    page.frames.push(Frame {
+        id: "f".to_owned(),
+        title: "Unit".to_owned(),
+        description: None,
+        members: vec!["run".to_owned(), "t".to_owned()],
+        look: FrameLook::Box,
+        icon: Some(FrameIcon::Api),
+        direction: Some(FrameDirection::Down),
+        collapsed: true,
+        author: agent.clone(),
+    });
+    page.resources.push(Resource {
+        id: "t".to_owned(),
+        kind: ResourceKind::Table,
+        name: "orders".to_owned(),
+        project: Some(web()),
+        type_key: Some(Key::from_text("a.ts#interface:Order")),
+        columns: vec![Column {
+            name: "id".to_owned(),
+            written_type: None,
+            key: Some(ColumnKey::Primary),
+            references: None,
+            optional: false,
+        }],
+        anchors: vec![Anchor::File {
+            file: unfold_core::RepoPath::new("db/schema.sql").unwrap(),
+            lines: [3, 9],
+            project: None,
+        }],
+        at: [1.5, -2.0],
+        description: None,
+        author: agent.clone(),
+        signature: None,
+    });
+    page.links.push(Link {
+        kind: Some(LinkKind::Writes),
+        step: Some(Key::from_text(IF0)),
+        author: Some(agent.clone()),
+        anchors: vec![Anchor::Key {
+            key: Key::from_text(RUN),
+            project: None,
+        }],
+        ..Link::new("w", "run", "t")
+    });
+    page.notes.push(Note {
+        id: "n".to_owned(),
+        text: "Mind the gap".to_owned(),
+        at: [0.0, 10.0],
+        attach: Some("w".to_owned()),
+        author: agent,
+    });
+    let board = Board::with_pages("T", None, vec![page]);
+    assert_eq!(board.projects, [web()], "the table's type is in web");
+    let text = serialize(&board);
+    let expected = r#"{
+  "format": "unfold-board",
+  "pages": [
+    {
+      "cards": [
+        {
+          "at": [
+            10,
+            20
+          ],
+          "id": "run",
+          "ref": {
+            "block": "main.ts#function:run"
+          }
+        }
+      ],
+      "defaultView": "code",
+      "frames": [
+        {
+          "author": "agent:test",
+          "collapsed": true,
+          "direction": "down",
+          "icon": "api",
+          "id": "f",
+          "look": "box",
+          "members": [
+            "run",
+            "t"
+          ],
+          "title": "Unit"
+        }
+      ],
+      "groups": [],
+      "guards": [],
+      "id": "p",
+      "labels": [],
+      "links": [
+        {
+          "anchors": [
+            {
+              "key": "main.ts#function:run"
+            }
+          ],
+          "author": "agent:test",
+          "from": "run",
+          "id": "w",
+          "kind": "writes",
+          "step": "main.ts#function:run/if[0]",
+          "to": "t"
+        }
+      ],
+      "notes": [
+        {
+          "at": [
+            0,
+            10
+          ],
+          "attach": "w",
+          "author": "agent:test",
+          "id": "n",
+          "text": "Mind the gap"
+        }
+      ],
+      "resources": [
+        {
+          "anchors": [
+            {
+              "file": "db/schema.sql",
+              "lines": [
+                3,
+                9
+              ]
+            }
+          ],
+          "at": [
+            1.5,
+            -2
+          ],
+          "author": "agent:test",
+          "columns": [
+            {
+              "key": "primary",
+              "name": "id"
+            }
+          ],
+          "id": "t",
+          "kind": "table",
+          "name": "orders",
+          "project": "web",
+          "type": "a.ts#interface:Order"
+        }
+      ],
+      "title": "P"
+    }
+  ],
+  "projects": [
+    "web"
+  ],
+  "title": "T",
+  "version": 1
+}
+"#;
+    assert_eq!(text, expected);
+    let reparsed = parse(&text).unwrap();
+    assert_eq!(reparsed, board);
+    // What the window receives (serde) has the file's shape, numbers aside (`10.0` is `10`).
+    fn numbers(value: serde_json::Value) -> serde_json::Value {
+        match value {
+            serde_json::Value::Number(number) => number.as_f64().map_or(serde_json::Value::Null, Into::into),
+            serde_json::Value::Array(items) => items.into_iter().map(numbers).collect(),
+            serde_json::Value::Object(map) => {
+                map.into_iter().map(|(key, item)| (key, numbers(item))).collect()
+            }
+            other => other,
+        }
+    }
+    let ipc = numbers(serde_json::to_value(&board.pages[0]).unwrap());
+    let file: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(ipc, numbers(file["pages"][0].clone()));
 }
 
 /// A board using every part of the format: a folder, two pages, a card from another project,
@@ -1032,6 +1555,71 @@ fn saving_signs_restores_dropped_guards_and_drops_unused_ones() {
     assert_eq!(
         serialize(&again),
         serialize(&saved).replace("\"Page 1\"", "\"Retitled\"")
+    );
+}
+
+#[test]
+fn saving_carries_new_items_and_never_writes_a_dangling_reference() {
+    let (_dir, graph) = folder(SOURCE);
+    let mut board = sample_board();
+    let page = &mut board.pages[0];
+    page.resources.push(Resource {
+        id: "store".to_owned(),
+        kind: ResourceKind::Storage,
+        name: "uploads".to_owned(),
+        project: None,
+        type_key: None,
+        columns: Vec::new(),
+        anchors: vec![Anchor::Key {
+            key: Key::from_text(RUN),
+            project: None,
+        }],
+        at: [400.0, 0.0],
+        description: Some(unsigned("Where uploads go")),
+        author: author(),
+        signature: None,
+    });
+    page.frames.push(Frame {
+        id: "unit".to_owned(),
+        title: "Unit".to_owned(),
+        description: Some(unsigned("The runner")),
+        members: vec!["run".to_owned()],
+        look: FrameLook::Box,
+        icon: None,
+        direction: None,
+        collapsed: false,
+        author: author(),
+    });
+    page.links.push(Link {
+        kind: Some(LinkKind::Writes),
+        author: Some(author()),
+        ..link("writes", "run", "store", Some("uploads"))
+    });
+    page.links.push(link("to-unit", "store", "unit", None));
+    let (saved, health) = save(board.clone(), None, &graph).unwrap();
+    assert!(
+        health.is_healthy(),
+        "links to resources and frames aren't broken: {health:?}"
+    );
+    let page = &saved.pages[0];
+    assert_eq!(page.resources, board.pages[0].resources, "carried through");
+    assert_eq!(page.frames, board.pages[0].frames, "carried through");
+    assert_eq!(
+        page.link("writes").unwrap().label.as_ref().unwrap().signature,
+        None,
+        "a label with a resource end stays unsigned"
+    );
+
+    // Rust's own edits are checked like a parsed file before anything is written.
+    let mut dangling = saved.clone();
+    dangling.pages[0].cards.clear();
+    dangling.pages[0].groups.clear();
+    assert_eq!(
+        save(dangling, Some((&saved, &health)), &graph).unwrap_err(),
+        BoardError::Invalid {
+            path: "/pages/0/frames/0/members/0".to_owned(),
+            message: "refers to an unknown item `run`".to_owned()
+        }
     );
 }
 

@@ -6,6 +6,8 @@
 import { statSync } from "node:fs";
 import { join } from "node:path";
 import { app, Menu } from "electron";
+import { AgentBridge } from "./agents/bridge";
+import { ViewTracker } from "./agents/views";
 import { addonPath, appFolders, folderArgument, uiDirectory } from "./app-paths";
 import type { UiSource } from "./app-url";
 import { chooseFolder } from "./dialogs";
@@ -92,6 +94,7 @@ if (!app.requestSingleInstanceLock()) {
           engine.attach(entry);
         },
         onClosed: (entry) => {
+          agents.windowClosed(entry.id);
           // Forget the window first (its bounds save lands before), then detach it.
           void workspace.windowClosed(entry).finally(() => {
             engine.detach(entry);
@@ -100,10 +103,14 @@ if (!app.requestSingleInstanceLock()) {
         onPlacementChanged: (entry) => {
           workspace.savePlacement(entry);
         },
+        onFocused: (entry) => {
+          agents.views.focused(entry.id);
+        },
       },
       devTools,
     );
     const workspace = new Workspace(registry, engine);
+    const agents = new AgentBridge({ windows: registry, views: new ViewTracker() });
     engine.start();
     startUpdater(updateMode(currentUpdateEnvironment()), {
       enabled: () => engine.request(0, "get_preferences", {}).then(updatesEnabled, () => null),
@@ -119,7 +126,7 @@ if (!app.requestSingleInstanceLock()) {
       });
     };
 
-    registerWindowCommands({ registry, workspace, engine, ui });
+    registerWindowCommands({ registry, workspace, engine, ui, agents });
     Menu.setApplicationMenu(
       buildMenu(
         {

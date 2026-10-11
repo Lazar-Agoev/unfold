@@ -3,6 +3,8 @@ import { IPC, PRELOAD_COMMANDS } from "../shared/transport";
 import { EngineRequestError } from "./engine-host";
 import type { FakeBrowserWindow } from "./fake-electron";
 import { clipboardTexts, dialogs, ipcHandlers, resetFakeElectron } from "./fake-electron";
+import { AgentBridge } from "./agents/bridge";
+import { ViewTracker } from "./agents/views";
 import { registerWindowCommands } from "./ipc";
 import type { WindowEntry } from "./windows";
 import { WindowRegistry } from "./windows";
@@ -32,10 +34,11 @@ function setup() {
   const engine = new FakeEngine();
   const registry = new WindowRegistry(
     UI,
-    { onLoaded: () => undefined, onClosed: () => undefined, onPlacementChanged: () => undefined },
+    { onLoaded: () => undefined, onClosed: () => undefined, onPlacementChanged: () => undefined, onFocused: () => undefined },
     false,
   );
-  registerWindowCommands({ registry, workspace: new Workspace(registry, engine), engine, ui: UI });
+  const agents = new AgentBridge({ windows: registry, views: new ViewTracker() });
+  registerWindowCommands({ registry, workspace: new Workspace(registry, engine), engine, ui: UI, agents });
   const handler = ipcHandlers.get(IPC.windowCommand);
   if (!handler) {
     throw new Error("window commands not registered");
@@ -49,7 +52,7 @@ function setup() {
     const window = entry.window as unknown as FakeBrowserWindow;
     return handler({ sender: window.webContents, senderFrame: frame ?? window.mainFrame }, command, args);
   };
-  return { engine, registry, open, invoke };
+  return { engine, registry, agents, open, invoke };
 }
 
 beforeEach(() => {
@@ -307,6 +310,36 @@ describe("copy_to_clipboard", () => {
     expect(await invoke(entry, "copy_to_clipboard", { text: "graph TD" })).toEqual({ ok: true, value: null });
     expect(await invoke(entry, "copy_to_clipboard", { text: 1 })).toMatchObject({ ok: false });
     expect(clipboardTexts).toEqual(["graph TD"]);
+  });
+});
+
+describe("the agent channel", () => {
+  const BOARD = { project: PROJECT, id: ".unfold/boards/orders.json" };
+
+  it("report_view keeps the window's view, and refuses a malformed one", async () => {
+    const { agents, open, invoke } = setup();
+    const entry = open();
+    const report = { board: BOARD, page: "page-1", selection: { kind: "none" }, lens: "code", visible: [], tabs: [BOARD] };
+    expect(await invoke(entry, "report_view", report)).toEqual({ ok: true, value: null });
+    expect(agents.views.get(entry.id)).toEqual(report);
+    expect(agents.views.holder(BOARD)).toBe(entry.id);
+    expect(await invoke(entry, "report_view", { ...report, selection: { kind: "card" } })).toMatchObject({
+      ok: false,
+      error: { code: "invalid_command" },
+    });
+  });
+
+  it("hands a window's answers to the bridge", async () => {
+    const { agents, open, invoke } = setup();
+    const entry = open();
+    await invoke(entry, "report_view", { selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+    const read = agents.read({ board: BOARD, page: "page-1" });
+    const sent = entry.window.sent.at(-1) as { type: string; requestId: number };
+    expect(sent.type).toBe("agent_read");
+    const page = { id: "page-1", title: "Placing an order" };
+    const board = { title: "Orders", place: "draft", changes: 0, revision: "r1", unsaved: false };
+    expect(await invoke(entry, "agent_read_result", { requestId: sent.requestId, result: { ok: true, page, board } })).toEqual({ ok: true, value: null });
+    expect(await read).toMatchObject({ ok: true, page, board });
   });
 });
 

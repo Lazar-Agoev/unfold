@@ -3,7 +3,8 @@
 //!
 //! A signature is only ever computed from bytes that verified against the facts' hash, so text
 //! can never be signed against source the graph has not seen. Text about a project that is not
-//! connected stays as it is: it is signed once its project is connected again.
+//! connected stays as it is: it is signed once its project is connected again. Frames, resource
+//! cards, connections' own fields, and notes pass through as they are.
 
 use rustc_hash::FxHashSet;
 
@@ -12,7 +13,9 @@ use super::check::{
     Health, HealthKind, ProjectKey, Target, current_guard, group_problem, guard_problem, health, put_guard,
 };
 use super::graph::PageGraphs;
+use super::items::check_items;
 use super::model::{Board, Description, Page, ProjectName, Signature};
+use super::parse::Path;
 
 fn refuse(page: &Page, target: &Target, message: &str) -> BoardError {
     BoardError::Problem {
@@ -237,18 +240,22 @@ fn unchanged(old: &Page, new: &Page, target: &Target) -> bool {
     }
 }
 
-/// Prepares one page for writing over `previous` (the version being replaced, with its
-/// health): guards the new version dropped come back from `previous`, unsigned text is signed,
-/// guards are saved, link labels signed, and the result is refused when it introduces a missing
-/// reference, a broken group, a held reference, or a broken link that `previous` did not
-/// already have (with the same reference). Problems carried over unchanged are kept, so a page
-/// with a placeholder can still be moved, retitled, or described elsewhere. Outdated text and
-/// cards of projects that are not connected never refuse a save.
+/// Prepares one page (at `path`) for writing over `previous` (the version being replaced, with
+/// its health): the references between its items must hold (so Rust's own edits, such as
+/// repairs, never write a page the parser would refuse), guards the new version dropped come
+/// back from `previous`, unsigned text is signed, guards are saved, link labels signed, and the
+/// result is refused when it introduces a missing reference, a broken group, a held reference,
+/// or a broken link that `previous` did not already have (with the same reference). Problems
+/// carried over unchanged are kept, so a page with a placeholder can still be moved, retitled,
+/// or described elsewhere. Outdated text and cards of projects that are not connected never
+/// refuse a save.
 fn prepare_page(
     mut page: Page,
+    path: &Path,
     previous: Option<(&Page, &Health)>,
     graphs: &PageGraphs<'_>,
 ) -> Result<(Page, Health), BoardError> {
+    check_items(&page, path)?;
     if let Some((old, _)) = previous {
         for guard in &old.guards {
             if page.guard(guard.project.as_ref(), guard.key.as_str()).is_none() {
@@ -285,15 +292,17 @@ pub fn prepare_save(
 ) -> Result<(Board, Health), BoardError> {
     let mut health = Health::default();
     let mut pages = Vec::with_capacity(board.pages.len());
-    for page in std::mem::take(&mut board.pages) {
+    let pages_path = Path::default().join("pages");
+    for (index, page) in std::mem::take(&mut board.pages).into_iter().enumerate() {
         let old = previous.and_then(|(old, old_health)| {
             old.page(&page.id)
                 .map(|old_page| (old_page, old_health.of_page(&page.id)))
         });
+        let path = pages_path.join(index);
         let (page, page_health) = match &old {
             Some((old_page, old_health)) if **old_page == page => (page, old_health.clone()),
-            Some((old_page, old_health)) => prepare_page(page, Some((old_page, old_health)), graphs)?,
-            None => prepare_page(page, None, graphs)?,
+            Some((old_page, old_health)) => prepare_page(page, &path, Some((old_page, old_health)), graphs)?,
+            None => prepare_page(page, &path, None, graphs)?,
         };
         health.append(page_health);
         pages.push(page);

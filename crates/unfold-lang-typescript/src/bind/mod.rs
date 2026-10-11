@@ -30,6 +30,7 @@ use oxc_ast::ast::Program;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use unfold_core::text::ByteRange;
+use unfold_core::vocab::Heritage;
 
 use crate::config::BindingContext;
 use crate::payload::binding::{
@@ -65,14 +66,17 @@ pub(crate) fn bind<'a>(
     binder.finish(input, values)
 }
 
-/// A type name written in a linked type: its range (a qualified name whole, without type
-/// arguments), whether it is qualified, and its written type in the binding's `types`.
+/// A type name written in a linked type or a heritage clause: its range (a qualified name whole,
+/// without type arguments), whether it is qualified, whether it is a base its class or
+/// interface extends or implements, and its written type in the binding's `types`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TypeSite {
     /// The written name.
     pub(crate) range: ByteRange,
     /// Whether it is a qualified name (`a.B`).
     pub(crate) qualified: bool,
+    /// For a base named in a heritage clause: `extends` or `implements`.
+    pub(crate) heritage: Option<Heritage>,
     /// Its `TypeRef::Names` in the binding's `types`.
     ty: u32,
 }
@@ -200,7 +204,7 @@ pub(crate) struct Binder<'a> {
     linked: FxHashSet<ByteRange>,
     /// The type parameters declared by the type syntax being walked for names.
     type_locals: Vec<&'a str>,
-    /// The type names of linked types, in walk order.
+    /// The type names of linked types and heritage clauses, in walk order.
     type_sites: Vec<TypeSite>,
     /// Object expressions that initialize a `const` → (the variable, whether it is plain).
     pending_objects: FxHashMap<Address, (u32, bool)>,

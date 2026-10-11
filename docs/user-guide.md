@@ -96,8 +96,9 @@ is saved with the board.
 
 - Before you type, it shows every project's applications and their entrances, with the ones already on the page
   marked.
-- As you type, it finds entrances, functions, files, and text, with a tab for each and a preview on the right. On
-  the Text tab you can match case, whole words, or a regular expression.
+- As you type, it finds entrances, functions, files, and text, with a tab for each and a preview on the right.
+  Functions include classes and types (`interface Cart`, `type CartId`, `enum Currency`); a type goes on the page
+  showing its code. On the Text tab you can match case, whole words, or a regular expression.
 - **Enter** adds the selection to the page, and **⌘Enter** adds it on a new page. A file or a text match opens in the
   peek sheet instead. From Home, Enter starts a new board.
 - Type `>` first to run a command instead: everything the app can do is listed there, with its shortcut. ⇧⌘P opens
@@ -106,7 +107,7 @@ is saved with the board.
 ## Reading a whole file
 
 A file opens in the **peek sheet**, on the right of the canvas: the whole file, read-only, with its calls as links.
-The `⊕` beside a function adds it to the page, and so does a click on a call. Pin the sheet to keep it open while
+The `⊕` beside a function, class, or type adds it to the page, and so does a click on a call. Pin the sheet to keep it open while
 you work; Escape closes it. Its menu opens the file in your own editor (⇧⌘O) or shows it in Finder.
 
 ## Describing, labeling, and grouping
@@ -118,7 +119,9 @@ Boards are for explaining a path to someone else (or to yourself later):
   `ordersQueue.add(...)`). "N Flow steps unlabeled · Label them", under On this page, steps you through the nodes
   that still show code.
 - To **group** lines, drag over the line numbers of a Code card and give the group a title; it shows as a colored
-  rail beside those lines. Right-click a group to describe it or ungroup it.
+  rail beside those lines. In Flow the same group is a **step group**: a titled region around its steps. Its chevron
+  collapses it, in Code and Flow alike: in Flow it becomes one step with the group's title, marked when something
+  inside can return or throw. Right-click a group to describe it or ungroup it.
 
 Everything you write is signed with your name. ⌘Z and ⇧⌘Z undo and redo board edits, on any page.
 

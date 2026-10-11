@@ -250,7 +250,7 @@ fn bench_first_compile_commit() {
     );
     let started = Instant::now();
     let found = reader
-        .search("function12", CandidateKind::Definition, 50)
+        .search("function12", CandidateKind::Definition, &[], 50)
         .unwrap();
     eprintln!("search ({} candidates): {:?}", found.len(), started.elapsed());
     let started = Instant::now();

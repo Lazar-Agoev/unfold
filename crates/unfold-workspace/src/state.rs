@@ -240,14 +240,15 @@ impl LocalState {
     }
 }
 
-/// Reads a lens (`"code"`, `"flow"`, or `null`).
+/// Reads a lens (`"code"`, `"flow"`, `"diagram"`, or `null`).
 fn lens<'de, D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Option<View>, D::Error> {
     match Option::<String>::deserialize(deserializer)?.as_deref() {
         None => Ok(None),
         Some("code") => Ok(Some(View::Code)),
         Some("flow") => Ok(Some(View::Flow)),
+        Some("diagram") => Ok(Some(View::Diagram)),
         Some(other) => Err(serde::de::Error::custom(format!(
-            "unknown lens `{other}`: expected `code`, `flow`, or null"
+            "unknown lens `{other}`: expected `code`, `flow`, `diagram`, or null"
         ))),
     }
 }

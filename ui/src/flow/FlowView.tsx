@@ -1,15 +1,16 @@
 /**
  * The Flow view of a card (architecture §10.4): "Paths from written structure", a Mermaid-style
  * diagram of the reader's Flow model. Each node shows its compiler-derived type and a plain label
- * (the board's, else a fallback name with a dotted underline), never raw code. Geometry comes from
- * `layoutFlow`; this component only draws it. Ports are drawn by the caller (`renderPorts`).
+ * (the board's, else a fallback name with a dotted underline), never raw code. Step groups are
+ * authored: a magenta region titled with the group's title, or, collapsed, one step. Geometry comes
+ * from `layoutFlow`; this component only draws it. Ports are drawn by the caller (`renderPorts`).
  */
 
 import { useId, type MouseEvent, type ReactNode } from "react";
 import type { FlowCallback, FlowModel, FlowNode } from "../ipc/generated";
 import { linkNote } from "../code/text";
 import { Icon } from "../icons";
-import { followableCall, nodeTypeName, roundedPath, type FlowLayout, type PlacedNode } from "./layout";
+import { followableCall, nodeTypeName, roundedPath, type FlowLayout, type GroupStep, type PlacedNode } from "./layout";
 import "./flow.css";
 
 export interface FlowViewProps {
@@ -23,6 +24,13 @@ export interface FlowViewProps {
   readonly onFollow?: (node: FlowNode, target: string, anchor: HTMLElement) => void;
   readonly onOpenCallback?: (callback: FlowCallback, anchor: HTMLElement) => void;
   readonly onToggleChain?: (key: string) => void;
+  /** The selected step group's id: its region or step shows selected. */
+  readonly selectedGroup?: string | null;
+  readonly onSelectGroup?: (groupId: string) => void;
+  /** Collapses or expands a step group. */
+  readonly onToggleGroup?: (groupId: string) => void;
+  /** Opens a step group's menu (right-click on its title or step, or Shift+F10 on its toggle). */
+  readonly onGroupMenu?: (groupId: string, at: MouseEvent | Element) => void;
   /** Ports by placed node id (occurrences with arrows that this node shows). */
   readonly ports?: ReadonlyMap<string, readonly string[]>;
   readonly renderPorts?: (ids: readonly string[]) => ReactNode;
@@ -52,6 +60,98 @@ function NodeLabel({ placed }: { placed: PlacedNode }) {
     <span className={`flow-label${placed.fallback ? " fallback" : ""}`} title={placed.fallback ? "A name from the code; no label yet" : undefined}>
       {placed.label}
     </span>
+  );
+}
+
+/** Opens a step group's menu on right-click, when the view has one. */
+function groupMenuHandler(groupId: string, props: FlowViewProps): ((event: MouseEvent) => void) | undefined {
+  const { onGroupMenu } = props;
+  return onGroupMenu
+    ? (event) => {
+        event.stopPropagation();
+        onGroupMenu(groupId, event);
+      }
+    : undefined;
+}
+
+/** The chevron that collapses or expands a step group (the same toggle as Code's rail). */
+function GroupToggle({ groupId, title, collapsed, props }: { groupId: string; title: string; collapsed: boolean; props: FlowViewProps }) {
+  return (
+    <button
+      type="button"
+      className="flow-group-toggle nodrag"
+      aria-label={`${collapsed ? "Expand" : "Collapse"} step group ${title}`}
+      aria-expanded={!collapsed}
+      onClick={(event) => {
+        event.stopPropagation();
+        props.onToggleGroup?.(groupId);
+      }}
+      onKeyDown={(event) => {
+        if ((event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) && props.onGroupMenu) {
+          event.preventDefault();
+          event.stopPropagation();
+          props.onGroupMenu(groupId, event.currentTarget);
+        }
+      }}
+    >
+      <Icon name={collapsed ? "chevron-right-small" : "chevron-down-small"} size={10} />
+    </button>
+  );
+}
+
+/** A collapsed step group: one step with the group's title and what can leave it early. */
+function GroupStepView({ placed, group, selected, props }: { placed: PlacedNode; group: GroupStep; selected: boolean; props: FlowViewProps }) {
+  return (
+    <div
+      className={`flow-node kind-group${selected ? " selected" : ""}`}
+      style={{ left: placed.x, top: placed.y, width: placed.width, height: placed.height }}
+      data-flow-node={placed.id}
+      data-port-row="flow"
+      onClick={(event) => {
+        event.stopPropagation();
+        props.onSelectGroup?.(group.id);
+      }}
+      onContextMenu={groupMenuHandler(group.id, props)}
+    >
+      <span className="flow-type">
+        <GroupToggle groupId={group.id} title={placed.label} collapsed props={props} />
+        STEP GROUP
+        <small>
+          {group.steps} {group.steps === 1 ? "step" : "steps"}
+        </small>
+      </span>
+      <NodeLabel placed={placed} />
+      {group.returns || group.throws ? (
+        <span className="flow-group-marks">
+          {group.returns ? <span className="returns">returns</span> : null}
+          {group.throws ? <span className="throws">throws</span> : null}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** An expanded step group's title band: the toggle and the title, drawn over the routes that enter it. */
+function GroupHeading({ region, props }: { region: FlowLayout["regions"][number]; props: FlowViewProps }) {
+  const groupId = region.group ?? "";
+  return (
+    <div
+      className="flow-group-heading"
+      style={{ left: region.x, top: region.y, width: region.width }}
+      data-group={groupId}
+      onContextMenu={groupMenuHandler(groupId, props)}
+    >
+      <GroupToggle groupId={groupId} title={region.title} collapsed={false} props={props} />
+      <span
+        className="flow-group-title"
+        onClick={(event) => {
+          event.stopPropagation();
+          props.onSelectGroup?.(groupId);
+        }}
+      >
+        {region.title}
+      </span>
+    </div>
   );
 }
 
@@ -178,6 +278,7 @@ export function FlowView(props: FlowViewProps) {
   const { model, layout, ports } = props;
   const marker = useId().replace(/:/g, "");
   const selected = props.selectedKey ?? null;
+  const selectedGroup = props.selectedGroup ?? null;
   return (
     <div className="flow-view">
       <div className="flow-caption">Paths from written structure</div>
@@ -195,13 +296,15 @@ export function FlowView(props: FlowViewProps) {
         {layout.regions.map((region, index) => (
           <div
             key={`${region.kind}-${index}`}
-            className={`flow-region kind-${region.kind}`}
+            className={`flow-region kind-${region.kind}${region.group !== undefined && region.group === selectedGroup ? " selected" : ""}`}
             style={{ left: region.x, top: region.y, width: region.width, height: region.height }}
           >
-            <span className="flow-region-title">
-              {region.title}
-              {region.subtitle !== undefined ? <small>{region.subtitle}</small> : null}
-            </span>
+            {region.kind !== "group" ? (
+              <span className="flow-region-title">
+                {region.title}
+                {region.subtitle !== undefined ? <small>{region.subtitle}</small> : null}
+              </span>
+            ) : null}
           </div>
         ))}
         <svg className="flow-edges" width={Math.max(layout.width, props.width)} height={layout.height} aria-hidden="true">
@@ -224,13 +327,18 @@ export function FlowView(props: FlowViewProps) {
             </g>
           ))}
         </svg>
+        {layout.regions.map((region) =>
+          region.kind === "group" ? <GroupHeading key={`heading-${region.group ?? ""}`} region={region} props={props} /> : null,
+        )}
         {layout.nodes.map((placed) => {
           const nodePorts = ports?.get(placed.id);
           return (
             <FlowNodeWithPorts
               key={placed.id}
               placed={placed}
-              selected={selected !== null && placed.node.key === selected && !placed.summary}
+              selected={
+                placed.group ? placed.group.id === selectedGroup : selected !== null && placed.node.key === selected && !placed.summary
+              }
               props={props}
               ports={nodePorts}
               diagramWidth={Math.max(layout.width, props.width)}
@@ -265,7 +373,11 @@ function FlowNodeWithPorts({
           {props.renderPorts(ports)}
         </div>
       ) : null}
-      <FlowNodeView placed={placed} selected={selected} props={props} />
+      {placed.group ? (
+        <GroupStepView placed={placed} group={placed.group} selected={selected} props={props} />
+      ) : (
+        <FlowNodeView placed={placed} selected={selected} props={props} />
+      )}
     </>
   );
 }

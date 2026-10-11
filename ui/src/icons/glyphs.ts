@@ -59,6 +59,7 @@ export const ICON_NAMES = [
   "minus",
   "back",
   "forward",
+  "agent",
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];
@@ -187,4 +188,6 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   // Go back and forward (the navigation commands), as arrows.
   back: { box: 16, shapes: [{ d: "M13 8H3.5M7.5 4L3.5 8L7.5 12" }] },
   forward: { box: 16, shapes: [{ d: "M3 8H12.5M8.5 4L12.5 8L8.5 12" }] },
+  // The agent mark beside an agent's name: a small four-point spark.
+  agent: { box: 10, stroke: 1.2, shapes: [{ d: "M5 1.5L5.9 4.1L8.5 5L5.9 5.9L5 8.5L4.1 5.9L1.5 5L4.1 4.1Z" }] },
 };

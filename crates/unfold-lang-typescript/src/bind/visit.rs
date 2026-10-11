@@ -142,6 +142,7 @@ impl<'a> Visit<'a> for Binder<'a> {
         let index = self.add(decl, Some(ModuleKey::Interface));
         self.declare(self.scope, name, index, Meanings::TYPE, exported);
         self.link_declaration(range(it.body.span), it.type_parameters.as_deref(), |binder| {
+            binder.interface_heritage(&it.extends);
             for member in &it.body.body {
                 binder.signature_names(member, 0);
             }
@@ -379,6 +380,7 @@ impl<'a> Visit<'a> for Binder<'a> {
             .with(DeclFlags::TOP_LEVEL, self.top_level.contains(&address))
             .with(DeclFlags::DECORATED, !it.decorators.is_empty());
         decl.block = if self.ambient { None } else { self.block(address) };
+        let selected = decl.block.is_some();
         let index = self.add(decl, declaration.then_some(ModuleKey::Class));
         let symbol = match (&it.id, declaration) {
             (Some(id), true) => {
@@ -420,6 +422,9 @@ impl<'a> Visit<'a> for Binder<'a> {
         let outer_container = self.container;
         self.container = self.new_container();
         self.type_parameters(it.type_parameters.as_deref());
+        if selected {
+            self.class_heritage(it);
+        }
         let members = self.class_members(class, &it.body.body);
         for (element, member) in it.body.body.iter().zip(members) {
             self.class_element(index, element, member);

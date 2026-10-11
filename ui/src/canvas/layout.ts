@@ -4,6 +4,9 @@
  * functions over positions and measured sizes, so they are deterministic and testable without a DOM.
  */
 
+import type { Card } from "../ipc/generated";
+import type { Arrow } from "./arrows";
+
 /** Block cards size to their content between these widths. */
 export const CARD_MIN_WIDTH = 280;
 export const CARD_MAX_WIDTH = 880;
@@ -133,6 +136,26 @@ export function newCardPlacement(existing: readonly Rect[]): [number, number] {
   const right = Math.max(...existing.map((rect) => rect.x + rect.width));
   const top = Math.min(...existing.map((rect) => rect.y));
   return [Math.round(right + NEW_CARD_GAP), Math.round(top)];
+}
+
+/**
+ * `at`, moved down until a card of `size` there keeps `STACK_GAP` from every rect of `occupied`: where
+ * a card placed for an agent goes, so it never covers another.
+ */
+export function clearSpot(at: Point, size: Size, occupied: readonly Rect[]): [number, number] {
+  const x = Math.round(at.x);
+  let y = Math.round(at.y);
+  for (let moved = true; moved; ) {
+    moved = false;
+    for (const other of occupied) {
+      const overlapX = x < other.x + other.width + STACK_GAP && other.x < x + size.width + STACK_GAP;
+      if (overlapX && y < other.y + other.height + STACK_GAP && other.y < y + size.height + STACK_GAP) {
+        y = Math.round(other.y + other.height + STACK_GAP);
+        moved = true;
+      }
+    }
+  }
+  return [x, y];
 }
 
 /** The rectangle around every rect, or null for none. */
@@ -324,4 +347,38 @@ export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCa
     }
   }
   return positions;
+}
+
+/**
+ * Where Arrange puts a page's cards: columns by call depth from its entrances (then the cards nothing
+ * calls), in a stable order: entrances first, then left to right and top to bottom as `rects` shows
+ * them. `portOffset` gives an arrow's port offset below its card's top (the header's when unknown).
+ */
+export function arrangedPositions(
+  cards: readonly Card[],
+  rects: ReadonlyMap<string, Rect>,
+  arrows: readonly Arrow[],
+  portOffset: (arrow: Arrow) => number | undefined,
+): Map<string, Point> {
+  const ordered = [...cards].sort((a, b) => {
+    const entrance = Number("block" in a.ref) - Number("block" in b.ref);
+    const ra = rects.get(a.id);
+    const rb = rects.get(b.id);
+    return entrance || (ra?.x ?? 0) - (rb?.x ?? 0) || (ra?.y ?? 0) - (rb?.y ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  });
+  const all = [...rects.values()];
+  const origin = { x: Math.min(...all.map((rect) => rect.x)), y: Math.min(...all.map((rect) => rect.y)) };
+  return arrange(
+    ordered.map((card) => {
+      const rect = rects.get(card.id);
+      return { id: card.id, width: rect?.width ?? 520, height: rect?.height ?? 320 };
+    }),
+    arrows.map((arrow) => ({
+      source: arrow.source,
+      target: arrow.target,
+      port: portOffset(arrow) ?? HEADER_PORT,
+      order: arrow.order,
+    })),
+    origin,
+  );
 }

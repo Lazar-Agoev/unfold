@@ -67,7 +67,8 @@ compare size and modification time with the last check first (U-17). A file read
 settings hash as before keeps its facts; nothing is extracted.
 
 **Typed facts.** Extraction also records each file's typed facts (`TypeFacts`: signatures, parameters,
-members, call results, and the written type names of recorded annotations), which the facts cache keeps
+members, call results, and the written type names of recorded annotations and of heritage clauses, each
+base with whether its class or interface extends or implements it), which the facts cache keeps
 with the rest. Argument pairings and type links depend on other files, so they are not facts: every link
 computes them again, like edges ([graph model](graph-model.md#pairing)).
 

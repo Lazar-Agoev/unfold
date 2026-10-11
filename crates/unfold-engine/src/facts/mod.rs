@@ -26,7 +26,7 @@ pub use typed::{TypeFacts, TypeRefFact, innermost};
 
 /// The engine's identity in facts-cache keys. It changes whenever the facts format or anything
 /// that shapes extracted facts changes, so stale cache entries never match.
-pub const ENGINE_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+facts.3");
+pub const ENGINE_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+facts.4");
 
 /// The syntactic shape of a recorded value, after transparent wrappers (parentheses, type
 /// assertions, ...) are unwrapped. Shapes drive the shared policy's no-candidate reasons,
@@ -552,7 +552,7 @@ impl GraphFacts {
 mod tests {
     use unfold_core::RepoPath;
     use unfold_core::text::{ByteRange, LineIndex};
-    use unfold_core::vocab::Role;
+    use unfold_core::vocab::{Heritage, Role};
 
     use super::*;
     use crate::select::{MappedSlot, Mapping, Saved, Tree, walk};
@@ -651,6 +651,22 @@ mod tests {
             Err(FactsError::Decode(_))
         ));
         assert!(!ENGINE_VERSION.is_empty());
+    }
+
+    #[test]
+    fn only_classes_and_interfaces_have_heritage_type_names() {
+        let reference = || TypeRefFact::new(ByteRange::new(4, 5).unwrap(), "Base", false);
+        let types = |reference: TypeRefFact| {
+            TypeFacts::new(valid().blocks(), vec![], vec![], vec![], vec![], vec![reference])
+        };
+        assert!(valid().with_types(types(reference())).is_ok());
+        assert_eq!(
+            valid().with_types(types(reference().with_heritage(Some(Heritage::Extends)))),
+            Err(FactsError::Typed {
+                what: "type reference",
+                block: 4
+            })
+        );
     }
 
     #[test]

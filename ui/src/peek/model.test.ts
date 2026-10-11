@@ -45,6 +45,14 @@ describe("definitions", () => {
     expect(definitionAt([item("m", "method", 4), item("c", "class", 9)], 3)?.key).toBe("c");
     expect(canFold(item("one", "function", 3))).toBe(false);
   });
+
+  it("counts type declarations as definitions, as the catalog does", () => {
+    const item = (kind: OutlineItem["kind"]): OutlineItem => ({ key: kind, kind, startLine: 3, endLine: 5, start: 0, end: 1, groupable: false });
+    for (const kind of ["interface", "type_alias", "enum"] as const) {
+      expect(definitionAt([item(kind)], 3)?.key).toBe(kind);
+    }
+    expect(definitionAt([item("variable")], 3)).toBeUndefined();
+  });
 });
 
 describe("text matches", () => {

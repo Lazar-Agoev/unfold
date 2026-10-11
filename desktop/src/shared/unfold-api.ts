@@ -7,6 +7,8 @@
  * transport level they are `unknown`. Window commands are handled by the main process and typed here.
  */
 
+import type { AgentShellEvent, AgentWindowCommands } from "./agent-api";
+
 /** An error a command was rejected with. Plain data, so it survives the context bridge. */
 export interface TransportError {
   /** A stable snake_case code, such as `engine_unavailable`, `disconnected`, or one chosen by Rust. */
@@ -97,7 +99,9 @@ export type ShellEvent =
    * Adding a folder from the menu, the command line, the OS, a second launch, or a drop the UI didn't
    * handle failed (it isn't a folder, the workspace is full, …): say why. Sent to the focused window.
    */
-  | { readonly type: "project_add_failed"; readonly path: string; readonly message: string };
+  | { readonly type: "project_add_failed"; readonly path: string; readonly message: string }
+  /** An agent's edit, read, background open, or finish (`agent-api.ts`). */
+  | AgentShellEvent;
 
 /** A running streamed command. */
 export interface StreamHandle {
@@ -136,8 +140,8 @@ export interface DroppedFile {
   readonly name: string;
 }
 
-/** Window and dialog commands, handled by the main process. */
-export interface WindowCommands {
+/** Window and dialog commands, handled by the main process (the agent channel's too). */
+export interface WindowCommands extends AgentWindowCommands {
   /** Open another window on the workspace (it shows the workspace's selected project). */
   new_window: { args: Record<string, never>; result: { windowId: number } };
   /**

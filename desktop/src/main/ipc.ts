@@ -3,11 +3,14 @@
  * commands never come here: they travel over each window's port to the engine host. A few window
  * commands end in an engine request the main process sends itself, with `"trusted": true`
  * (`add_project`, `export_mermaid`), because they involve a path only the main process may choose.
+ * The agent channel's commands (`report_view` and the answers to agent requests) go to the agent bridge.
  */
 
 import { clipboard, ipcMain } from "electron";
 import type { ExportedFile, TransportError, WindowCommand, WindowCommands, WindowInfo } from "../shared/unfold-api";
 import { IPC, PRELOAD_COMMANDS, transportError, type WindowReply } from "../shared/transport";
+import type { AgentBridge } from "./agents/bridge";
+import { parseViewReport } from "./agents/views";
 import type { UiSource } from "./app-url";
 import { chooseExportPath, chooseFolder, confirmRemoveProject } from "./dialogs";
 import type { EngineHost } from "./engine-host";
@@ -42,9 +45,10 @@ export interface WindowCommandServices {
   readonly workspace: Pick<Workspace, "add">;
   readonly engine: Pick<EngineHost, "request">;
   readonly ui: UiSource;
+  readonly agents: Pick<AgentBridge, "views" | "settle">;
 }
 
-export function registerWindowCommands({ registry, workspace, engine, ui }: WindowCommandServices): void {
+export function registerWindowCommands({ registry, workspace, engine, ui, agents }: WindowCommandServices): void {
   const handlers: { [C in WindowCommand]: Handler<C> } = {
     new_window: () => ({ windowId: registry.create().id }),
     focus_window: (_entry, args) => {
@@ -114,6 +118,26 @@ export function registerWindowCommands({ registry, workspace, engine, ui }: Wind
       key: entry.key,
       platform: process.platform === "darwin" || process.platform === "win32" ? process.platform : "linux",
     }),
+    report_view: (entry, args) => {
+      const report = parseViewReport(args);
+      if (!report) {
+        throw invalid("report_view: pass {board?, page?, selection, lens?, visible, tabs}.");
+      }
+      agents.views.report(entry.id, report);
+      return null;
+    },
+    agent_edit_result: (entry, args) => {
+      agents.settle(entry.id, "edit", args["requestId"], args["result"]);
+      return null;
+    },
+    agent_read_result: (entry, args) => {
+      agents.settle(entry.id, "read", args["requestId"], args["result"]);
+      return null;
+    },
+    agent_open_board_result: (entry, args) => {
+      agents.settle(entry.id, "open", args["requestId"], args["result"]);
+      return null;
+    },
   };
 
   /** Commands the preload sends on the person's behalf, outside `window.unfold.window`. */

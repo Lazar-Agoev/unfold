@@ -629,6 +629,12 @@
   font-size: var(--text-12);
 }
 
+/* A type declaration's kind before its name (`interface Cart`), quiet as in its definition. */
+.add-row-type-kind {
+  font-weight: 400;
+  color: var(--color-contour);
+}
+
 /* A selected snippet stays regular so its bold match run still reads. */
 .add-list-row.selected .add-row-name.snippet {
   font-weight: 400;

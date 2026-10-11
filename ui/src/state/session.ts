@@ -4,7 +4,7 @@
  *
  * - Restore: `window_state {key}` → the layout → the Home selection → the saved board tabs, reopened
  *   on their pages (a board that can't open loses its tab) → the active tab. Only then are boards
- *   moved here from another window adopted, and the window's state followed.
+ *   moved here from another window adopted, agents' requests answered, and the window's state followed.
  * - Save: `save_window_state` 400 ms after the selection, the tabs, a board's active page, or the
  *   layout change, and at once when the page goes away (the window closes, the app quits).
  * - Engine restart: a toast while the engine is away; once it is back, the
@@ -21,7 +21,7 @@ import { call } from "../ipc/commands";
 import type { SavedWindow, WindowStateInput } from "../ipc/generated";
 import { engineQueryOptions, resetEngineQueries } from "../ipc/queries";
 import { onConnection, onShellEvent } from "../ipc/unfold";
-import { boardKey, openBoard, reclaimBoards, setTransfersReady, type BoardRef } from "./boards";
+import { boardKey, openBoard, reclaimBoards, setAgentChannelReady, setTransfersReady, type BoardRef } from "./boards";
 import { applyLayoutSnapshot, layoutSnapshot, subscribeToLayout } from "./layout";
 import { activateBoard, moveTab, subscribeToTabs, tabsSnapshot } from "./tabs";
 import { useWindowStore } from "./window";
@@ -118,6 +118,7 @@ async function restore(client: QueryClient): Promise<void> {
     await reopenTabs(saved);
   }
   setTransfersReady(true);
+  setAgentChannelReady();
   useSession.setState({ restored: true });
 }
 

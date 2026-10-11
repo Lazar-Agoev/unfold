@@ -6,7 +6,7 @@ use super::*;
 use crate::key::Key;
 use crate::model::{Graph, ModuleLabel};
 use crate::testkit::GraphBuilder;
-use crate::testkit::sample::typed;
+use crate::testkit::sample::{heritage, typed};
 use crate::typed::{FileTypes, Pairing, WrittenType};
 use crate::vocab::{Expansion, MemberKind, PairingReason, ParameterKind, Reason, Resolution, ResultBinding};
 
@@ -316,6 +316,59 @@ fn type_links_are_ordered_inside_their_innermost_block_with_edge_outcomes() {
     assert_violation(&graph, "a reason is present exactly when unresolved");
 }
 
+fn heritage_violations(graph: &Graph) -> Vec<String> {
+    let builder = heritage();
+    let sources = sources(&builder);
+    Validator::new()
+        .with_sources(&sources)
+        .validate(graph)
+        .iter()
+        .map(ToString::to_string)
+        .collect()
+}
+
+#[test]
+fn heritage_links_name_bases_of_classes_and_interfaces() {
+    use crate::vocab::Heritage;
+    assert_eq!(heritage_violations(&heritage().build()), Vec::<String>::new());
+
+    // Only a TypeScript class implements.
+    let mut graph = heritage().build();
+    types(&mut graph, "src/shop.ts").type_links[0].heritage = Some(Heritage::Implements);
+    let found = heritage_violations(&graph);
+    assert!(
+        found
+            .iter()
+            .any(|message| message.contains("`implements` is not a heritage of a interface")),
+        "{found:#?}"
+    );
+    let mut graph = heritage().build();
+    types(&mut graph, "jobs/models.py").type_links[0].heritage = Some(Heritage::Implements);
+    let found = heritage_violations(&graph);
+    assert!(
+        found
+            .iter()
+            .any(|message| message.contains("`implements` is not a heritage of a class")),
+        "{found:#?}"
+    );
+
+    // An `extends` name lies in the heritage slot; a class's `implements` clause is no slot.
+    let mut graph = heritage().build();
+    types(&mut graph, "src/shop.ts").type_links[1].heritage = Some(Heritage::Extends);
+    let found = heritage_violations(&graph);
+    assert!(
+        found
+            .iter()
+            .any(|message| message.contains("an `extends` link lies outside its block's heritage slot")),
+        "{found:#?}"
+    );
+
+    // A function has no heritage.
+    let mut graph = typed().build();
+    types(&mut graph, CHARGE).type_links[0].heritage = Some(Heritage::Extends);
+    assert_violation(&graph, "`extends` is not a heritage of a function");
+}
+
 #[test]
 fn written_ranges_lie_on_character_and_token_boundaries() {
     let mut builder = typed();
@@ -347,6 +400,7 @@ fn written_ranges_lie_on_character_and_token_boundaries() {
             target: None,
             reason: Some(Reason::UnknownName),
             module: None,
+            heritage: None,
         });
     let found: Vec<String> = Validator::new()
         .with_sources(&sources)

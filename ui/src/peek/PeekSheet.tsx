@@ -13,10 +13,11 @@ import { useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "
 import { ProjectScope } from "../canvas/ProjectScope";
 import { CallLink } from "../code/CallLink";
 import { tokenClass } from "../code/CodeText";
+import { newCardView } from "../code/typeKinds";
 import { groupByLink, linkRanges, segmentRange, spanRanges, type LinkRange, type SpanRange } from "../code/segments";
 import { EmptyState, IconButton, KeyChip, MenuButton, Monogram, Sheet, showToast, type MenuEntry } from "../components";
 import { Icon } from "../icons";
-import { engineQueryOptions, toUnfoldError, useEngineQuery, type CallLink as CallLinkModel, type CodeLine, type FileView, type Key, type OutlineItem, type ProjectId, type TextMatch } from "../ipc";
+import { engineQueryOptions, toUnfoldError, useEngineQuery, type CallLink as CallLinkModel, type CodeLine, type FileView, type Key, type OutlineItem, type ProjectId, type TextMatch, type View } from "../ipc";
 import { usePlatform, useRegisterActions, type ActionSpec } from "../keyboard";
 import { openInEditor, revealInFinder } from "../lib/files";
 import { languageList, plural } from "../lib/format";
@@ -44,17 +45,17 @@ const ROW_HEIGHT = 20;
 /** The code area's padding above the first row and below the last. */
 const PADDING = 8;
 
-/** Adds a definition of `project` where Add would: the active page, or a new draft from Home. */
-async function addDefinition(target: AddTarget, project: ProjectId, key: Key): Promise<void> {
+/** Adds a definition of `project` where Add would: the active page, or a new draft from Home; in `view` when given. */
+async function addDefinition(target: AddTarget, project: ProjectId, key: Key, view: View | undefined): Promise<void> {
   try {
     if (target.kind === "page") {
-      addBlock(target.target, project, key);
+      addBlock(target.target, project, key, view);
       return;
     }
     const board = await newBoard(project, { title: keyDisplayName(key) });
     const page = getOpenBoard(board)?.activePage;
     if (page !== undefined) {
-      addBlock({ board, page }, project, key);
+      addBlock({ board, page }, project, key, view);
     }
   } catch (error) {
     showToast({ title: "Couldn't add it", body: toUnfoldError(error).message, tone: "danger" });
@@ -194,7 +195,17 @@ function usePageTitle(page: PageTarget | null): string | null {
 
 const NO_MATCHES: readonly TextMatch[] = [];
 
-function Lines({ target, first, onPage, add }: { readonly target: PeekTarget; readonly first: FileView; readonly onPage: ReadonlySet<string>; readonly add: (key: Key) => void }) {
+function Lines({
+  target,
+  first,
+  onPage,
+  add,
+}: {
+  readonly target: PeekTarget;
+  readonly first: FileView;
+  readonly onPage: ReadonlySet<string>;
+  readonly add: (key: Key, view?: View) => void;
+}) {
   const { project, path } = target;
   const scroller = useRef<HTMLDivElement | null>(null);
   const [folded, setFolded] = useState<ReadonlyMap<string, FoldedRange>>(new Map());
@@ -296,7 +307,7 @@ function Lines({ target, first, onPage, add }: { readonly target: PeekTarget; re
                       className="peek-add-button"
                       aria-label={`Add ${keyDisplayName(def.key)} to the page`}
                       onClick={() => {
-                        add(def.key);
+                        add(def.key, newCardView(def.kind));
                       }}
                     >
                       <Icon name="add-circle" size={14} />
@@ -377,7 +388,7 @@ function PeekBody({ target, pinned }: { readonly target: PeekTarget; readonly pi
           target={target}
           first={view}
           onPage={onPage}
-          add={(key) => void addDefinition(addTarget, target.project, key)}
+          add={(key, view) => void addDefinition(addTarget, target.project, key, view)}
         />
       </ProjectScope.Provider>
     );

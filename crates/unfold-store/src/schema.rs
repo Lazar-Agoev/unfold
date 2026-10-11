@@ -27,7 +27,7 @@ use crate::error::Result;
 
 /// The version of the schema below. Bump it whenever a table, column, index, or the meaning of
 /// a stored value changes; existing databases are then rebuilt.
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// Every table and index, created in one transaction.
 const DDL: &str = r"
@@ -117,7 +117,7 @@ CREATE TABLE results (
 CREATE TABLE type_links (
   file_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL, seq INTEGER NOT NULL,
   start_byte INTEGER NOT NULL, end_byte INTEGER NOT NULL, text TEXT NOT NULL,
-  resolution TEXT NOT NULL, target_key_id INTEGER, reason TEXT, module TEXT,
+  resolution TEXT NOT NULL, target_key_id INTEGER, reason TEXT, module TEXT, heritage TEXT,
   PRIMARY KEY (file_id, block_local_id, seq)
 ) WITHOUT ROWID;
 CREATE INDEX type_links_by_target ON type_links (target_key_id);

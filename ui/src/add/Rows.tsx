@@ -1,15 +1,17 @@
 /**
  * The rows of Add's lists: a result of any kind (project monogram, kind column, name, trailing meta:
  * an entrance's `project · application`, a file's definition count), the "N more <kind>" link, and a
- * command (icon, group ›, name with its match in bold, keycaps).
+ * command (icon, group ›, name with its match in bold, keycaps). A type declaration reads with its kind
+ * before its name, as its definition does (`interface Cart`).
  */
 
+import { declarationWord } from "../code/typeKinds";
 import { KeyChip, Monogram } from "../components";
 import { Icon } from "../icons";
 import { plural } from "../lib/format";
 import type { CommandItem } from "./commands";
 import { highlightRanges } from "./highlight";
-import { baseName, definitionColumn, entranceColumn, trimmedMatch, type ResultItem } from "./search";
+import { baseName, definitionColumn, definitionText, entranceColumn, trimmedMatch, type ResultItem } from "./search";
 
 /** Row heights: results and commands 32, the "more" link 28. */
 export const ROW_HEIGHT = 32;
@@ -25,7 +27,7 @@ export function resultText(item: ResultItem): string {
     case "entrance":
       return `Entrance ${entranceColumn(item.hit)} ${item.hit.name}`;
     case "function":
-      return `Function ${item.hit.qualifiedName}, ${item.hit.path}`;
+      return definitionText(item.hit);
     case "file":
       return `File ${item.hit.path}`;
     case "text":
@@ -61,8 +63,15 @@ function Name({ item }: { readonly item: ResultRowProps["item"] }) {
   switch (item.type) {
     case "entrance":
       return <span className="add-row-name">{item.hit.name}</span>;
-    case "function":
-      return <span className="add-row-name">{item.hit.qualifiedName}</span>;
+    case "function": {
+      const word = declarationWord(item.hit.kind);
+      return (
+        <span className="add-row-name">
+          {word === undefined ? null : <span className="add-row-type-kind">{`${word} `}</span>}
+          {item.hit.qualifiedName}
+        </span>
+      );
+    }
     case "file":
       return <span className="add-row-name">{item.hit.path}</span>;
     case "text": {

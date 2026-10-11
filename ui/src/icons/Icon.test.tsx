@@ -45,6 +45,7 @@ const PLANNED = [
   "minus",
   "back",
   "forward",
+  "agent",
 ];
 
 describe("Icon", () => {

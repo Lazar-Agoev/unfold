@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { SearchHit, SearchResults, TextSearchFile } from "../ipc/generated";
-import { allSearchArgs, entranceColumn, kindCounts, kindSearchArgs, moreLabel, projectsWithResults, resultGroups, trimmedMatch, type TextResults } from "./search";
+import {
+  allSearchArgs,
+  definitionColumn,
+  definitionText,
+  entranceColumn,
+  kindCounts,
+  kindSearchArgs,
+  moreLabel,
+  projectsWithResults,
+  resultGroups,
+  trimmedMatch,
+  type TextResults,
+} from "./search";
 
 function hit(project: string, name: string, kind = "function", qualifiedName = name): SearchHit {
   return { project, key: `src/a.ts#function:${name}`, name, qualifiedName, path: "src/a.ts", kind, line: 3, application: null, score: 1, nameMatches: [] };
@@ -67,6 +79,17 @@ describe("search arguments", () => {
 });
 
 describe("row text", () => {
+  it("names a definition by its kind: functions as FN, type declarations as TYPE with their word", () => {
+    expect(definitionColumn("function")).toBe("FN");
+    expect(definitionColumn("method")).toBe("METHOD");
+    expect(definitionColumn("class")).toBe("CLASS");
+    expect(["interface", "type_alias", "enum"].map(definitionColumn)).toEqual(["TYPE", "TYPE", "TYPE"]);
+    expect(definitionText({ kind: "function", qualifiedName: "createOrder", path: "src/orders.ts" })).toBe("Function createOrder, src/orders.ts");
+    expect(definitionText({ kind: "interface", qualifiedName: "Cart", path: "src/cart.ts" })).toBe("Interface Cart, src/cart.ts");
+    expect(definitionText({ kind: "type_alias", qualifiedName: "CartId", path: "src/cart.ts" })).toBe("Type CartId, src/cart.ts");
+    expect(definitionText({ kind: "enum", qualifiedName: "Currency", path: "src/cart.ts" })).toBe("Enum Currency, src/cart.ts");
+  });
+
   it("names an HTTP entrance by its method and others by their kind", () => {
     expect(entranceColumn({ kind: "http", qualifiedName: "POST /orders createOrder" })).toBe("POST");
     expect(entranceColumn({ kind: "worker", qualifiedName: "refund processRefund" })).toBe("WORKER");

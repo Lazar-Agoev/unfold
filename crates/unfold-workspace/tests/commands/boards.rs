@@ -1,14 +1,15 @@
-//! Boards (docs/ipc.md › Boards): claims across windows, pages, cards from other
-//! projects and placeholders, drawn links, unpublished changes and Publish (conflicts, keep
-//! mine, discard), Move back to drafts, folders, view state, outside edits per working file,
-//! drafts and references across projects, thumbnails, and export.
+//! Boards (docs/ipc.md › Boards): claims across windows, reading a board without claiming it,
+//! pages, cards from other projects and placeholders, drawn links, connections, frames, resource
+//! cards, and notes, unpublished changes and Publish (conflicts, keep mine, discard), Move back to
+//! drafts, folders, view state, outside edits per working file, drafts and references across
+//! projects, thumbnails, and export.
 
 use std::path::PathBuf;
 
 use serde_json::{Value, json};
 use unfold_workspace::ProjectId;
 
-use crate::common::{Harness, PATIENCE, eventually};
+use crate::common::{Harness, PATIENCE, eventually, restless};
 
 const CREATE_ORDER: &str = "src/routes/orders.ts#function:createOrder";
 const PLACE_ORDER: &str = "src/services/order-service.ts#class:OrderService/method:place";
@@ -255,6 +256,134 @@ fn a_project_without_a_graph_has_no_drafts_and_no_board_health() {
     let summary = harness.ok(1, "project_summary", json!({ "project": harness.project }));
     assert_eq!(summary["health"]["boards"], json!([]));
     assert!(!harness.path(".unfold/local").exists(), "nothing was written");
+}
+
+/// The sample board (`testdata/boards/order-placement.json`).
+fn sample_board() -> String {
+    std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/boards/order-placement.json"),
+    )
+    .expect("the sample board")
+}
+
+#[test]
+fn a_board_reads_without_being_claimed_or_waking_its_project() {
+    let harness = Harness::with("ts-orders", restless());
+    harness.ok(9, "compile", json!({ "project": harness.project }));
+    let live = || harness.row(&harness.project)["live"] == true;
+    eventually("the project rests", || !live());
+    let sample = sample_board();
+    harness.write(".unfold/boards/order-placement.json", &sample);
+    let id = ".unfold/boards/order-placement.json";
+
+    let read = harness.on(1, "read_board", id);
+    assert_eq!(read["project"], harness.project.as_str());
+    assert_eq!(read["id"], id);
+    assert_eq!(
+        (read["place"].clone(), read["name"].clone()),
+        (json!("published"), json!("order-placement"))
+    );
+    assert_eq!(read["document"]["format"], "unfold-board");
+    assert_eq!(read["document"]["title"], "Order placement");
+    assert_eq!(read["revision"], revision_of(&sample));
+    assert_eq!(
+        read["published"],
+        json!({ "revision": revision_of(&sample), "changes": 0, "baseChanged": false })
+    );
+    assert_eq!(read["heldBy"], Value::Null);
+    assert!(!live(), "reading a board file doesn't wake its project");
+
+    // It isn't claimed: another window opens it, and the read says who holds it.
+    let opened = harness.on(2, "open_board", id);
+    assert_eq!(opened["status"], "opened");
+    assert_eq!(harness.on(1, "read_board", id)["heldBy"], 2);
+    assert_eq!(harness.on_code(1, "board_health", id), "board_held");
+
+    // An unpublished edit is the working version: the changes copy, with its count.
+    let mut edit = edit_of(&opened["board"]);
+    edit["title"] = json!("Order placement, edited");
+    let saved = harness.save(2, id, edit);
+    let read = harness.on(1, "read_board", id);
+    assert_eq!(read["document"]["title"], "Order placement, edited");
+    assert_eq!(read["revision"], saved["revision"]);
+    assert_eq!(read["published"]["changes"], 1);
+    assert_eq!(read["published"]["revision"], revision_of(&sample));
+
+    // A draft has no publish state.
+    let draft = harness.draft(2, "Draft");
+    let read = harness.on(1, "read_board", &id_of(&draft));
+    assert_eq!(
+        (read["place"].clone(), read["published"].clone()),
+        (json!("draft"), Value::Null)
+    );
+    assert_eq!(read["document"]["title"], "Draft");
+
+    assert_eq!(harness.on_code(1, "read_board", "../x.json"), "invalid_args");
+    assert_eq!(
+        harness.on_code(1, "read_board", ".unfold/boards/nope.json"),
+        "not_found"
+    );
+    harness.write(".unfold/boards/broken.json", "{");
+    assert_eq!(
+        harness.on_code(1, "read_board", ".unfold/boards/broken.json"),
+        "board_invalid"
+    );
+}
+
+#[test]
+fn frames_resources_connections_and_notes_are_saved_as_sent() {
+    let harness = Harness::compiled("ts-orders");
+    let board = harness.draft(1, "System");
+    let id = id_of(&board);
+    let mut edit = edit_of(&board);
+    edit["pages"][0]["defaultView"] = json!("diagram");
+    edit["pages"][0]["cards"] = json!([card("create", CREATE_ORDER), card("place", PLACE_ORDER)]);
+    edit["pages"][0]["groups"] = json!([{
+        "author": "agent:claude", "card": "create", "collapsed": false, "id": "queue-it",
+        "members": ["src/routes/orders.ts#function:createOrder/if[0]"], "title": "Queue it"
+    }]);
+    edit["pages"][0]["resources"] = json!([{
+        "anchors": [{ "key": "src/queues/queues.ts#variable:ordersQueue" }], "at": [400.0, 0.0],
+        "author": "agent:claude", "id": "orders", "kind": "queue", "name": "orders"
+    }]);
+    edit["pages"][0]["frames"] = json!([{
+        "author": "agent:claude", "id": "server", "look": "box", "members": ["create", "place"], "title": "server"
+    }]);
+    edit["pages"][0]["links"] = json!([{
+        "anchors": [{ "key": "src/queues/queues.ts#variable:ordersQueue" }], "author": "agent:claude",
+        "channel": "orders", "from": "create", "id": "enqueue", "kind": "queue", "to": "orders",
+        "step": "src/routes/orders.ts#function:createOrder/if[0]/variable:job/call[0]"
+    }]);
+    edit["pages"][0]["notes"] = json!([{
+        "at": [0.0, -40.0], "attach": "enqueue", "author": "agent:claude", "id": "note", "text": "One job per order."
+    }]);
+    let saved = harness.save(1, &id, edit.clone());
+    let page = &saved["document"]["pages"][0];
+    for field in ["resources", "frames", "links", "notes"] {
+        assert_eq!(page[field], edit["pages"][0][field], "{field} carried through");
+    }
+    assert_eq!(page["groups"][0]["author"], "agent:claude");
+    assert_eq!(
+        saved["health"]["items"],
+        json!([]),
+        "a link to a resource isn't broken"
+    );
+    let written = harness.read(&id);
+    assert!(written.contains("\"kind\": \"queue\""), "{written}");
+    assert!(written.contains("\"defaultView\": \"diagram\""), "{written}");
+
+    // A window that removes an item removes what refers to it too.
+    let mut dangling = edit;
+    dangling["pages"][0]["links"] = json!([]);
+    assert_eq!(
+        harness.code(
+            1,
+            "save_board",
+            json!({ "project": harness.project, "id": id, "board": dangling })
+        ),
+        "board_invalid",
+        "a note attached to a removed link"
+    );
 }
 
 #[test]

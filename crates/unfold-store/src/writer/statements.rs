@@ -95,8 +95,8 @@ impl<'c> Statements<'c> {
             delete_type_links: conn.prepare_cached("DELETE FROM type_links WHERE file_id = ?1")?,
             insert_type_link: conn.prepare_cached(
                 "INSERT INTO type_links (file_id, block_local_id, seq, start_byte, end_byte, text, \
-                 resolution, target_key_id, reason, module) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                 resolution, target_key_id, reason, module, heritage) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             )?,
             // A definition's search row ID is its key ID times 4 (`crate::search::rowid`).
             delete_definition_search: conn.prepare_cached(

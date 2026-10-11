@@ -9,6 +9,9 @@
   "exports": {
     "./unfold-api": {
       "types": "./src/shared/unfold-api.ts"
+    },
+    "./agent-api": {
+      "types": "./src/shared/agent-api.ts"
     }
   },
   "scripts": {

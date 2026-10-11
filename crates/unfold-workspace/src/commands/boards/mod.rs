@@ -5,8 +5,9 @@
 //! claim it for the calling window (a board another window holds answers `held` with that
 //! window, so the UI can focus it), `move_board` hands the claim over, and `close_board`,
 //! `delete_board`, and a closing window release it. Every other command about one board checks
-//! that the calling window holds it, except the folder commands: a board's folder is metadata
-//! Rust owns (decision U-47), never part of what a window saves, so they work on any board.
+//! that the calling window holds it, except `read_board`, which reads a board's working file
+//! without claiming it, and the folder commands: a board's folder is metadata Rust owns
+//! (decision U-47), never part of what a window saves, so they work on any board.
 //!
 //! The project keeps a **session** per open board ([`session`]): the working version last
 //! loaded or saved. A window autosaves its edits (`save_board`, a [`BoardEdit`]): Rust checks
@@ -51,14 +52,14 @@ use unfold_reader::mermaid;
 
 pub use self::folders::{create_folder, delete_folder, rename_folder, set_board_folder};
 pub(crate) use self::health::{check_disk, refresh};
-pub use self::lists::{board_refs, board_thumbnails, drafts, list_boards};
+pub use self::lists::{board_refs, board_thumbnails, drafts, list_boards, read_board};
 pub use self::session::BoardExtras;
 pub use self::types::{
     BoardDocument, BoardEdit, BoardHealthView, BoardIdArgs, BoardList, BoardRefHit, BoardRefs, BoardState,
     BoardSummary, CardKind, Drafts, LabelSpec, MoveBoardArgs, NewBoardArgs, OpenBoardResult,
-    PublishBoardArgs, PublishOutcome, PublishedState, RenameFolderArgs, RenamedFolder, RepairBoardArgs,
-    RepairKindSpec, RepairSpec, Resolve, SaveBoardArgs, SaveBoardViewArgs, SetBoardFolderArgs, TargetSpec,
-    Thumbnail, ThumbnailCard, ThumbnailPage, Thumbnails, ThumbnailsArgs,
+    PublishBoardArgs, PublishOutcome, PublishedState, ReadBoardResult, RenameFolderArgs, RenamedFolder,
+    RepairBoardArgs, RepairKindSpec, RepairSpec, Resolve, SaveBoardArgs, SaveBoardViewArgs,
+    SetBoardFolderArgs, TargetSpec, Thumbnail, ThumbnailCard, ThumbnailPage, Thumbnails, ThumbnailsArgs,
 };
 
 use self::files::{Files, Working, parse_id};
@@ -435,7 +436,7 @@ pub fn save_board(ctx: &Ctx<'_>, args: SaveBoardArgs) -> CommandResult<BoardStat
         let board = parse_edit(&args.board.0.to_string(), session.board.folder.clone())?;
         if ProjectName::parse(held.project.name()).is_some_and(|own| board.projects.contains(&own)) {
             return Err(CommandError::invalid_args(format!(
-                "a card names `{}`, this board's own project: omit project for the board's own project",
+                "an item names `{}`, this board's own project: omit project for the board's own project",
                 held.project.name()
             )));
         }

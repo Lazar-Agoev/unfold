@@ -905,6 +905,214 @@ fn type_uses_page_through_the_places_a_type_is_written() {
     );
 }
 
+const KINDS_TS: &str = "interface A { a: string }
+interface B extends A { b: string }
+interface C extends A { c: string }
+interface D extends B, C, Remote, Gone { d: string }
+interface E extends E2 { e: string }
+interface E2 extends E { e2: string }
+class K extends Gone implements A { k: string }
+";
+
+/// One declaration per line of `text` (`interface` or `class`, a name, an optional heritage
+/// clause, and one `string` member), each base linked: resolved to a declaration of the file,
+/// external `remote-lib` for `Remote`, unresolved for any other name. A class's `implements`
+/// names are `implements` links.
+fn declarations(path: &str, text: &str) -> (GraphBuilder, Vec<BlockRef>) {
+    use unfold_core::Member;
+    use unfold_core::vocab::Heritage;
+    let mut g = GraphBuilder::new();
+    let file = g.file(path, Language::TypeScript, text);
+    let mut blocks = Vec::new();
+    let mut names = Vec::new();
+    let mut start = 0;
+    for line in text.lines() {
+        let range = g.find_from(file, line, start);
+        start = range.end;
+        let class = line.starts_with("class ");
+        let name = line.split_whitespace().nth(1).unwrap();
+        let kind = if class { K::Class } else { K::Interface };
+        let block = g.block(file, kind, Some(Role::Body), Some(name), range);
+        g.slot(block, S::Name, None, g.find_from(file, name, range.start));
+        let body = g.find_from(file, "{", range.start).start;
+        let heritage = line
+            .find("extends ")
+            .map(|at| range.start + u32::try_from(at).unwrap())
+            .map(|at| {
+                let end = line.find(" implements").or_else(|| line.find(" {")).unwrap();
+                ByteRange::new(at, range.start + u32::try_from(end).unwrap()).unwrap()
+            });
+        if let Some(heritage) = heritage {
+            g.slot(block, S::Heritage, None, heritage);
+        }
+        if !class {
+            g.slot(block, S::Body, None, ByteRange::new(body, range.end).unwrap());
+        }
+        let member = line[line.find("{ ").unwrap() + 2..line.find(':').unwrap()].to_owned();
+        let ty = g.written_from(file, "string", body);
+        g.types(file).members.push(Member {
+            block: block.local_id(),
+            index: 0,
+            kind: MemberKind::Property,
+            name: Some(member.into()),
+            optional: false,
+            readonly: false,
+            default: false,
+            ty: Some(ty),
+            value: None,
+        });
+        blocks.push(block);
+        names.push(name.to_owned());
+    }
+    for (block, line) in blocks.iter().zip(text.lines()) {
+        let from = g.range(*block).start;
+        let head = &line[..line.find(" {").unwrap()];
+        let clauses = [
+            ("extends ", Heritage::Extends),
+            ("implements ", Heritage::Implements),
+        ];
+        for (word, heritage) in clauses {
+            let Some(at) = head.find(word) else {
+                continue;
+            };
+            let list = head[at + word.len()..].split(" implements").next().unwrap();
+            for base in list.split(", ") {
+                let outcome = match names.iter().position(|name| name == base) {
+                    Some(index) => Outcome::Resolved(g.key(blocks[index])),
+                    None if base == "Remote" => Outcome::external("remote-lib"),
+                    None => Outcome::Unresolved(Reason::UnknownName),
+                };
+                let at = from + u32::try_from(at).unwrap();
+                g.heritage_link(*block, base, at, outcome, heritage);
+            }
+        }
+    }
+    (g, blocks)
+}
+
+#[test]
+fn definitions_list_inherited_members_depth_first_and_each_type_once() {
+    let (builder, blocks) = declarations("src/kinds.ts", KINDS_TS);
+    let graph = builder.build();
+    let dir = tempfile::tempdir().unwrap();
+    write_sources(dir.path(), &builder);
+    let mut facts = Facts::new(&graph, dir.path());
+    let groups = |facts: &mut Facts<'_>, name: &str| -> Vec<(String, Vec<String>)> {
+        let kind = if name == "K" { "class" } else { "interface" };
+        type_definition(facts, &format!("src/kinds.ts#{kind}:{name}"))
+            .unwrap()
+            .unwrap()
+            .inherited
+            .into_iter()
+            .map(|group| {
+                let members = group
+                    .members
+                    .into_iter()
+                    .filter_map(|member| member.name)
+                    .collect();
+                (group.from.text, members)
+            })
+            .collect()
+    };
+    let named = |groups: &[(&str, &[&str])]| -> Vec<(String, Vec<String>)> {
+        groups
+            .iter()
+            .map(|(from, members)| {
+                (
+                    (*from).to_owned(),
+                    members.iter().map(|&member| member.to_owned()).collect(),
+                )
+            })
+            .collect()
+    };
+    // B, then B's base A, then C (whose A is listed already), then the bases with no
+    // declaration, which have no members.
+    assert_eq!(
+        groups(&mut facts, "D"),
+        named(&[
+            ("B", &["b"]),
+            ("A", &["a"]),
+            ("C", &["c"]),
+            ("Remote", &[]),
+            ("Gone", &[])
+        ])
+    );
+    // A cycle stops at the definition itself.
+    assert_eq!(groups(&mut facts, "E"), named(&[("E2", &["e2"])]));
+    // A class inherits from what it extends, not from what it implements.
+    assert_eq!(groups(&mut facts, "K"), named(&[("Gone", &[])]));
+    assert_eq!(groups(&mut facts, "A"), named(&[]));
+
+    // Each group names its base with one span.
+    let d = type_definition(&mut facts, "src/kinds.ts#interface:D")
+        .unwrap()
+        .unwrap();
+    let froms: Vec<serde_json::Value> = d
+        .inherited
+        .iter()
+        .map(|group| serde_json::to_value(&group.from).unwrap())
+        .collect();
+    assert_eq!(
+        froms[0],
+        json!({"text": "B", "spans": [{"start": 0, "end": 1, "style": "declared", "target": graph.files[0].blocks[blocks[1].local_id() as usize].key}]})
+    );
+    assert_eq!(
+        froms[3],
+        json!({"text": "Remote", "spans": [{"start": 0, "end": 6, "style": "external", "module": "remote-lib", "note": "remote-lib"}]})
+    );
+    assert_eq!(
+        froms[4],
+        json!({"text": "Gone", "spans": [{"start": 0, "end": 4, "style": "unresolved", "note": "unknown name"}]})
+    );
+
+    // Heritage places count as uses and say so.
+    let uses = type_uses(&mut facts, "src/kinds.ts#interface:A", 0, 50)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(&uses).unwrap(),
+        json!({"total": 3, "places": [
+            {"owner": "src/kinds.ts#interface:B", "label": "B", "path": "src/kinds.ts", "line": 2, "heritage": "extends"},
+            {"owner": "src/kinds.ts#interface:C", "label": "C", "path": "src/kinds.ts", "line": 3, "heritage": "extends"},
+            {"owner": "src/kinds.ts#class:K", "label": "K", "path": "src/kinds.ts", "line": 7, "heritage": "implements"}
+        ]})
+    );
+    assert_eq!(
+        type_definition(&mut facts, "src/kinds.ts#interface:A")
+            .unwrap()
+            .unwrap()
+            .uses,
+        3
+    );
+}
+
+#[test]
+fn inherited_members_reach_a_bounded_depth() {
+    use super::MAX_INHERITED_DEPTH;
+    let levels = MAX_INHERITED_DEPTH + 2;
+    let text: String = (0..=levels)
+        .map(|level| match level {
+            level if level == levels => format!("interface T{level} {{ m{level}: string }}\n"),
+            level => format!(
+                "interface T{level} extends T{} {{ m{level}: string }}\n",
+                level + 1
+            ),
+        })
+        .collect();
+    let (builder, _) = declarations("src/chain.ts", &text);
+    let graph = builder.build();
+    let dir = tempfile::tempdir().unwrap();
+    let mut facts = Facts::new(&graph, dir.path());
+    let chain = type_definition(&mut facts, "src/chain.ts#interface:T0")
+        .unwrap()
+        .unwrap();
+    let froms: Vec<String> = chain.inherited.into_iter().map(|group| group.from.text).collect();
+    let expected: Vec<String> = (1..=MAX_INHERITED_DEPTH)
+        .map(|level| format!("T{level}"))
+        .collect();
+    assert_eq!(froms, expected);
+}
+
 #[test]
 fn type_text_spans_are_utf16_and_drop_names_the_cut_text_lost() {
     let link = |start: u32, end: u32, resolution: Resolution| TypeLink {
@@ -915,6 +1123,7 @@ fn type_text_spans_are_utf16_and_drop_names_the_cut_text_lost() {
         target: (resolution == Resolution::Resolved).then(|| Key::from_text("a.ts#interface:Ä")),
         reason: (resolution == Resolution::Unresolved).then_some(Reason::Ambiguous),
         module: (resolution == Resolution::External).then(|| ModuleLabel::from_set(["b", "a"]).unwrap()),
+        heritage: None,
     };
     // `Map<Ä, 😀Stripe.Intent>` written at byte 100: `Ä` is two bytes and one unit, `😀` four
     // bytes and two units.
@@ -962,7 +1171,7 @@ fn type_text_spans_are_utf16_and_drop_names_the_cut_text_lost() {
 const LOCAL_TS: &str = "export function local() {\n  interface Shape { size: number }\n  type Size = number;\n  return go();\n}\nexport enum Mode { A = make() }\n";
 
 #[test]
-fn type_declarations_are_passed_through_and_left_out() {
+fn type_declarations_are_passed_through_catalogued_and_outlined() {
     let mut g = GraphBuilder::new();
     let f = g.file("src/local.ts", Language::TypeScript, LOCAL_TS);
     let local = add(
@@ -1025,14 +1234,23 @@ fn type_declarations_are_passed_through_and_left_out() {
     assert_eq!(owners[make.local_id() as usize], 0);
     assert_eq!(owners[go.local_id() as usize], local.local_id());
     assert_eq!(owners[shape.local_id() as usize], local.local_id());
-    // Not in the catalog.
+    // In the catalog; a declaration inside a function is named after it.
     let projections = project(&graph);
-    let labels: Vec<&str> = projections.definitions[0]
+    let names: Vec<(&str, &str)> = projections.definitions[0]
         .iter()
-        .map(|definition| &*definition.label)
+        .map(|definition| (&*definition.label, &*definition.qualified_name))
         .collect();
-    assert_eq!(labels, ["local"]);
-    // Flow draws only the return; the outline lists only the return.
+    assert_eq!(
+        names,
+        [
+            ("local", "local"),
+            ("Shape", "local.Shape"),
+            ("Size", "local.Size"),
+            ("Mode", "Mode")
+        ]
+    );
+    // Flow draws only the return; the outline lists the declarations too, never as group
+    // members, and folds a multi-line one at its body.
     let flow = build_flow(
         file,
         local.local_id(),
@@ -1047,8 +1265,15 @@ fn type_declarations_are_passed_through_and_left_out() {
         [FlowNodeKind::Start, FlowNodeKind::Return, FlowNodeKind::End]
     );
     let code = render(file, local.local_id(), LOCAL_TS, None, FoldPolicy::Card).unwrap();
-    let outline: Vec<K> = code.outline.iter().map(|item| item.kind).collect();
-    assert_eq!(outline, [K::Return]);
+    let outline: Vec<(K, bool)> = code
+        .outline
+        .iter()
+        .map(|item| (item.kind, item.groupable))
+        .collect();
+    assert_eq!(
+        outline,
+        [(K::Interface, false), (K::TypeAlias, false), (K::Return, true)]
+    );
     // Every view still renders the declarations themselves without failing.
     for block in [shape, mode] {
         build_flow(

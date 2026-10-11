@@ -111,7 +111,7 @@ const ARGUMENTS: &str = "SELECT call_local_id, idx, expand, keyword, parameter, 
 const RESULTS: &str = "SELECT call_local_id, binding, awaited, target_local_id, position, file_id, \
      bound FROM results WHERE ?1 IN (file_id, -1) ORDER BY file_id, call_local_id";
 const TYPE_LINKS: &str = "SELECT t.block_local_id, t.start_byte, t.end_byte, t.text, t.resolution, \
-     k.key, t.reason, t.module, t.file_id FROM type_links t \
+     k.key, t.reason, t.module, t.file_id, t.heritage FROM type_links t \
      LEFT JOIN keys k ON k.id = t.target_key_id \
      WHERE ?1 IN (t.file_id, -1) ORDER BY t.file_id, t.block_local_id, t.seq";
 
@@ -204,6 +204,7 @@ fn read_types(conn: &Connection, file_id: i64) -> Result<FxHashMap<i64, FileType
             target: codec::opt_key(row, 5)?,
             reason: codec::opt_vocab(row, 6, "reason")?,
             module: codec::opt_module(row, 7)?,
+            heritage: codec::opt_vocab(row, 9, "heritage")?,
         };
         files.entry(row.get(8)?).or_default().type_links.push(link);
     }
@@ -442,7 +443,7 @@ impl Reader {
     /// range order, skipping `offset` and returning at most `limit`, with each link's block.
     pub fn type_uses(&self, key: &str, offset: usize, limit: usize) -> Result<Vec<TypeUse>> {
         let mut statement = self.conn().prepare_cached(&format!(
-            "SELECT f.path, f.language, t.start_byte, t.end_byte, t.text, {BLOCK_COLUMNS} \
+            "SELECT f.path, f.language, t.start_byte, t.end_byte, t.text, t.heritage, {BLOCK_COLUMNS} \
              FROM keys tk \
              JOIN type_links t ON t.target_key_id = tk.id \
              JOIN files f ON f.id = t.file_id \
@@ -458,7 +459,8 @@ impl Reader {
                 language: codec::vocab(row, 1, "language")?,
                 range: codec::range(row, 2)?,
                 text: codec::text(row, 4)?.into(),
-                block: decode_block(row, 5)?,
+                heritage: codec::opt_vocab(row, 5, "heritage")?,
+                block: decode_block(row, 6)?,
             })
         })
     }

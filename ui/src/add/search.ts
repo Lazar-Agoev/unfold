@@ -4,6 +4,7 @@
  * kind's tab. Names come from one `search` fan-out; text matches stream from `search_text`.
  */
 
+import { declarationWord } from "../code/typeKinds";
 import type { FileHit, ProjectId, SearchArgs, SearchHit, SearchKind, SearchResults, TextMatch, TextSearchFile } from "../ipc/generated";
 import type { AddKind } from "../state/overlays";
 
@@ -188,9 +189,18 @@ export function entranceColumn(hit: Pick<SearchHit, "kind" | "qualifiedName">): 
   return hit.kind === "http" && HTTP_METHODS.has(first) ? first : hit.kind.toUpperCase();
 }
 
-/** A definition hit's kind column: `FN` for functions, else the block kind (`METHOD`, `CLASS`). */
+/** A definition hit's kind column: `FN` for functions, `TYPE` for type declarations, else the block kind (`METHOD`, `CLASS`). */
 export function definitionColumn(kind: string): string {
-  return kind === "function" ? "FN" : kind.toUpperCase();
+  if (kind === "function") {
+    return "FN";
+  }
+  return declarationWord(kind) === undefined ? kind.toUpperCase() : "TYPE";
+}
+
+/** A definition hit's accessible name: `Function createOrder, src/orders/create.ts`, `Interface Cart, src/cart.ts`. */
+export function definitionText(hit: Pick<SearchHit, "kind" | "qualifiedName" | "path">): string {
+  const word = declarationWord(hit.kind) ?? "function";
+  return `${word.charAt(0).toUpperCase()}${word.slice(1)} ${hit.qualifiedName}, ${hit.path}`;
 }
 
 /** How far into a snippet its first match may start before the text before it is cut (the row shows ~50 characters). */

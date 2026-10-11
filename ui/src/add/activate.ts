@@ -1,17 +1,17 @@
 /**
- * What Enter does with Add's selection: an entrance or a function goes onto the current page (⌘Enter:
- * onto a new page after it); from Home it starts a new draft in the result's own project. A file opens
- * in the peek sheet; a text match opens it at its line.
+ * What Enter does with Add's selection: an entrance or a definition goes onto the current page (⌘Enter:
+ * onto a new page after it; a type declaration as a Code card); from Home it starts a new draft in the
+ * result's own project. A file opens in the peek sheet; a text match opens it at its line.
  */
 
 import { showToast } from "../components";
-import { toUnfoldError, type Key, type ProjectId, type TextMatch } from "../ipc";
+import { toUnfoldError, type Key, type ProjectId, type TextMatch, type View } from "../ipc";
 import { addBlock, addPage, getOpenBoard, newBoard, openEntrance, traceEntrance, type PageTarget } from "../state/boards";
 import { openPeek, type AddTarget } from "../state/overlays";
 
 export type AddChoice =
   | { readonly kind: "entrance"; readonly project: ProjectId; readonly key: Key }
-  | { readonly kind: "definition"; readonly project: ProjectId; readonly key: Key; readonly name: string }
+  | { readonly kind: "definition"; readonly project: ProjectId; readonly key: Key; readonly name: string; readonly view?: View }
   | { readonly kind: "file"; readonly project: ProjectId; readonly path: string }
   | {
       readonly kind: "text";
@@ -34,7 +34,7 @@ async function addToPage(choice: Extract<AddChoice, { kind: "entrance" | "defini
   if (choice.kind === "entrance") {
     await openEntrance(page, choice.project, choice.key);
   } else {
-    addBlock(page, choice.project, choice.key);
+    addBlock(page, choice.project, choice.key, choice.view);
   }
 }
 
@@ -47,7 +47,7 @@ async function addToNewDraft(choice: Extract<AddChoice, { kind: "entrance" | "de
   const board = await newBoard(choice.project, { title: choice.name });
   const page = getOpenBoard(board)?.activePage;
   if (page !== undefined) {
-    addBlock({ board, page }, choice.project, choice.key);
+    addBlock({ board, page }, choice.project, choice.key, choice.view);
   }
 }
 

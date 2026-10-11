@@ -40,6 +40,15 @@ function searchResults(name: string): SearchResults {
   return { ...results, definitions: inOrders(results.definitions), entrances: inOrders(results.entrances), files: inOrders(results.files) };
 }
 
+const CART = "src/cart.ts#interface:Cart";
+
+/** One interface among the definitions. */
+function typeResults(): SearchResults {
+  const results = searchResults("search_place");
+  const hit = { project: ORDERS, key: CART, name: "Cart", qualifiedName: "Cart", path: "src/cart.ts", kind: "interface", line: 12, application: null, score: 90, nameMatches: [0, 1, 2, 3] };
+  return { ...results, query: "cart", definitions: { hits: [hit], total: 1, truncated: false } };
+}
+
 let engine: FakeEngine;
 
 beforeEach(() => {
@@ -48,7 +57,7 @@ beforeEach(() => {
     handlers: {
       workspace: () => workspaceView([projectRow(ORDERS, "storefront-api"), projectRow(PAYMENTS, "payments")]),
       entrances: ({ project }) => (project === ORDERS ? entrances(ORDERS) : { ...entrances(PAYMENTS), applications: [] }),
-      search: ({ query }) => searchResults(query === "worker" ? "search_worker" : "search_place"),
+      search: ({ query }) => (query === "cart" ? typeResults() : searchResults(query === "worker" ? "search_worker" : "search_place")),
       preview: () => ({ ...fixture("preview", "preview_create_order"), project: ORDERS }),
       board_refs: () => ({ refs: [], truncated: false }),
       open_board: () => ({
@@ -165,6 +174,25 @@ describe("the Add box", () => {
     press("Enter");
     await waitFor(() => {
       expect(adds.newBoard).toHaveBeenCalledWith(ORDERS, { title: "place" });
+    });
+  });
+
+  it("shows a type declaration with its kind and adds it as a Code card", async () => {
+    await act(async () => {
+      await openBoard(BOARD);
+    });
+    renderWithClient(<AddBox />);
+    act(() => {
+      openAdd();
+    });
+    type("cart");
+    const row = await screen.findByRole("option", { name: "Interface Cart, src/cart.ts" });
+    expect(within(row).getByText("TYPE")).toBeTruthy();
+    expect(within(row).getByText("interface").className).toBe("add-row-type-kind");
+    expect(row.querySelector(".add-row-name")?.textContent).toBe("interface Cart");
+    press("Enter");
+    await waitFor(() => {
+      expect(adds.addBlock).toHaveBeenCalledWith({ board: BOARD, page: "page-1" }, ORDERS, CART, "code");
     });
   });
 

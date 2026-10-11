@@ -209,8 +209,8 @@ function PageStage({ target }: { readonly target: PageTarget }) {
   const onZoomOut = useCallback(() => void flow.zoomOut({ duration: 160 }), [flow]);
   const onArrange = useCallback(() => {
     const lookup = store.getState().nodeLookup;
-    const moved = arrangeBoard(target, arrows, (cardId, handle) => {
-      const bounds = lookup.get(cardId)?.internals.handleBounds?.source?.find((item) => item.id === handle);
+    const moved = arrangeBoard(target, arrows, (arrow) => {
+      const bounds = lookup.get(arrow.source)?.internals.handleBounds?.source?.find((item) => item.id === arrow.sourceHandle);
       return bounds ? bounds.y + bounds.height / 2 : undefined;
     });
     requestCardFocus(target, [], "fit");

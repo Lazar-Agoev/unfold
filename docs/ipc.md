@@ -177,8 +177,8 @@ chip carries its `seq`. Each command reads the project's committed graph in one 
 | --- | --- | --- |
 | `line_labels` | wakes | The at-rest labels of a page's arrows in one call: `lines` (≤ 500, else `invalid_args`) of `{source, seq}` → `[{source, seq, label}]` in the order asked. A label (`LineLabel`) has `inputs` (a call: one per argument, the type of the parameter it fills, else its name, else nothing, with a Python keyword argument's `keyword`; a passed reference: one per parameter of the passed callable after the ones the passed value binds itself), `inputsUnknown` (true when a passed function's bound parameters aren't proven: `inputs` is then empty and the label shows `(…)`), and an `output` (the written return type, or a constructed class's name). `label` is `null` for an external or unresolved edge, an import, or an unknown occurrence or edge. |
 | `call_contract` | wakes | The contract of one resolved call or construction (`seq` 0): `sends` (each argument with its written text and the parameter it fills or why it fills none, then the parameters no argument filled), `returns` (where the value lands, `awaited`, the return type), the callee's direct `throws`, `caught`, `calleeLines`, and `callerLine`. `not_found` for an unknown occurrence, or an edge that isn't a resolved call or construction. |
-| `type_definition` | wakes | A type declaration or class (`key`): `kind` (`interface`, `type_alias`, `enum`, `class`), name, path, line, language, its written `members`, a non-object type alias's `aliased` type, and `uses` (how many type links resolve to it). `not_found` when the key isn't a type declaration or class. |
-| `type_uses` | wakes | One page of the places a type declaration or class is written (`offset`, default 0; `limit`, default 50, at most 200, else `invalid_args`): `total` and `places`, each with its `owner` (the definition the annotation belongs to), the owner's `label`, `path`, and `line`, by path and position. `not_found` as for `type_definition`. |
+| `type_definition` | wakes | A type declaration or class (`key`): `kind` (`interface`, `type_alias`, `enum`, `class`), name, path, line, language, its written `members`, the members it `inherited` (one group per base it extends, depth first in written order, each type once, at most 8 levels down: `from`, the base's name as a `TypeText` whose one span carries its key, module, or reason, and the base's `members`, none for a base without a declaration), a non-object type alias's `aliased` type, and `uses` (how many type links resolve to it, heritage clauses included). `not_found` when the key isn't a type declaration or class. |
+| `type_uses` | wakes | One page of the places a type declaration or class is written (`offset`, default 0; `limit`, default 50, at most 200, else `invalid_args`): `total` and `places`, each with its `owner` (the definition the annotation belongs to), the owner's `label`, `path`, `line`, and, for a heritage clause, `heritage` (`extends` or `implements`), by path and position. `not_found` as for `type_definition`. |
 
 Written types travel as `TypeText`: the text and one span per type name in it, in UTF-16 offsets
 relative to the text, with a `style` (`declared` with its `target`, `external` with its `module`,
@@ -194,7 +194,7 @@ and its files are the indexed files that graph lists.
 
 | Command | L | Does |
 | --- | --- | --- |
-| `search` | rests | Definitions, entrances, and files by name. Definitions and entrances are FTS5 candidates (every word of the query is a substring of the name, qualified name, or path) ranked by `nucleo`'s fuzzy score (the name counts most, then the qualified name, then the path); files are a live project's files under discovery's ignore rules, fuzzy-matched on their path. Projects are searched in parallel and merged by score, then workspace order, then shorter name, then key. `kinds` narrows it (`["files"]` serves ⌘P and `["definitions"]` ⌘T); `limit` is per kind across all projects (default 50, at most 500). Each group reports its total (capped at 2,000 per kind per project), and the result has per-project totals. An entrance hit names its application; a file hit, its definition count. Match offsets for highlighting are UTF-16. |
+| `search` | rests | Definitions (functions, methods, classes, and type declarations: interfaces, type aliases, enums), entrances, and files by name. Definitions and entrances are FTS5 candidates (every word of the query is a substring of the name, qualified name, or path) ranked by `nucleo`'s fuzzy score (the name counts most, then the qualified name, then the path); files are a live project's files under discovery's ignore rules, fuzzy-matched on their path. Projects are searched in parallel and merged by score, then workspace order, then shorter name, then key. `kinds` narrows it (`["files"]` serves ⌘P and `["definitions"]` ⌘T), and `definitionKinds` narrows definitions to block kinds (`["interface", "type_alias", "enum", "class"]` finds types; an unknown kind is `invalid_args`); `limit` is per kind across all projects (default 50, at most 500). A hit's `kind` is a definition's block kind or an entrance's kind. Each group reports its total (capped at 2,000 per kind per project), and the result has per-project totals. An entrance hit names its application; a file hit, its definition count. Match offsets for highlighting are UTF-16. |
 | `search_text` | rests | Text or regex (`regex`, `caseSensitive`, `wholeWord`) across the same file lists, never `.unfold/`, skipping binary files and files over 16 MiB. Streams one `TextSearchFile` per file, projects in workspace order and files **in path order** within each (each line with its number, text, and UTF-16 match ranges; a very long line is a window around its first match), stops after 2,000 matches in all (`truncated`), and is cancellable. The summary has per-project counts. |
 
 ### Boards
@@ -212,19 +212,21 @@ A board is open in **one window at a time** ([U-37](decisions-and-tradeoffs.md#u
 `open_board` and `new_board` claim it for the calling window, `move_board` transfers the claim,
 `close_board` and `delete_board` release it, and `detachWindow` releases all of a window's claims.
 Every other command on one board checks that the calling window holds it and fails with `board_held`
-(another window has it) or `board_not_held`. Folder operations and `set_board_folder` work on any
-board, held or not: the folder is Rust-owned metadata, never part of what a window saves.
+(another window has it) or `board_not_held`, except `read_board`, which reads any board without
+claiming it. Folder operations and `set_board_folder` work on any board, held or not: the folder is
+Rust-owned metadata, never part of what a window saves.
 
 | Command | L | Does |
 | --- | --- | --- |
 | `list_boards` | rests | A project's boards and its empty folders: for each board its place, name, title, folder, page and card counts, the other projects its cards come from, its unpublished changes (`changes`, 0 for none), when its working file changed, the window holding it, a health `label` only when something is wrong (`1 missing · 2 outdated`; `null` for a resting project, whose health needs a current graph), and `error` when the file can't be read (≤ 2,000). |
 | `board_thumbnails` | rests | What Home's thumbnails draw for up to 60 boards: the first page's cards (≤ 200: position, kind, view, folded, line count, and whether the card is from another project), the graph links between same-project cards, and the drawn links. The UI turns cards into rectangles with the canvas's own sizing rules. |
+| `read_board` | rests | A board as its working file holds it (the draft, the changes copy, or the published file), with the file's revision, its publish state as `open_board` reports it (`null` for a draft), and the window holding it (`heldBy`, or `null`). It claims nothing and doesn't wake the project: it only reads files. `invalid_args` for an id that isn't a board id, `not_found` when the file doesn't exist, `board_invalid` when it can't be read. |
 | `open_board` | wakes | Claims the board for the calling window and returns it (`status: "opened"`) with its revision, publish state (`published`: the published revision, `changes`, and `baseChanged`), health, page outlines, and view state; records a recent board. If another window holds it, returns `status: "held"` with `heldBy`, and the UI asks the main process to focus that window. |
 | `new_board` | wakes | Creates an empty draft with one page (`page-1`; "Untitled board", "Page 1" unless named), optionally in a folder, claims it, and returns it; records a recent board. `not_compiled` before the first Compile (drafts live in `local/`). |
 | `reload_board` | wakes | Reads the board's working file again (after `board_conflict`) and returns it. |
 | `close_board` | — | Releases the claim. Save first: unsaved edits live in the window. |
 | `move_board` | — | Hands the claim to another window (Open in new window). |
-| `save_board` | wakes | Validates the edit against the graph of each card's project (no new missing references, broken groups, held references, or broken links), signs new descriptions, labels, and link labels from verified source, writes the working file atomically, and returns the board as saved. Drafts autosave here; a published board's first edit creates its unpublished-changes copy (its id doesn't change), and an edit that makes it equal to the published version deletes the copy. A card that names the board's own project in `ref.project` is `invalid_args`. Refused with `board_conflict` when the working file changed on disk since the window loaded it, unless `force: true`. |
+| `save_board` | wakes | Validates the edit's shape and the references between each page's items (`board_invalid`), then against the graph of each card's project (no new missing references, broken groups, held references, or broken links), signs new descriptions, labels, and link labels from verified source, carries frames, resource cards, connections, and notes through as sent, writes the working file atomically, and returns the board as saved. Drafts autosave here; a published board's first edit creates its unpublished-changes copy (its id doesn't change), and an edit that makes it equal to the published version deletes the copy. An item that names the board's own project (a card's `ref.project`, a resource's or anchor's `project`, a link's `carriesProject`) is `invalid_args`. Refused with `board_conflict` when the working file changed on disk since the window loaded it, unless `force: true`. |
 | `save_board_view` | wakes | Remembers the board's active page and each page's camera and lens in the project's `state.json`. |
 | `board_health` | wakes | The board's health per page (missing, outdated, broken groups, to review, not connected, broken links; each item with its repairs) and each page's outline (cards in follow order; Flow nodes still showing code names). |
 | `repair_board` | wakes | Applies one repair a health item offers, on one page (`reconnect`, `remove_card`, `remove_label`, `ungroup`, `remove_link`, `remove_description`, `resign`, `accept`), and saves. |
@@ -286,11 +288,18 @@ The main process handles the window and dialog commands (`window.unfold.window(c
 | `transfer_board_state` | Hands a board's window-side state (its unsaved version and undo history) to another window, which gets `board_state_transferred` |
 | `copy_to_clipboard` | Writes text to the clipboard (windows have no clipboard permission) |
 | `window_info` | The calling window's id, stable key, and platform |
+| `report_view` | The window's view for agents: `{board?, page?, selection, lens?, visible, tabs}`; the main process keeps the last one per window |
+| `agent_edit_result` | `{requestId, result}`: the answer to an `agent_edit` (`{ok: true, page, board, items, warnings}` or `{ok: false, code, message}`) |
+| `agent_read_result` | `{requestId, result}`: the answer to an `agent_read` (`{ok: true, page, board}` or a refusal) |
+| `agent_open_board_result` | `{requestId, result}`: the answer to an `agent_open_board` (`{ok: true}`, or a refusal with `heldBy`) |
 
 `window.unfold.addDroppedFolder(file)` adds a folder dropped on the window as a project. Shell events
 arrive through `window.unfold.on` like engine events: `menu_command` (an application-menu item the
-window runs as an action), `board_state_transferred`, `focus_board`, `project_added` (select it), and
-`project_add_failed` (say why).
+window runs as an action), `board_state_transferred`, `focus_board`, `project_added` (select it),
+`project_add_failed` (say why), and the agent channel's `agent_edit`, `agent_read`,
+`agent_open_board`, and `agent_finish` (`desktop/src/shared/agent-api.ts`; how they travel is in
+[desktop/README.md](../desktop/README.md#the-agent-bridge), what the window does with them in
+[the UI shell](ui-shell.md#agents-in-the-window)).
 
 ## Events
 

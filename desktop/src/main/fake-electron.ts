@@ -80,6 +80,7 @@ export class FakeBrowserWindow {
   }
   focus(): void {
     FakeBrowserWindow.focused = this;
+    this.emit("focus");
   }
   close(): void {
     this.emit("close");

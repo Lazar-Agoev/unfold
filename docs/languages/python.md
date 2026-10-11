@@ -286,10 +286,18 @@ names bound to a PEP 695 type parameter of an enclosing `def`, `class`, or `type
 (`def first[T](items: list[T]) -> T`), which extraction decides lexically: the nearest scope that writes
 the name, by Python's lookup rules, is a type-parameter scope.
 
+A class's positional bases are type names too, each an `extends` link: a base written as a name or
+member chain (`OrderDraft`, `models.Base`) is one, and so is the value of a subscript base (`Generic` in
+`Generic[T]`, `Base` in `Base[int]`), whose slice holds ordinary type names as in an annotation (`T`,
+here an unresolved `not_concrete` variable). Keyword arguments (`metaclass=Meta`, `total=False`,
+`frozen=True`), starred bases, and bases of any other form (`make_base()`) record nothing. So
+`class Order(OrderDraft, Generic[T])` links `OrderDraft` and `Generic` as bases and `T` as a plain name.
+
 Each type name carries a binder expression (a name or member chain; for a string, one synthesized from
 its dotted name) evaluated where Python evaluates the annotation: a `def`'s annotations in its
 type-parameter scope or else the enclosing scope (so a method's annotations see its class body), an
-annotated assignment's in its own scope (a class member's in the class body). The payload's `types`
+annotated assignment's in its own scope (a class member's in the class body), a class's bases where its
+arguments are (its type-parameter scope, so `class Box[U](Base[U])` links no `U`). The payload's `types`
 table holds these expressions, aligned with the file's type-reference facts.
 
 ### Type resolution
@@ -379,8 +387,8 @@ as code.
 
 ## Payload
 
-The private per-file payload (postcard, versioned by `PAYLOAD_VERSION`, currently 5, which the producer
-version `…+payload.5` and so the facts-cache key include) holds the census, the written form of every runtime import (module,
+The private per-file payload (postcard, versioned by `PAYLOAD_VERSION`, currently 6, which the producer
+version `…+payload.6` and so the facts-cache key include) holds the census, the written form of every runtime import (module,
 `as` names, level; for a child candidate its `from` import, name, and declaration), aligned with the
 file's import facts, and the binder's facts (`bind::ir::BindFacts`):
 

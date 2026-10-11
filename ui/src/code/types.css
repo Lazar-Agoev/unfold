@@ -104,6 +104,17 @@
 .type-def-readonly { opacity: 0.6; }
 
 .type-def-value { color: var(--color-text); white-space: pre-wrap; }
+
+/* "from OrderDraft" over the members inherited from a base: a quiet sub-heading across both columns. */
+.type-def-from {
+  grid-column: 1 / -1;
+  padding: 6px 0 2px;
+  font: 11px/14px var(--font-ui);
+  color: var(--color-muted);
+}
+
+.type-def-from .type-text { font: 11px/14px var(--font-code); }
+.type-def-from-note { color: var(--color-muted); }
 .type-def-nested { grid-column: 1 / -1; padding: 2px 0 4px 12px; }
 
 .type-def-actions {

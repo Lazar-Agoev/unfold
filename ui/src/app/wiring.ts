@@ -1,12 +1,13 @@
 /**
  * Window-wide wiring: the shortcut dispatcher and menu commands, the saved theme and key bindings, cache
- * invalidation and the board and compile event handlers, the window's session (restore, saving, engine
- * restarts), a toast for actions that fail, `project_added` and `project_add_failed`, and the project Home
- * shows at first.
+ * invalidation and the board and compile event handlers, the view reports agents default to, the window's
+ * session (restore, saving, engine restarts), a toast for actions that fail, `project_added` and
+ * `project_add_failed`, and the project Home shows at first.
  */
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
+import { installViewReports } from "../agent";
 import { showToast } from "../components";
 import { installEngineInvalidation, onShellEvent, type ProjectId } from "../ipc";
 import { setActionErrorHandler, useMenuCommands, useShortcutDispatcher } from "../keyboard";
@@ -29,6 +30,7 @@ export function useWindowWiring(): void {
   useEffect(() => installEngineInvalidation(client), [client]);
   useEffect(() => installBoardEvents(), []);
   useEffect(() => installCompileEvents(), []);
+  useEffect(() => installViewReports(), []);
 
   useEffect(() => {
     setActionErrorHandler((error, action) => {

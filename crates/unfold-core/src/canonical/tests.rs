@@ -223,6 +223,38 @@ fn typed_records_round_trip_to_identical_bytes() {
 }
 
 #[test]
+fn heritage_links_round_trip_and_reject_unknown_values() {
+    let good = to_string(&crate::testkit::sample::typed().build());
+    let plain = r#""target":"src/cart.ts#type_alias:CartId"}"#;
+    let text = good.replacen(
+        plain,
+        r#""target":"src/cart.ts#type_alias:CartId","heritage":"extends"}"#,
+        1,
+    );
+    let parsed = read(&text).unwrap();
+    let cart = parsed.file("src/cart.ts").unwrap();
+    let link = &cart.types.type_links[0];
+    assert_eq!(link.heritage, Some(crate::vocab::Heritage::Extends));
+    assert_eq!(to_string(&parsed), text);
+
+    let unknown = good.replacen(
+        plain,
+        r#""target":"src/cart.ts#type_alias:CartId","heritage":"mixes"}"#,
+        1,
+    );
+    assert_eq!(error(&unknown).message, "unknown heritage `mixes`");
+    let misplaced = good.replacen(
+        r#""text":"./cart","resolution":"resolved"}"#,
+        r#""text":"./cart","resolution":"resolved","heritage":"extends"}"#,
+        1,
+    );
+    assert_eq!(
+        error(&misplaced).message,
+        "field `heritage` is not allowed on a `edge` record"
+    );
+}
+
+#[test]
 fn typed_records_follow_edges_in_their_file() {
     let text = to_string(&crate::testkit::sample::typed().build());
     let lines: Vec<&str> = text.lines().collect();

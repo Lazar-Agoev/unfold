@@ -1,10 +1,11 @@
 /**
- * Context menus on the canvas: a card's (Open source, Show callers, Draw link…, Add as entrance…,
- * Fold or Unfold card, Remove from page) and a group rail's (Collapse, Describe, Ungroup). Each page
- * choice is one board edit, so ⌘Z undoes it.
+ * Context menus on the canvas: a card's (Open source, Show callers, Draw link…, Add as entrance…, Copy
+ * link, Fold or Unfold card, Remove from page) and a group rail's (Collapse, Describe, Copy link,
+ * Ungroup). Each page choice is one board edit, so ⌘Z undoes it.
  */
 
 import type { MouseEvent, ReactNode } from "react";
+import { copyLink } from "../../agent";
 import { useContextMenu, type MenuEntry } from "../../components";
 import type { ProjectId } from "../../ipc/generated";
 import { requestFocus } from "../../keyboard";
@@ -90,6 +91,7 @@ export function useCardMenu(
           } satisfies MenuEntry,
         ]
       : []),
+    { id: "copy-link", label: "Copy link", onSelect: () => void copyLink(target, cardId) },
     { kind: "separator", id: "s1" },
     {
       id: "fold",
@@ -132,6 +134,7 @@ export function useCardMenu(
           showInSelected(`selected.group:${groupId}`);
         },
       },
+      { id: "copy-link", label: "Copy link", onSelect: () => void copyLink(target, groupId) },
       { kind: "separator", id: "s1" },
       {
         id: "ungroup",

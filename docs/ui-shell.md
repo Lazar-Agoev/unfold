@@ -21,6 +21,7 @@ ui/src/
                  layout and sizing, Arrange, Show callers
   code/ flow/    the Code and Flow renderers
   add/           Add: the map, search across projects, the preview, commands
+  agent/         agents apart from any one board: the agent mark and bylines, Copy link, view reports
   peek/          the source peek sheet
   settings/      project settings, the entrance editor, Copy Diagnostics
   preferences/   Preferences, with the keyboard section
@@ -29,7 +30,8 @@ ui/src/
   ipc/           the typed client, queries and invalidation, streams; generated/ (never edited)
   keyboard/      the action registry, keymap, dispatcher, bindings, command scopes, menu commands
   state/         per-window stores: workspace, window, tabs, layout, overlays, compile, author,
-                 session, actions, and boards/ (open board sessions)
+                 session, actions, and boards/ (open board sessions, and agents' edits of them in
+                 boards/agent/)
   components/    the shared kit
   icons/         the 16px icon set and the project-state glyphs
   lib/           pure helpers: formatting, entrance and file text
@@ -70,21 +72,26 @@ App
   sidebar ends with Add project and the Preferences gear; a board's sidebar has no footer.
 - **The board sidebar** has the board header (back to Home, the project and folder, the title, which renames in
   place on double-click, and the board menu), **Pages** (each page with a review mark; a page's menu has Rename,
-  Duplicate page, Move up, Move down, and Delete page…), **On this page** (the cards in follow order indented by
+  Duplicate page, Copy link, Move up, Move down, and Delete page…), **On this page** (the cards in follow order indented by
   call depth, their groups, and drawn links after their `from` card; a project-initial column only when the page
   holds cards from more than one project; "N Flow steps unlabeled · Label them"), and **Selected**, which takes at
   most half the sidebar's height, scrolls, and collapses.
 - **Selected** follows the page's selection. A card: its name, location, description, Called by and Reached from (up
   to three each, then "N more · Show callers"), the calls not on the page (up to five, each with **+ Open**), and its
   groups; an entrance card lists its handlers. A Flow node: its label, the code name it replaces, and its paths. A
-  group: its title, description, and Ungroup. A drawn link: its label, Edit label, and Remove link. Bylines show the
-  author only, because authored text carries no time.
-- **The canvas** has the top bar (the page title and publish state, the lens centered, Share and Publish) and the
-  dock, both floating ([Overlays](#overlays)). Its context menu has Fit, Fold all cards, and Unfold all cards; a
-  card's has Open source, Show callers, Draw link…, Add as entrance… (for blocks that can be handlers), and Remove
-  from page; a group's has Describe group… and Ungroup; a link's has Edit label and Remove link. A card that needs
-  review shows a banner whose **Review** opens a popover of its problems, each repair with its effect and Apply (saved
-  at once, undoable).
+  group ("Step group in" its card): its title, description, and Ungroup. A drawn link: its label, Edit label, and
+  Remove link. Bylines show the author only, because authored text carries no time; an agent's read "Claude · agent"
+  with the agent mark, and a group shows who titled it ([Agents in the window](#agents-in-the-window)).
+- **The canvas** has the top bar (the page title and publish state, "Claude is working…" while an agent works on the
+  page, the lens centered, Share and Publish) and the dock, both floating ([Overlays](#overlays)). Its context menu has Fit, Fold all cards, and Unfold all cards; a
+  card's has Open source, Show callers, Draw link…, Add as entrance… (for blocks that can be handlers), Copy link,
+  and Remove from page; a group's has Collapse or Expand group, Describe group…, Copy link, and Ungroup; a link's has
+  Edit label, Copy link, and Remove link. A card that needs review shows a banner whose **Review** opens a popover of its problems, each repair with its
+  effect and Apply (saved at once, undoable).
+- **Groups in both views.** In Code a group is the magenta rail; in Flow it is a step group, a titled magenta region
+  around its steps or, collapsed, one step ([reader: step groups](reader.md#step-groups)). Either view's chevron sets
+  the group's one `collapsed` field (one undo step), so it folds in both. In Flow, the region's title or the collapsed
+  step selects the group, and right-click (or Shift+F10 on the chevron) opens its menu.
 
 ## State
 
@@ -99,6 +106,7 @@ Each window is its own renderer with its own stores. Nothing is shared between w
 | `state/overlays.ts` | Zustand | The open Add request, the peek target, the open dialog | Not saved |
 | `state/boards/` | Zustand with Immer | Open board sessions | `save_board` (the document), `save_board_view` (the view) |
 | `state/compile.ts` | Zustand | Each project's running Compile and its progress | Not saved |
+| `state/boards/agent/working.ts` | Zustand | Agents' working marks: per board and agent, the items changed on each page | Not saved |
 | Everything else from Rust | TanStack Query | [Data from the engine](#data-from-the-engine) | — |
 
 - **Projects and names.** `state/workspace.ts` indexes the rows by id and by shared name (the first row in
@@ -115,7 +123,8 @@ Each window is its own renderer with its own stores. Nothing is shared between w
   drawing, and the types opened in a selected line's contract).
   - Every edit is one undo step of the board, whichever page it changed; bursts with the same coalescing key within
     1.2 s merge; at most 200 steps; undo and redo show the page they change. Reloads, discards, and repairs are
-    undo steps too.
+    undo steps too. An agent's edit is one step named for the agent and the tool ("Claude · Add cards"), saved at
+    once ([Agents in the window](#agents-in-the-window)).
   - The board saves itself 600 ms after the last edit, never with two saves in flight. `save_board` sends `{title,
     pages}` only: Rust owns the folder, the other projects, and the file's framing. A save keeps the identities of
     untouched cards, so they don't render again.
@@ -138,7 +147,7 @@ Each window is its own renderer with its own stores. Nothing is shared between w
 - **The session** (`state/session.ts`):
   - **Restore**, at launch or reload: `window_state {key}`, then the layout, the Home selection, the board tabs
     reopened on their pages (a board that can't be opened, or is held elsewhere, loses its tab), and the active tab.
-    Only then are boards moved here from another window adopted.
+    Only then are boards moved here from another window adopted, and agents' requests answered.
   - **Save:** `save_window_state` 400 ms after the selection, the tabs, a board's active page, or the layout
     changes, and at once when the page goes away (`pagehide` also sends every dirty board and pending view).
   - **Engine restart:** a toast ("Reconnecting to the engine…") while the engine host is away. Once it is back:
@@ -218,7 +227,9 @@ The screens follow [architecture §11](architecture.md#11-the-desktop-app). Deta
   opening a type grows it downward, and widens it to fit the definition (316px to 480px). A `declared` type in
   it (`code/TypeText.tsx`) opens its definition under its row (`code/TypeDefinition.tsx`, `type_definition`),
   whose members' types line up in one column after the widest name (`readonly` a quiet prefix) and open
-  nested up to four deep; "Peek source" opens the peek sheet at the declaration, and "Used in N places" a
+  nested up to four deep. The members it inherits follow in the same grid, under a quiet "from <Type>" for
+  each base (`--color-muted`, UI type; a base with no declaration adds its module or reason after a `·`);
+  "Peek source" opens the peek sheet at the declaration, and "Used in N places" a
   popover of `type_uses`, each opening the peek sheet at its line. Which types are open is page view state: never saved, never an undo
   step, and cleared when the selection leaves the line. Escape (`board.closeLine`, ahead of the peek sheet's)
   or a click on the canvas closes the contract. While a line is selected, an unfolded Code callee card tints
@@ -235,8 +246,11 @@ The screens follow [architecture §11](architecture.md#11-the-desktop-app). Deta
   it). Before typing, the map shows 12 entrances per application, then "+N more"; hovering an entrance for 300 ms
   shows its preview and the first other board page it is on. In command mode, `>` lists every enabled action under
   its group, or, with a query, ranked by title prefix, word start, substring, every word, then letters in order.
+  Functions lists every definition: a type declaration reads with its kind before its name (`interface Cart`,
+  the kind in `--color-contour`) and `TYPE` in the kind column, and is added as a Code card.
 - **The peek sheet** (`peek/`) loads the file in pages of 200 lines as they scroll into view. Definitions (functions,
-  classes, methods, constructors, accessors) get `⊕`, the on-page mark, and a fold chevron; folds start open. Its
+  classes, methods, constructors, accessors, interfaces, type aliases, enums) get `⊕`, the on-page mark, and a fold
+  chevron; folds start open. A type declaration's `⊕` adds it as a Code card. Its
   keys: Escape closes (`peek.close`, not while typing) and ⇧⌘O opens the file in your editor (`peek.openInEditor`).
 - **Project settings** (`settings/`) is an 880 × 700 dialog over the window: General (the name, staged; background
   updates, applied at once; where the graph is stored), Scope (the tree loads one level at a time from `scope_dir`;
@@ -256,6 +270,65 @@ The screens follow [architecture §11](architecture.md#11-the-desktop-app). Deta
 - **Toasts** sit at the bottom right, newest at the bottom, at most four; information hides after 5 s, errors after
   8 s, and the engine toast stays until the window has reconnected. While a dialog is open, the stack rises just
   above the dialog's footer when it would otherwise cover its buttons.
+
+## Agents in the window
+
+The main process routes an agent's requests to the window that holds the board, or opens the board in a
+background tab first ([desktop/README.md](../desktop/README.md#the-agent-bridge)); the requests and answers are
+typed in `desktop/src/shared/agent-api.ts`. The window owns placement, the document's rules, and the refusal texts;
+the main process owns argument parsing, links, defaults, and page revisions.
+
+- **Agent edits** (`state/boards/agent/`). For `agent_edit`, the window loads what the operations read (card
+  models through the query cache, `relations` and `callers` for following calls), then applies them to the session's
+  working document with the pure edits of `document.ts`, signing every new or changed text with the agent's identity
+  (`agent:claude`). `saveStep` saves at once: the board's unsaved edits first, then the change, never two saves in
+  flight. The change becomes one undo step, named "<agent> · <title>", only once the engine accepts it, so a refused
+  edit leaves the board as it was and answers `{ok: false, code, message}` with the engine's code; edits the person
+  made while it saved stay on top (the operations apply again over them, and they autosave). The answer is the page
+  as saved, the board's title, publish state, and file revision, what each operation did (each item's id, name,
+  and status: created, updated, kept, or removed), and warnings. Nothing applies when one operation is refused.
+- **Operations.**
+
+  | Operation | Does |
+  | --- | --- |
+  | `add_cards` | Adds a block or an entrance by key (from any connected project), or keeps the card already there (its view changes when asked). A new card goes beside the item it is `near`, else right of a card that calls it, level with the calling line, else left of a card it calls, else right of everything; it never covers a card. `follow` adds what it calls (up to 3 levels) and what calls it (up to 2), resolved calls and constructions only, at most 40 cards per card; each card's result lists where following stopped: an external or unresolved call (as written, with its line and library or reason), resolved calls past the depth asked for, or callers past the 20 listed |
+  | `set_view` | A card's view (Diagram, Flow, or Code) and fold, a step group's collapse, and the page's default view |
+  | `arrange` | Arrange by call depth, then moves: a position, or right of or below another card (moved clear of the rest) |
+  | `remove_items` | Cards (with their step groups and the links that end at them), step groups, and links |
+  | `group_steps` | Step groups of one card by line range or step keys, created or updated by id, under the gutter's rule (`groupSelection`): whole statements of one branch, never overlapping another group. The result names the statements each group took; a warning says when a range took more lines than asked; a refusal says why a range breaks the rule and lists the statements there |
+  | `describe` | Descriptions of cards and step groups, and labels of links |
+  | `label_steps` | Flow labels of a card's steps (keys of its Flow model) |
+
+  Sizes come from what the canvas measured, else from the cards' models (`estimatedBlockSize`), and calling lines
+  from the Code rows (`estimatedLineOffset`), so placement and Arrange work on a page no one has shown.
+- **People's words are safe.** No operation replaces or removes a person's description, label, or group title or
+  description unless the call sets `replacePeopleText` (`people_text` otherwise); a group title without an author
+  counts as a person's. Text an agent writes again unchanged is kept, whoever wrote it.
+- **Reads and background tabs.** `agent_read` answers with the page as the window holds it (unsaved edits included),
+  the board's title, publish state, and file revision, and whether it has unsaved edits. `agent_open_board` opens a
+  board with `openBoard(ref, {background: true})`: its tab is added without switching to it, a board open here keeps
+  its page, and a window that holds the board is left alone (the answer names it). The channel is installed before
+  the window renders, and requests wait until the window's own state is restored.
+- **Working marks** (`state/boards/agent/working.ts`): while an agent works on a page, the top bar says "Claude is
+  working…" (the agent glyph and muted text; "Claude and Codex are working…"), the cards it changed (a group's or a
+  label's card too) have a soft outline (`--color-authored-line`, 2px, 3px off the card), and the links it labeled a
+  soft band (`--color-authored-tint`). `agent_finish` clears that agent's marks on the board and toasts "Claude ·
+  <summary>". Session state only: never saved, never an undo step, and dropped when the board leaves the window.
+- **The agent mark** (`agent/AgentMark.tsx`): the `agent` glyph (a 10px spark) and the word "agent", in the color of
+  the text around it. `authorName` reads an agent as "Codex · agent" in plain text; `<Author>` draws "Claude · agent"
+  with the mark in Selected's bylines (descriptions, Flow labels, a link's "drawn by", a group's "titled by") and on a
+  placeholder card. On the canvas, an agent's card description carries the mark (titled "Written by Claude, an
+  agent"), and an agent's link label chip shows its name and the mark. Editing an agent's text makes it yours: the
+  edit signs it with your name, and a group's new title is its writer's.
+- **View reports** (`agent/viewReport.ts`): `report_view` 150 ms after the tabs or a board session change (only when
+  the report differs from the last), at once when the window gains focus, and after a resize: the active board and
+  page (none on Home), the selection (a card, a step: a card's Flow node or statement, a group, a link, or a line
+  with its occurrence), the lens (the page's, else its default view), the ids in view (cards whose rectangle meets
+  the canvas's visible area, all of them before the canvas has a camera; their groups; links with an end in view),
+  and the board tabs.
+- **Copy link** (pages, cards, step groups, and links): copies `unfold://<project's shared name>/<board id>?page=<page
+  id>&item=<item id>` (each part URI-encoded) with `copy_to_clipboard`, and toasts "Copied the link". Only the main
+  process reads links; clicking one opens nothing.
 
 ## Overlays
 

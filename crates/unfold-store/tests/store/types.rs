@@ -1,8 +1,8 @@
 //! Typed records: they round-trip through a commit, are replaced only when they change, and the
 //! reverse index of type links answers "used in N places".
 
-use unfold_core::testkit::sample::typed;
-use unfold_core::vocab::{PairingReason, Resolution};
+use unfold_core::testkit::sample::{heritage, typed};
+use unfold_core::vocab::{Heritage, PairingReason, Resolution};
 use unfold_core::{Graph, Pairing};
 
 use crate::common::{Prepared, dump, temp_store};
@@ -67,6 +67,26 @@ fn the_reverse_index_counts_and_lists_uses() {
             .unwrap()
             .is_empty()
     );
+}
+
+#[test]
+fn heritage_links_round_trip_and_say_so_in_the_reverse_index() {
+    let (_dir, mut store) = temp_store();
+    let prepared = Prepared::new(heritage().build());
+    store.writer.commit(&prepared.first_compile()).unwrap();
+    let reader = store.readers.get().unwrap();
+    assert_eq!(reader.graph().unwrap(), prepared.graph);
+    let shop = reader.file_graph("src/shop.ts").unwrap().unwrap();
+    let heritage: Vec<_> = shop.types.type_links.iter().map(|link| link.heritage).collect();
+    assert_eq!(heritage, [Some(Heritage::Extends), Some(Heritage::Implements)]);
+    let uses = reader.type_uses("src/shop.ts#interface:Order", 0, 10).unwrap();
+    let places: Vec<(&str, Option<Heritage>)> = uses
+        .iter()
+        .map(|place| (place.block.key.as_str(), place.heritage))
+        .collect();
+    assert_eq!(places, [("src/shop.ts#class:Shop", Some(Heritage::Implements))]);
+    let uses = reader.type_uses("src/cart.ts#interface:Cart", 0, 10).unwrap();
+    assert!(uses.iter().all(|place| place.heritage.is_none()));
 }
 
 #[test]

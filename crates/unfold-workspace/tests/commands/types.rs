@@ -610,3 +610,131 @@ fn a_passed_callable_shows_what_it_takes_after_what_it_binds() {
     assert_eq!(found[0]["inputs"], json!([]));
     assert_eq!(found[0]["inputsUnknown"], true);
 }
+
+/// Each group of `definition`'s inherited fields as (its base's text, its first span's style,
+/// its members' names).
+fn inherited(definition: &Value) -> Vec<(String, String, Vec<String>)> {
+    definition["inherited"]
+        .as_array()
+        .expect("inherited")
+        .iter()
+        .map(|group| {
+            let names = group["members"]
+                .as_array()
+                .expect("members")
+                .iter()
+                .filter_map(|member| member["name"].as_str().map(str::to_owned))
+                .collect();
+            (
+                group["from"]["text"].as_str().expect("text").to_owned(),
+                group["from"]["spans"][0]["style"]
+                    .as_str()
+                    .expect("style")
+                    .to_owned(),
+                names,
+            )
+        })
+        .collect()
+}
+
+fn group(from: &str, style: &str, members: &[&str]) -> (String, String, Vec<String>) {
+    (
+        from.to_owned(),
+        style.to_owned(),
+        members.iter().map(|&member| member.to_owned()).collect(),
+    )
+}
+
+#[test]
+fn a_type_lists_the_fields_it_inherits_by_base() {
+    let harness = Harness::compiled_fixture("typed-lines");
+    let definition = |key: &str| {
+        harness.ok(
+            1,
+            "type_definition",
+            json!({ "project": harness.project, "key": key }),
+        )
+    };
+
+    // Depth first in written order; `Timestamped` once, though `Tracked` extends it too.
+    let order = definition("ts/src/orders/model.ts#interface:Order");
+    assert_eq!(
+        inherited(&order),
+        [
+            group("OrderDraft", "declared", &["customerId", "email", "items"]),
+            group("Timestamped", "declared", &["createdAt"]),
+            group("Tracked", "declared", &["updatedAt"]),
+        ]
+    );
+    assert_eq!(
+        order["inherited"][0]["from"]["spans"][0]["target"],
+        "ts/src/orders/model.ts#interface:OrderDraft"
+    );
+    assert_eq!(order["inherited"][0]["members"][2]["type"]["text"], "CartItem[]");
+    // A merged base has no one declaration; a library's base has no members here.
+    let shipment = definition("ts/src/orders/model.ts#interface:Shipment");
+    assert_eq!(
+        inherited(&shipment),
+        [
+            group("Address", "unresolved", &[]),
+            group("Stripe.MetadataParam", "external", &[]),
+        ]
+    );
+    assert_eq!(
+        shipment["inherited"][0]["from"]["spans"][0]["note"],
+        "ambiguous target"
+    );
+    assert_eq!(shipment["inherited"][1]["from"]["spans"][0]["module"], "stripe");
+    // A class inherits what it extends, not what it implements; a cycle stops.
+    let record = definition("ts/src/orders/model.ts#class:OrderRecord");
+    assert_eq!(inherited(&record), [group("Entity", "declared", &["id"])]);
+    let looped = definition("ts/src/orders/cycle.ts#interface:Loop");
+    assert_eq!(inherited(&looped), [group("Knot", "declared", &["knot"])]);
+
+    // Python: a dataclass chain, and a pydantic chain ending in its library.
+    let order = definition("py/src/shop/accounts.py#class:Order");
+    assert_eq!(
+        inherited(&order),
+        [
+            group("OrderDraft", "declared", &["customer_id", "items"]),
+            group("Timestamped", "declared", &["created_at"]),
+            group("Generic", "builtin", &[]),
+        ]
+    );
+    let gold = definition("py/src/shop/accounts.py#class:GoldMember");
+    assert_eq!(
+        inherited(&gold),
+        [
+            group("Member", "declared", &["tier"]),
+            group("Profile", "declared", &["email"]),
+            group("BaseModel", "external", &[]),
+        ]
+    );
+    // Heritage clauses are places a type is used, and say so.
+    let timestamped = "ts/src/orders/model.ts#interface:Timestamped";
+    assert_eq!(definition(timestamped)["uses"], 2);
+    let uses = harness.ok(
+        1,
+        "type_uses",
+        json!({ "project": harness.project, "key": timestamped }),
+    );
+    let places: Vec<(&Value, &Value)> = uses["places"]
+        .as_array()
+        .expect("places")
+        .iter()
+        .map(|place| (&place["label"], &place["heritage"]))
+        .collect();
+    assert_eq!(
+        places,
+        [
+            (&json!("Tracked"), &json!("extends")),
+            (&json!("Order"), &json!("extends"))
+        ]
+    );
+    let implemented = harness.ok(
+        1,
+        "type_uses",
+        json!({ "project": harness.project, "key": "ts/src/orders/model.ts#interface:Auditable" }),
+    );
+    assert_eq!(implemented["places"][0]["heritage"], "implements");
+}

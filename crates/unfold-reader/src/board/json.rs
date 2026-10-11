@@ -1,8 +1,10 @@
 //! Deterministic board serialization: object keys sorted by UTF-16 code units, two-space
 //! indentation, numbers and string escapes exactly as JavaScript's `JSON.stringify(value, null,
-//! 2)` writes them, and a final newline. Pages keep their order; cards, groups, and links are
-//! sorted by id; labels and guards by (`project` or `""`, `key`); `projects` is the sorted set
-//! the cards name. One board has exactly one serialization, so a file written by Unfold, or by
+//! 2)` writes them, and a final newline. Pages keep their order; cards, groups, links, frames,
+//! resources, and notes are sorted by id; labels and guards by (`project` or `""`, `key`);
+//! `projects` is the sorted set the items name. Optional fields are omitted when absent, and the
+//! page arrays `frames`, `resources`, and `notes` when empty, so boards without them read as
+//! they always did. One board has exactly one serialization, so a file written by Unfold, or by
 //! an agent using `JSON.stringify` with sorted keys and arrays, reads back and writes out byte
 //! for byte.
 
@@ -11,8 +13,8 @@ use std::fmt::Write as _;
 
 use super::files::Revision;
 use super::model::{
-    Board, Card, CardRef, Description, FORMAT, Group, GuardEntry, LabelEntry, Link, Page, ProjectName,
-    VERSION,
+    Anchor, Board, Card, CardRef, Column, Description, FORMAT, Frame, Group, GuardEntry, LabelEntry, Link,
+    Note, Page, ProjectName, Resource, VERSION,
 };
 use super::parse::publishes;
 
@@ -63,6 +65,22 @@ fn text(value: &str) -> Out {
     Out::Text(value.to_owned())
 }
 
+fn position(at: [f64; 2]) -> Out {
+    Out::Array(at.iter().map(|&number| Out::Number(number)).collect())
+}
+
+/// Adds `name` when `value` is present, written by `write`.
+fn optional<T>(
+    fields: &mut Vec<(&'static str, Out)>,
+    name: &'static str,
+    value: Option<T>,
+    write: impl FnOnce(T) -> Out,
+) {
+    if let Some(value) = value {
+        fields.push((name, write(value)));
+    }
+}
+
 /// The fields of a description, label, or link label.
 fn authored(value: &Description) -> Vec<(&'static str, Out)> {
     vec![
@@ -96,10 +114,7 @@ fn card(value: &Card) -> Out {
         CardRef::Entrance { entrance, .. } => ("entrance", text(entrance.as_str())),
     }];
     project(&mut reference, value.reference.project());
-    let mut fields = vec![(
-        "at",
-        Out::Array(value.at.iter().map(|&position| Out::Number(position)).collect()),
-    )];
+    let mut fields = vec![("at", position(value.at))];
     if let Some(item) = &value.description {
         fields.push(("description", description(item)));
     }
@@ -122,6 +137,9 @@ fn group(value: &Group) -> Out {
     if let Some(item) = &value.description {
         fields.push(("description", description(item)));
     }
+    optional(&mut fields, "author", value.author.as_ref(), |author| {
+        Out::Text(author.to_string())
+    });
     fields.push(("id", text(&value.id)));
     fields.push((
         "members",
@@ -149,22 +167,146 @@ fn guard(value: &GuardEntry) -> Out {
     Out::Object(fields)
 }
 
-fn link(value: &Link) -> Out {
-    let mut fields = vec![("from", text(&value.from)), ("id", text(&value.id))];
-    if let Some(item) = &value.label {
-        fields.push(("label", description(item)));
-    }
-    fields.push(("to", text(&value.to)));
+fn anchor(value: &Anchor) -> Out {
+    let mut fields = match value {
+        Anchor::Key { key, .. } => vec![("key", text(key.as_str()))],
+        Anchor::File { file, lines, .. } => vec![
+            ("file", text(file.as_str())),
+            (
+                "lines",
+                Out::Array(lines.iter().map(|&line| Out::Number(f64::from(line))).collect()),
+            ),
+        ],
+    };
+    project(&mut fields, value.project());
     Out::Object(fields)
 }
 
+fn anchors(values: &[Anchor]) -> Out {
+    Out::Array(values.iter().map(anchor).collect())
+}
+
+fn link(value: &Link) -> Out {
+    let mut fields = vec![("from", text(&value.from)), ("id", text(&value.id))];
+    if !value.anchors.is_empty() {
+        fields.push(("anchors", anchors(&value.anchors)));
+    }
+    optional(&mut fields, "author", value.author.as_ref(), |author| {
+        Out::Text(author.to_string())
+    });
+    optional(&mut fields, "cardinality", value.cardinality, |cardinality| {
+        text(cardinality.as_str())
+    });
+    optional(&mut fields, "carries", value.carries.as_ref(), |key| {
+        text(key.as_str())
+    });
+    optional(
+        &mut fields,
+        "carriesProject",
+        value.carries_project.as_ref(),
+        |name| text(name.as_str()),
+    );
+    optional(&mut fields, "channel", value.channel.as_deref(), text);
+    optional(
+        &mut fields,
+        "description",
+        value.description.as_ref(),
+        description,
+    );
+    optional(&mut fields, "fromColumn", value.from_column.as_deref(), text);
+    optional(&mut fields, "kind", value.kind, |kind| text(kind.as_str()));
+    optional(&mut fields, "label", value.label.as_ref(), description);
+    optional(&mut fields, "signature", value.signature, |signature| {
+        Out::Text(signature.to_string())
+    });
+    optional(&mut fields, "step", value.step.as_ref(), |key| text(key.as_str()));
+    fields.push(("to", text(&value.to)));
+    optional(&mut fields, "toColumn", value.to_column.as_deref(), text);
+    Out::Object(fields)
+}
+
+fn frame(value: &Frame) -> Out {
+    let mut fields = vec![("author", Out::Text(value.author.to_string()))];
+    if value.collapsed {
+        fields.push(("collapsed", Out::Bool(true)));
+    }
+    optional(
+        &mut fields,
+        "description",
+        value.description.as_ref(),
+        description,
+    );
+    optional(&mut fields, "direction", value.direction, |direction| {
+        text(direction.as_str())
+    });
+    optional(&mut fields, "icon", value.icon, |icon| text(icon.as_str()));
+    fields.push(("id", text(&value.id)));
+    fields.push(("look", text(value.look.as_str())));
+    fields.push((
+        "members",
+        Out::Array(value.members.iter().map(|member| text(member)).collect()),
+    ));
+    fields.push(("title", text(&value.title)));
+    Out::Object(fields)
+}
+
+fn column(value: &Column) -> Out {
+    let mut fields = Vec::new();
+    optional(&mut fields, "key", value.key, |key| text(key.as_str()));
+    fields.push(("name", text(&value.name)));
+    if value.optional {
+        fields.push(("optional", Out::Bool(true)));
+    }
+    optional(&mut fields, "references", value.references.as_deref(), text);
+    optional(&mut fields, "type", value.written_type.as_deref(), text);
+    Out::Object(fields)
+}
+
+fn resource(value: &Resource) -> Out {
+    let mut fields = vec![
+        ("anchors", anchors(&value.anchors)),
+        ("at", position(value.at)),
+        ("author", Out::Text(value.author.to_string())),
+    ];
+    if !value.columns.is_empty() {
+        fields.push(("columns", Out::Array(value.columns.iter().map(column).collect())));
+    }
+    optional(
+        &mut fields,
+        "description",
+        value.description.as_ref(),
+        description,
+    );
+    fields.push(("id", text(&value.id)));
+    fields.push(("kind", text(value.kind.as_str())));
+    fields.push(("name", text(&value.name)));
+    project(&mut fields, value.project.as_ref());
+    optional(&mut fields, "signature", value.signature, |signature| {
+        Out::Text(signature.to_string())
+    });
+    optional(&mut fields, "type", value.type_key.as_ref(), |key| {
+        text(key.as_str())
+    });
+    Out::Object(fields)
+}
+
+fn note(value: &Note) -> Out {
+    let mut fields = vec![("at", position(value.at))];
+    optional(&mut fields, "attach", value.attach.as_deref(), text);
+    fields.push(("author", Out::Text(value.author.to_string())));
+    fields.push(("id", text(&value.id)));
+    fields.push(("text", text(&value.text)));
+    Out::Object(fields)
+}
+
+/// `items` sorted by id, written by `write`.
+fn by_id<T>(items: &[T], id: impl Fn(&T) -> &str, write: impl Fn(&T) -> Out) -> Out {
+    let mut sorted: Vec<&T> = items.iter().collect();
+    sorted.sort_by(|a, b| by_utf16(id(a), id(b)));
+    Out::Array(sorted.into_iter().map(write).collect())
+}
+
 fn page(value: &Page) -> Out {
-    let mut cards: Vec<&Card> = value.cards.iter().collect();
-    cards.sort_by(|a, b| by_utf16(&a.id, &b.id));
-    let mut groups: Vec<&Group> = value.groups.iter().collect();
-    groups.sort_by(|a, b| by_utf16(&a.id, &b.id));
-    let mut links: Vec<&Link> = value.links.iter().collect();
-    links.sort_by(|a, b| by_utf16(&a.id, &b.id));
     let mut labels: Vec<&LabelEntry> = value.labels.iter().collect();
     labels.sort_by(|a, b| {
         by_project_key(
@@ -179,16 +321,26 @@ fn page(value: &Page) -> Out {
             (b.project.as_ref(), b.key.as_str()),
         )
     });
-    Out::Object(vec![
-        ("cards", Out::Array(cards.into_iter().map(card).collect())),
+    let mut fields = vec![
+        ("cards", by_id(&value.cards, |item| &item.id, card)),
         ("defaultView", text(value.default_view.as_str())),
-        ("groups", Out::Array(groups.into_iter().map(group).collect())),
+        ("groups", by_id(&value.groups, |item| &item.id, group)),
         ("guards", Out::Array(guards.into_iter().map(guard).collect())),
         ("id", text(&value.id)),
         ("labels", Out::Array(labels.into_iter().map(label).collect())),
-        ("links", Out::Array(links.into_iter().map(link).collect())),
+        ("links", by_id(&value.links, |item| &item.id, link)),
         ("title", text(&value.title)),
-    ])
+    ];
+    if !value.frames.is_empty() {
+        fields.push(("frames", by_id(&value.frames, |item| &item.id, frame)));
+    }
+    if !value.resources.is_empty() {
+        fields.push(("resources", by_id(&value.resources, |item| &item.id, resource)));
+    }
+    if !value.notes.is_empty() {
+        fields.push(("notes", by_id(&value.notes, |item| &item.id, note)));
+    }
+    Out::Object(fields)
 }
 
 fn board_fields(board: &Board) -> Vec<(&'static str, Out)> {

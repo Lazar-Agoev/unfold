@@ -286,6 +286,7 @@ impl Apply<'_, '_> {
                 target,
                 link.reason.map(|reason| reason.as_str()),
                 link.module.as_ref().map(|module| module.as_str()),
+                link.heritage.map(|heritage| heritage.as_str()),
             ))?;
         }
         self.stats.typed_records_written += (types.signatures.len()

@@ -52,7 +52,7 @@ interface Occurrence {
 }
 
 /** The resolved occurrences a block card shows: its Code links (or the last verified ones), else its Flow chips. */
-function occurrencesOf(view: Extract<CardView, { type: "block" }>, stale: CodeView | undefined): Occurrence[] {
+export function occurrencesOf(view: Extract<CardView, { type: "block" }>, stale: CodeView | undefined): Occurrence[] {
   const code = view.code?.source.state === "current" ? view.code : stale;
   if (code?.source.state === "current") {
     return code.source.links.flatMap((link) =>

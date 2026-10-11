@@ -10,6 +10,7 @@ import { cardQuery } from "../canvas";
 import { groupConflict, groupSelection } from "../code/outline";
 import { Button, Dialog, TextField } from "../components";
 import { addGroup, cardKey, editPage, findCard, findPage, getPageView, setPendingGroup, useOpenBoard } from "../state/boards";
+import { useAuthor } from "../state/author";
 import type { DialogRequest } from "../state/overlays";
 import { resolveRefProject, useProjectIndex } from "../state/workspace";
 import { parseLines } from "./groupFromLines";
@@ -23,6 +24,7 @@ const FORM_ID = "group-from-lines";
 
 export function GroupFromLinesDialog({ request, onClose }: GroupFromLinesDialogProps) {
   const { target, cardId } = request;
+  const author = useAuthor();
   const card = useOpenBoard(target.board, (board) => {
     const page = findPage(board.document, target.page);
     return page ? findCard(page, cardId) : undefined;
@@ -73,7 +75,7 @@ export function GroupFromLinesDialog({ request, onClose }: GroupFromLinesDialogP
       return;
     }
     setPendingGroup(target, null);
-    editPage(target, (page) => addGroup(page, cardId, selection.members, title.trim()));
+    editPage(target, (page) => addGroup(page, cardId, selection.members, title.trim(), author !== null ? { author } : {}));
     onClose();
   };
 

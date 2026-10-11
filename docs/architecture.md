@@ -738,7 +738,7 @@ CREATE TABLE results (file_id INTEGER NOT NULL, call_local_id INTEGER NOT NULL,
   bound INTEGER, PRIMARY KEY (file_id, call_local_id)) WITHOUT ROWID;
 CREATE TABLE type_links (file_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL, seq INTEGER NOT NULL,
   start_byte INTEGER NOT NULL, end_byte INTEGER NOT NULL, text TEXT NOT NULL,
-  resolution TEXT NOT NULL, target_key_id INTEGER, reason TEXT, module TEXT,
+  resolution TEXT NOT NULL, target_key_id INTEGER, reason TEXT, module TEXT, heritage TEXT,
   PRIMARY KEY (file_id, block_local_id, seq)) WITHOUT ROWID;
 CREATE INDEX type_links_by_target ON type_links (target_key_id);   -- "used in N places"
 
@@ -886,10 +886,11 @@ It is used for snapshots, parity with the proof of concept, determinism checks, 
 
 - **A board holds pages** ([U-38](decisions-and-tradeoffs.md#u-38-a-board-holds-pages),
   [U-42](decisions-and-tradeoffs.md#u-42-the-board-format-pages-folders-and-other-projects)). Each page has its
-  own cards, groups, Flow labels, guards, and drawn links. A board may sit in a `folder`.
+  own cards, groups, Flow labels, guards, links (drawn links, and connections when they have a kind), frames,
+  resource cards, and notes, which share one id space. A board may sit in a `folder`.
 - **A card's `ref`** is exactly one of `block` or `entrance`, holding a structural key, and an optional
   `project`: the shared name of another project, absent for the board's own. `projects` lists exactly the other
-  projects the cards name, sorted.
+  projects the page items name, sorted.
 - **A description, label, or link label** has `text`, `author` (`person:<username>` or `agent:<name>`), and
   `signature`, which is `sha256:` followed by the hash of the exact selected source bytes. When the signature no
   longer matches, the description is marked outdated. A link label is signed over both ends, but never reported
@@ -980,7 +981,7 @@ These are computed by `unfold-reader` from the stored graph. Nothing here adds f
   ```
 
   Nested callbacks own their own calls. Decorators and Python header expressions belong to the enclosing scope.
-- **Definition catalog.** Every function-like or class block that has a name, or is the target of a resolved edge or entrance. Qualified names prepend the enclosing classes and callables. An unnamed callback is labeled after its callee.
+- **Definition catalog.** Every function-like, class, or type declaration (interface, type alias, enum) block that has a name, or is the target of a resolved edge or entrance. Qualified names prepend the enclosing classes and callables. An unnamed callback is labeled after its callee.
 - **Activation closure.** Starting from the seed targets, it adds the targets of resolved calls, constructions, imports, and references, plus the classes a file or callable owns. A branch seed considers only occurrences inside that branch. External and unresolved edges stop it. It is shown as "reached at least from".
 - **Applications and membership.** An application is a distinct resolved startup among process entrances: a file, or the callable named by a Python console script. A non-process entrance belongs to every application whose closure contains its anchor, which is the owner of its evidence, or otherwise its first resolved target.
 - **Relations.** Callers are found by reversing resolved edges and mapping each occurrence to its owner. Outgoing calls are grouped as already on the board, resolved and openable, or external or unresolved. Reached-from lists the non-process entrances whose closures contain the selected definition.

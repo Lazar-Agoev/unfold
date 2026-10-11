@@ -1,20 +1,25 @@
 import { produce } from "immer";
 import { describe, expect, it } from "vitest";
-import type { BoardDocument, Page } from "../../ipc/generated";
+import type { BoardDocument, Card, Page } from "../../ipc/generated";
 import { boardDocument, page } from "../../test/workspace";
 import {
   addCard,
+  addGroup,
   addLink,
   addPage,
   deletePage,
   duplicatePage,
+  isFreeId,
   labelsFor,
   movePage,
   nextPageId,
   removeCard,
+  setCardDescription,
+  setDefaultView,
   setLabel,
   setLinkLabel,
   uniqueId,
+  updateGroup,
 } from "./document";
 
 function onPage(recipe: (draft: Page) => void, start: Page = page("page-1")): Page {
@@ -37,6 +42,71 @@ describe("card, group, and link ids", () => {
     expect(result.cards[0]?.at).toEqual([0, 10]);
     expect(uniqueId(result, "x".repeat(300)).length).toBeLessThanOrEqual(100);
     expect(uniqueId(result, "***")).toBe("card");
+  });
+
+  it("share one space with the page's frames, resources, and notes", () => {
+    const start = page("page-1", [], {
+      frames: [{ id: "orders", title: "Orders", members: ["orders-2"], look: "box", author: "agent:claude" }],
+      resources: [{ id: "orders-2", kind: "table", name: "orders", anchors: [], at: [0, 0], author: "agent:claude" }],
+      notes: [{ id: "orders-3", text: "Kept in memory.", at: [0, 0], author: "agent:claude" }],
+    });
+    expect(uniqueId(start, "orders")).toBe("orders-4");
+  });
+});
+
+describe("ids an agent names", () => {
+  it("are free when well formed and no item of the page has them", () => {
+    const start = page("page-1", [{ id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }]);
+    expect(isFreeId(start, "checks")).toBe(true);
+    expect(isFreeId(start, "a")).toBe(false);
+    expect(isFreeId(start, "-checks")).toBe(false);
+    expect(isFreeId(start, "x".repeat(101))).toBe(false);
+  });
+});
+
+describe("step groups", () => {
+  const card: Card = { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] };
+
+  it("take a named id, start collapsed when asked, and record who titled them", () => {
+    const result = onPage((draft) => {
+      expect(addGroup(draft, "a", ["k1"], "Checks", { id: "guard", collapsed: true, author: "agent:claude" })).toBe("guard");
+      expect(addGroup(draft, "a", ["k2"], "Rest")).toBe("rest");
+    }, page("page-1", [card]));
+    expect(result.groups).toEqual([
+      { id: "guard", card: "a", title: "Checks", members: ["k1"], collapsed: true, author: "agent:claude" },
+      { id: "rest", card: "a", title: "Rest", members: ["k2"], collapsed: false },
+    ]);
+  });
+
+  it("change their statements, and a new title is its writer's: no one else's", () => {
+    const start = page("page-1", [card], { groups: [{ id: "g", card: "a", title: "Checks", members: ["k1"], collapsed: false, author: "agent:claude" }] });
+    const same = onPage((draft) => { updateGroup(draft, "g", { title: "Checks", author: "person:maya", members: ["k1", "k2"] }); }, start);
+    expect(same.groups[0]).toEqual({ id: "g", card: "a", title: "Checks", members: ["k1", "k2"], collapsed: false, author: "agent:claude" });
+    expect(onPage((draft) => { updateGroup(draft, "g", { title: "Guard", author: "person:maya" }); }, start).groups[0]?.author).toBe("person:maya");
+    expect(onPage((draft) => { updateGroup(draft, "g", { title: "Guard" }); }, start).groups[0]).not.toHaveProperty("author");
+  });
+});
+
+describe("an agent's words", () => {
+  it("become the person's when the person edits them", () => {
+    const start = page("page-1", [{ id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0], description: { text: "Old.", author: "agent:claude", signature: "s" } }], {
+      links: [{ id: "l", from: "a", to: "a", label: { text: "calls", author: "agent:claude", signature: "s" } }],
+      labels: [{ key: "k", text: "Check", author: "agent:claude", signature: "s" }],
+    });
+    const edited = onPage((draft) => {
+      setCardDescription(draft, "a", "New.", "person:maya");
+      setLinkLabel(draft, "l", "posts", "person:maya");
+      setLabel(draft, undefined, "k", "Checked?", "person:maya");
+    }, start);
+    expect(edited.cards[0]?.description).toEqual({ text: "New.", author: "person:maya", signature: "" });
+    expect(edited.links[0]?.label).toEqual({ text: "posts", author: "person:maya", signature: "" });
+    expect(edited.labels[0]).toEqual({ key: "k", text: "Checked?", author: "person:maya", signature: "" });
+  });
+});
+
+describe("the page's default view", () => {
+  it("is set for the cards without their own", () => {
+    expect(onPage((draft) => { setDefaultView(draft, "diagram"); }).defaultView).toBe("diagram");
   });
 });
 

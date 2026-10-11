@@ -179,14 +179,12 @@ fn a_page_spanning_projects_exports_placeholders_and_drawn_links() {
         description: None,
     });
     page.links.push(board::Link {
-        id: "checkout-calls-orders".to_owned(),
-        from: "checkout".to_owned(),
-        to: "post-orders".to_owned(),
         label: Some(board::Description {
             text: "calls POST /orders".to_owned(),
             author: board::Author::person("you").expect("an author"),
             signature: None,
         }),
+        ..board::Link::new("checkout-calls-orders", "checkout", "post-orders")
     });
     parsed.refresh_projects();
     assert_eq!(parsed.projects, [web]);

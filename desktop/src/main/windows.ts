@@ -35,6 +35,8 @@ export interface WindowHooks {
   onLoaded(entry: WindowEntry): void;
   /** The window closed. */
   onClosed(entry: WindowEntry): void;
+  /** The window gained focus: it is the one used last. */
+  onFocused(entry: WindowEntry): void;
   /**
    * The window was created, or the person moved, resized, maximized, or restored it (debounced), so
    * it comes back where it is.
@@ -117,6 +119,9 @@ export class WindowRegistry {
     window.on("resize", placementChanged);
     window.on("maximize", placementChanged);
     window.on("unmaximize", placementChanged);
+    window.on("focus", () => {
+      this.hooks.onFocused(entry);
+    });
     window.webContents.on("did-start-loading", () => {
       entry.loaded = false;
     });

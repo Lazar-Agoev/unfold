@@ -39,6 +39,8 @@ export {
   updateGroup,
   type GroupChange,
 } from "./document";
+export { installAgentChannel, setAgentChannelReady } from "./agent/channel";
+export { useWorkingAgents, useWorkingItems, workingText } from "./agent/working";
 export { installBoardEvents } from "./events";
 export {
   copyPageMermaid,
@@ -85,10 +87,12 @@ export {
   setLinking,
   setPageLens,
   setPendingGroup,
+  shownView,
   toggleOpenType,
   travel,
   undo,
   updatePageView,
+  useBoards,
   useOpenBoard,
   usePageView,
   type EditOptions,

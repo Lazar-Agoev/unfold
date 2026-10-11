@@ -13,12 +13,22 @@ import {
   STACK_GAP,
   arrange,
   callerPlacement,
+  clearSpot,
   fallbackSize,
   followPlacement,
   handlerPlacement,
   reflow,
 } from "./layout";
-import { blockCardWidth, codeContentWidth, entranceCardWidth, entranceHandlerRows, estimatedBlockSize, gutterWidth, headerWidth } from "./sizing";
+import {
+  blockCardWidth,
+  codeContentWidth,
+  entranceCardWidth,
+  entranceHandlerRows,
+  estimatedBlockSize,
+  estimatedLineOffset,
+  gutterWidth,
+  headerWidth,
+} from "./sizing";
 
 const createOrder = fixture("card", "card_create_order") as Extract<CardView, { type: "block" }>;
 const code = (createOrder.code?.source.state === "current" ? createOrder.code.source : null) as CodeText;
@@ -83,6 +93,32 @@ describe("estimates before a card is drawn", () => {
     expect(entranceHandlerRows(text, true, 240, estimateText)).toEqual([104, 124]);
     expect(entranceHandlerRows({ ...text, method: null }, false, 240, estimateText)).toEqual([100, 120]);
     expect(entranceHandlerRows({ ...text, location: "x".repeat(60) }, false, 240, estimateText)).toEqual([116, 136]);
+  });
+});
+
+describe("placing a card for an agent", () => {
+  it("finds a Code line's row before the card is drawn, and nothing for a line it doesn't show", () => {
+    // createOrder's Code starts at line 25: the header, half the code's padding, then 20 px rows.
+    expect(estimatedLineOffset(createOrder, 25)).toBe(44 + 9 + 10);
+    expect(estimatedLineOffset(createOrder, 32)).toBe(44 + 9 + 7 * 20 + 10);
+    expect(estimatedLineOffset(createOrder, 24)).toBeUndefined();
+    expect(estimatedLineOffset(createOrder, 36)).toBeUndefined();
+    expect(estimatedLineOffset(undefined, 25)).toBeUndefined();
+  });
+
+  it("moves a spot down until it keeps clear of every card", () => {
+    const size = { width: 200, height: 100 };
+    expect(clearSpot({ x: 0, y: 0 }, size, [])).toEqual([0, 0]);
+    const occupied = [
+      { x: 0, y: 0, width: 300, height: 100 },
+      { x: 100, y: 120, width: 300, height: 200 },
+      { x: 600, y: 0, width: 100, height: 1000 },
+    ];
+    // Below the first card, then below the second (which the first move ran into); the third is far right.
+    expect(clearSpot({ x: 50, y: 10 }, size, occupied)).toEqual([50, 120 + 200 + STACK_GAP]);
+    // Right beside a card, but within the gap: still moved.
+    expect(clearSpot({ x: 300 + STACK_GAP - 1, y: 0 }, size, occupied.slice(0, 1))).toEqual([331, 100 + STACK_GAP]);
+    expect(clearSpot({ x: 300 + STACK_GAP, y: 0 }, size, occupied.slice(0, 1))).toEqual([332, 0]);
   });
 });
 

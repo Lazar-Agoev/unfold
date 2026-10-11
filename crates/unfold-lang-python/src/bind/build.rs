@@ -6,7 +6,8 @@
 //! Scopes follow the proof of concept's binder: a `def`'s decorators and name belong to the
 //! enclosing scope; with type parameters, its annotations, defaults, and return annotation are
 //! evaluated in the type-parameter scope, otherwise in the enclosing scope; its parameters and
-//! body are in its own scope. A class's bases and keywords are evaluated like annotations. A
+//! body are in its own scope. A class's bases and keywords are evaluated like annotations, and
+//! its positional bases are type names ([`super::types`]). A
 //! comprehension's first iterable is evaluated outside it. A write is *conditional* when an
 //! `if`, `try`, `match`, `for`, or `while` inside the same function, class, or module contains
 //! it (the loop's own targets are not inside the loop).
@@ -227,6 +228,11 @@ impl<'a> Builder<'a> {
                     .iter()
                     .map(|&argument| self.argument(argument, type_scope))
                     .collect();
+                for argument in &written {
+                    if let ArgOrKeyword::Arg(base) = argument {
+                        self.base(base, type_scope);
+                    }
+                }
                 let kind = NodeKind::Class(ClassFact {
                     block: self.block(stmt),
                     name: self.interner.name(class.name.id.as_str()),

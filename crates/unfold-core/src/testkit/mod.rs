@@ -16,8 +16,8 @@ use crate::path::RepoPath;
 use crate::text::{ByteRange, LineIndex, Snapshot};
 use crate::typed::{FileTypes, TypeLink, WrittenType};
 use crate::vocab::{
-    BlockKind, DetectorId, EdgeKind, EntranceKind, FileState, HttpMethod, InputRole, Language, Reason,
-    Resolution, Role, SlotName, TriggerStatus,
+    BlockKind, DetectorId, EdgeKind, EntranceKind, FileState, Heritage, HttpMethod, InputRole, Language,
+    Reason, Resolution, Role, SlotName, TriggerStatus,
 };
 
 /// The repository's `testdata/` directory.
@@ -281,6 +281,30 @@ impl GraphBuilder {
 
     /// Adds a type link sourced at `block` over the first `needle` at or after byte `from`.
     pub fn type_link(&mut self, block: BlockRef, needle: &str, from: u32, outcome: Outcome) {
+        self.push_type_link(block, needle, from, outcome, None);
+    }
+
+    /// Adds a type link naming a base of `block` (a class or interface) in a heritage clause,
+    /// over the first `needle` at or after byte `from`.
+    pub fn heritage_link(
+        &mut self,
+        block: BlockRef,
+        needle: &str,
+        from: u32,
+        outcome: Outcome,
+        heritage: Heritage,
+    ) {
+        self.push_type_link(block, needle, from, outcome, Some(heritage));
+    }
+
+    fn push_type_link(
+        &mut self,
+        block: BlockRef,
+        needle: &str,
+        from: u32,
+        outcome: Outcome,
+        heritage: Option<Heritage>,
+    ) {
         let range = self.find_from(block, needle, from);
         let (target, resolution, reason, module) = outcome.split();
         self.types(block).type_links.push(TypeLink {
@@ -291,6 +315,7 @@ impl GraphBuilder {
             target,
             reason,
             module,
+            heritage,
         });
     }
 

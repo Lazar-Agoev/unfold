@@ -184,7 +184,7 @@ optional chain is an ordinary access.
 Labels are joined by `unfold_engine::edges::text` and stay within 120 UTF-16 units.
 
 The payload (`unfold_lang_typescript::payload`, postcard-encoded, versioned by `PAYLOAD_VERSION`,
-now 5, which is part of the facts-cache key) records, aligned with the value table, what each value
+now 6, which is part of the facts-cache key) records, aligned with the value table, what each value
 is (an identifier and its range, a literal key, a call result and its callee, a construction,
 `this`, `super`, ...), the kind of each runtime import (`Import`, `Reexport`, `ImportEquals`,
 `Dynamic`), the module facts ([Exports](#exports)), the file's binding (`payload::Binding`;
@@ -548,9 +548,10 @@ the walk has seen every declaration of the file. Linking never sees a syntax tre
   literal awaited dynamic import reads that module's export (C-8, [Decisions](#decisions)).
 - **Type declarations.** An interface, type alias, or enum declaration knows its block (when it is
   one), so the type context can name it ([Type links](#type-links)).
-- **Type names.** The written types that typed records carry ([Type links](#type-links)) are walked
-  where binding meets them, each once, and every type name in them is recorded with the scope it is
-  written in; its first name is looked up in the type meaning after the walk.
+- **Type names.** The written types that typed records carry and the heritage clauses of interface
+  and class blocks ([Type links](#type-links)) are walked where binding meets them, each once, and
+  every type name in them is recorded with the scope it is written in (and, for a base, its
+  heritage); its first name is looked up in the type meaning after the walk.
 
 The payload's binding (`payload::Binding`) holds the declarations (the first ones are the module
 declarations, in the same order, so a `DeclRef` index means the same declaration everywhere), the
@@ -622,8 +623,17 @@ parameter types of signatures and parameters, member types (an interface's or ob
 alias's members, a class's property annotations; a parameter property's type is its parameter's),
 a type alias's aliased type, and variable annotations (`const x: T`, a destructuring declaration's
 annotation, a catch binding's). Annotations no record carries (overload signatures, ambient
-declarations, static members, type parameter constraints, `extends`, `implements`, `as`,
-`satisfies`, call type arguments) give none.
+declarations, static members, type parameter constraints, `as`, `satisfies`, call type arguments)
+give none.
+
+The heritage clauses of every interface and class that is a block are linked too. Each base is a
+link with its `heritage`: an interface's `extends A, B<T>` and a class's `extends Base<T>` are
+`extends`, a class's `implements I, J` are `implements`; the type names in their type arguments are
+ordinary links. A class's `extends` is an expression, so only a name or a chain of static members
+on a name (`Base`, `models.Base`) names a type; `extends mixin(Base)` records none. A class's clauses
+are walked in its own scope, so its type parameters are no links (`class Leaf<L> extends Root<L>`),
+and its own name is (`Base<Leaf<L>>` links `Leaf`); an interface's type parameters are tracked like
+its members'. An ambient class's or interface's clauses give none.
 
 - **What is a name.** Every `TSTypeReference` name, a qualified name whole (`Stripe.PaymentIntent`,
   without its type arguments), recursing into type arguments, unions, intersections, arrays,
@@ -641,7 +651,7 @@ declarations, static members, type parameter constraints, `extends`, `implements
   type syntax is walked.
 - **Its block** is the innermost block containing the name: the function-like block for parameter
   and return types (the constructor for a parameter property), the variable, the type declaration or
-  class for members, the `type_alias` for its aliased type.
+  class for members and heritage clauses, the `type_alias` for its aliased type.
 
 Resolution goes through the shared value policy in the `type` context
 (`Linked::type_evidence`, `TypeScriptLinked::type_facts`):

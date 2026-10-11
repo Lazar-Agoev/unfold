@@ -45,9 +45,9 @@ owner(block):
 
 ### Definition catalog
 
-The catalog holds every function-like or `class` block that has a name, or that is the target of a
-resolved edge or a resolved entrance target. Untargeted anonymous callbacks stay out of it; they
-remain readable inside their owners.
+The catalog holds every function-like, `class`, or type declaration (`interface`, `type_alias`,
+`enum`) block that has a name, or that is the target of a resolved edge or a resolved entrance
+target. Untargeted anonymous callbacks stay out of it; they remain readable inside their owners.
 
 | Field | Rule |
 | --- | --- |
@@ -55,9 +55,11 @@ remain readable inside their owners.
 | Qualified name | The names of enclosing classes and callables, and of a `variable` whose initializer contains the definition, outermost first, then the label, joined with `.`: `OrderService.place`, `handlers.onCreate`, `handler.anonymous function` |
 
 Getters and setters keep their own identities. The store keeps the catalog as the `definitions`
-table and indexes the label and qualified name for search. Type declarations (`interface`,
-`type_alias`, `enum`) are not in the catalog, so search doesn't find them, and their names don't
-qualify a definition written inside them (a callback in an enum member's initializer).
+table and indexes the label, qualified name, and block kind for search, so search finds type
+declarations with their kind and can narrow to kinds (`search`'s `definitionKinds`). A type
+declaration is named after the classes and callables around it (`local.Shape` for an interface in
+`function local`), but its own name doesn't qualify a definition written inside it (a callback in an
+enum member's initializer is `callback to register`, not `Mode.callback to register`).
 
 ### Activation closure
 
@@ -221,21 +223,25 @@ camelCase; absent optional fields are omitted.
 
 The outline is derived from stored blocks only. An item is a nested callable, or a statement
 (`variable`, `expression_statement`, `if`, loops, `switch`, `case`, `default`, `try`, `catch`,
-`return`, `throw`, `break`, `continue`, `import`, `class`, `with`, `match`) with no role or a `body`,
-`then`, `else`, `catch`, or `finally` role. Its `parent` is the index of the nearest enclosing item.
-Type declarations (`interface`, `type_alias`, `enum`) are not items: they neither fold nor group.
+`return`, `throw`, `break`, `continue`, `import`, `class`, a type declaration (`interface`,
+`type_alias`, `enum`), `with`, `match`) with no role or a `body`, `then`, `else`, `catch`, or
+`finally` role. Its `parent` is the index of the nearest enclosing item. Type declarations are items
+so the peek sheet's `⊕` and folds reach them, as they reach the catalog's other definitions.
 
-- **Folds.** A compound item (`if`, loops, `switch`, `try`, `catch`, callables, classes, Python
-  `with` and `match`) that spans several lines folds. The fold's `headerEnd` is where the hidden
-  part begins: in Python, the end of the written header line, which stays visible; otherwise the
-  start of the body slot (`then` for `if`), or the end of the first line when there is none.
+- **Folds.** A compound item (`if`, loops, `switch`, `try`, `catch`, callables, classes, type
+  declarations, Python `with` and `match`) that spans several lines folds. The fold's `headerEnd` is
+  where the hidden part begins: in Python, the end of the written header line, which stays visible;
+  otherwise the start of the body slot (`then` for `if`, the braces for an interface or enum), or
+  the end of the first line when there is none.
   `braces` says the folded row shows the body as `{ … }`. The `summary` reads `N lines`, plus
   `· returns` and `· throws` when the block contains a `return` or `throw` outside nested callables.
-- **Default folds.** In a card longer than 40 lines, callbacks (nested callables and classes) and
+- **Default folds.** In a card longer than 40 lines, nested definitions (callables, classes, and
+  type declarations) and
   an `if` that heads an `else if` chain of three or more checks (`chain`) start folded; the `else
   if` links of a chain never do. The peek sheet starts with nothing folded. Folds are view state; the
   reader never folds a card by itself.
-- **Groups.** An item is `groupable` when it is a statement (not a nested callable or class) in a
+- **Groups.** An item is `groupable` when it is a statement (not a nested callable, class, or type
+  declaration) in a
   `body`, `then`, `else`, `catch`, or `finally` role. A gutter selection of lines makes a group of
   the consecutive siblings it covers: it descends into a compound item only when the selection lies
   strictly inside it, and keeps the first covered item's role. `group_for_lines` returns those members,
@@ -360,15 +366,37 @@ other key has none.
 | --- | --- |
 | `key`, `kind`, `name`, `path`, `line`, `language` | The declaration; `name` is its catalog label when it has no name |
 | `members` | Its member records in source order: `name`, `kind`, `optional`, `readonly`, `default`, and the written `type` (with its spans) or an enum member's `value` |
+| `inherited` | The members it inherits, one group per base ([inherited members](#inherited-members)): `from`, the base's name as written with one span (`declared` with its key, `external` or `builtin` with its module, `unresolved` with the reason in words), and `members`, the base's own members as above (none unless `declared`) |
 | `aliased` | For a type alias with no members (its aliased type isn't an object type): the text of its `type` slot from the verified source (no record stores it) with the type links inside it, cut to 120 UTF-16 units; absent when the file changed |
 | `uses` | How many type links resolve to it, from the store's reverse index ("Used in N places") |
 
 **Type uses** are one page of those type links, by path, then block, then range. Each place has its
 `owner`, the definition the annotation belongs to: the link's block when it is function-like or a
-type declaration (a parameter's type belongs to its function, a member's to its interface), else
-that block's owner (a variable annotation belongs to its function or file); the owner's catalog
-`label`; the `path`; and the `line` of the written name, from the verified source (the block's first
-line when the file changed).
+type declaration (a parameter's type belongs to its function, a member's to its interface, a base
+to the class or interface whose heritage clause names it), else that block's owner (a variable
+annotation belongs to its function or file); the owner's catalog `label`; the `path`; the `line` of
+the written name, from the verified source (the block's first line when the file changed); and, for
+a heritage clause, `heritage`: whether the owner `extends` or `implements` the type.
+
+#### Inherited members
+
+A definition's `inherited` groups follow the heritage links of its block that are `extends` (an
+interface's or a class's `extends`, a Python class's bases); `implements` names an interface whose
+members the class must write itself, so it contributes none.
+
+- **Order.** Depth first in written order: a base's group, then the groups of that base's own bases,
+  then the next base. For `interface Order extends OrderDraft, Timestamped<Date>, Tracked` where
+  `Tracked extends Timestamped<Date>`: `OrderDraft`, `Timestamped`, `Tracked`.
+- **Each type once.** A declared base already listed is skipped, and so is the definition itself,
+  so a diamond lists its shared base once and a cycle (`Loop extends Knot`, `Knot extends Loop`)
+  stops. An external or unresolved base reads the same wherever it is written, so it is listed once
+  too.
+- **Depth.** Bases more than `MAX_INHERITED_DEPTH` (8) levels down are not listed.
+- **No declaration.** An external, builtin, or unresolved base is a group without members (Python's
+  `BaseModel`, `Generic`; a merged TypeScript interface, which is `ambiguous`), and the walk doesn't
+  go past it.
+- **As written.** Members are the base's member records: a generic base's members keep their written
+  types (`createdAt: T`, not `Date`), and a member a type writes again isn't hidden.
 
 ## Flow view
 
@@ -445,6 +473,25 @@ earlier one and reserved words, then `…` when there are more. TypeScript blank
 templates, and regular expressions first and drops a leading `this.`; Python skips comments,
 strings (with their prefixes), numbers, and keywords.
 
+### Step groups
+
+A card's [groups](#groups) are drawn in Flow too, where the app calls them **step groups**. The model
+carries nothing for them: the UI finds each group in the lane tree, where the group rule makes its
+members a run of consecutive items of one list (an item's key is its node's, or a `try`'s own). A
+group whose statements Flow doesn't show (inside an opaque node, or inside a folded "▸ N checks" chain
+until it is opened) isn't drawn.
+
+- **Expanded**, a step group is a titled region around its steps, laid out like a loop's region; its
+  steps keep their labels, and routes into it turn above the region and cross its title band.
+- **Collapsed**, it is one step showing the group's title, its number of steps, and a `returns` or
+  `throws` mark when a statement inside can return or throw (the reader's fold summary for a compound
+  member, else the member's own kind and the statements written in it, outside nested callables).
+  Routes enter at its first step and leave from its last. A route that leaves from inside keeps its
+  kind when it is a `return` (to End), a `break`, `continue`, `next`, `test`, or `on error`; any
+  other (a condition's `yes` or `no`, a loop's `done`) leaves as plain sequence. A throw ends there,
+  as a throw node does. Arrows for calls inside leave from the step, as from a collapsed group in Code.
+- **One collapse state.** The group's `collapsed` field folds it in Code and in Flow.
+
 ### Differences from the proof of concept
 
 - **Labels instead of code in exports.** Mermaid uses the same labels as the app (below).
@@ -462,10 +509,12 @@ A board is a file of authored choices ([architecture §9.1](architecture.md#91-b
 [U-22](decisions-and-tradeoffs.md#u-22-a-fresh-board-format),
 [U-42](decisions-and-tradeoffs.md#u-42-the-board-format-pages-folders-and-other-projects)): titled pages of
 structural references, positions, each card's saved view and fold, groups, descriptions, Flow labels, guards,
-and drawn links. It holds neither copied source nor compiled arrows. Its JSON Schema is
+links (drawn links, and connections when they have a kind), frames, resource cards, and notes. It holds neither
+copied source nor compiled arrows. Its JSON Schema is
 [`schemas/unfold-board.schema.json`](schemas/unfold-board.schema.json) (the crate's copy,
 `crates/unfold-reader/schema/`, is the source; `tools/oracles/check-board-schema.mjs` checks the two are identical
-and validates the sample board with an independent validator). The code is `crates/unfold-reader/src/board/`; the
+and validates the boards in `testdata/boards/` with an independent validator). The code is
+`crates/unfold-reader/src/board/`; the
 workspace's board commands ([IPC](ipc.md#boards)) drive it.
 
 ### Format
@@ -475,14 +524,22 @@ workspace's board commands ([IPC](ipc.md#boards)) drive it.
 | `format`, `version` | `"unfold-board"` and `1`. Anything else is refused; there is no other version and no reader for an older shape |
 | `title` | Not blank |
 | `folder` | Optional: the board's folder ([below](#pages-cards-and-folders)); absent at the project's top level |
-| `projects` | Exactly the sorted set of `ref.project` values that any card of any page uses; `[]` when every card is the board's own project's. Anything else is refused |
+| `projects` | Exactly the sorted set of other projects any item of any page names: cards' `ref.project`, resources' `project`, anchors' `project`, and links' `carriesProject`; `[]` when every item is the board's own project's. Anything else is refused |
 | `pages` | One or more, in the board's page order; ids unique in the board |
-| page `id`, `title`, `defaultView` | An id, a title that isn't blank, and `"code"` or `"flow"`: the view of cards without their own |
-| page `cards[]` | `id`; `ref`, exactly one of `block` (a key with `#`) or `entrance` (an `entrance:` key), plus an optional `project`; `at`, two finite numbers; optional `view`; `folded`, written only when true; optional `description` |
-| page `groups[]` | `id`, `card` (a block card of this page), `title`, `members` (one or more distinct block keys of that card's project), `collapsed`, optional `description` |
+| page `id`, `title`, `defaultView` | An id, a title that isn't blank, and `"code"`, `"flow"`, or `"diagram"`: the view of cards without their own |
+| page `cards[]` | `id`; `ref`, exactly one of `block` (a key with `#`) or `entrance` (an `entrance:` key), plus an optional `project`; `at`, two finite numbers; optional `view` (`"code"`, `"flow"`, or `"diagram"`); `folded`, written only when true; optional `description` |
+| page `groups[]` | `id`, `card` (a block card of this page), `title`, `members` (one or more distinct block keys of that card's project), `collapsed`, optional `description`, optional `author` (who wrote the title; absent on older groups) |
 | page `labels[]` | Flow-node labels: `{key (a block key), project?, text, author, signature}`, one per (project, key); optional on input, always written |
 | page `guards[]` | `{key, project?, kind (a block kind or entrance:<kind>), owner (the owner's key; empty for an entrance), signature}`, one per referenced (project, key); optional on input, always written |
-| page `links[]` | Drawn links: `{id, from, to, label?}`; `from` and `to` are two different cards of the page; `label` is a description |
+| page `links[]` | `{id, from, to, label?}` and, for a **connection**, the fields below; `from` and `to` are two different cards, resources, or frames of the page; `label` is a description. Optional on input, always written |
+| link `kind` | `http`, `rpc`, `queue`, `event`, `writes`, `reads`, `calls`, `relates`, or `other`; absent for a drawn link (drawn as `other`). With a kind, `author` is required |
+| link `step`, `channel`, `carries`, `carriesProject` | `step`: a block key inside the `from` card's block, so only when `from` is a block card. `channel`: what travels, not blank. `carries`: a type declaration or class key; `carriesProject` only with it |
+| link `fromColumn`, `toColumn`, `cardinality` | Only on `relates`, whose ends are two tables. A column of a table that lists its own columns must be one of them. `cardinality` is `one-to-one`, `one-to-many`, `many-to-one`, or `many-to-many` |
+| link `anchors`, `description`, `author`, `signature` | Optional; `anchors` written only when there are some |
+| page `frames[]` | `{id, title, description?, members, look, icon?, direction?, collapsed?, author}`. `members`: one or more distinct ids of cards, resources, notes, or frames of the page; an item is in at most one frame; frames never hold each other in a cycle and nest at most 3 deep. `look` is `box` or `zone`; `icon` one of `api`, `worker`, `schedule`, `cli`, `web`, `library`, `system`; `direction` `right` or `down`; `collapsed` written only when true |
+| page `resources[]` | `{id, kind, name, project?, type?, columns?, anchors, at, description?, author, signature?}`. `kind` is `table`, `queue`, `cache`, `storage`, `external`, or `actor`; `name` not blank. Only a table has a `type` (a block key; `project` is its project, and only with it) and `columns` (`{name, type?, key?, references?, optional?}`, names distinct; `key` is `primary`, `foreign`, or `unique`; only a foreign key has `references`). A table backed by a type lists marks only: `name`, `key`, `references` |
+| page `notes[]` | `{id, text, at, attach?, author}`: plain text of 1 to 400 characters, not blank; `attach` names a card, frame, resource, or link of the page, and then `at` is an offset from it |
+| anchor | `{key, project?}` (a block or entrance key) or `{file, lines: [first, last], project?}` (a path relative to the project's folder, lines 1-based and inclusive) |
 | `publishes`, `baseRevision` | Only in an unpublished-changes copy ([below](#files-drafts-publish-and-unpublished-changes)): `"boards/<name>.json"`, matching the copy's file name, and the 64 lowercase hex digits of the revision it started from. Refused anywhere else |
 
 A **description** or **label** has `text` (not blank), `author` (`person:<username>` or `agent:<name>`), and
@@ -491,22 +548,27 @@ save signs from verified source.
 
 - **Strict parsing.** Unknown fields, duplicate JSON keys, wrong types, and malformed values are refused with the
   JSON pointer of the offending value ("invalid board at /pages/0/cards/2/ref: must have exactly one of block or
-  entrance"). A file over 16 MiB is refused. Parsing checks shape only; whether references exist is checked against
-  the graph.
+  entrance"). A file over 16 MiB is refused. Parsing checks the shape and the references between the items of one
+  page (a frame's members, a link's ends, a note's item: "invalid board at /pages/0/frames/1/members/0: `run` is
+  already in frame `server`; an item is in at most one frame"); whether keys exist is checked against the graph.
+  Removing an item is the window's job: a page that leaves a reference to it is refused. Rust's own repairs remove
+  what would dangle (see [Health and repairs](#health-and-repairs)), and every save checks the page's references
+  again before writing.
 - **Deterministic serialization.** Object keys sorted by UTF-16 code units; `pages` in board order; cards, groups,
-  and links sorted by id; labels and guards by project (the board's own first) and key; two-space indentation;
-  numbers and string escapes exactly as JavaScript's `JSON.stringify(value, null, 2)` writes them; optional fields
-  omitted when absent; and a final newline. Loading and saving a board written this way reproduces it byte for
-  byte; the sample board does.
+  links, frames, resources, and notes sorted by id; labels and guards by project (the board's own first) and key;
+  two-space indentation; numbers and string escapes exactly as JavaScript's `JSON.stringify(value, null, 2)` writes
+  them; optional fields omitted when absent, and `frames`, `resources`, and `notes` when empty; and a final newline.
+  Loading and saving a board written this way reproduces it byte for byte; the sample board does, and so does
+  `testdata/boards/order-system.json`, which holds every item. The window receives pages in the same shape.
 - **What a window sends.** A save carries only `{title, pages}` (`BoardEdit`). Rust keeps the folder from the open
   board, derives `projects`, and writes the file's framing, so moving a board between folders never races its
   autosave.
 
 ### Pages, cards, and folders
 
-- **Ids.** Page, card, group, and link ids are a letter or digit followed by up to 99 letters, digits, `_`, `.`, or
-  `-`. Card, group, and link ids are unique together within their page, so the same card id can appear on two
-  pages. A new board's first page is `page-1`.
+- **Ids.** Page and item ids are a letter or digit followed by up to 99 letters, digits, `_`, `.`, or `-`. A page's
+  cards, groups, links, frames, resources, and notes share one id space, so an id is unique within its page and the
+  same card id can appear on two pages. A new board's first page is `page-1`.
 - **Folders.** A folder path is 1 to 8 names joined by `/`; each name is 1 to 64 characters, with no leading or
   trailing whitespace, no control characters, no `/` or `\`, and isn't `.` or `..`. Names compare exactly. A
   folder exists while a board is in it or under it; an empty one is kept in the project's `.unfold/local/state.json`
@@ -516,8 +578,9 @@ save signs from verified source.
 ### Cards from other projects
 
 A card's `ref.project` is the **shared name** of the project its key is in, and is absent for the board's own
-project ([U-44](decisions-and-tradeoffs.md#u-44-boards-that-span-projects-with-drawn-links)). A save that writes the
-board's own project's name there is refused ("omit project for the board's own project").
+project ([U-44](decisions-and-tradeoffs.md#u-44-boards-that-span-projects-with-drawn-links)); so are a resource's and
+an anchor's `project` and a link's `carriesProject`. A save that writes the board's own project's name in any of
+them is refused ("omit project for the board's own project").
 
 - **Resolving.** A name resolves to the first connected project with that shared name, in workspace order, the
   board's own included. A name that resolves to no project is **not connected**.
@@ -544,7 +607,8 @@ facts' hash of the reference's project, so text can never be signed against sour
 
 When a signature no longer matches the verified bytes (or the bytes do not verify), the description or label is
 **outdated**. A link's label is signed when it is saved but never reported outdated: a drawn link is a person's claim,
-and health checks only that both ends still exist.
+and health checks only that both ends still exist. A label on a link with a resource or frame end, and the
+descriptions and signatures of frames, resources, and connections, are kept as they are written.
 
 ### Guards and reconnecting
 
@@ -564,7 +628,8 @@ connected are kept unchanged. After a graph update, references reconnect by key:
 
 A group is a run of consecutive sibling statements with the same parent and the same body role (`body`, `then`,
 `else`, `catch`, `finally`), inside its block card and not the card's block itself. Groups in one card never overlap
-or nest. `group_problem` names the first rule a group breaks.
+or nest. `group_problem` names the first rule a group breaks. Code draws a group as a magenta rail and Flow as a
+[step group](#step-groups); its one `collapsed` field folds it in both.
 
 ### Health and repairs
 
@@ -577,10 +642,13 @@ Health is computed per page, and every item names its page and, for labels and k
 | `brokenGroup` | A group breaks the group rules, or overlaps or nests with another | Ungroup |
 | `review` | A guarded reference (a card, a group member, a label) is held for review | Accept (save a fresh guard for the current code), Reconnect, remove or ungroup |
 | `notConnected` | A card's `ref.project` resolves to no connected project | Remove the card |
-| `brokenLink` | A drawn link's end is a card that is missing from its connected project | Remove the link |
+| `brokenLink` | A drawn link's end is a card that is missing from its connected project (a resource or frame end never is) | Remove the link |
 
 A board's list label sums its items ("1 missing · 2 outdated · 1 not connected · 2 broken links"); a healthy board
-has none. `apply_repair` performs a repair on one page. Saving (`prepare_save`) re-checks only the pages that
+has none. `apply_repair` performs a repair on one page. Removing a card or a link removes what would dangle: a
+card's groups, the links that end at it, its place in a frame (a frame left with no members goes too, with the links
+to it), and the attachment of a note, which stays where it was, unattached (at the item's position plus its offset:
+a card's or resource's position, a link's ends' midpoint, a frame's members' top-left). Saving (`prepare_save`) re-checks only the pages that
 changed, restores guards an edit dropped (from the version being replaced), signs unsigned descriptions, labels,
 and link labels, saves guards, and refuses a board that introduces a missing reference, a broken group, a held
 reference, or a broken link that the previous version did not already have; problems carried over unchanged are
@@ -597,7 +665,8 @@ A page's outline ("On this page") lists its cards in follow order. A *card link*
 of one project: an entrance card to the cards of its resolved targets, in registration order, or a block card to
 the cards of the resolved targets of the occurrences it owns, in source order. Roots are the cards nothing on the
 page links to (entrance cards first, then left to right and top to bottom); each is followed depth first through its
-card links and then the page's drawn links (in id order), indented by call depth. Cards reachable only through a
+card links and then the page's links between two cards (in id order; links to resources and frames aren't followed),
+indented by call depth. Cards reachable only through a
 cycle come last. The outline also lists the Flow nodes, in that order, that still show a fallback name ("N Flow steps
 unlabeled").
 
@@ -632,8 +701,9 @@ unlabeled").
 - **Unpublished changes** count the differences between the working and the published version
   ([U-43](decisions-and-tradeoffs.md#u-43-edits-to-a-published-board-wait-for-publish)): the title (1), the folder
   (1), the page order (1), each page added or removed (1), and for each page in both its title (1) and default view
-  (1), each card, group, and link added, removed, or changed (by id), and each label added, removed, or changed (by
-  project and key). Guards, and so signatures alone, are not counted. Zero means the copy is deleted, so a board never
+  (1), each card, group, link, frame, resource, and note added, removed, or changed (by id; a link's change includes
+  its connection fields), and each label added, removed, or changed (by project and key). Guards, and so a
+  reference's signature alone, are not counted. Zero means the copy is deleted, so a board never
   has "0 unpublished changes". **`baseChanged`** says the published file is no longer the copy's base (a pull changed
   it): Publish will ask.
 - **Moving a published board to another folder**, or renaming a folder it is in, is an unpublished change.
@@ -660,10 +730,19 @@ unlabeled").
 handlers, and one Flow as Mermaid flowchart text ([architecture §10.5](architecture.md#105-boards)).
 
 - **Cards.** An entrance card is a stadium node with its label (or method and trigger); a Code-view
-  card is a box with its qualified name, location, and description; a Flow-view card is a subgraph
-  with its Flow, and its groups as nested subgraphs. A card from a project that isn't connected is a
-  "From <name>, not connected" placeholder. An entrance export draws the entrance card and a
-  Flow card for each distinct resolved target.
+  or Diagram-view card is a box with its qualified name, location, and description; a Flow-view card
+  is a subgraph with its Flow, and its groups as nested subgraphs. A card from a project that isn't
+  connected is a "From <name>, not connected" placeholder. An entrance export draws the entrance card
+  and a Flow card for each distinct resolved target.
+- **Resource cards** are nodes labeled with their kind and name, then a line per column (its name,
+  written type, and marks: `PK`, `FK → <references>`, `unique`, `optional`) and their description. A
+  table is a cylinder, a queue a parallelogram, a cache the other parallelogram, storage a trapezoid,
+  an outside service a hexagon, and an actor a double circle.
+- **Frames** are subgraphs (`f0`, `f1`, …) titled with their title and description, with
+  `direction LR` or `direction TB` from their `direction`, around their members in member order and
+  nested as the frames are; every other item is drawn at the top level. A collapsed frame is drawn
+  expanded.
+- **Notes** are `%%` comments where they sit ("Note on create-order: …", or "Note: …" when free).
 - **Shapes.** Start and End are stadiums, conditions rhombi, loops hexagons, calls subroutines,
   returns and transfers circles, throws flags, everything else boxes. Opaque nodes get the `opaque`
   class.
@@ -672,7 +751,12 @@ handlers, and one Flow as Mermaid flowchart text ([architecture §10.5](architec
   with the edge kind and leaving from the Flow node that shows the occurrence; an entrance points at
   each handler (`handler`), with a dashed arrow to a placeholder for a target not on the page.
   Arrows from the graph join only cards of one project; links drawn on the page are dashed arrows with
-  their label.
+  their label. A connection is labeled with its kind's word (`HTTP`, `RPC`, `queue`, `event`,
+  `writes`, `reads`, `runtime call`, `relates`), a relationship's cardinality in words and its
+  columns, its channel, and its label, and drawn with its kind's line: solid for `http`, `rpc`, and
+  `writes`, thick for `queue`, dotted for `event`, `calls`, and `other`, and a plain line for
+  `relates`; a `reads` arrow points from the resource back at the code. A connection with a step
+  leaves from the Flow node that shows it; one that ends at a frame points at its subgraph.
 - **Labels are the app's** ([U-27](decisions-and-tradeoffs.md#u-27-the-reader-keeps-the-v71-rules)):
   the authored label or the fallback name, never exact source, plus a line per listed callback. An
   outdated description or label is marked `(description outdated)`; references held for review,
@@ -686,7 +770,8 @@ handlers, and one Flow as Mermaid flowchart text ([architecture §10.5](architec
 structurally: comment lines are dropped; node ids and shapes, subgraphs, classes, and every arrow
 must be equal line for line; node labels are compared wherever the PoC did not show source text
 (entrances, Code-view cards, placeholders, `End`). `tests/sample_board.rs` compares the sample
-board's diagram with the PoC's exactly. Snapshots of every Unfold diagram (`testdata/boards/*.mmd`,
+board's diagram with the PoC's exactly; `tests/board_items.rs` snapshots the diagram of
+`testdata/boards/order-system.json`, which has every frame, resource, connection, and note shape. Snapshots of every Unfold diagram (`testdata/boards/*.mmd`,
 `testdata/mermaid/*.json`) are parsed by the real Mermaid parser in `tools/oracles/check-mermaid.mjs`.
 
 ### Differences from the proof of concept

@@ -1,11 +1,12 @@
 /**
  * Authored text in Selected: a description or a Flow label in the authored color on its tint, edited
- * in place (the field grows with its lines), with who wrote it underneath. Every keystroke is a board
- * edit; typing in one field merges into one undo step.
+ * in place (the field grows with its lines), with who wrote it underneath ("Claude · agent" for an
+ * agent). Every keystroke is a board edit, and makes the text yours; typing in one field merges into
+ * one undo step.
  */
 
 import { useRef, type ReactNode } from "react";
-import { authorName } from "../../code/text";
+import { Author } from "../../agent";
 import type { Description } from "../../ipc/generated";
 import { useFocusTarget } from "../../keyboard";
 
@@ -42,7 +43,11 @@ export function AuthoredField({ label, value, placeholder, focusKey, disabledRea
           onChange(event.target.value);
         }}
       />
-      {value ? <span className="authored-byline">{authorName(value.author)}</span> : null}
+      {value ? (
+        <span className="authored-byline">
+          <Author author={value.author} />
+        </span>
+      ) : null}
       {disabledReason !== null ? <span className="authored-note">{disabledReason}</span> : null}
       {status}
     </div>

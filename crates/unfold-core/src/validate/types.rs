@@ -9,7 +9,7 @@ use crate::model::{Block, FileGraph};
 use crate::text::{ByteRange, LABEL_MAX_UTF16, utf16_len};
 use crate::typed::{Pairing, Parameter, TypeLink, WrittenType};
 use crate::vocab::{
-    BlockKind, EdgeKind, Language, MemberKind, ParameterKind, Resolution, ResultBinding, SlotName,
+    BlockKind, EdgeKind, Heritage, Language, MemberKind, ParameterKind, Resolution, ResultBinding, SlotName,
 };
 
 /// The slots of one file that typed records are checked against, by block.
@@ -23,6 +23,8 @@ struct Slots {
     returns: FxHashMap<u32, ByteRange>,
     /// Block → how many argument slots it has.
     argument_counts: FxHashMap<u32, u32>,
+    /// Block → its `heritage` slot's range.
+    heritage: FxHashMap<u32, ByteRange>,
 }
 
 impl Slots {
@@ -40,6 +42,9 @@ impl Slots {
                 (SlotName::ReturnType, _) => {
                     slots.returns.insert(slot.block, slot.range);
                 }
+                (SlotName::Heritage, _) => {
+                    slots.heritage.insert(slot.block, slot.range);
+                }
                 _ => {}
             }
         }
@@ -56,7 +61,7 @@ pub(super) fn check(checker: &mut Checker<'_>, file: &FileGraph, complete: bool)
     check_members(checker, file);
     check_arguments(checker, file, &slots, complete);
     check_results(checker, file, &slots, complete);
-    check_type_links(checker, file);
+    check_type_links(checker, file, &slots);
 }
 
 /// The block a record names, or a violation on the file when it names none.
@@ -550,7 +555,7 @@ fn check_results(checker: &mut Checker<'_>, file: &FileGraph, slots: &Slots, com
     }
 }
 
-fn check_type_links(checker: &mut Checker<'_>, file: &FileGraph) {
+fn check_type_links(checker: &mut Checker<'_>, file: &FileGraph, slots: &Slots) {
     let mut previous: Option<(u32, ByteRange)> = None;
     let mut ranges: Vec<ByteRange> = Vec::with_capacity(file.types.type_links.len());
     for link in &file.types.type_links {
@@ -587,10 +592,47 @@ fn check_type_links(checker: &mut Checker<'_>, file: &FileGraph) {
             );
         }
         check_link_outcome(checker, file, link, &subject);
+        if let Some(heritage) = link.heritage {
+            check_heritage(checker, file, slots, link, found, heritage, &subject);
+        }
     }
     ranges.sort_unstable();
     if ranges.windows(2).any(|pair| pair[0].end > pair[1].start) {
         checker.report(Subject::File(file.file.path.clone()), "type links overlap");
+    }
+}
+
+/// A heritage link names a base of a `class` or `interface`: `implements` only on a TypeScript
+/// class, and an `extends` name inside the block's `heritage` slot (a TypeScript class's
+/// `implements` clause is no slot).
+fn check_heritage(
+    checker: &mut Checker<'_>,
+    file: &FileGraph,
+    slots: &Slots,
+    link: &TypeLink,
+    block: &Block,
+    heritage: Heritage,
+    subject: &dyn Fn() -> Subject,
+) {
+    let permitted = match heritage {
+        Heritage::Extends => matches!(block.kind, BlockKind::Class | BlockKind::Interface),
+        Heritage::Implements => block.kind == BlockKind::Class && file.file.language == Language::TypeScript,
+    };
+    if !permitted {
+        checker.report(
+            subject(),
+            format!("`{heritage}` is not a heritage of a {}", block.kind),
+        );
+    } else if heritage == Heritage::Extends
+        && !slots
+            .heritage
+            .get(&link.block)
+            .is_some_and(|slot| slot.contains(link.range))
+    {
+        checker.report(
+            subject(),
+            "an `extends` link lies outside its block's heritage slot",
+        );
     }
 }
 

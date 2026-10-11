@@ -9,9 +9,9 @@ use crate::model::{Edge, Entrance, FileGraph, Graph, Slot};
 use crate::text::{ByteRange, ContentHash, LineSpan};
 use crate::typed::{FileTypes, Pairing};
 use crate::vocab::{
-    BlockKind, DetectorId, EdgeKind, EntranceKind, Expansion, FileState, HttpMethod, InputRole, Language,
-    MemberKind, PairingReason, ParameterKind, Reason, Resolution, ResultBinding, Role, SlotName, TargetRole,
-    TriggerStatus,
+    BlockKind, DetectorId, EdgeKind, EntranceKind, Expansion, FileState, Heritage, HttpMethod, InputRole,
+    Language, MemberKind, PairingReason, ParameterKind, Reason, Resolution, ResultBinding, Role, SlotName,
+    TargetRole, TriggerStatus,
 };
 
 #[derive(Serialize)]
@@ -175,6 +175,8 @@ struct TypeLinkOut<'a> {
     reason: Option<Reason>,
     #[serde(skip_serializing_if = "Option::is_none")]
     module: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    heritage: Option<Heritage>,
 }
 
 #[derive(Serialize)]
@@ -429,6 +431,7 @@ fn write_types<'a>(
             target: link.target.as_ref().map(|key| key.as_str()),
             reason: link.reason,
             module: link.module.as_ref().map(|module| module.as_str()),
+            heritage: link.heritage,
         })?;
     }
     Ok(())

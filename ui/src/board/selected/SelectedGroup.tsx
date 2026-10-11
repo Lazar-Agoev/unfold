@@ -1,5 +1,9 @@
-/** Selected for a group: its title (renamed in place), its description, the card it is in, and Ungroup. */
+/**
+ * Selected for a step group: its title (renamed in place, which makes it yours) and who wrote it, its
+ * description, the card it is in, and Ungroup.
+ */
 
+import { Author } from "../../agent";
 import { Button } from "../../components";
 import type { Group } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
@@ -23,13 +27,13 @@ export function SelectedGroup({ target, group }: { readonly target: PageTarget; 
           value={group.title}
           onChange={(event) => {
             if (event.target.value.trim().length > 0) {
-              editGroup(target, group.id, { title: event.target.value });
+              editGroup(target, group.id, { title: event.target.value, ...(author !== null ? { author } : {}) });
             }
           }}
         />
         {card ? (
           <p className="selected-location">
-            Group in{" "}
+            Step group in{" "}
             <button
               type="button"
               className="selected-link"
@@ -39,6 +43,12 @@ export function SelectedGroup({ target, group }: { readonly target: PageTarget; 
             >
               {keyDisplayName(cardKey(card))}
             </button>
+            {group.author !== undefined ? (
+              <>
+                {" · titled by "}
+                <Author author={group.author} />
+              </>
+            ) : null}
           </p>
         ) : null}
       </div>

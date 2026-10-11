@@ -27,7 +27,7 @@ beforeEach(() => {
 describe("activateChoice", () => {
   it("adds a function or an entrance to the current page", async () => {
     await activateChoice({ kind: "definition", project: "p-b", key: "k", name: "processRefund" }, PAGE, false);
-    expect(boards.addBlock).toHaveBeenCalledWith(PAGE.target, "p-b", "k");
+    expect(boards.addBlock).toHaveBeenCalledWith(PAGE.target, "p-b", "k", undefined);
     await activateChoice({ kind: "entrance", project: "p-b", key: "e" }, PAGE, false);
     expect(boards.openEntrance).toHaveBeenCalledWith(PAGE.target, "p-b", "e");
     expect(boards.addPage).not.toHaveBeenCalled();
@@ -36,7 +36,7 @@ describe("activateChoice", () => {
   it("adds onto a new page after the current one with ⌘Enter", async () => {
     await activateChoice({ kind: "definition", project: "p-b", key: "k", name: "processRefund" }, PAGE, true);
     expect(boards.addPage).toHaveBeenCalledWith(BOARD);
-    expect(boards.addBlock).toHaveBeenCalledWith({ board: BOARD, page: "page-2" }, "p-b", "k");
+    expect(boards.addBlock).toHaveBeenCalledWith({ board: BOARD, page: "page-2" }, "p-b", "k", undefined);
   });
 
   it("from Home starts a new draft in the result's own project", async () => {
@@ -44,7 +44,15 @@ describe("activateChoice", () => {
     expect(boards.traceEntrance).toHaveBeenCalledWith("p-b", "e");
     await activateChoice({ kind: "definition", project: "p-b", key: "k", name: "processRefund" }, HOME, false);
     expect(boards.newBoard).toHaveBeenCalledWith("p-b", { title: "processRefund" });
-    expect(boards.addBlock).toHaveBeenCalledWith({ board: { project: "p-a", id: "draft" }, page: "page-1" }, "p-b", "k");
+    expect(boards.addBlock).toHaveBeenCalledWith({ board: { project: "p-a", id: "draft" }, page: "page-1" }, "p-b", "k", undefined);
+  });
+
+  it("adds a type declaration in its own view, on the page or in a new draft", async () => {
+    const cart = { kind: "definition", project: "p-b", key: "src/cart.ts#interface:Cart", name: "Cart", view: "code" } as const;
+    await activateChoice(cart, PAGE, false);
+    expect(boards.addBlock).toHaveBeenLastCalledWith(PAGE.target, "p-b", cart.key, "code");
+    await activateChoice(cart, HOME, false);
+    expect(boards.addBlock).toHaveBeenLastCalledWith({ board: { project: "p-a", id: "draft" }, page: "page-1" }, "p-b", cart.key, "code");
   });
 
   it("opens a file in the peek sheet, and a text match at its line", async () => {

@@ -1,7 +1,7 @@
-//! What lists boards: a project's boards and empty folders,
-//! the drafts of every project, board thumbnails, and where a key is on boards. All of them read
-//! from disk and serve resting projects without waking them; only a live project's boards carry
-//! a health label (health needs a current graph).
+//! What lists and reads boards without opening them: a project's boards and empty folders, the
+//! drafts of every project, board thumbnails, where a key is on boards, and one board's working
+//! version. All of them read from disk and serve resting projects without waking them; only a
+//! live project's boards carry a health label (health needs a current graph).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -13,8 +13,8 @@ use super::files::{Files, Working, parse_id, working_file};
 use super::graphs::Resolver;
 use super::session::{BoardExtras, health_of};
 use super::types::{
-    BoardList, BoardRefHit, BoardRefs, BoardSummary, CardKind, Drafts, Thumbnail, ThumbnailCard,
-    ThumbnailPage, Thumbnails, ThumbnailsArgs,
+    BoardDocument, BoardIdArgs, BoardList, BoardRefHit, BoardRefs, BoardSummary, CardKind, Drafts,
+    ReadBoardResult, Thumbnail, ThumbnailCard, ThumbnailPage, Thumbnails, ThumbnailsArgs,
 };
 use crate::commands::{NoArgs, ProjectArgs, ProjectKeyArgs, count, key_arg};
 use crate::events::{WindowId, WorkingFile};
@@ -159,6 +159,27 @@ pub fn list_boards(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<BoardList>
         project: args.project,
         boards,
         empty_folders,
+    })
+}
+
+/// `read_board`: board `id`'s working version as its file holds it, with the file's revision,
+/// its publish state, and the window holding it. Neither claims the board nor wakes its project.
+pub fn read_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<ReadBoardResult> {
+    let project = ctx.project(&args.project)?;
+    let file = parse_id(&args.id)?;
+    let files = Files::reading(project.root(), &project.layout());
+    let working = files.working(&file)?;
+    let published = files.published_state(&file, &working.loaded.board, working.kind, working.loaded.base);
+    let id = file.relative();
+    Ok(ReadBoardResult {
+        held_by: project.claims().holder(&id),
+        project: args.project,
+        place: file.place,
+        name: file.name,
+        document: BoardDocument::new(working.loaded.board),
+        revision: working.loaded.revision.0.to_string(),
+        published,
+        id,
     })
 }
 

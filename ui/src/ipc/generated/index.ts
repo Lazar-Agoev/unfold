@@ -31,6 +31,33 @@ status: AddStatus,
 project: ProjectRow, };
 
 /**
+ * What a resource card or a connection cites, which Unfold can verify: a block or entrance key,
+ * or a line range of an evidence file, in the board's own project (`project` absent) or in the
+ * project with that shared name.
+ */
+export type Anchor = { 
+/**
+ * The key.
+ */
+key: Key, 
+/**
+ * Its project; absent for the board's own.
+ */
+project?: ProjectName, } | { 
+/**
+ * The file, relative to its project's folder.
+ */
+file: RepoPath, 
+/**
+ * The first and last line, 1-based and inclusive.
+ */
+lines: [number, number], 
+/**
+ * Its project; absent for the board's own.
+ */
+project?: ProjectName, };
+
+/**
  * Facts about the app the UI can't get itself (it has no Node APIs).
  */
 export type AppInfo = { 
@@ -77,7 +104,7 @@ total: number,
 entrances: Array<EntranceRow>, };
 
 /**
- * Who wrote a description or label: `person:<name>` or `agent:<name>`.
+ * Who wrote something: `person:<name>` or `agent:<name>`.
  */
 export type Author = string;
 
@@ -157,10 +184,10 @@ title: string,
  */
 folder?: string, 
 /**
- * The other projects its cards come from, sorted: [`Board::used_projects`]. The
- * constructors, [`super::parse`], [`super::parse_edit`], and [`super::prepare_save`] set
- * it; after editing cards in place, call [`Board::refresh_projects`]. The writer always
- * writes the derived set.
+ * The other projects its items name, sorted: [`Board::used_projects`]. The constructors,
+ * [`super::parse`], [`super::parse_edit`], and [`super::prepare_save`] set it; after
+ * editing items in place, call [`Board::refresh_projects`]. The writer always writes the
+ * derived set.
  */
 projects: Array<ProjectName>, 
 /**
@@ -170,8 +197,8 @@ pages: Array<Page>, };
 
 /**
  * What a window saves: the title and the pages. The folder, the `projects`
- * list, and the file framing are Rust's. Labels, guards, and links are optional on input;
- * signatures may be `""` (signed on save).
+ * list, and the file framing are Rust's. Labels, guards, and links (and frames, resources, and
+ * notes, as in the file) are optional on input; signatures may be `""` (signed on save).
  */
 export type BoardEdit = { title: string; pages: Array<Omit<Page, "labels" | "guards" | "links"> & Partial<Pick<Page, "labels" | "guards" | "links">>> };
 
@@ -639,7 +666,7 @@ cancelled: boolean, };
  */
 export type Card = { 
 /**
- * Unique among the page's cards, groups, and links.
+ * Unique among the page's items.
  */
 id: string, 
 /**
@@ -651,7 +678,7 @@ ref: CardRef,
  */
 at: [number, number], 
 /**
- * The card's own Code/Flow switch; the page's default when absent.
+ * The card's own view; the page's default when absent.
  */
 view?: View, 
 /**
@@ -744,6 +771,11 @@ targets: Array<TargetView>,
  * The applications it belongs to, by name.
  */
 applications: Array<string>, };
+
+/**
+ * How many rows of each table a `relates` connection joins.
+ */
+export type Cardinality = "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many";
 
 /**
  * The common outcome of every check of a folded `else if` chain.
@@ -844,6 +876,37 @@ endLine: number,
  * The verified source, or why there is none.
  */
 source: CodeSource, };
+
+/**
+ * One column of a table card. A table backed by a type lists marks only (`name`, `key`,
+ * `references`), naming fields of the type; the type gives the rest.
+ */
+export type Column = { 
+/**
+ * The column's name; unique in its table.
+ */
+name: string, 
+/**
+ * Its type as written.
+ */
+type?: string, 
+/**
+ * Its mark: primary key, foreign key, or unique.
+ */
+key?: ColumnKey, 
+/**
+ * What a foreign key references, such as `customers.id`.
+ */
+references?: string, 
+/**
+ * The column may be empty (written only when true).
+ */
+optional?: boolean, };
+
+/**
+ * A mark on a table's column.
+ */
+export type ColumnKey = "primary" | "foreign" | "unique";
 
 /**
  * A rejected command. See the [module documentation](self).
@@ -1065,7 +1128,8 @@ path: string,
 line: number | null, };
 
 /**
- * A card or group description, a Flow label's text, or a drawn link's label.
+ * A description (of a card, group, frame, resource, or connection), a Flow label's text, or a
+ * drawn link's label.
  */
 export type Description = { 
 /**
@@ -1871,6 +1935,64 @@ throws: boolean,
 chain?: number, };
 
 /**
+ * A named box around items of a page: a unit, a service, or a zone. It has no position of its
+ * own: its box is its members' bounds.
+ */
+export type Frame = { 
+/**
+ * Unique among the page's items.
+ */
+id: string, 
+/**
+ * The title; never blank.
+ */
+title: string, 
+/**
+ * The frame's description, signed over its member cards' guards.
+ */
+description?: Description, 
+/**
+ * The ids of the cards, resources, notes, and frames it holds, in order: at least one,
+ * none in another frame.
+ */
+members: Array<string>, 
+/**
+ * How it is drawn.
+ */
+look: FrameLook, 
+/**
+ * What it is.
+ */
+icon?: FrameIcon, 
+/**
+ * The way it lays its members out.
+ */
+direction?: FrameDirection, 
+/**
+ * Collapsed to one node (written only when true).
+ */
+collapsed?: boolean, 
+/**
+ * Who drew it.
+ */
+author: Author, };
+
+/**
+ * The way a frame lays its members out.
+ */
+export type FrameDirection = "right" | "down";
+
+/**
+ * What a frame is, as an icon.
+ */
+export type FrameIcon = "api" | "worker" | "schedule" | "cli" | "web" | "library" | "system";
+
+/**
+ * How a frame is drawn.
+ */
+export type FrameLook = "box" | "zone";
+
+/**
  * The branch and worktrees of a project's repository (`git_info`).
  */
 export type GitInfo = { 
@@ -2037,7 +2159,7 @@ complete: boolean, };
  */
 export type Group = { 
 /**
- * Unique among the page's cards, groups, and links.
+ * Unique among the page's items.
  */
 id: string, 
 /**
@@ -2059,7 +2181,11 @@ collapsed: boolean,
 /**
  * The group's description.
  */
-description?: Description, };
+description?: Description, 
+/**
+ * Who wrote the title; absent on groups titled before titles were attributed.
+ */
+author?: Author, };
 
 /**
  * What a reference was when it was saved, so it can reconnect safely: one per referenced
@@ -2159,6 +2285,12 @@ repairs: Array<RepairKind>, };
 export type HealthKind = "missing" | "outdated" | "brokenGroup" | "review" | "notConnected" | "brokenLink";
 
 /**
+ * How a type name written in a heritage clause relates its declaration to the type it
+ * names.
+ */
+export type Heritage = "extends" | "implements";
+
+/**
  * The method of an HTTP entrance.
  */
 export type HttpMethod = "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "ALL";
@@ -2216,6 +2348,20 @@ edgesWritten: number,
  * The engine's statistics, one fact per line.
  */
 text: string, };
+
+/**
+ * The members a type inherits from one of its bases.
+ */
+export type InheritedGroup = { 
+/**
+ * The base's name as a heritage clause writes it, with one span: `declared` (its key),
+ * `external` or `builtin` (its module), or `unresolved` (the reason in words).
+ */
+from: TypeText, 
+/**
+ * The base's written members, in source order; none for a base that isn't `declared`.
+ */
+members: Array<TypeMember>, };
 
 export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in string]: JsonValue } | null;
 
@@ -2412,26 +2558,81 @@ source: string,
 seq: number, };
 
 /**
- * A link drawn between two cards of a page (decision U-44): the graph does not join code
- * across projects, so people do, with an optional signed label ("calls over HTTP").
+ * A link drawn between two items of a page (decision U-44): the graph does not join code
+ * across projects, so people and agents do. A link with a `kind` is a **connection**: a typed
+ * line that says how its ends talk, with its evidence; one without is drawn as `other`, with an
+ * optional signed label ("calls over HTTP").
  */
 export type Link = { 
 /**
- * Unique among the page's cards, groups, and links.
+ * Unique among the page's items.
  */
 id: string, 
 /**
- * The card it starts at.
+ * The card, resource, or frame it starts at: the side that acts.
  */
 from: string, 
 /**
- * The card it points at; never `from`.
+ * The card, resource, or frame it points at; never `from`.
  */
 to: string, 
 /**
  * Its label, signed over both ends' guard signatures (informational: never outdated).
  */
-label?: Description, };
+label?: Description, 
+/**
+ * How its ends talk; absent for a drawn link (`other`).
+ */
+kind?: LinkKind, 
+/**
+ * The statement or call inside the `from` card's block it leaves from (same project).
+ */
+step?: Key, 
+/**
+ * For `relates`: the column of the `from` table.
+ */
+fromColumn?: string, 
+/**
+ * For `relates`: the column of the `to` table.
+ */
+toColumn?: string, 
+/**
+ * What travels: the route, the queue, or the event.
+ */
+channel?: string, 
+/**
+ * The type it carries: a type declaration or class key.
+ */
+carries?: Key, 
+/**
+ * The project of `carries`; absent for the board's own.
+ */
+carriesProject?: ProjectName, 
+/**
+ * For `relates`: how many rows of each table it joins.
+ */
+cardinality?: Cardinality, 
+/**
+ * The evidence for the receiving side.
+ */
+anchors?: Array<Anchor>, 
+/**
+ * The evidence in words.
+ */
+description?: Description, 
+/**
+ * Who drew it; every connection has one.
+ */
+author?: Author, 
+/**
+ * The signature of its step's and anchors' source; absent until a save signs it.
+ */
+signature?: Signature, };
+
+/**
+ * How the two ends of a connection talk.
+ */
+export type LinkKind = "http" | "rpc" | "queue" | "event" | "writes" | "reads" | "calls" | "relates" | "other";
 
 /**
  * A count and the first few items.
@@ -2563,6 +2764,33 @@ pageTitle?: string, };
  * The arguments of a command that takes none: `{}`.
  */
 export type NoArgs = Record<string, never>;
+
+/**
+ * A short piece of plain text on a page: free, or attached to a card, frame, resource, or link
+ * and moving with it. Notes are about the page, not the code: never signed, no health.
+ */
+export type Note = { 
+/**
+ * Unique among the page's items.
+ */
+id: string, 
+/**
+ * The text: 1 to 400 characters, not blank.
+ */
+text: string, 
+/**
+ * The canvas position; an offset from the attached item's top-left (a link's midpoint) when
+ * attached.
+ */
+at: [number, number], 
+/**
+ * The card, frame, resource, or link it is attached to.
+ */
+attach?: string, 
+/**
+ * Who wrote it.
+ */
+author: Author, };
 
 /**
  * What `open_board` did.
@@ -2758,9 +2986,21 @@ labels: Array<LabelEntry>,
  */
 guards: Array<GuardEntry>, 
 /**
- * Drawn links.
+ * Drawn links and connections.
  */
-links: Array<Link>, };
+links: Array<Link>, 
+/**
+ * Frames.
+ */
+frames?: Array<Frame>, 
+/**
+ * Resource cards.
+ */
+resources?: Array<Resource>, 
+/**
+ * Notes.
+ */
+notes?: Array<Note>, };
 
 /**
  * A page's outline.
@@ -3440,6 +3680,43 @@ sourceRoots: Array<string> | null,
 version: string, };
 
 /**
+ * A board as its working file holds it, read without opening it (`read_board`).
+ */
+export type ReadBoardResult = { 
+/**
+ * The board's project.
+ */
+project: ProjectId, 
+/**
+ * The board's id.
+ */
+id: string, 
+/**
+ * Published or draft.
+ */
+place: Place, 
+/**
+ * The public file's name without `.json`.
+ */
+name: string, 
+/**
+ * The working version: the draft, the changes copy, or the published file.
+ */
+document: BoardDocument, 
+/**
+ * The working file's revision.
+ */
+revision: string, 
+/**
+ * For a published board, its publish state, as `open_board` reports it; `None` for a draft.
+ */
+published: PublishedState | null, 
+/**
+ * The window that has it open, if any.
+ */
+heldBy: number | null, };
+
+/**
  * Why an occurrence or entrance target is unresolved.
  */
 export type Reason = "unknown_name" | "unknown_receiver" | "parameter" | "mutable_binding" | "not_concrete" | "accessor" | "ambiguous" | "overridden" | "unbound_this" | "not_indexed" | "not_found" | "dynamic" | "wrapper" | "unsupported";
@@ -3677,6 +3954,61 @@ export type Resolution = "resolved" | "external" | "unresolved";
 export type Resolve = "keep_mine";
 
 /**
+ * A resource card: something the code talks to that isn't a function (a table, a queue, a
+ * cache, storage, an outside service, or an actor), authored and anchored.
+ */
+export type Resource = { 
+/**
+ * Unique among the page's items.
+ */
+id: string, 
+/**
+ * What it stands for.
+ */
+kind: ResourceKind, 
+/**
+ * Its technical name, such as `orders`; never blank.
+ */
+name: string, 
+/**
+ * The project of `type`; absent for the board's own.
+ */
+project?: ProjectName, 
+/**
+ * For a table: the type declaration or class that declares its shape.
+ */
+type?: Key, 
+/**
+ * For a table: its columns, or a type-backed table's marks.
+ */
+columns?: Array<Column>, 
+/**
+ * What it is anchored to.
+ */
+anchors: Array<Anchor>, 
+/**
+ * The canvas position: finite numbers.
+ */
+at: [number, number], 
+/**
+ * Its description.
+ */
+description?: Description, 
+/**
+ * Who added it.
+ */
+author: Author, 
+/**
+ * The signature of its anchors' (and type's) source; absent until a save signs it.
+ */
+signature?: Signature, };
+
+/**
+ * What a resource card stands for.
+ */
+export type ResourceKind = "table" | "queue" | "cache" | "storage" | "external" | "actor";
+
+/**
  * Where a call's value lands.
  */
 export type ResultBinding = "variable" | "return" | "argument" | "discard" | "other";
@@ -3838,6 +4170,11 @@ query: string,
  */
 kinds?: Array<SearchKind>, 
 /**
+ * Only definitions of these block kinds (every catalog kind when absent): `["interface",
+ * "type_alias", "enum", "class"]` finds types.
+ */
+definitionKinds?: Array<BlockKind>, 
+/**
  * Results per kind across every project (50 when absent, at most 500).
  */
 limit?: number, 
@@ -3888,7 +4225,8 @@ qualifiedName: string,
  */
 path: string, 
 /**
- * The block kind or entrance kind.
+ * A definition's block kind (`function`, `class`, `interface`, `type_alias`, …), or an
+ * entrance's kind.
  */
 kind: string, 
 /**
@@ -4539,6 +4877,11 @@ language: Language,
  */
 members: Array<TypeMember>, 
 /**
+ * The members it inherits, one group per base it extends: depth first in written order,
+ * each type once (never the type itself), at most [`MAX_INHERITED_DEPTH`] levels down.
+ */
+inherited: Array<InheritedGroup>, 
+/**
  * A type alias's aliased type, when it isn't an object type (an alias with no members),
  * from its verified source; absent when the file changed.
  */
@@ -4653,7 +4996,12 @@ path: RepoPath,
 /**
  * The line the type name is on.
  */
-line: number, };
+line: number, 
+/**
+ * When the place is a heritage clause naming the type as a base: whether the owner
+ * extends or implements it.
+ */
+heritage?: Heritage, };
 
 /**
  * One page of the places a declaration's type is written.
@@ -4758,7 +5106,7 @@ edits: Array<SettingsEdit>, };
 /**
  * A card's view.
  */
-export type View = "code" | "flow";
+export type View = "code" | "flow" | "diagram";
 
 /**
  * Why something in a Flow is not drawn, or drawn only in part.
@@ -5222,6 +5570,10 @@ export interface Commands {
    */
   board_thumbnails: { args: ThumbnailsArgs; result: Thumbnails };
   /**
+   * A board as its working file holds it, without opening it.
+   */
+  read_board: { args: BoardIdArgs; result: ReadBoardResult };
+  /**
    * Opens a board in the calling window, or names the window that has it.
    */
   open_board: { args: BoardIdArgs; result: OpenBoardResult };
@@ -5390,6 +5742,7 @@ export const COMMAND_NAMES = [
   "search_text",
   "list_boards",
   "board_thumbnails",
+  "read_board",
   "open_board",
   "new_board",
   "reload_board",

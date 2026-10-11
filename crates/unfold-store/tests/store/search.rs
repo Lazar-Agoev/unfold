@@ -1,13 +1,13 @@
 //! Search candidates for definitions, entrances, and files.
 
-use unfold_core::testkit::sample::sample;
+use unfold_core::testkit::sample::{sample, typed};
 use unfold_store::{CandidateKind, Reader};
 
 use crate::common::{Prepared, temp_store};
 
 fn keys(reader: &Reader, query: &str, kind: CandidateKind) -> Vec<String> {
     reader
-        .search(query, kind, 20)
+        .search(query, kind, &[], 20)
         .expect("search")
         .into_iter()
         .map(|candidate| {
@@ -50,7 +50,9 @@ fn finds_definitions_entrances_and_files_by_substring() {
         keys(&reader, "POST", CandidateKind::Entrance),
         [r#"entrance:["express.route","http","POST","/orders","createOrder"]"#]
     );
-    let candidate = &reader.search("helper", CandidateKind::Definition, 5).unwrap()[0];
+    let candidate = &reader
+        .search("helper", CandidateKind::Definition, &[], 5)
+        .unwrap()[0];
     assert_eq!(&*candidate.name, "helper");
     assert_eq!(&*candidate.path, "src/helper.ts");
     assert_eq!(&*candidate.item_kind, "function");
@@ -76,7 +78,56 @@ fn short_terms_and_odd_characters() {
     assert!(keys(&reader, "   ", CandidateKind::File).is_empty());
     // Kinds never match.
     assert!(keys(&reader, "function", CandidateKind::Definition).is_empty());
-    assert_eq!(reader.search("e", CandidateKind::Definition, 2).unwrap().len(), 2);
+    assert_eq!(
+        reader
+            .search("e", CandidateKind::Definition, &[], 2)
+            .unwrap()
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn definitions_narrow_to_item_kinds() {
+    let (_dir, mut store) = temp_store();
+    store
+        .writer
+        .commit(&Prepared::new(typed().build()).first_compile())
+        .unwrap();
+    let reader = store.readers.get().unwrap();
+    let narrowed = |query: &str, item_kinds: &[&str]| -> Vec<(String, String)> {
+        let mut found: Vec<(String, String)> = reader
+            .search(query, CandidateKind::Definition, item_kinds, 20)
+            .unwrap()
+            .into_iter()
+            .map(|candidate| (candidate.key.to_string(), candidate.item_kind.to_string()))
+            .collect();
+        found.sort();
+        found
+    };
+    let pair = |key: &str, kind: &str| (key.to_owned(), kind.to_owned());
+    // `cart` matches the declarations of `src/cart.ts` by name or path.
+    assert_eq!(
+        narrowed("cart", &[]),
+        [
+            pair("src/cart.ts#enum:Status", "enum"),
+            pair("src/cart.ts#interface:Cart", "interface"),
+            pair("src/cart.ts#type_alias:CartId", "type_alias"),
+        ]
+    );
+    assert_eq!(
+        narrowed("cart", &["interface", "enum", "class"]),
+        [
+            pair("src/cart.ts#enum:Status", "enum"),
+            pair("src/cart.ts#interface:Cart", "interface"),
+        ]
+    );
+    // A short term is answered by a scan, narrowed the same way.
+    assert_eq!(
+        narrowed("ca", &["type_alias"]),
+        [pair("src/cart.ts#type_alias:CartId", "type_alias")]
+    );
+    assert!(narrowed("cart", &["function"]).is_empty());
 }
 
 #[test]

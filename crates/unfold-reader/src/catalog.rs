@@ -1,13 +1,14 @@
-//! The definition catalog (architecture §10.1): every function-like or class block that has a
-//! name or is the target of a resolved edge or entrance, with its qualified name and display
-//! label.
+//! The definition catalog (architecture §10.1): every function-like, class, or type declaration
+//! (`interface`, `type_alias`, `enum`) block that has a name or is the target of a resolved edge
+//! or entrance, with its qualified name and display label.
 //!
 //! - The **label** is the block's name. An unnamed callable passed as an argument is labeled
 //!   `callback to <callee>`, after the written callee of the call or construction it is passed
 //!   to; any other unnamed callable is an `anonymous function`, and an unnamed class `class`.
 //! - The **qualified name** prepends the names of enclosing classes and callables, and of a
 //!   variable whose initializer contains the definition (`OrderService.place`,
-//!   `handlers.onCreate`), joined with `.`.
+//!   `handlers.onCreate`), joined with `.`. Type declarations are in the catalog but name
+//!   nothing written inside them (a callback in an enum member's initializer).
 
 use unfold_core::vocab::{BlockKind, EdgeKind, Role};
 use unfold_core::{Block, FileGraph, Graph};
@@ -15,8 +16,15 @@ use unfold_store::Definition;
 
 use crate::index::{BlockId, GraphIndex, to_u32};
 
-/// Whether blocks of `kind` can be catalog definitions.
-pub(crate) fn is_definition_kind(kind: BlockKind) -> bool {
+/// Whether blocks of `kind` can be catalog definitions: function-like blocks, classes, and type
+/// declarations.
+fn is_definition_kind(kind: BlockKind) -> bool {
+    kind.is_function_like() || kind.is_type_declaration()
+}
+
+/// Whether blocks of `kind` name the definitions written inside them: function-like blocks and
+/// classes.
+fn qualifies(kind: BlockKind) -> bool {
     kind.is_function_like() || kind == BlockKind::Class
 }
 
@@ -64,7 +72,7 @@ impl FileView<'_> {
         let mut child = local;
         while let Some(parent) = self.parent(child) {
             let parent_kind = self.block(parent).kind;
-            if is_definition_kind(parent_kind) || parent_kind == BlockKind::File {
+            if qualifies(parent_kind) || parent_kind == BlockKind::File {
                 break;
             }
             if matches!(parent_kind, BlockKind::Call | BlockKind::New)
@@ -85,9 +93,9 @@ impl FileView<'_> {
         let mut child = local;
         while let Some(parent) = self.parent(child) {
             let block = self.block(parent);
-            let qualifies = is_definition_kind(block.kind)
+            let named = qualifies(block.kind)
                 || (block.kind == BlockKind::Variable && self.block(child).role == Some(Role::Initializer));
-            if let Some(name) = block.name.as_deref().filter(|_| qualifies) {
+            if let Some(name) = block.name.as_deref().filter(|_| named) {
                 names.push(name);
             }
             child = parent;

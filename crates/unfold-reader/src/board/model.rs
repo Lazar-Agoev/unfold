@@ -4,14 +4,15 @@
 //! choices only: references to blocks and entrances by structural key (in the board's own
 //! project or in another project named by its shared name), canvas positions, each card's saved
 //! view and fold, groups, descriptions, Flow labels, the guards that keep references from
-//! silently reattaching to different code, and links drawn between cards. It never holds copied
-//! source or compiled arrows.
+//! silently reattaching to different code, links drawn between cards (connections, when they
+//! have a kind), frames around items, resource cards, and notes. It never holds copied source or
+//! compiled arrows.
 
 use std::fmt;
 
 use rustc_hash::FxHashSet;
 use serde::Serialize;
-use unfold_core::{ContentHash, Key};
+use unfold_core::{ContentHash, Key, RepoPath};
 
 /// The `format` value.
 pub const FORMAT: &str = "unfold-board";
@@ -25,32 +26,167 @@ pub const SCHEMA: &str = include_str!("../../schema/unfold-board.schema.json");
 /// The id of the page a new board starts with.
 const FIRST_PAGE: &str = "page-1";
 
-/// A card's view.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[serde(rename_all = "camelCase")]
-pub enum View {
-    /// The exact verified source.
-    Code,
-    /// Paths from written structure.
-    Flow,
+/// The most characters a note holds.
+pub const MAX_NOTE_CHARACTERS: usize = 400;
+
+/// How deep frames nest: a frame in a frame in a frame.
+pub const MAX_FRAME_DEPTH: usize = 3;
+
+/// Declares a closed set of words of the format: an enum serialized as its words, with the words
+/// in declaration order (for messages), `as_str`, and `parse`.
+macro_rules! words {
+    (
+        $(#[$meta:meta])*
+        $name:ident {
+            $( $(#[$variant_meta:meta])* $variant:ident = $text:literal, )+
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+        #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+        pub enum $name {
+            $( $(#[$variant_meta])* #[serde(rename = $text)] $variant, )+
+        }
+
+        impl $name {
+            /// Every word, in declaration order.
+            pub(crate) const WORDS: &'static [&'static str] = &[$($text),+];
+
+            /// The serialized word.
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $text,)+
+                }
+            }
+
+            /// The value `word` names.
+            pub(crate) fn parse(word: &str) -> Option<Self> {
+                match word {
+                    $($text => Some(Self::$variant),)+
+                    _ => None,
+                }
+            }
+        }
+    };
 }
 
-impl View {
-    /// The serialized value.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Code => "code",
-            Self::Flow => "flow",
-        }
+words! {
+    /// A card's view.
+    View {
+        /// The exact verified source.
+        Code = "code",
+        /// Paths from written structure.
+        Flow = "flow",
+        /// One compact node: the kind's mark, the name, the location, and the description.
+        Diagram = "diagram",
     }
+}
 
-    pub(crate) fn parse(value: &str) -> Option<Self> {
-        match value {
-            "code" => Some(Self::Code),
-            "flow" => Some(Self::Flow),
-            _ => None,
-        }
+words! {
+    /// How a frame is drawn.
+    FrameLook {
+        /// An outlined box with a title bar: a unit of several functions, or a service.
+        Box = "box",
+        /// A tinted background with a large title and no border: an area that holds services.
+        Zone = "zone",
+    }
+}
+
+words! {
+    /// What a frame is, as an icon.
+    FrameIcon {
+        /// An API.
+        Api = "api",
+        /// A worker.
+        Worker = "worker",
+        /// A schedule.
+        Schedule = "schedule",
+        /// A command-line tool.
+        Cli = "cli",
+        /// A web app.
+        Web = "web",
+        /// A library: shared code.
+        Library = "library",
+        /// A system.
+        System = "system",
+    }
+}
+
+words! {
+    /// The way a frame lays its members out.
+    FrameDirection {
+        /// Left to right.
+        Right = "right",
+        /// Top to bottom.
+        Down = "down",
+    }
+}
+
+words! {
+    /// What a resource card stands for.
+    ResourceKind {
+        /// A database table or collection.
+        Table = "table",
+        /// A queue or topic.
+        Queue = "queue",
+        /// A cache.
+        Cache = "cache",
+        /// Files or object storage.
+        Storage = "storage",
+        /// A service outside the workspace.
+        External = "external",
+        /// Who or what starts things: the edge of the diagram.
+        Actor = "actor",
+    }
+}
+
+words! {
+    /// A mark on a table's column.
+    ColumnKey {
+        /// The primary key.
+        Primary = "primary",
+        /// A foreign key.
+        Foreign = "foreign",
+        /// A unique column.
+        Unique = "unique",
+    }
+}
+
+words! {
+    /// How the two ends of a connection talk.
+    LinkKind {
+        /// An HTTP request: a client call to a route.
+        Http = "http",
+        /// Another request–response protocol: gRPC, tRPC, GraphQL.
+        Rpc = "rpc",
+        /// A job or message through a queue or topic.
+        Queue = "queue",
+        /// An event emitted and handled.
+        Event = "event",
+        /// Code that inserts, updates, or deletes.
+        Writes = "writes",
+        /// Code that queries or loads.
+        Reads = "reads",
+        /// Where a call the graph can't follow goes when the program runs.
+        Calls = "calls",
+        /// A relationship between two tables.
+        Relates = "relates",
+        /// Anything else (a link without a kind is one too).
+        Other = "other",
+    }
+}
+
+words! {
+    /// How many rows of each table a `relates` connection joins.
+    Cardinality {
+        /// One to one.
+        OneToOne = "one-to-one",
+        /// One to many.
+        OneToMany = "one-to-many",
+        /// Many to one.
+        ManyToOne = "many-to-one",
+        /// Many to many.
+        ManyToMany = "many-to-many",
     }
 }
 
@@ -93,8 +229,8 @@ fn is_slug(text: &str, max: usize) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-'))
 }
 
-/// Whether `id` is a valid page, card, group, or link id: a letter or digit, then up to 99
-/// letters, digits, `_`, `.`, or `-`.
+/// Whether `id` is a valid page or item id: a letter or digit, then up to 99 letters, digits,
+/// `_`, `.`, or `-`.
 pub(crate) fn is_id(id: &str) -> bool {
     is_slug(id, 100)
 }
@@ -117,7 +253,7 @@ pub fn is_folder_path(path: &str) -> bool {
         })
 }
 
-/// Who wrote a description or label: `person:<name>` or `agent:<name>`.
+/// Who wrote something: `person:<name>` or `agent:<name>`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(type = "string"))]
 #[serde(into = "String")]
@@ -221,7 +357,8 @@ impl From<Signature> for String {
     }
 }
 
-/// A card or group description, a Flow label's text, or a drawn link's label.
+/// A description (of a card, group, frame, resource, or connection), a Flow label's text, or a
+/// drawn link's label.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Description {
@@ -322,14 +459,14 @@ impl CardRef {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Card {
-    /// Unique among the page's cards, groups, and links.
+    /// Unique among the page's items.
     pub id: String,
     /// What it shows.
     #[serde(rename = "ref")]
     pub reference: CardRef,
     /// The canvas position: finite numbers.
     pub at: [f64; 2],
-    /// The card's own Code/Flow switch; the page's default when absent.
+    /// The card's own view; the page's default when absent.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub view: Option<View>,
@@ -348,7 +485,7 @@ pub struct Card {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Group {
-    /// Unique among the page's cards, groups, and links.
+    /// Unique among the page's items.
     pub id: String,
     /// The card it belongs to; its members are keys of that card's project.
     pub card: String,
@@ -362,6 +499,10 @@ pub struct Group {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub description: Option<Description>,
+    /// Who wrote the title; absent on groups titled before titles were attributed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub author: Option<Author>,
 }
 
 /// A Flow-node label: the authored name of a block inside a card, in that card's project.
@@ -399,21 +540,258 @@ pub struct GuardEntry {
     pub signature: Signature,
 }
 
-/// A link drawn between two cards of a page (decision U-44): the graph does not join code
-/// across projects, so people do, with an optional signed label ("calls over HTTP").
+/// What a resource card or a connection cites, which Unfold can verify: a block or entrance key,
+/// or a line range of an evidence file, in the board's own project (`project` absent) or in the
+/// project with that shared name.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(untagged)]
+pub enum Anchor {
+    /// A block key (`path#…`) or an entrance key (`entrance:[…]`).
+    Key {
+        /// The key.
+        key: Key,
+        /// Its project; absent for the board's own.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional))]
+        project: Option<ProjectName>,
+    },
+    /// Lines of an evidence file.
+    File {
+        /// The file, relative to its project's folder.
+        file: RepoPath,
+        /// The first and last line, 1-based and inclusive.
+        lines: [u32; 2],
+        /// Its project; absent for the board's own.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional))]
+        project: Option<ProjectName>,
+    },
+}
+
+impl Anchor {
+    /// The project; `None` for the board's own.
+    pub fn project(&self) -> Option<&ProjectName> {
+        match self {
+            Self::Key { project, .. } | Self::File { project, .. } => project.as_ref(),
+        }
+    }
+}
+
+/// A link drawn between two items of a page (decision U-44): the graph does not join code
+/// across projects, so people and agents do. A link with a `kind` is a **connection**: a typed
+/// line that says how its ends talk, with its evidence; one without is drawn as `other`, with an
+/// optional signed label ("calls over HTTP").
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
 pub struct Link {
-    /// Unique among the page's cards, groups, and links.
+    /// Unique among the page's items.
     pub id: String,
-    /// The card it starts at.
+    /// The card, resource, or frame it starts at: the side that acts.
     pub from: String,
-    /// The card it points at; never `from`.
+    /// The card, resource, or frame it points at; never `from`.
     pub to: String,
     /// Its label, signed over both ends' guard signatures (informational: never outdated).
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub label: Option<Description>,
+    /// How its ends talk; absent for a drawn link (`other`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub kind: Option<LinkKind>,
+    /// The statement or call inside the `from` card's block it leaves from (same project).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub step: Option<Key>,
+    /// For `relates`: the column of the `from` table.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub from_column: Option<String>,
+    /// For `relates`: the column of the `to` table.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub to_column: Option<String>,
+    /// What travels: the route, the queue, or the event.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub channel: Option<String>,
+    /// The type it carries: a type declaration or class key.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub carries: Option<Key>,
+    /// The project of `carries`; absent for the board's own.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub carries_project: Option<ProjectName>,
+    /// For `relates`: how many rows of each table it joins.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub cardinality: Option<Cardinality>,
+    /// The evidence for the receiving side.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
+    pub anchors: Vec<Anchor>,
+    /// The evidence in words.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub description: Option<Description>,
+    /// Who drew it; every connection has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub author: Option<Author>,
+    /// The signature of its step's and anchors' source; absent until a save signs it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub signature: Option<Signature>,
+}
+
+impl Link {
+    /// A drawn link from `from` to `to`, without a label or a kind.
+    pub fn new(id: &str, from: &str, to: &str) -> Self {
+        Self {
+            id: id.to_owned(),
+            from: from.to_owned(),
+            to: to.to_owned(),
+            label: None,
+            kind: None,
+            step: None,
+            from_column: None,
+            to_column: None,
+            channel: None,
+            carries: None,
+            carries_project: None,
+            cardinality: None,
+            anchors: Vec::new(),
+            description: None,
+            author: None,
+            signature: None,
+        }
+    }
+
+    /// Whether it is a `relates` connection.
+    pub fn relates(&self) -> bool {
+        self.kind == Some(LinkKind::Relates)
+    }
+}
+
+/// A named box around items of a page: a unit, a service, or a zone. It has no position of its
+/// own: its box is its members' bounds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct Frame {
+    /// Unique among the page's items.
+    pub id: String,
+    /// The title; never blank.
+    pub title: String,
+    /// The frame's description, signed over its member cards' guards.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub description: Option<Description>,
+    /// The ids of the cards, resources, notes, and frames it holds, in order: at least one,
+    /// none in another frame.
+    pub members: Vec<String>,
+    /// How it is drawn.
+    pub look: FrameLook,
+    /// What it is.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub icon: Option<FrameIcon>,
+    /// The way it lays its members out.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub direction: Option<FrameDirection>,
+    /// Collapsed to one node (written only when true).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
+    pub collapsed: bool,
+    /// Who drew it.
+    pub author: Author,
+}
+
+/// One column of a table card. A table backed by a type lists marks only (`name`, `key`,
+/// `references`), naming fields of the type; the type gives the rest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+pub struct Column {
+    /// The column's name; unique in its table.
+    pub name: String,
+    /// Its type as written.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub written_type: Option<String>,
+    /// Its mark: primary key, foreign key, or unique.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub key: Option<ColumnKey>,
+    /// What a foreign key references, such as `customers.id`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub references: Option<String>,
+    /// The column may be empty (written only when true).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
+    pub optional: bool,
+}
+
+/// A resource card: something the code talks to that isn't a function (a table, a queue, a
+/// cache, storage, an outside service, or an actor), authored and anchored.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+pub struct Resource {
+    /// Unique among the page's items.
+    pub id: String,
+    /// What it stands for.
+    pub kind: ResourceKind,
+    /// Its technical name, such as `orders`; never blank.
+    pub name: String,
+    /// The project of `type`; absent for the board's own.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub project: Option<ProjectName>,
+    /// For a table: the type declaration or class that declares its shape.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub type_key: Option<Key>,
+    /// For a table: its columns, or a type-backed table's marks.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
+    pub columns: Vec<Column>,
+    /// What it is anchored to.
+    pub anchors: Vec<Anchor>,
+    /// The canvas position: finite numbers.
+    pub at: [f64; 2],
+    /// Its description.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub description: Option<Description>,
+    /// Who added it.
+    pub author: Author,
+    /// The signature of its anchors' (and type's) source; absent until a save signs it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub signature: Option<Signature>,
+}
+
+/// A short piece of plain text on a page: free, or attached to a card, frame, resource, or link
+/// and moving with it. Notes are about the page, not the code: never signed, no health.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+pub struct Note {
+    /// Unique among the page's items.
+    pub id: String,
+    /// The text: 1 to 400 characters, not blank.
+    pub text: String,
+    /// The canvas position; an offset from the attached item's top-left (a link's midpoint) when
+    /// attached.
+    pub at: [f64; 2],
+    /// The card, frame, resource, or link it is attached to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub attach: Option<String>,
+    /// Who wrote it.
+    pub author: Author,
 }
 
 /// One page of a board.
@@ -435,8 +813,20 @@ pub struct Page {
     pub labels: Vec<LabelEntry>,
     /// Guards, one per referenced (project, key).
     pub guards: Vec<GuardEntry>,
-    /// Drawn links.
+    /// Drawn links and connections.
     pub links: Vec<Link>,
+    /// Frames.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
+    pub frames: Vec<Frame>,
+    /// Resource cards.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
+    pub resources: Vec<Resource>,
+    /// Notes.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
+    pub notes: Vec<Note>,
 }
 
 impl Page {
@@ -451,6 +841,9 @@ impl Page {
             labels: Vec::new(),
             guards: Vec::new(),
             links: Vec::new(),
+            frames: Vec::new(),
+            resources: Vec::new(),
+            notes: Vec::new(),
         }
     }
 
@@ -467,6 +860,39 @@ impl Page {
     /// The link with `id`.
     pub fn link(&self, id: &str) -> Option<&Link> {
         self.links.iter().find(|link| link.id == id)
+    }
+
+    /// The frame with `id`.
+    pub fn frame(&self, id: &str) -> Option<&Frame> {
+        self.frames.iter().find(|frame| frame.id == id)
+    }
+
+    /// The resource card with `id`.
+    pub fn resource(&self, id: &str) -> Option<&Resource> {
+        self.resources.iter().find(|resource| resource.id == id)
+    }
+
+    /// The note with `id`.
+    pub fn note(&self, id: &str) -> Option<&Note> {
+        self.notes.iter().find(|note| note.id == id)
+    }
+
+    /// The other projects the page's items name: its cards', resources' types', anchors', and
+    /// carried types' projects, with repeats.
+    pub fn projects(&self) -> impl Iterator<Item = &ProjectName> {
+        let cards = self.cards.iter().filter_map(|card| card.reference.project());
+        let resources = self.resources.iter().flat_map(|resource| {
+            resource
+                .project
+                .iter()
+                .chain(resource.anchors.iter().filter_map(Anchor::project))
+        });
+        let links = self.links.iter().flat_map(|link| {
+            link.carries_project
+                .iter()
+                .chain(link.anchors.iter().filter_map(Anchor::project))
+        });
+        cards.chain(resources).chain(links)
     }
 
     /// A card's effective view.
@@ -537,10 +963,10 @@ pub struct Board {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub folder: Option<String>,
-    /// The other projects its cards come from, sorted: [`Board::used_projects`]. The
-    /// constructors, [`super::parse`], [`super::parse_edit`], and [`super::prepare_save`] set
-    /// it; after editing cards in place, call [`Board::refresh_projects`]. The writer always
-    /// writes the derived set.
+    /// The other projects its items name, sorted: [`Board::used_projects`]. The constructors,
+    /// [`super::parse`], [`super::parse_edit`], and [`super::prepare_save`] set it; after
+    /// editing items in place, call [`Board::refresh_projects`]. The writer always writes the
+    /// derived set.
     pub projects: Vec<ProjectName>,
     /// The pages, in order; at least one.
     pub pages: Vec<Page>,
@@ -569,25 +995,21 @@ impl Board {
         self.pages.iter().find(|page| page.id == id)
     }
 
-    /// The page with `id`, to edit (call [`Board::refresh_projects`] after changing its cards).
+    /// The page with `id`, to edit (call [`Board::refresh_projects`] after changing its items).
     pub fn page_mut(&mut self, id: &str) -> Option<&mut Page> {
         self.pages.iter_mut().find(|page| page.id == id)
     }
 
-    /// The other projects every page's cards come from, sorted, without duplicates.
+    /// The other projects every page's items name ([`Page::projects`]), sorted, without
+    /// duplicates.
     pub fn used_projects(&self) -> Vec<ProjectName> {
-        let mut projects: Vec<ProjectName> = self
-            .pages
-            .iter()
-            .flat_map(|page| page.cards.iter().filter_map(|card| card.reference.project()))
-            .cloned()
-            .collect();
+        let mut projects: Vec<ProjectName> = self.pages.iter().flat_map(Page::projects).cloned().collect();
         projects.sort();
         projects.dedup();
         projects
     }
 
-    /// Sets [`Board::projects`] from the cards.
+    /// Sets [`Board::projects`] from the items.
     pub fn refresh_projects(&mut self) {
         self.projects = self.used_projects();
     }

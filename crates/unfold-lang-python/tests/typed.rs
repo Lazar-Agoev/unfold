@@ -15,7 +15,7 @@ mod common;
 use common::{Compiled, canonical_records, compile_files, compile_folder, testdata};
 use unfold_core::typed::{Argument, CallResult, Member, Pairing, Parameter, TypeLink};
 use unfold_core::vocab::{
-    Expansion, MemberKind, PairingReason, ParameterKind, Reason, Resolution, ResultBinding,
+    Expansion, Heritage, MemberKind, PairingReason, ParameterKind, Reason, Resolution, ResultBinding,
 };
 use unfold_core::{FileGraph, Key};
 use unfold_engine::settings::Settings;
@@ -194,6 +194,18 @@ impl<'a> File<'a> {
                 };
                 (self.slice(link.range), link.resolution, outcome)
             })
+            .collect()
+    }
+
+    /// The type links sourced at the block keyed `key`: (written text, heritage).
+    fn heritage(&self, key: &str) -> Vec<(&'a str, Option<Heritage>)> {
+        let local = self.local(key);
+        self.graph()
+            .types
+            .type_links
+            .iter()
+            .filter(|link| link.block == local)
+            .map(|link: &'a TypeLink| (self.slice(link.range), link.heritage))
             .collect()
     }
 
@@ -720,6 +732,67 @@ def f(a: Cart, b: Shape, c: Order) -> "Order":
         File::new(&rebound, "main.py").link("Cart"),
         [unresolved(Reason::MutableBinding)]
     );
+}
+
+#[test]
+fn class_bases_are_heritage_links() {
+    let source = r#"import typing
+from typing import Generic, TypeVar
+
+T = TypeVar("T")
+
+
+class Base:
+    pass
+
+
+class Meta(type):
+    pass
+
+
+def make():
+    return Base
+
+
+class Child(Base, typing.NamedTuple, Generic[T], *[Base], metaclass=Meta):
+    pass
+
+
+class Called(make()):
+    pass
+
+
+class Box[U](Base, list[U]):
+    pass
+"#;
+    let compiled = compile(&[("main.py", source)]);
+    let file = File::new(&compiled, "main.py");
+    use Heritage::Extends;
+    // Each positional base is an `extends` name; a subscript's slice holds plain names; a
+    // starred base and a keyword argument are no bases.
+    assert_eq!(
+        file.heritage("class:Child"),
+        [
+            ("Base", Some(Extends)),
+            ("typing.NamedTuple", Some(Extends)),
+            ("Generic", Some(Extends)),
+            ("T", None),
+        ]
+    );
+    assert_eq!(file.heritage("class:Called"), [], "a call names no type");
+    // `U` is the class's own type parameter.
+    assert_eq!(
+        file.heritage("class:Box"),
+        [("Base", Some(Extends)), ("list", Some(Extends))]
+    );
+    assert_eq!(
+        file.link("Base"),
+        [resolved("main.py#class:Base"), resolved("main.py#class:Base")]
+    );
+    assert_eq!(file.link("typing.NamedTuple"), [external("python:typing")]);
+    assert_eq!(file.link("Generic"), [external("python:typing")]);
+    assert_eq!(file.link("T"), [unresolved(Reason::NotConcrete)]);
+    assert_eq!(file.link("list"), [external("python:builtins")]);
 }
 
 /// The bound count of a call (linking's proven answer) and of each passed callable.

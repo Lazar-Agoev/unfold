@@ -147,9 +147,11 @@ impl Prepared {
     }
 }
 
-/// Named function-like and class blocks, qualified by their named ancestors.
+/// Named function-like, class, and type declaration blocks, qualified by their named
+/// function-like and class ancestors.
 pub fn definitions_of(file: &FileGraph) -> Vec<Definition> {
-    let definable = |kind: BlockKind| kind.is_function_like() || kind == BlockKind::Class;
+    let definable = |kind: BlockKind| kind.is_function_like() || kind.is_type_declaration();
+    let qualifies = |kind: BlockKind| kind.is_function_like() || kind == BlockKind::Class;
     file.blocks
         .iter()
         .filter(|block| definable(block.kind) && block.name.is_some())
@@ -158,7 +160,7 @@ pub fn definitions_of(file: &FileGraph) -> Vec<Definition> {
             let mut parent = block.parent;
             while let Some(id) = parent {
                 let ancestor = &file.blocks[id as usize];
-                if definable(ancestor.kind) {
+                if qualifies(ancestor.kind) {
                     names.push(ancestor.name.as_deref().unwrap_or("(anonymous)"));
                 }
                 parent = ancestor.parent;
@@ -229,7 +231,7 @@ pub fn dump(reader: &Reader) -> String {
     ] {
         for query in ["e", "or", "src", "order", "run", "start"] {
             // Ties are ordered by row ID, which depends on history, so compare as sets.
-            let mut candidates = reader.search(query, kind, 50).expect("search");
+            let mut candidates = reader.search(query, kind, &[], 50).expect("search");
             candidates.sort_by(|a, b| a.key.cmp(&b.key));
             let _ = writeln!(out, "{query} {kind:?} {candidates:?}");
         }

@@ -1,6 +1,6 @@
 //! The small row types reader queries return where no core type fits.
 
-use unfold_core::vocab::{BlockKind, EdgeKind, FileState, Language};
+use unfold_core::vocab::{BlockKind, EdgeKind, FileState, Heritage, Language};
 use unfold_core::{Block, ByteRange, ContentHash, FileRecord, Key, RepoPath};
 
 use crate::search::CandidateKind;
@@ -60,6 +60,8 @@ pub struct TypeUse {
     pub range: ByteRange,
     /// The name as written.
     pub text: Box<str>,
+    /// When the name is a base its block extends or implements.
+    pub heritage: Option<Heritage>,
 }
 
 /// A resolved edge into some target, seen from the target: who calls, constructs, imports,

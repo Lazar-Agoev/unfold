@@ -23,6 +23,12 @@
 
 .board-card.missing { border-style: dashed; }
 
+/* A card an agent changed while it is still working (design §4.10): a soft authored outline. */
+.react-flow__node.agent-working > .board-card {
+  outline: 2px solid var(--color-authored-line);
+  outline-offset: 3px;
+}
+
 .card-header {
   position: relative;
   display: flex;

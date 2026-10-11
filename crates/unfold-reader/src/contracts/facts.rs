@@ -6,7 +6,7 @@ use std::path::Path;
 use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
-use unfold_core::vocab::{Resolution, SlotName};
+use unfold_core::vocab::{Heritage, Resolution, SlotName};
 use unfold_core::{
     Argument, Block, ByteRange, CallResult, Edge, FileGraph, Graph, Member, Parameter, RepoPath, Signature,
     Slot, Snapshot, TypeLink, WrittenType,
@@ -29,6 +29,8 @@ pub struct UseSite {
     pub block: u32,
     /// The written name's byte range.
     pub range: ByteRange,
+    /// When the name is a base its block extends or implements.
+    pub heritage: Option<Heritage>,
 }
 
 /// The stored facts typed lines read.
@@ -66,6 +68,7 @@ impl FactSource for Reader {
                 path: found.path,
                 block: found.block.local_id,
                 range: found.range,
+                heritage: found.heritage,
             })
             .collect())
     }
@@ -111,6 +114,7 @@ impl FactSource for Graph {
                 path: file.file.path.clone(),
                 block: link.block,
                 range: link.range,
+                heritage: link.heritage,
             })
             .collect())
     }
@@ -233,6 +237,13 @@ impl FileFacts {
     /// Where the value of call or construction `local` lands.
     pub(crate) fn result(&self, local: u32) -> Option<&CallResult> {
         run(&self.graph.types.results, |item| item.call, local).first()
+    }
+
+    /// The type links of block `local` (in range order) that name a base it extends.
+    pub(crate) fn bases(&self, local: u32) -> impl Iterator<Item = &TypeLink> {
+        run(&self.graph.types.type_links, |item| item.block, local)
+            .iter()
+            .filter(|link| link.heritage == Some(Heritage::Extends))
     }
 
     /// The type links whose range lies inside `range`, in order.

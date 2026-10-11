@@ -33,5 +33,6 @@
 {"t":"result","call":"a.ts#class:Model/constructor:constructor/expression_statement[0]/call[0]","binding":"discard"}
 {"t":"type_link","block":"a.ts#interface:Everything","range":[187,195],"text":"Iterator","resolution":"external","module":"global"}
 {"t":"type_link","block":"a.ts#interface:Everything","range":[313,323],"text":"Everything","resolution":"resolved","target":"a.ts#interface:Everything"}
+{"t":"type_link","block":"a.ts#class:Model","range":[566,570],"text":"Base","resolution":"unresolved","reason":"unknown_name","heritage":"extends"}
 {"t":"type_link","block":"a.ts#class:Model","range":[613,617],"text":"Date","resolution":"external","module":"global"}
 {"t":"type_link","block":"a.ts#class:Model/constructor:constructor","range":[824,828],"text":"User","resolution":"unresolved","reason":"unknown_name"}

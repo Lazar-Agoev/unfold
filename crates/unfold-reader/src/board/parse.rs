@@ -1,8 +1,9 @@
 //! Strict board parsing: the text must be one JSON object in the `unfold-board` version 1
 //! shape. Unknown fields, duplicate keys, wrong types, and malformed values are rejected with
 //! the JSON pointer of the offending value (`/pages/0/cards/2/ref`), so a person or agent
-//! editing the file can find the problem. Parsing checks shape only; whether references exist
-//! in the current graph is [`super::health`]'s job.
+//! editing the file can find the problem. Parsing checks shape and the references between the
+//! items of one page ([`super::items`]); whether keys exist in the current graph is
+//! [`super::health`]'s job.
 //!
 //! Three framings share the page rules: a board file ([`parse`]), the changes copy of a
 //! published board (`parse_changes`, which adds `publishes` and `baseRevision`), and the edit
@@ -15,13 +16,15 @@ use rustc_hash::FxHashSet;
 use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Number, Value};
 use unfold_core::vocab::{BlockKind, EntranceKind};
-use unfold_core::{ContentHash, Key};
+use unfold_core::{ContentHash, Key, RepoPath};
 
 use super::BoardError;
 use super::files::Revision;
+use super::items::check_items;
 use super::model::{
-    Author, Board, Card, CardRef, Description, FORMAT, Group, GuardEntry, LabelEntry, Link, Page,
-    ProjectName, Signature, VERSION, View, is_folder_path, is_id,
+    Anchor, Author, Board, Card, CardRef, Cardinality, Column, ColumnKey, Description, FORMAT, Frame,
+    FrameDirection, FrameIcon, FrameLook, Group, GuardEntry, LabelEntry, Link, LinkKind, MAX_NOTE_CHARACTERS,
+    Note, Page, ProjectName, Resource, ResourceKind, Signature, VERSION, View, is_folder_path, is_id,
 };
 
 /// A JSON value read with duplicate keys rejected.
@@ -97,15 +100,17 @@ impl<'de> Visitor<'de> for StrictVisitor {
 
 /// A JSON pointer being built while walking the document.
 #[derive(Debug, Clone, Default)]
-struct Path(String);
+pub(super) struct Path(String);
 
 impl Path {
-    fn join(&self, part: impl fmt::Display) -> Self {
+    /// The pointer of `part` inside this value.
+    pub(super) fn join(&self, part: impl fmt::Display) -> Self {
         let part = part.to_string().replace('~', "~0").replace('/', "~1");
         Self(format!("{}/{part}", self.0))
     }
 
-    fn fail(&self, message: impl Into<String>) -> BoardError {
+    /// The error that the value at this pointer breaks the format, and why.
+    pub(super) fn fail(&self, message: impl Into<String>) -> BoardError {
         BoardError::Invalid {
             path: if self.0.is_empty() {
                 "/".to_owned()
@@ -153,6 +158,11 @@ fn nonblank<'a>(value: &'a Value, path: &Path) -> Parsed<&'a str> {
     Ok(text)
 }
 
+/// A string that isn't blank, owned.
+fn owned_text(value: &Value, path: &Path) -> Parsed<String> {
+    nonblank(value, path).map(str::to_owned)
+}
+
 fn boolean(value: &Value, path: &Path) -> Parsed<bool> {
     value.as_bool().ok_or_else(|| path.fail("must be true or false"))
 }
@@ -170,6 +180,34 @@ fn optional_array<'a>(map: &'a Map<String, Value>, name: &str, path: &Path) -> P
         Some(value) => array(value, &path.join(name)),
         None => Ok(&[]),
     }
+}
+
+/// Optional field `name` of `map`, read with `read` (absent: `None`).
+fn optional<T>(
+    map: &Map<String, Value>,
+    name: &str,
+    path: &Path,
+    read: impl FnOnce(&Value, &Path) -> Parsed<T>,
+) -> Parsed<Option<T>> {
+    map.get(name)
+        .map(|value| read(value, &path.join(name)))
+        .transpose()
+}
+
+/// `"a" or "b"`, or `"a", "b", or "c"`: the words a value may be, for messages.
+fn choices(words: &[&str]) -> String {
+    let quoted: Vec<String> = words.iter().map(|word| format!("\"{word}\"")).collect();
+    match quoted.as_slice() {
+        [one] => one.clone(),
+        [first, second] => format!("{first} or {second}"),
+        [rest @ .., last] => format!("{}, or {last}", rest.join(", ")),
+        [] => String::new(),
+    }
+}
+
+/// One of a closed set of words (`words`), read with `parse`.
+fn word<T>(value: &Value, path: &Path, parse: fn(&str) -> Option<T>, words: &[&str]) -> Parsed<T> {
+    parse(string(value, path)?).ok_or_else(|| path.fail(format!("must be {}", choices(words))))
 }
 
 fn id(value: &Value, path: &Path) -> Parsed<String> {
@@ -198,7 +236,7 @@ fn optional_project(map: &Map<String, Value>, path: &Path) -> Parsed<Option<Proj
 }
 
 fn view(value: &Value, path: &Path) -> Parsed<View> {
-    View::parse(string(value, path)?).ok_or_else(|| path.fail("must be \"code\" or \"flow\""))
+    word(value, path, View::parse, View::WORDS)
 }
 
 fn signature(value: &Value, path: &Path) -> Parsed<Signature> {
@@ -206,21 +244,26 @@ fn signature(value: &Value, path: &Path) -> Parsed<Signature> {
         .ok_or_else(|| path.fail("must be `sha256:` and 64 lowercase hex digits"))
 }
 
+/// The optional `signature` of `map`: absent or `""` (not signed yet) is `None`.
+fn optional_signature(map: &Map<String, Value>, path: &Path) -> Parsed<Option<Signature>> {
+    match map.get("signature") {
+        None => Ok(None),
+        Some(Value::String(empty)) if empty.is_empty() => Ok(None),
+        Some(value) => signature(value, &path.join("signature")).map(Some),
+    }
+}
+
+fn author(value: &Value, path: &Path) -> Parsed<Author> {
+    Author::parse(string(value, path)?).ok_or_else(|| path.fail("must be `person:<name>` or `agent:<name>`"))
+}
+
 /// The text, author, and signature fields of a description, label, or link label in `map`.
 fn authored(map: &Map<String, Value>, path: &Path) -> Parsed<Description> {
     let text = nonblank(field(map, "text"), &path.join("text"))?;
-    let author_path = path.join("author");
-    let author = Author::parse(string(field(map, "author"), &author_path)?)
-        .ok_or_else(|| author_path.fail("must be `person:<name>` or `agent:<name>`"))?;
-    let signature = match map.get("signature") {
-        None => None,
-        Some(Value::String(empty)) if empty.is_empty() => None,
-        Some(value) => Some(signature(value, &path.join("signature"))?),
-    };
     Ok(Description {
         text: text.to_owned(),
-        author,
-        signature,
+        author: author(field(map, "author"), &path.join("author"))?,
+        signature: optional_signature(map, path)?,
     })
 }
 
@@ -254,6 +297,15 @@ fn reference(value: &Value, path: &Path) -> Parsed<CardRef> {
     }
 }
 
+/// A block key or an entrance key.
+fn any_key(value: &Value, path: &Path) -> Parsed<Key> {
+    let key = nonblank(value, path)?;
+    if !key.starts_with("entrance:") && !key.contains('#') {
+        return Err(path.fail("must be a block key (`path#…`) or an entrance key (`entrance:[…]`)"));
+    }
+    Ok(Key::from_text(key))
+}
+
 fn position(value: &Value, path: &Path) -> Parsed<[f64; 2]> {
     match array(value, path)? {
         [x, y] => {
@@ -280,19 +332,9 @@ fn card(value: &Value, path: &Path) -> Parsed<Card> {
         id: id(field(map, "id"), &path.join("id"))?,
         reference: reference(field(map, "ref"), &path.join("ref"))?,
         at: position(field(map, "at"), &path.join("at"))?,
-        view: map
-            .get("view")
-            .map(|value| view(value, &path.join("view")))
-            .transpose()?,
-        folded: map
-            .get("folded")
-            .map(|value| boolean(value, &path.join("folded")))
-            .transpose()?
-            .unwrap_or(false),
-        description: map
-            .get("description")
-            .map(|value| description(value, &path.join("description")))
-            .transpose()?,
+        view: optional(map, "view", path, view)?,
+        folded: optional(map, "folded", path, boolean)?.unwrap_or(false),
+        description: optional(map, "description", path, description)?,
     })
 }
 
@@ -300,7 +342,15 @@ fn group(value: &Value, path: &Path) -> Parsed<Group> {
     let map = object(
         value,
         path,
-        &["card", "collapsed", "description", "id", "members", "title"],
+        &[
+            "author",
+            "card",
+            "collapsed",
+            "description",
+            "id",
+            "members",
+            "title",
+        ],
         &["card", "collapsed", "id", "members", "title"],
     )?;
     let members_path = path.join("members");
@@ -324,10 +374,8 @@ fn group(value: &Value, path: &Path) -> Parsed<Group> {
         title: nonblank(field(map, "title"), &path.join("title"))?.to_owned(),
         members,
         collapsed: boolean(field(map, "collapsed"), &path.join("collapsed"))?,
-        description: map
-            .get("description")
-            .map(|value| description(value, &path.join("description")))
-            .transpose()?,
+        description: optional(map, "description", path, description)?,
+        author: optional(map, "author", path, author)?,
     })
 }
 
@@ -374,17 +422,322 @@ fn guard(value: &Value, path: &Path) -> Parsed<GuardEntry> {
     })
 }
 
+fn anchor(value: &Value, path: &Path) -> Parsed<Anchor> {
+    let map = object(value, path, &["file", "key", "lines", "project"], &[])?;
+    let project = optional_project(map, path)?;
+    match (map.get("key"), map.get("file")) {
+        (Some(key), None) => {
+            if map.contains_key("lines") {
+                return Err(path.join("lines").fail("only a file anchor has lines"));
+            }
+            Ok(Anchor::Key {
+                key: any_key(key, &path.join("key"))?,
+                project,
+            })
+        }
+        (None, Some(file)) => {
+            let file_path = path.join("file");
+            let file = RepoPath::new(string(file, &file_path)?).map_err(|_| {
+                file_path.fail("must be a path relative to the project's folder, with `/` separators and no `.` or `..` parts")
+            })?;
+            let lines = map
+                .get("lines")
+                .ok_or_else(|| path.fail("missing field `lines`"))?;
+            Ok(Anchor::File {
+                file,
+                lines: line_range(lines, &path.join("lines"))?,
+                project,
+            })
+        }
+        _ => Err(path.fail("must have exactly one of `key` or `file`")),
+    }
+}
+
+/// `[first, last]`: 1-based, inclusive line numbers.
+fn line_range(value: &Value, path: &Path) -> Parsed<[u32; 2]> {
+    let [first, last] = array(value, path)? else {
+        return Err(path.fail("must be two line numbers: the first and the last"));
+    };
+    let number = |value: &Value, index: usize| {
+        value
+            .as_u64()
+            .filter(|line| *line >= 1)
+            .and_then(|line| u32::try_from(line).ok())
+            .ok_or_else(|| path.join(index).fail("must be a line number (1 or more)"))
+    };
+    let (first, last) = (number(first, 0)?, number(last, 1)?);
+    if last < first {
+        return Err(path.join(1).fail("must not come before the first line"));
+    }
+    Ok([first, last])
+}
+
+fn anchors(value: &Value, path: &Path) -> Parsed<Vec<Anchor>> {
+    array(value, path)?
+        .iter()
+        .enumerate()
+        .map(|(index, item)| anchor(item, &path.join(index)))
+        .collect()
+}
+
 fn link(value: &Value, path: &Path) -> Parsed<Link> {
-    let map = object(value, path, &["from", "id", "label", "to"], &["from", "id", "to"])?;
-    Ok(Link {
-        id: id(field(map, "id"), &path.join("id"))?,
-        from: id(field(map, "from"), &path.join("from"))?,
-        to: id(field(map, "to"), &path.join("to"))?,
-        label: map
-            .get("label")
-            .map(|value| description(value, &path.join("label")))
-            .transpose()?,
+    let map = object(
+        value,
+        path,
+        &[
+            "anchors",
+            "author",
+            "cardinality",
+            "carries",
+            "carriesProject",
+            "channel",
+            "description",
+            "from",
+            "fromColumn",
+            "id",
+            "kind",
+            "label",
+            "signature",
+            "step",
+            "to",
+            "toColumn",
+        ],
+        &["from", "id", "to"],
+    )?;
+    let mut link = Link::new(
+        &id(field(map, "id"), &path.join("id"))?,
+        &id(field(map, "from"), &path.join("from"))?,
+        &id(field(map, "to"), &path.join("to"))?,
+    );
+    link.label = optional(map, "label", path, description)?;
+    link.kind = optional(map, "kind", path, |value, path| {
+        word(value, path, LinkKind::parse, LinkKind::WORDS)
+    })?;
+    if !link.relates()
+        && let Some(name) = ["fromColumn", "toColumn", "cardinality"]
+            .into_iter()
+            .find(|name| map.contains_key(*name))
+    {
+        return Err(path
+            .join(name)
+            .fail("only a `relates` connection joins columns and has a cardinality"));
+    }
+    link.author = optional(map, "author", path, author)?;
+    if link.kind.is_some() && link.author.is_none() {
+        return Err(path.fail("missing field `author`: a connection (a link with `kind`) names who drew it"));
+    }
+    link.step = optional(map, "step", path, block_key)?;
+    link.from_column = optional(map, "fromColumn", path, owned_text)?;
+    link.to_column = optional(map, "toColumn", path, owned_text)?;
+    link.channel = optional(map, "channel", path, owned_text)?;
+    link.carries = optional(map, "carries", path, block_key)?;
+    link.carries_project = optional(map, "carriesProject", path, project)?;
+    if link.carries_project.is_some() && link.carries.is_none() {
+        return Err(path
+            .join("carriesProject")
+            .fail("names the project of `carries`; give it only with `carries`"));
+    }
+    link.cardinality = optional(map, "cardinality", path, |value, path| {
+        word(value, path, Cardinality::parse, Cardinality::WORDS)
+    })?;
+    link.anchors = optional(map, "anchors", path, anchors)?.unwrap_or_default();
+    link.description = optional(map, "description", path, description)?;
+    link.signature = optional_signature(map, path)?;
+    Ok(link)
+}
+
+fn frame(value: &Value, path: &Path) -> Parsed<Frame> {
+    let map = object(
+        value,
+        path,
+        &[
+            "author",
+            "collapsed",
+            "description",
+            "direction",
+            "icon",
+            "id",
+            "look",
+            "members",
+            "title",
+        ],
+        &["author", "id", "look", "members", "title"],
+    )?;
+    let frame_id = id(field(map, "id"), &path.join("id"))?;
+    let members_path = path.join("members");
+    let items = array(field(map, "members"), &members_path)?;
+    if items.is_empty() {
+        return Err(members_path.fail("must list at least one item"));
+    }
+    let mut seen = FxHashSet::default();
+    let mut members = Vec::with_capacity(items.len());
+    for (index, item) in items.iter().enumerate() {
+        let item_path = members_path.join(index);
+        let member = id(item, &item_path)?;
+        if !seen.insert(member.clone()) {
+            return Err(item_path.fail("repeats an earlier member"));
+        }
+        members.push(member);
+    }
+    Ok(Frame {
+        id: frame_id,
+        title: nonblank(field(map, "title"), &path.join("title"))?.to_owned(),
+        description: optional(map, "description", path, description)?,
+        members,
+        look: word(
+            field(map, "look"),
+            &path.join("look"),
+            FrameLook::parse,
+            FrameLook::WORDS,
+        )?,
+        icon: optional(map, "icon", path, |value, path| {
+            word(value, path, FrameIcon::parse, FrameIcon::WORDS)
+        })?,
+        direction: optional(map, "direction", path, |value, path| {
+            word(value, path, FrameDirection::parse, FrameDirection::WORDS)
+        })?,
+        collapsed: optional(map, "collapsed", path, boolean)?.unwrap_or(false),
+        author: author(field(map, "author"), &path.join("author"))?,
     })
+}
+
+/// A column of a table; `marks_only` for a table backed by a type.
+fn column(value: &Value, path: &Path, marks_only: bool) -> Parsed<Column> {
+    let map = object(
+        value,
+        path,
+        &["key", "name", "optional", "references", "type"],
+        &["name"],
+    )?;
+    if marks_only
+        && let Some(name) = ["type", "optional"]
+            .into_iter()
+            .find(|name| map.contains_key(*name))
+    {
+        return Err(path.join(name).fail(
+            "a table backed by a type lists marks only (`name`, `key`, `references`): the type gives the rest",
+        ));
+    }
+    let column = Column {
+        name: nonblank(field(map, "name"), &path.join("name"))?.to_owned(),
+        written_type: optional(map, "type", path, owned_text)?,
+        key: optional(map, "key", path, |value, path| {
+            word(value, path, ColumnKey::parse, ColumnKey::WORDS)
+        })?,
+        references: optional(map, "references", path, owned_text)?,
+        optional: optional(map, "optional", path, boolean)?.unwrap_or(false),
+    };
+    if column.references.is_some() && column.key != Some(ColumnKey::Foreign) {
+        return Err(path
+            .join("references")
+            .fail("only a foreign key (`\"key\": \"foreign\"`) references another table"));
+    }
+    Ok(column)
+}
+
+fn resource(value: &Value, path: &Path) -> Parsed<Resource> {
+    let map = object(
+        value,
+        path,
+        &[
+            "anchors",
+            "at",
+            "author",
+            "columns",
+            "description",
+            "id",
+            "kind",
+            "name",
+            "project",
+            "signature",
+            "type",
+        ],
+        &["anchors", "at", "author", "id", "kind", "name"],
+    )?;
+    let resource_id = id(field(map, "id"), &path.join("id"))?;
+    let kind = word(
+        field(map, "kind"),
+        &path.join("kind"),
+        ResourceKind::parse,
+        ResourceKind::WORDS,
+    )?;
+    let table = kind == ResourceKind::Table;
+    if !table
+        && let Some(name) = ["type", "columns"]
+            .into_iter()
+            .find(|name| map.contains_key(*name))
+    {
+        return Err(path.join(name).fail("only a table has a type and columns"));
+    }
+    let type_key = optional(map, "type", path, block_key)?;
+    let project = optional_project(map, path)?;
+    if project.is_some() && type_key.is_none() {
+        return Err(path
+            .join("project")
+            .fail("names the project of `type`; give it only with `type`"));
+    }
+    let columns_path = path.join("columns");
+    let mut columns: Vec<Column> = Vec::new();
+    for (index, item) in optional_array(map, "columns", path)?.iter().enumerate() {
+        let item_path = columns_path.join(index);
+        let column = column(item, &item_path, type_key.is_some())?;
+        if columns.iter().any(|known| known.name == column.name) {
+            return Err(item_path
+                .join("name")
+                .fail(format!("repeats column `{}`", column.name)));
+        }
+        columns.push(column);
+    }
+    Ok(Resource {
+        id: resource_id,
+        kind,
+        name: nonblank(field(map, "name"), &path.join("name"))?.to_owned(),
+        project,
+        type_key,
+        columns,
+        anchors: anchors(field(map, "anchors"), &path.join("anchors"))?,
+        at: position(field(map, "at"), &path.join("at"))?,
+        description: optional(map, "description", path, description)?,
+        author: author(field(map, "author"), &path.join("author"))?,
+        signature: optional_signature(map, path)?,
+    })
+}
+
+fn note(value: &Value, path: &Path) -> Parsed<Note> {
+    let map = object(
+        value,
+        path,
+        &["at", "attach", "author", "id", "text"],
+        &["at", "author", "id", "text"],
+    )?;
+    let note_id = id(field(map, "id"), &path.join("id"))?;
+    let text_path = path.join("text");
+    let text = nonblank(field(map, "text"), &text_path)?;
+    if text.chars().count() > MAX_NOTE_CHARACTERS {
+        return Err(text_path.fail(format!("must be at most {MAX_NOTE_CHARACTERS} characters")));
+    }
+    Ok(Note {
+        id: note_id,
+        text: text.to_owned(),
+        at: position(field(map, "at"), &path.join("at"))?,
+        attach: optional(map, "attach", path, id)?,
+        author: author(field(map, "author"), &path.join("author"))?,
+    })
+}
+
+/// The items of optional array `name` of `map`, each read with `read`.
+fn items<T>(
+    map: &Map<String, Value>,
+    name: &str,
+    path: &Path,
+    read: fn(&Value, &Path) -> Parsed<T>,
+) -> Parsed<Vec<T>> {
+    let items_path = path.join(name);
+    optional_array(map, name, path)?
+        .iter()
+        .enumerate()
+        .map(|(index, item)| read(item, &items_path.join(index)))
+        .collect()
 }
 
 fn page(value: &Value, path: &Path) -> Parsed<Page> {
@@ -394,11 +747,14 @@ fn page(value: &Value, path: &Path) -> Parsed<Page> {
         &[
             "cards",
             "defaultView",
+            "frames",
             "groups",
             "guards",
             "id",
             "labels",
             "links",
+            "notes",
+            "resources",
             "title",
         ],
         &["cards", "defaultView", "groups", "id", "title"],
@@ -408,51 +764,13 @@ fn page(value: &Value, path: &Path) -> Parsed<Page> {
         nonblank(field(map, "title"), &path.join("title"))?,
     );
     page.default_view = view(field(map, "defaultView"), &path.join("defaultView"))?;
-
-    // Card, group, and link ids are unique together within the page.
-    let mut ids: FxHashSet<String> = FxHashSet::default();
-    let mut unique = |id: &str, path: &Path| {
-        if ids.insert(id.to_owned()) {
-            Ok(())
-        } else {
-            Err(path.join("id").fail(format!("duplicate id `{id}`")))
-        }
-    };
-    let cards_path = path.join("cards");
-    for (index, item) in array(field(map, "cards"), &cards_path)?.iter().enumerate() {
-        let item_path = cards_path.join(index);
-        let card = card(item, &item_path)?;
-        unique(&card.id, &item_path)?;
-        page.cards.push(card);
-    }
-    let groups_path = path.join("groups");
-    for (index, item) in array(field(map, "groups"), &groups_path)?.iter().enumerate() {
-        let item_path = groups_path.join(index);
-        let group = group(item, &item_path)?;
-        unique(&group.id, &item_path)?;
-        if page.card(&group.card).is_none() {
-            return Err(item_path
-                .join("card")
-                .fail(format!("refers to an unknown card `{}`", group.card)));
-        }
-        page.groups.push(group);
-    }
-    for (index, item) in optional_array(map, "links", path)?.iter().enumerate() {
-        let item_path = path.join("links").join(index);
-        let link = link(item, &item_path)?;
-        unique(&link.id, &item_path)?;
-        for (end, card) in [("from", &link.from), ("to", &link.to)] {
-            if page.card(card).is_none() {
-                return Err(item_path
-                    .join(end)
-                    .fail(format!("refers to an unknown card `{card}`")));
-            }
-        }
-        if link.from == link.to {
-            return Err(item_path.join("to").fail("must be another card than `from`"));
-        }
-        page.links.push(link);
-    }
+    // `cards` and `groups` are required (checked above); the other arrays may be absent.
+    page.cards = items(map, "cards", path, card)?;
+    page.groups = items(map, "groups", path, group)?;
+    page.frames = items(map, "frames", path, frame)?;
+    page.resources = items(map, "resources", path, resource)?;
+    page.links = items(map, "links", path, link)?;
+    page.notes = items(map, "notes", path, note)?;
 
     let mut labeled = FxHashSet::default();
     for (index, item) in optional_array(map, "labels", path)?.iter().enumerate() {
@@ -472,6 +790,7 @@ fn page(value: &Value, path: &Path) -> Parsed<Page> {
         }
         page.guards.push(entry);
     }
+    check_items(&page, path)?;
     Ok(page)
 }
 
@@ -564,7 +883,7 @@ fn document(text: &str, framing: Framing<'_>) -> Parsed<(Board, Option<Revision>
     if projects != board.projects {
         let expected: Vec<String> = board.projects.iter().map(|name| format!("\"{name}\"")).collect();
         return Err(projects_path.fail(format!(
-            "must list exactly the other projects the cards name, sorted, without repeats: [{}]",
+            "must list exactly the other projects the board's items name, sorted, without repeats: [{}]",
             expected.join(", ")
         )));
     }

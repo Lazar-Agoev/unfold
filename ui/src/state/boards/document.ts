@@ -12,7 +12,7 @@ import type { BoardDocument, Card, CardRef, Description, Group, Key, LabelEntry,
 import type { PageId } from "./types";
 
 /** The structural key a card shows. */
-export function cardKey(card: Card): Key {
+export function cardKey(card: Pick<Card, "ref">): Key {
   return "block" in card.ref ? card.ref.block : card.ref.entrance;
 }
 
@@ -79,10 +79,22 @@ function firstFree(stem: string, taken: ReadonlySet<string>): string {
   }
 }
 
-/** An id unique among the page's cards, groups, and links, derived from `base`. */
+/** The ids of the page's items: cards, groups, links, frames, resources, and notes share one id space. */
+function takenIds(page: Page): Set<string> {
+  const items = [page.cards, page.groups, page.links, page.frames ?? [], page.resources ?? [], page.notes ?? []];
+  return new Set(items.flatMap((list) => list.map((item) => item.id)));
+}
+
+/** An id unique among the page's items, derived from `base`. */
 export function uniqueId(page: Page, base: string): string {
-  const taken = new Set([...page.cards.map((card) => card.id), ...page.groups.map((group) => group.id), ...page.links.map((link) => link.id)]);
-  return firstFree(slug(base, "card"), taken);
+  return firstFree(slug(base, "card"), takenIds(page));
+}
+
+const ITEM_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/;
+
+/** Whether `id` is a well-formed item id that no item of the page has. */
+export function isFreeId(page: Page, id: string): boolean {
+  return ITEM_ID.test(id) && !takenIds(page).has(id);
 }
 
 export interface NewCard {
@@ -198,19 +210,39 @@ export function setLabel(page: Page, project: ProjectName | undefined, key: Key,
   page.labels.splice(at < 0 ? page.labels.length : at, 0, label);
 }
 
-/** Adds a group of consecutive sibling statements inside a card and returns its id. */
-export function addGroup(page: Page, cardId: string, members: readonly string[], title: string): string {
-  const id = uniqueId(page, title.length > 0 ? title : "group");
-  const group: Group = { id, card: cardId, title, members: [...members], collapsed: false };
+/**
+ * Adds a group of consecutive sibling statements inside a card and returns its id: `id` when given
+ * (a free one, `isFreeId`), else one from the title.
+ */
+export function addGroup(
+  page: Page,
+  cardId: string,
+  members: readonly string[],
+  title: string,
+  options: { readonly id?: string; readonly collapsed?: boolean; readonly author?: string } = {},
+): string {
+  const id = options.id ?? uniqueId(page, title.length > 0 ? title : "group");
+  const group: Group = {
+    id,
+    card: cardId,
+    title,
+    members: [...members],
+    collapsed: options.collapsed ?? false,
+    ...(options.author !== undefined ? { author: options.author } : {}),
+  };
   page.groups.push(group);
   return id;
 }
 
 export interface GroupChange {
   readonly title?: string;
+  /** Who wrote a new title; a title changed without one has no author (it is no longer anyone else's). */
+  readonly author?: string;
   readonly collapsed?: boolean;
   /** Blank text clears the description. */
   readonly description?: { readonly text: string; readonly author: string };
+  /** The statements it holds now (consecutive siblings, as `addGroup` takes them). */
+  readonly members?: readonly string[];
 }
 
 export function updateGroup(page: Page, groupId: string, change: GroupChange): void {
@@ -218,11 +250,19 @@ export function updateGroup(page: Page, groupId: string, change: GroupChange): v
   if (!group) {
     return;
   }
-  if (change.title !== undefined && change.title.trim().length > 0) {
+  if (change.title !== undefined && change.title.trim().length > 0 && change.title !== group.title) {
     group.title = change.title;
+    if (change.author !== undefined) {
+      group.author = change.author;
+    } else {
+      delete group.author;
+    }
   }
   if (change.collapsed !== undefined) {
     group.collapsed = change.collapsed;
+  }
+  if (change.members !== undefined && change.members.join("\u0000") !== group.members.join("\u0000")) {
+    group.members = [...change.members];
   }
   if (change.description) {
     if (change.description.text.trim().length === 0) {
@@ -263,6 +303,11 @@ export function setLinkLabel(page: Page, linkId: string, text: string, author: s
 
 export function removeLink(page: Page, linkId: string): void {
   page.links = page.links.filter((link) => link.id !== linkId);
+}
+
+/** Sets the view of the page's cards that have none of their own. */
+export function setDefaultView(page: Page, view: View): void {
+  page.defaultView = view;
 }
 
 export function setTitle(document: BoardDocument, title: string): void {

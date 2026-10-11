@@ -383,6 +383,7 @@ fn type_link(resolver: &Resolver<'_>, reference: TypeRef) -> Result<TypeLink, Ba
         target: fields.target,
         reason: fields.reason,
         module: fields.module,
+        heritage: fact.heritage,
     })
 }
 

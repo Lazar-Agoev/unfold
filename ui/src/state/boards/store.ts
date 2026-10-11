@@ -10,6 +10,8 @@
  *   edits gets a `conflict` for the person to resolve.
  * - Each page's camera and lens, and the active page, are saved with `save_board_view` (debounced);
  *   view changes are never undo steps.
+ * - An agent's edit is saved at once (`saveStep`) and becomes an undo step only once the engine
+ *   accepts it.
  */
 
 import { replaceEqualDeep } from "@tanstack/react-query";
@@ -18,7 +20,7 @@ import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import { showToast } from "../../components/Toast";
 import type { BoardDocument, BoardState, BoardView, Page, PageOutline, View } from "../../ipc/generated";
-import { toUnfoldError } from "../../ipc/unfold";
+import { UnfoldError, toUnfoldError } from "../../ipc/unfold";
 import { findPage } from "./document";
 import { call } from "./engine";
 import { boardKey } from "./keys";
@@ -204,10 +206,18 @@ export function setPageLens(target: PageTarget, lens: View | null): void {
 
 /** The view a card shows: the page's lens (unless the card is an exception), its own switch, or the page default. */
 export function effectiveView(lens: View | null, cardView: View | undefined, defaultView: View, exception: boolean): View {
-  if (lens !== null && !exception) {
-    return lens;
+  return shownView(lens !== null && !exception ? lens : (cardView ?? defaultView));
+}
+
+/** The view a saved view is drawn in: Diagram shows as Code until the Diagram view is built. */
+export function shownView(view: View): View {
+  switch (view) {
+    case "diagram":
+      return "code";
+    case "code":
+    case "flow":
+      return view;
   }
-  return cardView ?? defaultView;
 }
 
 export function select(target: PageTarget, selection: Selection): void {
@@ -636,6 +646,130 @@ export async function saveBoard(ref: BoardRef, options: { readonly force?: boole
   }
 }
 
+/** What a change `saveStep` makes: the next document, and what the change reports. */
+interface StepChange<T> {
+  readonly document: BoardDocument;
+  readonly value: T;
+}
+
+/** How `saveStep` ended: the board as saved and what the change reported, or why it wasn't saved. */
+type StepOutcome<T> = { readonly ok: true; readonly state: BoardState; readonly value: T } | { readonly ok: false; readonly error: UnfoldError };
+
+function notSaved(code: string, message: string): StepOutcome<never> {
+  return { ok: false, error: new UnfoldError({ code, message }) };
+}
+
+/**
+ * Makes one change and saves it at once rather than after the autosave delay (an agent's edit). The
+ * board's unsaved edits are saved first, so a refusal is about this change alone; `change` then makes
+ * the next document from the current one, which is saved, and only once the engine accepts it does it
+ * become one undo step of `page`, named `name`. A refused change leaves the board as it was. Edits made
+ * while it saves stay on top: `change` runs again over them, and they autosave. Saves never overlap.
+ * `change` may throw (nothing is applied then).
+ */
+export async function saveStep<T>(ref: BoardRef, page: PageId, name: string, change: (document: BoardDocument) => StepChange<T>): Promise<StepOutcome<T>> {
+  const key = boardKey(ref);
+  // Another step may take the save slot while this one waits; then wait for that one too.
+  do {
+    await saveBoard(ref);
+  } while (inflight.has(key));
+  const board = getOpenBoard(ref);
+  if (!board) {
+    return notSaved("board_not_open", "This window no longer holds the board.");
+  }
+  if (board.conflict) {
+    return notSaved("board_conflict", "The board changed outside Unfold and the person hasn't chosen which version to keep yet.");
+  }
+  if (isDirty(board)) {
+    return notSaved("unsaved_edits", board.saveError ?? "The board has edits Unfold couldn't save yet. Try again in a moment.");
+  }
+  const base = board.document;
+  const first = change(base);
+  if (first.document === base) {
+    return { ok: true, state: savedState(board), value: first.value };
+  }
+  let release: () => void = () => undefined;
+  inflight.set(
+    key,
+    new Promise<void>((resolve) => {
+      release = resolve;
+    }),
+  );
+  update(ref, (open) => {
+    open.saving = true;
+  });
+  try {
+    let saved: BoardState;
+    try {
+      saved = await call("save_board", { project: ref.project, id: ref.id, board: boardEdit(first.document) });
+    } catch (cause) {
+      return { ok: false, error: toUnfoldError(cause) };
+    }
+    return commitStep(ref, { page, name, base, first, saved, change });
+  } finally {
+    inflight.delete(key);
+    release();
+    update(ref, (open) => {
+      open.saving = false;
+    });
+  }
+}
+
+/** Makes a change the engine saved one undo step, over whatever the person edited while it saved. */
+function commitStep<T>(
+  ref: BoardRef,
+  step: {
+    readonly page: PageId;
+    readonly name: string;
+    readonly base: BoardDocument;
+    readonly first: StepChange<T>;
+    readonly saved: BoardState;
+    readonly change: (document: BoardDocument) => StepChange<T>;
+  },
+): StepOutcome<T> {
+  const { page, name, base, first, saved, change } = step;
+  const board = getOpenBoard(ref);
+  if (!board) {
+    return { ok: true, state: saved, value: first.value };
+  }
+  const moved = board.document !== base;
+  let next: BoardDocument;
+  try {
+    next = moved ? change(board.document).document : shared(first.document, saved.document);
+  } catch {
+    next = board.document;
+  }
+  update(ref, (open) => {
+    open.revision = saved.revision;
+    open.health = shared(board.health, saved.health);
+    open.outlines = shared(board.outlines, outlinesOf(saved.outlines));
+    open.label = saved.label;
+    open.name = saved.name;
+    open.place = saved.place;
+    open.published = saved.published;
+    open.saveError = null;
+    open.savedDocument = saved.document;
+    if (next !== open.document) {
+      pushPast(open, { document: open.document, page, name });
+      open.history.future = [];
+      open.history.coalesce = null;
+      open.document = next;
+      open.edits += 1;
+    }
+    if (!moved) {
+      open.savedEdits = open.edits;
+    }
+  });
+  if (!moved) {
+    return { ok: true, state: saved, value: first.value };
+  }
+  // What the person did meanwhile is saved next, with the change applied again over it.
+  scheduleSave(ref);
+  return next === board.document
+    ? notSaved("page_changed", "The page changed while the edit was saving, and the edit no longer applies. Read the page again.")
+    : { ok: true, state: saved, value: first.value };
+}
+
 /** Saves now whatever is waiting for the autosave (before closing, moving, or publishing a board). */
 export async function flushBoard(ref: BoardRef): Promise<void> {
   cancelSaveTimer(ref);
@@ -821,6 +955,23 @@ export async function refreshHealth(ref: BoardRef): Promise<void> {
 // ---------------------------------------------------------------------------------------------
 // Sessions (Move to New Window)
 
+/** The board as this window last loaded or saved it. */
+function savedState(board: OpenBoard): BoardState {
+  return {
+    project: board.ref.project,
+    id: board.ref.id,
+    place: board.place,
+    name: board.name,
+    document: board.savedDocument,
+    revision: board.revision,
+    published: board.published,
+    health: board.health,
+    outlines: Object.values(board.outlines),
+    label: board.label,
+    view: null,
+  };
+}
+
 /** The board with its unsaved document, undo history, and each page's camera and lens, as plain JSON. */
 export function exportSession(ref: BoardRef): BoardSession | null {
   const board = getOpenBoard(ref);
@@ -828,19 +979,7 @@ export function exportSession(ref: BoardRef): BoardSession | null {
     return null;
   }
   return {
-    state: {
-      project: board.ref.project,
-      id: board.ref.id,
-      place: board.place,
-      name: board.name,
-      document: board.savedDocument,
-      revision: board.revision,
-      published: board.published,
-      health: board.health,
-      outlines: Object.values(board.outlines),
-      label: board.label,
-      view: null,
-    },
+    state: savedState(board),
     document: board.document,
     history: { past: [...board.history.past], future: [...board.history.future] },
     activePage: board.activePage,

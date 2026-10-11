@@ -109,6 +109,20 @@ export function estimatedBlockSize(view: CardView | undefined, monogram: boolean
   return { width, height: BLOCK_HEADER + CODE_PADDING + code.lines.length * CODE_ROW };
 }
 
+/**
+ * Where line `line` of a block card's Code is before the card is drawn: its row's center below the
+ * card's top (long lines wrap, so this is a floor); undefined when the model has no current Code or
+ * doesn't show the line.
+ */
+export function estimatedLineOffset(view: CardView | undefined, line: number): number | undefined {
+  const code = view?.type === "block" && view.code?.source.state === "current" ? view.code.source : null;
+  const first = code?.lines[0]?.number;
+  if (!code || first === undefined || line < first || line > first + code.lines.length - 1) {
+    return undefined;
+  }
+  return BLOCK_HEADER + CODE_PADDING / 2 + (line - first + 0.5) * CODE_ROW;
+}
+
 /** What an entrance card shows: its method badge (with a trigger), heading, location, and handler names. */
 export interface EntranceWidthInput {
   /** `POST`, or null for an entrance without a method. */

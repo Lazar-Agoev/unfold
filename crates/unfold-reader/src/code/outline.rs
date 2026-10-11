@@ -1,14 +1,14 @@
 //! The statement outline of a shown block: which blocks the Code view tints, folds, and groups.
 //!
 //! It is derived from stored blocks only. An outline item is a nested callable, or a statement
-//! (`variable`, `expression_statement`, control flow, `return`, `throw`, `import`, `class`, …)
-//! that has no role or a `body`, `then`, `else`, `catch`, or `finally` role. Its parent is the
-//! nearest enclosing item.
+//! (`variable`, `expression_statement`, control flow, `return`, `throw`, `import`, `class`, a
+//! type declaration, …) that has no role or a `body`, `then`, `else`, `catch`, or `finally` role.
+//! Its parent is the nearest enclosing item.
 //!
-//! Compound items (`if`, loops, `switch`, `try`, `catch`, callables, classes, Python `with` and
-//! `match`) that span several lines fold. In a card longer than about 40 lines, callbacks (nested
-//! callables and classes) and `if` statements heading an `else if` chain of three or more checks
-//! start folded.
+//! Compound items (`if`, loops, `switch`, `try`, `catch`, callables, classes, type declarations,
+//! Python `with` and `match`) that span several lines fold. In a card longer than about 40 lines,
+//! nested definitions (callables, classes, and type declarations) and `if` statements heading an
+//! `else if` chain of three or more checks start folded.
 
 use unfold_core::vocab::{BlockKind, Language, Role, SlotName};
 use unfold_core::{ByteRange, FileGraph, Key};
@@ -43,6 +43,9 @@ fn is_statement(kind: BlockKind) -> bool {
             | K::Continue
             | K::Import
             | K::Class
+            | K::Interface
+            | K::TypeAlias
+            | K::Enum
             | K::With
             | K::Match
     )
@@ -62,9 +65,10 @@ fn is_group_role(role: Option<Role>) -> bool {
     )
 }
 
-/// A nested callable or class: it starts folded in a long card and is never a group member.
+/// A nested callable, class, or type declaration: it starts folded in a long card and is never
+/// a group member.
 fn is_callback(kind: BlockKind) -> bool {
-    kind.is_function_like() || kind == BlockKind::Class
+    kind.is_function_like() || kind.is_type_declaration()
 }
 
 fn is_compound(kind: BlockKind) -> bool {
@@ -92,9 +96,17 @@ fn body_slot(kind: BlockKind) -> Option<SlotName> {
     match kind {
         kind if kind.is_function_like() => Some(SlotName::Body),
         K::If => Some(SlotName::Then),
-        K::Catch | K::Try | K::For | K::ForIn | K::ForOf | K::While | K::DoWhile | K::With | K::Match => {
-            Some(SlotName::Body)
-        }
+        K::Catch
+        | K::Try
+        | K::For
+        | K::ForIn
+        | K::ForOf
+        | K::While
+        | K::DoWhile
+        | K::With
+        | K::Match
+        | K::Interface
+        | K::Enum => Some(SlotName::Body),
         _ => None,
     }
 }

@@ -12,16 +12,23 @@
 //! type parameters are symbols of their scopes, so a name whose lookup finds one is dropped when
 //! names are looked up ([`Binder::finish`](super::Binder)).
 //!
+//! Heritage clauses of an interface or class that is a block are walked too: each base is a
+//! name with its heritage (`extends` for an interface's or a class's `extends`, `implements`
+//! for a class's `implements`), and its type arguments are ordinary type names. A class's
+//! `extends` is an expression: only a name or a member chain names a type (`mixin(Base)` names
+//! none). A class's clauses are walked in its own scope, where its type parameters are.
+//!
 //! Each name is recorded as a [`TypeRef::Names`] whose first name is looked up in the type
 //! meaning from the scope where its type is written; binding lists them in source order
 //! (`Binding::type_links`), aligned with the file's type reference facts.
 
 use oxc_ast::ast::{
-    FormalParameters, TSSignature, TSThisParameter, TSTupleElement, TSType, TSTypeAnnotation, TSTypeName,
-    TSTypeParameterDeclaration, TSTypeParameterInstantiation,
+    Class, Expression, FormalParameters, TSInterfaceHeritage, TSSignature, TSThisParameter, TSTupleElement,
+    TSType, TSTypeAnnotation, TSTypeName, TSTypeParameterDeclaration, TSTypeParameterInstantiation,
 };
-use oxc_span::GetSpan;
+use oxc_span::{GetSpan, Span};
 use unfold_core::text::ByteRange;
+use unfold_core::vocab::Heritage;
 
 use super::{Binder, TypeSite};
 use crate::build::{MAX_DEPTH, range};
@@ -65,6 +72,29 @@ impl<'a> Binder<'a> {
         );
         walk(self);
         self.type_locals.truncate(outer);
+    }
+
+    /// Records the bases of an interface's `extends` clause and their type arguments' names.
+    pub(super) fn interface_heritage(&mut self, bases: &[TSInterfaceHeritage<'a>]) {
+        for base in bases {
+            self.type_name(&base.type_name, Some(Heritage::Extends));
+            self.type_arguments(base.type_arguments.as_deref(), 0);
+        }
+    }
+
+    /// Records the bases of a class's `extends` and `implements` clauses and their type
+    /// arguments' names.
+    pub(super) fn class_heritage(&mut self, class: &Class<'a>) {
+        if let Some(heritage) = &class.heritage {
+            if let Some(names) = expression_names(&heritage.expression) {
+                self.record_name(names, heritage.expression.span(), Some(Heritage::Extends));
+            }
+            self.type_arguments(heritage.type_arguments.as_deref(), 0);
+        }
+        for implemented in &class.implements {
+            self.type_name(&implemented.expression, Some(Heritage::Implements));
+            self.type_arguments(implemented.type_arguments.as_deref(), 0);
+        }
     }
 
     /// Records every member type of an interface body or object type literal.
@@ -165,7 +195,7 @@ impl<'a> Binder<'a> {
         let next = depth + 1;
         match ty {
             TSType::TSTypeReference(it) => {
-                self.type_name(&it.type_name);
+                self.type_name(&it.type_name, None);
                 self.type_arguments(it.type_arguments.as_deref(), depth);
             }
             TSType::TSArrayType(it) => self.type_names(&it.element_type, next),
@@ -280,29 +310,33 @@ impl<'a> Binder<'a> {
         }
     }
 
-    /// Records one written type name, unless its root is a type parameter of the enclosing
-    /// type syntax or `this`.
-    fn type_name(&mut self, name: &TSTypeName<'a>) {
-        let mut names: Vec<Box<str>> = Vec::new();
+    /// Records one written type name (a base with its `heritage`), unless its root is `this`.
+    fn type_name(&mut self, name: &TSTypeName<'a>, heritage: Option<Heritage>) {
+        let mut names: Vec<&'a str> = Vec::new();
         let mut current = name;
-        let first = loop {
+        loop {
             match current {
-                TSTypeName::IdentifierReference(id) => break id.name.as_str(),
+                TSTypeName::IdentifierReference(id) => break names.push(id.name.as_str()),
                 TSTypeName::QualifiedName(qualified) => {
-                    names.push(qualified.right.name.as_str().into());
+                    names.push(qualified.right.name.as_str());
                     current = &qualified.left;
                 }
                 TSTypeName::ThisExpression(_) => return,
             }
-        };
-        if self.type_locals.contains(&first) {
+        }
+        names.reverse();
+        self.record_name(names, name.span(), heritage);
+    }
+
+    /// Records the type name `names` (first to last) written at `span`, unless its first name
+    /// is a type parameter of the enclosing type syntax.
+    fn record_name(&mut self, names: Vec<&'a str>, span: Span, heritage: Option<Heritage>) {
+        if names.first().is_none_or(|first| self.type_locals.contains(first)) {
             return;
         }
-        names.push(first.into());
-        names.reverse();
         let qualified = names.len() > 1;
         self.types.push(TypeRef::Names {
-            names,
+            names: names.into_iter().map(Box::from).collect(),
             value: false,
             lookup: Lookup::Unresolved,
             shadowed: false,
@@ -310,9 +344,32 @@ impl<'a> Binder<'a> {
         let index = (self.types.len() - 1) as u32;
         self.type_places.push((index, self.scope));
         self.type_sites.push(TypeSite {
-            range: range(name.span()),
+            range: range(span),
             qualified,
+            heritage,
             ty: index,
         });
     }
+}
+
+/// The names of a class's `extends` expression when it is a name or a chain of static members
+/// on a name (`Base`, `models.Base`), first to last; `None` for any other expression.
+fn expression_names<'a>(expression: &Expression<'a>) -> Option<Vec<&'a str>> {
+    let mut names = Vec::new();
+    let mut current = expression;
+    loop {
+        match current {
+            Expression::Identifier(id) => {
+                names.push(id.name.as_str());
+                break;
+            }
+            Expression::StaticMemberExpression(member) if !member.optional => {
+                names.push(member.property.name.as_str());
+                current = &member.object;
+            }
+            _ => return None,
+        }
+    }
+    names.reverse();
+    Some(names)
 }

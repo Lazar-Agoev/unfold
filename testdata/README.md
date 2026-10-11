@@ -141,13 +141,16 @@ lines. Open the folder itself; `.unfold/config.toml` makes `py/` a Python projec
   a `try`/`catch`, a three-argument `toOrder`, a passed callback `notify(order, summary)`), `inventory.ts` (a
   generic `first<T>`), `payments.ts` (`import Stripe from "stripe"`, `Stripe.PaymentIntent`, `throw new
   CardDeclinedError(…)`), `cart.ts` (interfaces, type aliases, merged `interface Address`, an object-literal alias, a
-  utility alias, an enum), `user.ts` (a class with a field and parameter properties), `errors.ts`, and `legacy.ts`
-  (nothing annotated).
+  utility alias, an enum), `user.ts` (a class with a field and parameter properties), `errors.ts`, `legacy.ts`
+  (nothing annotated), and the heritage cases: `orders/model.ts` (interfaces extending with generics, a base reached
+  twice, a merged base and a library's base, a class that extends and implements) and `orders/cycle.ts` (two
+  interfaces that extend each other).
 - `py/src/shop/`: `models.py` (a `@dataclass`, a `TypedDict`, a pydantic `BaseModel` with a string forward
   reference, a `NamedTuple`, `Money = Decimal`, `Literal` and `Annotated`), `payments.py` (positional-only,
   keyword-only, `*args`/`**kwargs`, a static and a class method, `raise CardDeclined(…)`, a method called through
   `self`), `orders.py` (keyword arguments, a method called through an instance and through its class, expansions, a
-  `TypeVar`, a PEP 695 type parameter), `errors.py`.
+  `TypeVar`, a PEP 695 type parameter), `errors.py`, and `accounts.py` (a dataclass chain with `Generic[T]`, a pydantic
+  chain with a base reached twice and a keyword argument, a `TypedDict` subclass, a base that is a call).
 - `expected/typescript.jsonl`: the snapshot of the TypeScript project's type declaration blocks and typed records, as
   canonical export lines (`crates/unfold-lang-typescript/tests/structure/typed.rs`; `UNFOLD_BLESS=1` rewrites it).
 - `expected/python.jsonl`: the same for the Python project's typed records (`crates/unfold-lang-python/tests/typed.rs`).

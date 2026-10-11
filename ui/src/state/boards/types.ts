@@ -126,6 +126,8 @@ export interface PageView {
 export interface HistoryEntry {
   readonly document: BoardDocument;
   readonly page: PageId;
+  /** The step's name, for an agent's edit ("Claude · Add cards"). */
+  readonly name?: string;
 }
 
 /** Undo and redo for one board across its pages: whole documents, so the history is plain JSON. */

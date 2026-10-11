@@ -7,6 +7,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { newCardView } from "../code/typeKinds";
 import { KeyChip, Tooltip } from "../components";
 import { Icon } from "../icons";
 import { engineQueryOptions, type ProjectId, type ProjectRow } from "../ipc";
@@ -111,8 +112,10 @@ function choiceOf(item: ResultItem): AddChoice | null {
   switch (item.type) {
     case "entrance":
       return { kind: "entrance", project: item.hit.project, key: item.hit.key };
-    case "function":
-      return { kind: "definition", project: item.hit.project, key: item.hit.key, name: item.hit.name };
+    case "function": {
+      const view = newCardView(item.hit.kind);
+      return { kind: "definition", project: item.hit.project, key: item.hit.key, name: item.hit.name, ...(view ? { view } : {}) };
+    }
     case "file":
       return { kind: "file", project: item.hit.project, path: item.hit.path };
     case "text":

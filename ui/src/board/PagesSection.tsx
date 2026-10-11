@@ -1,10 +1,12 @@
 /**
  * Pages: the board's pages in order, each with a review mark when something on it needs review; + adds
  * a page. A row's menu (or right-click) renames it in place (also on double-click), duplicates it,
- * moves it up or down, or deletes it after asking (not the only page).
+ * copies a link to it for an agent's chat, moves it up or down, or deletes it after asking (not the
+ * only page).
  */
 
 import { useMemo, useState, type MouseEvent } from "react";
+import { copyLink } from "../agent";
 import { ConfirmDialog, IconButton, ListRow, MenuButton, SectionLabel, useContextMenu, type MenuEntry } from "../components";
 import { Icon } from "../icons";
 import type { Page } from "../ipc/generated";
@@ -36,6 +38,7 @@ export function PagesSection({ board }: { readonly board: BoardRef }) {
     return [
       { id: "rename", label: "Rename", icon: "edit", onSelect: () => { setRenaming(page.id); } },
       { id: "duplicate", label: "Duplicate page", icon: "copy", onSelect: () => { duplicatePage(target); } },
+      { id: "copy-link", label: "Copy link", onSelect: () => void copyLink(target) },
       { kind: "separator", id: "s1" },
       { id: "up", label: "Move up", disabled: index === 0, onSelect: () => { movePage(target, -1); } },
       { id: "down", label: "Move down", disabled: index === count - 1, onSelect: () => { movePage(target, 1); } },

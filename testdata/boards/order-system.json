@@ -1,0 +1,482 @@
+{
+  "format": "unfold-board",
+  "pages": [
+    {
+      "cards": [
+        {
+          "at": [
+            320,
+            0
+          ],
+          "description": {
+            "author": "agent:claude",
+            "signature": "sha256:6f2bbed7bc305377d2f6121f38f0a9c68aec9409b5f6a533bcc25bcc609197ba",
+            "text": "Places the order now, or queues it when the client asks for an async reply."
+          },
+          "id": "create-order",
+          "ref": {
+            "block": "src/routes/orders.ts#function:createOrder"
+          },
+          "view": "flow"
+        },
+        {
+          "at": [
+            320,
+            640
+          ],
+          "id": "orders-worker",
+          "ref": {
+            "entrance": "entrance:[\"bullmq.worker\",\"worker\",\"\",\"orders\",\"processOrder\"]"
+          }
+        },
+        {
+          "at": [
+            800,
+            0
+          ],
+          "id": "place-order",
+          "ref": {
+            "block": "src/services/order-service.ts#class:OrderService/method:place"
+          }
+        },
+        {
+          "at": [
+            0,
+            0
+          ],
+          "id": "post-orders",
+          "ref": {
+            "entrance": "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]"
+          }
+        },
+        {
+          "at": [
+            640,
+            640
+          ],
+          "id": "process-order",
+          "ref": {
+            "block": "src/jobs/process-order.ts#function:processOrder"
+          },
+          "view": "code"
+        },
+        {
+          "at": [
+            1120,
+            320
+          ],
+          "id": "stripe-charge",
+          "ref": {
+            "block": "src/services/payment.ts#class:StripeProvider/method:charge"
+          }
+        }
+      ],
+      "defaultView": "diagram",
+      "frames": [
+        {
+          "author": "agent:claude",
+          "description": {
+            "author": "agent:claude",
+            "signature": "",
+            "text": "The Express API: requests come in, orders are placed or queued."
+          },
+          "direction": "down",
+          "icon": "api",
+          "id": "server",
+          "look": "box",
+          "members": [
+            "post-orders",
+            "create-order",
+            "place-order",
+            "async-note"
+          ],
+          "title": "server"
+        },
+        {
+          "author": "agent:claude",
+          "direction": "right",
+          "icon": "system",
+          "id": "ts-orders",
+          "look": "zone",
+          "members": [
+            "server",
+            "worker",
+            "orders-table",
+            "orders-queue"
+          ],
+          "title": "ts-orders"
+        },
+        {
+          "author": "agent:claude",
+          "collapsed": true,
+          "icon": "worker",
+          "id": "worker",
+          "look": "box",
+          "members": [
+            "orders-worker",
+            "process-order"
+          ],
+          "title": "worker"
+        }
+      ],
+      "groups": [
+        {
+          "author": "agent:claude",
+          "card": "create-order",
+          "collapsed": true,
+          "id": "queue-it",
+          "members": [
+            "src/routes/orders.ts#function:createOrder/if[0]"
+          ],
+          "title": "Queue it for a worker"
+        }
+      ],
+      "guards": [
+        {
+          "key": "entrance:[\"bullmq.worker\",\"worker\",\"\",\"orders\",\"processOrder\"]",
+          "kind": "entrance:worker",
+          "owner": "",
+          "signature": "sha256:b75cdc0920f22f32f085ee45826c2ad20b3dd9df62a7168bed4ec8ab9cbadc71"
+        },
+        {
+          "key": "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]",
+          "kind": "entrance:http",
+          "owner": "",
+          "signature": "sha256:f26d21c71dc749abf8223caeaf97365e165a5c8aeb62b76a1aa13d27584b35db"
+        },
+        {
+          "key": "src/jobs/process-order.ts#function:processOrder",
+          "kind": "function",
+          "owner": "src/jobs/process-order.ts#",
+          "signature": "sha256:95ab2d47c23ca2c7670eeddc37e097ba50311f513756a1440c3e4d507e74620c"
+        },
+        {
+          "key": "src/routes/orders.ts#function:createOrder",
+          "kind": "function",
+          "owner": "src/routes/orders.ts#",
+          "signature": "sha256:6f2bbed7bc305377d2f6121f38f0a9c68aec9409b5f6a533bcc25bcc609197ba"
+        },
+        {
+          "key": "src/routes/orders.ts#function:createOrder/if[0]",
+          "kind": "if",
+          "owner": "src/routes/orders.ts#function:createOrder",
+          "signature": "sha256:eba575631a1b2cb75725933e26c3feec5c5cf9eb10dab0be0f7168b43d35dbc5"
+        },
+        {
+          "key": "src/services/order-service.ts#class:OrderService/method:place",
+          "kind": "method",
+          "owner": "src/services/order-service.ts#class:OrderService",
+          "signature": "sha256:74d246fe8920d24dde56b962e36f4001a96d57f1b0583692916edb20b422afe9"
+        },
+        {
+          "key": "src/services/payment.ts#class:StripeProvider/method:charge",
+          "kind": "method",
+          "owner": "src/services/payment.ts#class:StripeProvider",
+          "signature": "sha256:4890290e03aec9059de41294cc0d816f19a5f0132113de73710ae06cefc3610f"
+        }
+      ],
+      "id": "page-1",
+      "labels": [],
+      "links": [
+        {
+          "anchors": [
+            {
+              "key": "src/services/payment.ts#function:createProvider"
+            }
+          ],
+          "author": "agent:claude",
+          "from": "place-order",
+          "id": "charge-stripe",
+          "kind": "calls",
+          "step": "src/services/order-service.ts#class:OrderService/method:place/expression_statement[0]",
+          "to": "stripe-charge"
+        },
+        {
+          "anchors": [
+            {
+              "key": "entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"requireUser\"]"
+            }
+          ],
+          "author": "agent:claude",
+          "channel": "POST /orders",
+          "from": "customer",
+          "id": "customer-posts",
+          "kind": "http",
+          "to": "post-orders"
+        },
+        {
+          "from": "process-order",
+          "id": "drawn",
+          "label": {
+            "author": "person:tester",
+            "signature": "sha256:746b5cd312ca216ee088ebeed9fb513c7ced0a3036f11d7de617b5e6bc741d20",
+            "text": "places the queued order"
+          },
+          "to": "place-order"
+        },
+        {
+          "anchors": [
+            {
+              "key": "src/queues/queues.ts#variable:ordersQueue"
+            }
+          ],
+          "author": "agent:claude",
+          "carries": "src/types.ts#interface:OrderJob",
+          "channel": "orders",
+          "description": {
+            "author": "agent:claude",
+            "signature": "",
+            "text": "createOrder adds a place-order job to the orders queue."
+          },
+          "from": "create-order",
+          "id": "enqueue-order",
+          "kind": "queue",
+          "label": {
+            "author": "agent:claude",
+            "signature": "",
+            "text": "place-order job"
+          },
+          "step": "src/routes/orders.ts#function:createOrder/if[0]/variable:job/call[0]",
+          "to": "orders-queue"
+        },
+        {
+          "author": "agent:claude",
+          "from": "place-order",
+          "id": "insert-order",
+          "kind": "writes",
+          "step": "src/services/order-service.ts#class:OrderService/method:place/expression_statement[1]",
+          "to": "orders-table"
+        },
+        {
+          "author": "agent:claude",
+          "cardinality": "many-to-one",
+          "from": "orders-table",
+          "fromColumn": "customerId",
+          "id": "order-customer",
+          "kind": "relates",
+          "to": "customers-table",
+          "toColumn": "customerId"
+        },
+        {
+          "author": "agent:claude",
+          "from": "create-order",
+          "id": "post-slack",
+          "kind": "other",
+          "label": {
+            "author": "agent:claude",
+            "signature": "",
+            "text": "posts to #orders"
+          },
+          "step": "src/routes/orders.ts#function:createOrder/expression_statement[0]",
+          "to": "slack"
+        },
+        {
+          "from": "orders-queue",
+          "id": "queue-store",
+          "label": {
+            "author": "person:tester",
+            "signature": "",
+            "text": "kept in"
+          },
+          "to": "redis"
+        },
+        {
+          "author": "agent:claude",
+          "from": "process-order",
+          "id": "read-orders",
+          "kind": "reads",
+          "to": "orders-table"
+        },
+        {
+          "anchors": [
+            {
+              "key": "entrance:[\"bullmq.worker\",\"worker\",\"\",\"orders\",\"processOrder\"]"
+            }
+          ],
+          "author": "agent:claude",
+          "channel": "orders",
+          "from": "orders-queue",
+          "id": "worker-takes",
+          "kind": "queue",
+          "to": "worker"
+        }
+      ],
+      "notes": [
+        {
+          "at": [
+            0,
+            240
+          ],
+          "attach": "create-order",
+          "author": "agent:claude",
+          "id": "async-note",
+          "text": "Queued orders are placed by the worker. The client gets a job id, not the order."
+        },
+        {
+          "at": [
+            0,
+            -40
+          ],
+          "attach": "enqueue-order",
+          "author": "agent:claude",
+          "id": "job-note",
+          "text": "One job per order."
+        },
+        {
+          "at": [
+            -320,
+            400
+          ],
+          "author": "person:tester",
+          "id": "reading-order",
+          "text": "Read left to right: the request, then the worker."
+        }
+      ],
+      "resources": [
+        {
+          "anchors": [],
+          "at": [
+            -320,
+            0
+          ],
+          "author": "agent:claude",
+          "id": "customer",
+          "kind": "actor",
+          "name": "Customer"
+        },
+        {
+          "anchors": [
+            {
+              "file": "src/types.ts",
+              "lines": [
+                10,
+                14
+              ]
+            }
+          ],
+          "at": [
+            1440,
+            640
+          ],
+          "author": "person:tester",
+          "columns": [
+            {
+              "key": "primary",
+              "name": "customerId",
+              "type": "string"
+            },
+            {
+              "key": "unique",
+              "name": "email",
+              "type": "string"
+            },
+            {
+              "name": "items",
+              "optional": true,
+              "type": "OrderItem[]"
+            }
+          ],
+          "id": "customers-table",
+          "kind": "table",
+          "name": "customers"
+        },
+        {
+          "anchors": [
+            {
+              "key": "src/queues/queues.ts#variable:ordersQueue"
+            }
+          ],
+          "at": [
+            320,
+            400
+          ],
+          "author": "agent:claude",
+          "id": "orders-queue",
+          "kind": "queue",
+          "name": "orders"
+        },
+        {
+          "anchors": [
+            {
+              "key": "src/db/repository.ts#class:OrderRepository"
+            }
+          ],
+          "at": [
+            1120,
+            640
+          ],
+          "author": "agent:claude",
+          "columns": [
+            {
+              "key": "primary",
+              "name": "id"
+            },
+            {
+              "key": "foreign",
+              "name": "customerId",
+              "references": "customers.customerId"
+            }
+          ],
+          "description": {
+            "author": "agent:claude",
+            "signature": "",
+            "text": "Orders by id, in memory for each process."
+          },
+          "id": "orders-table",
+          "kind": "table",
+          "name": "orders",
+          "type": "src/types.ts#interface:Order"
+        },
+        {
+          "anchors": [
+            {
+              "key": "src/config.ts#variable:connection"
+            }
+          ],
+          "at": [
+            640,
+            400
+          ],
+          "author": "person:tester",
+          "id": "redis",
+          "kind": "cache",
+          "name": "Redis"
+        },
+        {
+          "anchors": [
+            {
+              "key": "src/jobs/report.ts#function:printReport"
+            }
+          ],
+          "at": [
+            1440,
+            0
+          ],
+          "author": "person:tester",
+          "id": "reports",
+          "kind": "storage",
+          "name": "Orders report"
+        },
+        {
+          "anchors": [
+            {
+              "key": "src/lib/slack.ts#variable:slack"
+            }
+          ],
+          "at": [
+            1120,
+            0
+          ],
+          "author": "agent:claude",
+          "id": "slack",
+          "kind": "external",
+          "name": "slack"
+        }
+      ],
+      "title": "How an order is placed"
+    }
+  ],
+  "projects": [],
+  "title": "Order system",
+  "version": 1
+}

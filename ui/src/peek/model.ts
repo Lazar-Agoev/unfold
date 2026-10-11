@@ -53,8 +53,8 @@ export function visibleLines(lineCount: number, folded: readonly FoldedRange[]):
   return lines;
 }
 
-/** The block kinds that are definitions: only they get `⊕` and a fold. */
-const DEFINITION_KINDS: ReadonlySet<BlockKind> = new Set(["function", "class", "method", "constructor", "getter", "setter"]);
+/** The block kinds that are definitions (the catalog's): only they get `⊕` and a fold. */
+const DEFINITION_KINDS: ReadonlySet<BlockKind> = new Set(["function", "class", "method", "constructor", "getter", "setter", "interface", "type_alias", "enum"]);
 
 function isDefinition(item: Pick<OutlineItem, "kind">): boolean {
   return DEFINITION_KINDS.has(item.kind);

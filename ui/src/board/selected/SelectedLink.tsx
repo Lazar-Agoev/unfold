@@ -5,7 +5,7 @@
 
 import { useId, useRef } from "react";
 import { LINK_LABEL_FIELD } from "../../canvas/cards/select";
-import { authorName } from "../../code/text";
+import { Author } from "../../agent";
 import { Button, Monogram } from "../../components";
 import type { Card, Link } from "../../ipc/generated";
 import { requestFocus, useFocusTarget } from "../../keyboard";
@@ -46,7 +46,11 @@ export function SelectedLink({ target, link }: { readonly target: PageTarget; re
     <>
       <div className="selected-link-identity">
         <h3 className="selected-name ui">Link</h3>
-        {link.label ? <span className="selected-byline">· drawn by {authorName(link.label.author)}</span> : null}
+        {link.label ? (
+          <span className="selected-byline">
+            · drawn by <Author author={link.label.author} />
+          </span>
+        ) : null}
       </div>
       <div className="selected-relations link">
         <div className="relation-row">

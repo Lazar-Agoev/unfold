@@ -2,6 +2,7 @@
 import "../test/dom";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { FileView } from "../ipc";
 import { actions } from "../keyboard";
 import type * as Boards from "../state/boards";
 import { openBoard } from "../state/boards";
@@ -26,6 +27,15 @@ const PATH = "src/routes/orders.ts";
 const LIST_ORDERS = "src/routes/orders.ts#function:listOrders";
 const BOARD = { project: ORDERS, id: ".unfold/local/drafts/orders.json" };
 
+const TYPES_PATH = "src/types.ts";
+const QUERY = "src/types.ts#interface:Query";
+
+/** A file whose first line declares an interface. */
+function typesView(): FileView {
+  const view = fixture("file_view", "file_view_orders_page");
+  return { ...view, path: TYPES_PATH, outline: [{ key: QUERY, kind: "interface", startLine: 1, endLine: 3, start: 0, end: 10, groupable: false }] };
+}
+
 let engine: FakeEngine;
 
 beforeEach(() => {
@@ -33,7 +43,7 @@ beforeEach(() => {
   engine = installFakeEngine({
     handlers: {
       workspace: () => workspaceView([projectRow(ORDERS, "storefront-api")]),
-      file_view: () => fixture("file_view", "file_view_orders_page"),
+      file_view: ({ path }) => (path === TYPES_PATH ? typesView() : fixture("file_view", "file_view_orders_page")),
       open_in_editor: () => ({ editor: "code" }) as never,
       open_board: () => ({
         status: "opened",
@@ -98,6 +108,18 @@ describe("the peek sheet", () => {
     });
     await screen.findByRole("img", { name: "listOrders is on the page" });
     expect(within(sheet()).getByText("Placing an order")).toBeTruthy();
+  });
+
+  it("adds a type declaration from its ⊕ as a Code card", async () => {
+    await act(async () => {
+      await openBoard(BOARD);
+    });
+    renderWithClient(<PeekSheet />);
+    act(() => {
+      openPeek({ project: ORDERS, path: TYPES_PATH });
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Add Query to the page" }));
+    expect(adds.addBlock).toHaveBeenCalledWith({ board: BOARD, page: "page-1" }, ORDERS, QUERY, "code");
   });
 
   it("opens at a text match: the current match and its line are marked, other matches tick the scrollbar", async () => {

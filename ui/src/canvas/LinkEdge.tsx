@@ -1,12 +1,14 @@
 /**
  * A drawn link between two cards: a dashed, signed curve. Selected, it is the accent at 1.75px with a
- * hollow dot where it starts; otherwise the gray contour. Its label sits on the curve's midpoint as a
- * chip with the author's name; a click selects the link, a double-click edits its label in the sidebar,
- * and its menu offers Edit label and Remove link. Memoized.
+ * hollow dot where it starts; otherwise the gray contour; while an agent that changed it is working, a
+ * soft authored band. Its label sits on the curve's midpoint as a chip with the author's name (and the
+ * agent mark for an agent); a click selects the link, a double-click edits its label in the sidebar,
+ * and its menu offers Edit label, Copy link, and Remove link. Memoized.
  */
 
 import { EdgeLabelRenderer, Position, getBezierPath, type Edge, type EdgeProps } from "@xyflow/react";
 import { memo } from "react";
+import { AgentMark, copyLink } from "../agent";
 import { useContextMenu } from "../components";
 import { requestFocus } from "../keyboard";
 import { removeLink, select, type PageTarget } from "../state/boards";
@@ -17,8 +19,12 @@ interface LinkData extends Record<string, unknown> {
   readonly target: PageTarget;
   readonly selected: boolean;
   readonly label: string | null;
-  /** The label's author, as the chip shows it ("Lazar"). */
+  /** The label's author, as the chip shows it ("Lazar", "Claude"). */
   readonly author: string | null;
+  /** Whether an agent wrote the label: the chip carries the agent mark. */
+  readonly agent: boolean;
+  /** Whether an agent that changed it is still working. */
+  readonly working: boolean;
 }
 
 export type LinkEdgeType = Edge<LinkData, "link">;
@@ -63,7 +69,7 @@ export const LinkEdge = memo(function LinkEdge({ id, sourceX, sourceY, targetX, 
   const target = data?.target;
   return (
     <>
-      <g className={`board-link${selected ? " selected" : ""}`}>
+      <g className={`board-link${selected ? " selected" : ""}${data?.working === true ? " working" : ""}`}>
         <path d={path} className="board-link-hit" />
         <path d={path} className="board-link-line" />
         <path d={head(targetX, targetY, direction, length, selected ? 9 : 8)} className="board-link-head" />
@@ -88,13 +94,24 @@ export const LinkEdge = memo(function LinkEdge({ id, sourceX, sourceY, targetX, 
               select(target, { kind: "link", linkId: id });
               menu.open(event, [
                 { id: "edit", label: "Edit label", icon: "edit", onSelect: () => { editLabel(target, id); } },
+                { id: "copy-link", label: "Copy link", onSelect: () => void copyLink(target, id) },
                 { kind: "separator", id: "s1" },
                 { id: "remove", label: "Remove link", danger: true, onSelect: () => { removeLink(target, id); } },
               ]);
             }}
           >
             <span className="board-link-text">{data.label}</span>
-            {data.author !== null ? <span className="board-link-author">· {data.author}</span> : null}
+            {data.author !== null ? (
+              <span className="board-link-author">
+                · {data.author}
+                {data.agent ? (
+                  <>
+                    {" "}
+                    <AgentMark name={data.author} />
+                  </>
+                ) : null}
+              </span>
+            ) : null}
           </button>
           {menu.element}
         </EdgeLabelRenderer>

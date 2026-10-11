@@ -77,6 +77,26 @@
   border-radius: var(--radius-full);
 }
 
+/* "Claude is working…" while an agent works on the page. */
+.board-working {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.board-topbar-left.narrow .board-working { flex-shrink: 10; min-width: 0; }
+
+.board-working-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .board-publish-dot.faint { background: var(--color-faint); }
 .board-publish-dot.accent { background: var(--color-accent); }
 .board-topbar-spacer { flex: 1; }

@@ -218,14 +218,16 @@ leading parameters the call binds itself (a Python method called through an inst
 an `__init__` reached by a construction binds the new instance); it is the same count
 [pairing](#pairing) used.
 
-**Type link**: a type name written in a recorded annotation, and the declaration it resolves to.
+**Type link**: a type name written in a recorded annotation or a heritage clause, and the
+declaration it resolves to.
 
 | Field | Meaning |
 | --- | --- |
-| `block` | The innermost block whose range contains the name: the function-like block for parameter and return types, the variable, the type declaration or class for members, the `type_alias` for its aliased type |
+| `block` | The innermost block whose range contains the name: the function-like block for parameter and return types, the variable, the type declaration or class for members and heritage clauses, the `type_alias` for its aliased type |
 | `range` | The written name, a qualified name whole (`Stripe.PaymentIntent`), without type arguments |
 | `text` | The name as written |
 | `resolution`, `target`, `reason`, `module` | As for edges: a `class`, `interface`, `type_alias`, or `enum` block of the same language when resolved; a module label when external; a reason when unresolved |
+| `heritage` | For a base its `class` or `interface` names in a heritage clause: `extends` or `implements` ([heritage](#parameter-kinds-member-kinds-and-pairing-reasons)); absent for every other name, a type argument in a heritage clause included |
 
 The recorded annotations are exactly the ones typed records carry: parameter and return types,
 member types, a type alias's aliased type, and variable annotations (TypeScript `const x: T`; Python
@@ -236,8 +238,15 @@ names that bind to a type parameter of an enclosing declaration (TypeScript `<T>
 mapped type's key; Python PEP 695 `[T]`), which extraction sees lexically; Python `None`, literals,
 the arguments of a subscript spelled `Literal[...]`, and every argument after the first of one
 spelled `Annotated[...]`. A Python string annotation is linked only when its whole content is a
-dotted name (`"Cart"`, `"models.Cart"`), with the range inside the quotes. How each language
-extracts and resolves them is in `docs/languages/`.
+dotted name (`"Cart"`, `"models.Cart"`), with the range inside the quotes.
+
+Heritage clauses are linked too, for every `class` and `interface` block: each base is a link with
+its `heritage` (TypeScript `interface X extends A, B<T>`, `class C extends Base implements I`;
+Python `class Order(OrderDraft, Generic[T])`, where every positional base is `extends`), and the
+type names in a base's type arguments are ordinary links (`T` in `B<T>`, `T` in `Generic[T]`). Only a
+name or member chain is a base: a TypeScript class's `extends mixin(Base)` and a Python
+`class C(make_base())` record none, and neither do Python keyword arguments (`metaclass=`,
+`total=`) or starred bases. How each language extracts and resolves them is in `docs/languages/`.
 
 ## Vocabularies
 
@@ -410,6 +419,11 @@ the argument expansion `keywords` (`**x`) is Python only.
 | `no_signature` | The target declares no parameters of its own: a class without a direct constructor that has a base |
 
 Result bindings are `variable`, `return`, `argument`, `discard`, and `other` ([Typed records](#typed-records)).
+
+| Heritage | Meaning |
+| --- | --- |
+| `extends` | A base the `class` or `interface` extends: TypeScript `extends` (an interface's or a class's), a Python class base |
+| `implements` | An interface a TypeScript class implements |
 
 ### Module labels
 
@@ -591,7 +605,7 @@ and control characters; non-ASCII is written as is). Ranges and lines are two-el
 | `member` | `block` (key), `index`, `kind`, `name`?, `optional`?, `readonly`?, `default`?, `type`?, `type_range`?, `value`? |
 | `argument` | `call` (key), `index`, `expand`?, `keyword`?, `parameter`?, `unpaired`?, `bound`? |
 | `result` | `call` (key), `binding`, `awaited`?, `target`? (key), `position`?, `bound`? |
-| `type_link` | `block` (key), `range`, `text`, `resolution`, `target`? (key), `reason`?, `module`? |
+| `type_link` | `block` (key), `range`, `text`, `resolution`, `target`? (key), `reason`?, `module`?, `heritage`? |
 | `input` | `path`, `role`, `hash` |
 | `entrance` | `key`, `kind`, `label`?, `method`?, `trigger`?, `trigger_status`, `detector`, `evidence_path`, `evidence_range`, `evidence_block`? (key), `evidence_pointer`? |
 | `target` | `entrance` (key), `position`, `role`, `target`? (key), `text`, `resolution`, `reason`?, `module`? |
@@ -715,7 +729,9 @@ or runtime reachability.
   nearer nested block, and not overlapping another link; outcome fields as for edges (`target`
   exactly when resolved, naming a `class`, `interface`, `type_alias`, or `enum` block of the same
   language; `reason` exactly when unresolved; a valid `module` exactly when external); `text`
-  nonempty and at most 120 UTF-16 code units.
+  nonempty and at most 120 UTF-16 code units. A `heritage` link's block is a `class` or
+  `interface`; `implements` is only on a TypeScript `class`; an `extends` name lies inside its
+  block's `heritage` slot (a TypeScript class's `implements` clause is no slot).
 - A graph read from a version-1 export is validated without requiring typed records
   ([Canonical export](#canonical-export)); any it has are still checked.
 

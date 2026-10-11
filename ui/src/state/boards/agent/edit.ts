@@ -1,0 +1,207 @@
+/**
+ * An agent's requests in this window (design §5.5): edits, reads of a held page, opening a board in
+ * a background tab, and finishing a piece of work.
+ *
+ * An edit loads what its operations read (card models, calls, callers), then applies them to the
+ * session's working document with the same pure edits people's actions use, as one undo step named
+ * "<agent> · <title>", every new or changed text signed with the agent's identity. It is saved at
+ * once (`saveStep`) and becomes an undo step only once the engine accepts it, so a refused edit leaves
+ * the board as it was and answers with the engine's code and message. The items it changed are marked
+ * as the agent's work until it finishes.
+ */
+
+import type {
+  AgentBoardInfo,
+  AgentEditRequest,
+  AgentEditResult,
+  AgentFailure,
+  AgentFinish,
+  AgentItemResult,
+  AgentOp,
+  AgentOpenRequest,
+  AgentOpenResult,
+  AgentReadRequest,
+  AgentReadResult,
+} from "@unfold/desktop/agent-api";
+import { produce } from "immer";
+import { showToast } from "../../../components/Toast";
+import { queryClient } from "../../../ipc/client";
+import type { Page } from "../../../ipc/generated";
+import { engineQueryOptions } from "../../../ipc/queries";
+import { toUnfoldError } from "../../../ipc/unfold";
+import { projectIndex } from "../../workspace";
+import { cardKey, findPage } from "../document";
+import { openBoard } from "../open";
+import { getOpenBoard, isDirty, saveStep } from "../store";
+import type { BoardRef } from "../types";
+import { prepareAddCards } from "./cards";
+import { AgentRefusal, cardProject, type ApplyOp, type OpContext } from "./context";
+import { AgentData } from "./data";
+import { applyGroupSteps } from "./groups";
+import { applyArrange, applySetView } from "./layout";
+import { applyRemoveItems } from "./remove";
+import { applyDescribe, applyLabelSteps } from "./text";
+import { finishWorking, markWorking } from "./working";
+
+function failure(code: string, message: string): AgentFailure {
+  return { ok: false, code, message };
+}
+
+/** The board a request names, as this window's store keys it. */
+function refOf(request: { readonly board: { readonly project: string; readonly id: string } }): BoardRef {
+  return { project: request.board.project, id: request.board.id };
+}
+
+/** An operation ready to apply: `add_cards` loads its cards and follows calls first; the rest apply as they are. */
+async function prepare(op: AgentOp, ctx: OpContext): Promise<ApplyOp> {
+  switch (op.op) {
+    case "add_cards":
+      return prepareAddCards(op, ctx);
+    case "set_view":
+      return (page, run) => applySetView(page, op, run);
+    case "arrange":
+      return (page, run) => applyArrange(page, op, run);
+    case "remove_items":
+      return (page, run) => applyRemoveItems(page, op, run);
+    case "group_steps":
+      return (page, run) => applyGroupSteps(page, op, run);
+    case "describe":
+      return (page, run) => applyDescribe(page, op, run);
+    case "label_steps":
+      return (page, run) => applyLabelSteps(page, op, run);
+  }
+}
+
+/** The items an edit changed, as its working marks outline them: cards, groups and their cards, links, a label's card. */
+function changedItems(items: readonly AgentItemResult[]): string[] {
+  return items.flatMap((item) => {
+    if (item.status !== "created" && item.status !== "updated") {
+      return [];
+    }
+    switch (item.kind) {
+      case "card":
+      case "link":
+        return [item.id];
+      case "group":
+        return [item.id, item.card];
+      case "label":
+        return [item.card];
+    }
+  });
+}
+
+/** What the agent learns about a board: its title, publish state, and file revision. */
+function boardInfo(board: { readonly title: string; readonly place: AgentBoardInfo["place"]; readonly changes: number; readonly revision: string }): AgentBoardInfo {
+  return { title: board.title, place: board.place, changes: board.changes, revision: board.revision };
+}
+
+/** Applies an agent's operations to a page of a board this window holds, as one undo step, saved at once. */
+export async function applyAgentEdit(request: AgentEditRequest): Promise<AgentEditResult> {
+  const ref = refOf(request);
+  const board = getOpenBoard(ref);
+  const page = board ? findPage(board.document, request.page) : undefined;
+  if (!board) {
+    return failure("board_not_open", "This window doesn't hold the board.");
+  }
+  if (!page) {
+    return failure("page_not_found", `The board has no page with id “${request.page}”. list_boards lists its pages.`);
+  }
+  if (!request.agent.author.startsWith("agent:")) {
+    return failure("invalid_op", "An agent's edit is signed with an agent's identity (agent:<name>).");
+  }
+  try {
+    const base = {
+      board: ref,
+      agent: request.agent,
+      data: new AgentData(),
+      index: projectIndex(await queryClient.query(engineQueryOptions("workspace", {}))),
+      measured: board.pages[request.page]?.sizes ?? {},
+    };
+    // Every card's model: its size, its calls, its outline and Flow steps.
+    await Promise.all(
+      page.cards.map(async (card) => {
+        const project = cardProject(base, card);
+        return project === null ? null : base.data.loadModel(project, cardKey(card));
+      }),
+    );
+    const applies: ApplyOp[] = [];
+    for (const op of request.ops) {
+      applies.push(await prepare(op, { ...base, warnings: [] }));
+    }
+    const outcome = await saveStep(ref, request.page, `${request.agent.name} · ${request.title}`, (document) => {
+      const ctx: OpContext = { ...base, warnings: [] };
+      let items: AgentItemResult[] = [];
+      const next = produce(document, (draft) => {
+        const target = draft.pages.find((entry) => entry.id === request.page);
+        if (!target) {
+          throw new AgentRefusal("page_not_found", `The board has no page with id “${request.page}” any more.`);
+        }
+        items = applies.flatMap((apply) => apply(target, ctx));
+      });
+      return { document: next, value: { items, warnings: ctx.warnings } };
+    });
+    if (!outcome.ok) {
+      return failure(outcome.error.code, outcome.error.message);
+    }
+    const saved = findPage(outcome.state.document, request.page);
+    if (!saved) {
+      return failure("page_not_found", `The board has no page with id “${request.page}” any more.`);
+    }
+    const changed = changedItems(outcome.value.items);
+    if (changed.length > 0) {
+      markWorking({ board: ref, page: request.page }, request.agent, changed);
+    }
+    const { state } = outcome;
+    return {
+      ok: true,
+      page: saved,
+      board: boardInfo({ title: state.document.title, place: state.place, changes: state.published?.changes ?? 0, revision: state.revision }),
+      items: outcome.value.items,
+      warnings: outcome.value.warnings,
+    };
+  } catch (error) {
+    if (error instanceof AgentRefusal) {
+      return failure(error.code, error.message);
+    }
+    const { code, message } = toUnfoldError(error);
+    return failure(code, message);
+  }
+}
+
+/** A page of a board this window holds, as the window holds it (unsaved edits included). */
+export function readAgentPage(request: AgentReadRequest): AgentReadResult {
+  const board = getOpenBoard(refOf(request));
+  const page: Page | undefined = board ? findPage(board.document, request.page) : undefined;
+  if (!board) {
+    return failure("board_not_open", "This window doesn't hold the board.");
+  }
+  if (!page) {
+    return failure("page_not_found", `The board has no page with id “${request.page}”. list_boards lists its pages.`);
+  }
+  return {
+    ok: true,
+    page,
+    board: {
+      ...boardInfo({ title: board.document.title, place: board.place, changes: board.published?.changes ?? 0, revision: board.revision }),
+      unsaved: isDirty(board),
+    },
+  };
+}
+
+/** Opens a board in a background tab for an agent (this window doesn't switch to it). */
+export async function openBoardForAgent(request: AgentOpenRequest): Promise<AgentOpenResult> {
+  try {
+    const outcome = await openBoard(refOf(request), { background: true, ...(request.page !== undefined ? { page: request.page } : {}) });
+    return outcome.status === "opened" ? { ok: true } : { ...failure("held", "Another window holds the board."), heldBy: outcome.heldBy };
+  } catch (error) {
+    const { code, message } = toUnfoldError(error);
+    return failure(code, message);
+  }
+}
+
+/** An agent finished its work on a board: its working marks clear, and its summary shows as a toast. */
+export function finishAgentWork(finish: AgentFinish): void {
+  finishWorking(refOf(finish), finish.agent.author);
+  const summary = finish.summary.trim();
+  showToast({ title: summary.length > 0 ? `${finish.agent.name} · ${summary}` : `${finish.agent.name} finished` });
+}

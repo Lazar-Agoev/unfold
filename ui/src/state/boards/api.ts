@@ -10,9 +10,9 @@
 
 import { useMemo } from "react";
 import { queryClient } from "../../ipc/client";
-import type { Card, CardRef, CardView, Key, ProjectId, ProjectName } from "../../ipc/generated";
+import type { Card, CardRef, CardView, Key, ProjectId, ProjectName, View } from "../../ipc/generated";
 import { cardQuery } from "../../canvas/cardData";
-import { fallbackSize, handlerPlacement, newCardPlacement, reflow, type Rect } from "../../canvas/layout";
+import { fallbackSize, handlerPlacement, newCardPlacement, reflow, type Rect, type Size } from "../../canvas/layout";
 import { measureText } from "../../canvas/measure";
 import { entranceCardWidth, entranceHandlerRows, estimatedBlockSize, type EntranceWidthInput } from "../../canvas/sizing";
 import { showToast } from "../../components/Toast";
@@ -47,28 +47,23 @@ function refOf(kind: "block" | "entrance", key: Key, project: ProjectName | unde
   return kind === "block" ? { block: key, ...named } : { entrance: key, ...named };
 }
 
+/** Each card's rectangle with its saved position reflowed by `sizeOf`, as the canvas draws them. */
+export function cardRects(cards: readonly Card[], sizeOf: (id: string) => Size): Map<string, Rect> {
+  const positions = reflow(cards, sizeOf);
+  return new Map(cards.map((card) => [card.id, { ...(positions.get(card.id) ?? { x: card.at[0], y: card.at[1] }), ...sizeOf(card.id) }]));
+}
+
 /** Every card's rectangle on a page as the canvas shows it (saved positions reflowed by measured sizes). */
 export function displayedRects(board: OpenBoard, pageId: PageId): Map<string, Rect> {
   const page = findPage(board.document, pageId);
   const sizes = board.pages[pageId]?.sizes ?? {};
-  const rects = new Map<string, Rect>();
   if (!page) {
-    return rects;
+    return new Map();
   }
-  const sizeOf = (id: string) => {
-    const measured = sizes[id];
-    if (measured) {
-      return measured;
-    }
+  return cardRects(page.cards, (id) => {
     const card = findCard(page, id);
-    return fallbackSize(card !== undefined && "entrance" in card.ref);
-  };
-  const positions = reflow(page.cards, sizeOf);
-  for (const card of page.cards) {
-    const at = positions.get(card.id) ?? { x: card.at[0], y: card.at[1] };
-    rects.set(card.id, { ...at, ...sizeOf(card.id) });
-  }
-  return rects;
+    return sizes[id] ?? fallbackSize(card !== undefined && "entrance" in card.ref);
+  });
 }
 
 /** Shows a page: its board's tab and the page itself. */
@@ -110,10 +105,11 @@ function refProjectOn(target: PageTarget, project: ProjectId): { readonly projec
 }
 
 /**
- * Adds a definition (or any indexed block) of `project` as a full card on the page, or focuses the card
- * that already shows it. Shows the page. Returns the card's id (undefined when it can't be added).
+ * Adds a definition (or any indexed block) of `project` as a full card on the page, in its own `view`
+ * when given, or focuses the card that already shows it. Shows the page. Returns the card's id
+ * (undefined when it can't be added).
  */
-export function addBlock(target: PageTarget, project: ProjectId, key: Key): string | undefined {
+export function addBlock(target: PageTarget, project: ProjectId, key: Key, view?: View): string | undefined {
   const board = getOpenBoard(target.board);
   const page = board ? findPage(board.document, target.page) : undefined;
   const named = board && page ? refProjectOn(target, project) : undefined;
@@ -129,7 +125,7 @@ export function addBlock(target: PageTarget, project: ProjectId, key: Key): stri
     return existing.id;
   }
   const at = newCardPlacement([...displayedRects(board, target.page).values()]);
-  const cardId = editPage(target, (draft) => addCard(draft, { ref: refOf("block", key, named.project), at }));
+  const cardId = editPage(target, (draft) => addCard(draft, { ref: refOf("block", key, named.project), at, ...(view ? { view } : {}) }));
   if (cardId === undefined) {
     return undefined;
   }

@@ -109,7 +109,7 @@ fn state(reader: &Reader) -> String {
         reader.entrances().expect("entrances"),
         reader.inputs().expect("inputs"),
         reader
-            .search("x", crate::CandidateKind::File, 10)
+            .search("x", crate::CandidateKind::File, &[], 10)
             .expect("search"),
     )
 }

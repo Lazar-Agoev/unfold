@@ -5,7 +5,8 @@
 //! A *card link* is an opened call between two cards of one project: an entrance card to the
 //! cards of its resolved targets (in registration order), or a block card to the cards of the
 //! resolved targets of the occurrences its block owns (in source order). The outline follows
-//! card links and then the page's drawn links (in id order), which join cards across projects.
+//! card links and then the page's drawn links between two cards (in id order), which join cards
+//! across projects; links to resources and frames aren't followed.
 //! Roots are the cards nothing on the page links to, entrance cards first, then left to right
 //! and top to bottom; each is followed depth first. Cards only reachable through a cycle come
 //! last, in the same order.
@@ -137,7 +138,11 @@ impl FlowContext for Labels<'_> {
 /// The outline of `page`.
 pub fn outline(page: &Page, graphs: &PageGraphs<'_>) -> PageOutline {
     let mut links = card_links(page, graphs);
-    let mut drawn: Vec<_> = page.links.iter().collect();
+    let mut drawn: Vec<_> = page
+        .links
+        .iter()
+        .filter(|link| page.card(&link.from).is_some() && page.card(&link.to).is_some())
+        .collect();
     drawn.sort_by(|a, b| a.id.cmp(&b.id));
     for link in drawn {
         let order = links

@@ -1,0 +1,59 @@
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { queryClient } from "../ipc/client";
+import { engineKey } from "../ipc/queries";
+import { installFakeEngine, type FakeEngine } from "../test/engine";
+import { projectRow, workspaceView } from "../test/workspace";
+import { boardLink, copyLink } from "./links";
+
+const toast = vi.hoisted(() => ({ showToast: vi.fn() }));
+vi.mock("../components/Toast", () => toast);
+
+const P = "p-orders0000";
+const TARGET = { board: { project: P, id: ".unfold/boards/order-placement.json" }, page: "page-1" };
+
+let engine: FakeEngine;
+
+beforeEach(() => {
+  toast.showToast.mockClear();
+  queryClient.clear();
+  engine = installFakeEngine();
+});
+
+afterEach(() => {
+  engine.uninstall();
+});
+
+describe("boardLink", () => {
+  it("names the project by its shared name, then the board, page, and item (D9)", () => {
+    expect(boardLink({ project: "ts-orders", board: ".unfold/boards/order-placement.json", page: "page-1", item: "create-order" })).toBe(
+      "unfold://ts-orders/.unfold/boards/order-placement.json?page=page-1&item=create-order",
+    );
+    expect(boardLink({ project: "ts-orders", board: ".unfold/local/drafts/b.json" })).toBe("unfold://ts-orders/.unfold/local/drafts/b.json");
+  });
+
+  it("encodes each part, keeping the board's slashes", () => {
+    expect(boardLink({ project: "my shop/web", board: ".unfold/boards/café.json", page: "page 1", item: "a&b" })).toBe(
+      "unfold://my%20shop%2Fweb/.unfold/boards/caf%C3%A9.json?page=page%201&item=a%26b",
+    );
+  });
+});
+
+describe("copyLink", () => {
+  it("copies a link to the page or an item with the project's shared name", async () => {
+    queryClient.setQueryData(engineKey("workspace", {}), workspaceView([projectRow(P, "ts-orders")]));
+    await copyLink(TARGET);
+    await copyLink(TARGET, "create-order");
+    expect(engine.windowCalls).toEqual([
+      { command: "copy_to_clipboard", args: { text: "unfold://ts-orders/.unfold/boards/order-placement.json?page=page-1" } },
+      { command: "copy_to_clipboard", args: { text: "unfold://ts-orders/.unfold/boards/order-placement.json?page=page-1&item=create-order" } },
+    ]);
+    expect(toast.showToast).toHaveBeenCalledWith({ title: "Copied the link", body: "Paste it into an agent's chat to point at this." });
+  });
+
+  it("says why when the board's project isn't in the workspace", async () => {
+    await copyLink(TARGET);
+    expect(engine.windowCalls).toEqual([]);
+    expect(toast.showToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Couldn't copy the link", tone: "danger" }));
+  });
+});

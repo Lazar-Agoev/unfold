@@ -10,6 +10,7 @@ import { ActionIds, actions } from "../keyboard";
 import * as store from "../state/boards/store";
 import { installFakeEngine, fixture, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../test/workspace";
+import { markWorking, resetWorking } from "../state/boards/agent/working";
 import { BoardView } from "./BoardView";
 
 const createOrder = fixture("card", "card_create_order");
@@ -57,6 +58,7 @@ function renderBoard() {
 
 beforeEach(() => {
   store.resetBoards();
+  resetWorking();
   queryClient.clear();
   engine = installFakeEngine({
     handlers: {
@@ -115,6 +117,29 @@ describe("the board view", () => {
     expect(within(dock).getByRole("button", { name: "Add" })).not.toBeNull();
     expect(within(dock).getByRole("button", { name: "Forward" })).toHaveProperty("disabled", true);
     expect(screen.getByText("Open an entrance or a definition to start this page.")).not.toBeNull();
+  });
+
+  it("shows an agent at work: the top bar says so, the cards it changed are outlined, and its words carry the mark", async () => {
+    const description = { text: "Takes an order.", author: "agent:claude", signature: "" };
+    store.adoptBoardState(
+      state([
+        { id: "create-order", ref: { block: KEY }, at: [0, 0], description },
+        { id: "gone", ref: { block: GONE }, at: [900, 0] },
+      ]),
+    );
+    const { container } = renderBoard();
+    await screen.findByText("Takes an order.");
+    expect(container.querySelector(".card-description .agent-mark")?.getAttribute("title")).toBe("Written by Claude, an agent");
+    expect(screen.queryByText(/is working…/)).toBeNull();
+
+    act(() => {
+      markWorking(PAGE, { author: "agent:claude", name: "Claude" }, ["create-order"]);
+    });
+    expect(screen.getByText("Claude is working…")).not.toBeNull();
+    await waitFor(() => {
+      expect(container.querySelector('.react-flow__node.agent-working > .board-card[data-card-id="create-order"]')).not.toBeNull();
+    });
+    expect(container.querySelector('.react-flow__node.agent-working [data-card-id="gone"]')).toBeNull();
   });
 
   it("shows a card whose key is gone as a missing card", async () => {

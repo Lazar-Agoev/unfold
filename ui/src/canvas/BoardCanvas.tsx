@@ -17,8 +17,9 @@ import {
 import "@xyflow/react/dist/style.css";
 import type { Card, Link } from "../ipc/generated";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { copyLink } from "../agent";
 import { useContextMenu } from "../components";
-import { authorName } from "../code/text";
+import { authorOf } from "../code/text";
 import { useRegisterActions } from "../keyboard";
 import {
   displayedRects,
@@ -34,6 +35,7 @@ import {
   setLinking,
   updatePageView,
   usePageView,
+  useWorkingItems,
   type PageTarget,
 } from "../state/boards";
 import { ArrowEdge, type ArrowEdgeType } from "./ArrowEdge";
@@ -85,6 +87,7 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
   const linking = usePageView(target, (view) => view.linking !== null);
   const selectedLink = usePageView(target, ({ selection }) => (selection.kind === "link" ? selection.linkId : null));
   const selectedLine = usePageView(target, ({ selection }) => (selection.kind === "line" ? selection.arrowId : null));
+  const working = useWorkingItems(target);
   const [labelLayout] = useState(() => new LabelLayout());
   const [initialCamera] = useState(() => getPageView(target).camera);
 
@@ -116,14 +119,17 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
       const cardPorts = ports.get(card.id) ?? NO_PORTS;
       const cached = nodeCache.get(card.id);
       const keptPorts = cached?.data.ports.join("\u0000") === cardPorts.join("\u0000") ? cached.data.ports : undefined;
+      // An agent changed it and is still working: the node gets the soft outline.
+      const className = working.has(card.id) ? "agent-working" : undefined;
       const node: CardNodeType =
-        cached && keptPorts && cached.position.x === at.x && cached.position.y === at.y
+        cached && keptPorts && cached.position.x === at.x && cached.position.y === at.y && cached.className === className
           ? cached
           : {
               id: card.id,
               type: "card",
               position: at,
               dragHandle: ".card-drag",
+              ...(className !== undefined ? { className } : {}),
               data: { target, ports: keptPorts ?? cardPorts },
             };
       nodeCache.set(card.id, node);
@@ -136,7 +142,7 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
       }
     }
     return list;
-  }, [cards, display, drag, ports, target, nodeCache]);
+  }, [cards, display, drag, ports, target, nodeCache, working]);
 
   const [edgeCache] = useState(() => new Map<string, ArrowEdgeType>());
   const arrowEdges = useMemo(() => {
@@ -216,7 +222,10 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
       }
       const ends = linkEnds(from, to);
       const label = link.label?.text ?? null;
-      const author = link.label ? authorName(link.label.author) : null;
+      const writer = link.label ? authorOf(link.label.author) : null;
+      const author = writer?.name ?? null;
+      const agent = writer?.agent ?? false;
+      const busy = working.has(link.id);
       const selected = link.id === selectedLink;
       const cached = linkCache.get(link.id);
       const edge: LinkEdgeType =
@@ -226,6 +235,8 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
         cached.targetHandle === `link-in-${ends.to}` &&
         cached.data?.label === label &&
         cached.data.author === author &&
+        cached.data.agent === agent &&
+        cached.data.working === busy &&
         cached.data.selected === selected
           ? cached
           : {
@@ -238,7 +249,7 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
               className: "board-link-edge",
               focusable: false,
               selectable: false,
-              data: { target, selected, label, author },
+              data: { target, selected, label, author, agent, working: busy },
             };
       linkCache.set(link.id, edge);
       live.add(link.id);
@@ -250,7 +261,7 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
       }
     }
     return list;
-  }, [links, display, drag, sizeOf, selectedLink, target, linkCache]);
+  }, [links, display, drag, sizeOf, selectedLink, target, linkCache, working]);
   const edges = useMemo((): CanvasEdge[] => [...arrowEdges, ...linkEdges], [arrowEdges, linkEdges]);
 
   // The cards as drawn, which the lines' labels keep clear of.
@@ -407,7 +418,11 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
           }
           event.preventDefault();
           select(target, { kind: "link", linkId: edge.id });
-          paneMenu.open({ x: event.clientX, y: event.clientY }, [{ id: "remove", label: "Remove link", danger: true, onSelect: () => { removeLink(target, edge.id); } }]);
+          paneMenu.open({ x: event.clientX, y: event.clientY }, [
+            { id: "copy-link", label: "Copy link", onSelect: () => void copyLink(target, edge.id) },
+            { kind: "separator", id: "s1" },
+            { id: "remove", label: "Remove link", danger: true, onSelect: () => { removeLink(target, edge.id); } },
+          ]);
         }}
         onPaneContextMenu={(event) => {
           event.preventDefault();

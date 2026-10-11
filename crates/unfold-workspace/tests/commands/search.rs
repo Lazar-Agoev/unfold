@@ -195,3 +195,69 @@ fn search_is_fast() {
     let p95 = timings[timings.len() * 95 / 100];
     assert!(p95 < Duration::from_millis(100), "search p95 {p95:?}");
 }
+
+#[test]
+fn types_are_definitions_and_narrow_by_kind() {
+    let harness = Harness::compiled_fixture("typed-lines");
+    let found = |args: Value| -> Vec<(String, String)> {
+        hits(&harness.ok(1, "search", args), "definitions")
+            .iter()
+            .map(|hit| {
+                (
+                    hit["key"].as_str().expect("key").to_owned(),
+                    hit["kind"].as_str().expect("kind").to_owned(),
+                )
+            })
+            .collect()
+    };
+    let pair = |key: &str, kind: &str| (key.to_owned(), kind.to_owned());
+    // Every kind of type declaration, with its kind.
+    let cart = found(json!({ "query": "Cart", "kinds": ["definitions"] }));
+    for expected in [
+        pair("ts/src/cart.ts#interface:Cart", "interface"),
+        pair("ts/src/cart.ts#type_alias:CartId", "type_alias"),
+        pair("py/src/shop/models.py#class:Cart", "class"),
+    ] {
+        assert!(cart.contains(&expected), "{expected:?} in {cart:?}");
+    }
+    assert!(found(json!({ "query": "Currency" })).contains(&pair("ts/src/cart.ts#enum:Currency", "enum")));
+    // Narrowed to types: interfaces, type aliases, enums, and classes only.
+    let types = found(json!({
+        "query": "order",
+        "definitionKinds": ["interface", "type_alias", "enum", "class"],
+    }));
+    assert!(types.contains(&pair("ts/src/orders/model.ts#interface:OrderDraft", "interface")));
+    assert!(types.contains(&pair("py/src/shop/accounts.py#class:OrderDraft", "class")));
+    assert!(
+        types
+            .iter()
+            .all(|(_, kind)| ["interface", "type_alias", "enum", "class"].contains(&kind.as_str())),
+        "{types:?}"
+    );
+    let functions = found(json!({ "query": "order", "definitionKinds": ["function"] }));
+    assert!(!functions.is_empty());
+    assert!(
+        functions.iter().all(|(_, kind)| kind == "function"),
+        "{functions:?}"
+    );
+    // The totals count what the kinds let through.
+    let total = |kinds: Value| {
+        harness.ok(
+            1,
+            "search",
+            json!({ "query": "OrderDraft", "definitionKinds": kinds }),
+        )["definitions"]["total"]
+            .clone()
+    };
+    assert_eq!(total(json!(["interface"])), 1);
+    assert_eq!(total(json!(["interface", "class"])), 2);
+    assert_eq!(total(json!(["enum"])), 0);
+    assert_eq!(
+        harness.code(
+            1,
+            "search",
+            json!({ "query": "Cart", "definitionKinds": ["struct"] })
+        ),
+        "invalid_args"
+    );
+}

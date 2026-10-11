@@ -17,11 +17,17 @@ const WEIGHTS: &str = "8.0, 4.0, 1.0, 0.0, 0.0";
 
 impl Reader {
     /// Up to `limit` candidates of `kind` whose name, qualified name, or path contains every
-    /// whitespace-separated term of `query`, ignoring ASCII case. The order is a rough
-    /// relevance order (BM25, or shortest name first for very short terms) that the caller
-    /// re-ranks; it is deterministic for a given database.
-    pub fn search(&self, query: &str, kind: CandidateKind, limit: usize) -> Result<Vec<SearchCandidate>> {
-        let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+    /// whitespace-separated term of `query`, ignoring ASCII case; with `item_kinds`, only those
+    /// whose item kind (a definition's block kind, an entrance's kind) is one of them. The order
+    /// is a rough relevance order (BM25, or shortest name first for very short terms) that the
+    /// caller re-ranks; it is deterministic for a given database.
+    pub fn search(
+        &self,
+        query: &str,
+        kind: CandidateKind,
+        item_kinds: &[&str],
+        limit: usize,
+    ) -> Result<Vec<SearchCandidate>> {
         let decode = |row: &rusqlite::Row<'_>| {
             Ok(SearchCandidate {
                 kind,
@@ -32,36 +38,50 @@ impl Reader {
                 item_kind: codec::text(row, 4)?.into(),
             })
         };
-        match plan(query) {
-            Plan::Empty => Ok(Vec::new()),
+        let mut sql = String::from("SELECT key, name, qualified_name, path, kind FROM search WHERE ");
+        let mut values = Vec::new();
+        let order = match plan(query) {
+            Plan::Empty => return Ok(Vec::new()),
             Plan::Match(expression) => {
-                let mut statement = self.conn().prepare_cached(&format!(
-                    "SELECT key, name, qualified_name, path, kind FROM search \
-                     WHERE search MATCH ?1 AND (rowid & 3) = ?2 \
-                     ORDER BY bm25(search, {WEIGHTS}), rowid LIMIT ?3"
-                ))?;
-                collect(&mut statement, (expression, kind.tag(), limit), decode)
+                let at = bind(&mut values, Value::Text(expression));
+                let _ = write!(sql, "search MATCH ?{at}");
+                format!("bm25(search, {WEIGHTS}), rowid")
             }
             Plan::Like(patterns) => {
-                let mut sql = String::from(
-                    "SELECT key, name, qualified_name, path, kind FROM search WHERE (rowid & 3) = ?1",
-                );
-                for index in 0..patterns.len() {
-                    let parameter = index + 2;
+                for (index, pattern) in patterns.into_iter().enumerate() {
+                    let at = bind(&mut values, Value::Text(pattern));
                     let _ = write!(
                         sql,
-                        " AND (name LIKE ?{parameter} ESCAPE '\\' OR qualified_name LIKE ?{parameter} \
-                         ESCAPE '\\' OR path LIKE ?{parameter} ESCAPE '\\')"
+                        "{}(name LIKE ?{at} ESCAPE '\\' OR qualified_name LIKE ?{at} ESCAPE '\\' \
+                         OR path LIKE ?{at} ESCAPE '\\')",
+                        if index > 0 { " AND " } else { "" }
                     );
                 }
-                let _ = write!(sql, " ORDER BY length(name), rowid LIMIT ?{}", patterns.len() + 2);
-                let mut values = Vec::with_capacity(patterns.len() + 2);
-                values.push(Value::Integer(kind.tag()));
-                values.extend(patterns.into_iter().map(Value::Text));
-                values.push(Value::Integer(limit));
-                let mut statement = self.conn().prepare_cached(&sql)?;
-                collect(&mut statement, rusqlite::params_from_iter(values), decode)
+                "length(name), rowid".to_owned()
             }
+        };
+        let at = bind(&mut values, Value::Integer(kind.tag()));
+        let _ = write!(sql, " AND (rowid & 3) = ?{at}");
+        if !item_kinds.is_empty() {
+            sql.push_str(" AND kind IN (");
+            for (index, item_kind) in item_kinds.iter().enumerate() {
+                let at = bind(&mut values, Value::Text((*item_kind).to_owned()));
+                let _ = write!(sql, "{}?{at}", if index > 0 { ", " } else { "" });
+            }
+            sql.push(')');
         }
+        let at = bind(
+            &mut values,
+            Value::Integer(i64::try_from(limit).unwrap_or(i64::MAX)),
+        );
+        let _ = write!(sql, " ORDER BY {order} LIMIT ?{at}");
+        let mut statement = self.conn().prepare_cached(&sql)?;
+        collect(&mut statement, rusqlite::params_from_iter(values), decode)
     }
+}
+
+/// Appends `value` to `values` and returns its parameter number.
+fn bind(values: &mut Vec<Value>, value: Value) -> usize {
+    values.push(value);
+    values.len()
 }

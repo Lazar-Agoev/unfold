@@ -5,13 +5,14 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app";
 import { queryClient, windowCommand } from "./ipc";
-import { installTransferReceiver } from "./state/boards";
+import { installAgentChannel, installTransferReceiver } from "./state/boards";
 import { setWindowInfo } from "./state/window";
 import "./theme/theme";
 
 async function start(): Promise<void> {
-  // Before anything awaits: a board another window moves here may arrive while this one loads.
+  // Before anything awaits: a board another window moves here, or an agent's request, may arrive while this one loads.
   installTransferReceiver();
+  installAgentChannel();
   // Outside the app there is no main process to ask.
   setWindowInfo(await windowCommand("window_info").catch(() => null));
 

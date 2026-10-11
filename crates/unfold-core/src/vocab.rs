@@ -371,6 +371,18 @@ vocabulary! {
     }
 }
 
+vocabulary! {
+    /// How a type name written in a heritage clause relates its declaration to the type it
+    /// names.
+    Heritage, "heritage" {
+        /// A base the declaration extends: TypeScript `extends` (an interface's or a class's), a
+        /// Python class base.
+        Extends = "extends",
+        /// An interface a TypeScript class implements.
+        Implements = "implements",
+    }
+}
+
 impl BlockKind {
     /// `function`, `method`, `constructor`, `getter`, or `setter`: a block with a callable body.
     pub const fn is_function_like(self) -> bool {
@@ -670,6 +682,7 @@ mod tests {
         round_trip(Expansion::ALL);
         round_trip(PairingReason::ALL);
         round_trip(ResultBinding::ALL);
+        round_trip(Heritage::ALL);
     }
 
     #[test]
@@ -710,11 +723,12 @@ mod tests {
             names(Expansion::ALL),
             names(PairingReason::ALL),
             names(ResultBinding::ALL),
+            names(Heritage::ALL),
         ]
         .join("\n");
         assert_eq!(
             crate::text::ContentHash::of(encoding.as_bytes()).to_string(),
-            "f108985a166ea8523435635a7266ad2b8e898047e31e688540e784c8f33bdb9a",
+            "f1056a54d8780e17d67b288a66dcc66a93e732326b36435f641edd143c7e49a1",
             "a vocabulary's variant order changed: bump unfold-engine's ENGINE_VERSION so cached \
              facts are recomputed, then update this hash"
         );

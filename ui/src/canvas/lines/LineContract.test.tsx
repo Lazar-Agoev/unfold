@@ -62,6 +62,7 @@ const cart: TypeDefinition = {
     { name: "items", kind: "property", optional: false, readonly: false, default: false, type: { text: "CartItem[]", spans: [{ start: 0, end: 8, style: "declared", target: CART_ITEM }] } },
     { name: "coupon", kind: "property", optional: true, readonly: false, default: false, type: { text: "string", spans: [] } },
   ],
+  inherited: [],
   uses: 6,
 };
 
@@ -73,6 +74,7 @@ const cartItem: TypeDefinition = {
   line: 7,
   language: "typescript",
   members: [{ name: "sku", kind: "property", optional: false, readonly: false, default: false, type: { text: "string", spans: [] } }],
+  inherited: [],
   uses: 3,
 };
 

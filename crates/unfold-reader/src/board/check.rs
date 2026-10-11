@@ -11,8 +11,8 @@
 //!
 //! A card from a project with no graph is **not connected**: a placeholder, never an error, and
 //! its project's labels, groups, and guards are not checked. A drawn link is checked only for
-//! its ends: it is **broken** when an end's card is missing from its connected project; its label
-//! is never outdated (decision U-44).
+//! its ends: it is **broken** when an end's card is missing from its connected project (a
+//! resource or frame end is never missing); its label is never outdated (decision U-44).
 
 use std::fmt;
 
@@ -20,6 +20,7 @@ use serde::Serialize;
 
 use super::BoardError;
 use super::graph::{BoardGraph, PageGraphs};
+use super::items::remove_items;
 use super::model::{Board, CardRef, Group, GuardEntry, Page, ProjectName, Signature, is_ordinal};
 
 /// A Flow label's or a reference's address on a page: its key in a project.
@@ -328,11 +329,12 @@ fn outdated(saved: Option<Signature>, current: Option<Signature>) -> bool {
     saved.is_some() && current != saved
 }
 
-/// Whether link end `card` is a missing card: gone from the page, or its key gone from its
-/// connected project (a card of a project that is not connected is not missing).
-fn missing_card(page: &Page, graphs: &PageGraphs<'_>, card: &str) -> bool {
-    match page.card(card) {
-        None => true,
+/// Whether link end `end` is missing: gone from the page, or a card whose key is gone from its
+/// connected project (a card of a project that is not connected is not missing, and neither is
+/// a resource or frame of the page).
+fn missing_end(page: &Page, graphs: &PageGraphs<'_>, end: &str) -> bool {
+    match page.card(end) {
+        None => page.resource(end).is_none() && page.frame(end).is_none(),
         Some(card) => graphs
             .get(card.reference.project())
             .is_some_and(|graph| !graph.exists(card.reference.key().as_str())),
@@ -516,7 +518,7 @@ pub fn health(page: &Page, graphs: &PageGraphs<'_>) -> Health {
     for link in &page.links {
         if let Some(end) = [&link.from, &link.to]
             .into_iter()
-            .find(|end| missing_card(page, graphs, end))
+            .find(|end| missing_end(page, graphs, end))
         {
             health.add(item(
                 HealthKind::BrokenLink,
@@ -568,13 +570,14 @@ pub enum Repair {
         /// The key it should point at now.
         to: String,
     },
-    /// Remove a card, the groups on it, and the links drawn to or from it.
+    /// Remove a card with what would dangle: the groups on it, the links drawn to or from it,
+    /// its place in a frame, and the notes attached to it (they stay, unattached).
     RemoveCard(String),
     /// Remove a label.
     RemoveLabel(ProjectKey),
     /// Remove a group.
     Ungroup(String),
-    /// Remove a drawn link.
+    /// Remove a drawn link (the notes attached to it stay, unattached).
     RemoveLink(String),
     /// Remove a card's or group's description, a label, or a link's label.
     RemoveDescription(Target),
@@ -598,13 +601,17 @@ pub fn apply_repair(page: &mut Page, graphs: &PageGraphs<'_>, repair: &Repair) -
     match repair {
         Repair::Reconnect { project, from, to } => reconnect(page, graphs, project.as_ref(), from, to)?,
         Repair::RemoveCard(id) => {
-            page.cards.retain(|card| &card.id != id);
-            page.groups.retain(|group| &group.card != id);
-            page.links.retain(|link| &link.from != id && &link.to != id);
+            if page.card(id).is_some() {
+                remove_items(page, &[id]);
+            }
+        }
+        Repair::RemoveLink(id) => {
+            if page.link(id).is_some() {
+                remove_items(page, &[id]);
+            }
         }
         Repair::RemoveLabel(label) => remove_label(page, label),
         Repair::Ungroup(id) => page.groups.retain(|group| &group.id != id),
-        Repair::RemoveLink(id) => page.links.retain(|link| &link.id != id),
         Repair::RemoveDescription(target) => match target {
             Target::Card(id) => {
                 if let Some(card) = page.cards.iter_mut().find(|card| &card.id == id) {

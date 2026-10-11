@@ -5,8 +5,8 @@
 use super::{BlockRef, GraphBuilder, Outcome};
 use crate::typed::{Argument, CallResult, Member, Pairing, Parameter, Signature, WrittenType};
 use crate::vocab::{
-    BlockKind as K, DetectorId, EdgeKind, EntranceKind, HttpMethod, InputRole, Language, MemberKind,
-    ParameterKind, Reason, ResultBinding, Role, SlotName as S,
+    BlockKind as K, DetectorId, EdgeKind, EntranceKind, Heritage, HttpMethod, InputRole, Language,
+    MemberKind, ParameterKind, Reason, ResultBinding, Role, SlotName as S,
 };
 
 /// `src/orders.ts`.
@@ -800,5 +800,86 @@ pub fn typed() -> GraphBuilder {
         bound: Some(0),
         ..result(settle_call, ResultBinding::Discard)
     });
+    g
+}
+
+/// `src/shop.ts` of [`heritage`].
+pub const SHOP_TS: &str =
+    "interface Base {}\ninterface Order extends Base {}\nclass Shop implements Order {}\n";
+
+/// `jobs/models.py` of [`heritage`].
+pub const MODELS_PY: &str = "class Paid(Order):\n    pass\n";
+
+/// The [`typed`] sample plus heritage clauses, each base a heritage type link: in `src/shop.ts`
+/// an interface extending another and a class implementing it, in `jobs/models.py` a class
+/// whose base is an unknown name. Validating `builder.build()` against `builder.snapshots()`
+/// reports nothing.
+pub fn heritage() -> GraphBuilder {
+    let mut g = typed();
+    let file = g.file("src/shop.ts", Language::TypeScript, SHOP_TS);
+    let base_text = "interface Base {}";
+    let base = g.block(
+        file,
+        K::Interface,
+        Some(Role::Body),
+        Some("Base"),
+        g.find(file, base_text),
+    );
+    g.slot(base, S::Name, None, g.find(file, "Base"));
+    g.slot(base, S::Body, None, g.find(file, "{}"));
+    let order_text = "interface Order extends Base {}";
+    let order_start = g.find(file, order_text).start;
+    let order = g.block(
+        file,
+        K::Interface,
+        Some(Role::Body),
+        Some("Order"),
+        g.find(file, order_text),
+    );
+    g.slot(order, S::Name, None, g.find(file, "Order"));
+    g.slot(order, S::Heritage, None, g.find(file, "extends Base"));
+    g.slot(order, S::Body, None, g.find_from(file, "{}", order_start));
+    let shop_text = "class Shop implements Order {}";
+    let shop_start = g.find(file, shop_text).start;
+    let shop = g.block(
+        file,
+        K::Class,
+        Some(Role::Body),
+        Some("Shop"),
+        g.find(file, shop_text),
+    );
+    g.slot(shop, S::Name, None, g.find(file, "Shop"));
+    g.heritage_link(
+        order,
+        "Base",
+        order_start,
+        Outcome::Resolved(g.key(base)),
+        Heritage::Extends,
+    );
+    g.heritage_link(
+        shop,
+        "Order",
+        shop_start,
+        Outcome::Resolved(g.key(order)),
+        Heritage::Implements,
+    );
+
+    let file = g.file("jobs/models.py", Language::Python, MODELS_PY);
+    let paid = g.block(
+        file,
+        K::Class,
+        Some(Role::Body),
+        Some("Paid"),
+        g.find(file, MODELS_PY.trim_end()),
+    );
+    g.slot(paid, S::Name, None, g.find(file, "Paid"));
+    g.slot(paid, S::Heritage, None, g.find(file, "Order"));
+    g.heritage_link(
+        paid,
+        "Order",
+        0,
+        Outcome::Unresolved(Reason::UnknownName),
+        Heritage::Extends,
+    );
     g
 }

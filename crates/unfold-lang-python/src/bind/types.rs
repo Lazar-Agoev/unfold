@@ -21,11 +21,18 @@
 //! A name bound to a PEP 695 type parameter of an enclosing `def`, `class`, or `type` statement
 //! (`def first[T](items: list[T]) -> T`) is not recorded; that is decided lexically once the
 //! file's scopes are complete ([`Builder::type_parameter`]).
+//!
+//! A class's positional bases are type names too, evaluated where its arguments are: a base
+//! written as a name or member chain (`OrderDraft`, `models.Base`) is an `extends` name, and so
+//! is a subscript's value (`Generic` in `Generic[T]`), whose slice holds ordinary type names as
+//! in an annotation. Keyword arguments (`metaclass=`, `total=`), starred bases, and bases of any
+//! other form (`make_base()`) record nothing.
 
 use std::borrow::Cow;
 
 use ruff_python_ast::{Expr, ExprStringLiteral, Operator, StringFlags};
 use ruff_text_size::{Ranged, TextRange};
+use unfold_core::vocab::Heritage;
 use unicode_normalization::UnicodeNormalization;
 
 use super::build::Builder;
@@ -43,6 +50,8 @@ pub(super) struct RawTypeName<'a> {
     pub(super) scope: ScopeId,
     /// The chain's root name (NFKC), which decides whether it names a type parameter.
     pub(super) root: Cow<'a, str>,
+    /// For a class base: `extends`.
+    pub(super) heritage: Option<Heritage>,
 }
 
 /// Python's keywords, which no dotted name in a string annotation can contain.
@@ -59,11 +68,8 @@ impl<'a> Builder<'a> {
         let mut pending = vec![annotation];
         while let Some(expr) = pending.pop() {
             match expr {
-                Expr::Name(name) => self.type_name(expr, Cow::Borrowed(name.id.as_str()), scope),
-                Expr::Attribute(_) => {
-                    if let Some(root) = chain_root(expr) {
-                        self.type_name(expr, Cow::Borrowed(root), scope);
-                    }
+                Expr::Name(_) | Expr::Attribute(_) => {
+                    self.type_name(expr, scope, None);
                 }
                 Expr::Subscript(subscript) => {
                     let elements = match &*subscript.slice {
@@ -91,16 +97,36 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// A name or member chain written in an annotation.
-    fn type_name(&mut self, expr: &'a Expr, root: Cow<'a, str>, scope: ScopeId) {
+    /// Records the class base `base`, evaluated in `scope`: its name as an `extends` name, and
+    /// a subscript's slice as an annotation's type names.
+    pub(super) fn base(&mut self, base: &'a Expr, scope: ScopeId) {
+        let (named, slice) = match base {
+            Expr::Subscript(subscript) => (&*subscript.value, Some(&*subscript.slice)),
+            _ => (base, None),
+        };
+        if self.type_name(named, scope, Some(Heritage::Extends))
+            && let Some(slice) = slice
+        {
+            self.annotation(slice, scope);
+        }
+    }
+
+    /// Records a name or a member chain whose every receiver is a member or a name, with its
+    /// heritage; whether `expr` is one.
+    fn type_name(&mut self, expr: &'a Expr, scope: ScopeId, heritage: Option<Heritage>) -> bool {
+        let Some(root) = chain_root(expr) else {
+            return false;
+        };
         let id = self.reserve(expr, scope);
         self.types.push(RawTypeName {
             range: expr.range(),
             qualified: matches!(expr, Expr::Attribute(_)),
             expr: id,
             scope,
-            root,
+            root: Cow::Borrowed(root),
+            heritage,
         });
+        true
     }
 
     /// A string annotation whose whole content is a dotted name, written without escapes: the
@@ -145,6 +171,7 @@ impl<'a> Builder<'a> {
             expr,
             scope,
             root,
+            heritage: None,
         });
     }
 

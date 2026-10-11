@@ -213,7 +213,7 @@ fn extract_here(
             let name = text
                 .get(site.range.start as usize..site.range.end as usize)
                 .unwrap_or_default();
-            TypeRefFact::new(site.range, name, site.qualified)
+            TypeRefFact::new(site.range, name, site.qualified).with_heritage(site.heritage)
         })
         .collect();
     let types = TypeFacts::new(

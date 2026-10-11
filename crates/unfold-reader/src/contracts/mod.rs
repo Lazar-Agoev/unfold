@@ -7,7 +7,7 @@
 //! | --- | --- |
 //! | [`line_label`] | The at-rest label of one arrow `(source, seq)`: an input per argument (a call) or per parameter (a passed callable), and the output |
 //! | [`call_contract`] | The selected line's contract: what each argument fills, unfilled parameters, where the result lands, the callee's direct throws, and the lines the contract read |
-//! | [`type_definition`] | A type declaration or class: its written members, a type alias's aliased type, and how many places use it |
+//! | [`type_definition`] | A type declaration or class: its written members, the members it inherits from each base, a type alias's aliased type, and how many places use it |
 //! | [`type_uses`] | One page of the places a declaration's type links come from |
 //!
 //! A written type crosses IPC as a [`TypeText`]: its text and one [`TypeSpan`] per type name
@@ -27,11 +27,13 @@ mod text;
 mod tests;
 
 use serde::Serialize;
-use unfold_core::vocab::{Expansion, Language, MemberKind, PairingReason, ParameterKind, ResultBinding};
+use unfold_core::vocab::{
+    Expansion, Heritage, Language, MemberKind, PairingReason, ParameterKind, ResultBinding,
+};
 use unfold_core::{Key, ModuleLabel, RepoPath};
 
 pub use call::call_contract;
-pub use definition::{type_definition, type_uses};
+pub use definition::{MAX_INHERITED_DEPTH, type_definition, type_uses};
 pub use facts::{FactSource, Facts, UseSite};
 pub use label::line_label;
 
@@ -302,6 +304,18 @@ pub struct TypeMember {
     pub value: Option<String>,
 }
 
+/// The members a type inherits from one of its bases.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct InheritedGroup {
+    /// The base's name as a heritage clause writes it, with one span: `declared` (its key),
+    /// `external` or `builtin` (its module), or `unresolved` (the reason in words).
+    pub from: TypeText,
+    /// The base's written members, in source order; none for a base that isn't `declared`.
+    pub members: Vec<TypeMember>,
+}
+
 /// A type declaration or class, as its definition opens under a type.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -321,6 +335,9 @@ pub struct TypeDefinition {
     pub language: Language,
     /// Its written members, in source order.
     pub members: Vec<TypeMember>,
+    /// The members it inherits, one group per base it extends: depth first in written order,
+    /// each type once (never the type itself), at most [`MAX_INHERITED_DEPTH`] levels down.
+    pub inherited: Vec<InheritedGroup>,
     /// A type alias's aliased type, when it isn't an object type (an alias with no members),
     /// from its verified source; absent when the file changed.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -343,6 +360,11 @@ pub struct TypeUsePlace {
     pub path: RepoPath,
     /// The line the type name is on.
     pub line: u32,
+    /// When the place is a heritage clause naming the type as a base: whether the owner
+    /// extends or implements it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub heritage: Option<Heritage>,
 }
 
 /// One page of the places a declaration's type is written.

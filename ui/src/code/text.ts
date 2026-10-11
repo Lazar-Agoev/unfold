@@ -40,8 +40,23 @@ export function shortPath(path: string): string {
   return parts.length <= 2 ? path : parts.slice(-2).join("/");
 }
 
-/** `agent:codex` → `Codex`, for author marks. */
-export function authorName(author: string): string {
+/** Who wrote a piece of text, as the app shows it: a name, and whether an agent wrote it (D5). */
+interface AuthorView {
+  readonly name: string;
+  readonly agent: boolean;
+}
+
+/** `person:lazar` → Lazar; `agent:codex` → Codex, an agent. */
+export function authorOf(author: string): AuthorView {
   const name = author.replace(/^(agent|person):/, "");
-  return name.charAt(0).toUpperCase() + name.slice(1);
+  return { name: name.charAt(0).toUpperCase() + name.slice(1), agent: author.startsWith("agent:") };
+}
+
+/**
+ * Who wrote a piece of text, as plain text: `person:lazar` → "Lazar", `agent:codex` → "Codex · agent",
+ * so an agent never reads as a person. Where the agent mark can be drawn, draw it (`<Author>`).
+ */
+export function authorName(author: string): string {
+  const { name, agent } = authorOf(author);
+  return agent ? `${name} · agent` : name;
 }

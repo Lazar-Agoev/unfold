@@ -121,6 +121,8 @@ struct Raw<'a> {
     binding: Option<Cow<'a, str>>,
     awaited: Option<bool>,
     bound: Option<u32>,
+    #[serde(borrow)]
+    heritage: Option<Cow<'a, str>>,
 }
 
 impl Raw<'_> {
@@ -177,6 +179,7 @@ impl Raw<'_> {
             ("binding", self.binding.is_some()),
             ("awaited", self.awaited.is_some()),
             ("bound", self.bound.is_some()),
+            ("heritage", self.heritage.is_some()),
         ]
         .into_iter()
         .filter_map(|(name, present)| present.then_some(name))
@@ -406,6 +409,7 @@ impl Reader {
                     "target",
                     "reason",
                     "module",
+                    "heritage",
                 ],
             ),
             "input" => (Section::Inputs, &["path", "role", "hash"]),
@@ -649,6 +653,7 @@ impl Reader {
             target: key(raw.target),
             reason: optional_vocab(raw.reason)?,
             module: module(raw.module),
+            heritage: optional_vocab(raw.heritage)?,
         };
         self.types("type_link")?.type_links.push(link);
         Ok(())

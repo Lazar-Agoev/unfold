@@ -24,7 +24,8 @@ Main process modules:
 - `workspace.ts`: windows coming back, adding projects from the menu, the command line, the OS, or a drop, and remembering windows (see [Window restore](#window-restore)).
 - `window-placement.ts`: reading saved windows and moving a restored window onto a visible screen.
 - `export-name.ts`: the export dialog's default file name.
-- `ipc.ts`: the window commands ([docs/ipc.md](../docs/ipc.md#window-commands-and-shell-events)), plus `add_dropped_folder`, which only the preload sends.
+- `ipc.ts`: the window commands ([docs/ipc.md](../docs/ipc.md#window-commands-and-shell-events)), plus `add_dropped_folder`, which only the preload sends. The agent channel's commands go to the agent bridge.
+- `agents/`: the agent bridge, the windows' view reports, links, and page revisions (see [The agent bridge](#the-agent-bridge)).
 - `app-paths.ts`: the app folders from architecture §8.2, the UI and addon locations, and parsing the folder from the command line.
 - `updater.ts`, `update-policy.ts`: updates from GitHub Releases with electron-updater, the app's only network use (see [Packaging](#packaging)).
 
@@ -44,7 +45,7 @@ renderer (preload) ──MessagePort──▶ engine host ──dispatch/cancel�
 - **No addon.** If the addon can't be loaded, the engine host logs why (`[engine-host] the engine addon could not be loaded from …`), every invoke is answered with `engine_unavailable`, and each window shows the "Reconnecting to the engine…" toast. The app never shows made-up data.
 - **Trusted commands.** The commands that take an absolute path or manage windows ([docs/ipc.md](../docs/ipc.md#how-a-command-travels), `MAIN_PROCESS_ONLY` in `router.ts`) run only with `"trusted": true`, which only the main process's own requests get: main sends `{type:"request", id, windowId, command, args}` over the parent port, the engine host dispatches it with `trusted`, and answers `{type:"result", id, ok, value|error}`. A window's message naming one of these commands, or carrying a `trusted` field anywhere, is refused with `untrusted` before it reaches Rust; the router rebuilds every window command from `command` and `args`, so a window can't add the flag.
 - **Restarts.** If the engine host dies, each window is told, rejects its in-flight requests with `disconnected`, and shows the "Reconnecting to the engine…" toast. Once the engine host restarts, every window is attached again with a fresh port. Invokes made while no port is present are queued.
-- **Shell events.** Some events come from the shell rather than from Rust, and arrive through `window.unfold.on` like engine events: `menu_command`, `board_state_transferred`, `focus_board`, `project_added`, and `project_add_failed`.
+- **Shell events.** Some events come from the shell rather than from Rust, and arrive through `window.unfold.on` like engine events: `menu_command`, `board_state_transferred`, `focus_board`, `project_added`, `project_add_failed`, and the agent channel's `agent_edit`, `agent_read`, `agent_open_board`, and `agent_finish`.
 
 The addon is loaded from `crates/unfold-node` in a checkout, and from `<resources>/unfold-node` when packaged: the engine host `require`s that directory, whose `package.json` points at the napi-rs loader `index.js`, which loads `unfold-node.<platform>.node` beside it (for example `unfold-node.darwin-arm64.node`).
 
@@ -61,6 +62,20 @@ The addon is loaded from `crates/unfold-node` in a checkout, and from `<resource
 - **Held boards.** When `open_board` answers `held` with `heldBy`, the UI calls `focus_window {windowId, board: {project, board}}`; that window receives `focus_board` and shows the tab.
 - **Drag and drop.** Dropping a folder on a window adds it to the workspace. The preload records the paths of the latest drop (`webUtils.getPathForFile`) and only those can be added: `window.unfold.addDroppedFolder(file)` from a UI drop handler, or, if the UI doesn't handle the drop, the preload adds a single dropped folder by itself and emits `project_added` (or `project_add_failed` with the engine's reason). The engine checks the path is a folder (`not_a_folder` otherwise).
 - **Undo and Redo.** Edit > Undo / Redo (and their shortcuts when the UI didn't handle the key) arrive as `menu_command` `undo` / `redo`. With focus in a text field, the preload runs the field's native undo instead and the UI sees nothing.
+
+## The agent bridge
+
+`src/main/agents/` is how the main process has windows act for an agent ([docs/ui-shell.md](../docs/ui-shell.md#agents-in-the-window) is the window's side). The requests, answers, and view reports are typed in `src/shared/agent-api.ts`, which the UI imports as `@unfold/desktop/agent-api`. Nothing calls the bridge yet but its tests; the MCP server will.
+
+- **View reports** (`views.ts`). Each window sends `report_view {board?, page?, selection, lens?, visible, tabs}` when its view changes (debounced 150 ms) and when it gains focus. `ViewTracker` keeps the last report of each window (`parseViewReport` refuses malformed ones), the order windows were used in (from each window's `focus` event, `onFocused`), and which window holds a board (from the reported tabs, and at once when one opens it for an agent).
+- **The bridge** (`bridge.ts`). `AgentBridge` routes each request to the window that holds the board, as a shell event delivered once the window's UI has loaded, and waits for the window's answer command (`agent_edit_result`, `agent_read_result`, `agent_open_board_result`); an answer from another window, of another kind, or after the timeout is ignored, and one that isn't shaped right fails as `internal`.
+  - `edit(input)`: makes sure a window holds the board (`open`), and with `expectRevision` reads the page first and refuses with `revision_mismatch` when it changed. Then the window applies the operations as one undo step and answers with the page as saved; the bridge adds the page's revision. A window that turns out not to hold a board its report listed (`board_not_open`) gets the board opened again, once.
+  - `read({board, page})`: the page as the holding window has it, unsaved edits included, with its revision; `board_not_open` when no window holds the board.
+  - `open({board, page?})`: the holding window, else the window used last (else the first, else a new window) opens the board in a background tab; a board another window holds turns out to be that window's, and one held where no window can reach fails with `board_held_elsewhere`.
+  - `finish({board, agent, summary})`: the holding window (else the window used last) clears the agent's working marks and shows the summary as a toast.
+  - Every request times out after 30 s (`timeout`), and a window that closes first fails its requests with `window_closed`.
+- **Page revisions** (`revision.ts`). `pageRevision(page)` is the first 8 hex digits of FNV-1a 64 over the page's JSON with sorted keys and a two-space indent, as UTF-8. Only the main process computes it.
+- **Links** (`links.ts`). `parseLink` reads `unfold://<project's shared name>/<board id>?page=<page id>&item=<item id>` (each part URI-encoded; an item needs its page) and says why text isn't one; `resolveLink` names the project by id, the first in workspace order with the shared name.
 
 ## Window restore
 
