@@ -18,10 +18,10 @@ const PAGE: AgentPage = {
     { id: "place", ref: { block: PLACE }, at: [0, 0], description: { text: "Places it.", author: "person:lazar", signature: "s" } },
     { id: "charge", ref: { block: "src/pay.ts#function:charge" }, at: [400, 0], description: { text: "Charges.", author: "agent:claude", signature: "s" } },
   ],
-  groups: [],
+  groups: [{ id: "pay", card: "charge", title: "Pay", members: ["src/pay.ts#function:charge/return[0]"], collapsed: false, author: "agent:claude" }],
   labels: [{ key: "src/pay.ts#function:charge/if[0]", text: "Declined?", author: "person:lazar", signature: "s" }],
   guards: [],
-  links: [],
+  links: [{ id: "save", from: "charge", to: "orders", kind: "writes", anchors: [{ key: PLACE }], author: "agent:claude", description: { text: "Saves it.", author: "agent:claude", signature: "s" } }],
   resources: [{ id: "orders", kind: "table", name: "orders", anchors: [{ key: "a" }, { key: "b" }], at: [0, 200], author: "agent:claude" }],
 };
 
@@ -32,6 +32,8 @@ function health(...items: HealthItem[]): BoardHealthView {
 const OUTDATED_PLACE: HealthItem = { page: "page-1", kind: "outdated", target: { card: "place" }, message: "Changed.", repairs: ["resign", "removeDescription"] };
 const OUTDATED_CHARGE: HealthItem = { page: "page-1", kind: "outdated", target: { card: "charge" }, message: "Changed.", repairs: ["resign", "removeDescription"] };
 const REVIEW_CHARGE: HealthItem = { page: "page-1", kind: "review", target: { card: "charge" }, message: "Its kind changed.", repairs: ["accept", "reconnect", "removeCard"] };
+const REVIEW_SAVE: HealthItem = { page: "page-1", kind: "review", target: { link: "save" }, key: PLACE, anchor: 0, message: "Its kind changed.", repairs: ["accept", "reconnect", "removeLink"] };
+const REVIEW_PAY: HealthItem = { page: "page-1", kind: "review", target: { group: "pay" }, key: "src/pay.ts#function:charge/return[0]", message: "Its kind changed.", repairs: ["accept", "ungroup"] };
 const MISSING_PLACE: HealthItem = { page: "page-1", kind: "missing", target: { card: "place" }, message: "Gone.", repairs: ["reconnect", "removeCard"] };
 const ANCHOR_0: HealthItem = { page: "page-1", kind: "missing", target: { resource: "orders" }, key: "a", anchor: 0, message: "Anchor a is gone.", repairs: ["reconnect", "removeResource"] };
 const ANCHOR_1: HealthItem = { page: "page-1", kind: "missing", target: { resource: "orders" }, key: "b", anchor: 1, message: "Anchor b is gone.", repairs: ["reconnect", "removeResource"] };
@@ -100,6 +102,18 @@ describe("repair", () => {
     expect(accept.text).toBe(
       "Can't accept the current code for the card charge: Lazar (a person) wrote the Flow label “Declined?”, so signing off on it is theirs to do. Tell them in the chat what changed in the code, and whether the text still reads right to you.",
     );
+  });
+
+  it("accepts a key only when agents wrote everything its guard holds: the guard is the page's, shared by every item citing the key", async () => {
+    const test = app(REVIEW_SAVE, REVIEW_PAY);
+    // The agent's connection cites the card a person described: accepting its anchor accepts the card's code too.
+    const shared = await test.call(repair, { ...AT, item: "save", repair: "accept" });
+    expect(shared.text).toBe(
+      "Can't accept the current code for the writes connection charge → orders: Lazar (a person) wrote the description of OrderService.place, so signing off on it is theirs to do. Tell them in the chat what changed in the code, and whether the text still reads right to you.",
+    );
+    const own = await test.call(repair, { ...AT, item: "pay", repair: "accept" });
+    expect(own.isError).toBe(false);
+    expect(repairs(test)).toMatchObject([{ repair: { kind: "accept", key: "src/pay.ts#function:charge/return[0]" }, items: ["pay"] }]);
   });
 
   it("says which repairs an item offers, and which anchor to pick", async () => {

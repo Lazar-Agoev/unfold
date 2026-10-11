@@ -1,6 +1,6 @@
 //! A page's outline ("On this page"): its cards in the order you followed them, callers before
 //! callees, indented by call depth, and the Flow nodes that still show names from the code
-//! instead of authored labels.
+//! instead of authored labels (not counting the steps a collapsed step group hides).
 //!
 //! A *card link* is an opened call between two cards of one project: an entrance card to the
 //! cards of its resolved targets (in registration order), or a block card to the cards of the
@@ -52,8 +52,8 @@ pub struct PageOutline {
     pub page: String,
     /// Every card once, in follow order.
     pub rows: Vec<OutlineRow>,
-    /// The Flow nodes without authored labels, in outline order ("N Flow nodes still show code
-    /// names").
+    /// The Flow nodes without authored labels, in outline order ("N Flow steps unlabeled"); Start,
+    /// End, and the steps inside a collapsed step group of their card don't count.
     pub unlabeled: Vec<Unlabeled>,
 }
 
@@ -135,6 +135,12 @@ impl FlowContext for Labels<'_> {
     }
 }
 
+/// Whether `key` is `member` or lies under it (`<member>/…`).
+fn within(key: &str, member: &str) -> bool {
+    key.strip_prefix(member)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+}
+
 /// The outline of `page`.
 pub fn outline(page: &Page, graphs: &PageGraphs<'_>) -> PageOutline {
     let mut links = card_links(page, graphs);
@@ -202,6 +208,14 @@ pub fn outline(page: &Page, graphs: &PageGraphs<'_>) -> PageOutline {
     for card in &page.cards {
         by_id.entry(card.id.as_str()).or_insert(card);
     }
+    // The member keys of each card's collapsed step groups: their steps aren't drawn.
+    let mut collapsed: FxHashMap<&str, Vec<&str>> = FxHashMap::default();
+    for group in page.groups.iter().filter(|group| group.collapsed) {
+        collapsed
+            .entry(group.card.as_str())
+            .or_default()
+            .extend(group.members.iter().map(Key::as_str));
+    }
     let mut unlabeled = Vec::new();
     for row in &rows {
         let Some(card) = by_id.get(row.card.as_str()) else {
@@ -220,9 +234,11 @@ pub fn outline(page: &Page, graphs: &PageGraphs<'_>) -> PageOutline {
         if flow.source != SourceState::Current {
             continue;
         }
+        let hidden = collapsed.get(row.card.as_str()).map_or(&[][..], Vec::as_slice);
         for node in &flow.nodes {
             if let Some(key) = &node.key
                 && !matches!(node.kind, FlowNodeKind::Start | FlowNodeKind::End)
+                && !hidden.iter().any(|member| within(key.as_str(), member))
                 && page.label(project, key.as_str()).is_none()
             {
                 unlabeled.push(Unlabeled {

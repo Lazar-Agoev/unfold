@@ -91,6 +91,32 @@ export function paged<T>(items: readonly T[], cursor: string | undefined, size: 
   return { items: items.slice(start, end), total: items.length, ...(end < items.length ? { next: String(end) } : {}) };
 }
 
+/** Room a result keeps under {@link MAX_RESULT_CHARS} for its header and the lines around a page. */
+export const RESULT_ROOM = 2_000;
+
+/**
+ * The first of `lines` whose text fits in `budget` characters (at least one): a page of text ends
+ * early rather than be cut by the size guard, so the line that says where the next page starts stays.
+ */
+export function fittingLines(lines: readonly string[], budget: number): readonly string[] {
+  let chars = 0;
+  const end = lines.findIndex((line, index) => {
+    chars += line.length + 1;
+    return index > 0 && chars > budget;
+  });
+  return end === -1 ? lines : lines.slice(0, end);
+}
+
+/**
+ * One page of `lines`, as {@link paged}, that also ends before its text passes what a result may hold
+ * ({@link fittingLines}), so the size guard never cuts a page with its cursor.
+ */
+export function pagedLines(lines: readonly string[], cursor: string | undefined, size: number): Paged<string> {
+  const start = cursorOffset(cursor);
+  const fitting = fittingLines(lines.slice(start, start + size), MAX_RESULT_CHARS - RESULT_ROOM).length;
+  return paged(lines, cursor, Math.max(fitting, 1));
+}
+
 function badCursor(cursor: string | undefined): ToolError {
   return new ToolError(`“${cursor ?? ""}” isn't a cursor of this list. Leave cursor out for the first page, or pass the next cursor a result gave.`);
 }
@@ -144,6 +170,7 @@ const WINDOW_HINTS: Readonly<Record<string, string>> = {
   revision_mismatch: "read_page reads it, with its new rev.",
   window_closed: "Try again.",
   timeout: "Unfold may be busy; try again.",
+  unconfirmed: "Read what you changed first (read_page, or list_boards for a board's pages and title), and try again only if it didn't land.",
 };
 
 /** A window's (or the bridge's) refusal as a refusal that teaches, keeping its code. */

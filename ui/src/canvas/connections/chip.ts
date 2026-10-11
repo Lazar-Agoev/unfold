@@ -17,7 +17,7 @@ export interface ChipPart {
   readonly carries?: true;
 }
 
-/** Each kind's word on its chip and in menus. */
+/** Each kind's word on its chip and where the page and Selected list connections (menus use `MENU_WORDS`). */
 export const KIND_WORDS: Readonly<Record<LinkKind, string>> = {
   http: "HTTP",
   rpc: "RPC",

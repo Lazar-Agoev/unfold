@@ -8,7 +8,7 @@
  */
 
 import type { AgentItemResult, AgentMove, ArrangeOp, SetViewOp } from "@unfold/desktop/agent-api";
-import { arrangePage } from "../../../canvas/arrangePage";
+import { arrangePage, lineNoteSpots } from "../../../canvas/arrangePage";
 import type { Arrow } from "../../../canvas/arrows";
 import { FOLLOW_GAP, STACK_GAP, clearSpot } from "../../../canvas/layout";
 import { measureText } from "../../../canvas/measure";
@@ -120,11 +120,11 @@ export function applyArrange(page: Page, op: ArrangeOp, ctx: OpContext): AgentIt
   if (op.frame !== undefined && !frame) {
     throw invalid(`There is no frame with id “${op.frame}” on this page to arrange. read_page lists the page's frames.`);
   }
-  const turned = frame !== undefined && op.direction !== undefined && op.direction !== (frame.direction ?? "right");
+  const turned = frame !== undefined && op.direction !== undefined && op.direction !== frame.direction;
   if (frame && op.direction !== undefined) {
     updateFrame(page, frame.id, { direction: op.direction });
   }
-  if (page.cards.length > 0) {
+  if (page.cards.length > 0 || (page.resources ?? []).length > 0) {
     const bodyOf = (id: string) => {
       const card = findCard(page, id);
       return card ? cardBody(cardKey(card), card.view ?? page.defaultView) : undefined;
@@ -155,6 +155,10 @@ export function applyArrange(page: Page, op: ArrangeOp, ctx: OpContext): AgentIt
   for (const move of op.moves ?? []) {
     applyMove(ctx, page, move);
   }
+  // Then the notes on links (a frame's: those on its items' links), beside their lines as they now run.
+  const held = frame ? new Set([frame.id, ...frameItems(page, frame.id)]) : undefined;
+  const lines = held ? new Set(page.links.filter((link) => held.has(link.from) || held.has(link.to)).map((link) => link.id)) : undefined;
+  moveItems(page, lineNoteSpots(page, (id) => itemSize(ctx, page, id), lines));
   const moved = [
     ...page.cards.flatMap((card) => (before.get(card.id) === `${card.at[0]},${card.at[1]}` ? [] : [cardResult(ctx, card, "updated", { at: [card.at[0], card.at[1]] })])),
     ...(page.resources ?? []).flatMap((resource) =>

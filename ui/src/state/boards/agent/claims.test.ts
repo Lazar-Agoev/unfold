@@ -365,4 +365,29 @@ describe("describing and removing claims", () => {
     expect(note?.at[0]).toBe(0);
     expect(note?.at[1]).toBeGreaterThan(80);
   });
+
+  it("arranges a page of resource cards alone", async () => {
+    store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", [], { resources: [table("orders", ORDER, { at: [0, 3000] }), table("customers", CUSTOMER, { at: [6000, 0] })] })])));
+    const result = await edit([{ op: "arrange" }]);
+    expect(result.items.filter((item) => item.kind === "resource").map((item) => item.id).sort()).toEqual(["customers", "orders"]);
+  });
+
+  it("puts a note on a connection beside its line, clear of the cards, when it arranges", async () => {
+    open({
+      resources: [table("orders", ORDER)],
+      links: [{ id: "writes", from: "worker", to: "orders", kind: "writes", author: "agent:claude" }],
+      notes: [{ id: "n", text: "In memory.", at: [-900, 0], attach: "writes", author: "agent:claude" }],
+    });
+    await edit([{ op: "arrange" }]);
+    const arranged = current();
+    const note = arranged.notes?.[0];
+    const [worker, orders] = [arranged.cards.find((card) => card.id === "worker"), arranged.resources?.[0]];
+    // The offset from the midpoint of its ends' corners now puts it between them, not at the old offset.
+    expect(note?.attach).toBe("writes");
+    expect(note?.at).not.toEqual([-900, 0]);
+    const middle = [((worker?.at[0] ?? 0) + (orders?.at[0] ?? 0)) / 2, ((worker?.at[1] ?? 0) + (orders?.at[1] ?? 0)) / 2];
+    const x = (middle[0] ?? 0) + (note?.at[0] ?? 0);
+    expect(x).toBeGreaterThan(Math.min(worker?.at[0] ?? 0, orders?.at[0] ?? 0) - 400);
+    expect(x).toBeLessThan(Math.max(worker?.at[0] ?? 0, orders?.at[0] ?? 0) + 400);
+  });
 });

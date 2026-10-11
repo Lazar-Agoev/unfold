@@ -9,6 +9,10 @@ describe("names", () => {
     expect(keyName("src/routes/orders.ts#")).toBe("src/routes/orders.ts");
     expect(keyFile("src/routes/orders.ts#function:createOrder")).toBe("src/routes/orders.ts");
     expect(keyFile('entrance:["x"]')).toBeUndefined();
+    // A path may hold `#`; names escape it.
+    expect(keyFile("src/#lib/cart.ts#interface:Cart")).toBe("src/#lib/cart.ts");
+    expect(keyName("src/#lib/cart.ts#interface:Cart")).toBe("Cart");
+    expect(keyKind("src/#lib/cart.ts#interface:Cart")).toBe("interface");
     expect(place("src/a.ts", 3, 9)).toBe("src/a.ts:3–9");
     expect(place("package.json", null)).toBe("package.json");
   });

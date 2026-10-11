@@ -11,10 +11,8 @@
  */
 
 import type {
-  AgentBoardInfo,
   AgentEditRequest,
   AgentEditResult,
-  AgentFailure,
   AgentFinish,
   AgentItemResult,
   AgentOp,
@@ -37,7 +35,7 @@ import { getOpenBoard, isDirty, saveStep } from "../store";
 import type { BoardRef } from "../types";
 import { prepareAddCards } from "./cards";
 import { applyConnect } from "./connections";
-import { AgentRefusal, cardProject, resourceProject, type ApplyOp, type OpContext } from "./context";
+import { AgentRefusal, boardInfo, cardProject, failure, resourceProject, type ApplyOp, type OpContext } from "./context";
 import { AgentData } from "./data";
 import { applyFrameCards } from "./frames";
 import { applyGroupSteps } from "./groups";
@@ -47,10 +45,6 @@ import { applyRemoveItems } from "./remove";
 import { prepareAddResources } from "./resources";
 import { applyDescribe, applyLabelSteps } from "./text";
 import { finishWorking, markWorking } from "./working";
-
-function failure(code: string, message: string): AgentFailure {
-  return { ok: false, code, message };
-}
 
 /** The board a request names, as this window's store keys it. */
 function refOf(request: { readonly board: { readonly project: string; readonly id: string } }): BoardRef {
@@ -115,11 +109,6 @@ function asSaved(items: readonly AgentItemResult[], saved: Page): AgentItemResul
     const link = item.kind === "link" && item.status !== "removed" ? saved.links.find((entry) => entry.id === item.id) : undefined;
     return link?.channel !== undefined && item.kind === "link" ? { ...item, channel: link.channel } : item;
   });
-}
-
-/** What the agent learns about a board: its title, publish state, and file revision. */
-function boardInfo(board: { readonly title: string; readonly place: AgentBoardInfo["place"]; readonly changes: number; readonly revision: string }): AgentBoardInfo {
-  return { title: board.title, place: board.place, changes: board.changes, revision: board.revision };
 }
 
 /** Applies an agent's operations to a page of a board this window holds, as one undo step, saved at once. */
@@ -188,7 +177,7 @@ export async function applyAgentEdit(request: AgentEditRequest): Promise<AgentEd
     return {
       ok: true,
       page: saved,
-      board: boardInfo({ title: state.document.title, place: state.place, changes: state.published?.changes ?? 0, revision: state.revision }),
+      board: boardInfo(state),
       items: asSaved(outcome.value.items, saved),
       warnings: outcome.value.warnings,
     };
@@ -215,7 +204,7 @@ export function readAgentPage(request: AgentReadRequest): AgentReadResult {
     ok: true,
     page,
     board: {
-      ...boardInfo({ title: board.document.title, place: board.place, changes: board.published?.changes ?? 0, revision: board.revision }),
+      ...boardInfo(board),
       unsaved: isDirty(board),
     },
     sizes: board.pages[request.page]?.sizes ?? {},

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RepairBoardArgs } from "../../../ipc/generated";
 import { installFakeEngine, type FakeEngine } from "../../../test/engine";
 import { boardDocument, boardState, page } from "../../../test/workspace";
+import { moveItems } from "../document";
 import { openBoardTab, useTabs } from "../../tabStore";
 import * as store from "../store";
 import { repairForAgent } from "./repair";
@@ -59,5 +60,51 @@ describe("repairing a board for an agent", () => {
     openBoardTab(REF);
     expect(await repairForAgent({ requestId: 1, board: REF, page: "page-1", agent: CLAUDE, repair: REPAIR, items: [] })).toMatchObject({ ok: false });
     expect(store.canUndo(REF)).toBe(false);
+  });
+
+  it("refuses while a conflict is open, and keeps a person's edit made while it runs", async () => {
+    store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", [CARD])])));
+    openBoardTab(REF);
+    store.useBoards.setState((draft) => {
+      const open = Object.values(draft.boards)[0];
+      if (open) {
+        open.conflict = { diskRevision: "r9" };
+      }
+    });
+    expect(await repairForAgent({ requestId: 1, board: REF, page: "page-1", agent: CLAUDE, repair: REPAIR, items: ["a"] })).toMatchObject({ ok: false, code: "board_conflict" });
+    expect(engine.callsOf("repair_board")).toEqual([]);
+
+    store.useBoards.setState((draft) => {
+      const open = Object.values(draft.boards)[0];
+      if (open) {
+        open.conflict = null;
+      }
+    });
+    let finish: (() => void) | undefined;
+    engine.uninstall();
+    engine = installFakeEngine({
+      handlers: {
+        repair_board: (args: RepairBoardArgs) =>
+          new Promise((resolve) => {
+            finish = () => {
+              resolve(boardState(args.project, args.id, boardDocument([page("page-1", [{ ...CARD, ref: { block: "src/a.ts#function:b" } }])]), { revision: "r2" }));
+            };
+          }),
+      },
+    });
+    const target = { board: REF, page: "page-1" };
+    const result = repairForAgent({ requestId: 2, board: REF, page: "page-1", agent: CLAUDE, repair: REPAIR, items: ["a"] });
+    await vi.waitFor(() => {
+      expect(finish).toBeDefined();
+    });
+    store.editPage(target, (draft) => {
+      moveItems(draft, { a: [40, 0] });
+    });
+    finish?.();
+    expect(await result).toMatchObject({ ok: false, code: "page_changed" });
+    const board = store.getOpenBoard(REF);
+    expect(board?.document.pages[0]?.cards[0]).toMatchObject({ ref: { block: "src/a.ts#function:a" }, at: [40, 0] });
+    expect(board && store.isDirty(board)).toBe(true);
+    expect(renderHook(() => useWorkingItems(target)).result.current).toEqual(new Set());
   });
 });

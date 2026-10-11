@@ -3,68 +3,31 @@
  * off a page, with what would dangle (a card's step groups, the links that end at what goes, a frame
  * left with no members); a note attached to what goes stays where it was, free. A removed frame's
  * members stay, in the frame that held it, unless `keepMembers` is false. Removing what a person drew
- * or wrote (a description, a group's or frame's title, a link's label, a connection, a resource card, a
- * note) is refused unless the call says the person asked for it.
+ * or wrote (`itemWords`: a description, a group's or frame's title, a link's label, a connection or
+ * drawn link, a resource card, a note), what goes with an item included, is refused unless the call
+ * says the person asked for it.
  */
 
 import type { AgentItemResult, RemoveItemsOp } from "@unfold/desktop/agent-api";
 import type { Page } from "../../../ipc/generated";
-import { findCard, removeItems } from "../document";
-import { findFrame, removeFrame } from "../frames";
+import { findCard, removalCascade, removeItems } from "../document";
+import { findFrame, frameRemoval, removeFrame } from "../frames";
 import { findNote } from "../notes";
 import { findResource } from "../resources";
 import { linkResult } from "./connections";
-import { cardName, cardResult, guardPeopleText, invalid, type OpContext } from "./context";
+import { cardResult, guardRemoval, invalid, type OpContext } from "./context";
 import { frameResult } from "./frames";
-import { noteName, noteResult } from "./notes";
-import { resourceName, resourceResult } from "./resources";
+import { noteResult } from "./notes";
+import { resourceResult } from "./resources";
 
 /** Removes item `id` as asked and returns the ids that went with it. */
 function remove(page: Page, id: string, keepMembers: boolean): string[] {
   return findFrame(page, id) ? removeFrame(page, id, keepMembers) : removeItems(page, [id]);
 }
 
-/** Refuses when a removed item carries a person's words, unless the person asked. */
-function guard(ctx: OpContext, page: Page, id: string, replace: boolean | undefined): void {
-  const card = findCard(page, id);
-  if (card?.description) {
-    guardPeopleText(`the description of ${cardName(ctx, card)}`, card.description.author, replace);
-  }
-  const group = page.groups.find((item) => item.id === id);
-  if (group) {
-    guardPeopleText(`the step group “${group.title}”`, group.author, replace);
-    if (group.description) {
-      guardPeopleText(`the description of the step group “${group.title}”`, group.description.author, replace);
-    }
-  }
-  const link = page.links.find((item) => item.id === id);
-  if (link?.label) {
-    guardPeopleText(`the label “${link.label.text}”`, link.label.author, replace);
-  }
-  if (link?.kind !== undefined) {
-    guardPeopleText(`the ${link.kind} connection`, link.author, replace);
-    if (link.description) {
-      guardPeopleText(`the description of the ${link.kind} connection`, link.description.author, replace);
-    }
-  }
-  const resource = findResource(page, id);
-  if (resource) {
-    guardPeopleText(resourceName(resource), resource.author, replace);
-    if (resource.description) {
-      guardPeopleText(`the description of ${resourceName(resource)}`, resource.description.author, replace);
-    }
-  }
-  const note = findNote(page, id);
-  if (note) {
-    guardPeopleText(`the note “${noteName(note)}”`, note.author, replace);
-  }
-  const frame = findFrame(page, id);
-  if (frame) {
-    guardPeopleText(`the frame “${frame.title}”`, frame.author, replace);
-    if (frame.description) {
-      guardPeopleText(`the description of the frame “${frame.title}”`, frame.description.author, replace);
-    }
-  }
+/** What removing item `id` as asked takes, `id` first: what would dangle, and a frame's members unless they are kept. */
+function going(page: Page, id: string, keepMembers: boolean): string[] {
+  return [...(findFrame(page, id) ? frameRemoval(page, id, keepMembers) : removalCascade(page, [id]))];
 }
 
 /** What a removed item was, as its result entry (read before it goes). */
@@ -105,14 +68,12 @@ export function applyRemoveItems(page: Page, op: RemoveItemsOp, ctx: OpContext):
     if (!known) {
       throw invalid(`There is no card, step group, link, frame, resource card, or note with id “${id}” on this page. read_page lists the page's ids.`);
     }
-    // What goes with it, found on a copy first, so a person's words are checked before anything changes.
-    const going = remove(JSON.parse(JSON.stringify(page)) as Page, id, keepMembers).sort((a, b) => Number(b === id) - Number(a === id));
-    for (const item of going) {
-      guard(ctx, page, item, op.replacePeopleText);
-    }
-    const results = going.flatMap((item) => removedResult(ctx, page, item));
+    // What goes with it, found first, so a person's words are checked before anything changes.
+    const items = going(page, id, keepMembers);
+    guardRemoval(ctx, page, items, op.replacePeopleText);
+    const results = items.flatMap((item) => removedResult(ctx, page, item));
     remove(page, id, keepMembers);
-    for (const item of going) {
+    for (const item of items) {
       gone.add(item);
     }
     return results;

@@ -294,7 +294,7 @@
         },
         "kind": {
           "enum": ["http", "rpc", "queue", "event", "writes", "reads", "calls", "relates", "other"],
-          "description": "How its ends talk; absent for a drawn link (`other`)."
+          "description": "How its ends talk; absent for a drawn link (`other`), which has a label and none of a connection's other fields."
         },
         "step": { "$ref": "#/$defs/blockKey", "description": "The statement or call inside the `from` card's block it leaves from (a block card's)." },
         "fromColumn": { "$ref": "#/$defs/text", "description": "For `relates`: the column of the `from` table." },
@@ -315,13 +315,31 @@
         "author": { "$ref": "#/$defs/author", "description": "Who drew it; required with `kind`." },
         "signature": { "$ref": "#/$defs/textSignature" }
       },
-      "if": {
-        "not": { "type": "object", "required": ["kind"], "properties": { "kind": { "const": "relates" } } }
-      },
-      "then": {
-        "type": "object",
-        "properties": { "fromColumn": false, "toColumn": false, "cardinality": false }
-      }
+      "allOf": [
+        {
+          "if": {
+            "not": { "type": "object", "required": ["kind"], "properties": { "kind": { "const": "relates" } } }
+          },
+          "then": {
+            "type": "object",
+            "properties": { "fromColumn": false, "toColumn": false, "cardinality": false }
+          }
+        },
+        {
+          "if": { "not": { "type": "object", "required": ["kind"] } },
+          "then": {
+            "type": "object",
+            "properties": {
+              "anchors": { "type": "array", "maxItems": 0 },
+              "carries": false,
+              "channel": false,
+              "description": false,
+              "signature": false,
+              "step": false
+            }
+          }
+        }
+      ]
     },
     "frame": {
       "type": "object",

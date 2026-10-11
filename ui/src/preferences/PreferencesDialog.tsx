@@ -101,10 +101,11 @@ function PreferencesForm({ saved, onDone }: { readonly saved: Preferences; reado
   const limit = parseThreadLimit(threads);
   const conflicts = useMemo(() => findConflicts(bindings, platform), [bindings, platform]);
   const port = parseAgentPort(agentPort);
-  const canSave = limit.ok && port.ok && conflicts.size === 0;
+  // With agents off the port field is hidden: a port that isn't one keeps the saved port.
+  const canSave = limit.ok && (!agentsOn || port.ok) && conflicts.size === 0;
 
   const save = async () => {
-    if (!limit.ok || !port.ok || !canSave) {
+    if (!limit.ok || !canSave) {
       return;
     }
     setSaving(true);
@@ -115,7 +116,7 @@ function PreferencesForm({ saved, onDone }: { readonly saved: Preferences; reado
       backgroundUpdates: background,
       threadLimit: limit.value,
       updates: { ...saved.updates, enabled: checkUpdates },
-      agents: { enabled: agentsOn, port: port.value },
+      agents: { enabled: agentsOn, port: port.ok ? port.value : saved.agents.port },
       keyBindings: mergeKeyBindings(saved.keyBindings, bindings),
     };
     try {

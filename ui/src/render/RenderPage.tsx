@@ -12,6 +12,7 @@ import type { RenderFrame, RenderJob } from "@unfold/desktop/render-api";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { pageChecks } from "../board/checks";
 import { BoardCanvas, useBoardArrows } from "../canvas";
+import { collapsedPlaces } from "../canvas/frames/geometry";
 import type { Card, Page } from "../ipc/generated";
 import { cardKey, cardRefKey, findPage, useOpenBoard } from "../state/boards";
 import { resolveRefProject, useProjectIndex } from "../state/workspace";
@@ -66,6 +67,13 @@ export function RenderPage({ job }: { readonly job: RenderJob }) {
     projects.current = index;
   });
 
+  // The cards drawn as themselves: a collapsed frame draws the ones it holds as its own node.
+  const shownCards = useMemo(() => {
+    const page = job.page as unknown as Page;
+    const hidden = collapsedPlaces(page);
+    return page.cards.filter((card) => !hidden.has(card.id)).length;
+  }, [job]);
+
   /** What is drawn now, as one string; null while anything still loads or isn't measured. */
   const probe = useCallback((): string | null => {
     const element = container.current;
@@ -73,7 +81,7 @@ export function RenderPage({ job }: { readonly job: RenderJob }) {
       return null;
     }
     const { nodeLookup, transform, width, height, edges } = store.getState();
-    if (nodeLookup.size < (job.page as unknown as Page).cards.length) {
+    if (nodeLookup.size < shownCards) {
       return null;
     }
     const drawn = drawnNodeIds(element);
@@ -91,7 +99,7 @@ export function RenderPage({ job }: { readonly job: RenderJob }) {
     }
     parts.push(transform.join(","), `${width}x${height}`, String(edges.length), String(element.querySelectorAll(".react-flow__edge").length));
     return parts.join("|");
-  }, [client, store, job]);
+  }, [client, store, shownCards]);
 
   // The page drawn: answer with what to capture, or with the checks.
   useEffect(() => {

@@ -237,6 +237,10 @@ describe("a step saved at once (an agent's edit)", () => {
     expect(board?.revision).toBe("r2");
     store.undo(REF);
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards).toEqual([]);
+    // Undo and redo keep the step's name.
+    expect(store.getOpenBoard(REF)?.history.future.map((entry) => entry.name)).toEqual(["Claude · Add cards"]);
+    store.redo(REF);
+    expect(store.getOpenBoard(REF)?.history.past.map((entry) => entry.name)).toEqual(["Claude · Add cards"]);
   });
 
   it("leaves the board as it was when the engine refuses, and says why", async () => {
@@ -265,10 +269,54 @@ describe("a step saved at once (an agent's edit)", () => {
     expect(await store.saveStep(REF, "page-1", "Claude · Add cards", addA)).toMatchObject({ ok: false, error: { code: "unsaved_edits", message: "Disk full." } });
   });
 
-  it("applies the change again over edits the person made while it saved, and saves them after", async () => {
+  it("applies the change again over edits the person made while it saved, saves that, and reports what it applied", async () => {
     store.adoptBoardState(state());
+    const releases: (() => void)[] = [];
+    engine.call.mockImplementation((_command: string, args: SaveBoardArgs) => {
+      const revision = `r${releases.length + 2}`;
+      return new Promise((resolve) => {
+        releases.push(() => {
+          resolve(state({ ...doc(), pages: args.board.pages as BoardDocument["pages"] }, revision));
+        });
+      });
+    });
+    const addOne = (document: BoardDocument) => {
+      let id = "";
+      const next = produce(document, (draft) => {
+        const target = draft.pages[0];
+        if (target) {
+          id = addCard(target, { ref: A, at: [0, 0] });
+        }
+      });
+      return { document: next, value: id };
+    };
+    const outcome = store.saveStep(REF, "page-1", "Claude · Add cards", addOne);
+    await vi.advanceTimersByTimeAsync(0);
+    // The person adds a card for the same function meanwhile: theirs takes the id `a`.
+    edit((draft) => addCard(draft, { ref: A, at: [600, 0] }));
+    releases[0]?.();
+    await vi.advanceTimersByTimeAsync(0);
+    releases[1]?.();
+    const result = await outcome;
+    expect(result).toMatchObject({ ok: true, value: "a-2", state: { revision: "r3" } });
+    expect(result.ok && result.state.document.pages[0]?.cards.map((card) => [card.id, card.at[0]])).toEqual([
+      ["a", 600],
+      ["a-2", 0],
+    ]);
+    const saves = engine.call.mock.calls.map(([, args]) => (args as SaveBoardArgs).board.pages[0]?.cards.map((card) => card.id));
+    expect(saves).toEqual([["a"], ["a", "a-2"]]);
+    const board = store.getOpenBoard(REF);
+    expect(board?.document).toEqual(result.ok ? result.state.document : null);
+    expect(board?.history.past.map((entry) => entry.name)).toEqual([undefined, "Claude · Add cards"]);
+    expect(board && store.isDirty(board)).toBe(false);
+    await vi.advanceTimersByTimeAsync(store.AUTOSAVE_MS);
+    expect(engine.call).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses when the change no longer applies over the person's edits, leaving their edits to save", async () => {
+    store.adoptBoardState(state(doc([{ id: "a", ref: A, at: [0, 0] }])));
     let release: (() => void) | undefined;
-    engine.call.mockImplementation(
+    engine.call.mockImplementationOnce(
       (_command: string, args: SaveBoardArgs) =>
         new Promise((resolve) => {
           release = () => {
@@ -276,19 +324,34 @@ describe("a step saved at once (an agent's edit)", () => {
           };
         }),
     );
-    const outcome = store.saveStep(REF, "page-1", "Claude · Add cards", addA);
+    const foldA = (document: BoardDocument) => {
+      if (!document.pages[0]?.cards.some((card) => card.id === "a")) {
+        throw new Error("the card is gone");
+      }
+      return {
+        document: produce(document, (draft) => {
+          const target = draft.pages[0];
+          if (target) {
+            setCardsFolded(target, ["a"], true);
+          }
+        }),
+        value: "folded",
+      };
+    };
+    const outcome = store.saveStep(REF, "page-1", "Claude · Fold", foldA);
     await vi.advanceTimersByTimeAsync(0);
-    edit((draft) => addCard(draft, { ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
+    edit((draft) => {
+      draft.cards = [];
+    });
     release?.();
-    expect(await outcome).toMatchObject({ ok: true });
+    expect(await outcome).toMatchObject({ ok: false, error: { code: "page_changed" } });
     const board = store.getOpenBoard(REF);
-    expect(board?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["b", "a"]);
-    expect(board?.history.past.map((entry) => entry.name)).toEqual([undefined, "Claude · Add cards"]);
+    expect(board?.document.pages[0]?.cards).toEqual([]);
+    expect(board?.history.past.map((entry) => entry.name)).toEqual([undefined]);
     expect(board && store.isDirty(board)).toBe(true);
+    engine.call.mockImplementation(savesAs("r3"));
     await vi.advanceTimersByTimeAsync(store.AUTOSAVE_MS);
-    release?.();
-    await vi.advanceTimersByTimeAsync(0);
-    expect((engine.call.mock.calls[1]?.[1] as SaveBoardArgs).board.pages[0]?.cards.map((card) => card.id)).toEqual(["b", "a"]);
+    expect((engine.call.mock.calls[1]?.[1] as SaveBoardArgs).board.pages[0]?.cards).toEqual([]);
   });
 
   it("never runs two saves at once: a second step waits for the first", async () => {
@@ -366,22 +429,66 @@ describe("undo and redo", () => {
     expect(store.getOpenBoard(REF)?.activePage).toBe("page-1");
   });
 
-  it("makes a repair one undo step", () => {
+  it("makes a repair one undo step, after saving the edits waiting for the autosave", async () => {
     store.adoptBoardState(state(doc([{ id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }])));
+    engine.call.mockImplementation(savesAs("r2"));
     edit((draft) => { moveItems(draft, { a: [10, 0] }); });
     const beforeRepair = store.getOpenBoard(REF)?.document;
-    store.useBoards.setState((draft) => {
-      const open = Object.values(draft.boards)[0];
-      if (open) {
-        open.savedEdits = open.edits;
-      }
-    });
-    store.applyServerState(REF, state(doc([]), "r3"), "page-1");
+    const outcome = await store.engineStep(REF, "page-1", () => Promise.resolve(state(doc([]), "r3")));
+    expect(outcome).toMatchObject({ ok: true, state: { revision: "r3" } });
+    expect(engine.call.mock.calls.map(([command]) => command as string)).toEqual(["save_board"]);
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards).toHaveLength(0);
     store.undo(REF);
     expect(store.getOpenBoard(REF)?.document).toEqual(beforeRepair);
     store.undo(REF);
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.at).toEqual([0, 0]);
+  });
+});
+
+describe("a step the engine writes (a repair)", () => {
+  const CARD = { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] as [number, number] };
+  const repaired = () => Promise.resolve(state(doc([]), "r3"));
+
+  it("refuses while the board's edits can't be saved or a conflict is open, without asking the engine", async () => {
+    store.adoptBoardState(state(doc([CARD])));
+    const write = vi.fn(repaired);
+    engine.call.mockRejectedValueOnce(new UnfoldError({ code: "io", message: "Disk full." }));
+    edit((draft) => { moveItems(draft, { a: [10, 0] }); });
+    expect(await store.engineStep(REF, "page-1", write)).toMatchObject({ ok: false, error: { code: "unsaved_edits", message: "Disk full." } });
+    store.useBoards.setState((draft) => {
+      const open = Object.values(draft.boards)[0];
+      if (open) {
+        open.conflict = { diskRevision: "r9" };
+      }
+    });
+    expect(await store.engineStep(REF, "page-1", write)).toMatchObject({ ok: false, error: { code: "board_conflict" } });
+    expect(write).not.toHaveBeenCalled();
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.at).toEqual([10, 0]);
+  });
+
+  it("keeps edits the person makes while it runs, unsaved over its state, and says the repair wasn't kept", async () => {
+    store.adoptBoardState(state(doc([CARD])));
+    let finish: (() => void) | undefined;
+    const write = () =>
+      new Promise<BoardState>((resolve) => {
+        finish = () => {
+          resolve(state(doc([]), "r3"));
+        };
+      });
+    const outcome = store.engineStep(REF, "page-1", write);
+    await vi.advanceTimersByTimeAsync(0);
+    edit((draft) => { moveItems(draft, { a: [10, 0] }); });
+    finish?.();
+    expect(await outcome).toMatchObject({ ok: false, error: { code: "page_changed" } });
+    const board = store.getOpenBoard(REF);
+    expect(board?.document.pages[0]?.cards[0]?.at).toEqual([10, 0]);
+    expect(board?.savedDocument.pages[0]?.cards).toEqual([]);
+    expect(board?.revision).toBe("r3");
+    expect(board?.history.past).toHaveLength(1);
+    expect(board && store.isDirty(board)).toBe(true);
+    engine.call.mockImplementation(savesAs("r4"));
+    await vi.advanceTimersByTimeAsync(store.AUTOSAVE_MS);
+    expect((engine.call.mock.calls[0]?.[1] as SaveBoardArgs).board.pages[0]?.cards[0]?.at).toEqual([10, 0]);
   });
 });
 

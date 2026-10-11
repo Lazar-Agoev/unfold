@@ -193,6 +193,14 @@ describe("the render window", () => {
     ]);
   });
 
+  it("answers for a page whose collapsed frame holds every card, drawn as one node", async () => {
+    const frames = [{ id: "api", title: "API", members: ["create-order", "gone"], look: "box" as const, collapsed: true, author: "agent:claude" }];
+    const sent = job("check", {}, { frames });
+    const { container } = draw(sent);
+    expect(await answerTo(sent.requestId)).toMatchObject({ ok: true });
+    expect(container.querySelectorAll(".react-flow__node")).toHaveLength(1);
+  });
+
   it("frames a resource card or a note as it frames a card", async () => {
     const sent = job("image", { item: "orders" }, { resources: [{ id: "orders", kind: "queue", name: "orders", anchors: [], at: [0, 600], author: "agent:claude" }] });
     draw(sent);

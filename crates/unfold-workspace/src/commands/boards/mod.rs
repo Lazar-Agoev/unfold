@@ -182,14 +182,23 @@ impl Held<'_> {
     }
 
     /// Validates, signs, and writes `board` as the session's working version, refusing outside
-    /// changes to the working file unless `force`.
+    /// changes to the working file unless `force`. Its graphs are those of the projects its items
+    /// name now (a repair may have pointed an anchor at another project); an item that names the
+    /// board's own project is `invalid_args`.
     fn save(
         &self,
         session: &mut Session,
         resolver: &mut Resolver<'_>,
-        board: Board,
+        mut board: Board,
         force: bool,
     ) -> CommandResult<BoardState> {
+        board.refresh_projects();
+        if ProjectName::parse(self.project.name()).is_some_and(|own| board.projects.contains(&own)) {
+            return Err(CommandError::invalid_args(format!(
+                "an item names `{}`, this board's own project: omit project for the board's own project",
+                self.project.name()
+            )));
+        }
         let files = self.files();
         let change = files.dirs.change(&session.working_file(), session.revision)?;
         if !force && change != Change::Unchanged {
@@ -434,12 +443,6 @@ pub fn save_board(ctx: &Ctx<'_>, args: SaveBoardArgs) -> CommandResult<BoardStat
         let mut sessions = held.boards().sessions();
         let (session, _) = held.session(&mut sessions, &mut resolver)?;
         let board = parse_edit(&args.board.0.to_string(), session.board.folder.clone())?;
-        if ProjectName::parse(held.project.name()).is_some_and(|own| board.projects.contains(&own)) {
-            return Err(CommandError::invalid_args(format!(
-                "an item names `{}`, this board's own project: omit project for the board's own project",
-                held.project.name()
-            )));
-        }
         held.save(session, &mut resolver, board, args.force.unwrap_or(false))?
     };
     publish_problems(&held.workspace, held.boards());

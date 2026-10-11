@@ -339,7 +339,7 @@ fn heritage_links_name_bases_of_classes_and_interfaces() {
     assert!(
         found
             .iter()
-            .any(|message| message.contains("`implements` is not a heritage of a interface")),
+            .any(|message| message.contains("`implements` heritage is not allowed on this interface")),
         "{found:#?}"
     );
     let mut graph = heritage().build();
@@ -348,7 +348,7 @@ fn heritage_links_name_bases_of_classes_and_interfaces() {
     assert!(
         found
             .iter()
-            .any(|message| message.contains("`implements` is not a heritage of a class")),
+            .any(|message| message.contains("`implements` heritage is not allowed on this class")),
         "{found:#?}"
     );
 
@@ -366,7 +366,7 @@ fn heritage_links_name_bases_of_classes_and_interfaces() {
     // A function has no heritage.
     let mut graph = typed().build();
     types(&mut graph, CHARGE).type_links[0].heritage = Some(Heritage::Extends);
-    assert_violation(&graph, "`extends` is not a heritage of a function");
+    assert_violation(&graph, "`extends` heritage is not allowed on this function");
 }
 
 #[test]

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Card, Frame, Page } from "../../ipc/generated";
 import { page } from "../../test/workspace";
 import { removeCard, removeItems, removeLink } from "./document";
-import { addFrame, addToFrame, frameChain, frameItems, frameOf, moveFrame, nestFrame, removeFrame, setFrameMembers, updateFrame } from "./frames";
+import { addFrame, addToFrame, frameChain, frameItems, frameOf, frameRemoval, moveFrame, nestFrame, nestingRemoval, removeFrame, setFrameMembers, updateFrame } from "./frames";
 
 const card = (id: string, at: [number, number] = [0, 0]): Card => ({ id, ref: { block: `src/a.ts#function:${id}` }, at });
 const frame = (id: string, members: string[], extra: Partial<Frame> = {}): Frame => ({ id, title: id, members, look: "box", author: "agent:claude", ...extra });
@@ -86,6 +86,23 @@ describe("frames on a page", () => {
     });
     expect(cleared.frames?.[0]).toMatchObject({ title: "Order API", collapsed: true });
     expect(cleared.frames?.[0]?.description).toBeUndefined();
+  });
+
+  it("says what nesting a frame and removing one take with them: frames left empty, and what would dangle", () => {
+    const start = framed({
+      frames: [frame("p", ["h"]), frame("h", ["f"]), frame("f", ["a", "b"])],
+      links: [
+        { id: "to-h", from: "c", to: "h" },
+        { id: "to-p", from: "c", to: "p" },
+      ],
+    });
+    expect(nestingRemoval(start, "f", null)).toEqual(new Set(["h", "to-h", "p", "to-p"]));
+    // The new parent holds it, so it stays.
+    expect(nestingRemoval(start, "f", "p")).toEqual(new Set(["h", "to-h"]));
+    expect(nestingRemoval(start, "f", "h")).toEqual(new Set());
+    // Kept members take the frame's place, so the frame around it stays; else they go too.
+    expect(frameRemoval(start, "h", true)).toEqual(new Set(["h", "to-h"]));
+    expect(frameRemoval(start, "h", false)).toEqual(new Set(["h", "f", "a", "b", "to-h", "p", "to-p"]));
   });
 
   it("removes a frame keeping its members in its place; a note attached to it stays where it was", () => {

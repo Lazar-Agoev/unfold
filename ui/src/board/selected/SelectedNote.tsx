@@ -1,9 +1,12 @@
 /**
  * Selected for a note (design §4.8): its text (edited in place, which makes it yours) and who wrote it,
  * what it is attached to (selecting it) or that it is free, and Remove note. Notes aren't signed and
- * have no health.
+ * have no health. The file holds a note's text trimmed, so while you type the field shows what you
+ * typed (a space before the next word, a line break) and saves it trimmed; leaving it shows the saved
+ * text.
  */
 
+import { useState } from "react";
 import { Button } from "../../components";
 import type { Note } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
@@ -17,10 +20,12 @@ const NOTE_FIELD = "selected.note";
 export function SelectedNote({ target, note }: { readonly target: PageTarget; readonly note: Note }) {
   const author = useAuthor();
   const page = useOpenBoard(target.board, (board) => findPage(board.document, target.page));
+  const [draft, setDraft] = useState<string | null>(null);
   if (!page) {
     return null;
   }
   const { attach } = note;
+  const text = draft ?? note.text;
   return (
     <>
       <div className="selected-identity">
@@ -47,15 +52,19 @@ export function SelectedNote({ target, note }: { readonly target: PageTarget; re
       </div>
       <AuthoredField
         label="Note"
-        value={{ text: note.text, author: note.author, signature: "" }}
+        value={{ text, author: note.author, signature: "" }}
         placeholder="What a reader would otherwise miss…"
         focusKey={NOTE_FIELD}
         disabledReason={author === null ? "Loading who you are…" : null}
-        status={<span className="authored-note">{`${noteLength(note.text)} of ${NOTE_MAX} characters`}</span>}
-        onChange={(text) => {
+        status={<span className="authored-note">{`${noteLength(text)} of ${NOTE_MAX} characters`}</span>}
+        onChange={(typed) => {
           if (author !== null) {
-            editNote(target, note.id, text, author);
+            setDraft(typed);
+            editNote(target, note.id, typed, author);
           }
+        }}
+        onBlur={() => {
+          setDraft(null);
         }}
       />
       <div className="selected-actions">

@@ -115,7 +115,7 @@ export function repairEffect(kind: RepairKind, item: HealthItem, page: Page): st
     case "ungroup":
       return `Removes the group "${name}". Its statements stay where they are.`;
     case "removeLink":
-      return `Removes ${name}. Both cards stay on the page.`;
+      return `Removes ${name}. What it joins stays on the page.`;
     case "removeResource":
       return `Removes ${name} from the page, with the links to it.`;
     case "removeDescription":

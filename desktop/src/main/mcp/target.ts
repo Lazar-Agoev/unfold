@@ -9,7 +9,7 @@
 import type { AgentBoardRef, ViewReport } from "../../shared/agent-api";
 import type { ToolContext } from "./context";
 import type { Page, ProjectRow } from "./engine-types";
-import { cant, ToolError, type ResultPlace } from "./results";
+import { cant, windowRefusal, type ResultPlace } from "./results";
 
 /** What a tool's arguments may name. Any of them may be a link (`unfold://…`), which names the rest. */
 export interface TargetArgs {
@@ -152,12 +152,14 @@ function withDefined<T extends Record<string, string | undefined>>(values: T): {
 }
 
 /**
- * Reads a page (`page` absent: the board's first page) from the window that holds its board,
- * unsaved edits included, else from the board's working file.
+ * Reads a page (`page` absent: the board's first page, as its file has them) from the window that
+ * holds its board, unsaved edits included, else from the board's working file.
  */
 export async function readPage(context: ToolContext, board: AgentBoardRef, page: string | undefined): Promise<ReadPage> {
-  if (page !== undefined) {
-    const held = await context.bridge.read({ board, page });
+  const listed = page === undefined ? await context.engine("read_board", { project: board.project, id: board.id }) : undefined;
+  const id = page ?? listed?.document.pages[0]?.id;
+  if (id !== undefined) {
+    const held = await context.bridge.read({ board, page: id });
     if (held.ok) {
       return {
         page: held.page as unknown as Page,
@@ -169,15 +171,15 @@ export async function readPage(context: ToolContext, board: AgentBoardRef, page:
       };
     }
     if (held.code !== "board_not_open") {
-      throw new ToolError(held.message, held.code);
+      throw windowRefusal(held);
     }
   }
-  const file = await context.engine("read_board", { project: board.project, id: board.id });
-  const found = page === undefined ? file.document.pages[0] : file.document.pages.find((item) => item.id === page);
+  const file = listed ?? (await context.engine("read_board", { project: board.project, id: board.id }));
+  const found = file.document.pages.find((item) => item.id === id);
   if (!found) {
     throw cant(
       "find the page",
-      `the board “${file.document.title}” has no page with id “${page ?? ""}”`,
+      `the board “${file.document.title}” has no page with id “${id ?? ""}”`,
       `Its pages: ${file.document.pages.map((item) => `${item.title} (id ${item.id})`).join(", ")}.`,
     );
   }

@@ -603,7 +603,7 @@ fn put<'s>(
 /// verified source: resource cards with their descriptions, connections that cite code with
 /// their descriptions and labels, and frame descriptions. A resource card or connection whose
 /// parts changed since `previous` is signed again; signed text stays as it is (it goes outdated
-/// when its code changed).
+/// when its code changed), except a link label signed over its ends before the link cited code.
 pub(super) fn sign(
     page: &mut Page,
     previous: Option<&Page>,
@@ -641,9 +641,13 @@ pub(super) fn sign(
     }
     for index in 0..page.links.len() {
         let link = &page.links[index];
-        let moved = previous.and_then(|old| old.link(&link.id)).is_some_and(|old| {
+        let old = previous.and_then(|old| Some((old, old.link(&link.id)?)));
+        let moved = old.is_some_and(|(_, old)| {
             (&old.from, &old.step, &old.anchors) != (&link.from, &link.step, &link.anchors)
         });
+        // A link that cited no code had its label signed over its ends: it is signed over the
+        // code it cites now, not reported outdated.
+        let rebased = old.is_some_and(|(old_page, old)| !cites(old_page, old));
         let current = connection_signed(page, graphs, link);
         if current == Signed::Nothing {
             continue;
@@ -651,6 +655,9 @@ pub(super) fn sign(
         let link = &mut page.links[index];
         if moved {
             link.signature = None;
+        }
+        if let Some(label) = link.label.as_mut().filter(|_| rebased) {
+            label.signature = None;
         }
         let what = format!("connection `{}`", link.id);
         let texts = [link.description.as_mut(), link.label.as_mut()]
@@ -757,19 +764,23 @@ fn cited<'g>(
                     what: what.to_owned(),
                 });
             }
-            Found::NotConnected => {
-                let project = part.project().map_or("", ProjectName::as_str);
-                return Err(refuse(
-                    page,
-                    target.clone(),
-                    format!(
-                        "Can't check {what}: it cites {project}, which is not connected. Connect that project, or cite code of a connected one"
-                    ),
-                ));
-            }
+            Found::NotConnected => return Err(not_connected(page, target, what, part.project())),
         }
     }
     Ok(bytes)
+}
+
+/// The refusal of claim `what`, which cites `project`, which is not connected: it can't be
+/// grounded.
+fn not_connected(page: &Page, target: &Target, what: &str, project: Option<&ProjectName>) -> BoardError {
+    let project = project.map_or("", ProjectName::as_str);
+    refuse(
+        page,
+        target.clone(),
+        format!(
+            "Can't check {what}: it cites {project}, which is not connected. Connect that project, or cite code of a connected one"
+        ),
+    )
 }
 
 /// Whether `needle` appears in any of `haystacks`.
@@ -1025,7 +1036,8 @@ fn calls_step(
     }
 }
 
-/// Refuses a carried type that neither the step's function nor an anchor's block uses.
+/// Refuses a carried type that neither the step's function nor an anchor's block uses, or that
+/// is in a project that isn't connected.
 fn carried(
     page: &Page,
     graphs: &PageGraphs<'_>,
@@ -1036,7 +1048,12 @@ fn carried(
 ) -> Result<(), BoardError> {
     let project = link.carries_project.as_ref();
     let Some(graph) = graphs.get(project) else {
-        return Ok(());
+        return Err(not_connected(
+            page,
+            target,
+            &format!("the connection {what}"),
+            project,
+        ));
     };
     let owner = link
         .step

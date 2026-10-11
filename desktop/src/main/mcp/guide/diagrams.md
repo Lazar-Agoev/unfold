@@ -157,8 +157,8 @@ Diagram.
 - Brief: the groups and what each achieves.
 - group_steps, then label_steps (writing topic), then set_view to show the card in Flow
   and collapse the groups.
-- check (unlabeled steps count those inside collapsed groups too, since they show
-  when the person expands a group), get_screenshot({item: <the card's id>}).
+- check (unlabeled steps leave out those a collapsed group hides, which still show
+  when the person expands it), get_screenshot({item: <the card's id>}).
 
 ### Service map
 "Show me the services." A zone, and a box per application in Diagram with its

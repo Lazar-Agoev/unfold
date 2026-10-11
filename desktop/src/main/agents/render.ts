@@ -223,11 +223,7 @@ export class PageRenderer {
   checkBoard(request: { readonly board: AgentBoardRef }): Promise<BoardChecksOutcome> {
     return this.serialized(async () => {
       const { board } = request;
-      const opened = await this.options.bridge.open({ board });
-      if (!opened.ok) {
-        return opened;
-      }
-      const health = await this.health(opened.windowId, board);
+      const health = await this.heldHealth(board);
       if (!health.ok) {
         return health;
       }
@@ -337,7 +333,7 @@ export class PageRenderer {
     const size = image.getSize(scale);
     const notes = [
       ...(frame.zoom < 1 ? [`Drawn at ${Math.round(frame.zoom * 100)}% to fit ${MAX_IMAGE_SIDE.toLocaleString("en-US")} px on its long side; take a frame's or a card's image to read it closer.`] : []),
-      ...(source.health === null ? ["No review banners: no window holds the board, so its health isn't known here (check opens it and reports it)."] : []),
+      ...(source.health === null ? ["No review banners: the board's health couldn't be read here (check reports it)."] : []),
     ];
     return { ok: true, png: image.toPNG({ scaleFactor: scale }), width: size.width, height: size.height, ...(notes.length > 0 ? { note: notes.join(" ") } : {}) };
   }
@@ -361,26 +357,35 @@ export class PageRenderer {
    * when none does), with its health; or, when no window holds it, from the board's file.
    */
   private async source(board: AgentBoardRef, page: string, open: boolean): Promise<PageSource | AgentFailure> {
-    let holder = this.options.bridge.views.holder(board);
-    if (holder === undefined && open) {
-      const opened = await this.options.bridge.open({ board, page });
-      if (!opened.ok) {
-        return opened;
+    for (let attempt = 0; ; attempt += 1) {
+      let holder = this.options.bridge.views.holder(board);
+      if (holder === undefined && open) {
+        const opened = await this.options.bridge.open({ board, page });
+        if (!opened.ok) {
+          return opened;
+        }
+        holder = opened.windowId;
       }
-      holder = opened.windowId;
+      if (holder === undefined) {
+        return this.fromFile(board, page);
+      }
+      const read = await this.options.bridge.read({ board, page });
+      // A report that still listed a board the window closed (the bridge forgets it): read the file, or open it again, once.
+      if (!read.ok && read.code === "board_not_open" && (!open || attempt === 0)) {
+        if (!open) {
+          return this.fromFile(board, page);
+        }
+        continue;
+      }
+      if (!read.ok) {
+        return read;
+      }
+      const health = await this.health(holder, board);
+      if (!health.ok && open) {
+        return health;
+      }
+      return { ok: true, page: read.page, title: read.board.title, health: health.ok ? health.view : null };
     }
-    if (holder === undefined) {
-      return this.fromFile(board, page);
-    }
-    const read = await this.options.bridge.read({ board, page });
-    if (!read.ok) {
-      return read.code === "board_not_open" && !open ? this.fromFile(board, page) : read;
-    }
-    const health = await this.health(holder, board);
-    if (!health.ok && open) {
-      return health;
-    }
-    return { ok: true, page: read.page, title: read.board.title, health: health.ok ? health.view : null };
   }
 
   /** The page as the board's working file has it, without claiming the board. */
@@ -400,6 +405,25 @@ export class PageRenderer {
   }
 
   /** The board's health and pages' outlines, as the window holding it sees them. */
+  /**
+   * The board's health, as the window that holds it (opening the board in a background tab when none
+   * does). A report that still listed a board the window let go of fails with `board_not_held`: the
+   * bridge forgets it and the board is opened again, once.
+   */
+  private async heldHealth(board: AgentBoardRef): Promise<{ readonly ok: true; readonly view: BoardHealthView } | AgentFailure> {
+    for (let attempt = 0; ; attempt += 1) {
+      const opened = await this.options.bridge.open({ board });
+      if (!opened.ok) {
+        return opened;
+      }
+      const health = await this.health(opened.windowId, board);
+      if (health.ok || health.code !== "board_not_held" || attempt > 0) {
+        return health;
+      }
+      this.options.bridge.views.released(opened.windowId, board);
+    }
+  }
+
   private async health(windowId: number, board: AgentBoardRef): Promise<{ readonly ok: true; readonly view: BoardHealthView } | AgentFailure> {
     try {
       const view = (await this.options.engine.untrusted(windowId, "board_health", { project: board.project, id: board.id })) as BoardHealthView;

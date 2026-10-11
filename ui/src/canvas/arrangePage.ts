@@ -7,16 +7,19 @@
  * by their type arrows, as calls. A connection orders its ends as data flows: a `reads` connection's
  * resource card goes before the code that reads it, any other after the side that acts; drawn links
  * don't count. A note attached to a card, resource card, or frame goes under it (several in id order),
- * and the item takes room for them; free notes and notes on links aren't placed.
+ * and the item takes room for them; once the items are placed, a note on a link goes beside its line's
+ * middle, clear of them (`lineNoteSpots`); free notes aren't placed.
  *
  * It is deterministic: the order of the items depends only on what they are and where they are now,
  * so arranging again changes nothing. A page without frames arranges exactly as it did before frames.
  */
 
 import type { Frame, FrameDirection, Link, Note } from "../ipc/generated";
+import { frameChain } from "../state/boards/frames";
 import type { Arrow } from "./arrows";
-import { framePadding, type FramedPage } from "./frames/geometry";
+import { NOTE_GAP, framePadding, pageGeometry, type FramedPage } from "./frames/geometry";
 import { HEADER_PORT, arrange, boundsOf, type ArrangeCall, type Point, type Rect, type Size } from "./layout";
+import { lineMiddle, lineNoteSpot } from "./notes/spots";
 
 export interface ArrangeInput {
   readonly page: FramedPage & { readonly links: readonly Link[] };
@@ -48,9 +51,6 @@ interface Drawn {
   readonly top: number;
   readonly own: boolean;
 }
-
-/** The gap between an item and a note under it. */
-const NOTE_GAP = 12;
 
 /** A node at one level: a card, a resource card, or a frame as one block, with the notes under it. */
 interface Block {
@@ -122,7 +122,8 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
     return { size: { width, height }, notes };
   };
 
-  // Where an item is now: as drawn, else its saved position, else (a hidden frame) the top-left of what it holds.
+  // Where an item is now: as drawn, else its saved position, else (a hidden frame) where its box's
+  // top-left would be: the top-left of what it holds, less its padding.
   const corners = new Map<string, Point>();
   const corner = (id: string, seen: ReadonlySet<string> = new Set()): Point => {
     const known = corners.get(id);
@@ -131,9 +132,12 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
     }
     const rect = rects.get(id);
     const leaf = leaves.get(id);
+    const frame = frames.get(id);
     const inner = new Set([...seen, id]);
-    const members = seen.has(id) ? [] : (frames.get(id)?.members ?? []).filter((member) => leaves.has(member) || frames.has(member)).map((member) => corner(member, inner));
-    const point = rect ?? (leaf ? { x: leaf.at[0], y: leaf.at[1] } : boundsOf(members.map((at) => ({ ...at, width: 0, height: 0 }))) ?? { x: 0, y: 0 });
+    const members = seen.has(id) ? [] : (frame?.members ?? []).filter((member) => leaves.has(member) || frames.has(member)).map((member) => corner(member, inner));
+    const held = boundsOf(members.map((at) => ({ ...at, width: 0, height: 0 })));
+    const padding = frame ? framePadding(frame) : undefined;
+    const point = rect ?? (leaf ? { x: leaf.at[0], y: leaf.at[1] } : held && padding ? { x: held.x - padding.left, y: held.y - padding.top } : { x: 0, y: 0 });
     corners.set(id, { x: point.x, y: point.y });
     return { x: point.x, y: point.y };
   };
@@ -271,4 +275,35 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
     place(block, positions.get(block.id) ?? origin);
   }
   return result;
+}
+
+/**
+ * Where Arrange puts the notes on links, once the items they join are placed (`page` as arranged):
+ * each beside its line's middle (`lineNoteSpot`), in id order, clear of the cards, resource cards,
+ * collapsed frames, and other notes drawn, the notes it placed before, and the frames the line doesn't
+ * start or end in. A note whose line isn't drawn between its own ends (one is hidden in a collapsed
+ * frame) stays as it is. `links`, when given, limits it to the notes on those links.
+ */
+export function lineNoteSpots(page: FramedPage & { readonly links: readonly Link[] }, sizeOf: (id: string) => Size, links?: ReadonlySet<string>): Record<string, [number, number]> {
+  const lines = new Map(page.links.filter((link) => links?.has(link.id) ?? true).map((link) => [link.id, link]));
+  const notes = (page.notes ?? []).filter((note) => note.attach !== undefined && lines.has(note.attach)).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const placing = new Set(notes.map((note) => note.id));
+  const { rects } = pageGeometry(page, sizeOf);
+  const occupied = [...rects].filter(([id]) => !placing.has(id));
+  const spots: Record<string, [number, number]> = {};
+  for (const note of notes) {
+    const link = note.attach !== undefined ? lines.get(note.attach) : undefined;
+    const from = link ? rects.get(link.from) : undefined;
+    const to = link ? rects.get(link.to) : undefined;
+    if (!link || !from || !to || !rects.has(note.id)) {
+      continue;
+    }
+    // The frames around its ends hold the line, so the note may sit in them.
+    const around = new Set([...frameChain(page, link.from), ...frameChain(page, link.to)].map((frame) => frame.id));
+    const size = sizeOf(note.id);
+    const [x, y] = lineNoteSpot(lineMiddle(from, to), size, occupied.flatMap(([id, rect]) => (around.has(id) ? [] : [rect])));
+    spots[note.id] = [x, y];
+    occupied.push([note.id, { x, y, ...size }]);
+  }
+  return spots;
 }

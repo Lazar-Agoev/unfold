@@ -43,6 +43,23 @@ describe("a table's columns", () => {
     ]);
   });
 
+  it("list a field the type redeclares once: its own, else the nearest base's", () => {
+    const redeclared: TypeDefinition = {
+      ...order,
+      members: [member("id", "string"), member("email", "Email")],
+      inherited: [
+        { from: plain("OrderDraft"), members: [member("email", "string"), member("customerId", "string")] },
+        { from: plain("Draft"), members: [member("customerId", "number"), member("note", "string")] },
+      ],
+    };
+    expect(tableColumns(table({ type: order.key }), redeclared).map((column) => [column.name, columnTypeText(column), column.from])).toEqual([
+      ["id", "string", undefined],
+      ["email", "Email", undefined],
+      ["customerId", "string", "OrderDraft"],
+      ["note", "string", "Draft"],
+    ]);
+  });
+
   it("wait for the type's definition, and are what a table lists itself as written", () => {
     expect(tableColumns(table({ type: order.key }), null)).toEqual([]);
     const own = tableColumns(table({ columns: [{ name: "sku", type: "text", key: "unique" }, { name: "note", optional: true }] }), null);

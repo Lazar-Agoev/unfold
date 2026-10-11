@@ -157,6 +157,19 @@ describe("editing a board's pages for an agent", () => {
     expect(await editBoardForAgent({ requestId: 5, board: REF, agent: CLAUDE, title: "Edit pages", ops: [{ op: "move_page", page: "page-1", to: 3 }] })).toMatchObject({ ok: false, code: "invalid_op" });
     expect(await editBoardForAgent({ requestId: 6, board: { project: P, id: "other.json" }, agent: CLAUDE, title: "Edit pages", ops: [] })).toMatchObject({ ok: false, code: "board_not_open" });
   });
+
+  it("counts a person's connection and a drawn link on a page as their words, as remove_items does", async () => {
+    const B = { ...CARD, id: "b", at: [600, 0] as [number, number] };
+    const connected = { ...page("page-2", [CARD, B], { links: [{ id: "posts", kind: "http", from: "a", to: "b", author: "person:lazar" }] }), title: "Scratch" };
+    const drawn = { ...page("page-3", [CARD, B], { links: [{ id: "a-to-b", from: "a", to: "b" }] }), title: "Sketch" };
+    openWith(boardDocument([page("page-1", [CARD]), connected, drawn]));
+    const deleting = (id: string) => editBoardForAgent({ requestId: 1, board: REF, agent: CLAUDE, title: "Edit pages", ops: [{ op: "delete_page", page: id }] });
+    const person = await deleting("page-2");
+    expect(!person.ok && person.message).toContain("Can't change the http connection on the page “Scratch”: Lazar wrote it.");
+    const line = await deleting("page-3");
+    expect(!line.ok && line.message).toContain("Can't change the link a person drew on the page “Sketch”: a person wrote it.");
+    expect(saved).toEqual([]);
+  });
 });
 
 describe("showing a board for an agent", () => {

@@ -11,7 +11,7 @@
 
 import { useMemo } from "react";
 import { queryClient } from "../../ipc/client";
-import type { Card, CardRef, CardView, Key, LinkKind, ProjectId, ProjectName, View } from "../../ipc/generated";
+import type { Card, CardRef, CardView, Key, LinkKind, Page, ProjectId, ProjectName, View } from "../../ipc/generated";
 import { cardQuery } from "../../canvas/cardData";
 import { fallbackItemSize, pageGeometry } from "../../canvas/frames/geometry";
 import { handlerPlacement, newCardPlacement, type Rect } from "../../canvas/layout";
@@ -42,7 +42,7 @@ import {
   type GroupChange,
 } from "./document";
 import { setConnectionKind, setLinkDescription } from "./connections";
-import { frameChain, removeFrame as removeFrameFrom, updateFrame, type FrameChange } from "./frames";
+import { findFrame, frameChain, removeFrame as removeFrameFrom, updateFrame, type FrameChange } from "./frames";
 import { findNote, setNoteText } from "./notes";
 import { findResource, setResourceDescription } from "./resources";
 import { cardRefKey, boardKey } from "./keys";
@@ -299,8 +299,26 @@ export function removeCard(target: PageTarget, cardId: string): void {
   });
 }
 
-/** Selects a frame and brings it into view. */
+/** Expands the collapsed frames around item `id` of the page (one undo step), so the item is drawn. */
+function expandAround(target: PageTarget, page: Page, id: string): void {
+  const around = frameChain(page, id).filter((frame) => frame.collapsed === true);
+  if (around.length > 0) {
+    editPage(target, (draft) => {
+      for (const frame of around) {
+        updateFrame(draft, frame.id, { collapsed: false });
+      }
+    });
+  }
+}
+
+/** Selects a frame and brings it into view, expanding the collapsed frames around it. */
 export function focusFrame(target: PageTarget, frameId: string): void {
+  const board = getOpenBoard(target.board);
+  const page = board ? findPage(board.document, target.page) : undefined;
+  if (!page || !findFrame(page, frameId)) {
+    return;
+  }
+  expandAround(target, page, frameId);
   select(target, { kind: "frame", frameId });
   requestCardFocus(target, [frameId], "fit");
 }
@@ -411,14 +429,7 @@ export function focusItem(target: PageTarget, id: string): void {
   if (!page || (!resource && !findNote(page, id))) {
     return;
   }
-  const around = frameChain(page, id).filter((frame) => frame.collapsed === true);
-  if (around.length > 0) {
-    editPage(target, (draft) => {
-      for (const frame of around) {
-        updateFrame(draft, frame.id, { collapsed: false });
-      }
-    });
-  }
+  expandAround(target, page, id);
   select(target, resource ? { kind: "resource", resourceId: id } : { kind: "note", noteId: id });
   requestCardFocus(target, [id], "center");
 }

@@ -209,6 +209,23 @@ describe("frames in the sidebar", () => {
     expect(store.getPageView(PAGE).selection).toEqual({ kind: "frame", frameId: "server" });
   });
 
+  it("merges drawn links at a collapsed frame into one line whose label counts them and selects nothing", async () => {
+    open({
+      frames: [frame("server", ["create-order", "place"], { collapsed: true })],
+      links: [
+        { id: "first", from: "create-order", to: "slack", label: { text: "posts", author: "person:maya", signature: "" } },
+        { id: "second", from: "place", to: "slack" },
+      ],
+    });
+    const { container } = renderBoard();
+    const label = await waitFor(() => present(container.querySelector<HTMLElement>(".board-link-label")));
+    expect(label.textContent).toBe("2 links");
+    act(() => {
+      fireEvent.click(label);
+    });
+    expect(store.getPageView(PAGE).selection).toEqual({ kind: "none" });
+  });
+
   it("Selected shows a frame's title, look, author, description, members, and lines in and out", () => {
     open({
       frames: [frame("system", ["server"], { look: "zone", title: "Order system" }), frame("server", ["create-order", "place"], { title: "Order API" })],

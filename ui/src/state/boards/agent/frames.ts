@@ -3,18 +3,16 @@
  * description, members, look, icon, parent, direction, and whether it is collapsed. An item is in one
  * frame, so members come from no frame, from the frame itself, or from the parent it is nested in;
  * frames nest at most three deep and never in a cycle. A frame's title and description are a person's
- * words when a person wrote them. The result names each frame and what it holds, and notes shared code
- * that is in no frame though code in several frames calls it.
+ * words when a person wrote them, also when moving a frame out leaves theirs empty (it would go). The
+ * result names each frame and what it holds, and notes shared code that is in no frame though code in
+ * several frames calls it.
  */
 
 import type { AgentFrameMember, AgentFrameResult, AgentFrameSpec, AgentItemResult, AgentItemStatus, FrameCardsOp } from "@unfold/desktop/agent-api";
 import type { Frame, Page } from "../../../ipc/generated";
 import { findCard, isFreeId } from "../document";
-import { MAX_FRAME_DEPTH, addFrame, findFrame, frameChain, frameItems, frameOf, nestFrame, setFrameMembers, updateFrame } from "../frames";
-import { cardName, guardPeopleText, invalid, pageArrows, type OpContext } from "./context";
-
-/** A note's words as a member's name: its start, cut at 40 characters. */
-const NOTE_NAME = 40;
+import { MAX_FRAME_DEPTH, addFrame, findFrame, frameChain, frameItems, frameOf, nestFrame, nestingRemoval, setFrameMembers, updateFrame } from "../frames";
+import { cardName, guardPeopleText, guardRemoval, invalid, noteName, pageArrows, type OpContext } from "./context";
 
 /** What an item of the page is, for frames' rules and results. */
 function itemKind(page: Page, id: string): AgentFrameMember["kind"] | "group" | "link" | null {
@@ -46,8 +44,8 @@ function memberName(ctx: OpContext, page: Page, id: string): string {
   if (named !== undefined) {
     return named;
   }
-  const text = (page.notes ?? []).find((item) => item.id === id)?.text ?? id;
-  return text.length > NOTE_NAME ? `${text.slice(0, NOTE_NAME - 1)}…` : text;
+  const note = (page.notes ?? []).find((item) => item.id === id);
+  return note ? noteName(note) : id;
 }
 
 /** A frame's result entry: what it is, where it is nested, and what it holds. */
@@ -169,6 +167,8 @@ function applyFrameSpec(ctx: OpContext, page: Page, spec: AgentFrameSpec, replac
     const before = JSON.stringify([self, frameOf(page, self.id)?.id]);
     updateFrame(page, self.id, { title, author, ...description, ...shown });
     if (spec.parent !== undefined) {
+      // A frame it leaves empty goes, and with it what would dangle: a person's words among them stay theirs.
+      guardRemoval(ctx, page, nestingRemoval(page, self.id, spec.parent), replacePeopleText);
       nestFrame(page, self.id, spec.parent);
     }
     setFrameMembers(page, self.id, members);

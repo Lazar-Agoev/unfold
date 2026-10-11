@@ -3,7 +3,7 @@ import type { Card, Frame, Note, Resource } from "../../ipc/generated";
 import { STACK_GAP, fallbackSize } from "../layout";
 import { estimateText } from "../measure";
 import { frameNodeSize } from "../sizing";
-import { attachPoint, collapsedPlaces, fallbackItemSize, framePadding, pageGeometry, type FramedPage } from "./geometry";
+import { NOTE_GAP, attachPoint, collapsedPlaces, fallbackItemSize, framePadding, pageGeometry, type FramedPage } from "./geometry";
 
 const card = (id: string, at: [number, number]): Card => ({ id, ref: { block: `src/a.ts#function:${id}` }, at });
 const frame = (id: string, members: string[], extra: Partial<Frame> = {}): Frame => ({ id, title: id, members, look: "box", author: "agent:claude", ...extra });
@@ -142,20 +142,55 @@ describe("notes", () => {
       resources: [resource],
       frames: [frame("server", ["b"])],
       links: [{ id: "l", from: "a", to: "b" }],
-      notes: [note("on-card", [0, 120], { attach: "a" }), note("on-table", [10, -50], { attach: "orders" }), note("on-frame", [0, -80], { attach: "server" }), note("on-link", [0, 30], { attach: "l" })],
+      notes: [note("on-card", [0, 120], { attach: "a" }), note("on-table", [10, -50], { attach: "orders" }), note("on-frame", [0, -100], { attach: "server" }), note("on-link", [0, 30], { attach: "l" })],
     };
     const sizes = (id: string) => (id === "orders" ? NODE : sized(page)(id));
     const { rects } = pageGeometry(page, sizes);
     expect(rects.get("on-card")).toMatchObject({ x: 0, y: 120 });
     expect(rects.get("on-table")).toMatchObject({ x: 610, y: -50 });
-    // A frame's offset starts where what it holds starts (its box's corner inside its padding).
-    expect(rects.get("on-frame")).toMatchObject({ x: 400, y: 120 });
+    // A frame's offset starts where what it holds starts: its cards' top-left.
+    expect(rects.get("on-frame")).toMatchObject({ x: 400, y: 100 });
     // A link's starts at the midpoint of its ends' corners.
     expect(rects.get("on-link")).toMatchObject({ x: 200, y: 130 });
     // Dragging the card takes its note along.
     const dragged = pageGeometry(page, sizes, { id: "a", x: 50, y: 500 }).rects;
     expect(dragged.get("on-card")).toMatchObject({ x: 50, y: 620 });
     expect(attachPoint(page, dragged, "a")).toEqual({ x: 50, y: 500 });
+  });
+
+  it("on a frame start from its cards' and nested frames' points, as the file's rule says, not from boxes or notes", () => {
+    const page: FramedPage = {
+      cards: [card("a", [100, 100]), card("b", [400, 300])],
+      frames: [frame("zone", ["box", "free"], { look: "zone" }), frame("box", ["a", "b"])],
+      notes: [note("free", [0, 0]), note("over-a", [0, -60], { attach: "a" }), note("on-zone", [0, 600], { attach: "zone" })],
+    };
+    const { rects } = pageGeometry(page, sized(page));
+    expect(attachPoint(page, rects, "box")).toEqual({ x: 100, y: 100 });
+    expect(attachPoint(page, rects, "zone")).toEqual({ x: 100, y: 100 });
+    expect(rects.get("on-zone")).toMatchObject({ x: 100, y: 700 });
+  });
+
+  it("sit under their item where their offset would put them over it (the item grew), without a new offset", () => {
+    const resource: Resource = { id: "orders", kind: "table", name: "orders", anchors: [], at: [600, 0], author: "agent:claude" };
+    const page: FramedPage = {
+      cards: [card("a", [0, 0]), card("b", [400, 400])],
+      resources: [resource],
+      frames: [frame("server", ["b"])],
+      notes: [
+        note("on-card", [0, 60], { attach: "a" }),
+        note("beside", [210, 0], { attach: "a" }),
+        note("on-table", [0, 40], { attach: "orders" }),
+        note("on-frame", [0, 50], { attach: "server" }),
+      ],
+    };
+    const { rects } = pageGeometry(page, (id) => (id === "orders" ? NODE : sized(page)(id)));
+    expect(rects.get("on-card")).toMatchObject({ x: 0, y: 100 + NOTE_GAP });
+    expect(rects.get("beside")).toMatchObject({ x: 210, y: 0 });
+    expect(rects.get("on-table")).toMatchObject({ x: 600, y: 80 + NOTE_GAP });
+    expect(rects.get("on-frame")).toMatchObject({ x: 400, y: 400 + 100 + BOX.bottom + NOTE_GAP });
+    expect(page.notes?.[0]?.at).toEqual([0, 60]);
+    // While it is dragged, it follows the pointer.
+    expect(pageGeometry(page, sized(page), { id: "on-card", x: 20, y: 30 }).rects.get("on-card")).toMatchObject({ x: 20, y: 30 });
   });
 
   it("on an item a frame holds are taken in by its box, and the frames around it; one on the frame itself isn't", () => {

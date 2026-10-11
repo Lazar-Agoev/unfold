@@ -15,13 +15,13 @@ import { BoardCanvas, arrangeBoard, showCallers, useBoardArrows } from "../canva
 import { showToast } from "../components";
 import { toUnfoldError, type View } from "../ipc";
 import { ActionIds, requestFocus, useCommandScope, useRegisterActions } from "../keyboard";
+import { exportPng } from "../menus/actions";
 import {
   addPage,
   boardKey,
   canUndo,
   copyPageMermaid,
   exportPageMermaid,
-  exportPagePng,
   findCard,
   findPage,
   foldAll,
@@ -182,22 +182,7 @@ function useBoardActions(target: PageTarget): void {
         }
       },
     },
-    {
-      id: "board.exportPng",
-      title: "Export PNG…",
-      category: "Share",
-      group: "Share",
-      run: async () => {
-        try {
-          const written = await exportPagePng(target);
-          if (written) {
-            showToast({ title: "Exported PNG", body: written.path });
-          }
-        } catch (error) {
-          showToast({ title: "Couldn't export the page as PNG", body: toUnfoldError(error).message, tone: "danger" });
-        }
-      },
-    },
+    { id: "board.exportPng", title: "Export PNG…", category: "Share", group: "Share", run: () => exportPng(target) },
   ]);
 }
 
@@ -214,16 +199,17 @@ function PageStage({ target }: { readonly target: PageTarget }) {
   const linking = usePageView(target, (view) => view.linking !== null);
   // Computed once here: the canvas draws them, Arrange orders by them.
   const boardArrows = useBoardArrows(target, cards);
-  const { arrows } = boardArrows;
+  const { arrows, bodies } = boardArrows;
 
-  // A page shown for the first time fits itself once its cards are measured.
+  // A page shown for the first time fits itself once its cards (or resource cards) are measured.
+  const hasItems = cards.length > 0 || (resources ?? []).length > 0;
   const fitted = useRef(false);
   useEffect(() => {
-    if (!hasCamera && !fitted.current && cards.length > 0) {
+    if (!hasCamera && !fitted.current && hasItems) {
       fitted.current = true;
       requestCardFocus(target, [], "fit");
     }
-  }, [hasCamera, cards.length, target]);
+  }, [hasCamera, hasItems, target]);
 
   const onTravel = useCallback(
     (direction: "back" | "forward") => {
@@ -241,7 +227,7 @@ function PageStage({ target }: { readonly target: PageTarget }) {
   const onZoomOut = useCallback(() => void flow.zoomOut({ duration: 160 }), [flow]);
   const onArrange = useCallback(() => {
     const lookup = store.getState().nodeLookup;
-    const moved = arrangeBoard(target, arrows, (arrow) => {
+    const moved = arrangeBoard(target, arrows, bodies, (arrow) => {
       const bounds = lookup.get(arrow.source)?.internals.handleBounds?.source?.find((item) => item.id === arrow.sourceHandle);
       return bounds ? bounds.y + bounds.height / 2 : undefined;
     });
@@ -259,7 +245,7 @@ function PageStage({ target }: { readonly target: PageTarget }) {
         },
       });
     }
-  }, [target, board, arrows, store]);
+  }, [target, board, arrows, bodies, store]);
 
   useRegisterActions([
     { id: ActionIds.back, title: "Back", category: "Go", icon: "back", run: () => { onTravel("back"); } },
@@ -282,7 +268,7 @@ function PageStage({ target }: { readonly target: PageTarget }) {
         ) : null}
       </div>
       {cards.length === 0 && resources === undefined && notes === undefined ? <p className="board-empty">Open an entrance or a definition to start this page.</p> : null}
-      <Dock target={target} hasCards={cards.length > 0} onTravel={onTravel} onZoomIn={onZoomIn} onZoomOut={onZoomOut} onFit={onFit} onArrange={onArrange} />
+      <Dock target={target} hasItems={hasItems} onTravel={onTravel} onZoomIn={onZoomIn} onZoomOut={onZoomOut} onFit={onFit} onArrange={onArrange} />
     </>
   );
 }

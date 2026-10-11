@@ -106,6 +106,33 @@ describe("search", () => {
     expect(app.engineCalls.at(-1)?.[1]).toMatchObject({ projects: ["p-python0000"] });
     expect((await app.call(search, { query: "x", regex: true })).text).toBe('Can\'t search: regex, caseSensitive, and wholeWord apply to text only. Add "text" to kinds, or leave them out.');
   });
+
+  it("fits the largest page under the size guard, keeping its cursor, and reaches every hit across pages", async () => {
+    const deep = `src/${"very-long-folder-name/".repeat(8)}module.ts`;
+    const many = (kind: string, count: number) =>
+      Array.from({ length: count }, (_, index) => ({ project: PROJECT, key: `${deep}#class:Service${index}/method:${kind}${index}`, name: `${kind}${index}`, qualifiedName: `Service${index}.${kind}${index}`, path: deep, kind: "method", line: index + 1, application: null, score: 1, nameMatches: [] }));
+    const group = (kind: string) => ({ hits: many(kind, 120), total: 120, truncated: false });
+    const app = harness({
+      engine: {
+        search: (args): SearchResults => ({ query: "x", definitions: group(String(args["definitionKinds"])), entrances: group("entrance"), files: { hits: [], total: 0, truncated: false }, projects: [], tookMs: 0 }),
+      },
+    });
+    const seen = new Set<string>();
+    let cursor: string | undefined;
+    for (let calls = 0; calls < 20; calls += 1) {
+      const { text } = await app.call(search, { query: "x", kinds: ["entrances", "functions", "types"], limit: 50, ...(cursor !== undefined ? { cursor } : {}) });
+      expect(text).not.toContain("Cut here");
+      for (const [key] of text.matchAll(/key \S+/g)) {
+        seen.add(key);
+      }
+      cursor = /More: search with cursor "(\d+)"/.exec(text)?.[1];
+      if (cursor === undefined) {
+        break;
+      }
+    }
+    expect(cursor).toBeUndefined();
+    expect(seen.size).toBe(3 * 120);
+  });
 });
 
 describe("list_entrances", () => {
@@ -145,5 +172,38 @@ describe("list_entrances", () => {
     );
     app.report({ board: { project: "p-python0000", id: ".unfold/boards/a.json" }, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [] });
     expect((await app.call(listEntrances, {})).text.split("\n")[0]).toBe("Unfold · py-orders · as Claude");
+  });
+
+  it("fits the largest page of several applications under the size guard, keeping its cursor", async () => {
+    const row = (application: string, index: number) => ({
+      key: `entrance:["manual","command","","${application}-${index}","src/${"very-long-folder-name/".repeat(6)}jobs.ts#${application}${index}"]`,
+      title: `command ${application}-${index}`,
+      kind: "command",
+      method: null,
+      trigger: `${application}-${index}`,
+      triggerStatus: "exact",
+      label: null,
+      detector: "manual",
+      path: ".unfold/config.toml",
+      line: null,
+      language: null,
+      group: null,
+      reaches: 3,
+    });
+    const map = recorded<{ applications: { name: string; total: number; entrances: unknown[] }[]; unreached: { total: number; entrances: unknown[] } }>(entrances);
+    const big = {
+      ...map,
+      applications: map.applications.map((item) => ({ ...item, total: 150, entrances: Array.from({ length: 150 }, (_, index) => row(item.name, index)) })),
+      unreached: { total: 150, entrances: Array.from({ length: 150 }, (_, index) => row("unreached", index)) },
+    };
+    const app = harness({ engine: { entrances: () => big } });
+    const { text } = await app.call(listEntrances, { project: "ts-orders", limit: 100 });
+    expect(text).not.toContain("Cut here");
+    const next = Number(/More: list_entrances with cursor "(\d+)"/.exec(text)?.[1]);
+    expect(next).toBeGreaterThan(0);
+    expect(next).toBeLessThan(100);
+    // Every application shows the same rows, so the cursor skips none.
+    expect(text.match(/^- command cli-/gm)).toHaveLength(next);
+    expect(text.match(/^- command unreached-/gm)).toHaveLength(next);
   });
 });

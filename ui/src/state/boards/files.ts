@@ -10,7 +10,7 @@ import type { BoardSummary, ExportedFile, ProjectId, PublishOutcome, RenamedFold
 import { removeBoardTab, renameBoardTab } from "../tabStore";
 import { findPage, setTitle } from "./document";
 import { call, windowCommand } from "./engine";
-import { adoptBoardState, applyServerState, editBoard, flushBoard, forgetBoard, getOpenBoard } from "./store";
+import { adoptBoardState, editBoard, engineStep, flushBoard, forgetBoard, getOpenBoard } from "./store";
 import type { BoardRef, PageTarget } from "./types";
 
 /** A published board's folder-relative path. */
@@ -105,11 +105,15 @@ export async function renameBoard(ref: BoardRef, title: string): Promise<void> {
   await flushBoard(ref);
 }
 
-/** Applies one health repair (the engine saves it) and adopts the result as one undo step on its page. */
+/**
+ * Applies one health repair (the engine saves it, from the board as saved, its unsaved edits first) and
+ * adopts the result as one undo step on its page; throws when it can't (`engineStep`).
+ */
 export async function repairBoard(ref: BoardRef, repair: RepairSpec): Promise<void> {
-  await flushBoard(ref);
-  const state = await call("repair_board", { project: ref.project, id: ref.id, repair });
-  applyServerState(ref, state, repair.page);
+  const outcome = await engineStep(ref, repair.page, () => call("repair_board", { project: ref.project, id: ref.id, repair }));
+  if (!outcome.ok) {
+    throw outcome.error;
+  }
 }
 
 /** The default file name of a page's export: the board's title, and the page's when there are several. */

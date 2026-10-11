@@ -383,6 +383,22 @@ fn frames_resources_connections_and_notes_are_saved_as_sent() {
     let written = harness.read(&id);
     assert!(written.contains("\"kind\": \"queue\""), "{written}");
     assert!(written.contains("\"defaultView\": \"diagram\""), "{written}");
+    // Its thumbnail draws the cards and the calls between them, not the claims.
+    let thumbnails = harness.ok(
+        2,
+        "board_thumbnails",
+        json!({ "project": harness.project, "boards": [id] }),
+    );
+    let thumbnail = &thumbnails["thumbnails"][0];
+    let cards: Vec<&Value> = thumbnail["cards"]
+        .as_array()
+        .expect("cards")
+        .iter()
+        .map(|card| &card["id"])
+        .collect();
+    assert_eq!(cards, [&json!("create"), &json!("place")]);
+    assert_eq!(thumbnail["edges"], json!([["create", "place"]]));
+    assert_eq!(thumbnail["links"], json!([]), "a connection to a resource card");
 
     // A window that removes an item removes what refers to it too.
     let mut dangling = edit;

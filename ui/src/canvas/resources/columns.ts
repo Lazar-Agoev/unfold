@@ -1,7 +1,7 @@
 /**
  * A table card's columns (design §4.6). A table backed by a type lists the type's fields, compiled:
  * its own properties, then those it inherits, base by base (`type_definition`'s members and inherited
- * groups), each with its written type and whether it is optional; the board's columns only lay marks
+ * groups; a redeclared field once), each with its written type and whether it is optional; the board's columns only lay marks
  * on them (primary key, foreign key with what it references, unique). A table that lists its own
  * columns shows them as written. A card lists up to 12; the rest are behind "N more". Pure.
  */
@@ -65,10 +65,12 @@ export function tableColumns(resource: Pick<Resource, "kind" | "type" | "columns
     ...marks(byName.get(member.name)),
     ...(from !== undefined ? { from } : {}),
   });
+  // A field a type redeclares is one column: its own, else the nearest base's.
+  const listed = new Set<string>();
   return [
     ...properties(definition.members).map((member) => field(member)),
     ...definition.inherited.flatMap((group) => properties(group.members).map((member) => field(member, group.from.text))),
-  ];
+  ].filter((column) => !listed.has(column.name) && listed.add(column.name));
 }
 
 /** The written type of a column as plain text. */

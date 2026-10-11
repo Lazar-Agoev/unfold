@@ -25,7 +25,7 @@ describe("imageBounds", () => {
 
   it("takes one card, or a frame around its members when the canvas doesn't draw it", () => {
     expect(imageBounds(page("p", cards), drawn(boxes), "b")).toEqual({ ok: true, bounds: boxes.b });
-    expect(imageBounds(page("p", cards, { frames: [frame()] }), drawn(boxes), "api")).toEqual({ ok: true, bounds: { x: -24, y: -24, width: 748, height: 428 } });
+    expect(imageBounds(page("p", cards, { frames: [frame()] }), drawn(boxes), "api")).toEqual({ ok: true, bounds: { x: -16, y: -44, width: 732, height: 440 } });
     const box = { x: -40, y: -60, width: 800, height: 500 };
     expect(imageBounds(page("p", cards, { frames: [frame()] }), drawn({ ...boxes, api: box }), "api")).toEqual({ ok: true, bounds: box });
   });

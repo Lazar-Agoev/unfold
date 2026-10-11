@@ -59,6 +59,9 @@ export class FakeBrowserWindow {
   url: string | null = null;
   contentSize: [number, number];
   maximized = false;
+  minimized = false;
+  /** How many times the window was shown. */
+  shows = 0;
   private destroyed = false;
   private readonly handlers = new Map<string, (() => void)[]>();
   private readonly contentsHandlers = new Map<string, () => void>();
@@ -99,16 +102,17 @@ export class FakeBrowserWindow {
     return this.maximized;
   }
   isMinimized(): boolean {
-    return false;
+    return this.minimized;
   }
   maximize(): void {
     this.maximized = true;
   }
   restore(): void {
     this.maximized = false;
+    this.minimized = false;
   }
   show(): void {
-    // Shown windows need no state here.
+    this.shows += 1;
   }
   focus(): void {
     FakeBrowserWindow.focused = this;
@@ -195,6 +199,9 @@ export const ipcHandlers = new Map<string, InvokeHandler>();
 /** What `clipboard.writeText` received. */
 export const clipboardTexts: string[] = [];
 
+/** The options of every `app.focus` call. */
+export const appFocuses: unknown[] = [];
+
 /** Forgets every window, handler, and dialog answer. */
 export function resetFakeElectron(): void {
   FakeBrowserWindow.focused = null;
@@ -203,6 +210,7 @@ export function resetFakeElectron(): void {
   forked.length = 0;
   ipcHandlers.clear();
   clipboardTexts.length = 0;
+  appFocuses.length = 0;
   dialogs.folder = null;
   dialogs.savePath = null;
   dialogs.response = 0;
@@ -237,7 +245,12 @@ export const electronModule = {
       return Promise.resolve({ response: dialogs.response });
     },
   },
-  app: { getPath: () => "/Users/me/Documents" },
+  app: {
+    getPath: () => "/Users/me/Documents",
+    focus: (options?: unknown) => {
+      appFocuses.push(options);
+    },
+  },
   nativeTheme: { shouldUseDarkColors: false },
   screen: {
     getPrimaryDisplay: () => ({ id: 1, workArea }),

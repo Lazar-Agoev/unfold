@@ -475,6 +475,22 @@ fn claims_are_signed_over_the_code_they_cite() {
     let references = saved.references(None);
     assert_eq!(references.tables, [ORDER]);
     assert_eq!(references.files, [&RepoPath::new(SCHEMA_FILE).unwrap()]);
+
+    // A drawn link given a kind and a step cites code: its label, signed over its ends before,
+    // is signed over that code, not reported outdated.
+    let mut cited = saved.clone();
+    let link = cited.pages[0]
+        .links
+        .iter_mut()
+        .find(|link| link.id == "drawn")
+        .unwrap();
+    link.kind = Some(LinkKind::Calls);
+    link.author = Some(person());
+    link.step = Some(Key::from_text(INSERT));
+    let (resaved, health) = save(cited, Some((&saved, &health)), &loaded).unwrap();
+    assert!(health.is_healthy(), "{:#?}", health.items);
+    let link = resaved.pages[0].link("drawn").unwrap();
+    assert_eq!(link.label.as_ref().unwrap().signature, link.signature);
 }
 
 #[test]
@@ -1068,7 +1084,7 @@ fn claims_citing_a_project_that_is_not_connected_are_kept_unchecked() {
     board.refresh_projects();
     let (saved, health) = save(board.clone(), None, &loaded).unwrap();
     assert!(health.is_healthy());
-    assert_eq!(saved.projects, [web]);
+    assert_eq!(saved.projects, std::slice::from_ref(&web));
     assert_eq!(
         saved.pages[0].resources[0].signature, None,
         "signed once connected"
@@ -1079,6 +1095,21 @@ fn claims_citing_a_project_that_is_not_connected_are_kept_unchecked() {
         refusal(board, &loaded),
         "Can't check the queue \"orders\": it cites web, which is not connected. Connect that project, or cite code of a connected one"
     );
+    // Nor can a type it says a connection carries.
+    let mut board = self::board(&graph);
+    board.pages[0].links.push(Link {
+        anchors: vec![key(QUEUE)],
+        carries: Some(Key::from_text("api.ts#interface:Job")),
+        carries_project: Some(web),
+        ..connection("enqueue", LinkKind::Queue, "create", "worker")
+    });
+    board.refresh_projects();
+    assert_eq!(
+        refusal(board.clone(), &loaded),
+        "Can't check the connection createOrder to worker orders (queue): it cites web, which is not connected. Connect that project, or cite code of a connected one"
+    );
+    board.pages[0].links[0].author = Some(person());
+    save(board, None, &loaded).unwrap();
 }
 
 #[test]

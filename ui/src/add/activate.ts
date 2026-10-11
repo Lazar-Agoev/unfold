@@ -1,7 +1,7 @@
 /**
  * What Enter does with Add's selection: an entrance or a definition goes onto the current page (⌘Enter:
- * onto a new page after it; a type declaration as a Code card); from Home it starts a new draft in the
- * result's own project. A file opens in the peek sheet; a text match opens it at its line.
+ * onto a new page after it; a type declaration as a Diagram card, its fields); from Home it starts a new
+ * draft in the result's own project. A file opens in the peek sheet; a text match opens it at its line.
  */
 
 import { showToast } from "../components";

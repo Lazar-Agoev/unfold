@@ -3,7 +3,7 @@ import type { AgentEditSuccess, AgentFailure, AgentItemResult, AgentOp } from "@
 import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { queryClient } from "../../../ipc/client";
-import type { BoardDocument, Card, CardView, Frame, Page, Relations } from "../../../ipc/generated";
+import type { BoardDocument, Card, CardView, Frame, Page, Relations, Resource } from "../../../ipc/generated";
 import { engineKey } from "../../../ipc/queries";
 import { fixture, installFakeEngine, type FakeEngine } from "../../../test/engine";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../../../test/workspace";
@@ -227,6 +227,20 @@ describe("frame_cards", () => {
     await edit([{ op: "frame_cards", frames: [{ id: "server", title: "Order API", members: ["create-order", "place"] }], replacePeopleText: true }]);
     expect(current().frames?.[0]).toMatchObject({ title: "Order API", author: "agent:claude" });
   });
+
+  it("won't empty a person's frame by taking a frame out of it unless asked, nor what would go with it", async () => {
+    const out = { op: "frame_cards", frames: [{ id: "server", title: "server", members: ["create-order"], parent: null }] } as const;
+    open({ frames: [frame("mine", ["server"], { author: "person:maya", look: "zone" }), frame("server", ["create-order"])] });
+    const refused = await refusal([out]);
+    expect(refused).toMatchObject({ code: "people_text" });
+    expect(refused.message).toContain("Can't change the frame “mine”: Maya wrote it.");
+    // A frame of the agent's that it leaves empty goes, unless a person's line goes with it.
+    open({ frames: [frame("zone", ["server"], { look: "zone" }), frame("server", ["create-order"])], links: [{ id: "to-zone", from: "slack", to: "zone" }] });
+    expect((await refusal([out])).message).toContain("the link a person drew");
+    const moved = await edit([{ ...out, replacePeopleText: true }]);
+    expect(moved.items.map((item) => said(item))).toEqual(["frame server updated", "frame zone removed"]);
+    expect(current()).toMatchObject({ frames: [frame("server", ["create-order"])], links: [] });
+  });
 });
 
 describe("frames in the other operations", () => {
@@ -248,7 +262,10 @@ describe("frames in the other operations", () => {
   });
 
   it("remove_items removes a frame keeping its members in the frame that held it, or with them when asked", async () => {
-    open({ frames: [frame("zone", ["server", "slack"], { look: "zone" }), frame("server", ["create-order", "place"])], links: [{ id: "to-server", from: "slack", to: "server" }] });
+    open({
+      frames: [frame("zone", ["server", "slack"], { look: "zone" }), frame("server", ["create-order", "place"])],
+      links: [{ id: "to-server", kind: "calls", from: "slack", to: "server", author: "agent:claude" }],
+    });
     const kept = await edit([{ op: "remove_items", ids: ["server"] }]);
     expect(kept.items.map((item) => said(item))).toEqual(["frame server removed", "link to-server removed"]);
     expect(current().frames).toEqual([frame("zone", ["create-order", "place", "slack"], { look: "zone" })]);
@@ -272,6 +289,52 @@ describe("frames in the other operations", () => {
     expect(result.items).toMatchObject([{ kind: "card", id: "order-service-place", status: "created", frame: "server" }]);
     expect(current().frames?.[0]?.members).toEqual(["create-order", "order-service-place"]);
     expect((await refusal([{ op: "add_cards", cards: [{ key: SLACK, frame: "nope" }] }])).message).toContain("There is no frame with id “nope”");
+  });
+
+  it("add_resources puts a resource card in a frame from no frame or the frame around it, never out of another frame", async () => {
+    const orders: Resource = { id: "orders", kind: "queue", name: "orders", anchors: [{ key: CREATE }], at: [1600, 0], author: "agent:claude" };
+    open({ frames: [frame("mine", ["orders"], { author: "person:maya" }), frame("server", ["create-order"])], resources: [orders] });
+    const refused = await refusal([{ op: "add_resources", resources: [{ id: "orders", kind: "queue", name: "orders", frame: "server" }] }]);
+    expect(refused).toMatchObject({ code: "invalid_op" });
+    expect(refused.message).toContain("Can't put the queue “orders” (id orders) in the frame “server”: it is in the frame “mine” (id mine)");
+    open({ frames: [frame("zone", ["server", "orders"], { look: "zone" }), frame("server", ["create-order"])], resources: [orders] });
+    const result = await edit([{ op: "add_resources", resources: [{ id: "orders", kind: "queue", name: "orders", frame: "server" }] }]);
+    expect(result.items).toMatchObject([{ kind: "resource", id: "orders", status: "updated", frame: "server" }]);
+    expect(current().frames).toEqual([frame("zone", ["server"], { look: "zone" }), frame("server", ["create-order", "orders"])]);
+  });
+
+  it("add_cards places a card right of a resource card, a frame, or a note it is near", async () => {
+    const at = async (near: string): Promise<readonly number[] | undefined> => {
+      open(
+        {
+          frames: [frame("server", ["create-order"])],
+          resources: [{ id: "orders", kind: "queue", name: "orders", anchors: [{ key: CREATE }], at: [1600, 600], author: "agent:claude" }],
+          notes: [{ id: "n", text: "Read this first.", at: [1600, 1400], author: "agent:claude" }],
+        },
+        cards.slice(0, 1),
+      );
+      const result = await edit([{ op: "add_cards", cards: [{ key: PROCESS, near }] }]);
+      return result.items[0]?.kind === "card" ? result.items[0].at : undefined;
+    };
+    const [x, y] = (await at("orders")) ?? [];
+    expect(y).toBe(600);
+    expect(x).toBeGreaterThan(1600);
+    const [nx, ny] = (await at("n")) ?? [];
+    expect(ny).toBe(1400);
+    expect(nx).toBeGreaterThan(1600);
+    // Right of the frame's box, level with its top: not right of everything.
+    const [fx, fy] = (await at("server")) ?? [];
+    expect(fx).toBeLessThan(1600);
+    expect(fy).toBeLessThan(0);
+  });
+
+  it("arrange reports a frame's direction it writes, the default one too", async () => {
+    open({ frames: [frame("server", ["create-order", "place"])] });
+    const result = await edit([{ op: "arrange", frame: "server", direction: "right" }], "Arrange page");
+    expect(result.items[0]).toMatchObject({ kind: "frame", id: "server", status: "updated", direction: "right" });
+    expect(current().frames?.[0]?.direction).toBe("right");
+    const again = await edit([{ op: "arrange", frame: "server", direction: "right" }], "Arrange page");
+    expect(again.items.filter((item) => item.kind === "frame")).toEqual([]);
   });
 
   it("arrange lays out one frame in a direction it keeps, and moves a frame with what it holds", async () => {

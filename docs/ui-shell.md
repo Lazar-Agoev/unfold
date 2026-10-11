@@ -174,14 +174,18 @@ App
   step group hiding it; `portSpot`, `flowPortNodes`; in Flow the lead from a step that only connections leave to
   the card's edge is dotted in the authored color, not the arrows' accent), and from the card's edge in Diagram; a
   relationship leaves and enters at its columns' rows. An end inside a collapsed frame attaches to the frame, and
-  connections of one kind that would draw on top of each other merge ("queue · 2 connections"). A drawn link (no
-  kind) keeps today's dashed gray look and its label outside the layout. A click or Kind ▸ selects or changes
-  either.
+  connections of one kind that the frame makes draw on top of each other merge ("queue · 2 connections"; links whose
+  ends are both drawn as themselves stay apart). A drawn link (no kind) keeps today's dashed gray look; its label
+  (its words, then its author) joins the same layout, so it never covers a card, a typed label, or a chip, and where
+  it fits nowhere it isn't drawn at rest (Selected shows it). A merged line's label ("2 links") selects nothing. A
+  click or Kind ▸ selects or changes either.
 - **Notes** (`canvas/notes/`, design [§4.8](proposals/agent-mcp-design.md#48-notes)) are short authored text on the
   authored tint with who wrote it underneath (140–260px wide, `noteSize`). A free note is placed like a card (and
   reflows like one); a note attached to a card, resource card, frame, or link sits at its offset from that item's
-  corner (a frame's: where what it holds starts; a link's: the midpoint of its ends' corners, `attachPoint`), so it
-  moves with it, and isn't drawn while a collapsed frame hides it or its item. Dragging an attached note gives it a
+  corner (a frame's: the top-left of its cards, resource cards, and nested frames' corners, as the file's rule
+  says; a link's: the midpoint of its ends' corners, `attachPoint`), so it moves with it, and isn't drawn while a
+  collapsed frame hides it or its item. Where its offset would put it over its own item (the item grew, say from
+  Code to Flow), it is drawn under the item instead, without a new offset. Dragging an attached note gives it a
   new offset and keeps it attached; double-clicking edits it; removing its item leaves it where it was, free.
 
 ## State
@@ -350,7 +354,10 @@ The screens follow [architecture §11](architecture.md#11-the-desktop-app). Deta
   laid out inside it for when it opens. Connections order their ends as data flows (a `reads` connection's resource
   card before the code that reads it, any other after the side that acts: a table after the code that writes it,
   before the code that reads it); drawn links don't count. A note attached to a card, resource card, or frame goes
-  under it, 12px apart in id order, and the item takes room for them; free notes and notes on links aren't placed. Each level orders its items entrances first, then left to right and
+  under it, 12px apart in id order, and the item takes room for them. Then each note on a link goes beside its
+  line's middle (halfway between the sides its ends face each other by), centered under it, else over it, else the
+  nearer of those moved down or up until it covers no card, resource card, collapsed frame, or other note
+  (`lineNoteSpots`; an agent's `add_notes` places one the same way); free notes aren't placed. Each level orders its items entrances first, then left to right and
   top to bottom as they are now, so arranging again changes nothing, and a page without frames arranges exactly as
   it did before frames.
 - **Health and activity** shows one list at a time. Health: the problems other than board health (Open shows the
@@ -406,9 +413,10 @@ the main process owns argument parsing, links, defaults, and page revisions.
   working document with the pure edits of `document.ts`, signing every new or changed text with the agent's identity
   (`agent:claude`). `saveStep` saves at once: the board's unsaved edits first, then the change, never two saves in
   flight. The change becomes one undo step, named "<agent> · <title>", only once the engine accepts it, so a refused
-  edit leaves the board as it was and answers `{ok: false, code, message}` with the engine's code; edits the person
-  made while it saved stay on top (the operations apply again over them, and they autosave). The answer is the page
-  as saved, the board's title, publish state, and file revision, what each operation did (each item's id, name,
+  edit leaves the board as it was and answers `{ok: false, code, message}` with the engine's code. When the person
+  edits while it saves, the operations apply again over their edits and that is saved at once, until a save covers
+  every edit, so the answer's items and page are the ones saved (operations that no longer apply answer
+  `page_changed`, and the person's edits autosave). The answer is the page as saved, the board's title, publish state, and file revision, what each operation did (each item's id, name,
   and status: created, updated, kept, or removed), and warnings. Nothing applies when one operation is refused.
 - **Operations.**
 
@@ -416,13 +424,13 @@ the main process owns argument parsing, links, defaults, and page revisions.
   | --- | --- |
   | `add_cards` | Adds a block or an entrance by key (from any connected project), or keeps the card already there (its view changes when asked). A new card goes beside the item it is `near`, else right of a card that calls it (level with the calling line) or whose field names it (level with the field), else left of a card it calls, else right of everything (with `frame`, right of what that frame holds); it never covers a card, or a frame it doesn't go into. With `frame`, the cards it adds go into that frame. `follow` adds what it calls (up to 3 levels) and what calls it (up to 2), resolved calls and constructions only, and, from a type card, the types its fields name (`types`, up to 2 levels, in the view asked for the card), at most 40 cards per card; each card's result lists where following stopped: an external or unresolved call (as written, with its line and library or reason), an external, builtin, or unresolved type name (as written, with its field and module or reason), resolved calls or declared types past the depth asked for, or callers past the 20 listed. Following types from a card that isn't a type adds a warning |
   | `set_view` | A card's view (Diagram, Flow, or Code) and fold, a step group's or a frame's collapse, and the page's default view |
-  | `arrange` | Arrange from the inside out (`arrangePage`), or one frame's inside (`frame`; its box keeps its corner, and `direction` becomes the frame's), else the page's top level in `direction`; then moves of cards, resource cards, notes, and frames: a position (a frame's box corner; an attached note stays attached, at a new offset), or right of or below another item (moved clear of everything it isn't in) |
-  | `remove_items` | Cards (with their step groups and the links that end at them), step groups, links and connections, frames, resource cards (with the links that end at them), and notes: a frame's members stay, in the frame that held it, unless `keepMembers` is false. A frame left with no members goes too; a note attached to what goes stays where it was, free |
-  | `group_steps` | Step groups of one card by line range or step keys, created or updated by id, under the gutter's rule (`groupSelection`): whole statements of one branch, never overlapping another group. The result names the statements each group took; a warning says when a range took more lines than asked; a refusal says why a range breaks the rule and lists the statements there |
+  | `arrange` | Arrange from the inside out (`arrangePage`, a page of resource cards alone too), or one frame's inside (`frame`; its box keeps its corner, and `direction` becomes the frame's, reported when the stored direction changes), else the page's top level in `direction`; then moves of cards, resource cards, notes, and frames: a position (a frame's box corner; an attached note stays attached, at a new offset), or right of or below another item (moved clear of everything it isn't in); then the notes on links beside their lines (`lineNoteSpots`; a frame's: those on its items' links) |
+  | `remove_items` | Cards (with their step groups and the links that end at them), step groups, links and connections, frames, resource cards (with the links that end at them), and notes: a frame's members stay, in the frame that held it, unless `keepMembers` is false. A frame left with no members goes too; a note attached to what goes stays where it was, free. People's words are checked on everything a removal takes, a drawn link that ends at a removed card included |
+  | `group_steps` | Step groups of one card by line range or step keys, created or updated by id (without an id, the card's group of the same statements, so a repeated call keeps it), under the gutter's rule (`groupSelection`): whole statements of one branch, never overlapping another group. The result names the statements each group took; a warning says when a range took more lines than asked; a refusal says why a range breaks the rule and lists the statements there |
   | `describe` | Descriptions of cards, step groups, frames, resource cards, and connections, and labels of drawn links (a note is its own text: `add_notes` rewrites it) |
   | `label_steps` | Flow labels of a card's steps (keys of its Flow model) |
-  | `frame_cards` | Frames created or updated by id: title, description, members, look, icon, parent, direction, and collapse. Members come from no frame, the frame itself, or its `parent`; an item already in another frame, a member that isn't a card, resource card, note, or frame, a cycle, and nesting past three deep are refused, saying why. On an update, the items it no longer lists go to the frame that holds it. The result names each frame with its look, icon, parent, and members (a frame it emptied is `removed`), and a warning notes a card in no frame that cards in two or more frames call (shared code) |
-  | `add_resources` | Resource cards created or updated by id (else the card of the same kind and name): kind, name, a table's `type` (loaded first; a key the project hasn't is refused) or own `columns` (on an update, the two are replaced together), anchors (kept when left out), and description; `frame` puts it in a frame, and a new one goes right of the item it is `near`, else right of what the frame holds, else right of everything, covering nothing. A type or columns on anything but a table, types or `optional` on a type-backed table's marks, and `references` off a foreign key are refused. The result names each card with its columns as the card shows them |
+  | `frame_cards` | Frames created or updated by id: title, description, members, look, icon, parent, direction, and collapse. Members come from no frame, the frame itself, or its `parent`; an item already in another frame, a member that isn't a card, resource card, note, or frame, a cycle, and nesting past three deep are refused, saying why. On an update, the items it no longer lists go to the frame that holds it; a person's frame that moving a frame out would leave empty (and so remove) needs `replacePeopleText`. The result names each frame with its look, icon, parent, and members (a frame it emptied is `removed`), and a warning notes a card in no frame that cards in two or more frames call (shared code) |
+  | `add_resources` | Resource cards created or updated by id (else the card of the same kind and name): kind, name, a table's `type` (loaded first; a key the project hasn't is refused) or own `columns` (on an update, the two are replaced together), anchors (kept when left out), and description; `frame` puts it in a frame (an existing card only from no frame, that frame, or the frame around it, as `frame_cards`), and a new one goes right of the item it is `near`, else right of what the frame holds, else right of everything, covering nothing. A type or columns on anything but a table, types or `optional` on a type-backed table's marks, and `references` off a foreign key are refused. The result names each card with its columns as the card shows them |
   | `connect` | Connections drawn or updated by id (else the connection of the same kind, ends, step, and columns): kind, ends (cards, resource cards, or frames), `step` (inside the `from` card's block), a relationship's columns (each a column of its table) and cardinality, channel, carried type, anchors, label, and description; everything a connection says is replaced as a whole. An `other` connection without a label is refused. The save fills in the channel of one ending at an entrance, and the result carries it as saved |
   | `add_notes` | Notes added or updated by id (else the same text on the same item is kept): 1 to 400 characters, attached to a card, frame, resource card, or link (placed beside it, as an offset) or free (beside the item it is `near`, else right of everything). Without `attach`, an update leaves a note where it is |
 
@@ -431,8 +439,10 @@ the main process owns argument parsing, links, defaults, and page revisions.
   (`estimatedLineOffset`), and fields from a type card's rows (`estimatedFieldOffset`), so placement and Arrange
   work on a page no one has shown.
 - **People's words are safe.** No operation replaces or removes a person's description, label, group or frame
-  title, group or frame description, resource card, connection (a drawn link included), or note unless the call sets
-  `replacePeopleText` (`people_text` otherwise); a group title without an author counts as a person's. An agent may change a person's frame's members, look, and collapse. Text an agent writes again unchanged is kept, whoever wrote it.
+  title, group or frame description, resource card, connection (a drawn link included: it has no author, so it is
+  always a person's), or note unless the call sets `replacePeopleText` (`people_text` otherwise); a group title
+  without an author counts as a person's. One rule (`itemWords` in `agent/context.ts`) serves `remove_items`,
+  `delete_page`, and `connect`. An agent may change a person's frame's members, look, and collapse. Text an agent writes again unchanged is kept, whoever wrote it.
 - **Reads and background tabs.** `agent_read` answers with the page as the window holds it (unsaved edits included),
   the board's title, publish state, and file revision, whether it has unsaved edits, and the sizes the canvas
   measured for the page's items (none before the page is drawn). `agent_open_board` opens a
@@ -451,8 +461,11 @@ the main process owns argument parsing, links, defaults, and page revisions.
   a frame's members); the main process then brings the window to the front.
 - **Repairs** (`state/boards/agent/repair.ts`). `agent_repair` applies the `repair_board` repair the main process
   chose (it found the health item and checked that the agent may sign off on it) the way Review applies one
-  (`repairBoard`): the board's unsaved edits are saved first, the engine repairs and saves, and the result is one
-  undo step. The items it changed are marked as the agent's work; the answer is the page as saved.
+  (`repairBoard`, `engineStep`): the board's unsaved edits are saved first (refused with `unsaved_edits` while they
+  can't be, `board_conflict` while a conflict waits, as a person's repair from Review is), nothing else saves while
+  the engine repairs and saves, and the result is one undo step. Edits the person makes meanwhile are kept and saved
+  next, and the repair answers `page_changed`. The items it changed are marked as the agent's work; the answer is
+  the page as saved.
 - **Working marks** (`state/boards/agent/working.ts`): while an agent works on a page, the top bar says "Claude is
   working…" (the agent glyph and muted text; "Claude and Codex are working…"), the cards, frames, resource cards,
   and notes it changed (a group's or a label's card too) have a soft outline (`--color-authored-line`, 2px, 3px off
@@ -501,10 +514,12 @@ invalidation, and nothing else of the window (no session, tabs, sidebar, keyboar
   names, the canvas takes it, settles again, and the window answers.
 - **The page as drawn** (`render/geometry.ts`): each node's measured box at its absolute position, each line's path
   sampled from its SVG, and each card drawn in Flow with its visible steps and its steps still showing names from
-  the code (counted as the page's outline counts them).
+  the code (the keyed steps of its Flow model, start and end aside, and none a collapsed step group of the card
+  hides: a member's key or one under it).
 - **Page checks** (`board/checks/`, pure, limits in `thresholds.ts`): overlap (items on top of each other, a frame
-  and what it holds aside, notes attached to what it holds included), crossings (more than three between lines, or any line through a frame that holds
-  neither end), density (over 30 visible items on a page, 12 in a frame, 12 steps in a Flow card), unlabeled
+  and what it holds aside, notes attached to what it holds or to a line from or to it included), crossings (more
+  than three between lines, any line through a frame that holds neither end, or any line under a card, resource
+  card, or collapsed frame it neither starts nor ends at), density (over 30 visible items on a page, 12 in a frame, 12 steps in a Flow card), unlabeled
   steps, missing words (frames, step groups, and resource cards without a description), evidence (resource cards
   and connections that cite no code), strays (no line, connection, or frame), and views (more than three Code or
   Flow cards on an overview page). Each is `{kind, items, message, suggestion}`, naming the tool that fixes it.

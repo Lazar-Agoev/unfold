@@ -80,7 +80,7 @@ describe("repairs", () => {
   it("says what each repair does, naming what it is about", () => {
     expect(repairEffect("removeCard", missing, PAGE)).toBe("Removes the card createOrder from the page, with the groups inside it and its links.");
     expect(repairEffect("ungroup", member, PAGE)).toContain('Removes the group "Queue it"');
-    expect(repairEffect("removeLink", link, PAGE)).toBe("Removes the link. Both cards stay on the page.");
+    expect(repairEffect("removeLink", link, PAGE)).toBe("Removes the link. What it joins stays on the page.");
   });
 
   it("repairs a resource card's anchor by key, and removes or re-signs the card", () => {

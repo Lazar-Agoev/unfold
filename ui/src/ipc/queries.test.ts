@@ -107,6 +107,10 @@ describe("engine keys", () => {
     expect(engineQueryOptions("list_boards", { project: P })).not.toHaveProperty("staleTime");
     expect(keyFile(CREATE)).toBe(ORDERS);
     expect(keyFile(ENTRANCE)).toBe(ENTRANCE);
+    expect(keyFile(`${ENTRANCE}#1`)).toBe(`${ENTRANCE}#1`);
+    // A path may hold `#`; a step never does.
+    expect(keyFile("src/c#/orders.ts#class:Orders/method:place")).toBe("src/c#/orders.ts");
+    expect(keyFile("src/c#/orders.ts#")).toBe("src/c#/orders.ts");
   });
 });
 

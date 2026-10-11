@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import cardCreateOrder from "../../../../../testdata/workspace/commands/card_create_order.json";
 import type { AgentPage, AgentShellEvent } from "../../../shared/agent-api";
 import { pageRevision } from "../../agents/revision";
-import type { BoardSummary, CardView, LabeledLine, Page, ReadBoardResult, TypeDefinition } from "../engine-types";
+import type { BoardSummary, CardView, LabeledLine, LineLabel, Page, ReadBoardResult, TypeDefinition } from "../engine-types";
 import { listBoards, readPage } from "./pages";
 import { harness, PROJECT, projectRow, recorded } from "./testing";
 
@@ -79,29 +79,29 @@ function blockCard(key: string, kind: string, qualifiedName: string, line: numbe
   } as unknown as CardView;
 }
 
+const CART_DEFINITION: TypeDefinition = {
+  key: CART,
+  kind: "interface",
+  name: "Cart",
+  path: "src/cart.ts",
+  line: 12,
+  language: "typescript",
+  members: [
+    { name: "items", kind: "property", optional: false, readonly: false, default: false, type: { text: "CartItem[]", spans: [{ start: 0, end: 8, style: "declared", target: CART_ITEM }] } },
+    { name: "owner", kind: "property", optional: false, readonly: false, default: false, type: { text: "string", spans: [{ start: 0, end: 6, style: "builtin" }] } },
+  ],
+  inherited: [],
+  uses: 3,
+};
+
 const DEFINITIONS: Readonly<Record<string, TypeDefinition>> = {
-  [CART]: {
-    key: CART,
-    kind: "interface",
-    name: "Cart",
-    path: "src/cart.ts",
-    line: 12,
-    language: "typescript",
-    members: [
-      { name: "items", kind: "property", optional: false, readonly: false, default: false, type: { text: "CartItem[]", spans: [{ start: 0, end: 8, style: "declared", target: CART_ITEM }] } },
-      { name: "owner", kind: "property", optional: false, readonly: false, default: false, type: { text: "string", spans: [{ start: 0, end: 6, style: "builtin" }] } },
-    ],
-    inherited: [],
-    uses: 3,
-  },
+  [CART]: CART_DEFINITION,
   [CART_ITEM]: { key: CART_ITEM, kind: "interface", name: "CartItem", path: "src/cart.ts", line: 6, language: "typescript", members: [], inherited: [], uses: 1 },
 };
 
-const LABEL: LabeledLine = {
-  source: `${CREATE_ORDER}/variable:order/call[0]`,
-  seq: 0,
-  label: { inputs: [{ type: { text: "OrderDraft", spans: [] } }], inputsUnknown: false, output: { text: "Promise<Order>", spans: [] } },
-};
+const ORDER_LABEL: LineLabel = { inputs: [{ type: { text: "OrderDraft", spans: [] } }], inputsUnknown: false, output: { text: "Promise<Order>", spans: [] } };
+
+const LABEL: LabeledLine = { source: `${CREATE_ORDER}/variable:order/call[0]`, seq: 0, label: ORDER_LABEL };
 
 const CARDS: Readonly<Record<string, () => CardView>> = {
   [CREATE_ORDER]: () => recorded<CardView>(cardCreateOrder),
@@ -183,10 +183,87 @@ describe("read_page", () => {
       `- createOrder (create-order) → OrderService.place (place): calls orderService.place at line 32: (OrderDraft) → Promise<Order>; source ${CREATE_ORDER}/variable:order/call[0], seq 0`,
     );
     expect(lines).toContain(`- Cart (cart) → CartItem (cart-item): field items: CartItem[] (CartItem: ${CART_ITEM})`);
-    expect(lines).toContain("Flow steps still unlabeled, in cards shown in Flow (label_steps labels them) (7):");
+    expect(lines).toContain("Flow steps still unlabeled, in cards shown in Flow (label_steps labels them) (5):");
     expect(lines).toContain(`- createOrder (create-order): line 27 condition “req.header?” (key ${CREATE_ORDER}/if[0])`);
     expect(lines.some((line) => line.includes("/variable:draft)"))).toBe(false);
+    // The collapsed step group hides its steps.
+    expect(lines.some((line) => line.includes("/variable:job)") || line.includes("/return[0])"))).toBe(false);
     expect(test.commands()).not.toContain("read_board");
+  });
+
+  it("counts unlabeled steps as the outline does: not Start or End, nor the steps a collapsed step group of the card hides", async () => {
+    const steps = async (groups: AgentPage["groups"]) => {
+      const page: AgentPage = { ...PAGE, groups };
+      const test = app((request) => (request.type === "agent_read" ? { ok: true, page, board: BOARD_INFO, sizes: {} } : undefined));
+      test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+      const { text } = await test.call(readPage);
+      return text
+        .split("\n")
+        .flatMap((line) => (line.startsWith("- createOrder (create-order): ") ? [line.slice(line.indexOf("(key ") + 5 + CREATE_ORDER.length, -1)] : []));
+    };
+    const group = (id: string, card: string, members: string[], collapsed: boolean) => ({ id, card, title: id, members: members.map((member) => `${CREATE_ORDER}/${member}`), collapsed });
+    // A collapsed group hides its members and the steps under them; the Return outside it still counts.
+    expect(await steps([group("queue", "create-order", ["if[0]/variable:job", "if[0]/expression_statement[0]"], true)])).toEqual([
+      "/if[0]",
+      "/if[0]/return[0]",
+      "/variable:order",
+      "/expression_statement[0]",
+      "/expression_statement[1]",
+    ]);
+    expect(await steps([group("branch", "create-order", ["if[0]"], true)])).toEqual(["/variable:order", "/expression_statement[0]", "/expression_statement[1]"]);
+    // An expanded group, another card's collapsed group, and a key that only shares a prefix hide nothing.
+    expect(
+      await steps([group("open", "create-order", ["if[0]"], false), group("elsewhere", "place", ["variable:order"], true), group("prefix", "create-order", ["expression_statement"], true)]),
+    ).toHaveLength(7);
+  });
+
+  it("draws type arrows only from type cards showing their fields, and to the first card of a key, as the canvas does", async () => {
+    const BASE = "src/cart.ts#interface:Base";
+    const withBase: TypeDefinition = {
+      ...CART_DEFINITION,
+      inherited: [
+        {
+          from: { text: "Base<CartItem>", spans: [{ start: 0, end: 4, style: "declared", target: BASE }, { start: 5, end: 13, style: "declared", target: CART_ITEM }] },
+          members: [{ name: "extra", kind: "property", optional: false, readonly: false, default: false, type: { text: "CartItem", spans: [{ start: 0, end: 8, style: "declared", target: CART_ITEM }] } }],
+        },
+      ],
+    };
+    const typeLines = async (cards: AgentPage["cards"]) => {
+      const page: AgentPage = { ...PAGE, cards, groups: [], links: [], frames: [], resources: [], notes: [] };
+      const test = harness({ engine: { card: (args) => CARDS[String(args["key"])]?.() ?? null, type_definition: (args) => (args["key"] === CART ? withBase : DEFINITIONS[String(args["key"])]), line_labels: () => [], read_board: () => file(page) } });
+      const { text } = await test.call(readPage, { board: BOARD.id, project: "ts-orders" });
+      return { lines: text.split("\n").filter((line) => line.includes(": field ")), definitions: test.commands().filter((command) => command === "type_definition").length };
+    };
+    // Base has no card, so Cart lists the fields it inherits, with their arrows; the second CartItem card gets none.
+    expect(await typeLines([{ id: "cart", ref: { block: CART }, at: [0, 0] }, { id: "item", ref: { block: CART_ITEM }, at: [400, 0] }, { id: "item-2", ref: { block: CART_ITEM }, at: [800, 0] }])).toEqual({
+      lines: ["- Cart (cart) → CartItem (item): field items: CartItem[] (CartItem: src/cart.ts#interface:CartItem)", "- Cart (cart) → CartItem (item): field from Base<CartItem>: extra: CartItem (CartItem: src/cart.ts#interface:CartItem)"],
+      definitions: 3,
+    });
+    // A type card shown in Code shows its code, not its fields.
+    expect(await typeLines([{ id: "cart", ref: { block: CART }, at: [0, 0], view: "code" }, { id: "item", ref: { block: CART_ITEM }, at: [400, 0], view: "code" }])).toEqual({ lines: [], definitions: 0 });
+  });
+
+  it("labels each arrow with its own project's line label when two projects share keys", async () => {
+    const cards: AgentPage["cards"] = [
+      { id: "create-order", ref: { block: CREATE_ORDER }, at: [0, 0] },
+      { id: "place", ref: { block: PLACE }, at: [400, 0] },
+      { id: "create-order-b", ref: { block: CREATE_ORDER, project: "payments" }, at: [0, 400] },
+      { id: "place-b", ref: { block: PLACE, project: "payments" }, at: [400, 400] },
+    ];
+    const page: AgentPage = { ...PAGE, cards, groups: [], links: [], frames: [], resources: [], notes: [] };
+    const receipt: LabeledLine = { ...LABEL, label: { ...ORDER_LABEL, output: { text: "Promise<Receipt>", spans: [] } } };
+    const test = harness({
+      projects: [projectRow(PROJECT, "ts-orders"), projectRow("p-pay", "payments")],
+      engine: {
+        card: (args) => CARDS[String(args["key"])]?.() ?? null,
+        line_labels: (args) => (args["project"] === PROJECT ? [LABEL] : [receipt]),
+        read_board: () => file(page),
+      },
+    });
+    const { text } = await test.call(readPage, { board: BOARD.id, project: "ts-orders" });
+    const source = `source ${CREATE_ORDER}/variable:order/call[0], seq 0`;
+    expect(text).toContain(`- createOrder (create-order) → OrderService.place (place): calls orderService.place at line 32: (OrderDraft) → Promise<Order>; ${source}`);
+    expect(text).toContain(`- createOrder (create-order-b) → OrderService.place (place-b): calls orderService.place at line 32: (OrderDraft) → Promise<Receipt>; ${source}`);
   });
 
   it("reads a board no window holds from its file, a board's first page by default, and pages long pages", async () => {
@@ -206,6 +283,22 @@ describe("read_page", () => {
     expect(rest.text).toContain("- CartItem (card id c129)");
     expect(rest.text).not.toContain("Next page");
     expect(rest.text.split("\n").at(-1)).toBe("Next: check reviews the page; pass its rev as expectRevision to an edit that builds on what you read.");
+  });
+
+  it("pages a page of long lines before the size guard would cut it, so every line stays reachable", async () => {
+    const description = { text: "d".repeat(300), author: "agent:claude", signature: "s" };
+    const ids = Array.from({ length: 130 }, (_, index) => `c${index}`);
+    const many: AgentPage = { ...PAGE, cards: ids.map((id, index) => ({ id, ref: { block: CART_ITEM }, at: [index, 0], description })), groups: [], links: [], frames: [], resources: [], notes: [] };
+    const paged = harness({ engine: { card: CARDS[CART_ITEM] ?? (() => null), type_definition: () => DEFINITIONS[CART_ITEM], line_labels: () => [], read_board: () => file(many) } });
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const { text } = await paged.call(readPage, { board: BOARD.id, project: "ts-orders", ...(cursor !== undefined ? { cursor } : {}) });
+      expect(text).not.toContain("Cut here");
+      seen.push(...text.split("\n").flatMap((line) => /^- CartItem \(card id (c\d+)\)/.exec(line)?.[1] ?? []));
+      cursor = /Next page: read_page with cursor "(\d+)"/.exec(text)?.[1];
+    } while (cursor !== undefined);
+    expect(seen).toEqual(ids);
   });
 
   it("gives the page as Mermaid, exported by the window that holds the board", async () => {

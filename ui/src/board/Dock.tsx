@@ -15,7 +15,8 @@ import { openAdd } from "../state/overlays";
 
 export interface DockProps {
   readonly target: PageTarget;
-  readonly hasCards: boolean;
+  /** Whether the page has cards or resource cards to arrange and fit. */
+  readonly hasItems: boolean;
   readonly onTravel: (direction: "back" | "forward") => void;
   readonly onZoomIn: () => void;
   readonly onZoomOut: () => void;
@@ -33,7 +34,7 @@ function Divider({ part }: { readonly part?: "history" | "trail" | "arrange" }) 
   return <span className={part !== undefined ? `board-dock-divider before-${part}` : "board-dock-divider"} aria-hidden="true" />;
 }
 
-export function Dock({ target, hasCards, onTravel, onZoomIn, onZoomOut, onFit, onArrange }: DockProps) {
+export function Dock({ target, hasItems, onTravel, onZoomIn, onZoomOut, onFit, onArrange }: DockProps) {
   const trail = usePageView(target, (view) => view.trail);
   const canGoBack = usePageView(target, (view) => view.back.length > 0);
   const canGoForward = usePageView(target, (view) => view.forward.length > 0);
@@ -89,7 +90,7 @@ export function Dock({ target, hasCards, onTravel, onZoomIn, onZoomOut, onFit, o
           </>
         ) : null}
         <Divider part="arrange" />
-        <Button variant="ghost" icon="arrange" className="board-dock-arrange" aria-label="Arrange" disabled={!hasCards} title="Arrange by call depth: callers left, callees right" onClick={onArrange}>
+        <Button variant="ghost" icon="arrange" className="board-dock-arrange" aria-label="Arrange" disabled={!hasItems} title="Arrange by call depth: callers left, callees right" onClick={onArrange}>
           Arrange
         </Button>
         <Divider />
@@ -99,7 +100,7 @@ export function Dock({ target, hasCards, onTravel, onZoomIn, onZoomOut, onFit, o
             {Math.round(zoom * 100)}%
           </span>
           <IconButton icon="plus" label="Zoom in" {...shortcutOf(zoomInKey)} tooltipSide="top" onClick={onZoomIn} />
-          <Button variant="ghost" disabled={!hasCards} onClick={onFit}>
+          <Button variant="ghost" disabled={!hasItems} onClick={onFit}>
             Fit
           </Button>
         </div>

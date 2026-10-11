@@ -621,7 +621,7 @@ fn check_heritage(
     if !permitted {
         checker.report(
             subject(),
-            format!("`{heritage}` is not a heritage of a {}", block.kind),
+            format!("`{heritage}` heritage is not allowed on this {}", block.kind),
         );
     } else if heritage == Heritage::Extends
         && !slots

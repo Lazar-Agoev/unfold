@@ -50,10 +50,23 @@ export async function confirmRemoveProject(parent: BrowserWindow, name: string):
   return result.response === 0;
 }
 
+/** Brings Unfold forward, and `parent` with it, even from another app: the person must see a dialog that waits for them. */
+function bringForward(parent: BrowserWindow | null): void {
+  app.focus({ steal: true });
+  if (parent) {
+    if (parent.isMinimized()) {
+      parent.restore();
+    }
+    parent.show();
+    parent.focus();
+  }
+}
+
 /**
  * Asks whether an agent may add a folder to the workspace (design §5.7): "Claude wants to add
- * `~/repos/payments` to your workspace." Cancel is the default, so a stray Return doesn't agree.
- * Resolves with whether the person chose Add.
+ * `~/repos/payments` to your workspace." Unfold comes forward first, since the agent's call waits for
+ * the answer. Cancel is the default, so a stray Return doesn't agree. Resolves with whether the person
+ * chose Add.
  */
 export async function confirmAgentAddProject(parent: BrowserWindow | null, agent: string, path: string): Promise<boolean> {
   const home = homedir();
@@ -66,6 +79,7 @@ export async function confirmAgentAddProject(parent: BrowserWindow | null, agent
     defaultId: 1,
     cancelId: 1,
   };
+  bringForward(parent);
   const result = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
   return result.response === 0;
 }

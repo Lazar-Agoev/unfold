@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use rayon::prelude::*;
 use unfold_core::vocab::BlockKind;
 use unfold_reader::board::files::{BoardFile, Place};
-use unfold_reader::board::{CardRef, ProjectName, card_links};
+use unfold_reader::board::{CardRef, ProjectName, References, card_links};
 
 use super::files::{Files, Working, parse_id, working_file};
 use super::graphs::Resolver;
@@ -263,7 +263,17 @@ fn thumbnail(resolver: &mut Resolver<'_>, id: &str, working: &Working) -> Comman
     let Some(page) = board.pages.first() else {
         return Ok(thumbnail);
     };
-    let graphs = resolver.graphs(&board.projects, |project| page.references(project))?;
+    // Only the cards' blocks and entrances: a thumbnail draws nothing the claims cite, so it
+    // reads no evidence file and defines no table's type.
+    let graphs = resolver.graphs(&board.projects, |project| References {
+        keys: page
+            .cards
+            .iter()
+            .filter(|card| card.reference.project() == project)
+            .map(|card| card.reference.key().as_str())
+            .collect(),
+        ..References::default()
+    })?;
     let graphs = graphs.page();
     let shown = &page.cards[..page.cards.len().min(MAX_THUMBNAIL_CARDS)];
     let ids: BTreeSet<&str> = shown.iter().map(|card| card.id.as_str()).collect();

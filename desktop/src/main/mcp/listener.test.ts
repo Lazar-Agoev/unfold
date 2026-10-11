@@ -1,5 +1,5 @@
 import { createServer, request as httpRequest, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { connect, type AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { MAX_BODY_BYTES, McpListener, type ListenerState } from "./listener";
 
@@ -23,6 +23,21 @@ function send(port: number, options: { path?: string; method?: string; headers?:
     );
     req.on("error", reject);
     req.end(options.body);
+  });
+}
+
+/** Sends `request` as raw bytes and resolves with the reply's status line. */
+function sendRaw(port: number, request: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const socket = connect(port, "127.0.0.1", () => {
+      socket.end(request);
+    });
+    const chunks: Buffer[] = [];
+    socket.on("data", (chunk: Buffer) => chunks.push(chunk));
+    socket.on("end", () => {
+      resolve(Buffer.concat(chunks).toString("utf8").split("\r\n")[0] ?? "");
+    });
+    socket.on("error", reject);
   });
 }
 
@@ -105,6 +120,10 @@ describe("the listener's checks", () => {
     expect(await send(port, { path: "/", method: "GET" })).toEqual({ status: 404, body: "" });
     expect(await send(port, { path: "/mcp/../admin" })).toEqual({ status: 404, body: "" });
     expect((await send(port, { path: "/mcp?x=1", body: "{}" })).status).toBe(200);
+    // A request target that isn't a URL is answered too, not left hanging.
+    for (const target of ["http://[", "//[x", "http://%/mcp"]) {
+      expect(await sendRaw(port, `GET ${target} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nConnection: close\r\n\r\n`)).toBe("HTTP/1.1 404 Not Found");
+    }
   });
 
   it("refuses a body over the cap with 413, before parsing it", async () => {

@@ -248,7 +248,7 @@ export interface AgentResourceSpec {
   readonly anchors?: readonly AgentAnchor[];
   /** The id of a frame of the page to put it in. */
   readonly frame?: string;
-  /** The id of an item of the page to place it beside; absent: by data flow, beside the code it connects to, else right of everything. */
+  /** The id of an item of the page to place it beside; absent: right of what its frame holds, else right of everything (Arrange then places it by data flow). */
   readonly near?: string;
 }
 
@@ -521,7 +521,8 @@ export interface AgentBoardInfo {
  * `board_not_open`, `page_not_found`, `invalid_op`, `people_text`, `code_unavailable`,
  * `board_conflict`, `unsaved_edits`, `page_changed`, and, opening a board, `held` and `too_many_tabs`,
  * besides the engine's own (`board_problem`, …); the main process adds `revision_mismatch`,
- * `board_held_elsewhere`, `window_closed`, `timeout`, and `internal` (a malformed answer).
+ * `board_held_elsewhere`, `window_closed`, `timeout` (a read), `unconfirmed` (a change that may still
+ * land), and `internal` (a malformed answer).
  */
 export interface AgentFailure {
   readonly ok: false;

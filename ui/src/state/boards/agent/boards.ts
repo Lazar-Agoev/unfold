@@ -16,7 +16,6 @@ import type {
   AgentBoardOpResult,
   AgentCreateRequest,
   AgentCreateResult,
-  AgentFailure,
   AgentPageSummary,
   AgentShowRequest,
   AgentShowResult,
@@ -30,18 +29,10 @@ import { call } from "../engine";
 import { openBoard } from "../open";
 import { adoptBoardState, flushBoard, getOpenBoard, pushFocusMove, requestCardFocus, saveStep, select, setActivePage } from "../store";
 import type { BoardRef, PageTarget, Selection } from "../types";
-import { AgentRefusal, guardPeopleText, invalid } from "./context";
-
-function failure(code: string, message: string): AgentFailure {
-  return { ok: false, code, message };
-}
+import { AgentRefusal, boardInfo, failure, guardPeopleText, invalid, itemWords, type Words } from "./context";
 
 function pagesOf(document: BoardDocument): AgentPageSummary[] {
   return document.pages.map((page) => ({ id: page.id, title: page.title }));
-}
-
-function boardInfo(board: Pick<BoardState, "document" | "place" | "published" | "revision">) {
-  return { title: board.document.title, place: board.place, changes: board.published?.changes ?? 0, revision: board.revision };
 }
 
 /** What `save_board` takes: the title and pages. */
@@ -138,29 +129,12 @@ function titleOf(text: string, what: string): string {
   return title;
 }
 
-/** Every text on a page and who wrote it, named as a person would find it. */
-function authoredTexts(page: Page): [string, string | undefined][] {
-  const card = (id: string) => `card “${id}”`;
+/** Every text on a page and who wrote it (`itemWords`, and the Flow labels), named as a person would find it. */
+function pageWords(page: Page): Words[] {
+  const items = [page.cards, page.groups, page.links, page.frames ?? [], page.resources ?? [], page.notes ?? []].flatMap((list) => list.map((item) => item.id));
   return [
-    ...page.cards.flatMap((item): [string, string | undefined][] => (item.description ? [[`the description of ${card(item.id)}`, item.description.author]] : [])),
-    ...page.groups.flatMap((group): [string, string | undefined][] => [
-      [`the step group “${group.title}”`, group.author],
-      ...(group.description ? ([[`the description of the step group “${group.title}”`, group.description.author]] as [string, string][]) : []),
-    ]),
-    ...page.labels.map((label): [string, string | undefined] => [`the label “${label.text}”`, label.author]),
-    ...page.links.flatMap((link): [string, string | undefined][] => [
-      ...(link.label ? ([[`the label “${link.label.text}”`, link.label.author]] as [string, string][]) : []),
-      ...(link.description ? ([[`the description of link “${link.id}”`, link.description.author]] as [string, string][]) : []),
-    ]),
-    ...(page.frames ?? []).flatMap((frame): [string, string | undefined][] => [
-      [`the frame “${frame.title}”`, frame.author],
-      ...(frame.description ? ([[`the description of the frame “${frame.title}”`, frame.description.author]] as [string, string][]) : []),
-    ]),
-    ...(page.resources ?? []).flatMap((resource): [string, string | undefined][] => [
-      [`the ${resource.kind} “${resource.name}”`, resource.author],
-      ...(resource.description ? ([[`the description of “${resource.name}”`, resource.description.author]] as [string, string][]) : []),
-    ]),
-    ...(page.notes ?? []).map((note): [string, string | undefined] => [`the note “${note.text}”`, note.author]),
+    ...page.labels.map((label): Words => [`the label “${label.text}”`, label.author]),
+    ...items.flatMap((id) => itemWords(page, id, (card) => `card “${card.id}”`)),
   ];
 }
 
@@ -213,7 +187,7 @@ function applyBoardOp(document: Draft<BoardDocument>, op: AgentBoardOp, replaceP
       if (document.pages.length === 1) {
         throw invalid(`“${page.title}” is the board's only page, and a board keeps at least one. Add another page first, or rename this one.`);
       }
-      for (const [what, author] of authoredTexts(page)) {
+      for (const [what, author] of pageWords(page)) {
         guardPeopleText(`${what} on the page “${page.title}”`, author, replacePeopleText);
       }
       const removed = { op: op.op, status: "removed", page: page.id, title: page.title } as const;

@@ -145,10 +145,10 @@ export function newCardPlacement(existing: readonly Rect[]): [number, number] {
 }
 
 /**
- * `at`, moved down until a card of `size` there keeps `STACK_GAP` from every rect of `occupied`: where
- * a card placed for an agent goes, so it never covers another.
+ * `at`, moved down (or up) until a card of `size` there keeps `STACK_GAP` from every rect of
+ * `occupied`: where a card placed for an agent goes, so it never covers another.
  */
-export function clearSpot(at: Point, size: Size, occupied: readonly Rect[]): [number, number] {
+export function clearSpot(at: Point, size: Size, occupied: readonly Rect[], direction: "down" | "up" = "down"): [number, number] {
   const x = Math.round(at.x);
   let y = Math.round(at.y);
   for (let moved = true; moved; ) {
@@ -156,7 +156,7 @@ export function clearSpot(at: Point, size: Size, occupied: readonly Rect[]): [nu
     for (const other of occupied) {
       const overlapX = x < other.x + other.width + STACK_GAP && other.x < x + size.width + STACK_GAP;
       if (overlapX && y < other.y + other.height + STACK_GAP && other.y < y + size.height + STACK_GAP) {
-        y = Math.round(other.y + other.height + STACK_GAP);
+        y = Math.round(direction === "down" ? other.y + other.height + STACK_GAP : other.y - STACK_GAP - size.height);
         moved = true;
       }
     }

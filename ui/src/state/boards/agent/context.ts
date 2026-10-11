@@ -1,16 +1,17 @@
 /**
  * What an agent's operations share as they apply to a page: the board, the agent, the data loaded
- * for them, refusals, the rule that people's words are safe (design §6.1), and how cards are named,
- * sized, and found on the page.
+ * for them, refusals, the rule that people's words are safe (design §6.1) and what those words are,
+ * and how items are named, sized, and found on the page.
  */
 
-import type { AgentCardResult, AgentIdentity, AgentItemResult, AgentItemStatus } from "@unfold/desktop/agent-api";
+import type { AgentBoardInfo, AgentCardResult, AgentFailure, AgentIdentity, AgentItemResult, AgentItemStatus } from "@unfold/desktop/agent-api";
 import { computeArrows, type Arrow } from "../../../canvas/arrows";
 import { lastVerifiedCode } from "../../../canvas/cardData";
 import { cardBody } from "../../../code/typeKinds";
-import type { Card, Page, ProjectId, ProjectName, Resource } from "../../../ipc/generated";
+import type { BoardState, Card, Description, Link, Note, Page, ProjectId, ProjectName, Resource } from "../../../ipc/generated";
 import { estimatedResourceSize, fallbackItemSize, pageGeometry } from "../../../canvas/frames/geometry";
 import { tableColumns, type TableColumn } from "../../../canvas/resources/columns";
+import { RESOURCE_WORDS } from "../../../canvas/resources/kinds";
 import type { Rect, Size } from "../../../canvas/layout";
 import { measureText } from "../../../canvas/measure";
 import { estimatedCardSize } from "../../../canvas/sizing";
@@ -18,9 +19,24 @@ import { authorName } from "../../../code/text";
 import { refProjectFor, resolveRefProject, type ProjectIndex } from "../../workspace";
 import { entranceTitle } from "../api";
 import { cardKey, findCard, keyDisplayName } from "../document";
+import { findFrame } from "../frames";
+import { findNote } from "../notes";
 import { findResource } from "../resources";
 import type { BoardRef, CardSize } from "../types";
 import type { AgentData } from "./data";
+
+/** A note's words as a name: its start, cut at 40 characters. */
+const NOTE_NAME = 40;
+
+/** A refusal, as the window answers the main process. */
+export function failure(code: string, message: string): AgentFailure {
+  return { ok: false, code, message };
+}
+
+/** What the agent learns about a board (as held, or as saved): its title, publish state, and file revision. */
+export function boardInfo(board: Pick<BoardState, "document" | "place" | "published" | "revision">): AgentBoardInfo {
+  return { title: board.document.title, place: board.place, changes: board.published?.changes ?? 0, revision: board.revision };
+}
 
 /** Why an operation can't apply, and what to do instead (design §7.8). Nothing of the edit applies. */
 export class AgentRefusal extends Error {
@@ -69,6 +85,73 @@ export function guardPeopleText(what: string, author: string | undefined, replac
       "people_text",
       `Can't change ${what}: ${who} wrote it. People's words are safe; pass replacePeopleText only when the person asked for that change.`,
     );
+  }
+}
+
+/** A text of a page that may be a person's words: what it is, as a person would find it, and who wrote it. */
+export type Words = readonly [what: string, author: string | undefined];
+
+/** `the table “orders”`. */
+export function resourceName(resource: Pick<Resource, "kind" | "name">): string {
+  return `the ${RESOURCE_WORDS[resource.kind]} “${resource.name}”`;
+}
+
+/** A note's name: its first 40 characters. */
+export function noteName(note: Pick<Note, "text">): string {
+  return note.text.length > NOTE_NAME ? `${note.text.slice(0, NOTE_NAME - 1)}…` : note.text;
+}
+
+/** A link itself as someone's words: a drawn link is the person's who drew it, a connection its author's. */
+export function lineWords(link: Pick<Link, "kind" | "author">): Words {
+  return [link.kind === undefined ? "the link a person drew" : `the ${link.kind} connection`, link.author];
+}
+
+function describedWords(what: string, description: Pick<Description, "author"> | undefined): Words[] {
+  return description ? [[`the description of ${what}`, description.author]] : [];
+}
+
+/**
+ * The words item `id` of a page carries, each with who wrote it (design §6.1): descriptions, labels,
+ * step group and frame titles, and a resource card, connection, drawn link, or note itself. An agent
+ * replaces or removes none a person wrote unless the person asked (`guardPeopleText`).
+ */
+export function itemWords(page: Page, id: string, nameCard: (card: Card) => string): Words[] {
+  const card = findCard(page, id);
+  if (card) {
+    return describedWords(nameCard(card), card.description);
+  }
+  const group = page.groups.find((item) => item.id === id);
+  if (group) {
+    const what = `the step group “${group.title}”`;
+    return [[what, group.author], ...describedWords(what, group.description)];
+  }
+  const link = page.links.find((item) => item.id === id);
+  if (link) {
+    const line = lineWords(link);
+    return [...(link.label ? [[`the label “${link.label.text}”`, link.label.author] as const] : []), line, ...describedWords(line[0], link.description)];
+  }
+  const resource = findResource(page, id);
+  if (resource) {
+    return [[resourceName(resource), resource.author], ...describedWords(resourceName(resource), resource.description)];
+  }
+  const note = findNote(page, id);
+  if (note) {
+    return [[`the note “${noteName(note)}”`, note.author]];
+  }
+  const frame = findFrame(page, id);
+  if (!frame) {
+    return [];
+  }
+  const what = `the frame “${frame.title}”`;
+  return [[what, frame.author], ...describedWords(what, frame.description)];
+}
+
+/** Refuses (`people_text`) to remove items `ids` of a page while any carries a person's words, unless the person asked. */
+export function guardRemoval(ctx: OpContext, page: Page, ids: Iterable<string>, replacePeopleText: boolean | undefined): void {
+  for (const id of ids) {
+    for (const [what, author] of itemWords(page, id, (card) => cardName(ctx, card))) {
+      guardPeopleText(what, author, replacePeopleText);
+    }
   }
 }
 

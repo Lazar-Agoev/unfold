@@ -22,9 +22,11 @@ export interface AuthoredFieldProps {
   /** Shown under the field: what needs review about it, the code name a label replaces. */
   readonly status?: ReactNode;
   readonly onChange: (text: string) => void;
+  /** Called when the field loses focus (a note drops the draft it shows while typing). */
+  readonly onBlur?: () => void;
 }
 
-export function AuthoredField({ label, value, placeholder, focusKey, disabledReason = null, status, onChange }: AuthoredFieldProps) {
+export function AuthoredField({ label, value, placeholder, focusKey, disabledReason = null, status, onChange, onBlur }: AuthoredFieldProps) {
   const field = useRef<HTMLTextAreaElement>(null);
   useFocusTarget(focusKey, field);
   const text = value?.text ?? "";
@@ -42,6 +44,7 @@ export function AuthoredField({ label, value, placeholder, focusKey, disabledRea
         onChange={(event) => {
           onChange(event.target.value);
         }}
+        onBlur={onBlur}
       />
       {value ? (
         <span className="authored-byline">

@@ -48,11 +48,11 @@ describe("activateChoice", () => {
   });
 
   it("adds a type declaration in its own view, on the page or in a new draft", async () => {
-    const cart = { kind: "definition", project: "p-b", key: "src/cart.ts#interface:Cart", name: "Cart", view: "code" } as const;
+    const cart = { kind: "definition", project: "p-b", key: "src/cart.ts#interface:Cart", name: "Cart", view: "diagram" } as const;
     await activateChoice(cart, PAGE, false);
-    expect(boards.addBlock).toHaveBeenLastCalledWith(PAGE.target, "p-b", cart.key, "code");
+    expect(boards.addBlock).toHaveBeenLastCalledWith(PAGE.target, "p-b", cart.key, "diagram");
     await activateChoice(cart, HOME, false);
-    expect(boards.addBlock).toHaveBeenLastCalledWith({ board: { project: "p-a", id: "draft" }, page: "page-1" }, "p-b", cart.key, "code");
+    expect(boards.addBlock).toHaveBeenLastCalledWith({ board: { project: "p-a", id: "draft" }, page: "page-1" }, "p-b", cart.key, "diagram");
   });
 
   it("opens a file in the peek sheet, and a text match at its line", async () => {

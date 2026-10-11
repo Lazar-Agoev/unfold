@@ -56,9 +56,11 @@ export function keyDisplayName(key: Key): string {
     }
     return "entrance";
   }
-  const local = key.slice(key.indexOf("#") + 1);
+  // A path may hold `#`; a step never does (names escape it), so the file ends at the last `#`.
+  const hash = key.lastIndexOf("#");
+  const local = key.slice(hash + 1);
   if (local.length === 0) {
-    return key.split("/").at(-1) ?? key;
+    return key.slice(0, Math.max(hash, 0)).split("/").at(-1) ?? key;
   }
   const names = local
     .split("/")
@@ -91,11 +93,14 @@ export function uniqueId(page: Page, base: string): string {
   return firstFree(slug(base, "card"), takenIds(page));
 }
 
-const ITEM_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/;
+/** Whether `id` is a well-formed item id: letters, digits, `_`, `.`, and `-`, starting with a letter or digit, at most 100. */
+export function isItemId(id: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/.test(id);
+}
 
 /** Whether `id` is a well-formed item id that no item of the page has. */
 export function isFreeId(page: Page, id: string): boolean {
-  return ITEM_ID.test(id) && !takenIds(page).has(id);
+  return isItemId(id) && !takenIds(page).has(id);
 }
 
 export interface NewCard {
@@ -122,7 +127,7 @@ export function addCard(page: Page, card: NewCard): string {
  * removed card, the links that end at a removed item, and a frame whose members are all removed (then
  * its links, and so on). Includes `ids` themselves.
  */
-function removalCascade(page: Page, ids: readonly string[]): Set<string> {
+export function removalCascade(page: Page, ids: readonly string[]): Set<string> {
   const removed = new Set(ids);
   for (let before = -1; before !== removed.size; ) {
     before = removed.size;

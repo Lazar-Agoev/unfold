@@ -38,10 +38,6 @@ export interface FlowViewProps {
 }
 
 /**
- * Which placed node shows an occurrence (its chip's node, or the node listing the callback that owns
- * it) or a connection's step (`stepNode`).
- */
-/**
  * The node a connection's step leaves from: the node showing its call, else the collapsed step group
  * hiding it, else the innermost node that is or holds it.
  */
@@ -61,6 +57,10 @@ function stepNode(layout: FlowLayout, step: string): PlacedNode | undefined {
   return group ?? holder;
 }
 
+/**
+ * Which placed node shows an occurrence (its chip's node, or the node listing the callback that owns
+ * it) or a connection's step (`stepNode`).
+ */
 export function flowPortNodes(layout: FlowLayout, occurrences: ReadonlyMap<string, string>): { byNode: Map<string, string[]>; unplaced: string[] } {
   const byNode = new Map<string, string[]>();
   const unplaced: string[] = [];

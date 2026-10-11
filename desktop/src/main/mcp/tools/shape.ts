@@ -18,7 +18,6 @@ function keepWords(tool: string, what: string): string {
   return `${tool} keeps them: pass ${what} as they are, or ask the person to change them.`;
 }
 
-
 /** Anchors with their projects as the window takes them: by id, absent for the board's own. */
 async function anchorsOf(context: ToolContext, target: EditTarget, anchors: readonly Defined<z.output<typeof anchorArg>>[]): Promise<AgentAnchor[]> {
   return Promise.all(
@@ -308,7 +307,7 @@ export const labelSteps = defineTool({
   name: "label_steps",
   title: "Label steps",
   description:
-    'Writes Flow labels for a card\'s steps, in place of the names from the code: 2 to 8 words, a verb ("Queue the order"), or a question for a condition ("Did the client ask for an async reply?"); never raw code, never step numbers. card is the card\'s id (or a link); step is a Flow step\'s key, from read_code (view "flow") or read_page\'s list of steps still unlabeled; label every step of a card in Flow, those inside collapsed step groups too (check counts them). Unfold signs each label against its step\'s code, so it goes to review when that code changes. Replacing a person\'s label is refused unless replacePeopleText is true: set it only when the person asked for that change. Read get_guide("writing") first. One undo step for the whole call.',
+    'Writes Flow labels for a card\'s steps, in place of the names from the code: 2 to 8 words, a verb ("Queue the order"), or a question for a condition ("Did the client ask for an async reply?"); never raw code, never step numbers. card is the card\'s id (or a link); step is a Flow step\'s key, from read_code (view "flow") or read_page\'s list of steps still unlabeled; label every step of a card in Flow, those inside collapsed step groups too (they show when the person expands the group, though check doesn\'t count them). Unfold signs each label against its step\'s code, so it goes to review when that code changes. Replacing a person\'s label is refused unless replacePeopleText is true: set it only when the person asked for that change. Read get_guide("writing") first. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
     card: z.string().min(1).describe("The card's id, or a link to it"),

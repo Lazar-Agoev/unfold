@@ -1,6 +1,7 @@
 /**
  * `group_steps`: gathers consecutive statements of one card into step groups, by line range or by
- * step keys, or updates groups by id. The reader's rule decides what a range holds (`groupSelection`,
+ * step keys, or updates groups by id, or (without one) the card's group of the same statements, so
+ * the same call twice changes nothing. The reader's rule decides what a range holds (`groupSelection`,
  * as the gutter and Make a group from lines use it): whole statements of one branch, never the card's
  * header or a nested definition, never overlapping another group. The result names the statements
  * each group took; a refusal says why a range breaks the rule and what is there.
@@ -25,6 +26,11 @@ function statementsThere(outline: readonly OutlineItem[], from: number, to: numb
     return "No statement starts there.";
   }
   return `The statements there: ${outer.map((item) => `${item.kind}${item.role !== undefined && item.role !== "body" ? ` (${item.role})` : ""}, ${linesText(item.startLine, item.endLine)}`).join("; ")}.`;
+}
+
+/** Whether two lists hold the same statements. */
+function sameSteps(a: readonly Key[], b: readonly Key[]): boolean {
+  return [...a].sort().join("\u0000") === [...b].sort().join("\u0000");
 }
 
 /** The statements a group spec takes, or a refusal that says why the range breaks the rule. */
@@ -55,7 +61,7 @@ function chooseStatements(outline: readonly OutlineItem[], spec: AgentStepGroupS
       `Can't make the step group “${spec.title}” from ${linesText(from, to)} of ${name}: ${selection.error} A step group is consecutive statements in one branch. ${statementsThere(outline, from, to)}`,
     );
   }
-  if (spec.steps && [...selection.members].sort().join("\u0000") !== [...spec.steps].sort().join("\u0000")) {
+  if (spec.steps && !sameSteps(selection.members, spec.steps)) {
     throw invalid(
       `The steps for “${spec.title}” aren't consecutive statements of one branch of ${name}: ${linesText(from, to)} hold ${selection.members.length} statements. ${statementsThere(outline, from, to)}`,
     );
@@ -95,7 +101,9 @@ export function applyGroupSteps(page: Page, op: GroupStepsOp, ctx: OpContext): A
     }
     const items = chooseStatements(outline, spec, name);
     const members: Key[] = items.map((item) => item.key);
-    const existing = spec.id !== undefined ? page.groups.find((group) => group.id === spec.id) : undefined;
+    // By id; else the card's group of the same statements, so the same call again changes nothing.
+    const existing =
+      spec.id !== undefined ? page.groups.find((group) => group.id === spec.id) : page.groups.find((group) => group.card === card.id && sameSteps(group.members, members));
     if (existing && existing.card !== card.id) {
       throw invalid(`“${existing.id}” is a step group of another card.`);
     }

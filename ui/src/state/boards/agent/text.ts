@@ -13,10 +13,10 @@ import { setLinkDescription } from "../connections";
 import { findFrame, updateFrame } from "../frames";
 import { findNote } from "../notes";
 import { findResource, setResourceDescription } from "../resources";
-import { AgentRefusal, cardName, cardOf, cardProject, cardResult, guardPeopleText, invalid, type OpContext } from "./context";
+import { AgentRefusal, cardName, cardOf, cardProject, cardResult, guardPeopleText, invalid, resourceName, type OpContext } from "./context";
 import { linkResult } from "./connections";
 import { frameResult } from "./frames";
-import { resourceName, resourceResult } from "./resources";
+import { resourceResult } from "./resources";
 
 /** `created` for new text, `kept` for the same text, `updated` for new words. */
 function statusOf(before: string | undefined, text: string): AgentItemStatus {

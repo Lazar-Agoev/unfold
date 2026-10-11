@@ -50,6 +50,15 @@ function isOwnHost(host: string | undefined, port: number): boolean {
   return lowered === `${HOST}:${port}` || lowered === `localhost:${port}`;
 }
 
+/** Whether a request target (`req.url`) is the one path it serves, with any query; a target that isn't a URL isn't. */
+function isOwnPath(target: string | undefined, port: number): boolean {
+  try {
+    return new URL(target ?? "/", `http://${HOST}:${port}`).pathname === PATH;
+  } catch {
+    return false;
+  }
+}
+
 /** Answers with a bare status: no body, no detail. Node discards whatever of the request is unread. */
 function refuse(res: ServerResponse, status: number): void {
   res.writeHead(status, { "content-length": "0" }).end();
@@ -232,7 +241,7 @@ export class McpListener {
       refuse(res, 403);
       return;
     }
-    if (new URL(req.url ?? "/", `http://${HOST}:${port}`).pathname !== PATH) {
+    if (!isOwnPath(req.url, port)) {
       refuse(res, 404);
       return;
     }

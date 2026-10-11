@@ -8,7 +8,8 @@
 
 import type { ReactFlowState } from "@xyflow/react";
 import type { Box, DrawnFlow, DrawnLine, PageGeometry, Point } from "../board/checks";
-import type { Card, CardView, Page } from "../ipc/generated";
+import { isWithin } from "../code/outline";
+import type { Card, CardView, FlowNodeKind, Page } from "../ipc/generated";
 import { labelsFor } from "../state/boards";
 
 /** One sample of a line's path per this many canvas units. */
@@ -44,14 +45,18 @@ function sample(path: SVGPathElement | null): Point[] {
 
 /**
  * How many of a card's Flow steps have no label on the page: the steps of its Flow model with a key
- * (start and end aside), as the page's outline counts them; none while its source isn't current.
+ * (start and end aside, and those hidden in a collapsed step group of the card: a member's key or a key
+ * under it), as the page's outline counts them; none while its source isn't current.
  */
 export function unlabeledSteps(page: Page, card: Card, model: CardView | undefined): number {
   if (model?.type !== "block" || model.flow?.source !== "current") {
     return 0;
   }
   const labels = labelsFor(page.labels, card.ref.project);
-  return model.flow.nodes.filter((node) => node.key !== undefined && node.kind !== "start" && node.kind !== "end" && labels[node.key] === undefined).length;
+  const hidden = page.groups.filter((group) => group.card === card.id && group.collapsed).flatMap((group) => group.members);
+  const counts = (key: string | undefined, kind: FlowNodeKind) =>
+    key !== undefined && kind !== "start" && kind !== "end" && labels[key] === undefined && !hidden.some((member) => isWithin(key, member));
+  return model.flow.nodes.filter((node) => counts(node.key, node.kind)).length;
 }
 
 /**

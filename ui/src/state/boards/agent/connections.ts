@@ -10,12 +10,12 @@
 import type { AgentConnectionSpec, AgentItemResult, AgentItemStatus, AgentLinkResult, ConnectOp } from "@unfold/desktop/agent-api";
 import { tableColumns } from "../../../canvas/resources/columns";
 import type { Link, Page } from "../../../ipc/generated";
-import { cardKey, findCard, isFreeId, setLinkLabel } from "../document";
+import { cardKey, findCard, isFreeId, isItemId, setLinkLabel } from "../document";
 import { findFrame } from "../frames";
 import { findResource } from "../resources";
 import { addConnection, saysConnection, setConnectionClaim, setLinkDescription, type ConnectionClaim } from "../connections";
-import { cardName, guardPeopleText, invalid, refProject, resourceProject, type OpContext } from "./context";
-import { fileAnchor, resourceName } from "./resources";
+import { cardName, guardPeopleText, invalid, lineWords, refProject, resourceName, resourceProject, type OpContext } from "./context";
+import { fileAnchor } from "./resources";
 
 /** A link's result entry: its ends, its label, and, for a connection, its kind, step, channel, and carried type. */
 export function linkResult(link: Link, status: AgentItemStatus): AgentLinkResult {
@@ -143,7 +143,7 @@ function existingFor(page: Page, spec: AgentConnectionSpec): Link | undefined {
   const link = page.links.find((item) => item.id === spec.id);
   if (!link && !isFreeId(page, spec.id)) {
     throw invalid(
-      /^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/.test(spec.id)
+      isItemId(spec.id)
         ? `“${spec.id}” is the id of another item on this page (not a link). Give the connection another id, or leave id out.`
         : `“${spec.id}” can't name a connection: an id is letters, digits, “_”, “.”, and “-”, starting with a letter or digit.`,
     );
@@ -163,13 +163,13 @@ function applyConnectionSpec(ctx: OpContext, page: Page, spec: AgentConnectionSp
   const author = ctx.agent.author;
   const before = existing ? JSON.stringify(existing) : null;
   if (existing && !saysConnection(existing, claim)) {
-    guardPeopleText(existing.kind === undefined ? "the link a person drew" : `the ${existing.kind} connection`, existing.author, replacePeopleText);
+    guardPeopleText(...lineWords(existing), replacePeopleText);
   }
   if (existing?.label && label !== undefined && existing.label.text !== label) {
     guardPeopleText(`the label “${existing.label.text}”`, existing.label.author, replacePeopleText);
   }
   if (existing?.description && text !== undefined && existing.description.text !== text) {
-    guardPeopleText(`the description of the ${existing.kind ?? "drawn"} link`, existing.description.author, replacePeopleText);
+    guardPeopleText(`the description of ${lineWords(existing)[0]}`, existing.description.author, replacePeopleText);
   }
   let id: string;
   if (existing) {

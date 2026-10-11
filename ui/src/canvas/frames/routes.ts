@@ -67,12 +67,16 @@ export interface RoutedLink {
 }
 
 /**
- * The page's links between what is drawn. Drawn links that would draw on top of each other merge into
- * one; connections merge only with connections of their kind.
+ * The page's links between what is drawn. Drawn links that a collapsed frame makes draw on top of each
+ * other merge into one; connections merge only with connections of their kind. A link whose ends are
+ * both drawn as themselves stays itself (with its own step, columns, and label), even beside another
+ * between the same two items.
  */
 export function routeLinks(links: readonly Link[], shownAs: ReadonlyMap<string, string>): RoutedLink[] {
   const moved = links.map((link) => ({ link, from: shownAs.get(link.from) ?? link.from, to: shownAs.get(link.to) ?? link.to }));
-  return grouped(moved, ({ link, from, to }) => (from === to ? null : `${from}|${link.kind ?? "links"}|${to}`)).flatMap((group): RoutedLink[] => {
+  const key = ({ link, from, to }: (typeof moved)[number]) =>
+    from === to ? null : from === link.from && to === link.to ? link.id : `${from}|${link.kind ?? "links"}|${to}`;
+  return grouped(moved, key).flatMap((group): RoutedLink[] => {
     const [first] = group;
     if (!first) {
       return [];

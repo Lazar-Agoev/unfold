@@ -13,6 +13,7 @@ import { boardDocument, boardState, page, projectRow, workspaceView } from "../.
 import { useTabs } from "../../tabStore";
 import { displayedRects } from "../api";
 import { keyDisplayName } from "../document";
+import { addNote } from "../notes";
 import * as store from "../store";
 import { applyAgentEdit, finishAgentWork, openBoardForAgent, readAgentPage } from "./edit";
 import { resetWorking, useWorkingAgents, useWorkingItems } from "./working";
@@ -38,6 +39,8 @@ const createCard: Card = { id: "create-order", ref: { block: CREATE }, at: [0, 0
 let engine: FakeEngine;
 let saved: SaveBoardArgs[];
 let refuseSave: { code: string; message: string } | null;
+/** Holds the next save until it settles. */
+let holdSave: Promise<void> | null;
 
 /** createOrder's golden card, or a copy named for another key. */
 function model(key: string): CardView {
@@ -108,6 +111,7 @@ beforeEach(() => {
   useTabs.setState({ boards: [], active: "home" });
   saved = [];
   refuseSave = null;
+  holdSave = null;
   engine = installFakeEngine({
     handlers: {
       card: ({ key }) => {
@@ -132,7 +136,10 @@ beforeEach(() => {
         return noCalls(key);
       },
       callers: ({ key }) => (key === CREATE ? { ...fixture("callers", "callers_create_order"), total: 3 } : { project: P, key, total: 0, callers: [] }),
-      save_board: (args) => {
+      save_board: async (args) => {
+        const held = holdSave;
+        holdSave = null;
+        await held;
         if (refuseSave) {
           // eslint-disable-next-line @typescript-eslint/only-throw-error
           throw refuseSave;
@@ -180,6 +187,31 @@ describe("an agent's edit", () => {
     refuseSave = { code: "board_problem", message: "The key src/x.ts#function:x is not in the graph." };
     expect(await refusal([{ op: "describe", items: [{ id: "create-order", text: "Takes an order." }] }])).toEqual({ ok: false, ...refuseSave });
     expect(store.getOpenBoard(REF)?.history).toMatchObject({ past: [], future: [] });
+  });
+
+  it("answers with what it applied over a person's edit made while it saved, as the save left it", async () => {
+    open();
+    let release: () => void = () => undefined;
+    holdSave = new Promise((resolve) => {
+      release = resolve;
+    });
+    const pending = applyAgentEdit(request([{ op: "add_notes", notes: [{ text: "Read createOrder first." }] }], "Add notes"));
+    await vi.waitFor(() => {
+      expect(engine.callsOf("save_board")).toHaveLength(1);
+    });
+    // The person's note takes the id the agent's note had.
+    store.editPage(TARGET, (draft) => {
+      addNote(draft, { text: "Mine.", at: [0, 900], author: "person:maya" });
+    });
+    release();
+    const result = await pending;
+    expect(result).toMatchObject({ ok: true, items: [{ kind: "note", id: "note-2", status: "created" }] });
+    expect(result.ok && (result.page as unknown as Page).notes?.map((note) => [note.id, note.author])).toEqual([
+      ["note", "person:maya"],
+      ["note-2", "agent:claude"],
+    ]);
+    expect(saved.map((args) => args.board.pages[0]?.notes?.map((note) => note.id))).toEqual([["note"], ["note", "note-2"]]);
+    expect(readWorking().items).toEqual(["note-2"]);
   });
 
   it("refuses a board the window doesn't hold, a page it doesn't have, and a person's identity", async () => {
@@ -382,6 +414,20 @@ describe("people's words are safe", () => {
     expect((await refusal([{ op: "remove_items", ids: ["nope"] }])).code).toBe("invalid_op");
   });
 
+  it("remove_items counts a drawn link and a person's connection as theirs, also when they would go with a card", async () => {
+    const slack: Card = { id: "slack", ref: { block: SLACK }, at: [900, 0] };
+    open({ links: [{ id: "drawn", from: "create-order", to: "slack" }] }, [createCard, slack]);
+    expect((await refusal([{ op: "remove_items", ids: ["drawn"] }])).message).toContain("Can't change the link a person drew: a person wrote it.");
+    expect((await refusal([{ op: "remove_items", ids: ["slack"] }])).code).toBe("people_text");
+    open({ links: [{ id: "posts", kind: "http", from: "create-order", to: "slack", author: "person:maya" }] }, [createCard, slack]);
+    expect((await refusal([{ op: "remove_items", ids: ["slack"] }])).message).toContain("Can't change the http connection: Maya wrote it.");
+    const removed = await edit([{ op: "remove_items", ids: ["slack"], replacePeopleText: true }]);
+    expect(removed.items).toMatchObject([
+      { kind: "card", id: "slack", status: "removed" },
+      { kind: "link", id: "posts", status: "removed" },
+    ]);
+  });
+
   it("a step group titled before titles were attributed counts as a person's", async () => {
     open({ groups: [{ id: "checks", card: "create-order", title: "Checks", members: [IF], collapsed: false }] });
     expect((await refusal([{ op: "remove_items", ids: ["checks"] }])).message).toContain("a person wrote it");
@@ -391,6 +437,16 @@ describe("people's words are safe", () => {
 describe("group_steps", () => {
   const job = `${IF}/variable:job`;
   const json = `${IF}/expression_statement[0]`;
+
+  it("keeps the card's group of the same statements when the call comes again, and retitles it", async () => {
+    open();
+    const queue: AgentOp = { op: "group_steps", card: "create-order", groups: [{ title: "Queue it", lines: [28, 29] }] };
+    await edit([queue]);
+    expect((await edit([queue])).items).toMatchObject([{ kind: "group", id: "queue-it", status: "kept" }]);
+    const retitled = await edit([{ op: "group_steps", card: "create-order", groups: [{ title: "Hand off", steps: [job, json] }] }]);
+    expect(retitled.items).toMatchObject([{ kind: "group", id: "queue-it", status: "updated", name: "Hand off" }]);
+    expect(onPage().groups).toMatchObject([{ id: "queue-it", title: "Hand off", members: [job, json] }]);
+  });
 
   it("groups lines into whole statements of one branch, and names the statements it took", async () => {
     open();

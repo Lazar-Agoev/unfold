@@ -17,9 +17,10 @@ import { cardBody, isTypeKind, keyBlockKind, memberName } from "../../../code/ty
 import type { Card, CardRef, Key, Page, ProjectId, ProjectName, TypeDefinition, View } from "../../../ipc/generated";
 import { framePadding } from "../../../canvas/frames/geometry";
 import { addCard, cardKey, findCard, findCardByRef, keyDisplayName, setCardView } from "../document";
-import { addToFrame, findFrame, frameChain } from "../frames";
+import { addToFrame, findFrame } from "../frames";
 import { cardProject, cardResult, cardSize, invalid, pageRects, refProject, type ApplyOp, type OpContext } from "./context";
 import type { AgentData } from "./data";
+import { nearRect, occupiedFor } from "./place";
 
 /** How deep following goes at most: what a card calls, what calls it, and the types its fields name. */
 const MAX_CALLEES = 3;
@@ -247,21 +248,11 @@ function leftOf(rect: Rect, size: Size) {
   return { x: rect.x - FOLLOW_GAP - size.width, y: rect.y };
 }
 
-/** The card an item of the page sits on: a card, a step group's card, or a link's start. */
-function nearCard(page: Page, id: string): Card {
+/** The card an item of the page sits on: a card, a step group's card, or a link's start; undefined for anything else. */
+function nearCard(page: Page, id: string): Card | undefined {
   const groupCard = page.groups.find((group) => group.id === id)?.card;
   const linkCard = page.links.find((link) => link.id === id)?.from;
-  const card = findCard(page, groupCard ?? linkCard ?? id);
-  if (!card) {
-    throw invalid(`There is no item with id “${id}” on this page to place the card near. read_page lists the page's ids.`);
-  }
-  return card;
-}
-
-/** What a new card going into frame `frame` (if any) keeps clear of: every card and node, and the boxes of the frames it isn't in. */
-function occupiedFor(page: Page, rects: ReadonlyMap<string, Rect>, frame: string | undefined): Rect[] {
-  const within = new Set(frame !== undefined ? [frame, ...frameChain(page, frame).map((item) => item.id)] : []);
-  return [...rects].flatMap(([id, rect]) => (within.has(id) ? [] : [rect]));
+  return findCard(page, groupCard ?? linkCard ?? id);
 }
 
 /**
@@ -288,9 +279,10 @@ function newCardSpot(ctx: OpContext, page: Page, ref: CardRef, near: string | un
   };
   let at: { x: number; y: number } | undefined;
   if (near !== undefined) {
+    // Beside a card it relates to; else right of the item as drawn (a resource card, a frame, a note).
     const card = nearCard(page, near);
-    const rect = rects.get(card.id);
-    at = beside(card) ?? (rect ? rightOf(rect, HEADER_PORT) : undefined);
+    const rect = card ? rects.get(card.id) : nearRect(page, rects, near);
+    at = (card ? beside(card) : undefined) ?? (rect ? rightOf(rect, HEADER_PORT) : undefined);
   } else {
     for (const card of page.cards) {
       at ??= beside(card);

@@ -10,6 +10,7 @@ import {
   deletePage,
   duplicatePage,
   isFreeId,
+  keyDisplayName,
   labelsFor,
   movePage,
   nextPageId,
@@ -29,6 +30,20 @@ function onPage(recipe: (draft: Page) => void, start: Page = page("page-1")): Pa
 function onBoard(recipe: (draft: BoardDocument) => void, start: BoardDocument = boardDocument()): BoardDocument {
   return produce(start, recipe);
 }
+
+describe("keyDisplayName", () => {
+  it("names a block by its last two steps, a file by its name, and an entrance by its method and trigger", () => {
+    expect(keyDisplayName("src/services/order-service.ts#class:OrderService/method:place")).toBe("OrderService.place");
+    expect(keyDisplayName("src/a.ts#function:alpha/if[0]")).toBe("alpha.if");
+    expect(keyDisplayName("src/a.ts#")).toBe("a.ts");
+    expect(keyDisplayName('entrance:["express.route","http","POST","/orders","requireUser"]')).toBe("POST /orders");
+  });
+
+  it("reads the steps after the last `#`, as a path may hold one", () => {
+    expect(keyDisplayName("src/c#x/orders.ts#function:alpha")).toBe("alpha");
+    expect(keyDisplayName("src/c#/orders.ts#")).toBe("orders.ts");
+  });
+});
 
 describe("card, group, and link ids", () => {
   it("are unique together within the page, slugged, and at most 100 characters", () => {

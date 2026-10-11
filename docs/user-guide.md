@@ -181,8 +181,9 @@ with the agent mark when an agent drew them, and look the same in Diagram, Flow,
   card, frame, table, or connection moves with it; drag it to put it elsewhere beside its item. Double-click a note
   to edit it, right-click to remove it. A note whose item is removed stays where it was.
 
-**Arrange** puts a table after the code that writes it and before the code that reads it, and each attached note
-under its item.
+**Arrange** puts a table after the code that writes it and before the code that reads it, each note attached to a
+card, table, or frame under its item, and each note on a connection beside the middle of its line, clear of the
+cards. A note whose card has grown over it since is shown under the card.
 
 **When the code changes.** Descriptions and labels remember the code they were written for. If that code changes,
 the card shows "Changed since it was described · Review", which lists what happened and offers repairs. A resource

@@ -14,21 +14,25 @@ function summary(project: string): BoardSummary {
   return { project, id: ID, place: "published", name: "orders", title: "Orders", folder: null, pages: 2, cards: 0, projects: [], changes: 0, updatedAtMs: 0, heldBy: null, label: null, error: null };
 }
 
+function file(): ReadBoardResult {
+  return {
+    project: PROJECT,
+    id: ID,
+    place: "published",
+    name: "orders",
+    document: { format: "unfold-board", version: 1, title: "Orders", projects: [], pages: [{ ...PAGE, id: "page-1", title: "Placing an order" } as never, PAGE as never] },
+    revision: "r1",
+    published: null,
+    heldBy: null,
+  };
+}
+
 function app(holders: readonly string[]) {
   return harness({
     projects: [projectRow(PROJECT, "ts-orders"), projectRow(OTHER, "py-orders")],
     engine: {
       list_boards: (args) => ({ project: args["project"], boards: holders.includes(String(args["project"])) ? [summary(String(args["project"]))] : [], emptyFolders: [] }),
-      read_board: (): ReadBoardResult => ({
-        project: PROJECT,
-        id: ID,
-        place: "published",
-        name: "orders",
-        document: { format: "unfold-board", version: 1, title: "Orders", projects: [], pages: [{ ...PAGE, id: "page-1", title: "Placing an order" } as never, PAGE as never] },
-        revision: "r1",
-        published: null,
-        heldBy: null,
-      }),
+      read_board: file,
     },
   });
 }
@@ -65,5 +69,16 @@ describe("what a tool works on", () => {
     await expect(readPage(tools.context(), { project: PROJECT, id: ID }, "page-9")).rejects.toThrow(
       "Can't find the page: the board “Orders” has no page with id “page-9”. Its pages: Placing an order (id page-1), Async path (id page-2).",
     );
+  });
+
+  it("reads a board's first page from the window that holds it, unsaved edits included", async () => {
+    const edited: AgentPage = { ...PAGE, id: "page-1", title: "Placing an order, renamed" };
+    const tools = harness({
+      engine: { read_board: (): ReadBoardResult => ({ ...file(), heldBy: 1 }) },
+      window: (request) => (request.type === "agent_read" && request.page === "page-1" ? { ok: true, page: edited, board: { title: "Orders", place: "published", changes: 1, revision: "r1", unsaved: true }, sizes: {} } : undefined),
+    });
+    tools.report({ board: { project: PROJECT, id: ID }, page: "page-2", selection: { kind: "none" }, visible: [], tabs: [{ project: PROJECT, id: ID }] });
+    const read = await readPage(tools.context(), { project: PROJECT, id: ID }, undefined);
+    expect(read).toMatchObject({ page: { id: "page-1", title: "Placing an order, renamed" }, unsaved: true, revision: tools.context().revision(edited) });
   });
 });

@@ -51,15 +51,15 @@ export function overlapOf(a: Box, b: Box): { readonly width: number; readonly he
   };
 }
 
-/** The smallest box around `boxes`, grown by `padding` on every side; undefined for none. */
-export function boundsOf(boxes: readonly Box[], padding = 0): Box | undefined {
+/** The smallest box around `boxes`; undefined for none. */
+export function boundsOf(boxes: readonly Box[]): Box | undefined {
   if (boxes.length === 0) {
     return undefined;
   }
-  const left = Math.min(...boxes.map((box) => box.x)) - padding;
-  const top = Math.min(...boxes.map((box) => box.y)) - padding;
-  const right = Math.max(...boxes.map((box) => box.x + box.width)) + padding;
-  const bottom = Math.max(...boxes.map((box) => box.y + box.height)) + padding;
+  const left = Math.min(...boxes.map((box) => box.x));
+  const top = Math.min(...boxes.map((box) => box.y));
+  const right = Math.max(...boxes.map((box) => box.x + box.width));
+  const bottom = Math.max(...boxes.map((box) => box.y + box.height));
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 

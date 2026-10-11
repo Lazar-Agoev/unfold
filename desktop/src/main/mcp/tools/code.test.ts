@@ -109,6 +109,26 @@ describe("read_code", () => {
     );
   });
 
+  it("ends a page of long lines early, so the size guard never cuts where the next page starts", async () => {
+    const card = recorded<CardView>(cardCreateOrder);
+    if (card.type !== "block" || card.code?.source.state !== "current") {
+      throw new Error("createOrder's card has current source");
+    }
+    const texts = Array.from({ length: 200 }, (_, index) => `const line${index} = "${"x".repeat(200)}";`);
+    let at = 0;
+    const lines = texts.map((line, index) => {
+      const entry = { number: 25 + index, start: at, end: at + line.length, indent: 0 };
+      at += line.length + 1;
+      return entry;
+    });
+    const long: CardView = { ...card, header: { ...card.header, endLine: 224 }, code: { ...card.code, source: { ...card.code.source, text: texts.join("\n"), lines, outline: [], dedent: 0 } } };
+    const { text } = await app({ engine: { card: () => long } }).call(readCode, { key: CREATE_ORDER, project: PROJECT, view: "code" });
+    const shown = Number(/Source, lines 25–(\d+) of 25–224:/.exec(text)?.[1]);
+    expect(shown).toBeLessThan(25 + 149);
+    expect(text).toContain(`More: read_code with lines [${shown + 1}, ${Math.min(224, shown + 150)}].`);
+    expect(text).not.toContain(`const line${shown - 24} =`);
+  });
+
   it("says when the file changed instead of showing source", async () => {
     const changed = recorded<Extract<CardView, { type: "block" }>>(cardCreateOrder);
     const tools = app({ engine: { card: () => ({ ...changed, header: { ...changed.header, source: "changed" }, code: changed.code ? { ...changed.code, source: { state: "changed" } } : null }) } });

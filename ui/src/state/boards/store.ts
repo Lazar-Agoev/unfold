@@ -10,8 +10,8 @@
  *   edits gets a `conflict` for the person to resolve.
  * - Each page's camera and lens, and the active page, are saved with `save_board_view` (debounced);
  *   view changes are never undo steps.
- * - An agent's edit is saved at once (`saveStep`) and becomes an undo step only once the engine
- *   accepts it.
+ * - An agent's edit is saved at once (`saveStep`), and a repair is written by the engine itself
+ *   (`engineStep`); either becomes an undo step only once the engine accepts it.
  */
 
 import { replaceEqualDeep } from "@tanstack/react-query";
@@ -451,7 +451,7 @@ function step(ref: BoardRef, from: "past" | "future"): boolean {
   if (!board || !entry) {
     return false;
   }
-  const back: HistoryEntry = { document: board.document, page: entry.page };
+  const back: HistoryEntry = { document: board.document, page: entry.page, ...(entry.name !== undefined ? { name: entry.name } : {}) };
   const page = existingPage(entry.document, entry.page);
   update(ref, (open) => {
     open.history[from].pop();
@@ -567,28 +567,6 @@ function applySaved(ref: BoardRef, saved: BoardState, coveredEdits: number): voi
 }
 
 /**
- * Adopts a state the engine wrote itself from this window's saved version (a repair): the new
- * baseline, with the session kept. The change is one undo step, so ⌘Z takes back exactly the repair
- * (and saves that). Call after a flush, so nothing is unsaved.
- */
-export function applyServerState(ref: BoardRef, state: BoardState, page?: PageId): void {
-  const board = getOpenBoard(ref);
-  if (!board) {
-    return;
-  }
-  const before: HistoryEntry = { document: board.document, page: page ?? board.activePage };
-  applySaved(ref, state, board.edits);
-  if (getOpenBoard(ref)?.document !== before.document) {
-    update(ref, (open) => {
-      pushPast(open, before);
-      open.history.future = [];
-      open.history.coalesce = null;
-      open.activePage = existingPage(open.document, open.activePage);
-    });
-  }
-}
-
-/**
  * Writes the board's unsaved edits now (`force` keeps this window's version over an outside edit).
  * Saves of one board never overlap: a save requested during another waits for it and then writes
  * whatever is still unsaved.
@@ -658,22 +636,25 @@ interface StepChange<T> {
   readonly value: T;
 }
 
-/** How `saveStep` ended: the board as saved and what the change reported, or why it wasn't saved. */
-type StepOutcome<T> = { readonly ok: true; readonly state: BoardState; readonly value: T } | { readonly ok: false; readonly error: UnfoldError };
+/** Why a step wasn't made. */
+interface NotSaved {
+  readonly ok: false;
+  readonly error: UnfoldError;
+}
 
-function notSaved(code: string, message: string): StepOutcome<never> {
+/** How a step ended: the board as saved and what the change reported, or why it wasn't saved. */
+type StepOutcome<T> = { readonly ok: true; readonly state: BoardState; readonly value: T } | NotSaved;
+
+function notSaved(code: string, message: string): NotSaved {
   return { ok: false, error: new UnfoldError({ code, message }) };
 }
 
 /**
- * Makes one change and saves it at once rather than after the autosave delay (an agent's edit). The
- * board's unsaved edits are saved first, so a refusal is about this change alone; `change` then makes
- * the next document from the current one, which is saved, and only once the engine accepts it does it
- * become one undo step of `page`, named `name`. A refused change leaves the board as it was. Edits made
- * while it saves stay on top: `change` runs again over them, and they autosave. Saves never overlap.
- * `change` may throw (nothing is applied then).
+ * Runs `step` once the board's unsaved edits are saved, holding the board's save slot meanwhile (no
+ * other save of it starts), so a step's refusal is about the step alone. Refuses while the board's
+ * edits can't be saved or a conflict waits for the person.
  */
-export async function saveStep<T>(ref: BoardRef, page: PageId, name: string, change: (document: BoardDocument) => StepChange<T>): Promise<StepOutcome<T>> {
+async function withSaveSlot<T>(ref: BoardRef, step: (board: OpenBoard) => Promise<StepOutcome<T>>): Promise<StepOutcome<T>> {
   const key = boardKey(ref);
   // Another step may take the save slot while this one waits; then wait for that one too.
   do {
@@ -684,15 +665,10 @@ export async function saveStep<T>(ref: BoardRef, page: PageId, name: string, cha
     return notSaved("board_not_open", "This window no longer holds the board.");
   }
   if (board.conflict) {
-    return notSaved("board_conflict", "The board changed outside Unfold and the person hasn't chosen which version to keep yet.");
+    return notSaved("board_conflict", "The board changed outside Unfold, and which version to keep hasn't been chosen yet.");
   }
   if (isDirty(board)) {
     return notSaved("unsaved_edits", board.saveError ?? "The board has edits Unfold couldn't save yet. Try again in a moment.");
-  }
-  const base = board.document;
-  const first = change(base);
-  if (first.document === base) {
-    return { ok: true, state: savedState(board), value: first.value };
   }
   let release: () => void = () => undefined;
   inflight.set(
@@ -701,50 +677,82 @@ export async function saveStep<T>(ref: BoardRef, page: PageId, name: string, cha
       release = resolve;
     }),
   );
+  try {
+    return await step(board);
+  } finally {
+    inflight.delete(key);
+    release();
+  }
+}
+
+/** Has the engine write the board (a save, a repair), showing the board as saving meanwhile; a refusal is returned. */
+async function engineWrite(ref: BoardRef, write: () => Promise<BoardState>): Promise<BoardState | NotSaved> {
   update(ref, (open) => {
     open.saving = true;
   });
   try {
-    let saved: BoardState;
-    try {
-      saved = await call("save_board", { project: ref.project, id: ref.id, board: boardEdit(first.document) });
-    } catch (cause) {
-      return { ok: false, error: toUnfoldError(cause) };
-    }
-    return commitStep(ref, { page, name, base, first, saved, change });
+    return await write();
+  } catch (cause) {
+    return { ok: false, error: toUnfoldError(cause) };
   } finally {
-    inflight.delete(key);
-    release();
     update(ref, (open) => {
       open.saving = false;
     });
   }
 }
 
-/** Makes a change the engine saved one undo step, over whatever the person edited while it saved. */
-function commitStep<T>(
+/**
+ * Makes one change and saves it at once rather than after the autosave delay (an agent's edit). The
+ * board's unsaved edits are saved first, so a refusal is about this change alone; `change` then makes
+ * the next document from the current one, which is saved, and only once the engine accepts it does it
+ * become one undo step of `page`, named `name`. A refused change leaves the board as it was. When the
+ * person edits while it saves, `change` runs again over their edits and that is saved, until a save
+ * covers every edit, so what the change reports and the board as saved agree. Saves never overlap.
+ * `change` may throw (nothing is applied then).
+ */
+export async function saveStep<T>(ref: BoardRef, page: PageId, name: string, change: (document: BoardDocument) => StepChange<T>): Promise<StepOutcome<T>> {
+  return withSaveSlot(ref, async (board) => {
+    let base = board.document;
+    let next = change(base);
+    if (next.document === base) {
+      return { ok: true, state: savedState(board), value: next.value };
+    }
+    for (;;) {
+      const edit = boardEdit(next.document);
+      const saved = await engineWrite(ref, () => call("save_board", { project: ref.project, id: ref.id, board: edit }));
+      if ("error" in saved) {
+        return saved;
+      }
+      const now = getOpenBoard(ref);
+      if (!now || now.document === base) {
+        commitStep(ref, { page, name, base, document: next.document, saved });
+        return { ok: true, state: saved, value: next.value };
+      }
+      // The person edited while it saved: the change applies again over their edits, and that is saved.
+      base = now.document;
+      try {
+        next = change(base);
+      } catch {
+        return notSaved("page_changed", "The page changed while the edit was saving, and the edit no longer applies. Read the page again.");
+      }
+    }
+  });
+}
+
+/**
+ * Makes a change the engine saved the board's document: `document`, made from `base` (the board's
+ * document still), as one undo step when it changed anything.
+ */
+function commitStep(
   ref: BoardRef,
-  step: {
-    readonly page: PageId;
-    readonly name: string;
-    readonly base: BoardDocument;
-    readonly first: StepChange<T>;
-    readonly saved: BoardState;
-    readonly change: (document: BoardDocument) => StepChange<T>;
-  },
-): StepOutcome<T> {
-  const { page, name, base, first, saved, change } = step;
+  step: { readonly page: PageId; readonly name: string; readonly base: BoardDocument; readonly document: BoardDocument; readonly saved: BoardState },
+): void {
+  const { page, name, base, document, saved } = step;
   const board = getOpenBoard(ref);
   if (!board) {
-    return { ok: true, state: saved, value: first.value };
+    return;
   }
-  const moved = board.document !== base;
-  let next: BoardDocument;
-  try {
-    next = moved ? change(board.document).document : shared(first.document, saved.document);
-  } catch {
-    next = board.document;
-  }
+  const next = shared(document, saved.document);
   update(ref, (open) => {
     open.revision = saved.revision;
     open.health = shared(board.health, saved.health);
@@ -754,26 +762,49 @@ function commitStep<T>(
     open.place = saved.place;
     open.published = saved.published;
     open.saveError = null;
-    open.savedDocument = saved.document;
-    if (next !== open.document) {
-      pushPast(open, { document: open.document, page, name });
+    open.savedDocument = next;
+    if (document !== base) {
+      pushPast(open, { document: base, page, name });
       open.history.future = [];
       open.history.coalesce = null;
+    }
+    if (next !== base) {
       open.document = next;
       open.edits += 1;
     }
-    if (!moved) {
-      open.savedEdits = open.edits;
-    }
+    open.savedEdits = open.edits;
   });
-  if (!moved) {
-    return { ok: true, state: saved, value: first.value };
-  }
-  // What the person did meanwhile is saved next, with the change applied again over it.
-  scheduleSave(ref);
-  return next === board.document
-    ? notSaved("page_changed", "The page changed while the edit was saving, and the edit no longer applies. Read the page again.")
-    : { ok: true, state: saved, value: first.value };
+}
+
+/**
+ * Has the engine change the board itself from this window's saved version (a repair), as `saveStep`
+ * saves a change: the board's unsaved edits are saved first (refused as there), nothing else saves
+ * while `write` runs, and the state it writes becomes one undo step of `page`, so ⌘Z takes back exactly
+ * the repair (and saves that). Edits made meanwhile are kept, and saved next over the engine's change,
+ * which then isn't kept (`page_changed`).
+ */
+export async function engineStep(ref: BoardRef, page: PageId, write: () => Promise<BoardState>): Promise<StepOutcome<null>> {
+  return withSaveSlot(ref, async (board) => {
+    const state = await engineWrite(ref, write);
+    if ("error" in state) {
+      return state;
+    }
+    // The new baseline; adopted as the document only when nothing was edited meanwhile.
+    applySaved(ref, state, board.edits);
+    const now = getOpenBoard(ref);
+    if (now && now.edits !== board.edits) {
+      return notSaved("page_changed", "The board was edited while the repair ran: the edits are kept, and the repair isn't. Read the page again, and repair it if it still needs it.");
+    }
+    if (now && now.document !== board.document) {
+      update(ref, (open) => {
+        pushPast(open, { document: board.document, page });
+        open.history.future = [];
+        open.history.coalesce = null;
+        open.activePage = existingPage(open.document, open.activePage);
+      });
+    }
+    return { ok: true, state, value: null };
+  });
 }
 
 /** Saves now whatever is waiting for the autosave (before closing, moving, or publishing a board). */

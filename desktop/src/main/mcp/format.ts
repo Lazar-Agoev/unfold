@@ -41,7 +41,8 @@ export function keyFile(key: string): string | undefined {
   if (key.startsWith("entrance:")) {
     return undefined;
   }
-  const hash = key.indexOf("#");
+  // Names escape `#` (`%23`), so the last one ends the path, which may hold one.
+  const hash = key.lastIndexOf("#");
   return hash < 0 ? key : key.slice(0, hash);
 }
 
@@ -59,7 +60,7 @@ export function keyName(key: string): string {
       return "entrance";
     }
   }
-  const local = key.slice(key.indexOf("#") + 1);
+  const local = key.slice(key.lastIndexOf("#") + 1);
   const names = local
     .split("/")
     .map((step) => step.slice(step.indexOf(":") + 1).replace(/\[\d+\]$/, ""))
@@ -72,7 +73,7 @@ export function keyKind(key: string): string {
   if (key.startsWith("entrance:")) {
     return "entrance";
   }
-  const step = key.slice(key.indexOf("#") + 1).split("/").at(-1) ?? "";
+  const step = key.slice(key.lastIndexOf("#") + 1).split("/").at(-1) ?? "";
   return step.replace(/[:[].*$/, "");
 }
 

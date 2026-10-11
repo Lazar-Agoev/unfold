@@ -94,4 +94,16 @@ describe("unlabeledSteps", () => {
     expect(unlabeledSteps(labeled, card, model("changed"))).toBe(0);
     expect(unlabeledSteps(labeled, card, undefined)).toBe(0);
   });
+
+  it("leaves out the steps a collapsed step group of the card hides, and counts a return", () => {
+    const card = { id: "alpha", ref: { block: KEY }, at: [0, 0] as [number, number] };
+    const flow = model("current");
+    if (flow.type === "block" && flow.flow) {
+      flow.flow.nodes.push(step(5, "statement", `${KEY}/if[0]/call[0]`), step(6, "return", `${KEY}/return[0]`));
+    }
+    const group = (collapsed: boolean, owner = "alpha") => ({ id: "g", card: owner, title: "Check it", members: [`${KEY}/if[0]`], collapsed });
+    expect(unlabeledSteps(page("p", [card], { groups: [group(false)] }), card, flow)).toBe(4);
+    expect(unlabeledSteps(page("p", [card], { groups: [group(true)] }), card, flow)).toBe(2);
+    expect(unlabeledSteps(page("p", [card], { groups: [group(true, "other")] }), card, flow)).toBe(4);
+  });
 });

@@ -15,7 +15,7 @@ vi.mock("../../components/Toast", () => toast);
 
 const store = await import("./store");
 const { followCall, extendTrail } = await import("./navigation");
-const { addBlock, addLink, entranceCardText, labelNode, openEntrance, removeCard, traceEntrance } = await import("./api");
+const { addBlock, addLink, entranceCardText, focusFrame, labelNode, openEntrance, removeCard, traceEntrance } = await import("./api");
 const { arrangeBoard } = await import("../../canvas/arrangeBoard");
 const { FOLLOW_GAP, HEADER_PORT, STACK_GAP, fallbackSize } = await import("../../canvas/layout");
 const { estimateText } = await import("../../canvas/measure");
@@ -236,6 +236,29 @@ describe("adding cards from any project", () => {
   });
 });
 
+describe("bringing a frame into view", () => {
+  it("selects it and expands the collapsed frames around it in one undo step; it stays collapsed itself", () => {
+    const a: Card = { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] };
+    open(
+      [a],
+      boardDocument([
+        page("page-1", [a], {
+          frames: [
+            { id: "inner", title: "Inner", members: ["a"], look: "box", collapsed: true, author: "person:lazar" },
+            { id: "outer", title: "Outer", members: ["inner"], look: "zone", collapsed: true, author: "person:lazar" },
+          ],
+        }),
+      ]),
+    );
+    const collapsed = () => store.getOpenBoard(REF)?.document.pages[0]?.frames?.map((frame) => frame.collapsed === true);
+    focusFrame(PAGE, "inner");
+    expect(collapsed()).toEqual([true, false]);
+    expect(store.getPageView(PAGE)).toMatchObject({ selection: { kind: "frame", frameId: "inner" }, focus: { cardIds: ["inner"], mode: "fit" } });
+    store.undo(REF);
+    expect(collapsed()).toEqual([true, true]);
+  });
+});
+
 describe("Arrange", () => {
   it("lays a page out by call depth in one undoable step", () => {
     open([
@@ -248,13 +271,33 @@ describe("Arrange", () => {
       { id: "1", source: "e", sourceHandle: "target:0", target: "b", project: "p", occurrence: "target:0", seq: 0, kind: "handler" as const, dashed: false, order: 0, line: null },
       { id: "2", source: "b", sourceHandle: "src/b.ts#function:b/call[0]", target: "c", project: "p", occurrence: "src/b.ts#function:b/call[0]", seq: 0, kind: "calls" as const, dashed: false, order: 0, line: 3 },
     ];
-    expect(arrangeBoard(PAGE, arrows, () => undefined)).toBe(3);
+    expect(arrangeBoard(PAGE, arrows, new Map(), () => undefined)).toBe(3);
     const at = Object.fromEntries(cards().map((card) => [card.id, card.at]));
     expect(at["e"]?.[0]).toBeLessThan(at["b"]?.[0] ?? 0);
     expect(at["b"]?.[0]).toBeLessThan(at["c"]?.[0] ?? 0);
     // Arranging again changes nothing.
-    expect(arrangeBoard(PAGE, arrows, () => undefined)).toBe(0);
+    expect(arrangeBoard(PAGE, arrows, new Map(), () => undefined)).toBe(0);
     store.undo(REF);
     expect(cards().map((card) => card.at)).toEqual(before);
+  });
+
+  it("arranges a page of resource cards alone (a data model of tables)", () => {
+    const table = (id: string, at: [number, number]) => ({ id, kind: "table" as const, name: id, anchors: [], at, author: "agent:claude" });
+    open([], boardDocument([page("page-1", [], { resources: [table("orders", [0, 2000]), table("customers", [5000, 0])] })]));
+    expect(arrangeBoard(PAGE, [], new Map(), () => undefined)).toBeGreaterThan(0);
+  });
+
+  it("sizes cards it hasn't measured by what their bodies show", () => {
+    open([
+      { id: "b", ref: { block: "src/b.ts#function:b" }, at: [0, 0], view: "diagram" },
+      { id: "c", ref: { block: "src/c.ts#function:c" }, at: [900, 0], view: "diagram" },
+    ]);
+    const arrows = [
+      { id: "1", source: "b", sourceHandle: "node", target: "c", project: "p", occurrence: "node", seq: 0, kind: "calls" as const, dashed: false, order: 0, line: null },
+    ];
+    arrangeBoard(PAGE, arrows, new Map([["b", "node" as const], ["c", "node" as const]]), () => undefined);
+    const [b, c] = cards();
+    // A Diagram node's column is a node's width, not a Code card's.
+    expect((c?.at[0] ?? 0) - (b?.at[0] ?? 0)).toBeLessThan(fallbackSize(false).width);
   });
 });

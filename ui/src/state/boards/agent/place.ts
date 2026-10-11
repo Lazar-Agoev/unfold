@@ -5,33 +5,29 @@
  */
 
 import { FOLLOW_GAP, STACK_GAP, clearSpot, newCardPlacement, type Point, type Rect, type Size } from "../../../canvas/layout";
-import { framePadding } from "../../../canvas/frames/geometry";
+import { NOTE_GAP, framePadding } from "../../../canvas/frames/geometry";
+import { lineMiddle, lineNoteSpot } from "../../../canvas/notes/spots";
 import type { Page } from "../../../ipc/generated";
 import { findFrame, frameChain } from "../frames";
 import { invalid, pageRects, type OpContext } from "./context";
-
-/** The gap between a note and the item it sits beside. */
-const NOTE_GAP = 12;
 
 function meets(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.width + STACK_GAP && b.x < a.x + a.width + STACK_GAP && a.y < b.y + b.height + STACK_GAP && b.y < a.y + a.height + STACK_GAP;
 }
 
 /** What an item going into `frame` (if any) keeps clear of: every drawn item but the frames it goes into. */
-function occupiedFor(page: Page, rects: ReadonlyMap<string, Rect>, frame: string | undefined): Rect[] {
+export function occupiedFor(page: Page, rects: ReadonlyMap<string, Rect>, frame: string | undefined): Rect[] {
   const within = new Set(frame !== undefined ? [frame, ...frameChain(page, frame).map((item) => item.id)] : []);
   return [...rects].flatMap(([id, rect]) => (within.has(id) ? [] : [rect]));
 }
 
-/** The rectangle of item `id` as drawn: a card, resource card, note, frame, or (a link) the space between its ends' centers. */
-function nearRect(page: Page, rects: ReadonlyMap<string, Rect>, id: string): Rect {
+/** The rectangle of item `id` as drawn: a card, resource card, note, frame, or (a link) its line's middle (`lineMiddle`). */
+export function nearRect(page: Page, rects: ReadonlyMap<string, Rect>, id: string): Rect {
   const link = page.links.find((item) => item.id === id);
   const from = link ? rects.get(link.from) : undefined;
   const to = link ? rects.get(link.to) : undefined;
   if (from && to) {
-    const x = (from.x + from.width / 2 + to.x + to.width / 2) / 2;
-    const y = (from.y + from.height / 2 + to.y + to.height / 2) / 2;
-    return { x, y, width: 0, height: 0 };
+    return { ...lineMiddle(from, to), width: 0, height: 0 };
   }
   const rect = rects.get(id);
   if (!rect) {
@@ -68,15 +64,19 @@ export function resourceSpot(ctx: OpContext, page: Page, size: Size, near: strin
 /**
  * Where a note of `size` goes beside item `id`: under it, else right of it, above it, or left of it,
  * whichever first covers nothing; else under it, moved down until it covers nothing. A link's note
- * sits under the middle of the line.
+ * sits beside the middle of its line, as Arrange puts it (`lineNoteSpot`), in the frames around its ends.
  */
 export function noteSpot(ctx: OpContext, page: Page, size: Size, id: string): [number, number] {
   const rects = pageRects(ctx, page);
   const rect = nearRect(page, rects, id);
+  const link = page.links.find((item) => item.id === id);
+  if (link) {
+    const around = new Set([...frameChain(page, link.from), ...frameChain(page, link.to)].map((frame) => frame.id));
+    return lineNoteSpot(rect, size, [...rects].flatMap(([other, box]) => (around.has(other) ? [] : [box])));
+  }
   // The frames around the item take the note in; the item itself is what it sits beside.
   const occupied = occupiedFor(page, rects, frameChain(page, id)[0]?.id).filter((other) => other !== rect);
-  const middle = rect.width === 0;
-  const below = { x: middle ? rect.x - size.width / 2 : rect.x, y: rect.y + rect.height + NOTE_GAP };
+  const below = { x: rect.x, y: rect.y + rect.height + NOTE_GAP };
   const spots: Point[] = [
     below,
     { x: rect.x + rect.width + NOTE_GAP, y: rect.y },

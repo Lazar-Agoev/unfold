@@ -5,7 +5,7 @@
  * agent may re-sign or accept only what agents wrote.
  */
 
-import type { AnchorSpec, HealthItem, Page, RepairKind, RepairSpec, Target } from "./engine-types";
+import type { Anchor, AnchorSpec, HealthItem, Page, RepairKind, RepairSpec, Target } from "./engine-types";
 import { keyName } from "./format";
 import { cardKey } from "./page-code";
 import { cant } from "./results";
@@ -80,53 +80,91 @@ export interface Words {
   readonly author: string | undefined;
 }
 
-/** The texts re-signing or accepting an item vouches for, with their authors. */
-function vouchedWords(page: Page, item: HealthItem, repair: "resign" | "accept"): Words[] {
-  const { target } = item;
-  const describe = (what: string, description: { readonly author: string } | undefined): Words[] => (description ? [{ what: `the description of ${what}`, author: description.author }] : []);
+type Card = Page["cards"][number];
+
+function describe(what: string, description: { readonly author: string } | undefined): Words[] {
+  return description ? [{ what: `the description of ${what}`, author: description.author }] : [];
+}
+
+function groupWords(group: Page["groups"][number]): Words[] {
+  return [{ what: `the step group “${group.title}”`, author: group.author }, ...describe(`“${group.title}”`, group.description)];
+}
+
+function labelWords(label: Page["labels"][number]): Words[] {
+  return [{ what: `the Flow label “${label.text}”`, author: label.author }];
+}
+
+function linkWords(link: Page["links"][number]): Words[] {
+  return [
+    ...(link.kind !== undefined ? [{ what: `the ${link.kind} connection`, author: link.author }] : []),
+    ...(link.label ? [{ what: `the label “${link.label.text}”`, author: link.label.author }] : []),
+    ...describe("the link", link.description),
+  ];
+}
+
+function resourceWords(resource: NonNullable<Page["resources"]>[number]): Words[] {
+  return [{ what: `the ${resource.kind} “${resource.name}”`, author: resource.author }, ...describe(`“${resource.name}”`, resource.description)];
+}
+
+/** A card's words: its description; accepting its code also keeps its step groups and Flow labels attached. */
+function cardWords(page: Page, card: Card, repair: "resign" | "accept"): Words[] {
+  const own = describe(keyName(cardKey(card)), card.description);
+  if (repair === "resign") {
+    return own;
+  }
+  const key = cardKey(card);
+  const groups = page.groups.filter((group) => group.card === card.id).flatMap(groupWords);
+  const labels = page.labels.filter((label) => label.project === card.ref.project && label.key.startsWith(`${key}/`)).flatMap(labelWords);
+  return [...own, ...groups, ...labels];
+}
+
+/** The texts re-signing or accepting an item's target vouches for, with their authors. */
+function targetWords(page: Page, target: Target, repair: "resign" | "accept"): Words[] {
   if ("card" in target) {
     const card = page.cards.find((entry) => entry.id === target.card);
-    if (!card) {
-      return [];
-    }
-    const name = keyName(cardKey(card));
-    const own = describe(name, card.description);
-    if (repair === "resign") {
-      return own;
-    }
-    // Accepting a card's new code keeps everything written about it attached: its step groups and labels too.
-    const key = cardKey(card);
-    const groups = page.groups.filter((group) => group.card === card.id).flatMap((group) => [{ what: `the step group “${group.title}”`, author: group.author }, ...describe(`“${group.title}”`, group.description)]);
-    const labels = page.labels
-      .filter((label) => label.project === card.ref.project && label.key.startsWith(`${key}/`))
-      .map((label) => ({ what: `the Flow label “${label.text}”`, author: label.author }));
-    return [...own, ...groups, ...labels];
+    return card ? cardWords(page, card, repair) : [];
   }
   if ("group" in target) {
     const group = page.groups.find((entry) => entry.id === target.group);
-    return group ? [{ what: `the step group “${group.title}”`, author: group.author }, ...describe(`“${group.title}”`, group.description)] : [];
+    return group ? groupWords(group) : [];
   }
   if ("label" in target) {
     const label = page.labels.find((entry) => entry.key === target.label.key && entry.project === target.label.project);
-    return label ? [{ what: `the Flow label “${label.text}”`, author: label.author }] : [];
+    return label ? labelWords(label) : [];
   }
   if ("link" in target) {
     const link = page.links.find((entry) => entry.id === target.link);
-    if (!link) {
-      return [];
-    }
-    return [
-      ...(link.kind !== undefined ? [{ what: `the ${link.kind} connection`, author: link.author }] : []),
-      ...(link.label ? [{ what: `the label “${link.label.text}”`, author: link.label.author }] : []),
-      ...describe("the link", link.description),
-    ];
+    return link ? linkWords(link) : [];
   }
   if ("resource" in target) {
     const resource = page.resources?.find((entry) => entry.id === target.resource);
-    return resource ? [{ what: `the ${resource.kind} “${resource.name}”`, author: resource.author }, ...describe(`“${resource.name}”`, resource.description)] : [];
+    return resource ? resourceWords(resource) : [];
   }
   const frame = page.frames?.find((entry) => entry.id === target.frame);
   return frame ? describe(`the frame “${frame.title}”`, frame.description) : [];
+}
+
+/**
+ * The texts the page's guard of (`project`, `key`) holds for review: a guard is one per reference on
+ * the page, so accepting it for one item accepts it for every card, step group, Flow label, resource
+ * card, and connection that references the key.
+ */
+function heldWords(page: Page, { project, key }: { readonly project: string | undefined; readonly key: string }): Words[] {
+  const cites = (anchors: readonly Anchor[] | undefined) => (anchors ?? []).some((anchor) => "key" in anchor && anchor.key === key && anchor.project === project);
+  const projectOf = (id: string) => page.cards.find((card) => card.id === id)?.ref.project;
+  return [
+    ...page.cards.filter((card) => cardKey(card) === key && card.ref.project === project).flatMap((card) => cardWords(page, card, "accept")),
+    ...page.groups.filter((group) => group.members.includes(key) && projectOf(group.card) === project).flatMap(groupWords),
+    ...page.labels.filter((label) => label.key === key && label.project === project).flatMap(labelWords),
+    ...(page.resources ?? []).filter((resource) => (resource.type === key && resource.project === project) || cites(resource.anchors)).flatMap(resourceWords),
+    ...page.links
+      .filter(
+        (link) =>
+          link.kind !== undefined &&
+          ((link.step === key && projectOf(link.from) === project) || (link.carries === key && link.carriesProject === project) || cites(link.anchors)),
+      )
+      .flatMap(linkWords),
+  ];
 }
 
 /**
@@ -134,7 +172,9 @@ function vouchedWords(page: Page, item: HealthItem, repair: "resign" | "accept")
  * agents wrote it. A title written before titles were signed counts as a person's.
  */
 export function personWords(page: Page, item: HealthItem, repair: "resign" | "accept"): Words | null {
-  return vouchedWords(page, item, repair).find((words) => words.author?.startsWith("agent:") !== true) ?? null;
+  const accepted = repair === "accept" ? reference(page, item) : null;
+  const words = [...targetWords(page, item.target, repair), ...(accepted ? heldWords(page, accepted) : [])];
+  return words.find((entry) => entry.author?.startsWith("agent:") !== true) ?? null;
 }
 
 /** The reference a reconnect or accept is about, with its project: the item's key, or its target's own key. */

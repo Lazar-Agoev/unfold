@@ -1,6 +1,6 @@
 /**
  * The card models of a page (from the query cache), the definitions of its type cards that show their
- * fields, and the arrows and ports derived from them.
+ * fields, and the arrows derived from them.
  */
 
 import { useQueries } from "@tanstack/react-query";
@@ -10,14 +10,13 @@ import type { Card, CardView, ProjectId, TypeDefinition } from "../ipc/generated
 import { engineQueryOptions } from "../ipc/queries";
 import { cardKey, cardRefKey, effectiveView, findPage, useOpenBoard, usePageView, type PageTarget } from "../state/boards";
 import { resolveRefProject, useProjectIndex } from "../state/workspace";
-import { computeArrows, portsByCard, type Arrow, type ArrowCard } from "./arrows";
+import { computeArrows, type Arrow, type ArrowCard } from "./arrows";
 import { cardQuery, lastVerifiedCode } from "./cardData";
 
 export interface BoardArrows {
   /** Loaded models by `cardRefKey(project, key)`. */
   readonly models: ReadonlyMap<string, CardView>;
   readonly arrows: readonly Arrow[];
-  readonly ports: ReadonlyMap<string, readonly string[]>;
   /** What each card's body shows, by card id (`cardBody`). */
   readonly bodies: ReadonlyMap<string, CardBody>;
   /** Whether every card's model has loaded (or failed). */
@@ -81,7 +80,6 @@ export function useBoardArrows(target: PageTarget, cards: readonly Card[]): Boar
   const models = useMemo(() => loadedByRef<CardView>(wanted, loaded.data), [wanted, loaded.data]);
   const definitions = useMemo(() => loadedByRef<TypeDefinition>(types, loadedTypes), [types, loadedTypes]);
   const arrows = useMemo(() => computeArrows(arrowCards, models, lastVerifiedCode, definitions), [arrowCards, models, definitions]);
-  const ports = useMemo(() => portsByCard(arrows), [arrows]);
   const bodies = useMemo(() => new Map(arrowCards.map((card) => [card.id, card.body])), [arrowCards]);
-  return { models, arrows, ports, bodies, settled: loaded.settled };
+  return { models, arrows, bodies, settled: loaded.settled };
 }

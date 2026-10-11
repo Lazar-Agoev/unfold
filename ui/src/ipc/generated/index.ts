@@ -2258,8 +2258,8 @@ signature: Signature, };
  */
 export type Health = { 
 /**
- * Every problem: per page, cards first, then groups, labels, links, resource cards, and
- * frames.
+ * Every problem: per page, cards first, then groups, labels, links' ends, resource cards,
+ * connections, and frames.
  */
 items: Array<HealthItem>, 
 /**
@@ -3061,8 +3061,8 @@ page: string,
  */
 rows: Array<OutlineRow>, 
 /**
- * The Flow nodes without authored labels, in outline order ("N Flow nodes still show code
- * names").
+ * The Flow nodes without authored labels, in outline order ("N Flow steps unlabeled"); Start,
+ * End, and the steps inside a collapsed step group of their card don't count.
  */
 unlabeled: Array<Unlabeled>, };
 

@@ -3,9 +3,10 @@
  * review a page too. They read the page's document and the page as the canvas laid it out, and find:
  *
  * - **Overlap**: cards, frames, resource cards, or notes on top of each other (a frame and what it
- *   holds don't count, nor a note and what it is attached to, nor a frame and a note on what it holds);
- * - **Crossings**: lines crossing each other more than a few times, or crossing a frame they neither
- *   start nor end in;
+ *   holds don't count, nor a note and what it is attached to, nor a frame and a note on what it holds
+ *   or on a line from or to what it holds);
+ * - **Crossings**: lines crossing each other more than a few times, crossing a frame they neither
+ *   start nor end in, or passing under a card they neither start nor end at;
  * - **Density**: too many visible items on the page or in a frame, or steps in a Flow card;
  * - **Unlabeled steps**: Flow cards whose steps still show names from the code;
  * - **Missing words**: frames, step groups, and resource cards without a description;
@@ -129,15 +130,17 @@ function boxOf(context: Context, id: string): Box | undefined {
 }
 
 /**
- * Whether one item holds the other (a frame and an item in it), or a note is attached to the other or
- * to something a frame holds (the frame's box takes the note in).
+ * Whether one item holds the other (a frame and an item in it), or a note is attached to the other, to
+ * something a frame holds (the frame's box takes the note in), or to a line from or to something a
+ * frame holds (the note sits by its line, which runs in the frame).
  */
 function belongTogether(context: Context, a: string, b: string): boolean {
   const { tree, page } = context;
   const holds = (frame: string, item: string) => {
     const held = tree.inside(frame);
     const attach = page.notes?.find((entry) => entry.id === item)?.attach;
-    return held.has(item) || (attach !== undefined && held.has(attach));
+    const line = attach !== undefined ? page.links.find((link) => link.id === attach) : undefined;
+    return held.has(item) || (attach !== undefined && held.has(attach)) || (line !== undefined && (held.has(line.from) || held.has(line.to)));
   };
   const attached = (note: string, item: string) => page.notes?.some((entry) => entry.id === note && entry.attach === item) === true;
   return holds(a, b) || holds(b, a) || attached(a, b) || attached(b, a);
@@ -239,6 +242,26 @@ function crossings(context: Context): PageCheck[] {
         suggestion: "Call arrange_page, or move the frame or the cards so the lines go around it.",
       });
     }
+  }
+
+  // Lines under a card, resource card, or collapsed frame they neither start nor end at (grazing its edge doesn't count).
+  const solid = context.visible.flatMap((id) => {
+    const frame = tree.frames.get(id);
+    const box = (frame ? frame.collapsed === true : page.notes?.some((note) => note.id === id) !== true) ? context.geometry.boxes.get(id) : undefined;
+    const inset = THRESHOLDS.overlap;
+    return box ? [{ id, box: { x: box.x + inset, y: box.y + inset, width: box.width - 2 * inset, height: box.height - 2 * inset } }] : [];
+  });
+  const under = lines.flatMap((line) => {
+    const covering = solid.filter(({ id, box }) => id !== line.from && id !== line.to && meets(line, box)).map(({ id }) => id);
+    return covering.length > 0 ? [{ line, covering }] : [];
+  });
+  if (under.length > 0) {
+    findings.push({
+      kind: "crossings",
+      items: inOrder(context, under.flatMap(({ line, covering }) => [...lineItems(page, line), ...covering])),
+      message: `${plural(under.length, "line")} ${under.length === 1 ? "passes under a card it doesn't" : "pass under cards they don't"} start or end at: ${listed(under.map(({ line, covering }) => `${lineName(page, line)} passes under ${listed(covering.map((id) => nameOf(page, id)))}`))}.`,
+      suggestion: "Call arrange_page, or move the cards off the line with its moves (rightOf, below), so the line can be seen end to end.",
+    });
   }
   return findings;
 }

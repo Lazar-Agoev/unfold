@@ -536,7 +536,7 @@ workspace's board commands ([IPC](ipc.md#boards)) drive it.
 | page `labels[]` | Flow-node labels: `{key (a block key), project?, text, author, signature}`, one per (project, key); optional on input, always written |
 | page `guards[]` | `{key, project?, kind (a block kind or entrance:<kind>), owner (the owner's key; empty for an entrance), signature}`, one per referenced (project, key); optional on input, always written |
 | page `links[]` | `{id, from, to, label?}` and, for a **connection**, the fields below; `from` and `to` are two different cards, resources, or frames of the page; `label` is a description. Optional on input, always written |
-| link `kind` | `http`, `rpc`, `queue`, `event`, `writes`, `reads`, `calls`, `relates`, or `other`; absent for a drawn link (drawn as `other`). With a kind, `author` is required |
+| link `kind` | `http`, `rpc`, `queue`, `event`, `writes`, `reads`, `calls`, `relates`, or `other`; absent for a drawn link (drawn as `other`), which has a `label` but no `step`, `channel`, `carries`, `anchors`, `description`, or `signature`. With a kind, `author` is required |
 | link `step`, `channel`, `carries`, `carriesProject` | `step`: a block key inside the `from` card's block, so only when `from` is a block card. `channel`: what travels, not blank. `carries`: a type declaration or class key; `carriesProject` only with it |
 | link `fromColumn`, `toColumn`, `cardinality` | Only on `relates`, whose ends are two tables. A column of a table that lists its own columns must be one of them. `cardinality` is `one-to-one`, `one-to-many`, `many-to-one`, or `many-to-many` |
 | link `anchors`, `description`, `author`, `signature` | Optional; `anchors` written only when there are some |
@@ -614,7 +614,8 @@ facts' hash of the reference's project, so text can never be signed against sour
 
 An anchor's bytes are a block's range, an entrance's evidence range, or an evidence file's lines (from the start of
 the first through the end of the last, its line break included), all verified against the hash the graph recorded.
-A save signs unsigned claims, and signs a resource card or connection again when what it cites changed.
+A save signs unsigned claims, and signs a resource card or connection again when what it cites changed. A link that
+starts citing code (a drawn link given a kind and a step, say) has its label signed again over that code.
 
 When a signature no longer matches the verified bytes (or the bytes do not verify), the description, label, or claim
 is **outdated**. A drawn link's label is signed when it is saved but never reported outdated: a drawn link is a
@@ -719,7 +720,7 @@ page links to (entrance cards first, then left to right and top to bottom); each
 card links and then the page's links between two cards (in id order; links to resources and frames aren't followed),
 indented by call depth. Cards reachable only through a
 cycle come last. The outline also lists the Flow nodes, in that order, that still show a fallback name ("N Flow steps
-unlabeled").
+unlabeled"), leaving out Start and End and the steps a collapsed step group of their card hides.
 
 ### Files, drafts, Publish, and unpublished changes
 

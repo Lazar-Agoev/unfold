@@ -4,9 +4,9 @@
  * at most one frame, no cycles) are trusted, but a cycle never loops.
  */
 
+import { framePadding } from "../../canvas/frames/geometry";
 import type { Frame, Page } from "../../ipc/generated";
 import { boundsOf, type Box } from "./geometry";
-import { THRESHOLDS } from "./thresholds";
 
 export interface FrameTree {
   /** The page's frames by id. */
@@ -61,7 +61,8 @@ export function frameTree(page: Page): FrameTree {
 
 /**
  * Where frame `id` sits: its box as drawn, else the box around its members as drawn (nested frames
- * the same way) with the frame's padding; undefined when nothing of it is drawn.
+ * the same way) with the frame's padding (`framePadding`, as the canvas leaves it); undefined when
+ * nothing of it is drawn.
  */
 export function frameBox(tree: FrameTree, boxes: ReadonlyMap<string, Box>, id: string, seen: ReadonlySet<string> = new Set()): Box | undefined {
   const drawn = boxes.get(id);
@@ -69,9 +70,15 @@ export function frameBox(tree: FrameTree, boxes: ReadonlyMap<string, Box>, id: s
     return drawn;
   }
   const within = new Set([...seen, id]);
-  const members = (tree.frames.get(id)?.members ?? []).flatMap((member) => {
+  const frame = tree.frames.get(id);
+  const members = (frame?.members ?? []).flatMap((member) => {
     const box = tree.frames.has(member) ? frameBox(tree, boxes, member, within) : boxes.get(member);
     return box ? [box] : [];
   });
-  return boundsOf(members, THRESHOLDS.framePadding);
+  const inner = boundsOf(members);
+  if (!inner || !frame) {
+    return inner;
+  }
+  const padding = framePadding(frame);
+  return { x: inner.x - padding.left, y: inner.y - padding.top, width: inner.width + padding.left + padding.right, height: inner.height + padding.top + padding.bottom };
 }

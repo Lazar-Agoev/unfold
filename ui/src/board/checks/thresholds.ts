@@ -20,8 +20,6 @@ export const THRESHOLDS = {
   overviewCards: 8,
   /** Cards in Flow or Code an overview page holds before it asks for the Diagram view. */
   overviewDetailed: 3,
-  /** The room a frame leaves around its members, when the canvas doesn't draw the frame itself. */
-  framePadding: 24,
   /** Names a finding lists before "and N more". */
   listedNames: 6,
 } as const;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cant, fitResult, header, MAX_RESULT_CHARS, nextLine, paged, textResult, ToolError } from "./results";
+import { cant, fitResult, header, MAX_RESULT_CHARS, nextLine, paged, pagedLines, textResult, ToolError, windowRefusal } from "./results";
 
 const CLAUDE = { author: "agent:claude", name: "Claude" } as const;
 
@@ -47,11 +47,31 @@ describe("cursors", () => {
   it("refuse a cursor that isn't one", () => {
     for (const cursor of ["abc", "-1", "1.5", "25", "99"]) {
       expect(() => paged(items, cursor, 10)).toThrow(ToolError);
+      expect(() => pagedLines(items.map(String), cursor, 10)).toThrow(ToolError);
     }
+  });
+
+  it("page lines by count, and end a page of long lines before the size guard would cut it", () => {
+    const short = Array.from({ length: 25 }, (_, index) => `line ${index}`);
+    expect(pagedLines(short, "10", 10)).toEqual({ items: short.slice(10, 20), total: 25, next: "20" });
+    const long = Array.from({ length: 10 }, () => "x".repeat(5_000));
+    const first = pagedLines(long, undefined, 120);
+    expect(first).toEqual({ items: long.slice(0, 4), total: 10, next: "4" });
+    expect(fitResult(textResult("header", ...first.items, nextLine(first, "read_page")))).toEqual(textResult("header", ...first.items, nextLine(first, "read_page")));
+    expect(pagedLines(["y".repeat(MAX_RESULT_CHARS * 2), "z"], undefined, 120).items).toHaveLength(1);
+    expect(pagedLines([], undefined, 120)).toEqual({ items: [], total: 0 });
   });
 });
 
 describe("errors that teach (design §7.8)", () => {
+  it("say a change that timed out may still land, and to read it before trying again", () => {
+    const refusal = windowRefusal({ ok: false, code: "unconfirmed", message: "The Unfold window didn't answer within 30 s, so the change may still land." });
+    expect(refusal.code).toBe("unconfirmed");
+    expect(refusal.message).toBe(
+      "The Unfold window didn't answer within 30 s, so the change may still land. Read what you changed first (read_page, or list_boards for a board's pages and title), and try again only if it didn't land.",
+    );
+  });
+
   it("say what failed, why, and what to do instead", () => {
     expect(cant("add the table “orders”", "the column “customer_id” doesn't appear in its anchors.", "Cite where the column is defined, or leave it out.").message).toBe(
       "Can't add the table “orders”: the column “customer_id” doesn't appear in its anchors. Cite where the column is defined, or leave it out.",

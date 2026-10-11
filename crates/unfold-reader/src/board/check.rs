@@ -166,8 +166,8 @@ pub struct HealthItem {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Health {
-    /// Every problem: per page, cards first, then groups, labels, links, resource cards, and
-    /// frames.
+    /// Every problem: per page, cards first, then groups, labels, links' ends, resource cards,
+    /// connections, and frames.
     pub items: Vec<HealthItem>,
     /// The number of missing references.
     pub missing: u32,

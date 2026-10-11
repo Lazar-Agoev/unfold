@@ -61,6 +61,17 @@ describe("drawn links at collapsed frames", () => {
     ]);
   });
 
+  it("stay apart while both ends are drawn as themselves, even between the same two items", () => {
+    const writes = (id: string, step: string): Link => ({ ...link(id, "x", "y"), kind: "writes", step, author: "agent:claude" });
+    const links = [writes("w1", "k#f/call[0]"), writes("w2", "k#f/call[1]"), link("d1", "x", "y"), link("d2", "x", "y")];
+    expect(routeLinks(links, SHOWN).map((routed) => [routed.id, routed.count])).toEqual([
+      ["w1", 1],
+      ["w2", 1],
+      ["d1", 1],
+      ["d2", 1],
+    ]);
+  });
+
   it("merge connections only with connections of their kind, which the merged line keeps", () => {
     const connection = (id: string, kind: LinkKind): Link => ({ ...link(id, "c", "y"), kind, author: "agent:claude" });
     const routed = routeLinks([connection("q1", "queue"), connection("q2", "queue"), connection("e1", "event"), link("drawn", "c", "y")], SHOWN);

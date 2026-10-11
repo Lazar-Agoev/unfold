@@ -14,13 +14,13 @@ import type { ToolContext } from "../context";
 import type { Anchor, BoardSummary, Frame, Link, Page, ProjectRow, Resource } from "../engine-types";
 import { authorText, clip, count, joined, keyFile, keyName, labelText, place, typeText } from "../format";
 import { pageCode, type CardCode, type PageCode } from "../page-code";
-import { nextLine, paged, textResult } from "../results";
+import { nextLine, paged, pagedLines, textResult } from "../results";
 import { currentView, readPage as loadPage, pagePlace, projectOrView, resolveBoard, type ReadPage } from "../target";
 import { defineTool } from "../tool";
 
 /** Boards per page of `list_boards`. */
 const BOARDS_PER_PAGE = 30;
-/** Lines per page of `read_page`. */
+/** Lines per page of `read_page` (fewer when they are long). */
 const LINES_PER_PAGE = 120;
 
 const VIEWS = { diagram: "Diagram", flow: "Flow", code: "Code" } as const;
@@ -336,7 +336,7 @@ export const readPage = defineTool({
     }
     const code = await pageCode(context, target.project, read.page);
     const lines = pageLines(read.page, read, code, context.agent);
-    const shown = paged(lines, cursor, LINES_PER_PAGE);
+    const shown = pagedLines(lines, cursor, LINES_PER_PAGE);
     return textResult(
       context.header(pagePlace(target.project, read)),
       `Ids: project ${target.project.id}, board ${target.board.id}, page ${read.page.id}. Cards without their own view show ${VIEWS[read.page.defaultView]}.${read.unsaved ? " The window has edits it hasn't saved yet; they're included." : ""}`,

@@ -4,7 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { queryClient } from "../../ipc/client";
-import type { CardView, TypeDefinition } from "../../ipc/generated";
+import type { Card, CardView, Page, TypeDefinition } from "../../ipc/generated";
 import { engineKey } from "../../ipc/queries";
 import * as store from "../../state/boards/store";
 import { installFakeEngine, fixture, type FakeEngine } from "../../test/engine";
@@ -28,7 +28,24 @@ const cartModel: CardView = {
 
 const cart: TypeDefinition = { key: CART, kind: "interface", name: "Cart", path: "src/cart.ts", line: 12, language: "typescript", members: [], inherited: [], uses: 6 };
 
+const CARDS: readonly Card[] = [
+  { id: "create-order", ref: { block: KEY }, at: [0, 0] },
+  { id: "slack", ref: { block: SLACK }, at: [600, 0] },
+  { id: "cart", ref: { block: CART }, at: [0, 600] },
+];
+
 let engine: FakeEngine;
+
+/** Opens the board with the three cards on its page, and these frames, resource cards, or notes. */
+function openPage(overrides: Partial<Page> = {}): void {
+  store.resetBoards();
+  store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", CARDS, overrides)])));
+}
+
+/** The page as the board holds it now. */
+function currentPage(): Page | undefined {
+  return store.getOpenBoard(REF)?.document.pages[0];
+}
 
 function renderSelected() {
   queryClient.setQueryData(engineKey("workspace", {}), workspaceView([projectRow(P, "orders")]));
@@ -53,19 +70,7 @@ beforeEach(() => {
       },
     },
   });
-  store.adoptBoardState(
-    boardState(
-      P,
-      ID,
-      boardDocument([
-        page("page-1", [
-          { id: "create-order", ref: { block: KEY }, at: [0, 0] },
-          { id: "slack", ref: { block: SLACK }, at: [600, 0] },
-          { id: "cart", ref: { block: CART }, at: [0, 600] },
-        ]),
-      ]),
-    ),
-  );
+  openPage();
 });
 
 afterEach(() => {
@@ -109,5 +114,39 @@ describe("Selected", () => {
     const popover = await screen.findByRole("dialog", { name: "Where Cart is used" });
     expect(await within(popover).findByText("createOrder")).not.toBeNull();
     expect(engine.callsOf("relations")).toHaveLength(0);
+  });
+
+  it("keeps a space typed at the end of a note while it is edited, and saves the note trimmed", () => {
+    openPage({ notes: [{ id: "note", text: "Queued", at: [0, 0], author: "agent:claude" }] });
+    act(() => {
+      store.select(PAGE, { kind: "note", noteId: "note" });
+    });
+    renderSelected();
+    const field = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Note" });
+    fireEvent.change(field, { target: { value: "Queued " } });
+    expect(field.value).toBe("Queued ");
+    fireEvent.change(field, { target: { value: "Queued orders\n" } });
+    expect(field.value).toBe("Queued orders\n");
+    expect(currentPage()?.notes?.[0]).toMatchObject({ text: "Queued orders", author: "person:lazar" });
+    fireEvent.blur(field);
+    expect(field.value).toBe("Queued orders");
+  });
+
+  it("names what a frame holds and brings each into view, a resource card and a note too", () => {
+    openPage({
+      frames: [{ id: "checkout", title: "Checkout", members: ["cart", "orders", "note"], look: "box", author: "person:lazar" }],
+      resources: [{ id: "orders", kind: "table", name: "orders", anchors: [], at: [0, 900], author: "person:lazar" }],
+      notes: [{ id: "note", text: "Paid carts only", at: [0, 1000], author: "person:lazar" }],
+    });
+    const show = (name: string) => {
+      act(() => {
+        store.select(PAGE, { kind: "frame", frameId: "checkout" });
+      });
+      fireEvent.click(screen.getByRole("button", { name }));
+      return store.getPageView(PAGE);
+    };
+    renderSelected();
+    expect(show("table orders")).toMatchObject({ selection: { kind: "resource", resourceId: "orders" }, focus: { cardIds: ["orders"] } });
+    expect(show("Paid carts only")).toMatchObject({ selection: { kind: "note", noteId: "note" }, focus: { cardIds: ["note"] } });
   });
 });

@@ -5,7 +5,8 @@
  * reports). An edit of a board no window holds opens it first, in a background tab of the window used
  * last (a new window when none is open); a new board is created there too, so that window holds it.
  * Every request has a timeout; a window that closes before it answers fails its requests with
- * `window_closed`.
+ * `window_closed`. A window can't be told to drop a request, so a change that times out
+ * (`unconfirmed`) may still land.
  *
  * Page revisions are checked here (D4): an edit that passes `expectRevision` reads the page from the
  * holding window first and is refused when it changed. The bridge also remembers which boards each
@@ -69,6 +70,9 @@ export interface AgentBridgeOptions {
 
 /** The requests a window answers, by the window command it answers with. */
 type RequestKind = "edit" | "read" | "open" | "create" | "board" | "show" | "repair";
+
+/** The requests that change a board: one that times out may still be applied when the window gets to it. */
+const CHANGES: ReadonlySet<RequestKind> = new Set(["edit", "create", "board", "repair"]);
 
 interface Pending {
   readonly windowId: number;
@@ -149,11 +153,8 @@ export class AgentBridge {
       if (!entry) {
         return this.closed();
       }
-      if (expectRevision !== undefined) {
-        const read = (await this.ask(entry, "read", { type: "agent_read", board: request.board, page: request.page })) as AgentReadOutcome;
-        if (!read.ok) {
-          return read;
-        }
+      const read = expectRevision === undefined ? null : ((await this.ask(entry, "read", { type: "agent_read", board: request.board, page: request.page })) as AgentReadSuccess | AgentFailure);
+      if (read?.ok === true) {
         const now = pageRevision(read.page);
         if (now !== expectRevision) {
           return failure(
@@ -162,7 +163,7 @@ export class AgentBridge {
           );
         }
       }
-      const result = (await this.ask(entry, "edit", { type: "agent_edit", ...request })) as AgentEditSuccess | AgentFailure;
+      const result = read?.ok === false ? read : ((await this.ask(entry, "edit", { type: "agent_edit", ...request })) as AgentEditSuccess | AgentFailure);
       // A report that still listed a board the window closed: open it again, once.
       if (!result.ok && result.code === "board_not_open" && attempt === 0) {
         this.views.released(entry.id, request.board);
@@ -186,6 +187,10 @@ export class AgentBridge {
       return failure("board_not_open", "No Unfold window holds this board.");
     }
     const result = (await this.ask(entry, "read", { type: "agent_read", ...target })) as AgentReadSuccess | AgentFailure;
+    if (!result.ok && result.code === "board_not_open") {
+      // Its report still listed a board it closed.
+      this.views.released(entry.id, target.board);
+    }
     return result.ok ? { ...result, revision: pageRevision(result.page) } : result;
   }
 
@@ -223,33 +228,28 @@ export class AgentBridge {
    * that board (opening it first).
    */
   async create(request: Omit<AgentCreateRequest, "requestId">): Promise<AgentCreateOutcome> {
-    let entry: WindowEntry | undefined;
+    const event = { type: "agent_create_board", ...request } as const;
+    let answered: Answered;
     if (request.copyOf === undefined) {
-      entry = this.lastUsed();
+      const entry = this.lastUsed();
+      answered = { result: await this.ask(entry, "create", event), windowId: entry.id };
     } else {
-      const opened = await this.open({ board: { project: request.project, id: request.copyOf } });
-      if (!opened.ok) {
-        return opened;
-      }
-      entry = this.windows.get(opened.windowId);
+      answered = await this.askHolder({ board: { project: request.project, id: request.copyOf } }, "create", event);
     }
-    if (!entry) {
-      return this.closed();
+    const result = answered.result as AgentCreateSuccess | AgentFailure;
+    if (!result.ok || answered.windowId === null) {
+      return result.ok ? this.closed() : result;
     }
-    const result = (await this.ask(entry, "create", { type: "agent_create_board", ...request })) as AgentCreateSuccess | AgentFailure;
-    if (!result.ok) {
-      return result;
-    }
-    this.views.holds(entry.id, result.board);
-    return { ...result, windowId: entry.id };
+    this.views.holds(answered.windowId, result.board);
+    return { ...result, windowId: answered.windowId };
   }
 
   /**
    * Changes a board's pages or title as one undo step, in the window that holds it (opening it in a
    * background tab first).
    */
-  editBoard(request: Omit<AgentBoardEditRequest, "requestId">): Promise<AgentBoardEditResult> {
-    return this.askHolder({ board: request.board }, "board", { type: "agent_edit_board", ...request }) as Promise<AgentBoardEditResult>;
+  async editBoard(request: Omit<AgentBoardEditRequest, "requestId">): Promise<AgentBoardEditResult> {
+    return (await this.askHolder({ board: request.board }, "board", { type: "agent_edit_board", ...request })).result as AgentBoardEditResult;
   }
 
   /**
@@ -279,7 +279,7 @@ export class AgentBridge {
    * the board (opening it in a background tab first).
    */
   async repair(request: Omit<AgentRepairRequest, "requestId">): Promise<AgentRepairOutcome> {
-    const result = (await this.askHolder({ board: request.board, page: request.page }, "repair", { type: "agent_repair", ...request })) as AgentRepairResult;
+    const result = (await this.askHolder({ board: request.board, page: request.page }, "repair", { type: "agent_repair", ...request })).result as AgentRepairResult;
     if (!result.ok) {
       return result;
     }
@@ -335,26 +335,26 @@ export class AgentBridge {
   }
 
   /**
-   * Asks the window that holds the board (opening it in a background tab first, on `page` when given).
-   * A window whose report still listed a board it closed answers `board_not_open`: the board is opened
-   * again, once.
+   * Asks the window that holds the board (opening it in a background tab first, on `page` when given),
+   * and says which window answered (null when none could be asked). A window whose report still listed
+   * a board it closed answers `board_not_open`: the board is opened again, once.
    */
-  private async askHolder(target: { readonly board: AgentBoardRef; readonly page?: string }, kind: RequestKind, event: DistributiveOmit<AgentShellEvent, "requestId">): Promise<unknown> {
+  private async askHolder(target: { readonly board: AgentBoardRef; readonly page?: string }, kind: RequestKind, event: DistributiveOmit<AgentShellEvent, "requestId">): Promise<Answered> {
     for (let attempt = 0; ; attempt += 1) {
       const opened = await this.open(target);
       if (!opened.ok) {
-        return opened;
+        return { result: opened, windowId: null };
       }
       const entry = this.windows.get(opened.windowId);
       if (!entry) {
-        return this.closed();
+        return { result: this.closed(), windowId: null };
       }
       const result = (await this.ask(entry, kind, event)) as AgentFailure | { readonly ok: true };
       if (!result.ok && result.code === "board_not_open" && attempt === 0) {
         this.views.released(entry.id, target.board);
         continue;
       }
-      return result;
+      return { result, windowId: entry.id };
     }
   }
 
@@ -385,12 +385,19 @@ export class AgentBridge {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.pending.delete(requestId);
-        resolve(failure("timeout", `The Unfold window didn't answer within ${Math.round(this.timeoutMs / 1000)} s. Try again.`));
+        const waited = `The Unfold window didn't answer within ${Math.round(this.timeoutMs / 1000)} s`;
+        resolve(CHANGES.has(kind) ? failure("unconfirmed", `${waited}, so the change may still land.`) : failure("timeout", `${waited}.`));
       }, this.timeoutMs);
       this.pending.set(requestId, { windowId: entry.id, kind, resolve, timer });
       this.windows.deliver(entry, { ...event, requestId } as AgentShellEvent);
     });
   }
+}
+
+/** A window's answer, and which window gave it (null when none could be asked). */
+interface Answered {
+  readonly result: unknown;
+  readonly windowId: number | null;
 }
 
 /** `Omit` over each member of a union. */

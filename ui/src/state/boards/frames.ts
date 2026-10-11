@@ -10,7 +10,7 @@
  */
 
 import type { Frame, FrameDirection, FrameIcon, FrameLook, Page } from "../../ipc/generated";
-import { description, removeItems, uniqueId } from "./document";
+import { description, removalCascade, removeItems, uniqueId } from "./document";
 
 /** How deep frames nest: a zone, a box in it, and a box in that. */
 export const MAX_FRAME_DEPTH = 3;
@@ -165,6 +165,20 @@ export function nestFrame(page: Page, frameId: string, parentId: string | null):
   }
 }
 
+/**
+ * What `nestFrame` takes with it (`removalCascade`): the frame that held `frameId` when it leaves that
+ * frame empty, and what would dangle then; nothing otherwise.
+ */
+export function nestingRemoval(page: Page, frameId: string, parentId: string | null): Set<string> {
+  const holder = frameOf(page, frameId);
+  if (!holder || holder.id === parentId || holder.members.some((member) => member !== frameId)) {
+    return new Set();
+  }
+  // Its new parent holds it by then, so a frame around both keeps something.
+  const frames = (page.frames ?? []).map((frame) => (frame.id === parentId ? { ...frame, members: [...frame.members, frameId] } : frame));
+  return removalCascade({ ...page, frames }, [holder.id]);
+}
+
 /** What changes about a frame. */
 export interface FrameChange {
   readonly title?: string;
@@ -231,6 +245,22 @@ export function removeFrame(page: Page, frameId: string, keepMembers = true): st
     holder.members.splice(holder.members.indexOf(frameId), 1, ...frame.members);
   }
   return removeItems(page, [frameId]);
+}
+
+/**
+ * What `removeFrame` takes (`removalCascade`): the frame, what would dangle, and everything in it unless
+ * `keepMembers`. Kept members take its place in the frame that held it, which so keeps something.
+ */
+export function frameRemoval(page: Page, frameId: string, keepMembers: boolean): Set<string> {
+  const frame = findFrame(page, frameId);
+  if (!frame) {
+    return new Set();
+  }
+  if (!keepMembers) {
+    return removalCascade(page, [frameId, ...frameItems(page, frameId)]);
+  }
+  const frames = (page.frames ?? []).map((item) => (item.members.includes(frameId) ? { ...item, members: [...item.members, ...frame.members] } : item));
+  return removalCascade({ ...page, frames }, [frameId]);
 }
 
 /** Moves a frame by `dx`, `dy`: every card, resource card, and unattached note in it moves with it. */

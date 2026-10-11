@@ -127,4 +127,21 @@ describe("Preferences › Agents", () => {
     expect(within(dialog).getByText("A whole number from 1024 to 65535.")).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "Save" })).toHaveProperty("disabled", true);
   });
+
+  it("saves with agents off whatever the hidden port field holds, keeping the saved port", async () => {
+    const { dialog, fake, user } = await open({ enabled: false, port: 29180 });
+    const toggle = within(section(dialog)).getByRole("switch", { name: "Let agents connect" });
+    await user.click(toggle);
+    await user.clear(portField(dialog));
+    await user.type(portField(dialog), "abc");
+    await user.click(toggle);
+    const save = within(dialog).getByRole("button", { name: "Save" });
+    expect(save).toHaveProperty("disabled", false);
+
+    await user.click(save);
+    await waitFor(() => {
+      expect(fake.callsOf("set_preferences")).toHaveLength(1);
+    });
+    expect((fake.callsOf("set_preferences")[0]?.["preferences"] as Preferences).agents).toEqual({ enabled: false, port: 29180 });
+  });
 });

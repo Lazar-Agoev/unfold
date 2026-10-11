@@ -12,7 +12,7 @@ import { z } from "zod";
 import type { ToolContext } from "../context";
 import type { BlockKind, EntranceRow, ProjectRow, SearchHit, TextMatch } from "../engine-types";
 import { clip, count, keyName, place } from "../format";
-import { cant, cursorOffset, textResult } from "../results";
+import { cant, cursorOffset, MAX_RESULT_CHARS, RESULT_ROOM, textResult } from "../results";
 import { projectOrView } from "../target";
 import { defineTool } from "../tool";
 
@@ -50,6 +50,22 @@ function pageSection(title: string, shown: readonly string[], total: number, off
 /** The line that says how to get the next page, when any list has more. */
 function moreLine(sections: readonly Section[], tool: string, next: number): string | null {
   return sections.some((item) => item.more) ? `More: ${tool} with cursor "${next}" for the next page.` : null;
+}
+
+/**
+ * The sections of the largest page, at most `limit` per list (at least 1), whose lines fit in a
+ * result beside `room` characters of other lines, so the size guard never cuts the line that says
+ * where the next page starts. One cursor pages every list, so every list shows the same number.
+ */
+function fitting(limit: number, room: number, build: (limit: number) => readonly Section[]): { readonly sections: readonly Section[]; readonly limit: number } {
+  const budget = MAX_RESULT_CHARS - RESULT_ROOM - room;
+  for (let size = limit; size > 1; size -= 1) {
+    const sections = build(size);
+    if (sections.reduce((chars, item) => item.lines.reduce((sum, line) => sum + line.length + 1, chars), 0) <= budget) {
+      return { sections, limit: size };
+    }
+  }
+  return { sections: build(1), limit: 1 };
 }
 
 /** One text match, with the file it's in. */
@@ -98,7 +114,7 @@ export const search = defineTool({
   name: "search",
   title: "Search",
   description:
-    "Finds code by name or by text, in one project or all of them. kinds (default: all but text): entrances (routes, workers, schedules, commands; by title, trigger, or path), functions (functions, methods, constructors, accessors), types (interfaces, type aliases, enums, classes), files (by path), and text (lines of any file, as written; with regex, caseSensitive, and wholeWord). Names match fuzzily: every word of query must appear in a name, qualified name, or path. Each hit has Unfold's name, file:line, and its key: pass the key to read_code, get_relations, or add_cards. A text hit names the function it's in with that function's key, ready to place, and says when the file changed since the last compile. limit is per kind (default 10, at most 50); pass the next cursor for more. projects narrows the search (names or ids). Searching never wakes a resting project; reading a hit does.",
+    "Finds code by name or by text, in one project or all of them. kinds (default: all but text): entrances (routes, workers, schedules, commands; by title, trigger, or path), functions (functions, methods, constructors, accessors), types (interfaces, type aliases, enums, classes), files (by path), and text (lines of any file, as written; with regex, caseSensitive, and wholeWord). Names match fuzzily: every word of query must appear in a name, qualified name, or path. Each hit has Unfold's name, file:line, and its key: pass the key to read_code, get_relations, or add_cards. A text hit names the function it's in with that function's key, ready to place, and says when the file changed since the last compile. limit is per kind (default 10, at most 50); pass the next cursor for more (a page of long lines shows fewer). projects narrows the search (names or ids). Searching never wakes a resting project; reading a hit does.",
   input: z.object({
     query: z.string().min(1).describe("Words of a name, or the text to find (a regular expression with regex)"),
     kinds: z.array(z.enum(KINDS)).min(1).optional().describe("What to find (default: entrances, functions, types, files)"),
@@ -138,23 +154,26 @@ export const search = defineTool({
     ]);
     const projectNames = new Map(rows.map((row) => [row.id, row.name]));
     const tag = (project: string) => (rows.length > 1 ? ` in ${projectNames.get(project) ?? project}` : "");
-    const hits = (title: string, group: { readonly hits: readonly SearchHit[]; readonly total: number } | undefined) =>
-      group ? section(title, group.hits, group.total, offset, limit, (hit) => hitLine(hit, tag(hit.project))) : null;
+    const hits = (title: string, group: { readonly hits: readonly SearchHit[]; readonly total: number } | undefined, size: number) =>
+      group ? section(title, group.hits, group.total, offset, size, (hit) => hitLine(hit, tag(hit.project))) : null;
     const textTitle = text ? `Text in ${count(text.files, "file")}${text.truncated ? ", stopped at 2,000 matches (narrow the query)" : ""}` : "";
-    const sections = [
-      wanted.has("entrances") ? hits("Entrances", rest?.entrances) : null,
-      hits("Functions", functions?.definitions),
-      hits("Types", types?.definitions),
-      wanted.has("files") && rest
-        ? section("Files", rest.files.hits, rest.files.total, offset, limit, (hit) => `- ${hit.path}${tag(hit.project)}${hit.definitions === null ? " (not compiled)" : `: ${count(hit.definitions, "definition")}`}`)
-        : null,
-      text ? pageSection(textTitle, await textLines(context, texts.slice(offset, offset + limit), tag), texts.length, offset, limit) : null,
-    ].filter((item): item is Section => item !== null);
-    const lines = sections.flatMap((item) => item.lines);
+    const shownTexts = text ? await textLines(context, texts.slice(offset, offset + limit), tag) : [];
+    const page = fitting(limit, 0, (size) =>
+      [
+        wanted.has("entrances") ? hits("Entrances", rest?.entrances, size) : null,
+        hits("Functions", functions?.definitions, size),
+        hits("Types", types?.definitions, size),
+        wanted.has("files") && rest
+          ? section("Files", rest.files.hits, rest.files.total, offset, size, (hit) => `- ${hit.path}${tag(hit.project)}${hit.definitions === null ? " (not compiled)" : `: ${count(hit.definitions, "definition")}`}`)
+          : null,
+        text ? pageSection(textTitle, shownTexts.slice(0, size), texts.length, offset, size) : null,
+      ].filter((item): item is Section => item !== null),
+    );
+    const lines = page.sections.flatMap((item) => item.lines);
     return textResult(
       context.header(rows.length === 1 && rows[0] ? { project: rows[0].name } : {}),
       lines.length > 0 ? lines.join("\n") : `Nothing matches “${query}”${rows.length > 1 ? " in any project" : ""}. Try fewer or shorter words${wanted.has("text") ? "" : ', or kinds ["text"]'}.`,
-      moreLine(sections, "search", offset + limit),
+      moreLine(page.sections, "search", offset + page.limit),
       lines.length > 0 ? "Next: read_code or get_relations with a key; add_cards puts it on a page." : null,
     );
   },
@@ -173,7 +192,7 @@ export const listEntrances = defineTool({
   name: "list_entrances",
   title: "List entrances",
   description:
-    "How a project starts: its applications (named after their startup, such as server or worker), the launches that start each (package scripts and bins, console scripts), and each application's entrances: HTTP routes, queue workers, schedules, commands, and events, each with its key and where it's declared. Then the entrances no launch reaches, and launches into code Unfold doesn't index. application narrows it to one (its name or startup key, as get_project lists them); filter keeps entrances whose title, trigger, label, or path contains it, ignoring case. limit is per application (default 25, at most 100); pass the next cursor for more. Pass an entrance's key to read_code (its evidence and handlers), add_cards, or create_board's trace. The project must be compiled.",
+    "How a project starts: its applications (named after their startup, such as server or worker), the launches that start each (package scripts and bins, console scripts), and each application's entrances: HTTP routes, queue workers, schedules, commands, and events, each with its key and where it's declared. Then the entrances no launch reaches, and launches into code Unfold doesn't index. application narrows it to one (its name or startup key, as get_project lists them); filter keeps entrances whose title, trigger, label, or path contains it, ignoring case. limit is per application (default 25, at most 100); pass the next cursor for more (a page of long lines shows fewer). Pass an entrance's key to read_code (its evidence and handlers), add_cards, or create_board's trace. The project must be compiled.",
   input: z.object({
     project: z.string().min(1).optional().describe("The project's name or id (default: the project of the board in view)"),
     application: z.string().min(1).optional().describe("An application's name or startup key"),
@@ -191,20 +210,20 @@ export const listEntrances = defineTool({
       throw cant("list the entrances", `${row.name} has no application “${application}”`, `Its applications: ${map.applications.map((item) => item.name).join(", ") || "none"}.`);
     }
     const matching = filter === undefined ? "" : ` matching “${filter}”`;
-    const sections = [
+    const unindexed = application === undefined && map.unindexedLaunches.length > 0 ? `Launches into code Unfold doesn't index: ${map.unindexedLaunches.map((launch) => `${launch.title} (${launch.path})`).join(", ")}.` : null;
+    const page = fitting(limit, unindexed?.length ?? 0, (size) => [
       ...applications.map((item) => {
         const launches = item.launches.map((launch) => `${launch.title} (${launch.path})`).join(", ");
-        return section(`${item.name} (startup ${item.path}${launches.length > 0 ? `; started by ${launches}` : ""}), entrances${matching}`, item.entrances, item.total, offset, limit, entranceLine);
+        return section(`${item.name} (startup ${item.path}${launches.length > 0 ? `; started by ${launches}` : ""}), entrances${matching}`, item.entrances, item.total, offset, size, entranceLine);
       }),
-      ...(application === undefined ? [section(`Not reached from a launch${matching}`, map.unreached.entrances, map.unreached.total, offset, limit, entranceLine)] : []),
-    ];
-    const unindexed = application === undefined && map.unindexedLaunches.length > 0 ? `Launches into code Unfold doesn't index: ${map.unindexedLaunches.map((launch) => `${launch.title} (${launch.path})`).join(", ")}.` : null;
-    const lines = sections.flatMap((item) => item.lines);
+      ...(application === undefined ? [section(`Not reached from a launch${matching}`, map.unreached.entrances, map.unreached.total, offset, size, entranceLine)] : []),
+    ]);
+    const lines = page.sections.flatMap((item) => item.lines);
     return textResult(
       context.header({ project: row.name }),
       lines.length > 0 ? lines.join("\n") : `${row.name} has no entrances${matching}.`,
       unindexed,
-      moreLine(sections, "list_entrances", offset + limit),
+      moreLine(page.sections, "list_entrances", offset + page.limit),
       lines.length > 0 ? "Next: read_code with an entrance's key shows its handlers; create_board with trace makes a board from it." : null,
     );
   },

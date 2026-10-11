@@ -165,9 +165,10 @@ export function collapsedPlaces(page: FramedPage): Map<string, string> {
 }
 
 /**
- * Where an attached note's offset starts from, as the file's rule reads on what is drawn: a card's or
- * resource card's top-left, the top-left of what a frame holds (its box's or node's corner inside its
- * padding), or the midpoint of a link's ends' points. Undefined for an item that isn't drawn.
+ * Where an attached note's offset starts from, as the file's rule (the engine's) reads on what is
+ * drawn: a card's or resource card's top-left; the top-left of a frame's cards, resource cards, and
+ * nested frames (their points, not their boxes; a collapsed frame's node corner inside its padding);
+ * or the midpoint of a link's ends' points. Undefined for an item that isn't drawn.
  */
 export function attachPoint(page: FramedPage, rects: ReadonlyMap<string, Rect>, id: string, depth = 0): Point | undefined {
   const link = (page.links ?? []).find((item) => item.id === id);
@@ -181,18 +182,32 @@ export function attachPoint(page: FramedPage, rects: ReadonlyMap<string, Rect>, 
   if (!rect || !frame) {
     return rect ? { x: rect.x, y: rect.y } : undefined;
   }
-  const padding = framePadding(frame);
-  return { x: rect.x + padding.left, y: rect.y + padding.top };
+  if (frame.collapsed === true) {
+    const padding = framePadding(frame);
+    return { x: rect.x + padding.left, y: rect.y + padding.top };
+  }
+  const notes = new Set((page.notes ?? []).map((note) => note.id));
+  const corners = depth < POINT_DEPTH ? frame.members.flatMap((member) => (notes.has(member) ? [] : (attachPoint(page, rects, member, depth + 1) ?? []))) : [];
+  return corners.length > 0 ? { x: Math.min(...corners.map((at) => at.x)), y: Math.min(...corners.map((at) => at.y)) } : undefined;
 }
 
 /** How many links and frames `attachPoint` walks through at most. */
 const POINT_DEPTH = 5;
 
+/** The gap between an item and a note under it (Arrange's, and where a note covering its item goes). */
+export const NOTE_GAP = 12;
+
+/** Whether two rectangles overlap (touching edges don't). */
+function overlaps(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
 /**
  * The page's geometry: cards, resource cards, and free notes at their saved positions reflowed by
  * `sizeOf` (as `reflow` does without frames), each collapsed frame as a node in that reflow, each
  * expanded frame's box around what it shows and the notes attached to those items, and each attached
- * note at its offset from its item. A note on an item that isn't drawn isn't drawn either. `sizeOf`
+ * note at its offset from its item (under the item, where the offset would put it over it). A note on
+ * an item that isn't drawn isn't drawn either. `sizeOf`
  * sizes cards, resource cards, notes, and collapsed frames' nodes. While `drag` moves an item, it
  * follows the pointer; a dragged frame takes what it holds along.
  */
@@ -234,13 +249,19 @@ export function pageGeometry(page: FramedPage, sizeOf: (id: string) => Size, dra
   const positions = reflow(nodes, sizeOf, drag?.id);
 
   // An attached note at its offset from what it is attached to (drawn), or at the pointer while dragged.
+  // Where the offset would put it over its own item (which has grown since), it sits under the item.
   const noteRect = (note: Note, rects: ReadonlyMap<string, Rect>): Rect | undefined => {
     const from = note.attach !== undefined && !shownAs.has(note.id) ? attachPoint(page, rects, note.attach) : undefined;
     if (!from) {
       return undefined;
     }
-    const corner = drag?.id === note.id ? drag : { x: from.x + note.at[0], y: from.y + note.at[1] };
-    return { x: corner.x, y: corner.y, ...sizeOf(note.id) };
+    const size = sizeOf(note.id);
+    if (drag?.id === note.id) {
+      return { x: drag.x, y: drag.y, ...size };
+    }
+    const rect = { x: from.x + note.at[0], y: from.y + note.at[1], ...size };
+    const item = note.attach !== undefined ? rects.get(note.attach) : undefined;
+    return item && overlaps(rect, item) ? { ...rect, y: item.y + item.height + NOTE_GAP } : rect;
   };
 
   const inside = new Map<string, string[]>();

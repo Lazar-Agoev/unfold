@@ -3,9 +3,9 @@
  * Agents turns the local MCP server on; the server refuses web pages and other hosts; a real MCP
  * client, connected as Claude Code, lists the tools and prompts and builds the page of design §1.3
  * the way an agent would, while the window shows each piece as it lands: cards, frames, step groups,
- * a table, connections with their chips, a note, and the agent marks. A table the code doesn't back is refused and leaves no undo
- * step, so one ⌘Z undoes the agent's last edit; a write with a stale revision is refused; and
- * finish_work ends the work with a toast.
+ * a table, connections with their chips, a note, and the agent marks. A table the code doesn't back
+ * is refused and leaves no undo step, so one ⌘Z undoes the agent's last edit; a write with a stale
+ * revision is refused; and finish_work ends the work with a toast.
  */
 
 import type { Locator, Page } from "@playwright/test";

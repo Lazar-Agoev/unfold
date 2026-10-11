@@ -6,7 +6,7 @@
 import { z } from "zod";
 import type { FileView, OutlineItem } from "../engine-types";
 import { count, keyName } from "../format";
-import { cant, textResult } from "../results";
+import { cant, fittingLines, MAX_RESULT_CHARS, RESULT_ROOM, textResult } from "../results";
 import { projectOrView } from "../target";
 import { defineTool } from "../tool";
 
@@ -43,7 +43,7 @@ export const readFile = defineTool({
   name: "read_file",
   title: "Read file",
   description:
-    "A file's outline (its functions, classes, methods, types, and top-level variables, with keys and lines) and a range of its verified text with line numbers. path is relative to the project's folder. lines [from, to] picks the range (default the first 200 lines, at most 400 at a time) and narrows the outline to it; pass the next range for more. An evidence file (a migration, schema, or config listed in the project's evidence files) reads as plain text with line numbers, so resource cards and connections can cite it as {file, lines}. Unfold shows text only when it is the file it compiled or recorded: a file that changed needs compile_project first, and a file outside the graph needs adding as an evidence file (update_project_settings, add_evidence_pattern) before boards can cite it. Reading changes nothing.",
+    "A file's outline (its functions, classes, methods, types, and top-level variables, with keys and lines) and a range of its verified text with line numbers. path is relative to the project's folder. lines [from, to] picks the range (default the first 200 lines, at most 400 at a time, fewer when lines are long) and narrows the outline to it; pass the next range for more. An evidence file (a migration, schema, or config listed in the project's evidence files) reads as plain text with line numbers, so resource cards and connections can cite it as {file, lines}. Unfold shows text only when it is the file it compiled or recorded: a file that changed needs compile_project first, and a file outside the graph needs adding as an evidence file (update_project_settings, add_evidence_pattern) before boards can cite it. Reading changes nothing.",
   input: z.object({
     project: z.string().min(1).optional().describe("The project's name or id (default: the project of the board in view)"),
     path: z.string().min(1).describe("The file, relative to the project's folder"),
@@ -72,19 +72,23 @@ export const readFile = defineTool({
     }
     const last = view.lineCount;
     const from = Math.min(lines?.[0] ?? 1, Math.max(last, 1));
-    const range: [number, number] = [from, Math.min(last, lines?.[1] ?? from + DEFAULT_LINES - 1, from + MAX_LINES - 1)];
-    const outline = view.graph === "current" ? outlineLines(view.outline, lines === undefined ? [1, last] : range) : [];
+    const asked: [number, number] = [from, Math.min(last, lines?.[1] ?? from + DEFAULT_LINES - 1, from + MAX_LINES - 1)];
+    const outline = view.graph === "current" ? outlineLines(view.outline, lines === undefined ? [1, last] : asked) : [];
     const shownOutline = outline.slice(0, MAX_OUTLINE);
+    const outlineText =
+      view.graph === "current"
+        ? outline.length > 0
+          ? `Outline${lines === undefined ? "" : ` of lines ${asked[0]}–${asked[1]}`}${shownOutline.length < outline.length ? ` (the first ${MAX_OUTLINE} of ${outline.length}; pass lines for a part)` : ""}:\n${shownOutline.join("\n")}`
+          : "No definitions."
+        : null;
+    const text = fittingLines(textLines(view, asked), MAX_RESULT_CHARS - RESULT_ROOM - (outlineText?.length ?? 0));
+    const to = Math.max(asked[0], asked[0] + text.length - 1);
     return textResult(
       context.header({ project: row.name }),
       `${path}: ${count(last, "line")}${view.graph === "evidence" ? ", an evidence file (plain text, verified against the bytes Unfold recorded; cite lines as {file, lines})" : view.language ? `, ${view.language === "typescript" ? "TypeScript" : "Python"}` : ""}.`,
-      view.graph === "current"
-        ? outline.length > 0
-          ? `Outline${lines === undefined ? "" : ` of lines ${range[0]}–${range[1]}`}${shownOutline.length < outline.length ? ` (the first ${MAX_OUTLINE} of ${outline.length}; pass lines for a part)` : ""}:\n${shownOutline.join("\n")}`
-          : "No definitions."
-        : null,
-      last === 0 ? "The file is empty." : `Lines ${range[0]}–${range[1]}:\n${textLines(view, range).join("\n")}`,
-      range[1] < last ? `More: read_file with lines [${range[1] + 1}, ${Math.min(last, range[1] + DEFAULT_LINES)}].` : null,
+      outlineText,
+      last === 0 ? "The file is empty." : `Lines ${asked[0]}–${to}:\n${text.join("\n")}`,
+      to < last ? `More: read_file with lines [${to + 1}, ${Math.min(last, to + DEFAULT_LINES)}].` : null,
       view.graph === "current" ? "Next: read_code with a key reads a definition's steps and calls." : null,
     );
   },

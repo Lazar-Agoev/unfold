@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Card, Frame, Link, Note, Resource } from "../ipc/generated";
-import { arrangePage, type ArrangeInput } from "./arrangePage";
+import { arrangePage, lineNoteSpots, type ArrangeInput } from "./arrangePage";
 import type { Arrow } from "./arrows";
-import { framePadding, pageGeometry, type FramedPage } from "./frames/geometry";
+import { NOTE_GAP, framePadding, pageGeometry, type FramedPage } from "./frames/geometry";
 import { HEADER_PORT, arrange, type Point, type Rect } from "./layout";
 
 const card = (id: string, at: [number, number], entrance = false): Card => (entrance ? { id, ref: { entrance: `entrance:${id}` }, at } : { id, ref: { block: `src/a.ts#function:${id}` }, at });
@@ -157,6 +157,14 @@ describe("Arrange with frames", () => {
     expect(Math.min(...[...positions.values()].map((at) => at.y))).toBe((before?.y ?? 0) + padding.top);
   });
 
+  it("arranges a frame hidden in a collapsed one in place: arranging it again changes nothing", () => {
+    const frames = [frame("outer", ["inner"], { collapsed: true }), frame("inner", ["create", "place"])];
+    const setup = { cards: CARDS, frames, arrows: ARROWS };
+    const first = arrangePage(input(setup, { frame: "inner" }));
+    const moved = CARDS.map((item) => ({ ...item, at: [first.get(item.id)?.x ?? item.at[0], first.get(item.id)?.y ?? item.at[1]] as [number, number] }));
+    expect(arrangePage(input({ ...setup, cards: moved }, { frame: "inner" }))).toEqual(first);
+  });
+
   it("orders connections as data flows: after the code that writes, before the code that reads; drawn links don't count", () => {
     const resources: Resource[] = [{ id: "orders", kind: "table", name: "orders", anchors: [], at: [0, 0], author: "agent:claude" }];
     const links: Link[] = [
@@ -194,5 +202,53 @@ describe("Arrange with frames", () => {
       expect(at.y).toBeGreaterThanOrEqual(create.y + 400 + 2 * (12 + 90));
     }
     expect(arrangePage(input(setup))).toEqual(positions);
+  });
+
+  it("then puts the notes on links beside their lines' middles, clear of every card and of each other", () => {
+    const resources: Resource[] = [{ id: "orders", kind: "table", name: "orders", anchors: [], at: [0, 0], author: "agent:claude" }];
+    const links: Link[] = [
+      { id: "w", from: "place", to: "orders", kind: "writes", author: "agent:claude" },
+      { id: "c", from: "create", to: "place" },
+    ];
+    // An old offset that would put each over createOrder.
+    const notes: Note[] = ["on-c", "on-c-too", "on-w"].map((id) => ({ id, text: id, at: [-200, 0], attach: id === "on-w" ? "w" : "c", author: "agent:claude" }));
+    const setup = { cards: CARDS, resources, notes, links, arrows: ARROWS };
+    const positions = arrangePage(input(setup));
+    // The page as arranged: the notes' offsets are from the midpoint of their links' ends' corners.
+    const at = (id: string) => [positions.get(id)?.x ?? 0, positions.get(id)?.y ?? 0] as [number, number];
+    const middleOf = (link: Link): [number, number] => {
+      const [fx, fy] = at(link.from);
+      const [tx, ty] = at(link.to);
+      return [(fx + tx) / 2, (fy + ty) / 2];
+    };
+    const arranged = {
+      ...setup,
+      cards: CARDS.map((item) => ({ ...item, at: at(item.id) })),
+      resources: resources.map((item) => ({ ...item, at: at(item.id) })),
+    };
+    const spots = lineNoteSpots(arranged, sizeOf);
+    expect(Object.keys(spots)).toEqual(["on-c", "on-c-too", "on-w"]);
+    const drawn = (id: string): Rect => ({ x: spots[id]?.[0] ?? 0, y: spots[id]?.[1] ?? 0, ...sizeOf(id) });
+    for (const id of Object.keys(spots)) {
+      for (const item of [...CARDS, ...resources]) {
+        expect(overlaps(drawn(id), placed(positions, item.id))).toBe(false);
+      }
+    }
+    expect(overlaps(drawn("on-c"), drawn("on-c-too"))).toBe(false);
+    // createOrder → OrderService.place leaves createOrder's right side: the note sits over the line's middle, clear of both.
+    const create = placed(positions, "create");
+    const place = placed(positions, "place");
+    expect(drawn("on-c").x + sizeOf("on-c").width / 2).toBe((create.x + create.width + place.x) / 2);
+    expect(drawn("on-c").y + sizeOf("on-c").height).toBeLessThanOrEqual(Math.min(create.y, place.y) - NOTE_GAP);
+    // Placed again from where they now are, they stay.
+    const offset = (note: Note): Note => {
+      const link = links.find((item) => item.id === note.attach);
+      const [mx, my] = link ? middleOf(link) : [0, 0];
+      return { ...note, at: [(spots[note.id]?.[0] ?? 0) - mx, (spots[note.id]?.[1] ?? 0) - my] };
+    };
+    const settled = { ...arranged, notes: notes.map(offset) };
+    expect(lineNoteSpots(settled, sizeOf)).toEqual(spots);
+    // Only the notes on the links asked for.
+    expect(Object.keys(lineNoteSpots(arranged, sizeOf, new Set(["w"])))).toEqual(["on-w"]);
   });
 });

@@ -1,21 +1,20 @@
 /**
  * An agent's repair (design §6.8, `repair`): one repair a health item offers, applied the way Review
- * applies one (`repairBoard`): the board's unsaved edits are saved first, the engine repairs and saves,
- * and the result becomes one undo step. The main process chose the repair and checked that the agent
- * may sign off on it (D6); the items it changed are marked as the agent's work.
+ * applies one (`repairBoard`, `engineStep`): the board's unsaved edits are saved first (refused while
+ * they can't be, or a conflict is open), the engine repairs and saves, and the result becomes one undo
+ * step; edits the person makes meanwhile are kept, and the repair is refused (`page_changed`). The main
+ * process chose the repair and checked that the agent may sign off on it (D6); the items it changed
+ * are marked as the agent's work.
  */
 
-import type { AgentFailure, AgentRepairRequest, AgentRepairResult } from "@unfold/desktop/agent-api";
+import type { AgentRepairRequest, AgentRepairResult } from "@unfold/desktop/agent-api";
 import type { RepairSpec } from "../../../ipc/generated";
 import { toUnfoldError } from "../../../ipc/unfold";
 import { findPage } from "../document";
 import { repairBoard } from "../files";
 import { getOpenBoard } from "../store";
+import { boardInfo, failure } from "./context";
 import { markWorking } from "./working";
-
-function failure(code: string, message: string): AgentFailure {
-  return { ok: false, code, message };
-}
 
 /** Applies a repair to a board this window holds, and answers with the page as saved. */
 export async function repairForAgent(request: AgentRepairRequest): Promise<AgentRepairResult> {
@@ -37,5 +36,5 @@ export async function repairForAgent(request: AgentRepairRequest): Promise<Agent
   if (request.items.length > 0) {
     markWorking({ board: ref, page: request.page }, request.agent, request.items);
   }
-  return { ok: true, page, board: { title: board.document.title, place: board.place, changes: board.published?.changes ?? 0, revision: board.revision } };
+  return { ok: true, page, board: boardInfo(board) };
 }

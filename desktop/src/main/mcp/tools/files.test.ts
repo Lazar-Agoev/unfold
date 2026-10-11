@@ -1,14 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import fileViewPage from "../../../../../testdata/workspace/commands/file_view_orders_page.json";
 import type { FileView } from "../engine-types";
+import { MAX_RESULT_CHARS } from "../results";
 import { readFile } from "./files";
 import { harness, PROJECT, recorded } from "./testing";
 
 vi.mock("electron", async () => (await import("../../fake-electron")).electronModule);
 
-/** A whole file of `count` lines, `line N` each, as `file_view` returns it. */
-function wholeFile(count: number, graph: FileView["graph"]): FileView {
-  const texts = Array.from({ length: count }, (_, index) => `line ${index + 1}`);
+/** A whole file of `count` lines, `line N` each (padded to `width`), as `file_view` returns it. */
+function wholeFile(count: number, graph: FileView["graph"], width = 0): FileView {
+  const texts = Array.from({ length: count }, (_, index) => `line ${index + 1}`.padEnd(width, "-"));
   let at = 0;
   const lines = texts.map((text, index) => {
     const line = { number: index + 1, start: at, end: at + text.length, indent: 0 };
@@ -47,6 +48,16 @@ describe("read_file", () => {
     const last = await app.call(readFile, { path: "db/schema.prisma", lines: [401, 999] });
     expect(last.text).toContain("Lines 401–450:\n401 | line 401");
     expect(last.text).not.toContain("More:");
+  });
+
+  it("ends a page of long lines early, so the size guard never cuts where the next page starts", async () => {
+    const app = harness({ engine: { file_view: () => wholeFile(450, "evidence", 200) } });
+    const { text } = await app.call(readFile, { path: "db/schema.prisma", lines: [1, 400] });
+    expect(text.length).toBeLessThan(MAX_RESULT_CHARS);
+    expect(text).not.toContain("Cut here");
+    const shown = /Lines 1–(\d+):/.exec(text)?.[1];
+    expect(Number(shown)).toBeLessThan(400);
+    expect(text).toContain(`More: read_file with lines [${Number(shown) + 1}, ${Number(shown) + 200}].`);
   });
 
   it("shows no text Unfold can't verify, and says what to do", async () => {

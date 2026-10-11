@@ -83,10 +83,10 @@ describe("overlap", () => {
   it("finds a frame over a card it doesn't hold, measuring an undrawn frame around its members", () => {
     const cards = [card("alpha"), card("beta"), card("gamma")];
     const frames = [frame("api", ["alpha", "beta"])];
-    // The frame isn't drawn: its box is its members' bounds plus the padding, which reaches gamma.
+    // The frame isn't drawn: its box is its members' bounds plus a box's padding, which reaches gamma.
     const geometry = drawn({ alpha: box(0, 0), beta: box(220, 0), gamma: box(0, 110) }, [line("l1", "alpha", "beta"), line("l2", "beta", "gamma")]);
     const tree = frameTree(page(cards, { frames }));
-    expect(frameBox(tree, geometry.boxes, "api")).toEqual(box(-24, -24, 468, 148));
+    expect(frameBox(tree, geometry.boxes, "api")).toEqual(box(-16, -44, 452, 160));
     const [check] = pageChecks(page(cards, { frames }), geometry);
     expect(check?.kind).toBe("overlap");
     expect(check?.items).toEqual(["gamma", "api"]);
@@ -107,6 +107,18 @@ describe("overlap", () => {
     const notes = [note("n1", { attach: "alpha" })];
     const geometry = drawn({ alpha: box(0, 0), beta: box(600, 0), n1: box(0, 112, 120, 40), api: box(-16, -44, 232, 212), system: box(-40, -100, 280, 292) }, [line("l1", "alpha", "beta")]);
     expect(kinds(pageChecks(page(cards, { frames, notes }), geometry))).not.toContain("overlap");
+  });
+
+  it("lets a frame hold a note on a line from or to an item in it", () => {
+    const cards = [card("alpha"), card("beta")];
+    const frames = [frame("api", ["alpha"])];
+    const links = [link("l1", "alpha", "beta")];
+    const notes = [note("n1", { attach: "l1" })];
+    const geometry = drawn({ alpha: box(0, 0), beta: box(600, 0), n1: box(150, -40, 120, 40), api: box(-16, -44, 232, 160) }, [line("l1", "alpha", "beta")]);
+    expect(kinds(pageChecks(page(cards, { frames, links, notes }), geometry))).not.toContain("overlap");
+    // Over a card, it is still in the way.
+    const over = drawn({ alpha: box(0, 0), beta: box(600, 0), n1: box(150, 20, 120, 40), api: box(-16, -44, 232, 160) }, [line("l1", "alpha", "beta")]);
+    expect(pageChecks(page(cards, { frames, links, notes }), over)[0]?.items).toEqual(["alpha", "n1"]);
   });
 
   it("skips what a collapsed frame hides", () => {
@@ -160,7 +172,7 @@ describe("crossings", () => {
     const geometry = drawn(
       { alpha: box(0, 0), beta: box(400, 300), gamma: box(800, 0), delta: box(400, 600), api: box(376, 276, 248, 148) },
       [
-        line("through", "alpha", "gamma", [[200, 50], [500, 350], [800, 50]]),
+        line("through", "alpha", "gamma", [[200, 50], [500, 290], [800, 50]]),
         line("out", "beta", "delta", [[500, 400], [500, 600]]),
       ],
     );
@@ -179,10 +191,50 @@ describe("crossings", () => {
     const cards = [card("alpha"), card("beta"), card("gamma")];
     const links = [link("call-api", "alpha", "gamma", { kind: "http", author: AGENT, anchors: [{ key: "src/app.ts#function:alpha" }] })];
     const frames = [frame("api", ["beta"])];
-    const geometry = drawn({ alpha: box(0, 0), beta: box(400, 0), gamma: box(800, 0), api: box(376, -24, 248, 148) }, [line("call-api", "alpha", "gamma", [[200, 50], [800, 50]])]);
+    const geometry = drawn({ alpha: box(0, 0), beta: box(400, 100), gamma: box(800, 0), api: box(376, 56, 248, 148) }, [line("call-api", "alpha", "gamma", [[200, 70], [800, 70]])]);
     const [check] = pageChecks(page(cards, { frames, links }), geometry);
     expect(check?.items).toEqual(["api", "call-api"]);
     expect(check?.message).toBe('1 line crosses the frame "API" without starting or ending in it: the http connection from alpha to gamma.');
+  });
+
+  it("finds a line under a card, resource card, or collapsed frame it neither starts nor ends at", () => {
+    const cards = [card("alpha"), card("beta"), card("gamma"), card("delta"), card("hidden")];
+    const resources = [resource("orders")];
+    const frames = [frame("api", ["hidden"], { collapsed: true }), frame("zone", ["delta"])];
+    const notes = [note("n")];
+    const geometry = drawn(
+      {
+        alpha: box(0, 0),
+        beta: box(400, 0),
+        gamma: box(1200, 0),
+        orders: box(800, 0),
+        api: box(400, 400, 240, 80),
+        delta: box(400, 800),
+        zone: box(376, 756, 248, 168),
+        n: box(800, 400, 120, 40),
+      },
+      [
+        // Under beta and the table on its way to gamma.
+        line("long", "alpha", "gamma", [[200, 50], [1200, 50]]),
+        // Along beta's top edge, and through the expanded frame, the note, and the collapsed frame it ends at.
+        line("edge", "alpha", "api", [[200, 0], [600, 0], [900, 420], [520, 440]]),
+        // Out of its own card and into its own end.
+        line("own", "beta", "orders", [[500, 50], [900, 50]]),
+        line("framed", "zone", "gamma", [[300, 850], [1300, 100]]),
+      ],
+    );
+    const checks = pageChecks(page(cards, { frames, resources, notes }), geometry);
+    expect(checks).toEqual([
+      {
+        kind: "crossings",
+        items: ["alpha", "beta", "gamma", "orders"],
+        message: "1 line passes under a card it doesn't start or end at: the line from alpha to gamma passes under beta and the table \"orders\".",
+        suggestion: "Call arrange_page, or move the cards off the line with its moves (rightOf, below), so the line can be seen end to end.",
+      },
+    ]);
+    // Under a collapsed frame's node it doesn't end at, too.
+    const past = [line("past", "alpha", "gamma", [[200, 450], [1300, 450]])];
+    expect(pageChecks(page(cards, { frames, resources }), drawn({ alpha: box(0, 400), gamma: box(1300, 400), api: box(600, 400, 240, 80) }, past))[0]?.items).toEqual(["alpha", "gamma", "api"]);
   });
 });
 

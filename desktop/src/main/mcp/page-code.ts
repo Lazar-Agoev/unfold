@@ -4,7 +4,11 @@
  * between cards: one arrow per call occurrence whose target has a card on the page (with its typed
  * label), an entrance's arrows to its handlers, and type arrows from a type card's field to the card
  * of each type its written type names; and the Flow steps still showing names from the code. The
- * rules are the canvas's (`ui/src/canvas/arrows.ts`): arrows join cards of one project only.
+ * rules are copies of the canvas's (`ui/src/canvas/arrows.ts`, `cardBody`, and the outline's count of
+ * unlabeled steps), so change both together: arrows join cards of one project only, and reach the
+ * first card of a key. Two differences are deliberate: calls are listed one by one where a Diagram
+ * node merges them, and a block whose source changed reads its Flow's chips (the canvas keeps the
+ * last verified Code, which only a window has).
  */
 
 import type { ToolContext } from "./context";
@@ -12,7 +16,7 @@ import type { Card, CardView, EdgeKind, LineLabel, Page, ProjectRow, TypeDefinit
 import { keyKind } from "./format";
 import { ToolError } from "./results";
 
-/** Block kinds whose cards show fields (type cards). */
+/** Block kinds whose cards are type cards. */
 const TYPE_KINDS: ReadonlySet<string> = new Set(["interface", "type_alias", "enum", "class"]);
 /** The most lines one `line_labels` request labels. */
 const MAX_LABELED = 500;
@@ -25,6 +29,7 @@ export interface CardCode {
   /** The project it reads from; null when no project of the workspace has its shared name. */
   readonly project: ProjectRow | null;
   readonly model: CardView | null;
+  /** A type card's definition, when the card shows its fields. */
   readonly definition: TypeDefinition | null;
   /** Why its code can't be read now, when it can't. */
   readonly problem?: string;
@@ -81,6 +86,16 @@ function shownView(page: Pick<Page, "defaultView">, card: Pick<Card, "view">): V
   return card.view ?? page.defaultView;
 }
 
+/**
+ * Whether a card shows a type card's fields (the canvas's `cardBody`): a type declaration in Diagram
+ * or Flow, a class in Diagram.
+ */
+function showsFields(page: Pick<Page, "defaultView">, card: Card, key: string): boolean {
+  const kind = keyKind(key);
+  const view = shownView(page, card);
+  return TYPE_KINDS.has(kind) && (view === "diagram" || (view === "flow" && kind !== "class"));
+}
+
 /** A failed read's reason, for the card's line. */
 function why(error: unknown): string {
   if (error instanceof ToolError) {
@@ -89,12 +104,12 @@ function why(error: unknown): string {
   throw error;
 }
 
-async function loadCard(context: ToolContext, card: Card, project: ProjectRow | null): Promise<CardCode> {
+async function loadCard(context: ToolContext, page: Page, card: Card, project: ProjectRow | null): Promise<CardCode> {
   const key = cardKey(card);
   if (!project) {
     return { card, key, project, model: null, definition: null, problem: `its project ${card.ref.project ?? ""} isn't in the workspace` };
   }
-  const definition = TYPE_KINDS.has(keyKind(key))
+  const definition = showsFields(page, card, key)
     ? context.engine("type_definition", { project: project.id, key }).then(
         (found) => found,
         () => null,
@@ -158,14 +173,18 @@ function fieldRows(definition: TypeDefinition, shownBase: (base: TypeText) => bo
   ];
 }
 
-/** The type arrows of one type card: one per field and card its written type names. */
+/** The type arrows of one type card showing its fields: one per field and card its written type names. */
 function cardTypeArrows(code: CardCode, cardOf: (project: string, key: string) => string | undefined): TypeArrow[] {
   const { definition, project } = code;
   if (!definition || !project) {
     return [];
   }
   const declared = (type: TypeText) => type.spans.flatMap((span) => (span.style === "declared" && span.target !== undefined ? [span.target] : []));
-  const shownBase = (base: TypeText) => declared(base).some((key) => cardOf(project.id, key) !== undefined);
+  // A base is the type its text starts with (`Base<Item>` is Base).
+  const shownBase = (base: TypeText) => {
+    const [first] = base.spans;
+    return first?.style === "declared" && first.target !== undefined && cardOf(project.id, first.target) !== undefined;
+  };
   return fieldRows(definition, shownBase).flatMap(({ field, type }) => {
     const targets = new Set(declared(type).flatMap((key) => cardOf(project.id, key) ?? []));
     targets.delete(code.card.id);
@@ -173,7 +192,16 @@ function cardTypeArrows(code: CardCode, cardOf: (project: string, key: string) =
   });
 }
 
-/** The keyed Flow steps of cards shown in Flow that have no label on the page (start and end aside; none while the source changed). */
+/** Whether `key` is `member` or lies under it (`<member>/…`). */
+function within(key: string, member: string): boolean {
+  return key.startsWith(member) && (key.length === member.length || key[member.length] === "/");
+}
+
+/**
+ * The keyed Flow steps of cards shown in Flow that have no label on the page, as the page's outline
+ * counts them: start and end aside, the steps a collapsed step group of the card hides aside, and
+ * none while the source changed.
+ */
 function unlabeledSteps(page: Page, code: CardCode): UnlabeledStep[] {
   const flow = code.model?.type === "block" ? code.model.flow : null;
   if (flow?.source !== "current" || shownView(page, code.card) !== "flow") {
@@ -181,10 +209,11 @@ function unlabeledSteps(page: Page, code: CardCode): UnlabeledStep[] {
   }
   const project = code.card.ref.project;
   const labeled = new Set(page.labels.filter((label) => label.project === project).map((label) => label.key));
-  return flow.nodes.flatMap((node) =>
-    node.key === undefined || node.kind === "start" || node.kind === "end" || labeled.has(node.key)
+  const hidden = page.groups.filter((group) => group.collapsed && group.card === code.card.id).flatMap((group) => group.members);
+  return flow.nodes.flatMap(({ key, kind, label, startLine }) =>
+    key === undefined || kind === "start" || kind === "end" || labeled.has(key) || hidden.some((member) => within(key, member))
       ? []
-      : [{ card: code.card.id, key: node.key, kind: node.kind, name: node.label, ...(node.startLine !== undefined ? { line: node.startLine } : {}) }],
+      : [{ card: code.card.id, key, kind, name: label, ...(startLine !== undefined ? { line: startLine } : {}) }],
   );
 }
 
@@ -192,9 +221,16 @@ function unlabeledSteps(page: Page, code: CardCode): UnlabeledStep[] {
 export async function pageCode(context: ToolContext, own: ProjectRow, page: Page): Promise<PageCode> {
   const rows = await context.projects();
   const projectOf = (card: Card): ProjectRow | null => (card.ref.project === undefined ? own : (rows.find((row) => row.name === card.ref.project) ?? null));
-  const loaded = await Promise.all(page.cards.map((card) => loadCard(context, card, projectOf(card))));
+  const loaded = await Promise.all(page.cards.map((card) => loadCard(context, page, card, projectOf(card))));
   const cards = new Map(loaded.map((code) => [code.card.id, code]));
-  const byKey = new Map(loaded.flatMap((code) => (code.project ? [[`${code.project.id}\u0000${code.key}`, code.card.id] as const] : [])));
+  // A call or a type reaches the first card of its key, as the canvas draws it.
+  const byKey = new Map<string, string>();
+  for (const code of loaded) {
+    const ref = code.project ? `${code.project.id}\u0000${code.key}` : undefined;
+    if (ref !== undefined && !byKey.has(ref)) {
+      byKey.set(ref, code.card.id);
+    }
+  }
   const cardOf = (project: string, key: string) => byKey.get(`${project}\u0000${key}`);
   const calls = loaded.flatMap((code) => cardArrows(code, cardOf));
   const arrows = await labeled(context, loaded, calls);
@@ -213,7 +249,9 @@ async function labeled(context: ToolContext, loaded: readonly CardCode[], arrows
   for (const arrow of arrows) {
     const project = projectOf.get(arrow.from);
     if (project !== undefined && arrow.source !== undefined && arrow.kind !== "imports") {
-      byProject.set(project, [...(byProject.get(project) ?? []), arrow]);
+      const lines = byProject.get(project) ?? [];
+      lines.push(arrow);
+      byProject.set(project, lines);
     }
   }
   const labels = new Map<string, LineLabel>();
@@ -225,13 +263,16 @@ async function labeled(context: ToolContext, loaded: readonly CardCode[], arrows
   );
   // Labels are what a line sends and returns; a page reads without them when they can't be read.
   const answers = await Promise.all(requests.map((request) => context.engine("line_labels", request).catch(() => [])));
-  for (const line of answers.flat()) {
-    if (line.label) {
-      labels.set(`${line.source}\u0000${line.seq}`, line.label);
+  answers.forEach((lines, index) => {
+    for (const line of lines) {
+      if (line.label) {
+        labels.set(`${requests[index]?.project ?? ""}\u0000${line.source}\u0000${line.seq}`, line.label);
+      }
     }
-  }
+  });
   return arrows.map((arrow) => {
-    const label = labels.get(`${arrow.source ?? ""}\u0000${arrow.seq ?? 0}`);
+    // Two projects can have the same keys: a label is its project's.
+    const label = labels.get(`${projectOf.get(arrow.from) ?? ""}\u0000${arrow.source ?? ""}\u0000${arrow.seq ?? 0}`);
     return label ? { ...arrow, label } : arrow;
   });
 }

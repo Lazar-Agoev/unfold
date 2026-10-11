@@ -3,8 +3,9 @@
  * by a type, whose fields are its columns, or listing its own), a queue, a cache, storage, a service
  * outside the workspace, or an actor, each with what it cites. The window checks the card's shape and
  * places it; the save checks what it cites and grounds an agent's card (its name, and the columns a
- * table lists itself, must appear in what it cites), refusing with what to do instead. What a person
- * drew and wrote is theirs unless the call says the person asked.
+ * table lists itself, must appear in what it cites), refusing with what to do instead. With `frame`, a
+ * card goes into that frame from no frame or the frame around it, as `frame_cards` takes members. What
+ * a person drew and wrote is theirs unless the call says the person asked.
  */
 
 import type { AddResourcesOp, AgentAnchor, AgentItemResult, AgentItemStatus, AgentResourceResult, AgentResourceSpec } from "@unfold/desktop/agent-api";
@@ -12,10 +13,10 @@ import { RESOURCE_WORDS } from "../../../canvas/resources/kinds";
 import { columnTypeText, type TableColumn } from "../../../canvas/resources/columns";
 import type { Anchor, Column, Page, Resource } from "../../../ipc/generated";
 import { estimatedResourceSize } from "../../../canvas/frames/geometry";
-import { isFreeId, moveItems } from "../document";
+import { isFreeId, isItemId, moveItems } from "../document";
 import { addToFrame, findFrame, frameOf } from "../frames";
 import { addResource, findResource, saysClaim, setResourceClaim, setResourceDescription, type ResourceClaim } from "../resources";
-import { guardPeopleText, invalid, itemSize, refProject, resourceColumns, type ApplyOp, type OpContext } from "./context";
+import { guardPeopleText, invalid, itemSize, refProject, resourceColumns, resourceName, type ApplyOp, type OpContext } from "./context";
 import { resourceSpot } from "./place";
 
 /** A table's columns as a result lists them. */
@@ -46,11 +47,6 @@ export function resourceResult(ctx: OpContext, page: Page, resource: Resource, s
     ...(frame ? { frame: frame.id } : {}),
     ...extra,
   };
-}
-
-/** `the table “orders”`. */
-export function resourceName(resource: Pick<Resource, "kind" | "name">): string {
-  return `the ${RESOURCE_WORDS[resource.kind]} “${resource.name}”`;
 }
 
 /** An anchor as the board file writes it: its project's name (absent for the board's own), lines checked. */
@@ -124,12 +120,26 @@ function existingFor(page: Page, spec: AgentResourceSpec, name: string): Resourc
   const resource = findResource(page, spec.id);
   if (!resource && !isFreeId(page, spec.id)) {
     throw invalid(
-      /^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/.test(spec.id)
+      isItemId(spec.id)
         ? `“${spec.id}” is the id of another item on this page (not a resource card). Give the resource card another id, or leave id out.`
         : `“${spec.id}” can't name a resource card: an id is letters, digits, “_”, “.”, and “-”, starting with a letter or digit.`,
     );
   }
   return resource;
+}
+
+/**
+ * Refuses to put a resource card in frame `frameId` from another frame: an item is in one frame, so it
+ * comes from no frame, the frame itself, or the frame that holds it (as `frame_cards` takes members).
+ */
+function checkFrameMove(page: Page, resource: Resource, frameId: string): void {
+  const now = frameOf(page, resource.id);
+  const target = findFrame(page, frameId);
+  if (now && target && now.id !== target.id && now.id !== frameOf(page, target.id)?.id) {
+    throw invalid(
+      `Can't put ${resourceName(resource)} (id ${resource.id}) in the frame “${target.title}”: it is in the frame “${now.title}” (id ${now.id}), and an item is in one frame. Leave frame out to keep it there, or take it out of “${now.title}” first (frame_cards with its members without it).`,
+    );
+  }
 }
 
 /** Creates or updates one resource card; returns its result. */
@@ -142,6 +152,9 @@ function applyResourceSpec(ctx: OpContext, page: Page, spec: AgentResourceSpec, 
     throw invalid(`There is no frame with id “${spec.frame}” on this page to put ${resourceName({ kind: spec.kind, name })} in. read_page lists the page's frames; frame_cards makes one.`);
   }
   const existing = existingFor(page, spec, name);
+  if (existing && spec.frame !== undefined) {
+    checkFrameMove(page, existing, spec.frame);
+  }
   const claim = claimOf(ctx, spec, name, existing);
   const author = ctx.agent.author;
   const text = spec.description?.trim();

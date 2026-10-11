@@ -87,9 +87,12 @@ function invalidate(client: QueryClient, test: (command: string, args: Args) => 
 
 const ENTRANCE_PREFIX = "entrance:";
 
-/** The file a block key belongs to (`src/a.ts#function:f` → `src/a.ts`). */
+/**
+ * The file a block key belongs to (`src/a.ts#function:f` → `src/a.ts`): up to its last `#`, since a
+ * path may hold `#` and a step never does. An entrance's key is its own.
+ */
 export function keyFile(key: string): string {
-  const hash = key.indexOf("#");
+  const hash = key.startsWith(ENTRANCE_PREFIX) ? -1 : key.lastIndexOf("#");
   return hash < 0 ? key : key.slice(0, hash);
 }
 

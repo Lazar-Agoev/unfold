@@ -747,6 +747,16 @@ fn parsing_checks_frames_resources_connections_and_notes() {
             "only with `carries`",
         ),
         (
+            with_items(r#","links":[{"anchors":[{"key":"main.ts#a"}],"from":"run","id":"l","to":"t"}]"#),
+            "/pages/0/links/0/anchors",
+            "only a connection (a link with `kind`)",
+        ),
+        (
+            with_items(r#","links":[{"description":{"author":"person:a","text":"T"},"from":"run","id":"l","to":"t"}]"#),
+            "/pages/0/links/0/description",
+            "a drawn link has a label",
+        ),
+        (
             with_items(r#","notes":[{"at":[0,0],"author":"agent:x","id":"n","text":"N"}],"links":[{"from":"run","id":"l","to":"n"}]"#),
             "/pages/0/links/0/to",
             "`n` is a note; a link joins cards, resources, and frames",
@@ -1971,6 +1981,32 @@ fn the_outline_follows_calls_and_counts_unlabeled_nodes() {
     board.pages[0].labels.push(label(Some(web()), IF0, "Elsewhere"));
     assert_eq!(outline(&board.pages[0], &graphs).unlabeled.len(), unlabeled - 1);
     assert!(card_links(&board.pages[0], &graphs).is_empty());
+}
+
+#[test]
+fn steps_a_collapsed_group_hides_are_not_unlabeled() {
+    let (_dir, graph) = folder(SOURCE);
+    let mut board = sample_board();
+    let graphs = PageGraphs::own_only(&graph);
+    let keys = |board: &Board| -> Vec<String> {
+        let outline = outline(&board.pages[0], &graphs);
+        outline
+            .unlabeled
+            .iter()
+            .map(|item| item.key.as_str().to_owned())
+            .collect()
+    };
+    let all = keys(&board);
+    // Expanded, a group hides nothing.
+    board.pages[0].groups.push(group(&[IF0, LOG0]));
+    assert_eq!(keys(&board), all);
+    // Collapsed, it hides its members and the steps under them (the if's then statement); the
+    // return still counts.
+    board.pages[0].groups[0].collapsed = true;
+    assert_eq!(keys(&board), [FIRST, RETURN0]);
+    // A group of another card hides nothing on this one.
+    board.pages[0].groups[0].card = "other".to_owned();
+    assert_eq!(keys(&board), all);
 }
 
 #[test]

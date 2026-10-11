@@ -543,6 +543,17 @@ fn link(value: &Value, path: &Path) -> Parsed<Link> {
     link.anchors = optional(map, "anchors", path, anchors)?.unwrap_or_default();
     link.description = optional(map, "description", path, description)?;
     link.signature = optional_signature(map, path)?;
+    // An empty `anchors` is the default, as everywhere.
+    if link.kind.is_none()
+        && let Some(name) = ["carries", "channel", "description", "signature", "step"]
+            .into_iter()
+            .find(|name| map.contains_key(*name))
+            .or_else(|| (!link.anchors.is_empty()).then_some("anchors"))
+    {
+        return Err(path.join(name).fail(
+            "only a connection (a link with `kind`) cites code and has a description; a drawn link has a label",
+        ));
+    }
     Ok(link)
 }
 

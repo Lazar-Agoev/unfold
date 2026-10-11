@@ -171,7 +171,7 @@ describe("screenshot", () => {
     expect(bridge.read).not.toHaveBeenCalled();
     renderer.settle(page.requestId, { ok: true, bounds: { x: 0, y: 0, width: 100, height: 50 } });
     renderer.settle((await request(window, 2)).requestId, { ok: true });
-    expect(await shot).toMatchObject({ ok: true, note: "No review banners: no window holds the board, so its health isn't known here (check opens it and reports it)." });
+    expect(await shot).toMatchObject({ ok: true, note: "No review banners: the board's health couldn't be read here (check reports it)." });
   });
 
   it("says when the board or the page isn't there", async () => {
@@ -301,6 +301,22 @@ describe("check", () => {
     expect(await checked).toEqual({ ok: true, title: "Orders", page: "page-1", pageTitle: "Page page-1", health: [OUTDATED], checks: [STRAYS] });
   });
 
+  it("opens the board again when the window its report named no longer holds it", async () => {
+    const { engine, bridge, renderer } = setup({ holder: 3 });
+    bridge.read.mockImplementationOnce(() => {
+      // The real bridge forgets the board the window no longer holds.
+      bridge.views.released(3, BOARD);
+      return Promise.resolve({ ok: false, code: "board_not_open", message: "Not here." } as never);
+    });
+    const checked = renderer.check({ board: BOARD, page: "page-1" });
+    const window = await loaded();
+    const page = await request(window, 1);
+    expect(bridge.open).toHaveBeenCalledWith({ board: BOARD, page: "page-1" });
+    expect(engine.calls).toEqual([[7, "board_health", { project: BOARD.project, id: BOARD.id }]]);
+    renderer.settle(page.requestId, { ok: true, checks: [] });
+    expect(await checked).toMatchObject({ ok: true, page: "page-1" });
+  });
+
   it("checks every page of a board in order", async () => {
     const { renderer } = setup({ holder: 3 });
     const checked = renderer.checkBoard({ board: BOARD });
@@ -317,6 +333,31 @@ describe("check", () => {
         { page: "page-2", pageTitle: "Page page-2", health: [ELSEWHERE], checks: [] },
       ],
     });
+  });
+
+  it("opens the board again when the window its report named no longer holds it", async () => {
+    const { engine, bridge, renderer } = setup({ holder: 3 });
+    // As the real bridge does: the window that holds the board, else a new one.
+    bridge.open.mockImplementation(() => {
+      const holder = bridge.views.holder(BOARD);
+      if (holder === undefined) {
+        bridge.views.holds(7, BOARD);
+      }
+      return Promise.resolve({ ok: true as const, windowId: holder ?? 7 });
+    });
+    engine.answers.set("board_health", () => {
+      if (engine.calls.at(-1)?.[0] === 3) {
+        throw new EngineRequestError({ code: "board_not_held", message: "The window doesn't hold the board." });
+      }
+      return HEALTH;
+    });
+    const checked = renderer.checkBoard({ board: BOARD });
+    const window = await loaded();
+    renderer.settle((await request(window, 1)).requestId, { ok: true, checks: [] });
+    renderer.settle((await request(window, 2)).requestId, { ok: true, checks: [] });
+    expect(await checked).toMatchObject({ ok: true, pages: [{ page: "page-1" }, { page: "page-2" }] });
+    expect(engine.calls.map(([windowId]) => windowId)).toEqual([3, 7]);
+    expect(bridge.views.holder(BOARD)).toBe(7);
   });
 
   it("passes on why the board couldn't be opened or checked", async () => {

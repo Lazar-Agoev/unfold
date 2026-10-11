@@ -12,17 +12,16 @@ import type { Frame, Link, Page } from "../../ipc/generated";
 import { toUnfoldError } from "../../ipc/unfold";
 import { useAuthor } from "../../state/author";
 import {
-  cardKey,
   editFrame,
   findCard,
   findFrame,
   findPage,
   focusCard,
   focusFrame,
+  focusItem,
   frameItems,
   frameOf,
   itemsFor,
-  keyDisplayName,
   removeFrame,
   repairBoard,
   repairEffect,
@@ -33,24 +32,19 @@ import {
   type PageTarget,
 } from "../../state/boards";
 import { AuthoredField } from "./AuthoredField";
+import { itemName } from "./ClaimRows";
 import { RelationRow } from "./Relations";
 
 const LOOK_WORDS = { box: "Box", zone: "Zone" } as const;
 
-/** An item of the page as Selected names it: a card's name, a frame's title, a resource card's name, a note's text. */
-function itemName(page: Page, id: string): string {
-  const card = findCard(page, id);
-  return card
-    ? keyDisplayName(cardKey(card))
-    : (findFrame(page, id)?.title ?? (page.resources ?? []).find((item) => item.id === id)?.name ?? (page.notes ?? []).find((item) => item.id === id)?.text ?? id);
-}
-
-/** Brings an item of the page into view: a card, or a frame. */
+/** Brings an item of the page into view and selects it: a frame, a card, a resource card, or a note. */
 function showItem(target: PageTarget, page: Page, id: string): void {
   if (findFrame(page, id)) {
     focusFrame(target, id);
   } else if (findCard(page, id)) {
     focusCard(target, id);
+  } else {
+    focusItem(target, id);
   }
 }
 

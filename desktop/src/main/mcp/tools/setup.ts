@@ -56,6 +56,10 @@ export const addProject = defineTool({
   input: z.object({ path: z.string().min(1).describe("The folder: an absolute path, or one starting with ~/") }),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
   async run({ path }, context) {
+    // The confirmation shows the path: a line break in it could make the dialog say something else.
+    if (/\p{Cc}/u.test(path)) {
+      throw cant("add the folder", "its path holds a control character, such as a line break", "Pass the folder's path as the person wrote it.");
+    }
     const folder = absoluteFolder(path);
     if (folder === null) {
       throw cant("add the folder", `“${path}” isn't an absolute path`, "Pass the folder's full path, such as ~/repos/payments or /Users/me/repos/payments.");
@@ -83,21 +87,27 @@ export const addProject = defineTool({
   },
 });
 
-/** Resolves after `seconds`, or when the call is cancelled. */
-function waited(seconds: number, signal: AbortSignal): Promise<"waited"> {
-  return new Promise((done) => {
-    const timer = setTimeout(() => {
+/** `work`'s outcome, or `"waited"` after `seconds` or when the call is cancelled; the timer goes once either decides. */
+async function within<T>(work: Promise<T>, seconds: number, signal: AbortSignal): Promise<T | "waited"> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let cancelled: (() => void) | undefined;
+  const waiting = new Promise<"waited">((done) => {
+    timer = setTimeout(() => {
       done("waited");
     }, seconds * 1000);
-    signal.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        done("waited");
-      },
-      { once: true },
-    );
+    cancelled = () => {
+      done("waited");
+    };
+    signal.addEventListener("abort", cancelled, { once: true });
   });
+  try {
+    return await Promise.race([work, waiting]);
+  } finally {
+    clearTimeout(timer);
+    if (cancelled) {
+      signal.removeEventListener("abort", cancelled);
+    }
+  }
 }
 
 /** What a finished compile did, and the applications it found. */
@@ -126,7 +136,7 @@ export const compileProject = defineTool({
   async run({ project, mode, waitSeconds }, context) {
     const row = await context.project(project);
     const compiling = context.engine("compile", { project: row.id, mode: mode === "rebuild" ? "from_scratch" : "check" });
-    const outcome = await Promise.race([compiling, waited(waitSeconds, context.signal)]);
+    const outcome = await within(compiling, waitSeconds, context.signal);
     if (outcome !== "waited") {
       return textResult(context.header({ project: row.name }), ...(await compiledText(context, row, outcome)));
     }

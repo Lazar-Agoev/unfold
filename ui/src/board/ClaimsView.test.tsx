@@ -279,33 +279,39 @@ describe("connections", () => {
     expect(chipOf(container, "owner")?.getAttribute("aria-label")).toBe("Connection N : 1");
     expect(resourceCard(container, "orders")?.querySelector('[data-handleid="col-out-right:customerId"]')).not.toBeNull();
     expect(resourceCard(container, "customers")?.querySelector('[data-handleid="col-in-left:id"]')).not.toBeNull();
-    // A drawn link keeps today's look, out of the chips' layout.
-    expect(container.querySelector(".board-link-label")?.textContent).toContain("looks up");
+    // A drawn link keeps today's look.
+    expect(await waitFor(() => present(container.querySelector(".board-link-label")?.textContent))).toContain("looks up");
     expect(chipOf(container, "drawn")).toBeNull();
   });
 
-  it("place their chips in the typed lines' label layout: never over a card or each other", async () => {
+  it("place their chips in the typed lines' label layout, with drawn links' labels: never over a card or each other", async () => {
     open({
       links: [
         { id: "first", from: "create-order", to: "worker", kind: "event", channel: "order.placed", author: "agent:claude" },
         { id: "second", from: "create-order", to: "worker", kind: "rpc", channel: "Orders.Place", author: "agent:claude" },
+        { id: "drawn", from: "create-order", to: "worker", label: { text: "places the queued order", author: "person:maya", signature: "" } },
       ],
     });
     const { container } = renderBoard();
-    const [first, second] = await waitFor(() => [present(chipOf(container, "first")), present(chipOf(container, "second"))]);
-    const box = (chip: HTMLElement | undefined) => {
+    const [first, second, drawn] = await waitFor(() => [
+      present(chipOf(container, "first")),
+      present(chipOf(container, "second")),
+      present(container.querySelector<HTMLElement>(".board-link-label")),
+    ]);
+    const box = (chip: HTMLElement | undefined, height: number) => {
       const [x, y] = /translate\(([-\d.]+)px, ([-\d.]+)px\)$/.exec(chip?.style.transform ?? "")?.slice(1).map(Number) ?? [Number.NaN, Number.NaN];
       const width = Number.parseFloat(chip?.style.width ?? "");
-      return { left: (x ?? 0) - width / 2, right: (x ?? 0) + width / 2, top: (y ?? 0) - 10, bottom: (y ?? 0) + 10 };
+      return { left: (x ?? 0) - width / 2, right: (x ?? 0) + width / 2, top: (y ?? 0) - height / 2, bottom: (y ?? 0) + height / 2 };
     };
-    const a = box(first);
-    const b = box(second);
-    // The two lines draw on top of each other; their chips sit apart, clear of both cards (400px wide at 0 and 2400).
-    expect(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top).toBe(true);
-    for (const chip of [a, b]) {
-      expect(chip.left).toBeGreaterThanOrEqual(400);
-      expect(chip.right).toBeLessThanOrEqual(2400);
-    }
+    const labels = [box(first, 20), box(second, 20), box(drawn, 24)];
+    // The three lines draw on top of each other; their labels sit apart, clear of both cards (400px wide at 0 and 2400).
+    labels.forEach((a, index) => {
+      for (const b of labels.slice(index + 1)) {
+        expect(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top).toBe(true);
+      }
+      expect(a.left).toBeGreaterThanOrEqual(400);
+      expect(a.right).toBeLessThanOrEqual(2400);
+    });
   });
 
   it("leave from their step's line in Code, and from the card's edge in Diagram", async () => {

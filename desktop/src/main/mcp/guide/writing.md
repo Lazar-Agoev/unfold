@@ -31,8 +31,9 @@ descriptions and notes 400.
 ## Flow labels
 - Each step of a card in Flow shows a fallback name from the code (dotted underline)
   until it has a label. read_code with view "flow" lists the steps with their keys;
-  read_page lists the ones still unlabeled; check counts them per card, including the
-  steps inside collapsed step groups, which show when the person expands the group.
+  read_page lists the ones still unlabeled and check counts them per card, leaving out
+  the steps a collapsed step group hides; label those too, since they show when the
+  person expands the group.
 - Say what happens: "Charge the customer", not "this.payments.charge". A condition is
   a yes-or-no question; its branches already read yes and no. A return says what comes
   back, or why the function stops there: "Stop: the worker places it".

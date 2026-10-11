@@ -24,12 +24,14 @@ import type {
   TypeMember,
 } from "../engine-types";
 import { clip, count, keyName, labelText, place, typeText } from "../format";
-import { cant, cursorOffset, textResult } from "../results";
+import { cant, cursorOffset, fittingLines, textResult } from "../results";
 import { codeTarget } from "../target";
 import { defineTool } from "../tool";
 
 /** The most source lines one result shows; longer functions come in pages. */
 const MAX_LINES = 150;
+/** The most characters of source one page shows, leaving room for the steps and calls of its lines. */
+const MAX_SOURCE_CHARS = 12_000;
 const TYPE_KINDS: ReadonlySet<string> = new Set(["interface", "type_alias", "enum", "class"]);
 /** Kinds whose `throw`s belong to themselves, not to the block that writes them. */
 const CALLABLE_KINDS: ReadonlySet<string> = new Set(["function", "method", "constructor", "getter", "setter", "class"]);
@@ -184,7 +186,7 @@ export const readCode = defineTool({
   name: "read_code",
   title: "Read code",
   description:
-    'Reads a function, method, class, type, or entrance as Unfold compiled it, by key (from search, list_entrances, read_page, or get_relations) or a link to a card; without key, the card selected in the person\'s view. A function: its verified source with line numbers, its signature as written, its Flow steps (each with lines, kind, fallback name, and key: the keys and lines group_steps and label_steps take), its direct throws, and each call it makes: resolved (the target\'s name and key, and its typed label such as (Cart, User) → Promise<Charge>), external (the library), or unresolved (the reason), with the source and seq read_call takes. view "code", "flow", or "both" (the default) picks source or steps. A type or class: its members with written types and what each type name links to, inherited members by base, and how many places use it. An entrance: where it\'s declared and its handlers. Unfold shows source only when the file is the one it compiled; otherwise it says the file changed: compile_project, then read again. Long functions come in pages of 150 lines: pass lines [from, to]. Reading changes nothing.',
+    'Reads a function, method, class, type, or entrance as Unfold compiled it, by key (from search, list_entrances, read_page, or get_relations) or a link to a card; without key, the card selected in the person\'s view. A function: its verified source with line numbers, its signature as written, its Flow steps (each with lines, kind, fallback name, and key: the keys and lines group_steps and label_steps take), its direct throws, and each call it makes: resolved (the target\'s name and key, and its typed label such as (Cart, User) → Promise<Charge>), external (the library), or unresolved (the reason), with the source and seq read_call takes. view "code", "flow", or "both" (the default) picks source or steps. A type or class: its members with written types and what each type name links to, inherited members by base, and how many places use it. An entrance: where it\'s declared and its handlers. Unfold shows source only when the file is the one it compiled; otherwise it says the file changed: compile_project, then read again. Long functions come in pages of at most 150 lines (fewer when lines are long): pass lines [from, to]. Reading changes nothing.',
   input: z.object({
     key: z.string().min(1).optional().describe("The code's key, or a link to a card (default: the selected card)"),
     project: z.string().min(1).optional().describe("The project's name or id (default: the project of the board in view)"),
@@ -212,10 +214,13 @@ export const readCode = defineTool({
       isType ? context.engine("type_definition", { project: code.project.id, key: code.key }) : null,
       header.kind === "class" || !isType ? context.engine("relations", { project: code.project.id, key: code.key, callersLimit: 1 }) : null,
     ]);
-    const range = shownLines(header, lines);
+    const asked = shownLines(header, lines);
     const source = card.code?.source.state === "current" ? card.code.source : null;
     const text = source ? sourceLines(source) : new Map<number, string>();
     const showCode = view !== "flow";
+    // A page of long lines ends early, so the size guard never cuts where the next page starts.
+    const shown = source && showCode ? fittingLines(numbered(text, asked), MAX_SOURCE_CHARS).length : 0;
+    const range: [number, number] = shown > 0 ? [asked[0], asked[0] + shown - 1] : asked;
     const showFlow = view !== "code" && !isType;
     const calls = relations && showCode ? await callLines(context, code.project, relations, range) : [];
     const throws = source && !isType ? directThrows(source, text) : [];

@@ -409,7 +409,15 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
         const { link } = routed;
         const label = link ? (link.label?.text ?? null) : `${routed.count} links`;
         const writer = link?.label ? authorOf(link.label.author) : null;
-        const data = { target, selected: routed.id === selectedLink, label, author: writer?.name ?? null, agent: writer?.agent ?? false, working: working.has(routed.id) };
+        const data = {
+          target,
+          ...(link ? { linkId: link.id } : {}),
+          selected: routed.id === selectedLink,
+          label,
+          author: writer?.name ?? null,
+          agent: writer?.agent ?? false,
+          working: working.has(routed.id),
+        };
         made = { signature: JSON.stringify([ends, data.selected, label, data.author, data.agent, data.working]), make: () => ({ ...ends, type: "link", className: "board-link-edge", data }) };
       } else {
         const data = connectionData(routed, kind, { target, page: framed, health, index, selectedLink, working });
@@ -619,7 +627,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
           event.preventDefault();
           const hasCards = cards.length > 0;
           paneMenu.open({ x: event.clientX, y: event.clientY }, [
-            { id: "fit", label: "Fit", shortcut: "Shift+1", disabled: !hasCards, onSelect: () => { requestCardFocus(target, [], "fit"); } },
+            { id: "fit", label: "Fit", shortcut: "Shift+1", disabled: !hasCards && resources.length === 0, onSelect: () => { requestCardFocus(target, [], "fit"); } },
             { kind: "separator", id: "s1" },
             { id: "fold", label: "Fold all cards", disabled: !hasCards, onSelect: () => { foldAll(target, true); } },
             { id: "unfold", label: "Unfold all cards", disabled: !hasCards, onSelect: () => { foldAll(target, false); } },

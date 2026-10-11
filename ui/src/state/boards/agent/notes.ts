@@ -10,20 +10,12 @@ import { attachPoint } from "../../../canvas/frames/geometry";
 import { noteSize } from "../../../canvas/sizing";
 import { measureText } from "../../../canvas/measure";
 import type { Note, Page } from "../../../ipc/generated";
-import { findCard, isFreeId } from "../document";
+import { findCard, isFreeId, isItemId } from "../document";
 import { findFrame } from "../frames";
 import { NOTE_MAX, addNote, findNote, noteText, placeNote, setNoteText } from "../notes";
 import { findResource } from "../resources";
-import { guardPeopleText, invalid, pageRects, type OpContext } from "./context";
+import { guardPeopleText, invalid, noteName, pageRects, type OpContext } from "./context";
 import { freeNoteSpot, noteSpot } from "./place";
-
-/** A note's words as a result names it: its start, cut at 40 characters. */
-const NOTE_NAME = 40;
-
-/** A note's name: its first 40 characters. */
-export function noteName(note: Pick<Note, "text">): string {
-  return note.text.length > NOTE_NAME ? `${note.text.slice(0, NOTE_NAME - 1)}…` : note.text;
-}
 
 /** A note's result entry. */
 export function noteResult(note: Note, status: AgentItemStatus, placed: boolean): AgentNoteResult {
@@ -57,7 +49,7 @@ function existingFor(page: Page, spec: AgentNoteSpec, text: string): Note | unde
   const note = findNote(page, spec.id);
   if (!note && !isFreeId(page, spec.id)) {
     throw invalid(
-      /^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/.test(spec.id)
+      isItemId(spec.id)
         ? `“${spec.id}” is the id of another item on this page (not a note). Give the note another id, or leave id out.`
         : `“${spec.id}” can't name a note: an id is letters, digits, “_”, “.”, and “-”, starting with a letter or digit.`,
     );
