@@ -69,6 +69,10 @@ function seedAll(): void {
     seed("board_thumbnails", { project, boards: [".unfold/boards/a.json"] });
     seed("board_thumbnails", { project, boards: [".unfold/boards/b.json"] });
     seed("board_refs", { project, key: CREATE });
+    seed("line_labels", { project, lines: [{ source: OTHER, seq: 0 }] });
+    seed("call_contract", { project, source: OTHER, seq: 0 });
+    seed("type_definition", { project, key: OTHER });
+    seed("type_uses", { project, key: OTHER });
   }
   seed("search", { query: "all" });
   seed("search", { query: "only-p", projects: [P] });
@@ -173,6 +177,7 @@ describe("invalidation by event", () => {
       [
         `board_thumbnails:${P}:.unfold/boards/a.json`,
         `board_thumbnails:${P}:.unfold/boards/b.json`,
+        `call_contract:${P}:`,
         `callers:${P}:${OTHER}`,
         // The changed key, another block of the changed file, and every entrance card.
         `card:${P}:${CREATE}`,
@@ -180,10 +185,14 @@ describe("invalidation by event", () => {
         `card:${P}:${LIST}`,
         `file_view:${P}:${ORDERS}`,
         `index_log:${P}:`,
+        // Typed lines read other files than the caller's: every one of the project.
+        `line_labels:${P}:`,
         `peek:${P}:${LIST}`,
         `preview:${P}:${OTHER}`,
         `project_summary:${P}:`,
         `relations:${P}:${OTHER}`,
+        `type_definition:${P}:${OTHER}`,
+        `type_uses:${P}:${OTHER}`,
         // Searches that included the project.
         "search::all",
         "search::defs",

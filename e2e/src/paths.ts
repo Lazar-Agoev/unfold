@@ -11,6 +11,8 @@ export const desktopDir = join(repoRoot, "desktop");
 
 export const playgroundsDir = join(repoRoot, "testdata", "playgrounds");
 
+export const fixturesDir = join(repoRoot, "testdata", "fixtures");
+
 /** The Electron binary the desktop package depends on (the `electron` module exports its path). */
 export function electronExecutable(): string {
   const require = createRequire(join(desktopDir, "package.json"));

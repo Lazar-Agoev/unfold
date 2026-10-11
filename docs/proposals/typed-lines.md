@@ -645,6 +645,32 @@ Decisions made while building the compiler phase:
     `unsupported`. So `raise CardDeclined(…)` is a resolved construction and a direct throw.
     Parity and the oracle check are unchanged on the in-repository corpora (their exceptions are
     builtins raised directly).
+25. **Code links don't gain a `seq`.** A Code link is always its occurrence's own edge (`seq` 0):
+    the Code view lists occurrences, and references aren't occurrences, so a reference arrow only
+    ever comes from a Flow chip, which already carries its `seq`. The arrow model takes `seq` from
+    there (0 for a Code link) and the reader is unchanged.
+26. **Labels sit over the cards, sized by measurement.** The closed label is in the edge-label
+    layer, like a drawn link's label, so it stays readable and clickable when cards are close; its
+    width comes from the bundled font's measurement (as card widths do), so placement needs no DOM
+    reads. Overlapping labels are placed from the top and moved down below the label they meet.
+27. **Paper's colors where the table and the artboards differ.** A label's types read in
+    `--color-text` whole (`CartItem[]`, `Promise<Hold>`), as the artboard draws them; only the
+    label's own punctuation (`(`, `, `, `) → `) is `--color-contour`. Inside the contract, text
+    between a type's names is split: words read as text (`string`), punctuation and `builtin` names
+    as contour (`Promise<`, `[]`), matching "type opened". A parameter name without a type is
+    `--color-muted`; `?` and `…` are contour.
+28. **The contract opens where the label was and grows downward.** It is centered on the label's
+    point when it loads; opening a type keeps its top still. It takes focus, so Escape reaches it;
+    Escape is a fixed key (`board.closeLine`, registered after the peek sheet's so it wins while a
+    line is selected), not a rebindable action. Removing the selection does nothing for a line.
+29. **Open types are keyed by row path.** `PageView.openTypes` maps a row (`send:0`, `returns`,
+    `throw:0`, then `<row>/<member index>` or `<row>/=` inside a definition) to its opened span; a
+    row shows one opened type, and closing or changing it closes everything opened inside it.
+    The caller column shows a parameter no argument filled as `default`, `optional`, or `—`; the
+    result as the variable, `return`, `outer(…)`, or `—` for a discarded value.
+30. **The shadow is the floating one.** The contract uses `--shadow-float` rather than a new token
+    for Paper's `0 4px 14px #20212612`, as section 1 maps it; members show `readonly` before the
+    name (Paper's fixture has none), and a long name keeps 8px before its type.
 
 ## 10. Not in the initial scope
 

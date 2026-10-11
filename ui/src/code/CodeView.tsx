@@ -1,7 +1,9 @@
 /**
  * The Code view of a card (architecture §10.3, 02 §4.3): the exact verified slice with syntax colors in
  * 20px rows, folds from the gutter, calls as links, board groups on a magenta rail, and a port at the
- * card's edge for each calling line that has an arrow (the row gets the step fill).
+ * card's edge for each calling line that has an arrow (the row gets the step fill). While a line
+ * between cards is selected, the callee's lines its contract reads get the step fill, and the caller's
+ * calling line the selection fill.
  *
  * The component only lays out the reader's `CodeText` model; it never re-slices or re-parses.
  * Ports are drawn by the caller (`renderPorts`), so the renderer stays independent of the canvas.
@@ -49,6 +51,10 @@ export interface CodeViewProps {
   readonly onNamePendingGroup?: (title: string | null) => void;
   /** The last verified render of source that changed: shown dimmed, never re-sliced. */
   readonly dimmed?: boolean;
+  /** Lines marked with the step fill: the callee lines a selected line's contract reads. */
+  readonly marked?: ReadonlySet<number>;
+  /** The calling line of a selected line, in the selection fill. */
+  readonly callerLine?: number | null;
 }
 
 const EMPTY_SET: ReadonlySet<string> = new Set();
@@ -269,8 +275,9 @@ export function CodeView(props: CodeViewProps) {
     const anchor = `line:${number}`;
     const classes = ["code-row"];
     if (anchors.has(anchor)) classes.push("has-port");
+    if (props.marked?.has(number)) classes.push("marked");
     if (inDrag(number)) classes.push("gutter-selected");
-    if (isSelectedLine(number)) classes.push("selected");
+    if (isSelectedLine(number) || props.callerLine === number) classes.push("selected");
     return (
       <Fragment key={`r${number}`}>
         <div className={classes.join(" ")} data-line={number} data-port-row="code" onClick={select(ownerOfLine.get(number))}>

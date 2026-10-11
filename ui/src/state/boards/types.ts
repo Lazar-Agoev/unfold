@@ -43,7 +43,23 @@ export type Selection =
   /** A card, or a Flow node or statement inside it (`key`). */
   | { readonly kind: "card"; readonly cardId: string; readonly key: Key | null }
   | { readonly kind: "group"; readonly groupId: string }
-  | { readonly kind: "link"; readonly linkId: string };
+  | { readonly kind: "link"; readonly linkId: string }
+  /** A line between cards (its label opened into the call's contract). */
+  | ({ readonly kind: "line" } & SelectedLine);
+
+/** A selected line: its arrow, the graph edge it draws (`source` occurrence, `seq`), and its two cards. */
+export interface SelectedLine {
+  readonly arrowId: string;
+  readonly project: ProjectId;
+  readonly source: Key;
+  readonly seq: number;
+  /** The calling card. */
+  readonly from: string;
+  /** The called card. */
+  readonly to: string;
+  /** The calling line, when the occurrence has one. */
+  readonly line: number | null;
+}
 
 /** One step of the breadcrumb trail ("POST /orders › createOrder"). */
 export interface TrailItem {
@@ -98,6 +114,12 @@ export interface PageView {
   pendingGroup: PendingGroup | null;
   /** Link drawing mode: the next card clicked becomes the link's other end. */
   linking: { readonly from: string } | null;
+  /**
+   * The written types opened in the selected line's contract: each row (`send:0`, `returns`,
+   * `send:0/2` for a member of the type opened under `send:0`) → the index of its opened span.
+   * Cleared when the selection moves off the line.
+   */
+  openTypes: Record<string, number>;
 }
 
 /** One undo step: the whole document before it, and the page it changed (undo shows that page). */

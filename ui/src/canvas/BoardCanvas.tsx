@@ -1,8 +1,9 @@
 /**
  * A page's canvas (React Flow): cards as custom nodes at their reflowed positions, one memoized arrow
- * per opened call occurrence, the page's drawn links, and a camera that pans and zooms without
- * changing what any card shows. No minimap. Large pages render only the cards in view. While a link is
- * being drawn, the next card clicked ends it; Escape or a click on the canvas cancels.
+ * per opened call occurrence with its closed label, the page's drawn links, and a camera that pans
+ * and zooms without changing what any card shows. No minimap. Large pages render only the cards in
+ * view. While a link is being drawn, the next card clicked ends it; Escape or a click on the canvas
+ * cancels. A selected line shows its contract; Escape or a click on the canvas closes it.
  */
 
 import {
@@ -18,6 +19,7 @@ import type { Card, Link } from "../ipc/generated";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useContextMenu } from "../components";
 import { authorName } from "../code/text";
+import { useRegisterActions } from "../keyboard";
 import {
   displayedRects,
   editPage,
@@ -39,6 +41,8 @@ import type { BoardArrows } from "./useBoardArrows";
 import { CardNode, type CardNodeType } from "./cards/CardNode";
 import { TARGET_HANDLE } from "./cards/parts";
 import { boundsOf, fallbackSize, reflow, type Rect } from "./layout";
+import { LabelLayout, LabelLayoutContext } from "./lines/labelLayout";
+import { useLineLabels } from "./lines/useLineLabels";
 import { LinkEdge, type LinkEdgeType } from "./LinkEdge";
 import { linkEnds } from "./linkSides";
 import "./canvas.css";
@@ -80,9 +84,12 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
   const focus = usePageView(target, (view) => view.focus);
   const linking = usePageView(target, (view) => view.linking !== null);
   const selectedLink = usePageView(target, ({ selection }) => (selection.kind === "link" ? selection.linkId : null));
+  const selectedLine = usePageView(target, ({ selection }) => (selection.kind === "line" ? selection.arrowId : null));
+  const [labelLayout] = useState(() => new LabelLayout());
   const [initialCamera] = useState(() => getPageView(target).camera);
 
   const { arrows, ports, settled } = boardArrows;
+  const labels = useLineLabels(arrows);
   const paneMenu = useContextMenu("Board actions");
 
   // Positions: saved positions reflowed by measured sizes; a dragged card follows the pointer.
@@ -136,18 +143,49 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
     const live = new Set<string>();
     const list = arrows.map((arrow) => {
       const cached = edgeCache.get(arrow.id);
-      const edge: ArrowEdgeType = cached ?? {
-        id: arrow.id,
-        type: "arrow",
-        source: arrow.source,
-        sourceHandle: arrow.sourceHandle,
-        target: arrow.target,
-        targetHandle: TARGET_HANDLE,
-        className: "board-arrow-edge",
-        focusable: false,
-        selectable: false,
-        data: { dashed: arrow.dashed, handler: arrow.kind === "handler" },
-      };
+      const handler = arrow.kind === "handler";
+      const label = handler ? undefined : labels.get(arrow.id);
+      const selected = arrow.id === selectedLine;
+      const kept = cached?.data;
+      const edge: ArrowEdgeType =
+        cached !== undefined &&
+        kept !== undefined &&
+        kept.label === label &&
+        kept.selected === selected &&
+        kept.page === target &&
+        (handler || (kept.line?.line === arrow.line && kept.line.project === arrow.project && kept.line.seq === arrow.seq))
+          ? cached
+          : {
+              id: arrow.id,
+              type: "arrow",
+              source: arrow.source,
+              sourceHandle: arrow.sourceHandle,
+              target: arrow.target,
+              targetHandle: TARGET_HANDLE,
+              className: "board-arrow-edge",
+              focusable: false,
+              selectable: false,
+              data: {
+                dashed: arrow.dashed,
+                handler,
+                selected,
+                page: target,
+                ...(label !== undefined ? { label } : {}),
+                ...(handler
+                  ? {}
+                  : {
+                      line: {
+                        arrowId: arrow.id,
+                        project: arrow.project,
+                        source: arrow.sourceHandle,
+                        seq: arrow.seq,
+                        from: arrow.source,
+                        to: arrow.target,
+                        line: arrow.line,
+                      },
+                    }),
+              },
+            };
       edgeCache.set(arrow.id, edge);
       live.add(arrow.id);
       return edge;
@@ -158,7 +196,7 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
       }
     }
     return list;
-  }, [arrows, edgeCache]);
+  }, [arrows, edgeCache, labels, selectedLine, target]);
 
   // Links leave and enter by the sides facing each other, so they follow the cards as they move.
   const [linkCache] = useState(() => new Map<string, LinkEdgeType>());
@@ -230,6 +268,21 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
       window.removeEventListener("keydown", onKey, true);
     };
   }, [linking, target]);
+
+  // Escape closes a selected line's contract (later registrations win, so it goes before the peek sheet's).
+  useRegisterActions([
+    {
+      id: "board.closeLine",
+      title: "Close the Line's Contract",
+      category: "Board",
+      shortcuts: ["Escape"],
+      showInAdd: false,
+      enabled: () => getPageView(target).selection.kind === "line",
+      run: () => {
+        select(target, { kind: "none" });
+      },
+    },
+  ]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<CardNodeType>[]) => {
@@ -312,7 +365,7 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
   }, [focus, width, height, settled, sizes, target, flow, cards]);
 
   return (
-    <>
+    <LabelLayoutContext.Provider value={labelLayout}>
     <ReactFlow<CardNodeType, CanvasEdge>
       nodes={nodes}
       edges={edges}
@@ -371,6 +424,6 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
       className={`board-canvas${linking ? " linking" : ""}`}
     />
     {paneMenu.element}
-    </>
+    </LabelLayoutContext.Provider>
   );
 }

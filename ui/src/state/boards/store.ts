@@ -125,6 +125,7 @@ function pageView(camera: Camera | null = null, lens: View | null = null): PageV
     focus: null,
     pendingGroup: null,
     linking: null,
+    openTypes: {},
   };
 }
 
@@ -211,7 +212,24 @@ export function effectiveView(lens: View | null, cardView: View | undefined, def
 
 export function select(target: PageTarget, selection: Selection): void {
   updatePageView(target, (view) => {
+    const sameLine = selection.kind === "line" && view.selection.kind === "line" && view.selection.arrowId === selection.arrowId;
+    if (!sameLine && Object.keys(view.openTypes).length > 0) {
+      view.openTypes = {};
+    }
     view.selection = selection;
+  });
+}
+
+/**
+ * Opens span `span` of row `row` in the selected line's contract, or closes it when it is the one
+ * open; a row shows one opened type at a time. Closing or changing a row closes what was opened
+ * inside it. View state: never saved, never an undo step.
+ */
+export function toggleOpenType(target: PageTarget, row: string, span: number): void {
+  updatePageView(target, (view) => {
+    const closing = view.openTypes[row] === span;
+    const kept = Object.entries(view.openTypes).filter(([key]) => key !== row && !key.startsWith(`${row}/`));
+    view.openTypes = Object.fromEntries(closing ? kept : [...kept, [row, span]]);
   });
 }
 

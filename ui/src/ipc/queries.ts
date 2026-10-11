@@ -128,6 +128,8 @@ export function applyEngineEvent(client: QueryClient, event: WorkspaceEvent): vo
       const keys = new Set([...event.changedKeys, ...event.changedEntrances]);
       const byKey = (key: string) => keys.has(key) || files.has(keyFile(key));
       const entrances = event.changedEntrances.length > 0 || event.inputsChanged;
+      // Typed lines (`line_labels`, `call_contract`, `type_definition`, `type_uses`) read the
+      // callee's and the types' files as well as the caller's, so any change refreshes them.
       invalidate(client, (command, args) => {
         if (command === "search") {
           return includes(args, project);
@@ -149,6 +151,10 @@ export function applyEngineEvent(client: QueryClient, event: WorkspaceEvent): vo
           case "project_summary":
           case "index_log":
           case "board_thumbnails":
+          case "line_labels":
+          case "call_contract":
+          case "type_definition":
+          case "type_uses":
             return true;
           case "entrances":
             return entrances;

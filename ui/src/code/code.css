@@ -37,8 +37,10 @@
   padding-right: 20px;
 }
 
-/* A row that sends an arrow: the step fill, and its port at the card's edge. */
-.code-row.has-port { background: var(--color-step); }
+/* A row that sends an arrow: the step fill, and its port at the card's edge. A selected line's
+   contract marks the callee lines it reads the same way. */
+.code-row.has-port,
+.code-row.marked { background: var(--color-step); }
 .code-row.selected { background: var(--color-selection); }
 .code-row.gutter-selected {
   background: var(--color-authored-tint);

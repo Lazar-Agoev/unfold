@@ -42,6 +42,9 @@
   --color-border-shell: #e0e2e7;
   --color-card-rule: #e0e2e7;
   --color-card-rule-soft: #f0f1f4;
+  /* Typed lines: the rules inside a line's contract, and the underline of a written type that opens */
+  --color-rule-soft: #eef0f3;
+  --color-type-underline: #c9cdd6;
   --color-placeholder: #f1f2f5;
   --color-placeholder-line: #b6bcc8;
   --color-dashed: #c9cdd6;
@@ -192,6 +195,8 @@
     --color-border-shell: #2b2e34;
     --color-card-rule: #2e3138;
     --color-card-rule-soft: #2a2c32;
+    --color-rule-soft: #2a2c32;
+    --color-type-underline: #3d414b;
     --color-placeholder: #1a1c20;
     --color-placeholder-line: #4a4e57;
     --color-dashed: #3a3d45;
@@ -284,6 +289,8 @@
   --color-border-shell: #2b2e34;
   --color-card-rule: #2e3138;
   --color-card-rule-soft: #2a2c32;
+  --color-rule-soft: #2a2c32;
+  --color-type-underline: #3d414b;
   --color-placeholder: #1a1c20;
   --color-placeholder-line: #4a4e57;
   --color-dashed: #3a3d45;

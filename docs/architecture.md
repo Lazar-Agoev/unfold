@@ -993,6 +993,7 @@ These are computed by `unfold-reader` from the stored graph. Nothing here adds f
 - Cards open full and size themselves to their content: 360–880 px wide, with longer lines soft-wrapping. Nothing scrolls inside a card; you pan and zoom the canvas instead.
 - Opening an entrance adds its card and a full card for each resolved handler. Following a call opens the target 80 px to the right, with its header level with the calling line, or focuses the card if it is already open.
 - Each opened call has its own arrow, leaving from a port at the end of the calling line, even when several calls go to one card.
+- A call or passed-reference line carries its signature at its midpoint (`(CartItem[]) → Promise<Hold>`). Clicking the label opens the call's contract in its place: what the call sends (each argument beside the parameter it fills), what comes back and where it lands, and what the callee throws. A written type in it opens its definition inline, with "Peek source" and "Used in N places". While a line is selected, the callee card marks the lines the contract reads ([proposal](proposals/typed-lines.md)).
 - A card folds to its title only when you fold it. Its arrows then attach to the header. Following a call into a folded card unfolds it.
 
 ### 10.3 Code view

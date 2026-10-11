@@ -56,6 +56,11 @@ describe("arrows", () => {
       [`${A}/call[1]`, "b"],
     ]);
     expect(portsByCard(arrows).get("a")).toEqual([`${A}/call[0]`, `${A}/call[1]`]);
+    // A Code link is its occurrence's own edge; the arrow names it for its label and contract.
+    expect(arrows.map((arrow) => [arrow.project, arrow.seq])).toEqual([
+      [P, 0],
+      [P, 0],
+    ]);
 
     const withC = computeArrows([...cards, { id: "c", key: C, project: P, entrance: false }], models);
     const imported = withC.find((arrow) => arrow.target === "c");

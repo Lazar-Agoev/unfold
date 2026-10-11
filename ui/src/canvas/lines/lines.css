@@ -1,0 +1,110 @@
+/* Typed lines: a line's closed label and its contract (docs/proposals/typed-lines.md §1). */
+
+/* The closed label: small mono on the canvas color, no border, so it hides the line under it. Sized
+   to its text as measured with the bundled font (LineLabel.tsx). */
+.line-label {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border: 0;
+  background: var(--color-canvas);
+  font: 11px/16px var(--font-code);
+  font-feature-settings: "calt" 0, "liga" 0;
+  white-space: nowrap;
+  color: var(--color-text);
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.line-label:focus-visible {
+  outline: none;
+  border-radius: var(--radius-chip);
+  box-shadow: 0 0 0 1.5px var(--color-focus-ring);
+}
+
+.line-label > span { white-space: pre; }
+.line-label-type { color: var(--color-text); }
+.line-label-name { color: var(--color-muted); }
+.line-label-punct,
+.line-label-unknown { color: var(--color-contour); }
+
+/* The contract: where the label was, above the cards and the other labels. */
+.line-contract {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: 316px;
+  padding: 6px 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-tab);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-float);
+  color: var(--color-text);
+  pointer-events: all;
+  cursor: default;
+  user-select: text;
+}
+
+.line-contract:focus { outline: none; }
+
+/* Sends, then Returns and Throws under a soft rule. */
+.line-contract-section {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 12px 6px;
+}
+
+.line-contract-section + .line-contract-section {
+  padding: 6px 12px 4px;
+  border-top: 1px solid var(--color-rule-soft);
+}
+
+.line-contract-row {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12px;
+  min-height: 22px;
+  font: 12px/16px var(--font-code);
+  font-feature-settings: "calt" 0, "liga" 0;
+}
+
+.line-contract-label {
+  flex: 0 0 52px;
+  font: 11px/14px var(--font-ui);
+  color: var(--color-muted);
+}
+
+.line-contract-caller {
+  flex: 0 0 76px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+}
+
+.line-contract-caller.dim { color: var(--color-contour); }
+
+.line-contract-callee {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.line-contract-param,
+.line-contract-note { color: var(--color-contour); }
+.line-contract-name { color: var(--color-text); }
+
+/* A type opened under its row: indented under the caller's column. */
+.line-contract-opened { padding: 2px 0 6px 64px; }
+
+.line-contract-message {
+  margin: 0;
+  padding: 4px 12px;
+  font: 11px/14px var(--font-ui);
+  color: var(--color-muted);
+}

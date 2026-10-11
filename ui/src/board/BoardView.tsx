@@ -59,7 +59,7 @@ function selectedBlockCard(target: PageTarget): string | null {
   return card && "block" in card.ref ? card.id : null;
 }
 
-/** Removes whatever is selected on the page: a card, a group (ungrouped), or a link. */
+/** Removes whatever is selected on the page: a card, a group (ungrouped), or a link (not a line between cards). */
 function removeSelected(target: PageTarget): void {
   const { selection } = getPageView(target);
   if (selection.kind === "card") {
@@ -75,7 +75,8 @@ function removeSelected(target: PageTarget): void {
 function useBoardActions(target: PageTarget): void {
   const { board } = target;
   const unlabeled = useUnlabeled(target);
-  const hasSelection = () => getPageView(target).selection.kind !== "none";
+  // A selected line is derived from the cards: there is nothing of it to remove.
+  const hasSelection = () => !["none", "line"].includes(getPageView(target).selection.kind);
   const setLens = (view: View) => () => {
     setPageLens(target, view);
   };

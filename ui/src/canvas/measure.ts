@@ -113,3 +113,5 @@ export const CODE_FONT = '12px "JetBrains Mono Variable", ui-monospace, monospac
 export const TITLE_FONT = '600 13px "JetBrains Mono Variable", ui-monospace, monospace';
 export const LOCATION_FONT = '11px "JetBrains Mono Variable", ui-monospace, monospace';
 export const METHOD_FONT = '500 11px "JetBrains Mono Variable", ui-monospace, monospace';
+/** A line's closed label (lines.css). */
+export const LINE_LABEL_FONT = '11px "JetBrains Mono Variable", ui-monospace, monospace';

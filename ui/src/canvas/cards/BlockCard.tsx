@@ -14,6 +14,7 @@ import { CodeView } from "../../code/CodeView";
 import { defaultFolds, groupConflict, groupSelection } from "../../code/outline";
 import { shortPath } from "../../code/text";
 import { FlowView, flowPortNodes } from "../../flow/FlowView";
+import { useEngineQuery } from "../../ipc/queries";
 import { layoutFlow } from "../../flow/layout";
 import type { CallLink, Card, CodeText, CodeView as CodeViewModel, ProjectId, View } from "../../ipc/generated";
 import {
@@ -86,6 +87,18 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
   const expandedKeys = usePageView(target, (pageView) => pageView.expanded[card.id] ?? NO_KEYS);
   const openChains = usePageView(target, (pageView) => pageView.flowChains[card.id] ?? NO_KEYS);
   const selectedKey = usePageView(target, ({ selection }) => (selection.kind === "card" && selection.cardId === card.id ? selection.key : null));
+  // A selected line from or to this card: the caller's line keeps the selection fill, the callee
+  // marks the lines the contract reads (the contract's query, shared with the contract itself).
+  const line = usePageView(target, ({ selection }) => (selection.kind === "line" && (selection.from === card.id || selection.to === card.id) ? selection : null));
+  const calleeOf = line !== null && line.to === card.id ? line : null;
+  const contract = useEngineQuery(
+    "call_contract",
+    { project: calleeOf?.project ?? project, source: calleeOf?.source ?? "", seq: calleeOf?.seq ?? 0 },
+    { enabled: calleeOf !== null },
+  );
+  const calleeLines = calleeOf !== null ? contract.data?.calleeLines : undefined;
+  const marked = useMemo(() => (calleeLines ? new Set(calleeLines) : undefined), [calleeLines]);
+  const callerLine = line !== null && line.from === card.id ? line.line : null;
   const pending = usePageView(target, ({ pendingGroup }) => (pendingGroup?.cardId === card.id ? pendingGroup : null));
   const allGroups = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.groups);
   const labels = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.labels);
@@ -306,6 +319,8 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
           pendingGroup={pending}
           onNamePendingGroup={onNamePendingGroup}
           dimmed={stale !== undefined}
+          {...(marked ? { marked } : {})}
+          callerLine={callerLine}
         />
       </>
     );

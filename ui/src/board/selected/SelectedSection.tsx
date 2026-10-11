@@ -1,6 +1,6 @@
 /**
  * Selected: what is selected on the page, pinned to the bottom of the board sidebar under a rule. A
- * card, a Flow node inside one, a group, or a drawn link; a hint when nothing is. It takes at most half
+ * card, a Flow node inside one, a group, a drawn link, or a line between cards; a hint when nothing is. It takes at most half
  * the sidebar's height and scrolls on its own; its collapse is remembered per window.
  */
 
@@ -11,6 +11,7 @@ import { cardKey, findCard, findPage, useOpenBoard, usePageView, useResolvedCard
 import { setSelectedCollapsed, useLayout } from "../../state/layout";
 import { SelectedCard } from "./SelectedCard";
 import { SelectedGroup } from "./SelectedGroup";
+import { SelectedLine } from "./SelectedLine";
 import { SelectedLink } from "./SelectedLink";
 import { SelectedNode, flowNodeFor } from "./SelectedNode";
 import type { Card, Key } from "../../ipc/generated";
@@ -47,6 +48,9 @@ function SelectedBody({ target }: { readonly target: PageTarget }) {
     if (link) {
       return <SelectedLink key={link.id} target={target} link={link} />;
     }
+  }
+  if (page && selection.kind === "line") {
+    return <SelectedLine key={selection.arrowId} target={target} line={selection} />;
   }
   return <p className="selected-note">Select a card, a group, or a link to see it here.</p>;
 }

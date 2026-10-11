@@ -25,6 +25,10 @@ export interface Arrow {
   /** The source card's port: the occurrence key, or `target:<position>` for an entrance handler. */
   readonly sourceHandle: string;
   readonly target: string;
+  /** The project both cards resolve to: the line's labels and contract are asked of it. */
+  readonly project: ProjectId;
+  /** With the occurrence key, names the graph edge: 0 for the call itself, more for a passed reference. */
+  readonly seq: number;
   readonly kind: EdgeKind | "handler";
   readonly dashed: boolean;
   /** Source order inside the calling card. */
@@ -40,6 +44,8 @@ export function targetHandle(position: number): string {
 
 interface Occurrence {
   readonly source: string;
+  /** Code links are always the occurrence's own edge (0); a Flow chip names its edge. */
+  readonly seq: number;
   readonly target: string;
   readonly kind: EdgeKind;
   readonly line: number;
@@ -50,12 +56,12 @@ function occurrencesOf(view: Extract<CardView, { type: "block" }>, stale: CodeVi
   const code = view.code?.source.state === "current" ? view.code : stale;
   if (code?.source.state === "current") {
     return code.source.links.flatMap((link) =>
-      link.resolution === "resolved" && link.target !== undefined ? [{ source: link.source, target: link.target, kind: link.kind, line: link.line }] : [],
+      link.resolution === "resolved" && link.target !== undefined ? [{ source: link.source, seq: 0, target: link.target, kind: link.kind, line: link.line }] : [],
     );
   }
   return (view.flow?.nodes ?? []).flatMap((node) =>
     (node.chips ?? []).flatMap((chip) =>
-      chip.resolution === "resolved" && chip.target !== undefined ? [{ source: chip.source, target: chip.target, kind: chip.kind, line: chip.line }] : [],
+      chip.resolution === "resolved" && chip.target !== undefined ? [{ source: chip.source, seq: chip.seq, target: chip.target, kind: chip.kind, line: chip.line }] : [],
     ),
   );
 }
@@ -94,7 +100,18 @@ export function computeArrows(
         const id = `${card.id}|${handle}|${targetCard}`;
         if (!seen.has(id)) {
           seen.add(id);
-          arrows.push({ id, source: card.id, sourceHandle: handle, target: targetCard, kind: "handler", dashed: false, order: target.position, line: null });
+          arrows.push({
+            id,
+            source: card.id,
+            sourceHandle: handle,
+            target: targetCard,
+            project,
+            seq: 0,
+            kind: "handler",
+            dashed: false,
+            order: target.position,
+            line: null,
+          });
         }
       }
       continue;
@@ -114,6 +131,8 @@ export function computeArrows(
         source: card.id,
         sourceHandle: occurrence.source,
         target: targetCard,
+        project,
+        seq: occurrence.seq,
         kind: occurrence.kind,
         dashed: occurrence.kind === "imports" || occurrence.kind === "references",
         order,

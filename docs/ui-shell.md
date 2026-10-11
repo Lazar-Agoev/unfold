@@ -111,8 +111,8 @@ Each window is its own renderer with its own stores. Nothing is shared between w
   the first project. It never changes because a board tab is active. `select_project` keeps the project live.
 - **Board sessions.** An open board holds its working document, the revision it was loaded from, its publish state,
   health, and outlines, its undo history, its active page, and a view per page (lens, camera, selection, folds,
-  inline expansions, the follow trail with Back and Forward, measured card sizes, and pending focus or link
-  drawing).
+  inline expansions, the follow trail with Back and Forward, measured card sizes, pending focus or link
+  drawing, and the types opened in a selected line's contract).
   - Every edit is one undo step of the board, whichever page it changed; bursts with the same coalescing key within
     1.2 s merge; at most 200 steps; undo and redo show the page they change. Reloads, discards, and repairs are
     undo steps too.
@@ -173,7 +173,7 @@ module), `windowCommand` and `onShellEvent` (typed by `desktop/src/shared/unfold
 | `project_state` | Patches the row's state in `workspace`; invalidates P's `project_summary` |
 | `project_reset` | Removes every query of P; forgets P's remembered card renders |
 | `graph_updated` with `everything` | Invalidates every query of P, `search` that includes P, and `workspace` |
-| `graph_updated` | P's `file_view` by path; `card` by key or file, and every entrance card; `peek` by key or file; `relations`, `callers`, `preview`, `project_summary`, `index_log`, `board_thumbnails`; `entrances` when entrances or inputs changed; `search` that includes P. The board store refreshes the health of open boards with cards from P |
+| `graph_updated` | P's `file_view` by path; `card` by key or file, and every entrance card; `peek` by key or file; `relations`, `callers`, `preview`, `project_summary`, `index_log`, `board_thumbnails`; `line_labels`, `call_contract`, `type_definition`, `type_uses` (they read the callee's and the types' files too); `entrances` when entrances or inputs changed; `search` that includes P. The board store refreshes the health of open boards with cards from P |
 | `files_changed` | P's `file_view` and `card` by path (all of them when truncated); `search` for files that includes P |
 | `boards_changed` | P's `list_boards`, `project_summary`, and the `board_thumbnails` that name a listed board; `drafts`; every `board_refs` |
 | `problems_changed` | P's `problems` and `project_summary` |
@@ -201,6 +201,22 @@ The screens follow [architecture §11](architecture.md#11-the-desktop-app). Deta
   unpublished changes; the grid has All, Published, and Drafts and sorts by last edited or title. The not-compiled
   Home keeps scope changes in memory and writes them with `update_project_config` just before `compile`. "<project>
   compiled" is toasted only in the window that started the Compile, when its Home isn't showing that project.
+- **Lines between cards** (`canvas/lines/`, [typed lines](proposals/typed-lines.md#7-ui)). Each call or
+  passed-reference arrow carries its closed label at the curve's midpoint, in the edge-label layer (over the
+  cards, like a drawn link's label): one `line_labels` query per project per page, in calls of at most 500
+  lines. `labelText.ts` writes it (three or more inputs fold to `(Cart, +2) → Receipt`; a parameter without a
+  type is its name in gray; a missing output is `?`; unprovable inputs are `(…)`); `placeLabels.ts` nudges
+  labels that would overlap down until they clear, so text stays readable where lines cross. Clicking a label
+  selects the line (page selection kind `line`: the arrow, its `source` and `seq`, its two cards), and the
+  label opens in place into the contract (`call_contract`): Sends, then Returns and Throws, caller on the left
+  and callee on the right. A `declared` type in it (`code/TypeText.tsx`) opens its definition under its row
+  (`code/TypeDefinition.tsx`, `type_definition`), whose members' types open nested up to four deep; "Peek
+  source" opens the peek sheet at the declaration, and "Used in N places" a popover of `type_uses`, each
+  opening the peek sheet at its line. Which types are open is page view state: never saved, never an undo
+  step, and cleared when the selection leaves the line. Escape (`board.closeLine`, ahead of the peek sheet's)
+  or a click on the canvas closes the contract. While a line is selected, an unfolded Code callee card tints
+  the contract's `calleeLines` with `--color-step` and the caller's calling line keeps `--color-selection`;
+  Selected shows the call as written and its two cards.
 - **Health and activity** shows one list at a time. Health: the problems other than board health (Open shows the
   file in the peek sheet at its line; Settings opens project settings on the section the problem is about), then the
   boards that need review (Review opens the board on the page of its first item, with the card selected). Activity:
@@ -341,7 +357,7 @@ first.
 | Grounds | `--color-canvas`, `--color-home`, `--color-sidebar`, `--color-chrome` (top bar and active tab), `--color-tabstrip`, `--color-surface` (cards, dock, menus, dialogs, the sheet, toasts), `--color-control`, tracks, pressed |
 | Rows | `--color-hover` (one step lighter than selection), `--color-selection`, a stronger selection, matched text |
 | Text | `--color-text`, `--color-muted` (secondary text), `--color-subtle` (line numbers), `--color-faint` (rules, icons, and disabled states only, never text) |
-| Lines | `--color-border`, `--color-border-shell`, card rules, placeholder lines, dashed borders |
+| Lines | `--color-border`, `--color-border-shell`, card rules, placeholder lines, dashed borders, `--color-rule-soft` (the rules inside a line's contract and around a type's definition), `--color-type-underline` (a written type that opens) |
 | Accent | The indigo `--color-accent` (light `#5862C0`, dark `#A0AAFF`) for selection, the primary button, links, and focus; nothing else in the chrome is colored unless it means something |
 | Meaning | `--color-review` (amber: needs review), `--color-warn` and its fill (banners), `--color-success` (the "Graph current" dot only), `--color-danger` (destructive actions and `DELETE`) |
 | Reader | Authored magenta, step rows, arrows, the unresolved underline, external call names, the v7 syntax palette, and the Flow node colors (the last two keep the reader's values in both sets) |
