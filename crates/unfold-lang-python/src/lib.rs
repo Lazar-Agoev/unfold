@@ -7,7 +7,9 @@
 //! - [`extract`]: parsing with Ruff under the configured grammar version (3.12–3.14), the
 //!   compile-time checks the proof of concept's grammar made, block selection through the
 //!   engine's shared selector with the Python mapping, the value table, call and import
-//!   occurrences, the binder's per-file facts, the payload, and the independent census;
+//!   occurrences, the typed facts (signatures, parameters, members, call results, and the type
+//!   names of annotations), the binder's per-file facts, the payload, and the independent
+//!   census;
 //! - [`link::PythonLinked`]: the whole-program binder (source roots and imports, the write
 //!   census, reflection, C3 and receivers, decorators) and its answers to the shared backend;
 //! - the entrance detectors (`detect`): `pyproject.script`, `fastapi.route`, `celery.task`, and
@@ -31,6 +33,7 @@ mod payload;
 mod stdlib;
 mod syntax;
 mod tokens;
+mod typed;
 mod values;
 
 use unfold_core::highlight::Highlighter;
@@ -47,7 +50,7 @@ pub use highlight::PythonHighlighter;
 pub const PRODUCER_NAME: &str = "unfold-lang-python";
 
 /// The front end's version: the crate, the pinned Ruff parser, and the payload format.
-pub const PRODUCER_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+ruff.0.16.10+payload.4");
+pub const PRODUCER_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+ruff.0.16.10+payload.5");
 
 /// The Python language.
 #[derive(Debug, Default, Clone, Copy)]

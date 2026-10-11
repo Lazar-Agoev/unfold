@@ -6,9 +6,11 @@
 //! parameters, namespaces, enums, imports, the members of `const` object literals, inline
 //! functions and classes), records what `this` and `super` mean at each occurrence, resolves
 //! private names to their class, converts every expression into the payload's compact form
-//! ([`ir`]), and collects narrowing sites and member writes. Names are looked up after the walk,
-//! once every declaration of the file is known; the walk only notes where each name was used.
-//! Finally the expressions no root reaches are dropped.
+//! ([`ir`]), records the type names of the written types typed records carry ([`types`]), and
+//! collects narrowing sites and member writes. Names are looked up after the walk, once every
+//! declaration of the file is known; the walk only notes where each name was used. Finally the
+//! expressions no root reaches are dropped, and so are the type names that bind to a type
+//! parameter.
 //!
 //! `oxc_semantic` was considered and rejected for this (the S2 decision): it does not merge
 //! namespace and enum declarations, so a merged namespace's members are unresolved, and it has
@@ -20,6 +22,7 @@ mod forms;
 mod ir;
 mod members;
 mod scope;
+mod types;
 mod visit;
 
 use oxc_allocator::Address;
@@ -49,11 +52,29 @@ pub(crate) struct Input<'s, 'a> {
 }
 
 /// Binds one parsed file. Values evidence needs that the occurrence walk didn't record (the
-/// callees of `const` factories) are added to `values`.
-pub(crate) fn bind<'a>(input: &Input<'_, 'a>, values: &mut values::Table<'_, 'a>) -> Binding {
-    let mut binder = Binder::new(input);
+/// callees of `const` factories) are added to `values`. The type names of the written types at
+/// `linked` (ranges of whole written types) are recorded: the returned sites are in source
+/// order, aligned with the binding's `type_links`.
+pub(crate) fn bind<'a>(
+    input: &Input<'_, 'a>,
+    values: &mut values::Table<'_, 'a>,
+    linked: FxHashSet<ByteRange>,
+) -> (Binding, Vec<TypeSite>) {
+    let mut binder = Binder::new(input, linked);
     binder.walk(input.program);
     binder.finish(input, values)
+}
+
+/// A type name written in a linked type: its range (a qualified name whole, without type
+/// arguments), whether it is qualified, and its written type in the binding's `types`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TypeSite {
+    /// The written name.
+    pub(crate) range: ByteRange,
+    /// Whether it is a qualified name (`a.B`).
+    pub(crate) qualified: bool,
+    /// Its `TypeRef::Names` in the binding's `types`.
+    ty: u32,
 }
 
 /// A class while binding.
@@ -175,6 +196,12 @@ pub(crate) struct Binder<'a> {
     name_places: Vec<(u32, Place)>,
     /// Types whose first name is looked up from a scope.
     type_places: Vec<(u32, u32)>,
+    /// The ranges of the written types whose names are linked, removed once walked.
+    linked: FxHashSet<ByteRange>,
+    /// The type parameters declared by the type syntax being walked for names.
+    type_locals: Vec<&'a str>,
+    /// The type names of linked types, in walk order.
+    type_sites: Vec<TypeSite>,
     /// Object expressions that initialize a `const` → (the variable, whether it is plain).
     pending_objects: FxHashMap<Address, (u32, bool)>,
     objects: Vec<ObjectFacts>,
@@ -195,7 +222,7 @@ pub(crate) struct Binder<'a> {
 }
 
 impl<'a> Binder<'a> {
-    fn new(input: &Input<'_, 'a>) -> Self {
+    fn new(input: &Input<'_, 'a>, linked: FxHashSet<ByteRange>) -> Self {
         let mut scopes = Scopes::default();
         let file = scopes.push(ScopeKind::File, None);
         let mut module_decls = FxHashMap::default();
@@ -257,6 +284,9 @@ impl<'a> Binder<'a> {
             types: Vec::new(),
             name_places: Vec::new(),
             type_places: Vec::new(),
+            linked,
+            type_locals: Vec::new(),
+            type_sites: Vec::new(),
             pending_objects: FxHashMap::default(),
             objects: Vec::new(),
             aliases: Vec::new(),

@@ -1,4 +1,13 @@
-#call[0] body `initialize()`
+#type_alias:Alias body `type Alias = { [typeKey()]: string };`
+  name `Alias`
+  type `{ [typeKey()]: string }`
+#interface:Shape body `interface Shape { method(): void; [key: string]: unknown }`
+  name `Shape`
+  body `{ method(): void; [key: string]: unknown }`
+#enum:Status body `export enum Status { Ready = initialize(), Next = 2 }`
+  name `Status`
+  body `{ Ready = initialize(), Next = 2 }`
+#enum:Status/call[0] body `initialize()`
   callee `initialize`
 #variable:value body `value = create()`
   name `value`

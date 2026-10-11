@@ -1,18 +1,21 @@
 //! The evidence the shared policy reads for a value (the proof of concept's
 //! `expressionEvidence` and `annotationEvidence`): candidates from the value's target, the
 //! receiver class, static and `super` access, an unbound `this`, ambiguity from members that
-//! may override through an unknown base, and the access root's import binding.
+//! may override through an unknown base, and the access root's import binding. A written type
+//! name's evidence ([`TypeScriptLinked::type_facts`]) is looked up in the type meaning, with
+//! undeclared library types and global type aliases external.
 
 use std::borrow::Cow;
 
 use unfold_engine::evidence::{Candidate, Evidence, ImportBinding, ImportTarget, Origin};
-use unfold_engine::{DeclRef, FileId};
+use unfold_engine::{DeclRef, FileId, TypeRef as TypeName};
 
 use super::{Target, Walk};
 use crate::link::{TypeScriptLinked, import_kind};
 use crate::modules::Resolved;
 use crate::payload::ImportSource;
 use crate::payload::binding::{AliasRef, DeclFlags, DeclKind, Expr, Lookup, Meanings, TypeRef};
+use crate::tables;
 use unfold_engine::evidence::ExternalLocation;
 
 impl TypeScriptLinked<'_> {
@@ -112,6 +115,85 @@ impl TypeScriptLinked<'_> {
             candidates.push(candidate);
         }
         candidates
+    }
+
+    /// A target's candidates in the type context: as [`TypeScriptLinked::candidates`], but only
+    /// namespaces augment (an interface or type alias is a type declaration of its own).
+    fn type_candidates(&self, target: &Target) -> Vec<Candidate> {
+        let mut candidates = self.candidates(target);
+        for candidate in &mut candidates {
+            if let Some(declaration) = candidate.declaration {
+                candidate.augmentation = self
+                    .decl(declaration)
+                    .is_some_and(|decl| decl.kind == DeclKind::Namespace);
+            }
+        }
+        candidates
+    }
+
+    /// The evidence for a written type name (a type reference fact): its first name's lookup in
+    /// the type meaning (through type-only imports, namespace imports, and script globals), then
+    /// each further name as a member in the type meaning. A name with no type declaration in
+    /// scope that is a library class, interface, or global type alias is external, at the
+    /// library, with an unindexed root (so it labels `global`).
+    pub(crate) fn type_facts(&self, reference: TypeName) -> Evidence {
+        let file = reference.file;
+        let Some(binding) = self.binding(file) else {
+            return Evidence::default();
+        };
+        let ty = binding
+            .type_links
+            .get(reference.index as usize)
+            .and_then(|&ty| binding.types.get(ty as usize));
+        let Some(TypeRef::Names {
+            names,
+            value: false,
+            lookup,
+            ..
+        }) = ty
+        else {
+            return Evidence::default();
+        };
+        let Some((first, rest)) = names.split_first() else {
+            return Evidence::default();
+        };
+        let mut walk = Walk::default();
+        let found = match lookup {
+            Lookup::Symbol(symbol) => Some(self.resolve_symbol(&mut walk, file, *symbol, Meanings::TYPE)),
+            Lookup::Unresolved | Lookup::Namespaced(_) => {
+                self.unresolved(&mut walk, file, first, *lookup, Meanings::TYPE)
+            }
+            Lookup::Dynamic => None,
+        };
+        let Some(mut target) = found else {
+            // The lookup was in the type meaning, so no value (local or script global) hides a
+            // library type here.
+            let qualified = names.join(".");
+            let library = *lookup != Lookup::Dynamic
+                && (tables::is_library_type(&qualified) || tables::is_library_type_alias(&qualified));
+            let candidates = if library {
+                vec![Candidate::external(super::receivers::library_location(
+                    &qualified,
+                ))]
+            } else {
+                Vec::new()
+            };
+            return Evidence {
+                candidates: candidates.into_iter().collect(),
+                root_is_indexed: Some(false),
+                ..Evidence::default()
+            };
+        };
+        for name in rest {
+            target = self.member(&mut walk, &target, name, Meanings::TYPE);
+        }
+        Evidence {
+            candidates: self.type_candidates(&target).into_iter().collect(),
+            ambiguous: target.ambiguous,
+            import_binding: self.import_binding(file, *lookup),
+            root_is_indexed: Some(true),
+            ..Evidence::default()
+        }
     }
 
     /// The import binding of an access root's name: the module import it is an alias of.

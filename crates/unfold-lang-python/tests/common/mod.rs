@@ -12,7 +12,7 @@ use unfold_core::validate::Violation;
 use unfold_core::vocab::{FileState, Language as LanguageId};
 use unfold_core::{FileGraph, FileRecord, Graph, RepoPath, Snapshot};
 use unfold_engine::discovery::DiscoverOptions;
-use unfold_engine::edges::program_edges;
+use unfold_engine::edges::program_links;
 use unfold_engine::settings::Settings;
 use unfold_engine::validate::validate_graph;
 use unfold_engine::{
@@ -229,7 +229,7 @@ pub fn compile_snapshots(
     };
     let linked = python.link(&program, &inputs);
     let resolver = Resolver::new(&program, linked.as_ref());
-    let mut edges: BTreeMap<_, _> = program_edges(&resolver).expect("edges").into_iter().collect();
+    let mut links: BTreeMap<_, _> = program_links(&resolver).expect("links").into_iter().collect();
     let graphs = program
         .iter()
         .map(|(id, entry)| {
@@ -237,7 +237,7 @@ pub fn compile_snapshots(
             match &entry.facts {
                 Some(facts) => facts
                     .graph
-                    .linked_file_graph(record, edges.remove(&id).unwrap_or_default(), |local| {
+                    .linked_file_graph(record, links.remove(&id).unwrap_or_default(), |local| {
                         linked.keeps_import(BlockRef { file: id, local })
                     })
                     .expect("renumbered facts"),
@@ -246,6 +246,7 @@ pub fn compile_snapshots(
                     blocks: Vec::new(),
                     slots: Vec::new(),
                     edges: Vec::new(),
+                    types: unfold_core::FileTypes::default(),
                 },
             }
         })

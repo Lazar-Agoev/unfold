@@ -11,14 +11,23 @@
 //! | `(if C T E?)`, `(stmt X)`, `(ret X?)` | `if`, `expression_statement`, `return` | |
 //! | `(do ...)`, `(wrap X)`, `(deco X)`, `(type ...)` | none | a brace block, a transparent wrapper, a decorator, skipped type syntax |
 //! | `(ref NAME :opts)`, `(get R NAME)`, `(key R "k")`, `(dyn R)`, `(this)`, `(base)` | none | values |
+//!
+//! Typed facts: every function-like block has a signature (no written return type); every
+//! `(param NAME :type=T :rest)` a parameter (`this` is a `this` parameter, `:rest` a rest
+//! parameter, `:type=T` its written type); every call a result (`stmt` discards it, `ret`
+//! returns it, a `const`/`let` initializer binds it, a call argument passes it, anything else is
+//! `other`); a `(star X)` argument is a spread; and each `:type=T` of a parameter or variable is a
+//! type name, looked up like a value name in the `type` context.
 
 use unfold_core::Snapshot;
 use unfold_core::text::ByteRange;
-use unfold_core::vocab::{BlockKind, EdgeKind, Role, SlotName};
+use unfold_core::typed::{CallResult, Parameter, Signature, WrittenType};
+use unfold_core::vocab::{BlockKind, EdgeKind, Expansion, ParameterKind, ResultBinding, Role, SlotName};
 use unfold_engine::SourceFailure;
 use unfold_engine::edges::text;
 use unfold_engine::facts::{
-    ArgumentFact, CallContext, CallFact, FileFacts, GraphFacts, ImportFact, ValueFact, ValueShape,
+    ArgumentFact, CallContext, CallFact, FileFacts, GraphFacts, ImportFact, TypeFacts, TypeRefFact,
+    ValueFact, ValueShape,
 };
 use unfold_engine::select::{self, MappedSlot, Mapping, Saved, Tree};
 
@@ -328,11 +337,13 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
                         .filter_map(|(_, value)| value.map(str::to_owned))
                         .collect();
                     let bind = (head == "class").then_some(scope);
+                    let decorated = syntax.items(node).iter().any(|&item| alien.head(item) == "deco");
                     let kind = DeclKind::Class {
                         block,
                         ctor: None,
                         bases,
                         members: Vec::new(),
+                        decorated,
                     };
                     class_decl[node] = Some(declare(Decl { name, scope, kind }, bind));
                 }
@@ -625,9 +636,8 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
                     }
                     if let Some(value) = value_of[item] {
                         arguments.push(ArgumentFact {
-                            value,
-                            position,
-                            reference,
+                            expand: (!reference).then_some(Expansion::Spread),
+                            ..ArgumentFact::positional(value, position, reference)
                         });
                     }
                 }
@@ -671,6 +681,7 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
             _ => {}
         }
     }
+    let (types, type_names) = typed(&alien, &block_of, &outer, &inner, &skipped, selection.blocks());
     let payload = Payload {
         decls,
         scopes,
@@ -678,9 +689,11 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
         boundaries: syntax.boundaries.clone(),
         call_sites,
         dependencies,
+        types: type_names,
     };
     let graph = GraphFacts::new(selection, values, calls, imports)
         .and_then(|graph| graph.with_conditional(conditional))
+        .and_then(|graph| graph.with_types(types))
         .map_err(|error| SourceFailure {
             message: error.to_string().into(),
             offset: None,
@@ -690,4 +703,136 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
         offset: None,
     })?;
     Ok(FileFacts::new(graph, payload))
+}
+
+/// The range of an option's value inside its `:key=value` token.
+fn option_value(syntax: &Syntax<'_>, node: usize, key: &str) -> Option<(ByteRange, String)> {
+    let prefix = format!(":{key}=");
+    let child = syntax
+        .node(node)
+        .children
+        .iter()
+        .copied()
+        .find(|&child| syntax.is_option(child) && syntax.node(child).text.starts_with(&prefix))?;
+    let token = syntax.node(child);
+    let value = &token.text[prefix.len()..];
+    let range = ByteRange::new(token.range.end - value.len() as u32, token.range.end).ok()?;
+    (!value.is_empty()).then(|| (range, value.to_owned()))
+}
+
+/// The typed facts, and each type name's scope and text (the payload's `types`).
+fn typed(
+    alien: &Alien<'_, '_>,
+    block_of: &[Option<u32>],
+    outer: &[u32],
+    inner: &[u32],
+    skipped: &[bool],
+    blocks: &[unfold_core::Block],
+) -> (TypeFacts, Vec<(u32, String)>) {
+    let syntax = alien.syntax;
+    let mut signatures = Vec::new();
+    let mut parameters = Vec::new();
+    let mut results = Vec::new();
+    let mut references = Vec::new();
+    let mut names = Vec::new();
+    for node in (1..syntax.nodes.len()).filter(|&node| !skipped[node]) {
+        let head = alien.head(node);
+        let Some(block) = block_of[node] else {
+            if head == "param"
+                && let Some(callable) = syntax.node(node).parent
+                && let Some(owner) = block_of[callable]
+            {
+                let index = syntax
+                    .node(callable)
+                    .children
+                    .iter()
+                    .take_while(|&&child| child != node)
+                    .filter(|&&child| alien.head(child) == "param")
+                    .count() as u32;
+                let name = alien.name_text(node).map(str::to_owned);
+                let kind = match (name.as_deref(), syntax.option(node, "rest")) {
+                    (Some("this"), _) => ParameterKind::This,
+                    (_, Some(_)) => ParameterKind::Rest,
+                    _ => ParameterKind::Positional,
+                };
+                let ty = option_value(syntax, node, "type");
+                if let Some((range, text)) = &ty {
+                    references.push(TypeRefFact::new(*range, text, false));
+                    names.push((inner[callable], text.clone()));
+                }
+                parameters.push(Parameter {
+                    block: owner,
+                    index,
+                    kind,
+                    name: name.map(Into::into),
+                    optional: false,
+                    default: false,
+                    ty: ty.map(|(range, text)| WrittenType {
+                        text: text.into(),
+                        range,
+                    }),
+                });
+            }
+            continue;
+        };
+        let kind = blocks[block as usize].kind;
+        if kind.is_function_like() {
+            signatures.push(Signature { block, returns: None });
+        }
+        if kind == BlockKind::Variable
+            && let Some((range, text)) = option_value(syntax, node, "type")
+        {
+            references.push(TypeRefFact::new(range, &text, false));
+            names.push((outer[node], text));
+        }
+        if matches!(kind, BlockKind::Call | BlockKind::New) {
+            results.push(result(alien, block_of, node, block));
+        }
+    }
+    let types = TypeFacts::new(blocks, signatures, parameters, Vec::new(), results, references);
+    (types, names)
+}
+
+/// Where the value of the call at `node` lands, looking through `wrap`.
+fn result(alien: &Alien<'_, '_>, block_of: &[Option<u32>], node: usize, call: u32) -> CallResult {
+    let syntax = alien.syntax;
+    let mut value = node;
+    let mut parent = syntax.node(value).parent;
+    while let Some(wrapper) = parent.filter(|&wrapper| alien.head(wrapper) == "wrap") {
+        value = wrapper;
+        parent = syntax.node(value).parent;
+    }
+    let other = CallResult {
+        call,
+        binding: ResultBinding::Other,
+        awaited: false,
+        target: None,
+        position: None,
+        bound: None,
+    };
+    let Some(parent) = parent else {
+        return other;
+    };
+    let items = syntax.items(parent);
+    let position = items.iter().position(|&item| item == value);
+    let (binding, target, position) = match (alien.head(parent), position) {
+        ("stmt", Some(0)) => (ResultBinding::Discard, None, None),
+        ("ret", Some(0)) => (ResultBinding::Return, None, None),
+        ("const" | "let", Some(0)) => (ResultBinding::Variable, block_of[parent], None),
+        ("call" | "new" | "super", Some(index)) if index > 0 => {
+            (ResultBinding::Argument, block_of[parent], Some(index as u32 - 1))
+        }
+        _ => return other,
+    };
+    match target {
+        None if binding.eq(&ResultBinding::Variable) || binding.eq(&ResultBinding::Argument) => other,
+        _ => CallResult {
+            call,
+            binding,
+            awaited: false,
+            target,
+            position,
+            bound: None,
+        },
+    }
 }

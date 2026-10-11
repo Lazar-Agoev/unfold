@@ -9,7 +9,7 @@ use std::sync::Arc;
 use unfold_core::validate::Violation;
 use unfold_core::vocab::{FileState, InputRole, Language as LanguageId};
 use unfold_core::{FileGraph, FileRecord, Graph, RepoPath, Snapshot};
-use unfold_engine::edges::program_edges;
+use unfold_engine::edges::program_links;
 use unfold_engine::settings::Settings;
 use unfold_engine::validate::validate_graph;
 use unfold_engine::{FactsSet, FileFacts, Language, ProgramFile, ProjectInput, ProjectInputs, Resolver};
@@ -96,7 +96,7 @@ pub fn compile_with(language: &TypeScript, files: &[(String, Vec<u8>)], inputs: 
     let program = FactsSet::new(program).expect("distinct paths");
     let linked = language.link(&program, inputs);
     let resolver = Resolver::new(&program, linked.as_ref());
-    let mut edges: BTreeMap<_, _> = program_edges(&resolver).expect("edges").into_iter().collect();
+    let mut links: BTreeMap<_, _> = program_links(&resolver).expect("links").into_iter().collect();
     let files = program
         .iter()
         .map(|(id, entry)| {
@@ -104,12 +104,13 @@ pub fn compile_with(language: &TypeScript, files: &[(String, Vec<u8>)], inputs: 
             match &entry.facts {
                 Some(facts) => facts
                     .graph
-                    .file_graph(record, edges.remove(&id).unwrap_or_default()),
+                    .file_graph(record, links.remove(&id).unwrap_or_default()),
                 None => FileGraph {
                     file: record,
                     blocks: Vec::new(),
                     slots: Vec::new(),
                     edges: Vec::new(),
+                    types: unfold_core::FileTypes::default(),
                 },
             }
         })

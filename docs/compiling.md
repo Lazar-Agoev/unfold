@@ -47,7 +47,7 @@ against an older state fails with `UpdateError::Superseded` and changes nothing.
 | Snapshot | Files and inputs that may have changed | Reads each once, hashes it (SHA-256), and decodes it strictly as UTF-8, in parallel |
 | Extract | Files whose bytes or settings hash changed | Facts from the cache by key, or from the language front end, in parallel |
 | Link | The whole program | Each enabled language links its files from cached facts, with the project inputs |
-| Resolve | Every call site, construction, import, and reference | The shared policy, in parallel, one `Resolver` per language over the shared `FactsSet` |
+| Resolve | Every call site, construction, import, reference, and written type name | The shared policy, in parallel, one `Resolver` per language over the shared `FactsSet`; each resolved call's arguments are paired with its target's parameters |
 | Detect | Manual entrances, then each language's detectors | Candidates, then shared assembly: target resolution, canonical order, keys |
 | Validate | The new graph | The core validator plus each language's census |
 
@@ -66,6 +66,11 @@ changed and the check says so: Compile and Rebuild read every file; background u
 compare size and modification time with the last check first (U-17). A file read with the same bytes and
 settings hash as before keeps its facts; nothing is extracted.
 
+**Typed facts.** Extraction also records each file's typed facts (`TypeFacts`: signatures, parameters,
+members, call results, and the written type names of recorded annotations), which the facts cache keeps
+with the rest. Argument pairings and type links depend on other files, so they are not facts: every link
+computes them again, like edges ([graph model](graph-model.md#pairing)).
+
 **Link-time decisions.** Two facts about a file depend on other files, so extraction can't settle them
 and every link decides them again (nothing about them is cached):
 
@@ -79,7 +84,8 @@ and every link decides them again (nothing about them is cached):
   does this for every name of a `from` import that could load a child module. After resolution, the build
   stage asks the owning language which it keeps (`Linked::keeps_import`, default: none) and, only for
   files that have unkept ones, drops them and renumbers the file's blocks, parents, keys (with the core
-  `KeyBuilder`), slots, facts, and edge sources (`GraphFacts::drop_conditional`). Resolution runs over the
+  `KeyBuilder`), slots, facts (typed facts included), edge sources, argument calls, and type-link blocks
+  (`GraphFacts::drop_conditional`). Resolution runs over the
   facts as extracted: dropping a leaf `import` block only changes the keys of later `import` siblings
   under the same parent, and `import` blocks are never edge or entrance targets, so every target key stays
   valid. The language's census lists only kept imports, and `Linked::module_dependencies` answers for

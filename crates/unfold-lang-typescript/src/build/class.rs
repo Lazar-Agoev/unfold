@@ -110,7 +110,7 @@ impl<'a> Builder<'a, '_> {
                 Label::Parameters,
                 Cat::Parameter,
                 range(rest.span),
-                ctx.flags(),
+                ctx.flags().with(Flags::REST, true),
             );
             self.decorators(item, &rest.decorators, ctx);
             self.pattern(item, Label::Name, &rest.rest.argument, binding);
@@ -126,7 +126,7 @@ impl<'a> Builder<'a, '_> {
             Label::Parameters,
             Cat::Parameter,
             range(parameter.span),
-            ctx.flags(),
+            ctx.flags().with(Flags::OPTIONAL, parameter.optional),
         );
         self.decorators(item, &parameter.decorators, ctx);
         match (&parameter.pattern, &parameter.initializer) {
@@ -245,10 +245,21 @@ impl<'a> Builder<'a, '_> {
                 // A constructor has no written name child.
                 if cat != Cat::Constructor {
                     self.property_key(member, Label::Name, &it.key, it.computed, ctx);
+                } else if it.value.body.is_some() {
+                    self.parameter_properties(node, &it.value.params);
                 }
                 self.function_parts(member, &it.value, ctx);
             }
             ClassElement::PropertyDefinition(it) => {
+                if !it.r#static {
+                    self.property_member(
+                        node,
+                        (&it.key, it.computed),
+                        (it.optional, it.readonly),
+                        it.type_annotation.as_deref(),
+                        it.value.is_some(),
+                    );
+                }
                 let ctx = ctx.ambient(it.declare);
                 let member = self.push(node, Label::Members, Cat::Property, range(it.span), ctx.flags());
                 self.decorators(member, &it.decorators, ctx);
@@ -261,6 +272,15 @@ impl<'a> Builder<'a, '_> {
                 }
             }
             ClassElement::AccessorProperty(it) => {
+                if !it.r#static {
+                    self.property_member(
+                        node,
+                        (&it.key, it.computed),
+                        (false, false),
+                        it.type_annotation.as_deref(),
+                        it.value.is_some(),
+                    );
+                }
                 let member = self.push(node, Label::Members, Cat::Property, range(it.span), flags);
                 self.decorators(member, &it.decorators, ctx);
                 self.property_key(member, Label::Name, &it.key, it.computed, ctx);
@@ -304,21 +324,8 @@ impl<'a> Builder<'a, '_> {
                     self.expression(parent, label, expression, ctx);
                     return;
                 }
-                let inner = expression.span();
-                let start = self
-                    .token_before(inner.start)
-                    .filter(|token| token.kind() == Kind::LBrack)
-                    .map_or(inner.start, |token| token.start());
-                let end = self
-                    .token_from(inner.end, Kind::RBrack)
-                    .map_or(inner.end, |token| token.end());
-                let node = self.push(
-                    parent,
-                    label,
-                    Cat::ComputedPropertyName,
-                    ByteRange { start, end },
-                    ctx.flags(),
-                );
+                let bracketed = self.bracketed(expression.span());
+                let node = self.push(parent, label, Cat::ComputedPropertyName, bracketed, ctx.flags());
                 self.expression(node, Label::Expression, expression, ctx);
             }
         }

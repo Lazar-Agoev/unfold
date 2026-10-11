@@ -167,6 +167,25 @@ setting (`update_project_config` with `set_project_name`).
 Commands that read the graph (`card`, `relations`, `entrances`, …) fail with `not_compiled` before the
 first Compile; `file_view` and `compile_preview` work on any project.
 
+### Typed lines
+
+What a line on a board says about the call it draws ([reader](reader.md#typed-lines)). An arrow is
+addressed by its occurrence and edge, `(source, seq)`: a Code link is the edge `(source, 0)`; a Flow
+chip carries its `seq`. Each command reads the project's committed graph in one store snapshot.
+
+| Command | L | Does |
+| --- | --- | --- |
+| `line_labels` | wakes | The at-rest labels of a page's arrows in one call: `lines` (≤ 500, else `invalid_args`) of `{source, seq}` → `[{source, seq, label}]` in the order asked. A label (`LineLabel`) has `inputs` (a call: one per argument, the type of the parameter it fills, else its name, else nothing, with a Python keyword argument's `keyword`; a passed reference: one per parameter of the passed callable after the ones the passed value binds itself), `inputsUnknown` (true when a passed function's bound parameters aren't proven: `inputs` is then empty and the label shows `(…)`), and an `output` (the written return type, or a constructed class's name). `label` is `null` for an external or unresolved edge, an import, or an unknown occurrence or edge. |
+| `call_contract` | wakes | The contract of one resolved call or construction (`seq` 0): `sends` (each argument with its written text and the parameter it fills or why it fills none, then the parameters no argument filled), `returns` (where the value lands, `awaited`, the return type), the callee's direct `throws`, `caught`, `calleeLines`, and `callerLine`. `not_found` for an unknown occurrence, or an edge that isn't a resolved call or construction. |
+| `type_definition` | wakes | A type declaration or class (`key`): `kind` (`interface`, `type_alias`, `enum`, `class`), name, path, line, language, its written `members`, a non-object type alias's `aliased` type, and `uses` (how many type links resolve to it). `not_found` when the key isn't a type declaration or class. |
+| `type_uses` | wakes | One page of the places a type declaration or class is written (`offset`, default 0; `limit`, default 50, at most 200, else `invalid_args`): `total` and `places`, each with its `owner` (the definition the annotation belongs to), the owner's `label`, `path`, and `line`, by path and position. `not_found` as for `type_definition`. |
+
+Written types travel as `TypeText`: the text and one span per type name in it, in UTF-16 offsets
+relative to the text, with a `style` (`declared` with its `target`, `external` with its `module`,
+`builtin`, or `unresolved` with a `note`). `graph_updated` of a project invalidates that project's
+`line_labels`, `call_contract`, `type_definition`, and `type_uses` results, and `project_reset`
+removes them with everything else cached for it.
+
 ### Search
 
 One request is one fan-out in Rust over the projects in `projects` ("Look in"; every project by default,
@@ -341,6 +360,8 @@ process doesn't know), `untrusted`, and `internal`.
 | `problems` | 5,000 |
 | `relations` callers per page; `onPage` keys; `callers` | 500 (default 100); 2,000; 100 (default 20) |
 | `preview` | 5 code lines; 5 reached from, 8 calls, 5 callers; 8 handlers, 5 modules |
+| `line_labels` lines; `type_uses` places per page | 500; 200 (default 50) |
+| Written text in typed lines (types, argument text, aliased types) | 120 UTF-16 units |
 | `search` hits per kind; totals per kind per project | 500 (default 50); 2,000 |
 | `search_text` matches | 2,000 in all |
 | `file_view`; `search_text` per file | 8 MiB; 16 MiB |

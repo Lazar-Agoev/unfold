@@ -1,0 +1,37 @@
+{"t":"signature","block":"a.ts#function:plain","returns":"Promise<void>","returns_range":[191,204]}
+{"t":"signature","block":"a.ts#function:withThis","returns":"void","returns_range":[289,293]}
+{"t":"signature","block":"a.ts#variable:arrow/function:arrow"}
+{"t":"signature","block":"a.ts#variable:expression/function:expression","returns":"value is string","returns_range":[439,454]}
+{"t":"signature","block":"a.ts#class:Service/constructor:constructor"}
+{"t":"signature","block":"a.ts#class:Service/getter:size","returns":"number","returns_range":[598,604]}
+{"t":"signature","block":"a.ts#class:Service/setter:size"}
+{"t":"signature","block":"a.ts#class:Service/method:run","returns":"T","returns_range":[711,712]}
+{"t":"signature","block":"a.ts#class:Service/method:overloaded"}
+{"t":"signature","block":"a.ts#variable:literal/method:method","returns":"number","returns_range":[866,872]}
+{"t":"signature","block":"a.ts#variable:literal/getter:value"}
+{"t":"signature","block":"a.ts#function:untyped"}
+{"t":"parameter","block":"a.ts#function:plain","index":0,"kind":"positional","name":"a","type":"number","type_range":[139,145]}
+{"t":"parameter","block":"a.ts#function:plain","index":1,"kind":"positional","name":"b","optional":true,"type":"string","type_range":[151,157]}
+{"t":"parameter","block":"a.ts#function:plain","index":2,"kind":"positional","name":"c","default":true}
+{"t":"parameter","block":"a.ts#function:plain","index":3,"kind":"rest","name":"rest","type":"Array<string>","type_range":[175,188]}
+{"t":"parameter","block":"a.ts#function:withThis","index":0,"kind":"this","name":"this","type":"HTMLElement","type_range":[261,272]}
+{"t":"parameter","block":"a.ts#function:withThis","index":1,"kind":"positional","name":"event","type":"Event","type_range":[281,286]}
+{"t":"parameter","block":"a.ts#variable:arrow/function:arrow","index":0,"kind":"positional","type":"{ id: string; name: string }","type_range":[332,360]}
+{"t":"parameter","block":"a.ts#variable:arrow/function:arrow","index":1,"kind":"positional","default":true,"type":"number[]","type_range":[371,379]}
+{"t":"parameter","block":"a.ts#variable:expression/function:expression","index":0,"kind":"positional","name":"value","type":"unknown","type_range":[429,436]}
+{"t":"parameter","block":"a.ts#class:Service/constructor:constructor","index":0,"kind":"positional","name":"url","type":"string","type_range":[548,554]}
+{"t":"parameter","block":"a.ts#class:Service/constructor:constructor","index":1,"kind":"positional","name":"retries","optional":true,"type":"number","type_range":[573,579]}
+{"t":"parameter","block":"a.ts#class:Service/setter:size","index":0,"kind":"positional","name":"value","type":"number","type_range":[643,649]}
+{"t":"parameter","block":"a.ts#class:Service/method:run","index":0,"kind":"positional","name":"input","type":"T","type_range":[670,671]}
+{"t":"parameter","block":"a.ts#class:Service/method:run","index":1,"kind":"positional","name":"options","default":true,"type":"{ verbose?: boolean }","type_range":[682,703]}
+{"t":"parameter","block":"a.ts#class:Service/method:overloaded","index":0,"kind":"positional","name":"value","type":"unknown","type_range":[794,801]}
+{"t":"parameter","block":"a.ts#variable:literal/method:method","index":0,"kind":"positional","name":"x","type":"number","type_range":[857,863]}
+{"t":"parameter","block":"a.ts#function:untyped","index":0,"kind":"positional","name":"a"}
+{"t":"parameter","block":"a.ts#function:untyped","index":1,"kind":"positional","name":"b"}
+{"t":"member","block":"a.ts#class:Service","index":0,"kind":"property","name":"url","readonly":true,"type":"string","type_range":[548,554]}
+{"t":"member","block":"a.ts#class:Service","index":1,"kind":"property","name":"retries","optional":true,"type":"number","type_range":[573,579]}
+{"t":"result","call":"a.ts#function:plain/return[0]/call[0]","binding":"return"}
+{"t":"type_link","block":"a.ts#function:plain","range":[175,180],"text":"Array","resolution":"external","module":"global"}
+{"t":"type_link","block":"a.ts#function:plain","range":[191,198],"text":"Promise","resolution":"external","module":"global"}
+{"t":"type_link","block":"a.ts#function:withThis","range":[261,272],"text":"HTMLElement","resolution":"external","module":"global"}
+{"t":"type_link","block":"a.ts#function:withThis","range":[281,286],"text":"Event","resolution":"external","module":"global"}

@@ -1,4 +1,6 @@
-//! The pinned standard-library inventory and the builtins the binder knows by name.
+//! The pinned standard-library inventory and the builtins the binder knows by name: the proof
+//! of concept's short list for values ([`BUILTIN_NAMES`]) and typeshed's `builtins` names for types
+//! ([`TYPE_BUILTIN_NAMES`]).
 //!
 //! [`STDLIB_ROOTS`] lists the top-level module and package names of typeshed's `stdlib/`
 //! (every `stdlib/<name>.pyi` file and `stdlib/<name>/` package) at typeshed commit
@@ -352,6 +354,258 @@ pub(crate) const BUILTIN_NAMES: &[&str] = &[
     "NotImplementedError",
 ];
 
+/// Every public top-level name typeshed's `stdlib/builtins.pyi` defines (classes, functions, and
+/// module-level aliases, conditional definitions included; `_`-prefixed names and imports
+/// excluded), at typeshed commit `a205439338a4ad3debec1eeae7d300e3781c066d` (the commit
+/// [`STDLIB_ROOTS`] is pinned to; the file's SHA-256 is
+/// `3e91d2c750cce5de440cc60236ab745a2c31c85d260fca07e13f5ea7217f9f7c`), sorted bytewise.
+///
+/// The type meaning reads it: a type name nothing in scope binds is external `builtins` when it
+/// is listed here, and unknown otherwise. Values keep the proof of concept's [`BUILTIN_NAMES`].
+/// To update it, list the same names from a newer typeshed's `builtins.pyi` and record its
+/// commit here.
+pub(crate) const TYPE_BUILTIN_NAMES: &[&str] = &[
+    "ArithmeticError",
+    "AssertionError",
+    "AttributeError",
+    "BaseException",
+    "BaseExceptionGroup",
+    "BlockingIOError",
+    "BrokenPipeError",
+    "BufferError",
+    "BytesWarning",
+    "ChildProcessError",
+    "ConnectionAbortedError",
+    "ConnectionError",
+    "ConnectionRefusedError",
+    "ConnectionResetError",
+    "DeprecationWarning",
+    "EOFError",
+    "Ellipsis",
+    "EncodingWarning",
+    "EnvironmentError",
+    "Exception",
+    "ExceptionGroup",
+    "FileExistsError",
+    "FileNotFoundError",
+    "FloatingPointError",
+    "FutureWarning",
+    "GeneratorExit",
+    "IOError",
+    "ImportError",
+    "ImportWarning",
+    "IndentationError",
+    "IndexError",
+    "InterruptedError",
+    "IsADirectoryError",
+    "KeyError",
+    "KeyboardInterrupt",
+    "LookupError",
+    "MemoryError",
+    "ModuleNotFoundError",
+    "NameError",
+    "NotADirectoryError",
+    "NotImplemented",
+    "NotImplementedError",
+    "OSError",
+    "OverflowError",
+    "PendingDeprecationWarning",
+    "PermissionError",
+    "ProcessLookupError",
+    "PythonFinalizationError",
+    "RecursionError",
+    "ReferenceError",
+    "ResourceWarning",
+    "RuntimeError",
+    "RuntimeWarning",
+    "StopAsyncIteration",
+    "StopIteration",
+    "SyntaxError",
+    "SyntaxWarning",
+    "SystemError",
+    "SystemExit",
+    "TabError",
+    "TimeoutError",
+    "TypeError",
+    "UnboundLocalError",
+    "UnicodeDecodeError",
+    "UnicodeEncodeError",
+    "UnicodeError",
+    "UnicodeTranslateError",
+    "UnicodeWarning",
+    "UserWarning",
+    "ValueError",
+    "Warning",
+    "WindowsError",
+    "ZeroDivisionError",
+    "abs",
+    "aiter",
+    "all",
+    "anext",
+    "any",
+    "ascii",
+    "bin",
+    "bool",
+    "breakpoint",
+    "bytearray",
+    "bytes",
+    "callable",
+    "chr",
+    "classmethod",
+    "compile",
+    "complex",
+    "copyright",
+    "credits",
+    "delattr",
+    "dict",
+    "dir",
+    "divmod",
+    "ellipsis",
+    "enumerate",
+    "eval",
+    "exec",
+    "exit",
+    "filter",
+    "float",
+    "format",
+    "frozenset",
+    "function",
+    "getattr",
+    "globals",
+    "hasattr",
+    "hash",
+    "help",
+    "hex",
+    "id",
+    "input",
+    "int",
+    "isinstance",
+    "issubclass",
+    "iter",
+    "len",
+    "license",
+    "list",
+    "locals",
+    "map",
+    "max",
+    "memoryview",
+    "min",
+    "next",
+    "object",
+    "oct",
+    "open",
+    "ord",
+    "pow",
+    "print",
+    "property",
+    "quit",
+    "range",
+    "repr",
+    "reversed",
+    "round",
+    "set",
+    "setattr",
+    "slice",
+    "sorted",
+    "staticmethod",
+    "str",
+    "sum",
+    "super",
+    "tuple",
+    "type",
+    "vars",
+    "zip",
+];
+
+/// The builtin exception classes and their base, from the same `builtins.pyi` (commit
+/// `a205439338a4ad3debec1eeae7d300e3781c066d`): `BaseException` and every class that derives from
+/// it, each with its single base (`BaseException` has none), sorted bytewise. `BaseExceptionGroup`
+/// and `ExceptionGroup` are left out: their `__new__` decides which class an instance is.
+///
+/// The binder proves these as bases ([`crate::link`]): every one has metaclass `type`, takes its
+/// arguments through `BaseException`'s standard construction, and so lets a user class that
+/// derives from them construct its instances like any concrete class.
+pub(crate) const BUILTIN_EXCEPTIONS: &[(&str, &str)] = &[
+    ("ArithmeticError", "Exception"),
+    ("AssertionError", "Exception"),
+    ("AttributeError", "Exception"),
+    ("BaseException", ""),
+    ("BlockingIOError", "OSError"),
+    ("BrokenPipeError", "ConnectionError"),
+    ("BufferError", "Exception"),
+    ("BytesWarning", "Warning"),
+    ("ChildProcessError", "OSError"),
+    ("ConnectionAbortedError", "ConnectionError"),
+    ("ConnectionError", "OSError"),
+    ("ConnectionRefusedError", "ConnectionError"),
+    ("ConnectionResetError", "ConnectionError"),
+    ("DeprecationWarning", "Warning"),
+    ("EOFError", "Exception"),
+    ("EncodingWarning", "Warning"),
+    ("Exception", "BaseException"),
+    ("FileExistsError", "OSError"),
+    ("FileNotFoundError", "OSError"),
+    ("FloatingPointError", "ArithmeticError"),
+    ("FutureWarning", "Warning"),
+    ("GeneratorExit", "BaseException"),
+    ("ImportError", "Exception"),
+    ("ImportWarning", "Warning"),
+    ("IndentationError", "SyntaxError"),
+    ("IndexError", "LookupError"),
+    ("InterruptedError", "OSError"),
+    ("IsADirectoryError", "OSError"),
+    ("KeyError", "LookupError"),
+    ("KeyboardInterrupt", "BaseException"),
+    ("LookupError", "Exception"),
+    ("MemoryError", "Exception"),
+    ("ModuleNotFoundError", "ImportError"),
+    ("NameError", "Exception"),
+    ("NotADirectoryError", "OSError"),
+    ("NotImplementedError", "RuntimeError"),
+    ("OSError", "Exception"),
+    ("OverflowError", "ArithmeticError"),
+    ("PendingDeprecationWarning", "Warning"),
+    ("PermissionError", "OSError"),
+    ("ProcessLookupError", "OSError"),
+    ("PythonFinalizationError", "RuntimeError"),
+    ("RecursionError", "RuntimeError"),
+    ("ReferenceError", "Exception"),
+    ("ResourceWarning", "Warning"),
+    ("RuntimeError", "Exception"),
+    ("RuntimeWarning", "Warning"),
+    ("StopAsyncIteration", "Exception"),
+    ("StopIteration", "Exception"),
+    ("SyntaxError", "Exception"),
+    ("SyntaxWarning", "Warning"),
+    ("SystemError", "Exception"),
+    ("SystemExit", "BaseException"),
+    ("TabError", "IndentationError"),
+    ("TimeoutError", "OSError"),
+    ("TypeError", "Exception"),
+    ("UnboundLocalError", "NameError"),
+    ("UnicodeDecodeError", "UnicodeError"),
+    ("UnicodeEncodeError", "UnicodeError"),
+    ("UnicodeError", "ValueError"),
+    ("UnicodeTranslateError", "UnicodeError"),
+    ("UnicodeWarning", "Warning"),
+    ("UserWarning", "Warning"),
+    ("ValueError", "Exception"),
+    ("Warning", "Exception"),
+    ("ZeroDivisionError", "ArithmeticError"),
+];
+
+/// The position of `name` in [`BUILTIN_EXCEPTIONS`].
+pub(crate) fn builtin_exception(name: &str) -> Option<usize> {
+    BUILTIN_EXCEPTIONS
+        .binary_search_by(|(found, _)| (*found).cmp(name))
+        .ok()
+}
+
+/// Whether `name` is a name typeshed's `builtins` defines ([`TYPE_BUILTIN_NAMES`]).
+pub(crate) fn is_builtin_type_name(name: &str) -> bool {
+    TYPE_BUILTIN_NAMES.binary_search(&name).is_ok()
+}
+
 /// Whether `root` (a module's first part) is in the standard library.
 pub fn is_stdlib_root(root: &str) -> bool {
     STDLIB_ROOTS.binary_search(&root).is_ok()
@@ -380,6 +634,48 @@ mod tests {
             assert!(is_stdlib_root(root), "{root}");
         }
         assert!(!is_stdlib_root("fastapi"));
+    }
+
+    #[test]
+    fn the_builtins_type_table_is_sorted_and_pinned() {
+        assert!(TYPE_BUILTIN_NAMES.windows(2).all(|pair| pair[0] < pair[1]));
+        assert_eq!(TYPE_BUILTIN_NAMES.len(), 150);
+        for name in [
+            "int",
+            "list",
+            "dict",
+            "object",
+            "BaseException",
+            "memoryview",
+            "reveal_locals",
+        ] {
+            assert_eq!(is_builtin_type_name(name), name != "reveal_locals", "{name}");
+        }
+        assert!(!TYPE_BUILTIN_NAMES.iter().any(|name| name.starts_with('_')));
+        assert!(
+            BUILTIN_NAMES.iter().all(|name| is_builtin_type_name(name)),
+            "every value builtin is a builtins name"
+        );
+    }
+
+    #[test]
+    fn builtin_exceptions_are_sorted_and_reach_base_exception() {
+        assert!(BUILTIN_EXCEPTIONS.windows(2).all(|pair| pair[0].0 < pair[1].0));
+        assert_eq!(BUILTIN_EXCEPTIONS.len(), 66);
+        for (name, _) in BUILTIN_EXCEPTIONS {
+            let mut current = *name;
+            for _ in 0..BUILTIN_EXCEPTIONS.len() {
+                let Some(index) = builtin_exception(current) else {
+                    panic!("{current} is not listed");
+                };
+                match BUILTIN_EXCEPTIONS[index].1 {
+                    "" => break,
+                    base => current = base,
+                }
+            }
+            assert_eq!(current, "BaseException", "{name}");
+        }
+        assert!(builtin_exception("ExceptionGroup").is_none());
     }
 
     #[test]

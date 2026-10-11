@@ -1,7 +1,7 @@
 //! TypeScript structure, modules, and evidence: parity with the proof of concept's graphs, the
-//! syntax mapping case by case, binding and evidence case by case, failures, values and
-//! occurrences, robustness on any input, determinism, project configuration, module resolution,
-//! exports, the emit map, and module labels.
+//! syntax mapping case by case, binding and evidence case by case, typed records and type links,
+//! failures, values and occurrences, robustness on any input, determinism, project
+//! configuration, module resolution, exports, the emit map, and module labels.
 
 mod configuration;
 mod corpus;
@@ -17,3 +17,4 @@ mod provenance;
 mod resolution;
 mod robustness;
 mod support;
+mod typed;

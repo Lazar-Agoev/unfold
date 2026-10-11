@@ -10,6 +10,7 @@
 //! | [`BlockRef`] | A block: file plus local ID | Selection (preorder) |
 //! | [`ValueRef`] | An expression recorded in a file's value table | The language, during extraction |
 //! | [`CallRef`] | A call or construction in a file's call table | The language, during extraction |
+//! | [`TypeRef`] | A written type name in a file's type references | The language, during extraction |
 //! | [`DeclRef`] | A declaration the language knows about | The language; opaque to the backend |
 
 use std::sync::Arc;
@@ -17,7 +18,7 @@ use std::sync::Arc;
 use unfold_core::vocab::Language;
 use unfold_core::{Block, RepoPath};
 
-use crate::facts::{CallFact, FileFacts, ImportFact, ValueFact};
+use crate::facts::{CallFact, FileFacts, ImportFact, TypeRefFact, ValueFact};
 
 /// A file's index in its [`FactsSet`]. File IDs follow path order, so they are reassigned
 /// whenever files are added or removed; never persist them.
@@ -56,6 +57,15 @@ pub struct CallRef {
     pub file: FileId,
     /// Its index in the file's call table.
     pub call: u32,
+}
+
+/// A written type name in a file's type references ([`TypeFacts::type_refs`](crate::facts::TypeFacts::type_refs)).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TypeRef {
+    /// The name's file.
+    pub file: FileId,
+    /// Its index in the file's type references.
+    pub index: u32,
 }
 
 /// A declaration, as its language identifies it.
@@ -162,6 +172,15 @@ impl FactsSet {
     /// The call a reference names, if it exists.
     pub fn call(&self, call: CallRef) -> Option<&CallFact> {
         self.facts(call.file)?.graph.calls().get(call.call as usize)
+    }
+
+    /// The type name a reference names, if it exists.
+    pub fn type_ref(&self, reference: TypeRef) -> Option<&TypeRefFact> {
+        self.facts(reference.file)?
+            .graph
+            .types()
+            .type_refs
+            .get(reference.index as usize)
     }
 
     /// The imports of a file, in block order.

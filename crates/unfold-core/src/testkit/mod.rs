@@ -14,6 +14,7 @@ use crate::model::{
 };
 use crate::path::RepoPath;
 use crate::text::{ByteRange, LineIndex, Snapshot};
+use crate::typed::{FileTypes, TypeLink, WrittenType};
 use crate::vocab::{
     BlockKind, DetectorId, EdgeKind, EntranceKind, FileState, HttpMethod, InputRole, Language, Reason,
     Resolution, Role, SlotName, TriggerStatus,
@@ -168,6 +169,7 @@ impl GraphBuilder {
                 blocks: vec![root],
                 slots: Vec::new(),
                 edges: Vec::new(),
+                types: FileTypes::default(),
             },
         });
         BlockRef {
@@ -263,11 +265,45 @@ impl GraphBuilder {
         });
     }
 
+    /// The typed records of the file that contains `block`, to add records to by hand.
+    pub fn types(&mut self, block: BlockRef) -> &mut FileTypes {
+        &mut self.files[block.file].graph.types
+    }
+
+    /// The written type `needle`, found at or after byte `from` in the file that contains
+    /// `block`.
+    pub fn written_from(&self, block: BlockRef, needle: &str, from: u32) -> WrittenType {
+        WrittenType {
+            text: needle.into(),
+            range: self.find_from(block, needle, from),
+        }
+    }
+
+    /// Adds a type link sourced at `block` over the first `needle` at or after byte `from`.
+    pub fn type_link(&mut self, block: BlockRef, needle: &str, from: u32, outcome: Outcome) {
+        let range = self.find_from(block, needle, from);
+        let (target, resolution, reason, module) = outcome.split();
+        self.types(block).type_links.push(TypeLink {
+            block: block.local_id,
+            range,
+            text: needle.into(),
+            resolution,
+            target,
+            reason,
+            module,
+        });
+    }
+
     /// The structural key of `block`.
     pub fn key(&self, block: BlockRef) -> Key {
         self.files[block.file].graph.blocks[block.local_id as usize]
             .key
             .clone()
+    }
+
+    /// The byte range of `block`.
+    pub fn range(&self, block: BlockRef) -> ByteRange {
+        self.files[block.file].graph.blocks[block.local_id as usize].range
     }
 
     /// The language of the file containing `block`.
@@ -374,7 +410,8 @@ impl GraphBuilder {
             .collect()
     }
 
-    /// The graph, normalized (files, inputs, and entrances sorted; entrance keys derived).
+    /// The graph, normalized (files, inputs, and entrances sorted; entrance keys derived;
+    /// typed records in canonical order).
     pub fn build(&self) -> Graph {
         let mut graph = Graph {
             files: self.files.iter().map(|draft| draft.graph.clone()).collect(),
@@ -382,6 +419,9 @@ impl GraphBuilder {
             entrances: self.entrances.clone(),
         };
         graph.normalize();
+        for file in &mut graph.files {
+            file.types.sort();
+        }
         graph
     }
 }

@@ -2,10 +2,10 @@
 //! unresolved outcomes.
 //!
 //! A [`Resolver`] pairs the program's facts with one language's [`Linked`] answers and the
-//! override census built from its class shapes. [`Resolver::resolve_call`] and
-//! [`Resolver::resolve_value`] apply the value policy for the call, construct, reference, and
-//! handler contexts, testing the fifteen reasons in their fixed order (see `docs/graph-model.md`,
-//! "Value policy and reason order").
+//! override census built from its class shapes. [`Resolver::resolve_call`],
+//! [`Resolver::resolve_value`], and [`Resolver::resolve_type`] apply the value policy for the
+//! call, construct, reference, handler, and type contexts, testing the fifteen reasons in their
+//! fixed order (see `docs/graph-model.md`, "Value policy and reason order").
 
 mod overrides;
 mod policy;
@@ -17,7 +17,7 @@ use crate::error::BackendError;
 use crate::evidence::ValueContext;
 use crate::facts::{CallContext, Invocation};
 use crate::language::{LanguageId, Linked};
-use crate::program::{BlockRef, CallRef, FactsSet, FileId, ValueRef};
+use crate::program::{BlockRef, CallRef, FactsSet, FileId, TypeRef, ValueRef};
 
 use overrides::OverrideCensus;
 pub(crate) use policy::Expr;
@@ -180,6 +180,7 @@ impl<'a> Resolver<'a> {
         let expr = Expr {
             file: call.file,
             value: fact.callee,
+            ty: None,
         };
         policy::resolve(self, expr, context, Some(call))
     }
@@ -190,7 +191,19 @@ impl<'a> Resolver<'a> {
         let expr = Expr {
             file: value.file,
             value: Some(value.value),
+            ty: None,
         };
         policy::resolve(self, expr, context, None)
+    }
+
+    /// Resolves a written type name in the `type` context: through the language's
+    /// [`Linked::type_evidence`], to a `class`, `interface`, `type_alias`, or `enum` block.
+    pub fn resolve_type(&self, reference: TypeRef) -> Result<Outcome, BackendError> {
+        let expr = Expr {
+            file: reference.file,
+            value: None,
+            ty: Some(reference.index),
+        };
+        policy::resolve(self, expr, ValueContext::Type, None)
     }
 }

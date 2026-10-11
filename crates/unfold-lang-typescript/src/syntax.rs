@@ -6,12 +6,15 @@
 //! `thenStatement`, ...). Roles, slots, and names are all derived from categories and labels, so
 //! the mapping never needs to know oxc's node types.
 //!
-//! Only what selection, naming, values, and imports read is kept: type syntax becomes a single
-//! childless [`Cat::Type`] node with its range, and syntax with no graph meaning becomes
-//! [`Cat::Other`] (whose runtime descendants are still present).
+//! Only what selection, naming, values, imports, and typed records read is kept: type syntax
+//! becomes a single childless [`Cat::Type`] node with its range, and syntax with no graph meaning
+//! becomes [`Cat::Other`] (whose runtime descendants are still present). The written members of
+//! interfaces, object type literals, enums, and classes, which live in type syntax or are not
+//! nodes of their own, are kept beside the tree as [`MemberDraft`]s.
 
 use oxc_allocator::Address;
 use unfold_core::text::ByteRange;
+use unfold_core::vocab::MemberKind;
 
 /// The absent node index (no parent, child, or sibling).
 pub(crate) const NONE: u32 = u32::MAX;
@@ -25,6 +28,12 @@ pub(crate) enum Cat {
     ArrowFunction,
     ClassDeclaration,
     ClassExpression,
+    /// An interface declaration.
+    Interface,
+    /// A type alias declaration.
+    TypeAlias,
+    /// An enum declaration (`enum` or `const enum`).
+    Enum,
     Method,
     Constructor,
     Getter,
@@ -83,6 +92,8 @@ pub(crate) enum Cat {
     As,
     Satisfies,
     TypeAssertion,
+    /// `await <expression>`: not transparent to values, but a call's result looks through it.
+    Await,
     /// An assignment expression; the node's text is its operator.
     Assignment,
     ComputedPropertyName,
@@ -108,7 +119,6 @@ impl Cat {
         )
     }
 
-    /// Literals whose decoded text can name a declaration or key an element access.
     /// Module syntax that names a dependency through its `moduleSpecifier` child.
     pub(crate) const fn is_module_declaration(self) -> bool {
         matches!(
@@ -117,6 +127,7 @@ impl Cat {
         )
     }
 
+    /// Literals whose decoded text can name a declaration or key an element access.
     pub(crate) const fn is_name_literal(self) -> bool {
         matches!(
             self,
@@ -163,7 +174,7 @@ pub(crate) enum Label {
 
 /// Boolean facts about a node.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct Flags(u8);
+pub(crate) struct Flags(u16);
 
 impl Flags {
     /// A function-like node with a body.
@@ -176,6 +187,10 @@ impl Flags {
     pub(crate) const VARIABLE_BINDING: Self = Self(1 << 3);
     /// An import, re-export, import-equals, or dynamic import that is a runtime dependency.
     pub(crate) const RUNTIME: Self = Self(1 << 4);
+    /// A rest parameter (`...x`).
+    pub(crate) const REST: Self = Self(1 << 5);
+    /// An optional parameter (`x?`).
+    pub(crate) const OPTIONAL: Self = Self(1 << 6);
 
     pub(crate) const fn has(self, flag: Self) -> bool {
         self.0 & flag.0 != 0
@@ -201,14 +216,40 @@ pub(crate) struct Node<'a> {
     next_sibling: u32,
 }
 
+/// One written member of an interface, object type literal, enum, or class, as converted:
+/// ranges into the source, which typed records slice their texts from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct MemberDraft {
+    /// The interface, type alias, enum, or class node it belongs to.
+    pub(crate) owner: u32,
+    /// What it is.
+    pub(crate) kind: MemberKind,
+    /// The name as written (a computed name with its brackets, an index signature's
+    /// `[key: T]`); `None` for call and construct signatures.
+    pub(crate) name: Option<ByteRange>,
+    /// Written with `?`.
+    pub(crate) optional: bool,
+    /// Written with `readonly`.
+    pub(crate) readonly: bool,
+    /// Written with an initializer (a class field or parameter property).
+    pub(crate) default: bool,
+    /// The written type: an annotation (without its colon), a signature's text after its
+    /// name, or an index signature's value type.
+    pub(crate) ty: Option<ByteRange>,
+    /// An enum member's written initializer.
+    pub(crate) value: Option<ByteRange>,
+}
+
 /// One file's normalized syntax. Node 0 is the root; nodes are stored in preorder.
 #[derive(Debug, Default)]
 pub(crate) struct Syntax<'a> {
     nodes: Vec<Node<'a>>,
-    /// The oxc node each expression, function, class, and class member was converted from, by
-    /// its arena address, so binding (which walks oxc's tree) can find the normalized node and
-    /// its block.
+    /// The oxc node each expression, function, class, class member, and type declaration was
+    /// converted from, by its arena address, so binding (which walks oxc's tree) can find the
+    /// normalized node and its block.
     origins: Vec<(Address, u32)>,
+    /// The written members of type declarations and classes, in source order per owner.
+    members: Vec<MemberDraft>,
 }
 
 impl<'a> Syntax<'a> {
@@ -216,7 +257,18 @@ impl<'a> Syntax<'a> {
         Self {
             nodes: Vec::with_capacity(capacity),
             origins: Vec::new(),
+            members: Vec::new(),
         }
+    }
+
+    /// Records a written member.
+    pub(crate) fn record_member(&mut self, member: MemberDraft) {
+        self.members.push(member);
+    }
+
+    /// Every recorded member, in conversion order (source order per owner).
+    pub(crate) fn members(&self) -> &[MemberDraft] {
+        &self.members
     }
 
     /// Records that `node` was converted from the oxc node at `address`.

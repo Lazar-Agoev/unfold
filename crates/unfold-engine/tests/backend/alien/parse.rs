@@ -172,6 +172,12 @@ pub fn parse(text: &str) -> Result<Syntax<'_>, ParseError> {
                 let atom = &text[start..index];
                 let end = index as u32;
                 boundaries.extend([at, end]);
+                // An option's value (`:type=Cart`) is a token of its own, as a written type.
+                if atom.starts_with(':')
+                    && let Some(equals) = atom.find('=')
+                {
+                    boundaries.push(at + equals as u32 + 1);
+                }
                 let (form, head) = *open.last().ok_or(error("unbalanced"))?;
                 if !head {
                     if atom.starts_with('"') || atom.starts_with(':') {

@@ -21,6 +21,9 @@ pub enum ValueContext {
     Reference,
     /// An entrance handler: a concrete function or method, including an inline function.
     Handler,
+    /// A type name in an annotation: a `class`, `interface`, `type_alias`, or `enum`
+    /// declaration.
+    Type,
 }
 
 /// Where an external declaration lives.

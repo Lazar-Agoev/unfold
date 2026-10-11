@@ -89,6 +89,10 @@ fn fragment() -> impl Strategy<Value = &'static str> {
         "TYPE_CHECKING",
         "property",
         "importlib.import_module(\"m\")",
+        "Literal[",
+        "Annotated[",
+        " | ",
+        "\"a.b\"",
         "global ",
         "nonlocal ",
         "del ",
@@ -182,6 +186,13 @@ fn deep_nesting_is_reported_not_overflowed() {
             format!("x = {}1\n", "1**".repeat(depth)),
             format!("x = a{}()\n", ".b".repeat(depth)),
             format!("x = {}1{}\n", "1+(".repeat(depth), ")".repeat(depth)),
+            format!("x: {}int{}\n", "list[".repeat(depth), "]".repeat(depth)),
+            format!("x: {}int\n", "int | ".repeat(depth)),
+            format!(
+                "def f(x: a{}) -> \"a{}\": pass\n",
+                ".b".repeat(depth),
+                ".b".repeat(depth)
+            ),
             deep_defs,
         ];
         for text in &cases {
@@ -207,10 +218,32 @@ fn long_chains_link_without_overflowing() {
             classes.push_str(&format!("class C{index}(C{}):\n    pass\n", index - 1));
         }
         classes.push_str("class Last(C999):\n    def run(self): return super().m()\nLast().m()\n");
-        let attributes = format!("import pkg\nx = pkg{}\nx()\n", ".a".repeat(5_000));
+        let attributes = format!(
+            "import pkg\nx = pkg{}\nx()\ny: pkg{}\n",
+            ".a".repeat(5_000),
+            ".a".repeat(5_000)
+        );
+        // Star imports, and a type re-exported through every module.
         let modules = (0..300)
-            .map(|index| format!("from m{} import *\n__all__ = ['f']\nf = {index}\n", index + 1))
+            .map(|index| {
+                format!(
+                    "from m{} import *\nfrom r{} import Cart\n__all__ = ['f']\nf = {index}\nc: Cart\n",
+                    index + 1,
+                    index + 1
+                )
+            })
             .collect::<Vec<_>>();
+        let reexports = (0..300).map(|index| {
+            let text = if index == 299 {
+                "class Cart:\n    pass\n".to_owned()
+            } else {
+                format!(
+                    "from r{} import Cart\n\n\ndef f(c: Cart) -> \"Cart\":\n    pass\n",
+                    index + 1
+                )
+            };
+            (format!("r{index}.py"), text)
+        });
         let mut files: Vec<(String, String)> = vec![
             ("aliases.py".into(), aliases),
             ("classes.py".into(), classes),
@@ -222,6 +255,7 @@ fn long_chains_link_without_overflowing() {
                 .enumerate()
                 .map(|(index, text)| (format!("m{index}.py"), text)),
         );
+        files.extend(reexports);
         let pairs: Vec<(&str, &str)> = files
             .iter()
             .map(|(path, text)| (path.as_str(), text.as_str()))

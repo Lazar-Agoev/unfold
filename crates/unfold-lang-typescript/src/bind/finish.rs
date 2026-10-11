@@ -1,12 +1,13 @@
 //! Finishing a file's binding: filling module declarations the walk never reached, looking every
-//! recorded name up, adding factory callees to the value table, dropping the expressions no root
-//! reaches, and assembling the payload's tables.
+//! recorded name up, dropping the type names that bind to a type parameter, adding factory
+//! callees to the value table, dropping the expressions no root reaches, and assembling the
+//! payload's tables.
 
 use rustc_hash::FxHashMap;
 
 use super::ir;
 use super::scope::{ScopeKind, Scopes};
-use super::{AliasDraft, Binder, Input, KeyDraft, RootDraft};
+use super::{AliasDraft, Binder, Input, KeyDraft, RootDraft, TypeSite};
 use crate::payload::DeclarationKind;
 use crate::payload::binding::{
     Alias, Binding, ClassFacts, Decl, DeclFlags, DeclKind, Expr, Key, KeyRoot, Lookup, Meanings, NamePath,
@@ -105,6 +106,31 @@ impl<'a> Binder<'a> {
         }
     }
 
+    /// The recorded type names in source order, without those whose first name binds to a
+    /// type parameter (of an enclosing callable or class).
+    fn type_sites(&mut self) -> Vec<TypeSite> {
+        let mut sites = std::mem::take(&mut self.type_sites);
+        sites.retain(|site| {
+            let Some(TypeRef::Names {
+                lookup: Lookup::Symbol(symbol),
+                ..
+            }) = self.types.get(site.ty as usize)
+            else {
+                return true;
+            };
+            let Some(symbol) = self.scopes.symbols.get(*symbol as usize) else {
+                return true;
+            };
+            !symbol.declarations.iter().any(|&declaration| {
+                self.decl(declaration)
+                    .is_some_and(|decl| decl.kind == DeclKind::TypeParameter)
+            })
+        });
+        sites.sort_by_key(|site| (site.range.start, site.range.end));
+        sites.dedup_by_key(|site| site.range);
+        sites
+    }
+
     /// A narrowing key; `None` inside a `with` statement, where nothing is known.
     fn key(&self, draft: &KeyDraft<'_>) -> Option<Key> {
         let root = match &draft.root {
@@ -121,10 +147,16 @@ impl<'a> Binder<'a> {
         })
     }
 
-    /// Converts everything recorded into the payload's form.
-    pub(super) fn finish(mut self, input: &Input<'_, 'a>, values: &mut values::Table<'_, 'a>) -> Binding {
+    /// Converts everything recorded into the payload's form, with the type names of linked
+    /// types (aligned with the binding's `type_links`).
+    pub(super) fn finish(
+        mut self,
+        input: &Input<'_, 'a>,
+        values: &mut values::Table<'_, 'a>,
+    ) -> (Binding, Vec<TypeSite>) {
         self.fill_unreached(input);
         self.resolve_names();
+        let sites = self.type_sites();
         let narrowing = Narrowing {
             instanceof: self
                 .instanceof
@@ -236,7 +268,7 @@ impl<'a> Binder<'a> {
         }
         let file_symbols = symbols_in(&self.scopes, |kind| kind == ScopeKind::File);
         let global_symbols = symbols_in(&self.scopes, |kind| kind == ScopeKind::Global);
-        Binding {
+        let binding = Binding {
             declarations,
             symbols,
             namespaces,
@@ -245,6 +277,7 @@ impl<'a> Binder<'a> {
             value_exprs,
             contexts: std::mem::take(&mut self.contexts),
             types: std::mem::take(&mut self.types),
+            type_links: sites.iter().map(|site| site.ty).collect(),
             classes,
             objects: std::mem::take(&mut self.objects),
             file_symbols,
@@ -252,7 +285,8 @@ impl<'a> Binder<'a> {
             namespace_chains: self.namespace_chains.take(),
             narrowing,
             writes,
-        }
+        };
+        (binding, sites)
     }
 }
 

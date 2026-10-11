@@ -11,6 +11,7 @@
 //! | [`BindFacts::exprs`] | The expressions binding evaluates, in a small closed vocabulary | [`ExprId`] |
 //! | [`BindFacts::writes`] | One write of one name | write index |
 //! | [`BindFacts::bindings`] | Every write of one name in one scope, after `global`/`nonlocal` | binding index |
+//! | [`BindFacts::types`] | The expression of each written type name, in its annotation's scope | the file's type references |
 //!
 //! Writes are a complete census: definitions, imports, assignments (chained, annotated,
 //! augmented, unpacking), `del`, loop, `with`, and `except` targets, assignment expressions,
@@ -47,6 +48,11 @@ pub struct BindFacts {
     pub bindings: Vec<BindingFact>,
     /// The expression of each entry of the file's value table, aligned with it.
     pub values: Vec<ExprId>,
+    /// The expression of each written type name, aligned with the file's type references
+    /// ([`TypeFacts::type_refs`](unfold_engine::facts::TypeFacts::type_refs)): a name or a
+    /// member chain, evaluated in the scope its annotation is (a string annotation's name is
+    /// synthesized).
+    pub types: Vec<ExprId>,
     /// Star imports, which linking expands from the target's literal `__all__`.
     pub stars: Vec<StarFact>,
     /// What the mutation passes read, in preorder: attribute and item targets, augmented
@@ -436,6 +442,7 @@ impl BindFacts {
                         .all(|&write| (write as usize) < self.writes.len())
             })
             && self.values.iter().all(|&id| expr(id))
+            && self.types.iter().all(|&id| expr(id))
             && self.stars.iter().all(|star| scope(star.scope) && node(star.node))
             && self.effects.iter().all(|effect| match effect {
                 Effect::Target {

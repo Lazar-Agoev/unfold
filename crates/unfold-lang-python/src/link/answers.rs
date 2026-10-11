@@ -45,7 +45,9 @@ impl From<ValueContext> for Context {
         match context {
             ValueContext::Call => Self::Call,
             ValueContext::Construct => Self::Construct,
-            ValueContext::Reference | ValueContext::Handler => Self::Handler,
+            // A type is never selected through `concrete` (`Binder::concrete_target` answers it
+            // first); a class is its declaration whether or not it is concrete.
+            ValueContext::Reference | ValueContext::Handler | ValueContext::Type => Self::Handler,
         }
     }
 }
@@ -70,9 +72,29 @@ pub(crate) fn module_target(binder: &Binder<'_>, module: &ModuleValue) -> Module
     }
 }
 
+/// The import binding a value's root proves: an external origin, or a relative import that
+/// names nothing.
+pub(crate) fn import_binding(value: &Value) -> Option<ImportBinding> {
+    match (&value.external, value.missing) {
+        (Some(external), _) => Some(ImportBinding {
+            specifier: external.module.clone(),
+            imported: external.member.clone(),
+            target: ImportTarget::External,
+            location: Some(ExternalLocation::Package(external.module.clone())),
+        }),
+        (None, true) => Some(ImportBinding {
+            specifier: "".into(),
+            imported: "".into(),
+            target: ImportTarget::NotFound,
+            location: None,
+        }),
+        (None, false) => None,
+    }
+}
+
 impl Binder<'_> {
     /// The candidates a value supplies.
-    fn candidates(&self, value: &Value) -> SmallVec<[Candidate; 2]> {
+    pub(crate) fn candidates(&self, value: &Value) -> SmallVec<[Candidate; 2]> {
         if let Some(path) = &value.excluded {
             return SmallVec::from_elem(
                 Candidate {
@@ -106,21 +128,7 @@ impl Binder<'_> {
         if value.instance && value.class.is_some() {
             value = self.member_value(value, self.program.known.call, &mut Seen::default(), &mut ctx);
         }
-        let import_binding = match (&value.external, value.missing) {
-            (Some(external), _) => Some(ImportBinding {
-                specifier: external.module.clone(),
-                imported: external.member.clone(),
-                target: ImportTarget::External,
-                location: Some(ExternalLocation::Package(external.module.clone())),
-            }),
-            (None, true) => Some(ImportBinding {
-                specifier: "".into(),
-                imported: "".into(),
-                target: ImportTarget::NotFound,
-                location: None,
-            }),
-            (None, false) => None,
-        };
+        let import_binding = import_binding(&value);
         let mut refusal = value.refusal;
         if !self.class_access_proven(&value, &mut ctx) {
             refusal = refusal.or(Some(Refusal::Unsupported));
@@ -201,11 +209,29 @@ impl Binder<'_> {
     }
 
     /// A declaration's concrete body for a context (see [`unfold_engine::Linked::concrete_target`]).
+    /// In the type context, a class is its own type, decorated or not, as long as its name is
+    /// bound once (a rebound class name is the policy's `mutable_binding`).
     pub(crate) fn concrete_target(
         &self,
         declaration: DeclRef,
         context: ValueContext,
     ) -> Option<ConcreteTarget> {
+        if context == ValueContext::Type {
+            let node = node_of(declaration);
+            self.class_fact(node)?;
+            let mut ctx = Ctx::new();
+            if self
+                .program
+                .binding_of(node)
+                .is_some_and(|binding| !self.stable(binding, &mut ctx))
+            {
+                return None;
+            }
+            return Some(ConcreteTarget {
+                target: self.block_of(node)?,
+                implementation: declaration,
+            });
+        }
         let mut ctx = Ctx::new();
         let target = self.concrete(
             node_of(declaration),
@@ -463,6 +489,7 @@ impl Binder<'_> {
                     .base_classes(class, &mut ctx)
                     .unwrap_or_default()
                     .into_iter()
+                    .filter(|base| !base.is_builtin())
                     .map(decl_of)
                     .collect();
                 let body = self.class_fact(class).map_or(u32::MAX, |fact| fact.body);

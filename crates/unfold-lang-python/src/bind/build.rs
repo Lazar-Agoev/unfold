@@ -1,7 +1,7 @@
 //! The binder's extraction pass: one iterative walk over a parsed module that records scopes,
-//! declarations, the complete write census, star imports, and the mutation passes' inputs, then
-//! interns every expression they mention ([`super::exprs`]) and resolves `global` and `nonlocal`
-//! redirection.
+//! declarations, the complete write census, star imports, the mutation passes' inputs, the type
+//! names of annotations ([`super::types`]), and which calls are awaited, then interns every
+//! expression they mention ([`super::exprs`]) and resolves `global` and `nonlocal` redirection.
 //!
 //! Scopes follow the proof of concept's binder: a `def`'s decorators and name belong to the
 //! enclosing scope; with type parameters, its annotations, defaults, and return annotation are
@@ -12,18 +12,22 @@
 //! it (the loop's own targets are not inside the loop).
 
 use ruff_python_ast::{Alias, ArgOrKeyword, Expr, ModModule, Stmt};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
+use unfold_engine::facts::TypeRefFact;
 
 use super::exprs::Interner;
 use super::ir::{
     BindFacts, ClassFact, Effect, ExprId, ImportWrite, MODULE_SCOPE, ModuleSpec, NodeFact, NodeId, NodeKind,
     ScopeId, ScopeKind, StarFact, TargetKind, WriteFact, WriteKind,
 };
+use super::types::RawTypeName;
 use crate::ast::arguments;
 use crate::values::address;
 
 /// What the binder pass reads besides the module.
 pub(crate) struct Inputs<'a> {
+    /// The file's text.
+    pub(crate) text: &'a str,
     /// The block of every selected `def`, `class`, and `lambda`, by the node's address.
     pub(crate) blocks: &'a FxHashMap<usize, u32>,
     /// The expression of each value-table entry, in table order.
@@ -33,10 +37,14 @@ pub(crate) struct Inputs<'a> {
     pub(crate) callees: &'a FxHashMap<usize, u32>,
 }
 
-/// The binder facts, and the declaration of each `from` import name (by the alias's address).
+/// The binder facts, the declaration of each `from` import name (by the alias's address), the
+/// file's written type names (aligned with [`BindFacts::types`]), and the calls an `await`
+/// applies to directly (by the call's address).
 pub(crate) struct Built {
     pub(crate) facts: BindFacts,
     pub(crate) aliases: FxHashMap<usize, NodeId>,
+    pub(crate) type_refs: Vec<TypeRefFact>,
+    pub(crate) awaited: FxHashSet<usize>,
 }
 
 /// What a node inherits from its ancestors.
@@ -82,7 +90,7 @@ pub(super) struct Scope<'a> {
     pub(super) globals: Vec<&'a str>,
     pub(super) nonlocals: Vec<&'a str>,
     /// Names written here lexically, before redirection.
-    pub(super) lexical: rustc_hash::FxHashSet<&'a str>,
+    pub(super) lexical: FxHashSet<&'a str>,
 }
 
 pub(super) struct Builder<'a> {
@@ -95,6 +103,10 @@ pub(super) struct Builder<'a> {
     pub(super) effects: Vec<Effect>,
     pub(super) aliases: FxHashMap<usize, NodeId>,
     pub(super) stack: Vec<Task<'a>>,
+    /// Written type names, in the order the walk met them.
+    pub(super) types: Vec<RawTypeName<'a>>,
+    /// The calls an `await` applies to directly (through nested `await`s), by address.
+    pub(super) awaited: FxHashSet<usize>,
 }
 
 /// Runs the binder pass over `module`.
@@ -109,6 +121,8 @@ pub(crate) fn build<'a>(module: &'a ModModule, inputs: &'a Inputs<'a>) -> Built 
         effects: Vec::new(),
         aliases: FxHashMap::default(),
         stack: Vec::new(),
+        types: Vec::new(),
+        awaited: FxHashSet::default(),
     };
     builder.scope(ScopeKind::Module, None);
     let root = Ctx {
@@ -135,7 +149,7 @@ impl<'a> Builder<'a> {
             parent,
             globals: Vec::new(),
             nonlocals: Vec::new(),
-            lexical: rustc_hash::FxHashSet::default(),
+            lexical: FxHashSet::default(),
         });
         id
     }
@@ -272,6 +286,7 @@ impl<'a> Builder<'a> {
             }
             Stmt::AnnAssign(node) => {
                 let annotation = self.reserve(&node.annotation, ctx.scope);
+                self.annotation(&node.annotation, ctx.scope);
                 let value = node.value.as_deref().map(|value| self.reserve(value, ctx.scope));
                 let factory = node.value.as_deref().and_then(|value| self.factory(value));
                 let id = self.node(

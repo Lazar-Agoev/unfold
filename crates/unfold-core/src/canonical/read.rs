@@ -6,7 +6,7 @@ use std::str::FromStr;
 use rustc_hash::FxHashMap;
 use serde::Deserialize;
 
-use super::{FORMAT, VERSION};
+use super::{FORMAT, OLDEST_VERSION, VERSION};
 use crate::key::Key;
 use crate::model::{
     Block, Edge, Entrance, EntranceTarget, Evidence, FileGraph, FileRecord, Graph, InputRecord, ModuleLabel,
@@ -14,6 +14,9 @@ use crate::model::{
 };
 use crate::path::RepoPath;
 use crate::text::{ByteRange, ContentHash, LineSpan};
+use crate::typed::{
+    Argument, CallResult, FileTypes, Member, Pairing, Parameter, Signature, TypeLink, WrittenType,
+};
 use crate::vocab::UnknownValue;
 
 /// A canonical export that cannot be read.
@@ -94,6 +97,30 @@ struct Raw<'a> {
     evidence_pointer: Option<Cow<'a, str>>,
     #[serde(borrow)]
     entrance: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    returns: Option<Cow<'a, str>>,
+    returns_range: Option<ByteRange>,
+    optional: Option<bool>,
+    default: Option<bool>,
+    readonly: Option<bool>,
+    #[serde(borrow, rename = "type")]
+    ty: Option<Cow<'a, str>>,
+    type_range: Option<ByteRange>,
+    #[serde(borrow)]
+    value: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    call: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    expand: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    keyword: Option<Cow<'a, str>>,
+    parameter: Option<u32>,
+    #[serde(borrow)]
+    unpaired: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    binding: Option<Cow<'a, str>>,
+    awaited: Option<bool>,
+    bound: Option<u32>,
 }
 
 impl Raw<'_> {
@@ -134,6 +161,22 @@ impl Raw<'_> {
             ("evidence_block", self.evidence_block.is_some()),
             ("evidence_pointer", self.evidence_pointer.is_some()),
             ("entrance", self.entrance.is_some()),
+            ("returns", self.returns.is_some()),
+            ("returns_range", self.returns_range.is_some()),
+            ("optional", self.optional.is_some()),
+            ("default", self.default.is_some()),
+            ("readonly", self.readonly.is_some()),
+            ("type", self.ty.is_some()),
+            ("type_range", self.type_range.is_some()),
+            ("value", self.value.is_some()),
+            ("call", self.call.is_some()),
+            ("expand", self.expand.is_some()),
+            ("keyword", self.keyword.is_some()),
+            ("parameter", self.parameter.is_some()),
+            ("unpaired", self.unpaired.is_some()),
+            ("binding", self.binding.is_some()),
+            ("awaited", self.awaited.is_some()),
+            ("bound", self.bound.is_some()),
         ]
         .into_iter()
         .filter_map(|(name, present)| present.then_some(name))
@@ -178,6 +221,31 @@ fn module(value: Option<Cow<'_, str>>) -> Option<ModuleLabel> {
     value.map(|text| ModuleLabel::from_text(&text))
 }
 
+/// A flag, which the export writes only when true.
+fn flag(value: Option<bool>, field: &str) -> Result<bool, Fail> {
+    match value {
+        Some(false) => Err(format!("`{field}` is written only when true")),
+        Some(true) => Ok(true),
+        None => Ok(false),
+    }
+}
+
+/// A written type from its text and range, which appear together or not at all.
+fn written(
+    text: Option<Cow<'_, str>>,
+    range: Option<ByteRange>,
+    field: &str,
+) -> Result<Option<WrittenType>, Fail> {
+    match (text, range) {
+        (Some(text), Some(range)) => Ok(Some(WrittenType {
+            text: text.into(),
+            range,
+        })),
+        (None, None) => Ok(None),
+        _ => Err(format!("`{field}` and `{field}_range` appear together")),
+    }
+}
+
 /// Where the reader is in the export's fixed section order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Section {
@@ -189,6 +257,8 @@ enum Section {
 struct Reader {
     graph: Graph,
     seen_header: bool,
+    /// The header's version.
+    version: u32,
     section: Section,
     /// The current file's block keys, by local ID.
     local_ids: FxHashMap<Key, u32>,
@@ -197,12 +267,20 @@ struct Reader {
 }
 
 /// Reads a canonical export. It accepts exactly the shapes [`write`](super::write) produces
-/// and rebuilds local IDs and parents from the keys; graph invariants are left to the
-/// validator.
+/// (and version 1 exports, which have no typed records) and rebuilds local IDs and parents from
+/// the keys; graph invariants are left to the validator.
 pub fn read(text: &str) -> Result<Graph, CanonicalError> {
+    read_versioned(text).map(|(graph, _)| graph)
+}
+
+/// [`read`], also returning the header's `version` (1 or 2), so a version-1 export can be
+/// validated as one ([`crate::validate::Validator::without_typed_records`]) and written again
+/// at its version ([`write_version`](super::write_version)).
+pub fn read_versioned(text: &str) -> Result<(Graph, u32), CanonicalError> {
     let mut reader = Reader {
         graph: Graph::default(),
         seen_header: false,
+        version: VERSION,
         section: Section::Files,
         local_ids: FxHashMap::default(),
         root: String::new(),
@@ -226,7 +304,7 @@ pub fn read(text: &str) -> Result<Graph, CanonicalError> {
             message,
         })?;
     }
-    Ok(reader.graph)
+    Ok((reader.graph, reader.version))
 }
 
 impl Reader {
@@ -244,7 +322,8 @@ impl Reader {
                 return Err(format!("field `{field}` is not allowed on a `header` record"));
             }
             self.seen_header = true;
-            return header(raw);
+            self.version = header(raw)?;
+            return Ok(());
         }
         let (section, allowed): (Section, &[&str]) = match &*record {
             "file" => (Section::Files, &["path", "language", "state", "hash", "failure"]),
@@ -262,6 +341,71 @@ impl Reader {
                     "reason",
                     "module",
                     "position",
+                ],
+            ),
+            "signature" | "parameter" | "member" | "argument" | "result" | "type_link"
+                if self.version < 2 =>
+            {
+                return Err(format!(
+                    "a `{record}` record needs export version 2, not {}",
+                    self.version
+                ));
+            }
+            "signature" => (Section::Files, &["block", "returns", "returns_range"]),
+            "parameter" => (
+                Section::Files,
+                &[
+                    "block",
+                    "index",
+                    "kind",
+                    "name",
+                    "optional",
+                    "default",
+                    "type",
+                    "type_range",
+                ],
+            ),
+            "member" => (
+                Section::Files,
+                &[
+                    "block",
+                    "index",
+                    "kind",
+                    "name",
+                    "optional",
+                    "readonly",
+                    "default",
+                    "type",
+                    "type_range",
+                    "value",
+                ],
+            ),
+            "argument" => (
+                Section::Files,
+                &[
+                    "call",
+                    "index",
+                    "expand",
+                    "keyword",
+                    "parameter",
+                    "unpaired",
+                    "bound",
+                ],
+            ),
+            "result" => (
+                Section::Files,
+                &["call", "binding", "awaited", "target", "position", "bound"],
+            ),
+            "type_link" => (
+                Section::Files,
+                &[
+                    "block",
+                    "range",
+                    "text",
+                    "resolution",
+                    "target",
+                    "reason",
+                    "module",
                 ],
             ),
             "input" => (Section::Inputs, &["path", "role", "hash"]),
@@ -308,6 +452,12 @@ impl Reader {
             "block" => self.block(raw),
             "slot" => self.slot(raw),
             "edge" => self.edge(raw),
+            "signature" => self.signature(raw),
+            "parameter" => self.parameter(raw),
+            "member" => self.member(raw),
+            "argument" => self.argument(raw),
+            "result" => self.result(raw),
+            "type_link" => self.type_link(raw),
             "input" => self.input(raw),
             "entrance" => self.entrance(raw),
             _ => self.target(raw),
@@ -333,6 +483,7 @@ impl Reader {
             blocks: Vec::new(),
             slots: Vec::new(),
             edges: Vec::new(),
+            types: FileTypes::default(),
         });
         Ok(())
     }
@@ -410,6 +561,99 @@ impl Reader {
         Ok(())
     }
 
+    fn types(&mut self, record: &str) -> Result<&mut FileTypes, Fail> {
+        Ok(&mut self.current(record)?.types)
+    }
+
+    fn signature(&mut self, raw: Raw<'_>) -> Result<(), Fail> {
+        let signature = Signature {
+            block: self.local_id(&required(raw.block, "block")?)?,
+            returns: written(raw.returns, raw.returns_range, "returns")?,
+        };
+        self.types("signature")?.signatures.push(signature);
+        Ok(())
+    }
+
+    fn parameter(&mut self, raw: Raw<'_>) -> Result<(), Fail> {
+        let parameter = Parameter {
+            block: self.local_id(&required(raw.block, "block")?)?,
+            index: required(raw.index, "index")?,
+            kind: vocab(raw.kind, "kind")?,
+            name: boxed(raw.name),
+            optional: flag(raw.optional, "optional")?,
+            default: flag(raw.default, "default")?,
+            ty: written(raw.ty, raw.type_range, "type")?,
+        };
+        self.types("parameter")?.parameters.push(parameter);
+        Ok(())
+    }
+
+    fn member(&mut self, raw: Raw<'_>) -> Result<(), Fail> {
+        let member = Member {
+            block: self.local_id(&required(raw.block, "block")?)?,
+            index: required(raw.index, "index")?,
+            kind: vocab(raw.kind, "kind")?,
+            name: boxed(raw.name),
+            optional: flag(raw.optional, "optional")?,
+            readonly: flag(raw.readonly, "readonly")?,
+            default: flag(raw.default, "default")?,
+            ty: written(raw.ty, raw.type_range, "type")?,
+            value: boxed(raw.value),
+        };
+        self.types("member")?.members.push(member);
+        Ok(())
+    }
+
+    fn argument(&mut self, raw: Raw<'_>) -> Result<(), Fail> {
+        let pairing = match (raw.parameter, optional_vocab(raw.unpaired)?) {
+            (Some(index), None) => Some(Pairing::Parameter(index)),
+            (None, Some(reason)) => Some(Pairing::Unpaired(reason)),
+            (None, None) => None,
+            (Some(_), Some(_)) => return Err("`parameter` and `unpaired` exclude each other".into()),
+        };
+        let argument = Argument {
+            call: self.local_id(&required(raw.call, "call")?)?,
+            index: required(raw.index, "index")?,
+            expand: optional_vocab(raw.expand)?,
+            keyword: boxed(raw.keyword),
+            pairing,
+            bound: raw.bound,
+        };
+        self.types("argument")?.arguments.push(argument);
+        Ok(())
+    }
+
+    fn result(&mut self, raw: Raw<'_>) -> Result<(), Fail> {
+        let target = match raw.target {
+            Some(target) => Some(self.local_id(&target)?),
+            None => None,
+        };
+        let result = CallResult {
+            call: self.local_id(&required(raw.call, "call")?)?,
+            binding: vocab(raw.binding, "binding")?,
+            awaited: flag(raw.awaited, "awaited")?,
+            target,
+            position: raw.position,
+            bound: raw.bound,
+        };
+        self.types("result")?.results.push(result);
+        Ok(())
+    }
+
+    fn type_link(&mut self, raw: Raw<'_>) -> Result<(), Fail> {
+        let link = TypeLink {
+            block: self.local_id(&required(raw.block, "block")?)?,
+            range: required(raw.range, "range")?,
+            text: required(raw.text, "text")?.into(),
+            resolution: vocab(raw.resolution, "resolution")?,
+            target: key(raw.target),
+            reason: optional_vocab(raw.reason)?,
+            module: module(raw.module),
+        };
+        self.types("type_link")?.type_links.push(link);
+        Ok(())
+    }
+
     fn input(&mut self, raw: Raw<'_>) -> Result<(), Fail> {
         let input = InputRecord {
             path: path(raw.path, "path")?,
@@ -463,13 +707,14 @@ impl Reader {
     }
 }
 
-fn header(raw: Raw<'_>) -> Result<(), Fail> {
+/// Checks the header and returns its version.
+fn header(raw: Raw<'_>) -> Result<u32, Fail> {
     let format = required(raw.format, "format")?;
     if format != FORMAT {
         return Err(format!("unknown export format `{format}`"));
     }
     match required(raw.version, "version")? {
-        VERSION => Ok(()),
+        version @ OLDEST_VERSION..=VERSION => Ok(version),
         other => Err(format!("unsupported export version {other}")),
     }
 }

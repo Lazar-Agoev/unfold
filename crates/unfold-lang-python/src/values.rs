@@ -21,6 +21,7 @@ use ruff_python_ast::{ArgOrKeyword, Expr, ExprCall};
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashMap;
 use unfold_core::vocab::EdgeKind;
+use unfold_core::vocab::Expansion;
 use unfold_engine::facts::{ArgumentFact, CallContext, CallFact, ValueFact, ValueShape};
 
 use crate::ast::arguments;
@@ -63,16 +64,23 @@ impl<'s, 'a> Values<'s, 'a> {
         let arguments = arguments(&call.arguments)
             .enumerate()
             .map(|(position, argument)| {
-                let (value, bound, reference) = match argument {
-                    ArgOrKeyword::Arg(Expr::Starred(starred)) => (&*starred.value, starred.range, false),
-                    ArgOrKeyword::Arg(expr) => (expr, interior, true),
-                    ArgOrKeyword::Keyword(keyword) => (&keyword.value, keyword.range, keyword.arg.is_some()),
+                let (value, bound, expand, keyword) = match argument {
+                    ArgOrKeyword::Arg(Expr::Starred(starred)) => {
+                        (&*starred.value, starred.range, Some(Expansion::Spread), None)
+                    }
+                    ArgOrKeyword::Arg(expr) => (expr, interior, None, None),
+                    ArgOrKeyword::Keyword(keyword) => match &keyword.arg {
+                        Some(name) => (&keyword.value, keyword.range, None, Some(name.id.as_str())),
+                        None => (&keyword.value, keyword.range, Some(Expansion::Keywords), None),
+                    },
                 };
                 let range = self.syntax.range_in(value, bound);
                 ArgumentFact {
                     value: self.value(value, range),
                     position: position as u32,
-                    reference,
+                    reference: expand.is_none(),
+                    expand,
+                    keyword: keyword.map(Into::into),
                 }
             })
             .collect();

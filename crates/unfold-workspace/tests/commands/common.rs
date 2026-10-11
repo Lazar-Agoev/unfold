@@ -98,6 +98,13 @@ pub fn playground(name: &str) -> PathBuf {
         .join(name)
 }
 
+/// The fixture `name` in the repository (`testdata/fixtures/<name>`).
+pub fn fixture(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../testdata/fixtures")
+        .join(name)
+}
+
 impl Harness {
     /// A host with no projects yet.
     pub fn empty(options: WorkspaceOptions) -> Self {
@@ -147,10 +154,26 @@ impl Harness {
         harness
     }
 
+    /// A host over a copy of `testdata/fixtures/<name>`, selected in window 1 and compiled.
+    pub fn compiled_fixture(name: &str) -> Self {
+        let mut harness = Self::empty(options(false));
+        let (project, root) = harness.add_copy(&fixture(name), name);
+        harness.project = project;
+        harness.root = root;
+        harness.ok(1, "select_project", json!({ "project": harness.project }));
+        harness.ok(1, "compile", json!({ "project": harness.project }));
+        harness
+    }
+
     /// Copies playground `name` to `<base>/<folder>` and adds it as a project; its id and folder.
     pub fn add(&self, name: &str, folder: &str) -> (String, PathBuf) {
+        self.add_copy(&playground(name), folder)
+    }
+
+    /// Copies the folder `source` to `<base>/<folder>` and adds it as a project; its id and folder.
+    pub fn add_copy(&self, source: &Path, folder: &str) -> (String, PathBuf) {
         let root = self.base.join(folder);
-        copy_dir(&playground(name), &root);
+        copy_dir(source, &root);
         let added = self
             .trusted("add_project", json!({ "path": root }))
             .expect("add_project");

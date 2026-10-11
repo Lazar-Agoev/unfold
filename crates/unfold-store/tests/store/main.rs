@@ -8,3 +8,4 @@ mod facts;
 mod open;
 mod reads;
 mod search;
+mod types;

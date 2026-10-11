@@ -39,6 +39,15 @@ pub(crate) fn dotted(prefix: &str, name: &str) -> String {
     text
 }
 
+/// Which meaning a name is looked up in: as a runtime value (assignments are followed to their
+/// values), or as a type (an assignment is its own declaration, never followed;
+/// [`super::types`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Meaning {
+    Value,
+    Type,
+}
+
 /// What an expression is proven to be.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Value {
@@ -87,7 +96,7 @@ impl Value {
         }
     }
 
-    fn declared(node: NodeRef, binding: u32) -> Self {
+    pub(crate) fn declared(node: NodeRef, binding: u32) -> Self {
         Self {
             declarations: SmallVec::from_elem(node, 1),
             binding: Some(binding),
@@ -467,6 +476,17 @@ impl Binder<'_> {
 
     /// What an import binds.
     pub(crate) fn import_value(&self, imported: &Imported, seen: &Seen, ctx: &mut Ctx) -> Value {
+        self.import_in(imported, Meaning::Value, seen, ctx)
+    }
+
+    /// What an import binds, its member looked up in `meaning`.
+    pub(crate) fn import_in(
+        &self,
+        imported: &Imported,
+        meaning: Meaning,
+        seen: &Seen,
+        ctx: &mut Ctx,
+    ) -> Value {
         let module = &imported.module;
         if module.ambiguous {
             return Value {
@@ -499,7 +519,7 @@ impl Binder<'_> {
                 module: Some(module.clone()),
                 ..Value::default()
             },
-            Some(member) => self.module_member(module, member, seen, ctx),
+            Some(member) => self.module_member_in(module, member, meaning, seen, ctx),
         }
     }
 
@@ -517,6 +537,18 @@ impl Binder<'_> {
 
     /// A module's member: a module-level binding of each file the module is, or a child module.
     pub(crate) fn module_member(&self, module: &Module, member: Sym, seen: &Seen, ctx: &mut Ctx) -> Value {
+        self.module_member_in(module, member, Meaning::Value, seen, ctx)
+    }
+
+    /// A module's member, its binding looked up in `meaning`.
+    pub(crate) fn module_member_in(
+        &self,
+        module: &Module,
+        member: Sym,
+        meaning: Meaning,
+        seen: &Seen,
+        ctx: &mut Ctx,
+    ) -> Value {
         if module.ambiguous {
             return Value::ambiguous();
         }
@@ -560,7 +592,11 @@ impl Binder<'_> {
                 continue;
             };
             if let Some(binding) = self.program.module_binding(file, member) {
-                values.push(self.binding_value(binding, &mut seen.clone(), ctx));
+                let value = match meaning {
+                    Meaning::Value => self.binding_value(binding, &mut seen.clone(), ctx),
+                    Meaning::Type => self.type_binding(binding, &mut seen.clone(), ctx),
+                };
+                values.push(value);
             }
         }
         match values.len() {

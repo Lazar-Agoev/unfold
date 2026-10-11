@@ -50,3 +50,8 @@ fn calls() {
 fn ambient() {
     check("ambient");
 }
+
+#[test]
+fn types() {
+    check("types");
+}

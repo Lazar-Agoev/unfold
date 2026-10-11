@@ -20,7 +20,7 @@ fn round_trips_to_identical_bytes_and_graph() {
 fn writes_the_documented_records() {
     let text = sample_export();
     let lines: Vec<&str> = text.lines().collect();
-    assert_eq!(lines[0], r#"{"t":"header","format":"unfold-graph","version":1}"#);
+    assert_eq!(lines[0], r#"{"t":"header","format":"unfold-graph","version":2}"#);
     assert!(
         lines[1].starts_with(
             r#"{"t":"file","path":"jobs/tasks.py","language":"python","state":"current","hash":""#
@@ -83,6 +83,7 @@ fn optional_file_fields_round_trip() {
     graph.files[0].blocks.clear();
     graph.files[0].slots.clear();
     graph.files[0].edges.clear();
+    graph.files[0].types = crate::typed::FileTypes::default();
     let text = to_string(&graph);
     assert!(text.contains(r#"{"t":"file","path":"jobs/tasks.py","language":"python","state":"failed","failure":"jobs/tasks.py:1:1: unexpected token"}"#));
     assert_eq!(read(&text).unwrap(), graph);
@@ -93,7 +94,7 @@ fn an_empty_graph_is_just_a_header() {
     let text = to_string(&Graph::default());
     assert_eq!(
         text,
-        "{\"t\":\"header\",\"format\":\"unfold-graph\",\"version\":1}\n"
+        "{\"t\":\"header\",\"format\":\"unfold-graph\",\"version\":2}\n"
     );
     assert_eq!(read(&text).unwrap(), Graph::default());
 }
@@ -115,11 +116,11 @@ fn rejects_malformed_exports_with_line_numbers() {
     assert_eq!(
         error(&good.replacen(
             header,
-            "{\"t\":\"header\",\"format\":\"unfold-graph\",\"version\":2}",
+            "{\"t\":\"header\",\"format\":\"unfold-graph\",\"version\":3}",
             1
         ))
         .message,
-        "unsupported export version 2"
+        "unsupported export version 3"
     );
 
     let without_header: String = good.lines().skip(1).map(|line| format!("{line}\n")).collect();
@@ -193,4 +194,118 @@ fn rejects_records_that_do_not_belong_to_the_current_file() {
         1,
     );
     assert!(error(&target).message.contains("does not follow that entrance"));
+}
+
+#[test]
+fn typed_records_round_trip_to_identical_bytes() {
+    let graph = crate::testkit::sample::typed().build();
+    let text = to_string(&graph);
+    for line in [
+        r#"{"t":"signature","block":"src/charge.ts#function:charge","returns":"Promise<Receipt>","returns_range":[86,102]}"#,
+        r#"{"t":"parameter","block":"src/charge.ts#function:charge","index":1,"kind":"rest","name":"items","type":"Item[]","type_range":[77,83]}"#,
+        r#"{"t":"member","block":"src/cart.ts#interface:Cart","index":1,"kind":"property","name":"coupon","optional":true,"type":"string","type_range":[49,55]}"#,
+        r#"{"t":"member","block":"src/cart.ts#enum:Status","index":0,"kind":"value","name":"Open","value":"\"open\""}"#,
+        r#"{"t":"argument","block":"jobs/settle.py#function:settle","index":1,"kind":"keyword_only","name":"currency","default":true}"#,
+        r#"{"t":"argument","call":"jobs/settle.py#expression_statement[0]/call[0]","index":1,"keyword":"currency","parameter":1}"#,
+        r#"{"t":"result","call":"jobs/settle.py#expression_statement[0]/call[0]","binding":"discard","bound":0}"#,
+        r#"{"t":"type_link","block":"src/cart.ts#interface:Cart","range":[30,36],"text":"CartId","resolution":"resolved","target":"src/cart.ts#type_alias:CartId"}"#,
+        r#"{"t":"type_link","block":"src/charge.ts#function:charge","range":[86,93],"text":"Promise","resolution":"external","module":"global"}"#,
+    ] {
+        let line = line.replace(r#"{"t":"argument","block""#, r#"{"t":"parameter","block""#);
+        assert!(
+            text.lines().any(|written| written == line),
+            "missing {line}\nin:\n{text}"
+        );
+    }
+    let parsed = read(&text).unwrap();
+    assert_eq!(parsed, graph);
+    assert_eq!(to_string(&parsed), text);
+}
+
+#[test]
+fn typed_records_follow_edges_in_their_file() {
+    let text = to_string(&crate::testkit::sample::typed().build());
+    let lines: Vec<&str> = text.lines().collect();
+    let position = |prefix: &str| lines.iter().position(|line| line.starts_with(prefix)).unwrap();
+    let kinds = [
+        "edge",
+        "signature",
+        "parameter",
+        "member",
+        "argument",
+        "result",
+        "type_link",
+    ];
+    let start = position(r#"{"t":"file","path":"src/charge.ts""#);
+    let order: Vec<&str> = lines[start + 1..]
+        .iter()
+        .take_while(|line| !line.starts_with(r#"{"t":"input""#) && !line.starts_with(r#"{"t":"file""#))
+        .map(|line| {
+            let kind = &line[6..];
+            &kind[..kind.find('"').unwrap()]
+        })
+        .filter(|kind| kinds.contains(kind))
+        .collect();
+    let mut sorted = order.clone();
+    sorted.sort_by_key(|kind| kinds.iter().position(|known| known == kind));
+    assert_eq!(order, sorted);
+}
+
+#[test]
+fn version_one_exports_read_without_typed_records() {
+    let mut graph = sample().build();
+    for file in &mut graph.files {
+        file.types = crate::typed::FileTypes::default();
+    }
+    let mut bytes = Vec::new();
+    write_version(&graph, 1, &mut bytes).unwrap();
+    let text = String::from_utf8(bytes).unwrap();
+    assert!(text.starts_with(r#"{"t":"header","format":"unfold-graph","version":1}"#));
+    let (read_back, version) = read_versioned(&text).unwrap();
+    assert_eq!((read_back, version), (graph, 1));
+
+    // Typed records written at version 1 are refused, and writing at version 1 drops them.
+    let typed = to_string(&crate::testkit::sample::typed().build());
+    let downgraded = typed.replacen(r#""version":2"#, r#""version":1"#, 1);
+    let failure = read(&downgraded).unwrap_err();
+    assert!(failure.message.contains("needs export version 2"), "{failure}");
+    let mut bytes = Vec::new();
+    write_version(&crate::testkit::sample::typed().build(), 1, &mut bytes).unwrap();
+    assert!(!String::from_utf8(bytes).unwrap().contains(r#""t":"signature""#));
+}
+
+#[test]
+fn rejects_malformed_typed_records() {
+    let good = to_string(&crate::testkit::sample::typed().build());
+    let falsy = good.replacen(r#""optional":true"#, r#""optional":false"#, 1);
+    assert_eq!(error(&falsy).message, "`optional` is written only when true");
+    let both = good.replacen(r#""parameter":1}"#, r#""parameter":1,"unpaired":"spread"}"#, 1);
+    assert_eq!(
+        error(&both).message,
+        "`parameter` and `unpaired` exclude each other"
+    );
+    let half = good.replacen(r#","returns_range":[86,102]"#, "", 1);
+    assert_eq!(
+        error(&half).message,
+        "`returns` and `returns_range` appear together"
+    );
+    let foreign = good.replacen(
+        r#""binding":"discard""#,
+        r#""binding":"discard","target":"src/cart.ts#interface:Cart""#,
+        1,
+    );
+    assert!(
+        error(&foreign)
+            .message
+            .contains("is not a block of the current file")
+    );
+    let unknown = good.replacen(r#""kind":"rest""#, r#""kind":"varargs""#, 1);
+    assert_eq!(error(&unknown).message, "unknown parameter kind `varargs`");
+    let wrong = good.replacen(r#""binding":"discard""#, r#""binding":"discard","name":"x""#, 1);
+    assert_eq!(
+        error(&wrong).message,
+        "field `name` is not allowed on a `result` record"
+    );
+    let wrong = good.replacen(r#""binding":"discard""#, r#""binding":"discard","bound":"x""#, 1);
+    assert!(error(&wrong).message.starts_with("invalid record"));
 }

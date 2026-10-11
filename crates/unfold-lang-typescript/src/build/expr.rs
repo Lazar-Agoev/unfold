@@ -84,7 +84,7 @@ impl<'a> Builder<'a, '_> {
                 self.expression(node, Label::Right, &it.right, ctx);
             }
             Expression::AwaitExpression(it) => {
-                let node = self.push(parent, label, Cat::Other, span, flags);
+                let node = self.push(parent, label, Cat::Await, span, flags);
                 self.expression(node, Label::Expression, &it.argument, ctx);
             }
             Expression::BinaryExpression(it) => {

@@ -1,5 +1,5 @@
-//! Declarations and module syntax: TypeScript declarations (enums, namespaces, import aliases),
-//! imports, re-exports, and exports.
+//! Declarations and module syntax: TypeScript declarations (namespaces, import aliases; type
+//! declarations are in `types`), imports, re-exports, and exports.
 
 use oxc_ast::ast::{
     Declaration, ExportDefaultDeclarationKind, ModuleDeclaration, StringLiteral, TSModuleReference,
@@ -35,20 +35,16 @@ impl<'a> Builder<'a, '_> {
                 self.class(parent, label, class, head, ctx);
             }
             Declaration::TSTypeAliasDeclaration(it) => {
-                self.push(parent, label, Cat::Type, range(it.span), ctx.flags());
+                let head = Head::new(Cat::TypeAlias).exported(export_start);
+                self.type_alias(parent, label, it, head, ctx);
             }
             Declaration::TSInterfaceDeclaration(it) => {
-                self.push(parent, label, Cat::Type, range(it.span), ctx.flags());
+                let head = Head::new(Cat::Interface).exported(export_start);
+                self.interface(parent, label, it, head, ctx);
             }
             Declaration::TSEnumDeclaration(it) => {
-                let ctx = ctx.ambient(it.declare);
-                let node = self.push(parent, label, Cat::Other, range(it.span), ctx.flags());
-                for member in &it.body.members {
-                    let item = self.push(node, Label::Other, Cat::Other, range(member.span), ctx.flags());
-                    if let Some(initializer) = &member.initializer {
-                        self.expression(item, Label::Initializer, initializer, ctx);
-                    }
-                }
+                let head = Head::new(Cat::Enum).exported(export_start);
+                self.enumeration(parent, label, it, head, ctx);
             }
             Declaration::TSExternalModuleDeclaration(it) => {
                 let ctx = ctx.ambient(it.declare);
@@ -142,7 +138,8 @@ impl<'a> Builder<'a, '_> {
                         self.class(parent, label, class, head, ctx);
                     }
                     ExportDefaultDeclarationKind::TSInterfaceDeclaration(interface) => {
-                        self.push(parent, label, Cat::Type, range(interface.span), ctx.flags());
+                        let head = Head::new(Cat::Interface).exported(start).default_export();
+                        self.interface(parent, label, interface, head, ctx);
                     }
                     _ => {
                         if let Some(expression) = it.declaration.as_expression() {

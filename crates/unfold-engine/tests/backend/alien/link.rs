@@ -595,6 +595,26 @@ impl Linked for AlienLinked<'_> {
         }
     }
 
+    fn class_takes_no_arguments(&self, class: BlockRef) -> bool {
+        let Some(payload) = self.payload(class.file) else {
+            return false;
+        };
+        payload.decls.iter().any(|decl| {
+            matches!(&decl.kind, DeclKind::Class { block, bases, decorated, .. }
+                if *block == class.local && bases.is_empty() && !decorated)
+        })
+    }
+
+    fn type_evidence(&self, reference: unfold_engine::TypeRef) -> Evidence {
+        let Some((scope, name)) = self
+            .payload(reference.file)
+            .and_then(|payload| payload.types.get(reference.index as usize))
+        else {
+            return Evidence::default();
+        };
+        self.lookup(reference.file, *scope, name)
+    }
+
     fn annotation_evidence(&self, declaration: DeclRef) -> Option<Evidence> {
         let decl = self.decl(declaration)?;
         match &decl.kind {
@@ -614,9 +634,15 @@ impl Linked for AlienLinked<'_> {
         };
         let class = |block: u32, ctor: Option<u32>| match context {
             ValueContext::Construct => concrete(ctor.unwrap_or(block)),
-            ValueContext::Reference | ValueContext::Handler => concrete(block),
+            ValueContext::Reference | ValueContext::Handler | ValueContext::Type => concrete(block),
             ValueContext::Call => None,
         };
+        if context == ValueContext::Type {
+            return match &self.decl(declaration)?.kind {
+                DeclKind::Class { block, .. } => class(*block, None),
+                _ => None,
+            };
+        }
         match &self.decl(declaration)?.kind {
             DeclKind::Function { block } | DeclKind::Method { block, .. } | DeclKind::Ctor { block, .. } => {
                 concrete(*block)

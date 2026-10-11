@@ -167,6 +167,7 @@ fn synthetic_file(file: usize) -> FileGraph {
         blocks,
         slots,
         edges,
+        types: unfold_core::FileTypes::default(),
     }
 }
 

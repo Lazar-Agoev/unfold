@@ -1,6 +1,12 @@
 //! Classes: bases, C3 linearization, concreteness (a proven metaclass, no expanded or keyword
 //! headers, concrete bases), member lookup through linearizations and instance fields, `super()`
 //! agreement across every linearization that can reach it, and virtual dispatch.
+//!
+//! A base may also be a builtin exception class ([`crate::stdlib::BUILTIN_EXCEPTIONS`]): it
+//! stands in the linearization as a node of no file ([`NodeRef::builtin_exception`]), with its
+//! own chain up to `BaseException`, and is concrete. A linearization is kept only when every
+//! builtin class follows every user class, so a member the user's classes define is found before
+//! anything the builtins could define; a lookup that reaches a builtin finds nothing.
 
 use std::sync::Arc;
 
@@ -10,7 +16,8 @@ use super::binder::{Binder, ClassTables, Ctx, Guard};
 use super::memo::Mro;
 use super::program::{ExprRef, NodeRef, Sym};
 use super::value::Value;
-use crate::bind::ir::{ClassFact, NodeKind};
+use crate::bind::ir::{ClassFact, ExprKind, NodeKind};
+use crate::stdlib::{BUILTIN_EXCEPTIONS, builtin_exception};
 
 impl Binder<'_> {
     pub(crate) fn class_fact(&self, class: NodeRef) -> Option<&ClassFact> {
@@ -33,8 +40,9 @@ impl Binder<'_> {
             .is_some_and(|invalid| invalid.contains(&member) || invalid.contains(&self.program.known.star))
     }
 
-    /// A class's bases, when every positional base is a proven class (`object` is skipped). An
-    /// expanded base (`*bases`) leaves the bases unknown.
+    /// A class's bases, when every positional base is a proven class (`object` is skipped) or a
+    /// builtin exception class (its stand-in node). An expanded base (`*bases`) leaves the bases
+    /// unknown.
     pub(crate) fn base_classes(&self, class: NodeRef, ctx: &mut Ctx) -> Option<Vec<NodeRef>> {
         let fact = self.class_fact(class)?;
         let mut bases = Vec::new();
@@ -59,6 +67,14 @@ impl Binder<'_> {
             {
                 continue;
             }
+            let written = ExprRef {
+                file: class.file,
+                expr: argument.value,
+            };
+            if let Some(builtin) = self.builtin_exception_base(written, &value) {
+                bases.push(builtin);
+                continue;
+            }
             match value.class {
                 Some(base)
                     if !value.instance
@@ -72,6 +88,81 @@ impl Binder<'_> {
             }
         }
         Some(bases)
+    }
+
+    /// The builtin exception class a base expression names: its proven external identity
+    /// `builtins.<name>`, or a plain name that nothing binds where it is written (no binding,
+    /// no unknown star import), as the builtins table names it.
+    fn builtin_exception_base(&self, base: ExprRef, value: &Value) -> Option<NodeRef> {
+        let name = match &value.external {
+            Some(external) if &*external.module == "builtins" => {
+                if value.ambiguous || value.refusal.is_some() || value.instance {
+                    return None;
+                }
+                &*external.member
+            }
+            Some(_) => return None,
+            None => {
+                let fact = self.program.expr(base)?;
+                let &ExprKind::Name(name) = &fact.kind else {
+                    return None;
+                };
+                let sym = self.program.sym(base.file, name);
+                if self.program.lookup(base.file, fact.scope, sym).is_some()
+                    || self.program.unknown_star(base.file, fact.scope)
+                {
+                    return None;
+                }
+                self.program.text(sym)
+            }
+        };
+        builtin_exception(name).map(|index| NodeRef::builtin_exception(index as u32))
+    }
+
+    /// The linearization of a builtin exception class's stand-in: its chain of bases up to
+    /// `BaseException` (`object` is skipped, as for user classes).
+    fn builtin_mro(builtin: NodeRef) -> Option<Arc<[NodeRef]>> {
+        let mut chain = Vec::new();
+        let mut current = Some(builtin.node as usize);
+        while let Some(index) = current {
+            let &(_, base) = BUILTIN_EXCEPTIONS.get(index)?;
+            chain.push(NodeRef::builtin_exception(index as u32));
+            if chain.len() > BUILTIN_EXCEPTIONS.len() {
+                return None;
+            }
+            current = match base {
+                "" => None,
+                base => Some(builtin_exception(base)?),
+            };
+        }
+        Some(Arc::from(chain))
+    }
+
+    /// Whether constructing `class` without a direct constructor is proven to take no
+    /// arguments: no base but `object`, no keyword (a `metaclass=` could supply its own call),
+    /// no decorator (which could replace the class), and no `__new__` in its body.
+    pub(crate) fn takes_no_arguments(&self, class: NodeRef) -> bool {
+        let Some(fact) = self.class_fact(class) else {
+            return false;
+        };
+        if !fact.decorators.is_empty() || self.class_binding(class, self.program.known.new).is_some() {
+            return false;
+        }
+        let mut ctx = Ctx::new();
+        fact.arguments.iter().all(|argument| {
+            argument.keyword.is_none()
+                && !argument.expansion
+                && self
+                    .identity(
+                        ExprRef {
+                            file: class.file,
+                            expr: argument.value,
+                        },
+                        &mut ctx,
+                    )
+                    .as_deref()
+                    == Some("builtins.object")
+        })
     }
 
     /// The positional, unexpanded bases that are proven classes, whatever the others are.
@@ -168,6 +259,9 @@ impl Binder<'_> {
         let mut path: FxHashSet<NodeRef> = FxHashSet::default();
         let mut frames: Vec<(NodeRef, Option<Vec<NodeRef>>)> = vec![(root, None)];
         let known = |results: &FxHashMap<NodeRef, Mro>, class: NodeRef| {
+            if class.is_builtin() {
+                return Some(Self::builtin_mro(class));
+            }
             results.get(&class).cloned().or_else(|| self.memo_mro(class))
         };
         while let Some((class, bases)) = frames.last_mut() {
@@ -216,7 +310,10 @@ impl Binder<'_> {
                     .map(|&base| known(&results, base).flatten())
                     .collect()
             };
-            let mro = lists.and_then(|lists| merge(class, lists, bases)).map(Arc::from);
+            let mro = lists
+                .and_then(|lists| merge(class, lists, bases))
+                .filter(|mro| builtins_last(mro))
+                .map(Arc::from);
             results.insert(class, mro);
             path.remove(&class);
             frames.pop();
@@ -249,6 +346,9 @@ impl Binder<'_> {
         let mut path: FxHashSet<NodeRef> = FxHashSet::default();
         let mut frames: Vec<(NodeRef, Option<Vec<NodeRef>>)> = vec![(root, None)];
         let known = |results: &FxHashMap<NodeRef, bool>, class: NodeRef| {
+            if class.is_builtin() {
+                return Some(true);
+            }
             results.get(&class).copied().or_else(|| self.memo_concrete(class))
         };
         while let Some((class, bases)) = frames.last_mut() {
@@ -354,6 +454,13 @@ impl Binder<'_> {
         })
         .0
     }
+}
+
+/// Whether every builtin exception stand-in of a linearization follows every user class, so a
+/// lookup meets the user's definitions first.
+fn builtins_last(mro: &[NodeRef]) -> bool {
+    let first = mro.iter().position(|node| node.is_builtin()).unwrap_or(mro.len());
+    mro[first..].iter().all(|node| node.is_builtin())
 }
 
 /// The C3 merge of the bases' linearizations and the bases themselves. A candidate is the first

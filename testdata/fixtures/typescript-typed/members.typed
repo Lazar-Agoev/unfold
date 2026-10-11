@@ -1,0 +1,37 @@
+{"t":"signature","block":"a.ts#class:Model/constructor:constructor"}
+{"t":"signature","block":"a.ts#class:Model/method:method","returns":"void","returns_range":[907,911]}
+{"t":"parameter","block":"a.ts#class:Model/constructor:constructor","index":0,"kind":"positional","name":"owner","type":"User","type_range":[824,828]}
+{"t":"parameter","block":"a.ts#class:Model/constructor:constructor","index":1,"kind":"positional","name":"token","default":true}
+{"t":"parameter","block":"a.ts#class:Model/constructor:constructor","index":2,"kind":"positional","name":"plain","type":"number","type_range":[868,874]}
+{"t":"member","block":"a.ts#interface:Everything","index":0,"kind":"property","name":"name","type":"string","type_range":[131,137]}
+{"t":"member","block":"a.ts#interface:Everything","index":1,"kind":"property","name":"\"quoted-key\"","optional":true,"type":"number","type_range":[156,162]}
+{"t":"member","block":"a.ts#interface:Everything","index":2,"kind":"method","name":"[Symbol.iterator]","type":"(): Iterator<T>","type_range":[183,198]}
+{"t":"member","block":"a.ts#interface:Everything","index":3,"kind":"index","name":"[key: string]","readonly":true,"type":"unknown","type_range":[226,233]}
+{"t":"member","block":"a.ts#interface:Everything","index":4,"kind":"method","name":"method","optional":true,"type":"<U>(a: U, b: T): U","type_range":[244,262]}
+{"t":"member","block":"a.ts#interface:Everything","index":5,"kind":"call","type":"(call: number): string","type_range":[266,288]}
+{"t":"member","block":"a.ts#interface:Everything","index":6,"kind":"construct","type":"(value: string): Everything<T>","type_range":[296,326]}
+{"t":"member","block":"a.ts#interface:Everything","index":7,"kind":"method","name":"size","type":"(): number","type_range":[338,348]}
+{"t":"member","block":"a.ts#type_alias:Shape","index":0,"kind":"property","name":"kind","type":"\"circle\"","type_range":[373,381]}
+{"t":"member","block":"a.ts#type_alias:Shape","index":1,"kind":"property","name":"radius","type":"number","type_range":[391,397]}
+{"t":"member","block":"a.ts#type_alias:Shape","index":2,"kind":"method","name":"area","type":"(): number","type_range":[403,413]}
+{"t":"member","block":"a.ts#enum:Color","index":0,"kind":"value","name":"Red"}
+{"t":"member","block":"a.ts#enum:Color","index":1,"kind":"value","name":"Green","value":"\"green\""}
+{"t":"member","block":"a.ts#enum:Color","index":2,"kind":"value","name":"Blue","value":"compute()"}
+{"t":"member","block":"a.ts#enum:Color","index":3,"kind":"value","name":"[\"Computed\"]","value":"4"}
+{"t":"member","block":"a.ts#class:Model","index":0,"kind":"property","name":"id","type":"string","type_range":[579,585]}
+{"t":"member","block":"a.ts#class:Model","index":1,"kind":"property","name":"count","default":true}
+{"t":"member","block":"a.ts#class:Model","index":2,"kind":"property","name":"optional","optional":true,"type":"Date","type_range":[613,617]}
+{"t":"member","block":"a.ts#class:Model","index":3,"kind":"property","name":"fixed","readonly":true,"default":true,"type":"number","type_range":[637,643]}
+{"t":"member","block":"a.ts#class:Model","index":4,"kind":"property","name":"declared","type":"string","type_range":[669,675]}
+{"t":"member","block":"a.ts#class:Model","index":5,"kind":"property","name":"auto","default":true}
+{"t":"member","block":"a.ts#class:Model","index":6,"kind":"property","name":"#secret","default":true,"type":"string","type_range":[766,772]}
+{"t":"member","block":"a.ts#class:Model","index":7,"kind":"property","name":"[key]","type":"number","type_range":[788,794]}
+{"t":"member","block":"a.ts#class:Model","index":8,"kind":"property","name":"owner","type":"User","type_range":[824,828]}
+{"t":"member","block":"a.ts#class:Model","index":9,"kind":"property","name":"token","readonly":true,"default":true}
+{"t":"member","block":"a.ts#class:Figure","index":0,"kind":"property","name":"kind","type":"string","type_range":[958,964]}
+{"t":"result","call":"a.ts#enum:Color/call[0]","binding":"other"}
+{"t":"result","call":"a.ts#class:Model/constructor:constructor/expression_statement[0]/call[0]","binding":"discard"}
+{"t":"type_link","block":"a.ts#interface:Everything","range":[187,195],"text":"Iterator","resolution":"external","module":"global"}
+{"t":"type_link","block":"a.ts#interface:Everything","range":[313,323],"text":"Everything","resolution":"resolved","target":"a.ts#interface:Everything"}
+{"t":"type_link","block":"a.ts#class:Model","range":[613,617],"text":"Date","resolution":"external","module":"global"}
+{"t":"type_link","block":"a.ts#class:Model/constructor:constructor","range":[824,828],"text":"User","resolution":"unresolved","reason":"unknown_name"}

@@ -51,6 +51,9 @@ pub struct CommitStats {
     pub slots_written: u64,
     /// Edges written.
     pub edges_written: u64,
+    /// Typed records written (signatures, parameters, members, arguments, results, and type
+    /// links).
+    pub typed_records_written: u64,
     /// Definitions written.
     pub definitions_written: u64,
     /// Entrances inserted or replaced.

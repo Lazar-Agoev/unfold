@@ -1,5 +1,6 @@
 //! The binder pass over expressions and patterns: calls (the mutation passes' inputs),
-//! lambdas, comprehensions and their scopes, assignment expressions, and pattern captures.
+//! awaited calls, lambdas, comprehensions and their scopes, assignment expressions, and pattern
+//! captures.
 
 use ruff_python_ast::{Comprehension, Expr, Pattern};
 
@@ -136,6 +137,15 @@ impl<'a> Builder<'a> {
                 self.visit([(&*named.target, ctx), (&*named.value, ctx)]);
             }
             _ => {
+                if let Expr::Await(_) = expr {
+                    let mut awaited = expr;
+                    while let Expr::Await(inner) = awaited {
+                        awaited = &inner.value;
+                    }
+                    if let Expr::Call(_) = awaited {
+                        self.awaited.insert(address(awaited));
+                    }
+                }
                 let mut children: Vec<&'a Expr> = Vec::new();
                 expr_children(expr, &mut children);
                 self.visit(children.into_iter().map(|child| (child, ctx)));

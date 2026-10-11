@@ -24,7 +24,7 @@ use crate::error::Result;
 
 mod regions;
 mod statement;
-use crate::index::{file_owners, file_subtree_ends, to_u32};
+use crate::index::{file_owners, file_subtree_ends, is_type_only, to_u32};
 use crate::notes::note;
 use crate::source::SourceState;
 
@@ -116,7 +116,9 @@ pub(super) fn build(
     let ends = file_subtree_ends(&file.blocks);
     let mut children: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     for local in root + 1..ends[root as usize] {
-        if let Some(parent) = file.blocks[local as usize].parent {
+        let block = &file.blocks[local as usize];
+        // Type declarations are not drawn: they are not statements of the path.
+        if let Some(parent) = block.parent.filter(|_| !is_type_only(block.kind)) {
             children.entry(parent).or_default().push(local);
         }
     }

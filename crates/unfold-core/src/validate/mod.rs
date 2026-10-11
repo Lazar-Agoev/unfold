@@ -2,7 +2,7 @@
 //!
 //! Every compile and update validates the new graph before committing it. The validator checks
 //! the graph's own invariants (vocabularies per language, ranges, preorder, slots, occurrence
-//! edges, references, targets, reasons and modules, entrances, keys) and, when the caller
+//! edges, references, targets, reasons and modules, typed records, entrances, keys) and, when the caller
 //! supplies them, the source snapshots the graph came from and an independent [`Census`] of
 //! token boundaries, call sites, and module dependencies from each language front end.
 //!
@@ -12,6 +12,7 @@ mod census;
 mod edges;
 mod entrances;
 mod files;
+mod types;
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
@@ -62,6 +63,38 @@ pub enum Subject {
         /// The target's position.
         position: u32,
     },
+    /// The signature of a function-like block.
+    Signature(Key),
+    /// A parameter record.
+    Parameter {
+        /// The function-like block.
+        block: Key,
+        /// The parameter's index.
+        index: u32,
+    },
+    /// A member record.
+    Member {
+        /// The type declaration or class.
+        block: Key,
+        /// The member's index.
+        index: u32,
+    },
+    /// An argument record.
+    Argument {
+        /// The call or construction.
+        call: Key,
+        /// The argument's index.
+        index: u32,
+    },
+    /// The result record of a call or construction.
+    Result(Key),
+    /// A type link.
+    TypeLink {
+        /// The block it is sourced at.
+        block: Key,
+        /// The written name's range.
+        range: ByteRange,
+    },
 }
 
 impl fmt::Display for Subject {
@@ -84,6 +117,12 @@ impl fmt::Display for Subject {
             Self::Input(path) => write!(f, "input {path}"),
             Self::Entrance(key) => write!(f, "entrance {key}"),
             Self::Target { entrance, position } => write!(f, "target {position} of {entrance}"),
+            Self::Signature(block) => write!(f, "signature of {block}"),
+            Self::Parameter { block, index } => write!(f, "parameter {index} of {block}"),
+            Self::Member { block, index } => write!(f, "member {index} of {block}"),
+            Self::Argument { call, index } => write!(f, "argument {index} of {call}"),
+            Self::Result(call) => write!(f, "result of {call}"),
+            Self::TypeLink { block, range } => write!(f, "type link {range} of {block}"),
         }
     }
 }
@@ -166,12 +205,14 @@ impl Sources for BTreeMap<RepoPath, Snapshot> {
 pub struct Validator<'a> {
     sources: Option<&'a dyn Sources>,
     censuses: Vec<&'a dyn Census>,
+    untyped: bool,
 }
 
 impl fmt::Debug for Validator<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Validator")
             .field("sources", &self.sources.is_some())
+            .field("untyped", &self.untyped)
             .field(
                 "censuses",
                 &self
@@ -198,6 +239,13 @@ impl<'a> Validator<'a> {
         self
     }
 
+    /// Doesn't require typed records: for a graph read from a version-1 export, which predates
+    /// them. Typed records that are present are still checked.
+    pub fn without_typed_records(mut self) -> Self {
+        self.untyped = true;
+        self
+    }
+
     /// Also checks the files of `census.language()` against that census.
     pub fn with_census(mut self, census: &'a dyn Census) -> Self {
         self.censuses.push(census);
@@ -220,12 +268,17 @@ impl<'a> Validator<'a> {
                 let mut checker = Checker::new(graph, self.sources, &index);
                 files::check(&mut checker, file);
                 edges::check(&mut checker, file);
-                if let Some(census) = self
+                types::check(&mut checker, file, !self.untyped);
+                let census = self
                     .censuses
                     .iter()
                     .find(|census| census.language() == file.file.language)
-                {
-                    census::check(&mut checker, file, *census);
+                    .copied();
+                if let Some(census) = census {
+                    census::check(&mut checker, file, census);
+                }
+                if census.is_some() || self.sources.is_some() {
+                    types::check_text_ranges(&mut checker, file, census);
                 }
                 checker.violations
             })
@@ -393,3 +446,5 @@ impl<'g> Checker<'g> {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod typed_tests;

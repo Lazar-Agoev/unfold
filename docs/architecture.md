@@ -718,6 +718,30 @@ CREATE TABLE edges (
 ) WITHOUT ROWID;
 CREATE INDEX edges_by_target ON edges (target_key_id);
 
+-- Typed records (docs/graph-model.md, "Typed records"), written and replaced per file like edges.
+CREATE TABLE signatures (file_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL,
+  returns TEXT, returns_start INTEGER, returns_end INTEGER,
+  PRIMARY KEY (file_id, block_local_id)) WITHOUT ROWID;
+CREATE TABLE parameters (file_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL, idx INTEGER NOT NULL,
+  kind TEXT NOT NULL, name TEXT, flags INTEGER NOT NULL,   -- optional (1) | default (2)
+  type TEXT, type_start INTEGER, type_end INTEGER,
+  PRIMARY KEY (file_id, block_local_id, idx)) WITHOUT ROWID;
+CREATE TABLE members (file_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL, idx INTEGER NOT NULL,
+  kind TEXT NOT NULL, name TEXT, flags INTEGER NOT NULL,   -- optional (1) | readonly (2) | default (4)
+  type TEXT, type_start INTEGER, type_end INTEGER, value TEXT,
+  PRIMARY KEY (file_id, block_local_id, idx)) WITHOUT ROWID;
+CREATE TABLE arguments (file_id INTEGER NOT NULL, call_local_id INTEGER NOT NULL, idx INTEGER NOT NULL,
+  expand TEXT, keyword TEXT, parameter INTEGER, unpaired TEXT, bound INTEGER,
+  PRIMARY KEY (file_id, call_local_id, idx)) WITHOUT ROWID;
+CREATE TABLE results (file_id INTEGER NOT NULL, call_local_id INTEGER NOT NULL,
+  binding TEXT NOT NULL, awaited INTEGER NOT NULL, target_local_id INTEGER, position INTEGER,
+  bound INTEGER, PRIMARY KEY (file_id, call_local_id)) WITHOUT ROWID;
+CREATE TABLE type_links (file_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL, seq INTEGER NOT NULL,
+  start_byte INTEGER NOT NULL, end_byte INTEGER NOT NULL, text TEXT NOT NULL,
+  resolution TEXT NOT NULL, target_key_id INTEGER, reason TEXT, module TEXT,
+  PRIMARY KEY (file_id, block_local_id, seq)) WITHOUT ROWID;
+CREATE INDEX type_links_by_target ON type_links (target_key_id);   -- "used in N places"
+
 CREATE TABLE entrances (
   id INTEGER PRIMARY KEY,
   key_id INTEGER NOT NULL UNIQUE,

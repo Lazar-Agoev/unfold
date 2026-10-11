@@ -43,6 +43,7 @@ fn exports_are_identical_across_threads_and_input_orders() {
         "playgrounds/ts-orders",
         "fixtures/typescript-evidence/scripts",
         "fixtures/typescript-evidence/c2-objects",
+        "fixtures/typed-lines/ts",
     ] {
         let root = testdata_dir().join(folder);
         let files = sources(&root);

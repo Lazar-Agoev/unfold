@@ -1,5 +1,5 @@
 //! Per-file extraction: parse strictly with oxc, convert to the normalized syntax, drive the
-//! shared selection, and record values, occurrences, the payload, and the census.
+//! shared selection, and record values, occurrences, typed facts, the payload, and the census.
 //!
 //! Parsing is strict: a file with any syntax diagnostic fails with the first diagnostic's message
 //! and byte offset, and a recovered tree is never used. Declaration files (`.d.ts`, `.d.mts`,
@@ -16,7 +16,7 @@ use oxc_span::SourceType;
 use serde::{Deserialize, Serialize};
 use unfold_core::{RepoPath, Snapshot};
 use unfold_engine::SourceFailure;
-use unfold_engine::facts::{FileFacts, GraphFacts};
+use unfold_engine::facts::{FileFacts, GraphFacts, TypeFacts, TypeRefFact};
 use unfold_engine::select;
 
 use crate::bind;
@@ -29,6 +29,7 @@ use crate::payload::Payload;
 use crate::sites;
 use crate::stack::{self, StackError};
 use crate::syntax::NONE;
+use crate::typed;
 use crate::values;
 
 /// Inputs that shape a file's facts besides its bytes. Every field is part of the settings hash.
@@ -170,6 +171,7 @@ fn extract_here(
         block_of[node as usize] = local;
     })
     .map_err(|error| failure(error.to_string(), None))?;
+    let records = typed::records(&syntax, text, &block_of, selection.blocks());
     let mut table = values::occurrences(&syntax, text, &block_of);
     let jsx = source_type.is_jsx() && module_syntax::uses_jsx(&parsed.program);
     let module = module_syntax::collect(
@@ -188,7 +190,7 @@ fn extract_here(
     // Sites add values (a route's array elements), so they come before binding, which gives
     // every recorded value its expression.
     let sites = sites::collect(&syntax, text, &block_of, &mut table);
-    let binding = bind::bind(&input, &mut table);
+    let (binding, type_sites) = bind::bind(&input, &mut table, records.linked);
     let occurrences = table.finish();
     let payload = Payload {
         values: occurrences.syntax,
@@ -205,6 +207,26 @@ fn extract_here(
         occurrences.imports,
     )
     .map_err(|error| failure(error.to_string(), None))?;
+    let type_refs = type_sites
+        .iter()
+        .map(|site| {
+            let name = text
+                .get(site.range.start as usize..site.range.end as usize)
+                .unwrap_or_default();
+            TypeRefFact::new(site.range, name, site.qualified)
+        })
+        .collect();
+    let types = TypeFacts::new(
+        graph.blocks(),
+        records.signatures,
+        records.parameters,
+        records.members,
+        records.results,
+        type_refs,
+    );
+    let graph = graph
+        .with_types(types)
+        .map_err(|error| failure(error.to_string(), None))?;
     let payload = payload
         .to_bytes()
         .map_err(|error| failure(format!("cannot encode TypeScript facts: {error}"), None))?;

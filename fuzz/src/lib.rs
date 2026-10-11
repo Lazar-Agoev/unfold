@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use unfold_core::vocab::{FileState, InputRole, Language as LanguageId, Reason};
 use unfold_core::{FileGraph, FileRecord, Graph, InputRecord, RepoPath, Snapshot};
-use unfold_engine::edges::program_edges;
+use unfold_engine::edges::{FileLinks, program_links};
 use unfold_engine::entrances::{TargetResolver, assemble, detect};
 use unfold_engine::settings::Settings;
 use unfold_engine::validate::validate_graph;
@@ -163,10 +163,10 @@ pub fn compile(program: &Program) -> Result<Graph, String> {
         .iter()
         .map(|linked| Resolver::new(&facts, *linked))
         .collect();
-    let mut edges = vec![Vec::new(); facts.files().len()];
+    let mut links = vec![FileLinks::default(); facts.files().len()];
     for resolver in &resolvers {
-        for (file, file_edges) in program_edges(resolver).map_err(|error| format!("resolve: {error}"))? {
-            edges[file.index()] = file_edges;
+        for (file, file_links) in program_links(resolver).map_err(|error| format!("resolve: {error}"))? {
+            links[file.index()] = file_links;
         }
     }
     let candidates = resolvers
@@ -178,7 +178,7 @@ pub fn compile(program: &Program) -> Result<Graph, String> {
         .map_err(|error| format!("assemble: {error}"))?;
 
     let mut file_graphs = Vec::with_capacity(facts.files().len());
-    for ((id, file), edges) in facts.iter().zip(edges) {
+    for ((id, file), links) in facts.iter().zip(links) {
         let record = records[&file.path].clone();
         let Some(file_facts) = &file.facts else {
             file_graphs.push(FileGraph {
@@ -186,6 +186,7 @@ pub fn compile(program: &Program) -> Result<Graph, String> {
                 blocks: Vec::new(),
                 slots: Vec::new(),
                 edges: Vec::new(),
+                types: unfold_core::FileTypes::default(),
             });
             continue;
         };
@@ -194,7 +195,7 @@ pub fn compile(program: &Program) -> Result<Graph, String> {
             .find(|linked| linked.language() == file.language);
         let graph = file_facts
             .graph
-            .linked_file_graph(record, edges, |local| {
+            .linked_file_graph(record, links, |local| {
                 owner.is_some_and(|linked| linked.keeps_import(BlockRef { file: id, local }))
             })
             .map_err(|error| format!("conditional imports of {}: {error}", file.path))?;
@@ -270,7 +271,7 @@ pub fn link_decoded(facts: FileFacts) {
         };
         let linked = language.link(&program, &project);
         let resolver = Resolver::new(&program, linked.as_ref());
-        let _edges = program_edges(&resolver);
+        let _links = program_links(&resolver);
         let candidates = detect(&resolver, &settings);
         let _entrances = assemble(&program, &[&resolver], &NoFolder, candidates);
     }

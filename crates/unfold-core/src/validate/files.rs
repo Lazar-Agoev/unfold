@@ -52,10 +52,15 @@ fn check_record<'g>(checker: &mut Checker<'g>, file: &FileGraph) -> Option<&'g S
             }
         }
         FileState::Failed => {
-            if record.hash.is_some() || has_blocks || !file.slots.is_empty() || !file.edges.is_empty() {
+            if record.hash.is_some()
+                || has_blocks
+                || !file.slots.is_empty()
+                || !file.edges.is_empty()
+                || !file.types.is_empty()
+            {
                 checker.report(
                     subject(),
-                    "a failed file has no facts: no hash, blocks, slots, or edges",
+                    "a failed file has no facts: no hash, blocks, slots, edges, or typed records",
                 );
             }
             if record.failure.is_none() {

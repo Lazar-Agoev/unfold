@@ -1,16 +1,16 @@
 # Python
 
 This document describes how `crates/unfold-lang-python` turns Python files into blocks, slots,
-values, occurrences, and resolved edges. It carries over the proof of concept's Python front end
+values, occurrences, typed records, and resolved edges. It carries over the proof of concept's Python front end
 (`frontend/python/{parser,mapping,token-census,binder,modules,index}.ts`, `source/python-projects.ts`,
 and the "Python-specific schema 3 rules" of its `docs/format.md`) onto Ruff's parser, with Unfold's
 byte offsets. The shared rules (block
 selection, roles, keys, slots, validation) are in [the graph model](../graph-model.md); this file
 covers what is specific to Python.
 
-Status: structure, the binder, and the entrance detectors are complete; the `py-orders` playground's whole
-graph (files, blocks, slots, edges, entrances, targets, and inputs) equals the proof of concept's
-([Parity](#parity-with-the-proof-of-concept)). The detectors (`pyproject.script`, `fastapi.route`,
+Status: structure, the binder, the typed records ([Typed records](#typed-records)), and the entrance
+detectors are complete; the `py-orders` playground's whole graph (files, blocks, slots, edges, entrances,
+targets, and inputs) equals the proof of concept's ([Parity](#parity-with-the-proof-of-concept)). The detectors (`pyproject.script`, `fastapi.route`,
 `celery.task`, `apscheduler.job`) are described in [entrances](../entrances.md#python-detectors).
 
 ## Files and parsing
@@ -202,6 +202,154 @@ These three proofs stay per file, because they decide which blocks exist and ext
 file; everything else the binder decides over the whole program. See [Known limits](#known-limits)
 for the cross-file effects they can't see.
 
+## Typed records
+
+Each file also records what its calls send and return and what its annotations name
+([typed records](../graph-model.md#typed-records)). Signatures, parameters, members, and call results
+come from the selection walk (`src/typed.rs`); argument shapes from the value table (`src/values.rs`);
+the type names of annotations from the binder pass (`src/bind/types.rs`), which knows each
+annotation's scope. Only what is written is recorded; nothing is inferred.
+
+### Signatures and parameters
+
+Every `def` (async too) and `lambda` has one signature. Its `returns` is the expression after `->` as
+written, with the `return_type` slot's range (parentheses included); a lambda has none.
+
+Every parameter slot has one parameter record, in Ruff's order, which is the slots' order:
+
+| Ruff's `Parameters` | Kind |
+| --- | --- |
+| `posonlyargs` (before `/`) | `positional_only` |
+| `args` | `positional` |
+| `vararg` (`*args`) | `rest` |
+| `kwonlyargs` (after `*` or `*args`) | `keyword_only` |
+| `kwarg` (`**kwargs`) | `keywords` |
+
+`name` is the identifier (NFKC, as keyword arguments are, so a keyword pairs with the parameter it
+names); `default` is set when a default is written; `type` is the annotation as written, token-exact
+inside the slot. Receivers are ordinary parameters (`self` of a method, `cls` of a class method).
+Python parameters are never `optional`.
+
+### Members
+
+A class's members are the annotated assignments to a plain name written directly in its body
+(`id: str`, `total: Money = Money(0)`), in source order, each of kind `property` with `default` when
+a value is written and `type` the annotation. Decorators and bases don't matter: a `@dataclass`, a
+`TypedDict`, a pydantic `BaseModel`, a `NamedTuple`, an attrs class, and a plain class with annotations
+record the same thing. Not members: unannotated assignments, methods, nested classes, annotated
+assignments nested in another statement (`if`, `try`), parenthesized targets (`(x): int`, which Python
+doesn't record as the class's annotation), and attribute targets (`self.x: int` in a method).
+
+### Call results
+
+Every call block has one result: where its value lands once parentheses (which Ruff doesn't keep) and
+`await`s are unwrapped.
+
+| Binding | When the call is exactly |
+| --- | --- |
+| `variable` | the value of an assignment (for `a = b = f()`, the chain's innermost level, `variable:b/variable:a`), an annotated assignment (`x: T = f()`), or an assignment expression (`(x := f())`); `target` is that `variable` block |
+| `return` | a `return`'s value, or a lambda's body |
+| `argument` | a positional argument or a keyword argument's value of another call; `target` is the outer call, `position` its argument slot |
+| `discard` | an expression statement's value |
+| `other` | anything else: an augmented assignment's value, `*f()` and `**f()` arguments, a receiver (`f().x`), an operand, a condition, a `raise`, a decorator, a class base or keyword, a `type` statement's value, a `yield`, ... |
+
+`awaited` is set when an `await` applies to the call directly (through nested `await`s), whatever the
+binding: `x = await f()` is `variable`, `(await f()).x` is `other`, both awaited.
+
+### Arguments
+
+Every argument slot of a call has an argument record: `expand` is `spread` for `*x` and `keywords` for
+`**x`; `keyword` is a keyword argument's name. Pairing them with the target's parameters is the
+engine's ([pairing](../graph-model.md#pairing)); the one question it asks Python is how many leading
+parameters the call binds itself ([Bound parameters](#bound-parameters)).
+
+### Type names
+
+Every type name written in a recorded annotation gets one type link. The recorded annotations are
+parameter annotations, return annotations, and the annotation of every annotated assignment anywhere
+(`x: T` in a function or module, class members, `self.x: T`).
+
+| Written | Type names |
+| --- | --- |
+| `Cart` | `Cart` |
+| `models.Cart`, `typing.Optional` | the whole chain as one qualified name; its root must be a name |
+| `dict[str, Cart]`, `Optional[list[Cart]]` | the subscript's value and every element of its slice, nested |
+| `Cart \| None` | both sides of `\|` |
+| `Callable[[Cart], Receipt]`, `tuple[*Ts]` | the items of lists and tuples, and starred values |
+| `"Cart"`, `"models.Cart"` | a string whose whole content is a dotted name, written without escapes: the name inside the quotes |
+
+Not links: `None`, `...` and other literals; the arguments of a subscript spelled `Literal[...]` (written
+`Literal` or `<anything>.Literal`), and every argument after the first of one spelled `Annotated[...]` (the
+spelling only skips links, it never makes one; `Literal` and `Annotated` themselves are linked); calls,
+lambdas, and any other expression; any other string (`"Cart | None"`, `"list[Cart]"`, `"not a name"`); and
+names bound to a PEP 695 type parameter of an enclosing `def`, `class`, or `type` statement
+(`def first[T](items: list[T]) -> T`), which extraction decides lexically: the nearest scope that writes
+the name, by Python's lookup rules, is a type-parameter scope.
+
+Each type name carries a binder expression (a name or member chain; for a string, one synthesized from
+its dotted name) evaluated where Python evaluates the annotation: a `def`'s annotations in its
+type-parameter scope or else the enclosing scope (so a method's annotations see its class body), an
+annotated assignment's in its own scope (a class member's in the class body). The payload's `types`
+table holds these expressions, aligned with the file's type-reference facts.
+
+### Type resolution
+
+Type links resolve through the shared value policy in the `type` context (`Linked::type_evidence`,
+`src/link/types.rs`). A name is looked up as for values, but its binding is read in the type meaning:
+
+| Binding | Denotes |
+| --- | --- |
+| `class` | the class, decorated or not (a `@dataclass` class is its type); resolved |
+| `def` | the function's declaration, which is no type: `not_concrete` |
+| import | followed: an indexed module's member is looked up in the type meaning again; an external module labels it (`from typing import Optional` → `python:typing`, `from pydantic import BaseModel` → `pydantic`) |
+| assignment, parameter, or any other write | that declaration, never its value: `Money = Decimal` and `T = TypeVar("T")` are `not_concrete` |
+| competing writes | as for values: a rebound name is `mutable_binding`, competing imports `ambiguous` |
+| none | `ambiguous` under a star import with unknown names; external `builtins` (`python:builtins`) for a name typeshed's `builtins` defines; otherwise nothing, so `unknown_name` |
+
+A qualified name resolves its receiver in the type meaning too, then the member: a module's member as
+above (`typing.Optional` → `python:typing`, `models.Cart` → the class), an external origin's as a longer
+path, a class's (`Outer.Inner`) through its linearization, or its own body when the linearization is
+unknown; a member written from outside the class is `dynamic`, a missing one `unknown_receiver`.
+
+The builtins the type meaning knows are every public top-level name typeshed's `stdlib/builtins.pyi`
+defines (its classes, functions, and module-level aliases, conditional ones included; `_`-prefixed
+names and imports excluded): 150 names, listed in `stdlib::TYPE_BUILTIN_NAMES` from typeshed commit
+`a205439338a4ad3debec1eeae7d300e3781c066d`, the commit the standard-library inventory is pinned to.
+Values keep the proof of concept's shorter list of builtin names.
+
+### Bound parameters
+
+Pairing asks how many of the target's leading parameters the call binds itself
+(`Linked::bound_parameters`). Python answers from the binder's view of the callee, the same one the
+call's resolution used (a callable instance is called through `__call__`), and the target's proven
+decorators:
+
+| Call | Bound |
+| --- | --- |
+| A construction (`Gateway(...)`) reaching the class's `__init__` | 1 |
+| A `staticmethod`, however it is reached | 0 |
+| A `classmethod` through the class, `cls`, an instance, or `super()` | 1 |
+| Any other function through an instance (`gateway.charge(...)`, `self.charge(...)`) or `super().m(...)` | 1 |
+| Any other function through a class or `cls` (`Gateway.charge(gateway, ...)`) | 0 |
+| A plain function, called by name or through a module | 0 |
+| A `classmethod` called by its bare name (in its class body) | not proven |
+
+A function stored on a class (`charge = helper`) is bound like a method when reached through an
+instance, as Python binds it. When the answer isn't proven, every argument of the call is
+`unpaired: receiver`. The answer is recorded on the call's result (`bound`), so a contract leaves out
+exactly the parameters the call binds.
+
+A callable passed as an argument gets the same answer for the passed value, without construction
+(`Linked::reference_bound_parameters`), recorded on the argument (`bound`): `run(gateway.ping)`
+binds the instance (1), `run(Gateway.ping)` nothing (0), `run(Gateway.build)` of a `classmethod`
+the class (1), and a `classmethod` passed by its bare name in its class body isn't proven (no
+count).
+
+A construction whose class has no `__init__` of its own targets the class. Its arguments are
+`no_parameter` only when the class is proven to take nothing (`Linked::class_takes_no_arguments`):
+no base but `object`, no keyword (a `metaclass=` could supply its own call), no decorator, and no
+`__new__` in its body. Any other class's arguments are `no_signature`.
+
 ## Census
 
 Validation compares every Python file with an independent census, computed from a fresh run of
@@ -231,8 +379,8 @@ as code.
 
 ## Payload
 
-The private per-file payload (postcard, versioned by `PAYLOAD_VERSION`, which the producer version and
-so the facts-cache key include) holds the census, the written form of every runtime import (module,
+The private per-file payload (postcard, versioned by `PAYLOAD_VERSION`, currently 5, which the producer
+version `…+payload.5` and so the facts-cache key include) holds the census, the written form of every runtime import (module,
 `as` names, level; for a child candidate its `from` import, name, and declaration), aligned with the
 file's import facts, and the binder's facts (`bind::ir::BindFacts`):
 
@@ -244,6 +392,7 @@ file's import facts, and the binder's facts (`bind::ir::BindFacts`):
 | Expressions | What binding evaluates, in a closed vocabulary: names, member accesses, calls (callee, written arguments, enclosing function), subscripts (with a literal key), `await`, ternaries, string literals, list/tuple and dict displays, `*x` items (read only by the detectors' negative census), lambdas, chained-assignment levels; anything else is opaque |
 | Writes and bindings | The complete write census, already redirected by `global`/`nonlocal` |
 | Value table | The expression of each value-table entry |
+| Type names | The expression of each written type name, aligned with the file's type-reference facts ([Type names](#type-names)) |
 | Star imports, effects | Star imports to expand, and the mutation passes' inputs in preorder: attribute and item targets, augmented targets, calls |
 
 Extraction never reads another file; linking reads only these facts (it never parses).
@@ -347,10 +496,24 @@ unbound name is `unknown_name`.
 
 ### Classes and C3
 
-- **Bases.** A class's bases must all be proven classes (`object` is skipped); then its C3
-  linearization is computed (iteratively, so deep hierarchies can't exhaust the stack). Unknown or
-  inconsistent bases leave no linearization, and member lookup through it finds nothing (an
-  abstract-only own member is `not_concrete`).
+- **Bases.** A class's bases must all be proven classes (`object` is skipped) or builtin exception
+  classes; then its C3 linearization is computed (iteratively, so deep hierarchies can't exhaust
+  the stack). Unknown or inconsistent bases leave no linearization, and member lookup through it
+  finds nothing (an abstract-only own member is `not_concrete`).
+- **Builtin exception bases.** `BaseException` and every class of typeshed's `builtins` that derives
+  from it (`stdlib::BUILTIN_EXCEPTIONS`, 66 classes with their single base, at the same typeshed
+  commit as the inventory below; `BaseExceptionGroup` and `ExceptionGroup` are left out, since
+  their `__new__` decides an instance's class) count as proven, concrete bases: each has metaclass
+  `type` and constructs through `BaseException`'s standard `__new__`. A base names one when its
+  proven identity is `builtins.<name>`, or when it is a plain name nothing binds where it is
+  written (and no star import with unknown names is in scope). Each stands in the linearization
+  with its own chain up to `BaseException`, and a linearization is kept only when every builtin
+  follows every user class, so a member the user's classes define is found first. A lookup that
+  reaches a builtin finds nothing (the builtins' own members are not known), and `super()` past a
+  builtin is `unsupported`. So `raise CardDeclined(...)` with `class CardDeclined(PaymentError)`
+  and `class PaymentError(Exception)` is a `constructs` edge to `CardDeclined.__init__`, while
+  `class Mixed(ValueError, Mixin)`, whose `Mixin` follows the builtins, still constructs (a class
+  without `__init__` is its own target) but looks no member up through its bases.
 - **Concreteness.** A class is concrete when no decorator wraps it, its header has no expansion and
   no keyword but a `metaclass` proven to be `builtins.type`, and its bases are concrete. Calling a
   proven concrete class constructs an instance: the occurrence edge becomes `constructs`, resolved in
@@ -399,7 +562,8 @@ attribute (`functools.cache = replacement`) disproves its identity.
 Argument positions are written ordinals counting positional, starred, keyword, and `**` arguments;
 parameter positions count every named parameter, receivers included. An unresolved `parameter` call
 records the owner's parameter position; matching ordinals never bind a caller's argument to a
-parameter.
+parameter. Which parameter an argument fills is pairing's, by Python's calling rules
+([Bound parameters](#bound-parameters)).
 
 ### Provenance and locators
 
@@ -437,6 +601,19 @@ means listing a newer typeshed's `stdlib/` folder and recording its commit.
   chains); a longer chain withholds its answer.
 - **Pattern captures** (`case P() as x`, `case {**rest}`) are writes, where the proof of concept
   missed them (a conservative fix: they can only withhold targets).
+- **Typed records are written types only.** Nothing is inferred: an unannotated parameter has no
+  type, a `return` without `->` has none, and generic substitution, overloads (pairing uses the
+  implementation's parameters), and the types a decorator, metaclass, or dataclass transform
+  produces are not computed. `@overload` signatures are recorded like any `def`.
+- **Not recorded as type names:** the value of a `type X = ...` statement and the bounds and defaults
+  of PEP 695 type parameters (none of these is a recorded annotation), types passed to calls
+  (`TypeVar("T", bound=Cart)`, `NewType("Id", int)`, `cast(Cart, x)`, a functional `TypedDict(...)`),
+  class bases and keywords, and string annotations other than a dotted name.
+- **Type names are decided per file.** Whether a subscript is spelled `Literal` or `Annotated` is
+  read from its spelling, and PEP 695 type parameters from the file's scopes; a module that rebinds
+  `Literal` changes neither.
+- **Members of other shapes** (attrs `x = attr.ib()`, pydantic `Field` without an annotation,
+  `__slots__`, properties) are not members: only annotated names are.
 
 ## Entrance detectors and problems
 

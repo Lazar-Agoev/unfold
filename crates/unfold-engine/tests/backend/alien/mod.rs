@@ -19,7 +19,7 @@ use unfold_core::highlight::{HighlightSpan, Highlighter, TokenClass};
 use unfold_core::validate::Violation;
 use unfold_core::vocab::{BlockKind, EdgeKind, FileState, InputRole, Language as LanguageId};
 use unfold_core::{Block, Edge, Entrance, FileGraph, FileRecord, Graph, InputRecord, RepoPath, Snapshot};
-use unfold_engine::edges::{self, program_edges};
+use unfold_engine::edges::{self, program_links};
 use unfold_engine::entrances::{self, TargetResolver};
 use unfold_engine::settings::{Settings, SettingsHash, SettingsHasher};
 use unfold_engine::validate::validate_graph;
@@ -252,12 +252,12 @@ impl Project {
         };
         let linked = alien.link(&program, &project_inputs);
         let resolver = Resolver::new(&program, linked.as_ref());
-        let mut edges: BTreeMap<_, _> = program_edges(&resolver).expect("edges").into_iter().collect();
+        let mut links: BTreeMap<_, _> = program_links(&resolver).expect("links").into_iter().collect();
         // Resolving one file on this thread agrees with the parallel whole-program pass.
-        for (file, file_edges) in &edges {
+        for (file, file_links) in &links {
             assert_eq!(
-                &edges::file_edges(&resolver, *file).expect("file edges"),
-                file_edges
+                &edges::file_links(&resolver, *file).expect("file links"),
+                file_links
             );
         }
         let graphs: Vec<FileGraph> = program
@@ -267,7 +267,7 @@ impl Project {
                 match &entry.facts {
                     Some(facts) => facts
                         .graph
-                        .linked_file_graph(record, edges.remove(&id).unwrap_or_default(), |local| {
+                        .linked_file_graph(record, links.remove(&id).unwrap_or_default(), |local| {
                             linked.keeps_import(unfold_engine::BlockRef { file: id, local })
                         })
                         .expect("renumbered facts"),
@@ -276,6 +276,7 @@ impl Project {
                         blocks: Vec::new(),
                         slots: Vec::new(),
                         edges: Vec::new(),
+                        types: unfold_core::FileTypes::default(),
                     },
                 }
             })

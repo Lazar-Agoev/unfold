@@ -1,8 +1,9 @@
 //! Per-file facts: what extraction produces and the facts cache stores.
 //!
 //! [`FileFacts`] has two parts. [`GraphFacts`] is language neutral: the blocks and slots of the
-//! shared selection, the file's value table, its call and import occurrences, and the `import`
-//! blocks that exist only if linking keeps them ([`GraphFacts::conditional`]). The payload is
+//! shared selection, the file's value table, its call and import occurrences, its typed facts
+//! ([`TypeFacts`]: signatures, parameters, members, call results, and written type names), and
+//! the `import` blocks that exist only if linking keeps them ([`GraphFacts::conditional`]). The payload is
 //! opaque bytes that only the owning language crate reads (its local bindings, declarations,
 //! exports, class shapes, census data, ...). Neither part holds a syntax tree, so the whole
 //! program can be relinked from cached facts without parsing anything (architecture §6.2, §7.3).
@@ -12,16 +13,20 @@
 
 use serde::{Deserialize, Serialize};
 use unfold_core::text::short_label;
-use unfold_core::vocab::{BlockKind, EdgeKind};
-use unfold_core::{Block, Edge, FileGraph, FileRecord, Slot};
+use unfold_core::vocab::{BlockKind, EdgeKind, Expansion};
+use unfold_core::{Block, FileGraph, FileRecord, FileTypes, Slot};
 
+use crate::edges::FileLinks;
 use crate::select::Selection;
 
 mod conditional;
+mod typed;
+
+pub use typed::{TypeFacts, TypeRefFact, innermost};
 
 /// The engine's identity in facts-cache keys. It changes whenever the facts format or anything
 /// that shapes extracted facts changes, so stale cache entries never match.
-pub const ENGINE_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+facts.2");
+pub const ENGINE_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+facts.3");
 
 /// The syntactic shape of a recorded value, after transparent wrappers (parentheses, type
 /// assertions, ...) are unwrapped. Shapes drive the shared policy's no-candidate reasons,
@@ -102,15 +107,33 @@ pub struct Invocation {
     pub context: CallContext,
 }
 
-/// One argument of a call or construction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// One argument of a call or construction, aligned with the block's `argument` slots.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArgumentFact {
     /// The argument's index in the value table.
     pub value: u32,
-    /// Its zero-based written position (Python keywords and expansions keep their ordinal).
+    /// Its zero-based written position (Python keywords and expansions keep their ordinal),
+    /// which is its `argument` slot's index.
     pub position: u32,
     /// Whether it can supply a named reference; `false` for expansions such as `*args`.
     pub reference: bool,
+    /// How it is expanded (`...x`, `*x`, `**x`), if it is.
+    pub expand: Option<Expansion>,
+    /// A Python keyword argument's name.
+    pub keyword: Option<Box<str>>,
+}
+
+impl ArgumentFact {
+    /// A plain positional argument at `position`.
+    pub const fn positional(value: u32, position: u32, reference: bool) -> Self {
+        Self {
+            value,
+            position,
+            reference,
+            expand: None,
+            keyword: None,
+        }
+    }
 }
 
 /// One call, tagged template, or construction.
@@ -209,6 +232,14 @@ pub enum FactsError {
     /// Renumbering after dropping conditional blocks produced an invalid block tree.
     #[error("cannot renumber blocks: {0}")]
     Renumber(String),
+    /// A typed fact names a block of the wrong kind, is out of order, or names no slot.
+    #[error("{what} fact for block {block} does not fit the file's blocks")]
+    Typed {
+        /// The kind of fact.
+        what: &'static str,
+        /// The block it names.
+        block: u32,
+    },
     /// The cached bytes could not be decoded.
     #[error("cannot decode file facts: {0}")]
     Decode(String),
@@ -233,6 +264,8 @@ pub struct GraphFacts {
     imports: Vec<ImportFact>,
     /// Import blocks that exist only if linking keeps them (see [`GraphFacts::conditional`]).
     conditional: Vec<u32>,
+    /// Signatures, parameters, members, call results, and written type names.
+    types: TypeFacts,
 }
 
 impl GraphFacts {
@@ -259,9 +292,23 @@ impl GraphFacts {
             calls,
             imports,
             conditional: Vec::new(),
+            types: TypeFacts::default(),
         };
         facts.check()?;
         Ok(facts)
+    }
+
+    /// Adds the file's typed facts (see [`TypeFacts::new`], which sets each type reference's
+    /// block from these facts' blocks).
+    pub fn with_types(mut self, types: TypeFacts) -> Result<Self, FactsError> {
+        self.types = types;
+        self.check()?;
+        Ok(self)
+    }
+
+    /// The file's typed facts.
+    pub fn types(&self) -> &TypeFacts {
+        &self.types
     }
 
     /// Marks `blocks` as conditional: tentatively selected `import` blocks that stay in the
@@ -308,14 +355,41 @@ impl GraphFacts {
         &self.imports
     }
 
-    /// This file's graph record: its blocks and slots with `edges`, which the backend resolved.
-    pub fn file_graph(&self, file: FileRecord, edges: Vec<Edge>) -> FileGraph {
+    /// This file's graph record: its blocks, slots, and typed facts with `links` (its edges,
+    /// argument pairings, and type links), which the backend resolved.
+    pub fn file_graph(&self, file: FileRecord, links: FileLinks) -> FileGraph {
         FileGraph {
             file,
             blocks: self.blocks.clone(),
             slots: self.slots.clone(),
-            edges,
+            edges: links.edges,
+            types: self.file_types(links.arguments, links.type_links, &links.bounds),
         }
+    }
+
+    /// The file's typed records: its typed facts with the arguments, type links, and the calls'
+    /// bound counts resolved at link time.
+    fn file_types(
+        &self,
+        arguments: Vec<unfold_core::Argument>,
+        type_links: Vec<unfold_core::TypeLink>,
+        bounds: &[(u32, u32)],
+    ) -> FileTypes {
+        let mut types = FileTypes {
+            signatures: self.types.signatures.clone(),
+            parameters: self.types.parameters.clone(),
+            members: self.types.members.clone(),
+            arguments,
+            results: self.types.results.clone(),
+            type_links,
+        };
+        types.sort();
+        for &(call, bound) in bounds {
+            if let Ok(index) = types.results.binary_search_by_key(&call, |result| result.call) {
+                types.results[index].bound = Some(bound);
+            }
+        }
+        types
     }
 
     fn check(&self) -> Result<(), FactsError> {
@@ -363,6 +437,7 @@ impl GraphFacts {
             return Err(FactsError::NotAnImport { block: import.block });
         }
         self.check_conditional()?;
+        self.types.check(&self.blocks, &self.slots)?;
         for call in &self.calls {
             let kind = self.blocks[call.block as usize].kind;
             let allowed = match kind {
@@ -555,15 +630,7 @@ mod tests {
         // Out of block order on purpose: facts sort calls by block.
         let calls = vec![
             call(2, EdgeKind::Constructs, vec![]),
-            call(
-                1,
-                EdgeKind::Calls,
-                vec![ArgumentFact {
-                    value: 1,
-                    position: 0,
-                    reference: true,
-                }],
-            ),
+            call(1, EdgeKind::Calls, vec![ArgumentFact::positional(1, 0, true)]),
         ];
         GraphFacts::new(selection(), values(), calls, import()).unwrap()
     }
@@ -630,11 +697,7 @@ mod tests {
             ),
             Err(FactsError::Occurrence { block: 3 })
         );
-        let argument = |position| ArgumentFact {
-            value: 0,
-            position,
-            reference: true,
-        };
+        let argument = |position| ArgumentFact::positional(0, position, true);
         assert_eq!(
             new(
                 values(),

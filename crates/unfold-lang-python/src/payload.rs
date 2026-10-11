@@ -3,8 +3,8 @@
 //! It holds the census (token boundaries, call sites, module dependencies), the written form of
 //! every runtime import (aligned with the file's
 //! [`ImportFact`](unfold_engine::facts::ImportFact)s), which import resolution reads, and the
-//! binder's facts ([`BindFacts`]). [`PAYLOAD_VERSION`] is part of the facts-cache key through the
-//! producer version.
+//! binder's facts ([`BindFacts`]), whose `types` table gives each written type name its
+//! expression. [`PAYLOAD_VERSION`] is part of the facts-cache key through the producer version.
 
 use serde::{Deserialize, Serialize};
 use unfold_core::text::ByteRange;
@@ -13,7 +13,7 @@ use crate::bind::ir::{BindFacts, NodeId};
 use crate::census::{CallSite, delta_decode, delta_encode};
 
 /// The payload's format version.
-pub const PAYLOAD_VERSION: u32 = 4;
+pub const PAYLOAD_VERSION: u32 = 5;
 
 /// Why a payload cannot be read.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

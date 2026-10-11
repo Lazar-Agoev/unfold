@@ -20,7 +20,9 @@ testdata/
 │   ├── worked/ classes/ entrances/ playground-v1/   # ← PoC compilers/codegraph/test/fixtures/…
 │   ├── python/policy/            # ← PoC fixtures/python (binder positives and refusals)
 │   ├── python-ranges/            # Unicode/CRLF range corpus (see corpora.lock.toml)
-│   └── typescript-evidence/      # TypeScript binding and evidence cases with expected edges (its README.md)
+│   ├── typed-lines/              # typed records: a TypeScript and a Python orders flow (written for Unfold)
+│   ├── typescript-evidence/      # TypeScript binding and evidence cases with expected edges (its README.md)
+│   └── typescript-typed/         # TypeScript typed-record cases with expected `.typed` records (written for Unfold)
 ├── detectors/<detector>/<case>/   # detector cases: sources, .unfold/config.toml, expected-entrances.txt
 ├── boards/
 │   ├── order-placement.json      # sample board, unfold-board v1
@@ -127,6 +129,28 @@ are the reference generations in `reference/` (the `*-golden` folders went there
   `spikes/python/prepare.mjs` byte for byte; its hash matches the PoC's recall-floor lock. Its source root is
   `fixtures`.
 - `python/policy/encoding/latin1_cookie.py` is Latin-1 on purpose: it must fail as a file.
+
+### Typed lines (`fixtures/typed-lines/`)
+
+Written for Unfold (not carried over): one project with a TypeScript and a Python orders flow whose calls carry
+written types, for the typed records ([graph model](../docs/graph-model.md#typed-records)) and the app's typed
+lines. Open the folder itself; `.unfold/config.toml` makes `py/` a Python project with source root `src`.
+
+- `ts/` (`tsconfig.json` with NodeNext, `package.json` naming `stripe` as a dependency, nothing installed):
+  `orders/create.ts` (`createOrder` calls `reserveInventory(cart.items)` and `chargePayment(cart, req.user)` inside
+  a `try`/`catch`, a three-argument `toOrder`, a passed callback `notify(order, summary)`), `inventory.ts` (a
+  generic `first<T>`), `payments.ts` (`import Stripe from "stripe"`, `Stripe.PaymentIntent`, `throw new
+  CardDeclinedError(…)`), `cart.ts` (interfaces, type aliases, merged `interface Address`, an object-literal alias, a
+  utility alias, an enum), `user.ts` (a class with a field and parameter properties), `errors.ts`, and `legacy.ts`
+  (nothing annotated).
+- `py/src/shop/`: `models.py` (a `@dataclass`, a `TypedDict`, a pydantic `BaseModel` with a string forward
+  reference, a `NamedTuple`, `Money = Decimal`, `Literal` and `Annotated`), `payments.py` (positional-only,
+  keyword-only, `*args`/`**kwargs`, a static and a class method, `raise CardDeclined(…)`, a method called through
+  `self`), `orders.py` (keyword arguments, a method called through an instance and through its class, expansions, a
+  `TypeVar`, a PEP 695 type parameter), `errors.py`.
+- `expected/typescript.jsonl`: the snapshot of the TypeScript project's type declaration blocks and typed records, as
+  canonical export lines (`crates/unfold-lang-typescript/tests/structure/typed.rs`; `UNFOLD_BLESS=1` rewrites it).
+- `expected/python.jsonl`: the same for the Python project's typed records (`crates/unfold-lang-python/tests/typed.rs`).
 
 ## Detector cases (`detectors/`)
 

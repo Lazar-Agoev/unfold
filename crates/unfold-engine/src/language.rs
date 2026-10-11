@@ -28,7 +28,7 @@ use crate::evidence::{
     OriginDeclaration, ParameterFact, Stability, ValueContext,
 };
 use crate::facts::{FileFacts, Invocation};
-use crate::program::{BlockRef, CallRef, DeclRef, FactsSet, FileId, ValueRef};
+use crate::program::{BlockRef, CallRef, DeclRef, FactsSet, FileId, TypeRef, ValueRef};
 use crate::settings::{Settings, SettingsHash};
 
 /// A language's identity in the graph model (`typescript` or `python`).
@@ -293,6 +293,40 @@ pub trait Linked: Send + Sync {
     /// Evidence for a value: an identifier, a property or literal-key access, or a supported
     /// `this`/`super` value.
     fn value_evidence(&self, value: ValueRef) -> Evidence;
+
+    /// Evidence for a written type name, looked up in the type meaning: its candidate
+    /// declarations (a class, interface, type alias, or enum the language can name, through
+    /// imports, namespaces, and module members), external origins, and the root's import
+    /// binding, as [`Linked::value_evidence`] gives them for values. The default is none, which
+    /// the policy turns into an unresolved outcome.
+    fn type_evidence(&self, _reference: TypeRef) -> Evidence {
+        Evidence::default()
+    }
+
+    /// How many of `target`'s leading parameters `call` binds without an argument: 1 for a
+    /// Python method called through an instance, `cls`, or `super()`, or an `__init__` reached
+    /// by a construction; 0 for a static method or a plain function. `None` when it can't be
+    /// proven, which leaves every argument unpaired. The default is 0 (TypeScript, where an
+    /// explicit `this` parameter has its own kind).
+    fn bound_parameters(&self, _call: CallRef, _target: BlockRef) -> Option<u32> {
+        Some(0)
+    }
+
+    /// The same question for a callable passed as an argument: how many of `target`'s leading
+    /// parameters the passed value binds itself (`obj.method` binds the instance;
+    /// `Class.method` binds nothing; `Class.classmethod` binds the class). `None` when it can't
+    /// be proven. The default is 0, as for [`Linked::bound_parameters`].
+    fn reference_bound_parameters(&self, _value: ValueRef, _target: BlockRef) -> Option<u32> {
+        Some(0)
+    }
+
+    /// Whether constructing `class` (a class block without a direct constructor) is proven to
+    /// take no arguments: it has no base, no decorator that could replace it, and nothing else
+    /// that supplies a constructor (a Python `__new__`). Its arguments are then `no_parameter`
+    /// rather than `no_signature`. The default proves nothing.
+    fn class_takes_no_arguments(&self, _class: BlockRef) -> bool {
+        false
+    }
 
     /// Direct written type-reference evidence on a parameter, variable, or property, used by
     /// provenance; `None` when the declaration has no supported annotation.

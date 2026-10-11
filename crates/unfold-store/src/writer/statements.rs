@@ -17,6 +17,18 @@ pub(crate) struct Statements<'c> {
     pub insert_slot: CachedStatement<'c>,
     pub delete_edges: CachedStatement<'c>,
     pub insert_edge: CachedStatement<'c>,
+    pub delete_signatures: CachedStatement<'c>,
+    pub insert_signature: CachedStatement<'c>,
+    pub delete_parameters: CachedStatement<'c>,
+    pub insert_parameter: CachedStatement<'c>,
+    pub delete_members: CachedStatement<'c>,
+    pub insert_member: CachedStatement<'c>,
+    pub delete_arguments: CachedStatement<'c>,
+    pub insert_argument: CachedStatement<'c>,
+    pub delete_results: CachedStatement<'c>,
+    pub insert_result: CachedStatement<'c>,
+    pub delete_type_links: CachedStatement<'c>,
+    pub insert_type_link: CachedStatement<'c>,
     pub delete_definition_search: CachedStatement<'c>,
     pub delete_definitions: CachedStatement<'c>,
     pub insert_definition: CachedStatement<'c>,
@@ -53,6 +65,37 @@ impl<'c> Statements<'c> {
             insert_edge: conn.prepare_cached(
                 "INSERT INTO edges (file_id, source_local_id, seq, kind, target_key_id, target_text, \
                  resolution, reason, module, position) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            )?,
+            delete_signatures: conn.prepare_cached("DELETE FROM signatures WHERE file_id = ?1")?,
+            insert_signature: conn.prepare_cached(
+                "INSERT INTO signatures (file_id, block_local_id, returns, returns_start, returns_end) \
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+            )?,
+            delete_parameters: conn.prepare_cached("DELETE FROM parameters WHERE file_id = ?1")?,
+            insert_parameter: conn.prepare_cached(
+                "INSERT INTO parameters (file_id, block_local_id, idx, kind, name, flags, type, \
+                 type_start, type_end) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            )?,
+            delete_members: conn.prepare_cached("DELETE FROM members WHERE file_id = ?1")?,
+            insert_member: conn.prepare_cached(
+                "INSERT INTO members (file_id, block_local_id, idx, kind, name, flags, type, \
+                 type_start, type_end, value) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            )?,
+            delete_arguments: conn.prepare_cached("DELETE FROM arguments WHERE file_id = ?1")?,
+            insert_argument: conn.prepare_cached(
+                "INSERT INTO arguments (file_id, call_local_id, idx, expand, keyword, parameter, \
+                 unpaired, bound) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            )?,
+            delete_results: conn.prepare_cached("DELETE FROM results WHERE file_id = ?1")?,
+            insert_result: conn.prepare_cached(
+                "INSERT INTO results (file_id, call_local_id, binding, awaited, target_local_id, \
+                 position, bound) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            )?,
+            delete_type_links: conn.prepare_cached("DELETE FROM type_links WHERE file_id = ?1")?,
+            insert_type_link: conn.prepare_cached(
+                "INSERT INTO type_links (file_id, block_local_id, seq, start_byte, end_byte, text, \
+                 resolution, target_key_id, reason, module) \
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             )?,
             // A definition's search row ID is its key ID times 4 (`crate::search::rowid`).

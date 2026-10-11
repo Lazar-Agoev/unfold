@@ -63,13 +63,25 @@ impl TypeScriptLinked<'_> {
         })
     }
 
-    /// The declaration's concrete body for `context`.
+    /// The declaration's concrete body for `context`. In the type context, only a class,
+    /// interface, type alias, or enum declaration is concrete: its own block.
     pub(crate) fn concrete(&self, declaration: DeclRef, context: ValueContext) -> Option<ConcreteTarget> {
         let decl = self.decl(declaration)?;
         if decl.flags.has(DeclFlags::AMBIENT) {
             return None;
         }
         let file = declaration.file;
+        if context == ValueContext::Type {
+            return match decl.kind {
+                DeclKind::Class | DeclKind::Interface | DeclKind::TypeAlias | DeclKind::Enum => {
+                    Some(ConcreteTarget {
+                        target: Self::block_ref(file, decl.block)?,
+                        implementation: declaration,
+                    })
+                }
+                _ => None,
+            };
+        }
         match decl.kind {
             DeclKind::Function
             | DeclKind::FunctionExpression
@@ -99,7 +111,7 @@ impl TypeScriptLinked<'_> {
                         Self::block_ref(file, constructor.or(decl.block))?
                     }
                     ValueContext::Reference | ValueContext::Handler => Self::block_ref(file, decl.block)?,
-                    ValueContext::Call => return None,
+                    ValueContext::Call | ValueContext::Type => return None,
                 };
                 Some(ConcreteTarget {
                     target,

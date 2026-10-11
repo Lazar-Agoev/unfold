@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use crate::commands::{
     NoArgs, ProjectArgs, ProjectKeyArgs, ProjectPathArgs, boards, compiling, diagnostics, entrances, export,
-    file_view, files, graph, projects, relations, search, settings, text_search, windows, workspace,
+    file_view, files, graph, projects, relations, search, settings, text_search, types, windows, workspace,
 };
 use crate::compile::{CompileOutcome, CompileProgress};
 use crate::git::GitInfo;
@@ -164,6 +164,16 @@ command_table! {
     "preview" => Preview(ProjectKeyArgs) -> graph::Preview = graph::preview;
     /// The board pages of every project where a key is a card ("Already on …").
     "board_refs" => BoardRefs(ProjectKeyArgs) -> boards::BoardRefs = boards::board_refs;
+
+    // Typed lines.
+    /// The at-rest labels of a page's arrows: what goes in and what comes back.
+    "line_labels" => LineLabels(types::LineLabelsArgs) -> Vec<types::LabeledLine> = types::line_labels;
+    /// The contract of one selected line: sends, returns, throws, and the lines it read.
+    "call_contract" => CallContract(types::CallContractArgs) -> unfold_reader::contracts::CallContract = types::call_contract;
+    /// A type declaration or class: its members, aliased type, and use count.
+    "type_definition" => TypeDefinition(ProjectKeyArgs) -> unfold_reader::contracts::TypeDefinition = types::type_definition;
+    /// One page of the places a type declaration or class is written.
+    "type_uses" => TypeUses(types::TypeUsesArgs) -> unfold_reader::contracts::TypeUses = types::type_uses;
 
     // Search.
     /// Definitions, entrances, and files by name, across the projects.

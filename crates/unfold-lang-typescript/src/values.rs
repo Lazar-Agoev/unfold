@@ -19,7 +19,7 @@
 //! dependencies first, so a receiver always precedes the access that uses it.
 
 use rustc_hash::FxHashMap;
-use unfold_core::vocab::EdgeKind;
+use unfold_core::vocab::{EdgeKind, Expansion};
 use unfold_engine::facts::{ArgumentFact, CallContext, CallFact, ImportFact, ValueFact, ValueShape};
 
 use crate::names;
@@ -96,11 +96,11 @@ impl Table<'_, '_> {
                 .filter(|&child| syntax.node(child).label == Label::Arguments)
                 .collect();
             for (position, argument) in written.into_iter().enumerate() {
+                // A spread can never supply a named reference.
+                let spread = syntax.cat(argument) == Cat::Spread;
                 arguments.push(ArgumentFact {
-                    value: self.value(argument),
-                    position: position as u32,
-                    // A spread can never supply a named reference.
-                    reference: syntax.cat(argument) != Cat::Spread,
+                    expand: spread.then_some(Expansion::Spread),
+                    ..ArgumentFact::positional(self.value(argument), position as u32, !spread)
                 });
             }
         }

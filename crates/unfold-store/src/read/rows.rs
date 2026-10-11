@@ -1,7 +1,7 @@
 //! The small row types reader queries return where no core type fits.
 
 use unfold_core::vocab::{BlockKind, EdgeKind, FileState, Language};
-use unfold_core::{Block, ContentHash, FileRecord, Key, RepoPath};
+use unfold_core::{Block, ByteRange, ContentHash, FileRecord, Key, RepoPath};
 
 use crate::search::CandidateKind;
 use crate::update::{DiskStamp, GraphMeta};
@@ -45,6 +45,21 @@ pub struct LocatedBlock {
     pub language: Language,
     /// The block.
     pub block: Block,
+}
+
+/// A type link resolved to some declaration, seen from the declaration: where it is used.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeUse {
+    /// The link's file.
+    pub path: RepoPath,
+    /// The file's language.
+    pub language: Language,
+    /// The block the link is sourced at (the innermost block around the written name).
+    pub block: Block,
+    /// The written name's byte range.
+    pub range: ByteRange,
+    /// The name as written.
+    pub text: Box<str>,
 }
 
 /// A resolved edge into some target, seen from the target: who calls, constructs, imports,

@@ -108,7 +108,7 @@ fn run_import(args: &ImportArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Converts one corpus and returns its canonical export and record counts.
+/// Converts one corpus and returns its canonical export (version 1) and record counts.
 pub(crate) fn import(corpus: &Corpus, poc: Option<&std::path::Path>) -> anyhow::Result<(String, Counts)> {
     let generation = Generation::read(&corpus.raw_dir())?;
     let source = FileSource {
@@ -116,7 +116,10 @@ pub(crate) fn import(corpus: &Corpus, poc: Option<&std::path::Path>) -> anyhow::
         poc_root: poc.map(|poc| poc.join(&corpus.poc_root)),
     };
     let converted = convert::convert(corpus, &generation, &source)?;
-    Ok((canonical::to_string(&converted.graph), converted.counts))
+    // The references stay version 1: the proof of concept has no typed records.
+    let mut text = Vec::new();
+    canonical::write_version(&converted.graph, 1, &mut text)?;
+    Ok((String::from_utf8(text)?, converted.counts))
 }
 
 #[cfg(test)]

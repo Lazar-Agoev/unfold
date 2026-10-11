@@ -133,7 +133,7 @@ owner: string, };
 /**
  * A selected syntax entity.
  */
-export type BlockKind = "file" | "function" | "class" | "method" | "constructor" | "getter" | "setter" | "variable" | "call" | "new" | "import" | "if" | "for" | "for_in" | "for_of" | "while" | "do_while" | "switch" | "case" | "default" | "try" | "catch" | "return" | "throw" | "break" | "continue" | "expression_statement" | "with" | "match";
+export type BlockKind = "file" | "function" | "class" | "method" | "constructor" | "getter" | "setter" | "variable" | "call" | "new" | "import" | "if" | "for" | "for_in" | "for_of" | "while" | "do_while" | "switch" | "case" | "default" | "try" | "catch" | "return" | "throw" | "break" | "continue" | "expression_statement" | "with" | "match" | "interface" | "type_alias" | "enum";
 
 /**
  * An `unfold-board` document as the window edits it: the board's working version, without a
@@ -415,6 +415,65 @@ page: string | null,
  * Each page's camera and lens, by page id.
  */
 pages: { [key in string]: PageView }, };
+
+/**
+ * The contract of one selected line: a resolved call or construction.
+ */
+export type CallContract = { 
+/**
+ * The occurrence.
+ */
+source: Key, 
+/**
+ * The edge's sequence (0: the call itself).
+ */
+seq: number, 
+/**
+ * The callee.
+ */
+target: Key, 
+/**
+ * The calling line.
+ */
+callerLine: number, 
+/**
+ * Each argument in written order, then each parameter no argument filled.
+ */
+sends: Array<ContractSend>, 
+/**
+ * Where the result lands and the callee's return type.
+ */
+returns: ContractReturn, 
+/**
+ * The callee's direct throws, in source order.
+ */
+throws: Array<ContractThrow>, 
+/**
+ * Whether the call sits in the body of a `try` with a `catch` handler in the caller.
+ */
+caught: boolean, 
+/**
+ * The callee lines the contract read: its parameters and return type (when its source
+ * verifies) and its listed throws, ascending.
+ */
+calleeLines: Array<number>, };
+
+/**
+ * The arguments of `call_contract`.
+ */
+export type CallContractArgs = { 
+/**
+ * The project.
+ */
+project: ProjectId, 
+/**
+ * The occurrence block's key.
+ */
+source: string, 
+/**
+ * The edge's sequence (a contract exists for 0: the call or construction itself).
+ */
+seq: number, };
 
 /**
  * One occurrence (call, construction, or import) in the shown text.
@@ -911,6 +970,88 @@ done: number,
 total: number, };
 
 /**
+ * A parameter of the callee, as written.
+ */
+export type ContractParameter = { 
+/**
+ * Its position among the callee's parameters.
+ */
+index: number, 
+/**
+ * Its name; absent for a destructuring pattern.
+ */
+name?: string, 
+/**
+ * What it is to calls.
+ */
+kind: ParameterKind, 
+/**
+ * TypeScript `x?`.
+ */
+optional: boolean, 
+/**
+ * A default value is written.
+ */
+default: boolean, 
+/**
+ * Its written type.
+ */
+type?: TypeText, };
+
+/**
+ * Where a call's value lands, and what the callee says it returns.
+ */
+export type ContractReturn = { 
+/**
+ * Where the value lands.
+ */
+binding: ResultBinding, 
+/**
+ * The variable's name (`variable`), or the outer call's written callee (`argument`).
+ */
+text?: string, 
+/**
+ * Whether the call is awaited.
+ */
+awaited: boolean, 
+/**
+ * The callee's written return type, or a constructed class's name.
+ */
+type?: TypeText, };
+
+/**
+ * One row of a contract's Sends: an argument and the parameter it fills (or why it fills
+ * none), or a parameter no argument filled.
+ */
+export type ContractSend = { 
+/**
+ * The argument; absent for a parameter no argument filled.
+ */
+argument?: SentArgument, 
+/**
+ * The parameter the argument fills, or the parameter no argument filled.
+ */
+parameter?: ContractParameter, 
+/**
+ * Why the argument fills no proven parameter.
+ */
+unpaired?: UnpairedArgument, };
+
+/**
+ * One of the callee's direct throws.
+ */
+export type ContractThrow = { 
+/**
+ * The thrown class's name (`declared` when it resolved), or the construction as written
+ * with its module or reason.
+ */
+type: TypeText, 
+/**
+ * The `throw` statement's first line.
+ */
+line: number, };
+
+/**
  * Where an entrance is declared.
  */
 export type Declared = { 
@@ -1213,6 +1354,11 @@ code: CodeView | null,
  * The exact text of configuration evidence (a `package.json` script), when it verified.
  */
 text: string | null, };
+
+/**
+ * How an argument is expanded.
+ */
+export type Expansion = "spread" | "keywords";
 
 /**
  * The arguments of `export_mermaid`: exactly one of `board` and `entrance`.
@@ -2105,6 +2251,24 @@ author: Author,
 signature: string, };
 
 /**
+ * One input of a line label.
+ */
+export type LabelInput = { 
+/**
+ * A Python keyword argument's keyword (`currency` in `currency="eur"`).
+ */
+keyword?: string, 
+/**
+ * The parameter's name, when it has no written type.
+ */
+name?: string, 
+/**
+ * The parameter's written type. With neither a type nor a name, the input is unknown (`…`):
+ * an argument that fills no proven parameter, or a parameter written as a pattern.
+ */
+type?: TypeText, };
+
+/**
  * A Flow label's address in a repair: its block key and, for another project, that project's
  * shared name.
  */
@@ -2117,6 +2281,23 @@ project?: ProjectName,
  * The block key.
  */
 key: string, };
+
+/**
+ * One arrow's at-rest label.
+ */
+export type LabeledLine = { 
+/**
+ * The occurrence block's key, as asked.
+ */
+source: string, 
+/**
+ * The edge's sequence, as asked.
+ */
+seq: number, 
+/**
+ * The label; `null` for an external or unresolved edge, an import, or an unknown arrow.
+ */
+label: LineLabel | null, };
 
 /**
  * A source language Unfold indexes.
@@ -2170,6 +2351,40 @@ startup: string | null,
 note: string | null, };
 
 /**
+ * The at-rest label of one arrow: what goes in and what comes back.
+ */
+export type LineLabel = { 
+/**
+ * A call or construction: one per argument, in written order. A passed callable: one per
+ * parameter that takes an argument, after the ones the passed value binds itself.
+ */
+inputs: Array<LabelInput>, 
+/**
+ * A passed callable whose bound parameters aren't proven (a Python method passed without a
+ * proven receiver): `inputs` is empty because what it takes is unknown, not because it
+ * takes nothing. The UI shows `(…)`.
+ */
+inputsUnknown: boolean, 
+/**
+ * The callee's written return type, or a constructed class's name; absent when nothing is
+ * written.
+ */
+output?: TypeText, };
+
+/**
+ * The arguments of `line_labels`.
+ */
+export type LineLabelsArgs = { 
+/**
+ * The project of every line.
+ */
+project: ProjectId, 
+/**
+ * The arrows to label (at most 500).
+ */
+lines: Array<LineRef>, };
+
+/**
  * A one-based, inclusive range of lines.
  */
 export type LineRange = { 
@@ -2181,6 +2396,20 @@ startLine: number,
  * The last line.
  */
 endLine: number, };
+
+/**
+ * One arrow: an occurrence and one of its edges.
+ */
+export type LineRef = { 
+/**
+ * The occurrence block's key.
+ */
+source: string, 
+/**
+ * The edge's sequence: 0 for the call, construction, or import itself; then passed
+ * references in argument order.
+ */
+seq: number, };
 
 /**
  * A link drawn between two cards of a page (decision U-44): the graph does not join code
@@ -2253,6 +2482,11 @@ startup: string | null,
  * The table's line in the file.
  */
 line: number, };
+
+/**
+ * What a member of a type declaration or class is.
+ */
+export type MemberKind = "property" | "method" | "index" | "call" | "construct" | "value";
 
 /**
  * Mermaid text.
@@ -2566,6 +2800,16 @@ zoom: number,
  * The page's lens, or `None` for its default view.
  */
 lens: View | null, };
+
+/**
+ * Why an argument fills no proven parameter.
+ */
+export type PairingReason = "spread" | "no_parameter" | "receiver" | "no_signature";
+
+/**
+ * What a callable's parameter is to its calls (`docs/graph-model.md`, "Typed records").
+ */
+export type ParameterKind = "positional" | "this" | "rest" | "positional_only" | "keyword_only" | "keywords";
 
 /**
  * What hovering a call link shows.
@@ -3433,6 +3677,11 @@ export type Resolution = "resolved" | "external" | "unresolved";
 export type Resolve = "keep_mine";
 
 /**
+ * Where a call's value lands.
+ */
+export type ResultBinding = "variable" | "return" | "argument" | "discard" | "other";
+
+/**
  * A block's relationship to its saved parent. A root, or an unmapped structural
  * relationship, has no role (`Option<Role>` is `None`).
  */
@@ -3702,6 +3951,28 @@ export type SelectProjectArgs = {
  * The project the calling window's Home shows, or `None` for none.
  */
 project: ProjectId | null, };
+
+/**
+ * An argument as the caller wrote it.
+ */
+export type SentArgument = { 
+/**
+ * Its position among the call's arguments.
+ */
+index: number, 
+/**
+ * Its written text (cut to 120 UTF-16 units), sliced from the caller's verified source;
+ * absent when the caller's file changed.
+ */
+text?: string, 
+/**
+ * How it is expanded, if it is.
+ */
+expand?: Expansion, 
+/**
+ * A Python keyword argument's keyword.
+ */
+keyword?: string, };
 
 /**
  * The arguments of `set_background_updates`.
@@ -4236,6 +4507,189 @@ export type TokenClass = "keyword" | "comment" | "string" | "number" | "constant
 export type TriggerStatus = "exact" | "partial" | "unknown";
 
 /**
+ * A type declaration or class, as its definition opens under a type.
+ */
+export type TypeDefinition = { 
+/**
+ * The declaration.
+ */
+key: Key, 
+/**
+ * What it is.
+ */
+kind: TypeKind, 
+/**
+ * Its name (its catalog label when unnamed).
+ */
+name: string, 
+/**
+ * Its file.
+ */
+path: RepoPath, 
+/**
+ * Its first line.
+ */
+line: number, 
+/**
+ * Its file's language.
+ */
+language: Language, 
+/**
+ * Its written members, in source order.
+ */
+members: Array<TypeMember>, 
+/**
+ * A type alias's aliased type, when it isn't an object type (an alias with no members),
+ * from its verified source; absent when the file changed.
+ */
+aliased?: TypeText, 
+/**
+ * How many type links resolve to it ("Used in N places").
+ */
+uses: number, };
+
+/**
+ * What a type declaration is.
+ */
+export type TypeKind = "interface" | "type_alias" | "enum" | "class";
+
+/**
+ * One written member of a type declaration or class.
+ */
+export type TypeMember = { 
+/**
+ * Its name as written; absent for call and construct signatures.
+ */
+name?: string, 
+/**
+ * What it is.
+ */
+kind: MemberKind, 
+/**
+ * TypeScript `?`.
+ */
+optional: boolean, 
+/**
+ * TypeScript `readonly`.
+ */
+readonly: boolean, 
+/**
+ * A written initializer or default.
+ */
+default: boolean, 
+/**
+ * Its written type.
+ */
+type?: TypeText, 
+/**
+ * An enum member's written initializer.
+ */
+value?: string, };
+
+/**
+ * One type name inside a written type.
+ */
+export type TypeSpan = { 
+/**
+ * Where the name starts, in UTF-16 code units from the start of the text.
+ */
+start: number, 
+/**
+ * Where it ends.
+ */
+end: number, 
+/**
+ * How it reads.
+ */
+style: TypeStyle, 
+/**
+ * The declaration, for a `declared` name.
+ */
+target?: Key, 
+/**
+ * Where an `external` or `builtin` name comes from.
+ */
+module?: ModuleLabel, 
+/**
+ * The module (external) or the reason (unresolved) in words.
+ */
+note?: string, };
+
+/**
+ * How one type name inside a written type reads.
+ */
+export type TypeStyle = "declared" | "external" | "builtin" | "unresolved";
+
+/**
+ * A written type: its text (cut to 120 UTF-16 units) and the type names in it.
+ */
+export type TypeText = { 
+/**
+ * The type as written.
+ */
+text: string, 
+/**
+ * One span per type name inside the text, in order and never overlapping. Names the cut
+ * text no longer holds whole are left out.
+ */
+spans: Array<TypeSpan>, };
+
+/**
+ * One place a declaration's type is written.
+ */
+export type TypeUsePlace = { 
+/**
+ * The definition (or file) the annotation belongs to.
+ */
+owner: Key, 
+/**
+ * Its catalog label (a name, `callback to …`, or the file's path).
+ */
+label: string, 
+/**
+ * The file.
+ */
+path: RepoPath, 
+/**
+ * The line the type name is on.
+ */
+line: number, };
+
+/**
+ * One page of the places a declaration's type is written.
+ */
+export type TypeUses = { 
+/**
+ * How many places there are in all.
+ */
+total: number, 
+/**
+ * This page, by path, then position in the file.
+ */
+places: Array<TypeUsePlace>, };
+
+/**
+ * The arguments of `type_uses`.
+ */
+export type TypeUsesArgs = { 
+/**
+ * The project.
+ */
+project: ProjectId, 
+/**
+ * The type declaration's or class's key.
+ */
+key: string, 
+/**
+ * How many places to skip (0 when absent).
+ */
+offset?: number, 
+/**
+ * How many places to list (at most 200; 50 when absent).
+ */
+limit?: number, };
+
+/**
  * A Flow node still showing a fallback name.
  */
 export type Unlabeled = { 
@@ -4247,6 +4701,19 @@ card: string,
  * The node's block.
  */
 key: Key, };
+
+/**
+ * Why an argument fills no proven parameter.
+ */
+export type UnpairedArgument = { 
+/**
+ * The pairing reason.
+ */
+reason: PairingReason, 
+/**
+ * The reason in words.
+ */
+note: string, };
 
 /**
  * Entrances that belong to no application.
@@ -4723,6 +5190,22 @@ export interface Commands {
    */
   board_refs: { args: ProjectKeyArgs; result: BoardRefs };
   /**
+   * The at-rest labels of a page's arrows: what goes in and what comes back.
+   */
+  line_labels: { args: LineLabelsArgs; result: Array<LabeledLine> };
+  /**
+   * The contract of one selected line: sends, returns, throws, and the lines it read.
+   */
+  call_contract: { args: CallContractArgs; result: CallContract };
+  /**
+   * A type declaration or class: its members, aliased type, and use count.
+   */
+  type_definition: { args: ProjectKeyArgs; result: TypeDefinition };
+  /**
+   * One page of the places a type declaration or class is written.
+   */
+  type_uses: { args: TypeUsesArgs; result: TypeUses };
+  /**
    * Definitions, entrances, and files by name, across the projects.
    */
   search: { args: SearchArgs; result: SearchResults };
@@ -4899,6 +5382,10 @@ export const COMMAND_NAMES = [
   "callers",
   "preview",
   "board_refs",
+  "line_labels",
+  "call_contract",
+  "type_definition",
+  "type_uses",
   "search",
   "search_text",
   "list_boards",

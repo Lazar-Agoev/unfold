@@ -79,14 +79,16 @@ pub(crate) fn external_label(
     {
         return checked(program, file, &origin.module);
     }
-    let root_is_name = expr
-        .value_ref()
-        .and_then(|value| access_root(program, value))
-        .is_some_and(|root| root == ValueShape::Name);
+    // A type name's root is always a name (`Promise`, or `NodeJS` of `NodeJS.Process`).
+    let root_is_name = expr.type_ref().is_some()
+        || expr
+            .value_ref()
+            .and_then(|value| access_root(program, value))
+            .is_some_and(|root| root == ValueShape::Name);
     if root_is_name && evidence.import_binding.is_none() && evidence.root_is_indexed == Some(false) {
         return checked(program, file, &linked.global_label(file));
     }
-    let text = expr.fact(resolver).map_or("(…)", |fact| &fact.label);
+    let text = expr.label(resolver);
     location_label(program, linked, file, text, evidence.effective())
 }
 

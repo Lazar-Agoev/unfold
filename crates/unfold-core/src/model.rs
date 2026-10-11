@@ -1,4 +1,5 @@
-//! The graph's records: files, blocks, slots, edges, inputs, entrances, and entrance targets.
+//! The graph's records: files, blocks, slots, edges, inputs, entrances, and entrance targets;
+//! each file also carries its typed records ([`crate::typed`]).
 //!
 //! Within a file, blocks are identified by a file-scoped `local_id` numbered in preorder;
 //! across files and in everything persisted outside the store, by their structural [`Key`].
@@ -12,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::key::{EntranceShape, Key, entrance_keys};
 use crate::path::RepoPath;
 use crate::text::{ByteRange, ContentHash, LineSpan};
+use crate::typed::FileTypes;
 use crate::vocab::{
     BlockKind, DetectorId, EdgeKind, EntranceKind, FileState, HttpMethod, InputRole, Language, Reason,
     Resolution, Role, SlotName, TargetRole, TriggerStatus,
@@ -102,7 +104,7 @@ pub struct Edge {
     pub position: Option<u32>,
 }
 
-/// One file's blocks, slots, and edges.
+/// One file's blocks, slots, edges, and typed records.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileGraph {
     /// The file.
@@ -113,6 +115,8 @@ pub struct FileGraph {
     pub slots: Vec<Slot>,
     /// Edges ordered by source, then sequence.
     pub edges: Vec<Edge>,
+    /// Signatures, parameters, members, arguments, call results, and type links.
+    pub types: FileTypes,
 }
 
 /// Where an entrance is declared.

@@ -12,6 +12,7 @@ mod preferences;
 mod search;
 mod security;
 mod streams;
+mod types;
 mod views;
 mod windows;
 mod workspace;

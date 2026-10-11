@@ -30,9 +30,12 @@ pub(crate) fn block_name<'a>(syntax: &Syntax<'a>, node: u32, kind: BlockKind) ->
             .and_then(|child| declared_name(syntax, child))
             .filter(|name| !name.is_empty())
             .or_else(|| inferred_name(syntax, node)),
-        BlockKind::Method | BlockKind::Getter | BlockKind::Setter => {
-            name_child.and_then(|child| declared_name(syntax, child))
-        }
+        BlockKind::Method
+        | BlockKind::Getter
+        | BlockKind::Setter
+        | BlockKind::Interface
+        | BlockKind::TypeAlias
+        | BlockKind::Enum => name_child.and_then(|child| declared_name(syntax, child)),
         _ => None,
     };
     name.filter(|name| !name.is_empty())

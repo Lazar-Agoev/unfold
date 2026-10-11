@@ -1,5 +1,6 @@
 //! Python linking: the whole-program binder (`binder`) and its answers to the shared backend
-//! ([`PythonLinked`]).
+//! ([`PythonLinked`]), including the type meaning of written type names and the parameters a
+//! call binds itself (`types`).
 //!
 //! Linking reads only cached per-file facts: the binder facts extraction wrote into each
 //! payload ([`crate::bind`]), the written imports, and the census. It never parses, never runs
@@ -20,10 +21,12 @@ pub(crate) mod modules;
 mod mutations;
 mod objects;
 pub(crate) mod program;
+mod types;
 pub(crate) mod value;
 
 use std::sync::OnceLock;
 
+use rustc_hash::FxHashMap;
 use unfold_core::RepoPath;
 use unfold_core::validate::Census;
 use unfold_core::vocab::{EdgeKind, Language};
@@ -35,7 +38,7 @@ use unfold_engine::evidence::{
 use unfold_engine::facts::CallContext;
 use unfold_engine::{
     BlockRef, CallRef, DeclRef, FactsSet, FileId, Invocation, LanguageId, LanguageProblem, Linked,
-    ProjectInputs, ValueRef,
+    ProjectInputs, TypeRef, ValueRef,
 };
 
 pub use census::PythonCensus;
@@ -44,6 +47,7 @@ use answers::module_target;
 use binder::Binder;
 use program::{ExprRef, NodeRef};
 
+use crate::bind::ir::NodeKind;
 use crate::detect::scripts::Scripts;
 use crate::detect::{Sites, Source, SourceCandidates};
 use crate::payload::ImportSyntax;
@@ -76,6 +80,10 @@ pub struct PythonLinked<'a> {
     exports: Vec<OnceLock<Vec<Export>>>,
     census: PythonCensus,
     ambiguous: Vec<AmbiguousImport>,
+    /// The declaration of every `def` and `lambda`, by its block.
+    functions: FxHashMap<BlockRef, NodeRef>,
+    /// Every `class` declaration, by its block.
+    class_nodes: FxHashMap<BlockRef, NodeRef>,
 }
 
 impl<'a> PythonLinked<'a> {
@@ -172,6 +180,7 @@ impl<'a> PythonLinked<'a> {
         }
         let classes = binder.class_shapes();
         let exports = (0..files.files().len()).map(|_| OnceLock::new()).collect();
+        let (functions, class_nodes) = definitions(&binder);
         Self {
             binder,
             inputs,
@@ -184,6 +193,8 @@ impl<'a> PythonLinked<'a> {
             exports,
             census,
             ambiguous,
+            functions,
+            class_nodes,
         }
     }
 
@@ -237,6 +248,35 @@ impl Linked for PythonLinked<'_> {
 
     fn value_evidence(&self, value: ValueRef) -> Evidence {
         self.binder.value_evidence(value)
+    }
+
+    /// The type meaning (see `types`): classes are their types; assignments and other writes
+    /// are never followed to their values.
+    fn type_evidence(&self, reference: TypeRef) -> Evidence {
+        self.binder
+            .type_expr(reference)
+            .map_or_else(Evidence::default, |expr| self.binder.type_evidence(expr))
+    }
+
+    /// Proven from the callee's receiver and the target's decorators (see `types`).
+    fn bound_parameters(&self, call: CallRef, target: BlockRef) -> Option<u32> {
+        let function = *self.functions.get(&target)?;
+        self.binder.bound_parameters(self.callee(call)?, function)
+    }
+
+    /// Proven from the passed value's receiver and the target's decorators (see `types`).
+    fn reference_bound_parameters(&self, value: ValueRef, target: BlockRef) -> Option<u32> {
+        let function = *self.functions.get(&target)?;
+        self.binder
+            .bound_reference(self.binder.value_expr(value)?, function)
+    }
+
+    /// A class takes no arguments when nothing but `object` is its base, it has no keyword
+    /// (`metaclass=`) and no decorator, and its body binds no `__new__`.
+    fn class_takes_no_arguments(&self, class: BlockRef) -> bool {
+        self.class_nodes
+            .get(&class)
+            .is_some_and(|&node| self.binder.takes_no_arguments(node))
     }
 
     fn annotation_evidence(&self, declaration: DeclRef) -> Option<Evidence> {
@@ -364,4 +404,29 @@ impl Linked for PythonLinked<'_> {
         problems.dedup();
         problems
     }
+}
+
+/// The declaration of every `def` and `lambda` of the program, and of every `class`, by its
+/// block.
+fn definitions(binder: &Binder<'_>) -> (FxHashMap<BlockRef, NodeRef>, FxHashMap<BlockRef, NodeRef>) {
+    let mut functions = FxHashMap::default();
+    let mut classes = FxHashMap::default();
+    for (index, file) in binder.program.files.iter().enumerate() {
+        let Some(file) = file else {
+            continue;
+        };
+        let id = FileId(index as u32);
+        for (node, fact) in file.nodes.iter().enumerate() {
+            let (map, local) = match &fact.kind {
+                NodeKind::Function(function) => (&mut functions, function.block),
+                NodeKind::Class(class) => (&mut classes, class.block),
+                _ => continue,
+            };
+            map.entry(BlockRef { file: id, local }).or_insert(NodeRef {
+                file: id,
+                node: node as u32,
+            });
+        }
+    }
+    (functions, classes)
 }

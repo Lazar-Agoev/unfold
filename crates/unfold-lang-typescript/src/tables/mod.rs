@@ -3,9 +3,13 @@
 //! (evidence level 2: an undeclared `console` or `setTimeout` is a library global), the global
 //! library class and interface names (evidence level 4: a parameter written `: Map<K, V>` is a
 //! library receiver), and Node's built-in module specifiers (module labels: `fs` is `node:fs`).
+//! The default library's global type aliases (`Partial`, `Record`, `ReturnType`, …), which type
+//! links label `global`, are a separate table generated from the library files alone
+//! (`cargo xtask gen-lib-tables <lib-dir> --aliases`; the version is in [`aliases`]).
 //!
 //! Each table is a sorted static array searched by bisection.
 
+mod aliases;
 mod generated;
 
 /// The TypeScript version the default-library tables come from.
@@ -26,6 +30,13 @@ pub fn is_library_type(qualified: &str) -> bool {
     generated::LIBRARY_TYPES.binary_search(&name).is_ok()
 }
 
+/// Whether the qualified type name (`Partial`, `Record`, or either prefixed with `globalThis.`)
+/// is a global type alias of the default library.
+pub fn is_library_type_alias(qualified: &str) -> bool {
+    let name = qualified.strip_prefix("globalThis.").unwrap_or(qualified);
+    aliases::TYPE_ALIASES.binary_search(&name).is_ok()
+}
+
 /// Whether `specifier` names a Node built-in module (`fs`, `fs/promises`, `node:fs`,
 /// `node:test`; but not `test`, which Node only provides with the `node:` prefix).
 pub fn is_builtin_module(specifier: &str) -> bool {
@@ -42,6 +53,7 @@ mod tests {
             generated::GLOBALS,
             generated::LIBRARY_TYPES,
             generated::BUILTIN_MODULES,
+            aliases::TYPE_ALIASES,
         ] {
             assert!(table.windows(2).all(|pair| pair[0] < pair[1]));
         }
@@ -75,6 +87,24 @@ mod tests {
         }
         assert!(!is_library_type("globalThis.globalThis.Array"));
         assert!(!is_library_type("Express"));
+        for name in [
+            "Partial",
+            "Record",
+            "Pick",
+            "Omit",
+            "ReturnType",
+            "Awaited",
+            "Readonly",
+            "Required",
+            "NonNullable",
+            "Parameters",
+            "globalThis.Partial",
+        ] {
+            assert!(is_library_type_alias(name), "{name}");
+        }
+        for name in ["Promise", "Map", "Express", ""] {
+            assert!(!is_library_type_alias(name), "{name}");
+        }
         for name in ["fs", "fs/promises", "node:fs", "node:test", "path", "node:crypto"] {
             assert!(is_builtin_module(name), "{name}");
         }

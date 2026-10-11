@@ -1,7 +1,7 @@
-//! Writing files: rows, blocks, slots, edges, definitions, and their search rows.
+//! Writing files: rows, blocks, slots, edges, typed records, definitions, and their search rows.
 
 use rustc_hash::FxHashSet;
-use unfold_core::{Key, RepoPath};
+use unfold_core::{FileTypes, Key, Pairing, RepoPath, WrittenType};
 
 use super::mirror::Mirror;
 use super::statements::Statements;
@@ -27,6 +27,7 @@ impl Apply<'_, '_> {
             return Ok(());
         };
         self.delete_definitions(file_id)?;
+        self.delete_types(file_id)?;
         self.st.delete_edges.execute([file_id])?;
         self.st.delete_slots.execute([file_id])?;
         self.st.delete_blocks.execute([file_id])?;
@@ -58,6 +59,9 @@ impl Apply<'_, '_> {
         }
         if let Some(edges) = change.edges {
             self.replace_edges(file_id, edges)?;
+        }
+        if let Some(types) = change.types {
+            self.replace_types(file_id, types)?;
         }
         if let Some(definitions) = change.definitions {
             self.replace_definitions(file_id, &change.record.path, definitions)?;
@@ -176,6 +180,123 @@ impl Apply<'_, '_> {
         Ok(())
     }
 
+    /// Deletes a file's typed records.
+    fn delete_types(&mut self, file_id: i64) -> Result<()> {
+        self.st.delete_signatures.execute([file_id])?;
+        self.st.delete_parameters.execute([file_id])?;
+        self.st.delete_members.execute([file_id])?;
+        self.st.delete_arguments.execute([file_id])?;
+        self.st.delete_results.execute([file_id])?;
+        self.st.delete_type_links.execute([file_id])?;
+        Ok(())
+    }
+
+    fn replace_types(&mut self, file_id: i64, types: &FileTypes) -> Result<()> {
+        self.delete_types(file_id)?;
+        for signature in &types.signatures {
+            let returns = signature.returns.as_ref();
+            self.st.insert_signature.execute((
+                file_id,
+                signature.block,
+                text(returns),
+                start(returns),
+                end(returns),
+            ))?;
+        }
+        for parameter in &types.parameters {
+            let ty = parameter.ty.as_ref();
+            let flags = u8::from(parameter.optional) | (u8::from(parameter.default) << 1);
+            self.st.insert_parameter.execute((
+                file_id,
+                parameter.block,
+                parameter.index,
+                parameter.kind.as_str(),
+                parameter.name.as_deref(),
+                flags,
+                text(ty),
+                start(ty),
+                end(ty),
+            ))?;
+        }
+        for member in &types.members {
+            let ty = member.ty.as_ref();
+            let flags = u8::from(member.optional)
+                | (u8::from(member.readonly) << 1)
+                | (u8::from(member.default) << 2);
+            self.st.insert_member.execute((
+                file_id,
+                member.block,
+                member.index,
+                member.kind.as_str(),
+                member.name.as_deref(),
+                flags,
+                text(ty),
+                start(ty),
+                end(ty),
+                member.value.as_deref(),
+            ))?;
+        }
+        for argument in &types.arguments {
+            let (parameter, unpaired) = match argument.pairing {
+                Some(Pairing::Parameter(index)) => (Some(index), None),
+                Some(Pairing::Unpaired(reason)) => (None, Some(reason.as_str())),
+                None => (None, None),
+            };
+            self.st.insert_argument.execute((
+                file_id,
+                argument.call,
+                argument.index,
+                argument.expand.map(|expand| expand.as_str()),
+                argument.keyword.as_deref(),
+                parameter,
+                unpaired,
+                argument.bound,
+            ))?;
+        }
+        for result in &types.results {
+            self.st.insert_result.execute((
+                file_id,
+                result.call,
+                result.binding.as_str(),
+                result.awaited,
+                result.target,
+                result.position,
+                result.bound,
+            ))?;
+        }
+        // A link's sequence number is its position among its block's links.
+        let mut previous: Option<(u32, u32)> = None;
+        for link in &types.type_links {
+            let seq = match previous {
+                Some((block, seq)) if block == link.block => seq + 1,
+                _ => 0,
+            };
+            previous = Some((link.block, seq));
+            let target = self
+                .mirror
+                .intern_opt(link.target.as_ref(), &mut self.st.insert_key)?;
+            self.st.insert_type_link.execute((
+                file_id,
+                link.block,
+                seq,
+                link.range.start,
+                link.range.end,
+                &*link.text,
+                link.resolution.as_str(),
+                target,
+                link.reason.map(|reason| reason.as_str()),
+                link.module.as_ref().map(|module| module.as_str()),
+            ))?;
+        }
+        self.stats.typed_records_written += (types.signatures.len()
+            + types.parameters.len()
+            + types.members.len()
+            + types.arguments.len()
+            + types.results.len()
+            + types.type_links.len()) as u64;
+        Ok(())
+    }
+
     fn replace_definitions(
         &mut self,
         file_id: i64,
@@ -212,4 +333,17 @@ impl Apply<'_, '_> {
         self.st.delete_definitions.execute([file_id])?;
         Ok(())
     }
+}
+
+/// A written type's text, start, and end columns.
+fn text(written: Option<&WrittenType>) -> Option<&str> {
+    written.map(|written| &*written.text)
+}
+
+fn start(written: Option<&WrittenType>) -> Option<u32> {
+    written.map(|written| written.range.start)
+}
+
+fn end(written: Option<&WrittenType>) -> Option<u32> {
+    written.map(|written| written.range.end)
 }

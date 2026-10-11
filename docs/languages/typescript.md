@@ -1,8 +1,9 @@
 # TypeScript
 
 This document describes how `crates/unfold-lang-typescript` turns TypeScript files into blocks,
-slots, values, and occurrences, how it reads project configuration and resolves modules and
-exports, and how it binds names and supplies the evidence the shared policy resolves edges from.
+slots, values, occurrences, and typed records, how it reads project configuration and resolves
+modules and exports, and how it binds names and supplies the evidence the shared policy resolves
+edges and type links from.
 It carries over the proof of concept's native TypeScript front end
 (`frontend/typescript-shared/{mapping,names,syntax,semantics,modules}.ts`, `frontend/native/`,
 `source/{configuration,emit}.ts`, and the "Native front end", "Block selection", "Roles", "Names",
@@ -13,7 +14,7 @@ keys, slot cardinality, validation) are in [the graph model](../graph-model.md);
 what is specific to TypeScript.
 
 Status: structure, project configuration, modules, exports, the emit map, module labels, the
-generated library tables, binding, and evidence are complete. Every edge of the TypeScript
+generated library tables, binding, evidence, typed records, and type links are complete. Every edge of the TypeScript
 playground and the entrance fixture equals the proof of concept's native reference, apart from the
 fixed defects C-2 and C-8 ([Parity](#parity)). The five entrance detectors (`package.script`,
 `package.bin`, `bullmq.worker`, `express.route`, `node-cron.schedule`) are complete; their rules are in
@@ -38,8 +39,8 @@ fixed defects C-2 and C-8 ([Parity](#parity)). The five entrance detectors (`pac
   Module detection and the JSX mode apply when linking, so they never force extraction.
 - Extraction converts oxc's AST once into a normalized tree that follows the proof of concept's
   syntax (categories, child slots, and token-exact ranges), drives the engine's shared selector over
-  it, records values and occurrences, binds the file over oxc's tree ([Binding](#binding)), and records
-  the payload and the census.
+  it, records values, occurrences, and typed records ([Typed records](#typed-records)), binds the
+  file over oxc's tree ([Binding](#binding)), and records the payload and the census.
 - Ranges are UTF-8 byte offsets, token-exact: they exclude leading comments, indentation, and
   trailing whitespace. Where oxc's spans differ from the proof of concept's, the range is rebuilt
   from the token stream: a declaration under `export` or decorators starts at the first of them, a
@@ -69,17 +70,21 @@ nesting of every shape are tested.
 
 ## Syntax mapping
 
-Selection follows the proof of concept's TypeScript mapping. Type syntax (annotations, type
-arguments and parameters, interfaces, type aliases, `implements`, index signatures, and every type
-node) is skipped with its whole subtree. Everything else that selects no block is traversed, so
-calls beneath namespaces, enums, overload signatures, ambient declarations, parameters, and
-brace-only blocks still become blocks.
+Selection follows the proof of concept's TypeScript mapping, plus three kinds of its own: interfaces,
+type aliases, and enums are blocks. Type syntax (annotations, type arguments and parameters,
+`implements`, index signatures, and every type node, including an interface's or alias's written
+parts) is skipped with its whole subtree; a type declaration's slots still cover its written parts.
+Everything else that selects no block is traversed, so calls beneath namespaces, enums, overload
+signatures, ambient declarations, parameters, and brace-only blocks still become blocks.
 
 | Syntax | Block | Slots |
 | --- | --- | --- |
 | Source file | `file` (the whole text) | — |
 | Function declaration or expression, arrow function, with a body | `function` | `name`, `parameter[i]` (an explicit `this` parameter included), `return_type`, `body` (a block, or an arrow's expression) |
 | Class declaration or expression, unless ambient (`declare`, or inside an ambient declaration) | `class` | `name`, `heritage` (the first `extends` clause, from `extends` through the base's type arguments) |
+| Interface, unless ambient (`declare interface`, or anything inside `declare module`, `declare global`, or `declare namespace`) | `interface` | `name`, `heritage` (from `extends` through its last type), `body` (the braces) |
+| Type alias, unless ambient | `type_alias` | `name`, `type` (the aliased type) |
+| Enum or `const enum`, unless ambient | `enum` | `name`, `body` (the braces) |
 | Method, constructor, getter, setter, in a class or an object literal, with a body | `method`, `constructor`, `getter`, `setter` | as `function`; a constructor has no `name` slot |
 | Variable declarator (statements, loop heads, catch bindings), unless ambient | `variable` | `name` (an identifier or the whole pattern), `initializer` |
 | Binding element that binds one identifier in a variable's pattern | `variable` (named by the identifier) | `name`, `initializer` (its default) |
@@ -99,6 +104,12 @@ brace-only blocks still become blocks.
 | `break`, `continue` | `break`, `continue` | — |
 | Expression statement, including a directive such as `"use strict";` | `expression_statement` | `expression` |
 
+A type declaration's range starts at a preceding `export` (or `export default`) keyword, as a
+class's does. Inside an ordinary `namespace` it is a block under the namespace's nearest saved
+ancestor, so `namespace A { export interface X {} }` is `#interface:X`; merged declarations of one
+name are keyed `interface:Cart`, `interface:Cart[1]`. A call in an enum member's initializer is a
+child of the `enum` block (`#enum:Status/call[0]`, role `body`).
+
 Parameters bind no variables, so destructuring in a parameter selects no binding blocks. A
 destructured declaration is an unnamed `variable` with one `binding` variable per bound name (PoC D-18);
 a binding element's range includes its property name and default, so `b: c` is named `c` and spans
@@ -113,6 +124,7 @@ unselected wrappers; a path through a decorator gets `decorator`, overriding eve
 | `file` | statements → `body` |
 | function-like | body → `body`, parameters → `parameter` |
 | `class` | members → `body`, heritage → `heritage` |
+| `enum` | body → `body` |
 | `if` | condition → `condition`, then → `then`, else → `else` |
 | `for` | initializer → `initializer`, condition → `condition`, increment → `update`, statement → `body` |
 | `for_in`, `for_of` | initializer → `initializer`, expression → `iterable`, statement → `body` |
@@ -135,7 +147,8 @@ Names come from syntax, never from resolution.
 
 - A declaration is named by its identifier, its private name (with the `#`), or its decoded string
   or numeric literal (numbers are spelled as JavaScript spells them: `0x10` names `16`). A computed
-  name gives no name. Constructors are named `constructor`.
+  name gives no name. Constructors are named `constructor`; interfaces, type aliases, and enums are
+  named by their identifiers.
 - A variable is named by its identifier; a destructured declaration has no name.
 - An anonymous function, arrow, or class takes, after transparent wrappers (parentheses, `!`, `as`,
   `satisfies`, `<T>` assertions), the name of what it initializes: a variable, parameter, binding
@@ -171,7 +184,7 @@ optional chain is an ordinary access.
 Labels are joined by `unfold_engine::edges::text` and stay within 120 UTF-16 units.
 
 The payload (`unfold_lang_typescript::payload`, postcard-encoded, versioned by `PAYLOAD_VERSION`,
-now 4, which is part of the facts-cache key) records, aligned with the value table, what each value
+now 5, which is part of the facts-cache key) records, aligned with the value table, what each value
 is (an identifier and its range, a literal key, a call result and its callee, a construction,
 `this`, `super`, ...), the kind of each runtime import (`Import`, `Reexport`, `ImportEquals`,
 `Dynamic`), the module facts ([Exports](#exports)), the file's binding (`payload::Binding`;
@@ -183,6 +196,46 @@ when something beyond the values is recorded). Besides callees, arguments, and t
 value table holds the callee of every non-ambient `const` initialized by a call or `new` (a factory,
 which provenance traces) and every element of a recorded handler array. The normalized syntax tells
 array literals (`Array`) and their holes (`Hole`) apart from other expressions for this.
+
+## Typed records
+
+Extraction records the typed records of `docs/graph-model.md` ("Typed records") from the
+normalized tree and the selected blocks (`typed`), the same walk that selects blocks: only what is
+written, nothing inferred. Texts are the source as written (cut to 120 UTF-16 units); ranges are
+token-exact.
+
+- **Signature**, one per function-like block: `returns` is the written return annotation without
+  its colon (`Promise<Hold>`, `value is string`), absent when none is written.
+- **Parameter**, one per `parameter[i]` slot: kind `this` for an explicit `this` parameter (always
+  index 0; it takes no argument), `rest` for `...x`, otherwise `positional` (destructured and
+  optional parameters included); `name` is the identifier (`this` for the `this` parameter), absent
+  for a pattern; `optional` for `x?`; `default` when an initializer is written; `type` is the
+  annotation.
+- **Member**, in source order per block:
+
+  | Owner | Members |
+  | --- | --- |
+  | `interface`, and a `type_alias` whose whole aliased type is an object type literal (`type X = { … }`, not inside a union or parentheses) | Every property signature (`property`), method signature and `get`/`set` signature (`method`; its type is the text after its name, type parameters included: `<U>(a: U): U`), index signature (`index`, named by its brackets' text `[key: string]`, typed by its value type), call and construct signature (`call`, `construct`: no name, the text after `new` for a construct signature). `optional` for `?`, `readonly` for `readonly` |
+  | `enum` | Every member (`value`), with its written initializer as `value` |
+  | `class` | Instance property declarations, with or without a type (`declare`, `abstract`, and `accessor` fields and private names included), and constructor parameter properties (`public`, `private`, `protected`, `readonly`, `override`), as `property`: `optional`, `readonly`, and `default` (an initializer is written). Static members and methods are not members |
+
+  A member's name is its key as written: `coupon`, `"x-id"`, `#secret`, `[Symbol.iterator]` (a
+  computed name with its brackets).
+- **Result**, one per `call` and `new` block. The call is unwrapped outward through parentheses,
+  `await` (which sets `awaited`), `!`, `as`, `satisfies`, and `<T>` assertions; then:
+
+  | Binding | When the unwrapped call is |
+  | --- | --- |
+  | `variable` | A variable declarator's initializer (`const charge = await f()`, also a destructuring declaration's `const { a } = f()`); the target is that `variable` block |
+  | `return` | A `return`'s expression, or an arrow function's expression body (`(x) => f(x)`) |
+  | `argument` | An argument of a `call` or `new` (`super(…)` included); the target is the outer block, the position its argument slot's index. A spread argument `...f()` is `other` |
+  | `discard` | An expression statement's expression (a tagged template statement too) |
+  | `other` | Anything else: a receiver, an operand, a condition, an assignment, a binding element's or parameter's default, a property initializer, an object property's value, a `throw`, a `yield`, a loop's iterable, a template substitution |
+
+- **Argument** records come from the call facts: each argument slot's `expand` is `spread` for
+  `...x`. TypeScript has no keywords or keyword expansions. Pairing happens at link time
+  ([Pairing](#pairing)).
+- **Type references**: every type name written in a recorded annotation ([Type links](#type-links)).
 
 ## Import blocks
 
@@ -210,8 +263,12 @@ Validation compares every TypeScript file with an independent census taken from 
   slot range must start at a token's first byte and end right after a token's last byte.
 - **Call sites** come from a separate walk of oxc's AST that skips type syntax: every call, tagged
   template (`call`, `calls`), and construction (`new`, `constructs`), and the positions of spread
-  arguments, which can never supply a reference. A dynamic `import()` is never a call site.
+  arguments, which can never supply a reference. A dynamic `import()` is never a call site. Calls in
+  enum member initializers are call sites as before; only their parent block changed.
 - **Module dependencies** come from the same walk, by the rules above.
+
+The new blocks' ranges and slots, and every written type of a typed record, are checked against the
+same token boundaries; a type link's range is checked against character boundaries.
 
 ## Highlighting
 
@@ -401,6 +458,7 @@ launch resolution asks the emit map before probing extensions, so on `ts-orders`
 | Any other package specifier: `express/router`, `@scope/name/x` | `express`, `@scope/name` |
 | A package location `@types/x`, `@types/a__b` | `x`, `@a/b` |
 | The default library, or an undeclared global | `global` |
+| A type link to a library class, interface, or global type alias (`Promise`, `Date`, `Partial`, `NodeJS.Timeout`) | `global` |
 | A library type of Node's `NodeJS` namespace (`NodeJS.Process`), as a receiver | `node` (located at `@types/node`; C-6) |
 | A repository file outside the program | Its repository-relative path |
 
@@ -427,6 +485,14 @@ bisection (`tables`):
 | `is_known_global` | Global value names: top-level declarations of script files and `declare global` blocks with a value meaning (variables, functions, classes, enums, instantiated namespaces), plus `globalThis` and `undefined` | Evidence level 2: undeclared known globals and their member chains are external |
 | `is_library_type` | Global class and interface names, qualified through namespaces (`Intl.Collator`, `NodeJS.Process`); a leading `globalThis.` is accepted | Evidence level 4: written library receiver types |
 | `is_builtin_module` | Node built-in module specifiers, from the ambient modules `@types/node` declares (`fs`, `fs/promises`, `node:fs`, `node:test`) | Module labels |
+| `is_library_type_alias` | Global type alias names of the default library, qualified through namespaces (`Partial`, `Record`, `ReturnType`, `Awaited`, `BodyInit`, `Intl.LocalesArgument`); a leading `globalThis.` is accepted | [Type links](#type-links): an undeclared alias is external `global` |
+
+The type alias table is generated separately, from the library files alone:
+`cargo xtask gen-lib-tables <lib-dir> --aliases [--check]` reads every `lib.*.d.ts` of `<lib-dir>`
+(`node_modules/typescript/lib`) and writes `crates/unfold-lang-typescript/src/tables/aliases.rs`,
+with the TypeScript version (6.0.3, 107 lib files) and the library files' SHA-256 in its header. It
+holds every type alias the default library declares in the global scope (or in a namespace of it,
+qualified); `@types/node`'s aliases are not in it.
 
 The global and library-type tables equal the proof of concept's generated lists exactly (1,034 globals;
 1,795 library types, whose `globalThis.`-prefixed duplicates the lookup strips). The built-in list has
@@ -480,13 +546,19 @@ the walk has seen every declaration of the file. Linking never sees a syntax tre
 - **Import aliases.** A module-scope import binding is linked through the export tables;
   `import x = A.B.C` follows `A` lexically and then its members; a binding destructured from a
   literal awaited dynamic import reads that module's export (C-8, [Decisions](#decisions)).
+- **Type declarations.** An interface, type alias, or enum declaration knows its block (when it is
+  one), so the type context can name it ([Type links](#type-links)).
+- **Type names.** The written types that typed records carry ([Type links](#type-links)) are walked
+  where binding meets them, each once, and every type name in them is recorded with the scope it is
+  written in; its first name is looked up in the type meaning after the walk.
 
 The payload's binding (`payload::Binding`) holds the declarations (the first ones are the module
 declarations, in the same order, so a `DeclRef` index means the same declaration everywhere), the
 symbols, the namespaces' and enums' member tables, the expressions evidence evaluates (only those a
-value, initializer, class base, or member write reaches), the written types it reads, what each
-`this` and `super` means, every class's members, the members of `const` object literals, and the
-narrowing sites and member writes.
+value, initializer, class base, or member write reaches), the written types it reads, for each type
+reference fact the written name it resolves from (`type_links`, aligned with the file's type
+references), what each `this` and `super` means, every class's members, the members of `const`
+object literals, and the narrowing sites and member writes.
 
 ## Evidence levels
 
@@ -542,6 +614,74 @@ accessors; class-member facts; overload signatures (same container, name, and ki
 not ambient; an abstract method counts); provenance facts (a non-ambient `const` factory's callee;
 annotations of parameters, variables, and properties); and annotation evidence (a written type
 reference's target, followed as a type).
+
+## Type links
+
+A **type link** is recorded for every type name written in a recorded annotation: the return and
+parameter types of signatures and parameters, member types (an interface's or object-literal
+alias's members, a class's property annotations; a parameter property's type is its parameter's),
+a type alias's aliased type, and variable annotations (`const x: T`, a destructuring declaration's
+annotation, a catch binding's). Annotations no record carries (overload signatures, ambient
+declarations, static members, type parameter constraints, `extends`, `implements`, `as`,
+`satisfies`, call type arguments) give none.
+
+- **What is a name.** Every `TSTypeReference` name, a qualified name whole (`Stripe.PaymentIntent`,
+  without its type arguments), recursing into type arguments, unions, intersections, arrays,
+  tuples (optional and rest elements included), function and constructor types, object type
+  literals, indexed accesses, `keyof` and other type operators, template literal types, type
+  predicates (`value is Cart`), and conditional and mapped types. So `Promise<Charge>` links
+  `Promise` and `Charge`, and `CartItem[]` links `CartItem`.
+- **What is not.** Keyword types (`string`, `number`, `boolean`, `void`, `any`, `unknown`, `never`,
+  `null`, `undefined`, `object`, `bigint`, `symbol`, `intrinsic`), literal types, `this`, `typeof x`,
+  and `import("m").T` (whose type arguments are still walked). Nor a name that binds to a type
+  parameter, decided lexically: a function's, method's, arrow's, or class's type parameters are
+  symbols of its scope (a name whose type-meaning lookup finds one is dropped); the type parameters
+  of an interface, a type alias, a function or constructor type, a method or call signature, a
+  mapped type's key, and an `infer U` (in its conditional type's true branch) are tracked while the
+  type syntax is walked.
+- **Its block** is the innermost block containing the name: the function-like block for parameter
+  and return types (the constructor for a parameter property), the variable, the type declaration or
+  class for members, the `type_alias` for its aliased type.
+
+Resolution goes through the shared value policy in the `type` context
+(`Linked::type_evidence`, `TypeScriptLinked::type_facts`):
+
+- The first name is looked up in the type meaning from where it is written: local declarations,
+  then imports (type-only imports and `import type` specifiers too, followed through the export
+  tables as types), then the script-global namespaces around it and the group's script globals.
+  Each further name is a member in the type meaning: a module's export (`models.Cart` through
+  `import * as models`), a namespace's member (`NS.Inner`), or, past an external package import, the
+  package (`Stripe.PaymentIntent` with `import Stripe from "stripe"` is external `stripe`, module
+  label rule 1).
+- Candidates are the target's declarations; only namespaces augment. A declaration is concrete in the
+  type context when it is a non-ambient `class`, `interface`, `type_alias`, or `enum` with a block:
+  its block. So two merged `interface Address` declarations are `ambiguous` (step 10), as is an
+  interface merged with a class; an ambient class is `not_concrete`; a value-only name (a function, a
+  variable) has no type meaning and is `unknown_name`.
+- **Library types.** A name with no type declaration in scope whose qualified spelling is a library
+  class or interface (`is_library_type`: `Promise`, `Date`, `Map`, `Array`, `NodeJS.Timeout`) or a
+  global type alias (`is_library_type_alias`: `Partial`, `Record`, `Pick`, `Omit`, `ReturnType`,
+  `Awaited`, …) is external at the default library with an unindexed root, so it labels `global`.
+  The lookup was in the type meaning, so a local value of the same name (`const Promise = …`) does
+  not hide it.
+- A name nothing declares is `unknown_name`; a qualified name whose root nothing declares is
+  `unknown_receiver`.
+
+## Pairing
+
+The engine pairs each resolved call's arguments with its target's parameters
+([graph model](../graph-model.md#pairing)). TypeScript's answer to the one language question,
+`Linked::bound_parameters`, is always 0: a call never binds a parameter itself, and an explicit
+`this` parameter has its own kind, which takes no argument. So `withThis(1)` with
+`function withThis(this: Window, a: number)` pairs its argument with parameter 1; a rest parameter
+takes every further argument; a spread makes itself and every later argument `spread`. A passed
+callable binds nothing either (`Linked::reference_bound_parameters` is 0), so every resolved call
+to a function-like block records `bound: 0`, and so does every argument that passes one.
+
+`new X(…)` of a class without a constructor is `no_parameter` only when the class is proven to take
+nothing (`Linked::class_takes_no_arguments`): no `extends` clause and no decorator, since a
+decorator may replace the class with anything. Any other class's arguments are `no_signature`. The
+binder records a decorated class with its declaration's `DECORATED` flag.
 
 ## Classes and the override census
 
@@ -610,6 +750,18 @@ function-valued property names its function).
   destructured properties of an awaited dynamic import resolve (C-8).
 - Script-global namespaces merge across files for lookups inside them and for members; a nested
   namespace that is not exported is merged only within its file.
+- Typed records state what is written. No type is inferred (an unannotated parameter or return has
+  no type), generic arguments are not substituted, overloads are not selected (records and pairing
+  use the implementation's signature), and an untyped callback gets no contextual type.
+- A `get` or `set` signature in an interface is a `method` member (its type is the text after its
+  name), not a property.
+- A binding element's or parameter's default (`const [y = f()] = t`) is an `other` result, since
+  the value lands only when the element is undefined.
+- An enum member type (`Currency.Usd`) names an enum member, which no type link can target: it is
+  `not_concrete`.
+- Global type aliases come from the default library only; `@types/node`'s are not in the alias
+  table, so an undeclared one is `unknown_name`.
+- Type names nested more than 4,000 levels deep in one written type are not recorded.
 
 ## Decisions
 
@@ -645,8 +797,10 @@ function-valued property names its function).
 `tests/structure/parity.rs` compiles `testdata/playgrounds/ts-orders` and
 `testdata/fixtures/{worked,classes,entrances,playground-v1}` with each folder's configuration,
 validates the graphs with the census, and compares them with
-`testdata/reference/canonical/{playground-ts-native,entrances}.jsonl`: files, blocks, slots, and
-every edge are identical (34 files, 676 blocks, 1,168 slots, 303 edges; and 5 files, 31 blocks, 46
+`testdata/reference/canonical/{playground-ts-native,entrances}.jsonl` through
+`unfold_core::canonical::version_one`, the graph as a version-1 reference records it (no typed
+records, and no `interface`, `type_alias`, or `enum` blocks, so a call under an enum is keyed as it
+was before enums were blocks): files, blocks, slots, and every edge are identical (34 files, 676 blocks, 1,168 slots, 303 edges; and 5 files, 31 blocks, 46
 slots, 15 edges), except 26 playground calls a fixed defect resolves: 25 C-2 calls (14 `logger.info`,
 8 `logger.error`, `events.on`, `events.emit`, `slack.post`), each with the target the checker-backed
 reference resolves, and the C-8 `printReport()`. Every resolved playground edge (72 calls and
@@ -667,5 +821,16 @@ edge Unfold resolves there names the checker-backed producer's target, and recal
 corpus is 70,720 of the checker's 73,649 resolved calls (96.02%). `tests/structure/determinism.rs`
 checks that the canonical export is identical across thread counts and input orders, and an ignored
 test does the same on the 602-file corpus. The syntax cases in
-`testdata/fixtures/typescript-structure/` pin the mapping for syntax the playground does not use. An
+`testdata/fixtures/typescript-structure/` pin the mapping for syntax the playground does not use
+(`types.ts` for interfaces, type aliases, and enums).
+
+`tests/structure/typed.rs` pins the typed records of the cases in
+`testdata/fixtures/typescript-typed/` (signatures and parameters, members, results, and which type
+names are links) as canonical export lines in each `.typed` golden, checks type-link resolution
+across files (type-only and namespace imports, an external package's qualified name, library types
+and aliases, merged interfaces) and argument pairing, and snapshots the typed-lines fixture's
+TypeScript project (`testdata/fixtures/typed-lines/expected/typescript.jsonl`: the canonical lines of
+its `interface`, `type_alias`, and `enum` blocks and every typed record of a file under `ts/`,
+compiled by the engine from a copy of the fixture and validated with the census). The typed-lines
+project is also one of the determinism folders. An
 ignored test parses and validates every file of the 602-file corpus (TypeScript 6.0.3's `src`).

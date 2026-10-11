@@ -1,7 +1,11 @@
 //! Interning the expressions binding evaluates into the closed vocabulary of
 //! [`ExprKind`]. Expressions are reserved while the binder walks (so facts can name them before
 //! the lambdas inside them have declarations) and filled afterwards from a queue, so nothing
-//! recurses over the tree. Each expression is interned once, by its address.
+//! recurses over the tree. Each expression is interned once, by its address; the names of a
+//! string annotation, which have no expression of their own, are synthesized
+//! ([`Interner::synthetic`]).
+
+use std::borrow::Cow;
 
 use ruff_python_ast::{ArgOrKeyword, Expr};
 use rustc_hash::FxHashMap;
@@ -14,7 +18,7 @@ use crate::values::address;
 #[derive(Default)]
 pub(super) struct Interner<'a> {
     names: Vec<Box<str>>,
-    name_ids: FxHashMap<&'a str, NameId>,
+    name_ids: FxHashMap<Cow<'a, str>, NameId>,
     exprs: Vec<ExprFact>,
     memo: FxHashMap<usize, ExprId>,
     queue: Vec<(ExprId, &'a Expr)>,
@@ -25,12 +29,24 @@ pub(super) struct Interner<'a> {
 impl<'a> Interner<'a> {
     /// The ID of `name`, interning it.
     pub(super) fn name(&mut self, name: &'a str) -> NameId {
-        if let Some(&id) = self.name_ids.get(name) {
+        self.name_text(Cow::Borrowed(name))
+    }
+
+    /// The ID of `name`, borrowed from the tree or (normalized) owned, interning it.
+    pub(super) fn name_text(&mut self, name: Cow<'a, str>) -> NameId {
+        if let Some(&id) = self.name_ids.get(&*name) {
             return id;
         }
         let id = self.names.len() as NameId;
-        self.names.push(name.into());
+        self.names.push((*name).into());
         self.name_ids.insert(name, id);
+        id
+    }
+
+    /// A new expression of `kind` evaluated in `scope` that no tree node stands for.
+    pub(super) fn synthetic(&mut self, kind: ExprKind, scope: ScopeId) -> ExprId {
+        let id = self.exprs.len() as ExprId;
+        self.exprs.push(ExprFact { kind, scope });
         id
     }
 
@@ -52,12 +68,7 @@ impl<'a> Interner<'a> {
 
     /// A synthetic outer chain level whose value is `value`'s.
     pub(super) fn chain(&mut self, value: ExprId, scope: ScopeId) -> ExprId {
-        let id = self.exprs.len() as ExprId;
-        self.exprs.push(ExprFact {
-            kind: ExprKind::Chain(value),
-            scope,
-        });
-        id
+        self.synthetic(ExprKind::Chain(value), scope)
     }
 
     /// Records the declaration of a lambda.

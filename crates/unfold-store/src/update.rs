@@ -24,14 +24,15 @@
 //!
 //! - A [`FileChange`] always rewrites the file's row (record and disk stamp). Each optional
 //!   part replaces that part of the file wholesale: `structure` its blocks and slots, `edges`
-//!   its edges, and `definitions` its reader definitions and their search rows. A part left
+//!   its edges, `types` its typed records (signatures, parameters, members, arguments, results,
+//!   and type links), and `definitions` its reader definitions and their search rows. A part left
 //!   `None` is not touched, so an edit that changes only edges in a file costs one row update
 //!   and that file's edges.
 //! - Local IDs renumber when a file's structure changes. If any definition's `local_id` moved,
 //!   the change must also carry `definitions`; [`FileChange::between`] cannot know that, so the
 //!   engine compares its definition catalog per file.
-//! - Removing a file deletes its row, blocks, slots, edges, definitions, search rows, and
-//!   cached facts.
+//! - Removing a file deletes its row, blocks, slots, edges, typed records, definitions, search
+//!   rows, and cached facts.
 //!   Entrances declared in it are removed only through [`Update::entrances`], because entrances
 //!   are cross-file facts the engine recomputes.
 //! - Entrances are diffed by key rather than replaced as a set. An entrance's row ID is its
@@ -51,7 +52,7 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 use unfold_core::vocab::{BlockKind, Language};
 use unfold_core::{
-    Block, ContentHash, Edge, Entrance, FileGraph, FileRecord, InputRecord, Key, RepoPath, Slot,
+    Block, ContentHash, Edge, Entrance, FileGraph, FileRecord, FileTypes, InputRecord, Key, RepoPath, Slot,
 };
 
 /// One commit's worth of changes. See the [module documentation](self).
@@ -119,6 +120,8 @@ pub struct FileChange<'a> {
     pub structure: Option<Structure<'a>>,
     /// New edges, or `None` to keep the stored ones.
     pub edges: Option<&'a [Edge]>,
+    /// New typed records, or `None` to keep the stored ones.
+    pub types: Option<&'a FileTypes>,
     /// New definitions for this file, or `None` to keep the stored ones.
     pub definitions: Option<&'a [Definition]>,
 }
@@ -135,12 +138,13 @@ impl<'a> FileChange<'a> {
                 slots: &file.slots,
             }),
             edges: Some(&file.edges),
+            types: Some(&file.types),
             definitions: None,
         }
     }
 
     /// The parts of `current` that differ from `previous`. Blocks and slots are compared
-    /// together, edges separately; definitions are left to the caller. The row is always part
+    /// together, edges and typed records separately; definitions are left to the caller. The row is always part
     /// of the change, so a file whose only difference is its disk stamp yields a change with
     /// no parts.
     pub fn between(previous: &FileGraph, current: &'a FileGraph, disk: DiskStamp) -> Self {
@@ -153,13 +157,14 @@ impl<'a> FileChange<'a> {
                 slots: &current.slots,
             }),
             edges: (previous.edges != current.edges).then_some(&current.edges[..]),
+            types: (previous.types != current.types).then_some(&current.types),
             definitions: None,
         }
     }
 
     /// Whether the change touches anything besides the file's row.
     pub fn has_parts(&self) -> bool {
-        self.structure.is_some() || self.edges.is_some() || self.definitions.is_some()
+        self.structure.is_some() || self.edges.is_some() || self.types.is_some() || self.definitions.is_some()
     }
 }
 

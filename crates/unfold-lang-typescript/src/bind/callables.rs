@@ -56,6 +56,12 @@ impl<'a> Binder<'a> {
             self.declare(inner, id.name.as_str(), decl, Meanings::VALUE, false);
         }
         self.type_parameters(function.type_parameters.as_deref());
+        self.link_annotation(
+            function
+                .this_param
+                .as_ref()
+                .and_then(|this| this.type_annotation.as_deref()),
+        );
         let separate = uses_outer_scope(&function.params, self.context).then_some(inner);
         self.parameters = self.parameter_set(outer_parameters, separate);
         self.formal_parameters(decl, &function.params);
@@ -266,6 +272,7 @@ impl<'a> Binder<'a> {
             self.scope
         };
         let BindingPattern::BindingIdentifier(id) = &declarator.id else {
+            self.link_annotation(declarator.type_annotation.as_deref());
             let owner = PatternOwner::Variable {
                 var_kind: Some(var_kind),
                 scope,

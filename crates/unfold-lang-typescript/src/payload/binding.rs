@@ -10,7 +10,9 @@
 //! Indices are positions in this file's tables: a declaration index is a `DeclRef` index (the
 //! first `ModuleFacts::declarations.len()` declarations are the module declarations, in the
 //! same order), a symbol index points into [`Binding::symbols`], an expression index into
-//! [`Binding::exprs`], and a type index into [`Binding::types`].
+//! [`Binding::exprs`], and a type index into [`Binding::types`]. [`Binding::type_links`] is
+//! aligned with the file's type reference facts (`TypeFacts::type_refs`): the written type name
+//! each one resolves from.
 
 use serde::{Deserialize, Serialize};
 use unfold_core::text::ByteRange;
@@ -35,6 +37,10 @@ pub struct Binding {
     pub contexts: Vec<Context>,
     /// Written types.
     pub types: Vec<TypeRef>,
+    /// For each type reference fact of the file, in the same order, its written name: a
+    /// [`TypeRef::Names`] in [`Binding::types`] whose first name was looked up in the type
+    /// meaning.
+    pub type_links: Vec<u32>,
     /// Every class (declaration or expression) of the file.
     pub classes: Vec<ClassFacts>,
     /// Constant object literals: the members a `const` initialized with one declares.
@@ -151,6 +157,8 @@ impl DeclFlags {
     pub const TOP_LEVEL: Self = Self(1 << 6);
     /// A catch clause binding (its stability is unknown).
     pub const CATCH: Self = Self(1 << 8);
+    /// A class with at least one decorator, which may replace it.
+    pub const DECORATED: Self = Self(1 << 9);
 
     /// Whether every flag of `flag` is set.
     pub const fn has(self, flag: Self) -> bool {
@@ -187,7 +195,8 @@ pub struct Decl {
     pub flags: DeclFlags,
     /// Its range (from the declaration's own syntax).
     pub range: ByteRange,
-    /// Its selected block, for a function-like declaration with a body or a class.
+    /// Its selected block, for a function-like declaration with a body, a class, or a
+    /// (non-ambient) interface, type alias, or enum.
     pub block: Option<u32>,
     /// The syntax it is written in (a class, a statement list, an object literal): overload
     /// signatures and their implementation share it.

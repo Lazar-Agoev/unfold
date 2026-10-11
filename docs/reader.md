@@ -2,7 +2,7 @@
 
 How Unfold turns the stored graph into what people read: derived views (owners, the definition
 catalog, activation closures, applications, relations), the Code and Flow views' render models,
-boards, and Mermaid export. This document is authoritative for the rules `unfold-reader` implements; [architecture §10](architecture.md#10-the-reader)
+typed lines, boards, and Mermaid export. This document is authoritative for the rules `unfold-reader` implements; [architecture §10](architecture.md#10-the-reader)
 gives the product view, and [graph-model.md](graph-model.md) defines the records these rules read.
 
 The rules come from the proof of concept's reader (`reader/core`, its `docs/reader.md`), ported
@@ -36,6 +36,9 @@ owner(block):
 - Nested callbacks own their own calls.
 - Decorators, default values outside a parameter, and Python header expressions (`header` role)
   belong to the enclosing scope, not to the definition they decorate.
+- TypeScript type declarations (`interface`, `type_alias`, `enum`) are neither callable nor
+  classes: the walk passes through them, so a call in an enum member's initializer belongs to the
+  enum's owner.
 - Ownership never crosses files. Because blocks are stored in preorder, a block's owner is its
   parent when the parent owns it and otherwise the parent's owner, so one pass over a file computes
   every owner.
@@ -52,7 +55,9 @@ remain readable inside their owners.
 | Qualified name | The names of enclosing classes and callables, and of a `variable` whose initializer contains the definition, outermost first, then the label, joined with `.`: `OrderService.place`, `handlers.onCreate`, `handler.anonymous function` |
 
 Getters and setters keep their own identities. The store keeps the catalog as the `definitions`
-table and indexes the label and qualified name for search.
+table and indexes the label and qualified name for search. Type declarations (`interface`,
+`type_alias`, `enum`) are not in the catalog, so search doesn't find them, and their names don't
+qualify a definition written inside them (a callback in an enum member's initializer).
 
 ### Activation closure
 
@@ -136,6 +141,7 @@ function. A module label with several possible origins reads `client-a or client
 | Definitions, applications, memberships | After every update, before the commit | `project(&graph)` over the whole in-memory graph: one index pass, one catalog pass, one closure per application |
 | Owner, callers, closures, reached-from | Per request | A `ReaderIndex`: a compact index of the committed graph (block numbers, parents, kinds, roles, owners, subtrees, edges grouped by owner and by target, owned classes, entrances), loaded once per graph version and dropped on the next commit. Closures are cached per seed |
 | Outgoing occurrences, the Code view | Per request | One file's stored facts (`file_graph`) and, for Code, its verified bytes |
+| Typed lines | Per request | The caller's and the callee's stored facts, the store's reverse index of type links, and verified bytes only where written text is shown ([typed lines](#typed-lines)) |
 
 The index holds no names, ranges, or slots, so keeping one per graph version is cheap; it is
 built either by streaming files from the store or directly from the graph the workspace just
@@ -217,6 +223,7 @@ The outline is derived from stored blocks only. An item is a nested callable, or
 (`variable`, `expression_statement`, `if`, loops, `switch`, `case`, `default`, `try`, `catch`,
 `return`, `throw`, `break`, `continue`, `import`, `class`, `with`, `match`) with no role or a `body`,
 `then`, `else`, `catch`, or `finally` role. Its `parent` is the index of the nearest enclosing item.
+Type declarations (`interface`, `type_alias`, `enum`) are not items: they neither fold nor group.
 
 - **Folds.** A compound item (`if`, loops, `switch`, `try`, `catch`, callables, classes, Python
   `with` and `match`) that spans several lines folds. The fold's `headerEnd` is where the hidden
@@ -246,6 +253,8 @@ target, written text, and, when external or unresolved, its module or reason and
   in `res.status(202).json(…)` the inner call links `res.status` and the outer links `json`.
 - Shorter links claim characters first, so links never overlap; a link left without characters has
   no `span` but keeps its line. Leading `.`, `?`, and whitespace are trimmed from the underline.
+- Links are occurrence edges, so an arrow from a Code card is the edge `(source, 0)`. Passed
+  references (`seq` > 0) appear as Flow chips, which carry their `seq`.
 
 ### Differences from the proof of concept
 
@@ -257,6 +266,109 @@ target, written text, and, when external or unresolved, its module or reason and
   no empty line.
 - **Highlighting** runs on the whole file instead of the slice.
 - **The peek sheet** is new: its fold policy starts nothing folded.
+
+## Typed lines
+
+A line on a board can say what flows through the call it draws: what goes in, what comes back, and
+what can be thrown. `unfold_reader::contracts` computes it per request from the typed records
+([graph model](graph-model.md)) of one or two files (the caller's and the callee's), read once each
+through a request's `Facts`, plus the verified source only where written text is shown. Nothing is
+inferred: a type is what the code wrote, a pairing is what the engine proved, and a missing record
+reads as unknown, never as a guess. The proof of concept had no typed lines.
+
+### Type text
+
+A written type crosses IPC as a `TypeText`: its text (the stored written text, cut to 120 UTF-16
+units) and one span per type link inside its range, in order.
+
+| `style` | When | Extra fields |
+| --- | --- | --- |
+| `declared` | The link resolved | `target`: the declaration's key |
+| `external` | External, other than the built-in labels | `module`, and `note`: the module in words (`client-a or client-b`) |
+| `builtin` | External `global`, `python:builtins`, or `python:typing` | `module` |
+| `unresolved` | Unresolved | `note`: the [reason in words](#external-and-unresolved-text) |
+
+- Offsets are UTF-16 code units relative to the text. The text is the written source of the type's
+  range, so a link's byte offset from the range's start is its byte offset in the text; no source is
+  read.
+- A link the cut text no longer holds whole is left out, as is one that doesn't lie inside the range
+  or on character boundaries (only a damaged cache has those).
+- A name that stands alone (a constructed or thrown class) is a `TypeText` whose one span covers all
+  of it.
+
+### Line labels
+
+The at-rest label of one arrow, addressed by its occurrence and edge `(source, seq)`:
+
+| Arrow | `inputs` | `output` |
+| --- | --- | --- |
+| A resolved call or construction (`seq` 0) | One per argument, in written order: the written type of the parameter it fills, else that parameter's `name`, else nothing (an argument that fills no proven parameter, or a pattern parameter; the UI shows `…`). A Python keyword argument keeps its `keyword` | The callee's written return type; for a construction (a class target, a constructor, or the method a Python construction reaches) the class's name as a `declared` span; absent when nothing is written |
+| A resolved passed reference (`seq` > 0) | The passed callable's own signature: one per parameter that takes an argument (every kind but TypeScript's `this`), its type, else its name, after the parameters the passed value binds itself (its argument's `bound` count: `obj.method` binds `self`). When a function's count isn't proven (a Python `classmethod` passed by its bare name), `inputs` is empty and `inputsUnknown` is true: what it takes is unknown, not nothing, and the UI shows `(…)` | Its return type (a passed class: its name) |
+| Anything else | No label (`null`): external and unresolved edges, imports, unknown occurrences and edges | |
+
+### Call contracts
+
+The contract of one selected line: a resolved call or construction (`seq` 0). Any other edge has
+none.
+
+| Part | Contents |
+| --- | --- |
+| `sends` | Each argument in written order: `argument` (`index`; `text`, sliced from the caller's verified source and cut to 120 UTF-16 units, absent when the caller's file changed; `expand`; `keyword`) and the `parameter` it fills (`index`, `name`, `kind`, `optional`, `default`, `type`) or why it fills none (`unpaired`: `reason` and `note`). Then each parameter no argument filled, with only `parameter` |
+| `returns` | `binding` (`variable`, `return`, `argument`, `discard`, `other`), `text` (the variable's name, or the outer call's written callee from its occurrence edge), `awaited`, and `type`: the label's output |
+| `throws` | The callee's [direct throws](#direct-throws), each a `type` over the thrown class's name and the `throw` statement's first `line` |
+| `caught` | The call sits in the `body` of a `try` that has a `catch` handler, below the caller's own function (its owner) |
+| `calleeLines` | The callee lines the contract read, ascending: every `parameter` and `return_type` slot's lines (from the callee's verified source; none when it changed, since the card shows no text to mark) and each listed throw's line |
+| `callerLine` | The calling line |
+
+**Unfilled parameters.** They are listed only when the pairings say which parameters were filled:
+every argument fills a parameter or is `no_parameter`. An expanded argument (`spread`), an unknown
+receiver binding (`receiver`), or a class without its own constructor (`no_signature`) could fill
+any of them, so then none are listed. Parameters that take no argument (`this`) are left out, and so
+are the first `bound` parameters, which the call binds itself (its result's `bound` count, proven by
+linking: a Python method's `self` reached through an instance). When the count isn't proven, no
+unfilled parameter is listed. So `gateway.ping()` lists `ping`'s parameters after `self`, while
+`Gateway.ping()` lists `self` too, and `Gateway.ping(gateway)` lists only those after it.
+
+| Pairing reason | Note |
+| --- | --- |
+| `spread` | spread argument |
+| `no_parameter` | no parameter takes it |
+| `receiver` | receiver binding unknown |
+| `no_signature` | no constructor signature |
+
+### Direct throws
+
+The direct throws of a function-like block are every `throw` block it owns (not one inside a nested
+callable) whose expression is exactly a `new` (TypeScript) or `call` (Python) block with a
+`constructs` edge, and which isn't inside the `body` of a `try` that has a `catch` handler in the
+same function (it may be caught). Statements in a `catch`, `finally`, or Python `else` are not in
+the `try`'s body.
+
+- A resolved edge names a class: the target itself, or a constructor's parent class (or the class
+  of the method a Python construction reaches). Its type is the class's name as a `declared` span.
+- An external or unresolved edge keeps its written text, with its module or reason.
+- A bare `throw error`, `raise`, or `raise Name`, a re-throw, and a call that isn't a resolved
+  construction (a Python call without proven class identity is a `calls` edge) construct nothing
+  provable and are not listed. Neither are the exceptions the callee's own callees throw.
+
+### Type definitions and uses
+
+A **type definition** is opened for an `interface`, `type_alias`, `enum`, or `class` block; any
+other key has none.
+
+| Field | Contents |
+| --- | --- |
+| `key`, `kind`, `name`, `path`, `line`, `language` | The declaration; `name` is its catalog label when it has no name |
+| `members` | Its member records in source order: `name`, `kind`, `optional`, `readonly`, `default`, and the written `type` (with its spans) or an enum member's `value` |
+| `aliased` | For a type alias with no members (its aliased type isn't an object type): the text of its `type` slot from the verified source (no record stores it) with the type links inside it, cut to 120 UTF-16 units; absent when the file changed |
+| `uses` | How many type links resolve to it, from the store's reverse index ("Used in N places") |
+
+**Type uses** are one page of those type links, by path, then block, then range. Each place has its
+`owner`, the definition the annotation belongs to: the link's block when it is function-like or a
+type declaration (a parameter's type belongs to its function, a member's to its interface), else
+that block's owner (a variable annotation belongs to its function or file); the owner's catalog
+`label`; the `path`; and the `line` of the written name, from the verified source (the block's first
+line when the file changed).
 
 ## Flow view
 
@@ -284,6 +396,7 @@ explanatory node, never old ranges applied to new bytes.
 | TypeScript `switch` (and a `case`, `default`, or `catch` shown alone), `try` with `finally` or without a handler; Python `with`, `match`, `case`, loops with `else`, and every `try` and `except` | An `opaque` node with a warning and no outgoing route |
 | A class | Its members as `definition` nodes, with no routes |
 | A file | One explanatory node: file initialization is not drawn |
+| TypeScript `interface`, `type_alias`, `enum` | Nothing: type declarations are not steps of a path |
 
 - Statements after a terminal or opaque node stay visible without an incoming route.
 - A labeled `break` or `continue` is opaque (the exact block text tells it from a plain one); one

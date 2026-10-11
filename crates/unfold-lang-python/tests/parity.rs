@@ -64,11 +64,24 @@ fn py_orders_exports_identically_across_thread_counts() {
 
 /// With the detectors, the whole canonical export (files, blocks, slots, edges, entrances,
 /// targets, and inputs) equals the reference record for record: the divergence ledger has no
-/// entry for this corpus.
+/// entry for this corpus. The reference is a version-1 export, which predates typed records, so
+/// the graph is compared as version 1 describes it (`canonical::version_one`, written with a
+/// version-1 header); Python has no type declaration blocks, so nothing else is left out.
 #[test]
 fn py_orders_exports_exactly_the_reference() {
     let compiled = compile_folder(&testdata().join("playgrounds/py-orders")).valid();
-    let actual = unfold_core::canonical::to_string(&compiled.graph);
+    assert!(
+        compiled.graph.files.iter().any(|file| !file.types.is_empty()),
+        "the graph has typed records, which the version-1 view leaves out"
+    );
+    let mut bytes = Vec::new();
+    unfold_core::canonical::write_version(
+        &unfold_core::canonical::version_one(&compiled.graph),
+        1,
+        &mut bytes,
+    )
+    .expect("write the version-1 export");
+    let actual = String::from_utf8(bytes).expect("UTF-8");
     let reference = std::fs::read_to_string(testdata().join("reference/canonical/python-playground.jsonl"))
         .expect("read the reference");
     let actual: Vec<&str> = actual.lines().collect();

@@ -8,13 +8,13 @@ use rayon::prelude::*;
 
 use unfold_core::validate::{Subject, Violation};
 use unfold_core::vocab::FileState;
-use unfold_core::{Edge, Entrance, FileGraph, Graph, InputRecord, RepoPath, Snapshot};
+use unfold_core::{Entrance, FileGraph, FileTypes, Graph, InputRecord, RepoPath, Snapshot};
 
 use super::state::State;
 use super::targets::FolderTargets;
 use super::{Engine, Stage, UpdateError, UpdateStats};
 use crate::cancel::CancelToken;
-use crate::edges::program_edges_checked;
+use crate::edges::{FileLinks, program_links_checked};
 use crate::entrances::{self, manual_candidates};
 use crate::error::BackendError;
 use crate::language::{Language, LanguageProblem, Linked, ProjectInputs};
@@ -84,11 +84,11 @@ pub(crate) fn build(input: &BuildInput<'_>, stats: &mut UpdateStats) -> Result<B
         .iter()
         .map(|linked| Resolver::new(&program, linked.as_ref()))
         .collect();
-    let mut edges: Vec<Vec<Edge>> = vec![Vec::new(); program.files().len()];
+    let mut links: Vec<FileLinks> = vec![FileLinks::default(); program.files().len()];
     for resolver in &resolvers {
-        let resolved = program_edges_checked(resolver, || cancel.check().map_err(UpdateError::from))?;
-        for (file, file_edges) in resolved {
-            edges[file.index()] = file_edges;
+        let resolved = program_links_checked(resolver, || cancel.check().map_err(UpdateError::from))?;
+        for (file, file_links) in resolved {
+            links[file.index()] = file_links;
         }
     }
     stats.stages.insert(Stage::Resolve, started.elapsed());
@@ -125,9 +125,9 @@ pub(crate) fn build(input: &BuildInput<'_>, stats: &mut UpdateStats) -> Result<B
         .files()
         .par_iter()
         .zip(entries)
-        .zip(edges)
+        .zip(links)
         .enumerate()
-        .map(|(index, ((file, entry), edges))| {
+        .map(|(index, ((file, entry), links))| {
             cancel.check()?;
             let id = FileId(index as u32);
             let record = entry.record(&file.path);
@@ -137,17 +137,18 @@ pub(crate) fn build(input: &BuildInput<'_>, stats: &mut UpdateStats) -> Result<B
                     blocks: Vec::new(),
                     slots: Vec::new(),
                     edges: Vec::new(),
+                    types: FileTypes::default(),
                 });
             };
             if facts.graph.conditional().is_empty() {
-                return Ok(facts.graph.file_graph(record, edges));
+                return Ok(facts.graph.file_graph(record, links));
             }
             let owner = linked_refs
                 .iter()
                 .find(|linked| linked.language() == file.language);
             facts
                 .graph
-                .linked_file_graph(record, edges, |local| {
+                .linked_file_graph(record, links, |local| {
                     owner.is_some_and(|linked| linked.keeps_import(BlockRef { file: id, local }))
                 })
                 .map_err(|error| {

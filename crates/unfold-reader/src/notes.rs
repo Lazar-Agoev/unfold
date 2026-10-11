@@ -2,10 +2,11 @@
 //!
 //! External occurrences show their module; unresolved ones show a compact reason. The wording
 //! is the proof of concept's. A guess never replaces either: the reader never upgrades an
-//! unresolved occurrence because its text resembles a known function.
+//! unresolved occurrence because its text resembles a known function. An argument that fills
+//! no proven parameter shows its pairing reason the same way ([`pairing_text`]).
 
 use unfold_core::ModuleLabel;
-use unfold_core::vocab::{Reason, Resolution};
+use unfold_core::vocab::{PairingReason, Reason, Resolution};
 
 /// The compact display text of an unresolved reason.
 pub const fn reason_text(reason: Reason) -> &'static str {
@@ -24,6 +25,16 @@ pub const fn reason_text(reason: Reason) -> &'static str {
         Reason::Dynamic => "dynamic call",
         Reason::Wrapper => "wrapper",
         Reason::Unsupported => "unsupported form",
+    }
+}
+
+/// The compact display text of why an argument fills no proven parameter.
+pub const fn pairing_text(reason: PairingReason) -> &'static str {
+    match reason {
+        PairingReason::Spread => "spread argument",
+        PairingReason::NoParameter => "no parameter takes it",
+        PairingReason::Receiver => "receiver binding unknown",
+        PairingReason::NoSignature => "no constructor signature",
     }
 }
 
@@ -58,6 +69,9 @@ mod tests {
         }
         assert_eq!(reason_text(Reason::UnknownReceiver), "receiver type unknown");
         assert_eq!(reason_text(Reason::NotConcrete), "not a concrete function");
+        for &reason in PairingReason::ALL {
+            assert!(!pairing_text(reason).is_empty());
+        }
     }
 
     #[test]

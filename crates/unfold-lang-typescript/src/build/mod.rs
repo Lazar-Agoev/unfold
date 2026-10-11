@@ -1,6 +1,6 @@
 //! Converts oxc's AST into the normalized [`Syntax`] tree: statements in [`stmt`], declarations
-//! and module syntax in [`decl`], expressions and patterns in [`expr`], and callables and classes
-//! in [`class`].
+//! and module syntax in [`decl`], expressions and patterns in [`expr`], callables and classes in
+//! [`class`], and type declarations and the written members of types and classes in [`types`].
 //!
 //! The conversion follows the proof of concept's normalized TypeScript syntax: which nodes
 //! exist, the child slot each one fills, and their token-exact ranges. Where oxc's spans differ
@@ -14,6 +14,7 @@ mod class;
 mod decl;
 mod expr;
 mod stmt;
+mod types;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Directive, Program};
@@ -65,8 +66,8 @@ impl Ctx {
     }
 }
 
-/// How a function or class declaration is written: its category, the offset of a preceding
-/// `export` keyword (where its range starts), and whether it is `export default`.
+/// How a function, class, or type declaration is written: its category, the offset of a
+/// preceding `export` keyword (where its range starts), and whether it is `export default`.
 #[derive(Debug, Clone, Copy)]
 struct Head {
     cat: Cat,

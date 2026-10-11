@@ -8,9 +8,9 @@ selects blocks and resolves edges lives in `docs/languages/`; detector rules liv
 `docs/entrances.md`.
 
 `crates/unfold-core` encodes everything here: `vocab` (vocabularies and per-kind rules), `path`,
-`text` (snapshots, hashes, ranges, lines, UTF-16), `key`, `model`, `canonical`, and `validate`. The
-sections on the value policy, module labels, provenance, and edges describe `crates/unfold-engine`'s
-shared backend.
+`text` (snapshots, hashes, ranges, lines, UTF-16), `key`, `model`, `typed` (typed records),
+`canonical`, and `validate`. The sections on the value policy, module labels, provenance, pairing,
+and edges describe `crates/unfold-engine`'s shared backend.
 
 ## Records
 
@@ -23,6 +23,7 @@ shared backend.
 | Edge | A relationship sourced at one occurrence block: a call, a construction, an import, or a named callable passed as an argument |
 | Entrance | A declared way a process or unit of work starts, with its evidence and ordered targets |
 | Entrance target | One independently resolved handler or startup target |
+| Typed records | Per file: signatures, parameters, members, arguments, call results, and type links ([Typed records](#typed-records)) |
 
 Occurrences are the sources of edges, not functions. Callers, owners, and other function-level
 views are derived by the reader.
@@ -138,6 +139,106 @@ key through its value. The pointer names the parsed value.
 Every entrance has at least one target; a process has exactly one. An unresolved handler never
 removes its entrance. Several entrances can share a target.
 
+### Typed records
+
+What each call sends, returns, and where its value lands, and what written types say. Every typed
+record belongs to one file and refers to blocks of that file by local ID (by key in the export).
+Only what is written is recorded: a type is the annotation text as written, a pairing exists only
+where the language's calling rules prove it, and a type link resolves only with proof of exactly one
+declaration. Text fields are written source cut like edge labels to 120 UTF-16 units; ranges are
+UTF-8 byte ranges, token-exact (a type link's range lies on character boundaries, since a Python
+string annotation's name lies inside its quotes).
+
+**Signature**: exactly one per function-like block.
+
+| Field | Meaning |
+| --- | --- |
+| `block` | The function-like block |
+| `returns` | The written return type (TypeScript: the annotation after `:`, without the colon; Python: the expression after `->`); present exactly when the block has a `return_type` slot |
+| `returns_range` | Its range, the `return_type` slot's |
+
+**Parameter**: exactly one per `parameter` slot, with the slot's index.
+
+| Field | Meaning |
+| --- | --- |
+| `block`, `index` | The function-like block and the slot index |
+| `kind` | From [parameter kinds](#parameter-kinds-member-kinds-and-pairing-reasons) |
+| `name` | The identifier; absent for a destructuring pattern |
+| `optional` | TypeScript `x?` (only when true) |
+| `default` | A default value is written (only when true) |
+| `type`, `type_range` | The written annotation and its range, inside the parameter slot |
+
+**Member**: the written shape of a type declaration or class, in source order.
+
+| Field | Meaning |
+| --- | --- |
+| `block`, `index` | An `interface`, `type_alias`, `enum`, or `class` block, and a contiguous index from 0 |
+| `kind` | `property`, `method`, `index`, `call`, `construct`, or `value` (an enum member) |
+| `name` | The name as written (`coupon`, `"x-id"`, `[Symbol.iterator]`); an index signature's parameter text (`[key: string]`); absent for call and construct signatures |
+| `optional`, `readonly`, `default` | TypeScript `?` and `readonly`; a written initializer (class field) or default (Python); each only when true |
+| `type`, `type_range` | The written type: a property's annotation, a method or call signature's text after its name (`(a: A): B`), an index signature's value type |
+| `value` | An enum member's written initializer |
+
+TypeScript records the members of interfaces, of an object type literal that is a type alias's whole
+aliased type, and of enums, and a class's instance properties (with or without a type, `accessor`
+fields included) and constructor parameter properties, not static members or methods (methods are
+blocks). Python records every annotated assignment whose target is a plain name written directly in
+a class body, as a `property`: dataclasses, `TypedDict`, pydantic models, `NamedTuple`, and plain
+classes alike, since the record states what is written, not what a decorator or base makes of it.
+
+**Argument**: exactly one per `argument` slot of a `call` or `new` block, with the slot's index.
+
+| Field | Meaning |
+| --- | --- |
+| `call`, `index` | The occurrence block and the slot index |
+| `expand` | `spread` (TypeScript `...x`, Python `*x`) or `keywords` (Python `**x`) |
+| `keyword` | A Python keyword argument's name |
+| `parameter` | The index of the parameter it fills, among the resolved target's `parameter` records |
+| `unpaired` | Why it fills no proven parameter, from [pairing reasons](#parameter-kinds-member-kinds-and-pairing-reasons) |
+| `bound` | For an argument that passes a callable (a resolved `references` edge at its position to a function-like block): how many of that callable's leading parameters the passed value binds itself (`obj.method` binds the instance, `Class.method` nothing), when proven |
+
+Exactly one of `parameter` and `unpaired` is present when the occurrence edge (`seq` 0) is
+`resolved`, and neither otherwise ([Pairing](#pairing)). `bound` is absent on every other argument,
+and on a passed callable whose binding isn't proven.
+
+**Result**: exactly one per `call` and `new` block: where its value lands after transparent layers
+(parentheses and `await`; TypeScript also `!`, `as`, `satisfies`, and `<T>`).
+
+| `binding` | When | `target` | `position` |
+| --- | --- | --- | --- |
+| `variable` | It is exactly the initializer of a `variable` block (`const charge = await f()`, Python `x = f()`, `x: T = f()`, `(x := f())`; for `a = b = f()` the innermost level) | The `variable` block | — |
+| `return` | It is exactly a returned expression: a `return`'s, a Python lambda's body, or a TypeScript arrow function's expression body | — | — |
+| `argument` | It is exactly an argument of another `call` or `new` (a Python keyword argument's value counts; an expanded one doesn't) | The outer call | The outer argument's slot index |
+| `discard` | It is exactly the expression of an `expression_statement` | — | — |
+| `other` | Anything else: a receiver, an operand, a condition, an assignment expression, an augmented assignment, a `throw`, a `yield`, a spread, … | — | — |
+
+`awaited` (only when true) says an `await` was one of the transparent layers. `bound` is present
+when the occurrence edge resolved to a function-like block and the language proved how many of its
+leading parameters the call binds itself (a Python method called through an instance binds `self`,
+an `__init__` reached by a construction binds the new instance); it is the same count
+[pairing](#pairing) used.
+
+**Type link**: a type name written in a recorded annotation, and the declaration it resolves to.
+
+| Field | Meaning |
+| --- | --- |
+| `block` | The innermost block whose range contains the name: the function-like block for parameter and return types, the variable, the type declaration or class for members, the `type_alias` for its aliased type |
+| `range` | The written name, a qualified name whole (`Stripe.PaymentIntent`), without type arguments |
+| `text` | The name as written |
+| `resolution`, `target`, `reason`, `module` | As for edges: a `class`, `interface`, `type_alias`, or `enum` block of the same language when resolved; a module label when external; a reason when unresolved |
+
+The recorded annotations are exactly the ones typed records carry: parameter and return types,
+member types, a type alias's aliased type, and variable annotations (TypeScript `const x: T`; Python
+`x: T` anywhere). Every type reference in them gets one link, generic arguments included
+(`Promise<Charge>` links `Promise` and `Charge`; `CartItem[]` links `CartItem`). Not links:
+TypeScript keyword types, literal types, `this`, `typeof x` queries, and `import("m").T` types;
+names that bind to a type parameter of an enclosing declaration (TypeScript `<T>`, `infer U`, a
+mapped type's key; Python PEP 695 `[T]`), which extraction sees lexically; Python `None`, literals,
+the arguments of a subscript spelled `Literal[...]`, and every argument after the first of one
+spelled `Annotated[...]`. A Python string annotation is linked only when its whole content is a
+dotted name (`"Cart"`, `"models.Cart"`), with the range inside the quotes. How each language
+extracts and resolves them is in `docs/languages/`.
+
 ## Vocabularies
 
 Every value below is serialized exactly as written.
@@ -160,13 +261,17 @@ Every value below is serialized exactly as written.
 | `return`, `throw`, `break`, `continue` | Transfers |
 | `expression_statement` | A standalone expression |
 | `with`, `match` | Python context managers and pattern matches |
+| `interface`, `type_alias`, `enum` | A non-ambient TypeScript interface, type alias, and enum |
 
 The *function-like* kinds are `function`, `method`, `constructor`, `getter`, and `setter`. The
-*occurrence* kinds are `call`, `new`, and `import`.
+*occurrence* kinds are `call`, `new`, and `import`. The *type declaration* kinds are `class`,
+`interface`, `type_alias`, and `enum`: what a type name can resolve to, and the blocks that carry
+members.
 
-Python never has `new`, `for`, `for_in`, `do_while`, `switch`, or `default`: its `for`/`async for`
-is `for_of`, `raise` is `throw`, `except`/`except*` is `catch`, and wildcard match clauses are
-`case`. TypeScript never has `with` or `match`.
+Python never has `new`, `for`, `for_in`, `do_while`, `switch`, `default`, `interface`,
+`type_alias`, or `enum`: its `for`/`async for` is `for_of`, `raise` is `throw`,
+`except`/`except*` is `catch`, and wildcard match clauses are `case`. TypeScript never has `with`
+or `match`.
 
 ### Roles
 
@@ -211,6 +316,7 @@ block in an unmapped structural relationship.
 | `catch`, `finally` | Try handler or cleanup |
 | `binding` | Catch declaration |
 | `specifier` | Import or re-export specifier, or a dynamic import's first argument |
+| `type` | A type alias's aliased type |
 
 Permitted slots per kind (repeated slots carry an index):
 
@@ -218,6 +324,9 @@ Permitted slots per kind (repeated slots carry an index):
 | --- | --- |
 | `function`, `method`, `constructor`, `getter`, `setter` | `name`, repeated `parameter`, `return_type`, `body` |
 | `class` | `name`, `heritage` |
+| `interface` | `name`, `heritage` (from `extends` through its last type), `body` (the braces) |
+| `type_alias` | `name`, `type` |
+| `enum` | `name`, `body` (the braces) |
 | `variable` | `name`, `initializer` |
 | `call`, `new` | `callee`, repeated `argument` |
 | `if` | `condition`, `then`, `else` |
@@ -270,6 +379,37 @@ constructors are not promoted. Resolved edges never cross languages.
 | `dynamic` | No static shape: a computed key, a call result, a non-literal path |
 | `wrapper` | A call result, decorator, or partial supplies the callable without proving which body it is |
 | `unsupported` | A recognized form that the supported syntax doesn't cover, such as a spread |
+
+### Parameter kinds, member kinds, and pairing reasons
+
+| Parameter kind | Meaning |
+| --- | --- |
+| `positional` | An ordinary parameter: it takes a positional argument (in Python also a keyword argument of its name) |
+| `this` | TypeScript's explicit `this` parameter, which takes no argument |
+| `rest` | TypeScript `...x`, Python `*args`: every further positional argument |
+| `positional_only` | Python, before `/` |
+| `keyword_only` | Python, after `*` or `*args` |
+| `keywords` | Python `**kwargs`: every further keyword argument |
+
+`this` is TypeScript only; `positional_only`, `keyword_only`, and `keywords` are Python only, and
+the argument expansion `keywords` (`**x`) is Python only.
+
+| Member kind | Meaning |
+| --- | --- |
+| `property` | A property or field |
+| `method` | A method signature |
+| `index` | An index signature |
+| `call`, `construct` | A call or construct signature |
+| `value` | An enum member |
+
+| Pairing reason | Meaning |
+| --- | --- |
+| `spread` | This argument, or an earlier positional one, is expanded |
+| `no_parameter` | No parameter of the target takes it |
+| `receiver` | It can't be proven whether the call binds the target's first parameter itself |
+| `no_signature` | The target declares no parameters of its own: a class without a direct constructor that has a base |
+
+Result bindings are `variable`, `return`, `argument`, `discard`, and `other` ([Typed records](#typed-records)).
 
 ### Module labels
 
@@ -408,6 +548,8 @@ guards and signatures.
 - Files are in path order. Blocks are in preorder within each file, with siblings in start order.
 - Slots are ordered by block, then start. Edges are ordered by source, then `seq`: an occurrence
   precedes its references, which follow in argument order.
+- Signatures, parameters, members, arguments, and results are ordered by block (preorder), then
+  index; type links by block, then range.
 - Entrances sort by evidence path, evidence start, evidence end, then detector, kind, method, and
   trigger compared as their vocabulary strings (absent values as empty strings). Ties keep detector
   order. Targets follow their entrance in position order.
@@ -429,7 +571,9 @@ and control characters; non-ASCII is written as is). Ranges and lines are two-el
 
 1. One `header` record.
 2. For each file in path order: its `file` record, then its `block`s in preorder, its `slot`s (by
-   block, then range, slot name, index), and its `edge`s (by source, then `seq`).
+   block, then range, slot name, index), its `edge`s (by source, then `seq`), and its typed
+   records: `signature`, `parameter`, `member`, `argument`, and `result` records (each by block,
+   then index), then `type_link`s (by block, then range).
 3. Every `input` in path order.
 4. Every `entrance` in canonical order, each followed by its `target`s in position order.
 
@@ -437,37 +581,65 @@ and control characters; non-ASCII is written as is). Ranges and lines are two-el
 
 | `t` | Fields |
 | --- | --- |
-| `header` | `format` (`"unfold-graph"`), `version` (`1`) |
+| `header` | `format` (`"unfold-graph"`), `version` (`2`) |
 | `file` | `path`, `language`, `state`, `hash`?, `failure`? |
 | `block` | `key`, `kind`, `role`?, `name`?, `range`, `lines` |
 | `slot` | `block` (key), `slot`, `index`?, `range` |
 | `edge` | `source` (key), `seq`, `kind`, `target`? (key), `text`, `resolution`, `reason`?, `module`?, `position`? |
+| `signature` | `block` (key), `returns`?, `returns_range`? |
+| `parameter` | `block` (key), `index`, `kind`, `name`?, `optional`?, `default`?, `type`?, `type_range`? |
+| `member` | `block` (key), `index`, `kind`, `name`?, `optional`?, `readonly`?, `default`?, `type`?, `type_range`?, `value`? |
+| `argument` | `call` (key), `index`, `expand`?, `keyword`?, `parameter`?, `unpaired`?, `bound`? |
+| `result` | `call` (key), `binding`, `awaited`?, `target`? (key), `position`?, `bound`? |
+| `type_link` | `block` (key), `range`, `text`, `resolution`, `target`? (key), `reason`?, `module`? |
 | `input` | `path`, `role`, `hash` |
 | `entrance` | `key`, `kind`, `label`?, `method`?, `trigger`?, `trigger_status`, `detector`, `evidence_path`, `evidence_range`, `evidence_block`? (key), `evidence_pointer`? |
 | `target` | `entrance` (key), `position`, `role`, `target`? (key), `text`, `resolution`, `reason`?, `module`? |
 
-Hashes are 64 lowercase hex digits. A block's local ID is its position among its file's block
-records, and its parent follows from its key. A reader rejects unknown record types, unknown
-fields, fields that belong to another record type, records out of section order, and slots, edges,
-or blocks that name a block outside the current file.
+Hashes are 64 lowercase hex digits. Flags (`optional`, `readonly`, `default`, `awaited`) are
+written only when true, and a written type's text and range appear together. A block's local ID is
+its position among its file's block records, and its parent follows from its key. A reader rejects
+unknown record types, unknown fields, fields that belong to another record type, a flag written
+`false`, an argument with both `parameter` and `unpaired`, records out of section order, and slots,
+edges, typed records, or blocks that name a block outside the current file (a `type_link`'s and an
+edge's `target` may name any block).
 
-An excerpt of the export of `unfold_core::testkit::sample` (hashes shortened):
+**Version 1.** Exports written before typed records existed have `version` `1` and no typed records
+(the frozen proof-of-concept references are version 1). The reader accepts them and refuses typed
+records in them; `canonical::write_version` writes a graph at version 1 (without its typed records)
+so such an export round-trips, and the validator checks it without requiring typed records
+(`Validator::without_typed_records`). `canonical::version_one` is a graph as a version-1 export
+describes it: no typed records and no `interface`, `type_alias`, or `enum` blocks, with the blocks
+nested in a removed enum (calls in member initializers) moved up to its parent and every key derived
+again. Parity with the proof of concept compares that view with the references.
+
+An excerpt of the export of `unfold_core::testkit::sample` (hashes shortened), and of
+`unfold_core::testkit::sample::typed`'s typed records:
 
 ```text
-{"t":"header","format":"unfold-graph","version":1}
+{"t":"header","format":"unfold-graph","version":2}
 {"t":"file","path":"src/orders.ts","language":"typescript","state":"current","hash":"131293a2…"}
 {"t":"block","key":"src/orders.ts#","kind":"file","range":[0,230],"lines":[1,12]}
 {"t":"block","key":"src/orders.ts#function:createOrder","kind":"function","role":"body","name":"createOrder","range":[43,159],"lines":[3,8]}
 {"t":"slot","block":"src/orders.ts#function:createOrder","slot":"parameter","index":0,"range":[64,76]}
 {"t":"edge","source":"src/orders.ts#function:createOrder/return[0]/call[0]","seq":0,"kind":"calls","target":"src/orders.ts#function:save","text":"save","resolution":"resolved"}
 {"t":"edge","source":"src/orders.ts#function:createOrder/return[0]/call[0]","seq":1,"kind":"references","target":"src/helper.ts#function:helper","text":"helper","resolution":"resolved","position":1}
+{"t":"signature","block":"src/orders.ts#function:createOrder"}
+{"t":"parameter","block":"src/orders.ts#function:createOrder","index":0,"kind":"positional","name":"req","type":"unknown","type_range":[69,76]}
+{"t":"argument","call":"src/orders.ts#function:createOrder/return[0]/call[0]","index":0,"parameter":0}
+{"t":"result","call":"src/orders.ts#function:createOrder/return[0]/call[0]","binding":"return","bound":0}
 {"t":"input","path":"package.json","role":"package","hash":"811bd953…"}
 {"t":"entrance","key":"entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"createOrder\"]","kind":"http","method":"POST","trigger":"/orders","trigger_status":"exact","detector":"express.route","evidence_path":"src/server.ts","evidence_range":[0,32],"evidence_block":"src/server.ts#expression_statement[0]/call[0]"}
 {"t":"target","entrance":"entrance:[\"express.route\",\"http\",\"POST\",\"/orders\",\"createOrder\"]","position":0,"role":"handler","target":"src/orders.ts#function:createOrder","text":"createOrder","resolution":"resolved"}
+
+{"t":"member","block":"src/cart.ts#interface:Cart","index":1,"kind":"property","name":"coupon","optional":true,"type":"string","type_range":[49,55]}
+{"t":"type_link","block":"src/cart.ts#interface:Cart","range":[30,36],"text":"CartId","resolution":"resolved","target":"src/cart.ts#type_alias:CartId"}
+{"t":"argument","call":"jobs/settle.py#expression_statement[0]/call[0]","index":1,"keyword":"currency","parameter":1}
+{"t":"type_link","block":"src/charge.ts#function:charge","range":[86,93],"text":"Promise","resolution":"external","module":"global"}
 ```
 
-`cargo xtask canonical-check <file>` reads an export, validates it, writes it again, and fails
-unless the bytes are identical.
+`cargo xtask canonical-check <file>` reads an export, validates it, writes it again at its own
+version, and fails unless the bytes are identical.
 
 ## Validation invariants
 
@@ -479,7 +651,8 @@ or runtime reachability.
 **Files and inputs**
 
 - File paths and input paths are each strictly increasing; no path is both a file and an input.
-- File state, hash, failure, and facts agree as described under [File](#file).
+- File state, hash, failure, and facts agree as described under [File](#file); a failed file has
+  no typed records either.
 - Every block key is unique in the graph.
 
 **Blocks**
@@ -515,6 +688,37 @@ or runtime reachability.
   language, and, for `constructs` of a class, the class declares no direct constructor.
 - `text` is at most 120 UTF-16 code units.
 
+**Typed records**
+
+- Signatures and parameters: exactly one `signature` per function-like block (and none on other
+  blocks) and one `parameter` per `parameter` slot, with the slot's index, in order. `returns` is
+  present exactly when the block has a `return_type` slot, and `returns_range` lies in it;
+  `type_range` lies in its parameter slot. Kinds are permitted for the language; a `this` parameter
+  is the first; Python's are in the language's order (positional-only, positional, `*args`,
+  keyword-only, `**kwargs`), with at most one `rest` and one `keywords`; only TypeScript parameters
+  are optional, and never a rest one. Names are nonempty when present.
+- Members: only on `interface`, `type_alias`, `enum`, and `class` blocks; indices contiguous from 0
+  per block, in order; type ranges inside the block; `value` members are exactly the members of an
+  enum, and only they have a `value`; only TypeScript members are optional or readonly.
+- Arguments: exactly one per `argument` slot of a `call` or `new`, with its index, in order;
+  `expand: keywords` and `keyword` are Python only, and an expanded argument has no keyword.
+  Pairing fields are present exactly when the occurrence edge is resolved, exactly one of them; a
+  `parameter` names a parameter of the target (a function-like target) whose kind takes an argument
+  (never `this`); a `class` target's arguments are only unpaired. A `bound` count appears only on an
+  argument whose position has a resolved `references` edge to a function-like block.
+- Results: exactly one per `call` and `new` block; `target` present exactly for `variable` and
+  `argument` and names a block of that kind (`variable`; `call` or `new`) that is an ancestor of the
+  call; `position` present exactly for `argument`, below the outer call's argument count, and that
+  argument slot contains the call. A `bound` count appears only when the occurrence edge resolved
+  to a function-like block.
+- Type links: ordered by block, then range; each range nonempty, inside its block, not inside a
+  nearer nested block, and not overlapping another link; outcome fields as for edges (`target`
+  exactly when resolved, naming a `class`, `interface`, `type_alias`, or `enum` block of the same
+  language; `reason` exactly when unresolved; a valid `module` exactly when external); `text`
+  nonempty and at most 120 UTF-16 code units.
+- A graph read from a version-1 export is validated without requiring typed records
+  ([Canonical export](#canonical-export)); any it has are still checked.
+
 **Entrances**
 
 - Entrances are in canonical order, and every key equals its derivation.
@@ -535,6 +739,9 @@ or runtime reachability.
   character boundaries and don't start with whitespace or a comment (`//` or `/*` in TypeScript,
   `#` in Python), or end with whitespace.
 - Evidence ranges lie inside their file, on character boundaries.
+- Written-type ranges (`returns_range`, `type_range`) and type-link ranges lie on character
+  boundaries. These checks name the file, since only the files read in an update are checked
+  against their bytes.
 
 **With a language census** (computed independently by the front end from the same bytes):
 
@@ -543,6 +750,8 @@ or runtime reachability.
   kind agrees with the front end's (for example Python `constructs`). No reference uses an argument
   the front end marks ineligible, such as an expansion.
 - Runtime module dependencies and `import` blocks correspond one to one by range.
+- Written-type ranges start and end on token boundaries. (Type-link ranges are not checked against
+  tokens: a Python string annotation's name lies inside its string token.)
 
 Pointer identity for configuration evidence (that the pointer names the member at exactly that
 range) needs a JSON or TOML parser, and is checked by the detectors' crates rather than
@@ -558,7 +767,8 @@ range) needs a JSON or TOML parser, and is checked by the detectors' crates rath
   enclosing scope, including lambda defaults; calls in annotations are potential relationships, not
   claims of eager evaluation.
 - Argument and parameter positions are written ordinals, including keyword and expanded arguments
-  and receiver parameters. Equal argument and parameter ordinals don't prove caller binding.
+  and receiver parameters. Equal argument and parameter ordinals don't prove caller binding; only
+  [pairing](#pairing) does, by the calling rules.
 - Comprehensions and generator expressions create binding scopes without a graph kind, so their
   calls keep the enclosing owner; calls in a lambda's body belong to the lambda.
 - `from x import a, b` is one parent module occurrence; each proven child-module import adds an
@@ -580,11 +790,15 @@ never choose a reason themselves.
 | `construct` | A `new` callee, or a TypeScript `super(...)` (which keeps its `call` block and `calls` edge) | A callable function or method, a class's direct constructor with a body, or otherwise the class |
 | `reference` | A named argument | A concrete `function`, `method`, or `class` |
 | `handler` | An entrance target expression | A concrete `function` or `method`, including an inline function; a class is `unsupported` |
+| `type` | A type name in an annotation | A `class`, `interface`, `type_alias`, or `enum` declaration |
 
 Before any evidence is consulted, reference and handler values are checked by shape: a call result
 as a handler is `wrapper`; an inline function or class is its own block (subject to steps 14–15); any
 shape other than an identifier or member access is `dynamic`. A call site uses its authoritative
-callee evidence; every other value uses value evidence.
+callee evidence; a type name uses type evidence (`Linked::type_evidence`: the name looked up in the
+type meaning, through type-only imports, namespace members, and qualified names); every other value
+uses value evidence. A type name is shaped like an identifier, or like a member access when it is
+qualified, for step 7's reasons.
 
 *Effective candidates* are the candidates that are not augmentations (namespace or type declarations
 merged into a value), or every candidate when all of them are augmentations. An *unindexed repository
@@ -606,7 +820,7 @@ order, and the first that matches decides:
 | 11 | No concrete target | `parameter` if any declaration is a parameter, else `mutable_binding` if any binding is rebindable, else `accessor` if any is an accessor, else `not_concrete`, whatever the candidates' order |
 | 12 | A non-concrete declaration sits beside the one target and is not a compatible overload signature of its implementation | `ambiguous` |
 | 13 | The language reports a dispatching receiver family, or the override census finds an override | `overridden` |
-| 14 | A class handler, or a reference or handler target whose kind isn't `function`, `method`, or `class` | `unsupported` |
+| 14 | A class handler, a reference or handler target whose kind isn't `function`, `method`, or `class`, or a type target that isn't a type declaration | `unsupported` |
 | 15 | Otherwise | `resolved` to the one target |
 
 **Parameter positions.** An unresolved `parameter` call records `position` only in the `call` context
@@ -642,10 +856,11 @@ the shared order of rules is fixed, and the first rule that applies wins:
    (`express/router` → `express`, `@scope/name/sub` → `@scope/name`, `fs` → `node:fs`). Relative
    imports, path aliases, and boundaries at repository files don't qualify.
 2. **Origin-rooted.** The bounded [provenance](#provenance) of the callee's receiver names its package,
-   ahead of any declaration location: `app.get` on `const app = express()` names `express`.
+   ahead of any declaration location: `app.get` on `const app = express()` names `express`. Type
+   names have no provenance.
 3. **Ambient global.** An identifier root with no import binding and no declaration in indexed source
-   names `global` (Python: `python:builtins`), as for `console` or `Math`. A declared root, such as a
-   local parameter, never does (fixing C-6).
+   names `global` (Python: `python:builtins`), as for `console` or `Math`, or the type names
+   `Promise` and `Partial`. A declared root, such as a local parameter, never does (fixing C-6).
 4. **Declaration locations.** The labels of the effective candidates' locations (a library is
    `global`; a package is its public name, so `@types/a__b` is `@a/b`), deduplicated: one plain label,
    or a sorted JSON array for several.
@@ -703,6 +918,9 @@ index, so edge order never depends on scheduling.
   a missing relative or configured path is `not_found`; an existing module that is excluded or failed
   is `not_indexed` (or `external` with its path, for a TypeScript import of an unindexed file); a
   non-literal specifier is `dynamic`.
+- **Type links.** Every written type name a front end records is resolved in the `type` context in
+  parallel with the occurrences and reassembled by input index like edges; each call's arguments are
+  [paired](#pairing) as its occurrence resolves.
 
 Labels are short syntax, never arguments or bodies. Languages spell the parts, and
 `unfold_engine::edges::text` joins them:
@@ -723,6 +941,40 @@ Every label (edges and entrance targets alike) is at most 120 UTF-16 code units:
 that fits, never splitting a surrogate pair. The helpers keep intermediate labels within the limit, so
 long access chains stay cheap to label.
 
+## Pairing
+
+Pairing runs in `unfold_engine::pairing` when a call's or construction's occurrence edge resolves,
+from the target's `parameter` records and the call's written arguments (their expansions and
+keywords). It is language neutral; the one language question is how many of the target's leading
+parameters the call binds itself (`Linked::bound_parameters`): TypeScript always answers 0 (an
+explicit `this` parameter has its own kind); Python answers 1 for a method called through an
+instance, `cls`, or `super()`, or an `__init__` reached by a construction, 0 for a static method, a
+method called through its class, or a plain function, and nothing when it can't be proven. The rules,
+applied to the arguments in written order:
+
+1. The bound parameters and every `this` parameter are dropped; the rest are the *takers*, in order.
+   Without a proven bound count, every argument is `receiver`.
+2. Positional arguments fill the takers that accept positions (`positional`, `positional_only`;
+   TypeScript `positional` also covers destructured and optional parameters) left to right. Past
+   them, a `rest` taker takes every further positional argument; without one, a further argument is
+   `no_parameter`.
+3. Once an argument is spread, it and every later positional argument are `spread`. A Python `**`
+   expansion is `spread` itself; keyword arguments after it still pair by name.
+4. A Python keyword argument fills the taker of that name that accepts keywords (`positional`,
+   `keyword_only`), unless a positional argument already filled it (then it is `no_parameter`, the
+   call is an error); otherwise the `keywords` taker; otherwise it is `no_parameter`.
+5. A `class` target (no direct constructor) takes nothing only when its language proves it
+   (`Linked::class_takes_no_arguments`: no base, no decorator that could replace the class, and,
+   in Python, no `__new__` in its body and no `metaclass=`); every argument is then
+   `no_parameter`. Any other class target's arguments are `no_signature`.
+6. Parameters left unfilled stay unfilled; defaults are never paired.
+
+Equal ordinals never prove anything on their own. References (`seq` > 0) are not paired; a passed
+callable's argument records the passed value's own bound count instead
+(`Linked::reference_bound_parameters`, by the same rules without construction), when proven. The
+count a call or a passed callable binds is recorded on its record (`bound`), so readers never
+infer it from which parameters the arguments filled.
+
 ## Differences from the proof of concept
 
 - Offsets are UTF-8 bytes instead of UTF-16 code units, and the graph is stored in SQLite instead
@@ -736,3 +988,7 @@ long access chains stay cheap to label.
   `codegraph.json`.
 - An absent name, role, method, trigger, label, reason, module, position, target, or index is
   absent, not an empty string; empty strings are invalid where a value is present.
+- TypeScript interfaces, type aliases, and enums are blocks, and calls in enum member initializers
+  are nested in their enum; the proof of concept skipped the declarations (its keys are what
+  `canonical::version_one` derives). Typed records are new: the references, version-1 exports,
+  have none.

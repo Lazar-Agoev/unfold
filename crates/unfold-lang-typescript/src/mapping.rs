@@ -5,6 +5,7 @@
 //! | --- | --- |
 //! | Function declaration or expression, arrow function | `function`, only with a body |
 //! | Class declaration or expression | `class`, unless ambient |
+//! | Interface, type alias, enum (or `const enum`) | `interface`, `type_alias`, `enum`, unless ambient |
 //! | Method, constructor, getter, setter (class or object literal) | the member kind, only with a body |
 //! | Variable declaration (including loop heads and catch bindings) | `variable`, unless ambient |
 //! | Binding element naming one identifier in a variable's pattern | `variable` |
@@ -13,7 +14,8 @@
 //! | Runtime import, `export … from`, `import x = require(…)`, dynamic `import()` | `import` |
 //! | Control statements | `if`, `for`, `for_in`, `for_of`, `while`, `do_while`, `switch`, `case`, `default`, `try`, `catch`, `return`, `throw`, `break`, `continue`, `expression_statement` |
 //!
-//! Type syntax is skipped with its whole subtree; every other unselected node is traversed.
+//! Type syntax is skipped with its whole subtree (a type declaration's slots still cover its
+//! written type parts); every other unselected node is traversed.
 
 use unfold_core::text::ByteRange;
 use unfold_core::vocab::{BlockKind, Role, SlotName};
@@ -38,6 +40,9 @@ impl TypeScriptMapping<'_, '_> {
                 BlockKind::Function
             }
             Cat::ClassDeclaration | Cat::ClassExpression if !ambient => BlockKind::Class,
+            Cat::Interface if !ambient => BlockKind::Interface,
+            Cat::TypeAlias if !ambient => BlockKind::TypeAlias,
+            Cat::Enum if !ambient => BlockKind::Enum,
             Cat::Method if body => BlockKind::Method,
             Cat::Constructor if body => BlockKind::Constructor,
             Cat::Getter if body => BlockKind::Getter,
@@ -113,6 +118,7 @@ fn slot_role(kind: BlockKind, slot: Label) -> Option<Role> {
         (K::Catch, L::Block) => Role::Body,
         (K::Class, L::Members) => Role::Body,
         (K::Class, L::HeritageClauses) => Role::Heritage,
+        (K::Enum, L::Body) => Role::Body,
         _ => return None,
     };
     Some(role)
@@ -127,8 +133,10 @@ fn slot_name(kind: BlockKind, cat: Cat, label: Label) -> Option<SlotName> {
         (kind, L::Parameters) if kind.is_function_like() => SlotName::Parameter,
         (kind, L::Type) if kind.is_function_like() => SlotName::ReturnType,
         (kind, L::Body) if kind.is_function_like() => SlotName::Body,
-        (K::Class | K::Variable, L::Name) => SlotName::Name,
-        (K::Class, L::HeritageClauses) => SlotName::Heritage,
+        (K::Class | K::Variable | K::Interface | K::TypeAlias | K::Enum, L::Name) => SlotName::Name,
+        (K::Class | K::Interface, L::HeritageClauses) => SlotName::Heritage,
+        (K::Interface | K::Enum, L::Body) => SlotName::Body,
+        (K::TypeAlias, L::Type) => SlotName::Type,
         (K::Variable | K::For | K::ForIn | K::ForOf, L::Initializer) => SlotName::Initializer,
         (K::Call | K::New, L::Expression) | (K::Call, L::Tag) => SlotName::Callee,
         // A tagged template has no argument slots.
@@ -241,8 +249,11 @@ impl Mapping for TypeScriptMapping<'_, '_> {
                     arguments += 1;
                     Some(arguments - 1)
                 }
-                // Only the first non-type (`extends`) clause is a heritage slot.
-                SlotName::Heritage if heritage || found.cat == Cat::Type => continue,
+                // Only a class's first non-type (`extends`) clause is a heritage slot; an
+                // interface's one `extends` clause is type syntax.
+                SlotName::Heritage if heritage || (kind == BlockKind::Class && found.cat == Cat::Type) => {
+                    continue;
+                }
                 SlotName::Heritage => {
                     heritage = true;
                     None

@@ -1,12 +1,13 @@
 //! Extraction of one Python file: parse, the pre-pass ([`crate::analysis`]), block selection
-//! through the engine's shared selector, the value table and occurrences, and the payload.
+//! through the engine's shared selector, the value table and occurrences, the typed facts
+//! ([`crate::typed`]), and the payload.
 
 use ruff_python_ast::{Expr, Stmt};
 use ruff_text_size::TextRange;
 use rustc_hash::FxHashMap;
 use unfold_core::Snapshot;
 use unfold_engine::SourceFailure;
-use unfold_engine::facts::{FileFacts, GraphFacts, ImportFact};
+use unfold_engine::facts::{FileFacts, GraphFacts, ImportFact, TypeFacts};
 use unfold_engine::select;
 use unfold_engine::settings::PythonVersion;
 
@@ -19,6 +20,7 @@ use crate::parse::{self, Module, failure};
 use crate::payload::{CensusData, ImportSyntax, PAYLOAD_VERSION, Payload};
 use crate::syntax::{Node, Syntax};
 use crate::tokens::Tokens;
+use crate::typed::Typed;
 use crate::values::{Values, address};
 
 /// Parses `file` with grammar `version` and extracts its facts. Never panics: every problem is
@@ -51,12 +53,10 @@ fn facts(file: &Snapshot, module: &Module, analysis: &Analysis) -> Result<FileFa
     let lines = file.line_index();
     let mut occurrences: Vec<(Node<'_>, u32)> = Vec::new();
     let mut blocks: FxHashMap<usize, u32> = FxHashMap::default();
-    let selection = select::walk(
-        &syntax,
-        file.path(),
-        &lines,
-        Node::Module,
-        |node, local| match node {
+    let mut typed = Typed::new(&syntax);
+    let selection = select::walk(&syntax, file.path(), &lines, Node::Module, |node, local| {
+        typed.selected(node, local);
+        match node {
             Node::Stmt(stmt @ (Stmt::FunctionDef(_) | Stmt::ClassDef(_))) => {
                 blocks.insert(std::ptr::from_ref(stmt) as usize, local);
             }
@@ -71,12 +71,14 @@ fn facts(file: &Snapshot, module: &Module, analysis: &Analysis) -> Result<FileFa
                 occurrences.push((node, local));
             }
             _ => {}
-        },
-    )
+        }
+    })
     .map_err(|error| failure(format!("cannot select blocks: {error}"), None))?;
 
     let mut values = Values::new(&syntax, &blocks);
     let mut calls = Vec::new();
+    // Each call block's call, by address, for its result.
+    let mut call_blocks: Vec<(usize, u32)> = Vec::new();
     let mut callees: FxHashMap<usize, u32> = FxHashMap::default();
     let mut imports = Vec::new();
     let mut written = Vec::new();
@@ -101,6 +103,7 @@ fn facts(file: &Snapshot, module: &Module, analysis: &Analysis) -> Result<FileFa
                     if let Some(callee) = fact.callee {
                         callees.insert(address(expr), callee);
                     }
+                    call_blocks.push((address(expr), block));
                     calls.push(fact);
                 }
             },
@@ -162,11 +165,13 @@ fn facts(file: &Snapshot, module: &Module, analysis: &Analysis) -> Result<FileFa
     }
     let (values, exprs) = values.finish();
     let inputs = bind::Inputs {
+        text,
         blocks: &blocks,
         values: &exprs,
         callees: &callees,
     };
     let built = bind::build(module.syntax(), &inputs);
+    let (signatures, parameters, members, results) = typed.finish(&call_blocks, &built.awaited);
     for (index, alias) in children {
         if let Some(ImportSyntax::Child { node, .. }) = written.get_mut(index) {
             *node = built.aliases.get(&alias).copied().unwrap_or_default();
@@ -177,6 +182,17 @@ fn facts(file: &Snapshot, module: &Module, analysis: &Analysis) -> Result<FileFa
         .map_err(|error| failure(error.to_string(), None))?;
     let graph = GraphFacts::new(selection, values, calls, imports)
         .and_then(|graph| graph.with_conditional(conditional))
+        .and_then(|graph| {
+            let types = TypeFacts::new(
+                graph.blocks(),
+                signatures,
+                parameters,
+                members,
+                results,
+                built.type_refs,
+            );
+            graph.with_types(types)
+        })
         .map_err(|error| failure(format!("inconsistent facts: {error}"), None))?;
     Ok(FileFacts::new(graph, payload))
 }

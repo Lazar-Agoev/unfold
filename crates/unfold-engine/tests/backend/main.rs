@@ -9,6 +9,7 @@ mod entrances;
 mod link_hooks;
 mod policy;
 mod selection;
+mod typed;
 mod update;
 mod validation;
 

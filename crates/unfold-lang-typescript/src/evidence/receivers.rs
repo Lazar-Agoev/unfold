@@ -38,7 +38,7 @@ const ARRAYS: [&str; 4] = [
 /// Where a library type is declared: Node's own namespace comes from `@types/node` (so a
 /// receiver of that type is labeled `node`, never `global`: C-6); everything else is the
 /// default library.
-fn library_location(qualified: &str) -> ExternalLocation {
+pub(crate) fn library_location(qualified: &str) -> ExternalLocation {
     let name = qualified.strip_prefix("globalThis.").unwrap_or(qualified);
     if name.starts_with("NodeJS.") {
         ExternalLocation::Package("@types/node".into())

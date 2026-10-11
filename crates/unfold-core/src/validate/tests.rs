@@ -180,6 +180,14 @@ fn ranges_must_fall_on_character_boundaries() {
         "f",
         None,
     );
+    builder.types(call).results.push(crate::typed::CallResult {
+        call: call.local_id(),
+        binding: crate::vocab::ResultBinding::Discard,
+        awaited: false,
+        target: None,
+        position: None,
+        bound: None,
+    });
     let mut graph = builder.build();
     let sources = sources(&builder);
     assert_eq!(

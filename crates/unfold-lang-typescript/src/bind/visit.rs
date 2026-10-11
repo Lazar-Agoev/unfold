@@ -98,8 +98,10 @@ impl<'a> Binder<'a> {
         }
     }
 
-    /// A written type annotation, converted with names looked up from the current scope.
+    /// A written type annotation, converted with names looked up from the current scope (and
+    /// its type names recorded when it is linked).
     pub(super) fn annotation(&mut self, annotation: Option<&TSTypeAnnotation<'a>>) -> Option<u32> {
+        self.link_annotation(annotation);
         annotation.map(|annotation| self.ty(&annotation.type_annotation, self.scope))
     }
 }
@@ -135,17 +137,28 @@ impl<'a> Visit<'a> for Binder<'a> {
     fn visit_ts_interface_declaration(&mut self, it: &TSInterfaceDeclaration<'a>) {
         let exported = std::mem::take(&mut self.exporting);
         let name = it.id.name.as_str();
-        let decl = self.blank(DeclKind::Interface, Some(name), range(it.span));
+        let mut decl = self.blank(DeclKind::Interface, Some(name), range(it.span));
+        decl.block = self.block(it.unstable_address());
         let index = self.add(decl, Some(ModuleKey::Interface));
         self.declare(self.scope, name, index, Meanings::TYPE, exported);
+        self.link_declaration(range(it.body.span), it.type_parameters.as_deref(), |binder| {
+            for member in &it.body.body {
+                binder.signature_names(member, 0);
+            }
+        });
     }
 
     fn visit_ts_type_alias_declaration(&mut self, it: &TSTypeAliasDeclaration<'a>) {
         let exported = std::mem::take(&mut self.exporting);
         let name = it.id.name.as_str();
-        let decl = self.blank(DeclKind::TypeAlias, Some(name), range(it.span));
+        let mut decl = self.blank(DeclKind::TypeAlias, Some(name), range(it.span));
+        decl.block = self.block(it.unstable_address());
         let index = self.add(decl, Some(ModuleKey::TypeAlias));
         self.declare(self.scope, name, index, Meanings::TYPE, exported);
+        let aliased = range(it.type_annotation.span());
+        self.link_declaration(aliased, it.type_parameters.as_deref(), |binder| {
+            binder.type_names(&it.type_annotation, 0);
+        });
         if it.type_parameters.is_none() {
             let ty = self.ty(&it.type_annotation, self.scope);
             self.decl_mut(index).ty = Some(ty);
@@ -232,6 +245,7 @@ impl<'a> Visit<'a> for Binder<'a> {
     fn visit_catch_clause(&mut self, it: &CatchClause<'a>) {
         self.scoped(ScopeKind::Catch, |binder| {
             if let Some(parameter) = &it.param {
+                binder.link_annotation(parameter.type_annotation.as_deref());
                 match &parameter.pattern {
                     BindingPattern::BindingIdentifier(id) => {
                         let name = id.name.as_str();
@@ -362,7 +376,8 @@ impl<'a> Visit<'a> for Binder<'a> {
         let mut decl = self.blank(kind, name, range(it.span));
         decl.flags = decl
             .flags
-            .with(DeclFlags::TOP_LEVEL, self.top_level.contains(&address));
+            .with(DeclFlags::TOP_LEVEL, self.top_level.contains(&address))
+            .with(DeclFlags::DECORATED, !it.decorators.is_empty());
         decl.block = if self.ambient { None } else { self.block(address) };
         let index = self.add(decl, declaration.then_some(ModuleKey::Class));
         let symbol = match (&it.id, declaration) {
@@ -463,7 +478,8 @@ impl<'a> Visit<'a> for Binder<'a> {
         let exported = std::mem::take(&mut self.exporting);
         self.ambient_if(it.declare, |binder| {
             let name = it.id.name.as_str();
-            let decl = binder.blank(DeclKind::Enum, Some(name), range(it.span));
+            let mut decl = binder.blank(DeclKind::Enum, Some(name), range(it.span));
+            decl.block = binder.block(it.unstable_address());
             let index = binder.add(decl, Some(ModuleKey::Enum));
             let scope = binder.namespace_scope(name, index, exported, ScopeKind::Enum);
             binder.framed(Frame::Boundary, |binder| {

@@ -12,13 +12,16 @@ use crate::error::BackendError;
 use crate::evidence::{Candidate, Evidence, ImportTarget, Origin, Refusal, Stability, ValueContext};
 use crate::facts::{ValueFact, ValueShape};
 use crate::labels;
-use crate::program::{BlockRef, CallRef, DeclRef, FileId, ValueRef};
+use crate::program::{BlockRef, CallRef, DeclRef, FileId, TypeRef, ValueRef};
 
-/// The expression being resolved: a value of a file, or a call site without a callee.
+/// The expression being resolved: a value of a file, a call site without a callee, or a written
+/// type name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Expr {
     pub(crate) file: FileId,
     pub(crate) value: Option<u32>,
+    /// A type reference's index, for a type name ([`ValueContext::Type`]).
+    pub(crate) ty: Option<u32>,
 }
 
 impl Expr {
@@ -29,12 +32,39 @@ impl Expr {
         })
     }
 
+    pub(crate) fn type_ref(self) -> Option<TypeRef> {
+        self.ty.map(|index| TypeRef {
+            file: self.file,
+            index,
+        })
+    }
+
     pub(crate) fn fact<'a>(self, resolver: &Resolver<'a>) -> Option<&'a ValueFact> {
         resolver.program().value(self.value_ref()?)
     }
 
+    /// The shape the no-candidate reasons read: a type name is a name, or, qualified, a member.
     fn shape(self, resolver: &Resolver<'_>) -> ValueShape {
+        if let Some(reference) = self.type_ref() {
+            return match resolver.program().type_ref(reference) {
+                Some(fact) if fact.qualified => ValueShape::Member,
+                Some(_) => ValueShape::Name,
+                None => ValueShape::Other,
+            };
+        }
         self.fact(resolver).map_or(ValueShape::Other, |fact| fact.shape)
+    }
+
+    /// The written text: a value's label or a type name.
+    pub(crate) fn label<'a>(self, resolver: &Resolver<'a>) -> &'a str {
+        if let Some(reference) = self.type_ref() {
+            return resolver
+                .program()
+                .type_ref(reference)
+                .map_or(crate::edges::text::OTHER, |fact| &fact.text);
+        }
+        self.fact(resolver)
+            .map_or(crate::edges::text::OTHER, |fact| &fact.label)
     }
 }
 
@@ -51,6 +81,10 @@ pub(crate) fn resolve(
     let linked = resolver.linked();
     let shape = expr.shape(resolver);
     let evidence = match (call, expr.value_ref()) {
+        _ if context == ValueContext::Type => match expr.type_ref() {
+            Some(reference) => linked.type_evidence(reference),
+            None => Evidence::default(),
+        },
         (Some(call), _) => linked.callee_evidence(call),
         (None, value) if matches!(context, ValueContext::Reference | ValueContext::Handler) => {
             // Handler and reference shape checks come before any evidence is consulted.
@@ -164,7 +198,8 @@ pub(crate) fn resolve(
             Some(entry) => entry.1 = concrete.implementation,
             None => targets.push((concrete.target, concrete.implementation)),
         }
-        if linked.member(declaration).check_override {
+        // Overrides don't apply to types.
+        if context != ValueContext::Type && linked.member(declaration).check_override {
             members.push(declaration);
         }
     }
@@ -228,6 +263,7 @@ fn permitted(resolver: &Resolver<'_>, target: BlockRef, context: ValueContext) -
         ValueContext::Reference | ValueContext::Handler => {
             !kind.is_some_and(|kind| EdgeKind::References.target_kinds().contains(&kind))
         }
+        ValueContext::Type => !kind.is_some_and(BlockKind::is_type_declaration),
         ValueContext::Call | ValueContext::Construct => false,
     };
     if unsupported {

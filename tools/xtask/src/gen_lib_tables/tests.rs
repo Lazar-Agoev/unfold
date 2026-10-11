@@ -82,6 +82,19 @@ fn library_types_follow_implicit_and_explicit_exports() {
 }
 
 #[test]
+fn global_type_aliases_are_listed_through_namespaces() {
+    let script = "type Partial<T> = { [P in keyof T]?: T[P] }; interface I {} \
+                  declare namespace Intl { type LocalesArgument = string; interface Collator {} }";
+    let module = "export type Hidden = 1; declare global { type Shown = 2; }";
+    let model = model(&[script, module]);
+    assert_eq!(
+        model.library_type_aliases(),
+        ["Intl.LocalesArgument", "Partial", "Shown"]
+    );
+    assert_eq!(model.library_types(), ["I", "Intl.Collator"]);
+}
+
+#[test]
 fn files_and_references_are_recognized() {
     assert!(is_library_file("lib.es5.d.ts"));
     assert!(is_library_file("lib.dom.iterable.d.ts"));

@@ -1,11 +1,14 @@
-//! Files, blocks, slots, and edges.
+//! Files, blocks, slots, edges, typed records, and the reverse index of type links.
 
-use rusqlite::Row;
+use rusqlite::{Connection, Row};
 use rustc_hash::FxHashMap;
-use unfold_core::{Block, Edge, FileGraph, Graph, Slot};
+use unfold_core::{
+    Argument, Block, CallResult, Edge, FileGraph, FileTypes, Graph, Member, Pairing, Parameter, Signature,
+    Slot, TypeLink, WrittenType,
+};
 
 use super::Reader;
-use super::rows::{Cursor, FileRow, IncomingEdge, LocatedBlock, Page};
+use super::rows::{Cursor, FileRow, IncomingEdge, LocatedBlock, Page, TypeUse};
 use crate::codec;
 use crate::error::Result;
 use crate::update::DiskStamp;
@@ -79,6 +82,134 @@ fn decode_edge(row: &Row<'_>) -> Result<Edge> {
     })
 }
 
+/// A written type from three columns (text, start, end), present when the text is.
+fn decode_written(row: &Row<'_>, at: usize) -> Result<Option<WrittenType>> {
+    let Some(text) = codec::opt_boxed(row, at)? else {
+        return Ok(None);
+    };
+    Ok(Some(WrittenType {
+        text,
+        range: codec::range(row, at + 1)?,
+    }))
+}
+
+/// A flag bit of an integer column.
+fn flag(row: &Row<'_>, at: usize, bit: u32) -> Result<bool> {
+    Ok(codec::u32_at(row, at)? & (1 << bit) != 0)
+}
+
+/// The typed record queries, each filtered by file (`?1`) or, with `-1`, over every file, and
+/// ending with the file ID column.
+const SIGNATURES: &str = "SELECT block_local_id, returns, returns_start, returns_end, file_id \
+     FROM signatures WHERE ?1 IN (file_id, -1) ORDER BY file_id, block_local_id";
+const PARAMETERS: &str = "SELECT block_local_id, idx, kind, name, flags, type, type_start, type_end, \
+     file_id FROM parameters WHERE ?1 IN (file_id, -1) ORDER BY file_id, block_local_id, idx";
+const MEMBERS: &str = "SELECT block_local_id, idx, kind, name, flags, type, type_start, type_end, value, \
+     file_id FROM members WHERE ?1 IN (file_id, -1) ORDER BY file_id, block_local_id, idx";
+const ARGUMENTS: &str = "SELECT call_local_id, idx, expand, keyword, parameter, unpaired, file_id, \
+     bound FROM arguments WHERE ?1 IN (file_id, -1) ORDER BY file_id, call_local_id, idx";
+const RESULTS: &str = "SELECT call_local_id, binding, awaited, target_local_id, position, file_id, \
+     bound FROM results WHERE ?1 IN (file_id, -1) ORDER BY file_id, call_local_id";
+const TYPE_LINKS: &str = "SELECT t.block_local_id, t.start_byte, t.end_byte, t.text, t.resolution, \
+     k.key, t.reason, t.module, t.file_id FROM type_links t \
+     LEFT JOIN keys k ON k.id = t.target_key_id \
+     WHERE ?1 IN (t.file_id, -1) ORDER BY t.file_id, t.block_local_id, t.seq";
+
+/// Reads the typed records of file `file_id` (or of every file, with `-1`) by file ID, each
+/// file's records in canonical order.
+fn read_types(conn: &Connection, file_id: i64) -> Result<FxHashMap<i64, FileTypes>> {
+    let mut files: FxHashMap<i64, FileTypes> = FxHashMap::default();
+    let mut statement = conn.prepare_cached(SIGNATURES)?;
+    let mut rows = statement.query([file_id])?;
+    while let Some(row) = rows.next()? {
+        let signature = Signature {
+            block: codec::u32_at(row, 0)?,
+            returns: decode_written(row, 1)?,
+        };
+        files.entry(row.get(4)?).or_default().signatures.push(signature);
+    }
+    let mut statement = conn.prepare_cached(PARAMETERS)?;
+    let mut rows = statement.query([file_id])?;
+    while let Some(row) = rows.next()? {
+        let parameter = Parameter {
+            block: codec::u32_at(row, 0)?,
+            index: codec::u32_at(row, 1)?,
+            kind: codec::vocab(row, 2, "parameter kind")?,
+            name: codec::opt_boxed(row, 3)?,
+            optional: flag(row, 4, 0)?,
+            default: flag(row, 4, 1)?,
+            ty: decode_written(row, 5)?,
+        };
+        files.entry(row.get(8)?).or_default().parameters.push(parameter);
+    }
+    let mut statement = conn.prepare_cached(MEMBERS)?;
+    let mut rows = statement.query([file_id])?;
+    while let Some(row) = rows.next()? {
+        let member = Member {
+            block: codec::u32_at(row, 0)?,
+            index: codec::u32_at(row, 1)?,
+            kind: codec::vocab(row, 2, "member kind")?,
+            name: codec::opt_boxed(row, 3)?,
+            optional: flag(row, 4, 0)?,
+            readonly: flag(row, 4, 1)?,
+            default: flag(row, 4, 2)?,
+            ty: decode_written(row, 5)?,
+            value: codec::opt_boxed(row, 8)?,
+        };
+        files.entry(row.get(9)?).or_default().members.push(member);
+    }
+    let mut statement = conn.prepare_cached(ARGUMENTS)?;
+    let mut rows = statement.query([file_id])?;
+    while let Some(row) = rows.next()? {
+        let pairing = match (
+            codec::opt_u32(row, 4)?,
+            codec::opt_vocab(row, 5, "pairing reason")?,
+        ) {
+            (Some(index), None) => Some(Pairing::Parameter(index)),
+            (None, Some(reason)) => Some(Pairing::Unpaired(reason)),
+            (None, None) => None,
+            (Some(_), Some(_)) => return Err(codec::invalid("pairing", "a parameter and a reason")),
+        };
+        let argument = Argument {
+            call: codec::u32_at(row, 0)?,
+            index: codec::u32_at(row, 1)?,
+            expand: codec::opt_vocab(row, 2, "expansion")?,
+            keyword: codec::opt_boxed(row, 3)?,
+            pairing,
+            bound: codec::opt_u32(row, 7)?,
+        };
+        files.entry(row.get(6)?).or_default().arguments.push(argument);
+    }
+    let mut statement = conn.prepare_cached(RESULTS)?;
+    let mut rows = statement.query([file_id])?;
+    while let Some(row) = rows.next()? {
+        let result = CallResult {
+            call: codec::u32_at(row, 0)?,
+            binding: codec::vocab(row, 1, "result binding")?,
+            awaited: row.get(2)?,
+            target: codec::opt_u32(row, 3)?,
+            position: codec::opt_u32(row, 4)?,
+            bound: codec::opt_u32(row, 6)?,
+        };
+        files.entry(row.get(5)?).or_default().results.push(result);
+    }
+    let mut statement = conn.prepare_cached(TYPE_LINKS)?;
+    let mut rows = statement.query([file_id])?;
+    while let Some(row) = rows.next()? {
+        let link = TypeLink {
+            block: codec::u32_at(row, 0)?,
+            range: codec::range(row, 1)?,
+            text: codec::text(row, 3)?.into(),
+            resolution: codec::vocab(row, 4, "resolution")?,
+            target: codec::opt_key(row, 5)?,
+            reason: codec::opt_vocab(row, 6, "reason")?,
+            module: codec::opt_module(row, 7)?,
+        };
+        files.entry(row.get(8)?).or_default().type_links.push(link);
+    }
+    Ok(files)
+}
+
 /// Runs `statement` with `params` and decodes every row.
 pub(crate) fn collect<T>(
     statement: &mut rusqlite::CachedStatement<'_>,
@@ -112,8 +243,8 @@ impl Reader {
             .next())
     }
 
-    /// One file's record, blocks (preorder), slots (by block, then start), and edges (by
-    /// source, then sequence), from one snapshot.
+    /// One file's record, blocks (preorder), slots (by block, then start), edges (by source,
+    /// then sequence), and typed records (in canonical order), from one snapshot.
     pub fn file_graph(&self, path: &str) -> Result<Option<FileGraph>> {
         self.snapshot(|reader| {
             let conn = reader.conn();
@@ -144,11 +275,13 @@ impl Reader {
                  WHERE e.file_id = ?1 ORDER BY e.source_local_id, e.seq",
             )?;
             let edges = collect(&mut edges, [file_id], decode_edge)?;
+            let types = read_types(conn, file_id)?.remove(&file_id).unwrap_or_default();
             Ok(Some(FileGraph {
                 file: row.record(),
                 blocks,
                 slots,
                 edges,
+                types,
             }))
         })
     }
@@ -176,6 +309,7 @@ impl Reader {
                     blocks: Vec::new(),
                     slots: Vec::new(),
                     edges: Vec::new(),
+                    types: FileTypes::default(),
                 });
             }
             let owner = |id: i64| -> Result<usize> {
@@ -211,6 +345,9 @@ impl Reader {
             while let Some(row) = rows.next()? {
                 let edge = decode_edge(row)?;
                 files[owner(row.get(9)?)?].edges.push(edge);
+            }
+            for (id, types) in read_types(conn, -1)? {
+                files[owner(id)?].types = types;
             }
             Ok(Graph {
                 files,
@@ -289,6 +426,40 @@ impl Reader {
         Ok(Page {
             items: items.into_iter().map(|(_, edge)| edge).collect(),
             next,
+        })
+    }
+
+    /// How many type links resolve to the declaration with `key`: "used in N places".
+    pub fn type_use_count(&self, key: &str) -> Result<u64> {
+        let mut statement = self.conn().prepare_cached(
+            "SELECT count(*) FROM keys k JOIN type_links t ON t.target_key_id = k.id WHERE k.key = ?1",
+        )?;
+        let counts = collect(&mut statement, [key], |row| codec::count(row, 0))?;
+        Ok(counts.into_iter().next().unwrap_or(0))
+    }
+
+    /// The type links that resolve to the declaration with `key`, in path, then block, then
+    /// range order, skipping `offset` and returning at most `limit`, with each link's block.
+    pub fn type_uses(&self, key: &str, offset: usize, limit: usize) -> Result<Vec<TypeUse>> {
+        let mut statement = self.conn().prepare_cached(&format!(
+            "SELECT f.path, f.language, t.start_byte, t.end_byte, t.text, {BLOCK_COLUMNS} \
+             FROM keys tk \
+             JOIN type_links t ON t.target_key_id = tk.id \
+             JOIN files f ON f.id = t.file_id \
+             JOIN blocks b ON b.file_id = t.file_id AND b.local_id = t.block_local_id \
+             JOIN keys k ON k.id = b.key_id \
+             WHERE tk.key = ?1 ORDER BY f.path, t.block_local_id, t.seq LIMIT ?2 OFFSET ?3"
+        ))?;
+        let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+        let offset = i64::try_from(offset).unwrap_or(i64::MAX);
+        collect(&mut statement, (key, limit, offset), |row| {
+            Ok(TypeUse {
+                path: codec::path(row, 0)?,
+                language: codec::vocab(row, 1, "language")?,
+                range: codec::range(row, 2)?,
+                text: codec::text(row, 4)?.into(),
+                block: decode_block(row, 5)?,
+            })
         })
     }
 

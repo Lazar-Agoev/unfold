@@ -7,8 +7,8 @@
 //!   the file's import facts), resolved by [`ModuleResolver`] with the file's `tsconfig.json`.
 //! - **Exports.** Each module's runtime exports with re-export chains followed
 //!   ([`Linked::module_exports`], from [`ExportTable`]).
-//! - **Evidence.** Callee, value, and annotation evidence, declaration semantics, class shapes,
-//!   and manual-locator lookups, computed by the `evidence` module over the files' bindings and
+//! - **Evidence.** Callee, value, type, and annotation evidence, declaration semantics, class
+//!   shapes, and manual-locator lookups, computed by the `evidence` module over the files' bindings and
 //!   tables built once here (script globals, class members and bases, narrowed receivers,
 //!   members that may override unknown bases, and the mutation census).
 //! - **Labels, inputs, and launches.** Module-label spelling, the `tsconfig.json` chains the
@@ -31,7 +31,7 @@ use unfold_engine::evidence::{
 };
 use unfold_engine::{
     BlockRef, CallRef, DeclRef, EmitSource, FactsSet, FileId, LanguageId, LanguageProblem, Linked,
-    ProjectInputs, ValueRef,
+    ProjectInputs, TypeRef, ValueRef,
 };
 
 use crate::census::TypeScriptCensus;
@@ -42,7 +42,7 @@ use crate::evidence::{GlobalSymbol, Tables, Walk, WrittenMembers};
 use crate::exports::{ExportTable, ModuleFile, Specifiers};
 use crate::labels;
 use crate::modules::{ModuleResolver, Resolved, SpecifierKind};
-use crate::payload::binding::Alias;
+use crate::payload::binding::{Alias, DeclFlags};
 use crate::payload::{ImportKind, ImportSource, ModuleFacts, Payload};
 
 /// The linked TypeScript part of a program.
@@ -518,6 +518,24 @@ impl Linked for TypeScriptLinked<'_> {
 
     fn value_evidence(&self, value: ValueRef) -> Evidence {
         self.value_facts(value.file, value.value)
+    }
+
+    fn type_evidence(&self, reference: TypeRef) -> Evidence {
+        self.type_facts(reference)
+    }
+
+    /// A class without a direct constructor takes no arguments when it has no `extends` clause
+    /// (its implicit constructor is empty) and no decorator (which could replace the class).
+    fn class_takes_no_arguments(&self, class: BlockRef) -> bool {
+        let Some(binding) = self.binding(class.file) else {
+            return false;
+        };
+        binding.classes.iter().any(|facts| {
+            facts.heritage.is_none()
+                && binding.declarations.get(facts.decl as usize).is_some_and(|decl| {
+                    decl.block == Some(class.local) && !decl.flags.has(DeclFlags::DECORATED)
+                })
+        })
     }
 
     fn annotation_evidence(&self, declaration: DeclRef) -> Option<Evidence> {

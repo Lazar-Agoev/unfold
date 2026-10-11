@@ -1,0 +1,8 @@
+{
+  "name": "typed-lines-shop",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "stripe": "^17.0.0"
+  }
+}

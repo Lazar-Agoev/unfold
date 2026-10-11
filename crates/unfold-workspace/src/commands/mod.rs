@@ -28,6 +28,7 @@ pub mod relations;
 pub mod search;
 pub mod settings;
 pub mod text_search;
+pub mod types;
 pub mod windows;
 pub mod workspace;
 

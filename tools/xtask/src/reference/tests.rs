@@ -183,9 +183,14 @@ fn manual_entrances_move_to_the_settings_file_with_derived_keys() {
     assert_eq!(target.target.as_ref().unwrap().as_str(), "src/a.ts#function:f");
     assert_eq!(graph.inputs.len(), 1);
     assert_eq!(graph.inputs[0].path.as_str(), ".unfold/config.toml");
-    // The export round-trips.
-    let text = canonical::to_string(&graph);
-    assert_eq!(canonical::to_string(&canonical::read(&text).unwrap()), text);
+    // The export round-trips, at version 1 (references have no typed records).
+    let mut text = Vec::new();
+    canonical::write_version(&graph, 1, &mut text).unwrap();
+    let text = String::from_utf8(text).unwrap();
+    let (read_back, version) = canonical::read_versioned(&text).unwrap();
+    let mut again = Vec::new();
+    canonical::write_version(&read_back, version, &mut again).unwrap();
+    assert_eq!(String::from_utf8(again).unwrap(), text);
 }
 
 #[test]

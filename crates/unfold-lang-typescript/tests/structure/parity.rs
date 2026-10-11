@@ -3,6 +3,11 @@
 //! record for record with the canonical references: files, blocks, slots, and every edge. The
 //! playground's call edges differ only where a defect is fixed (C-2, C-8), and every edge Unfold
 //! resolves names the checker-backed reference's target (its precision proxy).
+//!
+//! The references are version-1 exports, so the actual graph is compared through
+//! [`canonical::version_one`]: without typed records and without `interface`, `type_alias`, and
+//! `enum` blocks (a call under an enum keyed as it was before enums were blocks). Everything the
+//! references record is compared in full.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -20,6 +25,11 @@ fn compile_folder(folder: &str) -> Compiled {
     let files = sources(&root);
     assert!(!files.is_empty(), "no TypeScript sources in {folder}");
     compile_with(&TypeScript::new(), &files, &folder_inputs(&root)).valid()
+}
+
+/// A folder's valid graph as a version-1 reference records it.
+fn compile_version_one(folder: &str) -> Graph {
+    canonical::version_one(&compile_folder(folder).graph)
 }
 
 fn reference(name: &str) -> Graph {
@@ -146,9 +156,9 @@ fn compare(
 
 #[track_caller]
 fn assert_parity(folder: &str, reference_name: &str) {
-    let actual = compile_folder(folder);
+    let actual = compile_version_one(folder);
     let expected = reference(reference_name);
-    let found = differences(&expected, &actual.graph);
+    let found = differences(&expected, &actual);
     assert!(
         found.is_empty(),
         "{} differences from {reference_name}:\n{}",
@@ -192,10 +202,10 @@ const C8_EDGE: &str = "src/cli.ts#function:main/switch[0]/case[1]/expression_sta
 
 #[test]
 fn playground_edges_match_the_native_reference_but_for_fixed_defects() {
-    let actual = compile_folder("playgrounds/ts-orders");
+    let actual = compile_version_one("playgrounds/ts-orders");
     let native = reference("playground-ts-native");
     let checker = reference("playground-ts-checker");
-    let (actual, expected, checker) = (edges(&actual.graph), edges(&native), edges(&checker));
+    let (actual, expected, checker) = (edges(&actual), edges(&native), edges(&checker));
     assert_eq!(
         actual.keys().collect::<Vec<_>>(),
         expected.keys().collect::<Vec<_>>(),
@@ -224,11 +234,11 @@ fn playground_edges_match_the_native_reference_but_for_fixed_defects() {
 
 #[test]
 fn every_resolved_playground_edge_names_the_checker_target() {
-    let actual = compile_folder("playgrounds/ts-orders");
+    let actual = compile_version_one("playgrounds/ts-orders");
     let checker = reference("playground-ts-checker");
     let checker = edges(&checker);
     let mut resolved = 0;
-    for (key, edge) in edges(&actual.graph) {
+    for (key, edge) in edges(&actual) {
         if edge.resolution != Resolution::Resolved || edge.kind == EdgeKind::Imports {
             continue;
         }
@@ -249,9 +259,9 @@ fn every_resolved_playground_edge_names_the_checker_target() {
 /// target. The native producer reached 46 of 71; C-2 adds the other 25.
 #[test]
 fn playground_recall_reaches_every_checker_resolved_call() {
-    let actual = compile_folder("playgrounds/ts-orders");
+    let actual = compile_version_one("playgrounds/ts-orders");
     let checker = reference("playground-ts-checker");
-    let actual = edges(&actual.graph);
+    let actual = edges(&actual);
     let mut resolved = 0;
     let mut matched = 0;
     for (key, want) in edges(&checker) {
@@ -273,9 +283,9 @@ fn playground_recall_reaches_every_checker_resolved_call() {
 
 #[test]
 fn entrance_fixture_edges_match_the_reference() {
-    let actual = compile_folder("fixtures/entrances");
+    let actual = compile_version_one("fixtures/entrances");
     let expected = reference("entrances");
-    let (actual, expected) = (edges(&actual.graph), edges(&expected));
+    let (actual, expected) = (edges(&actual), edges(&expected));
     assert_eq!(actual.len(), expected.len());
     for (key, edge) in &actual {
         assert_eq!(*edge, expected[key], "{key:?}");

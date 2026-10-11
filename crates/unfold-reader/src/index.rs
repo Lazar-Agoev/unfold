@@ -20,7 +20,9 @@ pub(crate) const NONE: BlockId = u32::MAX;
 
 /// Whether a block of `child_role` under a parent of `parent_kind` belongs to that parent's
 /// activation (architecture §10.1): every child of a file; a class's children except Python
-/// header expressions; a callable's body and parameters.
+/// header expressions; a callable's body and parameters. Nothing else owns: the owner walk
+/// passes through statements and through TypeScript `interface`, `type_alias`, and `enum`
+/// blocks (calls in an enum member's initializer belong to the enum's owner).
 pub(crate) fn owns(parent_kind: BlockKind, child_role: Option<Role>) -> bool {
     match parent_kind {
         BlockKind::File => true,
@@ -28,6 +30,16 @@ pub(crate) fn owns(parent_kind: BlockKind, child_role: Option<Role>) -> bool {
         kind if kind.is_function_like() => matches!(child_role, Some(Role::Body | Role::Parameter)),
         _ => false,
     }
+}
+
+/// Whether blocks of `kind` declare types only (TypeScript `interface`, `type_alias`, and
+/// `enum`): they are neither callable nor classes, and Flow and the statement outline leave
+/// them out. They are not in the definition catalog.
+pub(crate) fn is_type_only(kind: BlockKind) -> bool {
+    matches!(
+        kind,
+        BlockKind::Interface | BlockKind::TypeAlias | BlockKind::Enum
+    )
 }
 
 /// The owner of every block of one file, by local ID: the function, class, or file whose

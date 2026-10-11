@@ -1,9 +1,11 @@
-//! `cargo xtask canonical-check <file.jsonl>`: the canonical export round trip.
+//! `cargo xtask canonical-check <file.jsonl>`: the canonical export round trip, at the export's
+//! own version (1 or 2).
 
 use std::path::PathBuf;
 
 use anyhow::{Context, bail};
-use unfold_core::{canonical, validate};
+use unfold_core::canonical;
+use unfold_core::validate::Validator;
 
 /// Arguments of `canonical-check`.
 #[derive(clap::Args)]
@@ -16,14 +18,23 @@ pub(crate) struct Args {
 pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
     let bytes = std::fs::read(&args.file).with_context(|| format!("cannot read {}", args.file.display()))?;
     let text = String::from_utf8(bytes).with_context(|| format!("{} is not UTF-8", args.file.display()))?;
-    let graph = canonical::read(&text).with_context(|| format!("cannot parse {}", args.file.display()))?;
+    let (graph, version) =
+        canonical::read_versioned(&text).with_context(|| format!("cannot parse {}", args.file.display()))?;
 
-    let violations = validate(&graph);
+    // A version-1 export predates typed records: it is validated and written back as one.
+    let validator = if version < canonical::VERSION {
+        Validator::new().without_typed_records()
+    } else {
+        Validator::new()
+    };
+    let violations = validator.validate(&graph);
     for violation in &violations {
         eprintln!("{violation}");
     }
 
-    let rewritten = canonical::to_string(&graph);
+    let mut rewritten = Vec::new();
+    canonical::write_version(&graph, version, &mut rewritten)?;
+    let rewritten = String::from_utf8(rewritten)?;
     let identical = rewritten == text;
     if !identical {
         let line = text.lines().zip(rewritten.lines()).position(|(a, b)| a != b);

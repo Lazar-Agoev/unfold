@@ -4,15 +4,16 @@
 //!
 //! - [`extract`]: strict parsing with oxc, block selection through the engine's shared selector
 //!   with the TypeScript mapping (kinds, roles, names, slots), the value table, call and import
-//!   occurrences, module-level facts, the file's binding (declarations, symbols, and the
-//!   expressions evidence evaluates), the payload, and the independent census;
+//!   occurrences, typed facts (signatures, parameters, members, call results, and written type
+//!   names), module-level facts, the file's binding (declarations, symbols, and the expressions
+//!   evidence evaluates), the payload, and the independent census;
 //! - [`TypeScript`]: the [`Language`] implementation. Each file's extraction options come from
 //!   its nearest `tsconfig.json` ([`TypeScript::extraction_options`]); linking
-//!   ([`link::TypeScriptLinked`]) resolves modules and exports, answers callee, value, and
-//!   declaration evidence (evidence levels 1–4 and constant object members), class shapes, and
-//!   locators, and spells module labels;
-//! - [`tables`]: the known globals, library types, and Node built-ins of the pinned TypeScript
-//!   and `@types/node` declarations;
+//!   ([`link::TypeScriptLinked`]) resolves modules and exports, answers callee, value, type,
+//!   and declaration evidence (evidence levels 1–4 and constant object members), class shapes,
+//!   and locators, and spells module labels;
+//! - [`tables`]: the known globals, library types, global type aliases, and Node built-ins of the
+//!   pinned TypeScript and `@types/node` declarations;
 //! - [`TypeScriptHighlighter`]: lexical colors for the Code view.
 
 #![forbid(unsafe_code)]
@@ -42,6 +43,7 @@ mod sites;
 mod stack;
 mod syntax;
 pub mod tables;
+mod typed;
 mod values;
 
 use std::sync::{Arc, Mutex};

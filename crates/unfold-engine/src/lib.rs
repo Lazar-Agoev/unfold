@@ -1,7 +1,7 @@
 //! The language-neutral engine: the `Language` and `Linked` traits that language front ends
 //! implement, discovery and scope, the settings model, and the shared backend (block selection,
-//! roles, names, slots, the value policy, reason order, module labels, provenance, edges, entrance
-//! assembly, locators, and the launch grammar). `update()` is the single entry point that turns
+//! roles, names, slots, the value policy, reason order, module labels, provenance, edges, argument
+//! pairing, type links, entrance assembly, locators, and the launch grammar). `update()` is the single entry point that turns
 //! file changes into a new in-memory graph, with the per-file facts cache, relinking, and diffs.
 
 #![forbid(unsafe_code)]
@@ -17,6 +17,7 @@ pub mod labels;
 pub mod language;
 pub mod launch;
 pub mod locator;
+pub mod pairing;
 pub mod program;
 pub mod provenance;
 pub mod resolve;
@@ -32,7 +33,7 @@ pub use language::{
     EmitSource, ExtractionOptions, InputProblem, Language, LanguageId, LanguageProblem, Linked, Producer,
     ProjectInput, ProjectInputs, SourceFailure,
 };
-pub use program::{BlockRef, CallRef, DeclRef, FactsSet, FileId, ProgramFile, ValueRef};
+pub use program::{BlockRef, CallRef, DeclRef, FactsSet, FileId, ProgramFile, TypeRef, ValueRef};
 pub use resolve::{Outcome, Resolver};
 pub use update::{
     ChangeSummary, Changes, Engine, EngineOptions, FactsCache, LinkBasis, MemoryFactsCache, PreparedUpdate,

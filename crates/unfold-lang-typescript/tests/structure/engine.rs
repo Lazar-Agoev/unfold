@@ -24,7 +24,7 @@ use unfold_engine::settings::{Settings, SettingsHash};
 use unfold_engine::update::MemoryFactsCache;
 use unfold_engine::{
     BlockRef, CallRef, DeclRef, EmitSource, Engine, EngineOptions, ExtractionOptions, FactsSet, FileFacts,
-    FileId, InputProblem, Language, LanguageId, Linked, Producer, ProjectInputs, SourceFailure,
+    FileId, InputProblem, Language, LanguageId, Linked, Producer, ProjectInputs, SourceFailure, TypeRef,
     UpdateRequest, ValueRef,
 };
 use unfold_lang_typescript::TypeScript;
@@ -82,6 +82,9 @@ impl Linked for Linking<'_> {
     }
     fn value_evidence(&self, value: ValueRef) -> Evidence {
         self.0.value_evidence(value)
+    }
+    fn type_evidence(&self, reference: TypeRef) -> Evidence {
+        self.0.type_evidence(reference)
     }
     fn concrete_target(&self, declaration: DeclRef, context: ValueContext) -> Option<ConcreteTarget> {
         self.0.concrete_target(declaration, context)

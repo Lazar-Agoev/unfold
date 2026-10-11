@@ -14,6 +14,9 @@ pub struct Payload {
     pub boundaries: Vec<u32>,
     pub call_sites: Vec<CallSite>,
     pub dependencies: Vec<ByteRange>,
+    /// Aligned with the neutral type references: the scope each name is looked up from, and
+    /// the name.
+    pub types: Vec<(u32, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,6 +62,8 @@ pub enum DeclKind {
         ctor: Option<u32>,
         bases: Vec<String>,
         members: Vec<u32>,
+        /// A `(deco X)` item is written on the class.
+        decorated: bool,
     },
     Method {
         block: u32,

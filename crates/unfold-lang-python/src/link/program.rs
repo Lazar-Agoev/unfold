@@ -24,6 +24,26 @@ pub(crate) struct NodeRef {
     pub(crate) node: NodeId,
 }
 
+/// The file of the nodes that stand for builtin exception classes in linearizations: no file
+/// of the program has this ID, so every fact lookup on such a node finds nothing.
+const BUILTIN_EXCEPTIONS: FileId = FileId(u32::MAX);
+
+impl NodeRef {
+    /// The node standing for the builtin exception class at `index` of
+    /// [`crate::stdlib::BUILTIN_EXCEPTIONS`].
+    pub(crate) const fn builtin_exception(index: u32) -> Self {
+        Self {
+            file: BUILTIN_EXCEPTIONS,
+            node: index,
+        }
+    }
+
+    /// Whether this node stands for a builtin exception class rather than a declaration.
+    pub(crate) const fn is_builtin(self) -> bool {
+        self.file.0 == BUILTIN_EXCEPTIONS.0
+    }
+}
+
 /// An expression of the program.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct ExprRef {
@@ -66,6 +86,8 @@ pub(crate) struct FileBind {
     pub(crate) nodes: Vec<NodeFact>,
     pub(crate) exprs: Vec<ExprFact>,
     pub(crate) values: Vec<ExprId>,
+    /// The expression of each written type name, aligned with the file's type references.
+    pub(crate) types: Vec<ExprId>,
     pub(crate) effects: Vec<Effect>,
     pub(crate) stars: Vec<StarFact>,
     pub(crate) imports: Vec<ImportSyntax>,
@@ -118,6 +140,7 @@ pub(crate) struct Known {
     pub(crate) star: Sym,
     pub(crate) all: Sym,
     pub(crate) init: Sym,
+    pub(crate) new: Sym,
     pub(crate) call: Sym,
     pub(crate) getattribute: Sym,
 }
@@ -148,6 +171,7 @@ impl<'a> Program<'a> {
             star: names.intern("*"),
             all: names.intern("__all__"),
             init: names.intern("__init__"),
+            new: names.intern("__new__"),
             call: names.intern("__call__"),
             getattribute: names.intern("__getattribute__"),
         };
@@ -203,6 +227,7 @@ impl<'a> Program<'a> {
             writes,
             bindings,
             values,
+            types,
             stars,
             effects,
         } = bind;
@@ -260,6 +285,7 @@ impl<'a> Program<'a> {
             nodes,
             exprs,
             values,
+            types,
             effects,
             stars,
             imports,

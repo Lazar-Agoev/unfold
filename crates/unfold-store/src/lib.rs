@@ -47,7 +47,8 @@ mod tests;
 
 pub use error::{Result, StoreError};
 pub use read::rows::{
-    Cursor, DefinitionRow, FileRow, IncomingEdge, IndexStats, LocatedBlock, Page, SearchCandidate, StoredMeta,
+    Cursor, DefinitionRow, FileRow, IncomingEdge, IndexStats, LocatedBlock, Page, SearchCandidate,
+    StoredMeta, TypeUse,
 };
 pub use read::{ReadPool, Reader};
 pub use schema::SCHEMA_VERSION;

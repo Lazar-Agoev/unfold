@@ -1,7 +1,10 @@
 //! The end of the binder pass: interning the queued expressions, redirecting writes by `global`
-//! and `nonlocal`, and assembling the facts.
+//! and `nonlocal`, dropping type names bound to type parameters, and assembling the facts.
 
 use rustc_hash::FxHashMap;
+use unfold_engine::facts::TypeRefFact;
+
+use crate::mapping::bytes;
 
 use super::build::{Builder, Built};
 use super::ir::{BindFacts, BindingFact, MODULE_SCOPE, ScopeFact, ScopeId, ScopeKind};
@@ -60,12 +63,30 @@ impl<'a> Builder<'a> {
                 }
             })
             .collect();
+        let mut types: Vec<(TypeRefFact, u32)> = std::mem::take(&mut self.types)
+            .into_iter()
+            .filter(|name| !self.type_parameter(name.scope, &name.root))
+            .map(|name| {
+                let range = bytes(name.range);
+                let text = self
+                    .inputs
+                    .text
+                    .get(range.start as usize..range.end as usize)
+                    .unwrap_or_default();
+                (TypeRefFact::new(range, text, name.qualified), name.expr)
+            })
+            .collect();
+        types.sort_by_key(|(reference, _)| reference.range);
+        let (type_refs, type_exprs) = types.into_iter().unzip();
+        facts.types = type_exprs;
         let (names, exprs) = self.interner.finish();
         facts.names = names;
         facts.exprs = exprs;
         Built {
             facts,
             aliases: self.aliases,
+            type_refs,
+            awaited: self.awaited,
         }
     }
 

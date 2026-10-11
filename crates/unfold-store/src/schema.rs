@@ -7,6 +7,12 @@
 //! | --- | --- |
 //! | `definitions_by_file` | A file's definitions (outline), and replacing them when the file changes |
 //! | `entrances_by_evidence` | The entrances declared in one file or input |
+//! | `type_links_by_target` | The reverse index of type links: "used in N places" and the list of those places |
+//!
+//! The typed records (`signatures`, `parameters`, `members`, `arguments`, `results`,
+//! `type_links`) are written and replaced per file like slots and edges. Flags are bit sets:
+//! a parameter's `optional` (1) and `default` (2); a member's `optional` (1), `readonly` (2),
+//! and `default` (4).
 //!
 //! The search table uses FTS5's `trigram` tokenizer, so a query matches anywhere inside an
 //! identifier (`order` finds `createOrder` and `OrderService`), which word tokenizers cannot do
@@ -21,7 +27,7 @@ use crate::error::Result;
 
 /// The version of the schema below. Bump it whenever a table, column, index, or the meaning of
 /// a stored value changes; existing databases are then rebuilt.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Every table and index, created in one transaction.
 const DDL: &str = r"
@@ -74,6 +80,47 @@ CREATE TABLE edges (
   PRIMARY KEY (file_id, source_local_id, seq)
 ) WITHOUT ROWID;
 CREATE INDEX edges_by_target ON edges (target_key_id);
+
+CREATE TABLE signatures (
+  file_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL,
+  returns TEXT, returns_start INTEGER, returns_end INTEGER,
+  PRIMARY KEY (file_id, block_local_id)
+) WITHOUT ROWID;
+
+CREATE TABLE parameters (
+  file_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL, idx INTEGER NOT NULL,
+  kind TEXT NOT NULL, name TEXT, flags INTEGER NOT NULL,
+  type TEXT, type_start INTEGER, type_end INTEGER,
+  PRIMARY KEY (file_id, block_local_id, idx)
+) WITHOUT ROWID;
+
+CREATE TABLE members (
+  file_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL, idx INTEGER NOT NULL,
+  kind TEXT NOT NULL, name TEXT, flags INTEGER NOT NULL,
+  type TEXT, type_start INTEGER, type_end INTEGER, value TEXT,
+  PRIMARY KEY (file_id, block_local_id, idx)
+) WITHOUT ROWID;
+
+CREATE TABLE arguments (
+  file_id INTEGER NOT NULL, call_local_id INTEGER NOT NULL, idx INTEGER NOT NULL,
+  expand TEXT, keyword TEXT, parameter INTEGER, unpaired TEXT, bound INTEGER,
+  PRIMARY KEY (file_id, call_local_id, idx)
+) WITHOUT ROWID;
+
+CREATE TABLE results (
+  file_id INTEGER NOT NULL, call_local_id INTEGER NOT NULL,
+  binding TEXT NOT NULL, awaited INTEGER NOT NULL, target_local_id INTEGER, position INTEGER,
+  bound INTEGER,
+  PRIMARY KEY (file_id, call_local_id)
+) WITHOUT ROWID;
+
+CREATE TABLE type_links (
+  file_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL, seq INTEGER NOT NULL,
+  start_byte INTEGER NOT NULL, end_byte INTEGER NOT NULL, text TEXT NOT NULL,
+  resolution TEXT NOT NULL, target_key_id INTEGER, reason TEXT, module TEXT,
+  PRIMARY KEY (file_id, block_local_id, seq)
+) WITHOUT ROWID;
+CREATE INDEX type_links_by_target ON type_links (target_key_id);
 
 CREATE TABLE entrances (
   id INTEGER PRIMARY KEY,

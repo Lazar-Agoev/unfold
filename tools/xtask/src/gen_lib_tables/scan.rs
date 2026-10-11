@@ -24,6 +24,8 @@ pub(crate) struct Symbol {
     pub(crate) value: bool,
     /// Some declaration is a class or an interface.
     pub(crate) class_or_interface: bool,
+    /// Some declaration is a type alias.
+    pub(crate) type_alias: bool,
     /// The exports of its namespace declarations, if it has any.
     pub(crate) namespace: Option<Scope>,
 }
@@ -235,7 +237,10 @@ impl<'a> Walker<'_, 'a> {
                 self.augment(&global.body.body, depth + 1);
             }
             // Type aliases add no class, interface, or value; import aliases are aliases.
-            Declaration::TSTypeAliasDeclaration(_) | Declaration::TSImportEqualsDeclaration(_) => {}
+            Declaration::TSTypeAliasDeclaration(alias) => {
+                scope.symbol(alias.id.name.as_str()).type_alias = true;
+            }
+            Declaration::TSImportEqualsDeclaration(_) => {}
         }
         Ok(())
     }
@@ -421,12 +426,32 @@ impl Model {
     /// Class and interface names in the global scope, qualified through namespaces.
     pub(crate) fn library_types(&self) -> Vec<String> {
         let mut names = BTreeSet::new();
-        collect_types(&self.globals, "", &mut names, 0);
+        collect_types(
+            &self.globals,
+            "",
+            &|symbol| symbol.class_or_interface,
+            &mut names,
+            0,
+        );
+        names.into_iter().collect()
+    }
+
+    /// Type alias names in the global scope, qualified through namespaces.
+    pub(crate) fn library_type_aliases(&self) -> Vec<String> {
+        let mut names = BTreeSet::new();
+        collect_types(&self.globals, "", &|symbol| symbol.type_alias, &mut names, 0);
         names.into_iter().collect()
     }
 }
 
-fn collect_types(scope: &Scope, prefix: &str, out: &mut BTreeSet<String>, depth: usize) {
+/// The names of the symbols `wanted` accepts in `scope` and its namespaces, qualified.
+fn collect_types(
+    scope: &Scope,
+    prefix: &str,
+    wanted: &dyn Fn(&Symbol) -> bool,
+    out: &mut BTreeSet<String>,
+    depth: usize,
+) {
     if depth > MAX_DEPTH {
         return;
     }
@@ -435,11 +460,11 @@ fn collect_types(scope: &Scope, prefix: &str, out: &mut BTreeSet<String>, depth:
             continue;
         }
         let qualified = format!("{prefix}{name}");
-        if symbol.class_or_interface {
+        if wanted(symbol) {
             out.insert(qualified.clone());
         }
         if let Some(namespace) = &symbol.namespace {
-            collect_types(namespace, &format!("{qualified}."), out, depth + 1);
+            collect_types(namespace, &format!("{qualified}."), wanted, out, depth + 1);
         }
     }
 }

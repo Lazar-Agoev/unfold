@@ -129,6 +129,12 @@ vocabulary! {
         ExpressionStatement = "expression_statement",
         With = "with",
         Match = "match",
+        /// A TypeScript interface.
+        Interface = "interface",
+        /// A TypeScript type alias.
+        TypeAlias = "type_alias",
+        /// A TypeScript enum.
+        Enum = "enum",
     }
 }
 
@@ -178,6 +184,8 @@ vocabulary! {
         Finally = "finally",
         Binding = "binding",
         Specifier = "specifier",
+        /// A TypeScript type alias's aliased type.
+        Type = "type",
     }
 }
 
@@ -285,6 +293,84 @@ vocabulary! {
     }
 }
 
+vocabulary! {
+    /// What a callable's parameter is to its calls (`docs/graph-model.md`, "Typed records").
+    ParameterKind, "parameter kind" {
+        /// An ordinary parameter: it takes a positional argument (Python also a keyword).
+        Positional = "positional",
+        /// TypeScript's explicit `this` parameter, which takes no argument.
+        This = "this",
+        /// TypeScript `...x`, Python `*args`: every further positional argument.
+        Rest = "rest",
+        /// Python, before `/`: positional arguments only.
+        PositionalOnly = "positional_only",
+        /// Python, after `*` or `*args`: keyword arguments only.
+        KeywordOnly = "keyword_only",
+        /// Python `**kwargs`: every further keyword argument.
+        Keywords = "keywords",
+    }
+}
+
+vocabulary! {
+    /// What a member of a type declaration or class is.
+    MemberKind, "member kind" {
+        /// A property or field.
+        Property = "property",
+        /// A method signature.
+        Method = "method",
+        /// An index signature.
+        Index = "index",
+        /// A call signature.
+        Call = "call",
+        /// A construct signature.
+        Construct = "construct",
+        /// An enum member.
+        Value = "value",
+    }
+}
+
+vocabulary! {
+    /// How an argument is expanded.
+    Expansion, "expansion" {
+        /// TypeScript `...x`, Python `*x`.
+        Spread = "spread",
+        /// Python `**x`.
+        Keywords = "keywords",
+    }
+}
+
+vocabulary! {
+    /// Why an argument fills no proven parameter.
+    PairingReason, "pairing reason" {
+        /// This argument, or an earlier one, is expanded.
+        Spread = "spread",
+        /// No parameter of the target takes it.
+        NoParameter = "no_parameter",
+        /// It can't be proven whether the call binds the target's first parameter itself.
+        Receiver = "receiver",
+        /// The target declares no parameters of its own: a class without a direct constructor
+        /// that has a base.
+        NoSignature = "no_signature",
+    }
+}
+
+vocabulary! {
+    /// Where a call's value lands.
+    ResultBinding, "result binding" {
+        /// It is exactly the initializer of a `variable` block.
+        Variable = "variable",
+        /// It is exactly a returned expression (Python: also a lambda body; TypeScript: also an
+        /// arrow function's expression body).
+        Return = "return",
+        /// It is exactly an argument of another call or construction.
+        Argument = "argument",
+        /// It is exactly the expression of an `expression_statement`.
+        Discard = "discard",
+        /// Anything else.
+        Other = "other",
+    }
+}
+
 impl BlockKind {
     /// `function`, `method`, `constructor`, `getter`, or `setter`: a block with a callable body.
     pub const fn is_function_like(self) -> bool {
@@ -299,14 +385,29 @@ impl BlockKind {
         matches!(self, Self::Call | Self::New | Self::Import)
     }
 
+    /// `class`, `interface`, `type_alias`, or `enum`: a declaration a type name can resolve to,
+    /// and the kinds that carry `member` records.
+    pub const fn is_type_declaration(self) -> bool {
+        matches!(self, Self::Class | Self::Interface | Self::TypeAlias | Self::Enum)
+    }
+
     /// Whether files of `language` can contain this kind. Python never emits `new`, `for`,
-    /// `for_in`, `do_while`, `switch`, or `default`; `with` and `match` are Python only.
+    /// `for_in`, `do_while`, `switch`, `default`, `interface`, `type_alias`, or `enum`; `with`
+    /// and `match` are Python only.
     pub const fn allowed_in(self, language: Language) -> bool {
         match language {
             Language::TypeScript => !matches!(self, Self::With | Self::Match),
             Language::Python => !matches!(
                 self,
-                Self::New | Self::For | Self::ForIn | Self::DoWhile | Self::Switch | Self::Default
+                Self::New
+                    | Self::For
+                    | Self::ForIn
+                    | Self::DoWhile
+                    | Self::Switch
+                    | Self::Default
+                    | Self::Interface
+                    | Self::TypeAlias
+                    | Self::Enum
             ),
         }
     }
@@ -320,6 +421,9 @@ impl BlockKind {
                 &[S::Name, S::Parameter, S::ReturnType, S::Body]
             }
             Self::Class => &[S::Name, S::Heritage],
+            Self::Interface => &[S::Name, S::Heritage, S::Body],
+            Self::TypeAlias => &[S::Name, S::Type],
+            Self::Enum => &[S::Name, S::Body],
             Self::Variable => &[S::Name, S::Initializer],
             Self::Call | Self::New => &[S::Callee, S::Argument],
             Self::If => &[S::Condition, S::Then, S::Else],
@@ -365,6 +469,56 @@ impl BlockKind {
             (Self::New, _) => &[EdgeKind::Constructs],
             (Self::Import, _) => &[EdgeKind::Imports],
             _ => &[],
+        }
+    }
+}
+
+impl ParameterKind {
+    /// Whether files of `language` can have this kind: `this` is TypeScript only;
+    /// `positional_only`, `keyword_only`, and `keywords` are Python only.
+    pub const fn allowed_in(self, language: Language) -> bool {
+        match self {
+            Self::Positional | Self::Rest => true,
+            Self::This => matches!(language, Language::TypeScript),
+            Self::PositionalOnly | Self::KeywordOnly | Self::Keywords => matches!(language, Language::Python),
+        }
+    }
+
+    /// Whether a parameter of this kind can be filled by an argument (every kind but `this`).
+    pub const fn takes_argument(self) -> bool {
+        !matches!(self, Self::This)
+    }
+
+    /// Whether a positional argument can fill it one-to-one: `positional` or `positional_only`.
+    pub const fn takes_position(self) -> bool {
+        matches!(self, Self::Positional | Self::PositionalOnly)
+    }
+
+    /// Whether a keyword argument of its name can fill it: `positional` or `keyword_only`.
+    pub const fn takes_keyword(self) -> bool {
+        matches!(self, Self::Positional | Self::KeywordOnly)
+    }
+
+    /// The kind's place in Python's written order (positional-only, positional, `*args`,
+    /// keyword-only, `**kwargs`); `None` for `this`.
+    pub const fn python_order(self) -> Option<u8> {
+        match self {
+            Self::PositionalOnly => Some(0),
+            Self::Positional => Some(1),
+            Self::Rest => Some(2),
+            Self::KeywordOnly => Some(3),
+            Self::Keywords => Some(4),
+            Self::This => None,
+        }
+    }
+}
+
+impl Expansion {
+    /// Whether files of `language` can have it: `keywords` is Python only.
+    pub const fn allowed_in(self, language: Language) -> bool {
+        match self {
+            Self::Spread => true,
+            Self::Keywords => matches!(language, Language::Python),
         }
     }
 }
@@ -511,13 +665,18 @@ mod tests {
         round_trip(TargetRole::ALL);
         round_trip(HttpMethod::ALL);
         round_trip(DetectorId::ALL);
+        round_trip(ParameterKind::ALL);
+        round_trip(MemberKind::ALL);
+        round_trip(Expansion::ALL);
+        round_trip(PairingReason::ALL);
+        round_trip(ResultBinding::ALL);
     }
 
     #[test]
     fn vocabulary_sizes_match_the_graph_model() {
-        assert_eq!(BlockKind::ALL.len(), 29);
+        assert_eq!(BlockKind::ALL.len(), 32);
         assert_eq!(Role::ALL.len(), 18);
-        assert_eq!(SlotName::ALL.len(), 18);
+        assert_eq!(SlotName::ALL.len(), 19);
         assert_eq!(Reason::ALL.len(), 14);
         assert_eq!(EntranceKind::ALL.len(), 6);
         assert_eq!(HttpMethod::ALL.len(), 8);
@@ -546,11 +705,16 @@ mod tests {
             names(TargetRole::ALL),
             names(HttpMethod::ALL),
             names(DetectorId::ALL),
+            names(ParameterKind::ALL),
+            names(MemberKind::ALL),
+            names(Expansion::ALL),
+            names(PairingReason::ALL),
+            names(ResultBinding::ALL),
         ]
         .join("\n");
         assert_eq!(
             crate::text::ContentHash::of(encoding.as_bytes()).to_string(),
-            "24c36544e759553a236d1b1172b2503ecdb7c78c00fe4e1c3fc130c54cd7c36e",
+            "f108985a166ea8523435635a7266ad2b8e898047e31e688540e784c8f33bdb9a",
             "a vocabulary's variant order changed: bump unfold-engine's ENGINE_VERSION so cached \
              facts are recomputed, then update this hash"
         );

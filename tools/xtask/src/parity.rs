@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, bail};
 use serde_json::json;
-use unfold_core::Graph;
+use unfold_core::{Graph, canonical};
 
 use crate::canonical_diff::{read_graph, scopes};
 use crate::compare::{self, Scope, Summary};
@@ -99,8 +99,9 @@ fn compile_corpus(corpus: &Corpus) -> anyhow::Result<Graph> {
     Ok(Arc::unwrap_or_clone(outcome.graph))
 }
 
-/// The differences between the corpus reference and `actual`. Fails for a corpus that is only
-/// a comparison aid.
+/// The differences between the corpus reference and `actual`'s version-1 view
+/// ([`canonical::version_one`]: no typed records or type declaration blocks). Fails for a corpus
+/// that is only a comparison aid.
 pub(crate) fn check_differences(
     corpus: &Corpus,
     expected: &Graph,
@@ -113,7 +114,8 @@ pub(crate) fn check_differences(
             corpus.name
         );
     }
-    compare::diff(expected, actual, scopes)
+    // The references are version 1: compare only what they record.
+    compare::diff(expected, &canonical::version_one(actual), scopes)
 }
 
 fn report(corpus: &Corpus, differences: &[compare::Difference], outcome: &Outcome<'_, '_>, args: &Args) {

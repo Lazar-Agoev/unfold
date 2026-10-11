@@ -16,9 +16,10 @@
 //! Files without conditional blocks are untouched and cost nothing.
 
 use unfold_core::vocab::BlockKind;
-use unfold_core::{Block, Edge, FileGraph, FileRecord, KeyBuilder, RepoPath, Slot};
+use unfold_core::{Block, FileGraph, FileRecord, KeyBuilder, RepoPath, Slot};
 
 use super::{FactsError, GraphFacts};
+use crate::edges::FileLinks;
 
 /// One file's facts after dropping conditional blocks, with the local-ID mapping.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,16 +36,39 @@ impl Renumbered {
         self.map.get(old as usize).copied().flatten()
     }
 
-    /// Edges resolved over the original facts, renumbered: edges whose source was dropped are
-    /// removed, the others keep their order with their sources renumbered.
-    pub(crate) fn edges(&self, edges: Vec<Edge>) -> Vec<Edge> {
-        edges
+    /// Links resolved over the original facts, renumbered: edges, arguments, and type links
+    /// of dropped blocks are removed, the others keep their order with their blocks
+    /// renumbered.
+    pub(crate) fn links(&self, links: FileLinks) -> FileLinks {
+        let FileLinks {
+            edges,
+            mut arguments,
+            mut type_links,
+            bounds,
+        } = links;
+        let edges = edges
             .into_iter()
             .filter_map(|mut edge| {
                 edge.source = self.local(edge.source)?;
                 Some(edge)
             })
-            .collect()
+            .collect();
+        arguments.retain_mut(|argument| {
+            self.local(argument.call)
+                .map(|call| argument.call = call)
+                .is_some()
+        });
+        type_links.retain_mut(|link| self.local(link.block).map(|block| link.block = block).is_some());
+        let bounds = bounds
+            .into_iter()
+            .filter_map(|(call, bound)| Some((self.local(call)?, bound)))
+            .collect();
+        FileLinks {
+            edges,
+            arguments,
+            type_links,
+            bounds,
+        }
     }
 }
 
@@ -155,6 +179,8 @@ impl GraphFacts {
                 Some(import)
             })
             .collect();
+        let mut types = self.types.clone();
+        types.renumber(renumber);
         let graph = GraphFacts {
             blocks,
             slots,
@@ -162,30 +188,25 @@ impl GraphFacts {
             calls,
             imports,
             conditional: Vec::new(),
+            types,
         };
         graph.check()?;
         Ok(Some(Renumbered { graph, map }))
     }
 
     /// This file's graph record after linking: [`GraphFacts::file_graph`] with the conditional
-    /// blocks `keep` rejects dropped and `edges` (resolved over these facts) renumbered.
+    /// blocks `keep` rejects dropped and `links` (resolved over these facts) renumbered.
     pub fn linked_file_graph(
         &self,
         file: FileRecord,
-        edges: Vec<Edge>,
+        links: FileLinks,
         keep: impl FnMut(u32) -> bool,
     ) -> Result<FileGraph, FactsError> {
         Ok(match self.drop_conditional(&file.path, keep)? {
-            None => self.file_graph(file, edges),
+            None => self.file_graph(file, links),
             Some(renumbered) => {
-                let edges = renumbered.edges(edges);
-                let Renumbered { graph, .. } = renumbered;
-                FileGraph {
-                    file,
-                    blocks: graph.blocks,
-                    slots: graph.slots,
-                    edges,
-                }
+                let links = renumbered.links(links);
+                renumbered.graph.file_graph(file, links)
             }
         })
     }
@@ -193,6 +214,7 @@ impl GraphFacts {
 
 #[cfg(test)]
 mod tests {
+    use unfold_core::Edge;
     use unfold_core::text::{ByteRange, LineIndex};
     use unfold_core::vocab::{EdgeKind, Resolution, Role};
 
@@ -353,7 +375,12 @@ mod tests {
         assert!(graph.conditional().is_empty());
         assert_eq!(renumbered.local(2), None);
         assert_eq!(renumbered.local(5), Some(4));
-        let edges = renumbered.edges([1, 2, 3, 4, 6].into_iter().map(edge).collect());
+        let edges = renumbered
+            .links(FileLinks {
+                edges: [1, 2, 3, 4, 6].into_iter().map(edge).collect(),
+                ..FileLinks::default()
+            })
+            .edges;
         assert_eq!(
             edges
                 .iter()

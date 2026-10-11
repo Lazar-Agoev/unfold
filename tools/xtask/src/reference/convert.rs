@@ -269,6 +269,7 @@ impl<'a> Converter<'a> {
                     blocks: file.blocks,
                     slots: file.slots,
                     edges: file.edges,
+                    types: unfold_core::FileTypes::default(),
                 })
                 .collect(),
             inputs: self.inputs,
@@ -276,7 +277,11 @@ impl<'a> Converter<'a> {
         };
         graph.normalize();
 
-        let violations = Validator::new().with_sources(&self.snapshots).validate(&graph);
+        // The proof of concept recorded no typed records: its references are version-1 graphs.
+        let violations = Validator::new()
+            .without_typed_records()
+            .with_sources(&self.snapshots)
+            .validate(&graph);
         if !violations.is_empty() {
             let shown: Vec<String> = violations.iter().take(20).map(ToString::to_string).collect();
             bail!(

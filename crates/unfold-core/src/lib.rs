@@ -15,6 +15,7 @@ pub mod path;
 #[cfg(any(test, feature = "testkit"))]
 pub mod testkit;
 pub mod text;
+pub mod typed;
 pub mod validate;
 pub mod vocab;
 
@@ -25,4 +26,7 @@ pub use model::{
 };
 pub use path::RepoPath;
 pub use text::{ByteRange, ContentHash, LineIndex, LineSpan, Snapshot, Utf16Index};
+pub use typed::{
+    Argument, CallResult, FileTypes, Member, Pairing, Parameter, Signature, TypeLink, WrittenType,
+};
 pub use validate::{Census, Validator, Violation, validate};

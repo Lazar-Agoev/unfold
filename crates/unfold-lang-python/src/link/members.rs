@@ -63,6 +63,10 @@ impl Binder<'_> {
             return field;
         }
         for &base in mro.iter() {
+            // A builtin class's members are not known: the lookup proves nothing past it.
+            if base.is_builtin() {
+                break;
+            }
             let Some(binding) = self.class_binding(base, member) else {
                 continue;
             };
@@ -168,6 +172,10 @@ impl Binder<'_> {
             };
             let start = mro.iter().position(|&base| base == owner).map_or(0, |at| at + 1);
             for &base in &mro[start..] {
+                // A builtin class may define the member: `super()` can't be followed past it.
+                if base.is_builtin() {
+                    return Value::refused(Refusal::Unsupported);
+                }
                 if self.invalid_member(base, member) {
                     return Value::refused(Refusal::Dynamic);
                 }
@@ -213,7 +221,10 @@ impl Binder<'_> {
             }) {
                 return true;
             }
-            let actual = mro.iter().find_map(|&base| self.class_binding(base, member));
+            let actual = mro
+                .iter()
+                .take_while(|base| !base.is_builtin())
+                .find_map(|&base| self.class_binding(base, member));
             if actual != Some(expected) {
                 return true;
             }

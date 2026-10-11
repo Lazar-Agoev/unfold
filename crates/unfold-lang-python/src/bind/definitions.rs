@@ -33,6 +33,9 @@ impl<'a> Builder<'a> {
             ..ctx
         };
         self.parameters(&function.parameters, node, body, header.in_scope(type_scope));
+        if let Some(returns) = function.returns.as_deref() {
+            self.annotation(returns, type_scope);
+        }
         let inside = Ctx {
             scope: body,
             ..header
@@ -83,9 +86,10 @@ impl<'a> Builder<'a> {
     ) {
         let mut declared = Vec::new();
         for (position, parameter) in parameters.iter().enumerate() {
-            let annotation = parameter
-                .annotation()
-                .map(|annotation| self.reserve(annotation, outer.scope));
+            let annotation = parameter.annotation().map(|annotation| {
+                self.annotation(annotation, outer.scope);
+                self.reserve(annotation, outer.scope)
+            });
             let name = parameter.name().id.as_str();
             let kind = NodeKind::Parameter {
                 name: self.interner.name(name),
