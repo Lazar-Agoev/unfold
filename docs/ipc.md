@@ -82,7 +82,7 @@ whole generated module for onboarding.
 
 | Concern | Handler area / representative names |
 | --- | --- |
-| Projects/Home/settings | `workspace`, `projects`, `settings`, `diagnostics`, `entrances` modules |
+| Projects/Home/settings | `workspace`, `projects`, `settings`, `diagnostics`, `entrances`, `deploy_import` modules |
 | Files/graph/relations | `files`, `file_view`, `graph`, `relations` modules |
 | Typed lines | `types` module: `line_labels`, `call_contract`, `type_definition`, `type_uses` |
 | Search | `search`, `text_search`; streamed text results |

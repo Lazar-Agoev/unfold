@@ -11,8 +11,9 @@
 use serde::Deserialize;
 
 use crate::commands::{
-    NoArgs, ProjectArgs, ProjectKeyArgs, ProjectPathArgs, boards, compiling, diagnostics, entrances, export,
-    file_view, files, graph, projects, relations, search, settings, text_search, types, windows, workspace,
+    NoArgs, ProjectArgs, ProjectKeyArgs, ProjectPathArgs, boards, compiling, deploy_import, diagnostics,
+    entrances, export, file_view, files, graph, projects, relations, search, settings, text_search, types,
+    windows, workspace,
 };
 use crate::compile::{CompileOutcome, CompileProgress};
 use crate::git::GitInfo;
@@ -121,6 +122,8 @@ command_table! {
     "scope_dir" => ScopeDir(ProjectPathArgs) -> projects::ScopeDir = projects::scope_dir;
     /// How a project starts: applications, launches, and entrances, paged and filtered.
     "entrances" => Entrances(entrances::EntrancesArgs) -> entrances::EntranceMap = entrances::entrances;
+    /// The project's `render.yaml` services as draft launches, for review. Runs and writes nothing.
+    "import_deploy_files" => ImportDeployFiles(ProjectArgs) -> deploy_import::DeployImport = deploy_import::import_deploy_files;
     /// The Problems list, with the health of every board.
     "problems" => Problems(ProjectArgs) -> Vec<ProblemItem> = compiling::problems;
     /// The Index log and the graph's counts.

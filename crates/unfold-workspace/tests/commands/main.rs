@@ -4,6 +4,7 @@
 mod boards;
 mod claims;
 mod common;
+mod deploy_import;
 mod diagnostics;
 mod git;
 mod goldens;

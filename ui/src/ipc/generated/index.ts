@@ -1185,6 +1185,19 @@ path: string,
 line: number | null, };
 
 /**
+ * What the deploy files say, as draft launches.
+ */
+export type DeployImport = { 
+/**
+ * The `render.yaml` files read, by path.
+ */
+files: Array<string>, 
+/**
+ * One draft per web, worker, and cron service, in file then document order.
+ */
+launches: Array<ImportedLaunch>, };
+
+/**
  * A description (of a card, group, frame, resource, or connection), a Flow label's text, or a
  * drawn link's label.
  */
@@ -1225,6 +1238,23 @@ export type DiagnosticsReport = {
  * The summary, one fact per line, already redacted.
  */
 text: string, };
+
+/**
+ * The draft application a launch joins.
+ */
+export type DraftApplication = { 
+/**
+ * The owning service's name.
+ */
+id: string, 
+/**
+ * The owning service's name in words (`invoice-hitl-api` → `Invoice hitl API`).
+ */
+name: string, 
+/**
+ * The owning service's description.
+ */
+description: string | null, };
 
 /**
  * Every project's drafts and published boards with unpublished changes.
@@ -2393,6 +2423,64 @@ export type Heritage = "extends" | "implements";
  * The method of an HTTP entrance.
  */
 export type HttpMethod = "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "ALL";
+
+/**
+ * One service as a draft launch.
+ */
+export type ImportedLaunch = { 
+/**
+ * The service's name.
+ */
+service: string, 
+/**
+ * The service's type.
+ */
+serviceType: ServiceType, 
+/**
+ * The application it joins.
+ */
+application: DraftApplication, 
+/**
+ * The launch's ID: the service's name.
+ */
+id: string, 
+/**
+ * The launch's name: the service type (`Web`, `Worker`, `Cron`).
+ */
+label: string, 
+/**
+ * The command as deployed; `None` when the deploy files don't say (see `note`).
+ */
+command: string | null, 
+/**
+ * The working folder, project-relative (`.` for the project's folder).
+ */
+cwd: string, 
+/**
+ * The cron schedule as written.
+ */
+schedule: string | null, 
+/**
+ * The comment block above the service: its first paragraph.
+ */
+description: string | null, 
+/**
+ * Environment the command needs to find its code (`PYTHONPATH`).
+ */
+env: { [key in string]: string }, 
+/**
+ * Where the command came from (`data-pipelines/Dockerfile.workers, CMD`,
+ * `render.yaml, dockerCommand`).
+ */
+copiedFrom: string | null, 
+/**
+ * What the import couldn't find (`No Dockerfile found at Dockerfile`).
+ */
+note: string | null, 
+/**
+ * The `render.yaml` that declares the service.
+ */
+renderFile: string, };
 
 /**
  * The Index log panel.
@@ -4539,6 +4627,11 @@ expand?: Expansion,
 keyword?: string, };
 
 /**
+ * A Render service type the import reads.
+ */
+export type ServiceType = "web" | "worker" | "cron";
+
+/**
  * The arguments of `set_background_updates`.
  */
 export type SetBackgroundUpdatesArgs = { 
@@ -5724,6 +5817,10 @@ export interface Commands {
    */
   entrances: { args: EntrancesArgs; result: EntranceMap };
   /**
+   * The project's `render.yaml` services as draft launches, for review. Runs and writes nothing.
+   */
+  import_deploy_files: { args: ProjectArgs; result: DeployImport };
+  /**
    * The Problems list, with the health of every board.
    */
   problems: { args: ProjectArgs; result: Array<ProblemItem> };
@@ -5981,6 +6078,7 @@ export const COMMAND_NAMES = [
   "compile_preview",
   "scope_dir",
   "entrances",
+  "import_deploy_files",
   "problems",
   "index_log",
   "compile",

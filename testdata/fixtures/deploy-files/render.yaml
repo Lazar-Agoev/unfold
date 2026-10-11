@@ -1,0 +1,29 @@
+# Render Blueprint for the analyst sandbox. Nothing here runs until the blueprint is applied.
+#
+# Apply from the Render dashboard: Blueprints → New → this repo.
+
+services:
+  # Query service: /analyst/* called only by the web app's server with the shared token.
+  - type: web
+    name: dashboard-builder
+    runtime: docker
+    plan: starter            # 512 MB RAM
+    dockerfilePath: ./data-pipelines/Dockerfile.dashboard-builder
+    dockerContext: .
+    healthCheckPath: /healthz
+    envVars:
+      - key: DASHBOARD_BUILDER_TOKEN
+        sync: false          # shared with the web app
+
+  # Nightly export: one parquet per analyst table per business, published to the bucket.
+  # Runs at 10:00 UTC. Same image, different command.
+  - type: cron
+    name: dashboard-builder-export
+    runtime: docker
+    schedule: "0 10 * * *"
+    dockerfilePath: ./data-pipelines/Dockerfile.dashboard-builder
+    dockerContext: .
+    dockerCommand: python -m dashboard_builder.export --from-env
+
+  - type: keyvalue
+    name: cache
