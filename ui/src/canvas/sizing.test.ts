@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CardView, Description, TypeDefinition, TypeMember } from "../ipc/generated";
 import { fixture } from "../test/engine";
 import { fallbackSize } from "./layout";
-import { estimateText } from "./measure";
+import { LOCATION_FONT, TITLE_FONT, TYPE_KIND_FONT, estimateText } from "./measure";
 import {
   FIELDS_FOLDED,
   NODE_MAX_WIDTH,
@@ -40,13 +40,16 @@ function definition(members: TypeMember[], inherited: TypeDefinition["inherited"
 const description = (text: string): Description => ({ text, author: "person:lazar", signature: "" });
 
 describe("Diagram nodes", () => {
-  it("size to their header between 240 and 400", () => {
+  it("size to their header between 240 and 560", () => {
     const short = nodeWidth({ mark: "ƒ", name: "a", location: "a.ts:1", monogram: false, lens: false }, measure);
     expect(short).toBe(NODE_MIN_WIDTH);
     const long = nodeWidth({ mark: "ƒ", name: "x".repeat(80), location: "routes/orders.ts:25", monogram: true, lens: true }, measure);
     expect(long).toBe(NODE_MAX_WIDTH);
     const lens = (on: boolean) => nodeWidth({ mark: "ƒ", name: "createOrder", location: "routes/orders.ts:25", monogram: false, lens: on }, measure);
     expect(lens(true)).toBeGreaterThan(lens(false));
+    // A method's qualified name, its location, and the switch fit whole.
+    const method = { mark: "ƒ", name: "StripeProvider.charge", location: "services/payment.ts:13", monogram: false, lens: true };
+    expect(nodeWidth(method, measure)).toBeLessThan(NODE_MAX_WIDTH);
   });
 
   it("wrap the whole description, line by line; other cards show one line", () => {
@@ -90,6 +93,11 @@ describe("type cards", () => {
     const header = { mark: "interface", name: "Cart", location: "cart.ts:12", monogram: false };
     expect(typeCardWidth(header, fieldTexts(cart), measure)).toBeGreaterThanOrEqual(280);
     expect(typeCardWidth(header, [{ name: "x", type: "Record<string, ".repeat(20) }], measure)).toBe(TYPE_MAX_WIDTH);
+    // The whole header fits (padding, border, kind, name, location, switch, and the gaps between them): the
+    // kind is measured as it is drawn, in 13px code.
+    const job = { mark: "interface", name: "OrderJob", location: "types.ts:22", monogram: false };
+    const parts = measure("interface", TYPE_KIND_FONT) + measure(job.name, TITLE_FONT) + measure(job.location, LOCATION_FONT);
+    expect(typeCardWidth(job, [{ name: "order", type: "OrderDraft" }], measure)).toBeGreaterThanOrEqual(Math.ceil(26 + parts + 3 * 8 + 149));
   });
 
   it("show a base's heading before its members, and a base without members last", () => {

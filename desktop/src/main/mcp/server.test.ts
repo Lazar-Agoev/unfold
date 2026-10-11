@@ -17,7 +17,7 @@ import type { BoardHealthView, BoardList, Page, ProjectSummary, ReadBoardResult,
 import { INSTRUCTIONS } from "./instructions";
 import { definePrompt } from "./prompt";
 import { McpService } from "./service";
-import { TOOLS } from "./tools";
+import { PROMPTS, TOOLS } from "./tools";
 
 vi.mock("electron", async () => (await import("../fake-electron")).electronModule);
 
@@ -342,7 +342,16 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
       expect(tool.annotations, tool.name).toMatchObject(TOOLS.find((defined) => defined.name === tool.name)?.annotations ?? {});
       expect(tool._meta?.["anthropic/alwaysLoad"]).toBe(["get_guide", "get_current_view"].includes(tool.name) ? true : undefined);
     }
-    expect((await client.listPrompts()).prompts).toEqual([]);
+    const { prompts } = await client.listPrompts();
+    expect(prompts.map((prompt) => prompt.name)).toEqual(PROMPTS.map((prompt) => prompt.name));
+    expect(prompts.find((prompt) => prompt.name === "explain-entrance")?.arguments).toEqual([
+      { name: "entrance", description: expect.stringContaining("a route's method") as string, required: false },
+      { name: "path", description: expect.stringContaining("POST /orders") as string, required: false },
+    ]);
+    const explain = await client.getPrompt({ name: "explain-entrance", arguments: { entrance: "POST", path: "/orders" } });
+    expect(explain.messages).toEqual([{ role: "user", content: { type: "text", text: expect.stringContaining("Explain the entrance “POST /orders” end to end") as string } }]);
+    const simplify = await client.getPrompt({ name: "simplify-function", arguments: {} });
+    expect(simplify.messages[0]?.content).toMatchObject({ type: "text", text: expect.stringContaining("the function whose card is selected in Unfold") as string });
   });
 
   it("calls each tool, as the agent the client names", async () => {
@@ -352,9 +361,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
     const guide = text(await client.callTool({ name: "get_guide", arguments: { topic: "start" } }));
     expect(guide.split("\n")[0]).toBe("Unfold · as Claude");
     expect(guide).toContain("# Working in Unfold");
-    expect(text(await client.callTool({ name: "get_guide", arguments: { topic: "diagrams" } }))).toContain(
-      `The guide topic "diagrams" isn't written yet. Written topics: start.`,
-    );
+    expect(text(await client.callTool({ name: "get_guide", arguments: { topic: "diagrams" } }))).toContain("# Diagrams: pages that read well");
 
     expect(text(await client.callTool({ name: "get_current_view", arguments: {} }))).toContain("No Unfold window has reported");
     const report: ViewReport = { board: BOARD, page: "page-1", selection: { kind: "card", id: "create-order" }, lens: "flow", visible: ["create-order", "checks"], tabs: [BOARD] };
@@ -448,7 +455,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
     }
     const shot = await client.callTool({ name: "get_screenshot", arguments: at });
     expect(shot.content).toEqual([
-      { type: "text", text: `Unfold · ts-orders › Order placement (draft) › Placing an order · rev ${pageRevision(PAGE)} · as Claude\nThe page (page id page-1), 1×1 px.` },
+      { type: "text", text: `Unfold · ts-orders › Order placement (draft) › Placing an order · rev ${pageRevision(PAGE)} · as Claude\nThe page (page id page-1), 1×1 px.\nNext: look at it as the person will, give a one-line verdict in the chat, and fix what you see with targeted edits.` },
       { type: "image", data: Buffer.from("png").toString("base64"), mimeType: "image/png" },
     ]);
   });

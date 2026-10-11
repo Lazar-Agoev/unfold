@@ -56,7 +56,7 @@ group("group_steps", () => {
       "- “Queue it for a worker, reply 202” (step group id queue-it; created) in card create-order, lines 28–30: variable (line 28), return (line 30)",
       "“Queue it for a worker, reply 202” took whole statements: lines 28–30 of createOrder, not lines 28–29.",
       IDS,
-      "Next: label_steps for the steps left, set_view to collapse groups if the Flow is still long, then check.",
+      "Next: label_steps for its steps (those inside the groups too), set_view to collapse groups if the Flow is still long, then check.",
     ]);
     expect((await test.call(groupSteps, { card: "create-order", groups: [{ title: "Both", lines: [1, 2], steps: ["x"] }] })).text).toBe("Each group takes lines or steps, not both.");
   });

@@ -3,7 +3,7 @@
  * review a page too. They read the page's document and the page as the canvas laid it out, and find:
  *
  * - **Overlap**: cards, frames, resource cards, or notes on top of each other (a frame and what it
- *   holds don't count, nor a note and what it is attached to);
+ *   holds don't count, nor a note and what it is attached to, nor a frame and a note on what it holds);
  * - **Crossings**: lines crossing each other more than a few times, or crossing a frame they neither
  *   start nor end in;
  * - **Density**: too many visible items on the page or in a frame, or steps in a Flow card;
@@ -128,11 +128,19 @@ function boxOf(context: Context, id: string): Box | undefined {
   return context.tree.frames.has(id) ? frameBox(context.tree, context.geometry.boxes, id) : context.geometry.boxes.get(id);
 }
 
-/** Whether one item holds the other (a frame and an item in it), or a note is attached to the other. */
+/**
+ * Whether one item holds the other (a frame and an item in it), or a note is attached to the other or
+ * to something a frame holds (the frame's box takes the note in).
+ */
 function belongTogether(context: Context, a: string, b: string): boolean {
   const { tree, page } = context;
+  const holds = (frame: string, item: string) => {
+    const held = tree.inside(frame);
+    const attach = page.notes?.find((entry) => entry.id === item)?.attach;
+    return held.has(item) || (attach !== undefined && held.has(attach));
+  };
   const attached = (note: string, item: string) => page.notes?.some((entry) => entry.id === note && entry.attach === item) === true;
-  return tree.inside(a).has(b) || tree.inside(b).has(a) || attached(a, b) || attached(b, a);
+  return holds(a, b) || holds(b, a) || attached(a, b) || attached(b, a);
 }
 
 function overlap(context: Context): PageCheck[] {

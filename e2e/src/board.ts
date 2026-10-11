@@ -248,7 +248,18 @@ export interface BoardFile {
     }[];
     readonly groups: readonly { readonly id: string; readonly title: string }[];
     readonly labels: readonly { readonly key: string; readonly text: string }[];
-    readonly links?: readonly { readonly id: string; readonly from: string; readonly to: string; readonly label?: { readonly text: string } }[];
+    readonly links?: readonly {
+      readonly id: string;
+      readonly from: string;
+      readonly to: string;
+      readonly kind?: string;
+      readonly author?: string;
+      readonly channel?: string;
+      readonly label?: { readonly text: string };
+    }[];
+    readonly frames?: readonly { readonly id: string; readonly title: string; readonly members: readonly string[]; readonly look: string; readonly collapsed?: boolean; readonly author: string }[];
+    readonly resources?: readonly { readonly id: string; readonly kind: string; readonly name: string; readonly type?: string; readonly author: string }[];
+    readonly notes?: readonly { readonly id: string; readonly text: string; readonly attach?: string; readonly author: string }[];
   }[];
 }
 

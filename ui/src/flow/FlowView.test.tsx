@@ -111,6 +111,18 @@ describe("the Flow view's step groups", () => {
     expect(unplaced).toEqual([stepPort("src/elsewhere.ts#function:other")]);
   });
 
+  it("leads a connection's port to the card's edge in the authored style, and a call's in the arrows' color", () => {
+    const layout = layoutFlow(flow, { measure, maxWidth: 878, groups: [] });
+    const [first, second] = layout.nodes.filter((placed) => placed.node.kind !== "start" && placed.node.kind !== "end");
+    const ports = new Map([
+      [first?.id ?? "", [stepPort(`${IF}/variable:job/call[0]`)]],
+      [second?.id ?? "", [stepPort(`${FN}/variable:draft`), `${FN}/variable:order/call[0]`]],
+    ]);
+    const { container } = render(<FlowView model={flow} layout={layout} width={600} ports={ports} renderPorts={() => null} />);
+    const leaders = [...container.querySelectorAll(".flow-leader")];
+    expect(leaders.map((leader) => leader.classList.contains("authored"))).toEqual([true, false]);
+  });
+
   it("puts the ports of the steps a collapsed group hides on its step", () => {
     const { layout } = renderFlow([place]);
     const chip = flow.nodes[6]?.chips?.[0];

@@ -394,7 +394,7 @@ function FlowNodeWithPorts({
     <>
       {ports && ports.length > 0 && props.renderPorts ? (
         <div
-          className="flow-leader"
+          className={`flow-leader${ports.every((port) => portStep(port) !== undefined) ? " authored" : ""}`}
           style={{ left: placed.x + placed.width, top: placed.y + Math.min(placed.height / 2, 18), width: Math.max(0, diagramWidth - placed.x - placed.width) }}
         >
           {props.renderPorts(ports)}

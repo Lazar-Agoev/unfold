@@ -191,10 +191,10 @@ const POINT_DEPTH = 5;
 /**
  * The page's geometry: cards, resource cards, and free notes at their saved positions reflowed by
  * `sizeOf` (as `reflow` does without frames), each collapsed frame as a node in that reflow, each
- * expanded frame's box around what it shows, and each attached note at its offset from its item. A
- * note on an item that isn't drawn isn't drawn either. `sizeOf` sizes cards, resource cards, notes,
- * and collapsed frames' nodes. While `drag` moves an item, it follows the pointer; a dragged frame
- * takes what it holds along.
+ * expanded frame's box around what it shows and the notes attached to those items, and each attached
+ * note at its offset from its item. A note on an item that isn't drawn isn't drawn either. `sizeOf`
+ * sizes cards, resource cards, notes, and collapsed frames' nodes. While `drag` moves an item, it
+ * follows the pointer; a dragged frame takes what it holds along.
  */
 export function pageGeometry(page: FramedPage, sizeOf: (id: string) => Size, drag?: Drag | null): PageGeometry {
   const tree = new FrameTree(page.frames ?? []);
@@ -233,9 +233,21 @@ export function pageGeometry(page: FramedPage, sizeOf: (id: string) => Size, dra
   ];
   const positions = reflow(nodes, sizeOf, drag?.id);
 
+  // An attached note at its offset from what it is attached to (drawn), or at the pointer while dragged.
+  const noteRect = (note: Note, rects: ReadonlyMap<string, Rect>): Rect | undefined => {
+    const from = note.attach !== undefined && !shownAs.has(note.id) ? attachPoint(page, rects, note.attach) : undefined;
+    if (!from) {
+      return undefined;
+    }
+    const corner = drag?.id === note.id ? drag : { x: from.x + note.at[0], y: from.y + note.at[1] };
+    return { x: corner.x, y: corner.y, ...sizeOf(note.id) };
+  };
+
   const inside = new Map<string, string[]>();
   const boxes = (shift: (id: string) => Point) => {
     const rects = new Map<string, Rect>(nodes.map(({ id }) => [id, { ...shift(id), ...sizeOf(id) }]));
+    // A frame takes in the notes attached to what it holds, as Arrange places them (not those on itself).
+    const notesOn = (member: string): Rect[] => attached.flatMap((note) => (note.attach === member ? (noteRect(note, rects) ?? []) : []));
     const box = (frame: Frame, seen: ReadonlySet<string>): Rect | undefined => {
       const known = rects.get(frame.id);
       if (known || seen.has(frame.id)) {
@@ -248,13 +260,13 @@ export function pageGeometry(page: FramedPage, sizeOf: (id: string) => Size, dra
         if (nested && nested.collapsed !== true) {
           const rect = box(nested, inner);
           drawn.push(...(inside.get(nested.id) ?? []));
-          return rect ? [rect] : [];
+          return rect ? [rect, ...notesOn(member)] : [];
         }
         const rect = rects.get(member);
         if (rect) {
           drawn.push(member);
         }
-        return rect ? [rect] : [];
+        return rect ? [rect, ...notesOn(member)] : [];
       });
       inside.set(frame.id, drawn);
       const bounds = boundsOf(members);
@@ -285,12 +297,11 @@ export function pageGeometry(page: FramedPage, sizeOf: (id: string) => Size, dra
     });
   }
 
-  // Attached notes last: at their offset from what they are attached to, or at the pointer while dragged.
+  // Attached notes last, so a note on a frame or a link finds it drawn.
   for (const note of attached) {
-    const from = note.attach !== undefined && !shownAs.has(note.id) ? attachPoint(page, rects, note.attach) : undefined;
-    if (from) {
-      const at = drag?.id === note.id ? drag : { x: from.x + note.at[0], y: from.y + note.at[1] };
-      rects.set(note.id, { x: at.x, y: at.y, ...sizeOf(note.id) });
+    const rect = noteRect(note, rects);
+    if (rect) {
+      rects.set(note.id, rect);
     }
   }
 

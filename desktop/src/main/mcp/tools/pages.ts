@@ -343,6 +343,7 @@ export const readPage = defineTool({
       lines.length === 0 ? "The page is empty: add_cards puts code on it." : null,
       ...shown.items,
       nextLine(shown, "read_page"),
+      shown.next === undefined ? "Next: check reviews the page; pass its rev as expectRevision to an edit that builds on what you read." : null,
     );
   },
 });

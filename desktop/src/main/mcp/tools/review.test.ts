@@ -120,7 +120,7 @@ describe("get_screenshot", () => {
     const { result } = await test.call(getScreenshot, { item: `unfold://ts-orders/${BOARD.id}?page=page-1&item=place`, scale: 2 });
     expect(asked).toEqual([{ board: BOARD, page: "page-1", item: "place", scale: 2 }]);
     expect(result.content).toEqual([
-      { type: "text", text: `Unfold · ts-orders › Orders › Placing an order · rev ${pageRevision(PAGE)} · as Claude\nThe item place on page page-1, 640×320 px. Drawn at 50% to fit.` },
+      { type: "text", text: `Unfold · ts-orders › Orders › Placing an order · rev ${pageRevision(PAGE)} · as Claude\nThe item place on page page-1, 640×320 px. Drawn at 50% to fit.\nNext: look at it as the person will, give a one-line verdict in the chat, and fix what you see with targeted edits.` },
       { type: "image", data: Buffer.from([137, 80, 78, 71]).toString("base64"), mimeType: "image/png" },
     ]);
     expect(test.requests.map((request) => request.type)).toEqual(["agent_read"]);

@@ -113,6 +113,8 @@ export const CODE_FONT = '12px "JetBrains Mono Variable", ui-monospace, monospac
 export const TITLE_FONT = '600 13px "JetBrains Mono Variable", ui-monospace, monospace';
 export const LOCATION_FONT = '11px "JetBrains Mono Variable", ui-monospace, monospace';
 export const METHOD_FONT = '500 11px "JetBrains Mono Variable", ui-monospace, monospace';
+/** A type card's kind before its name (`interface`, cards.css `.tcard-kind`). */
+export const TYPE_KIND_FONT = '13px "JetBrains Mono Variable", ui-monospace, monospace';
 /** A description's text (cards.css). */
 export const DESCRIPTION_FONT = '12px "Inter Variable", system-ui, sans-serif';
 /** A line's closed label (lines.css). */

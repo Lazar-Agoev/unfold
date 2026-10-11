@@ -7,7 +7,7 @@
 import { z } from "zod";
 import type { ViewSelection } from "../../../shared/agent-api";
 import type { Page } from "../engine-types";
-import { textResult, ToolError } from "../results";
+import { textResult, windowRefusal } from "../results";
 import { defineTool } from "../tool";
 
 /** The most items in view it lists; `read_page` reads the whole page. */
@@ -30,7 +30,7 @@ function describeItem(page: Page, id: string): string {
   const link = page.links.find((item) => item.id === id);
   if (link) {
     const label = link.label ?? link.description;
-    return `${link.kind ?? "drawn"} link ${id}: ${link.from} → ${link.to}${label ? `, "${label.text}"` : ""}`;
+    return `${link.kind === undefined ? "drawn link" : `${link.kind} connection`} ${id}: ${link.from} → ${link.to}${label ? `, "${label.text}"` : ""}`;
   }
   const frame = page.frames?.find((item) => item.id === id);
   if (frame) {
@@ -73,7 +73,7 @@ export const getCurrentView = defineTool({
   name: "get_current_view",
   title: "Get current view",
   description:
-    "What the person is looking at in the Unfold window they used last: the project, board, and page (with its revision), the lens (Diagram, Flow, or Code), the selection (a card, a Flow step, a step group, a link, or a line between two cards), and the items in view, each with its id. Call it when the person says \"this\", \"here\", or \"the selected card\", and before working on the page they're viewing. Once you start, pass the board and page ids to other tools: the person may switch pages. It never moves their view.",
+    "What the person is looking at in the Unfold window they used last: the project, board, and page (with its revision), the lens (Diagram, Flow, or Code), the selection (a card, a Flow step, a step group, a frame, a resource card, a note, a connection or drawn link, or a line between two cards: one call, or the calls a Diagram arrow merges), and the items in view, each with its id. Call it when the person says \"this\", \"here\", or \"the selected card\", and before working on the page they're viewing. Once you start, pass the board and page ids to other tools: the person may switch pages. It never moves their view.",
   input: z.object({}),
   annotations: { readOnlyHint: true },
   alwaysLoad: true,
@@ -95,7 +95,7 @@ export const getCurrentView = defineTool({
     }
     const read = await context.bridge.read({ board: report.board, page: report.page });
     if (!read.ok) {
-      throw new ToolError(read.message);
+      throw windowRefusal(read);
     }
     const page = read.page as unknown as Page;
     const project = (await context.projects()).find((row) => row.id === report.board?.project);

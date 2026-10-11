@@ -346,6 +346,24 @@ What an agent can build:
 
 Agents can't publish, discard, or delete boards, remove projects, change Preferences, or edit your code.
 
+How an agent learns this: when it connects, Unfold tells it what Unfold is and its rules, and it reads Unfold's
+guide (how to work, how to build a page that reads well, how to draw connections and data models, what the graph
+proves, how to write on a board, how to set things up, and how to repair) before it does each kind of job. So you
+can ask in your own words. Before building a page it posts a short brief (the question the page answers, who it's
+for, what it covers, and how it's shaped) so you can steer, and after each part it checks the page and looks at it.
+
+In Claude Code, six recipes are also commands. Their arguments are single words (a route's method and path are two),
+and you can leave them out for what you're looking at:
+
+| Command | What you get |
+| --- | --- |
+| `/unfold:explain-entrance POST /orders` | A page that explains an entrance end to end, for someone new |
+| `/unfold:simplify-function createOrder` | Step groups and labels until the function's Flow reads in a few steps |
+| `/unfold:service-map ts-orders` | A page with a frame per service, its entrances, and how the services talk (several projects: `ts-orders,web`) |
+| `/unfold:data-model` | The tables or types, their relationships, and which code reads and writes each table |
+| `/unfold:tour` | An onboarding board: how the project starts, then a page for each main path |
+| `/unfold:fix-boards` | Repairs after a refactor, and a list of what's yours to sign off |
+
 ## What to commit
 
 | Path | Commit it? |

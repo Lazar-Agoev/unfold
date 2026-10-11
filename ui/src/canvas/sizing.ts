@@ -1,8 +1,9 @@
 /**
  * Card widths: block cards size to their content between 280 and 880 px, entrance cards between 200
- * and 320 px, Diagram nodes and collapsed frames' nodes between 240 and 400 px, type cards between
- * 280 and 560 px, resource cards between 200 and 360 px (tables 240 to 520), and notes between 140
- * and 260 px, measured with the bundled fonts; longer lines soft-wrap and nothing scrolls inside a card. Heights follow from
+ * and 320 px, Diagram nodes between 240 and 560 px (a qualified name, its location, and the switch
+ * fit), collapsed frames' nodes between 240 and 400 px, type cards between 280 and 560 px, resource
+ * cards between 200 and 360 px (tables 240 to 520), and notes between 140 and 260 px, measured with
+ * the bundled fonts; longer lines soft-wrap and nothing scrolls inside a card. Heights follow from
  * the content and are measured by the canvas; before a card is drawn, its height and an entrance card's
  * handler rows are estimated from its model, so cards a step opens are placed in that step. The
  * constants follow cards.css, code.css, and types.css.
@@ -15,7 +16,7 @@ import { cardBody, keyTypeWord, memberName, memberValue, typeKindWord } from "..
 import { fieldRows } from "./arrows";
 import { entranceCardText, entranceTitle } from "./entranceText";
 import { ENTRANCE_MAX_WIDTH, ENTRANCE_MIN_WIDTH, clampCardWidth, fallbackSize, type Size } from "./layout";
-import { CODE_FONT, DESCRIPTION_FONT, FRAME_TITLE_FONT, LOCATION_FONT, MARK_FONT, METHOD_FONT, TITLE_FONT } from "./measure";
+import { CODE_FONT, DESCRIPTION_FONT, FRAME_TITLE_FONT, LOCATION_FONT, MARK_FONT, METHOD_FONT, TITLE_FONT, TYPE_KIND_FONT } from "./measure";
 import { columnTypeText, listedColumns, markText, type TableColumn } from "./resources/columns";
 
 /** The card's border, left and right. */
@@ -29,7 +30,7 @@ const GLYPH = 8;
 /** A cross-project card's 20px monogram. */
 const MONOGRAM = 20;
 /** The card's Diagram | Flow | Code mini lens. */
-const LENS = 146;
+const LENS = 149;
 /** The line-number gutter: at least 40px, else the digits, 14px after them, and 4 before. */
 const GUTTER_MIN = 40;
 const GUTTER_PAD = 18;
@@ -166,7 +167,7 @@ export function entranceHandlerRows(input: EntranceWidthInput, monogram: boolean
 
 /** Diagram nodes size to their header between these widths; the description wraps inside. */
 export const NODE_MIN_WIDTH = 240;
-export const NODE_MAX_WIDTH = 400;
+export const NODE_MAX_WIDTH = 560;
 /** Type cards size to their header and their widest field between these widths. */
 const TYPE_MIN_WIDTH = 280;
 export const TYPE_MAX_WIDTH = 560;
@@ -202,11 +203,18 @@ export interface NodeWidthInput {
   readonly lens: boolean;
 }
 
-/** A Diagram node's width: its header, clamped to 240–400. */
-export function nodeWidth(input: NodeWidthInput, measure: Measure): number {
+/** A node's or type card's header, its mark `mark` wide: padding, border, monogram, mark, name, location, and switch. */
+function nodeHeaderWidth(input: NodeWidthInput, mark: number, measure: Measure): number {
   const monogram = input.monogram ? MONOGRAM + GAP : 0;
-  const text = measure(input.mark, METHOD_FONT) + GAP + measure(input.name, TITLE_FONT) + GAP + measure(input.location, LOCATION_FONT);
-  return clampCardWidth(PADDING * 2 + BORDER + monogram + text + (input.lens ? GAP + LENS : 0), NODE_MIN_WIDTH, NODE_MAX_WIDTH);
+  const text = mark + GAP + measure(input.name, TITLE_FONT) + GAP + measure(input.location, LOCATION_FONT);
+  return PADDING * 2 + BORDER + monogram + text + (input.lens ? GAP + LENS : 0);
+}
+
+/** A Diagram node's width: its header, clamped to 240–560. */
+export function nodeWidth(input: NodeWidthInput, measure: Measure): number {
+  // A node with a switch is code, marked with the `ƒ` glyph (`CardGlyph`); an entrance's mark is its kind's word.
+  const mark = input.lens ? GLYPH : measure(input.mark, METHOD_FONT);
+  return clampCardWidth(nodeHeaderWidth(input, mark, measure), NODE_MIN_WIDTH, NODE_MAX_WIDTH);
 }
 
 /**
@@ -241,7 +249,7 @@ export function fieldTexts(definition: TypeDefinition): FieldText[] {
 
 /** A type card's width: its header (kind, name, location, switch) and its widest field, clamped to 280–560. */
 export function typeCardWidth(header: Omit<NodeWidthInput, "lens">, fields: readonly FieldText[], measure: Measure): number {
-  const head = nodeWidth({ ...header, lens: true }, measure);
+  const head = nodeHeaderWidth({ ...header, lens: true }, measure(header.mark, TYPE_KIND_FONT), measure);
   const name = Math.max(NAME_COLUMN, ...fields.map((field) => measure(field.name, CODE_FONT) + NAME_GAP));
   const type = Math.max(0, ...fields.map((field) => measure(field.type, CODE_FONT)));
   return clampCardWidth(Math.max(head, PADDING * 2 + BORDER + name + type), TYPE_MIN_WIDTH, TYPE_MAX_WIDTH);

@@ -148,8 +148,9 @@
 
 .card-note.warn { color: var(--color-warn); }
 
-/* React Flow handles: arrows and links attach to them, but no port dots are drawn. */
-.board-card .react-flow__handle {
+/* React Flow handles: arrows and links attach to them, but no port dots are drawn (an expanded frame's box too). */
+.board-card .react-flow__handle,
+.frame-box .react-flow__handle {
   width: 1px;
   height: 1px;
   min-width: 0;

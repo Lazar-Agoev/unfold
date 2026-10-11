@@ -129,8 +129,9 @@ App
   step selects the group, and right-click (or Shift+F10 on the chevron) opens its menu.
 - **Frames** (`canvas/frames/`, design [§4.4](proposals/agent-mcp-design.md#44-frames-units-services-and-zones)) are
   React Flow nodes of their own, not parents of their members: `pageGeometry` computes each box from the inside out,
-  the bounds of what it shows (cards as reflowed, nested boxes, collapsed frames' nodes) plus room for its title (a
-  box: a 32px title bar and 12px under it, 16px sides; a zone: a 56px band, 76px with a description, 24px sides).
+  the bounds of what it shows (cards as reflowed, nested boxes, collapsed frames' nodes, and the notes attached to
+  them, where Arrange puts them) plus room for its title (a box: a 32px title bar and 12px under it, 16px sides; a
+  zone: a 56px band, 76px with a description, 24px sides).
   An expanded frame sits behind the lines and cards (z-index below 0, outer frames below inner ones) and only its
   title takes the pointer, so the canvas pans and cards are clicked through it. A **box** is outlined in
   `--color-authored-line` with a tinted title bar (chevron, icon, title, its description beside it, the agent mark,
@@ -170,10 +171,12 @@ App
   so they never cover a card, a typed label, or each other; a chip that fits nowhere isn't drawn at rest and the
   line takes the click. A connection with a `step` leaves from that step's line in Code and its Flow step (a
   `step:<key>` port the card places: the call's row, else the statement that is or holds it, else the collapsed
-  step group hiding it; `portSpot`, `flowPortNodes`), and from the card's edge in Diagram; a relationship leaves
-  and enters at its columns' rows. An end inside a collapsed frame attaches to the frame, and connections of one
-  kind that would draw on top of each other merge ("queue · 2 connections"). A drawn link (no kind) keeps today's
-  dashed gray look and its label outside the layout. A click or Kind ▸ selects or changes either.
+  step group hiding it; `portSpot`, `flowPortNodes`; in Flow the lead from a step that only connections leave to
+  the card's edge is dotted in the authored color, not the arrows' accent), and from the card's edge in Diagram; a
+  relationship leaves and enters at its columns' rows. An end inside a collapsed frame attaches to the frame, and
+  connections of one kind that would draw on top of each other merge ("queue · 2 connections"). A drawn link (no
+  kind) keeps today's dashed gray look and its label outside the layout. A click or Kind ▸ selects or changes
+  either.
 - **Notes** (`canvas/notes/`, design [§4.8](proposals/agent-mcp-design.md#48-notes)) are short authored text on the
   authored tint with who wrote it underneath (140–260px wide, `noteSize`). A free note is placed like a card (and
   reflows like one); a note attached to a card, resource card, frame, or link sits at its offset from that item's
@@ -500,7 +503,7 @@ invalidation, and nothing else of the window (no session, tabs, sidebar, keyboar
   sampled from its SVG, and each card drawn in Flow with its visible steps and its steps still showing names from
   the code (counted as the page's outline counts them).
 - **Page checks** (`board/checks/`, pure, limits in `thresholds.ts`): overlap (items on top of each other, a frame
-  and what it holds aside), crossings (more than three between lines, or any line through a frame that holds
+  and what it holds aside, notes attached to what it holds included), crossings (more than three between lines, or any line through a frame that holds
   neither end), density (over 30 visible items on a page, 12 in a frame, 12 steps in a Flow card), unlabeled
   steps, missing words (frames, step groups, and resource cards without a description), evidence (resource cards
   and connections that cite no code), strays (no line, connection, or frame), and views (more than three Code or

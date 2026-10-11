@@ -158,6 +158,22 @@ describe("notes", () => {
     expect(attachPoint(page, dragged, "a")).toEqual({ x: 50, y: 500 });
   });
 
+  it("on an item a frame holds are taken in by its box, and the frames around it; one on the frame itself isn't", () => {
+    const page: FramedPage = {
+      cards: [card("a", [0, 0])],
+      frames: [frame("server", ["a"]), frame("zone", ["server"], { look: "zone" })],
+      notes: [note("under", [0, 112], { attach: "a" }), note("on-server", [0, 200], { attach: "server" })],
+    };
+    const { rects } = pageGeometry(page, sized(page));
+    expect(rects.get("under")).toEqual({ x: 0, y: 112, ...NOTE });
+    expect(rects.get("server")).toEqual({ x: -BOX.left, y: -BOX.top, width: 200 + BOX.left + BOX.right, height: 152 + BOX.top + BOX.bottom });
+    // The note on the frame sits inside the zone, which takes it in too.
+    const zone = rects.get("zone");
+    expect(rects.get("on-server")).toMatchObject({ x: 0, y: 200 });
+    expect(zone?.y).toBe(-BOX.top - ZONE.top);
+    expect((zone?.y ?? 0) + (zone?.height ?? 0)).toBe(240 + ZONE.bottom);
+  });
+
   it("aren't drawn inside a collapsed frame, nor on an item it hides", () => {
     const page: FramedPage = {
       cards: [card("a", [0, 0])],

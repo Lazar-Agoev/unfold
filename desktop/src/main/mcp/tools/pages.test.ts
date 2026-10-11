@@ -201,9 +201,11 @@ describe("read_page", () => {
     const paged = harness({ engine: { card: CARDS[CART_ITEM] ?? (() => null), type_definition: () => DEFINITIONS[CART_ITEM], line_labels: () => [], read_board: () => file(many) } });
     const first = await paged.call(readPage, { board: BOARD.id, project: "ts-orders" });
     expect(first.text).toContain('Showing 120 of 131. Next page: read_page with cursor "120".');
+    expect(first.text).not.toContain("Next: check");
     const rest = await paged.call(readPage, { board: BOARD.id, project: "ts-orders", cursor: "120" });
     expect(rest.text).toContain("- CartItem (card id c129)");
     expect(rest.text).not.toContain("Next page");
+    expect(rest.text.split("\n").at(-1)).toBe("Next: check reviews the page; pass its rev as expectRevision to an edit that builds on what you read.");
   });
 
   it("gives the page as Mermaid, exported by the window that holds the board", async () => {

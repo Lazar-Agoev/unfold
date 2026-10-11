@@ -13,6 +13,7 @@ import { readFile } from "./files";
 import { finishWork, repair } from "./finish";
 import { getGuide } from "./guide";
 import { listBoards, readPage } from "./pages";
+import { dataModel, explainEntrance, fixBoards, serviceMap, simplifyFunction, tour } from "./prompts";
 import { getProject, listProjects } from "./projects";
 import { check, getScreenshot } from "./review";
 import { listEntrances, search } from "./search";
@@ -57,4 +58,4 @@ export const TOOLS: readonly Tool[] = [
   finishWork,
 ];
 
-export const PROMPTS: readonly Prompt[] = [];
+export const PROMPTS: readonly Prompt[] = [explainEntrance, simplifyFunction, serviceMap, dataModel, tour, fixBoards];

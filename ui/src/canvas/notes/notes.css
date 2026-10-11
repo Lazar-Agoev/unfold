@@ -14,7 +14,8 @@
   padding: 8px 10px;
   border: 1px solid var(--color-authored-line);
   border-radius: var(--radius-control);
-  background: var(--color-authored-tint);
+  /* The tint over the surface: in the dark theme the tint is translucent, and lines must not show through. */
+  background: linear-gradient(var(--color-authored-tint), var(--color-authored-tint)), var(--color-surface);
   color: var(--color-authored);
   font-family: var(--font-ui);
   cursor: grab;

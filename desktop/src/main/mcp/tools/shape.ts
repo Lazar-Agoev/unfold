@@ -37,7 +37,7 @@ export const groupSteps = defineTool({
   name: "group_steps",
   title: "Group steps",
   description:
-    'Gathers consecutive steps of one card into step groups, so a long Flow reads in a few named steps. card is the card\'s id (or a link to it). Each group takes lines [from, to] (1-based, as read_code numbers them) or steps (the statements\' keys from read_code), a title that says what the steps achieve in 2 to 6 words ("Queue it for a worker, reply 202"), and an optional one-sentence description. A step group is whole, consecutive statements of one branch: Unfold takes the whole statements the lines cover (and warns when that is more than asked), and refuses a range that crosses into another branch or overlaps another group, listing the statements there so you can choose again. Groups don\'t nest. Passing an existing id updates that group. collapsed: true shows it as one step in Flow; collapse when the person asked, or when check finds the Flow too long. The result names the statements each group took. One undo step for the whole call.',
+    'Gathers consecutive steps of one card into step groups, so a long Flow reads in a few named steps. card is the card\'s id (or a link to it). Each group takes lines [from, to] (1-based, as read_code numbers them) or steps (the statements\' keys from read_code), a title that says what the steps achieve in 2 to 6 words ("Queue it for a worker, reply 202"), and an optional one-sentence description. A step group is whole, consecutive statements of one branch: Unfold takes the whole statements the lines cover (and warns when that is more than asked), and refuses a range that crosses into another branch or overlaps another group, listing the statements there so you can choose again. Groups don\'t nest. Passing an existing id updates that group. collapsed: true shows it as one step in Flow; collapse when the person asked, when your brief said, or when check finds the Flow too long. The result names the statements each group took. Read get_guide("diagrams") first. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
     card: z.string().min(1).describe("The card's id, or a link to it"),
@@ -72,7 +72,7 @@ export const groupSteps = defineTool({
       target,
       edit,
       [itemsHeading("step groups", edit.items), ...edit.items.map(itemLine)],
-      "label_steps for the steps left, set_view to collapse groups if the Flow is still long, then check.",
+      "label_steps for its steps (those inside the groups too), set_view to collapse groups if the Flow is still long, then check.",
     );
   },
 });
@@ -84,7 +84,7 @@ export const frameCards = defineTool({
   name: "frame_cards",
   title: "Frame cards",
   description:
-    'Gathers items on a page into frames: named, described boxes that can nest and collapse. look "box" (the default) is for a unit of several functions ("Request checks") or a service ("Order API"); look "zone" is a tinted background for an area that holds services ("Backend"). members are ids of cards, resource cards, notes, or frames on this page. An item can be in one frame, and frames nest at most three deep (zone > box > box). Pass parent to nest, direction to lay members out right or down, and an icon: api, worker, schedule, cli, web, library, or system. Titles are 1 to 4 words; a description says in one sentence what the frame does. Frames start expanded unless the person asked for collapsed ones. Passing an existing id updates that frame: members it no longer lists go to the frame that holds it. One undo step for the whole call.',
+    'Gathers items on a page into frames: named, described boxes that can nest and collapse. look "box" (the default) is for a unit of several functions ("Request checks") or a service ("Order API"); look "zone" is a tinted background for an area that holds services ("Backend"). members are ids of cards, resource cards, notes, or frames on this page. An item can be in one frame, and joins one from no frame, from the frame itself, or from its parent; frames nest at most three deep (zone > box > box). Pass parent to nest, direction to lay members out right or down, and an icon: api, worker, schedule, cli, web, library, or system. Titles are 1 to 4 words; a description says in one sentence what the frame does. Frames start expanded: collapse one only when the person asked, your brief said, or check finds the page too dense. Passing an existing id updates that frame: members it no longer lists go to the frame that holds it. Read get_guide("diagrams") first. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
     frames: z
@@ -186,7 +186,7 @@ export const connect = defineTool({
   name: "connect",
   title: "Connect",
   description:
-    'Draws typed connections for what the compiled graph can\'t show: how code talks through HTTP, RPC, queues, events, and data. Never restate a compiled call. kind: http, rpc, queue, event, writes, reads, calls (where an unresolved call goes at runtime), relates (between two table columns), or other (needs a label). from is the side that acts; step is the call or statement it leaves from (a key from read_code), so the line starts where the code talks. anchors cite the receiving side: the worker entrance, the handler\'s registration, the route, the queue\'s creation. If you can\'t cite both sides, don\'t draw it: say what you found in the chat. When to is an entrance, Unfold fills in the channel from it. carries names the type that travels (a type key the code writes on either side, such as Queue<OrderJob>). Read get_guide("connections") first. One undo step for the whole call.',
+    'Draws typed connections for what the compiled graph can\'t show: how code talks through HTTP, RPC, queues, events, and data. Never restate a compiled call. kind: http, rpc, queue, event, writes, reads, calls (where an unresolved call goes at runtime), relates (between two table columns), or other (needs a label). from is the side that acts; step is the call or statement it leaves from (a key from read_code), so the line starts where the code talks. anchors cite the receiving side: the worker entrance, the handler\'s registration, the route, the queue\'s creation. If you can\'t cite both sides, don\'t draw it: say what you found in the chat. When to is an entrance, Unfold fills in the channel from it. carries names the type that travels (a type key the code writes on either side, such as Queue<OrderJob>). description, the evidence in one sentence, is required. relates takes fromColumn, toColumn, and a cardinality; calls takes the unresolved call itself as its step. Read get_guide("connections") first. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
     connections: z
@@ -238,7 +238,7 @@ export const addNotes = defineTool({
   name: "add_notes",
   title: "Add notes",
   description:
-    'Adds notes: short plain text on a page for what a reader would otherwise miss, such as a caveat, a reading order, or an open question ("Queued orders are placed by the worker. The client gets a job id, not the order."). Two sentences at most, 400 characters. attach names a card, frame, resource card, or connection the note moves with; without it the note is free, placed beside near or right of everything. Notes aren\'t checked against code and have no health, so never use one to claim what code does: describe a card, or connect with anchors. Add notes sparingly. Passing an existing id updates that note. One undo step for the whole call.',
+    'Adds notes: short plain text on a page for what a reader would otherwise miss, such as a caveat, a reading order, or an open question ("Queued orders are placed by the worker. The client gets a job id, not the order."). Two sentences at most, 400 characters. attach names a card, frame, resource card, or connection the note moves with; without it the note is free, placed beside near or right of everything. Notes aren\'t checked against code and have no health, so never use one to claim what code does: describe a card, or connect with anchors. Add notes sparingly; get_guide("writing") says what makes a good one. Passing an existing id updates that note. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
     notes: z
@@ -273,7 +273,7 @@ export const describe = defineTool({
   name: "describe",
   title: "Describe",
   description:
-    'Writes descriptions: one sentence on what an item does and why, not how ("Places the order now, or queues it when the client asks for an async reply."), never a paragraph that restates the code. items name cards, step groups, frames, resource cards, and connections by id (or a link); on a drawn link (one without a kind) the text is its label, which says what travels. Unfold signs each text against the code it describes, so it goes to review when that code changes. Replacing a person\'s text is refused unless replacePeopleText is true: set it only when the person asked for that change. Writing the same text again keeps it. One undo step for the whole call.',
+    'Writes descriptions: one sentence on what an item does and why, not how ("Places the order now, or queues it when the client asks for an async reply."), never a paragraph that restates the code. items name cards, step groups, frames, resource cards, and connections by id (or a link); on a drawn link (one without a kind) the text is its label, which says what travels. A note\'s text is what it says: change it with add_notes. Unfold signs each text against the code it describes, so it goes to review when that code changes. Replacing a person\'s text is refused unless replacePeopleText is true: set it only when the person asked for that change. Writing the same text again keeps it. Read get_guide("writing") first. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
     items: z
@@ -308,7 +308,7 @@ export const labelSteps = defineTool({
   name: "label_steps",
   title: "Label steps",
   description:
-    'Writes Flow labels for a card\'s steps, in place of the names from the code: 2 to 8 words, a verb ("Queue the order"), or a question for a condition ("Did the client ask for an async reply?"); never raw code, never step numbers. card is the card\'s id (or a link); step is a Flow step\'s key, from read_code (view "flow") or read_page\'s list of steps still unlabeled. Unfold signs each label against its step\'s code, so it goes to review when that code changes. Replacing a person\'s label is refused unless replacePeopleText is true: set it only when the person asked for that change. One undo step for the whole call.',
+    'Writes Flow labels for a card\'s steps, in place of the names from the code: 2 to 8 words, a verb ("Queue the order"), or a question for a condition ("Did the client ask for an async reply?"); never raw code, never step numbers. card is the card\'s id (or a link); step is a Flow step\'s key, from read_code (view "flow") or read_page\'s list of steps still unlabeled; label every step of a card in Flow, those inside collapsed step groups too (check counts them). Unfold signs each label against its step\'s code, so it goes to review when that code changes. Replacing a person\'s label is refused unless replacePeopleText is true: set it only when the person asked for that change. Read get_guide("writing") first. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
     card: z.string().min(1).describe("The card's id, or a link to it"),

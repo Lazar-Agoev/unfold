@@ -141,6 +141,7 @@ const WINDOW_HINTS: Readonly<Record<string, string>> = {
   unsaved_edits: "The person's own edits are being saved; try again in a moment.",
   board_conflict: "The board changed on disk and the person hasn't chosen which version to keep; ask them to, then try again.",
   page_changed: "read_page reads it.",
+  revision_mismatch: "read_page reads it, with its new rev.",
   window_closed: "Try again.",
   timeout: "Unfold may be busy; try again.",
 };

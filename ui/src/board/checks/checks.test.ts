@@ -101,6 +101,14 @@ describe("overlap", () => {
     expect(check?.items).toEqual(["beta", "n2"]);
   });
 
+  it("lets a frame hold a note attached to an item in it, nested frames included", () => {
+    const cards = [card("alpha"), card("beta")];
+    const frames = [frame("api", ["alpha"]), frame("system", ["api"])];
+    const notes = [note("n1", { attach: "alpha" })];
+    const geometry = drawn({ alpha: box(0, 0), beta: box(600, 0), n1: box(0, 112, 120, 40), api: box(-16, -44, 232, 212), system: box(-40, -100, 280, 292) }, [line("l1", "alpha", "beta")]);
+    expect(kinds(pageChecks(page(cards, { frames, notes }), geometry))).not.toContain("overlap");
+  });
+
   it("skips what a collapsed frame hides", () => {
     const cards = [card("alpha"), card("beta"), card("gamma")];
     const frames = [frame("api", ["alpha", "beta"], { collapsed: true })];

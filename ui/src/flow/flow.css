@@ -359,3 +359,8 @@
   background: color-mix(in srgb, var(--color-accent) 60%, transparent);
   pointer-events: none;
 }
+
+/* Only connections leave this node (an authored claim, not a compiled call): the lead is authored, and dotted. */
+.flow-leader.authored {
+  background: repeating-linear-gradient(to right, color-mix(in srgb, var(--color-authored) 70%, transparent) 0 4px, transparent 4px 7px);
+}

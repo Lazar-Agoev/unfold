@@ -9,20 +9,11 @@ export const getGuide = defineTool({
   name: "get_guide",
   title: "Get guide",
   description:
-    'Returns a topic of the Unfold guide. Read "start" before any other Unfold tool: how Unfold works, the workflow, the diagram brief, the review checkpoints, and the rules. The other topics: "diagrams" (levels of detail, views, step groups, frames, layout, recipes; before building or reshaping a page), "connections" (before connect), "data-models" (before adding types or tables), "graph" (what the compiled graph claims and doesn\'t; before explaining why something is or isn\'t connected, or what a call sends), "writing" (labels, descriptions, titles, notes; before writing on a page), "setup" (projects, Compile, settings; before setting things up), and "repairs" (before repair).',
+    'Returns a topic of the Unfold guide. Read "start" before any other Unfold tool: how Unfold works, the workflow, the diagram brief, ids and revisions, the review checkpoints, and the rules. Then read the topic a job needs, once a session: "diagrams" (levels of detail, views, step groups, frames, layout, density, recipes, what check finds; before building or reshaping a page), "connections" (each kind, steps, channels, carried types, anchors; before connect), "data-models" (type cards and tables; before adding types or tables), "graph" (what the compiled graph claims and doesn\'t; before explaining why something is or isn\'t connected, or what a call sends), "writing" (labels, titles, descriptions, notes; before writing on a page), "setup" (projects, Compile, settings, boards; before setting things up), and "repairs" (health problems and who may sign off; before repair).',
   input: z.object({ topic: z.enum(GUIDE_TOPICS).describe("The topic; start first") }),
   annotations: { readOnlyHint: true },
   alwaysLoad: true,
   run({ topic }, context) {
-    const text = guideText(topic);
-    const written = GUIDE_TOPICS.filter((name) => guideText(name) !== null);
-    return Promise.resolve(
-      text === null
-        ? textResult(
-            context.header(),
-            `The guide topic "${topic}" isn't written yet. Written topics: ${written.join(", ")}. Work from the start topic and the tools' descriptions.`,
-          )
-        : textResult(context.header(), text),
-    );
+    return Promise.resolve(textResult(context.header(), guideText(topic)));
   },
 });

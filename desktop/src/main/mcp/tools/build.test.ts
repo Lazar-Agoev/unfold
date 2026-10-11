@@ -81,7 +81,7 @@ describe("add_cards", () => {
     const test = harness({ window: window([]) });
     inView(test);
     const stale = await test.call(addCards, { cards: [{ key: CREATE_ORDER }], expectRevision: "0123abcd" });
-    expect(stale).toMatchObject({ isError: true, text: `The page changed since you read it (rev 0123abcd, now rev ${pageRevision(PAGE)}). Read it again, then make the change.` });
+    expect(stale).toMatchObject({ isError: true, text: `The page changed since you read it (rev 0123abcd, now rev ${pageRevision(PAGE)}). Read it again, then make the change. read_page reads it, with its new rev.` });
     expect(edits(test)).toEqual([]);
     expect((await test.call(addCards, { cards: [{ key: CREATE_ORDER }], expectRevision: pageRevision(PAGE) })).isError).toBe(false);
     expect((await test.call(addCards, { cards: [{ key: CREATE_ORDER }], expectRevision: "rev 18" })).text).toContain("expectRevision is a page's revision");

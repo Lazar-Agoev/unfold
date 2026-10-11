@@ -43,7 +43,7 @@ export const addCards = defineTool({
   name: "add_cards",
   title: "Add cards",
   description:
-    'Puts compiled code on a page as cards: functions, methods, classes, types (interfaces, type aliases, enums), and entrances, by key (from search, list_entrances, read_code, or get_relations). Unfold places each card near the cards it relates to, the way following a call does; call arrange_page afterwards for a clean layout. Use follow to bring a call tree: {callees: 2} adds what each card calls, two levels deep. Following stops at external and unresolved calls, and the result lists where it stopped. On a type, {types: 1} adds the types its fields link to, and Unfold draws the links. Cards already on the page are kept, not duplicated, and their ids are returned. Choose view "diagram" for context and for types, "flow" for the functions the page is about, and "code" when exact lines matter. frame puts the cards a spec adds into a frame of the page; near places a card beside an item. One undo step for the whole call.',
+    'Puts compiled code on a page as cards: functions, methods, classes, types (interfaces, type aliases, enums), and entrances, by key (from search, list_entrances, read_code, or get_relations). Unfold places each card near the cards it relates to, the way following a call does; call arrange_page afterwards for a clean layout. Use follow to bring a call tree: {callees: 2} adds what each card calls, two levels deep (callees up to 3, callers up to 2). Following stops at external and unresolved calls, and the result lists where it stopped. On a type, {types: 1} adds the types its fields link to (up to 2), and Unfold draws the links. Cards already on the page are kept, not duplicated, and their ids are returned. Choose view "diagram" for context and for types, "flow" for the functions the page is about, and "code" when exact lines matter. frame puts the cards a spec adds into a frame of the page; near places a card beside an item. Read get_guide("diagrams") before building a page. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
     cards: z.array(cardSpec).min(1).max(40).describe("The cards to add"),
@@ -68,7 +68,7 @@ export const setView = defineTool({
   name: "set_view",
   title: "Set view",
   description:
-    'Sets how things on a page show: each card\'s view ("diagram", "flow", or "code") and whether it is folded to its title, whether a step group or a frame is collapsed, and the page\'s defaultView (the view of cards without their own). items name cards, step groups, or frames by id: a card takes view and folded; a step group or a frame takes collapsed. Use Diagram for context and types, Flow for the functions a page is about, Code when exact lines matter; collapse a step group or a frame to make a long Flow or a busy page read in fewer pieces, but collapse only what the person asked for or what check finds too dense. Views change cards\' sizes: arrange_page afterwards. One undo step for the whole call.',
+    'Sets how things on a page show: each card\'s view ("diagram", "flow", or "code") and whether it is folded to its title, whether a step group or a frame is collapsed, and the page\'s defaultView (the view of cards without their own). items name cards, step groups, or frames by id: a card takes view and folded; a step group or a frame takes collapsed. Use Diagram for context and types, Flow for the functions a page is about, Code when exact lines matter; collapse a step group or a frame to make a long Flow or a busy page read in fewer pieces, but collapse only what the person asked for, what your brief said, or what check finds too dense. Views change cards\' sizes: arrange_page afterwards. get_guide("diagrams") says which view fits. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
     items: z
@@ -117,10 +117,10 @@ export const setView = defineTool({
 
 const move = z
   .object({
-    id: z.string().min(1).describe("A card's or frame's id"),
+    id: z.string().min(1).describe("A card's, frame's, resource card's, or note's id"),
     at: z.tuple([z.number(), z.number()]).optional().describe("A canvas position [x, y] (a frame's: its box's top-left)"),
-    rightOf: z.string().min(1).optional().describe("A card's or frame's id to sit just right of"),
-    below: z.string().min(1).optional().describe("A card's or frame's id to sit just below"),
+    rightOf: z.string().min(1).optional().describe("An item's id to sit just right of"),
+    below: z.string().min(1).optional().describe("An item's id to sit just below"),
   })
   .refine((spec) => [spec.at, spec.rightOf, spec.below].filter((place) => place !== undefined).length === 1, "Each move takes exactly one of at, rightOf, or below.");
 
@@ -146,7 +146,7 @@ export const arrangePage = defineTool({
   name: "arrange_page",
   title: "Arrange page",
   description:
-    'Lays out a page the way Arrange does, from the inside out: each frame\'s members by call depth and connections in the frame\'s direction, then the page with each frame as one block; type cards after the types that link to them; resource cards by data flow. Pass frame to arrange only that frame\'s inside (its box keeps its top-left corner); direction "right" or "down" sets that frame\'s direction, or, without frame, lays out the page\'s top level that way for this call. Then moves apply in order: at puts a card or a frame\'s box at [x, y]; rightOf and below place it just beside another card or frame, clear of everything else. Arranging the same page twice gives the same layout. Requests read left to right, data top to bottom. Call it after adding or changing cards, then check. One undo step for the whole call.',
+    'Lays out a page the way Arrange does, from the inside out: each frame\'s members by call depth and connections in the frame\'s direction, then the page with each frame as one block; type cards after the types that link to them; resource cards by data flow. Pass frame to arrange only that frame\'s inside (its box keeps its top-left corner); direction "right" or "down" sets that frame\'s direction, or, without frame, lays out the page\'s top level that way for this call. Then moves apply in order, to cards, frames, resource cards, and notes: at puts the item (a frame: its box\'s top-left) at [x, y]; rightOf and below place it just beside another item, clear of everything else. Arranging the same page twice gives the same layout. Requests read left to right, data top to bottom. Call it after adding or changing cards, then check. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
     frame: z.string().min(1).optional().describe("A frame's id: arrange only its inside"),
@@ -176,7 +176,7 @@ export const removeItems = defineTool({
   name: "remove_items",
   title: "Remove items",
   description:
-    "Takes items off a page by id: cards (with their step groups and the links that end at them), step groups (the statements stay), links and connections, frames, resource cards (with their links), and notes. A removed frame's members stay, in the frame that held it, unless keepMembers is false, which removes them too; a frame left with no members goes as well, and a note attached to something removed stays, free. Removing text a person wrote (a description, label, title, or note) is refused unless replacePeopleText is true: set it only when the person asked for that. Everything removed can be undone in Unfold. The result lists what was removed, the items asked for first, then what went with them. One undo step for the whole call.",
+    "Takes items off a page by id: cards (with their step groups and the links that end at them), step groups (the statements stay), connections and drawn links, frames, resource cards (with their links), and notes. A removed frame's members stay, in the frame that held it, unless keepMembers is false, which removes them too; a frame left with no members goes as well, and a note attached to something removed stays, free. Removing text a person wrote (a description, label, title, or note) is refused unless replacePeopleText is true: set it only when the person asked for that. Everything removed can be undone in Unfold. The result lists what was removed, the items asked for first, then what went with them. One undo step for the whole call.",
   input: z.object({
     ...pageArgs,
     ids: z.array(z.string().min(1)).min(1).describe("The items' ids, or links to them"),

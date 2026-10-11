@@ -14,12 +14,16 @@ import { getActiveBoard, useTabs } from "../state/tabs";
 /** How long the window waits after a change before reporting its view. */
 export const REPORT_DELAY_MS = 150;
 
-function viewSelection(selection: Selection): ViewSelection {
+/** The selection as agents read it; a card selected at its own block (a click on its header) is the card. */
+function viewSelection(page: Page, selection: Selection): ViewSelection {
   switch (selection.kind) {
     case "none":
       return { kind: "none" };
-    case "card":
-      return selection.key !== null ? { kind: "step", card: selection.cardId, key: selection.key } : { kind: "card", id: selection.cardId };
+    case "card": {
+      const ref = page.cards.find((card) => card.id === selection.cardId)?.ref;
+      const own = ref !== undefined && "block" in ref && ref.block === selection.key;
+      return selection.key !== null && !own ? { kind: "step", card: selection.cardId, key: selection.key } : { kind: "card", id: selection.cardId };
+    }
     case "group":
       return { kind: "group", id: selection.groupId };
     case "link":
@@ -79,7 +83,7 @@ export function currentView(canvas: Size | null): ViewReport {
   return {
     board: { project: ref.project, id: ref.id },
     page: page.id,
-    selection: viewSelection(view.selection),
+    selection: viewSelection(page, view.selection),
     lens: view.lens ?? page.defaultView,
     visible: visibleItems(page, displayedRects(board, page.id), view.camera, canvas),
     tabs,
