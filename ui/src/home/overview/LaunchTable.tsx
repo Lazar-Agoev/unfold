@@ -52,7 +52,8 @@ function handles(launch: LaunchRow): string {
 }
 
 function LaunchLine({ project, launch, onMenu }: { readonly project: ProjectId; readonly launch: LaunchRow; readonly onMenu: OnMenu }) {
-  const note = launch.note ?? (launch.targetSetByHand ? "Target set by hand" : null);
+  // An unreadable launch says why in its status cell ("Can't read sh -c"); the editor has the rest.
+  const note = launch.status === "unreadable" ? null : (launch.note ?? (launch.targetSetByHand ? "Target set by hand" : null));
   return (
     <div
       className="home-launch"

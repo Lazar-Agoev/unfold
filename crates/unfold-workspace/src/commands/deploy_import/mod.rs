@@ -40,7 +40,8 @@ const ACRONYMS: &[&str] = &["api", "sdk", "ui", "cli", "id", "url"];
 pub struct DeployImport {
     /// The `render.yaml` files read, by path.
     pub files: Vec<String>,
-    /// One draft per web, worker, and cron service, in file then document order.
+    /// One draft per web, worker, and cron service, in file order (the root `render.yaml` first, then by depth),
+    /// then document order.
     pub launches: Vec<ImportedLaunch>,
 }
 
@@ -88,7 +89,8 @@ pub struct ImportedLaunch {
     pub cwd: String,
     /// The cron schedule as written.
     pub schedule: Option<String>,
-    /// The comment block above the service: its first paragraph.
+    /// The comment block above the service (its first paragraph), when the service joins another
+    /// service's application; the owning service's comment describes the application instead.
     pub description: Option<String>,
     /// Environment the command needs to find its code (`PYTHONPATH`).
     pub env: BTreeMap<String, String>,
@@ -110,7 +112,7 @@ pub fn import_deploy_files(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<De
     let files = project
         .extras()
         .file_set(workspace.root(), &workspace.options().engine.discover)?;
-    let render_files: Vec<&str> = files
+    let mut render_files: Vec<&str> = files
         .paths
         .iter()
         .map(AsRef::as_ref)
@@ -120,6 +122,8 @@ pub fn import_deploy_files(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<De
         })
         .take(MAX_RENDER_FILES)
         .collect();
+    // The repository's own blueprint first, then nested ones by depth.
+    render_files.sort_by_key(|path| (path.matches('/').count(), *path));
     let is_file = |path: &str| files.paths.binary_search_by(|probe| (**probe).cmp(path)).is_ok();
     Ok(import(&render_files, is_file, |path| read_text(&workspace, path)))
 }
@@ -309,6 +313,7 @@ fn draft(
     is_file: impl Fn(&str) -> bool,
     read: impl Fn(&str) -> Option<String>,
 ) -> ImportedLaunch {
+    let joins = application.id != service.name;
     let mut launch = ImportedLaunch {
         service: service.name.clone(),
         service_type: service.kind,
@@ -323,7 +328,7 @@ fn draft(
         command: None,
         cwd: ".".to_owned(),
         schedule: service.schedule.clone(),
-        description: service.description.clone(),
+        description: service.description.clone().filter(|_| joins),
         env: BTreeMap::new(),
         copied_from: None,
         note: None,

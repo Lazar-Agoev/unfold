@@ -1338,7 +1338,8 @@ export type DeployImport = {
  */
 files: Array<string>, 
 /**
- * One draft per web, worker, and cron service, in file then document order.
+ * One draft per web, worker, and cron service, in file order (the root `render.yaml` first, then by depth),
+ * then document order.
  */
 launches: Array<ImportedLaunch>, };
 
@@ -2656,7 +2657,8 @@ cwd: string,
  */
 schedule: string | null, 
 /**
- * The comment block above the service: its first paragraph.
+ * The comment block above the service (its first paragraph), when the service joins another
+ * service's application; the owning service's comment describes the application instead.
  */
 description: string | null, 
 /**
@@ -2882,8 +2884,8 @@ imports: ImportGain | null,
  */
 routes: RoutePreview | null, 
 /**
- * Whether the preview comes from the graph as compiled (the project rests, or links
- * without this draft), rather than linking with the draft.
+ * Whether the preview links the draft with the current graph's program; `false` when there
+ * is no compiled program yet, so only the plan is shown and a compile gives the rest.
  */
 fromCurrentGraph: boolean, };
 

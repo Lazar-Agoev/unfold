@@ -60,6 +60,14 @@ application = "billing"
 trigger = "invoices"
 handler = "data-pipelines/jobs/token_refresh.py#refresh"
 
+[[entrance]]
+id = "invoice-hitl-nightly"
+kind = "process"
+application = "invoice-hitl-api"
+cwd = "data-pipelines"
+command = "python -m api.main"
+schedule = "0 2 * * *"
+
 [[entrance_override]]
 match = { detector = "pyproject.script", path = "pyproject.toml", pointer = "/project/scripts/review" }
 application = "billing"

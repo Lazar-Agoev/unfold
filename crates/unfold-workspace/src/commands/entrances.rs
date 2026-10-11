@@ -501,6 +501,20 @@ impl Catalog {
     pub(crate) fn is_route(&self, position: usize) -> bool {
         self.entrances[position].kind == EntranceKind::Http
     }
+
+    /// Whether an ASGI launch serves the application bound at `binding`.
+    fn serves_asgi(&self, binding: &Key) -> bool {
+        self.launches.launches.iter().any(|launch| {
+            launch.mode == Some(LaunchMode::PythonAsgi)
+                && self
+                    .entrances
+                    .iter()
+                    .find(|entrance| entrance.key == launch.entrance)
+                    .and_then(|entrance| entrance.targets.first())
+                    .and_then(|target| target.target.as_ref())
+                    == Some(binding)
+        })
+    }
 }
 
 /// The counts Home's header and Health line show.
@@ -613,14 +627,21 @@ impl Context<'_> {
                 .collect()
         });
         // An ASGI launch serves the routes bound to its application; any other launch, the
-        // routes its application proves it reaches (membership is per application).
+        // routes its application proves it reaches (membership is per application), except those
+        // an ASGI launch serves: a cron sharing an API's application serves none of its routes.
         let served: Vec<usize> = if record.and_then(|launch| launch.mode) == Some(LaunchMode::PythonAsgi) {
             bound.clone()
         } else {
             let mut served: Vec<usize> = catalog.apps_of[position]
                 .iter()
                 .flat_map(|&application| catalog.proven[application].iter().copied())
-                .filter(|&other| catalog.is_route(other))
+                .filter(|&other| {
+                    catalog.is_route(other)
+                        && !catalog.entrances[other]
+                            .binding
+                            .as_ref()
+                            .is_some_and(|binding| catalog.serves_asgi(binding))
+                })
                 .collect();
             served.sort_unstable();
             served.dedup();

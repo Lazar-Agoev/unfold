@@ -40,7 +40,7 @@ fn configured_launches_group_into_applications_by_category() {
     let overview = harness.ok(1, "entrances", json!({ "project": harness.project }));
     assert_eq!(
         overview["counts"],
-        json!({ "applications": 8, "launches": 8, "routes": 7, "entrances": 16 })
+        json!({ "applications": 8, "launches": 9, "routes": 7, "entrances": 17 })
     );
     assert_eq!(overview["unreached"], 1, "the admin tools app no launch serves");
     let order: Vec<&str> = overview["categories"]
@@ -57,7 +57,7 @@ fn configured_launches_group_into_applications_by_category() {
     assert_eq!(api["category"], "services");
     assert_eq!(api["origin"], "declared");
     assert_eq!(api["routes"], 4);
-    assert_eq!(api["entrances"], 5);
+    assert_eq!(api["entrances"], 6);
     let start = &api["launches"][0];
     assert_eq!(start["label"], "Start API");
     assert_eq!(start["folder"], "data-pipelines");
@@ -78,6 +78,11 @@ fn configured_launches_group_into_applications_by_category() {
     assert_eq!(start["declaredIn"], json!({ "path": "unfold.toml", "line": 12 }));
     assert_eq!(start["editable"], "configured");
     assert_eq!(start["id"], "invoice-hitl-api");
+    // A job in the API's application that imports the app module still serves none of the
+    // routes its ASGI launch serves.
+    let nightly = &api["launches"][1];
+    assert_eq!(nightly["id"], "invoice-hitl-nightly");
+    assert_eq!(nightly["routes"], Value::Null);
     assert!(start["reaches"].as_u64().is_some_and(|reaches| reaches > 0));
 
     // `python -m uvicorn … --app-dir`: the app folder first, then the working folder.
@@ -225,18 +230,19 @@ fn an_application_scope_sections_its_rows_and_pages_them() {
         rows,
         [
             ("Start API", ""),
+            ("python -m api.main", ""),
             ("POST /dashboard-builder/explore", "explore"),
             ("GET /dashboard-builder/model/{model}", "model"),
             ("POST /runs", "create_run"),
             ("GET /runs/{run_id}", "get_run"),
         ]
     );
-    assert_eq!(all["rows"][1]["alsoIn"], fixed);
-    assert_eq!(all["rows"][1]["line"], 11);
+    assert_eq!(all["rows"][2]["alsoIn"], fixed);
+    assert_eq!(all["rows"][2]["line"], 11);
     assert_eq!(all["rows"][0]["id"], "invoice-hitl-api");
 
     let first = scope(json!({ "limit": 2 }));
-    assert_eq!(first["total"], 5);
+    assert_eq!(first["total"], 6);
     assert_eq!(first["rows"].as_array().map(Vec::len), Some(2));
     let second = scope(json!({ "limit": 2, "cursor": first["nextCursor"] }));
     assert_eq!(second["rows"][0], all["rows"][2]);
@@ -284,7 +290,7 @@ fn check_launch_previews_a_draft_against_the_current_graph() {
         "command": "uvicorn dashboard_builder.app:app --port $PORT",
         "env": {}
     }));
-    assert_eq!(draft["fromCurrentGraph"], false);
+    assert_eq!(draft["fromCurrentGraph"], true);
     assert_eq!(draft["problem"], Value::Null);
     let meanings: Vec<&str> = draft["parts"]
         .as_array()

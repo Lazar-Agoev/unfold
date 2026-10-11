@@ -6,7 +6,7 @@
 //! answered by linking Python again over the program the engine holds, which the engine thread
 //! publishes after every update ([`crate::shared::LinkInputs`]): the linked program itself
 //! borrows the engine's state and isn't kept. Until the engine has a graph, only the plan is
-//! answered and `fromCurrentGraph` says so. Routes come from the stored catalog.
+//! answered and `fromCurrentGraph` is false. Routes come from the stored catalog.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -87,8 +87,8 @@ pub struct LaunchCheck {
     pub imports: Option<ImportGain>,
     /// The routes that would join the launch's application.
     pub routes: Option<RoutePreview>,
-    /// Whether the preview comes from the graph as compiled (the project rests, or links
-    /// without this draft), rather than linking with the draft.
+    /// Whether the preview links the draft with the current graph's program; `false` when there
+    /// is no compiled program yet, so only the plan is shown and a compile gives the rest.
     pub from_current_graph: bool,
 }
 
@@ -285,7 +285,7 @@ pub fn check_launch(ctx: &Ctx<'_>, args: CheckLaunchArgs) -> CommandResult<Launc
         starts: None,
         imports: None,
         routes: None,
-        from_current_graph: linked_from.is_none(),
+        from_current_graph: linked_from.is_some(),
     };
     let (Some(linked_from), Some(target)) = (&linked_from, &plan.target) else {
         return Ok(check);

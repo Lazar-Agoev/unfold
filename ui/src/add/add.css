@@ -567,9 +567,16 @@
 
 /* The browser's preview: the selection's intro, its command, and its facts */
 
-.add-browse-preview {
+.add-preview.add-browse-preview {
   gap: 14px;
   width: 300px;
+}
+
+/* As drawn: the primary button takes the room the New page button leaves, its label centered. */
+.add-browse-preview .add-preview-buttons .add-preview-primary {
+  flex-basis: 0;
+  min-width: 0;
+  padding: 0;
 }
 
 .add-browse-intro {
