@@ -30,13 +30,17 @@
 .line-label-punct,
 .line-label-unknown { color: var(--color-contour); }
 
-/* The contract: where the label was, above the cards and the other labels. */
+/* The contract: placed clear of the rows it reads (placeContract.ts), above the cards and the other
+   labels. 316px wide; an opened definition widens it to fit its aligned columns, up to 480px (the
+   callee side wraps instead, so it never widens it). */
 .line-contract {
   position: absolute;
   z-index: 1;
   display: flex;
   flex-direction: column;
-  width: 316px;
+  width: max-content;
+  min-width: 316px;
+  max-width: 480px;
   padding: 6px 0;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-tab);
@@ -90,7 +94,9 @@
 .line-contract-caller.dim { color: var(--color-contour); }
 
 .line-contract-callee {
+  flex: 1 1 0;
   min-width: 0;
+  contain: inline-size;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

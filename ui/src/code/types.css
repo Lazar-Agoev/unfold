@@ -83,17 +83,28 @@
   white-space: nowrap;
 }
 
+/* The members: a name column as wide as the widest name (84px at least) and the types after it, so
+   every type of one definition lines up. A definition opened under a row spans both columns. */
+.type-def-members {
+  display: grid;
+  grid-template-columns: minmax(84px, max-content) minmax(0, 1fr);
+}
+
+.type-def-field,
+.type-def-type { padding: 2px 0; }
+
 .type-def-field {
-  flex-shrink: 0;
-  min-width: 84px;
-  /* A long name (`readonly createdAt`) keeps a space before its type. */
+  /* The widest name keeps 8px before its type. */
   padding-right: 8px;
   color: var(--color-contour);
   white-space: pre;
 }
 
+/* `readonly` reads quieter than the name it prefixes. */
+.type-def-readonly { opacity: 0.6; }
+
 .type-def-value { color: var(--color-text); white-space: pre-wrap; }
-.type-def-nested { padding: 2px 0 4px 12px; }
+.type-def-nested { grid-column: 1 / -1; padding: 2px 0 4px 12px; }
 
 .type-def-actions {
   display: flex;

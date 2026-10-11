@@ -24,6 +24,28 @@ function contract(page: Page): Locator {
   return boardView(page).getByRole("region", { name: "Call to chargePayment" });
 }
 
+/**
+ * The pairs of a drawn label and a card whose boxes meet, as "label × card" (none, when every label
+ * keeps clear of the cards), and how many labels are drawn.
+ */
+async function labelsOverCards(page: Page): Promise<{ drawn: number; overlaps: string[] }> {
+  return boardView(page).evaluate((view) => {
+    const labels = [...view.querySelectorAll<HTMLElement>(".line-label")];
+    const cards = [...view.querySelectorAll<HTMLElement>(".board-card")];
+    const overlaps: string[] = [];
+    for (const label of labels) {
+      const a = label.getBoundingClientRect();
+      for (const card of cards) {
+        const b = card.getBoundingClientRect();
+        if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) {
+          overlaps.push(`${label.textContent} × ${card.dataset["key"] ?? ""}`);
+        }
+      }
+    }
+    return { drawn: labels.length, overlaps };
+  });
+}
+
 /** The contract's rows as their three columns' text. */
 async function rows(section: Locator): Promise<string[][]> {
   return section.locator(".line-contract-row").evaluateAll((elements) => elements.map((row) => [...row.children].map((cell) => cell.textContent)));
@@ -64,6 +86,11 @@ test.describe("typed lines", () => {
     await test.step("a line carries its call's signature at rest", async () => {
       await expect(label(page, "(CartItem[]) → Promise<Hold>")).toBeVisible();
       await expect(label(page, "(Cart, User) → Promise<Charge>")).toBeVisible();
+      // Arrange leaves 120px between the columns, less than either full label: each label still keeps
+      // clear of every card (in a shorter form, beside the cards, or not drawn at rest).
+      const placed = await labelsOverCards(page);
+      expect(placed.overlaps).toEqual([]);
+      expect(placed.drawn).toBeGreaterThan(0);
       await test.info().attach("board, light", { body: await boardView(page).screenshot(), contentType: "image/png" });
     });
 

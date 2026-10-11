@@ -202,17 +202,24 @@ The screens follow [architecture §11](architecture.md#11-the-desktop-app). Deta
   Home keeps scope changes in memory and writes them with `update_project_config` just before `compile`. "<project>
   compiled" is toasted only in the window that started the Compile, when its Home isn't showing that project.
 - **Lines between cards** (`canvas/lines/`, [typed lines](proposals/typed-lines.md#7-ui)). Each call or
-  passed-reference arrow carries its closed label at the curve's midpoint, in the edge-label layer (over the
-  cards, like a drawn link's label): one `line_labels` query per project per page, in calls of at most 500
-  lines. `labelText.ts` writes it (three or more inputs fold to `(Cart, +2) → Receipt`; a parameter without a
-  type is its name in gray; a missing output is `?`; unprovable inputs are `(…)`); `placeLabels.ts` nudges
-  labels that would overlap down until they clear, so text stays readable where lines cross. Clicking a label
-  selects the line (page selection kind `line`: the arrow, its `source` and `seq`, its two cards), and the
-  label opens in place into the contract (`call_contract`): Sends, then Returns and Throws, caller on the left
-  and callee on the right. A `declared` type in it (`code/TypeText.tsx`) opens its definition under its row
-  (`code/TypeDefinition.tsx`, `type_definition`), whose members' types open nested up to four deep; "Peek
-  source" opens the peek sheet at the declaration, and "Used in N places" a popover of `type_uses`, each
-  opening the peek sheet at its line. Which types are open is page view state: never saved, never an undo
+  passed-reference arrow carries its closed label in the edge-label layer: one `line_labels` query per project
+  per page, in calls of at most 500 lines. `labelText.ts` writes it (three or more inputs fold to
+  `(Cart, +2) → Receipt`; a parameter without a type is its name in gray; a missing output is `?`; unprovable
+  inputs are `(…)`). A label never covers a card or another label: each reports its curve and the measured
+  widths of its forms to the canvas's `LabelLayout` (`labelLayout.ts`), and `placeLabels.ts` (pure) puts it at
+  the first free spot along its curve (the midpoint, then 0.4 and 0.6, …), then a little above or below, then
+  hanging beside a point on it (right, then left, level or a little above or below), and only then in a shorter
+  form (`(+2) → Gateway`, then `→ Gateway`). A label that fits nowhere isn't drawn at rest:
+  its line takes the click itself (a wide invisible stroke, a focusable button named `Line <full label>`).
+  Clicking a label selects the line (page selection kind `line`: the arrow, its `source` and `seq`, its two
+  cards), and the label opens into the contract (`call_contract`): Sends, then Returns and Throws, caller on
+  the left and callee on the right. It opens clear of the caller's calling line and the callee's marked lines
+  where it can (`placeContract.ts`: along the line, then hanging below it), else centered where the label was;
+  opening a type grows it downward, and widens it to fit the definition (316px to 480px). A `declared` type in
+  it (`code/TypeText.tsx`) opens its definition under its row (`code/TypeDefinition.tsx`, `type_definition`),
+  whose members' types line up in one column after the widest name (`readonly` a quiet prefix) and open
+  nested up to four deep; "Peek source" opens the peek sheet at the declaration, and "Used in N places" a
+  popover of `type_uses`, each opening the peek sheet at its line. Which types are open is page view state: never saved, never an undo
   step, and cleared when the selection leaves the line. Escape (`board.closeLine`, ahead of the peek sheet's)
   or a click on the canvas closes the contract. While a line is selected, an unfolded Code callee card tints
   the contract's `calleeLines` with `--color-step` and the caller's calling line keeps `--color-selection`;

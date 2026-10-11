@@ -1,7 +1,8 @@
 /**
  * Where the closed labels of a page's lines sit (docs/proposals/typed-lines.md §7). A label never
  * covers a card or another label: it tries points along its own curve (the midpoint, then 0.4 and
- * 0.6, 0.3 and 0.7, …), then small steps above and below them into free canvas, and takes the first
+ * 0.6, 0.3 and 0.7, …), then small steps above and below them into free canvas, then hanging beside
+ * those points (to the right, then the left, level or a step above or below), and takes the first
  * spot that meets nothing. When none fits, it tries its shorter forms (`(+2) → Gateway`, then
  * `→ Gateway`) the same way; when even those don't fit, it isn't drawn at rest. Pure: the same
  * labels and cards always give the same placements, whatever order they come in.
@@ -90,13 +91,20 @@ export const CURVE_STEPS: readonly number[] = [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8
 export const NUDGES: readonly number[] = [12, 24, 36];
 /** Space kept between a label and a card or another label. */
 export const LABEL_GAP = 2;
+/** How far a hanging label's near edge stays from its point on the curve. */
+export const HANG_GAP = 4;
 
 function meets(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.width + LABEL_GAP && b.x < a.x + a.width + LABEL_GAP && a.y < b.y + b.height + LABEL_GAP && b.y < a.y + a.height + LABEL_GAP;
 }
 
-/** The centers a label tries, in order: along the curve, then nudged above and below. */
-function candidates(curve: Curve): Point[] {
+/**
+ * The centers a label `width` wide tries, in order: centered on points along the curve, then nudged
+ * above and below them; then hanging beside each point (its left edge just right of it, then its
+ * right edge just left of it), level with it and then nudged above and below. A 20px label nudged
+ * 12px has its edge 2px from the point, so a hanging label sits just above or below the line there.
+ */
+function candidates(curve: Curve, width: number): Point[] {
   const along = CURVE_STEPS.map((t) => pointAt(curve, t));
   const out = [...along];
   for (const step of NUDGES) {
@@ -104,13 +112,20 @@ function candidates(curve: Curve): Point[] {
       out.push(...along.map((point) => ({ x: point.x, y: point.y + sign * step })));
     }
   }
+  const levels = [0, ...NUDGES.flatMap((step) => [-step, step])];
+  const hang = HANG_GAP + width / 2;
+  for (const point of along) {
+    for (const level of levels) {
+      out.push({ x: point.x + hang, y: point.y + level }, { x: point.x - hang, y: point.y + level });
+    }
+  }
   return out;
 }
 
 /** The first form and spot of `label` that meets nothing in `taken` (which then takes it), or null. */
-function fit(label: LabelSpec, spots: readonly Point[], taken: Rect[]): Placement | null {
+function fit(label: LabelSpec, taken: Rect[]): Placement | null {
   for (const [form, width] of label.widths.entries()) {
-    for (const spot of spots) {
+    for (const spot of candidates(label.curve, width)) {
       const box = { x: spot.x - width / 2, y: spot.y - label.height / 2, width, height: label.height };
       if (!taken.some((other) => meets(box, other))) {
         taken.push(box);
@@ -132,7 +147,7 @@ export function placeLabels(labels: readonly LabelSpec[], cards: readonly Rect[]
   const taken: Rect[] = [...cards];
   const placements = new Map<string, Placement | null>();
   for (const label of order) {
-    placements.set(label.id, fit(label, candidates(label.curve), taken));
+    placements.set(label.id, fit(label, taken));
   }
   return placements;
 }

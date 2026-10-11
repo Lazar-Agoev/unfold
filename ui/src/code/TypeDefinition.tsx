@@ -1,11 +1,11 @@
 /**
  * A type's definition, opened inline under the row that wrote it (docs/proposals/typed-lines.md §7):
  * its kind and name, `file:line`, its members with their own types (which open nested, up to four
- * deep), and "Peek source" (the peek sheet at its line) and "Used in N places" (a popover of the
+ * deep; every type of one definition starts in the same column, after its widest name), and "Peek source" (the peek sheet at its line) and "Used in N places" (a popover of the
  * places, each opening the peek sheet at its line). Which types are open is the caller's state.
  */
 
-import { useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { ListRow, Popover } from "../components";
 import type { Key, ProjectId, TypeDefinition as TypeDefinitionModel, TypeKind, TypeMember } from "../ipc/generated";
 import { useEngineQuery } from "../ipc/queries";
@@ -28,12 +28,15 @@ export function usesText(count: number): string {
   return `Used in ${count} ${count === 1 ? "place" : "places"}`;
 }
 
-/** A member's name column: two spaces of indent, then its name as written (`coupon?`, `[key]`, `()`). */
+/** A member's name as written (`coupon?`, `[key]`, `()`), without `readonly`, which is drawn apart. */
 export function memberName(member: TypeMember): string {
   const name =
     member.name ?? (member.kind === "call" ? "()" : member.kind === "construct" ? "new ()" : member.kind === "index" ? "[key]" : "");
-  return `  ${member.readonly ? "readonly " : ""}${name}${member.optional ? "?" : ""}`;
+  return `${name}${member.optional ? "?" : ""}`;
 }
+
+/** The two spaces every member's name is indented by. */
+const INDENT = "  ";
 
 export interface TypeDefinitionProps {
   readonly project: ProjectId;
@@ -108,15 +111,15 @@ export function TypeDefinition({ project, typeKey, row, depth, openTypes, onTogg
     return <div className="type-definition note">{query.isError ? "This type isn't in the graph." : "Reading…"}</div>;
   }
   const nested = depth < MAX_TYPE_DEPTH;
-  // One written type: its row, its opened span, and the definition opened under it.
-  const typeRow = (id: string, field: string, type: TypeDefinitionModel["aliased"], extra: string | null) => {
+  // One written type: its name and type cells in the members' grid, and the definition opened under it.
+  const typeRow = (id: string, field: ReactNode, type: TypeDefinitionModel["aliased"], extra: string | null) => {
     const open = openTypes[id];
     const span = open !== undefined ? type?.spans[open] : undefined;
     const target = span?.style === "declared" ? span.target : undefined;
     return (
-      <div key={id}>
-        <div className="type-def-row">
-          <span className="type-def-field">{field}</span>
+      <Fragment key={id}>
+        <span className="type-def-field">{field}</span>
+        <span className="type-def-type">
           {type ? (
             <TypeText
               type={type}
@@ -131,13 +134,13 @@ export function TypeDefinition({ project, typeKey, row, depth, openTypes, onTogg
             />
           ) : null}
           {extra !== null ? <span className="type-def-value">{extra}</span> : null}
-        </div>
+        </span>
         {nested && target !== undefined ? (
           <div className="type-def-nested">
             <TypeDefinition project={project} typeKey={target} row={id} depth={depth + 1} openTypes={openTypes} onToggle={onToggle} />
           </div>
         ) : null}
-      </div>
+      </Fragment>
     );
   };
   return (
@@ -147,15 +150,24 @@ export function TypeDefinition({ project, typeKey, row, depth, openTypes, onTogg
         <span className="type-def-name">{definition.name}</span>
         <span className="type-def-place">{placeText(definition.path, definition.line)}</span>
       </div>
-      {definition.aliased ? typeRow(`${row}/=`, "  =", definition.aliased, null) : null}
-      {definition.members.map((member, index) =>
-        typeRow(
-          `${row}/${index}`,
-          memberName(member),
-          member.type,
-          member.value !== undefined ? (member.type ? ` = ${member.value}` : member.value) : member.default ? " = …" : null,
-        ),
-      )}
+      {definition.aliased || definition.members.length > 0 ? (
+        // One grid for all the rows, so every type starts in the same column.
+        <div className="type-def-members">
+          {definition.aliased ? typeRow(`${row}/=`, `${INDENT}=`, definition.aliased, null) : null}
+          {definition.members.map((member, index) =>
+            typeRow(
+              `${row}/${index}`,
+              <>
+                {INDENT}
+                {member.readonly ? <span className="type-def-readonly">readonly </span> : null}
+                {memberName(member)}
+              </>,
+              member.type,
+              member.value !== undefined ? (member.type ? ` = ${member.value}` : member.value) : member.default ? " = …" : null,
+            ),
+          )}
+        </div>
+      ) : null}
       <div className="type-def-actions">
         <button
           type="button"

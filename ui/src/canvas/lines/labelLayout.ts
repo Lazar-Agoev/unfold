@@ -6,27 +6,34 @@
  */
 
 import { createContext, useContext, useSyncExternalStore } from "react";
-import { placeLabels, type LabelSpec, type Placement, type Rect } from "./placeLabels";
+import { placeLabels, type LabelSpec, type Placement, type Point, type Rect } from "./placeLabels";
+
+function samePoint(a: Point, b: Point): boolean {
+  return a.x === b.x && a.y === b.y;
+}
 
 function sameSpec(a: LabelSpec, b: LabelSpec): boolean {
-  const { from, c1, c2, to } = a.curve;
-  const other = b.curve;
   return (
     a.height === b.height &&
     a.widths.length === b.widths.length &&
     a.widths.every((width, index) => width === b.widths[index]) &&
-    [from, c1, c2, to].every((point, index) => {
-      const match = [other.from, other.c1, other.c2, other.to][index];
-      return match !== undefined && point.x === match.x && point.y === match.y;
-    })
+    samePoint(a.curve.from, b.curve.from) &&
+    samePoint(a.curve.c1, b.curve.c1) &&
+    samePoint(a.curve.c2, b.curve.c2) &&
+    samePoint(a.curve.to, b.curve.to)
   );
 }
 
+function sameRect(a: Rect, b: Rect | undefined): boolean {
+  return a.x === b?.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
 function sameRects(a: readonly Rect[], b: readonly Rect[]): boolean {
-  return a.length === b.length && a.every((rect, index) => {
-    const other = b[index];
-    return other !== undefined && rect.x === other.x && rect.y === other.y && rect.width === other.width && rect.height === other.height;
-  });
+  return a.length === b.length && a.every((rect, index) => sameRect(rect, b[index]));
+}
+
+function samePlacement(a: Placement | null | undefined, b: Placement | null): a is Placement {
+  return a !== null && a !== undefined && b !== null && a.x === b.x && a.y === b.y && a.form === b.form;
 }
 
 export class LabelLayout {
@@ -72,7 +79,7 @@ export class LabelLayout {
       // Unchanged placements keep their identity, so their labels don't render again.
       for (const [key, value] of next) {
         const old = this.placements.get(key);
-        if (old && value && old.x === value.x && old.y === value.y && old.form === value.form) {
+        if (samePlacement(old, value)) {
           next.set(key, old);
         }
       }

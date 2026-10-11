@@ -63,6 +63,18 @@ describe("placeLabels", () => {
     expect(placeLabels([line("b", 0, 0, 40, 0)], [caller, close]).get("b")).toBeNull();
   });
 
+  it("hangs the full label beside the line, over free canvas above the callee, before shortening it", () => {
+    // Arrange's 120px column gap, narrower than the full label (190); the line enters the callee 22px
+    // below its top, as a header port does, and the canvas above the callee is free.
+    const caller = { x: -400, y: -100, width: 400, height: 300 };
+    const callee = { x: 120, y: -22, width: 400, height: 200 };
+    const label = line("a", 0, 0, 120, 0);
+    const placed = placeLabels([label], [caller, callee]);
+    // Hanging right of the midpoint (60, 0): left edge at 64, 36 up, clear of the callee's top.
+    expect(placed.get("a")).toEqual({ x: 60 + 4 + 95, y: -36, form: 0 });
+    expectClear([label], [caller, callee], placed);
+  });
+
   it("finds free canvas beside the card headers when the callees are stacked", () => {
     const caller = { x: -400, y: -150, width: 400, height: 400 };
     const upper = { x: 240, y: -160, width: 380, height: 150 };

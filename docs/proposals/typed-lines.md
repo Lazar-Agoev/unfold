@@ -1,6 +1,6 @@
 # Typed lines
 
-Status: compiler built (records, store, reader, commands); UI not yet · 2026-10-10
+Status: built (compiler records, store, reader, commands, and the board UI) · 2026-10-10
 
 On a board, the line between two cards should say what flows through the call it draws: what goes
 in, what comes back, and what can be thrown. Clicking a type opens its definition in place. This
@@ -50,7 +50,7 @@ compiler fact it needs; section 2 answers it.
 | "catch" in the caller column of Throws | `#8B93A1` | `--color-contour` |
 | Type definition inset | indented 64px; `#F7F8FA`, 1px `#EEF0F3`, radius 6, padding 8px 10px 6px; 20px rows | `--color-canvas`, `--color-rule-soft` |
 | Definition header | `interface ` in `#8B93A1`, the name Mono 12 weight 600, `cart.ts:4` Inter 11 `#656974` at the right | |
-| Definition fields | name column ≥84px in `#8B93A1` (indented two spaces), the type as above; `coupon?` keeps its `?` | |
+| Definition fields | name column ≥84px in `#8B93A1` (indented two spaces), the type as above; `coupon?` keeps its `?` | the name column is as wide as the definition's widest name, so its types line up (item 32) |
 | Definition footer | "Peek source" and "Used in 6 places", Inter 11 `#5862C0`, gap 14, 4px above | `--color-accent-text` |
 | Callee card marks | parameter lines, the return-type line, and the throw line tinted `#F4F5F8` | `--color-step` |
 | Caller line | the calling line tinted `#EDF0FC` | `--color-selection` |
@@ -505,24 +505,25 @@ If the Code model's call links don't say which edge a references arrow came from
 ## 7. UI
 
 Lines don't change: same stroke, color, curve, and head, no return track, and arrow edges keep
-`pointer-events: none`. Everything new is in the edge-label layer.
+`pointer-events: none`, except a line whose label fits nowhere at rest, which takes the click itself
+(item 31). Everything else new is in the edge-label layer.
 
 | Piece | Where | What |
 | --- | --- | --- |
 | Arrow model | `canvas/arrows.ts` | Each arrow carries its `seq` and its project, so labels and contracts can be asked for |
 | Labels for a page | `canvas/lines/useLineLabels.ts` | One `line_labels` query per project per page for every call and reference arrow (handler arrows have none) |
 | Label text | `canvas/lines/labelText.ts` (pure, tested) | `(CartItem[]) → Promise<Hold>`; three or more inputs fold to `(Cart, +2) → Receipt`; a name without a type is gray; a missing output is `?`; keywords keep their names (`currency=str`) |
-| Label placement | `canvas/lines/placeLabels.ts` (pure, tested) | At the curve's midpoint (`getBezierPath`'s label point). Labels that would overlap each other are nudged apart along the curve's vertical, so text stays readable where lines cross; the label's canvas-colored background hides the lines under it |
-| Closed label | `canvas/lines/LineLabel.tsx` | Rendered from `ArrowEdge` through `EdgeLabelRenderer`, `nodrag nopan`, `pointer-events: all`; a click selects the line |
-| Contract | `canvas/lines/LineContract.tsx` | The selected line's label opens in place into the contract, centered where the label was and above the cards (`--z-*`). Sends, Returns, Throws; caller on the left, callee on the right; Escape, a click on the canvas, or selecting anything else closes it |
+| Label placement | `canvas/lines/placeLabels.ts` (pure, tested), `canvas/lines/labelLayout.ts` | A label never covers a card or another label. Each label reports its curve (the one `getBezierPath` draws) and the measured widths of its forms to the canvas's `LabelLayout`, which `BoardCanvas` gives the cards' rectangles. A label takes the first spot that meets nothing: centered on points along its curve (t = 0.5, then 0.4/0.6, 0.3/0.7, 0.2/0.8), then 12, 24, or 36px above or below those points, then hanging beside each point (its left edge 4px right of it, then its right edge 4px left of it), level with it or 12, 24, or 36px above or below; failing every spot, the same for its shorter forms (`(+2) → Gateway`, then `→ Gateway`). Labels are placed from the top of the page down (then left to right, then by id), so the result doesn't depend on the order they report in. The label's canvas-colored background hides the lines under it |
+| Closed label | `canvas/lines/LineLabel.tsx` | Rendered from `ArrowEdge` through `EdgeLabelRenderer`, `nodrag nopan`, `pointer-events: all`, in the form and at the spot its placement says; a click selects the line. A label that fits nowhere isn't drawn at rest: its line carries a wide transparent stroke that takes the click and is a focusable button named `Line <full label>` (Enter or Space selects it) |
+| Contract | `canvas/lines/LineContract.tsx`, `canvas/lines/placeContract.ts` (pure, tested) | The selected line's label opens into the contract, above the cards (`--z-*`). Once loaded it is placed clear of the caller's calling line and the callee's marked lines, measured once from the cards' rows: centered on points along the line (the label's point first), then hanging 12px below them (centered, to the left, to the right); when nothing is clear, centered on the label's point. 316px wide, it widens up to 480px to fit an opened definition. Sends, Returns, Throws; caller on the left, callee on the right; Escape, a click on the canvas, or selecting anything else closes it |
 | Type text | `code/TypeText.tsx` | Renders a `TypeText` with the four span styles; a `declared` span toggles its definition |
-| Type definition | `code/TypeDefinition.tsx` | The inset under the row: kind and name, `file:line`, members with their own clickable types (which open nested, up to four deep), "Peek source" (the peek sheet at that line) and "Used in N places" (a popover listing `type_uses`, each opening the peek sheet at its line) |
+| Type definition | `code/TypeDefinition.tsx` | The inset under the row: kind and name, `file:line`, members with their own clickable types (which open nested, up to four deep) in one grid, so every type starts after the widest name (84px at least; `readonly` a quieter prefix in the name cell), "Peek source" (the peek sheet at that line) and "Used in N places" (a popover listing `type_uses`, each opening the peek sheet at its line) |
 | Selection | `state/boards/` | A new page selection kind, `line` (arrow id, source, seq); which types are open is view state per page, never saved to the board and never an undo step. The sidebar's Selected section shows the call as written and its two cards |
 | Card marks | `code/CodeView.tsx`, block cards | While a line is selected, the callee card tints `calleeLines` with `--color-step`; the caller's calling line keeps the normal `--color-selection` tint |
 | Tokens | `theme/tokens.css` | `--color-type-underline` and `--color-rule-soft`, light and dark |
 
-The label and contract use only tokens, so dark mode follows the theme. Folded cards: a label still
-sits on the line; card marks apply only to unfolded Code cards (Flow cards get none in the initial
+The label and contract use only tokens, so dark mode follows the theme. Folded cards: a label is
+placed like any other, clear of the folded card; card marks apply only to unfolded Code cards (Flow cards get none in the initial
 scope).
 
 ## 8. Tests and fixtures
@@ -653,6 +654,7 @@ Decisions made while building the compiler phase:
     layer, like a drawn link's label, so it stays readable and clickable when cards are close; its
     width comes from the bundled font's measurement (as card widths do), so placement needs no DOM
     reads. Overlapping labels are placed from the top and moved down below the label they meet.
+    (Superseded in part by item 31: labels no longer cover cards.)
 27. **Paper's colors where the table and the artboards differ.** A label's types read in
     `--color-text` whole (`CartItem[]`, `Promise<Hold>`), as the artboard draws them; only the
     label's own punctuation (`(`, `, `, `) → `) is `--color-contour`. Inside the contract, text
@@ -671,6 +673,42 @@ Decisions made while building the compiler phase:
 30. **The shadow is the floating one.** The contract uses `--shadow-float` rather than a new token
     for Paper's `0 4px 14px #20212612`, as section 1 maps it; members show `readonly` before the
     name (Paper's fixture has none), and a long name keeps 8px before its type.
+31. **Labels never cover a card** (this replaces item 26's "labels sit over the cards"). After
+    Arrange, columns are 120px apart, narrower than most full labels, and labels drawn over the
+    cards hid their titles and lines. Labels stay in the edge-label layer and keep their measured
+    widths, but `placeLabels` now treats every card as taken: a label moves along its curve, then
+    up to 36px above or below it, then hangs beside a point on it (left edge 4px right of the point,
+    then right edge 4px left of it, level or up to 36px above or below), so a full label too wide
+    for the gap between columns can sit over the free canvas above or below the callee; only when
+    every spot is taken does it drop to a shorter form (the inputs as a count, then the output
+    alone, which still says what comes back), and one that fits nowhere isn't drawn at rest rather
+    than covering a card. Nudges are measured from the label's center; with the 20px label, 12px
+    puts its edge 2px from the point, so a hanging label sits just above or below the line there,
+    and where it crosses the line its canvas-colored background keeps the text readable. Its line then takes the click with a 12px transparent stroke (the
+    edge is an ARIA `group` rather than React Flow's `img`, so the stroke's button role and name
+    `Line <full label>` stay reachable), and Selected and the contract work as for a drawn label.
+    Placement is pure and deterministic: labels are placed in order of their curve's midpoint (top,
+    left, id), and the canvas's `LabelLayout` places all reports of one commit together, tells its
+    listeners once, and keeps unchanged placements' identity, so nothing renders twice. A selected
+    line's label stays in the layout while its contract is open, so the others don't move. Drawn
+    links' labels aren't in the layout (a line's label may sit under one), and on pages large
+    enough to render only the cards in view, lines out of view don't take part.
+32. **A definition's types line up.** A definition's rows share one grid: the name column is as
+    wide as its widest name (84px at least, 8px before the type), so `readonly createdAt  Date`
+    keeps `Date` under the other types. `readonly` is drawn in the name cell as a quieter prefix (the
+    name's contour color at 60% opacity) instead of as part of the name (amends item 30). CSS grid
+    rather than font measurement: the browser already knows the widest name, and nested
+    definitions span both columns. Since that column can be wide, the contract (316px in Paper)
+    widens to fit an opened definition, up to 480px; its callee column doesn't count toward that
+    width (`contain: inline-size`), so long types still wrap at 316px.
+33. **The contract opens clear of what it reads** (refines item 28). When it loads, the contract
+    measures the caller's calling line and the callee's `calleeLines` rows in their cards once (DOM
+    rectangles, scaled by the zoom), and `placeContract` (pure) tries its center on points along the
+    line (t = 0.5 first, so a clear label point keeps today's spot), then hanging 12px below those
+    points: centered, ending at the point (toward the caller), then starting at it. It takes the
+    first spot that covers none of those rows, else centers on the label's point. It may cover
+    other rows or a card's header. Rows not drawn (a folded or Flow card) don't count. Opening a
+    type still keeps its top still, so a definition may then grow over a marked row.
 
 ## 10. Not in the initial scope
 

@@ -2,8 +2,9 @@
  * The selected line's contract, opened in place of its label (docs/proposals/typed-lines.md §7):
  * what the call sends (each argument as written beside the parameter it fills), what comes back and
  * where it lands, and what the callee throws (with "catch" when the call sits in a `try` that
- * catches). The caller's side is on the left, the callee's on the right. A written type opens its
- * definition under its row; which ones are open is the page's view state.
+ * catches). The caller's side is on the left, the callee's on the right. It opens clear of the
+ * caller's calling line and the callee's marked lines where it can (`placeContract`). A written type
+ * opens its definition under its row; which ones are open is the page's view state.
  */
 
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -12,6 +13,8 @@ import { TypeText } from "../../code/TypeText";
 import type { CallContract, ContractReturn, ContractSend, ProjectId, TypeText as TypeTextModel } from "../../ipc/generated";
 import { useEngineQuery } from "../../ipc/queries";
 import { keyDisplayName, toggleOpenType, usePageView, type PageTarget, type SelectedLine } from "../../state/boards";
+import { placeContract } from "./placeContract";
+import type { Curve, Point, Rect } from "./placeLabels";
 import "./lines.css";
 
 /** What the caller's column says about the result: where it lands. */
@@ -130,28 +133,61 @@ function Sends({ page, project, contract, openTypes }: { readonly page: PageTarg
   );
 }
 
+/**
+ * The rows a contract keeps clear of, in canvas units: the caller's calling line and the callee's
+ * marked lines, as drawn in their cards around `element` (the contract, whose canvas box is `box`,
+ * which gives the zoom). Rows not drawn (a folded card, a Flow card) are left out.
+ */
+function rowsToKeepClear(element: HTMLElement, box: Rect, line: SelectedLine, contract: CallContract): Rect[] {
+  const flow = element.closest(".react-flow");
+  const screen = element.getBoundingClientRect();
+  if (!flow || screen.width === 0 || box.width === 0) {
+    return [];
+  }
+  const zoom = screen.width / box.width;
+  const rows = (card: string, lines: readonly number[]) => {
+    const node = flow.querySelector(`.react-flow__node[data-id="${CSS.escape(card)}"]`);
+    return lines.flatMap((number) => {
+      const row = node?.querySelector(`.code-row[data-line="${number}"]`);
+      if (!row) {
+        return [];
+      }
+      const at = row.getBoundingClientRect();
+      return [{ x: box.x + (at.left - screen.left) / zoom, y: box.y + (at.top - screen.top) / zoom, width: at.width / zoom, height: at.height / zoom }];
+    });
+  };
+  return [...rows(line.from, [contract.callerLine]), ...rows(line.to, contract.calleeLines)];
+}
+
 export interface LineContractProps {
   readonly target: PageTarget;
   readonly line: SelectedLine;
   /** Where the label was (the curve's midpoint), in canvas units. */
   readonly x: number;
   readonly y: number;
+  /** The curve the line draws, along which the contract may move to keep its rows in view. */
+  readonly curve?: Curve;
 }
 
-export function LineContract({ target, line, x, y }: LineContractProps) {
+export function LineContract({ target, line, x, y, curve }: LineContractProps) {
   const { project, source, seq } = line;
   const query = useEngineQuery("call_contract", { project, source, seq });
   const openTypes = usePageView(target, (view) => view.openTypes);
   const contract = query.data;
-  // Centered where the label was when it opens; a type opened inside grows it downward only.
+  // Placed once it has loaded (`placeContract`): clear of the caller's line and the callee's marks
+  // where it can be, else centered where the label was. A type opened inside grows it downward only.
   const element = useRef<HTMLElement>(null);
-  const [lift, setLift] = useState<number | null>(null);
-  const loaded = contract !== undefined;
+  const [top, setTop] = useState<Point | null>(null);
   useLayoutEffect(() => {
-    if (loaded && lift === null && element.current) {
-      setLift(element.current.offsetHeight / 2);
+    const own = element.current;
+    if (!contract || top !== null || !own) {
+      return;
     }
-  }, [loaded, lift]);
+    const size = { width: own.offsetWidth, height: own.offsetHeight };
+    const box = { x: x - size.width / 2, y: y - size.height / 2, ...size };
+    const path = curve ?? { from: { x, y }, c1: { x, y }, c2: { x, y }, to: { x, y } };
+    setTop(placeContract(size, path, rowsToKeepClear(own, box, line, contract)));
+  }, [contract, top, x, y, curve, line]);
   useLayoutEffect(() => {
     element.current?.focus({ preventScroll: true });
   }, []);
@@ -189,7 +225,7 @@ export function LineContract({ target, line, x, y }: LineContractProps) {
       </>
     );
   }
-  const transform = lift === null ? `translate(-50%, -50%) translate(${x}px, ${y}px)` : `translate(-50%, 0) translate(${x}px, ${y - lift}px)`;
+  const transform = top === null ? `translate(-50%, -50%) translate(${x}px, ${y}px)` : `translate(-50%, 0) translate(${top.x}px, ${top.y}px)`;
   return (
     <section
       ref={element}

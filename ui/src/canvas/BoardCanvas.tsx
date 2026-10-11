@@ -16,7 +16,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { Card, Link } from "../ipc/generated";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useContextMenu } from "../components";
 import { authorName } from "../code/text";
 import { useRegisterActions } from "../keyboard";
@@ -165,6 +165,8 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
               className: "board-arrow-edge",
               focusable: false,
               selectable: false,
+              // A line without room for its label is itself a button (ArrowEdge), which an `img` would hide.
+              ...(handler ? {} : { ariaRole: "group" as const }),
               data: {
                 dashed: arrow.dashed,
                 handler,
@@ -250,6 +252,19 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
     return list;
   }, [links, display, drag, sizeOf, selectedLink, target, linkCache]);
   const edges = useMemo((): CanvasEdge[] => [...arrowEdges, ...linkEdges], [arrowEdges, linkEdges]);
+
+  // The cards as drawn, which the lines' labels keep clear of.
+  const cardRects = useMemo(
+    () =>
+      cards.flatMap((card) => {
+        const at = drag?.id === card.id ? drag : display.get(card.id);
+        return at ? [{ x: at.x, y: at.y, ...sizeOf(card.id) }] : [];
+      }),
+    [cards, display, drag, sizeOf],
+  );
+  useLayoutEffect(() => {
+    labelLayout.setCards(cardRects);
+  }, [labelLayout, cardRects]);
 
   // Escape ends link drawing (before anything else hears it).
   useEffect(() => {
@@ -366,64 +381,64 @@ export function BoardCanvas({ target, cards, links = NO_LINKS, boardArrows }: Bo
 
   return (
     <LabelLayoutContext.Provider value={labelLayout}>
-    <ReactFlow<CardNodeType, CanvasEdge>
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      onNodesChange={onNodesChange}
-      onNodeDragStop={onNodeDragStop}
-      onMoveEnd={onMoveEnd}
-      onPaneClick={() => {
-        if (getPageView(target).linking) {
-          setLinking(target, null);
-          return;
-        }
-        select(target, { kind: "none" });
-      }}
-      onEdgeClick={(_event, edge) => {
-        if (edge.type === "link") {
+      <ReactFlow<CardNodeType, CanvasEdge>
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        onNodesChange={onNodesChange}
+        onNodeDragStop={onNodeDragStop}
+        onMoveEnd={onMoveEnd}
+        onPaneClick={() => {
+          if (getPageView(target).linking) {
+            setLinking(target, null);
+            return;
+          }
+          select(target, { kind: "none" });
+        }}
+        onEdgeClick={(_event, edge) => {
+          if (edge.type === "link") {
+            select(target, { kind: "link", linkId: edge.id });
+          }
+        }}
+        onEdgeContextMenu={(event, edge) => {
+          if (edge.type !== "link") {
+            return;
+          }
+          event.preventDefault();
           select(target, { kind: "link", linkId: edge.id });
-        }
-      }}
-      onEdgeContextMenu={(event, edge) => {
-        if (edge.type !== "link") {
-          return;
-        }
-        event.preventDefault();
-        select(target, { kind: "link", linkId: edge.id });
-        paneMenu.open({ x: event.clientX, y: event.clientY }, [{ id: "remove", label: "Remove link", danger: true, onSelect: () => { removeLink(target, edge.id); } }]);
-      }}
-      onPaneContextMenu={(event) => {
-        event.preventDefault();
-        const hasCards = cards.length > 0;
-        paneMenu.open({ x: event.clientX, y: event.clientY }, [
-          { id: "fit", label: "Fit", shortcut: "Shift+1", disabled: !hasCards, onSelect: () => { requestCardFocus(target, [], "fit"); } },
-          { kind: "separator", id: "s1" },
-          { id: "fold", label: "Fold all cards", disabled: !hasCards, onSelect: () => { foldAll(target, true); } },
-          { id: "unfold", label: "Unfold all cards", disabled: !hasCards, onSelect: () => { foldAll(target, false); } },
-        ]);
-      }}
-      onError={onFlowError}
-      defaultViewport={initialCamera ?? { x: 40, y: 40, zoom: 1 }}
-      minZoom={MIN_ZOOM}
-      maxZoom={MAX_ZOOM}
-      onlyRenderVisibleElements={cards.length > VISIBLE_ONLY_ABOVE}
-      nodesConnectable={false}
-      elementsSelectable={false}
-      edgesFocusable={false}
-      nodesFocusable={false}
-      deleteKeyCode={null}
-      selectionKeyCode={null}
-      multiSelectionKeyCode={null}
-      disableKeyboardA11y
-      zoomOnDoubleClick={false}
-      panOnScroll
-      proOptions={{ hideAttribution: true }}
-      aria-label="Board canvas"
-      className={`board-canvas${linking ? " linking" : ""}`}
-    />
-    {paneMenu.element}
+          paneMenu.open({ x: event.clientX, y: event.clientY }, [{ id: "remove", label: "Remove link", danger: true, onSelect: () => { removeLink(target, edge.id); } }]);
+        }}
+        onPaneContextMenu={(event) => {
+          event.preventDefault();
+          const hasCards = cards.length > 0;
+          paneMenu.open({ x: event.clientX, y: event.clientY }, [
+            { id: "fit", label: "Fit", shortcut: "Shift+1", disabled: !hasCards, onSelect: () => { requestCardFocus(target, [], "fit"); } },
+            { kind: "separator", id: "s1" },
+            { id: "fold", label: "Fold all cards", disabled: !hasCards, onSelect: () => { foldAll(target, true); } },
+            { id: "unfold", label: "Unfold all cards", disabled: !hasCards, onSelect: () => { foldAll(target, false); } },
+          ]);
+        }}
+        onError={onFlowError}
+        defaultViewport={initialCamera ?? { x: 40, y: 40, zoom: 1 }}
+        minZoom={MIN_ZOOM}
+        maxZoom={MAX_ZOOM}
+        onlyRenderVisibleElements={cards.length > VISIBLE_ONLY_ABOVE}
+        nodesConnectable={false}
+        elementsSelectable={false}
+        edgesFocusable={false}
+        nodesFocusable={false}
+        deleteKeyCode={null}
+        selectionKeyCode={null}
+        multiSelectionKeyCode={null}
+        disableKeyboardA11y
+        zoomOnDoubleClick={false}
+        panOnScroll
+        proOptions={{ hideAttribution: true }}
+        aria-label="Board canvas"
+        className={`board-canvas${linking ? " linking" : ""}`}
+      />
+      {paneMenu.element}
     </LabelLayoutContext.Provider>
   );
 }

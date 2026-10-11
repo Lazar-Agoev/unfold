@@ -30,7 +30,20 @@
 .board-arrow-line.dashed { stroke-dasharray: 5 4; }
 .board-arrow-head { fill: currentColor; }
 
-/* Link labels sit over the cards, so a label between close cards stays readable. */
+/* A line whose label fits nowhere at rest takes the click itself (ArrowEdge.tsx): an invisible
+   stroke wider than the line. */
+.board-arrow-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.board-arrow-hit:focus { outline: none; }
+.board-arrow-hit:focus-visible { stroke: var(--color-focus-ring); stroke-opacity: 0.35; }
+
+/* Labels sit over the cards (link labels may cover one; a line's label is placed clear of them). */
 .board-canvas .react-flow__edgelabel-renderer { z-index: 1; }
 
 /* Drawn links: dashed; the selected one in the accent at 1.75px. */
