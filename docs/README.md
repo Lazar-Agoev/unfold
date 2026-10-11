@@ -4,6 +4,9 @@ Start with [AGENTS.md](../AGENTS.md) for working rules and code ownership. Choos
 below, search its headings, then read the owning code and a nearby test. There is no required
 sequence through the docs.
 
+For product behavior and UX, read [the fixed product vision](product-vision.md). Proposals, designs, and
+implementation must follow it; only an explicit user request to change the vision authorizes editing it.
+
 ## Find the context for your task
 
 | Task | Reference | Implementation entry point |

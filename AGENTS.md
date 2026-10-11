@@ -7,6 +7,11 @@
 - A requested design document is a file task: save the complete Markdown under `docs/`
   (normally `docs/designs/<topic>.md`) and link it in the final response.
 
+## Product vision
+
+Read [the fixed product vision](docs/product-vision.md) before proposing or changing product behavior or UX.
+Proposals and designs must follow it. Do not edit it unless the user explicitly requests a vision change.
+
 ## Start with the task
 
 Unfold statically reads TypeScript/Python using a Rust engine, Electron shell, and React UI.
