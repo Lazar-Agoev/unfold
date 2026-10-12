@@ -48,6 +48,11 @@ export interface PeekTarget {
   readonly focus?: PeekFocus;
   /** The page whose selection the sheet follows, when View code opened it from that page. */
   readonly follow?: PageTarget;
+  /**
+   * Where View code finds this source again on the card models as they are now (null while they
+   * refresh, or when the item has no source any more). The sheet draws `focus` only while this agrees.
+   */
+  readonly resolve?: () => PeekTarget | null;
 }
 
 export type ProjectSettingsSection = "general" | "scope" | "detectors" | "python" | "evidence";

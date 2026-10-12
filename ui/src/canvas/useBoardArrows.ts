@@ -1,16 +1,17 @@
 /**
  * The card models of a page (from the query cache), the definitions of its type cards that show their
- * fields, and the arrows derived from them.
+ * fields, and the arrows derived from them, including those of the calls expanded cards show in place.
  */
 
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { cardBody, type CardBody } from "../code/typeKinds";
-import type { Card, CardView, ProjectId, TypeDefinition } from "../ipc/generated";
+import { drawnFlow, planInsets, type InsetModel, type InsetPlan } from "../flow/insets";
+import type { Card, CardView, Key, ProjectId, TypeDefinition } from "../ipc/generated";
 import { engineQueryOptions } from "../ipc/queries";
-import { cardKey, cardRefKey, findPage, shownView, useOpenBoard, usePageView, type PageTarget } from "../state/boards";
+import { MAX_EXPANSION_DEPTH, cardKey, cardRefKey, findPage, shownView, useOpenBoard, usePageView, type PageTarget } from "../state/boards";
 import { resolveRefProject, useProjectIndex } from "../state/workspace";
-import { computeArrows, type Arrow, type ArrowCard } from "./arrows";
+import { computeArrows, type Arrow, type ArrowCard, type ArrowInset } from "./arrows";
 import { cardQuery, lastVerifiedCode } from "./cardData";
 
 export interface BoardArrows {
@@ -33,6 +34,75 @@ function loadedByRef<T>(wanted: readonly (readonly [string, unknown])[], data: r
     }
   });
   return map;
+}
+
+const LOADING: InsetModel = { state: "loading" };
+
+/** The drawn insets of plans, outermost first, with the blocks they show. */
+function drawnInsets(plans: readonly InsetPlan[], into: ArrowInset[] = []): ArrowInset[] {
+  for (const plan of plans) {
+    if (drawnFlow(plan.model)) {
+      into.push({ path: plan.path, owner: plan.owner });
+      drawnInsets(plan.children, into);
+    }
+  }
+  return into;
+}
+
+/**
+ * The calls each expanded function card shows expanded in place (`useCallInsets` draws them), with the
+ * models they show, by card id. Each level's models load as the level above is known, from the cache.
+ */
+function useInsets(cards: readonly Card[], arrowCards: readonly ArrowCard[], models: ReadonlyMap<string, CardView>) {
+  const client = useQueryClient();
+  const expanding = useMemo(
+    () =>
+      arrowCards.flatMap((arrowCard, index) => {
+        const card = cards[index];
+        const paths = card?.expanded ?? [];
+        const own = arrowCard.project !== null ? models.get(cardRefKey(arrowCard.project, arrowCard.key)) : undefined;
+        const flow = own?.type === "block" && own.flow?.source === "current" ? own.flow : null;
+        return arrowCard.body === "flow" && card?.folded !== true && paths.length > 0 && flow && arrowCard.project !== null
+          ? [{ id: arrowCard.id, project: arrowCard.project, key: arrowCard.key, flow, paths }]
+          : [];
+      }),
+    [cards, arrowCards, models],
+  );
+  // What the expanded calls need, from what is cached now.
+  const wanted: { project: ProjectId; key: Key }[] = [];
+  for (const { project, key, flow, paths } of expanding) {
+    planInsets(flow, key, paths, (callee) => {
+      if (!wanted.some((item) => item.project === project && item.key === callee)) {
+        wanted.push({ project, key: callee });
+      }
+      const data = client.getQueryData<CardView>(cardQuery(project, callee).queryKey);
+      return data ? { state: "ready", view: data } : LOADING;
+    }, MAX_EXPANSION_DEPTH);
+  }
+  const loaded = useQueries({
+    queries: wanted.map(({ project, key }) => cardQuery(project, key)),
+    // Structurally shared: `data` keeps its identity while no model changed.
+    combine: (results) => results.map((result) => result.data),
+  });
+  const wantedKey = JSON.stringify(wanted.map(({ project, key }) => cardRefKey(project, key)));
+  return useMemo(() => {
+    const byRef = new Map<string, CardView>();
+    (JSON.parse(wantedKey) as string[]).forEach((ref, index) => {
+      const data = loaded[index];
+      if (data) {
+        byRef.set(ref, data);
+      }
+    });
+    const insets = new Map<string, ArrowInset[]>();
+    for (const { id, project, key, flow, paths } of expanding) {
+      const plans = planInsets(flow, key, paths, (callee) => {
+        const data = byRef.get(cardRefKey(project, callee));
+        return data ? { state: "ready", view: data } : LOADING;
+      }, MAX_EXPANSION_DEPTH);
+      insets.set(id, drawnInsets(plans));
+    }
+    return { insets, models: byRef };
+  }, [expanding, wantedKey, loaded]);
 }
 
 /** The arrows of a page; its cards resolve by shared name (shared project names), and each shows its own view. */
@@ -78,7 +148,14 @@ export function useBoardArrows(target: PageTarget, cards: readonly Card[]): Boar
   });
   const models = useMemo(() => loadedByRef<CardView>(wanted, loaded.data), [wanted, loaded.data]);
   const definitions = useMemo(() => loadedByRef<TypeDefinition>(types, loadedTypes), [types, loadedTypes]);
-  const arrows = useMemo(() => computeArrows(arrowCards, models, lastVerifiedCode, definitions), [arrowCards, models, definitions]);
+  const inline = useInsets(cards, arrowCards, models);
+  const arrows = useMemo(() => {
+    const withInsets = arrowCards.map((card) => {
+      const insets = inline.insets.get(card.id);
+      return insets && insets.length > 0 ? { ...card, insets } : card;
+    });
+    return computeArrows(withInsets, new Map([...inline.models, ...models]), lastVerifiedCode, definitions);
+  }, [arrowCards, models, inline, definitions]);
   const bodies = useMemo(() => new Map(arrowCards.map((card) => [card.id, card.body])), [arrowCards]);
   return { models, arrows, bodies, settled: loaded.settled };
 }

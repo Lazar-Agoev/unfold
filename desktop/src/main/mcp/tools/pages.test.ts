@@ -13,6 +13,7 @@ const PLACE = "src/services/order-service.ts#class:OrderService/method:place";
 const ENTRANCE = 'entrance:["express.route","http","POST","/orders","src/routes/orders.ts"]';
 const CART = "src/cart.ts#interface:Cart";
 const CART_ITEM = "src/cart.ts#interface:CartItem";
+const BASKET = "src/cart.ts#class:Basket";
 const BOARD = { project: PROJECT, id: ".unfold/local/drafts/order-placement.json" };
 const BOARD_INFO = { title: "Order placement", place: "draft", changes: 0, revision: "r1" } as const;
 
@@ -97,6 +98,7 @@ const CART_DEFINITION: TypeDefinition = {
 const DEFINITIONS: Readonly<Record<string, TypeDefinition>> = {
   [CART]: CART_DEFINITION,
   [CART_ITEM]: { key: CART_ITEM, kind: "interface", name: "CartItem", path: "src/cart.ts", line: 6, language: "typescript", members: [], inherited: [], uses: 1 },
+  [BASKET]: { ...CART_DEFINITION, key: BASKET, kind: "class", name: "Basket", line: 20, members: CART_DEFINITION.members.slice(0, 1) },
 };
 
 const ORDER_LABEL: LineLabel = { inputs: [{ type: { text: "OrderDraft", spans: [] } }], inputsUnknown: false, output: { text: "Promise<Order>", spans: [] } };
@@ -109,6 +111,7 @@ const CARDS: Readonly<Record<string, () => CardView>> = {
   [PLACE]: () => blockCard(PLACE, "method", "OrderService.place", 13),
   [CART]: () => blockCard(CART, "interface", "Cart", 12),
   [CART_ITEM]: () => blockCard(CART_ITEM, "interface", "CartItem", 6),
+  [BASKET]: () => blockCard(BASKET, "class", "Basket", 20),
 };
 
 function file(page: AgentPage = PAGE): ReadBoardResult {
@@ -245,6 +248,11 @@ describe("read_page", () => {
       lines: ["- Cart (cart) → CartItem (item): field items: CartItem[] (CartItem: src/cart.ts#interface:CartItem)", "- Cart (cart) → CartItem (item): field from Base<CartItem>: extra: CartItem (CartItem: src/cart.ts#interface:CartItem)"],
       definitions: 2,
     });
+    // A class shows its fields only while compact: expanded (a saved Flow, or a legacy Code view), it shows its detail.
+    const basket = async (view: "diagram" | "flow" | "code") => typeLines([{ id: "basket", ref: { block: BASKET }, at: [0, 0], view }, { id: "item", ref: { block: CART_ITEM }, at: [400, 0] }]);
+    expect(await basket("diagram")).toEqual({ lines: ["- Basket (basket) → CartItem (item): field items: CartItem[] (CartItem: src/cart.ts#interface:CartItem)"], definitions: 2 });
+    expect(await basket("flow")).toEqual({ lines: [], definitions: 1 });
+    expect(await basket("code")).toEqual({ lines: [], definitions: 1 });
   });
 
   it("lists each card's expansion and calls expanded in place, and proposed steps under their cards with their anchors' health", async () => {

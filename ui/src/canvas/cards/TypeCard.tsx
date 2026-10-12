@@ -1,8 +1,10 @@
 /**
- * A type card (design §4.2): a type declaration or a class as its fields, in either lens (it has no
- * expansion chevron). The header shows the kind (`interface`, `type`, `enum`, `class`), the name, and
- * where it is; the review banner and the description follow. Each field is its name as written
- * (`readonly` drawn apart, `?`), its written type, and its default (` = …`) or an enum member's value;
+ * A type card (design §4.2): a type declaration as its fields in either lens (it has no expansion
+ * chevron), or a compact class in Diagram, whose header starts with the chevron that expands it to its
+ * Flow (a class shows its Code in the Code lens, `cardBody`). The header shows the kind (`interface`,
+ * `type`, `enum`, `class`), the name, and where it is; the review banner and the description follow.
+ * Each field is its name as written (`readonly` drawn apart, `?`), its written type, and its default
+ * (` = …`) or an enum member's value;
  * a type alias that isn't an object shows its aliased type; the fields it inherits follow under
  * "from <Type>" for each base. A declared type opens its definition in place, as in a line's contract.
  * A card of 12 fields or more lists the first 8 and "N more".
@@ -17,7 +19,7 @@ import { useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 import { Monogram } from "../../components";
 import { FromBase, TypeDefinition } from "../../code/TypeDefinition";
 import { TypeText } from "../../code/TypeText";
-import { keyTypeWord, memberName, memberValue, typeKindWord } from "../../code/typeKinds";
+import { fieldsOnly, keyTypeWord, memberName, memberValue, typeKindWord } from "../../code/typeKinds";
 import type { Card, ProjectId, TypeDefinition as TypeDefinitionModel } from "../../ipc/generated";
 import { useEngineQuery } from "../../ipc/queries";
 import { keyDisplayName, toggledOpenTypes, type PageTarget } from "../../state/boards";
@@ -27,7 +29,7 @@ import { ProjectScope } from "../ProjectScope";
 import { useMeasure } from "../measure";
 import { fieldTexts, listedFields, nodeLocation, typeCardWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";
-import { CardHandles, CardNote, DescriptionStrip, HeaderPorts, nodeHeaderPorts, renderPorts, toggleCardFolded } from "./parts";
+import { CardHandles, CardNote, DescriptionStrip, ExpandToggle, HeaderPorts, nodeHeaderPorts, renderPorts, toggleCardFolded } from "./parts";
 import { ReviewBanner } from "./ReviewBanner";
 import { clickCard } from "./select";
 
@@ -146,9 +148,11 @@ export function TypeCard({ target, project, card, ports, selected }: TypeCardPro
   const name = header?.qualifiedName ?? definition?.name ?? keyDisplayName(key);
   const location = header ? nodeLocation(header.path, header.startLine) : definition ? nodeLocation(definition.path, definition.line) : "";
   const foreign = card.ref.project;
+  // A class expands to its detail; a type declaration has only its fields.
+  const expandable = !fieldsOnly(key);
   const width = useMemo(
-    () => typeCardWidth({ mark: kind, name, location, monogram: foreign !== undefined }, definition ? fieldTexts(definition) : [], measure),
-    [kind, name, location, foreign, definition, measure],
+    () => typeCardWidth({ mark: kind, name, location, monogram: foreign !== undefined, chevron: expandable }, definition ? fieldTexts(definition) : [], measure),
+    [kind, name, location, foreign, expandable, definition, measure],
   );
   const portSet = useMemo(() => new Set(ports), [ports]);
 
@@ -189,6 +193,7 @@ export function TypeCard({ target, project, card, ports, selected }: TypeCardPro
           toggleCardFolded(target, card.id, folded);
         }}
       >
+        {expandable && !folded ? <ExpandToggle target={target} cardId={card.id} expanded={false} name={name} /> : null}
         {foreign !== undefined ? <Monogram name={foreign} size={20} /> : null}
         <span className="tcard-kind">{kind}</span>
         <h3 className="card-title" title={name}>

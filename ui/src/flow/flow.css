@@ -532,7 +532,8 @@
  * Proposed steps: dashed green on a light tint, a PROPOSED type row, and the title as plain words
  * (layout.ts sizes the box with the same numbers as a step: the 1.5px border is inside its 8px). Their
  * connectors are dashed green, apart from the solid compiled routes beside them. A proposed step whose
- * step is missing takes the placeholder look; one whose step is held, the review color.
+ * step is missing takes the placeholder look; one whose step is held, the review color. One inside a
+ * collapsed step group notes it in the muted color, with a link-like action that expands the group.
  */
 .flow-proposal {
   position: absolute;
@@ -567,6 +568,19 @@
   font: 400 11px/16px var(--font-ui);
   color: var(--color-warn);
   overflow-wrap: anywhere;
+}
+
+/* A proposed step inside a collapsed step group: where it goes, and the action that shows the group's steps. */
+.flow-proposal-note.inside { color: var(--color-muted); }
+
+.flow-proposal-reveal {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--color-proposed-ink);
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .flow-proposal.missing {

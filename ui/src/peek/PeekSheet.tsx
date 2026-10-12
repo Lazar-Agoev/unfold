@@ -8,12 +8,14 @@
  *
  * Opened by View code, it highlights its focus: the rows tinted with an accent edge, and the exact
  * expression marked when the focus has columns. Only verified source shows it (`showsFocus`); a file
- * changed since the compile, or outside the graph, says the range isn't shown instead.
+ * changed since the compile, or outside the graph, says the range isn't shown instead. The focus must
+ * also still be where View code finds its item on the current card models (`useFocusCurrent`): while
+ * they or the text refresh it isn't drawn, and a recompile that moved the item re-targets the sheet.
  */
 
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type JSX, type ReactNode } from "react";
 import { ProjectScope } from "../canvas/ProjectScope";
 import { CallLink } from "../code/CallLink";
 import { tokenClass } from "../code/CodeText";
@@ -27,7 +29,7 @@ import { openInEditor, revealInFinder } from "../lib/files";
 import { languageList, plural } from "../lib/format";
 import { addBlock, cardRefKey, findPage, getOpenBoard, keyDisplayName, newBoard, useOpenBoard, usePageKeys, type BoardRef, type PageTarget } from "../state/boards";
 import { setPeekPinned, useLayout } from "../state/layout";
-import { closePeek, useAddTarget, usePeekTarget, type AddTarget, type PeekTarget } from "../state/overlays";
+import { closePeek, openPeek, useAddTarget, usePeekTarget, type AddTarget, type PeekFocus, type PeekTarget } from "../state/overlays";
 import { useProjectRow } from "../state/workspace";
 import {
   PAGE_LINES,
@@ -220,11 +222,14 @@ const NO_MATCHES: readonly TextMatch[] = [];
 function Lines({
   target,
   first,
+  focus,
   onPage,
   add,
 }: {
   readonly target: PeekTarget;
   readonly first: FileView;
+  /** View code's focus, when the text shown is the source it was recorded for. */
+  readonly focus: PeekFocus | undefined;
   readonly onPage: ReadonlySet<string>;
   readonly add: (key: Key, view?: View) => void;
 }) {
@@ -234,8 +239,6 @@ function Lines({
   const lineCount = first.lineCount;
   const linked = first.graph === "current";
   const matches = target.matches ?? NO_MATCHES;
-  // View code's focus, on source that verified (never on text the range wasn't recorded for).
-  const focus = target.focus !== undefined && showsFocus(first.graph) ? target.focus : undefined;
   const rows = useMemo(() => visibleLines(lineCount, [...folded.values()]), [lineCount, folded]);
 
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual returns fresh functions by design.
@@ -392,6 +395,34 @@ function Lines({
   );
 }
 
+/**
+ * Whether View code's focus is still where its item is: `target.resolve` asked again as card models
+ * change. While they refresh (or the item has no source now) it isn't; when a recompile moved the
+ * item, the sheet re-targets to where it is now.
+ */
+function useFocusCurrent(target: PeekTarget): boolean {
+  const client = useQueryClient();
+  const { resolve, follow } = target;
+  const subscribe = useCallback((notify: () => void) => client.getQueryCache().subscribe(notify), [client]);
+  const agrees = useSyncExternalStore(
+    subscribe,
+    (): "same" | "moved" | "none" => {
+      const now = resolve ? resolve() : target;
+      if (now === null) {
+        return "none";
+      }
+      return targetKey(now) === targetKey(target) ? "same" : "moved";
+    },
+  );
+  useEffect(() => {
+    const now = agrees === "moved" ? resolve?.() : null;
+    if (now) {
+      openPeek({ ...now, ...(follow ? { follow } : {}), ...(resolve ? { resolve } : {}) });
+    }
+  }, [agrees, resolve, follow]);
+  return agrees === "same";
+}
+
 function PeekBody({ target, pinned }: { readonly target: PeekTarget; readonly pinned: boolean }) {
   const addTarget = useAddTarget();
   const page = addTarget.kind === "page" ? addTarget.target : null;
@@ -400,6 +431,9 @@ function PeekBody({ target, pinned }: { readonly target: PeekTarget; readonly pi
   const projectName = useProjectRow(target.project)?.name ?? "";
   const first = useEngineQuery("file_view", { project: target.project, path: target.path, range: { startLine: 1, endLine: PAGE_LINES } });
   const view = first.data;
+  const current = useFocusCurrent(target);
+  // View code's focus, on verified source that is done refreshing and still where its item is.
+  const focus = target.focus !== undefined && view !== undefined && showsFocus(view.graph) && !first.isFetching && current ? target.focus : undefined;
   // A focus the file can't show (changed since the compile, or not in the graph) is said, never drawn.
   const withheld = target.focus !== undefined && view !== undefined && !view.unshowable && !showsFocus(view.graph) ? FOCUS_WITHHELD[view.graph] : null;
 
@@ -414,6 +448,7 @@ function PeekBody({ target, pinned }: { readonly target: PeekTarget; readonly pi
         <Lines
           target={target}
           first={view}
+          focus={focus}
           onPage={onPage}
           add={(key, view) => void addDefinition(addTarget, target.project, key, view)}
         />

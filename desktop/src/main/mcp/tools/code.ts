@@ -76,9 +76,25 @@ function directThrows(source: CodeText, text: ReadonlyMap<number, string>): stri
   return outline.flatMap((item, index) => (item.kind === "throw" && ownedHere(index) ? [`line ${item.startLine}: ${clip((text.get(item.startLine) ?? "").trim())}`] : []));
 }
 
-/** Each source line's text as the file has it (not dedented), by line number: focus columns count in it. */
-function fileLines(source: CodeText): Map<number, string> {
-  return new Map(source.lines.map((line) => [line.number, source.text.slice(line.start, line.end)]));
+/**
+ * Each source line's text as the file has it (not dedented), by line number: focus columns count in it.
+ * The block's slice starts at the block, partway through its first line, so that line is `first`, the
+ * file's whole line; without it, the first line is left out and a focus on it quotes nothing.
+ */
+function fileLines(source: CodeText, first: string | undefined): Map<number, string> {
+  const lines = new Map(source.lines.slice(1).map((line) => [line.number, source.text.slice(line.start, line.end)]));
+  const number = source.lines[0]?.number;
+  if (number !== undefined && first !== undefined) {
+    lines.set(number, first);
+  }
+  return lines;
+}
+
+/** The file's whole line `line`, when the file on disk is still the one Unfold compiled. */
+async function wholeLine(context: ToolContext, project: ProjectRow, path: string, line: number): Promise<string | undefined> {
+  const view = await context.engine("file_view", { project: project.id, path, range: { startLine: line, endLine: line } }).catch(() => null);
+  const shown = view?.graph === "current" ? view.lines.find((entry) => entry.number === line) : undefined;
+  return view && shown ? view.text.slice(shown.start - view.textStart, shown.end - view.textStart) : undefined;
 }
 
 /**
@@ -259,7 +275,12 @@ export const readCode = defineTool({
     const showFlow = view !== "code" && !isType;
     const calls = relations && showCode ? await callLines(context, code.project, relations, range) : [];
     const throws = source && !isType ? directThrows(source, text) : [];
-    const steps = showFlow && card.flow && header.source === "current" ? flowSteps(card.flow, range, source ? fileLines(source) : new Map()) : [];
+    const flow = showFlow && header.source === "current" ? card.flow : null;
+    // Only a focus on the first line needs the file's whole line, to quote its expression.
+    const firstLine = source?.lines[0]?.number;
+    const onFirst = firstLine !== undefined && firstLine >= range[0] && flow?.nodes.some((node) => node.focus?.startLine === firstLine && node.focus.endLine === firstLine) === true;
+    const first = onFirst ? await wholeLine(context, code.project, header.path, firstLine) : undefined;
+    const steps = flow ? flowSteps(flow, range, source ? fileLines(source, first) : new Map()) : [];
     const paged = range[0] > header.startLine || range[1] < header.endLine;
     return textResult(
       head,

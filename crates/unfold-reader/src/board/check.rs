@@ -26,7 +26,11 @@ use super::BoardError;
 use super::claims;
 use super::graph::{BoardGraph, PageGraphs};
 use super::items::remove_items;
-use super::model::{Anchor, Board, CardRef, Group, GuardEntry, Page, ProjectName, Signature, is_ordinal};
+use super::model::{
+    Anchor, Board, CardRef, Group, GuardEntry, Page, ProjectName, ProposalPath, Signature, is_ordinal,
+};
+use crate::flow::{NoContext, RouteKind};
+use crate::source::SourceState;
 
 /// A Flow label's or a reference's address on a page: its key in a project.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
@@ -365,10 +369,18 @@ fn held(page: &Page, graph: &BoardGraph, project: Option<&ProjectName>, key: &st
     None
 }
 
-/// Why a proposed step on the block card with key `card` can't go after `after` in `graph` (the
-/// card's project's), if it can't: it goes after a block of the graph strictly inside the card's
-/// block (a key under `<card>/`).
-pub(crate) fn placement_problem(graph: &BoardGraph, card: &str, after: &str) -> Option<String> {
+/// Why a proposed step on the block card with key `card` can't go after `after` on `path` in
+/// `graph` (the card's project's), if it can't. The rule is the UI's (`placementProblem`): it goes
+/// after a step of the card's own Flow (not the card itself, a call inside a statement, or a step
+/// of a nested definition) that something runs after (not a return, throw, break, continue, or a
+/// region whose routing isn't modeled), on one of that step's paths when it has several (a
+/// condition's yes and no, a loop's each and done) and on none when it has one way on.
+pub(crate) fn placement_problem(
+    graph: &BoardGraph,
+    card: &str,
+    after: &str,
+    path: Option<ProposalPath>,
+) -> Option<String> {
     if after == card {
         return Some(format!(
             "Can't place it after its card itself: a proposed step goes after a step inside the card's block. Choose a statement or call under {card}/"
@@ -379,11 +391,76 @@ pub(crate) fn placement_problem(graph: &BoardGraph, card: &str, after: &str) -> 
             "Can't place it after {after}: that is not inside its card's block. Choose a statement or call under {card}/"
         ));
     }
-    graph.block(after).is_none().then(|| {
-        format!(
+    if graph.block(after).is_none() {
+        return Some(format!(
             "Can't place it after {after}: that step is not in the graph. Choose a statement or call under {card}/ that the code has now"
-        )
-    })
+        ));
+    }
+    let flow = graph
+        .flow(card, &NoContext)
+        .filter(|flow| flow.source == SourceState::Current);
+    let Some(flow) = flow else {
+        return Some(format!(
+            "Can't place it after {after}: its card's source changed since the last compile or is missing, so its Flow can't be checked. Compile the project, then try again"
+        ));
+    };
+    let Some(node) = flow
+        .nodes
+        .iter()
+        .find(|node| node.key.as_ref().is_some_and(|key| key.as_str() == after))
+    else {
+        return Some(format!(
+            "Can't place it after {after}: that is not a step of its card's Flow (a call inside a statement, or a step of a nested definition, is not). Choose a step its card's Flow shows"
+        ));
+    };
+    if node.kind.is_terminal() {
+        return Some(format!(
+            "Can't place it after {after}: nothing runs after it on its path. Choose the step before it, or a step on another path"
+        ));
+    }
+    let mut paths: Vec<ProposalPath> = Vec::new();
+    for route in flow.routes.iter().filter(|route| route.from == node.id) {
+        if let Some(found) = route_path(route.kind)
+            && !paths.contains(&found)
+        {
+            paths.push(found);
+        }
+    }
+    let choices = || {
+        paths
+            .iter()
+            .map(|path| path.as_str())
+            .collect::<Vec<_>>()
+            .join(" or ")
+    };
+    match path {
+        None if paths.len() > 1 => Some(format!(
+            "Can't place it after {after}: that step has {} paths: choose {}",
+            paths.len(),
+            choices()
+        )),
+        Some(path) if paths.len() > 1 && !paths.contains(&path) => Some(format!(
+            "Can't place it after {after}: that step has no {} path: choose {}",
+            path.as_str(),
+            choices()
+        )),
+        Some(_) if paths.len() <= 1 => Some(format!(
+            "Can't place it after {after}: that step has one way on, so a proposed step after it takes no path"
+        )),
+        _ => None,
+    }
+}
+
+/// The proposal path a route out of a decision is on (an `else if` is the condition's no, a
+/// do-while's again its each), as the UI's `routePath` reads it; none for any other route.
+fn route_path(kind: RouteKind) -> Option<ProposalPath> {
+    match kind {
+        RouteKind::Yes => Some(ProposalPath::Yes),
+        RouteKind::No | RouteKind::ElseIf => Some(ProposalPath::No),
+        RouteKind::Each | RouteKind::Again => Some(ProposalPath::Each),
+        RouteKind::Done => Some(ProposalPath::Done),
+        _ => None,
+    }
 }
 
 /// The guard to save for (`project`, `key`) now, from `graph` (that project's): its kind,
@@ -915,7 +992,7 @@ fn reconnect(
             && let (Some(graph), Some(card)) = (graph, card)
         {
             let card = if card.as_str() == from { to } else { card.as_str() };
-            if let Some(message) = placement_problem(graph, card, after.as_str()) {
+            if let Some(message) = placement_problem(graph, card, after.as_str(), proposal.path) {
                 return Err(problem(page, Target::Proposal(proposal.id.clone()), &message));
             }
         }

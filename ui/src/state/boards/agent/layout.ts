@@ -14,7 +14,7 @@ import type { Arrow } from "../../../canvas/arrows";
 import { FOLLOW_GAP, STACK_GAP, clearSpot } from "../../../canvas/layout";
 import { measureText } from "../../../canvas/measure";
 import { descriptionHeight, estimatedFieldOffset, estimatedLineOffset } from "../../../canvas/sizing";
-import { cardBody, isTypeKind, keyBlockKind } from "../../../code/typeKinds";
+import { cardBody, fieldsOnly } from "../../../code/typeKinds";
 import type { Card, Key, Page } from "../../../ipc/generated";
 import {
   callExpansions,
@@ -104,10 +104,11 @@ function setCardShow(ctx: OpContext, page: Page, card: Card, item: AgentViewSpec
   if (item.collapsed !== undefined) {
     throw invalid(`“${item.id}” is a card: it takes expanded, expandCalls, collapseCalls, and folded; collapsed is for step groups and frames.`);
   }
-  const typeCard = isTypeKind(keyBlockKind(cardKey(card)) ?? "");
+  // A type declaration's card keeps its fields in every view; a class's expands to its detail like a function's.
+  const typeCard = fieldsOnly(cardKey(card));
   const calls = item.expandCalls !== undefined || item.collapseCalls !== undefined;
   if (typeCard && (item.expanded !== undefined || (item.view !== undefined && item.view !== "diagram") || calls)) {
-    throw invalid(`${name} is a type card: it keeps its fields in every view, so it takes folded, not expanded or calls to expand. Expand a function's or an entrance's card.`);
+    throw invalid(`${name} is a type card: it keeps its fields in every view, so it takes folded, not expanded or calls to expand. Expand a function's, a class's, or an entrance's card.`);
   }
   if (!("block" in card.ref) && calls) {
     throw invalid(`${name} is an entrance card: its targets aren't calls to expand in place. expanded: true shows its evidence and targets; follow a handler to its card (add_cards with follow: {callees: 1}) and expand calls there.`);

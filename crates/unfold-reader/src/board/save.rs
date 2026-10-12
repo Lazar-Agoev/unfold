@@ -371,15 +371,15 @@ fn unchanged(old: &Page, new: &Page, target: &Target) -> bool {
 }
 
 /// Whether proposed step `a` of page `old` goes where `b` of page `new` does: after the same
-/// anchor, on the same card showing the same block.
+/// anchor, on the same path, on the same card showing the same block.
 fn same_place(old: &Page, a: &Proposal, new: &Page, b: &Proposal) -> bool {
-    (&a.card, &a.after) == (&b.card, &b.after)
+    (&a.card, &a.after, a.path) == (&b.card, &b.after, b.path)
         && old.card(&a.card).map(|card| &card.reference) == new.card(&b.card).map(|card| &card.reference)
 }
 
 /// Refuses a proposed step that is new or placed elsewhere since `previous` ([`same_place`])
-/// unless it goes after a step of its card's project's graph strictly inside the card's block
-/// ([`placement_problem`]). One placed as before is kept as it is, even when its anchor went
+/// unless it goes after a step of its card's own Flow that something runs after, on a path that
+/// step has ([`placement_problem`]). One placed as before is kept as it is, even when its anchor went
 /// missing or is held: that is health's to report.
 fn place_proposals(page: &Page, previous: Option<&Page>, graphs: &PageGraphs<'_>) -> Result<(), BoardError> {
     for proposal in &page.proposals {
@@ -405,9 +405,12 @@ fn place_proposals(page: &Page, previous: Option<&Page>, graphs: &PageGraphs<'_>
                 ),
             ));
         };
-        if let Some(message) =
-            placement_problem(graph, card.reference.key().as_str(), proposal.after.as_str())
-        {
+        if let Some(message) = placement_problem(
+            graph,
+            card.reference.key().as_str(),
+            proposal.after.as_str(),
+            proposal.path,
+        ) {
             return Err(refuse(page, &target, &message));
         }
     }

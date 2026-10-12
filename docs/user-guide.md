@@ -105,14 +105,18 @@ function's steps right under the call, titled with its name and `file:line`: cli
 the peek sheet, or `→` to open it as its own card. Calls inside can expand again, three levels deep at most; a call
 back to a function already shown has no chevron. A callback whose only step is one call shows that call's function,
 captioned "via callback to …", so you still see it is reached through the callback. Library calls and calls Unfold
-can't follow keep their explanation and can't be expanded. A step selected inside belongs to the called function in
-Selected. To group or describe those steps, open the called function as its own card.
+can't follow keep their explanation and can't be expanded. A call shown inside to a function with its own card on the
+page draws its arrow from that step, and a connection from a step inside an expanded callback leaves from it there.
+A step selected inside belongs to the called function in Selected. To group or describe those steps, open the called
+function as its own card.
 
 A **type** (an interface, a type alias, an enum, or a class) shows its fields in Diagram view: each field's name and
 written type, `?` and `readonly` as written, and the fields it inherits under the type they come from. Click a type
 in a field to read its definition in place. When a field's type is another type on the page, an arrow goes from that
 field to it, labeled with the type. A type with twelve fields or more shows the first eight; "N more" shows the rest.
-Selected says where a type is used ("Used in N places").
+Selected says where a type is used ("Used in N places"). An interface, alias, or enum shows its fields in either lens
+and has nothing to expand. A class shows its fields while compact; its chevron expands it to its existing Flow, and in
+Code it shows its source.
 
 ## Add
 
@@ -193,6 +197,9 @@ deletes it (one undo step) without touching your code. On this page lists it und
 compact card shows how many it holds ("1 proposal").
 
 If the step it goes after disappears or is held for review, the proposal keeps its words and says so on the card.
+When a collapsed combined block hides the step it goes after, it is drawn after the block only if that step is the
+block's last; otherwise it sits under the block, without connectors, saying it goes inside it and after which step,
+and **Show its steps** expands the block.
 **Review** offers the explicit choices: **Reconnect** it to a step you pick from its card, **Accept** the current code
 (when held), or remove it. It is never moved to a similarly named step for you. Mermaid export leaves proposed steps
 out; page images include them.

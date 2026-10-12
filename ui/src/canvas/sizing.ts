@@ -12,7 +12,7 @@
 import type { CardView, CodeText, Description, Frame, Key, TypeDefinition, View } from "../ipc/generated";
 import type { Measure } from "../flow/layout";
 import { shortPath } from "../code/text";
-import { cardBody, keyTypeWord, memberName, memberValue, typeKindWord } from "../code/typeKinds";
+import { cardBody, fieldsOnly, keyTypeWord, memberName, memberValue, typeKindWord } from "../code/typeKinds";
 import { fieldRows } from "./arrows";
 import { entranceCardText, entranceTitle } from "./entranceText";
 import { ENTRANCE_MAX_WIDTH, ENTRANCE_MIN_WIDTH, clampCardWidth, fallbackSize, type Size } from "./layout";
@@ -259,9 +259,12 @@ export function fieldTexts(definition: TypeDefinition): FieldText[] {
   }));
 }
 
-/** A type card's width: its header (kind, name, location) and its widest field, clamped to 280–560. */
-export function typeCardWidth(header: Omit<NodeWidthInput, "code">, fields: readonly FieldText[], measure: Measure): number {
-  const head = nodeHeaderWidth(header, measure(header.mark, TYPE_KIND_FONT), false, measure);
+/**
+ * A type card's width: its header (a class's expansion chevron, kind, name, location) and its widest
+ * field, clamped to 280–560.
+ */
+export function typeCardWidth(header: Omit<NodeWidthInput, "code"> & { readonly chevron?: boolean }, fields: readonly FieldText[], measure: Measure): number {
+  const head = nodeHeaderWidth(header, measure(header.mark, TYPE_KIND_FONT), header.chevron === true, measure);
   const name = Math.max(NAME_COLUMN, ...fields.map((field) => measure(field.name, CODE_FONT) + NAME_GAP));
   const type = Math.max(0, ...fields.map((field) => measure(field.type, CODE_FONT)));
   return clampCardWidth(Math.max(head, PADDING * 2 + BORDER + name + type), TYPE_MIN_WIDTH, TYPE_MAX_WIDTH);
@@ -371,7 +374,13 @@ export function estimatedCardSize(input: EstimateInput, measure: Measure): Size 
     return { width: entranceCardWidth(entranceCardText(model), measure), height: fallbackSize(true).height };
   }
   if (body === "fields") {
-    const header = { mark: definition ? typeKindWord(definition.kind) : keyTypeWord(key), name: model.header.qualifiedName, location: nodeLocation(model.header.path, model.header.startLine), monogram };
+    const header = {
+      mark: definition ? typeKindWord(definition.kind) : keyTypeWord(key),
+      name: model.header.qualifiedName,
+      location: nodeLocation(model.header.path, model.header.startLine),
+      monogram,
+      chevron: !fieldsOnly(key),
+    };
     const width = typeCardWidth(header, definition ? fieldTexts(definition) : [], measure);
     return { width, height: definition ? typeCardHeight(definition, descriptionHeight(description, null, measure)) : fallbackSize(false, body).height };
   }

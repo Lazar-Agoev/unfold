@@ -21,7 +21,7 @@ import { linkNote } from "../code/text";
 import { authorOf } from "../code/text";
 import { Icon } from "../icons";
 import { expandableCalls, type ExpandableCall } from "./insets";
-import { followableCall, nodeTypeName, roundedPath, type FlowLayout, type GroupStep, type PlacedInset, type PlacedNode, type PlacedProposal } from "./layout";
+import { INSIDE_ACTION, followableCall, nodeTypeName, roundedPath, type FlowLayout, type GroupStep, type PlacedInset, type PlacedNode, type PlacedProposal } from "./layout";
 import { ViewCodeButton } from "./ViewCodeButton";
 import "./flow.css";
 
@@ -68,6 +68,8 @@ export interface FlowViewProps {
   /** Ports by placed node id (occurrences with arrows that this node shows). */
   readonly ports?: ReadonlyMap<string, readonly string[]>;
   readonly renderPorts?: (ids: readonly string[]) => ReactNode;
+  /** How far past the diagram's right edge its ports' leaders reach (an inset's, to its card's edge). */
+  readonly portReach?: number;
   readonly expansion?: FlowExpansion;
   /** Drawn inside an inset: the diagram alone, without the caption and the warnings. */
   readonly inset?: boolean;
@@ -465,8 +467,24 @@ function FlowNodeView({
   );
 }
 
-/** A proposed step: PROPOSED (with the agent mark for an agent's), its title as plain words, and why where it goes needs review. */
-function ProposalView({ placed, mark, selected, onSelect }: { placed: PlacedProposal; mark: ProposalMark | undefined; selected: boolean; onSelect: ((id: string) => void) | undefined }) {
+/**
+ * A proposed step: PROPOSED (with the agent mark for an agent's), its title as plain words, and why
+ * where it goes needs review; one inside a collapsed step group says so, with the action that expands it.
+ */
+function ProposalView({
+  placed,
+  mark,
+  selected,
+  onSelect,
+  onToggleGroup,
+}: {
+  placed: PlacedProposal;
+  mark: ProposalMark | undefined;
+  selected: boolean;
+  onSelect: ((id: string) => void) | undefined;
+  onToggleGroup: ((groupId: string) => void) | undefined;
+}) {
+  const inside = placed.inside;
   const agent = mark ? authorOf(mark.author) : null;
   const classes = ["flow-proposal"];
   if (selected) classes.push("selected");
@@ -497,7 +515,26 @@ function ProposalView({ placed, mark, selected, onSelect }: { placed: PlacedProp
         ) : null}
       </span>
       <span className="flow-proposal-title">{placed.title}</span>
-      {placed.note !== undefined ? <span className="flow-proposal-note">{placed.note}</span> : null}
+      {placed.note !== undefined ? (
+        <span className={`flow-proposal-note${inside !== undefined ? " inside" : ""}`}>
+          {placed.note}
+          {inside !== undefined && onToggleGroup ? (
+            <>
+              {" "}
+              <button
+                type="button"
+                className="flow-proposal-reveal nodrag"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleGroup(inside);
+                }}
+              >
+                {INSIDE_ACTION}
+              </button>
+            </>
+          ) : null}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -605,6 +642,7 @@ export function FlowView(props: FlowViewProps) {
                 mark={props.proposals?.marks.get(placed.id)}
                 selected={props.proposals?.selected === placed.id}
                 onSelect={props.proposals?.onSelect}
+                onToggleGroup={props.onToggleGroup}
               />
             ))
           : null}
@@ -631,7 +669,7 @@ function FlowNodeWithPorts({
       {ports && ports.length > 0 && props.renderPorts ? (
         <div
           className={`flow-leader${ports.every((port) => portStep(port) !== undefined) ? " authored" : ""}`}
-          style={{ left: placed.x + placed.width, top: placed.y + Math.min(placed.height / 2, 18), width: Math.max(0, diagramWidth - placed.x - placed.width) }}
+          style={{ left: placed.x + placed.width, top: placed.y + Math.min(placed.height / 2, 18), width: Math.max(0, diagramWidth - placed.x - placed.width) + (props.portReach ?? 0) }}
         >
           {props.renderPorts(ports)}
         </div>

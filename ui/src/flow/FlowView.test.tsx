@@ -13,9 +13,11 @@ import { usePeekTarget } from "../state/overlays";
 import { fixture, installFakeEngine, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../test/workspace";
 import { stepPort } from "../code/outline";
+import { insetPort } from "../canvas/arrows";
+import { forgetVerifiedCode } from "../canvas/cardData";
 import { FlowView, flowPortNodes, type FlowExpansion } from "./FlowView";
 import { expansionState } from "./insets";
-import { layoutFlow, type Measure, type StepGroup } from "./layout";
+import { INSIDE_ACTION, insideNote, layoutFlow, type Measure, type StepGroup } from "./layout";
 
 const createOrder = fixture("card", "card_create_order") as Extract<CardView, { type: "block" }>;
 if (!createOrder.flow) {
@@ -201,6 +203,23 @@ describe("the Flow view's proposed steps", () => {
     expect(gone?.querySelector(".flow-proposal-title")?.textContent).toBe("Log the order");
     expect(gone?.querySelector(".flow-proposal-note")?.textContent).toBe("The step it went after is missing.");
     expect(gone?.querySelector(".flow-proposal-agent")).toBeNull();
+  });
+
+  it("says a proposed step goes inside a collapsed combined block, with the action that shows its steps, and draws no connectors for it", () => {
+    const onSelect = vi.fn();
+    const onToggleGroup = vi.fn();
+    const layout = layoutFlow(flow, { measure, maxWidth: 878, groups: [place], proposals: [{ id: "email", after: ORDER, title: "Email a confirmation" }] });
+    const { container } = render(<FlowView model={flow} layout={layout} width={600} onToggleGroup={onToggleGroup} proposals={{ marks, selected: null, onSelect }} />);
+    const box = container.querySelector<HTMLElement>('[data-proposal="email"]');
+    const label = flow.nodes.find((node) => node.key === ORDER)?.label ?? "";
+    const note = box?.querySelector(".flow-proposal-note");
+    expect(note?.classList.contains("inside")).toBe(true);
+    expect(note?.textContent).toBe(`${insideNote(PLACE, label)} ${INSIDE_ACTION}`);
+    expect(container.querySelectorAll(".flow-proposal-edge")).toHaveLength(0);
+    fireEvent.click(within(box ?? document.body).getByRole("button", { name: INSIDE_ACTION }));
+    expect(onToggleGroup).toHaveBeenCalledWith("place-it");
+    // Showing the steps doesn't select the proposed step.
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("draws nothing for proposals unless the card draws its own (an inset never does)", () => {
@@ -460,6 +479,8 @@ describe("calls expanded in place on a card", () => {
   beforeEach(() => {
     store.resetBoards();
     queryClient.clear();
+    // The window's memory of each block's last verified Code (a test may load other models of a key).
+    forgetVerifiedCode(P);
     engine = installFakeEngine({
       handlers: {
         card: ({ key }) => {
@@ -654,7 +675,7 @@ describe("calls expanded in place on a card", () => {
     expect(store.getOpenBoard(REF)?.document.pages[0]?.groups.every((group) => group.card !== "create-order")).toBe(true);
   });
 
-  it("keeps the call's arrow leaving from its own step, and draws no ports inside the inset", async () => {
+  it("keeps the call's arrow leaving from its own step; the inset has ports only for its calls to cards on the page", async () => {
     const { container } = open([
       { id: "create-order", ref: { block: FN }, at: [0, 0], expanded: [[PLACE_CALL]] },
       { id: "place", ref: { block: PLACE }, at: [1200, 0], view: "diagram" },
@@ -668,5 +689,75 @@ describe("calls expanded in place on a card", () => {
     const slot = card()?.querySelector<HTMLElement>(".flow-inset-slot");
     expect(parseFloat(leader?.style.top ?? "0")).toBeLessThan(parseFloat(slot?.style.top ?? "0"));
     expect(slot?.querySelector(".card-port, .flow-leader")).toBeNull();
+  });
+
+  it("connects a followed callee's card from the inset's own call, though the callee showing it has no card, once per expanded call", async () => {
+    const { container } = open([
+      { id: "create-order", ref: { block: FN }, at: [0, 0], expanded: [[PLACE_CALL]] },
+      { id: "charge", ref: { block: CHARGE }, at: [1200, 0], view: "diagram" },
+    ]);
+    const place = await inset("OrderService.place");
+    const port = insetPort([PLACE_CALL], CHARGE_CALL);
+    const handle = await waitFor(() => {
+      const found = place.querySelector<HTMLElement>(`.flow-leader [data-handleid='${port}']`);
+      expect(found).not.toBeNull();
+      return found;
+    });
+    // On the charge step inside the inset, and nowhere else on the card.
+    expect(handle?.closest(".flow-view.inset")).not.toBeNull();
+    const charge = place.querySelector<HTMLElement>('[data-flow-node="2"]');
+    const leader = handle?.closest<HTMLElement>(".flow-leader");
+    expect(parseFloat(leader?.style.top ?? "0")).toBeGreaterThanOrEqual(parseFloat(charge?.style.top ?? "0"));
+    expect(parseFloat(leader?.style.top ?? "0")).toBeLessThanOrEqual(parseFloat(charge?.style.top ?? "0") + parseFloat(charge?.style.height ?? "0"));
+    const card = container.querySelector<HTMLElement>('.block-card[data-card-id="create-order"]');
+    expect(card?.querySelectorAll(".card-port")).toHaveLength(1);
+    expect(card?.querySelector(".card-header-ports .card-port")).toBeNull();
+  });
+
+  it("puts a connection leaving a step of a callback, shown as itself, on that step in the callback's inset", async () => {
+    // A callback of two steps shows its own Flow.
+    const two = block(ONE, "src/services/order-service.ts", [callNode(ONE, 1, SLACK, "slack.post"), callNode(ONE, 2, undefined, "fetch")]);
+    engine.uninstall();
+    engine = installFakeEngine({
+      handlers: {
+        card: ({ key }) => (key === ONE ? two : (MODELS[key] ?? createOrder)),
+        line_labels: () => [],
+        list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
+        save_board: () => boardState(P, REF.id, store.getOpenBoard(REF)?.document),
+        save_board_view: () => null,
+      },
+    });
+    const step = `${ONE}/n2`;
+    store.adoptBoardState(
+      boardState(
+        P,
+        REF.id,
+        boardDocument([
+          page("page-1", [{ id: "place", ref: { block: PLACE }, at: [0, 0], expanded: [[ONE]] }], {
+            defaultView: "flow",
+            resources: [{ id: "outbox", kind: "queue", name: "outbox", at: [900, 0], anchors: [], author: "person:maya" }],
+            links: [{ id: "sends", from: "place", to: "outbox", kind: "queue", step }],
+          }),
+        ]),
+      ),
+    );
+    queryClient.setQueryData(engineKey("workspace", {}), workspaceView([projectRow(P, "orders")]));
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <div style={{ width: 1200, height: 800 }}>
+          <BoardView board={REF} />
+        </div>
+      </QueryClientProvider>,
+    );
+    const callback = await inset("arrow_function[0]");
+    const handle = await waitFor(() => {
+      const found = callback.querySelector<HTMLElement>(`[data-handleid='${stepPort(step)}']`);
+      expect(found).not.toBeNull();
+      return found;
+    });
+    expect(handle?.closest(".flow-leader")?.classList.contains("authored")).toBe(true);
+    // Not also on the step that holds the callback in the card's own Flow.
+    const card = container.querySelector<HTMLElement>('.block-card[data-card-id="place"]');
+    expect(card?.querySelectorAll(`[data-handleid='${stepPort(step)}']`)).toHaveLength(1);
   });
 });

@@ -5,7 +5,8 @@
  * its ref resolves to; one from a project that isn't connected shows as a placeholder. What it shows
  * follows the view the page's lens gives it (`shownView`, `cardBody`): in Code, Code (an entrance its
  * handlers); in Diagram, a function or an entrance compact (a Diagram node) or expanded (its Flow, an
- * entrance's evidence and targets) by its own chevron; a type card always shows its fields.
+ * entrance's evidence and targets) by its own chevron; a type declaration always shows its fields, and
+ * a class shows its fields compact, its Flow expanded, and its Code in the Code lens.
  */
 
 import type { Node, NodeProps } from "@xyflow/react";

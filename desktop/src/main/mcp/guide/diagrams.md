@@ -12,7 +12,7 @@ name, and arrange.
 | A service | One application's entrances and the code they share | Compact, one or two cards expanded | "What does the API do?" |
 | A path | An entrance, its handlers, and the functions they reach | The one or two that matter expanded, a call expanded in place where it helps; the rest compact | "How is an order placed?" from POST /orders |
 | A function | One card | Expanded, with 3 to 7 combined steps | "createOrder has too many steps" |
-| A data model | Types or tables and the links between them | Fields (type cards take no expansion) | "What's in an order?" (data-models topic) |
+| A data model | Types or tables and the links between them | Fields (type declarations take no expansion; classes stay compact) | "What's in an order?" (data-models topic) |
 
 One page, one level. When the question needs two, make two pages (edit_pages adds a
 page) rather than one page that does both.

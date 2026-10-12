@@ -26,6 +26,7 @@ const STATUS = "src/cart.ts#type_alias:Status";
 const CURRENCY = "src/cart.ts#enum:Currency";
 const WIDE = "src/cart.ts#interface:Wide";
 const DRAFT = "src/cart.ts#interface:Draft";
+const PRICE = "src/cart.ts#class:Price";
 
 if (!("DOMMatrixReadOnly" in globalThis)) {
   // React Flow reads the viewport transform through DOMMatrixReadOnly; jsdom lacks it.
@@ -43,6 +44,15 @@ function typeModel(key: Key, kind: "interface" | "type_alias" | "enum", name: st
     code: null,
     flow: null,
   };
+}
+
+/** A class's card model: createOrder's Code and Flow under a class header (its fields come from `type_definition`). */
+function classModel(key: Key, name: string, line: number): CardView {
+  const model = fixture("card", "card_create_order");
+  if (model.type !== "block") {
+    throw new Error("createOrder's card isn't a block");
+  }
+  return { ...model, header: { ...model.header, key, kind: "class", name, qualifiedName: name, path: "src/cart.ts", startLine: line } };
 }
 
 function written(text: string, target?: Key): TypeText {
@@ -73,6 +83,7 @@ const DEFINITIONS: Readonly<Record<Key, TypeDefinition>> = {
   [STATUS]: definition(STATUS, "type_alias", "Status", 20, { aliased: { text: '"open" | "paid"', spans: [] } }),
   [CURRENCY]: definition(CURRENCY, "enum", "Currency", 30, { members: [member("Usd", undefined, { kind: "value", value: '"usd"' }), member("Eur", undefined, { kind: "value", value: '"eur"' })] }),
   [WIDE]: definition(WIDE, "interface", "Wide", 40, { members: Array.from({ length: 14 }, (_, index) => member(`f${index}`, written("string"))) }),
+  [PRICE]: definition(PRICE, "class", "Price", 50, { members: [member("amount", written("number"))] }),
 };
 
 const MODELS: Readonly<Record<Key, CardView>> = {
@@ -116,7 +127,8 @@ beforeEach(() => {
   engine = installFakeEngine({
     handlers: {
       card: ({ key }) => {
-        const model = key === KEY ? fixture("card", "card_create_order") : key === ENTRANCE ? fixture("card", "card_first_entrance") : MODELS[key];
+        const model =
+          key === KEY ? fixture("card", "card_create_order") : key === ENTRANCE ? fixture("card", "card_first_entrance") : key === PRICE ? classModel(PRICE, "Price", 50) : MODELS[key];
         if (!model) {
           // eslint-disable-next-line @typescript-eslint/only-throw-error
           throw { code: "not_found", message: "no such key" };
@@ -342,8 +354,10 @@ describe("type cards", () => {
     expect(card.querySelector(".card-location")?.textContent).toBe("src/cart.ts:12");
     const cells = [...(card.querySelector(".tcard-fields")?.children ?? [])].map((cell) => cell.textContent);
     expect(cells).toEqual(["owner?", "User", "items", "CartItem[]", "readonly createdAt", "Date", "coupon", "string = …", "from Draft", "lines", "CartItem[]"]);
-    // A declared type opens its definition in place.
-    fireEvent.click(present(within(card).getAllByRole("button", { name: "CartItem" })[0]));
+    // A declared type opens its definition in place. React Flow keeps a node hidden until it has
+    // measured it, so its buttons are only accessible (and clickable) once it shows.
+    const [declared] = await within(card).findAllByRole("button", { name: "CartItem" });
+    fireEvent.click(present(declared));
     expect(await within(card).findByRole("group", { name: "interface CartItem" })).not.toBeNull();
   });
 
@@ -370,6 +384,53 @@ describe("type cards", () => {
       actions.run(ActionIds.lensCode);
     });
     expect(await cellsOf("currency")).toEqual(["Usd", '"usd"', "Eur", '"eur"']);
+  });
+
+  it("show a class's fields while compact, its existing detail expanded (a saved Flow or legacy Code view), and its Code in the Code lens", async () => {
+    open(
+      [
+        { id: "price", ref: { block: PRICE }, at: [0, 0], view: "diagram" },
+        { id: "price-flow", ref: { block: PRICE }, at: [0, 400], view: "flow" },
+        { id: "price-code", ref: { block: PRICE }, at: [0, 1200], view: "code" },
+        { id: "cart", ref: { block: CART }, at: [900, 0], view: "flow" },
+      ],
+      "diagram",
+    );
+    const { container } = renderBoard();
+    const fieldsOf = (id: string) => [...(cardElement(container, id)?.querySelector(".tcard-fields")?.children ?? [])].map((cell) => cell.textContent);
+    await waitFor(() => {
+      expect(fieldsOf("price")).toEqual(["amount", "number"]);
+      expect(cardElement(container, "price-flow")?.querySelector(".flow-view")).not.toBeNull();
+      expect(cardElement(container, "price-code")?.querySelector(".flow-view")).not.toBeNull();
+      expect(fieldsOf("cart")).not.toEqual([]);
+    });
+    // Compact, a class is a type card with the chevron that expands it; expanded, a block card, not a type card.
+    expect(cardElement(container, "price")?.classList.contains("type-card")).toBe(true);
+    expect(cardElement(container, "price-flow")?.classList.contains("type-card")).toBe(false);
+    expect(cardElement(container, "price-code")?.querySelector(".tcard-fields")).toBeNull();
+    expect(await within(present(cardElement(container, "price-flow"))).findByRole("button", { name: "Collapse Price", hidden: true })).not.toBeNull();
+    // An interface keeps its fields, with nothing to expand, even when its saved view is Flow.
+    expect(cardElement(container, "cart")?.querySelector(".card-expand")).toBeNull();
+
+    const expand = await within(present(cardElement(container, "price"))).findByRole("button", { name: "Expand Price", hidden: true });
+    act(() => {
+      expand.click();
+    });
+    await waitFor(() => {
+      expect(cardElement(container, "price")?.querySelector(".flow-view")).not.toBeNull();
+    });
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.view).toBe("flow");
+
+    act(() => {
+      actions.run(ActionIds.lensCode);
+    });
+    await waitFor(() => {
+      for (const id of ["price", "price-flow", "price-code"]) {
+        expect(cardElement(container, id)?.querySelector(".code-view")).not.toBeNull();
+        expect(cardElement(container, id)?.querySelector(".tcard-fields")).toBeNull();
+      }
+    });
+    expect(fieldsOf("cart")).not.toEqual([]);
   });
 
   it("fold 12 fields or more behind “N more”", async () => {

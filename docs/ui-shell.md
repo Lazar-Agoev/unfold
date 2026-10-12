@@ -48,8 +48,8 @@ and board sessions. The [user guide](user-guide.md) owns click-by-click instruct
 Cards use exact Code, written Flow, or Diagram/type data from the engine. The page lens
 (Diagram | Code) is local view state; a legacy saved Flow lens reads as Diagram. In Diagram, a
 function or entrance card's saved view says whether it is compact or expanded (its chevron), and
-calls expanded in place are saved on the card; type and resource cards keep their fields in both
-lenses. Loading, missing, held, changed-source, and unresolved states are deliberate states, not
+calls expanded in place are saved on the card; type declaration and resource cards keep their fields
+in both lenses, and a class's card shows its fields compact and its detail expanded. Loading, missing, held, changed-source, and unresolved states are deliberate states, not
 empty-success fallbacks.
 
 Canvas geometry, measurement, arrange, label placement, and hit targets are TypeScript-owned.

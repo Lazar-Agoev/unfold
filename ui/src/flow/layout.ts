@@ -8,8 +8,10 @@
  * and are drawn as orthogonal paths by their kind. A proposed step (docs/proposals/unified-code-diagrams.md
  * §7) keeps room after its anchor, or at the start of the anchor's chosen path, indented in that lane:
  * the anchor's compiled route keeps running beside it along the lane's left rail, and dashed
- * connectors show where it would go. Proposals are not compiler facts: they are never nodes, routes,
- * or ports. The result depends only on the model, the open chains, the labels, the step groups, the
+ * connectors show where it would go. One whose step a collapsed step group hides goes after the
+ * group's step only when its step is the group's last; otherwise it sits under that step, says it goes
+ * inside the group and after which step, and has no connectors. Proposals are not compiler facts:
+ * they are never nodes, routes, or ports. The result depends only on the model, the open chains, the labels, the step groups, the
  * insets' sizes, the proposals, and the text measurer, so the same input always lays out the same way.
  */
 
@@ -80,6 +82,14 @@ const JOG = 8;
 
 /** A proposed step's placement note: one 11px line per row (flow.css keeps the same numbers). */
 const PROPOSAL_NOTE = { font: '400 11px "Inter Variable", system-ui, sans-serif', row: 16 } as const;
+
+/** The action after the note of a proposed step inside a collapsed step group: it expands the group. */
+export const INSIDE_ACTION = "Show its steps";
+
+/** The note of a proposed step inside collapsed step group `title`, after step `label`. */
+export function insideNote(title: string, label: string): string {
+  return `Goes inside “${title}”, after “${label}”.`;
+}
 
 /** The note of a proposed step whose step isn't drawn as its own node and whose health says nothing. */
 export const UNDRAWN_NOTE = "The step it goes after isn't drawn here.";
@@ -201,8 +211,14 @@ export interface PlacedProposal {
   readonly path?: ProposalPath;
   readonly title: string;
   readonly titleLines: number;
-  /** Shown under the title: why where it goes needs review. */
+  /** Shown under the title: why where it goes needs review, or that it goes inside a collapsed step group. */
   readonly note?: string;
+  /**
+   * The collapsed step group it goes inside (its step is one the group hides, but not after the
+   * group's last): drawn under the group's step without connectors, its note says where, and
+   * `INSIDE_ACTION` expands the group.
+   */
+  readonly inside?: string;
   readonly x: number;
   readonly y: number;
   readonly width: number;
@@ -344,7 +360,12 @@ interface Context {
   readonly options: FlowLayoutOptions;
   readonly laneWidth: number;
   /** The proposed steps by where they go (`roomKey`), in the page's order. */
-  readonly rooms: Map<string, ProposalSpec[]>;
+  readonly rooms: Map<string, RoomSpec[]>;
+}
+
+/** A proposed step filed under where it goes; `inside`: the collapsed step group it goes inside. */
+interface RoomSpec extends ProposalSpec {
+  readonly inside?: string;
 }
 
 function labelOf(node: FlowNode, options: FlowLayoutOptions): { text: string; fallback: boolean } {
@@ -459,8 +480,11 @@ function single(sized: Sized): Block {
 // ---------------------------------------------------------------------------------------------
 // Proposed steps
 
-/** Where proposed steps go: after a placed node, or at the start of one of its paths. */
-type RoomSlot = ProposalPath | "after";
+/**
+ * Where proposed steps go: after a placed node, or at the start of one of its paths; or, for a
+ * collapsed step group's step, inside it (under the step, before any after it).
+ */
+type RoomSlot = ProposalPath | "after" | "inside";
 
 const roomKey = (host: string, slot: RoomSlot): string => `${host}>${slot}`;
 
@@ -476,20 +500,23 @@ function slotOf(node: FlowNode, path: ProposalPath | undefined): RoomSlot {
 }
 
 /** A proposed step's box, in its lane: indented, its title wrapped, and room for its note. */
-function sizeProposal(spec: ProposalSpec, ctx: Context, host: string | undefined, slot: RoomSlot | undefined, note: string | undefined): PlacedProposal {
+function sizeProposal(spec: RoomSpec, ctx: Context, host: string | undefined, slot: RoomSlot | undefined, note: string | undefined): PlacedProposal {
   const m = FLOW_METRICS;
   const width = ctx.laneWidth - PROPOSAL_INDENT;
   const text = width - m.padX * 2 - SLACK;
   const titleLines = wrapLines(spec.title, text, FLOW_FONTS.label, ctx.options.measure);
-  const noteLines = note !== undefined ? wrapLines(note, text, PROPOSAL_NOTE.font, ctx.options.measure) : 0;
+  // A proposed step inside a step group has the action that expands it after its note.
+  const noted = note !== undefined && spec.inside !== undefined ? `${note} ${INSIDE_ACTION}` : note;
+  const noteLines = noted !== undefined ? wrapLines(noted, text, PROPOSAL_NOTE.font, ctx.options.measure) : 0;
   const height = m.padY * 2 + m.typeRow + m.rowGap + titleLines * m.labelLine + (noteLines > 0 ? m.rowGap + noteLines * PROPOSAL_NOTE.row : 0);
   return {
     id: spec.id,
     ...(host !== undefined ? { host } : {}),
-    ...(slot !== undefined && slot !== "after" ? { path: slot } : {}),
+    ...(slot !== undefined && slot !== "after" && slot !== "inside" ? { path: slot } : {}),
     title: spec.title,
     titleLines,
     ...(note !== undefined ? { note } : {}),
+    ...(spec.inside !== undefined ? { inside: spec.inside } : {}),
     x: PROPOSAL_INDENT,
     y: 0,
     width,
@@ -837,8 +864,9 @@ function layoutItem(item: FlowItem, ctx: Context, folding: Folding): Block {
 /** A step group: a titled region around its items, or, collapsed, one step. */
 function layoutGroup(run: GroupRun, items: readonly FlowItem[], ctx: Context, folding: Folding): Block {
   if (run.group.collapsed) {
-    // Proposed steps after a step it hides go after it.
-    return withRoomsAfter(single(sizeGroupStep(run, ctx)), `group:${run.group.id}`, "after", ctx);
+    // Proposed steps after a step it hides sit under it: those inside it first, then those after its last step.
+    const host = `group:${run.group.id}`;
+    return withRoomsAfter(withRoomsAfter(single(sizeGroupStep(run, ctx)), host, "inside", ctx), host, "after", ctx);
   }
   const s = FLOW_SPACING;
   const t = GROUP_TITLE;
@@ -1149,21 +1177,36 @@ function routeEdge(
 
 /**
  * Files each proposed step under where it goes: after its step's node or at the start of that node's
- * path, or after the collapsed step group hiding its step. One whose step isn't drawn (missing, or
+ * path; after the collapsed step group hiding its step when it goes after the group's last statement,
+ * else inside that group, with a note saying after which step. One whose step isn't drawn (missing, or
  * inside a folded chain) gets no room; it is drawn below the diagram.
  */
 function planProposals(ctx: Context, folding: Folding): void {
+  const file = (key: string, spec: RoomSpec) => {
+    const list = ctx.rooms.get(key) ?? [];
+    list.push(spec);
+    ctx.rooms.set(key, list);
+  };
   for (const spec of ctx.options.proposals ?? []) {
     const node = ctx.model.nodes.find((item) => item.key === spec.after && item.kind !== "start" && item.kind !== "end");
     if (!node) {
       continue;
     }
+    const slot = slotOf(node, spec.path);
     const stands = folding.representative.get(node.id);
-    const key = stands === undefined ? roomKey(String(node.id), slotOf(node, spec.path)) : stands.startsWith("group:") ? roomKey(stands, "after") : null;
-    if (key !== null) {
-      const list = ctx.rooms.get(key) ?? [];
-      list.push(spec);
-      ctx.rooms.set(key, list);
+    if (stands === undefined) {
+      file(roomKey(String(node.id), slot), spec);
+      continue;
+    }
+    const group = stands.startsWith("group:") ? ctx.options.groups?.find((item) => `group:${item.id}` === stands) : undefined;
+    if (!group) {
+      continue;
+    }
+    if (slot === "after" && group.members.at(-1) === node.key) {
+      file(roomKey(stands, "after"), spec);
+    } else {
+      const note = [insideNote(group.title, labelOf(node, ctx.options).text), spec.note].filter((part) => part !== undefined).join(" ");
+      file(roomKey(stands, "inside"), { ...spec, note, inside: group.id });
     }
   }
 }
@@ -1172,7 +1215,7 @@ function planProposals(ctx: Context, folding: Folding): void {
 const SLOT_ROUTES: Readonly<Record<ProposalPath, readonly RouteKind[]>> = { yes: ["yes"], no: ["no", "elseIf"], each: ["each", "again"], done: ["done"] };
 const PATH_ROUTES: ReadonlySet<RouteKind> = new Set(["yes", "no", "elseIf", "each", "again", "done", "error"]);
 
-function onSlot(kind: RouteKind, slot: RoomSlot): boolean {
+function onSlot(kind: RouteKind, slot: ProposalPath | "after"): boolean {
   return slot === "after" ? !PATH_ROUTES.has(kind) : SLOT_ROUTES[slot].includes(kind);
 }
 
@@ -1235,7 +1278,8 @@ function proposalEdges(
 ): ProposalEdge[] {
   const slots = new Map<string, PlacedProposal[]>();
   for (const room of rooms) {
-    if (room.host !== undefined) {
+    // One inside a collapsed step group isn't drawn in sequence after the group: it gets no connectors.
+    if (room.host !== undefined && room.inside === undefined) {
       const key = roomKey(room.host, room.path ?? "after");
       slots.set(key, [...(slots.get(key) ?? []), room]);
     }
@@ -1245,12 +1289,15 @@ function proposalEdges(
     const first = list[0];
     const last = list.at(-1);
     const host = first?.host !== undefined ? byId.get(first.host) : undefined;
-    const slot: RoomSlot = first?.path ?? "after";
+    const slot: ProposalPath | "after" = first?.path ?? "after";
     if (!first || !last || !host || (slot === "after" && (host.node.kind === "condition" || host.node.kind === "loop"))) {
       continue;
     }
+    // From below what sits under the node: its inset, or the proposed steps inside its group.
     const own = insets.find((inset) => inset.node === host.id);
-    edges.push({ id: `${first.id}>in`, proposal: first.id, points: intoRoom(boxOf(host, own ? own.y + own.height : undefined), host.id, insetBox(first), slot, regions) });
+    const inner = rooms.filter((room) => room.host === host.id && room.inside !== undefined).at(-1);
+    const below = Math.max(own ? own.y + own.height : 0, inner ? inner.y + inner.height : 0);
+    edges.push({ id: `${first.id}>in`, proposal: first.id, points: intoRoom(boxOf(host, below > 0 ? below : undefined), host.id, insetBox(first), slot, regions) });
     for (const [index, room] of list.entries()) {
       const before = list[index - 1];
       if (before) {

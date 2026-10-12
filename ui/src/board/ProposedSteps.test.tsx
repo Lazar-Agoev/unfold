@@ -161,7 +161,9 @@ describe("Selected for a proposed step", () => {
 
     // View placement code: the step it goes after, never code of the proposal's own.
     fireEvent.click(await selected.findByRole("button", { name: "View placement code, routes/orders.ts:32" }));
-    expect(getPeekTarget()).toEqual({ project: P, path: ORDERS, line: 32, focus: { startLine: 32, startColumn: 16, endLine: 32, endColumn: 41 }, follow: PAGE });
+    expect(getPeekTarget()).toMatchObject({ project: P, path: ORDERS, line: 32, focus: { startLine: 32, startColumn: 16, endLine: 32, endColumn: 41 }, follow: PAGE });
+    // It finds that placement again as the code changes.
+    expect(getPeekTarget()?.resolve?.()).toEqual({ project: P, path: ORDERS, line: 32, focus: { startLine: 32, startColumn: 16, endLine: 32, endColumn: 41 } });
 
     const title = selected.getByRole("textbox", { name: "Proposed step title" });
     fireEvent.change(title, { target: { value: "Email a r" } });

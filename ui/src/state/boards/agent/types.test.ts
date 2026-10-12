@@ -163,3 +163,31 @@ describe("add_cards with follow types", () => {
     expect(arranged.get("price")?.[0]).toBeGreaterThan(arranged.get("item")?.[0] ?? 0);
   });
 });
+
+describe("set_view on type cards", () => {
+  it("expands a class to its detail, taking the older flow and code views too; a type declaration stays its fields", async () => {
+    open([
+      { id: "price", ref: { block: PRICE }, at: [0, 0], view: "diagram" },
+      { id: "cart", ref: { block: CART }, at: [600, 0], view: "diagram" },
+    ]);
+    const expanded = await edit([{ op: "set_view", items: [{ id: "price", expanded: true }] }]);
+    expect(expanded.items).toMatchObject([{ kind: "card", id: "price", status: "updated", expanded: true, expandedCalls: [] }]);
+    expect(onPage().cards[0]?.view).toBe("flow");
+    const compact = await edit([{ op: "set_view", items: [{ id: "price", view: "diagram" }] }]);
+    expect(compact.items).toMatchObject([{ id: "price", status: "updated", expanded: false }]);
+    // Older input: "code" (a page-wide lens now) and "flow" both expand it.
+    await edit([{ op: "set_view", items: [{ id: "price", view: "code" }] }]);
+    expect(onPage().cards[0]?.view).toBe("flow");
+    await edit([{ op: "set_view", items: [{ id: "price", expanded: false }] }]);
+    const flow = await edit([{ op: "set_view", items: [{ id: "price", view: "flow" }] }]);
+    expect(flow.items).toMatchObject([{ id: "price", status: "updated", expanded: true }]);
+
+    for (const item of [{ id: "cart", expanded: true }, { id: "cart", view: "flow" as const }, { id: "cart", view: "code" as const }]) {
+      const result = await applyAgentEdit({ requestId: 2, board: REF, page: "page-1", agent: { author: "agent:claude", name: "Claude" }, title: "Set view", ops: [{ op: "set_view", items: [item] }] });
+      expect(result.ok ? "applied" : result.message).toContain("is a type card: it keeps its fields in every view");
+    }
+    const kept = await edit([{ op: "set_view", items: [{ id: "cart", view: "diagram", folded: true }] }]);
+    expect(kept.items[0]).not.toHaveProperty("expanded");
+    expect(onPage().cards[1]).toMatchObject({ view: "diagram", folded: true });
+  });
+});

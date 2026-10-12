@@ -104,8 +104,10 @@ ignored once a key no longer resolves.
 
 A proposed step is an intended addition after a real step of a block card: a title, optional
 reason and path, and its author. It is never signed and has no implementation source, but its
-anchor is guarded. A new or moved proposal must go after a step of the graph inside its card's
-block. A missing anchor is reported missing and a held one held for review, with explicit
+anchor is guarded. A new or moved proposal (a changed path included) must go after a step of its
+card's own Flow that something runs after (not a return, throw, break, continue, or opaque region),
+naming one of that step's paths when it has several and none otherwise, as the UI checks it. A
+missing anchor is reported missing and a held one held for review, with explicit
 Reconnect, Accept, or Remove proposal repairs; a proposal is never reattached by name or shifted
 position. Mermaid export omits proposals.
 

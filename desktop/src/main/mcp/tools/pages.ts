@@ -16,7 +16,7 @@ import type { AgentBoardRef, AgentIdentity } from "../../../shared/agent-api";
 import type { ToolContext } from "../context";
 import type { Anchor, BoardHealthView, BoardSummary, Frame, Link, Page, ProjectRow, Proposal, Resource } from "../engine-types";
 import { authorText, callPathText, clip, count, joined, keyFile, keyName, labelText, place, typeText } from "../format";
-import { cardExpanded, isTypeKey, pageCode, type CardCode, type PageCode } from "../page-code";
+import { cardExpanded, fieldsOnlyKey, pageCode, type CardCode, type PageCode } from "../page-code";
 import { nextLine, paged, pagedLines, textResult } from "../results";
 import { currentView, readPage as loadPage, pagePlace, projectOrView, resolveBoard, type ReadPage } from "../target";
 import { defineTool } from "../tool";
@@ -154,10 +154,10 @@ function cardWhere({ model }: CardCode): string | null {
   return model?.type === "entrance" ? `${model.header.kind} entrance` : null;
 }
 
-/** How a card shows in Diagram: a type card's fields, else compact or expanded (and whose setting that is), with the calls it expands in place. */
+/** How a card shows in Diagram: a type declaration's fields, else compact or expanded (and whose setting that is), with the calls it expands in place. */
 function expansionText(page: Page, code: CardCode): string {
   const { card } = code;
-  if (isTypeKey(code.key)) {
+  if (fieldsOnlyKey(code.key)) {
     return "fields";
   }
   const shown = `${cardExpanded(page, card) ? "expanded" : "compact"}${card.view === undefined ? " (the page's default)" : ""}`;
