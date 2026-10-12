@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CardView, FlowModel, FlowNode } from "../ipc/generated";
 import { fixture } from "../test/engine";
-import { layoutFlow, roundedPath, wrapLines, type FlowLayout, type Measure, type PlacedNode, type StepGroup } from "./layout";
+import { INSET_GAP, PROPOSAL_INDENT, PROPOSAL_RAIL, UNDRAWN_NOTE, layoutFlow, roundedPath, wrapLines, type FlowLayout, type Measure, type PlacedNode, type ProposalSpec, type StepGroup } from "./layout";
 
 /** A fixed-width measurer, so the tests don't depend on fonts. */
 const measure: Measure = (text) => text.length * 7;
@@ -402,5 +402,205 @@ describe("Flow layout with step groups", () => {
     expect(layout.nodes.map((item) => item.id)).toEqual(["0", "group:checks", "8"]);
     expect(edgeIds(layout)).toEqual(["0>group:checks>sequence", "group:checks>8>sequence"]);
     expect(placed(layout, "group:checks")?.group?.steps).toBe(7);
+  });
+});
+
+describe("Flow layout with calls expanded in place", () => {
+  const PLACE = `${FN}/variable:order`;
+  const room = (width: number, height: number) => new Map([[PLACE, { width, height }]]);
+
+  it("keeps room below the call's node: the node keeps its box, what follows moves down, and the route leaves below the inset", () => {
+    const plain = layoutFlow(createOrder, options);
+    const layout = layoutFlow(createOrder, { ...options, insets: room(200, 120) });
+    const call = placed(layout, "6");
+    expect(call).toEqual(placed(plain, "6"));
+    expect(layout.insets).toEqual([{ node: "6", key: PLACE, x: call?.x, y: (call?.y ?? 0) + (call?.height ?? 0) + INSET_GAP, width: 200, height: 120 }]);
+    expect(placed(layout, "7")?.y).toBe((placed(plain, "7")?.y ?? 0) + INSET_GAP + 120);
+    expect(placed(layout, "9")?.y).toBe((placed(plain, "9")?.y ?? 0) + INSET_GAP + 120);
+    expect(layout.height).toBe(plain.height + INSET_GAP + 120);
+    const [inset] = layout.insets;
+    const next = layout.edges.find((edge) => edge.id === "6>7>sequence");
+    expect(next?.points[0]?.y).toBe((inset?.y ?? 0) + (inset?.height ?? 0));
+    expect(overlaps(layout)).toBe(false);
+    expect(layout.nodes.some((node) => inset && node.y < inset.y + inset.height && node.y + node.height > inset.y && node.x < inset.x + inset.width && node.x + node.width > inset.x)).toBe(false);
+    expect(layout.edges.map((edge) => edge.id).sort()).toEqual(plain.edges.map((edge) => edge.id).sort());
+  });
+
+  it("widens the diagram to fit a wide inset", () => {
+    const plain = layoutFlow(createOrder, options);
+    const layout = layoutFlow(createOrder, { ...options, insets: room(700, 60) });
+    const [inset] = layout.insets;
+    expect(layout.width).toBeGreaterThan(plain.width);
+    expect((inset?.x ?? 0) + (inset?.width ?? 0)).toBeLessThanOrEqual(layout.width);
+  });
+
+  it("keeps none for a call a collapsed step group hides, and draws a bare Flow without Start and End", () => {
+    const layout = layoutFlow(createOrder, { ...options, groups: [collapsed(place)], insets: room(200, 120) });
+    expect(layout.insets).toEqual([]);
+    expect(layout.height).toBe(layoutFlow(createOrder, { ...options, groups: [collapsed(place)] }).height);
+    const bare = layoutFlow(createOrder, { ...options, bare: true });
+    expect(bare.nodes.map((node) => node.node.kind)).not.toContain("start");
+    expect(bare.nodes.map((node) => node.node.kind)).not.toContain("end");
+    expect(bare.edges.some((edge) => edge.from === "0" || edge.to === "9")).toBe(false);
+    expect(inBounds(bare)).toBe(true);
+  });
+
+  it("keeps room under a loop's header inside its region", () => {
+    const header = "src/a.ts#function:a/n1";
+    const layout = layoutFlow(loop, { ...options, insets: new Map([[header, { width: 300, height: 90 }]]) });
+    const repeats = layout.regions.find((region) => region.kind === "loop");
+    const [inset] = layout.insets;
+    expect(inset?.node).toBe("1");
+    expect(repeats && inset && inset.x + inset.width <= repeats.x + repeats.width && inset.y + inset.height <= repeats.y + repeats.height).toBe(true);
+    expect((placed(layout, "2")?.y ?? 0)).toBeGreaterThan((inset?.y ?? 0) + (inset?.height ?? 0));
+  });
+});
+
+describe("Flow layout with proposed steps", () => {
+  const ORDER = `${FN}/variable:order`;
+  const REPLY = `${FN}/expression_statement[1]`;
+  const plain = layoutFlow(createOrder, options);
+  const proposal = (extra: Partial<ProposalSpec> = {}): ProposalSpec => ({ id: "email", after: ORDER, title: "Email a confirmation", ...extra });
+  const edge = (layout: FlowLayout, id: string) => layout.edges.find((item) => item.id === id);
+  const dashed = (layout: FlowLayout, id: string) => layout.proposalEdges.find((item) => item.id === id)?.points;
+  const room = (layout: FlowLayout) => {
+    const [first] = layout.proposals;
+    if (!first) {
+      throw new Error("no proposed step drawn");
+    }
+    return first;
+  };
+  /** Whether a proposed step's box overlaps a node's. */
+  const clear = (layout: FlowLayout) =>
+    layout.proposals.every((item) => !layout.nodes.some((node) => item.x < node.x + node.width && node.x < item.x + item.width && item.y < node.y + node.height && node.y < item.y + item.height));
+
+  it("keeps room after a plain step, indented in its lane, with the compiled route still running beside it", () => {
+    const layout = layoutFlow(createOrder, { ...options, proposals: [proposal()] });
+    expect(layoutFlow(createOrder, { ...options, proposals: [proposal()] })).toEqual(layout);
+    const anchor = placed(layout, "6");
+    const next = placed(layout, "7");
+    const box = room(layout);
+    if (!anchor || !next) {
+      throw new Error("missing nodes");
+    }
+    expect(box).toMatchObject({ id: "email", host: "6", title: "Email a confirmation", x: anchor.x + PROPOSAL_INDENT, y: anchor.y + anchor.height + 30, width: anchor.width - PROPOSAL_INDENT });
+    expect(box.path).toBeUndefined();
+    expect(next.y).toBe((placed(plain, "7")?.y ?? 0) + box.height + 30);
+    // Proposals are never nodes, routes, or ports: the compiled routes are the same ones.
+    expect(layout.nodes.map((item) => item.id)).toEqual(plain.nodes.map((item) => item.id));
+    expect(edgeIds(layout)).toEqual(edgeIds(plain));
+    // The compiled route runs straight down the lane's rail, beside the proposed step, from the step to the next.
+    const rail = anchor.x + PROPOSAL_RAIL;
+    expect(edge(layout, "6>7>sequence")?.points).toEqual([
+      { x: rail, y: anchor.y + anchor.height },
+      { x: rail, y: next.y },
+    ]);
+    expect(rail).toBeLessThan(box.x);
+    // Dashed connectors: from the step into it, and from it to the step after.
+    expect(dashed(layout, "email>in")).toEqual([
+      { x: anchor.x + anchor.width / 2, y: anchor.y + anchor.height },
+      { x: anchor.x + anchor.width / 2, y: box.y },
+    ]);
+    expect(dashed(layout, "email>out")).toEqual([
+      { x: box.x + box.width / 2, y: box.y + box.height },
+      { x: box.x + box.width / 2, y: next.y },
+    ]);
+    expect(clear(layout)).toBe(true);
+    expect(overlaps(layout)).toBe(false);
+  });
+
+  it("starts a decision's chosen path: yes in the yes lane, no in the condition's own", () => {
+    const yes = layoutFlow(createOrder, { ...options, proposals: [proposal({ after: IF, path: "yes" })] });
+    const condition = placed(yes, "2");
+    const first = placed(yes, "3");
+    const box = room(yes);
+    expect(box).toMatchObject({ host: "2", path: "yes", x: (first?.x ?? 0) + PROPOSAL_INDENT });
+    expect((first?.y ?? 0)).toBe(box.y + box.height + 30);
+    // The compiled yes still leaves the diamond's right corner and enters its first step, along the rail.
+    expect(edge(yes, "2>3>yes")?.points).toEqual([
+      { x: (condition?.x ?? 0) + (condition?.width ?? 0), y: (condition?.y ?? 0) + (condition?.height ?? 0) / 2 },
+      { x: (first?.x ?? 0) + PROPOSAL_RAIL, y: (condition?.y ?? 0) + (condition?.height ?? 0) / 2 },
+      { x: (first?.x ?? 0) + PROPOSAL_RAIL, y: first?.y },
+    ]);
+    expect(dashed(yes, "email>in")?.at(-1)).toEqual({ x: box.x + box.width / 2, y: box.y });
+    expect(dashed(yes, "email>out")?.at(-1)).toEqual({ x: box.x + box.width / 2, y: first?.y });
+    expect(clear(yes)).toBe(true);
+
+    // `no` has no steps of its own here: its route goes on to the step after the `if`.
+    const no = layoutFlow(createOrder, { ...options, proposals: [proposal({ after: IF, path: "no" })] });
+    const shut = room(no);
+    const diamond = placed(no, "2");
+    const after = placed(no, "6");
+    expect(shut).toMatchObject({ host: "2", path: "no", x: (diamond?.x ?? 0) + PROPOSAL_INDENT, y: (diamond?.y ?? 0) + (diamond?.height ?? 0) + 30 });
+    const route = edge(no, "2>6>no")?.points ?? [];
+    // Out of the diamond's bottom corner, onto the rail, and into the next step: still one compiled route.
+    expect(route[0]).toEqual({ x: (diamond?.x ?? 0) + (diamond?.width ?? 0) / 2, y: (diamond?.y ?? 0) + (diamond?.height ?? 0) });
+    expect(route.at(-1)).toEqual({ x: (after?.x ?? 0) + PROPOSAL_RAIL, y: after?.y });
+    expect(route.every((point) => point.x <= (diamond?.x ?? 0) + (diamond?.width ?? 0) / 2)).toBe(true);
+    expect(edge(no, "2>6>no")?.label).toBe("no");
+    expect(dashed(no, "email>out")?.at(-1)).toEqual({ x: shut.x + shut.width / 2, y: after?.y });
+    expect(clear(no)).toBe(true);
+  });
+
+  it("enters a target whose top isn't flat at its middle (End)", () => {
+    const layout = layoutFlow(createOrder, { ...options, proposals: [proposal({ after: REPLY })] });
+    const end = placed(layout, "9");
+    const route = edge(layout, "8>9>sequence")?.points ?? [];
+    expect(route.at(-1)).toEqual({ x: (end?.x ?? 0) + (end?.width ?? 0) / 2, y: end?.y });
+    expect(route[0]?.x).toBe((placed(layout, "8")?.x ?? 0) + PROPOSAL_RAIL);
+    expect(dashed(layout, "email>out")?.at(-1)).toEqual({ x: (end?.x ?? 0) + (end?.width ?? 0) / 2, y: end?.y });
+  });
+
+  it("stacks proposed steps on one step in order, each joined to the next", () => {
+    const layout = layoutFlow(createOrder, { ...options, proposals: [proposal(), proposal({ id: "slack", title: "Post to the orders channel" })] });
+    const [first, second] = layout.proposals;
+    expect(second?.y).toBe((first?.y ?? 0) + (first?.height ?? 0) + 30);
+    expect(layout.proposalEdges.map((item) => item.id)).toEqual(["email>in", "slack>in", "slack>out"]);
+    expect(edge(layout, "6>7>sequence")?.points).toHaveLength(2);
+    expect(clear(layout)).toBe(true);
+  });
+
+  it("goes after the collapsed step group hiding its step, and below the diagram when its step isn't drawn", () => {
+    const grouped = layoutFlow(createOrder, { ...options, groups: [collapsed(place)], proposals: [proposal()] });
+    expect(room(grouped)).toMatchObject({ host: "group:place-it" });
+    expect(dashed(grouped, "email>out")?.at(-1)?.y).toBe(placed(grouped, "9")?.y);
+
+    const missing = layoutFlow(createOrder, { ...options, proposals: [proposal({ after: `${FN}/variable:gone`, note: "The step it went after is missing." })] });
+    const box = room(missing);
+    expect(box.host).toBeUndefined();
+    expect(box.note).toBe("The step it went after is missing.");
+    expect(box.y).toBeGreaterThan((placed(missing, "9")?.y ?? 0) + (placed(missing, "9")?.height ?? 0));
+    expect(missing.proposalEdges).toEqual([]);
+    expect(edgeIds(missing)).toEqual(edgeIds(plain));
+    // A step folded into a chain isn't drawn either; health says nothing, so the note is the layout's own.
+    const folded = layoutFlow(chain, { ...options, proposals: [{ id: "x", after: "src/a.ts#function:a/n3", path: "no", title: "Log it" }] });
+    expect(room(folded)).toMatchObject({ note: UNDRAWN_NOTE });
+    expect(room(folded).host).toBeUndefined();
+  });
+
+  it("keeps a held step's note under its title, and room for it", () => {
+    const quiet = room(layoutFlow(createOrder, { ...options, proposals: [proposal()] }));
+    const held = room(layoutFlow(createOrder, { ...options, proposals: [proposal({ note: "Held for review." })] }));
+    expect(held.note).toBe("Held for review.");
+    expect(held.host).toBe("6");
+    expect(held.height).toBe(quiet.height + 3 + 16);
+  });
+
+  it("starts a loop's body on each, and goes after its region on done", () => {
+    const header = "src/a.ts#function:a/n1";
+    const each = layoutFlow(loop, { ...options, proposals: [{ id: "x", after: header, path: "each", title: "Log the item" }] });
+    const repeats = each.regions.find((region) => region.kind === "loop");
+    const box = room(each);
+    expect(box.y).toBeGreaterThan((placed(each, "1")?.y ?? 0) + (placed(each, "1")?.height ?? 0));
+    expect((placed(each, "2")?.y ?? 0)).toBe(box.y + box.height + 30);
+    expect(repeats && box.y + box.height < repeats.y + repeats.height).toBe(true);
+    expect(clear(each)).toBe(true);
+    const done = layoutFlow(loop, { ...options, proposals: [{ id: "x", after: header, path: "done", title: "Log the end" }] });
+    const region = done.regions.find((item) => item.kind === "loop");
+    const after = room(done);
+    expect(region && after.y > region.y + region.height).toBe(true);
+    expect(placed(done, "5")?.y).toBe(after.y + after.height + 30);
+    expect(dashed(done, "x>in")?.[0]).toEqual({ x: (placed(done, "1")?.x ?? 0) + (placed(done, "1")?.width ?? 0), y: (placed(done, "1")?.y ?? 0) + (placed(done, "1")?.height ?? 0) / 2 });
+    expect(clear(done)).toBe(true);
   });
 });

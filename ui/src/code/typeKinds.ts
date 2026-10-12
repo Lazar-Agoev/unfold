@@ -71,9 +71,10 @@ export function newCardView(kind: string): View | undefined {
 }
 
 /**
- * What a card's body shows in `view`: Code, Flow, a Diagram node, a type card's fields, or an entrance's
- * handlers. An entrance is a node in Diagram view and its handlers card otherwise; a type declaration shows
- * its fields in Diagram and Flow; a class shows its fields in Diagram and keeps Flow and Code.
+ * What a card's body shows in `view` (the view `shownView` gives it under the page's lens): Code, Flow,
+ * a Diagram node, a type card's fields, or an entrance's handlers. An entrance is a node in Diagram view
+ * and its handlers card otherwise; a type card (a type declaration or a class) keeps its fields in every
+ * view, so changing the lens never drops them.
  */
 export type CardBody = "code" | "flow" | "node" | "fields" | "handlers";
 
@@ -81,8 +82,7 @@ export function cardBody(key: Key, view: View): CardBody {
   if (key.startsWith("entrance:")) {
     return view === "diagram" ? "node" : "handlers";
   }
-  const kind = keyBlockKind(key) ?? "";
-  if (isTypeKind(kind) && (view === "diagram" || (view === "flow" && kind !== "class"))) {
+  if (isTypeKind(keyBlockKind(key) ?? "")) {
     return "fields";
   }
   return view === "diagram" ? "node" : view;

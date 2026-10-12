@@ -1,28 +1,34 @@
 /**
  * What this window shows, reported to the main process (`report_view`, design §5.6) so agents work on
- * the view of the window used last by default: the active board and page, the selection, the lens,
- * the items in view, and the board tabs (the boards this window holds). Sent ~150 ms after any of them
+ * the view of the window used last by default: the active board and page, the selection, the lens
+ * (Diagram or Code), the items in view, and the board tabs (the boards this window holds). Sent ~150 ms after any of them
  * changes, and at once when the window gains focus.
  */
 
 import type { ViewReport, ViewSelection } from "@unfold/desktop/agent-api";
 import type { Rect, Size } from "../canvas/layout";
 import { windowCommand, type Page } from "../ipc";
-import { displayedRects, findPage, getOpenBoard, getPageView, useBoards, type Camera, type Selection } from "../state/boards";
+import { displayedRects, findPage, getOpenBoard, getPageView, pageLens, useBoards, type Camera, type Selection } from "../state/boards";
 import { getActiveBoard, useTabs } from "../state/tabs";
 
 /** How long the window waits after a change before reporting its view. */
 export const REPORT_DELAY_MS = 150;
 
-/** The selection as agents read it; a card selected at its own block (a click on its header) is the card. */
+/**
+ * The selection as agents read it: a card selected at its own block (a click on its header) is the
+ * card; a step shown in a call expanded in place carries the block that owns it.
+ */
 function viewSelection(page: Page, selection: Selection): ViewSelection {
   switch (selection.kind) {
     case "none":
       return { kind: "none" };
     case "card": {
       const ref = page.cards.find((card) => card.id === selection.cardId)?.ref;
-      const own = ref !== undefined && "block" in ref && ref.block === selection.key;
-      return selection.key !== null && !own ? { kind: "step", card: selection.cardId, key: selection.key } : { kind: "card", id: selection.cardId };
+      const own = ref !== undefined && "block" in ref && ref.block === selection.key && selection.owner === undefined;
+      if (selection.key === null || own) {
+        return { kind: "card", id: selection.cardId };
+      }
+      return { kind: "step", card: selection.cardId, key: selection.key, ...(selection.owner !== undefined ? { owner: selection.owner } : {}) };
     }
     case "group":
       return { kind: "group", id: selection.groupId };
@@ -38,6 +44,8 @@ function viewSelection(page: Page, selection: Selection): ViewSelection {
       return { kind: "line", from: selection.from, to: selection.to, project: selection.project, source: selection.source, seq: selection.seq, line: selection.line };
     case "calls":
       return { kind: "calls", from: selection.from, to: selection.to, project: selection.project, calls: selection.calls };
+    case "proposal":
+      return { kind: "proposal", id: selection.proposalId };
   }
 }
 
@@ -46,8 +54,8 @@ function overlaps(a: Rect, b: Rect): boolean {
 }
 
 /**
- * The ids of a page's cards, step groups (their card in view), links (an end in view), frames,
- * resource cards, and notes that the canvas shows through `camera` at `size` (`rects` holds what is
+ * The ids of a page's cards, step groups and proposed steps (their card in view), links (an end in
+ * view), frames, resource cards, and notes that the canvas shows through `camera` at `size` (`rects` holds what is
  * drawn: a card inside a collapsed frame isn't); all of them before the canvas has a camera or a size.
  */
 export function visibleItems(page: Page, rects: ReadonlyMap<string, Rect>, camera: Camera | null, size: Size | null): string[] {
@@ -63,6 +71,7 @@ export function visibleItems(page: Page, rects: ReadonlyMap<string, Rect>, camer
   return [
     ...cards,
     ...page.groups.flatMap((group) => (cards.has(group.card) ? [group.id] : [])),
+    ...(page.proposals ?? []).flatMap((proposal) => (cards.has(proposal.card) ? [proposal.id] : [])),
     ...page.links.flatMap((link) => (ends.has(link.from) || ends.has(link.to) ? [link.id] : [])),
     ...frames,
     ...resources,
@@ -84,7 +93,7 @@ export function currentView(canvas: Size | null): ViewReport {
     board: { project: ref.project, id: ref.id },
     page: page.id,
     selection: viewSelection(page, view.selection),
-    lens: view.lens ?? page.defaultView,
+    lens: pageLens(view.lens, page.defaultView),
     visible: visibleItems(page, displayedRects(board, page.id), view.camera, canvas),
     tabs,
   };

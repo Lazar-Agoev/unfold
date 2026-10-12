@@ -78,6 +78,8 @@ describe("parseKeyBindings", () => {
         "nope.action": "Mod+K",
         "view.toggleInspector": "Mod+I",
         "workbench.commandPalette": "Mod+Shift+P",
+        // The removed Flow lens: its saved binding no longer applies.
+        "board.lensFlow": "Mod+3",
         [ActionIds.compile]: "Mod+Banana",
         [ActionIds.undo]: 7,
         [ActionIds.redo]: "Mod+",

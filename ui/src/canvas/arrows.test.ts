@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { CallLink, CardView, TypeDefinition, TypeMember, TypeText } from "../ipc/generated";
+import { cardBody } from "../code/typeKinds";
 import { cardRefKey } from "../state/boards/keys";
+import { shownView } from "../state/boards/store";
 import { NODE_PORT, computeArrows, fieldPort, fieldRows, portsByCard } from "./arrows";
 
 function link(source: string, target: string | undefined, kind: CallLink["kind"] = "calls", line = 1): CallLink {
@@ -129,6 +131,17 @@ describe("arrows from a Diagram node", () => {
     expect(toC?.calls).toBeUndefined();
     expect([toC?.occurrence, toC?.seq, toC?.line]).toEqual([`${A}/call[2]`, 0, 7]);
     expect(portsByCard(arrows).get("a")).toEqual([NODE_PORT]);
+  });
+
+  it("follow a card's expansion in the Diagram lens: compact from the edge, expanded from each call's own step", () => {
+    const bodyOf = (view: "diagram" | "flow" | undefined) => cardBody(A, shownView("diagram", view ? { view } : {}, "diagram"));
+    const arrowsFor = (view: "diagram" | "flow" | undefined) =>
+      computeArrows([{ ...cards[0], id: "a", key: A, project: P, entrance: false, body: bodyOf(view) }, ...cards.slice(1)], models).map((arrow) => arrow.sourceHandle);
+    expect(arrowsFor(undefined)).toEqual([NODE_PORT, NODE_PORT]);
+    expect(arrowsFor("diagram")).toEqual([NODE_PORT, NODE_PORT]);
+    expect(arrowsFor("flow")).toEqual([`${A}/call[0]`, `${A}/call[1]`, `${A}/call[2]`]);
+    // The Code lens shows every card's own lines.
+    expect(cardBody(A, shownView("code", { view: "diagram" }, "diagram"))).toBe("code");
   });
 
   it("point an entrance node at each handler from its edge", () => {

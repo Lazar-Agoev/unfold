@@ -20,9 +20,10 @@ description; don't present it as a database.
 - get_relations on a type: the places that use it, with extends and implements marked.
 
 ## Type cards
-- add_cards with view "diagram": the card lists the type's fields (name, written type,
-  `?`, `readonly`, a default as ` = …`), an enum's values, or an alias's type. A card
-  with 12 or more rows shows 8, then "N more".
+- add_cards: a type card lists the type's fields (name, written type, `?`,
+  `readonly`, a default as ` = …`), an enum's values, or an alias's type, in Diagram
+  and Code alike; it takes no expansion. A card with 12 or more rows shows 8, then
+  "N more".
 - follow: {types: 1} on a type card adds the types its fields link to (up to 2 levels).
   Unfold draws a type arrow from the field's row to each linked type card of the same
   project, labeled with the written type. Type arrows are compiled: never connect over
@@ -85,6 +86,18 @@ SQL migration, a Prisma schema), the table lists its columns itself:
   columns of a typed table must be its fields.
 - Don't relate tables the types already link.
 
+## What stays authored
+An ERD is tables and connections you author, grounded in the code:
+- Tables, their columns, key marks, and relationships are made only through
+  add_resources (tables and columns) and connect (relates, reads, writes). Unfold has
+  no table editor and generates no ERD by itself: nothing appears unless you add it,
+  citing where the code or a schema says so.
+- A table never becomes a function card: changing the lens or expanding nearby code
+  keeps its columns, key marks, and relationships.
+- A typed table's type link opens the type's definition; it draws no arrows. The
+  compiled field arrows between types come from type cards: add the types as cards
+  when the page should show them.
+
 ## Reads and writes
 connect writes from the line that inserts, updates, or deletes (head at the table), and
 reads from the line that queries (head at the code), each with its step. In ts-orders,
@@ -102,7 +115,7 @@ The typed-lines fixture's Python shop (py/src/shop/models.py) declares a datacla
 TypedDict, a pydantic model, and a NamedTuple. "Show me the shop's data model":
 - search({query: "shop", kinds: ["types"]}) finds CartItem, Cart, Address, Customer,
   and Receipt (and the account types in accounts.py).
-- add_cards places Cart and Customer in Diagram with follow: {types: 1}, which brings
+- add_cards places Cart and Customer with follow: {types: 1}, which brings
   CartItem and Address. Unfold draws `items: list[CartItem]` from Cart to CartItem and
   `address: "Address"` from Customer to Address.
 - read_code on CartItem shows `price: Money` unresolved; the chat says so.

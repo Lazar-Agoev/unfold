@@ -1,6 +1,6 @@
 /**
  * The canvas top bar: the page's name and the board's publish state on the left (and "Claude is
- * working…" while an agent works on the page), the page's Diagram | Flow | Code lens centered over the
+ * working…" while an agent works on the page), the page's Diagram | Code lens centered over the
  * uncovered canvas, and Share and Publish on the right. Share opens the share
  * menu; Publish opens the publish dialog. On a canvas too narrow to center the lens between its
  * neighbours, it moves aside and the title and state shorten (`placeLens`).
@@ -9,16 +9,20 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { Button, SegmentedControl, useContextMenu } from "../components";
 import { Icon } from "../icons";
-import type { View } from "../ipc/generated";
 import { shareMenuEntries } from "../menus";
-import { VIEW_OPTIONS } from "../canvas";
-import { findPage, setPageLens, useOpenBoard, usePageView, useWorkingAgents, workingText, type PageTarget } from "../state/boards";
+import { findPage, pageLens, setPageLens, useOpenBoard, usePageView, useWorkingAgents, workingText, type Lens, type PageTarget } from "../state/boards";
 import { openDialog } from "../state/overlays";
 import { CENTERED, placeLens, sameLensPlace, type LensPlace } from "./lensPlace";
 import { usePublishState } from "./publishState";
 
 /** The share menu's width. */
 const SHARE_MENU_WIDTH = 196;
+
+/** The page's two lenses, in order (⌘1, ⌘2). */
+const LENS_OPTIONS = [
+  { value: "diagram", label: "Diagram" },
+  { value: "code", label: "Code" },
+] as const;
 
 export function TopBar({ target }: { readonly target: PageTarget }) {
   const title = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.title) ?? "";
@@ -85,11 +89,11 @@ export function TopBar({ target }: { readonly target: PageTarget }) {
       </div>
       <span className="board-topbar-spacer" />
       <div ref={lensBox} className="board-lens" style={place.left !== null ? { left: place.left, translate: "none" } : undefined}>
-        <SegmentedControl<View>
-          options={VIEW_OPTIONS}
-          value={lens ?? defaultView}
-          onChange={(view) => {
-            setPageLens(target, view);
+        <SegmentedControl<Lens>
+          options={LENS_OPTIONS}
+          value={pageLens(lens, defaultView)}
+          onChange={(next) => {
+            setPageLens(target, next);
           }}
           label="Lens"
           variant="lens"

@@ -5,15 +5,18 @@
  * board's pages from its file (`read_board`), or, with no project to go by, every project's drafts and
  * unpublished changes (`drafts`). `read_page` reads a page as the window holding its board has it
  * (unsaved edits included), else as its file has it, then the code of its cards, so it can say what
- * the board draws between them; or the page as Mermaid (`export_mermaid_text`, as last saved).
+ * the board draws between them, how each card shows (compact or expanded, and the calls it expands in
+ * place), and where each proposed step goes, with a note when its anchor is missing or held (from the
+ * board's health while a window holds the board, else from the card's Flow); or the page as Mermaid
+ * (`export_mermaid_text`, as last saved).
  */
 
 import { z } from "zod";
 import type { AgentBoardRef, AgentIdentity } from "../../../shared/agent-api";
 import type { ToolContext } from "../context";
-import type { Anchor, BoardSummary, Frame, Link, Page, ProjectRow, Resource } from "../engine-types";
-import { authorText, clip, count, joined, keyFile, keyName, labelText, place, typeText } from "../format";
-import { pageCode, type CardCode, type PageCode } from "../page-code";
+import type { Anchor, BoardHealthView, BoardSummary, Frame, Link, Page, ProjectRow, Proposal, Resource } from "../engine-types";
+import { authorText, callPathText, clip, count, joined, keyFile, keyName, labelText, place, typeText } from "../format";
+import { cardExpanded, isTypeKey, pageCode, type CardCode, type PageCode } from "../page-code";
 import { nextLine, paged, pagedLines, textResult } from "../results";
 import { currentView, readPage as loadPage, pagePlace, projectOrView, resolveBoard, type ReadPage } from "../target";
 import { defineTool } from "../tool";
@@ -23,7 +26,12 @@ const BOARDS_PER_PAGE = 30;
 /** Lines per page of `read_page` (fewer when they are long). */
 const LINES_PER_PAGE = 120;
 
-const VIEWS = { diagram: "Diagram", flow: "Flow", code: "Code" } as const;
+/** How a page opens, by its default view (a legacy Flow default opens in Diagram with its cards expanded). */
+const OPENS_IN = {
+  diagram: "The page opens in Diagram; cards without their own setting are compact.",
+  flow: "The page opens in Diagram; cards without their own setting are expanded.",
+  code: "The page opens in Code, every card's source; in Diagram, cards without their own setting are expanded.",
+} as const;
 
 const cursorArg = z.string().optional().describe("The next cursor a result gave (absent: the first page)");
 
@@ -146,7 +154,18 @@ function cardWhere({ model }: CardCode): string | null {
   return model?.type === "entrance" ? `${model.header.kind} entrance` : null;
 }
 
-/** A card's line: its name, id, code, view, place on the canvas, frame, and description. */
+/** How a card shows in Diagram: a type card's fields, else compact or expanded (and whose setting that is), with the calls it expands in place. */
+function expansionText(page: Page, code: CardCode): string {
+  const { card } = code;
+  if (isTypeKey(code.key)) {
+    return "fields";
+  }
+  const shown = `${cardExpanded(page, card) ? "expanded" : "compact"}${card.view === undefined ? " (the page's default)" : ""}`;
+  const calls = card.expanded ?? [];
+  return calls.length > 0 ? `${shown}, calls expanded in place ${calls.map(callPathText).join(", ")}` : shown;
+}
+
+/** A card's line: its name, id, code, expansion, place on the canvas, frame, and description. */
 function cardLine(page: Page, read: ReadPage, code: CardCode, frames: ReadonlyMap<string, string>, agent: AgentIdentity): string {
   const { card } = code;
   const size = read.sizes[card.id];
@@ -155,7 +174,7 @@ function cardLine(page: Page, read: ReadPage, code: CardCode, frames: ReadonlyMa
     cardWhere(code),
     `key ${code.key}`,
     card.ref.project !== undefined ? `from project ${card.ref.project}` : null,
-    card.view !== undefined ? VIEWS[card.view] : `${VIEWS[page.defaultView]} (the page's default)`,
+    expansionText(page, code),
     card.folded === true ? "folded" : null,
     `at [${card.at.join(", ")}]${size ? `, ${Math.round(size.width)}×${Math.round(size.height)}` : ""}`,
     frame !== undefined ? `in frame ${frame}` : null,
@@ -257,8 +276,60 @@ function linkLine(page: Page, code: PageCode, link: Link, agent: AgentIdentity):
   ]) || "no label"}`;
 }
 
+/** What the board's health says of each proposed step's anchor, by proposal id. */
+type ProposalHealth = ReadonlyMap<string, string>;
+
+const ANCHOR_HEALTH: Readonly<Record<string, string>> = { missing: "anchor missing", review: "anchor held for review" };
+
+/**
+ * What the board's health says of the page's proposed steps, when a window holds the board (its
+ * session answers `board_health`); empty otherwise, or when the health can't be read: the card's Flow
+ * still tells a missing anchor.
+ */
+async function proposalHealth(context: ToolContext, board: AgentBoardRef, page: Page): Promise<ProposalHealth> {
+  if ((page.proposals ?? []).length === 0 || context.views.holder(board) === undefined) {
+    return new Map();
+  }
+  try {
+    const view: BoardHealthView = await context.held(board, "board_health", { project: board.project, id: board.id });
+    return new Map(
+      view.health.items.flatMap((item) =>
+        item.page === page.id && "proposal" in item.target ? [[item.target.proposal, `${ANCHOR_HEALTH[item.kind] ?? item.kind}: ${item.message}`] as const] : [],
+      ),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
+/** A proposed step's line: its title, id, the real step it goes after (and which path), who proposed it, its reason, and its anchor's health. */
+function proposalLine(page: Page, code: CardCode | undefined, proposal: Proposal, health: ProposalHealth, agent: AgentIdentity): string {
+  const flow = code?.model?.type === "block" && code.model.flow?.source === "current" ? code.model.flow : null;
+  const node = flow?.nodes.find((item) => item.key === proposal.after);
+  const label = node ? (page.labels.find((entry) => entry.project === code?.card.ref.project && entry.key === proposal.after)?.text ?? node.label) : undefined;
+  const step = node && label !== undefined ? `the step “${label}” (${joined([node.kind, node.startLine !== undefined ? `line ${node.startLine}` : null, `key ${proposal.after}`])})` : `the step ${proposal.after}`;
+  const missing = flow && !node ? "anchor missing: no step of its card's code has this key now" : null;
+  const anchor = health.get(proposal.id) ?? missing;
+  return `  - “${proposal.title}” (proposal id ${proposal.id}): ${joined([
+    `after ${step}${proposal.path !== undefined ? `, on its “${proposal.path}” path` : ""}`,
+    `by ${authorText(proposal.author, agent)}`,
+    proposal.reason !== undefined ? `reason “${clip(proposal.reason, 200)}”` : null,
+    anchor !== null ? `${anchor} (propose with its id and a new after moves it; remove_items takes it off)` : null,
+  ])}`;
+}
+
+/** The proposed steps grouped under their cards, in page order. */
+function proposalLines(page: Page, code: PageCode, health: ProposalHealth, agent: AgentIdentity): string[] {
+  const proposals = page.proposals ?? [];
+  const cards = [...new Set(proposals.map((proposal) => proposal.card))];
+  return cards.flatMap((card) => [
+    `- ${named(page, code, card)}:`,
+    ...proposals.filter((proposal) => proposal.card === card).map((proposal) => proposalLine(page, code.cards.get(card), proposal, health, agent)),
+  ]);
+}
+
 /** The page's items, section by section, as lines. */
-function pageLines(page: Page, read: ReadPage, code: PageCode, agent: AgentIdentity): string[] {
+function pageLines(page: Page, read: ReadPage, code: PageCode, health: ProposalHealth, agent: AgentIdentity): string[] {
   const frames = new Map((page.frames ?? []).flatMap((frame) => frame.members.map((member) => [member, frame.id] as const)));
   const section = (title: string, lines: readonly string[]) => (lines.length > 0 ? [`${title} (${lines.length}):`, ...lines] : []);
   const cards = page.cards.flatMap((card) => {
@@ -296,9 +367,10 @@ function pageLines(page: Page, read: ReadPage, code: PageCode, agent: AgentIdent
     ...section("Resource cards", (page.resources ?? []).map((resource) => resourceLine(resource, frames, agent))),
     ...section("Connections and drawn links", page.links.map((link) => linkLine(page, code, link, agent))),
     ...section("Notes", notes),
+    ...((page.proposals ?? []).length > 0 ? [`Proposed steps (${(page.proposals ?? []).length}), by card: intentions, not code:`, ...proposalLines(page, code, health, agent)] : []),
     ...section("Arrows Unfold draws for calls and handlers", arrows),
     ...section("Type arrows", typeArrows),
-    ...section("Flow steps still unlabeled, in cards shown in Flow (label_steps labels them)", unlabeled),
+    ...section("Flow steps still unlabeled, in expanded cards (label_steps labels them)", unlabeled),
   ];
 }
 
@@ -319,7 +391,7 @@ export const readPage = defineTool({
   name: "read_page",
   title: "Read page",
   description:
-    'Everything on a page, with ids: cards (name, file:line, key, view, folded, frame, position and measured size, description and who wrote it), step groups, frames as a tree, resource cards (kind, name, type, columns, anchors), connections and drawn links (kind, ends, the step they leave from at file:line, channel, carried type, anchors, label), notes, the arrows Unfold draws for calls (each with its typed label, and the source and seq read_call takes) and handlers, type arrows from a field to a type, and the Flow steps still unlabeled (with the keys label_steps takes). It reads the page as the window holding the board has it, unsaved edits included, else as its file has it. format "mermaid" gives the page as a Mermaid flowchart instead, as last saved. page is an id or a link (default: the page in view); a board without a page reads its first page. Long pages come in pages: pass cursor. The result\'s rev is the page\'s revision: pass it as expectRevision to the next edit. Reading changes nothing.',
+    'Everything on a page, with ids: the lens it opens in (Diagram or Code), cards (name, file:line, key, compact or expanded and the calls each expands in place, folded, frame, position and measured size, description and who wrote it), step groups, frames as a tree, resource cards (kind, name, type, columns, anchors), connections and drawn links (kind, ends, the step they leave from at file:line, channel, carried type, anchors, label), notes, proposed steps under their cards (title, reason, who proposed it, the step and path they go after, and a note when that anchor is missing or held), the arrows Unfold draws for calls (each with its typed label, and the source and seq read_call takes) and handlers, type arrows from a field to a type, and the steps of expanded cards still unlabeled (with the keys label_steps takes). It reads the page as the window holding the board has it, unsaved edits included, else as its file has it. format "mermaid" gives the page as a Mermaid flowchart instead, as last saved. page is an id or a link (default: the page in view); a board without a page reads its first page. Long pages come in pages: pass cursor. The result\'s rev is the page\'s revision: pass it as expectRevision to the next edit. Reading changes nothing.',
   input: z.object({
     board: z.string().min(1).optional().describe("A board's id or a link (default: the board in view)"),
     page: z.string().min(1).optional().describe("A page's id or a link (default: the page in view)"),
@@ -334,12 +406,12 @@ export const readPage = defineTool({
     if (format === "mermaid") {
       return mermaid(context, target.project, read, target.board);
     }
-    const code = await pageCode(context, target.project, read.page);
-    const lines = pageLines(read.page, read, code, context.agent);
+    const [code, health] = await Promise.all([pageCode(context, target.project, read.page), proposalHealth(context, target.board, read.page)]);
+    const lines = pageLines(read.page, read, code, health, context.agent);
     const shown = pagedLines(lines, cursor, LINES_PER_PAGE);
     return textResult(
       context.header(pagePlace(target.project, read)),
-      `Ids: project ${target.project.id}, board ${target.board.id}, page ${read.page.id}. Cards without their own view show ${VIEWS[read.page.defaultView]}.${read.unsaved ? " The window has edits it hasn't saved yet; they're included." : ""}`,
+      `Ids: project ${target.project.id}, board ${target.board.id}, page ${read.page.id}. ${OPENS_IN[read.page.defaultView]}${read.unsaved ? " The window has edits it hasn't saved yet; they're included." : ""}`,
       lines.length === 0 ? "The page is empty: add_cards puts code on it." : null,
       ...shown.items,
       nextLine(shown, "read_page"),

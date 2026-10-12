@@ -1,14 +1,52 @@
 /**
- * Selected for a step group: its title (renamed in place, which makes it yours) and who wrote it, its
- * description, the card it is in, and Ungroup.
+ * Selected for a combined block (a step group): its title (renamed in place, which makes it yours) and
+ * who wrote it, "COMBINED · in <function>", its description, the lines it spans (opening them, as View
+ * code does), and View code and Ungroup. Ungroup restores the steps; neither action changes code.
  */
 
+import { useQuery } from "@tanstack/react-query";
 import { Author } from "../../agent";
+import { cardQuery } from "../../canvas";
 import { Button } from "../../components";
 import type { Group } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
 import { cardKey, editGroup, findCard, findPage, itemsFor, keyDisplayName, select, ungroup, useOpenBoard, type PageTarget } from "../../state/boards";
+import { resolveRefProject, useProjectIndex } from "../../state/workspace";
+import { sourceLines, sourceOf, viewCode } from "../viewCode";
 import { AuthoredField } from "./AuthoredField";
+import { RelationRow } from "./Relations";
+
+/** The lines a combined block spans, opening them (its card's model is read so they show once loaded). */
+function GroupLines({ target, group }: { readonly target: PageTarget; readonly group: Group }) {
+  const card = useOpenBoard(target.board, (board) => {
+    const page = findPage(board.document, target.page);
+    return page ? findCard(page, group.card) : undefined;
+  });
+  const project = resolveRefProject(useProjectIndex(), target.board.project, card?.ref.project);
+  const query = useQuery({ ...cardQuery(project ?? "", card ? cardKey(card) : ""), enabled: project !== null && card !== undefined });
+  const selection = { kind: "group", groupId: group.id } as const;
+  // Read through the resolver once the model is in (`query.data` keeps this current).
+  const source = query.data ? sourceOf(target, selection).target : null;
+  return (
+    <div className="selected-relations">
+      {source ? (
+        <RelationRow
+          label="Lines"
+          title={source.path}
+          onActivate={() => {
+            viewCode(target, selection);
+          }}
+        >
+          <span className="relation-code">{sourceLines(source)}</span>
+        </RelationRow>
+      ) : (
+        <RelationRow label="Lines">
+          <span className="relation-path">{query.isPending ? "Loading…" : "The code isn't available right now."}</span>
+        </RelationRow>
+      )}
+    </div>
+  );
+}
 
 export function SelectedGroup({ target, group }: { readonly target: PageTarget; readonly group: Group }) {
   const author = useAuthor();
@@ -33,7 +71,7 @@ export function SelectedGroup({ target, group }: { readonly target: PageTarget; 
         />
         {card ? (
           <p className="selected-location">
-            Step group in{" "}
+            COMBINED · in{" "}
             <button
               type="button"
               className="selected-link"
@@ -69,7 +107,16 @@ export function SelectedGroup({ target, group }: { readonly target: PageTarget; 
           }
         }}
       />
+      {card ? <GroupLines target={target} group={group} /> : null}
       <div className="selected-actions">
+        <Button
+          variant="secondary"
+          onClick={() => {
+            viewCode(target, { kind: "group", groupId: group.id });
+          }}
+        >
+          View code
+        </Button>
         <Button
           variant="secondary"
           onClick={() => {

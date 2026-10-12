@@ -1,15 +1,15 @@
 /**
  * The rows of On this page: the page's cards in follow order indented by call depth (from the page's
- * outline as of the last save; cards added since go last at depth 0), each card's groups nested under
- * it, and each drawn link and connection right after its `from` card's groups, one level deeper; then
+ * outline as of the last save; cards added since go last at depth 0), each card's groups and proposed
+ * steps nested under it, and each drawn link and connection right after them, one level deeper; then
  * the resource cards, each with the connections leaving it. Frames are headings where their first card
  * comes in follow order, with what they hold indented under them (nested frames nested), each card
  * indented by its call depth from the shallowest card beside it. Pure, so it is tested without a DOM.
  */
 
 import { KIND_WORDS } from "../canvas/connections/chip";
-import type { Card, Frame, Group, HealthItem, Link, Page, PageOutline, ProjectName, Resource } from "../ipc/generated";
-import { cardKey, keyDisplayName } from "../state/boards";
+import type { Card, Frame, Group, HealthItem, Link, Page, PageOutline, ProjectName, Proposal, Resource } from "../ipc/generated";
+import { cardKey, keyDisplayName, proposalsOf } from "../state/boards";
 
 interface RowBase {
   /** Unique within the page: card, group, link, and frame ids share one namespace. */
@@ -31,6 +31,7 @@ export type PageRow =
       readonly connected: boolean;
     })
   | (RowBase & { readonly kind: "group"; readonly group: Group })
+  | (RowBase & { readonly kind: "proposal"; readonly proposal: Proposal })
   | (RowBase & { readonly kind: "link"; readonly link: Link; readonly label: string })
   | (RowBase & { readonly kind: "frame"; readonly frame: Frame })
   | (RowBase & { readonly kind: "resource"; readonly resource: Resource });
@@ -81,6 +82,7 @@ export function pageRows(page: Page, outline: PageOutline | undefined, context: 
       if ("group" in target) return [target.group];
       if ("link" in target) return [target.link];
       if ("frame" in target) return [target.frame];
+      if ("proposal" in target) return [target.proposal];
       return "resource" in target ? [target.resource] : [];
     }),
   );
@@ -117,6 +119,9 @@ export function pageRows(page: Page, outline: PageOutline | undefined, context: 
       if (group.card === card.id) {
         rows.push({ kind: "group", id: group.id, depth: depth + 1, review: marked.has(group.id), group });
       }
+    }
+    for (const proposal of proposalsOf(page, card.id)) {
+      rows.push({ kind: "proposal", id: proposal.id, depth: depth + 1, review: marked.has(proposal.id), proposal });
     }
     linkRows(card.id, depth + 1);
   };

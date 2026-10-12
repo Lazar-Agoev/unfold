@@ -40,14 +40,20 @@ export interface CardSize {
 /** What is selected on a page. */
 export type Selection =
   | { readonly kind: "none" }
-  /** A card, or a Flow node or statement inside it (`key`). */
-  | { readonly kind: "card"; readonly cardId: string; readonly key: Key | null }
+  /**
+   * A card, or a Flow node or statement inside it (`key`). `owner` is the block whose Flow holds the
+   * step when it is shown in a call expanded in place (absent: the card's own block); `last` ends a
+   * Shift-selected run of steps that starts at `key`.
+   */
+  | { readonly kind: "card"; readonly cardId: string; readonly key: Key | null; readonly owner?: Key; readonly last?: Key }
   | { readonly kind: "group"; readonly groupId: string }
   /** A drawn link or a connection. */
   | { readonly kind: "link"; readonly linkId: string }
   | { readonly kind: "frame"; readonly frameId: string }
   | { readonly kind: "resource"; readonly resourceId: string }
   | { readonly kind: "note"; readonly noteId: string }
+  /** A proposed step. */
+  | { readonly kind: "proposal"; readonly proposalId: string }
   /** A line between cards (its label opened into the call's contract). */
   | ({ readonly kind: "line" } & SelectedLine)
   /** An arrow from a Diagram node that stands for several calls: Selected lists them. */
@@ -121,18 +127,19 @@ export interface PendingGroup {
 
 /** View state of one page (created when the page is first shown). Survives unmounting. */
 export interface PageView {
-  /** The page's lens: null until the person uses the top Diagram | Flow | Code switch on this page. */
+  /**
+   * The page's lens: null until the person uses the top Diagram | Code switch on this page (`pageLens`
+   * reads it; a lens saved as Flow by an older version shows Diagram).
+   */
   lens: View | null;
   camera: Camera | null;
   selection: Selection;
   /** Folded outline keys per card, once the person changed them; until then the model's defaults apply. */
   codeFolds: Record<string, string[]>;
-  /** Callee occurrences expanded inline (⌥-click) per card. */
+  /** Callee occurrences expanded inline in Code (⌥-click) per card; Diagram's are saved on the card (`Card.expanded`). */
   expanded: Record<string, string[]>;
   /** "▸ N checks" chains opened per card, by the chain head's key. */
   flowChains: Record<string, string[]>;
-  /** Cards whose own switch was used while the lens was on: they show their own view. */
-  lensExceptions: string[];
   trail: TrailItem[];
   back: FocusMove[];
   forward: FocusMove[];

@@ -74,10 +74,12 @@ export function drawnGeometry(container: ParentNode, state: Pick<ReactFlowState,
       continue;
     }
     boxes.set(node.id, { x: node.internals.positionAbsolute.x, y: node.internals.positionAbsolute.y, width, height });
-    // A card drawn in Flow: its steps as drawn (start and end aside).
+    // A card drawn in Flow: its own steps as drawn (start and end aside; a call expanded in place shows
+    // its callee's steps, not the card's).
     const element = nodes.get(node.id);
     if (element?.querySelector(".flow-view")) {
-      flows.set(node.id, { steps: element.querySelectorAll("[data-flow-node]:not(.flow-pill)").length, unlabeled: unlabeledOf(node.id) });
+      const steps = [...element.querySelectorAll("[data-flow-node]:not(.flow-pill)")].filter((step) => step.closest(".flow-inset") === null).length;
+      flows.set(node.id, { steps, unlabeled: unlabeledOf(node.id) });
     }
   }
   const lines: DrawnLine[] = state.edges

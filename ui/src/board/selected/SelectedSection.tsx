@@ -1,15 +1,15 @@
 /**
  * Selected: what is selected on the page, pinned to the bottom of the board sidebar under a rule. A
- * card, a Flow node inside one, a group, a drawn link or a connection, a frame, a resource card, a
- * note, a line between cards, or the calls an arrow from a Diagram node stands for; a hint when nothing
- * is. It takes at most half
+ * card, a Flow node inside one or a Shift-selected run of them, a group, a drawn link or a connection,
+ * a frame, a resource card, a note, a proposed step, a line between cards, or the calls an arrow from a
+ * Diagram node stands for; a hint when nothing is. It takes at most half
  * the sidebar's height and scrolls on its own; its collapse is remembered per window.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { cardQuery } from "../../canvas";
 import { IconButton, SectionLabel } from "../../components";
-import { cardKey, findCard, findFrame, findNote, findPage, findResource, useOpenBoard, usePageView, useResolvedCardProject, type PageTarget } from "../../state/boards";
+import { cardKey, findCard, findFrame, findNote, findPage, findProposal, findResource, useOpenBoard, usePageView, useResolvedCardProject, type PageTarget } from "../../state/boards";
 import { setSelectedCollapsed, useLayout } from "../../state/layout";
 import { SelectedCalls } from "./SelectedCalls";
 import { SelectedCard } from "./SelectedCard";
@@ -20,17 +20,41 @@ import { SelectedLine } from "./SelectedLine";
 import { SelectedLink } from "./SelectedLink";
 import { SelectedNode, flowNodeFor } from "./SelectedNode";
 import { SelectedNote } from "./SelectedNote";
+import { SelectedProposal } from "./SelectedProposal";
 import { SelectedResource } from "./SelectedResource";
+import { SelectedRun } from "./SelectedRun";
 import type { Card, Key } from "../../ipc/generated";
 
-/** A card, or the Flow node of it that is selected (a statement key falls back to the card). */
-function CardOrNode({ target, card, nodeKey }: { readonly target: PageTarget; readonly card: Card; readonly nodeKey: Key | null }) {
+/**
+ * A card, or the Flow node of it that is selected (a statement key falls back to the card), or the run
+ * of its steps Shift-selected from that node to `last`. A step shown in a call expanded in place is
+ * read from its owner's Flow (same project: calls never cross).
+ */
+function CardOrNode({
+  target,
+  card,
+  nodeKey,
+  owner,
+  last,
+}: {
+  readonly target: PageTarget;
+  readonly card: Card;
+  readonly nodeKey: Key | null;
+  readonly owner: Key | undefined;
+  readonly last: Key | undefined;
+}) {
   const project = useResolvedCardProject(target.board, card);
-  const query = useQuery({ ...cardQuery(project ?? "", cardKey(card)), enabled: project !== null });
-  const flow = query.data?.type === "block" ? query.data.flow : null;
-  const node = nodeKey !== null && nodeKey !== cardKey(card) ? flowNodeFor(flow, nodeKey) : undefined;
-  if (project !== null && flow && node) {
-    return <SelectedNode target={target} card={card} project={project} node={node} model={flow} />;
+  const block = owner ?? cardKey(card);
+  const query = useQuery({ ...cardQuery(project ?? "", block), enabled: project !== null });
+  const view = query.data?.type === "block" ? query.data : undefined;
+  const flow = view?.flow ?? null;
+  const node = nodeKey !== null && nodeKey !== block ? flowNodeFor(flow, nodeKey) : undefined;
+  if (view && node && last !== undefined && owner === undefined) {
+    return <SelectedRun target={target} card={card} model={view} first={node.key ?? ""} last={last} />;
+  }
+  if (project !== null && view && flow && node) {
+    const shownIn = owner !== undefined ? { owner: { key: owner, name: view.header.qualifiedName } } : {};
+    return <SelectedNode target={target} card={card} project={project} node={node} model={flow} {...shownIn} />;
   }
   return <SelectedCard target={target} card={card} project={project} />;
 }
@@ -41,7 +65,7 @@ function SelectedBody({ target }: { readonly target: PageTarget }) {
   if (page && selection.kind === "card") {
     const card = findCard(page, selection.cardId);
     if (card) {
-      return <CardOrNode key={card.id} target={target} card={card} nodeKey={selection.key} />;
+      return <CardOrNode key={card.id} target={target} card={card} nodeKey={selection.key} owner={selection.owner} last={selection.last} />;
     }
   }
   if (page && selection.kind === "group") {
@@ -76,6 +100,12 @@ function SelectedBody({ target }: { readonly target: PageTarget }) {
     const note = findNote(page, selection.noteId);
     if (note) {
       return <SelectedNote key={note.id} target={target} note={note} />;
+    }
+  }
+  if (page && selection.kind === "proposal") {
+    const proposal = findProposal(page, selection.proposalId);
+    if (proposal) {
+      return <SelectedProposal key={proposal.id} target={target} proposal={proposal} />;
     }
   }
   if (page && selection.kind === "line") {

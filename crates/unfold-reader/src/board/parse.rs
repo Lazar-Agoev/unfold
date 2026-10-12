@@ -23,8 +23,10 @@ use super::files::Revision;
 use super::items::check_items;
 use super::model::{
     Anchor, Author, Board, Card, CardRef, Cardinality, Column, ColumnKey, Description, FORMAT, Frame,
-    FrameDirection, FrameIcon, FrameLook, Group, GuardEntry, LabelEntry, Link, LinkKind, MAX_NOTE_CHARACTERS,
-    Note, Page, ProjectName, Resource, ResourceKind, Signature, VERSION, View, is_folder_path, is_id,
+    FrameDirection, FrameIcon, FrameLook, Group, GuardEntry, LabelEntry, Link, LinkKind, MAX_EXPANDED_CALLS,
+    MAX_EXPANSION_DEPTH, MAX_NOTE_CHARACTERS, MAX_PROPOSAL_REASON, MAX_PROPOSAL_TITLE, MAX_PROPOSALS, Note,
+    Page, ProjectName, Proposal, ProposalPath, Resource, ResourceKind, Signature, VERSION, View,
+    is_folder_path, is_id,
 };
 
 /// A JSON value read with duplicate keys rejected.
@@ -161,6 +163,15 @@ fn nonblank<'a>(value: &'a Value, path: &Path) -> Parsed<&'a str> {
 /// A string that isn't blank, owned.
 fn owned_text(value: &Value, path: &Path) -> Parsed<String> {
     nonblank(value, path).map(str::to_owned)
+}
+
+/// A string that isn't blank, of at most `max` characters, owned.
+fn limited_text(value: &Value, path: &Path, max: usize) -> Parsed<String> {
+    let text = nonblank(value, path)?;
+    if text.chars().count() > max {
+        return Err(path.fail(format!("must be at most {max} characters")));
+    }
+    Ok(text.to_owned())
 }
 
 fn boolean(value: &Value, path: &Path) -> Parsed<bool> {
@@ -321,21 +332,58 @@ fn position(value: &Value, path: &Path) -> Parsed<[f64; 2]> {
     }
 }
 
+/// A card's calls expanded in place: at most [`MAX_EXPANDED_CALLS`] different paths of 1 to
+/// [`MAX_EXPANSION_DEPTH`] block keys each.
+fn expanded(value: &Value, path: &Path) -> Parsed<Vec<Vec<Key>>> {
+    let items = array(value, path)?;
+    if items.len() > MAX_EXPANDED_CALLS {
+        return Err(path.fail(format!("must hold at most {MAX_EXPANDED_CALLS} expanded calls")));
+    }
+    let mut paths: Vec<Vec<Key>> = Vec::with_capacity(items.len());
+    for (index, item) in items.iter().enumerate() {
+        let item_path = path.join(index);
+        let keys = array(item, &item_path)?;
+        if keys.is_empty() || keys.len() > MAX_EXPANSION_DEPTH {
+            return Err(item_path.fail(format!(
+                "must list 1 to {MAX_EXPANSION_DEPTH} keys: a call or callback of the card's block, \
+                 then of each callee expanded inside it, outermost first"
+            )));
+        }
+        let keys = keys
+            .iter()
+            .enumerate()
+            .map(|(level, key)| block_key(key, &item_path.join(level)))
+            .collect::<Parsed<Vec<Key>>>()?;
+        if paths.contains(&keys) {
+            return Err(item_path.fail("repeats an earlier expanded call"));
+        }
+        paths.push(keys);
+    }
+    Ok(paths)
+}
+
 fn card(value: &Value, path: &Path) -> Parsed<Card> {
     let map = object(
         value,
         path,
-        &["at", "description", "folded", "id", "ref", "view"],
+        &["at", "description", "expanded", "folded", "id", "ref", "view"],
         &["at", "id", "ref"],
     )?;
-    Ok(Card {
+    let card = Card {
         id: id(field(map, "id"), &path.join("id"))?,
         reference: reference(field(map, "ref"), &path.join("ref"))?,
         at: position(field(map, "at"), &path.join("at"))?,
         view: optional(map, "view", path, view)?,
         folded: optional(map, "folded", path, boolean)?.unwrap_or(false),
         description: optional(map, "description", path, description)?,
-    })
+        expanded: optional(map, "expanded", path, expanded)?.unwrap_or_default(),
+    };
+    if !card.expanded.is_empty() && card.reference.block_key().is_none() {
+        return Err(path.join("expanded").fail(
+            "only a block card expands calls in place; an entrance card's targets open as their own cards",
+        ));
+    }
+    Ok(card)
 }
 
 fn group(value: &Value, path: &Path) -> Parsed<Group> {
@@ -721,17 +769,41 @@ fn note(value: &Value, path: &Path) -> Parsed<Note> {
         &["at", "attach", "author", "id", "text"],
         &["at", "author", "id", "text"],
     )?;
-    let note_id = id(field(map, "id"), &path.join("id"))?;
-    let text_path = path.join("text");
-    let text = nonblank(field(map, "text"), &text_path)?;
-    if text.chars().count() > MAX_NOTE_CHARACTERS {
-        return Err(text_path.fail(format!("must be at most {MAX_NOTE_CHARACTERS} characters")));
-    }
     Ok(Note {
-        id: note_id,
-        text: text.to_owned(),
+        id: id(field(map, "id"), &path.join("id"))?,
+        text: limited_text(field(map, "text"), &path.join("text"), MAX_NOTE_CHARACTERS)?,
         at: position(field(map, "at"), &path.join("at"))?,
         attach: optional(map, "attach", path, id)?,
+        author: author(field(map, "author"), &path.join("author"))?,
+    })
+}
+
+fn proposal(value: &Value, path: &Path) -> Parsed<Proposal> {
+    let map = object(
+        value,
+        path,
+        &["after", "author", "card", "id", "path", "reason", "title"],
+        &["after", "author", "card", "id", "title"],
+    )?;
+    let proposal_id = id(field(map, "id"), &path.join("id"))?;
+    let card = id(field(map, "card"), &path.join("card"))?;
+    let after = block_key(field(map, "after"), &path.join("after"))?;
+    let title_path = path.join("title");
+    let title = limited_text(field(map, "title"), &title_path, MAX_PROPOSAL_TITLE)?;
+    if title.chars().any(char::is_control) {
+        return Err(title_path.fail("must be one line, without control characters"));
+    }
+    Ok(Proposal {
+        id: proposal_id,
+        card,
+        after,
+        path: optional(map, "path", path, |value, path| {
+            word(value, path, ProposalPath::parse, ProposalPath::WORDS)
+        })?,
+        title,
+        reason: optional(map, "reason", path, |value, path| {
+            limited_text(value, path, MAX_PROPOSAL_REASON)
+        })?,
         author: author(field(map, "author"), &path.join("author"))?,
     })
 }
@@ -765,6 +837,7 @@ fn page(value: &Value, path: &Path) -> Parsed<Page> {
             "labels",
             "links",
             "notes",
+            "proposals",
             "resources",
             "title",
         ],
@@ -782,6 +855,12 @@ fn page(value: &Value, path: &Path) -> Parsed<Page> {
     page.resources = items(map, "resources", path, resource)?;
     page.links = items(map, "links", path, link)?;
     page.notes = items(map, "notes", path, note)?;
+    if optional_array(map, "proposals", path)?.len() > MAX_PROPOSALS {
+        return Err(path
+            .join("proposals")
+            .fail(format!("must hold at most {MAX_PROPOSALS} proposed steps")));
+    }
+    page.proposals = items(map, "proposals", path, proposal)?;
 
     let mut labeled = FxHashSet::default();
     for (index, item) in optional_array(map, "labels", path)?.iter().enumerate() {

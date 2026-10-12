@@ -1,9 +1,10 @@
 /**
- * Selected for a card: its name and location, its description (edited here or on the card), then for a
- * block Called by and Reached from (up to 3 each, then "N more · Show callers"), Not opened (up to 5
- * calls not on the page, each "+ Open"), and its groups. A type card says where the type is used ("Used
- * in N places", a popover of the places), instead of calls for a type declaration. For an entrance, its
- * handlers. A card of a project that isn't connected shows what the board knows about it.
+ * Selected for a card: its name and location (a link that opens its source, as View code does), its
+ * description (edited here or on the card), then for a block Called by and Reached from (up to 3 each,
+ * then "N more · Show callers"), Not opened (up to 5 calls not on the page, each "+ Open"), and its
+ * groups. A type card says where the type is used ("Used in N places", a popover of the places),
+ * instead of calls for a type declaration. For an entrance, its handlers. A card of a project that
+ * isn't connected shows what the board knows about it.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -34,6 +35,7 @@ import {
   useOpenBoard,
   type PageTarget,
 } from "../../state/boards";
+import { viewCode } from "../viewCode";
 import { AuthoredField } from "./AuthoredField";
 import { RelationRow } from "./Relations";
 
@@ -257,7 +259,21 @@ export function SelectedCard({ target, card, project }: { readonly target: PageT
     <>
       <div className="selected-identity">
         <h3 className="selected-name">{name}</h3>
-        {location ? <p className="selected-location">{location}</p> : null}
+        {location && model !== undefined && project !== null ? (
+          <p className="selected-location">
+            <button
+              type="button"
+              className="selected-link"
+              onClick={() => {
+                viewCode(target, { kind: "card", cardId: card.id, key: null });
+              }}
+            >
+              {location}
+            </button>
+          </p>
+        ) : location ? (
+          <p className="selected-location">{location}</p>
+        ) : null}
       </div>
       <AuthoredField
         label="Description"

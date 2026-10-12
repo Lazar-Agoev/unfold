@@ -22,13 +22,16 @@ function canvas(html: string): HTMLElement {
 }
 
 describe("drawnGeometry", () => {
-  it("reads each drawn node's box, and each Flow card's steps as drawn", () => {
+  it("reads each drawn node's box, and each Flow card's own steps as drawn (not those of a call expanded in place)", () => {
     const container = canvas(`
       <div class="react-flow__node" data-id="flow"><div class="flow-view">
         <div class="flow-pill kind-start" data-flow-node="s"></div>
         <div class="flow-node" data-flow-node="1"><span class="flow-label fallback">x</span></div>
         <div class="flow-node" data-flow-node="2"><span class="flow-label">Check it</span></div>
         <div class="flow-node kind-group" data-flow-node="3"><span class="flow-label fallback">y</span></div>
+        <div class="flow-inset-slot"><section class="flow-inset"><div class="flow-view inset">
+          <div class="flow-node" data-flow-node="1"><span class="flow-label fallback">a callee's step</span></div>
+        </div></section></div>
         <div class="flow-pill kind-end" data-flow-node="e"></div>
       </div></div>
       <div class="react-flow__node" data-id="code"><div class="code-view"></div></div>`);

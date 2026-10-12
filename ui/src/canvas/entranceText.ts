@@ -1,6 +1,6 @@
-/** How an entrance card names itself: its title, and what its card shows (which its width follows). */
+/** How an entrance card names itself: its title, what its card shows (which its width follows), and its targets' heading. */
 
-import type { CardView } from "../ipc/generated";
+import type { CardView, TargetView } from "../ipc/generated";
 import type { EntranceWidthInput } from "./sizing";
 
 /** The entrance's title as the trail and a new board show it: its label, or `POST /orders`. */
@@ -25,4 +25,12 @@ export function entranceCardText(card: Extract<CardView, { type: "entrance" }>):
     location: `${evidence.path}${evidence.startLine !== null ? `:${evidence.startLine}` : ""}`,
     handlers: card.targets.map((handler) => handler.name ?? handler.text),
   };
+}
+
+/**
+ * The heading over an entrance's targets, from the roles they were returned with: "Starts" when every
+ * target is a launch's startup, else "Handlers, in order".
+ */
+export function targetsHeading(targets: readonly TargetView[]): string {
+  return targets.length > 0 && targets.every((target) => target.role === "startup") ? "Starts" : "Handlers, in order";
 }

@@ -52,8 +52,8 @@ describe("add_cards", () => {
     inView(test);
     const { text } = await test.call(addCards, {
       cards: [
-        { key: CREATE_ORDER, project: "ts-orders", view: "flow", frame: "server", follow: { callees: 2 } },
-        { key: "src/pay.ts#function:charge", project: "payments", follow: { types: 1 } },
+        { key: CREATE_ORDER, project: "ts-orders", expanded: true, frame: "server", follow: { callees: 2 } },
+        { key: "src/pay.ts#function:charge", project: "payments", view: "diagram", follow: { types: 1 } },
       ],
     });
     expect(edits(test)).toMatchObject([
@@ -62,7 +62,7 @@ describe("add_cards", () => {
         page: "page-1",
         agent: { author: "agent:claude", name: "Claude" },
         title: "Add cards",
-        ops: [{ op: "add_cards", cards: [{ key: CREATE_ORDER, view: "flow", frame: "server", follow: { callees: 2 } }, { key: "src/pay.ts#function:charge", project: "p-pay", follow: { types: 1 } }] }],
+        ops: [{ op: "add_cards", cards: [{ key: CREATE_ORDER, expanded: true, frame: "server", follow: { callees: 2 } }, { key: "src/pay.ts#function:charge", project: "p-pay", view: "diagram", follow: { types: 1 } }] }],
       },
     ]);
     expect(edits(test)[0]?.ops[0]).not.toHaveProperty(["cards", 0, "project"]);
@@ -73,7 +73,7 @@ describe("add_cards", () => {
       "- charge (card id charge, kept)",
       "follow.types follows a type's fields, and charge isn't a type declaration or a class, so no types were added for it.",
       `Ids: board ${BOARD.id}, page page-1. One undo step in Unfold, saved.`,
-      "Next: set_view to choose how cards show, arrange_page for a clean layout, then check.",
+      "Next: set_view to expand the cards the page is about (and calls in place), arrange_page for a clean layout, then check.",
     ]);
   });
 
@@ -114,12 +114,53 @@ describe("add_cards", () => {
 });
 
 describe("set_view", () => {
+  const CALL = `${CREATE_ORDER}/variable:order/call[0]`;
+  const PLACE_CALL = "src/services/order-service.ts#class:OrderService/method:place/expression_statement[1]/call[0]";
+
+  it("sends expansion and calls to expand in place, and says how each card shows and what the page opens in", async () => {
+    const card = { kind: "card", id: "create-order", status: "updated", key: CREATE_ORDER, project: PROJECT, name: "createOrder", expanded: true, expandedCalls: [[CALL], [CALL, PLACE_CALL]] } as const;
+    const test = harness({ window: window([card, { kind: "card", id: "place", status: "updated", key: "k", project: PROJECT, name: "OrderService.place", expanded: false, expandedCalls: [] }]) });
+    inView(test);
+    const { text } = await test.call(setView, {
+      items: [
+        { id: "create-order", expanded: true, expandCalls: [[CALL, PLACE_CALL]], collapseCalls: [[`${CREATE_ORDER}/expression_statement[0]/call[0]`]] },
+        { id: "place", view: "code" },
+      ],
+      defaultView: "code",
+    });
+    expect(edits(test)[0]?.ops).toEqual([
+      {
+        op: "set_view",
+        items: [
+          { id: "create-order", expanded: true, expandCalls: [[CALL, PLACE_CALL]], collapseCalls: [[`${CREATE_ORDER}/expression_statement[0]/call[0]`]] },
+          { id: "place", view: "code" },
+        ],
+        defaultView: "code",
+      },
+    ]);
+    expect(text.split("\n").slice(1, 6)).toEqual([
+      "Items (2 updated):",
+      `- createOrder (card id create-order, updated): expanded, calls expanded in place [${CALL}], [${CALL} › ${PLACE_CALL}]`,
+      "- OrderService.place (card id place, updated): compact",
+      'Code is a page-wide lens (defaultView "code"): view "code" expanded that card in Diagram.',
+      "The page opens in Code, every card's source; expansions show in Diagram.",
+    ]);
+  });
+
+  it("refuses a call path deeper than three levels before it reaches the window, saying what to do instead", async () => {
+    const test = harness({ window: window([]) });
+    inView(test);
+    const deep = await test.call(setView, { items: [{ id: "create-order", expandCalls: [["a", "b", "c", "d"]] }] });
+    expect(deep).toMatchObject({ isError: true, text: "A call path holds 1 to 3 keys: expand at most three levels, and follow a deeper call to its own card (add_cards)." });
+    expect(edits(test)).toEqual([]);
+  });
+
   it("takes item links of the page edited, and refuses links to another page", async () => {
     const test = harness({ window: window([{ kind: "card", id: "create-order", status: "updated", key: CREATE_ORDER, project: PROJECT, name: "createOrder" }]) });
     inView(test);
     const { text } = await test.call(setView, { items: [{ id: `unfold://ts-orders/${BOARD.id}?page=page-1&item=create-order`, view: "flow" }], defaultView: "diagram" });
     expect(edits(test)[0]?.ops).toEqual([{ op: "set_view", items: [{ id: "create-order", view: "flow" }], defaultView: "diagram" }]);
-    expect(text.split("\n").slice(1, 4)).toEqual(["Items (1 updated):", "- createOrder (card id create-order, updated)", "Cards without their own view show Diagram."]);
+    expect(text.split("\n").slice(1, 4)).toEqual(["Items (1 updated):", "- createOrder (card id create-order, updated)", "The page opens in Diagram."]);
     const other = await test.call(setView, { page: "page-1", items: [{ id: `unfold://ts-orders/${BOARD.id}?page=page-2&item=x`, view: "flow" }] });
     expect(other.text).toBe(`Can't use the link: it names an item of another page (page-2 of ${BOARD.id}). Edit one page per call: pass ids of items on the page you're editing.`);
   });
@@ -138,6 +179,15 @@ describe("arrange_page", () => {
 });
 
 describe("remove_items", () => {
+  it("takes a proposed step's link (Copy link on a proposal), and says the proposal went, not code", async () => {
+    const after = `${CREATE_ORDER}/variable:order`;
+    const test = harness({ window: window([{ kind: "proposal", id: "email-a-confirmation", status: "removed", card: "create-order", after, title: "Email a confirmation" }]) });
+    inView(test);
+    const { text } = await test.call(removeItems, { ids: [`unfold://ts-orders/${BOARD.id}?page=page-1&item=email-a-confirmation`] });
+    expect(edits(test)[0]?.ops).toEqual([{ op: "remove_items", ids: ["email-a-confirmation"] }]);
+    expect(text.split("\n").slice(1, 3)).toEqual(["Items (1 removed):", `- proposed step “Email a confirmation” (proposal id email-a-confirmation; removed) in card create-order, after the step ${after}`]);
+  });
+
   it("is destructive, passes keepMembers and replacePeopleText, and passes on a refusal to remove a person's words", async () => {
     expect(removeItems.annotations).toEqual({ readOnlyHint: false, destructiveHint: true, idempotentHint: false });
     expect(addCards.annotations).toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: true });

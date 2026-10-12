@@ -72,6 +72,10 @@
   --color-success-text: #14622f;
   --color-success-body: #2f5b3c;
   --color-success: #16a34a;
+  /* Proposed steps: dashed green on a light tint, built on the success color */
+  --color-proposed: #16a34a;
+  --color-proposed-ink: #15803d;
+  --color-proposed-tint: #f0fdf4;
   --color-danger: #dc2626;
   --color-on-danger: #ffffff;
 
@@ -227,6 +231,9 @@
     --color-success-text: #7ee2a2;
     --color-success-body: #b9d9c3;
     --color-success: #4ade80;
+    --color-proposed: #4ade80;
+    --color-proposed-ink: #7ee2a2;
+    --color-proposed-tint: #16261c;
     --color-danger: #f87171;
     --color-on-danger: #151619;
 
@@ -326,6 +333,9 @@
   --color-success-text: #7ee2a2;
   --color-success-body: #b9d9c3;
   --color-success: #4ade80;
+  --color-proposed: #4ade80;
+  --color-proposed-ink: #7ee2a2;
+  --color-proposed-tint: #16261c;
   --color-danger: #f87171;
   --color-on-danger: #151619;
 

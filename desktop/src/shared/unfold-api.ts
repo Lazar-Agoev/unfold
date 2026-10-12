@@ -61,9 +61,8 @@ export type MenuCommand =
   /** View > Home. */
   | "show_home"
   | "toggle_sidebar"
-  /** View > Diagram / Flow / Code: the board's lens. */
+  /** View > Diagram / Code: the board page's lens. */
   | "lens_diagram"
-  | "lens_flow"
   | "lens_code"
   /** Go > Add, Go to File, Go to Function, Commands: Add opened as is, on Files, on Functions, or with `>`. */
   | "add"

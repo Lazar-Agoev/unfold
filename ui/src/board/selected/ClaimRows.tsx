@@ -1,8 +1,8 @@
 /**
  * Rows Selected shows for authored claims (resource cards and connections): what an item of the page
- * is called, what a claim cites (each anchor opening its source in the peek sheet: a key at its block,
- * an evidence range at its lines), the connections in and out of an item, and a type that opens its
- * definition in place.
+ * is called, what a claim cites (each anchor opening its source in the peek sheet as View code
+ * resolves it: a key at its block's first line, an evidence range highlighting its lines), the
+ * connections in and out of an item, and a type that opens its definition in place.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -16,6 +16,7 @@ import type { Anchor, Link, Page, ProjectId } from "../../ipc/generated";
 import { cardKey, findCard, findFrame, findNote, findResource, keyDisplayName, select, toggledOpenTypes, type PageTarget } from "../../state/boards";
 import { openPeek } from "../../state/overlays";
 import { resolveRefProject, useProjectIndex } from "../../state/workspace";
+import { anchorSource } from "../viewCode";
 import { RelationRow } from "./Relations";
 
 /** An item of the page as Selected names it: a card's name, a resource card's, a frame's title, a note's start. */
@@ -48,26 +49,17 @@ export function selectItem(target: PageTarget, page: Page, id: string): void {
 function AnchorRow({ project, anchor, label }: { readonly project: ProjectId | null; readonly anchor: Anchor; readonly label?: string }) {
   const key = "key" in anchor ? anchor.key : null;
   const query = useQuery({ ...cardQuery(project ?? "", key ?? ""), enabled: project !== null && key !== null });
-  const model = query.data;
-  let place: { readonly path: string; readonly line?: number } | null = null;
-  if ("file" in anchor) {
-    place = { path: anchor.file, line: anchor.lines[0] };
-  } else if (model?.type === "block") {
-    place = { path: model.header.path, line: model.header.startLine };
-  } else if (model?.type === "entrance") {
-    place = { path: model.evidence.path, ...(model.evidence.startLine !== null ? { line: model.evidence.startLine } : {}) };
-  }
+  const open = project !== null ? anchorSource(project, anchor, query.data).target : null;
   const name = "key" in anchor ? keyDisplayName(anchor.key) : `${shortPath(anchor.file)}:${anchor.lines[0]}–${anchor.lines[1]}`;
-  const where = "key" in anchor && place ? ` · ${shortPath(place.path)}${place.line !== undefined ? `:${place.line}` : ""}` : "";
-  const open = project !== null && place !== null ? place : null;
+  const where = "key" in anchor && open ? ` · ${shortPath(open.path)}${open.line !== undefined ? `:${open.line}` : ""}` : "";
   return (
     <RelationRow
       {...(label !== undefined ? { label } : {})}
       title={"key" in anchor ? anchor.key : anchor.file}
-      {...(open && project !== null
+      {...(open
         ? {
             onActivate: () => {
-              openPeek({ project, path: open.path, ...(open.line !== undefined ? { line: open.line } : {}) });
+              openPeek(open);
             },
           }
         : {})}

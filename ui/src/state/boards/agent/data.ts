@@ -82,6 +82,11 @@ export class AgentData {
     return project === null ? undefined : (this.models.get(cardRefKey(project, key)) ?? undefined);
   }
 
+  /** A model as loaded: null when the key isn't in the graph, undefined when it wasn't loaded yet. */
+  loaded(project: ProjectId, key: Key): CardView | null | undefined {
+    return this.models.get(cardRefKey(project, key));
+  }
+
   /** Every loaded model by `cardRefKey(project, key)`, as arrows are computed from them. */
   loadedModels(): Map<string, CardView> {
     return new Map([...this.models].flatMap(([ref, model]) => (model ? [[ref, model] as const] : [])));

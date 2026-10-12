@@ -108,7 +108,10 @@
 
 .flow-region.kind-group.selected { box-shadow: inset 3px 0 0 var(--color-authored), 0 0 0 3px var(--color-selection); }
 
-/* The title band: GROUP_TITLE in layout.ts (top 6, 16px lines, the title 26px in, 10px from the right). */
+/*
+ * The title band: GROUP_TITLE in layout.ts (top 6, 16px lines, the title 26px in, and 44px from the right:
+ * 10px of padding, a 6px gap, and the 28px `</>`).
+ */
 .flow-group-heading {
   position: absolute;
   display: flex;
@@ -269,6 +272,51 @@
 .flow-node.kind-condition .flow-type { color: var(--color-decision); }
 .flow-node.kind-opaque .flow-type { color: var(--color-warn); }
 
+/*
+ * View code's `</>` (ViewCodeButton): at the end of a step's type row and of a combined block's, and on
+ * an expanded combined block's title band. It shows while its step is hovered or selected, or focused.
+ */
+.view-code {
+  display: inline-grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 28px;
+  height: 14px;
+  margin-left: auto;
+  border: 1px solid var(--color-selection-line);
+  border-radius: var(--radius-chip);
+  background: var(--color-surface);
+  font: 400 10px/12px var(--font-code);
+  letter-spacing: 0;
+  color: var(--color-accent-text);
+  cursor: pointer;
+}
+
+.view-code:hover {
+  border-color: var(--color-accent-soft);
+  background: var(--color-selection);
+}
+
+.flow-node .view-code,
+.flow-group-heading .view-code { opacity: 0; }
+
+.flow-node:hover .view-code,
+.flow-node.selected .view-code,
+.flow-group-heading:hover .view-code,
+.flow-group-heading.selected .view-code,
+.view-code:focus-visible { opacity: 1; }
+
+.flow-group-heading .view-code { margin-top: 1px; }
+
+/* A condition's `</>` sits at its box's top-right corner, beside the diamond. */
+.flow-corner-code {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 1;
+  display: flex;
+}
+
 .flow-label {
   position: relative;
   margin-top: 3px;
@@ -364,3 +412,180 @@
 .flow-leader.authored {
   background: repeating-linear-gradient(to right, color-mix(in srgb, var(--color-authored) 70%, transparent) 0 4px, transparent 4px 7px);
 }
+
+/*
+ * Calls expanded in place. The chevron sits before a resolved call's follow link or a callback's chip,
+ * in the same row (the rows keep layout.ts's heights: callee row 16, callback row 22).
+ */
+.flow-call-row,
+.flow-callback-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.flow-call-row { height: 16px; margin-top: 3px; }
+.flow-callback-row { height: 22px; margin-top: 4px; }
+.flow-call-row .flow-callee,
+.flow-callback-row .flow-callback { min-width: 0; margin-top: 0; }
+.flow-callback.expanded { border-color: var(--color-accent-soft); background: var(--color-hover); }
+
+.flow-call-toggle {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 12px;
+  height: 16px;
+  border-radius: var(--radius-chip);
+  color: var(--color-accent-text);
+}
+
+.flow-call-toggle:hover { background: var(--color-hover); }
+
+/* The room layout.ts keeps under a node: its insets, stacked INSET_GAP (8px) apart. */
+.flow-inset-slot {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/*
+ * One inset (INSET_CHROME in insets.ts): a quiet 2px rule on the left, a 26px title row, the 16px "via"
+ * caption of a one-call callback, then the callee's own Flow (or a 36px note while there is none).
+ */
+.flow-inset {
+  position: relative;
+  flex-shrink: 0;
+  border-left: 2px solid var(--color-accent-soft);
+  background: color-mix(in srgb, var(--color-hover) 50%, transparent);
+  cursor: default;
+}
+
+.flow-inset-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px 0 8px;
+}
+
+.flow-inset-title .flow-call-toggle { background: none; }
+
+.flow-inset-glyph {
+  flex-shrink: 0;
+  font: 700 12px/16px var(--font-code);
+  color: var(--color-accent-text);
+}
+
+.flow-inset-name {
+  min-width: 0;
+  overflow: hidden;
+  font: 600 12px/16px var(--font-code);
+  color: var(--color-text);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.flow-inset-name:hover { text-decoration: underline; }
+
+.flow-inset-location {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font: 11px/14px var(--font-code);
+  color: var(--color-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.flow-inset-follow {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 20px;
+  height: 18px;
+  border-radius: var(--radius-chip);
+  font: 600 12px/1 var(--font-ui);
+  color: var(--color-accent-text);
+}
+
+.flow-inset-follow:hover { background: var(--color-hover); }
+
+.flow-inset-via {
+  height: 16px;
+  padding: 0 10px 0 26px;
+  overflow: hidden;
+  font: 11px/16px var(--font-ui);
+  color: var(--color-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.flow-inset-note { height: 36px; overflow: hidden; }
+.flow-inset-note .card-note { white-space: nowrap; }
+.flow-view.inset { padding-bottom: 0; }
+
+/*
+ * Proposed steps: dashed green on a light tint, a PROPOSED type row, and the title as plain words
+ * (layout.ts sizes the box with the same numbers as a step: the 1.5px border is inside its 8px). Their
+ * connectors are dashed green, apart from the solid compiled routes beside them. A proposed step whose
+ * step is missing takes the placeholder look; one whose step is held, the review color.
+ */
+.flow-proposal {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  padding: 6.5px 10.5px;
+  border: 1.5px dashed var(--color-proposed);
+  border-radius: var(--radius-control);
+  background: var(--color-proposed-tint);
+  cursor: pointer;
+}
+
+.flow-proposal.selected { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-proposed) 22%, transparent); }
+.flow-proposal .flow-type { color: var(--color-proposed-ink); }
+.flow-proposal .flow-type i { background: var(--color-proposed); }
+
+.flow-proposal-agent {
+  display: inline-flex;
+  margin-left: auto;
+  color: var(--color-proposed-ink);
+}
+
+.flow-proposal-title {
+  margin-top: 3px;
+  font: 500 13px/18px var(--font-ui);
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.flow-proposal-note {
+  margin-top: 3px;
+  font: 400 11px/16px var(--font-ui);
+  color: var(--color-warn);
+  overflow-wrap: anywhere;
+}
+
+.flow-proposal.missing {
+  border-color: var(--color-placeholder-line);
+  background: var(--color-placeholder);
+}
+
+.flow-proposal.missing .flow-type,
+.flow-proposal.missing .flow-proposal-agent { color: var(--color-muted); }
+.flow-proposal.missing .flow-type i { background: var(--color-placeholder-line); }
+.flow-proposal.held { border-color: var(--color-review); }
+.flow-proposal.missing.selected,
+.flow-proposal.held.selected { box-shadow: 0 0 0 3px var(--color-selection); }
+
+.flow-proposal-edge {
+  fill: none;
+  stroke: var(--color-proposed);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.flow-arrowhead.proposed { fill: var(--color-proposed); }

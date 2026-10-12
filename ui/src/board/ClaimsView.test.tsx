@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { queryClient } from "../ipc/client";
 import type { Card, CardView, Health, HealthItem, Link, Page, Resource, TypeDefinition, TypeMember } from "../ipc/generated";
 import { engineKey } from "../ipc/queries";
-import { removeCard, select } from "../state/boards";
+import { removeCard, select, setCardExpanded } from "../state/boards";
 import * as store from "../state/boards/store";
 import { fixture, installFakeEngine, type FakeEngine } from "../test/engine";
 import { HEALTHY, boardDocument, boardState, page, projectRow, workspaceView } from "../test/workspace";
@@ -314,19 +314,29 @@ describe("connections", () => {
     });
   });
 
-  it("leave from their step's line in Code, and from the card's edge in Diagram", async () => {
+  it("leave from their step's line in Code and in an expanded card, and from the card's edge when it is compact", async () => {
     open({ links: [queue] }, HEALTHY, "code");
     const { container } = renderBoard();
     const port = `step:${ENQUEUE.source}`;
     await waitFor(() => {
       expect(container.querySelector(`[data-card-id="create-order"] .code-row [data-handleid="${port}"]`)).not.toBeNull();
     });
+    // Diagram: the card inherits the page's Code default, so it is expanded, and the port is on its step.
     act(() => {
       store.setPageLens(PAGE, "diagram");
     });
     await waitFor(() => {
-      expect(container.querySelector(`[data-card-id="create-order"] [data-handleid="${port}"]`)).toBeNull();
+      expect(container.querySelector(`[data-card-id="create-order"] .flow-leader [data-handleid="${port}"]`)).not.toBeNull();
     });
+    act(() => {
+      store.editPage(PAGE, (draft) => {
+        setCardExpanded(draft, "create-order", false);
+      });
+    });
+    await waitFor(() => {
+      expect(container.querySelector(`.diagram-card[data-card-id="create-order"]`)).not.toBeNull();
+    });
+    expect(container.querySelector(`[data-card-id="create-order"] [data-handleid="${port}"]`)).toBeNull();
   });
 
   it("open the type they carry from the chip, as a typed line does", async () => {

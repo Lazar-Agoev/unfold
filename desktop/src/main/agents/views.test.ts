@@ -9,7 +9,7 @@ const REPORT: ViewReport = {
   board: ORDERS,
   page: "page-1",
   selection: { kind: "card", id: "create-order" },
-  lens: "flow",
+  lens: "diagram",
   visible: ["create-order", "place"],
   tabs: [ORDERS, DRAFT],
 };
@@ -20,6 +20,8 @@ describe("parseViewReport", () => {
     const selections = [
       { kind: "none" },
       { kind: "step", card: "create-order", key: "src/a.ts#function:a/if[0]" },
+      { kind: "step", card: "create-order", key: "src/b.ts#function:b/if[0]", owner: "src/b.ts#function:b" },
+      { kind: "proposal", id: "email-a-confirmation" },
       { kind: "group", id: "checks" },
       { kind: "link", id: "a-to-b" },
       { kind: "frame", id: "server" },
@@ -42,6 +44,9 @@ describe("parseViewReport", () => {
       expect(parseViewReport({ ...REPORT, selection })?.selection).toEqual(selection);
     }
     expect(parseViewReport({ selection: { kind: "none" }, visible: [], tabs: [] })).toEqual({ selection: { kind: "none" }, visible: [], tabs: [] });
+    // A window from before the Diagram/Code switch reports Flow, which is Diagram now.
+    expect(parseViewReport({ ...REPORT, lens: "flow" })?.lens).toBe("diagram");
+    expect(parseViewReport({ ...REPORT, lens: "code" })?.lens).toBe("code");
   });
 
   it("refuses malformed reports", () => {
@@ -55,6 +60,8 @@ describe("parseViewReport", () => {
       { ...REPORT, selection: { kind: "frame" } },
       { ...REPORT, selection: { kind: "table", id: "x" } },
       { ...REPORT, selection: { kind: "note" } },
+      { ...REPORT, selection: { kind: "proposal" } },
+      { ...REPORT, selection: { kind: "step", card: "a", key: "k", owner: 3 } },
       { ...REPORT, selection: { kind: "line", from: "a", to: "b", project: "p", source: "s", seq: 0.5, line: null } },
       { ...REPORT, selection: { kind: "calls", from: "a", to: "b", project: "p", calls: [{ source: "s", seq: 0, line: "12" }] } },
       { ...REPORT, selection: { kind: "calls", from: "a", to: "b", project: "p", calls: "s" } },

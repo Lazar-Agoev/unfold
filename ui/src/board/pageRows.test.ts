@@ -72,6 +72,31 @@ describe("On this page", () => {
     expect(own.multiProject).toBe(false);
   });
 
+  it("lists each proposed step under its card, after its groups and before its links, marked when it needs review", () => {
+    const proposed = page("page-1", cards, {
+      groups: [{ id: "hold", card: "create-order", title: "Hold stock, then charge", members: [], collapsed: false }],
+      links: [{ id: "to-receipt", from: "create-order", to: "receipt" }],
+      proposals: [
+        { id: "email", card: "create-order", after: `${KEY}/variable:order`, title: "Email a confirmation", author: "agent:claude" },
+        { id: "retry", card: "charge", after: `${CHARGE}/call[0]`, title: "Retry once", author: "person:maya" },
+      ],
+    });
+    const missing: HealthItem = { page: "page-1", kind: "missing", target: { proposal: "retry" }, message: "The step this proposal goes after is missing", repairs: ["reconnect", "removeProposal"] };
+    const { rows } = pageRows(proposed, outline, { ...context, items: [missing] });
+    expect(rows.map((row) => [row.kind, row.id, row.depth, row.review])).toEqual([
+      ["card", "post-orders", 0, false],
+      ["card", "create-order", 1, false],
+      ["group", "hold", 2, false],
+      ["proposal", "email", 2, false],
+      ["link", "to-receipt", 2, false],
+      ["card", "charge", 2, false],
+      ["proposal", "retry", 3, true],
+      ["card", "receipt", 0, false],
+    ]);
+    const email = rows.find((row) => row.id === "email");
+    expect(email?.kind === "proposal" ? email.proposal.title : null).toBe("Email a confirmation");
+  });
+
   it("lists frames as headings where their first card comes, what they hold under them, nested", () => {
     const framed = page("page-1", cards, {
       frames: [

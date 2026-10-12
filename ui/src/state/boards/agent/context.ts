@@ -21,7 +21,9 @@ import { entranceTitle } from "../api";
 import { cardKey, findCard, keyDisplayName } from "../document";
 import { findFrame } from "../frames";
 import { findNote } from "../notes";
+import { findProposal } from "../proposals";
 import { findResource } from "../resources";
+import { shownView } from "../store";
 import type { BoardRef, CardSize } from "../types";
 import type { AgentData } from "./data";
 
@@ -112,7 +114,7 @@ function describedWords(what: string, description: Pick<Description, "author"> |
 
 /**
  * The words item `id` of a page carries, each with who wrote it (design §6.1): descriptions, labels,
- * step group and frame titles, and a resource card, connection, drawn link, or note itself. An agent
+ * step group and frame titles, and a resource card, connection, drawn link, note, or proposed step itself. An agent
  * replaces or removes none a person wrote unless the person asked (`guardPeopleText`).
  */
 export function itemWords(page: Page, id: string, nameCard: (card: Card) => string): Words[] {
@@ -137,6 +139,10 @@ export function itemWords(page: Page, id: string, nameCard: (card: Card) => stri
   const note = findNote(page, id);
   if (note) {
     return [[`the note “${noteName(note)}”`, note.author]];
+  }
+  const proposal = findProposal(page, id);
+  if (proposal) {
+    return [[`the proposed step “${proposal.title}”`, proposal.author]];
   }
   const frame = findFrame(page, id);
   if (!frame) {
@@ -220,7 +226,7 @@ export function cardSize(ctx: OpContext, page: Pick<Page, "defaultView">, card: 
     {
       key,
       model: ctx.data.model(project, key),
-      view: card.view ?? page.defaultView,
+      view: shownView(null, card, page.defaultView),
       monogram: card.ref.project !== undefined,
       ...(card.description ? { description: card.description } : {}),
       ...(definition ? { definition } : {}),
@@ -237,7 +243,7 @@ export function pageArrows(ctx: OpContext, page: Page): Arrow[] {
       key: cardKey(card),
       project: cardProject(ctx, card),
       entrance: "entrance" in card.ref,
-      body: cardBody(cardKey(card), card.view ?? page.defaultView),
+      body: cardBody(cardKey(card), shownView(null, card, page.defaultView)),
     })),
     ctx.data.loadedModels(),
     lastVerifiedCode,

@@ -20,6 +20,7 @@ import {
   keyDisplayName,
   pushFocusMove,
   requestCardFocus,
+  shownView,
   type PageTarget,
 } from "../state/boards";
 import { call } from "../state/boards/engine";
@@ -69,8 +70,8 @@ export async function showCallers(target: PageTarget, cardId: string): Promise<v
   }
   const refProject = card.ref.project;
   const present = keys.flatMap((key) => findCardByRef(page, key, refProject)?.id ?? []);
-  // New cards show the page's lens, else its default view.
-  const shown = getPageView(target).lens ?? page.defaultView;
+  // New cards have no view of their own: they show what the page's lens gives them.
+  const shown = shownView(getPageView(target).lens, {}, page.defaultView);
   const size = (key: string, index: number) => estimatedCardSize({ key, model: models[index], view: shown, monogram: refProject !== undefined }, measureText);
   const missing = keys.flatMap((key, index) => (findCardByRef(page, key, refProject) ? [] : [{ key, size: size(key, index) }]));
   const positions = callerPlacement(

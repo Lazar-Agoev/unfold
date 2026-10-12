@@ -1,13 +1,16 @@
 /**
  * Selected for a Flow node: its label (the page's, for the card's project), the name from the code it
- * replaces, its type and lines, and where its paths go (each selects that node).
+ * replaces, its type and lines (a link that opens them, as View code does), the block it belongs to,
+ * and where its paths go (each selects that node). A step shown in a call expanded in place belongs to
+ * that callee (`owner`), never to the card showing it.
  */
 
 import { nodeTypeName } from "../../flow/layout";
-import type { Card, FlowModel, FlowNode, ProjectId, RouteKind } from "../../ipc/generated";
+import type { Card, FlowModel, FlowNode, Key, ProjectId, RouteKind } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
 import { cardKey, findPage, itemsFor, keyDisplayName, labelNode, labelsFor, select, useOpenBoard, type PageTarget } from "../../state/boards";
 import { NODE_LABEL_FIELD } from "../unlabeled";
+import { viewCode } from "../viewCode";
 import { AuthoredField } from "./AuthoredField";
 import { RelationRow } from "./Relations";
 
@@ -31,11 +34,13 @@ export interface SelectedNodeProps {
   readonly card: Card;
   readonly project: ProjectId;
   readonly node: FlowNode;
-  /** The card's Flow model without the page's labels: its fallback names. */
+  /** The Flow model showing it (the card's, or the owner's), without the page's labels: its fallback names. */
   readonly model: FlowModel;
+  /** For a step shown in a call expanded in place: the block whose Flow holds it, and its name. */
+  readonly owner?: { readonly key: Key; readonly name: string };
 }
 
-export function SelectedNode({ target, card, project, node, model }: SelectedNodeProps) {
+export function SelectedNode({ target, card, project, node, model, owner }: SelectedNodeProps) {
   const key = node.key ?? "";
   const author = useAuthor();
   const allLabels = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.labels);
@@ -58,26 +63,48 @@ export function SelectedNode({ target, card, project, node, model }: SelectedNod
   const fallback = node.fallback === true ? node.label : null;
   const go = (to: FlowNode) => () => {
     if (to.key !== undefined) {
-      select(target, { kind: "card", cardId: card.id, key: to.key });
+      select(target, { kind: "card", cardId: card.id, key: to.key, ...(owner ? { owner: owner.key } : {}) });
     }
   };
+  const selectCard = () => {
+    select(target, { kind: "card", cardId: card.id, key: null });
+  };
+  // "line 27" opens the step's own source, as View code does.
+  const where = lines ? (
+    <>
+      {" · "}
+      <button
+        type="button"
+        className="selected-link"
+        onClick={() => {
+          viewCode(target, { kind: "card", cardId: card.id, key, ...(owner ? { owner: owner.key } : {}) });
+        }}
+      >
+        {lines}
+      </button>
+    </>
+  ) : null;
   return (
     <>
       <div className="selected-identity">
         <h3 className="selected-name ui">{shownLabel(node)}</h3>
-        <p className="selected-location">
-          {nodeTypeName(node)}
-          {lines ? ` · ${lines}` : ""} · in{" "}
-          <button
-            type="button"
-            className="selected-link"
-            onClick={() => {
-              select(target, { kind: "card", cardId: card.id, key: null });
-            }}
-          >
-            {keyDisplayName(cardKey(card))}
-          </button>
-        </p>
+        {owner ? (
+          <p className="selected-location">
+            {nodeTypeName(node)}
+            {where} · in <span title={owner.key}>{owner.name}</span>, expanded in{" "}
+            <button type="button" className="selected-link" onClick={selectCard}>
+              {keyDisplayName(cardKey(card))}
+            </button>
+          </p>
+        ) : (
+          <p className="selected-location">
+            {nodeTypeName(node)}
+            {where} · in{" "}
+            <button type="button" className="selected-link" onClick={selectCard}>
+              {keyDisplayName(cardKey(card))}
+            </button>
+          </p>
+        )}
       </div>
       <AuthoredField
         label="Flow label"

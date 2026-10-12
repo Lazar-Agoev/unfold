@@ -1,24 +1,33 @@
 /**
- * A block card: one definition (or another indexed block) of a project in Code or Flow. The header shows
- * the project monogram (a card from another project), `ƒ`, the name, the file, and the card's own Diagram
- * | Flow | Code switch (saved with the board); a review banner and the description follow. A folded card
- * (double-click its header) shows only the header, and its arrows attach there. The body never scrolls:
- * the card sizes itself to its content. Flow shows the page's labels for the card's project and the
- * card's groups as step groups; a group's one `collapsed` field folds it in both views.
+ * A block card: one definition (or another indexed block) of a project in Code (the Code lens) or Flow
+ * (expanded in the Diagram lens, where its header starts with the chevron that makes it compact again).
+ * The header shows the project monogram (a card from another project), `ƒ`, the name, and the file; a
+ * review banner and the description follow. A folded card (double-click its header) shows only the
+ * header, and its arrows attach there. The body never scrolls: the card sizes itself to its content.
+ * Flow shows the page's labels for the card's project and the card's groups as step groups (a group's
+ * one `collapsed` field folds it in both views), and the calls the card expands in place
+ * (`CallInsets`): an inset under the call, while the call's own arrow keeps leaving from its step.
+ * In Flow, Shift-click selects a run of its own steps (Combine), `</>` on a step or a combined block
+ * opens its source (View code), and right-click opens a step's menu. Its proposed steps show in its
+ * own Flow only (never in Code, nor in another card's inset), with the missing or held treatment
+ * their health gives them.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { useUpdateNodeInternals } from "@xyflow/react";
 import { useLayoutEffect, useMemo, type ReactNode } from "react";
+import { stepRun } from "../../board/combine";
+import { viewCode } from "../../board/viewCode";
 import { Monogram, showToast } from "../../components";
 import { CodeView, portSpot } from "../../code/CodeView";
 import { defaultFolds, groupConflict, groupSelection } from "../../code/outline";
 import { shortPath } from "../../code/text";
-import { FlowView, flowPortNodes } from "../../flow/FlowView";
+import { FlowView, flowPortNodes, type FlowProposals, type ProposalMark } from "../../flow/FlowView";
 import { stepGroups } from "../../flow/groups";
 import { useEngineQuery } from "../../ipc/queries";
-import { layoutFlow } from "../../flow/layout";
-import type { CallLink, Card, CodeText, CodeView as CodeViewModel, ProjectId, View } from "../../ipc/generated";
+import { insetRoom } from "../../flow/insets";
+import { layoutFlow, type ProposalSpec } from "../../flow/layout";
+import type { CallLink, Card, CodeText, CodeView as CodeViewModel, HealthItem, Key, ProjectId, Proposal, View } from "../../ipc/generated";
 import {
   addGroup,
   editGroup,
@@ -36,6 +45,7 @@ import {
   useOpenBoard,
   usePageView,
   type PageTarget,
+  type Selection,
 } from "../../state/boards";
 import { cardQuery, isMissing, lastVerifiedCode } from "../cardData";
 import { ProjectScope } from "../ProjectScope";
@@ -43,13 +53,34 @@ import { CARD_MAX_WIDTH } from "../layout";
 import { useMeasure } from "../measure";
 import { blockCardWidth, codeContentWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";
+import { flowExpansion, useCallInsets, type InsetContext } from "./CallInsets";
 import { InlineCallee } from "./InlineCallee";
-import { CardGlyph, CardHandles, CardNote, DescriptionStrip, HeaderPorts, ViewSwitch, renderPorts, toggleCardFolded } from "./parts";
+import { CardGlyph, CardHandles, CardNote, DescriptionStrip, ExpandToggle, HeaderPorts, renderPorts, toggleCardFolded } from "./parts";
 import { ReviewBanner } from "./ReviewBanner";
 import { clickCard } from "./select";
 
 const NO_FOLDS: readonly string[] = [];
 const NO_KEYS: readonly string[] = [];
+const NO_PROPOSALS: readonly Proposal[] = [];
+
+/** Why where a proposed step goes needs review: its step is missing, or held. */
+const PROPOSAL_NOTES = {
+  missing: "The step it went after is missing.",
+  held: "The step it goes after is held for review.",
+} as const;
+
+/** The health of each proposed step of a page, by id: missing or held. */
+function proposalStates(items: readonly HealthItem[] | undefined, page: string): Map<string, "missing" | "held"> {
+  const states = new Map<string, "missing" | "held">();
+  for (const item of items ?? []) {
+    if (item.page === page && "proposal" in item.target && (item.kind === "missing" || item.kind === "review")) {
+      states.set(item.target.proposal, item.kind === "missing" ? "missing" : "held");
+    }
+  }
+  return states;
+}
+/** The widest a card's own Flow may be: the card's widest less its border. */
+const FLOW_MAX_WIDTH = CARD_MAX_WIDTH - 2;
 
 export interface BlockCardProps {
   readonly target: PageTarget;
@@ -80,12 +111,23 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
     [header],
   );
   const source = useMemo(() => (definition ? { path: definition.path, line: definition.line, definition } : null), [definition]);
-  const menu = useCardMenu(target, project, card.id, folded, true, source);
+  const menu = useCardMenu(target, project, card.id, folded, true, source, header?.qualifiedName ?? keyDisplayName(key));
 
   const codeFolds = usePageView(target, (pageView) => pageView.codeFolds[card.id]);
   const expandedKeys = usePageView(target, (pageView) => pageView.expanded[card.id] ?? NO_KEYS);
   const openChains = usePageView(target, (pageView) => pageView.flowChains[card.id] ?? NO_KEYS);
-  const selectedKey = usePageView(target, ({ selection }) => (selection.kind === "card" && selection.cardId === card.id ? selection.key : null));
+  // A step of the card's own Flow, or (with its owner) one shown in a call expanded in place.
+  const selectedKey = usePageView(target, ({ selection }) =>
+    selection.kind === "card" && selection.cardId === card.id && selection.owner === undefined ? selection.key : null,
+  );
+  const insetKey = usePageView(target, ({ selection }) =>
+    selection.kind === "card" && selection.cardId === card.id && selection.owner !== undefined ? selection.key : null,
+  );
+  const insetOwner = usePageView(target, ({ selection }) => (selection.kind === "card" && selection.cardId === card.id ? selection.owner : undefined));
+  // The last step of a Shift-selected run of the card's own steps, which starts at `selectedKey`.
+  const runLast = usePageView(target, ({ selection }) =>
+    selection.kind === "card" && selection.cardId === card.id && selection.owner === undefined ? (selection.last ?? null) : null,
+  );
   // A selected line from or to this card: the caller's line keeps the selection fill, the callee
   // marks the lines the contract reads (the contract's query, shared with the contract itself).
   const line = usePageView(target, ({ selection }) => (selection.kind === "line" && (selection.from === card.id || selection.to === card.id) ? selection : null));
@@ -102,12 +144,44 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
   const allGroups = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.groups);
   const labels = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.labels);
   const health = useOpenBoard(target.board, (board) => board.health);
-  const groups = useMemo(() => {
-    const broken = new Set(
-      (health?.items ?? []).flatMap((item) => (item.page === target.page && item.kind === "brokenGroup" && "group" in item.target ? [item.target.group] : [])),
+  const broken = useMemo(
+    () =>
+      new Set(
+        (health?.items ?? []).flatMap((item) => (item.page === target.page && item.kind === "brokenGroup" && "group" in item.target ? [item.target.group] : [])),
+      ),
+    [health, target.page],
+  );
+  const cardGroups = useMemo(() => (allGroups ?? []).filter((group) => group.card === card.id), [allGroups, card.id]);
+  const allProposals = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.proposals) ?? NO_PROPOSALS;
+  const selectedProposal = usePageView(target, ({ selection }) => (selection.kind === "proposal" ? selection.proposalId : null));
+  // The card's proposed steps: what the layout keeps room for, and how each is marked.
+  const proposed = useMemo(() => {
+    const states = proposalStates(health?.items, target.page);
+    const own = allProposals.filter((proposal) => proposal.card === card.id);
+    const specs: ProposalSpec[] = own.map((proposal) => {
+      const state = states.get(proposal.id);
+      return {
+        id: proposal.id,
+        after: proposal.after,
+        ...(proposal.path !== undefined ? { path: proposal.path } : {}),
+        title: proposal.title,
+        ...(state !== undefined ? { note: PROPOSAL_NOTES[state] } : {}),
+      };
+    });
+    const marks = new Map<string, ProposalMark>(
+      own.map((proposal) => {
+        const state = states.get(proposal.id);
+        return [proposal.id, { author: proposal.author, ...(state !== undefined ? { state } : {}) }];
+      }),
     );
-    return (allGroups ?? []).filter((group) => group.card === card.id && !broken.has(group.id));
-  }, [allGroups, health, card.id, target.page]);
+    return { specs, marks };
+  }, [allProposals, card.id, health, target.page]);
+  const groups = useMemo(() => cardGroups.filter((group) => !broken.has(group.id)), [cardGroups, broken]);
+  // A run's steps, each drawn selected (its statements' steps when it can be combined).
+  const runKeys = useMemo(() => {
+    const run = runLast !== null && selectedKey !== null && model ? stepRun(model, selectedKey, runLast, cardGroups) : null;
+    return run ? new Set(run.steps.flatMap((step) => (step.key !== undefined ? [step.key] : []))) : undefined;
+  }, [runLast, selectedKey, model, cardGroups]);
 
   // Code: the verified source, or the last verified render kept in memory while the file changed.
   const codeModel: CodeViewModel | null = model?.code ?? null;
@@ -123,10 +197,44 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
   // Laid out only while the card shows Flow: measuring and placing nodes is the costly part of a card.
   const flowModel = view === "flow" ? (model?.flow ?? null) : null;
   const flowGroups = useMemo(() => (flowModel && shown ? stepGroups(groups, shown.outline) : []), [flowModel, groups, shown]);
+  const insets = useCallInsets({
+    target,
+    project,
+    card,
+    flow: !folded && flowModel?.source === "current" ? flowModel : null,
+    labels: labelText,
+    openChains: chainSet,
+    groups: allGroups,
+    broken,
+    measure,
+    maxWidth: FLOW_MAX_WIDTH,
+  });
   const flowLayout = useMemo(
-    () => (flowModel ? layoutFlow(flowModel, { labels: labelText, openChains: chainSet, groups: flowGroups, measure, maxWidth: CARD_MAX_WIDTH - 2 }) : null),
-    [flowModel, labelText, chainSet, flowGroups, measure],
+    () =>
+      flowModel
+        ? layoutFlow(flowModel, {
+            labels: labelText,
+            openChains: chainSet,
+            groups: flowGroups,
+            measure,
+            maxWidth: FLOW_MAX_WIDTH,
+            insets: insetRoom(insets),
+            proposals: proposed.specs,
+          })
+        : null,
+    [flowModel, labelText, chainSet, flowGroups, measure, insets, proposed.specs],
   );
+  const flowProposals: FlowProposals = {
+    marks: proposed.marks,
+    selected: selectedProposal,
+    onSelect: (proposalId) => {
+      if (getPageView(target).linking) {
+        clickCard(target, card.id, null);
+      } else {
+        select(target, { kind: "proposal", proposalId });
+      }
+    },
+  };
   const selectedGroup = usePageView(target, ({ selection }) => (selection.kind === "group" ? selection.groupId : null));
 
   const name = model?.header.qualifiedName ?? keyDisplayName(key);
@@ -134,10 +242,12 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
   // A card from another project names it with its monogram (`ref.project` is its shared name).
   const foreign = card.ref.project;
   const bodyWidth = folded ? null : view === "flow" && flowLayout ? flowLayout.width + 2 : shown ? codeContentWidth(shown, measure) : null;
+  // A call expanded in place may need more than a card's usual widest; the card grows rather than clip it.
+  const insetWidth = !folded && flowLayout && flowLayout.insets.length > 0 ? flowLayout.width + 2 : 0;
   // `measure` changes when the bundled fonts load, so widths come from the real fonts.
   const width = useMemo(
-    () => blockCardWidth({ name, location, monogram: foreign !== undefined, body: bodyWidth }, measure),
-    [name, location, foreign, bodyWidth, measure],
+    () => Math.max(insetWidth, blockCardWidth({ name, location, monogram: foreign !== undefined, chevron: view === "flow", body: bodyWidth }, measure)),
+    [name, location, foreign, view, bodyWidth, insetWidth, measure],
   );
 
   // Which ports the body places; the rest (and all of a folded card's) sit on the header.
@@ -163,10 +273,25 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
   const foldsKey = [...folds].join("\u0000");
   useLayoutEffect(() => {
     updateNodeInternals(card.id);
-  }, [updateNodeInternals, card.id, portsKey, foldsKey, folded, view, width, model, expandedKeys, openChains, groups, pending]);
+  }, [updateNodeInternals, card.id, portsKey, foldsKey, folded, view, width, model, expandedKeys, openChains, groups, pending, flowLayout]);
 
   const selectKey = (blockKey: string) => {
     clickCard(target, card.id, blockKey);
+  };
+  // Shift-click: a run from the selected step of the card's own Flow to this one (else a plain click).
+  const extend = (blockKey: Key) => {
+    const { selection, linking } = getPageView(target);
+    const first = selection.kind === "card" && selection.cardId === card.id && selection.owner === undefined ? selection.key : null;
+    if (linking || first === null || first === key || first === blockKey) {
+      selectKey(blockKey);
+      return;
+    }
+    select(target, { kind: "card", cardId: card.id, key: first, last: blockKey });
+  };
+  // `</>`: selects what it is on and opens its source; the sheet then follows the selection.
+  const showCode = (selection: Selection) => {
+    select(target, selection);
+    viewCode(target, selection);
   };
   // A step group in Flow selects the group, unless a link is being drawn to this card.
   const selectGroup = (groupId: string) => {
@@ -245,6 +370,38 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
   const toggleFolded = () => {
     toggleCardFolded(target, card.id, folded);
   };
+  const toggleChain = (chainKey: string) => {
+    updatePageView(target, (draft) => {
+      draft.flowChains[card.id] = toggled(draft.flowChains[card.id] ?? [], chainKey);
+    });
+  };
+  const toggleGroup = (groupId: string) => {
+    const group = (allGroups ?? []).find((item) => item.id === groupId);
+    if (group) {
+      editGroup(target, groupId, { collapsed: !group.collapsed });
+    }
+  };
+  const insetContext: InsetContext = {
+    target,
+    project,
+    cardId: card.id,
+    paths: card.expanded ?? [],
+    selected: insetKey !== null && insetOwner !== undefined ? { key: insetKey, owner: insetOwner } : null,
+    selectedGroup,
+    follow: (targetKey, anchor) => {
+      follow(targetKey, anchor);
+    },
+    onToggleChain: toggleChain,
+    onSelectGroup: selectGroup,
+    onToggleGroup: toggleGroup,
+    onViewStep: (stepKey, owner) => {
+      showCode({ kind: "card", cardId: card.id, key: stepKey, owner });
+    },
+    onViewGroup: (groupId) => {
+      showCode({ kind: "group", groupId });
+    },
+    onStepMenu: menu.openStepMenu,
+  };
 
   let body: ReactNode;
   if (query.isPending) {
@@ -265,22 +422,26 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
         onOpenCallback={(callback, anchor) => {
           follow(callback.key, anchor);
         }}
-        onToggleChain={(chainKey) => {
-          updatePageView(target, (draft) => {
-            draft.flowChains[card.id] = toggled(draft.flowChains[card.id] ?? [], chainKey);
-          });
-        }}
+        onToggleChain={toggleChain}
         selectedGroup={selectedGroup}
         onSelectGroup={selectGroup}
-        onToggleGroup={(groupId) => {
-          const group = groups.find((item) => item.id === groupId);
-          if (group) {
-            editGroup(target, groupId, { collapsed: !group.collapsed });
-          }
-        }}
+        onToggleGroup={toggleGroup}
         onGroupMenu={menu.openGroupMenu}
+        onExtend={extend}
+        {...(runKeys ? { runKeys } : {})}
+        onViewCode={(stepKey) => {
+          showCode({ kind: "card", cardId: card.id, key: stepKey });
+        }}
+        onViewGroupCode={(groupId) => {
+          showCode({ kind: "group", groupId });
+        }}
+        onStepMenu={(_key, at) => {
+          menu.openStepMenu(at);
+        }}
         ports={flowPorts.byNode}
         renderPorts={renderPorts}
+        expansion={flowExpansion(insetContext, [], [key], insets)}
+        proposals={flowProposals}
       />
     );
   } else if (shown && model) {
@@ -352,6 +513,7 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
     >
       <CardHandles />
       <header className="card-header card-drag" onDoubleClick={toggleFolded}>
+        {view === "flow" && !folded ? <ExpandToggle target={target} cardId={card.id} expanded name={name} /> : null}
         {foreign !== undefined ? <Monogram name={foreign} size={20} /> : null}
         <CardGlyph kind={model?.header.kind ?? null} />
         <h3 className="card-title" title={model?.header.qualifiedName ?? key}>
@@ -360,7 +522,6 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
         <span className="card-location" title={model ? `${model.header.path}:${model.header.startLine}` : undefined}>
           {location}
         </span>
-        {!folded && model ? <ViewSwitch target={target} cardId={card.id} view={view} name={name} /> : null}
         <HeaderPorts ids={headerPorts} />
       </header>
       <ReviewBanner target={target} project={project} cardId={card.id} />

@@ -11,7 +11,7 @@ import { cardKey } from "./page-code";
 import { cant } from "./results";
 
 /** The repairs `repair` applies, by the names it takes. */
-export const REPAIRS = ["reconnect", "remove_card", "remove_label", "ungroup", "remove_link", "remove_resource", "remove_description", "resign", "accept"] as const;
+export const REPAIRS = ["reconnect", "remove_card", "remove_label", "ungroup", "remove_link", "remove_resource", "remove_description", "resign", "accept", "remove_proposal"] as const;
 
 export type RepairName = (typeof REPAIRS)[number];
 
@@ -25,6 +25,7 @@ const NAMES: Readonly<Record<RepairKind, RepairName>> = {
   removeDescription: "remove_description",
   resign: "resign",
   accept: "accept",
+  removeProposal: "remove_proposal",
 };
 
 /** The repairs a health item offers, by the names `repair` takes. */
@@ -45,6 +46,9 @@ export function targetId(target: Target): string {
   }
   if ("link" in target) {
     return target.link;
+  }
+  if ("proposal" in target) {
+    return target.proposal;
   }
   return "resource" in target ? target.resource : target.frame;
 }
@@ -69,6 +73,10 @@ export function targetText(page: Page, target: Target): string {
   if ("resource" in target) {
     const resource = page.resources?.find((item) => item.id === target.resource);
     return resource ? `the ${resource.kind} “${resource.name}”` : `the resource card ${target.resource}`;
+  }
+  if ("proposal" in target) {
+    const proposal = page.proposals?.find((item) => item.id === target.proposal);
+    return proposal ? `the proposed step “${proposal.title}”` : `the proposed step ${target.proposal}`;
   }
   const frame = page.frames?.find((item) => item.id === target.frame);
   return frame ? `the frame “${frame.title}”` : `the frame ${target.frame}`;
@@ -139,6 +147,10 @@ function targetWords(page: Page, target: Target, repair: "resign" | "accept"): W
   if ("resource" in target) {
     const resource = page.resources?.find((entry) => entry.id === target.resource);
     return resource ? resourceWords(resource) : [];
+  }
+  if ("proposal" in target) {
+    const proposal = page.proposals?.find((entry) => entry.id === target.proposal);
+    return proposal ? [{ what: `the proposed step “${proposal.title}”`, author: proposal.author }] : [];
   }
   const frame = page.frames?.find((entry) => entry.id === target.frame);
   return frame ? describe(`the frame “${frame.title}”`, frame.description) : [];
@@ -254,6 +266,11 @@ export function repairSpec(page: Page, item: HealthItem, repair: RepairName, to:
       return { ...at, kind: "remove_description", target };
     case "resign":
       return { ...at, kind: "resign", target };
+    case "remove_proposal":
+      if ("proposal" in target) {
+        return { ...at, kind: "remove_proposal", proposal: target.proposal };
+      }
+      break;
   }
   throw cant(`${repair.replaceAll("_", " ")} ${what}`, "that repair doesn't apply to it", `Its problem offers: ${repairNames(item).join(", ")}.`);
 }

@@ -498,3 +498,218 @@ fn changed_source_shows_only_start_and_why() {
     assert_eq!(codes(&flow), [WarningCode::SourceChanged]);
     assert!(build_flow(&file, 99, Some(text), SourceState::Current, &NoContext).is_err());
 }
+
+/// The text `focus` covers in `text`, counted independently: lines split at `\n`, columns in
+/// UTF-16 code units.
+fn focused(text: &str, focus: SourceFocus) -> String {
+    let units: Vec<u16> = text.encode_utf16().collect();
+    let mut starts = vec![0];
+    starts.extend(
+        units
+            .iter()
+            .enumerate()
+            .filter(|(_, unit)| **unit == u16::from(b'\n'))
+            .map(|(index, _)| index + 1),
+    );
+    let at = |line: u32, column: u32| starts[line as usize - 1] + column as usize;
+    String::from_utf16(&units[at(focus.start_line, focus.start_column)..at(focus.end_line, focus.end_column)])
+        .unwrap()
+}
+
+/// The source of a playground file.
+fn playground_text(folder: &str, path: &str) -> String {
+    std::fs::read_to_string(testdata_dir().join("playgrounds").join(folder).join(path)).unwrap()
+}
+
+#[test]
+fn focus_is_the_condition_the_main_call_or_the_statement() {
+    let playground = Playground::typescript();
+    let flow = playground.flow("src/routes/orders.ts#function:createOrder");
+    let text = playground_text("ts-orders", "src/routes/orders.ts");
+    let gate = node(&flow, "createOrder/if[0]").focus.unwrap();
+    assert_eq!(
+        gate,
+        SourceFocus {
+            start_line: 27,
+            start_column: 6,
+            end_line: 27,
+            end_column: 46
+        }
+    );
+    assert_eq!(
+        focused(&text, gate),
+        r#"req.header("prefer") === "respond-async""#
+    );
+    for (suffix, expected) in [
+        ("createOrder/variable:order", "orderService.place(draft)"),
+        (
+            "createOrder/if[0]/variable:job",
+            r#"ordersQueue.add("place-order", { order: draft })"#,
+        ),
+        (
+            "createOrder/expression_statement[1]",
+            "res.status(201).json(order)",
+        ),
+        ("createOrder/if[0]/return[0]", "return;"),
+        ("createOrder/variable:draft", "draft: OrderDraft = req.body"),
+    ] {
+        let found = node(&flow, suffix).focus.unwrap();
+        assert_eq!(focused(&text, found), expected, "{suffix}");
+    }
+    let start = &flow.nodes[flow.start as usize];
+    let end = &flow.nodes[flow.end.unwrap() as usize];
+    assert_eq!((start.focus, end.focus), (None, None));
+    assert!(
+        flow.nodes
+            .iter()
+            .filter(|node| !matches!(node.kind, FlowNodeKind::Start | FlowNodeKind::End))
+            .all(|node| node.focus.is_some())
+    );
+    // The focus crosses IPC as camelCase lines and columns.
+    assert_eq!(
+        serde_json::to_value(node(&flow, "createOrder/if[0]")).unwrap()["focus"],
+        serde_json::json!({"startLine": 27, "startColumn": 6, "endLine": 27, "endColumn": 46})
+    );
+
+    // A loop's focus is its condition, or else its header; a multi-line statement spans lines.
+    let cleanup = playground.flow("src/jobs/cleanup.ts#function:cleanupExpiredOrders");
+    let text = playground_text("ts-orders", "src/jobs/cleanup.ts");
+    for (suffix, expected) in [
+        ("cleanupExpiredOrders/for[0]", "index < orders.length"),
+        ("do_while[0]", "expired.length > 0"),
+    ] {
+        assert_eq!(
+            focused(&text, node(&cleanup, suffix).focus.unwrap()),
+            expected,
+            "{suffix}"
+        );
+    }
+    let retry = playground.flow("src/lib/retry.ts#function:withRetry");
+    let text = playground_text("ts-orders", "src/lib/retry.ts");
+    let region = node(&retry, "while[0]/try[0]").focus.unwrap();
+    assert_eq!(
+        (region.start_line, region.end_line),
+        (7, 14),
+        "an opaque region's whole block"
+    );
+    assert!(focused(&text, region).starts_with("try {") && focused(&text, region).ends_with('}'));
+    let imports = playground.flow("src/jobs/import-orders.ts#function:importOrders");
+    let text = playground_text("ts-orders", "src/jobs/import-orders.ts");
+    assert_eq!(
+        focused(&text, node(&imports, "importOrders/for_of[0]").focus.unwrap()),
+        "for (const [index, value] of input.entries())"
+    );
+}
+
+#[test]
+fn python_focus_uses_the_same_ranges() {
+    let playground = Playground::python();
+    let flow = playground.flow("src/orders_playground/lib/validate.py#function:validate_order");
+    let text = playground_text("py-orders", "src/orders_playground/lib/validate.py");
+    for (suffix, expected) in [
+        ("validate_order/if[0]", "not isinstance(value, dict)"),
+        (
+            "validate_order/if[0]/if[0]",
+            r#"not isinstance(value.get("customer_id"), str) or not value["customer_id"]"#,
+        ),
+        ("validate_order/variable:items", r#"value.get("items")"#),
+        // A Python suite's recorded range starts at its colon.
+        ("validate_order/for_of[0]", "for item in items"),
+        ("validate_order/return[0]", "return cast(OrderDraft, value)"),
+    ] {
+        assert_eq!(
+            focused(&text, node(&flow, suffix).focus.unwrap()),
+            expected,
+            "{suffix}"
+        );
+    }
+    let gate = node(&flow, "validate_order/if[0]").focus.unwrap();
+    assert_eq!((gate.start_line, gate.start_column), (8, 7));
+}
+
+#[test]
+fn focus_columns_count_utf16_code_units() {
+    // `é` is two UTF-8 bytes and one UTF-16 unit; `😀` is four bytes and two units.
+    let text = "// café 😀\nfunction f() {\n  const s = \"é😀\"; if (s === \"😀é\") { go(\"ü\"); }\n}\n";
+    let mut b = GraphBuilder::new();
+    let root = b.file("a.ts", Language::TypeScript, text);
+    let range = b.find(root, "function f() {");
+    let function_range = unfold_core::ByteRange {
+        start: range.start,
+        end: u32::try_from(text.trim_end().len()).unwrap(),
+    };
+    let function = b.block(
+        root,
+        BlockKind::Function,
+        Some(Role::Body),
+        Some("f"),
+        function_range,
+    );
+    let variable = b.find(root, "const s = \"é😀\";");
+    let variable = b.block(
+        function,
+        BlockKind::Variable,
+        Some(Role::Body),
+        Some("s"),
+        variable,
+    );
+    let initializer = b.find(root, "\"é😀\"");
+    b.slot(variable, SlotName::Initializer, None, initializer);
+    let gate_range = b.find(root, "if (s === \"😀é\") { go(\"ü\"); }");
+    let gate = b.block(function, BlockKind::If, Some(Role::Body), None, gate_range);
+    let condition = b.find(root, "s === \"😀é\"");
+    b.slot(gate, SlotName::Condition, None, condition);
+    let statement = b.find(root, "go(\"ü\");");
+    let statement = b.block(
+        gate,
+        BlockKind::ExpressionStatement,
+        Some(Role::Then),
+        None,
+        statement,
+    );
+    let call_range = b.find(root, "go(\"ü\")");
+    b.slot(statement, SlotName::Expression, None, call_range);
+    let call = b.block(
+        statement,
+        BlockKind::Call,
+        Some(Role::Expression),
+        None,
+        call_range,
+    );
+    b.edge(call, EdgeKind::Calls, Outcome::external("lib"), "go", None);
+    let file = b.build().files.remove(0);
+    let flow = build_flow(&file, 1, Some(text), SourceState::Current, &NoContext).unwrap();
+    let focus_of = |kind: FlowNodeKind| {
+        flow.nodes
+            .iter()
+            .find(|node| node.kind == kind)
+            .and_then(|node| node.focus)
+            .unwrap()
+    };
+    let condition = focus_of(FlowNodeKind::Condition);
+    assert_eq!(
+        condition,
+        SourceFocus {
+            start_line: 3,
+            start_column: 23,
+            end_line: 3,
+            end_column: 34
+        }
+    );
+    assert_eq!(focused(text, condition), "s === \"😀é\"");
+    let called = focus_of(FlowNodeKind::Call);
+    assert_eq!((called.start_column, called.end_column), (38, 45));
+    assert_eq!(focused(text, called), "go(\"ü\")");
+    assert_eq!(
+        focused(text, focus_of(FlowNodeKind::Variable)),
+        "const s = \"é😀\";"
+    );
+
+    // Source that isn't current has no focus, even when its old text is at hand.
+    for state in [SourceState::Changed, SourceState::Missing] {
+        for given in [None, Some(text)] {
+            let flow = build_flow(&file, 1, given, state, &NoContext).unwrap();
+            assert!(flow.nodes.iter().all(|node| node.focus.is_none()), "{state:?}");
+        }
+    }
+}

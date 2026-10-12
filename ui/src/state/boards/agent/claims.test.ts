@@ -139,7 +139,8 @@ afterEach(() => {
 
 describe("add_resources", () => {
   it("adds a table backed by a type, its columns the type's fields with the marks laid on, placed beside the card it's near", async () => {
-    open();
+    // A page in Diagram: in the Code lens, createOrder would show its source.
+    open({ defaultView: "diagram" });
     const result = await edit([
       {
         op: "add_resources",

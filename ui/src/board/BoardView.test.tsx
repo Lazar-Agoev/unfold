@@ -159,27 +159,57 @@ describe("the board view", () => {
     expect(engine.callsOf("card")).toHaveLength(0);
   });
 
-  it("switches a card's own view as a board edit, and the page's lens without one", async () => {
+  it("expands and collapses one card with its chevron as a board edit, and switches the page's lens without one", async () => {
     store.adoptBoardState(state([{ id: "create-order", ref: { block: KEY }, at: [0, 0] }]));
     const { container } = renderBoard();
     await waitFor(() => {
       expect(container.querySelector(".code-view")).not.toBeNull();
     });
+    // Code has no chevron.
+    expect(screen.queryByRole("button", { name: "Collapse createOrder" })).toBeNull();
     act(() => {
-      actions.run(ActionIds.lensFlow);
+      actions.run(ActionIds.lensDiagram);
     });
+    // The page's Code default leaves its cards expanded in Diagram: their Flow.
     await waitFor(() => {
       expect(container.querySelector(".flow-view")).not.toBeNull();
     });
     expect(store.getOpenBoard(REF)?.edits).toBe(0);
+    const collapse = await screen.findByRole("button", { name: "Collapse createOrder" });
+    expect(collapse.getAttribute("aria-expanded")).toBe("true");
     act(() => {
-      container.querySelector<HTMLElement>('.block-card .segmented-option[data-value="code"]')?.click();
+      collapse.click();
+    });
+    await waitFor(() => {
+      expect(container.querySelector('.diagram-card[data-card-id="create-order"]')).not.toBeNull();
+    });
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.view).toBe("diagram");
+    expect(store.getOpenBoard(REF)?.edits).toBe(1);
+    // A click on the chevron never selects the card.
+    expect(store.getPageView(PAGE).selection).toEqual({ kind: "none" });
+    const expand = await screen.findByRole("button", { name: "Expand createOrder" });
+    act(() => {
+      expand.click();
+    });
+    await waitFor(() => {
+      expect(container.querySelector(".flow-view")).not.toBeNull();
+    });
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.view).toBe("flow");
+    expect(store.getOpenBoard(REF)?.edits).toBe(2);
+    // A trip through Code keeps it expanded.
+    act(() => {
+      actions.run(ActionIds.lensCode);
     });
     await waitFor(() => {
       expect(container.querySelector(".code-view")).not.toBeNull();
     });
-    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.view).toBe("code");
-    expect(store.getOpenBoard(REF)?.edits).toBe(1);
+    act(() => {
+      actions.run(ActionIds.lensDiagram);
+    });
+    await waitFor(() => {
+      expect(container.querySelector(".flow-view")).not.toBeNull();
+    });
+    expect(store.getOpenBoard(REF)?.edits).toBe(2);
   });
 
   it("draws a link from a card's menu to the next card clicked, and selects it", async () => {

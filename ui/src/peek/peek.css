@@ -41,6 +41,24 @@
   flex: 1;
 }
 
+/* Why View code's range isn't shown (the file changed since the compile, or isn't in the graph). */
+.peek-note {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-warn-fill);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-warn);
+}
+
+.peek-note > svg {
+  flex-shrink: 0;
+}
+
 /* Code area */
 
 .peek-code-area {
@@ -96,7 +114,9 @@
   padding: 0 16px 0 8px;
 }
 
-.peek-row.current {
+/* The current match's row, and View code's rows: a quiet tint with an accent edge. */
+.peek-row.current,
+.peek-row.focus {
   background: var(--color-selection);
   box-shadow: inset 2px 0 0 var(--color-accent);
 }
@@ -145,7 +165,8 @@
   user-select: none;
 }
 
-.peek-row.current .peek-number {
+.peek-row.current .peek-number,
+.peek-row.focus .peek-number {
   font-weight: 600;
   color: var(--color-accent-text);
 }
@@ -199,6 +220,14 @@
 
 .peek-match.other {
   background: var(--color-selection);
+}
+
+/*
+ * View code's exact expression (a condition, a call), inside its tinted rows. Each colored run carries
+ * it, so it is a plain fill: an outline per run would cut the expression into boxes.
+ */
+.peek-focus {
+  background: var(--color-match-current);
 }
 
 /* Calls read as links: accent, a 1px underline from the font. */

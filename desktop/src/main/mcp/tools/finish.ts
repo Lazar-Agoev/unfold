@@ -32,10 +32,11 @@ const DONE: Readonly<Record<RepairName, string>> = {
   remove_description: "Removed the description of",
   resign: "Re-signed against the current code",
   accept: "Accepted the current code for",
+  remove_proposal: "Removed (the code it goes after stays as it is)",
 };
 
 /** Repairs that take their item off the page: nothing is left to outline. */
-const REMOVALS: ReadonlySet<RepairName> = new Set(["remove_card", "remove_label", "ungroup", "remove_link", "remove_resource"]);
+const REMOVALS: ReadonlySet<RepairName> = new Set(["remove_card", "remove_label", "ungroup", "remove_link", "remove_resource", "remove_proposal"]);
 
 /** A reconnect's target as `repair_board` takes it: projects by shared name, absent for the board's own. */
 async function reconnectSpec(context: ToolContext, own: ProjectRow, to: z.output<typeof reconnectTo> | undefined): Promise<string | AnchorSpec | undefined> {
@@ -92,7 +93,7 @@ export const repair = defineTool({
   name: "repair",
   title: "Repair",
   description:
-    "Applies one repair that a health problem offers (check lists each problem with its repair calls). repair is reconnect (to: the code's new key after a rename or move, from search or get_relations; for an anchor, a key or an evidence file's lines), remove_card, remove_label, ungroup, remove_link, remove_resource, remove_description, resign (keeps the text and signs it against the current code), or accept (accepts the current code for a reference held for review). item is the problem's item: a card's, step group's, link's, resource card's, or frame's id, or a Flow label's step key; anchor picks one of an item's anchors when several have problems. Reconnecting a card carries the steps of the connections that leave it. Re-sign or accept only after reading the new code (read_code), and only what an agent wrote: what a person wrote is theirs to sign off, so tell them in the chat instead. Read get_guide(\"repairs\") first. One undo step in Unfold, saved at once.",
+    "Applies one repair that a health problem offers (check lists each problem with its repair calls). repair is reconnect (to: the code's new key after a rename or move, from search or get_relations; for an anchor, a key or an evidence file's lines), remove_card, remove_label, ungroup, remove_link, remove_resource, remove_description, remove_proposal (takes a proposed step off; never edits code), resign (keeps the text and signs it against the current code), or accept (accepts the current code for a reference held for review). item is the problem's item: a card's, step group's, link's, resource card's, frame's, or proposed step's id, or a Flow label's step key; anchor picks one of an item's anchors when several have problems. Reconnecting a card carries the steps of the connections that leave it. Re-sign or accept only after reading the new code (read_code), and only what an agent wrote: what a person wrote is theirs to sign off, so tell them in the chat instead. Read get_guide(\"repairs\") first. One undo step in Unfold, saved at once.",
   input: z.object({
     board: z.string().min(1).describe("The board's id or a link"),
     page: z.string().min(1).describe("The page's id or a link"),

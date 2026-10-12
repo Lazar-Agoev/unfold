@@ -39,8 +39,9 @@ import { AgentRefusal, boardInfo, cardProject, failure, resourceProject, type Ap
 import { AgentData } from "./data";
 import { applyFrameCards } from "./frames";
 import { applyGroupSteps } from "./groups";
-import { applyArrange, applySetView } from "./layout";
+import { applyArrange, prepareSetView } from "./layout";
 import { applyAddNotes } from "./notes";
+import { applyPropose } from "./proposals";
 import { applyRemoveItems } from "./remove";
 import { prepareAddResources } from "./resources";
 import { applyDescribe, applyLabelSteps } from "./text";
@@ -51,13 +52,17 @@ function refOf(request: { readonly board: { readonly project: string; readonly i
   return { project: request.board.project, id: request.board.id };
 }
 
-/** An operation ready to apply: `add_cards` loads its cards and follows calls first; the rest apply as they are. */
-async function prepare(op: AgentOp, ctx: OpContext): Promise<ApplyOp> {
+/**
+ * An operation ready to apply: `add_cards` loads its cards and follows calls first, `set_view` loads
+ * the callees and callbacks of the calls it expands in place (as `held`, the page now, holds the cards);
+ * the rest apply as they are.
+ */
+async function prepare(op: AgentOp, held: Page, ctx: OpContext): Promise<ApplyOp> {
   switch (op.op) {
     case "add_cards":
       return prepareAddCards(op, ctx);
     case "set_view":
-      return (page, run) => applySetView(page, op, run);
+      return prepareSetView(op, held, ctx);
     case "arrange":
       return (page, run) => applyArrange(page, op, run);
     case "remove_items":
@@ -76,12 +81,14 @@ async function prepare(op: AgentOp, ctx: OpContext): Promise<ApplyOp> {
       return (page, run) => applyConnect(page, op, run);
     case "add_notes":
       return (page, run) => applyAddNotes(page, op, run);
+    case "propose":
+      return (page, run) => applyPropose(page, op, run);
   }
 }
 
 /**
  * The items an edit changed, as its working marks outline them: cards, groups and their cards, links,
- * a label's card, frames, resource cards, and notes.
+ * a label's card, frames, resource cards, notes, and proposed steps and their cards.
  */
 function changedItems(items: readonly AgentItemResult[]): string[] {
   return items.flatMap((item) => {
@@ -96,6 +103,7 @@ function changedItems(items: readonly AgentItemResult[]): string[] {
       case "note":
         return [item.id];
       case "group":
+      case "proposal":
         return [item.id, item.card];
       case "label":
         return [item.card];
@@ -148,7 +156,7 @@ export async function applyAgentEdit(request: AgentEditRequest): Promise<AgentEd
     ]);
     const applies: ApplyOp[] = [];
     for (const op of request.ops) {
-      applies.push(await prepare(op, { ...base, warnings: [] }));
+      applies.push(await prepare(op, page, { ...base, warnings: [] }));
     }
     const outcome = await saveStep(ref, request.page, `${request.agent.name} · ${request.title}`, (document) => {
       const ctx: OpContext = { ...base, warnings: [] };

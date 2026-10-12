@@ -1,19 +1,30 @@
 /**
  * Context menus on the canvas: a card's (Open source, Show callers, Draw link…, Add as entrance…, Copy
- * link, Fold or Unfold card, Remove from page) and a group rail's (Collapse, Describe, Copy link,
- * Ungroup). Each page choice is one board edit, so ⌘Z undoes it.
+ * link, Fold or Unfold card, Remove from page), a Flow step's (View code, Combine…, Add proposed step
+ * after…), and a group's (View code, Collapse, Describe, Copy link, Ungroup). Open source and View code
+ * open the peek sheet through the one View code resolver, highlighted; Combine… is enabled only for a
+ * run of steps that can be combined, and says why otherwise; Add proposed step after… shows only on a
+ * step a proposed step can follow, as a submenu of its actual paths for a decision. Each page choice is
+ * one board edit, so ⌘Z undoes it.
  */
 
 import type { MouseEvent, ReactNode } from "react";
 import { copyLink } from "../../agent";
+import { PATH_WORDS, PROPOSAL_TITLE_FIELD, proposalChoiceOf, proposeStep, type ProposalChoice } from "../../board/proposeStep";
+import { combineOf, sourceOf, viewCode } from "../../board/viewCode";
 import { useContextMenu, type MenuEntry } from "../../components";
-import type { ProjectId } from "../../ipc/generated";
-import { requestFocus } from "../../keyboard";
+import type { ProjectId, ProposalPath } from "../../ipc/generated";
+import { ActionIds, actions, requestFocus } from "../../keyboard";
 import { canBeHandler } from "../../launches";
-import { editGroup, editPage, findPage, getOpenBoard, removeCard, select, setCardsFolded, setLinking, ungroup, type PageTarget } from "../../state/boards";
+import { useAuthor } from "../../state/author";
+import { editGroup, editPage, findPage, getOpenBoard, getPageView, removeCard, select, setCardsFolded, setLinking, ungroup, type PageTarget, type Selection } from "../../state/boards";
 import { setSelectedCollapsed } from "../../state/layout";
-import { openDialog, openPeek, type DefinitionRef } from "../../state/overlays";
+import { openDialog, type DefinitionRef } from "../../state/overlays";
 import { showCallers } from "../showCallers";
+
+function stop(event: MouseEvent): void {
+  event.stopPropagation();
+}
 
 /** Expands the sidebar's Selected section on the page's selection and focuses one of its fields. */
 export function showInSelected(field: string): void {
@@ -32,12 +43,81 @@ interface CardSource {
 interface CardMenu {
   readonly onContextMenu: (event: MouseEvent) => void;
   readonly openGroupMenu: (groupId: string, at: MouseEvent | Element) => void;
+  /** Opens the menu of the selection a Flow step's right-click left: the step, or the run it is in. */
+  readonly openStepMenu: (at: MouseEvent | Element) => void;
   readonly element: ReactNode;
+}
+
+/** View code for `selection`: enabled when it has a source, else disabled with why. */
+function viewCodeEntry(target: PageTarget, selection: Selection): MenuEntry {
+  const source = sourceOf(target, selection);
+  const shortcut = actions.shortcutsFor(ActionIds.viewCode)[0];
+  return {
+    id: "view-code",
+    label: "View code",
+    ...(shortcut !== undefined ? { shortcut } : {}),
+    disabled: source.target === null,
+    ...(source.reason !== undefined ? { hint: source.reason } : {}),
+    onSelect: () => {
+      viewCode(target, selection);
+    },
+  };
+}
+
+/**
+ * Add proposed step after… for a step a proposed step can follow (none otherwise): one entry, or a
+ * submenu of a decision's actual paths. It creates the proposal, selects it, and focuses its title.
+ */
+function proposeEntries(target: PageTarget, choice: ProposalChoice | null, author: string | null): MenuEntry[] {
+  if (!choice) {
+    return [];
+  }
+  const add = (path?: ProposalPath) => () => {
+    if (author !== null && proposeStep(target, choice, path, author) !== undefined) {
+      showInSelected(PROPOSAL_TITLE_FIELD);
+    }
+  };
+  const waiting = author === null ? { disabled: true, hint: "Loading who you are…" } : {};
+  if (choice.paths.length > 0) {
+    return [
+      {
+        id: "propose",
+        label: "Add proposed step after",
+        ...waiting,
+        submenu: choice.paths.map((path) => ({ id: `propose-${path}`, label: `${PATH_WORDS[path]}…`, onSelect: add(path) })),
+      },
+    ];
+  }
+  return [{ id: "propose", label: "Add proposed step after…", ...waiting, onSelect: add() }];
+}
+
+/** The menu of a Flow step or a run of steps: a run's heading, View code, Combine…, and Add proposed step after…. */
+function stepEntries(target: PageTarget, selection: Selection, functionName: string, author: string | null): MenuEntry[] {
+  const choice = combineOf(target, selection);
+  const run = "run" in choice ? choice.run : undefined;
+  const lines = run ? (run.startLine === run.endLine ? `line ${run.startLine}` : `lines ${run.startLine}–${run.endLine}`) : "";
+  return [
+    ...(run ? [{ kind: "heading", id: "run", label: `${run.steps.length} steps · ${functionName} · ${lines}` } satisfies MenuEntry] : []),
+    viewCodeEntry(target, selection),
+    {
+      id: "combine",
+      label: "Combine…",
+      disabled: "reason" in choice,
+      ...("reason" in choice ? { hint: choice.reason } : {}),
+      onSelect: () => {
+        if ("members" in choice) {
+          openDialog({ kind: "groupFromLines", target, cardId: choice.cardId, members: choice.members });
+        }
+      },
+    },
+    ...proposeEntries(target, proposalChoiceOf(target, selection), author),
+  ];
 }
 
 /**
  * The context menus of one card. `project` is null for a card of a project that isn't connected;
- * `source` (once the card's model loaded) offers Open source and Add as entrance; `block` offers Show callers.
+ * `source` (once the card's model loaded) offers Open source and Add as entrance; `block` offers Show
+ * callers; `name` names the function in a run's heading.
  */
 export function useCardMenu(
   target: PageTarget,
@@ -46,18 +126,19 @@ export function useCardMenu(
   folded: boolean,
   block: boolean,
   source: CardSource | null,
+  name = "",
 ): CardMenu {
   const menu = useContextMenu("Card actions", 220);
+  const author = useAuthor();
+  const own: Selection = { kind: "card", cardId, key: null };
   const cardEntries = (): MenuEntry[] => [
     {
       id: "source",
       label: "Open source",
       icon: "external-link",
-      disabled: source === null || project === null,
+      disabled: sourceOf(target, own).target === null,
       onSelect: () => {
-        if (source && project !== null) {
-          openPeek({ project, path: source.path, ...(source.line !== null ? { line: source.line } : {}) });
-        }
+        viewCode(target, own);
       },
     },
     ...(block
@@ -119,6 +200,7 @@ export function useCardMenu(
       return [];
     }
     return [
+      viewCodeEntry(target, { kind: "group", groupId }),
       {
         id: "collapse",
         label: group.collapsed ? "Expand group" : "Collapse group",
@@ -158,6 +240,15 @@ export function useCardMenu(
         menu.open(at, entries);
       }
     },
-    element: menu.element,
+    openStepMenu: (at) => {
+      menu.open(at, stepEntries(target, getPageView(target).selection, name, author));
+    },
+    // The menu renders in a portal, but its events still bubble through the card: a choice never
+    // also clicks (selects) or double-clicks (folds) the card it was opened on.
+    element: menu.element ? (
+      <span className="card-menu-layer" onClick={stop} onDoubleClick={stop} onContextMenu={stop}>
+        {menu.element}
+      </span>
+    ) : null,
   };
 }

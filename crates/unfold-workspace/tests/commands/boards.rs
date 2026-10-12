@@ -1295,7 +1295,7 @@ fn thumbnails_draw_first_pages() {
     assert_eq!(shown("route")["lines"], Value::Null);
     assert_eq!(shown("create")["kind"], "block");
     assert_eq!(shown("create")["folded"], true);
-    assert_eq!(shown("create")["view"], "code");
+    assert_eq!(shown("create")["view"], "diagram", "a new page's default view");
     assert!(shown("create")["lines"].as_u64().is_some_and(|lines| lines > 1));
     assert_eq!(shown("place")["view"], "flow");
     assert_eq!(shown("place")["folded"], false);

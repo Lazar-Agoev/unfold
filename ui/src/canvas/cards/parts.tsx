@@ -1,18 +1,18 @@
 /**
  * Pieces every card shares: the ports arrows and links attach to (invisible: no port dots are drawn),
- * the kind glyph, the card's own Diagram | Flow | Code switch, the description strip (edited in place on
- * double-click), and the note line a card body shows while it loads or when its source is unavailable.
+ * the kind glyph, the expansion chevron of a function or an entrance in Diagram, the description strip
+ * (edited in place on double-click), and the note line a card body shows while it loads or when its
+ * source is unavailable.
  */
 
 import { Handle, Position } from "@xyflow/react";
 import { useState, type ReactNode } from "react";
 import { AgentMark } from "../../agent";
-import { SegmentedControl } from "../../components";
 import { authorOf } from "../../code/text";
 import { Icon } from "../../icons";
-import type { BlockKind, Description, View } from "../../ipc/generated";
+import type { BlockKind, Description } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
-import { describeCard, editPage, setCardView, setCardsFolded, updatePageView, type PageTarget } from "../../state/boards";
+import { describeCard, editPage, setCardExpanded, setCardsFolded, type PageTarget } from "../../state/boards";
 import { NODE_PORT } from "../arrows";
 import { LINK_SIDES } from "../linkSides";
 
@@ -34,37 +34,31 @@ export function nodeHeaderPorts(ports: readonly string[], folded: boolean): stri
   return ports.filter((id) => folded || id === NODE_PORT);
 }
 
-/** The three views, in the lens's order. */
-export const VIEW_OPTIONS = [
-  { value: "diagram", label: "Diagram" },
-  { value: "flow", label: "Flow" },
-  { value: "code", label: "Code" },
-] as const;
-
 /**
- * A card's own Diagram | Flow | Code switch (saved with the board). Using it while the page's lens is
- * on makes the card an exception, so it keeps its own view.
+ * The chevron at the start of a function's or an entrance's header in Diagram: it expands only that
+ * card (a function's written flow, an entrance's evidence and targets) or makes it compact again, as
+ * a board edit (saved with the board, one undo step). A click on it never selects the card.
  */
-export function ViewSwitch({ target, cardId, view, name }: { readonly target: PageTarget; readonly cardId: string; readonly view: View; readonly name: string }) {
-  const setView = (next: View) => {
-    editPage(target, (page) => {
-      setCardView(page, cardId, next);
-    });
-    updatePageView(target, (draft) => {
-      if (draft.lens !== null && !draft.lensExceptions.includes(cardId)) {
-        draft.lensExceptions.push(cardId);
-      }
-    });
-  };
+export function ExpandToggle({ target, cardId, expanded, name }: { readonly target: PageTarget; readonly cardId: string; readonly expanded: boolean; readonly name: string }) {
   return (
-    <div
-      className="nodrag"
+    <button
+      type="button"
+      className="card-expand nodrag"
+      aria-label={`${expanded ? "Collapse" : "Expand"} ${name}`}
+      aria-expanded={expanded}
       onClick={(event) => {
+        event.stopPropagation();
+        editPage(target, (page) => {
+          setCardExpanded(page, cardId, !expanded);
+        });
+      }}
+      onDoubleClick={(event) => {
+        // The header's double-click folds the card; the chevron's own clicks never do.
         event.stopPropagation();
       }}
     >
-      <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={setView} label={`View of ${name}`} variant="mini" />
-    </div>
+      <Icon name={expanded ? "chevron-down-small" : "chevron-right-small"} size={10} />
+    </button>
   );
 }
 

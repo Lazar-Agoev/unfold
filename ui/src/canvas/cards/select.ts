@@ -33,9 +33,12 @@ function clickItem(target: PageTarget, id: string, selection: Selection): void {
   }
 }
 
-/** Selects a card (`key`: a Flow node or statement in it), or finishes the link being drawn there. */
-export function clickCard(target: PageTarget, cardId: string, key: Key | null): void {
-  clickItem(target, cardId, { kind: "card", cardId, key });
+/**
+ * Selects a card (`key`: a Flow node or statement in it; `owner`: the block whose Flow shows that step
+ * in a call expanded in place), or finishes the link being drawn there.
+ */
+export function clickCard(target: PageTarget, cardId: string, key: Key | null, owner?: Key): void {
+  clickItem(target, cardId, { kind: "card", cardId, key, ...(owner !== undefined ? { owner } : {}) });
 }
 
 /** Selects a frame, or finishes the link being drawn there. */

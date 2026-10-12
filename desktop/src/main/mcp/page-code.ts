@@ -3,12 +3,13 @@
  * location, Code, and Flow) and each type card's definition, and from them what the board draws
  * between cards: one arrow per call occurrence whose target has a card on the page (with its typed
  * label), an entrance's arrows to its handlers, and type arrows from a type card's field to the card
- * of each type its written type names; and the Flow steps still showing names from the code. The
- * rules are copies of the canvas's (`ui/src/canvas/arrows.ts`, `cardBody`, and the outline's count of
- * unlabeled steps), so change both together: arrows join cards of one project only, and reach the
- * first card of a key. Two differences are deliberate: calls are listed one by one where a Diagram
- * node merges them, and a block whose source changed reads its Flow's chips (the canvas keeps the
- * last verified Code, which only a window has).
+ * of each type its written type names; and the steps of expanded cards still showing names from the
+ * code. The rules are copies of the canvas's (`ui/src/canvas/arrows.ts`, `cardBody`, the store's
+ * `shownView`, and the outline's count of unlabeled steps), so change both together: a page opens in
+ * Diagram or Code, a card is compact or expanded in Diagram, a type card keeps its fields in every
+ * view, arrows join cards of one project only, and reach the first card of a key. Two differences are
+ * deliberate: calls are listed one by one where a Diagram node merges them, and a block whose source
+ * changed reads its Flow's chips (the canvas keeps the last verified Code, which only a window has).
  */
 
 import type { ToolContext } from "./context";
@@ -81,19 +82,27 @@ export function cardKey(card: Pick<Card, "ref">): string {
   return "block" in card.ref ? card.ref.block : card.ref.entrance;
 }
 
-/** The view a card shows on a page without a lens: its own, else the page's default. */
-function shownView(page: Pick<Page, "defaultView">, card: Pick<Card, "view">): View {
-  return card.view ?? page.defaultView;
+/** Whether a key is a type card's: a type declaration or a class, which shows its fields in every view. */
+export function isTypeKey(key: string): boolean {
+  return TYPE_KINDS.has(keyKind(key));
 }
 
-/**
- * Whether a card shows a type card's fields (the canvas's `cardBody`): a type declaration in Diagram
- * or Flow, a class in Diagram.
- */
-function showsFields(page: Pick<Page, "defaultView">, card: Card, key: string): boolean {
-  const kind = keyKind(key);
-  const view = shownView(page, card);
-  return TYPE_KINDS.has(kind) && (view === "diagram" || (view === "flow" && kind !== "class"));
+/** The lens a page opens in: Code for a page whose default is Code, else Diagram (a legacy Flow default too). */
+export function pageLens(page: Pick<Page, "defaultView">): "diagram" | "code" {
+  return page.defaultView === "code" ? "code" : "diagram";
+}
+
+/** Whether a card shows its detail in Diagram: its own view, else the page's default, isn't Diagram (a legacy Code card is expanded). */
+export function cardExpanded(page: Pick<Page, "defaultView">, card: Pick<Card, "view">): boolean {
+  return (card.view ?? page.defaultView) !== "diagram";
+}
+
+/** The view a card shows as its page opens (no lens picked): Code in the Code lens; in Diagram, Flow when expanded, else a compact node. */
+function shownView(page: Pick<Page, "defaultView">, card: Pick<Card, "view">): View {
+  if (pageLens(page) === "code") {
+    return "code";
+  }
+  return cardExpanded(page, card) ? "flow" : "diagram";
 }
 
 /** A failed read's reason, for the card's line. */
@@ -104,12 +113,12 @@ function why(error: unknown): string {
   throw error;
 }
 
-async function loadCard(context: ToolContext, page: Page, card: Card, project: ProjectRow | null): Promise<CardCode> {
+async function loadCard(context: ToolContext, card: Card, project: ProjectRow | null): Promise<CardCode> {
   const key = cardKey(card);
   if (!project) {
     return { card, key, project, model: null, definition: null, problem: `its project ${card.ref.project ?? ""} isn't in the workspace` };
   }
-  const definition = showsFields(page, card, key)
+  const definition = isTypeKey(key)
     ? context.engine("type_definition", { project: project.id, key }).then(
         (found) => found,
         () => null,
@@ -198,9 +207,9 @@ function within(key: string, member: string): boolean {
 }
 
 /**
- * The keyed Flow steps of cards shown in Flow that have no label on the page, as the page's outline
- * counts them: start and end aside, the steps a collapsed step group of the card hides aside, and
- * none while the source changed.
+ * The keyed Flow steps of expanded cards that have no label on the page, as the page's outline counts
+ * them: start and end aside, the steps a collapsed step group of the card hides aside, and none while
+ * the source changed or the page opens in Code.
  */
 function unlabeledSteps(page: Page, code: CardCode): UnlabeledStep[] {
   const flow = code.model?.type === "block" ? code.model.flow : null;
@@ -221,7 +230,7 @@ function unlabeledSteps(page: Page, code: CardCode): UnlabeledStep[] {
 export async function pageCode(context: ToolContext, own: ProjectRow, page: Page): Promise<PageCode> {
   const rows = await context.projects();
   const projectOf = (card: Card): ProjectRow | null => (card.ref.project === undefined ? own : (rows.find((row) => row.name === card.ref.project) ?? null));
-  const loaded = await Promise.all(page.cards.map((card) => loadCard(context, page, card, projectOf(card))));
+  const loaded = await Promise.all(page.cards.map((card) => loadCard(context, card, projectOf(card))));
   const cards = new Map(loaded.map((code) => [code.card.id, code]));
   // A call or a type reaches the first card of its key, as the canvas draws it.
   const byKey = new Map<string, string>();

@@ -21,6 +21,7 @@ const PAGE: AgentPage = {
     { id: "charge", ref: { block: "src/pay.ts#function:charge", project: "payments" }, at: [400, 0] },
   ],
   groups: [{ id: "queue-it", card: "create-order", title: "Queue it", members: [], collapsed: false }],
+  proposals: [{ id: "email", card: "charge", after: "src/pay.ts#function:charge/call[0]", title: "Email a receipt", author: "person:maya" }],
   labels: [],
   guards: [],
   links: [],
@@ -72,9 +73,17 @@ describe("read_code", () => {
       "25 | export async function createOrder(req: Request, res: Response): Promise<void> {",
       "26 |   const draft: OrderDraft = req.body;",
     ]);
-    expect(lines).toContain("Flow steps (paths from written structure; names are fallbacks until labeled):");
-    expect(lines).toContain(`- 27–31 condition: fallback name “req.header?”; key ${CREATE_ORDER}/if[0]`);
-    expect(lines).toContain(`- 28 call (branch lane 1): fallback name “ordersQueue.add”; key ${CREATE_ORDER}/if[0]/variable:job`);
+    expect(lines).toContain(
+      "Flow steps (paths from written structure; names are fallbacks until labeled; focus is the step's exact source, line:column in the file, which View code highlights):",
+    );
+    // Each step's focus: the condition, the main call, or the statement, as View code highlights it.
+    expect(lines).toContain(`- 27–31 condition: fallback name “req.header?”; key ${CREATE_ORDER}/if[0]; focus 27:7–27:46 “req.header("prefer") === "respond-async"”`);
+    const job = lines.indexOf(`- 28 call (branch lane 1): fallback name “ordersQueue.add”; key ${CREATE_ORDER}/if[0]/variable:job; focus 28:23–28:70 “ordersQueue.add("place-order", { order: draft })”`);
+    expect(lines[job + 1]).toBe("  doesn't expand in place: the call ordersQueue.add is external (bullmq)");
+    expect(lines).toContain("  doesn't expand in place: the call res.status().json is unresolved: receiver type unknown");
+    expect(lines).toContain(
+      `  expands in place: the call OrderService.place (its expandCalls key ${CREATE_ORDER}/variable:order/call[0]; callee key src/services/order-service.ts#class:OrderService/method:place)`,
+    );
     expect(lines).toContain("Throws nothing directly.");
     expect(lines).toContain(
       `- line 32: calls orderService.place → OrderService.place (key src/services/order-service.ts#class:OrderService/method:place), (OrderDraft) → Promise<Order>; source ${CREATE_ORDER}/variable:order/call[0], seq 0`,
@@ -96,7 +105,7 @@ describe("read_code", () => {
     const flow = await tools.call(readCode, { key: CREATE_ORDER, project: PROJECT, view: "flow", lines: [32, 34] });
     expect(flow.text).not.toContain("Source");
     expect(flow.text).not.toContain("Calls (");
-    expect(flow.text).toContain(`- 32 call: fallback name “OrderService.place”; key ${CREATE_ORDER}/variable:order`);
+    expect(flow.text).toContain(`- 32 call: fallback name “OrderService.place”; key ${CREATE_ORDER}/variable:order; focus 32:17–32:41 “orderService.place(draft)”`);
     expect(flow.text).not.toContain("req.header?");
     const code = await tools.call(readCode, { key: CREATE_ORDER, project: PROJECT, view: "code", lines: [26, 27] });
     expect(code.text).toContain("Source, lines 26–27 of 25–35:\n26 |   const draft: OrderDraft = req.body;\n27 |   if (");
@@ -127,6 +136,22 @@ describe("read_code", () => {
     expect(shown).toBeLessThan(25 + 149);
     expect(text).toContain(`More: read_code with lines [${shown + 1}, ${Math.min(224, shown + 150)}].`);
     expect(text).not.toContain(`const line${shown - 24} =`);
+  });
+
+  it("marks a callback as expanding in place, and shows a multi-line focus as its range", async () => {
+    const card = recorded<Extract<CardView, { type: "block" }>>(cardCreateOrder);
+    const flow = card.flow;
+    if (!flow) {
+      throw new Error("createOrder's card has a Flow");
+    }
+    const callback = { key: `${CREATE_ORDER}/if[0]/arrow_function[0]`, label: "callback to sendEmail", lines: 1, throws: false };
+    const nodes = flow.nodes.map((node) => (node.key === `${CREATE_ORDER}/if[0]` ? { ...node, callbacks: [callback], focus: { startLine: 27, startColumn: 2, endLine: 31, endColumn: 3 } } : node));
+    const { text } = await app({ engine: { card: () => ({ ...card, flow: { ...flow, nodes } }) } }).call(readCode, { key: CREATE_ORDER, view: "flow" });
+    const lines = text.split("\n");
+    expect(lines).toContain(`- 27–31 condition: fallback name “req.header?”; key ${CREATE_ORDER}/if[0]; focus 27:3–31:3`);
+    expect(lines).toContain(
+      `  expands in place: the callback “callback to sendEmail” (its expandCalls key ${CREATE_ORDER}/if[0]/arrow_function[0]; a callback that makes one resolved call shows that callee, through the callback)`,
+    );
   });
 
   it("says when the file changed instead of showing source", async () => {
@@ -184,6 +209,20 @@ describe("read_code", () => {
 
     await tools.call(readCode, { key: `unfold://ts-orders/${BOARD.id}?page=page-1&item=charge` });
     expect(tools.engineCalls.filter(([command]) => command === "card").at(-1)?.[1]).toEqual({ project: "p-payments00", key: "src/pay.ts#function:charge", lens: "both" });
+
+    // A proposed step reads its card's code, by selection or by its link: it has none of its own.
+    tools.report({ board: BOARD, page: "page-1", selection: { kind: "proposal", id: "email" }, visible: [], tabs: [BOARD] });
+    await tools.call(readCode, {});
+    expect(tools.engineCalls.filter(([command]) => command === "card").at(-1)?.[1]).toEqual({ project: "p-payments00", key: "src/pay.ts#function:charge", lens: "both" });
+    await tools.call(readCode, { key: `unfold://ts-orders/${BOARD.id}?page=page-1&item=email` });
+    expect(tools.engineCalls.filter(([command]) => command === "card").at(-1)?.[1]).toMatchObject({ key: "src/pay.ts#function:charge" });
+
+    // A step shown in a call expanded in place reads the block that owns it.
+    const PLACE = "src/services/order-service.ts#class:OrderService/method:place";
+    tools.report({ board: BOARD, page: "page-1", selection: { kind: "step", card: "create-order", key: `${PLACE}/expression_statement[0]`, owner: PLACE }, visible: [], tabs: [BOARD] });
+    const owned = await tools.call(readCode, { view: "flow" });
+    expect(tools.engineCalls.filter(([command]) => command === "card").at(-1)?.[1]).toEqual({ project: PROJECT, key: PLACE, lens: "both" });
+    expect(owned.text).toContain(`Selected in the person's view: the step ${PLACE}/expression_statement[0].`);
 
     tools.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD] });
     expect((await tools.call(readCode, {})).text).toBe(

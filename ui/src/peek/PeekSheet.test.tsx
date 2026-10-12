@@ -61,6 +61,35 @@ function schemaView(): FileView {
   };
 }
 
+const NOTIFY_PATH = "src/routes/notify.ts";
+const NOTIFY_LINES = ["export function notify(name: string) {", '  if (name === "é😀") {', "    send(name);", "  }", "}"];
+/** How `file_view` says the notify file relates to the graph. */
+let notifyGraph: FileView["graph"] = "current";
+
+/** A small file with a non-ASCII condition on line 2, as `file_view` returns it (UTF-16 offsets). */
+function notifyView(): FileView {
+  let start = 0;
+  const lines = NOTIFY_LINES.map((line, index) => {
+    const row = { number: index + 1, start, end: start + line.length, indent: line.length - line.trimStart().length };
+    start += line.length + 1;
+    return row;
+  });
+  return {
+    ...fixture("file_view", "file_view_orders_page"),
+    path: NOTIFY_PATH,
+    graph: notifyGraph,
+    lineCount: NOTIFY_LINES.length,
+    startLine: 1,
+    endLine: NOTIFY_LINES.length,
+    textStart: 0,
+    text: `${NOTIFY_LINES.join("\n")}\n`,
+    lines,
+    spans: [],
+    outline: [],
+    links: [],
+  };
+}
+
 let engine: FakeEngine;
 
 beforeEach(() => {
@@ -69,7 +98,7 @@ beforeEach(() => {
     handlers: {
       workspace: () => workspaceView([projectRow(ORDERS, "storefront-api")]),
       file_view: ({ path }) =>
-        path === TYPES_PATH ? typesView() : path === SCHEMA_PATH ? schemaView() : fixture("file_view", "file_view_orders_page"),
+        path === TYPES_PATH ? typesView() : path === SCHEMA_PATH ? schemaView() : path === NOTIFY_PATH ? notifyView() : fixture("file_view", "file_view_orders_page"),
       open_in_editor: () => ({ editor: "code" }) as never,
       open_board: () => ({
         status: "opened",
@@ -78,6 +107,7 @@ beforeEach(() => {
     },
   });
   resetBoards();
+  notifyGraph = "current";
   useTabs.setState({ boards: [], active: "home" });
   useLayout.setState(initialLayout);
   useWindowStore.setState({ info: null, selectedProject: ORDERS });
@@ -196,5 +226,51 @@ describe("the peek sheet", () => {
     fireEvent.keyDown(sheet(), { key: "Escape" });
     expect(screen.queryByRole("complementary")).toBeNull();
     expect(actions.isEnabled("peek.openInEditor")).toBe(false);
+  });
+
+  describe("View code's focus", () => {
+    const condition = 'name === "é😀"';
+    const startColumn = NOTIFY_LINES[1]?.indexOf(condition) ?? 0;
+    const focus = { startLine: 2, startColumn, endLine: 2, endColumn: startColumn + condition.length };
+    const notify = () => screen.getByRole("complementary", { name: `Source of ${NOTIFY_PATH}` });
+    const notifyRow = (line: number) => notify().querySelector(`[data-line="${line}"]`);
+
+    it("tints the step's rows and marks its exact expression, by UTF-16 columns, on verified source", async () => {
+      renderWithClient(<PeekSheet />);
+      act(() => {
+        openPeek({ project: ORDERS, path: NOTIFY_PATH, line: 2, focus });
+      });
+      await screen.findByText("5 lines · TypeScript");
+      expect(notifyRow(2)?.classList.contains("focus")).toBe(true);
+      expect(notifyRow(1)?.classList.contains("focus")).toBe(false);
+      expect(notifyRow(3)?.classList.contains("focus")).toBe(false);
+      expect([...notify().querySelectorAll(".peek-focus")].map((mark) => mark.textContent).join("")).toBe(condition);
+      expect(within(notify()).queryByRole("note")).toBeNull();
+    });
+
+    it("tints every row of a lines-only focus (a combined block), with no expression", async () => {
+      renderWithClient(<PeekSheet />);
+      act(() => {
+        openPeek({ project: ORDERS, path: NOTIFY_PATH, line: 2, focus: { startLine: 2, endLine: 4 } });
+      });
+      await screen.findByText("5 lines · TypeScript");
+      expect([1, 2, 3, 4, 5].map((line) => notifyRow(line)?.classList.contains("focus"))).toEqual([false, true, true, true, false]);
+      expect(notify().querySelector(".peek-focus")).toBeNull();
+    });
+
+    it("never draws a range on a file changed since the compile: it says so instead", async () => {
+      notifyGraph = "not_compiled";
+      renderWithClient(<PeekSheet />);
+      act(() => {
+        openPeek({ project: ORDERS, path: NOTIFY_PATH, line: 2, focus });
+      });
+      await screen.findByText("5 lines · TypeScript · changed since the last update");
+      expect(within(notify()).getByRole("note").textContent).toBe("Changed since the last compile · the range isn't shown");
+      expect(notify().querySelector(".peek-row.focus")).toBeNull();
+      expect(notify().querySelector(".peek-focus")).toBeNull();
+      // The sheet itself is as always: the file, its lines, its close button.
+      expect(notifyRow(2)?.textContent).toContain(condition);
+      expect(within(notify()).getByRole("button", { name: "Close" })).toBeTruthy();
+    });
   });
 });

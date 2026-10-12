@@ -153,6 +153,7 @@ const SIGNATURES = [
   "add_notes",
   "describe",
   "label_steps",
+  "propose",
   "repair",
   "finish_work",
 ];
@@ -365,16 +366,16 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
     expect(text(await client.callTool({ name: "get_guide", arguments: { topic: "diagrams" } }))).toContain("# Diagrams: pages that read well");
 
     expect(text(await client.callTool({ name: "get_current_view", arguments: {} }))).toContain("No Unfold window has reported");
-    const report: ViewReport = { board: BOARD, page: "page-1", selection: { kind: "card", id: "create-order" }, lens: "flow", visible: ["create-order", "checks"], tabs: [BOARD] };
+    const report: ViewReport = { board: BOARD, page: "page-1", selection: { kind: "card", id: "create-order" }, lens: "diagram", visible: ["create-order", "checks"], tabs: [BOARD] };
     views.report(1, report);
     const view = text(await client.callTool({ name: "get_current_view", arguments: {} })).split("\n");
     expect(view).toEqual([
       `Unfold · ts-orders › Order placement (draft) › Placing an order · rev ${pageRevision(PAGE)} · as Claude`,
       `Ids: project ${PROJECT}, board ${BOARD.id}, page page-1.`,
-      "Lens: Flow.",
-      "Selected: card create-order: src/orders.ts#function:createOrder.",
+      "Lens: Diagram.",
+      "Selected: card create-order: src/orders.ts#function:createOrder (expanded).",
       "The page has 1 cards. In view: 2 items:",
-      "- card create-order: src/orders.ts#function:createOrder",
+      "- card create-order: src/orders.ts#function:createOrder (expanded)",
       '- step group checks in card create-order: "Check the request"',
       "Next: read_page reads the whole page. From now on, pass these board and page ids to other tools.",
     ]);
@@ -427,7 +428,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
 
   it("calls each tool that reads, checks, builds, and repairs boards", async () => {
     const { url, views } = await start();
-    views.report(1, { board: BOARD, page: "page-1", selection: { kind: "none" }, lens: "flow", visible: [], tabs: [BOARD] });
+    views.report(1, { board: BOARD, page: "page-1", selection: { kind: "none" }, lens: "diagram", visible: [], tabs: [BOARD] });
     const client = await connect(url, era);
     const at = { board: BOARD.id, project: "ts-orders", page: "page-1" };
     const calls: [string, Record<string, unknown>][] = [
@@ -436,7 +437,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
       ["read_page", { ...at, format: "mermaid" }],
       ["check", at],
       ["add_cards", { ...at, cards: [{ key: CREATE_ORDER }] }],
-      ["set_view", { ...at, items: [{ id: "create-order", view: "flow" }] }],
+      ["set_view", { ...at, items: [{ id: "create-order", expanded: true, expandCalls: [[`${CREATE_ORDER}/variable:order/call[0]`]] }] }],
       ["arrange_page", at],
       ["remove_items", { ...at, ids: ["create-order"] }],
       ["group_steps", { ...at, card: "create-order", groups: [{ title: "Read the draft", lines: [26, 26] }] }],
@@ -446,6 +447,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
       ["add_notes", { ...at, notes: [{ text: "The client gets a job id, not the order." }] }],
       ["describe", { ...at, items: [{ id: "create-order", text: "Places the order." }] }],
       ["label_steps", { ...at, card: "create-order", labels: [{ step: `${CREATE_ORDER}/variable:draft`, text: "Read the draft" }] }],
+      ["propose", { ...at, card: "create-order", proposals: [{ after: `${CREATE_ORDER}/variable:order`, title: "Email a confirmation" }] }],
       ["repair", { ...at, item: "create-order", repair: "remove_card" }],
       ["finish_work", { summary: "Built the order flow" }],
     ];
@@ -483,7 +485,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
 });
 
 describe("the tools", () => {
-  it("are exactly the 34 of design §6.11, in its order", () => {
+  it("are exactly the 35, design §6.11's and propose, in their order", () => {
     expect(TOOLS.map((tool) => tool.name)).toEqual(SIGNATURES);
   });
 
@@ -492,7 +494,7 @@ describe("the tools", () => {
     for (const name of ["list_boards", "read_page", "check", "get_screenshot"]) {
       expect(hints(name), name).toEqual({ readOnlyHint: true });
     }
-    for (const name of ["add_cards", "set_view", "arrange_page", "group_steps", "frame_cards", "add_resources", "connect", "add_notes", "describe", "label_steps", "finish_work"]) {
+    for (const name of ["add_cards", "set_view", "arrange_page", "group_steps", "frame_cards", "add_resources", "connect", "add_notes", "describe", "label_steps", "propose", "finish_work"]) {
       expect(hints(name), name).toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: true });
     }
     for (const name of ["remove_items", "repair"]) {

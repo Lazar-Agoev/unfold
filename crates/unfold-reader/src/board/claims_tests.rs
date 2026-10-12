@@ -307,6 +307,7 @@ fn card(id: &str, key: &str) -> Card {
         view: None,
         folded: false,
         description: None,
+        expanded: Vec::new(),
     }
 }
 

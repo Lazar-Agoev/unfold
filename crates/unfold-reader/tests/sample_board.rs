@@ -177,6 +177,7 @@ fn a_page_spanning_projects_exports_placeholders_and_drawn_links() {
         view: None,
         folded: false,
         description: None,
+        expanded: Vec::new(),
     });
     page.links.push(board::Link {
         label: Some(board::Description {

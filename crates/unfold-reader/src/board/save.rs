@@ -1,23 +1,25 @@
 //! Saving: preparing a board for writing, page by page and project by project — signing what
 //! is unsigned (descriptions, labels, link labels, and the claims: resource cards, connections,
-//! and frame descriptions), saving guards, refusing new problems, and grounding new or changed
-//! claims ([`claims`]).
+//! and frame descriptions), saving guards, refusing new problems, placing new or moved proposed
+//! steps, and grounding new or changed claims ([`claims`]).
 //!
 //! A signature is only ever computed from bytes that verified against the facts' hash, so text
 //! can never be signed against source the graph has not seen. Text about a project that is not
-//! connected stays as it is: it is signed once its project is connected again. Notes pass
-//! through as they are.
+//! connected stays as it is: it is signed once its project is connected again. Notes and cards'
+//! expanded calls pass through as they are; proposed steps are never signed, but their anchors
+//! are guarded.
 
 use rustc_hash::FxHashSet;
 
 use super::BoardError;
 use super::check::{
-    Health, HealthKind, ProjectKey, Target, current_guard, group_problem, guard_problem, health, put_guard,
+    Health, HealthKind, ProjectKey, Target, current_guard, group_problem, guard_problem, health,
+    placement_problem, put_guard,
 };
 use super::claims::{self, Signed};
 use super::graph::PageGraphs;
 use super::items::check_items;
-use super::model::{Board, Description, Page, ProjectName, Signature};
+use super::model::{Board, Description, Page, ProjectName, Proposal, Signature};
 use super::parse::Path;
 
 fn refuse(page: &Page, target: &Target, message: &str) -> BoardError {
@@ -136,6 +138,11 @@ pub(crate) fn current_signature(
                 .ok_or_else(|| refuse(page, target, "unknown frame"))?;
             claim_signature(page, target, claims::frame_signed(page, graphs, frame))
         }
+        Target::Proposal(_) => Err(refuse(
+            page,
+            target,
+            "a proposed step is never signed: it has no implementation source",
+        )),
     }
 }
 
@@ -179,6 +186,7 @@ fn signatures_mut<'a>(page: &'a mut Page, target: &Target) -> Vec<&'a mut Option
             None,
         ]),
         Target::Card(_) | Target::Group(_) | Target::Label(_) => texts([description_mut(page, target), None]),
+        Target::Proposal(_) => Vec::new(),
     }
 }
 
@@ -219,7 +227,7 @@ fn description_mut<'a>(page: &'a mut Page, target: &Target) -> Option<&'a mut De
             .iter_mut()
             .find(|link| &link.id == id)
             .and_then(|link| link.label.as_mut()),
-        Target::Resource(_) | Target::Frame(_) => None,
+        Target::Resource(_) | Target::Frame(_) | Target::Proposal(_) => None,
     }
 }
 
@@ -355,19 +363,67 @@ fn unchanged(old: &Page, new: &Page, target: &Target) -> bool {
         Target::Frame(id) => {
             old.frame(id).map(|frame| &frame.members) == new.frame(id).map(|frame| &frame.members)
         }
+        Target::Proposal(id) => match (old.proposal(id), new.proposal(id)) {
+            (Some(a), Some(b)) => same_place(old, a, new, b),
+            _ => false,
+        },
     }
+}
+
+/// Whether proposed step `a` of page `old` goes where `b` of page `new` does: after the same
+/// anchor, on the same card showing the same block.
+fn same_place(old: &Page, a: &Proposal, new: &Page, b: &Proposal) -> bool {
+    (&a.card, &a.after) == (&b.card, &b.after)
+        && old.card(&a.card).map(|card| &card.reference) == new.card(&b.card).map(|card| &card.reference)
+}
+
+/// Refuses a proposed step that is new or placed elsewhere since `previous` ([`same_place`])
+/// unless it goes after a step of its card's project's graph strictly inside the card's block
+/// ([`placement_problem`]). One placed as before is kept as it is, even when its anchor went
+/// missing or is held: that is health's to report.
+fn place_proposals(page: &Page, previous: Option<&Page>, graphs: &PageGraphs<'_>) -> Result<(), BoardError> {
+    for proposal in &page.proposals {
+        if previous
+            .and_then(|old| Some((old, old.proposal(&proposal.id)?)))
+            .is_some_and(|(old, before)| same_place(old, before, page, proposal))
+        {
+            continue;
+        }
+        let target = Target::Proposal(proposal.id.clone());
+        // The page's items were checked: the card is a block card of the page.
+        let Some(card) = page.card(&proposal.card) else {
+            return Err(refuse(page, &target, "unknown card"));
+        };
+        let project = card.reference.project();
+        let Some(graph) = graphs.get(project) else {
+            let name = project.map_or("", ProjectName::as_str);
+            return Err(refuse(
+                page,
+                &target,
+                &format!(
+                    "Can't place it: its card's project {name} is not connected. Connect that project, or propose the step on a card of a connected project"
+                ),
+            ));
+        };
+        if let Some(message) =
+            placement_problem(graph, card.reference.key().as_str(), proposal.after.as_str())
+        {
+            return Err(refuse(page, &target, &message));
+        }
+    }
+    Ok(())
 }
 
 /// Prepares one page (at `path`) for writing over `previous` (the version being replaced, with
 /// its health): the references between its items must hold (so Rust's own edits, such as
 /// repairs, never write a page the parser would refuse), guards the new version dropped come
 /// back from `previous`, unsigned text is signed, guards are saved, link labels and claims
-/// signed, and the result is refused when it introduces a missing reference, a broken group, a
-/// held reference, or a broken link that `previous` did not already have (with the same
-/// reference), or a new or changed claim that isn't grounded ([`claims::ground`]). Problems
-/// carried over unchanged are kept, so a page with a placeholder can still be moved, retitled,
-/// or described elsewhere. Outdated text and cards of projects that are not connected never
-/// refuse a save.
+/// signed, and the result is refused when it places a proposed step where it can't go
+/// ([`place_proposals`]), introduces a missing reference, a broken group, a held reference, or a
+/// broken link that `previous` did not already have (with the same reference), or has a new or
+/// changed claim that isn't grounded ([`claims::ground`]). Problems carried over unchanged are
+/// kept, so a page with a placeholder can still be moved, retitled, or described elsewhere.
+/// Outdated text and cards of projects that are not connected never refuse a save.
 fn prepare_page(
     mut page: Page,
     path: &Path,
@@ -384,6 +440,7 @@ fn prepare_page(
     }
     sign(&mut page, graphs)?;
     claims::sign(&mut page, previous.map(|(old, _)| old), graphs)?;
+    place_proposals(&page, previous.map(|(old, _)| old), graphs)?;
     let health = health(&page, graphs);
     for item in health
         .items

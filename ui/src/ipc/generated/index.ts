@@ -755,7 +755,15 @@ folded?: boolean,
 /**
  * The card's description.
  */
-description?: Description, };
+description?: Description, 
+/**
+ * Calls expanded in place in Diagram (docs/reader.md#boards): each a path of 1 to 3 keys,
+ * outermost first. A key is a call occurrence of the block shown at that level (a `call`/`new`
+ * occurrence block, as `CallLink.source` / `FlowChip.source` name it) or a callback written
+ * there (`FlowCallback.key`). Presentation only: never guarded, never a claim; a key that no
+ * longer resolves is ignored.
+ */
+expanded?: Array<Array<Key>>, };
 
 /**
  * The arguments of `card`.
@@ -2117,6 +2125,13 @@ startLine?: number,
  */
 endLine?: number, 
 /**
+ * Where the node's own source is: a condition's recorded condition; a loop's recorded
+ * condition, else its header (from its start to its body); a `call` node's main call
+ * expression; any other node's whole block. Absent for Start and End, and whenever the
+ * source is not current (recorded ranges are withheld).
+ */
+focus?: SourceFocus, 
+/**
  * The lane: 0 is the main lane.
  */
 lane: number, 
@@ -2499,7 +2514,7 @@ signature: Signature, };
 export type Health = { 
 /**
  * Every problem: per page, cards first, then groups, labels, links' ends, resource cards,
- * connections, and frames.
+ * connections, frames, and proposed steps.
  */
 items: Array<HealthItem>, 
 /**
@@ -3684,7 +3699,11 @@ resources?: Array<Resource>,
 /**
  * Notes.
  */
-notes?: Array<Note>, };
+notes?: Array<Note>, 
+/**
+ * Proposed steps.
+ */
+proposals?: Array<Proposal>, };
 
 /**
  * A page's outline.
@@ -4274,6 +4293,47 @@ files: number,
 matches: number, };
 
 /**
+ * A proposed step: an intended addition after a real step of a block card, clearly not a compiler
+ * fact (docs/proposals/unified-code-diagrams.md §7). It has no implementation source and is never
+ * signed.
+ */
+export type Proposal = { 
+/**
+ * Unique among the page's items.
+ */
+id: string, 
+/**
+ * The block card it belongs to.
+ */
+card: string, 
+/**
+ * The real step it goes after: a key inside the card's block, in the card's project. Guarded.
+ */
+after: Key, 
+/**
+ * For a step with several outgoing paths (a condition or a loop): which one.
+ */
+path?: ProposalPath, 
+/**
+ * What it would do, in words: one line, never blank, at most 120 characters
+ * ([`MAX_PROPOSAL_TITLE`]).
+ */
+title: string, 
+/**
+ * Why, in words: never blank, at most 400 characters ([`MAX_PROPOSAL_REASON`]).
+ */
+reason?: string, 
+/**
+ * Who proposed it.
+ */
+author: Author, };
+
+/**
+ * Which path of a decision a proposed step goes on.
+ */
+export type ProposalPath = "yes" | "no" | "each" | "done";
+
+/**
  * The arguments of `publish_board`.
  */
 export type PublishBoardArgs = { 
@@ -4562,7 +4622,7 @@ repair: RepairSpec, };
 /**
  * A repair the UI can offer for a health item; [`apply_repair`] performs it.
  */
-export type RepairKind = "reconnect" | "removeCard" | "removeLabel" | "ungroup" | "removeLink" | "removeResource" | "removeDescription" | "resign" | "accept";
+export type RepairKind = "reconnect" | "removeCard" | "removeLabel" | "ungroup" | "removeLink" | "removeResource" | "removeDescription" | "resign" | "accept" | "removeProposal";
 
 /**
  * A repair on one page.
@@ -4635,7 +4695,11 @@ project?: ProjectName,
 /**
  * The reference.
  */
-key: string, });
+key: string, } | { "kind": "remove_proposal", 
+/**
+ * The proposed step's id.
+ */
+proposal: string, });
 
 /**
  * A validated path relative to the open folder: nonempty, `/`-separated, case preserved, and
@@ -5333,6 +5397,29 @@ wholeFolder: boolean,
 files: number, };
 
 /**
+ * Where a node's own source is: its condition, its main call expression, or else its statement,
+ * from recorded ranges. Lines are one-based; columns are UTF-16 code units from the line's start;
+ * the end is exclusive.
+ */
+export type SourceFocus = { 
+/**
+ * The line it starts on.
+ */
+startLine: number, 
+/**
+ * Where it starts on that line.
+ */
+startColumn: number, 
+/**
+ * The line it ends on.
+ */
+endLine: number, 
+/**
+ * Where it ends on that line (exclusive).
+ */
+endColumn: number, };
+
+/**
  * The freshness of a file's source, as the UI shows it.
  */
 export type SourceState = "current" | "changed" | "missing";
@@ -5403,7 +5490,7 @@ path: string, };
 /**
  * What a health item or repair is about, on one page.
  */
-export type Target = { "card": string } | { "group": string } | { "label": ProjectKey } | { "link": string } | { "resource": string } | { "frame": string };
+export type Target = { "card": string } | { "group": string } | { "label": ProjectKey } | { "link": string } | { "resource": string } | { "frame": string } | { "proposal": string };
 
 /**
  * What an entrance target is to its entrance.
@@ -5411,9 +5498,10 @@ export type Target = { "card": string } | { "group": string } | { "label": Proje
 export type TargetRole = "startup" | "handler";
 
 /**
- * What a repair is about (a card, group, label, link, resource card, or frame) on its page.
+ * What a repair is about (a card, group, label, link, resource card, frame, or proposed step) on
+ * its page.
  */
-export type TargetSpec = { "card": string } | { "group": string } | { "label": LabelSpec } | { "link": string } | { "resource": string } | { "frame": string };
+export type TargetSpec = { "card": string } | { "group": string } | { "label": LabelSpec } | { "link": string } | { "resource": string } | { "frame": string } | { "proposal": string };
 
 /**
  * One handler or startup of an entrance, in registration order.

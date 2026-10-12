@@ -293,3 +293,10 @@
 
 /* Make a group from lines */
 .group-form { display: flex; flex-direction: column; gap: 12px; }
+
+/* Combine…'s run, as chosen on the canvas: read-only. */
+.group-form-steps .text-field-input {
+  background: var(--color-step);
+  font-family: var(--font-code);
+  color: var(--color-muted);
+}

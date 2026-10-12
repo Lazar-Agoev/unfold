@@ -1,11 +1,13 @@
 /**
  * The peek sheet's render model, as pure functions over `file_view` pages: which page holds a line,
  * which lines show (folds hide ranges), which outline items are definitions (they get `⊕` and a
- * fold), where text matches fall on a line, and the match ticks beside the scrollbar. Offsets are
+ * fold), where text matches fall on a line, the match ticks beside the scrollbar, and View code's
+ * focus (its rows, its exact expression on each row, and whether the file may show it). Offsets are
  * UTF-16 offsets from the start of the file; a page's text begins at `textStart`.
  */
 
-import type { BlockKind, OutlineItem, TextMatch } from "../ipc/generated";
+import type { BlockKind, GraphMatch, OutlineItem, TextMatch } from "../ipc/generated";
+import type { PeekFocus } from "../state/overlays";
 
 /** Lines per `file_view` page. */
 export const PAGE_LINES = 200;
@@ -72,11 +74,12 @@ export function canFold(item: OutlineItem): boolean {
   return item.fold !== undefined && item.endLine > item.startLine;
 }
 
-/** A highlighted text match on a line, relative to the line's start. */
+/** A highlighted text match on a line (or, with `focus`, View code's expression), relative to the line's start. */
 export interface LineMark {
   readonly start: number;
   readonly end: number;
   readonly current: boolean;
+  readonly focus?: true;
 }
 
 /** The text matches on `line`, from the matches the sheet was opened with (`current` is their index). */
@@ -97,7 +100,7 @@ export function marksOn(line: number, matches: readonly TextMatch[], current: nu
 interface MarkedRun {
   readonly start: number;
   readonly end: number;
-  readonly mark: "current" | "other" | null;
+  readonly mark: "current" | "other" | "focus" | null;
 }
 
 /** Cuts `[start, end)` (offsets in the line) at mark boundaries. */
@@ -113,7 +116,7 @@ export function markRuns(start: number, end: number, marks: readonly LineMark[])
     if (from > at) {
       runs.push({ start: at, end: from, mark: null });
     }
-    runs.push({ start: from, end: to, mark: mark.current ? "current" : "other" });
+    runs.push({ start: from, end: to, mark: mark.focus ? "focus" : mark.current ? "current" : "other" });
     at = to;
   }
   if (at < end) {
@@ -143,4 +146,54 @@ export function matchTicks(rows: readonly number[], matches: readonly TextMatch[
     }
   });
   return [...ticks.values()];
+}
+
+/**
+ * Whether the file may show View code's focus: source the graph was built from (`current`), or an
+ * evidence file read as text. A file changed since the compile, or one outside the graph, never shows
+ * a range recorded for other text.
+ */
+export function showsFocus(graph: GraphMatch): boolean {
+  return graph === "current" || graph === "evidence";
+}
+
+/** Whether `line` is one of the focus's rows. */
+export function inFocus(line: number, focus: PeekFocus): boolean {
+  return line >= focus.startLine && line <= focus.endLine;
+}
+
+/**
+ * The focus's expression on `line` (`length` UTF-16 units long), relative to the line's start: from
+ * `startColumn` on the first line to `endColumn` on the last, the whole line in between. None without
+ * columns, off the focus's rows, or when it would be empty.
+ */
+export function focusMarkOn(line: number, focus: PeekFocus, length: number): LineMark | null {
+  if (focus.startColumn === undefined || focus.endColumn === undefined || !inFocus(line, focus)) {
+    return null;
+  }
+  const start = line === focus.startLine ? Math.min(focus.startColumn, length) : 0;
+  const end = line === focus.endLine ? Math.min(focus.endColumn, length) : length;
+  return end > start ? { start, end, current: true, focus: true } : null;
+}
+
+/** Lines past which a focus no longer fits in the middle of the sheet, so it starts at the top. */
+const LONG_FOCUS = 20;
+
+/** The line View code brings to the middle: the focus's middle line, or its first when it is long. */
+export function focusAnchor(focus: PeekFocus): { readonly line: number; readonly align: "center" | "start" } {
+  const span = focus.endLine - focus.startLine;
+  return span <= LONG_FOCUS ? { line: focus.startLine + Math.floor(span / 2), align: "center" } : { line: focus.startLine, align: "start" };
+}
+
+/**
+ * Everything marked on `line` (`length` UTF-16 units long), in order: View code's expression (when
+ * `focus` is shown), and the text matches that don't overlap it.
+ */
+export function lineMarks(line: number, length: number, matches: readonly TextMatch[], current: number | undefined, focus: PeekFocus | undefined): LineMark[] {
+  const text = marksOn(line, matches, current);
+  const mark = focus ? focusMarkOn(line, focus, length) : null;
+  if (!mark) {
+    return text;
+  }
+  return [mark, ...text.filter((other) => other.end <= mark.start || other.start >= mark.end)].sort((a, b) => a.start - b.start);
 }

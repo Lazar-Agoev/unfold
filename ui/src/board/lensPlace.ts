@@ -1,5 +1,5 @@
 /**
- * Where the top bar's Diagram | Flow | Code lens goes: centered over the uncovered canvas while it clears the
+ * Where the top bar's Diagram | Code lens goes: centered over the uncovered canvas while it clears the
  * page title and publish state on its left and Share on its right; otherwise as close to the center
  * as it fits, and on a canvas too narrow for both, at the right of the free space with the title and
  * state shortened to the room left of it.

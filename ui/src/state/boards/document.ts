@@ -4,7 +4,7 @@
  * rather than set to `undefined`, matching what the file holds (`folded` only when true, `description`
  * and `label` only when there is text).
  *
- * Cards, groups, links, frames, resource cards, and notes share one id space per page; page ids are
+ * Cards, groups, links, frames, resource cards, notes, and proposed steps share one id space per page; page ids are
  * unique within the board. Both match `/^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/`. Removing an item takes
  * what would dangle with it, as the engine does.
  */
@@ -82,9 +82,9 @@ function firstFree(stem: string, taken: ReadonlySet<string>): string {
   }
 }
 
-/** The ids of the page's items: cards, groups, links, frames, resources, and notes share one id space. */
+/** The ids of the page's items: cards, groups, links, frames, resources, notes, and proposed steps share one id space. */
 function takenIds(page: Page): Set<string> {
-  const items = [page.cards, page.groups, page.links, page.frames ?? [], page.resources ?? [], page.notes ?? []];
+  const items = [page.cards, page.groups, page.links, page.frames ?? [], page.resources ?? [], page.notes ?? [], page.proposals ?? []];
   return new Set(items.flatMap((list) => list.map((item) => item.id)));
 }
 
@@ -123,9 +123,9 @@ export function addCard(page: Page, card: NewCard): string {
 }
 
 /**
- * What removing `ids` takes with it, the engine's removal cascade (`remove_items`): the groups of a
- * removed card, the links that end at a removed item, and a frame whose members are all removed (then
- * its links, and so on). Includes `ids` themselves.
+ * What removing `ids` takes with it, the engine's removal cascade (`remove_items`): the groups and
+ * proposed steps of a removed card, the links that end at a removed item, and a frame whose members are
+ * all removed (then its links, and so on). Includes `ids` themselves.
  */
 export function removalCascade(page: Page, ids: readonly string[]): Set<string> {
   const removed = new Set(ids);
@@ -134,6 +134,11 @@ export function removalCascade(page: Page, ids: readonly string[]): Set<string> 
     for (const group of page.groups) {
       if (removed.has(group.card)) {
         removed.add(group.id);
+      }
+    }
+    for (const proposal of page.proposals ?? []) {
+      if (removed.has(proposal.card)) {
+        removed.add(proposal.id);
       }
     }
     for (const link of page.links) {
@@ -218,6 +223,9 @@ export function removeItems(page: Page, ids: readonly string[]): string[] {
   if (page.notes) {
     page.notes = kept(page.notes);
   }
+  if (page.proposals) {
+    page.proposals = kept(page.proposals);
+  }
   // The file leaves out empty lists of these.
   if (page.frames?.length === 0) {
     delete page.frames;
@@ -228,10 +236,13 @@ export function removeItems(page: Page, ids: readonly string[]): string[] {
   if (page.notes?.length === 0) {
     delete page.notes;
   }
+  if (page.proposals?.length === 0) {
+    delete page.proposals;
+  }
   return gone;
 }
 
-/** Removes a card, the groups inside it, the links that end at it, and a frame it leaves empty. */
+/** Removes a card, the groups and proposed steps inside it, the links that end at it, and a frame it leaves empty. */
 export function removeCard(page: Page, cardId: string): void {
   removeItems(page, [cardId]);
 }
@@ -262,11 +273,63 @@ export function moveItems(page: Page, positions: Readonly<Record<string, readonl
   }
 }
 
-/** Sets a card's own Diagram | Flow | Code switch (saved with the board). */
+/** Sets a card's saved view: `diagram` (compact in Diagram) or `flow` (expanded); a legacy `code` stays readable. */
 export function setCardView(page: Page, cardId: string, view: View): void {
   const card = findCard(page, cardId);
   if (card) {
     card.view = view;
+  }
+}
+
+/** Expands a card in Diagram (its written flow, an entrance's evidence and targets) or makes it compact again. */
+export function setCardExpanded(page: Page, cardId: string, expanded: boolean): void {
+  setCardView(page, cardId, expanded ? "flow" : "diagram");
+}
+
+/** The most calls one card expands in place, and how deep (the board format's limits). */
+export const MAX_EXPANDED_CALLS = 64;
+export const MAX_EXPANSION_DEPTH = 3;
+
+/**
+ * The calls a card expands in place in Diagram: paths of 1 to 3 keys, outermost first, each a call
+ * occurrence (or a callback) of the block shown at that level.
+ */
+export function callExpansions(card: Pick<Card, "expanded">): readonly (readonly Key[])[] {
+  return card.expanded ?? [];
+}
+
+function samePath(a: readonly Key[], b: readonly Key[]): boolean {
+  return a.length === b.length && a.every((key, index) => key === b[index]);
+}
+
+/** Whether the card expands the call at `path` in place. */
+export function isCallExpanded(card: Pick<Card, "expanded">, path: readonly Key[]): boolean {
+  return callExpansions(card).some((item) => samePath(item, path));
+}
+
+/**
+ * Expands the call at `path` in place, or collapses it (with every expansion inside it). A path
+ * deeper than three levels, or one more than the card holds, changes nothing. An empty list is
+ * deleted, as the file omits it.
+ */
+export function toggleCallExpansion(page: Page, cardId: string, path: readonly Key[]): void {
+  const card = findCard(page, cardId);
+  if (!card || path.length === 0 || path.length > MAX_EXPANSION_DEPTH) {
+    return;
+  }
+  const paths = callExpansions(card);
+  let next: Key[][];
+  if (paths.some((item) => samePath(item, path))) {
+    next = paths.filter((item) => !samePath(item.slice(0, path.length), path)).map((item) => [...item]);
+  } else if (paths.length < MAX_EXPANDED_CALLS) {
+    next = [...paths.map((item) => [...item]), [...path]];
+  } else {
+    return;
+  }
+  if (next.length > 0) {
+    card.expanded = next;
+  } else {
+    delete card.expanded;
   }
 }
 
@@ -467,9 +530,9 @@ export function addPage(document: BoardDocument, options: { readonly title?: str
   const id = nextPageId(document);
   const index = options.after === undefined ? -1 : document.pages.findIndex((page) => page.id === options.after);
   const at = index < 0 ? document.pages.length : index + 1;
-  const neighbour = document.pages[at - 1] ?? document.pages[0];
   const title = options.title !== undefined && options.title.trim().length > 0 ? options.title : `Page ${document.pages.length + 1}`;
-  document.pages.splice(at, 0, emptyPage(id, title, neighbour?.defaultView ?? "code"));
+  // New pages show Diagram, as the engine's new pages do.
+  document.pages.splice(at, 0, emptyPage(id, title, "diagram"));
   return id;
 }
 

@@ -11,18 +11,21 @@ export interface RelationRowProps {
   /** Makes the value clickable (focus or open what it names). */
   readonly onActivate?: () => void;
   readonly title?: string;
+  /** Wraps a long value onto more lines instead of cutting it short. */
+  readonly wrap?: boolean;
 }
 
-export function RelationRow({ label, children, action, onActivate, title }: RelationRowProps) {
+export function RelationRow({ label, children, action, onActivate, title, wrap = false }: RelationRowProps) {
+  const value = `relation-value${wrap ? " wrap" : ""}`;
   return (
     <div className="relation-row">
       <span className="relation-label">{label}</span>
       {onActivate ? (
-        <button type="button" className="relation-value" title={title} onClick={onActivate}>
+        <button type="button" className={value} title={title} onClick={onActivate}>
           {children}
         </button>
       ) : (
-        <span className="relation-value" title={title}>
+        <span className={value} title={title}>
           {children}
         </span>
       )}

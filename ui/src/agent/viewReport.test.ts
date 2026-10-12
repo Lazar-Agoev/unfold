@@ -20,6 +20,7 @@ const cards: Card[] = [
 const PAGE: Page = page("page-1", cards, {
   groups: [{ id: "a-checks", card: "a", title: "Checks", members: [], collapsed: false }],
   links: [{ id: "a-to-b", from: "a", to: "b" }],
+  proposals: [{ id: "b-email", card: "b", after: "src/b.ts#function:b/call[0]", title: "Email a confirmation", author: "person:maya" }],
 });
 
 let engine: FakeEngine;
@@ -41,17 +42,17 @@ describe("visibleItems", () => {
     ["b", { x: 2000, y: 0, width: 500, height: 300 }],
   ]);
 
-  it("lists the cards the camera shows, their step groups, and links with an end in view", () => {
+  it("lists the cards the camera shows, their step groups and proposed steps, and links with an end in view", () => {
     expect(visibleItems(PAGE, rects, { x: 0, y: 0, zoom: 1 }, { width: 1000, height: 800 })).toEqual(["a", "a-checks", "a-to-b"]);
     // Zoomed out to a quarter, the canvas shows 4000 units across.
-    expect(visibleItems(PAGE, rects, { x: 0, y: 0, zoom: 0.25 }, { width: 1000, height: 800 })).toEqual(["a", "b", "a-checks", "a-to-b"]);
+    expect(visibleItems(PAGE, rects, { x: 0, y: 0, zoom: 0.25 }, { width: 1000, height: 800 })).toEqual(["a", "b", "a-checks", "b-email", "a-to-b"]);
     // Panned right past a.
-    expect(visibleItems(PAGE, rects, { x: -1800, y: 0, zoom: 1 }, { width: 1000, height: 800 })).toEqual(["b", "a-to-b"]);
+    expect(visibleItems(PAGE, rects, { x: -1800, y: 0, zoom: 1 }, { width: 1000, height: 800 })).toEqual(["b", "b-email", "a-to-b"]);
   });
 
   it("lists everything before the canvas has a camera or a size", () => {
-    expect(visibleItems(PAGE, rects, null, { width: 1000, height: 800 })).toEqual(["a", "b", "a-checks", "a-to-b"]);
-    expect(visibleItems(PAGE, rects, { x: 0, y: 0, zoom: 1 }, null)).toHaveLength(4);
+    expect(visibleItems(PAGE, rects, null, { width: 1000, height: 800 })).toEqual(["a", "b", "a-checks", "b-email", "a-to-b"]);
+    expect(visibleItems(PAGE, rects, { x: 0, y: 0, zoom: 1 }, null)).toHaveLength(5);
   });
 
   it("lists the frames in view, and leaves out what a collapsed frame hides", () => {
@@ -66,7 +67,7 @@ describe("visibleItems", () => {
 });
 
 describe("currentView", () => {
-  it("reports Home with the board tabs, and a board's page, selection, and lens", () => {
+  it("reports Home with the board tabs, and a board's page, selection, and lens (Diagram or Code)", () => {
     store.adoptBoardState(boardState(P, ID, boardDocument([PAGE])));
     useTabs.setState({ boards: [REF, OTHER], active: "home" });
     expect(currentView(null)).toEqual({ selection: { kind: "none" }, visible: [], tabs: [REF, OTHER] });
@@ -78,14 +79,15 @@ describe("currentView", () => {
       page: "page-1",
       selection: { kind: "step", card: "a", key: "src/a.ts#function:a/if[0]" },
       lens: "code",
-      visible: ["a", "b", "a-checks", "a-to-b"],
+      visible: ["a", "b", "a-checks", "b-email", "a-to-b"],
       tabs: [REF, OTHER],
     });
+    // A legacy Flow lens is Diagram.
     store.setPageLens(TARGET, "flow");
     const line = { arrowId: "x", project: P, source: "src/a.ts#function:a/call[0]", seq: 0, from: "a", to: "b", line: 7 };
     store.select(TARGET, { kind: "line", ...line });
     expect(currentView(null)).toMatchObject({
-      lens: "flow",
+      lens: "diagram",
       selection: { kind: "line", from: "a", to: "b", project: P, source: line.source, seq: 0, line: 7 },
     });
     for (const [selection, reported] of [
@@ -94,6 +96,12 @@ describe("currentView", () => {
       [{ kind: "group", groupId: "a-checks" }, { kind: "group", id: "a-checks" }],
       [{ kind: "link", linkId: "a-to-b" }, { kind: "link", id: "a-to-b" }],
       [{ kind: "frame", frameId: "server" }, { kind: "frame", id: "server" }],
+      [{ kind: "proposal", proposalId: "b-email" }, { kind: "proposal", id: "b-email" }],
+      // A step shown in a call expanded in place carries the block that owns it.
+      [
+        { kind: "card", cardId: "a", key: "src/b.ts#function:b/call[0]", owner: "src/b.ts#function:b" },
+        { kind: "step", card: "a", key: "src/b.ts#function:b/call[0]", owner: "src/b.ts#function:b" },
+      ],
     ] as const) {
       store.select(TARGET, selection);
       expect(currentView(null).selection).toEqual(reported);

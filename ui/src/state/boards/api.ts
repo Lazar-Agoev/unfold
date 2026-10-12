@@ -47,7 +47,7 @@ import { findNote, setNoteText } from "./notes";
 import { findResource, setResourceDescription } from "./resources";
 import { cardRefKey, boardKey } from "./keys";
 import { newBoard } from "./open";
-import { editPage, getOpenBoard, getPageView, pushFocusMove, requestCardFocus, select, setActivePage, useBoards } from "./store";
+import { editPage, getOpenBoard, getPageView, pushFocusMove, requestCardFocus, select, setActivePage, shownView, useBoards } from "./store";
 import type { BoardRef, OpenBoard, PageId, PageTarget } from "./types";
 
 /** A card ref for `key`, naming `project` when the card isn't from the board's own project. */
@@ -183,8 +183,9 @@ export async function openEntrance(target: PageTarget, project: ProjectId, entra
   const onPage = new Set(page.cards.filter((card) => card.ref.project === named.project).map(cardKey));
   const handlers = resolved.flatMap((key, index) => (onPage.has(key) ? [] : [{ key, model: models[index] }]));
   const foreign = named.project !== undefined;
-  // The cards show the page's lens, else its default view: an entrance's handler rows, or a Diagram node's edge.
-  const shown = getPageView(target).lens ?? page.defaultView;
+  // The entrance and its handlers open expanded (in Diagram: the entrance's ordered handler rows and the
+  // handlers' written flow), so tracing shows them in full; the page's lens still decides.
+  const shown = shownView(getPageView(target).lens, { view: "flow" }, page.defaultView);
   const { width } = estimatedCardSize({ key: entranceKey, model: view, view: shown, monogram: foreign }, measureText);
   const rows = cardBody(entranceKey, shown) === "handlers" ? entranceHandlerRows(entranceCardText(view), foreign, width, measureText) : [];
   const positions = handlerPlacement(
@@ -193,8 +194,8 @@ export async function openEntrance(target: PageTarget, project: ProjectId, entra
     handlers.map(({ key, model }) => estimatedCardSize({ key, model, view: shown, monogram: foreign }, measureText)),
   );
   const opened = editPage(target, (draft) => [
-    addCard(draft, { ref: refOf("entrance", entranceKey, named.project), at: [x, y] }),
-    ...handlers.map(({ key }, index) => addCard(draft, { ref: refOf("block", key, named.project), at: positions[index] ?? [x, y] })),
+    addCard(draft, { ref: refOf("entrance", entranceKey, named.project), at: [x, y], view: "flow" }),
+    ...handlers.map(({ key }, index) => addCard(draft, { ref: refOf("block", key, named.project), at: positions[index] ?? [x, y], view: "flow" })),
   ]);
   const entranceId = opened?.[0];
   if (!opened || entranceId === undefined) {

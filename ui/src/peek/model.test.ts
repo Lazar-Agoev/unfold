@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OutlineItem, TextMatch } from "../ipc/generated";
 import { fixture } from "../test/engine";
-import { canFold, definitionAt, markRuns, marksOn, matchTicks, pageOf, pageRange, visibleLines } from "./model";
+import { canFold, definitionAt, focusAnchor, focusMarkOn, inFocus, lineMarks, markRuns, marksOn, matchTicks, pageOf, pageRange, showsFocus, visibleLines } from "./model";
 
 describe("pages", () => {
   it("maps lines to 200-line pages, clamped to the file", () => {
@@ -83,5 +83,56 @@ describe("text matches", () => {
       { line: 59, at: 0.58, current: true },
     ]);
     expect(matchTicks(rows.filter((line) => line !== 59), matches, 1)).toHaveLength(1);
+  });
+});
+
+describe("View code's focus", () => {
+  it("is shown only on source the graph was built from, or on evidence read as text", () => {
+    expect(showsFocus("current")).toBe(true);
+    expect(showsFocus("evidence")).toBe(true);
+    expect(showsFocus("not_compiled")).toBe(false);
+    expect(showsFocus("not_indexed")).toBe(false);
+  });
+
+  it("tints its rows and marks its expression from the start column on its first line to the end column on its last", () => {
+    const focus = { startLine: 27, startColumn: 6, endLine: 29, endColumn: 4 };
+    expect([26, 27, 28, 29, 30].map((line) => inFocus(line, focus))).toEqual([false, true, true, true, false]);
+    expect(focusMarkOn(27, focus, 40)).toEqual({ start: 6, end: 40, current: true, focus: true });
+    expect(focusMarkOn(28, focus, 12)).toEqual({ start: 0, end: 12, current: true, focus: true });
+    expect(focusMarkOn(29, focus, 20)).toEqual({ start: 0, end: 4, current: true, focus: true });
+    expect(focusMarkOn(30, focus, 20)).toBeNull();
+    // Lines only (a definition, a combined block): rows, no expression.
+    expect(focusMarkOn(27, { startLine: 27, endLine: 31 }, 40)).toBeNull();
+  });
+
+  it("measures columns in UTF-16 code units, as the file's text is sliced, not in bytes", () => {
+    const line = '  if (név === "😀" && ok) {';
+    const condition = 'név === "😀" && ok';
+    const startColumn = line.indexOf(condition);
+    const endColumn = startColumn + condition.length;
+    // The same columns counted in UTF-8 bytes land elsewhere: é is 2 bytes, 😀 is 4 (2 UTF-16 units).
+    expect(new TextEncoder().encode(line.slice(0, endColumn)).length).not.toBe(endColumn);
+    const mark = focusMarkOn(4, { startLine: 4, startColumn, endLine: 4, endColumn }, line.length);
+    expect(mark && line.slice(mark.start, mark.end)).toBe(condition);
+    const runs = markRuns(0, line.length, mark ? [mark] : []);
+    expect(runs.map((run) => [line.slice(run.start, run.end), run.mark])).toEqual([
+      ["  if (", null],
+      [condition, "focus"],
+      [") {", null],
+    ]);
+  });
+
+  it("keeps the text matches that don't overlap its expression", () => {
+    const matches: TextMatch[] = [{ line: 5, text: "abc def ghi", column: 0, ranges: [[0, 3], [4, 7]] }];
+    expect(lineMarks(5, 11, matches, 0, { startLine: 5, startColumn: 5, endLine: 5, endColumn: 11 })).toEqual([
+      { start: 0, end: 3, current: true },
+      { start: 5, end: 11, current: true, focus: true },
+    ]);
+    expect(lineMarks(5, 11, matches, 0, undefined)).toHaveLength(2);
+  });
+
+  it("brings a short focus's middle to the middle of the sheet, and a long one's first line to the top", () => {
+    expect(focusAnchor({ startLine: 27, endLine: 31 })).toEqual({ line: 29, align: "center" });
+    expect(focusAnchor({ startLine: 10, endLine: 80 })).toEqual({ line: 10, align: "start" });
   });
 });

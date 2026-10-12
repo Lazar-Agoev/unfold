@@ -18,6 +18,7 @@ import type { Card, CardRef, Key, Page, ProjectId, ProjectName, TypeDefinition, 
 import { framePadding } from "../../../canvas/frames/geometry";
 import { addCard, cardKey, findCard, findCardByRef, keyDisplayName, setCardView } from "../document";
 import { addToFrame, findFrame } from "../frames";
+import { shownView } from "../store";
 import { cardProject, cardResult, cardSize, invalid, pageRects, refProject, type ApplyOp, type OpContext } from "./context";
 import type { AgentData } from "./data";
 import { nearRect, occupiedFor } from "./place";
@@ -205,7 +206,7 @@ export async function prepareAddCards(op: AddCardsOp, ctx: OpContext): Promise<A
 /** The offset below a type card's top of its field's row `row`, when it shows its fields on `page`. */
 function fieldOffset(ctx: OpContext, page: Page, card: Card, row: string): number | undefined {
   const definition = ctx.data.definition(cardProject(ctx, card), cardKey(card));
-  if (!definition || cardBody(cardKey(card), card.view ?? page.defaultView) !== "fields") {
+  if (!definition || cardBody(cardKey(card), shownView(null, card, page.defaultView)) !== "fields") {
     return undefined;
   }
   return estimatedFieldOffset(definition, row, descriptionHeight(card.description, null, measureText));
@@ -233,7 +234,7 @@ function portToward(ctx: OpContext, page: Page, card: Card, key: Key): number | 
   if (!occurrence) {
     return undefined;
   }
-  const code = cardBody(cardKey(card), card.view ?? page.defaultView) === "code";
+  const code = cardBody(cardKey(card), shownView(null, card, page.defaultView)) === "code";
   return (code ? estimatedLineOffset(model, occurrence.line) : undefined) ?? HEADER_PORT;
 }
 
@@ -308,7 +309,7 @@ function newCardSpot(ctx: OpContext, page: Page, ref: CardRef, near: string | un
 function followedSpot(ctx: OpContext, page: Page, from: Card, step: FollowStep, size: Size, frame: string | undefined): [number, number] {
   const rects = pageRects(ctx, page);
   const rect = rects.get(from.id) ?? { x: from.at[0], y: from.at[1], ...cardSize(ctx, page, from) };
-  const code = cardBody(cardKey(from), from.view ?? page.defaultView) === "code";
+  const code = cardBody(cardKey(from), shownView(null, from, page.defaultView)) === "code";
   const line = step.line !== undefined && code ? estimatedLineOffset(ctx.data.model(cardProject(ctx, from), cardKey(from)), step.line) : undefined;
   const field = step.row !== undefined ? fieldOffset(ctx, page, from, step.row) : undefined;
   const at = step.direction === "callers" ? leftOf(rect, size) : rightOf(rect, line ?? field ?? HEADER_PORT);
@@ -318,6 +319,15 @@ function followedSpot(ctx: OpContext, page: Page, from: Card, step: FollowStep, 
 function refOf(key: Key, project: ProjectName | undefined): CardRef {
   const named = project !== undefined ? { project } : {};
   return key.startsWith("entrance:") ? { entrance: key, ...named } : { block: key, ...named };
+}
+
+/**
+ * The view a spec saves on its card: compact or expanded (`expanded`, else a legacy `view`: Code is a
+ * page-wide lens, so a card asked for in Code is expanded); absent: the page's default.
+ */
+function cardView(spec: AgentCardSpec): View | undefined {
+  const expanded = spec.expanded ?? (spec.view === undefined ? undefined : spec.view !== "diagram");
+  return expanded === undefined ? undefined : expanded ? "flow" : "diagram";
 }
 
 function applyAddCards(page: Page, op: AddCardsOp, plans: ReadonlyMap<AgentCardSpec, FollowPlan>, ctx: OpContext): AgentItemResult[] {
@@ -336,7 +346,8 @@ function applyAddCards(page: Page, op: AddCardsOp, plans: ReadonlyMap<AgentCardS
   for (const spec of op.cards) {
     const named = refProject(ctx, spec.project ?? ctx.board.project);
     const ref = refOf(spec.key, named);
-    const { view, frame } = spec;
+    const { frame } = spec;
+    const view = cardView(spec);
     if (frame !== undefined && !findFrame(page, frame)) {
       throw invalid(`There is no frame with id “${frame}” on this page to put the cards in. read_page lists the page's frames; frame_cards makes one.`);
     }

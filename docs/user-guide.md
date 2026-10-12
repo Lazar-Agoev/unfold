@@ -62,7 +62,7 @@ A board opens in a tab at the top of the window, and the sidebar switches to it:
 - **Selected:** the card you selected: where it is, its description, who calls it, which entrances reach it, and the
   calls you haven't opened yet (**+ Open**). For a frame: its description, what it holds, and the links in and out.
 
-The bar above the canvas shows the page, whether the board is a draft or published, the **Diagram | Flow | Code** switch,
+The bar above the canvas shows the page, whether the board is a draft or published, the **Diagram | Code** lens,
 **Share**, and **Publish**. The dock at the bottom has **Add**, Back and Forward, the trail of calls you followed,
 **Arrange**, and the zoom. ⌘B hides the sidebar.
 
@@ -81,19 +81,32 @@ can prove where it goes, so a link is always right.
 Use **Back** (⌘[) and **Forward** (⌘]) to retrace your steps, **Fit** (⇧1) to see everything, and ⌘= / ⌘- to zoom.
 **Show callers**, in a card's menu, adds the functions that call it to its left.
 
-## Diagram, Flow, and Code
+## Diagram and Code
 
-Every card shows a function one of three ways:
+The **Diagram | Code** lens above the canvas (⌘1, ⌘2) sets how the page reads. A new page opens in Diagram. Switching
+to Code and back keeps where you were, what is selected, and what you expanded.
 
-- **Diagram**, one small box: what it is (`ƒ` for a function, or an entrance's kind, such as `HTTP`), its name,
-  where it is, and its description. Its calls to another card are one arrow, labeled with the call's signature, or
-  "3 calls" when there are several: click that to list them in Selected and open each one;
-- **Flow**, a diagram of its steps, branches, and loops;
-- **Code**, its exact source, with folds and links.
+- **Code** shows each function's exact source, with folds and links.
+- **Diagram** shows each function and entrance compact or expanded. The chevron at the start of a card's header
+  expands only that card, and that choice is saved with the board (⌘Z undoes it):
+  - **compact**, one small box: what it is (`ƒ` for a function, or an entrance's kind, such as `HTTP`), its name,
+    where it is, and its description. Its calls to another card are one arrow from its edge, labeled with the call's
+    signature, or "3 calls" when there are several: click that to list them in Selected and open each one;
+  - **expanded**, a function's written flow ("Paths from written structure"): its steps, branches, and loops, with
+    each call's arrow leaving from its own step. An expanded entrance shows where it is declared and its targets in
+    order, under **Starts** for what a launch starts or **Handlers, in order** for a route's handlers.
 
-The **Diagram | Flow | Code** switch above the canvas (⌘1, ⌘2, ⌘3) sets it for the page. Each function card also has
-its own switch, which is saved with the board, so a page can show the functions around the one that matters as boxes
-and that one in Flow; an entrance follows the page's.
+So a page can show the functions around the one that matters as boxes and that one expanded.
+
+### Expanding a call in place
+
+In an expanded function, a call Unfold can follow and each callback has its own small chevron. It shows the called
+function's steps right under the call, titled with its name and `file:line`: click the name to read its definition in
+the peek sheet, or `→` to open it as its own card. Calls inside can expand again, three levels deep at most; a call
+back to a function already shown has no chevron. A callback whose only step is one call shows that call's function,
+captioned "via callback to …", so you still see it is reached through the callback. Library calls and calls Unfold
+can't follow keep their explanation and can't be expanded. A step selected inside belongs to the called function in
+Selected. To group or describe those steps, open the called function as its own card.
 
 A **type** (an interface, a type alias, an enum, or a class) shows its fields in Diagram view: each field's name and
 written type, `?` and `readonly` as written, and the fields it inherits under the type they come from. Click a type
@@ -121,20 +134,68 @@ A file opens in the **peek sheet**, on the right of the canvas: the whole file, 
 The `⊕` beside a function, class, or type adds it to the page, and so does a click on a call. Pin the sheet to keep it open while
 you work; Escape closes it. Its menu opens the file in your own editor (⇧⌘O) or shows it in Finder.
 
+### View code
+
+**View code** opens the actual source of what is selected in the same sheet, with its lines tinted and, for a
+step, its exact expression marked: a condition's own test rather than the whole `if`, a call's expression, else the
+statement. Press `C` with something selected on the canvas, click the small `</>` on a hovered or selected step or
+on a combined block, choose View code from a step's or a group's menu (right-click, or ⇧F10), or click the location
+Selected shows ("line 27"). A card's Open source does the same for the whole function.
+
+- A function or type card opens at its definition. A combined block shows the span of its statements.
+- A step inside a call expanded in place opens the called function's file; the inset's title opens its definition.
+- An entrance's `</>`, beside where it is declared, opens that registration or configuration; each resolved
+  target's own `</>` opens that handler's or startup's definition. Clicking a target's name still opens its card.
+- A resource card or a connection opens the first source it cites.
+
+While the sheet is open from View code, selecting another item on the page moves it there; the page's selection,
+expansions, and camera stay as they are, and an item without source leaves the sheet where it is. A file changed
+since the last compile shows as it is now, saying "Changed since the last compile · the range isn't shown"
+rather than marking lines that may have moved. External and unresolved calls or targets have no source to open.
+
 ## Describing, labeling, and grouping
 
 Boards are for explaining a path to someone else (or to yourself later):
 
 - Select a **card** and write what the function does in Selected, or double-click the description strip on the card.
-- Select a **Flow node** and give it a plain-language label in place of its code ("Queue the order" instead of
-  `ordersQueue.add(...)`). "N Flow steps unlabeled · Label them", under On this page, steps you through the nodes
-  that still show code.
+- Select a **Flow node** (a step of an expanded card) and give it a plain-language label in place of its code
+  ("Queue the order" instead of `ordersQueue.add(...)`). "N Flow steps unlabeled · Label them", under On this page,
+  steps you through the nodes that still show code.
 - To **group** lines, drag over the line numbers of a Code card and give the group a title; it shows as a colored
-  rail beside those lines. In Flow the same group is a **step group**: a titled region around its steps. Its chevron
-  collapses it, in Code and Flow alike: in Flow it becomes one step with the group's title, marked when something
-  inside can return or throw. Right-click a group to describe it or ungroup it.
+  rail beside those lines. In an expanded card's flow the same group is a **step group**: a titled region around its
+  steps. Its chevron collapses it, in Code and Diagram alike: in the flow it becomes one step with the group's title,
+  marked when something inside can return or throw. Right-click a group to describe it or ungroup it.
+- To **combine** steps of an expanded function, click the first step and Shift-click the last: Selected says how
+  many steps and which lines, and whether they can be combined. Right-click the run and choose **Combine…**, give
+  the block a short title, and it becomes one collapsed **COMBINED** step with its step count, chevron, and `</>`;
+  the chevron shows the original steps again. Combine is a group, by the same rule as dragging over line numbers
+  (and as an agent's `group_steps`): whole consecutive statements of one body, never two branches, a nested
+  function, or lines another group holds; Combine… says why when it can't. Steps shown inside a call expanded in
+  place are combined on that function's own card. Select a combined block to retitle or describe it, view its
+  code, or Ungroup it, which restores the steps; neither changes your code.
 
 Everything you write is signed with your name. ⌘Z and ⇧⌘Z undo and redo board edits, on any page.
+
+### Proposed steps
+
+A **proposed step** marks a change you intend, where it would go, without pretending the code does it. Right-click a
+real step of an expanded function's own flow and choose **Add proposed step after…**; after a decision, choose one of
+its paths ("on yes…", "on no…", "each…", "done…"). A return, throw, break, or continue offers none, nor does a step
+shown inside a call expanded in place (propose it on that function's own card) or a collapsed combined block (expand
+it first). The step appears in place with a dashed green outline and a **PROPOSED** row, and its title is selected in
+Selected for you to replace. Dashed green connectors show where it would go; the solid compiled path still runs
+beside it.
+
+In Selected, give it a one-line title and an optional **Why**; whoever last changed the words is shown as its author,
+with the agent mark when an agent wrote them. **Where** names the step it goes after, and that step's `file:line`
+opens its code: a proposed step has no code of its own. **Copy link** points an agent at it, and **Remove proposal**
+deletes it (one undo step) without touching your code. On this page lists it under its card, marked "proposed", and a
+compact card shows how many it holds ("1 proposal").
+
+If the step it goes after disappears or is held for review, the proposal keeps its words and says so on the card.
+**Review** offers the explicit choices: **Reconnect** it to a step you pick from its card, **Accept** the current code
+(when held), or remove it. It is never moved to a similarly named step for you. Mermaid export leaves proposed steps
+out; page images include them.
 
 ## Frames
 
@@ -161,7 +222,7 @@ keep the text or remove it.
 Some of what a page explains isn't a function: the table an order is saved in, the queue between two services, the
 customer who starts it all. An agent adds these for you, each citing the code (or the lines of an
 [evidence file](engine.md#discovery-and-scope)) that shows it is there; they are drawn in the authored color,
-with the agent mark when an agent drew them, and look the same in Diagram, Flow, and Code.
+with the agent mark when an agent drew them, and look the same in Diagram and Code.
 
 - **Resource cards** are tables, queues, caches, storage, services outside your code, and actors, each with its
   kind's glyph, its name, and a description. A **table** lists its columns: when the code declares its shape (an
@@ -173,8 +234,8 @@ with the agent mark when an agent drew them, and look the same in Diagram, Flow,
   event, reads and writes, a call that goes somewhere only at runtime, a relationship between two tables, or
   anything else. Each kind has its own line (long dashes for a queue, dots for an event, crow's feet for a
   relationship) and a chip that says what travels: `queue · orders · OrderJob`. Click the type's name on the chip to
-  read its definition. A connection leaves from the line where it happens (in Code and Flow) and from the card's
-  edge in Diagram. Right-click a link for **Kind ▸** to change what it is (a drawn link becomes a connection), edit
+  read its definition. A connection leaves from the line where it happens (in Code and in an expanded card) and from
+  the card's edge when it is compact. Right-click a link for **Kind ▸** to change what it is (a drawn link becomes a connection), edit
   its label and description in Selected, or remove it. Connections are never compiled: Called by and Reached from
   list only what the code proves.
 - **Notes** are a sentence or two on the page: a caveat, a reading order, an open question. A note attached to a

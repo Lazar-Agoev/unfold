@@ -1,10 +1,10 @@
 //! Deterministic board serialization: object keys sorted by UTF-16 code units, two-space
 //! indentation, numbers and string escapes exactly as JavaScript's `JSON.stringify(value, null,
 //! 2)` writes them, and a final newline. Pages keep their order; cards, groups, links, frames,
-//! resources, and notes are sorted by id; labels and guards by (`project` or `""`, `key`);
-//! `projects` is the sorted set the items name. Optional fields are omitted when absent, and the
-//! page arrays `frames`, `resources`, and `notes` when empty, so boards without them read as
-//! they always did. One board has exactly one serialization, so a file written by Unfold, or by
+//! resources, notes, and proposals are sorted by id; labels and guards by (`project` or `""`,
+//! `key`); `projects` is the sorted set the items name. Optional fields are omitted when absent,
+//! and a card's `expanded` and the page arrays `frames`, `resources`, `notes`, and `proposals`
+//! when empty, so boards without them read as they always did. One board has exactly one serialization, so a file written by Unfold, or by
 //! an agent using `JSON.stringify` with sorted keys and arrays, reads back and writes out byte
 //! for byte.
 
@@ -14,7 +14,7 @@ use std::fmt::Write as _;
 use super::files::Revision;
 use super::model::{
     Anchor, Board, Card, CardRef, Column, Description, FORMAT, Frame, Group, GuardEntry, LabelEntry, Link,
-    Note, Page, ProjectName, Resource, VERSION,
+    Note, Page, ProjectName, Proposal, Resource, VERSION,
 };
 use super::parse::publishes;
 
@@ -117,6 +117,13 @@ fn card(value: &Card) -> Out {
     let mut fields = vec![("at", position(value.at))];
     if let Some(item) = &value.description {
         fields.push(("description", description(item)));
+    }
+    if !value.expanded.is_empty() {
+        let paths = value
+            .expanded
+            .iter()
+            .map(|path| Out::Array(path.iter().map(|key| text(key.as_str())).collect()));
+        fields.push(("expanded", Out::Array(paths.collect())));
     }
     if value.folded {
         fields.push(("folded", Out::Bool(true)));
@@ -299,6 +306,19 @@ fn note(value: &Note) -> Out {
     Out::Object(fields)
 }
 
+fn proposal(value: &Proposal) -> Out {
+    let mut fields = vec![
+        ("after", text(value.after.as_str())),
+        ("author", Out::Text(value.author.to_string())),
+        ("card", text(&value.card)),
+        ("id", text(&value.id)),
+    ];
+    optional(&mut fields, "path", value.path, |path| text(path.as_str()));
+    optional(&mut fields, "reason", value.reason.as_deref(), text);
+    fields.push(("title", text(&value.title)));
+    Out::Object(fields)
+}
+
 /// `items` sorted by id, written by `write`.
 fn by_id<T>(items: &[T], id: impl Fn(&T) -> &str, write: impl Fn(&T) -> Out) -> Out {
     let mut sorted: Vec<&T> = items.iter().collect();
@@ -339,6 +359,9 @@ fn page(value: &Page) -> Out {
     }
     if !value.notes.is_empty() {
         fields.push(("notes", by_id(&value.notes, |item| &item.id, note)));
+    }
+    if !value.proposals.is_empty() {
+        fields.push(("proposals", by_id(&value.proposals, |item| &item.id, proposal)));
     }
     Out::Object(fields)
 }

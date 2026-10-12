@@ -166,6 +166,7 @@ fn card(id: &str, reference: CardRef) -> Card {
         view: None,
         folded: false,
         description: None,
+        expanded: Vec::new(),
     }
 }
 
@@ -921,7 +922,7 @@ fn new_items_are_written_only_when_present() {
           }
         }
       ],
-      "defaultView": "code",
+      "defaultView": "diagram",
       "frames": [
         {
           "author": "agent:test",
@@ -1174,7 +1175,7 @@ fn serialization_is_canonical_and_round_trips() {
     }},
     {{
       "cards": [],
-      "defaultView": "code",
+      "defaultView": "diagram",
       "groups": [],
       "guards": [],
       "id": "a-second",
@@ -2298,4 +2299,582 @@ fn health_labels_name_every_kind() {
     );
     assert_eq!(health.of_page("p"), health);
     assert!(health.of_page("q").is_healthy());
+}
+
+/// The call of the `console.log('done');` statement in `SOURCE`.
+const LOG_CALL: &str = "main.ts#function:run/expression_statement[0]/call[0]";
+
+/// A proposed step on card `run`, going after `after`.
+fn proposal(id: &str, after: &str) -> Proposal {
+    Proposal {
+        id: id.to_owned(),
+        card: "run".to_owned(),
+        after: Key::from_text(after),
+        path: None,
+        title: "Email a confirmation".to_owned(),
+        reason: None,
+        author: author(),
+    }
+}
+
+/// Saving `board` over `previous` refuses proposal `id` with a message containing `expected`.
+fn refuses_proposal(
+    board: Board,
+    previous: Option<(&Board, &Health)>,
+    graph: &BoardGraph,
+    id: &str,
+    expected: &str,
+) {
+    match save(board, previous, graph) {
+        Err(BoardError::Problem { target, message, .. }) => {
+            assert_eq!(target, Target::Proposal(id.to_owned()), "{message}");
+            assert!(message.contains(expected), "{expected:?} in {message:?}");
+        }
+        other => panic!("expected `{expected}`, got {other:?}"),
+    }
+}
+
+#[test]
+fn old_boards_read_as_before_and_new_pages_show_diagram() {
+    // A board without expanded calls or proposals reads and writes out exactly as before.
+    let canonical = serialize(&parse(MINIMAL).unwrap());
+    assert!(!canonical.contains("expanded") && !canonical.contains("proposals"));
+    assert_eq!(serialize(&parse(&canonical).unwrap()), canonical);
+    // A saved default view is kept as written; only new pages start in Diagram.
+    for view in ["code", "flow", "diagram"] {
+        let text = MINIMAL.replace("\"defaultView\":\"code\"", &format!("\"defaultView\":\"{view}\""));
+        let board = parse(&text).unwrap();
+        assert_eq!(board.pages[0].default_view.as_str(), view);
+        assert!(serialize(&board).contains(&format!("\"defaultView\": \"{view}\"")));
+    }
+    assert_eq!(Page::new("p", "P").default_view, View::Diagram);
+    assert_eq!(Board::new("B").pages[0].default_view, View::Diagram);
+}
+
+#[test]
+fn expanded_calls_and_proposals_round_trip() {
+    let mut board = sample_board();
+    let page = &mut board.pages[0];
+    page.cards[0].expanded = vec![
+        vec![Key::from_text(LOG_CALL)],
+        vec![
+            Key::from_text("main.ts#function:run/if[0]/expression_statement[0]/call[0]"),
+            Key::from_text("lib.ts#function:log/call[0]"),
+        ],
+    ];
+    page.proposals.push(Proposal {
+        path: Some(ProposalPath::No),
+        reason: Some("Direct orders get no confirmation \"yet\"".to_owned()),
+        ..proposal("email", IF0)
+    });
+    page.proposals.push(proposal("audit", LOG0));
+    let text = serialize(&board);
+    let card = r#"
+        {
+          "at": [
+            10,
+            20
+          ],
+          "expanded": [
+            [
+              "main.ts#function:run/expression_statement[0]/call[0]"
+            ],
+            [
+              "main.ts#function:run/if[0]/expression_statement[0]/call[0]",
+              "lib.ts#function:log/call[0]"
+            ]
+          ],
+          "id": "run",
+          "ref": {
+            "block": "main.ts#function:run"
+          }
+        }"#;
+    let proposals = r#"
+      "proposals": [
+        {
+          "after": "main.ts#function:run/expression_statement[0]",
+          "author": "agent:test",
+          "card": "run",
+          "id": "audit",
+          "title": "Email a confirmation"
+        },
+        {
+          "after": "main.ts#function:run/if[0]",
+          "author": "agent:test",
+          "card": "run",
+          "id": "email",
+          "path": "no",
+          "reason": "Direct orders get no confirmation \"yet\"",
+          "title": "Email a confirmation"
+        }
+      ],
+      "title": "Page 1""#;
+    assert!(text.contains(card), "{text}");
+    assert!(text.contains(proposals), "{text}");
+    let reparsed = parse(&text).unwrap();
+    let mut sorted = board.clone();
+    sorted.pages[0].proposals.reverse();
+    assert_eq!(reparsed, sorted, "proposals read back in id order");
+    assert_eq!(serialize(&reparsed), text);
+    // What the window receives has the file's shape.
+    let ipc = serde_json::to_value(&board.pages[0]).unwrap();
+    let file: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(
+        ipc["cards"][0]["expanded"],
+        file["pages"][0]["cards"][0]["expanded"]
+    );
+    let mut by_id = ipc["proposals"].as_array().unwrap().clone();
+    by_id.reverse();
+    assert_eq!(serde_json::Value::Array(by_id), file["pages"][0]["proposals"]);
+    // Neither is a reference the page keeps a guard for, except each proposal's anchor.
+    assert_eq!(board.pages[0].references(None).keys, [RUN, IF0, LOG0]);
+}
+
+/// `MINIMAL` with entrance card `door` before card `run`, `card` added to `run`'s fields, and
+/// the page's `proposals`.
+fn with_proposals(card: &str, proposals: &str) -> String {
+    MINIMAL
+        .replace("\"id\":\"run\"", &format!("\"id\":\"run\"{card}"))
+        .replace(
+            "\"cards\":[",
+            r#""cards":[{"at":[0,0],"id":"door","ref":{"entrance":"entrance:x"}},"#,
+        )
+        .replace(
+            "\"groups\":[]",
+            &format!("\"groups\":[],\"proposals\":[{proposals}]"),
+        )
+}
+
+#[test]
+fn parsing_refuses_bad_expanded_calls_and_proposals() {
+    let proposal = serde_json::json!({
+        "after": IF0, "author": "agent:x", "card": "run", "id": "p", "path": "yes", "reason": "R", "title": "T"
+    });
+    let good = proposal.to_string();
+    let with = |field: &str, value: &str| {
+        let mut changed = proposal.clone();
+        changed[field] = value.into();
+        changed.to_string()
+    };
+    let key = |index: usize| format!("\"main.ts#function:run/call[{index}]\"");
+    let paths = |count: usize| {
+        let items: Vec<String> = (0..count).map(|index| format!("[{}]", key(index))).collect();
+        format!(",\"expanded\":[{}]", items.join(","))
+    };
+    let proposals = |count: usize| {
+        let items: Vec<String> = (0..count)
+            .map(|index| good.replace("\"id\":\"p\"", &format!("\"id\":\"p{index}\"")))
+            .collect();
+        items.join(",")
+    };
+    // The limits themselves are allowed.
+    let three = format!(",\"expanded\":[[{},{},{}]]", key(0), key(1), key(2));
+    for text in [
+        with_proposals(&three, &good),
+        with_proposals(&paths(MAX_EXPANDED_CALLS), &proposals(MAX_PROPOSALS)),
+        with_proposals("", &with("title", &"t".repeat(MAX_PROPOSAL_TITLE))),
+        with_proposals("", &with("reason", &"r\n".repeat(MAX_PROPOSAL_REASON / 2))),
+        with_proposals(",\"expanded\":[]", "").replace("\"id\":\"door\"", "\"expanded\":[],\"id\":\"door\""),
+    ] {
+        assert!(parse(&text).is_ok(), "{text}");
+    }
+    let four = format!(",\"expanded\":[[{},{},{},{}]]", key(0), key(1), key(2), key(3));
+    let repeated = format!(",\"expanded\":[[{}],[{}]]", key(0), key(0));
+    let at_door = with_proposals("", "").replace(
+        "\"id\":\"door\"",
+        &format!("\"expanded\":[[{}]],\"id\":\"door\"", key(0)),
+    );
+    let cases = [
+        (
+            with_proposals(&four, ""),
+            "/pages/0/cards/1/expanded/0",
+            "must list 1 to 3 keys",
+        ),
+        (
+            with_proposals(",\"expanded\":[[]]", ""),
+            "/pages/0/cards/1/expanded/0",
+            "must list 1 to 3 keys",
+        ),
+        (
+            with_proposals(&repeated, ""),
+            "/pages/0/cards/1/expanded/1",
+            "repeats an earlier expanded call",
+        ),
+        (
+            with_proposals(&paths(MAX_EXPANDED_CALLS + 1), ""),
+            "/pages/0/cards/1/expanded",
+            "at most 64 expanded calls",
+        ),
+        (
+            with_proposals(",\"expanded\":[[\"entrance:x\"]]", ""),
+            "/pages/0/cards/1/expanded/0/0",
+            "must be a block key",
+        ),
+        (
+            with_proposals(&format!(",\"expanded\":[{}]", key(0)), ""),
+            "/pages/0/cards/1/expanded/0",
+            "must be an array",
+        ),
+        (
+            at_door,
+            "/pages/0/cards/0/expanded",
+            "only a block card expands calls in place",
+        ),
+        (
+            with_proposals("", &with("card", "door")),
+            "/pages/0/proposals/0/card",
+            "`door` is an entrance card; a proposed step goes after a step of a block card",
+        ),
+        (
+            with_proposals("", &with("card", "ghost")),
+            "/pages/0/proposals/0/card",
+            "refers to an unknown item `ghost`",
+        ),
+        (
+            with_proposals("", &with("title", "  ")),
+            "/pages/0/proposals/0/title",
+            "must not be empty",
+        ),
+        (
+            with_proposals("", &with("title", "two\nlines")),
+            "/pages/0/proposals/0/title",
+            "must be one line, without control characters",
+        ),
+        (
+            with_proposals("", &with("title", &"t".repeat(MAX_PROPOSAL_TITLE + 1))),
+            "/pages/0/proposals/0/title",
+            "must be at most 120 characters",
+        ),
+        (
+            with_proposals("", &with("reason", &"r".repeat(MAX_PROPOSAL_REASON + 1))),
+            "/pages/0/proposals/0/reason",
+            "must be at most 400 characters",
+        ),
+        (
+            with_proposals("", &with("reason", " ")),
+            "/pages/0/proposals/0/reason",
+            "must not be empty",
+        ),
+        (
+            with_proposals("", &with("path", "maybe")),
+            "/pages/0/proposals/0/path",
+            r#"must be "yes", "no", "each", or "done""#,
+        ),
+        (
+            with_proposals("", &with("id", "run")),
+            "/pages/0/proposals/0/id",
+            "duplicate id `run`",
+        ),
+        (
+            with_proposals("", &format!("{good},{good}")),
+            "/pages/0/proposals/1/id",
+            "duplicate id `p`",
+        ),
+        (
+            with_proposals("", &with("after", "entrance:x")),
+            "/pages/0/proposals/0/after",
+            "must be a block key",
+        ),
+        (
+            with_proposals("", &with("author", "robot:x")),
+            "/pages/0/proposals/0/author",
+            "must be `person:<name>` or `agent:<name>`",
+        ),
+        (
+            with_proposals("", &good.replace("\"author\":\"agent:x\",", "")),
+            "/pages/0/proposals/0",
+            "missing field `author`",
+        ),
+        (
+            with_proposals("", &good.replace("\"id\"", "\"status\":\"built\",\"id\"")),
+            "/pages/0/proposals/0/status",
+            "unknown field",
+        ),
+        (
+            with_proposals("", &proposals(MAX_PROPOSALS + 1)),
+            "/pages/0/proposals",
+            "must hold at most 200 proposed steps",
+        ),
+    ];
+    for (text, path, message) in cases {
+        let (found_path, found_message) = invalid(&text);
+        assert_eq!(found_path, path, "{text}");
+        assert!(
+            found_message.contains(message),
+            "{path}: {message:?} in {found_message:?}"
+        );
+    }
+}
+
+#[test]
+fn proposals_go_after_a_step_inside_their_card_and_are_never_signed() {
+    let (_dir, graph) = folder(SOURCE);
+    let mut board = sample_board();
+    board.pages[0].proposals.push(proposal("email", IF0));
+    let (saved, report) = save(board, None, &graph).unwrap();
+    assert!(report.is_healthy());
+    let page = &saved.pages[0];
+    assert_eq!(page.proposals, [proposal("email", IF0)], "saved as written");
+    let guard = page.guard(None, IF0).expect("the anchor is guarded");
+    assert_eq!((guard.kind.as_str(), guard.owner.as_str()), ("if", RUN));
+    assert!(
+        repair(
+            &mut saved.clone(),
+            &graph,
+            &Repair::Resign(Target::Proposal("email".to_owned()))
+        )
+        .is_err(),
+        "a proposal has nothing to sign"
+    );
+
+    // A proposal placed elsewhere must go after a step of the graph inside its card's block.
+    for (after, expected) in [
+        (RUN, "Can't place it after its card itself"),
+        (
+            "main.ts#function:runner/if[0]",
+            "that is not inside its card's block. Choose a statement or call under main.ts#function:run/",
+        ),
+        ("main.ts#function:run/if[7]", "that step is not in the graph"),
+    ] {
+        let mut moved = saved.clone();
+        moved.pages[0].proposals[0].after = Key::from_text(after);
+        refuses_proposal(moved, Some((&saved, &report)), &graph, "email", expected);
+        let mut added = saved.clone();
+        added.pages[0].proposals.push(proposal("new", after));
+        refuses_proposal(added, Some((&saved, &report)), &graph, "new", expected);
+    }
+    // Its words and path change freely.
+    let mut retitled = saved.clone();
+    retitled.pages[0].proposals[0].title = "Send a receipt".to_owned();
+    retitled.pages[0].proposals[0].path = Some(ProposalPath::Yes);
+    assert!(save(retitled, Some((&saved, &report)), &graph).is_ok());
+    // A card whose project isn't connected can't take a proposal.
+    let mut elsewhere = saved.clone();
+    elsewhere.pages[0].cards.push(run_card("web-run", Some(web())));
+    elsewhere.pages[0].proposals.push(Proposal {
+        card: "web-run".to_owned(),
+        ..proposal("web-email", IF0)
+    });
+    refuses_proposal(
+        elsewhere,
+        Some((&saved, &report)),
+        &graph,
+        "web-email",
+        "its card's project web is not connected",
+    );
+}
+
+#[test]
+fn a_proposal_whose_step_is_gone_waits_for_an_explicit_repair() {
+    let (dir, graph) = folder(SOURCE);
+    let mut board = sample_board();
+    board.pages[0].proposals.push(proposal("email", IF0));
+    board.pages[0].proposals.push(proposal("log", LOG0));
+    let (saved, _) = save(board, None, &graph).unwrap();
+    let updated = recompiled(dir.path(), &SOURCE.replace("  console.log('done');\n", ""));
+    let report = page_health(&saved, &updated);
+    assert_eq!((report.missing, report.review), (1, 0), "{:#?}", report.items);
+    let item = &report.items[0];
+    assert_eq!(
+        (
+            &item.target,
+            item.kind,
+            item.key.as_deref(),
+            item.project.as_ref()
+        ),
+        (
+            &Target::Proposal("log".to_owned()),
+            HealthKind::Missing,
+            Some(LOG0),
+            None
+        )
+    );
+    assert_eq!(item.repairs, [RepairKind::Reconnect, RepairKind::RemoveProposal]);
+    assert!(
+        item.message
+            .starts_with("The step this proposal goes after is missing: ")
+    );
+    assert_eq!(
+        saved.pages[0].proposal("log"),
+        Some(&proposal("log", LOG0)),
+        "kept as written"
+    );
+
+    // Placed as before, it never refuses a save, even retitled.
+    let mut moved = saved.clone();
+    moved.pages[0].cards[0].at = [5.0, 5.0];
+    moved.pages[0].proposals[1].title = "Log the result".to_owned();
+    let (moved, moved_report) = save(moved, Some((&saved, &report)), &updated).unwrap();
+    assert_eq!(moved_report.missing, 1);
+    assert_eq!(
+        moved.pages[0].proposals[1].after.as_str(),
+        LOG0,
+        "never reattached"
+    );
+
+    // Reconnect is explicit and must stay inside the card's block.
+    for (to, expected) in [
+        (RUN, "after its card itself"),
+        ("main.ts#", "not inside its card's block"),
+    ] {
+        let mut wrong = saved.clone();
+        match repair(
+            &mut wrong,
+            &updated,
+            &Repair::Reconnect {
+                project: None,
+                from: LOG0.to_owned(),
+                to: to.to_owned(),
+            },
+        ) {
+            Err(BoardError::Problem { target, message, .. }) => {
+                assert_eq!(target, Target::Proposal("log".to_owned()));
+                assert!(message.contains(expected), "{message}");
+            }
+            other => panic!("{to}: {other:?}"),
+        }
+        assert_eq!(wrong, saved, "a refused repair changes nothing");
+    }
+    let mut repaired = saved.clone();
+    repair(
+        &mut repaired,
+        &updated,
+        &Repair::Reconnect {
+            project: None,
+            from: LOG0.to_owned(),
+            to: RETURN0.to_owned(),
+        },
+    )
+    .unwrap();
+    let page = &repaired.pages[0];
+    assert_eq!(page.proposal("log").unwrap().after.as_str(), RETURN0);
+    assert!(page.guard(None, RETURN0).is_some() && page.guard(None, LOG0).is_none());
+    assert!(page_health(&repaired, &updated).is_healthy());
+    assert!(save(repaired, Some((&saved, &report)), &updated).is_ok());
+
+    let mut removed = saved;
+    repair(&mut removed, &updated, &Repair::RemoveProposal("log".to_owned())).unwrap();
+    assert_eq!(removed.pages[0].proposals, [proposal("email", IF0)]);
+    assert!(page_health(&removed, &updated).is_healthy());
+}
+
+#[test]
+fn a_proposal_whose_step_changed_is_held_for_review() {
+    let (dir, graph) = folder(SOURCE);
+    let mut board = sample_board();
+    board.pages[0].proposals.push(proposal("email", IF0));
+    let (saved, _) = save(board, None, &graph).unwrap();
+    let inserted = SOURCE.replace(
+        "  if (first)",
+        "  if (!first) { console.log('inserted'); }\n  if (first)",
+    );
+    let updated = recompiled(dir.path(), &inserted);
+    let report = page_health(&saved, &updated);
+    assert_eq!((report.review, report.missing), (1, 0), "{:#?}", report.items);
+    let item = &report.items[0];
+    assert_eq!(
+        (&item.target, item.kind, item.key.as_deref()),
+        (
+            &Target::Proposal("email".to_owned()),
+            HealthKind::Review,
+            Some(IF0)
+        )
+    );
+    assert_eq!(
+        item.repairs,
+        [
+            RepairKind::Accept,
+            RepairKind::Reconnect,
+            RepairKind::RemoveProposal
+        ]
+    );
+    assert!(
+        item.message
+            .contains("position-based and its code changed; check where it goes")
+    );
+
+    // Accepting keeps it where it is, after the code now at that position.
+    let mut accepted = saved.clone();
+    repair(
+        &mut accepted,
+        &updated,
+        &Repair::Accept(ProjectKey::new(None, IF0)),
+    )
+    .unwrap();
+    assert!(page_health(&accepted, &updated).is_healthy());
+    assert_eq!(accepted.pages[0].proposals, saved.pages[0].proposals);
+    // Reconnecting moves it after the step it meant.
+    let moved_if = "main.ts#function:run/if[1]";
+    let mut reconnected = saved;
+    repair(
+        &mut reconnected,
+        &updated,
+        &Repair::Reconnect {
+            project: None,
+            from: IF0.to_owned(),
+            to: moved_if.to_owned(),
+        },
+    )
+    .unwrap();
+    assert_eq!(reconnected.pages[0].proposals[0].after.as_str(), moved_if);
+    assert!(page_health(&reconnected, &updated).is_healthy());
+}
+
+#[test]
+fn reconnecting_a_card_carries_its_proposals_and_removing_it_removes_them() {
+    let (dir, graph) = folder(SOURCE);
+    let mut board = sample_board();
+    board.pages[0].proposals.push(Proposal {
+        path: Some(ProposalPath::Yes),
+        ..proposal("email", IF0)
+    });
+    let (saved, _) = save(board, None, &graph).unwrap();
+    let updated = recompiled(dir.path(), &SOURCE.replace("function run", "function start"));
+    let report = page_health(&saved, &updated);
+    assert!(report.has(
+        "page-1",
+        HealthKind::Missing,
+        &Target::Proposal("email".to_owned())
+    ));
+    let mut repaired = saved.clone();
+    repair(
+        &mut repaired,
+        &updated,
+        &Repair::Reconnect {
+            project: None,
+            from: RUN.to_owned(),
+            to: "main.ts#function:start".to_owned(),
+        },
+    )
+    .unwrap();
+    let page = &repaired.pages[0];
+    let moved = "main.ts#function:start/if[0]";
+    assert_eq!(page.proposals[0].after.as_str(), moved);
+    assert_eq!(page.proposals[0].path, Some(ProposalPath::Yes));
+    assert!(page.guard(None, moved).is_some() && page.guard(None, IF0).is_none());
+    assert!(page_health(&repaired, &updated).is_healthy());
+    let (repaired, _) = save(repaired, Some((&saved, &report)), &updated).unwrap();
+
+    let mut removed = repaired;
+    repair(&mut removed, &updated, &Repair::RemoveCard("run".to_owned())).unwrap();
+    assert!(removed.pages[0].cards.is_empty() && removed.pages[0].proposals.is_empty());
+}
+
+#[test]
+fn expansions_and_proposals_count_as_changes_and_stay_out_of_mermaid() {
+    let (_dir, graph) = folder(SOURCE);
+    let (published, _) = save(sample_board(), None, &graph).unwrap();
+    let mut working = published.clone();
+    working.pages[0].cards[0].expanded = vec![vec![Key::from_text(LOG_CALL)]];
+    working.pages[0].proposals.push(proposal("email", IF0));
+    assert_eq!(
+        changes(&working, &published),
+        2,
+        "a changed card and a new proposal"
+    );
+    let graphs = PageGraphs::own_only(&graph);
+    assert_eq!(
+        crate::mermaid::page(&working, "page-1", &graphs),
+        crate::mermaid::page(&published, "page-1", &graphs)
+    );
 }

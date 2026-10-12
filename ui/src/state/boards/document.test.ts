@@ -7,8 +7,10 @@ import {
   addGroup,
   addLink,
   addPage,
+  callExpansions,
   deletePage,
   duplicatePage,
+  isCallExpanded,
   isFreeId,
   keyDisplayName,
   labelsFor,
@@ -16,12 +18,15 @@ import {
   nextPageId,
   removeCard,
   setCardDescription,
+  setCardExpanded,
   setDefaultView,
   setLabel,
   setLinkLabel,
+  toggleCallExpansion,
   uniqueId,
   updateGroup,
 } from "./document";
+import { addProposal, proposalReason, proposalTitle, removeProposal, updateProposal } from "./proposals";
 
 function onPage(recipe: (draft: Page) => void, start: Page = page("page-1")): Page {
   return produce(start, recipe);
@@ -191,5 +196,84 @@ describe("pages", () => {
       deletePage(draft, "page-1");
     });
     expect(one.pages).toHaveLength(1);
+  });
+});
+
+describe("expansion", () => {
+  const CARD: Card = { id: "create-order", ref: { block: "src/a.ts#function:createOrder" }, at: [0, 0] };
+  const CALL = "src/a.ts#function:createOrder/call[0]";
+  const INNER = "src/b.ts#function:place/call[1]";
+
+  it("expands a card by saving its view, and calls in place as paths that collapse with what is inside them", () => {
+    let next = onPage((draft) => {
+      draft.cards.push({ ...CARD });
+      setCardExpanded(draft, CARD.id, true);
+      toggleCallExpansion(draft, CARD.id, [CALL]);
+      toggleCallExpansion(draft, CARD.id, [CALL, INNER]);
+    });
+    expect(next.cards[0]?.view).toBe("flow");
+    expect(next.cards[0]?.expanded).toEqual([[CALL], [CALL, INNER]]);
+    expect(isCallExpanded(next.cards[0] ?? CARD, [CALL, INNER])).toBe(true);
+    next = onPage((draft) => {
+      toggleCallExpansion(draft, CARD.id, [CALL]);
+      setCardExpanded(draft, CARD.id, false);
+    }, next);
+    expect(next.cards[0]?.view).toBe("diagram");
+    expect("expanded" in (next.cards[0] ?? {})).toBe(false);
+  });
+
+  it("never saves a path deeper than three calls", () => {
+    const next = onPage((draft) => {
+      draft.cards.push({ ...CARD });
+      toggleCallExpansion(draft, CARD.id, ["a", "b", "c", "d"]);
+    });
+    expect(callExpansions(next.cards[0] ?? CARD)).toEqual([]);
+  });
+});
+
+describe("proposed steps", () => {
+  const CARD: Card = { id: "create-order", ref: { block: "src/a.ts#function:createOrder" }, at: [0, 0] };
+  const AFTER = "src/a.ts#function:createOrder/variable:order";
+
+  it("adds, rewords, moves, and removes a proposal, and removing its card removes it", () => {
+    let next = onPage((draft) => {
+      draft.cards.push({ ...CARD });
+      addProposal(draft, { card: CARD.id, after: AFTER, title: "Email a confirmation", author: "agent:claude" });
+    });
+    const [proposal] = next.proposals ?? [];
+    expect(proposal).toEqual({ id: "proposal", card: CARD.id, after: AFTER, title: "Email a confirmation", author: "agent:claude" });
+    expect(isFreeId(next, "proposal")).toBe(false);
+    next = onPage((draft) => {
+      updateProposal(draft, "proposal", { after: `${AFTER}/call[0]`, path: "yes" }, "person:ada");
+    }, next);
+    // Moving it keeps its author.
+    expect(next.proposals?.[0]).toMatchObject({ after: `${AFTER}/call[0]`, path: "yes", author: "agent:claude" });
+    next = onPage((draft) => {
+      updateProposal(draft, "proposal", { reason: "Only the queued path emails one.", path: null }, "person:ada");
+    }, next);
+    expect(next.proposals?.[0]).toMatchObject({ reason: "Only the queued path emails one.", author: "person:ada" });
+    expect("path" in (next.proposals?.[0] ?? {})).toBe(false);
+    // A blank title changes nothing.
+    next = onPage((draft) => {
+      updateProposal(draft, "proposal", { title: "  " }, "person:bo");
+    }, next);
+    expect(next.proposals?.[0]?.title).toBe("Email a confirmation");
+    const removed = onPage((draft) => {
+      removeCard(draft, CARD.id);
+    }, next);
+    expect("proposals" in removed).toBe(false);
+    expect(
+      onPage((draft) => {
+        removeProposal(draft, "proposal");
+      }, next).proposals,
+    ).toBeUndefined();
+  });
+
+  it("refuses blank, multi-line, and over-long words", () => {
+    expect(proposalTitle("  Email a confirmation ")).toBe("Email a confirmation");
+    expect(proposalTitle("two\nlines")).toBeNull();
+    expect(proposalTitle("x".repeat(121))).toBeNull();
+    expect(proposalReason("x".repeat(401))).toBeNull();
+    expect(proposalReason(" why ")).toBe("why");
   });
 });

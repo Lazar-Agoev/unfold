@@ -45,9 +45,12 @@ until its first Compile. Add searches projects by kind/text and exposes commands
 a verified source file with folds/call links. Windows share projects but keep their own tabs
 and board sessions. The [user guide](user-guide.md) owns click-by-click instructions.
 
-Cards use exact Code, written Flow, or Diagram/type data from the engine. The global lens is
-transient; a card's explicit saved view takes precedence. Loading, missing, held, changed-source,
-and unresolved states are deliberate states, not empty-success fallbacks.
+Cards use exact Code, written Flow, or Diagram/type data from the engine. The page lens
+(Diagram | Code) is local view state; a legacy saved Flow lens reads as Diagram. In Diagram, a
+function or entrance card's saved view says whether it is compact or expanded (its chevron), and
+calls expanded in place are saved on the card; type and resource cards keep their fields in both
+lenses. Loading, missing, held, changed-source, and unresolved states are deliberate states, not
+empty-success fallbacks.
 
 Canvas geometry, measurement, arrange, label placement, and hit targets are TypeScript-owned.
 Keep measured sizes separate from document positions. Auto-layout should not erase deliberate
@@ -104,12 +107,13 @@ checked against journey coverage; preserve its action IDs when updating shortcut
 | Close Window | `window.close` | ⇧⌘W | Ctrl+Shift+W |
 | Add Project… | `project.add` | ⌘O | Ctrl+O |
 | Compile (the selected project, or the active board's) | `project.compile` | ⇧⌘B | Ctrl+Shift+B |
-| Diagram, Flow, Code (the page's lens) | `board.lensDiagram`, `board.lensFlow`, `board.lensCode` | ⌘1, ⌘2, ⌘3 | Ctrl+1, Ctrl+2, Ctrl+3 |
+| Diagram, Code (the page's lens) | `board.lensDiagram`, `board.lensCode` | ⌘1, ⌘2 | Ctrl+1, Ctrl+2 |
 | Toggle Sidebar | `view.toggleSidebar` | ⌘B | Ctrl+B |
 | Back, Forward | `navigation.back`, `navigation.forward` | ⌘[, ⌘] | Ctrl+[, Ctrl+] |
 | Fit | `board.fit` | ⇧1 | Shift+1 |
 | Zoom In, Zoom Out | `board.zoomIn`, `board.zoomOut` | ⌘= (or ⇧⌘+), ⌘- | Ctrl+= (or Ctrl+Shift++), Ctrl+- |
 | Arrange by Call Depth | `board.arrange` | ⇧A | Shift+A |
+| View Code (the selection's source in the peek sheet) | `board.viewCode` | `C` | `C` |
 | Undo, Redo (board edit) | `edit.undo`, `edit.redo` | ⌘Z, ⇧⌘Z | Ctrl+Z, Ctrl+Shift+Z |
 | Preferences… | `app.preferences` | ⌘, | Ctrl+, |
 | Publish | `board.publish` | ⇧⌘E | Ctrl+Shift+E |

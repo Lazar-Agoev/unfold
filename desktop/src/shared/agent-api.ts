@@ -28,8 +28,21 @@ export interface AgentIdentity {
   readonly name: string;
 }
 
-/** How a card shows: a diagram, its Flow, or its Code. */
+/**
+ * A view as board files save it: a card's (`diagram` is compact, `flow` expanded, a legacy `code`
+ * expanded too) or a page's default (`diagram`, or `code` for a page that opens in the Code lens; a
+ * legacy `flow` opens in Diagram with cards expanded).
+ */
 export type AgentView = "diagram" | "flow" | "code";
+
+/** A page's lens: Diagram (cards compact or expanded) or Code (every card's source). */
+export type AgentLens = "diagram" | "code";
+
+/**
+ * A call expanded in place in Diagram: 1 to 3 keys, outermost first, each a call occurrence (a step's
+ * main call, `FlowChip.source`) or a callback key (`FlowCallback.key`) of the block shown at that level.
+ */
+export type AgentCallPath = readonly string[];
 
 /** A page as its board file holds it (the UI's generated `Page`); plain JSON on this side. */
 export interface AgentPage {
@@ -47,8 +60,10 @@ export interface AgentCardSpec {
   readonly key: string;
   /** The project it is from, by id; absent: the board's own project. */
   readonly project?: string;
-  /** Its own view (types reached by following its fields too); absent: the page's default view. */
+  /** Its own view (types reached by following its fields too); absent: the page's default view. A legacy `code` is expanded. */
   readonly view?: AgentView;
+  /** Whether it shows its detail in Diagram (a function's written flow, an entrance's evidence and targets); wins over `view`. */
+  readonly expanded?: boolean;
   /** The id of an item on the page to place it beside; absent: beside the cards it relates to. */
   readonly near?: string;
   /** The id of a frame of the page the cards it adds (following included) go into; cards already on the page stay where they are. */
@@ -67,19 +82,28 @@ export interface AddCardsOp {
   readonly cards: readonly AgentCardSpec[];
 }
 
-/** How one item shows: a card's view and fold, or whether a step group or a frame is collapsed. */
+/**
+ * How one item shows: a card's expansion, the calls it expands in place, and its fold, or whether a
+ * step group or a frame is collapsed.
+ */
 export interface AgentViewSpec {
   /** A card's, a step group's, or a frame's id. */
   readonly id: string;
-  /** A card's view. */
+  /** A function's or entrance's card: compact (false) or expanded (true) in Diagram. Type cards keep their fields and refuse it. */
+  readonly expanded?: boolean;
+  /** A card's view, as older agents pass it: `diagram` is compact, `flow` or `code` expanded (`expanded` wins). */
   readonly view?: AgentView;
+  /** A function's card: calls to expand in place (each checked against the compiled models; at most 64 per card). */
+  readonly expandCalls?: readonly AgentCallPath[];
+  /** A function's card: calls to collapse, with every expansion inside them. */
+  readonly collapseCalls?: readonly AgentCallPath[];
   /** Whether a card is folded to its title. */
   readonly folded?: boolean;
   /** Whether a step group or a frame is collapsed. */
   readonly collapsed?: boolean;
 }
 
-/** Sets how cards, step groups, and frames show, and the page's default view. */
+/** Sets how cards, step groups, and frames show, and the page's default view (`diagram` or `code`; a legacy `flow` is kept as given). */
 export interface SetViewOp {
   readonly op: "set_view";
   readonly items: readonly AgentViewSpec[];
@@ -114,9 +138,9 @@ export interface ArrangeOp {
 }
 
 /**
- * Takes items off the page: cards (with their step groups and the links that end at them), step
- * groups, links and connections, frames, resource cards (with the links that end at them), and
- * notes. A removed frame's members stay, in the frame that held it, unless `keepMembers` is false,
+ * Takes items off the page: cards (with their step groups, proposed steps, and the links that end at
+ * them), step groups, links and connections, frames, resource cards (with the links that end at them),
+ * notes, and proposed steps (never code). A removed frame's members stay, in the frame that held it, unless `keepMembers` is false,
  * which removes them too. What would dangle goes as well: a frame left with no members, and the links
  * to it; a note attached to a removed item stays where it was, free. Refused when that removes text a
  * person wrote, unless `replacePeopleText`.
@@ -326,6 +350,36 @@ export interface AddNotesOp {
   readonly replacePeopleText?: boolean;
 }
 
+/** Which path of a decision a proposed step goes on: a condition's yes or no, a loop's each or done. */
+export type AgentProposalPath = "yes" | "no" | "each" | "done";
+
+/**
+ * One proposed step `propose` creates or updates: an intended addition after a real step of the
+ * card's block, never code. A new one needs `after` and `title`; an update names its `id`, and a new
+ * `after` or `path` moves it (the explicit placement repair, also for an anchor gone missing or held).
+ */
+export interface AgentProposalSpec {
+  /** An existing proposal's id updates it; a new id names the new one; absent: the card's proposal with the same placement and title, else a new one. */
+  readonly id?: string;
+  /** The key of the real step it goes after: a step of the card's own Flow (not Start, End, or a step that ends its path). */
+  readonly after?: string;
+  /** For a step with several outgoing paths (a condition, a loop): which one. */
+  readonly path?: AgentProposalPath;
+  /** What it would do, in words: one line, at most 120 characters. */
+  readonly title?: string;
+  /** Why, in words (at most 400 characters); null clears it. */
+  readonly reason?: string | null;
+}
+
+/** Creates or updates proposed steps on one block card. Changing a person's words is refused unless `replacePeopleText`. */
+export interface ProposeOp {
+  readonly op: "propose";
+  /** The card's id. */
+  readonly card: string;
+  readonly proposals: readonly AgentProposalSpec[];
+  readonly replacePeopleText?: boolean;
+}
+
 /** An agent's operation on a page, tagged by `op`. */
 export type AgentOp =
   | AddCardsOp
@@ -338,7 +392,8 @@ export type AgentOp =
   | FrameCardsOp
   | AddResourcesOp
   | ConnectOp
-  | AddNotesOp;
+  | AddNotesOp
+  | ProposeOp;
 
 // ---------------------------------------------------------------------------------------------
 // Results
@@ -386,6 +441,10 @@ export interface AgentCardResult {
   readonly stops?: readonly AgentFollowStop[];
   /** The frame an operation put it in (`add_cards` with `frame`). */
   readonly frame?: string;
+  /** Whether it is expanded in Diagram (`set_view`; absent for a type card, which keeps its fields). */
+  readonly expanded?: boolean;
+  /** The calls it expands in place (`set_view`), as saved. */
+  readonly expandedCalls?: readonly AgentCallPath[];
 }
 
 /** A statement a step group holds. */
@@ -472,6 +531,23 @@ export interface AgentLabelResult {
   readonly name: string;
 }
 
+/** A proposed step an operation created, changed, kept, or removed: an intention, never code. */
+export interface AgentProposalResult {
+  readonly kind: "proposal";
+  readonly id: string;
+  readonly status: AgentItemStatus;
+  /** The card it belongs to. */
+  readonly card: string;
+  /** The key of the real step it goes after. */
+  readonly after: string;
+  readonly path?: AgentProposalPath;
+  readonly title: string;
+  readonly reason?: string;
+  /** The step it goes after, as the card's Flow names it, and its line (when its code is current). */
+  readonly afterLabel?: string;
+  readonly afterLine?: number;
+}
+
 /** An item a frame holds: its id, what it is, and Unfold's name for it (a frame's title). */
 export interface AgentFrameMember {
   readonly id: string;
@@ -504,7 +580,8 @@ export type AgentItemResult =
   | AgentLabelResult
   | AgentFrameResult
   | AgentResourceResult
-  | AgentNoteResult;
+  | AgentNoteResult
+  | AgentProposalResult;
 
 /** The board a page is on, as the window holds it. */
 export interface AgentBoardInfo {
@@ -727,8 +804,13 @@ export type AgentShellEvent =
 export type ViewSelection =
   | { readonly kind: "none" }
   | { readonly kind: "card"; readonly id: string }
-  /** A Flow step or a statement of a card. */
-  | { readonly kind: "step"; readonly card: string; readonly key: string }
+  /**
+   * A Flow step or a statement of a card; `owner` is the block whose Flow holds it when it shows in a
+   * call expanded in place (absent: the card's own block).
+   */
+  | { readonly kind: "step"; readonly card: string; readonly key: string; readonly owner?: string }
+  /** A proposed step. */
+  | { readonly kind: "proposal"; readonly id: string }
   | { readonly kind: "group"; readonly id: string }
   | { readonly kind: "frame"; readonly id: string }
   | { readonly kind: "resource"; readonly id: string }
@@ -761,8 +843,8 @@ export interface ViewReport {
   readonly board?: AgentBoardRef;
   readonly page?: string;
   readonly selection: ViewSelection;
-  /** The page's lens, or its default view. */
-  readonly lens?: AgentView;
+  /** The page's lens: the one picked, else the one its default view opens in. */
+  readonly lens?: AgentLens;
   /** The ids of the page's cards, step groups, links, frames, resource cards, and notes in view. */
   readonly visible: readonly string[];
   /** Every board tab of the window, in order: the boards it holds. */

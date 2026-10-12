@@ -24,6 +24,18 @@ export interface AddRequest {
 /** Where Add puts what it adds: the active board's active page, or Home with the selected project. */
 export type AddTarget = { readonly kind: "page"; readonly target: PageTarget } | { readonly kind: "home"; readonly project: ProjectId | null };
 
+/**
+ * The source View code highlights: one-based lines `startLine`–`endLine`, and with columns (UTF-16
+ * offsets from each line's start, the end exclusive) the exact expression from `startColumn` on its
+ * first line to `endColumn` on its last.
+ */
+export interface PeekFocus {
+  readonly startLine: number;
+  readonly endLine: number;
+  readonly startColumn?: number;
+  readonly endColumn?: number;
+}
+
 /** A file shown in the peek sheet, optionally at a line, with text matches to step through. */
 export interface PeekTarget {
   readonly project: ProjectId;
@@ -32,6 +44,10 @@ export interface PeekTarget {
   readonly matches?: readonly TextMatch[];
   /** The index of the current match in `matches`. */
   readonly current?: number;
+  /** What View code highlights (only on source that verified against the graph). */
+  readonly focus?: PeekFocus;
+  /** The page whose selection the sheet follows, when View code opened it from that page. */
+  readonly follow?: PageTarget;
 }
 
 export type ProjectSettingsSection = "general" | "scope" | "detectors" | "python" | "evidence";
@@ -74,7 +90,8 @@ export type DialogRequest =
   | { readonly kind: "deleteBoard"; readonly board: BoardRef }
   | { readonly kind: "newFolder"; readonly project: ProjectId; readonly parent: string | null }
   | { readonly kind: "renameFolder"; readonly project: ProjectId; readonly path: string }
-  | { readonly kind: "groupFromLines"; readonly target: PageTarget; readonly cardId: string };
+  /** Make a group from lines, or with `members` (Combine…) the statements of a run already chosen. */
+  | { readonly kind: "groupFromLines"; readonly target: PageTarget; readonly cardId: string; readonly members?: readonly string[] };
 
 interface OverlaysState {
   readonly add: AddRequest | null;
@@ -119,6 +136,11 @@ export function closePeek(): void {
 
 export function usePeekTarget(): PeekTarget | null {
   return useOverlays((state) => state.peek);
+}
+
+/** What the peek sheet shows now, outside React. */
+export function getPeekTarget(): PeekTarget | null {
+  return useOverlays.getState().peek;
 }
 
 /** Opens a dialog, replacing any open one. */

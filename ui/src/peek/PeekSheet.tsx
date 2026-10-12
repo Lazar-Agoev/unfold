@@ -5,6 +5,10 @@
  * beside each definition to add it to the page (`●` when it's there), the text matches it was opened
  * with (ticks beside the scrollbar), and Open in editor / Reveal in Finder. One sheet per window, kept
  * across tab switches; Escape closes it.
+ *
+ * Opened by View code, it highlights its focus: the rows tinted with an accent edge, and the exact
+ * expression marked when the focus has columns. Only verified source shows it (`showsFocus`); a file
+ * changed since the compile, or outside the graph, says the range isn't shown instead.
  */
 
 import { useQueries } from "@tanstack/react-query";
@@ -29,11 +33,14 @@ import {
   PAGE_LINES,
   canFold,
   definitionAt,
+  focusAnchor,
+  inFocus,
+  lineMarks,
   markRuns,
-  marksOn,
   matchTicks,
   pageOf,
   pageRange,
+  showsFocus,
   visibleLines,
   type FoldedRange,
   type LineMark,
@@ -104,7 +111,7 @@ function LineText({ page, line, linked, marks, folded, onUnfold, onFollow }: Lin
       markRuns(segment.start, segment.end, shifted).map((run) => (
         <span
           key={run.start}
-          className={[tokenClass(segment.token), run.mark === null ? undefined : `peek-match ${run.mark}`].filter(Boolean).join(" ") || undefined}
+          className={[tokenClass(segment.token), run.mark === null ? undefined : run.mark === "focus" ? "peek-focus" : `peek-match ${run.mark}`].filter(Boolean).join(" ") || undefined}
         >
           {view.text.slice(run.start, run.end)}
         </span>
@@ -140,6 +147,14 @@ const GRAPH_NOTES: Readonly<Record<FileView["graph"], string>> = {
   not_compiled: " · changed since the last update",
   evidence: " · evidence file",
   not_indexed: " · not indexed",
+};
+
+/** Why a file doesn't show View code's range. */
+const FOCUS_WITHHELD: Readonly<Record<FileView["graph"], string>> = {
+  current: "",
+  evidence: "",
+  not_compiled: "Changed since the last compile · the range isn't shown",
+  not_indexed: "Not in the compiled graph · the range isn't shown",
 };
 
 function revealLabel(platform: string): string {
@@ -219,6 +234,8 @@ function Lines({
   const lineCount = first.lineCount;
   const linked = first.graph === "current";
   const matches = target.matches ?? NO_MATCHES;
+  // View code's focus, on source that verified (never on text the range wasn't recorded for).
+  const focus = target.focus !== undefined && showsFocus(first.graph) ? target.focus : undefined;
   const rows = useMemo(() => visibleLines(lineCount, [...folded.values()]), [lineCount, folded]);
 
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual returns fresh functions by design.
@@ -252,15 +269,15 @@ function Lines({
     }
   });
 
-  // Opened at a line: scroll it to the middle once.
-  const line = target.line;
+  // Opened at a line (or a focus): scroll it to the middle once.
+  const anchor = focus ? focusAnchor(focus) : target.line !== undefined ? { line: target.line, align: "center" as const } : undefined;
   useEffect(() => {
-    if (line === undefined) {
+    if (anchor === undefined) {
       return;
     }
-    const index = rows.indexOf(Math.min(line, lineCount));
+    const index = rows.indexOf(Math.min(anchor.line, lineCount));
     if (index >= 0) {
-      virtualizer.scrollToIndex(index, { align: "center" });
+      virtualizer.scrollToIndex(index, { align: anchor.align });
     }
     // Once per opening (the sheet remounts for each target).
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -295,13 +312,14 @@ function Lines({
             const def = data && linked ? definitionAt(data.page.view.outline, number) : undefined;
             const foldable = def !== undefined && canFold(def);
             const isFolded = foldable && folded.has(def.key);
-            const marks = marksOn(number, matches, target.current);
-            const current = marks.some((mark) => mark.current);
+            const marks = lineMarks(number, data ? data.line.end - data.line.start : 0, matches, target.current, focus);
+            const current = marks.some((mark) => mark.current && mark.focus !== true);
+            const focused = focus !== undefined && inFocus(number, focus);
             const there = def !== undefined && onPage.has(cardRefKey(project, def.key));
             return (
               <div
                 key={item.key}
-                className={current ? "peek-row current" : "peek-row"}
+                className={["peek-row", current ? "current" : null, focused ? "focus" : null].filter(Boolean).join(" ")}
                 data-line={number}
                 style={{ height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
               >
@@ -382,6 +400,8 @@ function PeekBody({ target, pinned }: { readonly target: PeekTarget; readonly pi
   const projectName = useProjectRow(target.project)?.name ?? "";
   const first = useEngineQuery("file_view", { project: target.project, path: target.path, range: { startLine: 1, endLine: PAGE_LINES } });
   const view = first.data;
+  // A focus the file can't show (changed since the compile, or not in the graph) is said, never drawn.
+  const withheld = target.focus !== undefined && view !== undefined && !view.unshowable && !showsFocus(view.graph) ? FOCUS_WITHHELD[view.graph] : null;
 
   let body: ReactNode = <div className="peek-code-area" />;
   if (first.error) {
@@ -403,15 +423,23 @@ function PeekBody({ target, pinned }: { readonly target: PeekTarget; readonly pi
   return (
     <>
       <Header target={target} view={view} pinned={pinned} projectName={projectName} />
+      {withheld !== null ? (
+        <p className="peek-note" role="note">
+          <Icon name="warning-triangle" size={12} />
+          {withheld}
+        </p>
+      ) : null}
       {body}
       <Footer pageTitle={pageTitle} />
     </>
   );
 }
 
-/** The sheet's own key, so each target (file, line, match) opens fresh. */
+/** The sheet's own key, so each target (file, line, match, focus) opens fresh. */
 function targetKey(target: PeekTarget): string {
-  return [target.project, target.path, target.line ?? "", target.current ?? ""].join("\u0000");
+  const { focus } = target;
+  const range = focus ? [focus.startLine, focus.startColumn ?? "", focus.endLine, focus.endColumn ?? ""].join(":") : "";
+  return [target.project, target.path, target.line ?? "", target.current ?? "", range].join("\u0000");
 }
 
 export function PeekSheet(): JSX.Element | null {

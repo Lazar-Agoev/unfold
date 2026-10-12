@@ -155,16 +155,17 @@ describe("read_page", () => {
     const lines = text.split("\n");
     expect(lines.slice(0, 2)).toEqual([
       `Unfold · ts-orders › Order placement (draft) › Placing an order · rev ${pageRevision(PAGE)} · as Claude`,
-      `Ids: project ${PROJECT}, board ${BOARD.id}, page page-1. Cards without their own view show Diagram. The window has edits it hasn't saved yet; they're included.`,
+      `Ids: project ${PROJECT}, board ${BOARD.id}, page page-1. The page opens in Diagram; cards without their own setting are compact. The window has edits it hasn't saved yet; they're included.`,
     ]);
     expect(lines).toContain("Cards (6):");
-    expect(lines).toContain(`- POST /orders (card id post-orders): http entrance; key ${ENTRANCE}; Diagram (the page's default); at [0, 0]; in frame server`);
+    expect(lines).toContain(`- POST /orders (card id post-orders): http entrance; key ${ENTRANCE}; compact (the page's default); at [0, 0]; in frame server`);
     expect(lines).toContain(
-      `- createOrder (card id create-order): function at src/routes/orders.ts:25; key ${CREATE_ORDER}; Flow; at [320, 0], 520×310; in frame server; description by you: “Places the order now, or queues it.”`,
+      `- createOrder (card id create-order): function at src/routes/orders.ts:25; key ${CREATE_ORDER}; expanded; at [320, 0], 520×310; in frame server; description by you: “Places the order now, or queues it.”`,
     );
-    expect(lines).toContain(`- OrderService.place (card id place): method at src/services/order-service.ts:13; key ${PLACE}; Diagram (the page's default); folded; at [800, 0]; in frame checks`);
+    expect(lines).toContain(`- OrderService.place (card id place): method at src/services/order-service.ts:13; key ${PLACE}; compact (the page's default); folded; at [800, 0]; in frame checks`);
+    expect(lines).toContain(`- Cart (card id cart): interface at src/cart.ts:12; key ${CART}; fields; at [0, 400]`);
     expect(lines).toContain(
-      "- charge (card id charge): key src/pay.ts#function:charge; from project payments; Diagram (the page's default); at [800, 400]; code unavailable: its project payments isn't in the workspace",
+      "- charge (card id charge): key src/pay.ts#function:charge; from project payments; compact (the page's default); at [800, 400]; code unavailable: its project payments isn't in the workspace",
     );
     expect(lines).toContain("- “Queue it for a worker” (step group id queue-it) in card create-order: 2 statements, lines 28–30; collapsed; titled by you");
     expect(lines).toContain("Frames (2), nested as they are:");
@@ -183,7 +184,7 @@ describe("read_page", () => {
       `- createOrder (create-order) → OrderService.place (place): calls orderService.place at line 32: (OrderDraft) → Promise<Order>; source ${CREATE_ORDER}/variable:order/call[0], seq 0`,
     );
     expect(lines).toContain(`- Cart (cart) → CartItem (cart-item): field items: CartItem[] (CartItem: ${CART_ITEM})`);
-    expect(lines).toContain("Flow steps still unlabeled, in cards shown in Flow (label_steps labels them) (5):");
+    expect(lines).toContain("Flow steps still unlabeled, in expanded cards (label_steps labels them) (5):");
     expect(lines).toContain(`- createOrder (create-order): line 27 condition “req.header?” (key ${CREATE_ORDER}/if[0])`);
     expect(lines.some((line) => line.includes("/variable:draft)"))).toBe(false);
     // The collapsed step group hides its steps.
@@ -239,8 +240,65 @@ describe("read_page", () => {
       lines: ["- Cart (cart) → CartItem (item): field items: CartItem[] (CartItem: src/cart.ts#interface:CartItem)", "- Cart (cart) → CartItem (item): field from Base<CartItem>: extra: CartItem (CartItem: src/cart.ts#interface:CartItem)"],
       definitions: 3,
     });
-    // A type card shown in Code shows its code, not its fields.
-    expect(await typeLines([{ id: "cart", ref: { block: CART }, at: [0, 0], view: "code" }, { id: "item", ref: { block: CART_ITEM }, at: [400, 0], view: "code" }])).toEqual({ lines: [], definitions: 0 });
+    // A type card keeps its fields, and their arrows, in every view.
+    expect(await typeLines([{ id: "cart", ref: { block: CART }, at: [0, 0], view: "code" }, { id: "item", ref: { block: CART_ITEM }, at: [400, 0], view: "code" }])).toEqual({
+      lines: ["- Cart (cart) → CartItem (item): field items: CartItem[] (CartItem: src/cart.ts#interface:CartItem)", "- Cart (cart) → CartItem (item): field from Base<CartItem>: extra: CartItem (CartItem: src/cart.ts#interface:CartItem)"],
+      definitions: 2,
+    });
+  });
+
+  it("lists each card's expansion and calls expanded in place, and proposed steps under their cards with their anchors' health", async () => {
+    const CALL = `${CREATE_ORDER}/variable:order/call[0]`;
+    const page: AgentPage = {
+      ...PAGE,
+      defaultView: "code",
+      cards: [
+        { id: "create-order", ref: { block: CREATE_ORDER }, at: [0, 0], view: "flow", expanded: [[CALL], [CALL, `${PLACE}/call[0]`]] },
+        { id: "place", ref: { block: PLACE }, at: [400, 0], view: "diagram" },
+      ],
+      groups: [],
+      links: [],
+      frames: [],
+      resources: [],
+      notes: [],
+      labels: [{ key: `${CREATE_ORDER}/variable:order`, text: "Place the order now", author: "agent:claude", signature: "s" }],
+      proposals: [
+        { id: "email", card: "create-order", after: `${CREATE_ORDER}/variable:order`, title: "Email a confirmation", reason: "The queued path sends one.", author: "person:maya" },
+        { id: "notify", card: "create-order", after: `${CREATE_ORDER}/if[0]`, path: "yes", title: "Notify the customer", author: "agent:claude" },
+        { id: "retry", card: "create-order", after: `${CREATE_ORDER}/if[1]`, title: "Retry", author: "agent:claude" },
+        { id: "audit", card: "place", after: `${PLACE}/call[0]`, title: "Audit the order", author: "agent:claude" },
+      ],
+    };
+    const review = "The step this proposal goes after changed kind or owner; check where it goes, then accept the current code, reconnect it to another step, or remove the proposal";
+    const test = harness({
+      engine: {
+        card: (args) => CARDS[String(args["key"])]?.() ?? null,
+        line_labels: () => [],
+        board_health: () => ({
+          health: { items: [{ page: "page-1", kind: "review", target: { proposal: "audit" }, message: review, repairs: ["accept", "reconnect", "removeProposal"] }], missing: 0, outdated: 0, brokenGroups: 0, review: 1, notConnected: 0, brokenLinks: 0 },
+          outlines: [],
+          label: null,
+        }),
+      },
+      window: (request) => (request.type === "agent_read" ? { ok: true, page, board: { ...BOARD_INFO, unsaved: false }, sizes: {} } : request.type === "agent_open_board" ? { ok: true } : undefined),
+    });
+    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+    const lines = (await test.call(readPage)).text.split("\n");
+    expect(lines[1]).toContain("The page opens in Code, every card's source; in Diagram, cards without their own setting are expanded.");
+    expect(lines).toContain(`- createOrder (card id create-order): function at src/routes/orders.ts:25; key ${CREATE_ORDER}; expanded, calls expanded in place [${CALL}], [${CALL} › ${PLACE}/call[0]]; at [0, 0]`);
+    expect(lines).toContain(`- OrderService.place (card id place): method at src/services/order-service.ts:13; key ${PLACE}; compact; at [400, 0]`);
+    const at = lines.indexOf("Proposed steps (4), by card: intentions, not code:");
+    expect(lines.slice(at + 1, at + 7)).toEqual([
+      "- createOrder (create-order):",
+      `  - “Email a confirmation” (proposal id email): after the step “Place the order now” (call; line 32; key ${CREATE_ORDER}/variable:order); by Maya (a person); reason “The queued path sends one.”`,
+      `  - “Notify the customer” (proposal id notify): after the step “req.header?” (condition; line 27; key ${CREATE_ORDER}/if[0]), on its “yes” path; by you`,
+      `  - “Retry” (proposal id retry): after the step ${CREATE_ORDER}/if[1]; by you; anchor missing: no step of its card's code has this key now (propose with its id and a new after moves it; remove_items takes it off)`,
+      "- OrderService.place (place):",
+      `  - “Audit the order” (proposal id audit): after the step ${PLACE}/call[0]; by you; anchor held for review: ${review} (propose with its id and a new after moves it; remove_items takes it off)`,
+    ]);
+    // In the Code lens nothing is expanded, so no step counts as unlabeled.
+    expect(lines.some((line) => line.startsWith("Flow steps still unlabeled"))).toBe(false);
+    expect(test.windowCalls).toEqual([[1, "board_health", { project: PROJECT, id: BOARD.id }]]);
   });
 
   it("labels each arrow with its own project's line label when two projects share keys", async () => {

@@ -35,9 +35,9 @@ When a frame is collapsed, its members' connections attach to it.
 ## The step: where the line leaves
 step is the key of the call or statement inside from's code that talks: read_code
 lists each call's source key and each Flow step's key. With a step, the line leaves
-from that line in Code and from that step in Flow, the way compiled arrows do; in
-Diagram it leaves from the card's edge. Only a code card has steps: when from is an
-entrance, a resource card, or a frame, leave step out.
+from that step when the card is expanded (from that line in the Code lens), the way
+compiled arrows do; a compact card's line leaves from its edge. Only a code card has
+steps: when from is an entrance, a resource card, or a frame, leave step out.
 
 ## Channel
 - When to is an entrance, Unfold fills the channel in from it: an http route's

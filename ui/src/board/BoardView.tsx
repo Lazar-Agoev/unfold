@@ -4,7 +4,8 @@
  * each page has its own React Flow store, so switching pages starts from that page's camera.
  *
  * It registers the board's actions while mounted (Back, Forward, Fit, zoom, Arrange, the lens, New
- * page, Publish, the Share and Board commands), and the board's undo scope: ⌘Z reaches it when the
+ * page, Publish, View code, the Share and Board commands), keeps a View code peek sheet following the
+ * page's selection, and the board's undo scope: ⌘Z reaches it when the
  * board or its sidebar has focus or was clicked last. Floating chrome centers on the canvas a sheet
  * leaves uncovered.
  */
@@ -13,7 +14,7 @@ import { ReactFlowProvider, useReactFlow, useStoreApi } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { BoardCanvas, arrangeBoard, showCallers, useBoardArrows } from "../canvas";
 import { showToast } from "../components";
-import { toUnfoldError, type View } from "../ipc";
+import { toUnfoldError } from "../ipc";
 import { ActionIds, requestFocus, useCommandScope, useRegisterActions } from "../keyboard";
 import { exportPng } from "../menus/actions";
 import {
@@ -35,6 +36,7 @@ import {
   requestCardFocus,
   setPageLens,
   travel,
+  type Lens,
   undo,
   ungroup,
   useOpenBoard,
@@ -49,6 +51,7 @@ import { DESCRIPTION_FIELD } from "./selected/SelectedCard";
 import { Dock } from "./Dock";
 import { TopBar } from "./TopBar";
 import { stepUnlabeled, useUnlabeled } from "./unlabeled";
+import { sourceOf, useFollowSelection, viewCode } from "./viewCode";
 import "./board.css";
 
 const EMPTY_CARDS: readonly never[] = [];
@@ -64,7 +67,8 @@ function selectedBlockCard(target: PageTarget): string | null {
 
 /**
  * Removes whatever is selected on the page: a card, a group (ungrouped), a link or a connection (not a
- * line between cards), a frame (keeping what it holds), a resource card, or a note.
+ * line between cards), a frame (keeping what it holds), a resource card, a note, or a proposed step
+ * (never editing code).
  */
 function removeSelected(target: PageTarget): void {
   const { selection } = getPageView(target);
@@ -80,6 +84,8 @@ function removeSelected(target: PageTarget): void {
     removeItem(target, selection.resourceId);
   } else if (selection.kind === "note") {
     removeItem(target, selection.noteId);
+  } else if (selection.kind === "proposal") {
+    removeItem(target, selection.proposalId);
   }
 }
 
@@ -89,13 +95,12 @@ function useBoardActions(target: PageTarget): void {
   const unlabeled = useUnlabeled(target);
   // A selected line (or an arrow's calls) is derived from the cards: there is nothing of it to remove.
   const hasSelection = () => !["none", "line", "calls"].includes(getPageView(target).selection.kind);
-  const setLens = (view: View) => () => {
-    setPageLens(target, view);
+  const setLens = (lens: Lens) => () => {
+    setPageLens(target, lens);
   };
   useRegisterActions([
     { id: ActionIds.newPage, title: "New Page", category: "Board", icon: "page", run: () => void addPage(board) },
     { id: ActionIds.lensDiagram, title: "Diagram", category: "View", run: setLens("diagram") },
-    { id: ActionIds.lensFlow, title: "Flow", category: "View", run: setLens("flow") },
     { id: ActionIds.lensCode, title: "Code", category: "View", run: setLens("code") },
     {
       id: ActionIds.publish,
@@ -119,6 +124,16 @@ function useBoardActions(target: PageTarget): void {
         if (cardId !== null) {
           openDialog({ kind: "groupFromLines", target, cardId });
         }
+      },
+    },
+    {
+      id: ActionIds.viewCode,
+      title: "View Code",
+      category: "Board",
+      // Only for a selection with a source; a plain key, so never while typing or under a dialog or Add.
+      enabled: () => sourceOf(target).target !== null,
+      run: () => {
+        viewCode(target);
       },
     },
     {
@@ -317,5 +332,6 @@ export function BoardView({ board }: { readonly board: BoardRef }) {
 
 function BoardActions({ target }: { readonly target: PageTarget }) {
   useBoardActions(target);
+  useFollowSelection(target);
   return null;
 }

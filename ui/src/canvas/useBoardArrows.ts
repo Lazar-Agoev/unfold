@@ -8,7 +8,7 @@ import { useMemo } from "react";
 import { cardBody, type CardBody } from "../code/typeKinds";
 import type { Card, CardView, ProjectId, TypeDefinition } from "../ipc/generated";
 import { engineQueryOptions } from "../ipc/queries";
-import { cardKey, cardRefKey, effectiveView, findPage, useOpenBoard, usePageView, type PageTarget } from "../state/boards";
+import { cardKey, cardRefKey, findPage, shownView, useOpenBoard, usePageView, type PageTarget } from "../state/boards";
 import { resolveRefProject, useProjectIndex } from "../state/workspace";
 import { computeArrows, type Arrow, type ArrowCard } from "./arrows";
 import { cardQuery, lastVerifiedCode } from "./cardData";
@@ -41,7 +41,6 @@ export function useBoardArrows(target: PageTarget, cards: readonly Card[]): Boar
   const boardProject = target.board.project;
   const defaultView = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.defaultView) ?? "code";
   const lens = usePageView(target, (view) => view.lens);
-  const exceptions = usePageView(target, (view) => view.lensExceptions);
   const arrowCards = useMemo(
     (): ArrowCard[] =>
       cards.map((card) => {
@@ -51,10 +50,10 @@ export function useBoardArrows(target: PageTarget, cards: readonly Card[]): Boar
           key,
           project: resolveRefProject(index, boardProject, card.ref.project),
           entrance: "entrance" in card.ref,
-          body: cardBody(key, effectiveView(lens, card.view, defaultView, exceptions.includes(card.id))),
+          body: cardBody(key, shownView(lens, card, defaultView)),
         };
       }),
-    [cards, index, boardProject, lens, exceptions, defaultView],
+    [cards, index, boardProject, lens, defaultView],
   );
   const wanted = useMemo(() => {
     const byRef = new Map<string, { project: ProjectId; key: string; fields: boolean }>();

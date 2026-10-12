@@ -42,6 +42,30 @@
 
 .board-card.folded .card-header { border-bottom-color: transparent; }
 
+/*
+ * Code, Diagram-node, and type headers keep one height (43px with the rule, 44 with the card's border:
+ * sizing.ts BLOCK_HEADER), with or without the chevron.
+ */
+.block-card > .card-header,
+.diagram-card > .card-header,
+.type-card > .card-header { min-height: 43px; }
+
+/* The expansion chevron at the start of a function's or an entrance's header (Diagram only). */
+.card-expand {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-right: -2px;
+  border-radius: var(--radius-chip);
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.card-expand:hover { background: var(--color-hover); color: var(--color-text); }
+.board-card.selected .card-expand { color: var(--color-accent-text); }
+
 .card-glyph {
   flex-shrink: 0;
   font: 700 13px/16px var(--font-code);
@@ -59,7 +83,7 @@
   text-overflow: ellipsis;
 }
 
-/* The file pushes the mini lens to the right edge. */
+/* The file takes the rest of the header. */
 .card-location {
   flex: 1;
   min-width: 0;
@@ -191,7 +215,16 @@
   padding: 10px 12px 12px;
 }
 
+/* Where it is declared, and the `</>` that opens that evidence. */
+.ecard-location-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
 .ecard-location {
+  flex: 1;
+  min-width: 0;
   overflow-wrap: anywhere;
   font: 11px/14px var(--font-code);
   color: var(--color-muted);
@@ -220,6 +253,8 @@
 .ecard-handler {
   position: relative;
   display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -251,7 +286,25 @@ button.ecard-handler-name:hover { text-decoration: underline 1px; text-underline
 /* A Diagram node (design §4.1): the header, the review banner, and the whole description, nothing under
    it; with neither, the header alone. */
 .diagram-card .card-description { border-bottom: 0; }
-.diagram-card:not(:has(.card-review, .card-description, .card-note)) .card-header { border-bottom-color: transparent; }
+.diagram-card:not(:has(.card-review, .card-description, .card-note, .card-proposals)) .card-header { border-bottom-color: transparent; }
+
+/* A compact card's proposed steps: how many, with their dashed green mark (they show in its Flow). */
+.card-proposals {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 8px;
+  font: 12px/16px var(--font-ui);
+  color: var(--color-proposed-ink);
+}
+
+.proposal-glyph {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border: 1.5px dashed var(--color-proposed);
+  border-radius: 3px;
+}
 
 /* A type card (design §4.2): the kind before the name, as a definition's header reads, then the fields.
    Every type starts in one column after the widest name, as in a type's definition. */
@@ -395,3 +448,6 @@ button.ecard-handler-name:hover { text-decoration: underline 1px; text-underline
 .repair-hit[aria-selected="true"] { background: var(--color-selection); }
 .repair-hit-name { font: 12px/16px var(--font-code); }
 .repair-hit-path { font: 11px/14px var(--font-code); color: var(--color-muted); }
+
+/* Holds a card's open context menu (drawn in a portal); it takes no room in the card. */
+.card-menu-layer { display: contents; }

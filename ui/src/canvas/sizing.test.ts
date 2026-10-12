@@ -8,6 +8,7 @@ import {
   NODE_MAX_WIDTH,
   NODE_MIN_WIDTH,
   TYPE_MAX_WIDTH,
+  blockCardWidth,
   descriptionHeight,
   estimatedBlockSize,
   estimatedCardSize,
@@ -41,15 +42,23 @@ const description = (text: string): Description => ({ text, author: "person:laza
 
 describe("Diagram nodes", () => {
   it("size to their header between 240 and 560", () => {
-    const short = nodeWidth({ mark: "ƒ", name: "a", location: "a.ts:1", monogram: false, lens: false }, measure);
+    const short = nodeWidth({ mark: "ƒ", name: "a", location: "a.ts:1", monogram: false, code: true }, measure);
     expect(short).toBe(NODE_MIN_WIDTH);
-    const long = nodeWidth({ mark: "ƒ", name: "x".repeat(80), location: "routes/orders.ts:25", monogram: true, lens: true }, measure);
+    const long = nodeWidth({ mark: "ƒ", name: "x".repeat(80), location: "routes/orders.ts:25", monogram: true, code: true }, measure);
     expect(long).toBe(NODE_MAX_WIDTH);
-    const lens = (on: boolean) => nodeWidth({ mark: "ƒ", name: "createOrder", location: "routes/orders.ts:25", monogram: false, lens: on }, measure);
-    expect(lens(true)).toBeGreaterThan(lens(false));
-    // A method's qualified name, its location, and the switch fit whole.
-    const method = { mark: "ƒ", name: "StripeProvider.charge", location: "services/payment.ts:13", monogram: false, lens: true };
+    // The chevron, the `ƒ`, a method's qualified name, and its location fit whole (padding, border, and the gaps between them).
+    const method = { mark: "ƒ", name: "StripeProvider.ChargeWithRetries", location: "services/payment.ts:13", monogram: false, code: true };
+    const parts = 14 + 8 + measure(method.name, TITLE_FONT) + measure(method.location, LOCATION_FONT);
+    expect(nodeWidth(method, measure)).toBeGreaterThanOrEqual(Math.ceil(26 + parts + 3 * 8));
     expect(nodeWidth(method, measure)).toBeLessThan(NODE_MAX_WIDTH);
+    // An entrance's mark is its kind's word.
+    const entrance = { ...method, mark: "COMMAND", code: false };
+    expect(nodeWidth(entrance, measure)).toBeGreaterThan(nodeWidth(method, measure));
+  });
+
+  it("make room for the chevron in an expanded block card's header", () => {
+    const header = { name: "StripeProvider.ChargeWithRetries", location: "services/payment.ts", monogram: false, body: null };
+    expect(blockCardWidth({ ...header, chevron: true }, measure) - blockCardWidth(header, measure)).toBe(14 + 8);
   });
 
   it("wrap the whole description, line by line; other cards show one line", () => {
@@ -93,11 +102,11 @@ describe("type cards", () => {
     const header = { mark: "interface", name: "Cart", location: "cart.ts:12", monogram: false };
     expect(typeCardWidth(header, fieldTexts(cart), measure)).toBeGreaterThanOrEqual(280);
     expect(typeCardWidth(header, [{ name: "x", type: "Record<string, ".repeat(20) }], measure)).toBe(TYPE_MAX_WIDTH);
-    // The whole header fits (padding, border, kind, name, location, switch, and the gaps between them): the
-    // kind is measured as it is drawn, in 13px code.
-    const job = { mark: "interface", name: "OrderJob", location: "types.ts:22", monogram: false };
+    // The whole header fits (padding, border, kind, name, location, and the gaps between them; a type card
+    // has no chevron): the kind is measured as it is drawn, in 13px code.
+    const job = { mark: "interface", name: "OrderJobWithAVeryLongName", location: "types/order-jobs.ts:22", monogram: false };
     const parts = measure("interface", TYPE_KIND_FONT) + measure(job.name, TITLE_FONT) + measure(job.location, LOCATION_FONT);
-    expect(typeCardWidth(job, [{ name: "order", type: "OrderDraft" }], measure)).toBeGreaterThanOrEqual(Math.ceil(26 + parts + 3 * 8 + 149));
+    expect(typeCardWidth(job, [{ name: "order", type: "OrderDraft" }], measure)).toBe(Math.ceil(26 + parts + 2 * 8));
   });
 
   it("show a base's heading before its members, and a base without members last", () => {

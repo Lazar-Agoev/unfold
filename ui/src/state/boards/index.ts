@@ -36,10 +36,27 @@ export {
 } from "./api";
 export { CONNECTION_KINDS } from "./connections";
 export { NOTE_MAX, findNote, noteLength, placeNote } from "./notes";
+export {
+  PROPOSAL_REASON_MAX,
+  PROPOSAL_TITLE_MAX,
+  addProposal,
+  findProposal,
+  placementProblem,
+  placesAfter,
+  proposalReason,
+  proposalTitle,
+  proposalsOf,
+  removeProposal,
+  updateProposal,
+  type NewProposal,
+  type ProposalChange,
+} from "./proposals";
 export { findResource } from "./resources";
 export {
+  MAX_EXPANSION_DEPTH,
   addCard,
   addGroup,
+  callExpansions,
   cardKey,
   findCard,
   findCardByRef,
@@ -47,8 +64,11 @@ export {
   keyDisplayName,
   labelsFor,
   moveItems,
+  isCallExpanded,
+  setCardExpanded,
   setCardView,
   setCardsFolded,
+  toggleCallExpansion,
   updateGroup,
   type GroupChange,
 } from "./document";
@@ -83,8 +103,8 @@ export {
   canUndo,
   discardChanges,
   editBoard,
+  cardExpanded,
   editPage,
-  effectiveView,
   flushAllBoards,
   flushBoard,
   flushBoardView,
@@ -100,7 +120,10 @@ export {
   setActivePage,
   setCamera,
   setLinking,
+  pageLens,
   setPageLens,
+  shownView,
+  type Lens,
   setPendingGroup,
   toggleOpenType,
   toggledOpenTypes,

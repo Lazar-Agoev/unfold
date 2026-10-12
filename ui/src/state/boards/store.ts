@@ -19,7 +19,7 @@ import { produce, type Draft } from "immer";
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import { showToast } from "../../components/Toast";
-import type { BoardDocument, BoardState, BoardView, Page, PageOutline, View } from "../../ipc/generated";
+import type { BoardDocument, BoardState, BoardView, Card, Page, PageOutline, View } from "../../ipc/generated";
 import { UnfoldError, toUnfoldError } from "../../ipc/unfold";
 import { findPage } from "./document";
 import { call } from "./engine";
@@ -119,7 +119,6 @@ function pageView(camera: Camera | null = null, lens: View | null = null): PageV
     codeFolds: {},
     expanded: {},
     flowChains: {},
-    lensExceptions: [],
     trail: [],
     back: [],
     forward: [],
@@ -196,17 +195,44 @@ export function setCamera(target: PageTarget, camera: Camera): void {
   });
 }
 
-/** Sets the page's lens (⌘1, ⌘2, ⌘3): every card shows that view until its own switch is used. */
-export function setPageLens(target: PageTarget, lens: View | null): void {
+/**
+ * Sets the page's lens (⌘1 Diagram, ⌘2 Code; a Flow lens reads as Diagram). View state only: the
+ * camera, the selection, and the cards' saved expansions (in the document) stay as they are.
+ */
+export function setPageLens(target: PageTarget, lens: View): void {
   updatePageView(target, (view) => {
     view.lens = lens;
-    view.lensExceptions = [];
   });
 }
 
-/** The view a card shows: the page's lens (unless the card is an exception), its own switch, or the page default. */
-export function effectiveView(lens: View | null, cardView: View | undefined, defaultView: View, exception: boolean): View {
-  return lens !== null && !exception ? lens : (cardView ?? defaultView);
+/** The page-wide lens: Diagram, or Code (the source-oriented view). */
+export type Lens = "diagram" | "code";
+
+/**
+ * The lens a page shows: the one the person picked (a saved Flow lens is Diagram), else the page's
+ * default view, where only a Code default opens Code.
+ */
+export function pageLens(lens: View | null, defaultView: View): Lens {
+  return (lens ?? defaultView) === "code" ? "code" : "diagram";
+}
+
+/**
+ * Whether a card shows its detail in Diagram (a function's written flow, an entrance's evidence and
+ * targets): its own view, else the page's default, is Flow (or a legacy Code).
+ */
+export function cardExpanded(card: Pick<Card, "view">, defaultView: View): boolean {
+  return (card.view ?? defaultView) !== "diagram";
+}
+
+/**
+ * The view a card shows under a page lens (`null`: none picked, as agents read a page): Code in the
+ * Code lens; in Diagram, Flow when the card is expanded and a compact Diagram node otherwise.
+ */
+export function shownView(lens: View | null, card: Pick<Card, "view">, defaultView: View): View {
+  if (pageLens(lens, defaultView) === "code") {
+    return "code";
+  }
+  return cardExpanded(card, defaultView) ? "flow" : "diagram";
 }
 
 export function select(target: PageTarget, selection: Selection): void {

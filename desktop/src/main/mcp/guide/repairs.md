@@ -10,8 +10,8 @@ them with repair, one at a time, after reading the new code.
 - check({board}) lists every page's problems, each with its item and the exact repair
   calls it allows: `repair({board: "…", page: "…", item: "…", repair: "reconnect",
   to: <the new key>})`. check({page}) does one page.
-- A problem's item is a card's, step group's, link's, resource card's, or frame's id,
-  or, for a Flow label, the step's key.
+- A problem's item is a card's, step group's, link's, resource card's, frame's, or
+  proposed step's id, or, for a Flow label, the step's key.
 
 ## Problems and the repairs that fit
 | Problem | When | Repairs |
@@ -22,6 +22,7 @@ them with repair, one at a time, after reading the new code.
 | broken step group | Its statements no longer make a valid step group | ungroup, then group_steps again if it's still useful |
 | broken link | An end card is missing; a connection's step, carried type, or anchor is gone, or its step left its card | reconnect the step, type, or anchor; or remove_link |
 | not connected | A card's project isn't in the workspace | Tell the person; remove_card only if they ask |
+| proposed step missing or held | The real step a proposed step goes after is gone, or now names code of another kind or owner | reconnect to the step it goes after now, accept when it's still that step, or remove_proposal; propose with its id and a new after (and path) moves it too |
 
 ## Reconnect
 - After a rename or a move, find the new key: search the new name, get_relations on a

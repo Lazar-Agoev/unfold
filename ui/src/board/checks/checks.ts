@@ -7,13 +7,17 @@
  *   or on a line from or to what it holds);
  * - **Crossings**: lines crossing each other more than a few times, crossing a frame they neither
  *   start nor end in, or passing under a card they neither start nor end at;
- * - **Density**: too many visible items on the page or in a frame, or steps in a Flow card;
- * - **Unlabeled steps**: Flow cards whose steps still show names from the code;
+ * - **Density**: too many visible items on the page or in a frame, or steps in an expanded function card;
+ * - **Unlabeled steps**: expanded function cards whose steps still show names from the code;
  * - **Missing words**: frames, step groups, and resource cards without a description;
  * - **Evidence**: resource cards and connections that cite no code (an agent's are refused at save, a
  *   person's may lack them);
  * - **Strays**: cards and resource cards with no line, connection, or frame;
- * - **Views**: many Flow or Code cards on an overview page.
+ * - **Views**: many expanded function cards on an overview page.
+ *
+ * A function card counts as expanded detail when the page presents it so (`shownView` with no lens
+ * picked is Flow: expanded in Diagram, a legacy Code card included); the Code lens and compact cards
+ * show no steps to count.
  *
  * Pure and deterministic: findings come in that order, items in page order. The limits are in
  * `thresholds.ts`.
@@ -22,9 +26,9 @@
 import type { PageCheck } from "@unfold/desktop/render-api";
 import type { Link, Page } from "../../ipc/generated";
 import { cardBody } from "../../code/typeKinds";
-import { cardKey, keyDisplayName } from "../../state/boards";
+import { cardKey, keyDisplayName, shownView } from "../../state/boards";
 import { frameBox, frameTree, type FrameTree } from "./frames";
-import { crossingOf, distance, overlapOf, segmentMeetsBox, type Box, type DrawnLine, type PageGeometry, type Point } from "./geometry";
+import { crossingOf, distance, overlapOf, segmentMeetsBox, type Box, type DrawnFlow, type DrawnLine, type PageGeometry, type Point } from "./geometry";
 import { THRESHOLDS } from "./thresholds";
 
 /** Connection kinds that must cite code even when they have a step (the engine's rule for agents). */
@@ -275,6 +279,17 @@ function countable(context: Context, id: string): boolean {
   return frame ? frame.collapsed === true : context.page.cards.some((card) => card.id === id) || context.page.resources?.some((item) => item.id === id) === true;
 }
 
+/** Whether a card shows its expanded function detail (its written flow) as the page presents it. */
+function expandedFunction(page: Page, id: string): boolean {
+  const card = page.cards.find((item) => item.id === id);
+  return card !== undefined && cardBody(cardKey(card), shownView(null, card, page.defaultView)) === "flow";
+}
+
+/** The steps an expanded function card shows as drawn, by id; none for any other card. */
+function drawnFlow(context: Context, id: string): DrawnFlow | undefined {
+  return expandedFunction(context.page, id) ? context.geometry.flows.get(id) : undefined;
+}
+
 function density(context: Context): PageCheck[] {
   const { page, tree, visible } = context;
   const findings: PageCheck[] = [];
@@ -299,13 +314,13 @@ function density(context: Context): PageCheck[] {
     }
   }
   for (const card of visible) {
-    const flow = context.geometry.flows.get(card);
+    const flow = drawnFlow(context, card);
     if (flow && flow.steps > THRESHOLDS.flowSteps) {
       findings.push({
         kind: "density",
         items: [card],
-        message: `${opening(nameOf(page, card))} shows ${plural(flow.steps, "step")} in Flow; about ${THRESHOLDS.flowSteps} is the most a Flow card reads well with.`,
-        suggestion: "group_steps into 3 to 7 step groups and collapse the ones the page isn't about (set_view).",
+        message: `${opening(nameOf(page, card))} shows ${plural(flow.steps, "step")} expanded; about ${THRESHOLDS.flowSteps} is the most an expanded card reads well with.`,
+        suggestion: "Combine with group_steps: 3 to 7 combined steps, collapsed: true for the ones the page isn't about; or set_view expanded: false.",
       });
     }
   }
@@ -314,7 +329,7 @@ function density(context: Context): PageCheck[] {
 
 function unlabeled(context: Context): PageCheck[] {
   return context.visible.flatMap((card): PageCheck[] => {
-    const flow = context.geometry.flows.get(card);
+    const flow = drawnFlow(context, card);
     if (!flow || flow.unlabeled === 0) {
       return [];
     }
@@ -323,7 +338,7 @@ function unlabeled(context: Context): PageCheck[] {
       {
         kind: "unlabeled",
         items: [card],
-        message: `${opening(name)} has ${plural(flow.unlabeled, "Flow step")} that still ${flow.unlabeled === 1 ? "shows a name" : "show names"} from the code.`,
+        message: `${opening(name)} has ${plural(flow.unlabeled, "expanded step")} that still ${flow.unlabeled === 1 ? "shows a name" : "show names"} from the code.`,
         suggestion: `label_steps on ${name}: 2 to 8 words each, never code (read_page lists the unlabeled steps with their keys).`,
       },
     ];
@@ -401,10 +416,7 @@ function views(context: Context): PageCheck[] {
   const { page } = context;
   const cards = page.cards.filter((card) => context.visible.includes(card.id));
   const overview = (page.frames ?? []).length > 0 || cards.length >= THRESHOLDS.overviewCards;
-  const detailed = cards.filter((card) => {
-    const body = cardBody(cardKey(card), card.view ?? page.defaultView);
-    return body === "code" || body === "flow";
-  });
+  const detailed = cards.filter((card) => expandedFunction(page, card.id));
   if (!overview || detailed.length <= THRESHOLDS.overviewDetailed) {
     return [];
   }
@@ -412,8 +424,8 @@ function views(context: Context): PageCheck[] {
     {
       kind: "views",
       items: detailed.map((card) => card.id),
-      message: `${plural(detailed.length, "card")} show Flow or Code on an overview page: ${listed(detailed.map((card) => nameOf(page, card.id)))}.`,
-      suggestion: "set_view Diagram for the cards that give context; keep Flow for the one or two the page is about.",
+      message: `${plural(detailed.length, "card")} show their steps expanded on an overview page: ${listed(detailed.map((card) => nameOf(page, card.id)))}.`,
+      suggestion: "set_view expanded: false for the cards that give context; keep the one or two the page is about expanded.",
     },
   ];
 }

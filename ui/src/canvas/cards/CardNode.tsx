@@ -3,15 +3,16 @@
  * when its own document entry, model, or ports change, never because another card did or because the
  * camera moved (zoom is a camera and never changes what a card shows). The card reads from the project
  * its ref resolves to; one from a project that isn't connected shows as a placeholder. What it shows
- * follows its view (`cardBody`): a Diagram node, a type card's fields, Code or Flow, or an entrance's
- * handlers.
+ * follows the view the page's lens gives it (`shownView`, `cardBody`): in Code, Code (an entrance its
+ * handlers); in Diagram, a function or an entrance compact (a Diagram node) or expanded (its Flow, an
+ * entrance's evidence and targets) by its own chevron; a type card always shows its fields.
  */
 
 import type { Node, NodeProps } from "@xyflow/react";
 import { memo } from "react";
 import type { Card } from "../../ipc/generated";
 import { cardBody } from "../../code/typeKinds";
-import { cardKey, effectiveView, findPage, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
+import { cardKey, findPage, pageLens, shownView, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
 import { resolveRefProject, useProjectIndex } from "../../state/workspace";
 import { BlockCard } from "./BlockCard";
 import { DiagramCard } from "./DiagramCard";
@@ -34,7 +35,6 @@ export const CardNode = memo(function CardNode({ id, data }: NodeProps<CardNodeT
   const card = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.cards.find((item) => item.id === id));
   const defaultView = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.defaultView) ?? "code";
   const lens = usePageView(target, (view) => view.lens);
-  const exception = usePageView(target, (view) => view.lensExceptions.includes(id));
   const selected = usePageView(target, (view) => view.selection.kind === "card" && view.selection.cardId === id);
   const index = useProjectIndex();
   if (!card) {
@@ -44,17 +44,19 @@ export const CardNode = memo(function CardNode({ id, data }: NodeProps<CardNodeT
   if (project === null) {
     return <PlaceholderCard target={target} card={card} projectName={card.ref.project ?? ""} selected={selected} />;
   }
-  const view = effectiveView(lens, card.view, defaultView, exception);
+  const view = shownView(lens, card, defaultView);
   const body = cardBody(cardKey(card), view);
   if (body === "node") {
     return <DiagramCard target={target} project={project} card={card} ports={ports} selected={selected} />;
   }
   if ("entrance" in card.ref) {
-    return <EntranceCard target={target} project={project} card={card as Card & { ref: { entrance: string } }} ports={ports} selected={selected} />;
+    const entrance = card as Card & { ref: { entrance: string } };
+    const expandable = pageLens(lens, defaultView) === "diagram";
+    return <EntranceCard target={target} project={project} card={entrance} expandable={expandable} ports={ports} selected={selected} />;
   }
   const block = card as Card & { ref: { block: string } };
   if (body === "fields") {
-    return <TypeCard target={target} project={project} card={block} view={view === "flow" ? "flow" : "diagram"} ports={ports} selected={selected} />;
+    return <TypeCard target={target} project={project} card={block} ports={ports} selected={selected} />;
   }
   return <BlockCard target={target} project={project} card={block} view={body === "flow" ? "flow" : "code"} ports={ports} selected={selected} />;
 });

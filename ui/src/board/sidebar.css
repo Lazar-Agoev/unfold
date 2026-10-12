@@ -139,7 +139,11 @@
 }
 
 .layer-row.group .layer-label,
+.layer-row.proposal .layer-label,
 .layer-row.link .layer-label { font: 13px/20px var(--font-ui); }
+/* A proposed step: its dashed green mark in the glyph column, and "proposed" in green. */
+.layer-proposal-glyph { display: grid; place-items: center; width: 16px; height: 16px; }
+.layer-row.proposal .layer-note { color: var(--color-proposed-ink); }
 /* A frame is a heading: its title in the UI face, in the authored color (it is authored). */
 .layer-row.frame .layer-label { font: 600 13px/20px var(--font-ui); color: var(--color-authored); }
 .layer-row.selected .layer-label { font-weight: 600; }
@@ -253,6 +257,52 @@
 
 .selected-actions { display: flex; gap: 8px; padding: 4px 8px 0; }
 
+/* A proposed step: the kicker in the proposed green, and Why in its tint (plain words, never code). */
+.selected-kicker.proposed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 11px/16px var(--font-ui);
+  letter-spacing: 0.06em;
+  color: var(--color-proposed-ink);
+}
+
+.proposal-error { color: var(--color-warn); }
+.proposal-review { color: var(--color-warn); }
+
+.proposal-why {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border-radius: var(--radius-control);
+  background: var(--color-proposed-tint);
+}
+
+.proposal-why:focus-within { box-shadow: inset 0 0 0 1px var(--color-proposed); }
+
+.proposal-why-label {
+  font: 600 11px/16px var(--font-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-proposed-ink);
+}
+
+.proposal-why-input {
+  field-sizing: content;
+  min-height: 20px;
+  padding: 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  font: 13px/20px var(--font-ui);
+  color: var(--color-proposed-ink);
+}
+
+.proposal-why-input::placeholder { color: var(--color-proposed-ink); opacity: 0.6; }
+.proposal-why-input:disabled { opacity: 0.7; }
+
 /* Authored text: the description box in the authored tint. */
 .authored-field {
   display: flex;
@@ -326,6 +376,7 @@
 }
 
 button.relation-value:hover { color: var(--color-accent-text); }
+.relation-value.wrap { padding: 2px 0; white-space: normal; overflow-wrap: anywhere; }
 
 .relation-group,
 .relation-more { font-family: var(--font-ui); }

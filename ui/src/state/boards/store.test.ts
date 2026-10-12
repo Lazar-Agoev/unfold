@@ -203,7 +203,7 @@ describe("editing and autosave", () => {
     store.adoptBoardState(state());
     engine.call.mockReturnValue(new Promise(() => undefined));
     edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
-    store.setPageLens(PAGE, "flow");
+    store.setPageLens(PAGE, "code");
     store.saveAllNow();
     expect(engine.call.mock.calls.map(([command]) => command as string)).toEqual(["save_board", "save_board_view"]);
     // The autosaves it replaced don't run later.
@@ -498,33 +498,59 @@ describe("view state", () => {
     engine.call.mockResolvedValue(null);
     store.setCamera(PAGE, { x: 10, y: 20, zoom: 0.8 });
     store.setActivePage(REF, "page-2");
-    store.setPageLens({ board: REF, page: "page-2" }, "flow");
+    store.setPageLens({ board: REF, page: "page-2" }, "code");
     expect(store.getOpenBoard(REF)?.history.past).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(store.VIEW_SAVE_MS);
     expect(engine.call).toHaveBeenCalledTimes(1);
     expect(engine.call).toHaveBeenCalledWith("save_board_view", {
       project: P,
       id: ID,
-      view: { page: "page-2", pages: { "page-1": { x: 10, y: 20, zoom: 0.8, lens: null }, "page-2": { x: 40, y: 40, zoom: 1, lens: "flow" } } },
+      view: { page: "page-2", pages: { "page-1": { x: 10, y: 20, zoom: 0.8, lens: null }, "page-2": { x: 40, y: 40, zoom: 1, lens: "code" } } },
     });
     expect(store.getOpenBoard(REF)?.viewDirty).toBe(false);
   });
 
-  it("applies a page's lens over every card until a card's own switch", () => {
+  it("shows Code in the Code lens, and each card compact or expanded in Diagram", () => {
     store.adoptBoardState(state());
-    store.updatePageView(PAGE, (view) => {
-      view.lensExceptions = ["x"];
-    });
-    store.setPageLens(PAGE, "flow");
-    const view = store.getPageView(PAGE);
-    expect(view.lensExceptions).toEqual([]);
-    expect(store.effectiveView(view.lens, "code", "code", false)).toBe("flow");
-    expect(store.effectiveView(view.lens, "code", "code", true)).toBe("code");
-    expect(store.effectiveView(null, undefined, "flow", false)).toBe("flow");
-    expect(store.effectiveView(null, "diagram", "flow", false)).toBe("diagram");
-    expect(store.effectiveView(null, undefined, "diagram", false)).toBe("diagram");
-    store.setPageLens(PAGE, "diagram");
-    expect(store.effectiveView(store.getPageView(PAGE).lens, "code", "flow", false)).toBe("diagram");
+    // No lens picked: the page's default decides; only a Code default opens Code.
+    expect(store.pageLens(null, "code")).toBe("code");
+    expect(store.pageLens(null, "flow")).toBe("diagram");
+    expect(store.pageLens(null, "diagram")).toBe("diagram");
+    // A saved Flow lens is Diagram.
+    expect(store.pageLens("flow", "code")).toBe("diagram");
+    expect(store.shownView("code", { view: "diagram" }, "diagram")).toBe("code");
+    // In Diagram a card's own view, else the page's default, says whether it is expanded; a legacy Code card is.
+    expect(store.shownView("diagram", { view: "flow" }, "diagram")).toBe("flow");
+    expect(store.shownView("diagram", { view: "code" }, "diagram")).toBe("flow");
+    expect(store.shownView("diagram", {}, "flow")).toBe("flow");
+    expect(store.shownView("diagram", {}, "code")).toBe("flow");
+    expect(store.shownView("diagram", { view: "diagram" }, "flow")).toBe("diagram");
+    expect(store.shownView(null, {}, "diagram")).toBe("diagram");
+    store.setPageLens(PAGE, "code");
+    expect(store.getPageView(PAGE).lens).toBe("code");
+    expect(store.getOpenBoard(REF)?.edits).toBe(0);
+  });
+
+  it("restores a saved Flow lens as Diagram without writing it back, and keeps camera, selection, and expansions across Code", async () => {
+    const card = { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] as [number, number], view: "flow" as const, expanded: [["src/a.ts#function:a/call[0]"]] };
+    store.adoptBoardState(state(doc([card]), "r1", { view: { page: "page-1", pages: { "page-1": { x: 1, y: 2, zoom: 0.5, lens: "flow" } } } }));
+    const { defaultView } = store.getOpenBoard(REF)?.document.pages[0] ?? { defaultView: "code" as const };
+    expect(store.pageLens(store.getPageView(PAGE).lens, defaultView)).toBe("diagram");
+    expect(store.getOpenBoard(REF)?.viewDirty).toBe(false);
+    await vi.advanceTimersByTimeAsync(store.VIEW_SAVE_MS * 2);
+    expect(engine.call).not.toHaveBeenCalled();
+
+    store.select(PAGE, { kind: "card", cardId: "a", key: "src/a.ts#function:a/call[0]" });
+    const document = store.getOpenBoard(REF)?.document;
+    const selection = store.getPageView(PAGE).selection;
+    for (const lens of ["code", "diagram"] as const) {
+      store.setPageLens(PAGE, lens);
+      expect(store.pageLens(store.getPageView(PAGE).lens, defaultView)).toBe(lens);
+      expect(store.getPageView(PAGE).camera).toEqual({ x: 1, y: 2, zoom: 0.5 });
+      expect(store.getPageView(PAGE).selection).toBe(selection);
+      expect(store.getOpenBoard(REF)?.document).toBe(document);
+    }
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]).toMatchObject({ view: "flow", expanded: [["src/a.ts#function:a/call[0]"]] });
     expect(store.getOpenBoard(REF)?.edits).toBe(0);
   });
 });

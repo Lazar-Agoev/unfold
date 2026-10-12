@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://unfold.dev/schemas/unfold-board-1.schema.json",
   "title": "unfold-board version 1",
-  "description": "An Unfold board: titled pages of cards that reference blocks and entrances by structural key (in the board's own project, or in another project named by its shared name), their positions and views, groups of consecutive sibling statements, attributed descriptions and Flow labels, guards that keep references from reattaching to different code, links drawn between items (connections, when they have a kind), frames around items, resource cards, and notes. A changes copy of a published board (`.unfold/local/drafts/<name>.changes.json`) also names the board it publishes and the revision it started from. Unknown fields are rejected.",
+  "description": "An Unfold board: titled pages of cards that reference blocks and entrances by structural key (in the board's own project, or in another project named by its shared name), their positions, views, and calls expanded in place, groups of consecutive sibling statements, attributed descriptions and Flow labels, guards that keep references from reattaching to different code, links drawn between items (connections, when they have a kind), frames around items, resource cards, notes, and proposed steps. A changes copy of a published board (`.unfold/local/drafts/<name>.changes.json`) also names the board it publishes and the revision it started from. Unknown fields are rejected.",
   "type": "object",
   "additionalProperties": false,
   "required": ["format", "pages", "projects", "title", "version"],
@@ -49,7 +49,7 @@
     },
     "id": {
       "type": "string",
-      "description": "A page or item id. Card, group, frame, resource, link, and note ids are unique together within their page.",
+      "description": "A page or item id. Card, group, frame, resource, link, note, and proposal ids are unique together within their page.",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
     },
     "projectName": {
@@ -149,6 +149,12 @@
           "type": "array",
           "description": "Notes, sorted by id. Written only when there are some.",
           "items": { "$ref": "#/$defs/note" }
+        },
+        "proposals": {
+          "type": "array",
+          "description": "Proposed steps, sorted by id: at most 200. Written only when there are some.",
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/proposal" }
         }
       }
     },
@@ -184,8 +190,22 @@
         "at": { "$ref": "#/$defs/position" },
         "view": { "$ref": "#/$defs/view" },
         "folded": { "type": "boolean", "description": "Written only when true." },
-        "description": { "$ref": "#/$defs/description" }
-      }
+        "description": { "$ref": "#/$defs/description" },
+        "expanded": {
+          "type": "array",
+          "description": "A block card's calls expanded in place in Diagram, at most 64: each a path of 1 to 3 keys, outermost first, each a call occurrence or a callback written in the block shown at that level. Presentation only, never guarded; a key that no longer resolves is ignored. Written only when there are some.",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "items": { "$ref": "#/$defs/blockKey" }
+          }
+        }
+      },
+      "if": { "type": "object", "required": ["ref"], "properties": { "ref": { "type": "object", "required": ["entrance"], "properties": { "entrance": { "$ref": "#/$defs/entranceKey" } } } } },
+      "then": { "type": "object", "properties": { "expanded": { "type": "array", "maxItems": 0 } } }
     },
     "group": {
       "type": "object",
@@ -431,6 +451,29 @@
         "at": { "$ref": "#/$defs/position", "description": "The canvas position; an offset from the attached item's top-left (a link's midpoint) when attached." },
         "attach": { "$ref": "#/$defs/id", "description": "The card, frame, resource, or link it is attached to." },
         "author": { "$ref": "#/$defs/author" }
+      }
+    },
+    "proposal": {
+      "type": "object",
+      "description": "A proposed step: an intended addition after a real step of a block card, not a compiler fact. It has no implementation source and is never signed; its anchor is guarded.",
+      "additionalProperties": false,
+      "required": ["after", "author", "card", "id", "title"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "card": { "$ref": "#/$defs/id", "description": "The id of the block card of this page it belongs to." },
+        "after": { "$ref": "#/$defs/blockKey", "description": "The real step it goes after: a key inside the card's block (under `<card's block key>/`), in the card's project." },
+        "path": {
+          "enum": ["yes", "no", "each", "done"],
+          "description": "For a step with several outgoing paths (a condition or a loop): which one."
+        },
+        "title": {
+          "type": "string",
+          "pattern": "^[^\\p{Cc}]*\\S[^\\p{Cc}]*$",
+          "maxLength": 120,
+          "description": "What it would do: one line of at most 120 characters, without control characters."
+        },
+        "reason": { "type": "string", "pattern": "\\S", "maxLength": 400, "description": "Why: at most 400 characters." },
+        "author": { "$ref": "#/$defs/author", "description": "Who proposed it." }
       }
     }
   }

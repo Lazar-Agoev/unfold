@@ -538,6 +538,12 @@
         "fallback": true,
         "startLine": 26,
         "endLine": 26,
+        "focus": {
+          "startLine": 26,
+          "startColumn": 8,
+          "endLine": 26,
+          "endColumn": 36
+        },
         "lane": 0
       },
       {
@@ -549,6 +555,12 @@
         "fallback": true,
         "startLine": 27,
         "endLine": 31,
+        "focus": {
+          "startLine": 27,
+          "startColumn": 6,
+          "endLine": 27,
+          "endColumn": 46
+        },
         "lane": 0,
         "chips": [
           {
@@ -571,6 +583,12 @@
         "fallback": true,
         "startLine": 28,
         "endLine": 28,
+        "focus": {
+          "startLine": 28,
+          "startColumn": 22,
+          "endLine": 28,
+          "endColumn": 70
+        },
         "lane": 1,
         "chips": [
           {
@@ -594,6 +612,12 @@
         "fallback": true,
         "startLine": 29,
         "endLine": 29,
+        "focus": {
+          "startLine": 29,
+          "startColumn": 4,
+          "endLine": 29,
+          "endColumn": 43
+        },
         "lane": 1,
         "chips": [
           {
@@ -626,6 +650,12 @@
         "fallback": true,
         "startLine": 30,
         "endLine": 30,
+        "focus": {
+          "startLine": 30,
+          "startColumn": 4,
+          "endLine": 30,
+          "endColumn": 11
+        },
         "lane": 1
       },
       {
@@ -637,6 +667,12 @@
         "fallback": true,
         "startLine": 32,
         "endLine": 32,
+        "focus": {
+          "startLine": 32,
+          "startColumn": 16,
+          "endLine": 32,
+          "endColumn": 41
+        },
         "lane": 0,
         "chips": [
           {
@@ -660,6 +696,12 @@
         "fallback": true,
         "startLine": 33,
         "endLine": 33,
+        "focus": {
+          "startLine": 33,
+          "startColumn": 2,
+          "endLine": 33,
+          "endColumn": 75
+        },
         "lane": 0,
         "chips": [
           {
@@ -683,6 +725,12 @@
         "fallback": true,
         "startLine": 34,
         "endLine": 34,
+        "focus": {
+          "startLine": 34,
+          "startColumn": 2,
+          "endLine": 34,
+          "endColumn": 29
+        },
         "lane": 0,
         "chips": [
           {

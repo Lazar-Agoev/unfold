@@ -3,7 +3,8 @@
  * in view), send one agent edit (one undo step in the window that holds the board, saved at once,
  * signed with the agent's name, refused when the page changed since `expectRevision`), and turn what
  * the window answers into compact text: the header with the page's new revision, each item with its
- * name, id, and what happened to it, the warnings, and what to call next.
+ * name, id, and what happened to it (a card's expansion when an edit set it), the warnings, and what
+ * to call next.
  */
 
 import { z } from "zod";
@@ -215,6 +216,12 @@ export function itemLine(item: AgentItemResult): string {
     }
     case "note":
       return `- note “${item.name}” (${joined([`note id ${item.id}`, item.status])})${item.attach !== undefined ? `, attached to ${item.attach}` : ", free"}`;
+    case "proposal": {
+      const step = item.afterLabel !== undefined ? `the step “${item.afterLabel}”${item.afterLine !== undefined ? ` (line ${item.afterLine})` : ""}, key ${item.after}` : `the step ${item.after}`;
+      return `- proposed step “${item.title}” (${joined([`proposal id ${item.id}`, item.status])}) in card ${item.card}, after ${step}${item.path !== undefined ? `, on its “${item.path}” path` : ""}${
+        item.reason !== undefined ? `; reason “${item.reason}”` : ""
+      }`;
+    }
   }
 }
 

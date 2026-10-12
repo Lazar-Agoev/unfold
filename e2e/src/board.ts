@@ -56,7 +56,7 @@ export function publishState(page: Page): Locator {
   return boardView(page).locator(".board-publish-text");
 }
 
-/** The top bar's Diagram | Flow | Code lens. */
+/** The top bar's Diagram | Code lens. */
 export function lens(page: Page): Locator {
   return boardView(page).getByRole("radiogroup", { name: "Lens" });
 }

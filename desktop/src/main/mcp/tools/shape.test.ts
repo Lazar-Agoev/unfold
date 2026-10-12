@@ -1,7 +1,7 @@
 import { describe as group, expect, it, vi } from "vitest";
 import type { AgentEditRequest, AgentFailure, AgentItemResult, AgentPage, AgentShellEvent } from "../../../shared/agent-api";
 import { pageRevision } from "../../agents/revision";
-import { addNotes, addResources, connect, describe, frameCards, groupSteps, labelSteps } from "./shape";
+import { addNotes, addResources, connect, describe, frameCards, groupSteps, labelSteps, propose } from "./shape";
 import { harness, PROJECT, projectRow } from "./testing";
 
 vi.mock("electron", async () => (await import("../../fake-electron")).electronModule);
@@ -56,7 +56,7 @@ group("group_steps", () => {
       "- “Queue it for a worker, reply 202” (step group id queue-it; created) in card create-order, lines 28–30: variable (line 28), return (line 30)",
       "“Queue it for a worker, reply 202” took whole statements: lines 28–30 of createOrder, not lines 28–29.",
       IDS,
-      "Next: label_steps for its steps (those inside the groups too), set_view to collapse groups if the Flow is still long, then check.",
+      "Next: label_steps for its steps (those inside the groups too), set_view to collapse groups if the card is still long, then check.",
     ]);
     expect((await test.call(groupSteps, { card: "create-order", groups: [{ title: "Both", lines: [1, 2], steps: ["x"] }] })).text).toBe("Each group takes lines or steps, not both.");
   });
@@ -194,5 +194,73 @@ group("add_notes, describe, and label_steps", () => {
     const { text } = await test.call(labelSteps, { card: "create-order", labels: [{ step: `${CREATE_ORDER}/if[0]`, text: "Did the client ask for an async reply?" }] });
     expect(sentOps(test)).toEqual([{ op: "label_steps", card: "create-order", labels: [{ step: `${CREATE_ORDER}/if[0]`, text: "Did the client ask for an async reply?" }] }]);
     expect(text).toContain(`- “Did the client ask for an async reply?” on step ${CREATE_ORDER}/if[0] of card create-order (created)`);
+  });
+});
+
+group("propose", () => {
+  const AFTER = `${CREATE_ORDER}/variable:order`;
+
+  it("sends one card's proposed steps, link and null reason included, and says they are intentions, not code", async () => {
+    const test = app({
+      items: [
+        {
+          kind: "proposal",
+          id: "email-a-confirmation",
+          status: "created",
+          card: "create-order",
+          after: AFTER,
+          title: "Email a confirmation",
+          reason: "The queued path sends one; the direct path doesn't.",
+          afterLabel: "Place the order",
+          afterLine: 32,
+        },
+        { kind: "proposal", id: "notify", status: "updated", card: "create-order", after: `${CREATE_ORDER}/if[0]`, path: "no", title: "Notify the customer" },
+      ],
+    });
+    const { text } = await test.call(propose, {
+      card: `unfold://ts-orders/${BOARD.id}?page=page-1&item=create-order`,
+      proposals: [
+        { after: AFTER, title: "  Email a confirmation ", reason: "The queued path sends one; the direct path doesn't." },
+        { id: "notify", after: `${CREATE_ORDER}/if[0]`, path: "no", reason: null },
+      ],
+    });
+    expect(sentOps(test)).toEqual([
+      {
+        op: "propose",
+        card: "create-order",
+        proposals: [
+          { after: AFTER, title: "Email a confirmation", reason: "The queued path sends one; the direct path doesn't." },
+          { id: "notify", after: `${CREATE_ORDER}/if[0]`, path: "no", reason: null },
+        ],
+      },
+    ]);
+    expect(text.split("\n")).toEqual([
+      HEADER,
+      "Proposed steps (1 created, 1 updated):",
+      `- proposed step “Email a confirmation” (proposal id email-a-confirmation; created) in card create-order, after the step “Place the order” (line 32), key ${AFTER}; reason “The queued path sends one; the direct path doesn't.”`,
+      `- proposed step “Notify the customer” (proposal id notify; updated) in card create-order, after the step ${CREATE_ORDER}/if[0], on its “no” path`,
+      "Proposed steps are intentions, not code: the compiled path stays as it is.",
+      IDS,
+      "Next: get_screenshot of the card (item create-order), then tell the person in chat what you proposed and why.",
+    ]);
+    expect(propose.annotations).toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: true });
+  });
+
+  it("refuses a path that isn't one, and a title past 120 characters, before it reaches the window", async () => {
+    const test = app({ items: [] });
+    expect((await test.call(propose, { card: "create-order", proposals: [{ after: AFTER, title: "x", path: "maybe" }] })).isError).toBe(true);
+    expect((await test.call(propose, { card: "create-order", proposals: [{ after: AFTER, title: "x".repeat(121) }] })).isError).toBe(true);
+    expect(sentOps(test)).toBeUndefined();
+  });
+
+  it("passes on the window's refusal to change a person's words, with replacePeopleText to pass", async () => {
+    const test = app({
+      ok: false,
+      code: "people_text",
+      message: "Can't change the title of the proposed step “Email them”: Maya wrote it. People's words are safe; pass replacePeopleText only when the person asked for that change.",
+    });
+    const { text, isError } = await test.call(propose, { card: "create-order", proposals: [{ id: "email", title: "Email a confirmation" }] });
+    expect(isError).toBe(true);
+    expect(text).toContain("pass replacePeopleText only when the person asked for that change.");
   });
 });

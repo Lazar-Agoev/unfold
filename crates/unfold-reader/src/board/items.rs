@@ -1,6 +1,6 @@
 //! The items of one page and the references between them: cards, groups, frames, resource
-//! cards, links, and notes share one id space per page, and the rules that need nothing but the
-//! page (no graph) are checked here, on every parse and before every write.
+//! cards, links, notes, and proposed steps share one id space per page, and the rules that need
+//! nothing but the page (no graph) are checked here, on every parse and before every write.
 //!
 //! - **Groups** belong to a card of the page.
 //! - **Frames** hold one or more cards, resources, notes, or frames of the page; an item is in at
@@ -9,6 +9,7 @@
 //! - **Links** join two different cards, resources, or frames. A `relates` connection joins two
 //!   tables (by columns a table that lists its own columns has); a step leaves from a block card.
 //! - **Notes** attach to a card, frame, resource, or link.
+//! - **Proposed steps** belong to a block card of the page.
 //!
 //! Removing an item ([`remove_items`]) removes what would be left dangling, so a page stays
 //! readable.
@@ -28,6 +29,7 @@ enum Kind {
     Resource,
     Link,
     Note,
+    Proposal,
 }
 
 impl Kind {
@@ -40,6 +42,7 @@ impl Kind {
             Self::Resource => "resource",
             Self::Link => "link",
             Self::Note => "note",
+            Self::Proposal => "proposed step",
         }
     }
 
@@ -52,13 +55,14 @@ impl Kind {
             Self::Resource => "resources",
             Self::Link => "links",
             Self::Note => "notes",
+            Self::Proposal => "proposals",
         }
     }
 }
 
 /// The kind of every item id of a page; refuses an id used twice.
 fn kinds<'p>(page: &'p Page, path: &Path) -> Result<FxHashMap<&'p str, Kind>, BoardError> {
-    let ids: [(Kind, Vec<&str>); 6] = [
+    let ids: [(Kind, Vec<&str>); 7] = [
         (
             Kind::Card,
             page.cards.iter().map(|item| item.id.as_str()).collect(),
@@ -82,6 +86,10 @@ fn kinds<'p>(page: &'p Page, path: &Path) -> Result<FxHashMap<&'p str, Kind>, Bo
         (
             Kind::Note,
             page.notes.iter().map(|item| item.id.as_str()).collect(),
+        ),
+        (
+            Kind::Proposal,
+            page.proposals.iter().map(|item| item.id.as_str()).collect(),
         ),
     ];
     let mut kinds = FxHashMap::default();
@@ -188,6 +196,17 @@ pub(super) fn check_items(page: &Page, path: &Path) -> Result<(), BoardError> {
             )?;
         }
     }
+    for (index, proposal) in page.proposals.iter().enumerate() {
+        let card_path = path.join("proposals").join(index).join("card");
+        let what = "a proposed step goes after a step of a block card";
+        expect(&kinds, &proposal.card, &[Kind::Card], what, &card_path)?;
+        if page
+            .card(&proposal.card)
+            .is_some_and(|card| card.reference.block_key().is_none())
+        {
+            return Err(card_path.fail(format!("`{}` is an entrance card; {what}", proposal.card)));
+        }
+    }
     Ok(())
 }
 
@@ -266,10 +285,10 @@ fn position(page: &Page, id: &str, depth: usize) -> Option<[f64; 2]> {
     Some([(from[0] + to[0]) / 2.0, (from[1] + to[1]) / 2.0])
 }
 
-/// Removes items `ids` from `page` with everything that would dangle: a removed card's groups,
-/// the links that end at a removed item, removed items from the frames that hold them (a frame
-/// left empty is removed too), and notes attached to a removed item, which stay where they were,
-/// unattached. Removing a frame keeps its members.
+/// Removes items `ids` from `page` with everything that would dangle: a removed card's groups and
+/// proposed steps, the links that end at a removed item, removed items from the frames that hold
+/// them (a frame left empty is removed too), and notes attached to a removed item, which stay where
+/// they were, unattached. Removing a frame keeps its members.
 pub(crate) fn remove_items(page: &mut Page, ids: &[&str]) {
     let mut removed: FxHashSet<String> = ids.iter().map(|id| (*id).to_owned()).collect();
     loop {
@@ -279,6 +298,12 @@ pub(crate) fn remove_items(page: &mut Page, ids: &[&str]) {
             .iter()
             .filter(|group| removed.contains(&group.card))
             .map(|group| group.id.clone())
+            .chain(
+                page.proposals
+                    .iter()
+                    .filter(|proposal| removed.contains(&proposal.card))
+                    .map(|proposal| proposal.id.clone()),
+            )
             .chain(
                 page.links
                     .iter()
@@ -323,4 +348,5 @@ pub(crate) fn remove_items(page: &mut Page, ids: &[&str]) {
     page.resources.retain(|resource| kept(&resource.id));
     page.links.retain(|link| kept(&link.id));
     page.notes.retain(|note| kept(&note.id));
+    page.proposals.retain(|proposal| kept(&proposal.id));
 }

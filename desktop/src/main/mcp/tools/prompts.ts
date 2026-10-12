@@ -39,7 +39,7 @@ export const explainEntrance = definePrompt({
       '- Read get_guide({topic: "diagrams"}) (its recipe "Explain a request") and get_guide({topic: "writing"}) first, unless you have this session. Read "connections" too if the path crosses a queue, an event, or another service.',
       "- Find it: get_current_view, then list_entrances with a filter from what I named. If several entrances match, ask me which one, naming each with its file:line.",
       "- Read before you place: read_code on the entrance (its handlers) and on the functions they reach that matter; get_relations where the path goes on.",
-      "- Post a diagram brief in chat (question, reader, scope, shape, detail), then build: create_board traced from the entrance, the cards that matter (Diagram for context, Flow for the one or two functions the page is about), step groups and Flow labels on those, descriptions, and frames and connections where the path crosses services or queues.",
+      "- Post a diagram brief in chat (question, reader, scope, shape, detail), then build: on the page I linked if I pasted one, else create_board traced from the entrance; the cards that matter (compact for context, expanded for the one or two functions the page is about, a call expanded in place where the reader needs it), combined steps (group_steps) and Flow labels on those, descriptions, and frames and connections where the path crosses services or queues.",
       `- ${REVIEW}`,
       `- ${FINISH}`,
     ].join("\n");
@@ -49,17 +49,17 @@ export const explainEntrance = definePrompt({
 export const simplifyFunction = definePrompt({
   name: "simplify-function",
   title: "Simplify a function",
-  description: "Step groups and Flow labels on one function's card, until its Flow reads in a few steps.",
+  description: "Combined steps and Flow labels on one function's card, until it reads in a few steps expanded.",
   args: z.object({
     function: word("The function's name, such as createOrder or OrderService.place; absent: the card selected in Unfold"),
   }),
   text: ({ function: name }) =>
     [
-      `Simplify ${name === undefined ? "the function whose card is selected in Unfold" : `the function “${name}”`}: step groups and Flow labels until its Flow reads in a few steps.`,
+      `Simplify ${name === undefined ? "the function whose card is selected in Unfold" : `the function “${name}”`}: combined steps and Flow labels until it reads in a few steps expanded.`,
       '- Read get_guide({topic: "diagrams"}) (its recipe "Simplify a function") and get_guide({topic: "writing"}) first, unless you have this session.',
-      "- Find its card: get_current_view, and work on the page I'm viewing. If no card there shows it, add_cards it there in Flow; if no board is open, create_board for it.",
+      "- Find its card: on the page I linked if I pasted one, else get_current_view and the page I'm viewing. If no card there shows it, add_cards it there expanded; if no board is open, create_board for it.",
       '- read_code with view "flow": its steps, their lines, and their keys.',
-      "- Post a short brief in chat: the 3 to 7 step groups (their lines and titles) and the steps left outside them. Then group_steps, label_steps for every step (those inside the groups too), and set_view to show the card in Flow with the groups collapsed.",
+      "- Post a short brief in chat: the 3 to 7 step groups (their lines and titles) and the steps left outside them. Then group_steps with collapsed: true (Combine), label_steps for every step (those inside the groups too), and set_view to show the card expanded.",
       "- Review: check, then get_screenshot of the card, and fix what they find.",
       "- Finish: finish_work, then tell me in chat how many steps its Flow reads in now, and what each step group holds.",
     ].join("\n"),
@@ -82,7 +82,7 @@ export const serviceMap = definePrompt({
       `Map the services of ${scope} on one page: a frame per service with its entrances, and how the services talk.`,
       '- Read get_guide({topic: "diagrams"}) (its recipe "Service map") and get_guide({topic: "connections"}) first, unless you have this session.',
       "- Understand: list_projects, then list_entrances for each project. search text for where services talk (queues, HTTP clients, events, stores), and read_code each hit before you draw anything.",
-      "- Post a diagram brief in chat, then build: create_board, the entrances in Diagram, frame_cards with a box per application inside a zone per project, add_resources for the queues and stores, and connect producers to consumers, each anchored where the code shows it. Shared code goes in a box of its own.",
+      "- Post a diagram brief in chat, then build: create_board (or the page I linked), the entrances compact, frame_cards with a box per application inside a zone per project, add_resources for the queues and stores, and connect producers to consumers, each anchored where the code shows it. Shared code goes in a box of its own.",
       `- ${REVIEW}`,
       `- ${FINISH} Name what you saw but couldn't cite.`,
     ].join("\n");
@@ -115,7 +115,7 @@ export const tour = definePrompt({
       `Make an onboarding board for ${projectText(project)}, for someone new to it: a first page on how it starts, then a page for each main path through it.`,
       '- Read get_guide({topic: "diagrams"}) and get_guide({topic: "writing"}) first, unless you have this session; "connections" too when a path crosses a queue or another service.',
       "- Understand: get_project and list_entrances for its applications and entrances. Choose the 3 to 5 paths a newcomer meets first, and read their code.",
-      "- Post a brief in chat for the board: its pages in order and the question each answers. Then build: create_board with those pages; the first page a map of its applications and their entrances in Diagram; each other page explains one path, as the recipe \"Explain a request\" does, with its own short brief.",
+      "- Post a brief in chat for the board: its pages in order and the question each answers. Then build: create_board with those pages; the first page a map of its applications and their entrances, all compact; each other page explains one path, as the recipe \"Explain a request\" does, with its own short brief.",
       `- ${REVIEW}`,
       `- ${FINISH}`,
     ].join("\n"),

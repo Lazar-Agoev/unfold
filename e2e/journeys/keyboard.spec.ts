@@ -117,15 +117,12 @@ test.describe("the keyboard", () => {
       await pagesList(page).getByRole("option").first().click();
     });
 
-    await test.step("⌘1, ⌘2, and ⌘3 set the page's lens to Diagram, Flow, and Code", async () => {
+    await test.step("⌘1 and ⌘2 set the page's lens to Diagram and Code", async () => {
       await clickCanvas(page);
       await page.keyboard.press("Meta+1");
       await expect(lens(page).getByRole("radio", { name: "Diagram" })).toHaveAttribute("aria-checked", "true");
-      await expect(card(page, CREATE_ORDER)).toHaveClass(/diagram-card/);
+      await expect(card(page, CREATE_ORDER).locator(".code-view")).toHaveCount(0);
       await page.keyboard.press("Meta+2");
-      await expect(lens(page).getByRole("radio", { name: "Flow" })).toHaveAttribute("aria-checked", "true");
-      await expect(card(page, CREATE_ORDER).locator(".flow-view")).toBeVisible();
-      await page.keyboard.press("Meta+3");
       await expect(lens(page).getByRole("radio", { name: "Code" })).toHaveAttribute("aria-checked", "true");
       await expect(card(page, CREATE_ORDER).locator(".code-view")).toBeVisible();
     });
@@ -182,6 +179,16 @@ test.describe("the keyboard", () => {
       await clickCanvas(page);
       await page.keyboard.press("Shift+A");
       await expect(toast(page, /^Arranged \d+ cards? by call depth\./)).toBeVisible();
+    });
+
+    await test.step("C opens the selected card's source in the peek sheet, at its definition", async () => {
+      await card(page, CREATE_ORDER).locator(".card-header").click();
+      await page.keyboard.press("c");
+      const source = page.getByRole("complementary", { name: "Source of src/routes/orders.ts", exact: true });
+      await expect(source).toBeVisible();
+      await expect(source.locator('.peek-row.focus[data-line="25"]')).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(source).toHaveCount(0);
     });
 
     await test.step("⇧⌘B compiles the board's project", async () => {

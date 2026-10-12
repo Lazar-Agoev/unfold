@@ -1,6 +1,6 @@
 /**
  * Reading a board (docs/reader.md#boards): following calls and ⌥-click inline, On this page, Selected, the trail
- * with Back and Forward, the lens and a card's own view; pages, descriptions, groups, Flow labels, and
+ * with Back and Forward, the Diagram | Code lens and a card's expansion; pages, descriptions, groups, Flow labels, and
  * undo and redo across pages; Show callers, a drawn link, Arrange, the zoom and Fit, and the canvas and
  * card menus.
  */
@@ -123,34 +123,38 @@ test.describe("the board", () => {
       await expect(forward).toBeDisabled();
     });
 
-    await test.step("the lens in the top bar shows every card as a Diagram node, in Flow, or in Code, and ⌘1 / ⌘2 / ⌘3 switch it", async () => {
-      const total = await cards(page).count();
-      await lens(page).getByRole("radio", { name: "Diagram" }).click();
-      await expect(boardView(page).locator(".diagram-card")).toHaveCount(total);
-      await lens(page).getByRole("radio", { name: "Flow" }).click();
-      await expectEveryBlockCardShows(page, "flow-view");
+    await test.step("the lens in the top bar switches the page between Diagram and Code, and ⌘1 / ⌘2 switch it", async () => {
       await lens(page).getByRole("radio", { name: "Code" }).click();
       await expectEveryBlockCardShows(page, "code-view");
+      await lens(page).getByRole("radio", { name: "Diagram" }).click();
+      await expect(boardView(page).locator(".block-card .code-view")).toHaveCount(0);
       await clickCanvas(page);
-      await page.keyboard.press("Meta+1");
-      await expect(lens(page).getByRole("radio", { name: "Diagram" })).toHaveAttribute("aria-checked", "true");
-      await expect(boardView(page).locator(".diagram-card")).toHaveCount(total);
       await page.keyboard.press("Meta+2");
-      await expect(lens(page).getByRole("radio", { name: "Flow" })).toHaveAttribute("aria-checked", "true");
-      await expectEveryBlockCardShows(page, "flow-view");
-      await page.keyboard.press("Meta+3");
       await expect(lens(page).getByRole("radio", { name: "Code" })).toHaveAttribute("aria-checked", "true");
       await expectEveryBlockCardShows(page, "code-view");
+      await page.keyboard.press("Meta+1");
+      await expect(lens(page).getByRole("radio", { name: "Diagram" })).toHaveAttribute("aria-checked", "true");
+      await expect(boardView(page).locator(".block-card .code-view")).toHaveCount(0);
     });
 
-    await test.step("a card's own Diagram | Flow | Code switch changes only that card", async () => {
+    await test.step("a card's chevron expands and collapses only that card in Diagram, and it survives a trip through Code", async () => {
       const requireUser = card(page, REQUIRE_USER);
-      const own = () => requireUser.getByRole("radiogroup", { name: "View of requireUser" });
-      await clickOnCanvas(page, own().getByRole("radio", { name: "Diagram" }));
+      // The traced cards inherit the new page's Diagram default: compact.
       await expect(requireUser).toHaveClass(/diagram-card/);
-      await clickOnCanvas(page, own().getByRole("radio", { name: "Flow" }));
+      await clickOnCanvas(page, requireUser.getByRole("button", { name: "Expand requireUser" }));
       await expect(requireUser.locator(".flow-view")).toBeVisible();
-      await expect(card(page, VALIDATE_BODY).locator(".code-view")).toBeVisible();
+      await expect(card(page, VALIDATE_BODY)).toHaveClass(/diagram-card/);
+      await clickCanvas(page);
+      await page.keyboard.press("Meta+2");
+      await expectEveryBlockCardShows(page, "code-view");
+      await page.keyboard.press("Meta+1");
+      await expect(requireUser.locator(".flow-view")).toBeVisible();
+      await clickOnCanvas(page, requireUser.getByRole("button", { name: "Collapse requireUser" }));
+      await expect(requireUser).toHaveClass(/diagram-card/);
+      // Back to Code for reading the source inline.
+      await clickCanvas(page);
+      await page.keyboard.press("Meta+2");
+      await expectEveryBlockCardShows(page, "code-view");
     });
 
     await test.step("⌥-click on a call expands its callee inline, and it closes again", async () => {

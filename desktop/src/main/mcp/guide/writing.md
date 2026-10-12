@@ -17,6 +17,7 @@ and it goes to review when that code changes.
 | --- | --- | --- | --- | --- |
 | Flow label | label_steps | 2 to 8 words: a verb, or a question for a condition | "Did the client ask for an async reply?" | `req.header("prefer") === "respond-async"`, "Step 2" |
 | Step group title | group_steps | What the steps achieve, 2 to 6 words | "Queue it for a worker, reply 202" | "Lines 28–30" |
+| Proposed step title | propose | The intended behavior, 2 to 6 words, only when asked | "Email a confirmation" | "TODO", "Would call sendEmail" |
 | Frame title | frame_cards | A noun, 1 to 4 words | "Request checks", "Order API" | "Group 1", "Frame" |
 | Description | describe (or the description field of group_steps, frame_cards, add_resources) | One sentence: what and why, not how | "Places the order now, or queues it when the client asks for an async reply." | A paragraph that restates the code |
 | Connection label | connect | What travels, 1 to 5 words | "place-order job" | "connection", "calls" |
@@ -29,7 +30,7 @@ Limits: Flow labels and step group titles 120 characters, frame titles 80,
 descriptions and notes 400.
 
 ## Flow labels
-- Each step of a card in Flow shows a fallback name from the code (dotted underline)
+- Each step of an expanded card shows a fallback name from the code (dotted underline)
   until it has a label. read_code with view "flow" lists the steps with their keys;
   read_page lists the ones still unlabeled and check counts them per card, leaving out
   the steps a collapsed step group hides; label those too, since they show when the
@@ -55,6 +56,9 @@ label_steps({board, page, card: "create-order", labels: [
 ## Titles and descriptions
 - A step group's title says what its steps achieve together; its description is
   optional.
+- A proposed step's title says what would happen, never that it happens; its reason
+  says why the person wants it ("The queued path emails a confirmation; placing it now
+  doesn't."). No status words: "done", "built", "pending".
 - A frame's title names the unit or service; its description says in one sentence
   what it does ("The Express API: requests come in, orders are placed or queued.").
 - A card's description says what the function does for this page's question.
@@ -68,11 +72,11 @@ code and never goes to review, so never use one to claim what code does: describ
 card, or connect with anchors. Attach it to the item it's about. Add notes sparingly.
 
 ## People's words
-Text a person wrote is theirs. describe, label_steps, and remove_items refuse to replace
-or remove it, and edit_pages refuses to delete a page that holds it, unless
-replacePeopleText is true: set it only when the person asked for that change. The
-other tools always keep it: pass the person's text as it is. A step group titled
-before titles were signed counts as a person's.
+Text a person wrote is theirs. describe, label_steps, propose, and remove_items refuse
+to replace or remove it (a person's proposed step too), and edit_pages refuses to
+delete a page that holds it, unless replacePeopleText is true: set it only when the
+person asked for that change. The other tools always keep it: pass the person's text
+as it is. A step group titled before titles were signed counts as a person's.
 
 ## In the chat
 - Name things as Unfold shows them, with file:line. Never ids or keys.

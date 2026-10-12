@@ -22,6 +22,7 @@ function sameTarget(a: Target, b: Target): boolean {
   if ("link" in a) return "link" in b && a.link === b.link;
   if ("resource" in a) return "resource" in b && a.resource === b.resource;
   if ("frame" in a) return "frame" in b && a.frame === b.frame;
+  if ("proposal" in a) return "proposal" in b && a.proposal === b.proposal;
   return "label" in b && sameLabel(a.label, b.label);
 }
 
@@ -62,6 +63,10 @@ function targetName(target: Target, page: Page): string {
     const frame = (page.frames ?? []).find((item) => item.id === target.frame);
     return frame ? `the frame "${frame.title}"` : "the frame";
   }
+  if ("proposal" in target) {
+    const proposal = (page.proposals ?? []).find((item) => item.id === target.proposal);
+    return proposal ? `the proposed step "${proposal.title}"` : "the proposed step";
+  }
   return `the Flow label of ${keyDisplayName(target.label.key)}`;
 }
 
@@ -71,6 +76,7 @@ function targetNoun(target: Target): string {
   if ("link" in target) return "link";
   if ("resource" in target) return "resource card";
   if ("frame" in target) return "frame";
+  if ("proposal" in target) return "proposed step";
   return "card";
 }
 
@@ -96,6 +102,7 @@ const REPAIR_LABELS: Readonly<Record<RepairKind, string>> = {
   removeDescription: "Remove the description",
   resign: "Keep the text",
   accept: "Accept the current code",
+  removeProposal: "Remove the proposed step",
 };
 
 export function repairLabel(kind: RepairKind): string {
@@ -107,7 +114,9 @@ export function repairEffect(kind: RepairKind, item: HealthItem, page: Page): st
   const name = targetName(item.target, page);
   switch (kind) {
     case "reconnect":
-      return `Points ${name} at a definition you choose, keeping its description, labels, and groups.`;
+      return "proposal" in item.target
+        ? `Moves ${name} to go after a step of its card you choose. Its title, reason, and author stay; nothing is matched by name.`
+        : `Points ${name} at a definition you choose, keeping its description, labels, and groups.`;
     case "removeCard":
       return `Removes the card ${name} from the page, with the groups inside it and its links.`;
     case "removeLabel":
@@ -123,7 +132,11 @@ export function repairEffect(kind: RepairKind, item: HealthItem, page: Page): st
     case "resign":
       return `Keeps the text of ${name} as written and signs it against the current code, so it is no longer outdated.`;
     case "accept":
-      return `Accepts the current code for ${name}: its text stays attached and a fresh guard is saved.`;
+      return "proposal" in item.target
+        ? `Accepts the current code of the step ${name} goes after: it stays there and a fresh guard is saved.`
+        : `Accepts the current code for ${name}: its text stays attached and a fresh guard is saved.`;
+    case "removeProposal":
+      return `Removes ${name}. The code it goes after stays as it is.`;
   }
 }
 
@@ -168,5 +181,7 @@ export function repairSpec(kind: RepairKind, item: HealthItem, page: Page, to?: 
       const reference = itemReference(item, page);
       return reference !== null ? { ...at, kind: "accept", ...named(reference.project), key: reference.key } : null;
     }
+    case "removeProposal":
+      return "proposal" in target ? { ...at, kind: "remove_proposal", proposal: target.proposal } : null;
   }
 }

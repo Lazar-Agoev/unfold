@@ -14,7 +14,9 @@
 //! its ends: it is **broken** when an end's card is missing from its connected project (a
 //! resource or frame end is never missing); its label is never outdated (cross-project boards). The
 //! claims (resource cards, connections, and frame descriptions) are checked by [`claims`]: what
-//! they cite must still be there, and their signatures must still match.
+//! they cite must still be there, and their signatures must still match. A proposed step's anchor
+//! is a guarded reference too: missing or held, it keeps its text and waits for an explicit
+//! Reconnect, Accept, or removal; it is never reattached by name or shifted position.
 
 use std::fmt;
 
@@ -65,6 +67,8 @@ pub enum Target {
     Resource(String),
     /// A frame, by id.
     Frame(String),
+    /// A proposed step, by id.
+    Proposal(String),
 }
 
 impl fmt::Display for Target {
@@ -80,6 +84,7 @@ impl fmt::Display for Target {
             Self::Link(id) => write!(f, "link `{id}`"),
             Self::Resource(id) => write!(f, "resource `{id}`"),
             Self::Frame(id) => write!(f, "frame `{id}`"),
+            Self::Proposal(id) => write!(f, "proposal `{id}`"),
         }
     }
 }
@@ -89,8 +94,8 @@ impl fmt::Display for Target {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum HealthKind {
-    /// A reference (a card's, a label's, or a resource card's anchor or type) is not in its
-    /// project's graph (a placeholder until repaired).
+    /// A reference (a card's, a label's, a resource card's anchor or type, or a proposed step's
+    /// anchor) is not in its project's graph (a placeholder until repaired).
     Missing,
     /// A description's, label's, resource card's, or connection's source changed since it was
     /// signed.
@@ -113,7 +118,7 @@ pub enum HealthKind {
 pub enum RepairKind {
     /// Point the reference at another key (after a rename or move).
     Reconnect,
-    /// Remove the card (and its groups and links).
+    /// Remove the card (and its groups, proposed steps, and links).
     RemoveCard,
     /// Remove the label.
     RemoveLabel,
@@ -129,6 +134,8 @@ pub enum RepairKind {
     Resign,
     /// Accept the reference's current code: save a fresh guard for it.
     Accept,
+    /// Remove the proposed step.
+    RemoveProposal,
 }
 
 /// One health problem.
@@ -167,7 +174,7 @@ pub struct HealthItem {
 #[serde(rename_all = "camelCase")]
 pub struct Health {
     /// Every problem: per page, cards first, then groups, labels, links' ends, resource cards,
-    /// connections, and frames.
+    /// connections, frames, and proposed steps.
     pub items: Vec<HealthItem>,
     /// The number of missing references.
     pub missing: u32,
@@ -254,6 +261,37 @@ impl Health {
 const CHANGED: &str = "Code changed since this description was written";
 const LABEL_CHANGED: &str = "Code changed since this label was written";
 
+/// Why a guarded reference is held for review.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Held {
+    /// Its kind or owner changed.
+    KindOrOwner,
+    /// It is position-based and its source changed.
+    Ordinal,
+}
+
+impl Held {
+    /// The health message of a held reference.
+    const fn message(self) -> &'static str {
+        match self {
+            Self::KindOrOwner => "Saved reference kind or owner changed; needs review",
+            Self::Ordinal => "Position-based reference changed; needs review before reconnecting",
+        }
+    }
+
+    /// The health message of a proposed step whose anchor is held: where it goes needs review.
+    const fn placement(self) -> &'static str {
+        match self {
+            Self::KindOrOwner => {
+                "The step this proposal goes after changed kind or owner; check where it goes, then accept the current code, reconnect it to another step, or remove the proposal"
+            }
+            Self::Ordinal => {
+                "The step this proposal goes after is position-based and its code changed; check where it goes, then accept the current code, reconnect it to another step, or remove the proposal"
+            }
+        }
+    }
+}
+
 /// Why `group` breaks the group rules in `graph` (its card's project's graph), if it does: a
 /// run of consecutive sibling statements with one parent and one body role (`body`, `then`,
 /// `else`, `catch`, `finally`), inside its block card, never crossing a body boundary.
@@ -308,17 +346,44 @@ pub(crate) fn guard_problem(
     project: Option<&ProjectName>,
     key: &str,
 ) -> Option<&'static str> {
+    held(page, graph, project, key).map(Held::message)
+}
+
+/// Why guarded reference (`project`, `key`) is held for review in `graph`, if it is
+/// ([`guard_problem`]).
+fn held(page: &Page, graph: &BoardGraph, project: Option<&ProjectName>, key: &str) -> Option<Held> {
     let saved = page.guard(project, key)?;
     let kind = graph.guard_kind(key)?;
     let owner = graph.guard_owner(key)?;
     if kind != saved.kind || owner != saved.owner {
-        return Some("Saved reference kind or owner changed; needs review");
+        return Some(Held::KindOrOwner);
     }
     let signature = graph.signature(key);
     if is_ordinal(key) && signature.is_some_and(|signature| signature != saved.signature) {
-        return Some("Position-based reference changed; needs review before reconnecting");
+        return Some(Held::Ordinal);
     }
     None
+}
+
+/// Why a proposed step on the block card with key `card` can't go after `after` in `graph` (the
+/// card's project's), if it can't: it goes after a block of the graph strictly inside the card's
+/// block (a key under `<card>/`).
+pub(crate) fn placement_problem(graph: &BoardGraph, card: &str, after: &str) -> Option<String> {
+    if after == card {
+        return Some(format!(
+            "Can't place it after its card itself: a proposed step goes after a step inside the card's block. Choose a statement or call under {card}/"
+        ));
+    }
+    if !after.strip_prefix(card).is_some_and(|rest| rest.starts_with('/')) {
+        return Some(format!(
+            "Can't place it after {after}: that is not inside its card's block. Choose a statement or call under {card}/"
+        ));
+    }
+    graph.block(after).is_none().then(|| {
+        format!(
+            "Can't place it after {after}: that step is not in the graph. Choose a statement or call under {card}/ that the code has now"
+        )
+    })
 }
 
 /// The guard to save for (`project`, `key`) now, from `graph` (that project's): its kind,
@@ -554,6 +619,41 @@ pub fn health(page: &Page, graphs: &PageGraphs<'_>) -> Health {
     for item in claims::health(page, graphs) {
         health.add(item);
     }
+    for proposal in &page.proposals {
+        let project = page.proposal_project(proposal);
+        let Some(graph) = graphs.get(project) else {
+            continue;
+        };
+        let target = Target::Proposal(proposal.id.clone());
+        let after = proposal.after.as_str();
+        if graph.block(after).is_none() {
+            health.add(item(
+                HealthKind::Missing,
+                target,
+                project,
+                Some(after),
+                &format!(
+                    "The step this proposal goes after is missing: {after}. Reconnect it to the step it goes after now, or remove the proposal"
+                ),
+                &[RepairKind::Reconnect, RepairKind::RemoveProposal],
+            ));
+            continue;
+        }
+        if let Some(held) = held(page, graph, project, after) {
+            health.add(item(
+                HealthKind::Review,
+                target,
+                project,
+                Some(after),
+                held.placement(),
+                &[
+                    RepairKind::Accept,
+                    RepairKind::Reconnect,
+                    RepairKind::RemoveProposal,
+                ],
+            ));
+        }
+    }
     health
 }
 
@@ -586,8 +686,10 @@ fn overlap(graph: &BoardGraph, left: &Group, right: &Group) -> bool {
 pub enum Repair {
     /// Replace reference `from` with `to` in `project` everywhere on the page: card references,
     /// group members, the label's key, resource cards' types and anchors, connections' carried
-    /// types and anchors, and its guard (a fresh one is saved). A connection's step under `from`
-    /// (a card's statement or call) moves to the same path under `to`.
+    /// types and anchors, and its guard (a fresh one is saved). A connection's step and a proposed
+    /// step's anchor under `from` (a card's statement or call) move to the same path under `to`;
+    /// a proposed step whose anchor is `from` itself must then go after a step inside its card's
+    /// block.
     Reconnect {
         /// The project (`None`: the board's own); it must be connected.
         project: Option<ProjectName>,
@@ -606,8 +708,8 @@ pub enum Repair {
         /// The new anchor.
         to: Anchor,
     },
-    /// Remove a card with what would dangle: the groups on it, the links drawn to or from it,
-    /// its place in a frame, and the notes attached to it (they stay, unattached).
+    /// Remove a card with what would dangle: the groups and proposed steps on it, the links drawn
+    /// to or from it, its place in a frame, and the notes attached to it (they stay, unattached).
     RemoveCard(String),
     /// Remove a label.
     RemoveLabel(ProjectKey),
@@ -626,6 +728,8 @@ pub enum Repair {
     Resign(Target),
     /// Save a fresh guard for a reference, accepting its current code.
     Accept(ProjectKey),
+    /// Remove a proposed step.
+    RemoveProposal(String),
 }
 
 fn problem(page: &Page, target: Target, message: &str) -> BoardError {
@@ -654,6 +758,11 @@ pub fn apply_repair(page: &mut Page, graphs: &PageGraphs<'_>, repair: &Repair) -
         }
         Repair::RemoveResource(id) => {
             if page.resource(id).is_some() {
+                remove_items(page, &[id]);
+            }
+        }
+        Repair::RemoveProposal(id) => {
+            if page.proposal(id).is_some() {
                 remove_items(page, &[id]);
             }
         }
@@ -703,6 +812,8 @@ fn remove_description(page: &mut Page, target: &Target) {
                 frame.description = None;
             }
         }
+        // A proposed step has no description: its title and reason are the proposal itself.
+        Target::Proposal(_) => {}
     }
 }
 
@@ -712,7 +823,7 @@ fn remove_label(page: &mut Page, label: &ProjectKey) {
 }
 
 /// What a repair about reference (`project`, `key`) is about: the card showing it, else the
-/// resource card or connection citing it, else its label.
+/// resource card or connection citing it, else the proposed step going after it, else its label.
 fn target_of(page: &Page, project: Option<&ProjectName>, key: &str) -> Target {
     let is = |anchor: &Anchor| {
         anchor.project() == project && anchor.key().is_some_and(|known| known.as_str() == key)
@@ -743,8 +854,15 @@ fn target_of(page: &Page, project: Option<&ProjectName>, key: &str) -> Target {
                     .is_some_and(|carries| carries.as_str() == key))
             || link.anchors.iter().any(is)
     };
-    match page.links.iter().find(cites) {
-        Some(link) => Target::Link(link.id.clone()),
+    if let Some(link) = page.links.iter().find(cites) {
+        return Target::Link(link.id.clone());
+    }
+    match page
+        .proposals
+        .iter()
+        .find(|proposal| page.proposal_project(proposal) == project && proposal.after.as_str() == key)
+    {
+        Some(proposal) => Target::Proposal(proposal.id.clone()),
         None => Target::Label(ProjectKey::new(project, key)),
     }
 }
@@ -778,6 +896,30 @@ fn reconnect(
             "the new reference is not in the graph or is a different kind of reference"
         };
         return Err(problem(page, target_of(page, project, from), message));
+    }
+    // Proposed steps move with their card, and with their anchor: the same step under the new
+    // key. One reconnected by its own anchor must still go after a step inside its card's block;
+    // checked before anything changes.
+    let mut anchors = Vec::new();
+    for (index, proposal) in page.proposals.iter().enumerate() {
+        if page.proposal_project(proposal) != project {
+            continue;
+        }
+        let Some(after) = moved(proposal.after.as_str(), from, to) else {
+            continue;
+        };
+        let card = page
+            .card(&proposal.card)
+            .and_then(|card| card.reference.block_key());
+        if proposal.after.as_str() == from
+            && let (Some(graph), Some(card)) = (graph, card)
+        {
+            let card = if card.as_str() == from { to } else { card.as_str() };
+            if let Some(message) = placement_problem(graph, card, after.as_str()) {
+                return Err(problem(page, Target::Proposal(proposal.id.clone()), &message));
+            }
+        }
+        anchors.push((index, after));
     }
     let new_key = unfold_core::Key::from_text(to);
     for card in &mut page.cards {
@@ -865,6 +1007,10 @@ fn reconnect(
             *carries = new_key.clone();
         }
         reconnect_anchors(&mut link.anchors);
+    }
+    for (index, after) in anchors {
+        let anchor = &mut page.proposals[index].after;
+        steps.push((std::mem::replace(anchor, after.clone()), after));
     }
     page.guards.retain(|entry| {
         entry.project.as_ref() != project

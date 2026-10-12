@@ -3,10 +3,10 @@
 //! A board is a titled list of **pages**, optionally filed in a folder. Each page holds authored
 //! choices only: references to blocks and entrances by structural key (in the board's own
 //! project or in another project named by its shared name), canvas positions, each card's saved
-//! view and fold, groups, descriptions, Flow labels, the guards that keep references from
-//! silently reattaching to different code, links drawn between cards (connections, when they
-//! have a kind), frames around items, resource cards, and notes. It never holds copied source or
-//! compiled arrows.
+//! view, fold, and calls expanded in place, groups, descriptions, Flow labels, the guards that
+//! keep references from silently reattaching to different code, links drawn between cards
+//! (connections, when they have a kind), frames around items, resource cards, notes, and proposed
+//! steps. It never holds copied source or compiled arrows.
 
 use std::fmt;
 
@@ -31,6 +31,21 @@ pub const MAX_NOTE_CHARACTERS: usize = 400;
 
 /// How deep frames nest: a frame in a frame in a frame.
 pub const MAX_FRAME_DEPTH: usize = 3;
+
+/// The most calls one card expands in place.
+pub const MAX_EXPANDED_CALLS: usize = 64;
+
+/// The most keys an expanded call's path holds: calls expand in place at most three levels deep.
+pub const MAX_EXPANSION_DEPTH: usize = 3;
+
+/// The most characters a proposed step's title holds.
+pub const MAX_PROPOSAL_TITLE: usize = 120;
+
+/// The most characters a proposed step's reason holds.
+pub const MAX_PROPOSAL_REASON: usize = 400;
+
+/// The most proposed steps a page holds.
+pub const MAX_PROPOSALS: usize = 200;
 
 /// Declares a closed set of words of the format: an enum serialized as its words, with the words
 /// in declaration order (for messages), `as_str`, and `parse`.
@@ -173,6 +188,20 @@ words! {
         Relates = "relates",
         /// Anything else (a link without a kind is one too).
         Other = "other",
+    }
+}
+
+words! {
+    /// Which path of a decision a proposed step goes on.
+    ProposalPath {
+        /// A condition holds.
+        Yes = "yes",
+        /// A condition does not hold (also an `else if`).
+        No = "no",
+        /// Into a loop body.
+        Each = "each",
+        /// Out of a loop.
+        Done = "done",
     }
 }
 
@@ -478,6 +507,14 @@ pub struct Card {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub description: Option<Description>,
+    /// Calls expanded in place in Diagram (docs/reader.md#boards): each a path of 1 to 3 keys,
+    /// outermost first. A key is a call occurrence of the block shown at that level (a `call`/`new`
+    /// occurrence block, as `CallLink.source` / `FlowChip.source` name it) or a callback written
+    /// there (`FlowCallback.key`). Presentation only: never guarded, never a claim; a key that no
+    /// longer resolves is ignored.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
+    pub expanded: Vec<Vec<Key>>,
 }
 
 /// A run of consecutive sibling statements inside one block card.
@@ -687,8 +724,9 @@ impl Link {
 /// from that project's graph.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct References<'a> {
-    /// Block and entrance keys, without duplicates: cards, group members, and labels, then the
-    /// claims' keys (tables' types, connections' steps and carried types, and key anchors).
+    /// Block and entrance keys, without duplicates: cards, group members, labels, and proposed
+    /// steps' anchors, then the claims' keys (tables' types, connections' steps and carried types,
+    /// and key anchors).
     pub keys: Vec<&'a str>,
     /// The types of tables backed by a type, whose fields a save checks marks against.
     pub tables: Vec<&'a str>,
@@ -836,6 +874,34 @@ pub struct Note {
     pub author: Author,
 }
 
+/// A proposed step: an intended addition after a real step of a block card, clearly not a compiler
+/// fact (docs/proposals/unified-code-diagrams.md §7). It has no implementation source and is never
+/// signed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct Proposal {
+    /// Unique among the page's items.
+    pub id: String,
+    /// The block card it belongs to.
+    pub card: String,
+    /// The real step it goes after: a key inside the card's block, in the card's project. Guarded.
+    pub after: Key,
+    /// For a step with several outgoing paths (a condition or a loop): which one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub path: Option<ProposalPath>,
+    /// What it would do, in words: one line, never blank, at most 120 characters
+    /// ([`MAX_PROPOSAL_TITLE`]).
+    pub title: String,
+    /// Why, in words: never blank, at most 400 characters ([`MAX_PROPOSAL_REASON`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub reason: Option<String>,
+    /// Who proposed it.
+    pub author: Author,
+}
+
 /// One page of a board.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -869,15 +935,19 @@ pub struct Page {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub notes: Vec<Note>,
+    /// Proposed steps.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
+    pub proposals: Vec<Proposal>,
 }
 
 impl Page {
-    /// An empty page.
+    /// An empty page, showing Diagram by default.
     pub fn new(id: &str, title: &str) -> Self {
         Self {
             id: id.to_owned(),
             title: title.to_owned(),
-            default_view: View::Code,
+            default_view: View::Diagram,
             cards: Vec::new(),
             groups: Vec::new(),
             labels: Vec::new(),
@@ -886,6 +956,7 @@ impl Page {
             frames: Vec::new(),
             resources: Vec::new(),
             notes: Vec::new(),
+            proposals: Vec::new(),
         }
     }
 
@@ -917,6 +988,11 @@ impl Page {
     /// The note with `id`.
     pub fn note(&self, id: &str) -> Option<&Note> {
         self.notes.iter().find(|note| note.id == id)
+    }
+
+    /// The proposed step with `id`.
+    pub fn proposal(&self, id: &str) -> Option<&Proposal> {
+        self.proposals.iter().find(|proposal| proposal.id == id)
     }
 
     /// The other projects the page's items name: its cards', resources' types', anchors', and
@@ -975,10 +1051,17 @@ impl Page {
         self.card(&link.from).and_then(|card| card.reference.project())
     }
 
+    /// The project of proposed step `proposal`'s anchor: its card's project (`None`: the board's
+    /// own, also when the card is gone).
+    pub fn proposal_project(&self, proposal: &Proposal) -> Option<&ProjectName> {
+        self.card(&proposal.card)
+            .and_then(|card| card.reference.project())
+    }
+
     /// Everything the page references in `project` (`None`: the board's own), without
-    /// duplicates: the keys of cards, group members, and labels, in that order, then of the
-    /// claims (tables' types, connections' steps and carried types, and key anchors); the types
-    /// of tables backed by one; and the evidence files anchors cite.
+    /// duplicates: the keys of cards, group members, labels, and proposed steps' anchors, in that
+    /// order, then of the claims (tables' types, connections' steps and carried types, and key
+    /// anchors); the types of tables backed by one; and the evidence files anchors cite.
     pub fn references(&self, project: Option<&ProjectName>) -> References<'_> {
         let mut references = References::default();
         references.keys.extend(
@@ -998,6 +1081,12 @@ impl Page {
                 .iter()
                 .filter(|entry| entry.project.as_ref() == project)
                 .map(|entry| entry.key.as_str()),
+        );
+        references.keys.extend(
+            self.proposals
+                .iter()
+                .filter(|proposal| self.proposal_project(proposal) == project)
+                .map(|proposal| proposal.after.as_str()),
         );
         for table in self
             .resources

@@ -145,18 +145,40 @@ afterEach(() => {
 });
 
 describe("the lens", () => {
-  it("has three positions, Diagram, Flow, and Code, at the top and on every card", async () => {
+  it("has two positions at the top, Diagram and Code, and no switch on the cards", async () => {
     open([{ id: "create-order", ref: { block: KEY }, at: [0, 0] }]);
     const { container } = renderBoard();
     const lens = await screen.findByRole("radiogroup", { name: "Lens" });
-    expect(within(lens).getAllByRole("radio").map((radio) => radio.textContent)).toEqual(["Diagram", "Flow", "Code"]);
-    const own = await screen.findByRole("radiogroup", { name: "View of createOrder" });
-    expect(within(own).getAllByRole("radio").map((radio) => radio.textContent)).toEqual(["Diagram", "Flow", "Code"]);
-    expect(cardElement(container, "create-order")?.querySelector(".code-view")).not.toBeNull();
+    expect(within(lens).getAllByRole("radio").map((radio) => radio.textContent)).toEqual(["Diagram", "Code"]);
+    expect(within(lens).getByRole("radio", { name: "Code" }).getAttribute("aria-checked")).toBe("true");
+    await waitFor(() => {
+      expect(cardElement(container, "create-order")?.querySelector(".code-view")).not.toBeNull();
+    });
+    expect(cardElement(container, "create-order")?.querySelector(".segmented, .card-expand")).toBeNull();
   });
 
-  it("shows every card as a Diagram node with ⌘1's action and the View menu, without a board edit", async () => {
-    open([{ id: "create-order", ref: { block: KEY }, at: [0, 0], description: { text: "Places the order now,\nor queues it.", author: "agent:claude", signature: "" } }]);
+  it("opens a page whose default is Flow in Diagram, with its cards expanded", async () => {
+    open([{ id: "create-order", ref: { block: KEY }, at: [0, 0] }], "flow");
+    const { container } = renderBoard();
+    const lens = await screen.findByRole("radiogroup", { name: "Lens" });
+    expect(within(lens).getByRole("radio", { name: "Diagram" }).getAttribute("aria-checked")).toBe("true");
+    await waitFor(() => {
+      expect(cardElement(container, "create-order")?.querySelector(".flow-view")).not.toBeNull();
+    });
+    expect(await screen.findByRole("button", { name: "Collapse createOrder" })).not.toBeNull();
+    expect(store.getPageView(PAGE).lens).toBeNull();
+  });
+
+  it("shows a compact card as a Diagram node with ⌘1's action and the View menu, without a board edit", async () => {
+    open([
+      {
+        id: "create-order",
+        ref: { block: KEY },
+        at: [0, 0],
+        view: "diagram",
+        description: { text: "Places the order now,\nor queues it.", author: "agent:claude", signature: "" },
+      },
+    ]);
     const { container } = renderBoard();
     await waitFor(() => {
       expect(container.querySelector(".code-view")).not.toBeNull();
@@ -192,18 +214,34 @@ describe("the lens", () => {
     expect(store.getPageView(PAGE).lens).toBe("diagram");
   });
 
-  it("switches one card to Diagram with its own switch, as a board edit", async () => {
-    open([{ id: "create-order", ref: { block: KEY }, at: [0, 0] }]);
+  it("makes one card compact with its chevron, as a board edit, leaving the others expanded", async () => {
+    const place = "src/services/order-service.ts#class:OrderService/method:place";
+    open(
+      [
+        { id: "create-order", ref: { block: KEY }, at: [0, 0] },
+        { id: "place", ref: { block: place }, at: [900, 0] },
+      ],
+      "flow",
+    );
     const { container } = renderBoard();
-    const own = await screen.findByRole("radiogroup", { name: "View of createOrder" });
+    const collapse = await screen.findByRole("button", { name: "Collapse createOrder" });
     act(() => {
-      within(own).getByRole("radio", { name: "Diagram" }).click();
+      collapse.click();
     });
     await waitFor(() => {
       expect(container.querySelector('.diagram-card[data-card-id="create-order"]')).not.toBeNull();
     });
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.view).toBe("diagram");
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[1]?.view).toBeUndefined();
     expect(store.getOpenBoard(REF)?.edits).toBe(1);
+    expect(container.querySelector('.diagram-card[data-card-id="place"]')).toBeNull();
+    // Undo expands it again.
+    act(() => {
+      store.undo(REF);
+    });
+    await waitFor(() => {
+      expect(cardElement(container, "create-order")?.querySelector(".flow-view")).not.toBeNull();
+    });
   });
 
   it("shows an entrance as a node with its kind, and folds a node to its header", async () => {
@@ -222,11 +260,34 @@ describe("the lens", () => {
     });
     expect(node.querySelector(".card-title")?.textContent).toBe("import");
     expect(node.querySelector(".card-location")?.textContent).toBe("unfold.toml:5");
-    // An entrance follows the lens: it has no switch of its own.
-    expect(within(node).queryByRole("radiogroup")).toBeNull();
+    // The chevron leads the header.
+    expect(node.querySelector(".card-header")?.firstElementChild?.getAttribute("aria-label")).toBe("Expand import");
     const folded = cardElement(container, "create-order");
     expect(folded?.classList.contains("folded")).toBe(true);
-    expect(folded?.querySelector(".card-description, .segmented")).toBeNull();
+    expect(folded?.querySelector(".card-description, .card-expand")).toBeNull();
+  });
+
+  it("expands an entrance to its declaration evidence and ordered targets, under a heading from their roles", async () => {
+    open([{ id: "import", ref: { entrance: ENTRANCE }, at: [0, 0], view: "diagram" }], "diagram");
+    const { container } = renderBoard();
+    const expand = await screen.findByRole("button", { name: "Expand import" });
+    act(() => {
+      expand.click();
+    });
+    const card = await waitFor(() => present(container.querySelector<HTMLElement>('.entrance-card[data-card-id="import"]')));
+    expect(card.querySelector(".ecard-location")?.textContent).toBe("unfold.toml:5");
+    expect(card.querySelector(".ecard-heading")?.textContent).toBe("Handlers, in order");
+    expect([...card.querySelectorAll(".ecard-handler-name")].map((row) => row.textContent)).toEqual(["importOrders"]);
+    expect((await within(card).findByRole("button", { name: "Collapse import" })).getAttribute("aria-expanded")).toBe("true");
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.view).toBe("flow");
+    // In Code it shows expanded, without a chevron.
+    act(() => {
+      actions.run(ActionIds.lensCode);
+    });
+    await waitFor(() => {
+      expect(container.querySelector('.entrance-card[data-card-id="import"] .card-expand')).toBeNull();
+    });
+    expect(container.querySelector('.entrance-card[data-card-id="import"]')).not.toBeNull();
   });
 
   it("sends a node's calls from its edge, not from their lines", async () => {
@@ -303,7 +364,12 @@ describe("type cards", () => {
       });
     expect(await cellsOf("status")).toEqual(["=", '"open" | "paid"']);
     expect(await cellsOf("currency")).toEqual(["Usd", '"usd"', "Eur", '"eur"']);
-    expect(cardElement(container, "currency")?.querySelector('.segmented-option[aria-checked="true"]')?.textContent).toBe("Flow");
+    // Type cards have nothing to expand: no chevron, in either lens.
+    expect(cardElement(container, "currency")?.querySelector(".card-expand")).toBeNull();
+    act(() => {
+      actions.run(ActionIds.lensCode);
+    });
+    expect(await cellsOf("currency")).toEqual(["Usd", '"usd"', "Eur", '"eur"']);
   });
 
   it("fold 12 fields or more behind “N more”", async () => {

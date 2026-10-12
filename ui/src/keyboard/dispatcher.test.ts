@@ -155,12 +155,14 @@ describe("dispatchShortcut", () => {
 describe("runMenuCommand", () => {
   it("runs the action a menu command maps to, and ignores unknown commands", () => {
     const run = vi.fn();
-    const registry = registryWith({ id: ActionIds.lensFlow, title: "Flow", category: "View", run });
-    expect(runMenuCommand("lens_flow", registry)).toBe(true);
+    const registry = registryWith({ id: ActionIds.lensCode, title: "Code", category: "View", run });
+    expect(runMenuCommand("lens_code", registry)).toBe(true);
     expect(runMenuCommand("lens_diagram", registry)).toBe(false);
     expect(runMenuCommand("undo", registry)).toBe(false);
     expect(runMenuCommand(42, registry)).toBe(false);
     expect(runMenuCommand("toggle_inspector", registry)).toBe(false);
+    // An older window's View > Flow is gone.
+    expect(runMenuCommand("lens_flow", registry)).toBe(false);
     expect(run).toHaveBeenCalledTimes(1);
   });
 
@@ -177,7 +179,6 @@ describe("runMenuCommand", () => {
         "copy_diagnostics",
         "lens_code",
         "lens_diagram",
-        "lens_flow",
         "new_board",
         "new_page",
         "publish",

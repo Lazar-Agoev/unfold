@@ -45,8 +45,9 @@ suite; agents never see it.
 - **A correct result:**
   - A new draft with one page, traced from POST /orders: the entrance card and its handlers requireUser,
     validateBody, and createOrder (src/routes/orders.ts:25).
-  - createOrder in Flow, the context cards in Diagram; OrderService.place
-    (src/services/order-service.ts:13) on the page.
+  - createOrder expanded, the context cards compact; OrderService.place
+    (src/services/order-service.ts:13) on the page, as its own card or expanded in place from createOrder's
+    call at line 32.
   - Step groups on createOrder that follow the rule, such as lines 28–30 (the queued branch) and 32–34 (placing it
     now), titled by what they achieve; every Flow step of createOrder labeled, the condition as a question.
   - The async path: the orders worker entrance (application worker) with processOrder, and a queue connection from
@@ -72,7 +73,7 @@ suite; agents never see it.
     equally valid choice the brief explained.
   - Titles of 2 to 6 words that say what the steps achieve; every one of the card's Flow steps labeled (Read the
     draft, the condition as a question, the steps inside the groups too).
-  - The card in Flow with the groups collapsed: its Flow reads in four steps between Start and End.
+  - The card expanded with the groups collapsed: it reads in four steps between Start and End.
   - check finds nothing on the card; get_screenshot of the card.
 - **Never:** a group across the if's branches; a group that changes what the code does; labels that quote code.
 
@@ -82,7 +83,7 @@ suite; agents never see it.
 - **Request:** "Give me a map of ts-orders: its services and how they talk."
 - **A correct result:**
   - A zone around boxes for the applications server, worker, scheduler, and cli (icons api, worker, schedule, cli),
-    each holding its entrances in Diagram.
+    each holding its entrances, compact.
   - Queue resource cards orders and emails, anchored to `src/queues/queues.ts#variable:ordersQueue` and
     `#variable:emailQueue`.
   - queue connections: from createOrder (line 28) to the orders queue card, from processOrder
@@ -110,7 +111,7 @@ suite; agents never see it.
 - **Request:** "Which data does the order flow keep, and where?"
 - **A correct result:**
   - The chat says orders are kept in memory, in a Map in OrderRepository (src/db/repository.ts), not a database.
-  - Either type cards (Order, OrderDraft, OrderItem in Diagram, with Unfold's type arrows) or a table orders backed
+  - Either type cards (Order, OrderDraft, OrderItem, with Unfold's type arrows) or a table orders backed
     by `src/types.ts#interface:Order`, anchored to `src/db/repository.ts#class:OrderRepository`, marked id primary,
     with columns from Order and the fields it inherits from OrderDraft.
   - A writes connection from OrderService.place at `this.repo.insert(order)` (src/services/order-service.ts:22);
@@ -137,7 +138,7 @@ suite; agents never see it.
 - **Folder:** `testdata/fixtures/typed-lines`.
 - **Request:** "Show me the Python shop's data model."
 - **A correct result:**
-  - Type cards in Diagram: Cart, CartItem, Customer, Address (py/src/shop/models.py), with Unfold's type arrows
+  - Type cards: Cart, CartItem, Customer, Address (py/src/shop/models.py), with Unfold's type arrows
     `items: list[CartItem]` and `address: "Address"`; Receipt if the agent includes it.
   - The chat says `price: Money` doesn't link, because `Money = Decimal` is a variable, not a type.
   - The agent wrote only titles and descriptions; every field and arrow is compiled.
@@ -150,7 +151,7 @@ suite; agents never see it.
 - **A correct result:**
   - The FastAPI entrance POST /orders and its handlers require_user, validate_body, and create_order
     (src/orders_playground/routes/orders.py:24).
-  - create_order in Flow with step groups and labels, as in task 2.
+  - create_order expanded with step groups and labels, as in task 2.
   - If the async path is on the page: a queue connection from create_order's step at line 27
     (`celery_app.signature("orders.process", …).delay()`, key
     `src/orders_playground/routes/orders.py#function:create_order/if[0]/variable:job/call[0]`) to the Celery worker
@@ -183,6 +184,33 @@ suite; agents never see it.
   - Your description reported in the chat as yours to re-sign, with what changed; not re-signed by the agent.
   - check on the board finds nothing but your sign-off.
 - **Never:** a removed card or connection that could be reconnected; a person's text re-signed or replaced.
+
+### 11. Build the page the person linked (ts-orders)
+
+- **Setup:** in Unfold, add a page "Sending emails" to a draft and use its Copy link; leave another page in view.
+- **Request:** "<the pasted link> Use this page to show how my email service works."
+- **A correct result:**
+  - Everything lands on the linked page; the page in view doesn't change.
+  - The emails worker entrance (src/queues/email-worker.ts) with its handler expanded, and the withRetry callback at
+    line 9 expanded in place to show sendEmail's steps, still through withRetry.
+  - sendEmail (src/jobs/send-email.ts:6) as its own card, with its simulated delay and logging (lines 9–10) combined
+    into one step such as "Simulate delivery"; the recipient check and the outbox steps stay separate.
+  - The emails queue card and a queue connection from processOrder (src/jobs/process-order.ts:10).
+  - No proposed steps: nobody asked for a change.
+- **Never:** edits on the page in view; a direct sendEmail call drawn without the wrapper; `outbox` as a queue or a
+  database; a step group made on the handler's card for sendEmail's steps.
+
+### 12. Propose a change, on request (ts-orders)
+
+- **Setup:** task 1's page.
+- **Request:** "Orders placed right away never get a confirmation email. Show where one would go."
+- **A correct result:**
+  - One proposed step "Email a confirmation" on createOrder's card, after the step at line 32 (`orderService.place`,
+    key `src/routes/orders.ts#function:createOrder/variable:order`), with a reason that names the difference from the
+    queued path (processOrder queues an email, src/jobs/process-order.ts:10).
+  - The compiled path is unchanged; the chat says the step is proposed, not built.
+- **Never:** a status or "done" in the words; a card, connection, or label for code that doesn't exist; a proposal
+  on a callee shown in place; proposals added while only explaining code.
 
 ## Tuning
 

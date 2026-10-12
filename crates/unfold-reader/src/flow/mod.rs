@@ -3,8 +3,8 @@
 //! Flow is derived from saved blocks, roles, slots, and source order only, never by re-parsing
 //! the source. It is not a runtime trace: short-circuit expressions stay as written, labeled
 //! transfers get no guessed destination, and exceptions and asynchronous behavior are not
-//! modeled. Verified source is used for one thing: the fallback names of undescribed nodes
-//! ([`names`]).
+//! modeled. Verified source is used for two things: the fallback names of undescribed nodes
+//! ([`names`]), and each node's [`SourceFocus`]: its recorded range as lines and UTF-16 columns.
 //!
 //! | Saved structure | Drawn as |
 //! | --- | --- |
@@ -334,6 +334,23 @@ pub struct FlowCallback {
     pub throws: bool,
 }
 
+/// Where a node's own source is: its condition, its main call expression, or else its statement,
+/// from recorded ranges. Lines are one-based; columns are UTF-16 code units from the line's start;
+/// the end is exclusive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct SourceFocus {
+    /// The line it starts on.
+    pub start_line: u32,
+    /// Where it starts on that line.
+    pub start_column: u32,
+    /// The line it ends on.
+    pub end_line: u32,
+    /// Where it ends on that line (exclusive).
+    pub end_column: u32,
+}
+
 /// One node.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -365,6 +382,13 @@ pub struct FlowNode {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub end_line: Option<u32>,
+    /// Where the node's own source is: a condition's recorded condition; a loop's recorded
+    /// condition, else its header (from its start to its body); a `call` node's main call
+    /// expression; any other node's whole block. Absent for Start and End, and whenever the
+    /// source is not current (recorded ranges are withheld).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub focus: Option<SourceFocus>,
     /// The lane: 0 is the main lane.
     pub lane: u32,
     /// The occurrences this node shows, in source order.

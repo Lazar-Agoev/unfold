@@ -12,12 +12,12 @@
 
 use rustc_hash::FxHashMap;
 use unfold_core::vocab::{BlockKind, Language, Resolution, Role, SlotName};
-use unfold_core::{Block, FileGraph};
+use unfold_core::{Block, ByteRange, FileGraph, LineIndex, Utf16Index};
 
 use super::names::written_names;
 use super::{
     FlowCallback, FlowChip, FlowContext, FlowItem, FlowModel, FlowNode, FlowNodeKind, FlowRoute, FlowWarning,
-    RouteKind, WarningCode,
+    RouteKind, SourceFocus, WarningCode,
 };
 use crate::catalog;
 use crate::error::Result;
@@ -88,9 +88,50 @@ struct Extra {
     fixed: bool,
 }
 
+/// Converts byte offsets of the verified text to lines and UTF-16 columns.
+struct Positions {
+    lines: LineIndex,
+    utf16: Utf16Index,
+}
+
+impl Positions {
+    fn new(text: &str) -> Self {
+        Self {
+            lines: LineIndex::new(text),
+            utf16: Utf16Index::new(text),
+        }
+    }
+
+    /// The one-based line of byte `offset` and its UTF-16 column, when `offset` is a character
+    /// boundary of the text.
+    fn point(&self, offset: u32) -> Option<(u32, u32)> {
+        let line = self.lines.line_of(offset);
+        let start = self.utf16.to_utf16(self.lines.line_start(line)?).ok()?;
+        let at = self.utf16.to_utf16(offset).ok()?;
+        Some((line, at.checked_sub(start)?))
+    }
+
+    /// `range` as lines and columns, when it fits the text.
+    fn focus(&self, range: ByteRange) -> Option<SourceFocus> {
+        if range.start > range.end {
+            return None;
+        }
+        let (start_line, start_column) = self.point(range.start)?;
+        let (end_line, end_column) = self.point(range.end)?;
+        Some(SourceFocus {
+            start_line,
+            start_column,
+            end_line,
+            end_column,
+        })
+    }
+}
+
 struct Builder<'a> {
     file: &'a FileGraph,
     text: &'a str,
+    /// The text's positions, only when the source is current.
+    positions: Option<Positions>,
     language: Language,
     context: &'a dyn FlowContext,
     ends: Vec<u32>,
@@ -144,6 +185,7 @@ pub(super) fn build(
     let mut builder = Builder {
         file,
         text: text.unwrap_or(""),
+        positions: text.map(Positions::new),
         language: file.file.language,
         context,
         ends,
@@ -290,6 +332,51 @@ impl<'a> Builder<'a> {
             .collect()
     }
 
+    /// The focus of a `kind` node showing block `local` (see [`FlowNode::focus`]), from recorded
+    /// ranges of current source only.
+    fn focus(&self, local: u32, kind: FlowNodeKind, extra: &Extra) -> Option<SourceFocus> {
+        let positions = self.positions.as_ref()?;
+        let block = self.block(local);
+        let condition = || {
+            self.slots(local, SlotName::Condition)
+                .next()
+                .map(|slot| slot.range)
+        };
+        let range = match kind {
+            FlowNodeKind::Start | FlowNodeKind::End => return None,
+            FlowNodeKind::Condition => condition().unwrap_or(block.range),
+            FlowNodeKind::Loop => condition().unwrap_or_else(|| self.loop_header(local)),
+            FlowNodeKind::Call => extra
+                .call
+                .and_then(|call| extra.chips.get(call as usize))
+                .map_or(block.range, |&index| {
+                    self.block(self.file.edges[index].source).range
+                }),
+            _ => block.range,
+        };
+        positions.focus(range)
+    }
+
+    /// A loop's header: from its start to its body, without the whitespace before the body (the
+    /// whole loop when no body is recorded).
+    fn loop_header(&self, local: u32) -> ByteRange {
+        let range = self.block(local).range;
+        let Some(body) = self.slots(local, SlotName::Body).next() else {
+            return range;
+        };
+        let header = self
+            .text
+            .get(range.start as usize..body.range.start as usize)
+            .map_or("", str::trim_end);
+        if header.is_empty() {
+            return range;
+        }
+        ByteRange {
+            start: range.start,
+            end: range.start + to_u32(header.len()),
+        }
+    }
+
     /// Adds a node and returns its one-node fragment.
     fn node(&mut self, local: Option<u32>, kind: FlowNodeKind, fallback: String, extra: Extra) -> Fragment {
         let block = local.map(|local| self.block(local));
@@ -304,6 +391,7 @@ impl<'a> Builder<'a> {
         };
         let id = to_u32(self.nodes.len());
         let chips = extra.chips.iter().map(|&index| self.chip(index)).collect();
+        let focus = local.and_then(|local| self.focus(local, kind, &extra));
         self.nodes.push(FlowNode {
             id,
             key: block.map(|block| block.key.clone()),
@@ -313,6 +401,7 @@ impl<'a> Builder<'a> {
             fallback: is_fallback,
             start_line: block.map(|block| block.lines.start),
             end_line: block.map(|block| block.lines.end),
+            focus,
             lane: 0,
             chips,
             call: extra.call,

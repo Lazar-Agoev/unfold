@@ -487,7 +487,8 @@ pub struct LabelSpec {
     pub key: String,
 }
 
-/// What a repair is about (a card, group, label, link, resource card, or frame) on its page.
+/// What a repair is about (a card, group, label, link, resource card, frame, or proposed step) on
+/// its page.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum TargetSpec {
@@ -503,6 +504,8 @@ pub enum TargetSpec {
     Resource(String),
     /// A frame, by id.
     Frame(String),
+    /// A proposed step, by id.
+    Proposal(String),
 }
 
 /// An anchor a repair points a resource card or connection at: a block or entrance key, or
@@ -611,6 +614,11 @@ pub enum RepairKindSpec {
         /// The reference.
         key: String,
     },
+    /// Remove a proposed step.
+    RemoveProposal {
+        /// The proposed step's id.
+        proposal: String,
+    },
 }
 
 /// A repair on one page.
@@ -648,6 +656,7 @@ impl TargetSpec {
             Self::Link(id) => Target::Link(id),
             Self::Resource(id) => Target::Resource(id),
             Self::Frame(id) => Target::Frame(id),
+            Self::Proposal(id) => Target::Proposal(id),
         })
     }
 }
@@ -715,6 +724,7 @@ impl RepairKindSpec {
             Self::RemoveDescription { target } => Repair::RemoveDescription(target.into_target()?),
             Self::Resign { target } => Repair::Resign(target.into_target()?),
             Self::Accept { project, key } => Repair::Accept(LabelSpec { project, key }.into_key()?),
+            Self::RemoveProposal { proposal } => Repair::RemoveProposal(proposal),
         })
     }
 }
@@ -829,6 +839,14 @@ mod tests {
         assert_eq!(
             removed.repair.into_repair(),
             Ok(Repair::RemoveResource("orders".to_owned()))
+        );
+        let unproposed: RepairSpec = serde_json::from_value(serde_json::json!({
+            "page": "p", "kind": "remove_proposal", "proposal": "email"
+        }))
+        .expect("parse");
+        assert_eq!(
+            unproposed.repair.into_repair(),
+            Ok(Repair::RemoveProposal("email".to_owned()))
         );
         let resign: RepairSpec = serde_json::from_value(serde_json::json!({
             "page": "p", "kind": "resign", "target": { "frame": "server" }

@@ -3,8 +3,9 @@
  *
  * `read_code` reads a card's models (`card`), a type's definition (`type_definition`), a function's
  * owned edges (`relations`, whose targets come named) and their labels (`line_labels`), as the board
- * draws them. Source is shown only when the bytes on disk are the ones Unfold compiled, as a card
- * does. `get_relations` pages callers (`relations`) or a type's uses (`type_uses`), and lists the
+ * draws them: each Flow step with its focus (the exact expression or statement View code highlights)
+ * and whether its call or callbacks expand in place. Source is shown only when the bytes on disk are
+ * the ones Unfold compiled, as a card does. `get_relations` pages callers (`relations`) or a type's uses (`type_uses`), and lists the
  * board pages that show it (`board_refs`).
  */
 
@@ -16,10 +17,12 @@ import type {
   CardView,
   CodeView,
   FlowModel,
+  FlowNode,
   LabeledLine,
   OutgoingCall,
   ProjectRow,
   Relations,
+  SourceFocus,
   TypeDefinition,
   TypeMember,
 } from "../engine-types";
@@ -73,15 +76,47 @@ function directThrows(source: CodeText, text: ReadonlyMap<number, string>): stri
   return outline.flatMap((item, index) => (item.kind === "throw" && ownedHere(index) ? [`line ${item.startLine}: ${clip((text.get(item.startLine) ?? "").trim())}`] : []));
 }
 
-/** The Flow's steps between Start and End, within the lines shown. */
-function flowSteps(flow: FlowModel, [from, to]: readonly [number, number]): string[] {
+/** Each source line's text as the file has it (not dedented), by line number: focus columns count in it. */
+function fileLines(source: CodeText): Map<number, string> {
+  return new Map(source.lines.map((line) => [line.number, source.text.slice(line.start, line.end)]));
+}
+
+/**
+ * A step's focus, the exact source View code highlights: `27:7–27:46`, columns 1-based and inclusive,
+ * with the expression when it is on one line.
+ */
+function focusText(focus: SourceFocus, lines: ReadonlyMap<number, string>): string {
+  const range = `${focus.startLine}:${focus.startColumn + 1}–${focus.endLine}:${focus.endColumn}`;
+  const text = focus.startLine === focus.endLine ? lines.get(focus.startLine)?.slice(focus.startColumn, focus.endColumn).trim() : undefined;
+  return text !== undefined && text.length > 0 ? `${range} “${clip(text, 80)}”` : range;
+}
+
+/** Whether a step's main call and callbacks expand in place (a resolved call, any callback), or why the call can't. */
+function expansionLines(node: FlowNode): string[] {
+  const call = node.call === undefined ? undefined : node.chips?.[node.call];
+  const lines: string[] = [];
+  if (call?.resolution === "resolved" && call.target !== undefined) {
+    lines.push(`  expands in place: the call ${call.name} (its expandCalls key ${call.source}; callee key ${call.target})`);
+  } else if (call) {
+    const why = call.resolution === "external" ? `is external${call.note !== undefined ? ` (${call.note})` : ""}` : `is unresolved${call.note !== undefined ? `: ${call.note}` : ""}`;
+    lines.push(`  doesn't expand in place: the call ${call.name} ${why}`);
+  }
+  for (const callback of node.callbacks ?? []) {
+    lines.push(`  expands in place: the callback “${callback.label}” (its expandCalls key ${callback.key}; a callback that makes one resolved call shows that callee, through the callback)`);
+  }
+  return lines;
+}
+
+/** The Flow's steps between Start and End, within the lines shown: each with its focus, and what expands in place. */
+function flowSteps(flow: FlowModel, [from, to]: readonly [number, number], lines: ReadonlyMap<number, string>): string[] {
   return flow.nodes.flatMap((node) => {
     if (node.kind === "start" || node.kind === "end" || node.key === undefined || node.startLine === undefined || node.startLine < from || node.startLine > to) {
       return [];
     }
-    const lines = node.endLine !== undefined && node.endLine !== node.startLine ? `${node.startLine}–${node.endLine}` : `${node.startLine}`;
+    const span = node.endLine !== undefined && node.endLine !== node.startLine ? `${node.startLine}–${node.endLine}` : `${node.startLine}`;
     const name = node.fallback === true ? `fallback name “${node.label}”` : `“${node.label}”`;
-    return [`- ${lines} ${node.kind}${node.lane > 0 ? ` (branch lane ${node.lane})` : ""}: ${name}; key ${node.key}`];
+    const focus = node.focus !== undefined ? `; focus ${focusText(node.focus, lines)}` : "";
+    return [`- ${span} ${node.kind}${node.lane > 0 ? ` (branch lane ${node.lane})` : ""}: ${name}; key ${node.key}${focus}`, ...expansionLines(node)];
   });
 }
 
@@ -186,7 +221,7 @@ export const readCode = defineTool({
   name: "read_code",
   title: "Read code",
   description:
-    'Reads a function, method, class, type, or entrance as Unfold compiled it, by key (from search, list_entrances, read_page, or get_relations) or a link to a card; without key, the card selected in the person\'s view. A function: its verified source with line numbers, its signature as written, its Flow steps (each with lines, kind, fallback name, and key: the keys and lines group_steps and label_steps take), its direct throws, and each call it makes: resolved (the target\'s name and key, and its typed label such as (Cart, User) → Promise<Charge>), external (the library), or unresolved (the reason), with the source and seq read_call takes. view "code", "flow", or "both" (the default) picks source or steps. A type or class: its members with written types and what each type name links to, inherited members by base, and how many places use it. An entrance: where it\'s declared and its handlers. Unfold shows source only when the file is the one it compiled; otherwise it says the file changed: compile_project, then read again. Long functions come in pages of at most 150 lines (fewer when lines are long): pass lines [from, to]. Reading changes nothing.',
+    'Reads a function, method, class, type, or entrance as Unfold compiled it, by key (from search, list_entrances, read_page, or get_relations) or a link to a card; without key, the card selected in the person\'s view. A function: its verified source with line numbers, its signature as written, its Flow steps (each with lines, kind, fallback name, key, and focus: the exact source View code highlights; the keys and lines group_steps, label_steps, and propose take; which calls and callbacks expandCalls can expand in place, and why an external or unresolved call can\'t), its direct throws, and each call it makes: resolved (the target\'s name and key, and its typed label such as (Cart, User) → Promise<Charge>), external (the library), or unresolved (the reason), with the source and seq read_call takes. view "code", "flow", or "both" (the default) picks source or steps. A type or class: its members with written types and what each type name links to, inherited members by base, and how many places use it. An entrance: where it\'s declared and its startup and handlers, in order. Unfold shows source only when the file is the one it compiled; otherwise it says the file changed: compile_project, then read again. Long functions come in pages of at most 150 lines (fewer when lines are long): pass lines [from, to]. Reading changes nothing.',
   input: z.object({
     key: z.string().min(1).optional().describe("The code's key, or a link to a card (default: the selected card)"),
     project: z.string().min(1).optional().describe("The project's name or id (default: the project of the board in view)"),
@@ -224,7 +259,7 @@ export const readCode = defineTool({
     const showFlow = view !== "code" && !isType;
     const calls = relations && showCode ? await callLines(context, code.project, relations, range) : [];
     const throws = source && !isType ? directThrows(source, text) : [];
-    const steps = showFlow && card.flow && header.source === "current" ? flowSteps(card.flow, range) : [];
+    const steps = showFlow && card.flow && header.source === "current" ? flowSteps(card.flow, range, source ? fileLines(source) : new Map()) : [];
     const paged = range[0] > header.startLine || range[1] < header.endLine;
     return textResult(
       head,
@@ -234,7 +269,9 @@ export const readCode = defineTool({
       source ? `Signature: ${clip(text.get(header.startLine)?.trim() ?? "", 200)}` : null,
       source && showCode ? `Source${paged ? `, lines ${range[0]}–${range[1]} of ${header.startLine}–${header.endLine}` : ""}:\n${numbered(text, range).join("\n")}` : null,
       definition ? definitionLines(definition).join("\n") : null,
-      steps.length > 0 ? `Flow steps (paths from written structure; names are fallbacks until labeled):\n${steps.join("\n")}` : null,
+      steps.length > 0
+        ? `Flow steps (paths from written structure; names are fallbacks until labeled; focus is the step's exact source, line:column in the file, which View code highlights):\n${steps.join("\n")}`
+        : null,
       throws.length > 0 ? `Throws directly:\n${throws.map((line) => `- ${line}`).join("\n")}` : source && !isType ? "Throws nothing directly." : null,
       calls.length > 0 ? `Calls (${calls.length}):\n${calls.join("\n")}` : null,
       relations && !isType ? `Called from ${count(relations.callersTotal, "place")}.` : null,

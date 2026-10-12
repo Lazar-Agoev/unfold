@@ -81,16 +81,33 @@ branches, loops, exceptions, returns, and owned steps. Preserve source order, br
 and step grouping; it does not infer runtime execution paths. Layout is TypeScript's job.
 Groups must refer to permitted ordered steps of one owner, not to arbitrary overlapping ranges.
 
+Each node but Start and End has a `focus` from recorded ranges: a condition's condition, a
+loop's condition or else its header, a `call` node's main call expression, otherwise its
+statement, as one-based lines and UTF-16 columns. Like every recorded range, it is withheld
+unless the source verified as current.
+
 ## Boards
 
 A board is an `unfold-board` v1 JSON document containing titled pages, optional folder/project
 references, and publishing metadata. A page contains cards, groups, labels, drawn links or
-connections, frames, resources, notes, and guards. Exact fields, ID syntax, enum values,
-limits, omission rules, and parsing belong to the schema and board modules, not this guide.
+connections, frames, resources, notes, proposed steps, and guards. Exact fields, ID syntax, enum
+values, limits, omission rules, and parsing belong to the schema and board modules, not this
+guide. New pages default to Diagram; a page keeps the default view it was saved with.
 
 Cards reference a block/type or entrance. Missing references remain placeholders. Description
 and label text records its author and, where source-backed, its signature. Page-level edits
 share one undo history for the board; changing a view/lens should not invent a content edit.
+
+A block card saves the calls it expands in place (`expanded`: paths of call-occurrence or
+callback keys, at most three levels). They are presentation only: unguarded, unsigned, and
+ignored once a key no longer resolves.
+
+A proposed step is an intended addition after a real step of a block card: a title, optional
+reason and path, and its author. It is never signed and has no implementation source, but its
+anchor is guarded. A new or moved proposal must go after a step of the graph inside its card's
+block. A missing anchor is reported missing and a held one held for review, with explicit
+Reconnect, Accept, or Remove proposal repairs; a proposal is never reattached by name or shifted
+position. Mermaid export omits proposals.
 
 ### Cards from other projects
 
@@ -118,7 +135,7 @@ A guard remembers kind, owner, and signature for each used `(project, key)`. Aft
 - A missing key remains a placeholder.
 - Changed kind/owner or changed source behind an ordinal key holds the reference for review.
 - Reconnect repairs update uses throughout the page within the original project; a card's
-  connections carry supported relative steps to the new key with fresh guards.
+  connections and proposed steps carry their relative steps to the new key with fresh guards.
 
 Do not automatically describe held references or silently reattach them by similar names.
 Evidence-file line anchors use input hashes and line existence rather than structural guards;

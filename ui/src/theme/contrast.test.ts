@@ -67,6 +67,8 @@ const TEXT_PAIRS: readonly (readonly [string, string])[] = [
   ["warn", "warn-fill"],
   ["success-text", "success-fill"],
   ["success-body", "success-fill"],
+  ["proposed-ink", "proposed-tint"],
+  ["proposed-ink", "surface"],
   ["warn", "home"],
   ["authored", "surface"],
   ["authored", "authored-tint"],
@@ -88,6 +90,9 @@ const MARK_PAIRS: readonly (readonly [string, string])[] = [
   ["review", "surface"],
   ["review", "home"],
   ["success", "home"],
+  // A proposed step's dashed outline and connectors.
+  ["proposed", "proposed-tint"],
+  ["proposed", "surface"],
   // The primary button's shortcut hint ("⇧⌘B" on Compile, "⌘O" on Add project) repeats the label's key, as drawn.
   ["on-accent-soft", "accent"],
 ];

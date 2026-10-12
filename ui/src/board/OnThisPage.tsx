@@ -1,11 +1,11 @@
 /**
- * On this page: the page's cards in follow order, indented by call depth, with their groups, drawn
- * links, and connections, then the resource cards, frames as headings over what they hold, a review
- * mark where something needs review, "not connected" on a card whose project isn't, "collapsed" on a
- * collapsed frame, and a project monogram column when the page mixes projects. A click brings the card
- * into view (a focus move: Back returns), selects a group, selects a link, or selects a frame or a
- * resource card and brings it into view. The last line steps through the Flow nodes still showing code
- * names.
+ * On this page: the page's cards in follow order, indented by call depth, with their groups, proposed
+ * steps ("proposed"), drawn links, and connections, then the resource cards, frames as headings over
+ * what they hold, a review mark where something needs review, "not connected" on a card whose project
+ * isn't, "collapsed" on a collapsed frame, and a project monogram column when the page mixes projects.
+ * A click brings the card into view (a focus move: Back returns), selects a group, selects a proposed
+ * step and brings its card into view, selects a link, or selects a frame or a resource card and brings
+ * it into view. The last line steps through the Flow nodes still showing code names.
  */
 
 import { useMemo, type RefObject } from "react";
@@ -28,6 +28,8 @@ function isSelected(row: PageRow, selection: Selection): boolean {
       return selection.kind === "card" && selection.cardId === row.id;
     case "group":
       return selection.kind === "group" && selection.groupId === row.id;
+    case "proposal":
+      return selection.kind === "proposal" && selection.proposalId === row.id;
     case "link":
       return selection.kind === "link" && selection.linkId === row.id;
     case "frame":
@@ -44,6 +46,9 @@ function activate(target: PageTarget, row: PageRow): void {
   } else if (row.kind === "group") {
     select(target, { kind: "group", groupId: row.id });
     requestCardFocus(target, [row.group.card], "center");
+  } else if (row.kind === "proposal") {
+    select(target, { kind: "proposal", proposalId: row.id });
+    requestCardFocus(target, [row.proposal.card], "center");
   } else if (row.kind === "frame") {
     focusFrame(target, row.id);
   } else if (row.kind === "resource") {
@@ -55,12 +60,21 @@ function activate(target: PageTarget, row: PageRow): void {
 }
 
 function LayerRow({ target, row, selected, monogram }: { readonly target: PageTarget; readonly row: PageRow; readonly selected: boolean; readonly monogram: boolean }) {
-  const glyph = row.kind === "card" ? (row.entrance ? "entrance" : "function") : row.kind;
   const icon = row.kind === "frame" && row.frame.icon !== undefined ? (`frame-${row.frame.icon}` as const) : row.kind === "resource" ? RESOURCE_ICONS[row.resource.kind] : undefined;
   const muted = row.kind === "card" && !row.connected;
   const label =
-    row.kind === "card" ? row.name : row.kind === "group" ? row.group.title : row.kind === "frame" ? row.frame.title : row.kind === "resource" ? row.resource.name : row.label;
-  const note = muted ? "not connected" : row.kind === "frame" && row.frame.collapsed === true ? "collapsed" : null;
+    row.kind === "card"
+      ? row.name
+      : row.kind === "group"
+        ? row.group.title
+        : row.kind === "proposal"
+          ? row.proposal.title
+          : row.kind === "frame"
+            ? row.frame.title
+            : row.kind === "resource"
+              ? row.resource.name
+              : row.label;
+  const note = muted ? "not connected" : row.kind === "frame" && row.frame.collapsed === true ? "collapsed" : row.kind === "proposal" ? "proposed" : null;
   return (
     <div
       role="option"
@@ -82,7 +96,13 @@ function LayerRow({ target, row, selected, monogram }: { readonly target: PageTa
         <span className="layer-monogram">{row.kind === "card" ? <Monogram name={row.project} size={14} /> : null}</span>
       ) : null}
       <span className="layer-glyph" style={row.depth > 0 ? { marginLeft: row.depth * INDENT } : undefined}>
-        <KindGlyph kind={glyph} {...(icon !== undefined ? { icon } : {})} selected={selected} />
+        {row.kind === "proposal" ? (
+          <span className="layer-proposal-glyph" aria-hidden="true">
+            <span className="proposal-glyph" />
+          </span>
+        ) : (
+          <KindGlyph kind={row.kind === "card" ? (row.entrance ? "entrance" : "function") : row.kind} {...(icon !== undefined ? { icon } : {})} selected={selected} />
+        )}
       </span>
       <span className="layer-label" title={label}>
         {label}

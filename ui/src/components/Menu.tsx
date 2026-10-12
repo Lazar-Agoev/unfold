@@ -26,6 +26,8 @@ interface MenuItemBase {
   /** Shown on the right, e.g. `Mod+W`. Display only: the action registry owns the key. */
   readonly shortcut?: string;
   readonly disabled?: boolean;
+  /** Its tooltip, such as why it is disabled. */
+  readonly hint?: string;
   /** Destructive items (Delete…) are drawn in the danger color. */
   readonly danger?: boolean;
   /** Present for checkable items; renders `menuitemcheckbox` with a check in the icon slot. */
@@ -203,6 +205,7 @@ function MenuList({ entries, label, onClose, initialFocus, width, className, onB
               role={checkable ? "menuitemcheckbox" : "menuitem"}
               aria-checked={checkable ? entry.checked : undefined}
               aria-disabled={entry.disabled ?? undefined}
+              title={entry.hint}
               aria-haspopup={parent ? "menu" : undefined}
               aria-expanded={parent ? submenu?.id === entry.id : undefined}
               tabIndex={-1}

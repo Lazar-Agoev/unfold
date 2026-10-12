@@ -1,11 +1,11 @@
 /**
- * A type card (design §4.2): a type declaration or a class as its fields, in Diagram view (and in Flow,
- * for a type declaration, which has no paths). The header shows the kind (`interface`, `type`, `enum`,
- * `class`), the name, where it is, and the card's own switch; the review banner and the description
- * follow. Each field is its name as written (`readonly` drawn apart, `?`), its written type, and its
- * default (` = …`) or an enum member's value; a type alias that isn't an object shows its aliased type;
- * the fields it inherits follow under "from <Type>" for each base. A declared type opens its definition
- * in place, as in a line's contract. A card of 12 fields or more lists the first 8 and "N more".
+ * A type card (design §4.2): a type declaration or a class as its fields, in either lens (it has no
+ * expansion chevron). The header shows the kind (`interface`, `type`, `enum`, `class`), the name, and
+ * where it is; the review banner and the description follow. Each field is its name as written
+ * (`readonly` drawn apart, `?`), its written type, and its default (` = …`) or an enum member's value;
+ * a type alias that isn't an object shows its aliased type; the fields it inherits follow under
+ * "from <Type>" for each base. A declared type opens its definition in place, as in a line's contract.
+ * A card of 12 fields or more lists the first 8 and "N more".
  *
  * Each field with a type arrow has its port at its row's right edge (a field behind "N more" at that
  * row); calls from a class leave from the header's edge. Folded, it shows only its header.
@@ -27,7 +27,7 @@ import { ProjectScope } from "../ProjectScope";
 import { useMeasure } from "../measure";
 import { fieldTexts, listedFields, nodeLocation, typeCardWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";
-import { CardHandles, CardNote, DescriptionStrip, HeaderPorts, ViewSwitch, nodeHeaderPorts, renderPorts, toggleCardFolded } from "./parts";
+import { CardHandles, CardNote, DescriptionStrip, HeaderPorts, nodeHeaderPorts, renderPorts, toggleCardFolded } from "./parts";
 import { ReviewBanner } from "./ReviewBanner";
 import { clickCard } from "./select";
 
@@ -36,8 +36,6 @@ export interface TypeCardProps {
   /** The project the card resolves to. */
   readonly project: ProjectId;
   readonly card: Card & { readonly ref: { readonly block: string } };
-  /** Diagram, or Flow for a type declaration. */
-  readonly view: "diagram" | "flow";
   readonly ports: readonly string[];
   readonly selected: boolean;
 }
@@ -124,7 +122,7 @@ function Fields({ project, definition, ports, openTypes, onToggle, all, onShowAl
   );
 }
 
-export function TypeCard({ target, project, card, view, ports, selected }: TypeCardProps) {
+export function TypeCard({ target, project, card, ports, selected }: TypeCardProps) {
   const key = card.ref.block;
   const query = useQuery(cardQuery(project, key));
   const model = query.data?.type === "block" ? query.data : undefined;
@@ -199,7 +197,6 @@ export function TypeCard({ target, project, card, view, ports, selected }: TypeC
         <span className="card-location" title={location}>
           {location}
         </span>
-        {!folded && model ? <ViewSwitch target={target} cardId={card.id} view={view} name={name} /> : null}
         <HeaderPorts ids={nodeHeaderPorts(ports, folded)} />
       </header>
       <ReviewBanner target={target} project={project} cardId={card.id} />

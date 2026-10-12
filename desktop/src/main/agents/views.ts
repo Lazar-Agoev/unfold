@@ -5,9 +5,10 @@
  * default to the view of the window used last and edits find the window that holds a board.
  */
 
-import type { AgentBoardRef, AgentView, ViewReport, ViewSelection } from "../../shared/agent-api";
+import type { AgentBoardRef, AgentLens, ViewReport, ViewSelection } from "../../shared/agent-api";
 
-const VIEWS: ReadonlySet<string> = new Set<AgentView>(["diagram", "flow", "code"]);
+/** A reported lens as agents read it: Diagram or Code; a window from before the Diagram/Code switch reports Flow, which is Diagram. */
+const LENSES: Readonly<Record<string, AgentLens>> = { diagram: "diagram", flow: "diagram", code: "code" };
 /** The most ids a report's lists may hold (a window holds at most 100 tabs; a page, far fewer items in view). */
 const MAX_IDS = 5_000;
 
@@ -36,7 +37,7 @@ function selection(value: unknown): ViewSelection | null {
   if (!isRecord(value)) {
     return null;
   }
-  const { kind, id, card, key, from, to, project, source, seq, line, calls } = value;
+  const { kind, id, card, key, owner, from, to, project, source, seq, line, calls } = value;
   switch (kind) {
     case "none":
       return { kind };
@@ -46,9 +47,13 @@ function selection(value: unknown): ViewSelection | null {
     case "frame":
     case "resource":
     case "note":
+    case "proposal":
       return isString(id) ? { kind, id } : null;
     case "step":
-      return isString(card) && isString(key) ? { kind, card, key } : null;
+      if (owner !== undefined && !isString(owner)) {
+        return null;
+      }
+      return isString(card) && isString(key) ? { kind, card, key, ...(owner !== undefined ? { owner } : {}) } : null;
     case "line":
       return isString(from) && isString(to) && isString(project) && isString(source) && Number.isInteger(seq) && (line === null || Number.isInteger(line))
         ? { kind, from, to, project, source, seq: seq as number, line: line as number | null }
@@ -81,7 +86,7 @@ export function parseViewReport(value: unknown): ViewReport | null {
   if (
     board === null ||
     (page !== undefined && !isString(page)) ||
-    (lens !== undefined && !(typeof lens === "string" && VIEWS.has(lens))) ||
+    (lens !== undefined && !(typeof lens === "string" && LENSES[lens] !== undefined)) ||
     !chosen ||
     !visible ||
     !tabs ||
@@ -92,7 +97,7 @@ export function parseViewReport(value: unknown): ViewReport | null {
   return {
     ...(board ? { board } : {}),
     ...(page !== undefined ? { page } : {}),
-    ...(lens !== undefined ? { lens: lens as AgentView } : {}),
+    ...(typeof lens === "string" && LENSES[lens] !== undefined ? { lens: LENSES[lens] } : {}),
     selection: chosen,
     visible,
     tabs: tabs as AgentBoardRef[],

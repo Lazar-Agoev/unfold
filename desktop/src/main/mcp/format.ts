@@ -170,12 +170,27 @@ function stopText(stop: NonNullable<AgentCardResult["stops"]>[number]): string {
   }
 }
 
+/** A call path expanded in place, as results write it: its keys, outermost first, joined with › . */
+export function callPathText(path: readonly string[]): string {
+  return `[${path.join(" › ")}]`;
+}
+
+/** A card's expansion, as `set_view` reports it: `expanded, calls expanded in place [a], [a › b]`, or `compact`. */
+function expansionText(card: AgentCardResult): string | null {
+  if (card.expanded === undefined) {
+    return null;
+  }
+  const calls = card.expandedCalls ?? [];
+  return `${card.expanded ? "expanded" : "compact"}${calls.length > 0 ? `, calls expanded in place ${calls.map(callPathText).join(", ")}` : ""}`;
+}
+
 /**
  * A card an edit placed, as a result line: `createOrder (card id create-order, created)`, with the
- * frame it went into and where following stopped at it.
+ * frame it went into, its expansion when an edit set it, and where following stopped at it.
  */
 export function cardText(card: AgentCardResult): string {
   const stops = card.stops ?? [];
   const frame = card.frame === undefined ? "" : `, in frame ${card.frame}`;
-  return `${card.name} (card id ${card.id}, ${card.status}${frame})${stops.length > 0 ? `; stopped: ${stops.map(stopText).join("; ")}` : ""}`;
+  const expansion = expansionText(card);
+  return `${card.name} (card id ${card.id}, ${card.status}${frame})${expansion !== null ? `: ${expansion}` : ""}${stops.length > 0 ? `; stopped: ${stops.map(stopText).join("; ")}` : ""}`;
 }

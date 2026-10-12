@@ -1,27 +1,40 @@
 /**
  * `get_current_view` (design §5.6, §6.2): what the person is looking at in the window they used
  * last, from that window's view report, with the page as the window holds it (unsaved edits
- * included). Loaded with the session's first tools. It reads; it never moves the person's view.
+ * included): its lens (Diagram or Code), the selection (a proposed step, or a step shown in a call
+ * expanded in place with the block that owns it, among the rest), and the items in view. Loaded with
+ * the session's first tools. It reads; it never moves the person's view.
  */
 
 import { z } from "zod";
 import type { ViewSelection } from "../../../shared/agent-api";
 import type { Page } from "../engine-types";
+import { cardExpanded, isTypeKey, pageLens } from "../page-code";
 import { textResult, windowRefusal } from "../results";
 import { defineTool } from "../tool";
 
 /** The most items in view it lists; `read_page` reads the whole page. */
 const MAX_LISTED = 60;
 
-const LENSES = { diagram: "Diagram", flow: "Flow", code: "Code" } as const;
+const LENSES = { diagram: "Diagram", code: "Code" } as const;
 
 /** One item of the page, by id, as a line an agent can act on: its kind, id, and what it shows. */
 function describeItem(page: Page, id: string): string {
   const card = page.cards.find((item) => item.id === id);
   if (card) {
     const key = "block" in card.ref ? card.ref.block : card.ref.entrance;
-    const facts = [card.ref.project ? `from project ${card.ref.project}` : null, card.view ? LENSES[card.view] : null, card.folded ? "folded" : null];
+    const calls = card.expanded?.length ?? 0;
+    const facts = [
+      card.ref.project ? `from project ${card.ref.project}` : null,
+      isTypeKey(key) ? null : cardExpanded(page, card) ? "expanded" : "compact",
+      calls > 0 ? `${calls} ${calls === 1 ? "call" : "calls"} expanded in place` : null,
+      card.folded ? "folded" : null,
+    ];
     return `card ${id}: ${key}${facts.some(Boolean) ? ` (${facts.filter(Boolean).join(", ")})` : ""}`;
+  }
+  const proposal = page.proposals?.find((item) => item.id === id);
+  if (proposal) {
+    return `proposed step ${id} in card ${proposal.card}: "${proposal.title}", after the step ${proposal.after}${proposal.path !== undefined ? ` on its "${proposal.path}" path` : ""} (an intention, not code)`;
   }
   const group = page.groups.find((item) => item.id === id);
   if (group) {
@@ -54,9 +67,12 @@ function selectionText(page: Page, selection: ViewSelection): string {
     case "frame":
     case "resource":
     case "note":
+    case "proposal":
       return `Selected: ${describeItem(page, selection.id)}.`;
     case "step":
-      return `Selected: the step ${selection.key} of card ${selection.card}.`;
+      return selection.owner === undefined
+        ? `Selected: the step ${selection.key} of card ${selection.card}.`
+        : `Selected: the step ${selection.key} of ${selection.owner}, shown in a call card ${selection.card} expands in place; read_code without key reads that block.`;
     case "line":
       return `Selected: the line from card ${selection.from} to card ${selection.to}: ${callText(selection)}, in project ${selection.project}. read_call says what it sends.`;
     case "calls":
@@ -73,7 +89,7 @@ export const getCurrentView = defineTool({
   name: "get_current_view",
   title: "Get current view",
   description:
-    "What the person is looking at in the Unfold window they used last: the project, board, and page (with its revision), the lens (Diagram, Flow, or Code), the selection (a card, a Flow step, a step group, a frame, a resource card, a note, a connection or drawn link, or a line between two cards: one call, or the calls a Diagram arrow merges), and the items in view, each with its id. Call it when the person says \"this\", \"here\", or \"the selected card\", and before working on the page they're viewing. Once you start, pass the board and page ids to other tools: the person may switch pages. It never moves their view.",
+    "What the person is looking at in the Unfold window they used last: the project, board, and page (with its revision), the lens (Diagram or Code), the selection (a card, a step (one shown in a call expanded in place names the block that owns it), a step group, a proposed step, a frame, a resource card, a note, a connection or drawn link, or a line between two cards: one call, or the calls a Diagram arrow merges), and the items in view, each with its id. Call it when the person says \"this\", \"here\", or \"the selected card\", and before working on the page they're viewing. Once you start, pass the board and page ids to other tools: the person may switch pages. It never moves their view.",
   input: z.object({}),
   annotations: { readOnlyHint: true },
   alwaysLoad: true,
@@ -108,7 +124,7 @@ export const getCurrentView = defineTool({
         revision: read.revision,
       }),
       `Ids: project ${report.board.project}, board ${report.board.id}, page ${page.id}.`,
-      `Lens: ${report.lens ? LENSES[report.lens] : LENSES[page.defaultView]}.${read.board.unsaved ? " The window has edits it hasn't saved yet." : ""}`,
+      `Lens: ${LENSES[report.lens ?? pageLens(page)]}.${read.board.unsaved ? " The window has edits it hasn't saved yet." : ""}`,
       selectionText(page, report.selection),
       `The page has ${page.cards.length} cards. In view: ${report.visible.length} items${listed.length < report.visible.length ? ` (the first ${listed.length} listed)` : ""}${report.visible.length > 0 ? ":" : "."}`,
       ...listed.map((id) => `- ${describeItem(page, id)}`),

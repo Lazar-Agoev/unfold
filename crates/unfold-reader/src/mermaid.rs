@@ -215,6 +215,7 @@ pub fn entrance_board(graph: &BoardGraph, key: &str) -> Option<Board> {
         view: Some(View::Code),
         folded: false,
         description: None,
+        expanded: Vec::new(),
     });
     for (index, target) in entrance.targets.iter().enumerate() {
         let Some(target_key) = target
@@ -239,6 +240,7 @@ pub fn entrance_board(graph: &BoardGraph, key: &str) -> Option<Board> {
             view: Some(View::Flow),
             folded: false,
             description: None,
+            expanded: Vec::new(),
         });
     }
     Some(board)

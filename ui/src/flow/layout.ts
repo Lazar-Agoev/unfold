@@ -3,12 +3,17 @@
  * it out). A small structured layout of the reader's lane tree, top to bottom like a Mermaid
  * flowchart: conditions put `no` in their own lane and `yes` to the right, loops and try/catch get
  * regions, folded "▸ N checks" chains collapse into one summary, and step groups get a titled region
- * or, collapsed, one step. Routes come from the model and are drawn as orthogonal paths by their
- * kind. The result depends only on the model, the open chains, the labels, the step groups, and the
- * text measurer, so the same input always lays out the same way.
+ * or, collapsed, one step. A call expanded in place keeps room below its node (`insets`): what follows
+ * moves down, the lane widens to fit it, and routes leave from below it. Routes come from the model
+ * and are drawn as orthogonal paths by their kind. A proposed step (docs/proposals/unified-code-diagrams.md
+ * §7) keeps room after its anchor, or at the start of the anchor's chosen path, indented in that lane:
+ * the anchor's compiled route keeps running beside it along the lane's left rail, and dashed
+ * connectors show where it would go. Proposals are not compiler facts: they are never nodes, routes,
+ * or ports. The result depends only on the model, the open chains, the labels, the step groups, the
+ * insets' sizes, the proposals, and the text measurer, so the same input always lays out the same way.
  */
 
-import type { FlowItem, FlowModel, FlowNode, Key, RouteKind } from "../ipc/generated";
+import type { FlowItem, FlowModel, FlowNode, Key, ProposalPath, RouteKind } from "../ipc/generated";
 
 /** Measures the width of `text` in pixels for a CSS font shorthand. */
 export type Measure = (text: string, font: string) => number;
@@ -52,9 +57,32 @@ const FLOW_SPACING = {
 
 /**
  * A step group region's title band (flow.css keeps the same numbers): the title's top inset, line
- * height, and gap above the first step; its left inset (after the toggle) and right inset.
+ * height, and gap above the first step; its left inset (after the toggle) and right inset (room for
+ * its `</>`).
  */
-const GROUP_TITLE = { top: 6, line: 16, below: 8, left: 26, right: 10 } as const;
+const GROUP_TITLE = { top: 6, line: 16, below: 8, left: 26, right: 44 } as const;
+
+/** The gap between a node and the inset of its call expanded in place, below it (and between two insets). */
+export const INSET_GAP = 8;
+
+/** The room around a diagram's content, each side (an inset's content must fit inside it). */
+export const DIAGRAM_PAD = FLOW_SPACING.diagramPad;
+
+/**
+ * A proposed step's box sits this far in from its lane's left edge; the compiled route it would join
+ * runs beside it, `PROPOSAL_RAIL` in from that edge.
+ */
+export const PROPOSAL_INDENT = 32;
+export const PROPOSAL_RAIL = 16;
+
+/** How far a route steps down out of a diamond or a pill before it turns to the rail. */
+const JOG = 8;
+
+/** A proposed step's placement note: one 11px line per row (flow.css keeps the same numbers). */
+const PROPOSAL_NOTE = { font: '400 11px "Inter Variable", system-ui, sans-serif', row: 16 } as const;
+
+/** The note of a proposed step whose step isn't drawn as its own node and whose health says nothing. */
+export const UNDRAWN_NOTE = "The step it goes after isn't drawn here.";
 
 /** Lane widths tried, widest first, until the diagram fits the card's maximum width. */
 const LANE_WIDTHS = [232, 216, 200, 184, 168, 152, 140] as const;
@@ -107,6 +135,18 @@ export interface PlacedNode {
   readonly group?: GroupStep;
 }
 
+/** A call expanded in place: the room kept below the node showing it, where the caller draws the inset. */
+export interface PlacedInset {
+  /** The placed node it hangs below. */
+  readonly node: string;
+  /** That node's key (`FlowLayoutOptions.insets`). */
+  readonly key: Key;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 interface FlowRegion {
   readonly kind: "loop" | "try" | "catch" | "group";
   readonly title: string;
@@ -137,6 +177,46 @@ interface FlowEdge {
   readonly dashed: boolean;
 }
 
+/** A proposed step the card's Flow keeps room for. */
+export interface ProposalSpec {
+  readonly id: string;
+  /** The step it goes after. */
+  readonly after: Key;
+  /** Which of that step's paths it starts (a condition's or a loop's). */
+  readonly path?: ProposalPath;
+  readonly title: string;
+  /** Why where it goes needs review (its step is missing or held), shown under its title. */
+  readonly note?: string;
+}
+
+/**
+ * A proposed step as drawn: in the room kept after the node it goes after, or at the start of that
+ * node's path; or, when its step isn't drawn as its own node, below the diagram with a note.
+ */
+export interface PlacedProposal {
+  readonly id: string;
+  /** The placed node it goes after (its step's, or the collapsed step group's hiding it); absent when not drawn there. */
+  readonly host?: string;
+  /** The host's path it starts. */
+  readonly path?: ProposalPath;
+  readonly title: string;
+  readonly titleLines: number;
+  /** Shown under the title: why where it goes needs review. */
+  readonly note?: string;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** A dashed connector showing where a proposed step would go: into it from its step, or from it to the step after it on that path. */
+export interface ProposalEdge {
+  readonly id: string;
+  /** The proposed step it leads into or out of. */
+  readonly proposal: string;
+  readonly points: readonly Point[];
+}
+
 export interface FlowLayout {
   readonly width: number;
   readonly height: number;
@@ -144,6 +224,18 @@ export interface FlowLayout {
   readonly nodes: readonly PlacedNode[];
   readonly regions: readonly FlowRegion[];
   readonly edges: readonly FlowEdge[];
+  /** The room kept for calls expanded in place, one per node with an inset that is shown. */
+  readonly insets: readonly PlacedInset[];
+  /** The proposed steps, in the order given. */
+  readonly proposals: readonly PlacedProposal[];
+  /** Their dashed connectors (never compiled routes). */
+  readonly proposalEdges: readonly ProposalEdge[];
+}
+
+/** An inset's size. */
+export interface InsetSize {
+  readonly width: number;
+  readonly height: number;
 }
 
 export interface FlowLayoutOptions {
@@ -156,6 +248,15 @@ export interface FlowLayoutOptions {
   readonly measure: Measure;
   /** The widest the diagram may be (the card's maximum width less its border). */
   readonly maxWidth: number;
+  /**
+   * Room to keep below nodes (by node key) for their calls expanded in place. A node hidden by a
+   * collapsed step group or a folded chain keeps none.
+   */
+  readonly insets?: ReadonlyMap<Key, InsetSize>;
+  /** Leaves out the Start and End pills (a callee's Flow drawn inside its caller's inset). */
+  readonly bare?: boolean;
+  /** The card's proposed steps, in the page's order. */
+  readonly proposals?: readonly ProposalSpec[];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -242,6 +343,8 @@ interface Context {
   readonly model: FlowModel;
   readonly options: FlowLayoutOptions;
   readonly laneWidth: number;
+  /** The proposed steps by where they go (`roomKey`), in the page's order. */
+  readonly rooms: Map<string, ProposalSpec[]>;
 }
 
 function labelOf(node: FlowNode, options: FlowLayoutOptions): { text: string; fallback: boolean } {
@@ -325,9 +428,14 @@ interface Block {
   height: number;
   nodes: PlacedNode[];
   regions: FlowRegion[];
+  insets: PlacedInset[];
+  proposals: PlacedProposal[];
 }
 
-const emptyBlock = (): Block => ({ width: 0, height: 0, nodes: [], regions: [] });
+const emptyBlock = (): Block => ({ width: 0, height: 0, nodes: [], regions: [], insets: [], proposals: [] });
+
+/** Whether a block draws anything. */
+const drawsNothing = (block: Block): boolean => block.nodes.length === 0 && block.regions.length === 0 && block.proposals.length === 0;
 
 function shift(block: Block, dx: number, dy: number, into: Block): void {
   for (const node of block.nodes) {
@@ -336,10 +444,117 @@ function shift(block: Block, dx: number, dy: number, into: Block): void {
   for (const region of block.regions) {
     into.regions.push({ ...region, x: region.x + dx, y: region.y + dy });
   }
+  for (const inset of block.insets) {
+    into.insets.push({ ...inset, x: inset.x + dx, y: inset.y + dy });
+  }
+  for (const proposal of block.proposals) {
+    into.proposals.push({ ...proposal, x: proposal.x + dx, y: proposal.y + dy });
+  }
 }
 
 function single(sized: Sized): Block {
-  return { width: sized.width, height: sized.height, nodes: [{ ...sized, x: 0, y: 0 }], regions: [] };
+  return { width: sized.width, height: sized.height, nodes: [{ ...sized, x: 0, y: 0 }], regions: [], insets: [], proposals: [] };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Proposed steps
+
+/** Where proposed steps go: after a placed node, or at the start of one of its paths. */
+type RoomSlot = ProposalPath | "after";
+
+const roomKey = (host: string, slot: RoomSlot): string => `${host}>${slot}`;
+
+/** The slot a proposal after `node` takes: its path when the node is a condition's or a loop's, else after it. */
+function slotOf(node: FlowNode, path: ProposalPath | undefined): RoomSlot {
+  if (node.kind === "condition" && (path === "yes" || path === "no")) {
+    return path;
+  }
+  if (node.kind === "loop" && (path === "each" || path === "done")) {
+    return path;
+  }
+  return "after";
+}
+
+/** A proposed step's box, in its lane: indented, its title wrapped, and room for its note. */
+function sizeProposal(spec: ProposalSpec, ctx: Context, host: string | undefined, slot: RoomSlot | undefined, note: string | undefined): PlacedProposal {
+  const m = FLOW_METRICS;
+  const width = ctx.laneWidth - PROPOSAL_INDENT;
+  const text = width - m.padX * 2 - SLACK;
+  const titleLines = wrapLines(spec.title, text, FLOW_FONTS.label, ctx.options.measure);
+  const noteLines = note !== undefined ? wrapLines(note, text, PROPOSAL_NOTE.font, ctx.options.measure) : 0;
+  const height = m.padY * 2 + m.typeRow + m.rowGap + titleLines * m.labelLine + (noteLines > 0 ? m.rowGap + noteLines * PROPOSAL_NOTE.row : 0);
+  return {
+    id: spec.id,
+    ...(host !== undefined ? { host } : {}),
+    ...(slot !== undefined && slot !== "after" ? { path: slot } : {}),
+    title: spec.title,
+    titleLines,
+    ...(note !== undefined ? { note } : {}),
+    x: PROPOSAL_INDENT,
+    y: 0,
+    width,
+    height,
+  };
+}
+
+/** The proposed steps of `host`'s `slot`, one under another `vgap` apart, from the top of a lane. */
+function roomsOf(host: string, slot: RoomSlot, ctx: Context): Block {
+  const block = emptyBlock();
+  for (const spec of ctx.rooms.get(roomKey(host, slot)) ?? []) {
+    const placed = sizeProposal(spec, ctx, host, slot, spec.note);
+    const y = block.proposals.length > 0 ? block.height + FLOW_SPACING.vgap : 0;
+    block.proposals.push({ ...placed, y });
+    block.height = y + placed.height;
+    block.width = ctx.laneWidth;
+  }
+  return block;
+}
+
+/** `block` with the proposed steps of `host`'s `slot` below it. */
+function withRoomsAfter(block: Block, host: string, slot: RoomSlot, ctx: Context): Block {
+  const rooms = roomsOf(host, slot, ctx);
+  if (drawsNothing(rooms)) {
+    return block;
+  }
+  const y = drawsNothing(block) ? 0 : block.height + FLOW_SPACING.vgap;
+  shift(rooms, 0, y, block);
+  block.width = Math.max(block.width, rooms.width);
+  block.height = y + rooms.height;
+  return block;
+}
+
+/** A lane's `block` with the proposed steps that start `host`'s `slot` above it. */
+function withRoomsBefore(block: Block, host: string, slot: RoomSlot, ctx: Context): Block {
+  const rooms = roomsOf(host, slot, ctx);
+  if (drawsNothing(rooms)) {
+    return block;
+  }
+  if (drawsNothing(block)) {
+    return rooms;
+  }
+  const y = rooms.height + FLOW_SPACING.vgap;
+  shift(block, 0, y, rooms);
+  rooms.width = Math.max(rooms.width, block.width);
+  rooms.height = y + block.height;
+  return rooms;
+}
+
+/**
+ * A node with the room kept below it for its calls expanded in place, when it has any: the node keeps
+ * its size, the inset sits under it, and the block is as wide and tall as both.
+ */
+function nodeBlock(sized: Sized, ctx: Context, rooms = true): Block {
+  const block = single(sized);
+  const key = sized.node.key;
+  const room = key !== undefined ? ctx.options.insets?.get(key) : undefined;
+  if (key !== undefined && room) {
+    const y = sized.height + INSET_GAP;
+    block.insets.push({ node: sized.id, key, x: 0, y, width: room.width, height: room.height });
+    block.width = Math.max(block.width, room.width);
+    block.height = y + room.height;
+  }
+  // The proposed steps after it, under its inset.
+  return rooms ? withRoomsAfter(block, sized.id, "after", ctx) : block;
 }
 
 /** A step group found in the lane tree: a run of consecutive items of one list. */
@@ -514,7 +729,9 @@ function layoutBranch(item: Extract<FlowItem, { type: "branch" }>, ctx: Context,
     no = item.no;
     yesEnds = item.yesEnds;
   }
-  const noBlock = layoutSeq(no, ctx, folding);
+  // Proposed steps on a path start its lane.
+  yes = withRoomsBefore(yes, head.id, "yes", ctx);
+  const noBlock = withRoomsBefore(layoutSeq(no, ctx, folding), head.id, "no", ctx);
   const top = head.height + FLOW_SPACING.vgap;
   const noBelow = no.length > 0 && yesEnds;
   if (noBelow) {
@@ -530,7 +747,7 @@ function layoutBranch(item: Extract<FlowItem, { type: "branch" }>, ctx: Context,
     shift(yes, yesX, top, block);
     block.width = Math.max(yesX + yes.width, ctx.laneWidth);
     block.height = top + Math.max(noBlock.height, yes.height);
-    if (yes.nodes.length === 0 && noBlock.nodes.length === 0) {
+    if (drawsNothing(yes) && drawsNothing(noBlock)) {
       block.height = head.height;
     }
   }
@@ -544,27 +761,29 @@ function layoutLoop(item: Extract<FlowItem, { type: "loop" }>, ctx: Context, fol
   }
   const s = FLOW_SPACING;
   const header = sizeNode(node, ctx);
-  const body = layoutSeq(item.body, ctx, folding);
+  // Proposed steps after the loop go after its region, on `each` they start its body.
+  const head = nodeBlock(header, ctx, false);
+  const body = withRoomsBefore(layoutSeq(item.body, ctx, folding), header.id, "each", ctx);
   const block = emptyBlock();
   const inner = s.regionPad;
   let y = s.regionTitle;
   if (item.testAfter) {
-    if (body.nodes.length > 0) {
+    if (!drawsNothing(body)) {
       shift(body, inner, y, block);
       y += body.height + s.vgap;
     }
-    block.nodes.push({ ...header, x: inner, y });
-    y += header.height;
+    shift(head, inner, y, block);
+    y += head.height;
   } else {
-    block.nodes.push({ ...header, x: inner, y });
-    y += header.height;
-    if (body.nodes.length > 0) {
+    shift(head, inner, y, block);
+    y += head.height;
+    if (!drawsNothing(body)) {
       y += s.vgap;
       shift(body, inner, y, block);
       y += body.height;
     }
   }
-  const width = Math.max(header.width, body.width) + inner * 2;
+  const width = Math.max(head.width, body.width) + inner * 2;
   const height = y + s.regionBottom;
   block.regions.unshift({ kind: "loop", title: "REPEATS", x: 0, y: 0, width, height, header: header.id });
   block.width = width;
@@ -602,12 +821,14 @@ function layoutItem(item: FlowItem, ctx: Context, folding: Folding): Block {
   switch (item.type) {
     case "node": {
       const node = nodeAt(ctx, item.node);
-      return node ? single(sizeNode(node, ctx)) : emptyBlock();
+      return node ? nodeBlock(sizeNode(node, ctx), ctx) : emptyBlock();
     }
     case "branch":
-      return layoutBranch(item, ctx, folding);
-    case "loop":
-      return layoutLoop(item, ctx, folding);
+      return withRoomsAfter(layoutBranch(item, ctx, folding), String(item.node), "after", ctx);
+    case "loop": {
+      const id = String(item.node);
+      return withRoomsAfter(withRoomsAfter(layoutLoop(item, ctx, folding), id, "done", ctx), id, "after", ctx);
+    }
     case "try":
       return layoutTry(item, ctx, folding);
   }
@@ -616,7 +837,8 @@ function layoutItem(item: FlowItem, ctx: Context, folding: Folding): Block {
 /** A step group: a titled region around its items, or, collapsed, one step. */
 function layoutGroup(run: GroupRun, items: readonly FlowItem[], ctx: Context, folding: Folding): Block {
   if (run.group.collapsed) {
-    return single(sizeGroupStep(run, ctx));
+    // Proposed steps after a step it hides go after it.
+    return withRoomsAfter(single(sizeGroupStep(run, ctx)), `group:${run.group.id}`, "after", ctx);
   }
   const s = FLOW_SPACING;
   const t = GROUP_TITLE;
@@ -625,7 +847,7 @@ function layoutGroup(run: GroupRun, items: readonly FlowItem[], ctx: Context, fo
   const lines = wrapLines(run.group.title, width - t.left - t.right - SLACK, FLOW_FONTS.groupTitle, ctx.options.measure);
   const top = t.top + lines * t.line + t.below;
   const height = top + inner.height + s.regionBottom;
-  const block: Block = { width, height, nodes: [], regions: [{ kind: "group", title: run.group.title, group: run.group.id, x: 0, y: 0, width, height }] };
+  const block: Block = { width, height, nodes: [], regions: [{ kind: "group", title: run.group.title, group: run.group.id, x: 0, y: 0, width, height }], insets: [], proposals: [] };
   shift(inner, s.regionPad, top, block);
   return block;
 }
@@ -635,10 +857,10 @@ function stack(children: readonly Block[]): Block {
   const block = emptyBlock();
   let y = 0;
   for (const child of children) {
-    if (child.nodes.length === 0 && child.regions.length === 0) {
+    if (drawsNothing(child)) {
       continue;
     }
-    if (block.nodes.length > 0 || block.regions.length > 0) {
+    if (!drawsNothing(block)) {
       y += FLOW_SPACING.vgap;
     }
     shift(child, 0, y, block);
@@ -684,14 +906,86 @@ interface Box {
   readonly cy: number;
 }
 
-const boxOf = (node: PlacedNode): Box => ({
+/** A node's box; `below` extends it down over the inset kept under it, so routes leave from below that. */
+const boxOf = (node: PlacedNode, below?: number): Box => ({
   x: node.x,
   y: node.y,
   right: node.x + node.width,
-  bottom: node.y + node.height,
+  bottom: Math.max(node.y + node.height, below ?? 0),
   cx: node.x + node.width / 2,
   cy: node.y + node.height / 2,
 });
+
+const insetBox = (inset: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }): Box => ({
+  x: inset.x,
+  y: inset.y,
+  right: inset.x + inset.width,
+  bottom: inset.y + inset.height,
+  cx: inset.x + inset.width / 2,
+  cy: inset.y + inset.height / 2,
+});
+
+/** Whether a node's bottom edge is flat at `x` (a diamond's and a pill's aren't). */
+function flatBottom(node: PlacedNode, x: number): boolean {
+  const { kind } = node.node;
+  return kind !== "condition" && kind !== "start" && kind !== "end" && x >= node.x + flatInset(node) && x <= node.x + node.width - flatInset(node);
+}
+
+/** How far in from its sides a node's top and bottom edges are flat. */
+function flatInset(node: PlacedNode): number {
+  const { kind } = node.node;
+  if (kind === "loop") {
+    return 14;
+  }
+  return kind === "return" ? node.height / 2 : 4;
+}
+
+/** Whether a node's top edge is flat at `x`. */
+const flatTop = flatBottom;
+
+/** The x of the rail a compiled route takes beside a proposed step: in from its lane's left edge. */
+const railOf = (room: PlacedProposal): number => room.x - PROPOSAL_INDENT + PROPOSAL_RAIL;
+
+/**
+ * A compiled route kept beside the proposed steps after its source: the vertical stretch that would
+ * cross one moves to the lane's rail, stepping out of a diamond or a pill first and into the target's
+ * middle last when their edges aren't flat there. The route still joins the same two nodes.
+ */
+function besideRooms(points: readonly Point[], rooms: readonly PlacedProposal[], source: PlacedNode, target: PlacedNode): Point[] {
+  let path = [...points];
+  for (const room of rooms) {
+    const index = path.findIndex((a, i) => {
+      const b = path[i + 1];
+      return (
+        b !== undefined &&
+        Math.abs(a.x - b.x) < 0.5 &&
+        a.x > room.x &&
+        a.x < room.x + room.width &&
+        Math.min(a.y, b.y) < room.y + room.height &&
+        Math.max(a.y, b.y) > room.y
+      );
+    });
+    const a = path[index];
+    const b = path[index + 1];
+    if (!a || !b) {
+      continue;
+    }
+    const rail = railOf(room);
+    const moved: Point[] = path.slice(0, index);
+    if (index === 0 && !flatBottom(source, rail)) {
+      moved.push(a, { x: a.x, y: a.y + JOG }, { x: rail, y: a.y + JOG });
+    } else {
+      moved.push({ x: rail, y: a.y });
+    }
+    if (index + 2 === path.length && !flatTop(target, rail)) {
+      moved.push({ x: rail, y: b.y - FLOW_SPACING.join }, { x: b.x, y: b.y - FLOW_SPACING.join }, b);
+    } else {
+      moved.push({ x: rail, y: b.y });
+    }
+    path = [...moved, ...path.slice(index + 2)];
+  }
+  return path;
+}
 
 const ROUTE_LABELS: Readonly<Partial<Record<RouteKind, string>>> = {
   yes: "yes",
@@ -759,6 +1053,8 @@ function routeEdge(
   byId: ReadonlyMap<string, PlacedNode>,
   nodes: readonly PlacedNode[],
   regions: readonly FlowRegion[],
+  insets: readonly PlacedInset[],
+  rooms: readonly PlacedProposal[],
   gutterX: number,
 ): FlowEdge | null {
   const source = byId.get(route.from);
@@ -766,10 +1062,18 @@ function routeEdge(
   if (!source || !target) {
     return null;
   }
-  const s = boxOf(source);
+  // A route leaves from below the inset kept under its node, and goes around every other inset and
+  // every proposed step but its source's own (it runs beside those: `besideRooms`).
+  const own = insets.find((inset) => inset.node === source.id);
+  const s = boxOf(source, own ? own.y + own.height : undefined);
   const t = boxOf(target);
   const join = FLOW_SPACING.join;
-  const others = nodes.filter((node) => node.id !== source.id && node.id !== target.id).map(boxOf);
+  const ownRooms = rooms.filter((room) => room.host === source.id);
+  const others = [
+    ...nodes.filter((node) => node.id !== source.id && node.id !== target.id).map((node) => boxOf(node)),
+    ...insets.filter((inset) => inset !== own).map(insetBox),
+    ...rooms.filter((room) => room.host !== source.id).map(insetBox),
+  ];
   const columnClear = (x: number, y1: number, y2: number) =>
     !others.some((box) => x > box.x - 1 && x < box.right + 1 && box.y < Math.max(y1, y2) && box.bottom > Math.min(y1, y2));
   const rowClear = (y: number, x1: number, x2: number) =>
@@ -820,6 +1124,7 @@ function routeEdge(
     const gx = region ? region.x + region.width - FLOW_SPACING.regionPad / 2 : blocking + FLOW_SPACING.regionPad / 2;
     points = [{ x: s.right, y: s.cy }, { x: gx, y: s.cy }, { x: gx, y: turn }, { x: t.cx, y: turn }, { x: t.cx, y: t.y }];
   }
+  points = besideRooms(points, ownRooms, source, target);
   const label = ROUTE_LABELS[kind] ?? null;
   const first = points[0];
   const second = points[1];
@@ -840,32 +1145,168 @@ function routeEdge(
 }
 
 // ---------------------------------------------------------------------------------------------
+// Where proposed steps go
+
+/**
+ * Files each proposed step under where it goes: after its step's node or at the start of that node's
+ * path, or after the collapsed step group hiding its step. One whose step isn't drawn (missing, or
+ * inside a folded chain) gets no room; it is drawn below the diagram.
+ */
+function planProposals(ctx: Context, folding: Folding): void {
+  for (const spec of ctx.options.proposals ?? []) {
+    const node = ctx.model.nodes.find((item) => item.key === spec.after && item.kind !== "start" && item.kind !== "end");
+    if (!node) {
+      continue;
+    }
+    const stands = folding.representative.get(node.id);
+    const key = stands === undefined ? roomKey(String(node.id), slotOf(node, spec.path)) : stands.startsWith("group:") ? roomKey(stands, "after") : null;
+    if (key !== null) {
+      const list = ctx.rooms.get(key) ?? [];
+      list.push(spec);
+      ctx.rooms.set(key, list);
+    }
+  }
+}
+
+/** The routes that leave a node on a slot: a condition's yes or no, a loop's each or done; after any other step, any route but `on error`. */
+const SLOT_ROUTES: Readonly<Record<ProposalPath, readonly RouteKind[]>> = { yes: ["yes"], no: ["no", "elseIf"], each: ["each", "again"], done: ["done"] };
+const PATH_ROUTES: ReadonlySet<RouteKind> = new Set(["yes", "no", "elseIf", "each", "again", "done", "error"]);
+
+function onSlot(kind: RouteKind, slot: RoomSlot): boolean {
+  return slot === "after" ? !PATH_ROUTES.has(kind) : SLOT_ROUTES[slot].includes(kind);
+}
+
+/** The loop region whose header is placed node `id`. */
+function loopOf(regions: readonly FlowRegion[], id: string): FlowRegion | undefined {
+  return regions.find((region) => region.kind === "loop" && region.header === id);
+}
+
+/** The dashed connector from a proposed step's node (`s`, with its inset) into its first proposed step. */
+function intoRoom(s: Box, host: string, room: Box, slot: RoomSlot, regions: readonly FlowRegion[]): Point[] {
+  const { join, regionPad } = FLOW_SPACING;
+  if (slot === "yes") {
+    return [{ x: s.right, y: s.cy }, { x: room.cx, y: s.cy }, { x: room.cx, y: room.y }];
+  }
+  const loop = loopOf(regions, host);
+  if (slot === "done") {
+    // Down the loop region's right side, as the compiled `done` does.
+    const gx = loop ? loop.x + loop.width - regionPad / 2 : s.right + regionPad / 2;
+    return [{ x: s.right, y: s.cy }, { x: gx, y: s.cy }, { x: gx, y: room.y - join }, { x: room.cx, y: room.y - join }, { x: room.cx, y: room.y }];
+  }
+  if (room.y < s.y) {
+    // Back up to the start of a do-while's body, around the loop region's left side.
+    const gx = loop ? loop.x + regionPad / 2 : Math.min(s.x, room.x) - regionPad / 2;
+    return [{ x: s.x, y: s.cy }, { x: gx, y: s.cy }, { x: gx, y: room.cy }, { x: room.x, y: room.cy }];
+  }
+  if (s.cx > room.x + 1 && s.cx < room.right - 1) {
+    return [{ x: s.cx, y: s.bottom }, { x: s.cx, y: room.y }];
+  }
+  return [{ x: s.cx, y: s.bottom }, { x: s.cx, y: room.y - join }, { x: room.cx, y: room.y - join }, { x: room.cx, y: room.y }];
+}
+
+/** The dashed connector from a proposed step to the step its node's route goes to next on that path. */
+function outOfRoom(room: Box, target: PlacedNode, regions: readonly FlowRegion[]): Point[] {
+  const { join, regionPad } = FLOW_SPACING;
+  const t = boxOf(target);
+  if (t.y >= room.bottom) {
+    return flatTop(target, room.cx)
+      ? [{ x: room.cx, y: room.bottom }, { x: room.cx, y: t.y }]
+      : [{ x: room.cx, y: room.bottom }, { x: room.cx, y: t.y - join }, { x: t.cx, y: t.y - join }, { x: t.cx, y: t.y }];
+  }
+  // Back up to a loop's header, around its region's left side, as the compiled route does.
+  const loop = regions
+    .filter((region) => region.kind === "loop" && target.x >= region.x && target.x < region.x + region.width && target.y >= region.y && target.y < region.y + region.height)
+    .sort((a, b) => a.width * a.height - b.width * b.height)[0];
+  const gx = loop ? loop.x + regionPad / 2 : Math.min(room.x, t.x) - regionPad / 2;
+  return [{ x: room.x, y: room.cy }, { x: gx, y: room.cy }, { x: gx, y: t.cy }, { x: t.x, y: t.cy }];
+}
+
+/**
+ * The dashed connectors of the proposed steps drawn where they go: from their node into the first, from
+ * one to the next, and from the last to where the node's route goes next on that path. Proposed steps
+ * after a whole branch or loop (one with a single way on) get none.
+ */
+function proposalEdges(
+  rooms: readonly PlacedProposal[],
+  byId: ReadonlyMap<string, PlacedNode>,
+  routes: readonly { from: string; to: string; kind: RouteKind }[],
+  regions: readonly FlowRegion[],
+  insets: readonly PlacedInset[],
+): ProposalEdge[] {
+  const slots = new Map<string, PlacedProposal[]>();
+  for (const room of rooms) {
+    if (room.host !== undefined) {
+      const key = roomKey(room.host, room.path ?? "after");
+      slots.set(key, [...(slots.get(key) ?? []), room]);
+    }
+  }
+  const edges: ProposalEdge[] = [];
+  for (const list of slots.values()) {
+    const first = list[0];
+    const last = list.at(-1);
+    const host = first?.host !== undefined ? byId.get(first.host) : undefined;
+    const slot: RoomSlot = first?.path ?? "after";
+    if (!first || !last || !host || (slot === "after" && (host.node.kind === "condition" || host.node.kind === "loop"))) {
+      continue;
+    }
+    const own = insets.find((inset) => inset.node === host.id);
+    edges.push({ id: `${first.id}>in`, proposal: first.id, points: intoRoom(boxOf(host, own ? own.y + own.height : undefined), host.id, insetBox(first), slot, regions) });
+    for (const [index, room] of list.entries()) {
+      const before = list[index - 1];
+      if (before) {
+        const box = insetBox(before);
+        edges.push({ id: `${room.id}>in`, proposal: room.id, points: [{ x: box.cx, y: box.bottom }, { x: box.cx, y: room.y }] });
+      }
+    }
+    const route = routes.find((item) => item.from === host.id && onSlot(item.kind, slot));
+    const target = route ? byId.get(route.to) : undefined;
+    if (target) {
+      edges.push({ id: `${last.id}>out`, proposal: last.id, points: outOfRoom(insetBox(last), target, regions) });
+    }
+  }
+  return edges;
+}
+
+// ---------------------------------------------------------------------------------------------
 // The diagram
 
 function layoutAt(model: FlowModel, options: FlowLayoutOptions, laneWidth: number): FlowLayout {
-  const ctx: Context = { model, options, laneWidth };
+  const ctx: Context = { model, options, laneWidth, rooms: new Map() };
   const folding: Folding = { representative: new Map(), folded: new Map(), runs: new Map() };
   planFolding(ctx, model.tree, folding);
+  planProposals(ctx, folding);
   const s = FLOW_SPACING;
   const diagram = emptyBlock();
   let y = 0;
-  const start = model.nodes[model.start];
+  const pills = options.bare !== true;
+  const start = pills ? model.nodes[model.start] : undefined;
   if (start) {
     diagram.nodes.push({ ...sizeNode(start, ctx), x: 0, y: 0 });
     y = diagram.nodes[0]?.height ?? 0;
   }
   const body = layoutSeq(model.tree, ctx, folding);
-  if (body.nodes.length > 0 || body.regions.length > 0) {
-    y += s.vgap;
+  if (!drawsNothing(body)) {
+    y += start ? s.vgap : 0;
     shift(body, 0, y, diagram);
     y += body.height;
   }
-  const end = model.end !== undefined ? model.nodes[model.end] : undefined;
+  const end = pills && model.end !== undefined ? model.nodes[model.end] : undefined;
   if (end) {
     y += s.vgap;
     const sized = sizeNode(end, ctx);
     diagram.nodes.push({ ...sized, x: 0, y });
     y += sized.height;
+  }
+  // Proposed steps whose step isn't drawn as its own node: below the diagram, each with its note.
+  const order = (options.proposals ?? []).map((spec) => spec.id);
+  const drawn = new Set(diagram.proposals.map((room) => room.id));
+  for (const spec of options.proposals ?? []) {
+    if (!drawn.has(spec.id)) {
+      const room = sizeProposal(spec, ctx, undefined, undefined, spec.note ?? UNDRAWN_NOTE);
+      y += y > 0 ? s.vgap : 0;
+      diagram.proposals.push({ ...room, y });
+      y += room.height;
+    }
   }
   // Start and End pills sit centered on the main lane.
   const nodes = diagram.nodes.map((node) =>
@@ -875,11 +1316,14 @@ function layoutAt(model: FlowModel, options: FlowLayoutOptions, laneWidth: numbe
   const pad = s.diagramPad;
   const placed = nodes.map((node) => ({ ...node, x: Math.round(node.x + pad), y: Math.round(node.y + pad) }));
   const regions = diagram.regions.map((region) => ({ ...region, x: region.x + pad, y: region.y + pad }));
+  const insets = diagram.insets.map((inset) => ({ ...inset, x: Math.round(inset.x + pad), y: Math.round(inset.y + pad) }));
+  const proposals = diagram.proposals
+    .map((room) => ({ ...room, x: Math.round(room.x + pad), y: Math.round(room.y + pad) }))
+    .sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
   const byId = new Map(placed.map((node) => [node.id, node]));
   const gutterX = pad + contentWidth + s.returnGutter / 2;
-  const edges = visibleRoutes(model, folding)
-    .map((route) => routeEdge(route, byId, placed, regions, gutterX))
-    .filter((edge): edge is FlowEdge => edge !== null);
+  const routes = visibleRoutes(model, folding);
+  const edges = routes.map((route) => routeEdge(route, byId, placed, regions, insets, proposals, gutterX)).filter((edge): edge is FlowEdge => edge !== null);
   const usesGutter = edges.some((edge) => edge.points.some((point) => Math.abs(point.x - gutterX) < 0.5));
   return {
     width: Math.ceil(pad * 2 + contentWidth + (usesGutter ? s.returnGutter : 0)),
@@ -888,6 +1332,9 @@ function layoutAt(model: FlowModel, options: FlowLayoutOptions, laneWidth: numbe
     nodes: placed,
     regions,
     edges,
+    insets,
+    proposals,
+    proposalEdges: proposalEdges(proposals, byId, routes, regions, insets),
   };
 }
 

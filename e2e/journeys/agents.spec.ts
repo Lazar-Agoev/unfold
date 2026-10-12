@@ -107,9 +107,9 @@ test.describe("agents", () => {
       const claude = await AgentClient.connect(address);
       clients.push(claude);
 
-      await test.step("an agent connects as Claude: the 34 tools, the six prompts, the start guide, and Preferences lists it", async () => {
+      await test.step("an agent connects as Claude: the 35 tools, the six prompts, the start guide, and Preferences lists it", async () => {
         const tools = await claude.tools();
-        expect(tools).toHaveLength(34);
+        expect(tools).toHaveLength(35);
         expect(tools.slice(0, 2)).toEqual(["get_guide", "get_current_view"]);
         expect(tools.at(-1)).toBe("finish_work");
         expect(await claude.prompts()).toEqual(["explain-entrance", "simplify-function", "service-map", "data-model", "tour", "fix-boards"]);
@@ -137,7 +137,8 @@ test.describe("agents", () => {
         await boardTab(page, "Order placement").click();
         await expectCardsLoaded(page);
         await card(page, "#function:createOrder").locator(".card-header").click();
-        await expect.poll(() => claude.ok("get_current_view")).toContain(`Selected: card ${ids["createOrder"]}: ${CREATE_ORDER}.`);
+        // The card's line ends with how it shows: compact or expanded.
+        await expect.poll(() => claude.ok("get_current_view")).toContain(`Selected: card ${ids["createOrder"]}: ${CREATE_ORDER} (`);
         const view = await claude.ok("get_current_view");
         expect(view).toContain("Unfold · ts-orders › Order placement (draft) › Page 1");
         expect(view).toContain(`board ${board}, page ${pageId}`);

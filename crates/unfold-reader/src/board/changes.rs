@@ -8,8 +8,8 @@ use super::model::{Board, LabelEntry, Page, ProjectName};
 
 /// The number of differences from `published` to `working`: the title (1), the folder (1), the
 /// page order (1), each page added or removed (1), and for each page in both its title (1) and
-/// default view (1), each card, group, link, frame, resource, and note added, removed, or
-/// changed (by id), and each label added, removed, or changed (by project and key). Guards (and
+/// default view (1), each card, group, link, frame, resource, note, and proposed step added,
+/// removed, or changed (by id), and each label added, removed, or changed (by project and key). Guards (and
 /// so a reference's signature alone) are not counted. Zero means the two are the same board.
 pub fn changes(working: &Board, published: &Board) -> u32 {
     let mut count =
@@ -52,6 +52,7 @@ fn page_changes(page: &Page, before: &Page) -> u32 {
         + by_id(&page.frames, &before.frames, |frame| &frame.id)
         + by_id(&page.resources, &before.resources, |resource| &resource.id)
         + by_id(&page.notes, &before.notes, |note| &note.id)
+        + by_id(&page.proposals, &before.proposals, |proposal| &proposal.id)
         + by_id(&page.labels, &before.labels, label_key)
 }
 

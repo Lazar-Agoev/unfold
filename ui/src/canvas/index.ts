@@ -8,4 +8,3 @@ export { BoardCanvas } from "./BoardCanvas";
 export { showCallers } from "./showCallers";
 export { useBoardArrows } from "./useBoardArrows";
 export { cardQuery } from "./cardData";
-export { VIEW_OPTIONS } from "./cards/parts";

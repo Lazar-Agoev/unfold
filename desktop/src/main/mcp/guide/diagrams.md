@@ -1,38 +1,59 @@
 # Diagrams: pages that read well
 
 A page answers one question for one reader. Choose its level of detail first, then
-each card's view, then the step groups and frames that make it read in a few pieces.
-Everything on it starts from compiled code; you choose, group, name, and arrange.
+which cards to expand, then the combined steps and frames that make it read in a few
+pieces. Everything on it starts from compiled code; you choose, expand, combine,
+name, and arrange.
 
 ## Levels of detail
-| Level | The page shows | Views | In ts-orders |
+| Level | The page shows | Expansion | In ts-orders |
 | --- | --- | --- | --- |
-| A system | A zone around the services; a box per service with its entrances; queues and stores between them | Diagram | "How do the services talk?" |
-| A service | One application's entrances and the code they share | Diagram, one or two cards in Flow | "What does the API do?" |
-| A path | An entrance, its handlers, and the functions they reach | Flow for the one or two that matter, Diagram for the rest | "How is an order placed?" from POST /orders |
-| A function | One card | Flow, with 3 to 7 step groups | "createOrder has too many steps" |
-| A data model | Types or tables and the links between them | Diagram (fields) | "What's in an order?" (data-models topic) |
+| A system | A zone around the services; a box per service with its entrances; queues and stores between them | All compact | "How do the services talk?" |
+| A service | One application's entrances and the code they share | Compact, one or two cards expanded | "What does the API do?" |
+| A path | An entrance, its handlers, and the functions they reach | The one or two that matter expanded, a call expanded in place where it helps; the rest compact | "How is an order placed?" from POST /orders |
+| A function | One card | Expanded, with 3 to 7 combined steps | "createOrder has too many steps" |
+| A data model | Types or tables and the links between them | Fields (type cards take no expansion) | "What's in an order?" (data-models topic) |
 
 One page, one level. When the question needs two, make two pages (edit_pages adds a
 page) rather than one page that does both.
 
-## Views: Diagram, Flow, Code
-- **Diagram**: one compact node with the name, file:line, and description. All the
-  calls from one Diagram node to another card merge into one arrow ("3 calls"); one
-  call keeps its typed label. Use it for context and overviews.
-- **Flow**: the function's steps as a diagram, "paths from written structure". Use it
-  for the one or two functions the page is about.
-- **Code**: the verified source, with calls as links. Use it only when exact lines
-  matter.
-- **Types**: a type card shows its fields in Diagram (a type declaration has no paths,
-  so Flow shows its fields too; a class's Flow lists its members). Code is its source.
-- **Entrances**: an entrance card is a node marked with its kind (HTTP, WORKER,
-  SCHEDULE, COMMAND, EVENT, PROCESS) in Diagram, and lists its handlers otherwise.
-- set_view sets each card's view and the page's defaultView (the view of cards
-  without their own). The person's lens (⌘1 Diagram, ⌘2 Flow, ⌘3 Code) changes what
-  they see, never the page; get_screenshot draws each card's own view, as a reader
-  opening the page sees it.
-- Views change card sizes: arrange_page after set_view.
+## Diagram and Code
+A page opens in one of two lenses: Diagram (⌘1, the default for new pages) or Code
+(⌘2, every card's verified source). set_view's defaultView sets which; the person's
+lens changes what they see, never the page. In Diagram:
+- **Compact**: a function card is one node with its name, file:line, and description.
+  All the calls from a compact card to another card merge into one arrow ("3 calls");
+  one call keeps its typed label. Use it for context and overviews.
+- **Expanded** (set_view expanded: true): the function's written flow, "paths from
+  written structure": its steps, branch labels, decisions, Start and End, and combined
+  steps. Arrows leave from the actual call step. Expand the one or two functions the
+  page is about.
+- **Entrances**: compact, a node marked with its kind (HTTP, WORKER, SCHEDULE, COMMAND,
+  EVENT, PROCESS); expanded, its declaration evidence and its startup and handler
+  targets in registration order.
+- **Type and table cards** keep their fields and columns in every lens; they take no
+  expansion. folded folds any card to its title.
+- add_cards takes expanded too; an older view still works ("diagram" is compact,
+  "flow" or "code" expanded). Expansion changes sizes: arrange_page afterwards.
+
+## Expanding calls in place
+Inside an expanded function card, a resolved call step can show its callee's written
+flow right below the call, keeping the caller's context: set_view with
+expandCalls: [[<key>]], the key read_code gives for that call ("expands in place").
+- **Levels**: a path holds up to three keys, outermost first; each next key is a call
+  or callback in the block the one before leads to. A deeper call: follow it to its
+  own card (add_cards).
+- **Callbacks**: a callback written on a step expands too. One that makes one resolved
+  call shows that callee, and the step keeps its wrapper: in ts-orders the email
+  worker (src/queues/email-worker.ts:9) runs `withRetry(() => sendEmail(job.data), 3)`;
+  expanding the callback shows sendEmail's steps inside the retry step, still through
+  withRetry, never as a direct call.
+- **Refused**: external and unresolved calls (their step keeps its explanation),
+  unknown keys, a block already shown above (recursion stops there; its follow link
+  stays), and more than 64 paths a card. collapseCalls collapses a path with
+  everything inside it.
+- A callee's combined steps and labels come from its own card on the page. To Combine
+  or propose inside a callee, follow it to its own card and do it there.
 
 ## Placing cards
 - add_cards puts functions, methods, classes, types, and entrances on a page by key
@@ -47,33 +68,60 @@ page) rather than one page that does both.
   question: loggers, validators, and small helpers usually don't.
 - create_board with trace puts an entrance and its handlers on the first page.
 
-## Step groups
-A step group gathers consecutive steps of one card under a title. In Flow it's a
-titled region; collapsed, it's one step with the title, its number of steps, and a
-returns or throws mark when something inside can return or throw. In Code it's the
-magenta rail. One collapse state serves both.
+## Combine: step groups
+Combine gives consecutive steps of one function a concise name: a step group, the same
+thing the person makes with Combine. Collapsed, it's one step with its title, its
+number of steps, and a returns or throws mark when something inside can; expanded, it
+shows the original steps, which keep their source.
 - **The rule**: whole, consecutive statements with the same parent and the same
   branch (a function body, an if's then or else, a loop body, a try, catch, or
-  finally). Not the card's whole block, never nested, never overlapping.
+  finally). Not the card's whole block, never nested, never overlapping, never across
+  functions.
 - **Lines or steps**: read_code with view "flow" lists each step's lines and key.
   Pass lines [from, to] (Unfold takes the whole statements they cover, and warns when
   that's more than you asked) or steps (the statements' keys).
 - **A refusal teaches**: a range that starts at an if and ends inside it is refused,
   and the message lists the statements there; take the branch's lines, or the whole
   if.
-- **How many**: aim for a Flow that reads in fewer than about 8 steps: 3 to 7 groups
-  for a long function, fewer for a short one. Then label every step, those inside the
-  groups too (writing topic).
+- **A concise summary**: pass collapsed: true with a new group. Aim for an expanded
+  card that reads in fewer than about 8 steps: 3 to 7 groups for a long function,
+  fewer for a short one. Then label every step, those inside the groups too (writing
+  topic).
 
 In ts-orders, createOrder (src/routes/orders.ts:25–35) draws eight steps between Start
 and End. Two groups make it read in four:
 ```
 group_steps({board, page, card: "create-order", groups: [
-  {title: "Queue it for a worker, reply 202", lines: [28, 30]},
-  {title: "Place it now and reply 201", lines: [32, 34]}]})
+  {title: "Queue it for a worker, reply 202", lines: [28, 30], collapsed: true},
+  {title: "Place it now and reply 201", lines: [32, 34], collapsed: true}]})
 ```
 Lines 28–30 are the if's then branch (job, the 202 reply, the return); 32–34 are the
 three statements after the if.
+
+## View code
+The person opens a step's, a combined step's, or a card's actual source beside the
+diagram (View code), with the exact expression highlighted. read_code shows the
+same: each step's focus, the condition, main call, or statement as line:column. Use it
+to name a step from what it really does. Source shows only while it's the code Unfold
+compiled; otherwise read_code says the file changed.
+
+## Proposed steps
+A proposed step is an intended addition, not code: a title, an optional reason, and
+where it would go, drawn dashed green as PROPOSED beside the compiled path, which
+stays as it is.
+- Only when the person asks for an intended change. Explaining existing code never
+  adds proposals, and never invent behavior the code lacks.
+- propose with after (the key of the real step it follows, from read_code) and, after
+  a condition or loop, path ("yes", "no", "each", "done"). Not after Start, End, a
+  return, throw, break, or continue.
+- No status, completion, or "would call". When the code exists, remove_items takes the
+  proposal off (that never edits code); label or Combine the real steps instead.
+- When check finds its anchor missing or held for review, propose with its id and a
+  new after (and path) moves it, or remove_items takes it off.
+- In ts-orders, asked for a confirmation email on the direct path: propose
+  {after: "src/routes/orders.ts#function:createOrder/variable:order", title: "Email a
+  confirmation", reason: "The queued path emails a confirmation; placing it now
+  doesn't."}.
 
 ## Frames
 A frame is a named, described box around items on a page.
@@ -95,8 +143,7 @@ A frame is a named, described box around items on a page.
   when check finds the page too dense, or when your brief said so.
 - **Shared code**: an item is in one frame, so code two services both call (in
   ts-orders, OrderService.place, from the API and the orders worker) goes in a box of
-  its own with icon library, or stays outside the service frames. frame_cards warns
-  when it sees this.
+  its own with icon library, or stays outside the service frames.
 - **Updating**: frame_cards with an existing id updates it; members it no longer
   lists go to the frame that holds it. remove_items on a frame keeps its members
   unless keepMembers is false.
@@ -109,16 +156,15 @@ A frame is a named, described box around items on a page.
 - One main direction: requests left to right, data top to bottom. Pass frame and
   direction to set one frame's direction and arrange only its inside; direction alone
   lays out the page's top level that way for this call.
-- moves, after arranging: at [x, y], or rightOf or below another item, for cards,
-  frames, resource cards, and notes. Don't hand-place every card: arrange, then nudge.
-- The same page always arranges the same way. Arrange after adding cards or changing
-  views, then check.
+- moves, after arranging: at [x, y], or rightOf or below another item. Don't
+  hand-place every card: arrange, then nudge. The same page always arranges the same
+  way.
 
 ## Density
 About 30 visible items on a page (cards, resource cards, and collapsed frames), 12 in a
-frame, and 12 visible steps in a Flow card. Over that, in this order:
-- show context cards in Diagram instead of Flow or Code;
-- group a long Flow's steps and collapse the groups the page isn't about;
+frame, and 12 visible steps in an expanded card. Over that, in this order:
+- keep context cards compact (set_view expanded: false);
+- Combine a long card's steps and collapse the groups the page isn't about;
 - collapse frames the page isn't about;
 - take off cards that don't serve the question;
 - split the page (edit_pages adds one).
@@ -131,41 +177,43 @@ box per application). A card from a project that isn't connected shows as a
 placeholder; say so rather than remove it.
 
 ## Recipes
-Adapt them; the tools are listed in the order you'd call them.
+Adapt them; the tools are listed in the order you'd call them. When the person pasted a
+page link (Copy link on a page), pass it as page to every tool: that page, not the one
+in view, is the one to build.
 
 ### Explain a request
 "How does placing an order work?" One page: the entrance, its handlers, and the
-services they call; one or two cards in Flow with step groups and labels, the rest in
-Diagram.
+services they call; one or two cards expanded with combined steps and labels, the rest
+compact.
 - list_entrances({filter: "orders"}) finds POST /orders (application server) and the
   orders worker; read_code on the entrance lists its handlers: requireUser,
   validateBody, createOrder.
 - read_code and get_relations on createOrder and on what it calls.
 - Brief. Then create_board({project, title: "Order placement", pages: ["Placing an
-  order"], trace: <POST /orders' key>}).
-- add_cards for what the handlers reach that matters (OrderService.place in Flow);
-  set_view: defaultView "diagram", createOrder in Flow.
-- Simplify the Flow cards (below); frame_cards a "Request checks" box around
+  order"], trace: <POST /orders' key>}), or use the page the person linked.
+- add_cards for what the handlers reach that matters; set_view: createOrder expanded,
+  OrderService.place's call expanded in place if the reader needs it.
+- Simplify the expanded cards (below); frame_cards a "Request checks" box around
   requireUser and validateBody; describe the cards and frames.
 - When the path crosses a queue or another service, add the worker and connect it
   (connections topic).
 - arrange_page, check, get_screenshot, fix; finish_work.
 
 ### Simplify a function
-"Too many steps." One card in Flow with a few step groups, and every step labeled.
+"Too many steps." One expanded card with a few combined steps, every step labeled.
 - read_code({key, view: "flow"}) for the steps, their lines, and keys.
 - Brief: the groups and what each achieves.
-- group_steps, then label_steps (writing topic), then set_view to show the card in Flow
-  and collapse the groups.
+- group_steps with collapsed: true, then label_steps (writing topic), then set_view to
+  expand the card.
 - check (unlabeled steps leave out those a collapsed group hides, which still show
   when the person expands it), get_screenshot({item: <the card's id>}).
 
 ### Service map
-"Show me the services." A zone, and a box per application in Diagram with its
-entrances; connections between services; resource cards for queues and stores.
+"Show me the services." A zone, and a box per application with its entrances, all
+compact; connections between services; resource cards for queues and stores.
 - list_projects, list_entrances for each project.
-- add_cards for each application's entrances (view "diagram"), frame_cards a box per
-  application (icon api, worker, schedule, or cli) inside a zone.
+- add_cards for each application's entrances, frame_cards a box per application (icon
+  api, worker, schedule, or cli) inside a zone.
 - search text for where services talk (`.add(`, `new Queue(`, `fetch(`, `.delay(`),
   read each hit before drawing anything.
 - add_resources for the queues and stores; connect producers and consumers
@@ -182,7 +230,8 @@ right; a page per queue when there are many.
   handler), add_resources a queue card anchored where the queue is created, connect
   producer → queue and queue → worker.
 - In ts-orders: createOrder adds to `orders` (src/routes/orders.ts:28), the orders
-  worker runs processOrder, which adds to `emails` (src/jobs/process-order.ts:10).
+  worker runs processOrder, which adds to `emails` (src/jobs/process-order.ts:10). The
+  email worker's handler expands its withRetry callback in place to show sendEmail.
   sendEmail's `outbox.add` (src/jobs/send-email.ts:8) is a Set, not a queue: reading
   the hit tells you.
 
@@ -200,8 +249,8 @@ writes (data-models topic).
   with type), connect (relates), add_cards for the code, connect (reads, writes).
 
 ### Data shapes
-"What does the worker receive?" Type cards in Diagram with their type arrows, beside
-the code that sends and receives them.
+"What does the worker receive?" Type cards with their type arrows, beside the code that
+sends and receives them.
 - search({query, kinds: ["types"]}), add_cards (the types, follow types 1), and a
   connection that names the type it carries (connect with carries).
 
@@ -219,16 +268,16 @@ items and the call that fixes it:
 | --- | --- | --- |
 | overlap | Items that overlap | arrange_page, or moves |
 | crossings | More than 3 line crossings, or a line through a frame that holds neither end | arrange_page; a frame's direction; moves |
-| density | Over the limits above | Diagram view, step groups, collapse, split |
-| unlabeled steps | Flow cards whose steps still show names from the code | label_steps |
+| density | Over the limits above | expanded: false, Combine, collapse, split |
+| unlabeled steps | Expanded cards whose steps still show names from the code | label_steps |
 | missing words | Frames, step groups, and resource cards without a description | describe |
 | evidence | Resource cards (not actors) and connections that cite nothing | add_resources or connect again, with anchors |
 | strays | Cards and resource cards with no line, connection, or frame | connect, frame, or remove_items |
-| views | More than 3 cards in Flow or Code on an overview page | set_view Diagram |
+| views | More than 3 expanded cards on an overview page | set_view expanded: false |
 
 get_screenshot draws the page as the person sees it, offscreen. A large page is drawn
 smaller, and the result says so: take a frame's or a card's image (item) to read it,
 at scale 2 for small text. Look for what check can't judge: does the page answer the
 brief's question, does it read in one direction, are titles and labels clear, does
-anything authored look compiled. Give a one-line verdict per section in chat, then
-fix with targeted edits.
+anything authored or proposed look compiled. Give a one-line verdict per section in
+chat, then fix with targeted edits.

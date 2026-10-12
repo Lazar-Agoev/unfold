@@ -1,8 +1,8 @@
 //! Boards (docs/reader.md#boards; decisions board format, board references): the `unfold-board`
 //! version 1 format with pages, its JSON Schema, strict parsing, deterministic serialization,
-//! signatures, guards, groups, drawn links and connections, frames, resource cards, notes, the
-//! claims' signatures and grounding, health with repairs per page and per project, page
-//! outlines, the unpublished-changes count, and the board files of a project.
+//! signatures, guards, groups, drawn links and connections, frames, resource cards, notes,
+//! proposed steps, the claims' signatures and grounding, health with repairs per page and per
+//! project, page outlines, the unpublished-changes count, and the board files of a project.
 //!
 //! ```text
 //! text ─parse─► Board ─health(Page, PageGraphs)─► Health, repairs
@@ -37,8 +37,9 @@ pub use json::{serialize, serialize_changes};
 pub use model::{
     Anchor, Author, AuthorKind, Board, Card, CardRef, Cardinality, Column, ColumnKey, Description, FORMAT,
     Frame, FrameDirection, FrameIcon, FrameLook, Group, GuardEntry, LabelEntry, Link, LinkKind,
-    MAX_FRAME_DEPTH, MAX_NOTE_CHARACTERS, Note, Page, ProjectName, References, Resource, ResourceKind,
-    SCHEMA, Signature, VERSION, View, is_folder_path,
+    MAX_EXPANDED_CALLS, MAX_EXPANSION_DEPTH, MAX_FRAME_DEPTH, MAX_NOTE_CHARACTERS, MAX_PROPOSAL_REASON,
+    MAX_PROPOSAL_TITLE, MAX_PROPOSALS, Note, Page, ProjectName, Proposal, ProposalPath, References, Resource,
+    ResourceKind, SCHEMA, Signature, VERSION, View, is_folder_path,
 };
 pub use outline::{CardLink, OutlineRow, PageOutline, Unlabeled, card_links, outline};
 pub use parse::{parse, parse_edit};
