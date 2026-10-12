@@ -63,7 +63,8 @@ on Windows. Linux also needs Electron's system libraries; the
    **Cmd/Ctrl+O**. Select the folder containing your code. You can also drop a folder
    onto the window.
 2. Review the files Unfold will read. It respects ignore files and skips folders such
-   as `node_modules`, `.venv`, and build output. Exclude additional folders if needed.
+   as `node_modules` and `.venv`. Exclude additional folders, such as build output,
+   if needed.
 3. Click **Compile**. This analyzes the code and creates `.unfold/` inside the project
    for its cache and boards. Adding the folder alone writes nothing to it.
 4. On Home, find an entry point under **How it starts** and click **Trace** to open a
@@ -104,8 +105,10 @@ behind an explanation changes, Unfold marks it for review.
 
 If an entry point is missing, use **Add entrance…** in the project menu. Project
 **Settings** controls analysis scope, detectors, Python import roots, and evidence
-files such as SQL or Prisma schemas. See the [user guide](docs/user-guide.md) for the
-full workflow.
+files such as SQL or Prisma schemas. See
+[Configure entrances](docs/entrances.md) for `unfold.toml` examples, application
+groups, launch commands, and instructions for agents. The
+[user guide](docs/user-guide.md) covers the full workflow.
 
 ## Connect an agent with MCP
 
@@ -220,6 +223,7 @@ GitHub Markdown, or **Share → Export PNG…** for an image.
 ## Further reading
 
 - [User guide](docs/user-guide.md): navigation, shortcuts, editing, settings, and agent workflows.
+- [Configure entrances](docs/entrances.md): set up `unfold.toml` for launches, routes, workers, and agents.
 - [Documentation map](docs/README.md): focused references for contributing to Unfold.
 - [Architecture](docs/architecture.md): the Rust engine, Electron shell, and React UI.
 - [Testing](docs/testing.md#choose-checks-for-a-local-change): choose checks for a change.

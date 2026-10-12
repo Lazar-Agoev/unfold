@@ -341,6 +341,9 @@ one from that function. Either can join an application, which only groups them o
 to `unfold.toml` and never runs the command. Configured launches and entrances are edited or removed from their menu
 on Home; a detected launch's **Edit…** changes only its name, application, schedule, and description.
 
+For examples of editing the file directly, application groups, handler locators, and agent setup, see
+[Configure entrances](entrances.md).
+
 **Remove from workspace**, in the project menu, takes a project out of Unfold. It never deletes the project's
 `.unfold/` folder.
 

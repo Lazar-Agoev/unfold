@@ -22,7 +22,7 @@ implementation must follow it; only an explicit user request to change the visio
 | UI state, interaction, keyboard, theme | [UI shell](ui-shell.md) | `ui/src/<feature>/`, `state/`, `keyboard/`, `theme/` |
 | Electron, MCP, windows, packaged runtime | [Desktop](../desktop/README.md) | `desktop/src/main/`, `engine-host/`, `preload/`, `shared/` |
 | Choose checks | [Testing](testing.md#choose-checks-for-a-local-change) | Nearby tests, then the relevant crate/journey |
-| Using the product | [User guide](user-guide.md) | User-facing behavior; optional for development |
+| Using the product | [User guide](user-guide.md), [Configure entrances](entrances.md) | User-facing behavior and configuration examples; optional for development |
 
 ## Ownership
 
