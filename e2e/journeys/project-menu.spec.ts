@@ -9,7 +9,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import type { UnfoldApp } from "../src/app";
-import { card } from "../src/board";
+import { card, chooseLens } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { CREATE_ORDER, launchCompiled, traceEntrance } from "../src/flows";
 import {
@@ -203,6 +203,8 @@ test.describe("the project menu", () => {
     const folder = folders[0] ?? "";
     const project = await projectId(page, "ts-orders");
     await traceEntrance(page, "POST", "/orders");
+    // Read createOrder's source in Code, where the edit will show.
+    await chooseLens(page, "Code");
     await expect(card(page, CREATE_ORDER)).toContainText("placed for");
     await showHome(page);
 

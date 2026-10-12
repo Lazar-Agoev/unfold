@@ -208,7 +208,7 @@ suite; agents never see it.
   - One proposed step "Email a confirmation" on createOrder's card, after the step at line 32 (`orderService.place`,
     key `src/routes/orders.ts#function:createOrder/variable:order`), with a reason that names the difference from the
     queued path (processOrder queues an email, src/jobs/process-order.ts:10).
-  - The compiled path is unchanged; the chat says the step is proposed, not built.
+  - The compiled path is unchanged; the chat says the step is only proposed: no code implements it.
 - **Never:** a status or "done" in the words; a card, connection, or label for code that doesn't exist; a proposal
   on a callee shown in place; proposals added while only explaining code.
 

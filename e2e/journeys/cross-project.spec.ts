@@ -11,6 +11,7 @@ import {
   boardView,
   card,
   cardMenu,
+  chooseLens,
   chooseMenuPath,
   layerRow,
   onThisPage,
@@ -45,6 +46,8 @@ test.describe("boards across projects", () => {
     const board = await activeBoardRef(page);
 
     await test.step("Add puts a card from the other project on the page", async () => {
+      // Read in Code: a card from the other project shows that project's verified source.
+      await chooseLens(page, "Code");
       await openAdd(page);
       await enterText(addInput(page), "place");
       const python = result(page, "Function OrderService.place, src/orders_playground/services/order_service.py");

@@ -3,7 +3,7 @@
 import type { Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import type { UnfoldApp } from "./app";
-import { boardView, card, expectCardsLoaded, follow } from "./board";
+import { boardView, card, chooseLens, expectCardsLoaded, follow } from "./board";
 import type { Fixtures } from "./fixtures";
 import { addProjectFromSidebar, entranceRow, firstCompile, homeTitle, projectRow, showEntrances, tabs } from "./home";
 import type { PlaygroundName, Sandbox } from "./sandbox";
@@ -48,7 +48,10 @@ export async function launchCompiled(
   return { app, page, folders };
 }
 
-/** Traces an entrance from Home's How it starts onto a new draft board and waits for its cards. */
+/**
+ * Traces an entrance from Home's How it starts onto a new draft board and waits for its cards. The new
+ * page opens in Diagram, with the entrance and its handlers expanded (their written Flow).
+ */
 export async function traceEntrance(page: Page, kind: string, trigger: string): Promise<void> {
   const before = await tabs(page).count();
   await showEntrances(page);
@@ -58,9 +61,14 @@ export async function traceEntrance(page: Page, kind: string, trigger: string): 
   await expectCardsLoaded(page);
 }
 
-/** On a compiled `ts-orders`: traces `POST /orders` and follows `orderService.place` from `createOrder`. */
+/**
+ * On a compiled `ts-orders`: traces `POST /orders`, follows `→ OrderService.place` from `createOrder`'s
+ * Flow, and switches the page to Code, where the callee's card shows its verified source.
+ */
 export async function openPlace(page: Page): Promise<void> {
   await traceEntrance(page, "POST", "/orders");
-  await follow(card(page, CREATE_ORDER), "orderService.place");
+  await follow(card(page, CREATE_ORDER), "OrderService.place");
+  await expect(card(page, PLACE)).toBeVisible();
+  await chooseLens(page, "Code");
   await expect(card(page, PLACE).locator(".code-view")).toBeVisible();
 }

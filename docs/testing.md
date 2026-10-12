@@ -92,6 +92,7 @@ Existing output folders alone do not prove freshness; shared contracts may affec
 | First launch/project connection | `first-launch.spec.ts` |
 | Home/health | `home.spec.ts`, `project-menu.spec.ts` |
 | Cards, canvas, board operations | `board.spec.ts`, `boards.spec.ts` |
+| Diagram expansion, View code, Combine, proposed steps, calls expanded in place | `diagrams.spec.ts` |
 | Publish/drafts/conflicts | `publish.spec.ts` |
 | Add/search/source peek | `add.spec.ts`, `peek.spec.ts` |
 | Project-spanning boards | `cross-project.spec.ts` |

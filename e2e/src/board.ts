@@ -41,9 +41,17 @@ export async function expectCardsLoaded(page: Page): Promise<void> {
   await expect(boardView(page).locator(".board-card[data-loading]")).toHaveCount(0);
 }
 
-/** A resolved call link inside a card or the peek sheet, by its written text (`orderService.place`). */
+/**
+ * A resolved call link inside a card or the peek sheet: in Code (and the sheet) by its written text
+ * (`orderService.place`), in an expanded card's Flow (its `→` link) by the callee's name (`OrderService.place`).
+ */
 export function callLink(from: Locator, text: string): Locator {
   return from.getByRole("button", { name: `Follow ${text}`, exact: true }).first();
+}
+
+/** A step of an expanded card's Flow (or of a call expanded in place), by its label (`slack.post`, `req.header?`). */
+export function flowStep(from: Locator, label: string): Locator {
+  return from.locator(".flow-node").filter({ has: from.page().locator(".flow-label", { hasText: new RegExp(`^${escapeRegExp(label)}$`) }) });
 }
 
 /** The page's name in the canvas top bar. */
@@ -59,6 +67,16 @@ export function publishState(page: Page): Locator {
 /** The top bar's Diagram | Code lens. */
 export function lens(page: Page): Locator {
   return boardView(page).getByRole("radiogroup", { name: "Lens" });
+}
+
+/**
+ * Puts the active page in a lens with the top bar's radio: Code to read every card's verified source,
+ * Diagram for the compact and expanded cards (new pages open in Diagram).
+ */
+export async function chooseLens(page: Page, name: "Diagram" | "Code"): Promise<void> {
+  const radio = lens(page).getByRole("radio", { name, exact: true });
+  await radio.click();
+  await expect(radio).toHaveAttribute("aria-checked", "true");
 }
 
 /** The floating dock (Add, Back, Forward, the trail, Arrange, the zoom). */

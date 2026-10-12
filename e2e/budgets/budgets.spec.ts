@@ -14,7 +14,7 @@ import { dirname, join } from "node:path";
 import type { Page } from "@playwright/test";
 import { addInput, openAdd, result, search, selectResult } from "../src/add";
 import { UnfoldApp } from "../src/app";
-import { boardView, card, cards } from "../src/board";
+import { boardView, card, cards, chooseLens } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import {
   addProjectFromSidebar,
@@ -418,6 +418,9 @@ test("a 2,000-file repository: first Compile, save to updated card, idle memory"
   await selectResult(page, f7);
   await addInput(page).press("Enter");
   const target = card(page, "#function:f7");
+  // The new page opens in Diagram; the save is measured on the card's source, in Code.
+  await expect(target).toBeVisible();
+  await chooseLens(page, "Code");
   await expect(target.locator(".code-view")).toBeVisible();
 
   const toCard: number[] = [];

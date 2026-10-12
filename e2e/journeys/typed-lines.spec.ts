@@ -7,7 +7,7 @@
 
 import type { Locator, Page } from "@playwright/test";
 import { addInput, openAdd, result, selectResult } from "../src/add";
-import { boardView, cameraSettled, card, dock, expectCardsLoaded, follow, panUntilHittable } from "../src/board";
+import { boardView, cameraSettled, card, chooseLens, dock, expectCardsLoaded, follow, panUntilHittable } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { firstCompile, homeTitle, projectRow } from "../src/home";
 import { enterText } from "../src/window";
@@ -69,6 +69,8 @@ test.describe("typed lines", () => {
       await addInput(page).press("Enter");
       await expect(card(page, CREATE_ORDER)).toBeVisible();
       await expectCardsLoaded(page);
+      // Read in Code: its call links follow the calls, and a contract marks the lines it reads.
+      await chooseLens(page, "Code");
       await follow(card(page, CREATE_ORDER), "reserveInventory");
       await expect(card(page, RESERVE)).toBeVisible();
       await expectCardsLoaded(page);

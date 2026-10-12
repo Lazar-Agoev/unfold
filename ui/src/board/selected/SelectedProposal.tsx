@@ -78,7 +78,7 @@ function Where({ target, proposal, card }: { readonly target: PageTarget; readon
               {sourceLines(placement.target)}
             </span>
           </RelationRow>
-          <p className="selected-note">Proposed, not built: this opens the code of the step it would follow.</p>
+          <p className="selected-note">A proposal has no code of its own: this opens the code of the step it would follow.</p>
         </>
       ) : (
         <RelationRow wrap>

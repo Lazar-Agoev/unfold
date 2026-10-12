@@ -192,7 +192,10 @@ test.describe("agents", () => {
         await expect(card(page, "#function:requireUser")).toHaveCount(0);
       });
 
-      await test.step("group_steps and label_steps give createOrder two collapsed step groups and two labels", async () => {
+      await test.step("set_view expands createOrder; group_steps and label_steps give it two collapsed step groups and two labels", async () => {
+        // createOrder is what the page is about: Claude expands it (its written Flow), as the guide says.
+        const expanded = await claude.ok("set_view", { board, page: pageId, items: [{ id: ids["createOrder"], expanded: true }] });
+        expect(expanded).toContain(ids["createOrder"]);
         const grouped = await claude.ok("group_steps", {
           board,
           page: pageId,
@@ -213,7 +216,9 @@ test.describe("agents", () => {
           ],
         });
         expect(labeled).toContain("Flow labels (2 created):");
+        // Each collapsed group is one COMBINED block in createOrder's Flow, titled.
         const createOrder = card(page, "#function:createOrder");
+        await expect(createOrder.locator(".flow-node.kind-group")).toHaveCount(2);
         await expect(createOrder.getByText("Queue it for a worker, reply 202", { exact: true })).toBeVisible();
         await expect(createOrder.getByText("Place it now and reply 201", { exact: true })).toBeVisible();
       });

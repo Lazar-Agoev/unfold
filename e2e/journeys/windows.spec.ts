@@ -9,7 +9,7 @@
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { addInput, openAdd, search } from "../src/add";
-import { activeBoardRef, boardMenu, card, clickCanvas, expectCardsLoaded, pagesList, readBoard, selected } from "../src/board";
+import { activeBoardRef, boardMenu, card, chooseLens, clickCanvas, expectCardsLoaded, pagesList, readBoard, selected } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { launchCompiled, openPlace, PLACE, traceEntrance } from "../src/flows";
 import { boardTab, expectGraphCurrent, homeTab, homeTitle, projectRow, showHome, sidebarBoard, tabs, toast } from "../src/home";
@@ -17,7 +17,7 @@ import { editFile } from "../src/sandbox";
 import { focusedWindows, spyOnFocus, windowWithKey } from "../src/session";
 import { enterText, expectConnection, invoke, windowInfo } from "../src/window";
 
-/** Adds `OrderService.place` on a new draft from Home's Add (Enter makes the draft). */
+/** Adds `OrderService.place` on a new draft from Home's Add (Enter makes the draft) and reads it in Code. */
 async function placeOnNewDraft(page: Page): Promise<void> {
   const before = await tabs(page).count();
   await openAdd(page);
@@ -25,6 +25,8 @@ async function placeOnNewDraft(page: Page): Promise<void> {
   await expect(addInput(page)).toHaveAttribute("aria-activedescendant", /.+/);
   await addInput(page).press("Enter");
   await expect(tabs(page)).toHaveCount(before + 1);
+  await expect(card(page, PLACE)).toBeVisible();
+  await chooseLens(page, "Code");
   await expect(card(page, PLACE).locator(".code-view")).toBeVisible();
 }
 

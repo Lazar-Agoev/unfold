@@ -13,6 +13,7 @@ import {
   cameraSettled,
   card,
   cards,
+  chooseLens,
   clickCanvas,
   dock,
   expectCardsLoaded,
@@ -79,10 +80,13 @@ test.describe("the board", () => {
 
     await test.step("following a call adds its card with an arrow, and the trail grows", async () => {
       const arrows = await boardView(page).locator(".react-flow__edge").count();
-      await follow(card(page, CREATE_ORDER), "orderService.place");
-      await expect(card(page, PLACE).locator(".code-view")).toBeVisible();
+      // The traced createOrder shows its Flow: its `→ OrderService.place` follows the call.
+      await follow(card(page, CREATE_ORDER), "OrderService.place");
+      // A followed card takes the new page's Diagram default: a compact node, once its model is in.
+      await expect(card(page, PLACE)).toHaveClass(/diagram-card/);
+      await expectCardsLoaded(page);
+      await expect(card(page, PLACE).locator(".card-location")).toHaveText("services/order-service.ts:13");
       await expect(boardView(page).locator(".react-flow__edge")).toHaveCount(arrows + 1);
-      await expect(callLink(card(page, CREATE_ORDER), "orderService.place")).toHaveClass(/opened/);
       await expect(trail(page).last()).toHaveText("OrderService.place");
       await expect(onThisPage(page).locator(".layer-label")).toHaveText(["POST /orders", "requireUser", "validateBody", "createOrder", "OrderService.place"]);
     });
@@ -126,6 +130,8 @@ test.describe("the board", () => {
     await test.step("the lens in the top bar switches the page between Diagram and Code, and ⌘1 / ⌘2 switch it", async () => {
       await lens(page).getByRole("radio", { name: "Code" }).click();
       await expectEveryBlockCardShows(page, "code-view");
+      // In Code, the call followed from createOrder's Flow is an opened link: its card is on the page.
+      await expect(callLink(card(page, CREATE_ORDER), "orderService.place")).toHaveClass(/opened/);
       await lens(page).getByRole("radio", { name: "Diagram" }).click();
       await expect(boardView(page).locator(".block-card .code-view")).toHaveCount(0);
       await clickCanvas(page);
@@ -139,18 +145,20 @@ test.describe("the board", () => {
 
     await test.step("a card's chevron expands and collapses only that card in Diagram, and it survives a trip through Code", async () => {
       const requireUser = card(page, REQUIRE_USER);
-      // The traced cards inherit the new page's Diagram default: compact.
-      await expect(requireUser).toHaveClass(/diagram-card/);
-      await clickOnCanvas(page, requireUser.getByRole("button", { name: "Expand requireUser" }));
+      // Tracing opened the handlers expanded (their written Flow); the followed OrderService.place is compact.
       await expect(requireUser.locator(".flow-view")).toBeVisible();
-      await expect(card(page, VALIDATE_BODY)).toHaveClass(/diagram-card/);
+      await expect(card(page, PLACE)).toHaveClass(/diagram-card/);
+      await clickOnCanvas(page, requireUser.getByRole("button", { name: "Collapse requireUser" }));
+      await expect(requireUser).toHaveClass(/diagram-card/);
+      await expect(card(page, VALIDATE_BODY).locator(".flow-view")).toBeVisible();
       await clickCanvas(page);
       await page.keyboard.press("Meta+2");
       await expectEveryBlockCardShows(page, "code-view");
       await page.keyboard.press("Meta+1");
-      await expect(requireUser.locator(".flow-view")).toBeVisible();
-      await clickOnCanvas(page, requireUser.getByRole("button", { name: "Collapse requireUser" }));
       await expect(requireUser).toHaveClass(/diagram-card/);
+      await expect(card(page, VALIDATE_BODY).locator(".flow-view")).toBeVisible();
+      await clickOnCanvas(page, requireUser.getByRole("button", { name: "Expand requireUser" }));
+      await expect(requireUser.locator(".flow-view")).toBeVisible();
       // Back to Code for reading the source inline.
       await clickCanvas(page);
       await page.keyboard.press("Meta+2");
@@ -200,6 +208,8 @@ test.describe("the board", () => {
     });
 
     await test.step("dragging down line numbers makes a group, named on its rail", async () => {
+      // The line numbers are Code's gutter: read the page in Code.
+      await chooseLens(page, "Code");
       await dragLines(page, createOrder, 28, 30);
       const title = createOrder.getByRole("textbox", { name: "Group title" });
       await expect(title).toBeFocused();
@@ -234,10 +244,11 @@ test.describe("the board", () => {
       await expect(field).toBeFocused();
       await field.pressSequentially("Check who is asking");
       await expect(line).toContainText(`${count - 1} Flow step`);
-      await lens(page).getByRole("radio", { name: "Flow" }).click();
+      // In Diagram the traced cards are expanded: their Flow shows the label.
+      await chooseLens(page, "Diagram");
       await expect(boardView(page).locator(".flow-label", { hasText: "Check who is asking" })).toBeVisible();
       await expectSaved(page, folder, (board) => board.pages[0]?.labels.some((label) => label.text === "Check who is asking") ?? false, "the label is saved");
-      await lens(page).getByRole("radio", { name: "Code" }).click();
+      await chooseLens(page, "Code");
     });
 
     await test.step("+ New page adds an empty page, and a double-click renames it", async () => {

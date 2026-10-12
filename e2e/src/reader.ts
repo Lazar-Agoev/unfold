@@ -68,7 +68,7 @@ export async function dragCard(page: Page, card: Locator, dx: number, dy: number
  * animates the camera a moment after it is asked for, so a pan and click is retried until the click
  * lands on a still target.
  */
-export async function clickOnCanvas(page: Page, target: Locator, options: { readonly modifiers?: ("Alt" | "Meta")[]; readonly button?: "right" } = {}): Promise<void> {
+export async function clickOnCanvas(page: Page, target: Locator, options: { readonly modifiers?: ("Alt" | "Meta" | "Shift")[]; readonly button?: "right" } = {}): Promise<void> {
   await expect(async () => {
     await cameraSettled(page);
     await panUntilHittable(page, target);

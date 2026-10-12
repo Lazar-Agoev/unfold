@@ -64,6 +64,9 @@ const MOVE_WINDOW = "Open in new window, from a tab and from the board menu, kee
 const RESTORE = "quitting with two windows and relaunching restores both, with their tabs";
 const RESTART = "a killed engine host reconnects every window without losing an edit";
 
+const DIAGRAMS = "diagrams.spec.ts";
+const DIAGRAM_CANVAS = "expand and collapse, View code, Combine, a proposed step, and a callback expanded in place";
+
 const KEYBOARD = "keyboard.spec.ts";
 const SHORTCUTS = "every shortcut of the keyboard map, once";
 const APP_MENU = "the application menu's File, View, and Go items";
@@ -237,13 +240,19 @@ export const KEYBOARD_HOMES: Readonly<Record<string, readonly Home[]>> = {
     { spec: KEYBOARD, test: SHORTCUTS, step: "⌘O adds a project; ⇧⌘B compiles it from its not-compiled Home" },
     { spec: KEYBOARD, test: SHORTCUTS, step: "⇧⌘B compiles the board's project" },
   ],
-  "Diagram, Code (the page's lens)": [{ spec: KEYBOARD, test: SHORTCUTS, step: "⌘1 and ⌘2 set the page's lens to Diagram and Code" }],
+  "Diagram, Code (the page's lens)": [
+    { spec: KEYBOARD, test: SHORTCUTS, step: "⌘1 and ⌘2 set the page's lens to Diagram and Code" },
+    { spec: DIAGRAMS, test: DIAGRAM_CANVAS, step: "a traced entrance shows its handlers in order; its chevron collapses it to a compact node, and Code and back keeps that" },
+  ],
   "Toggle Sidebar": [{ spec: KEYBOARD, test: SHORTCUTS, step: "⌘B hides and shows the sidebar" }],
   "Back, Forward": [{ spec: KEYBOARD, test: SHORTCUTS, step: "⌘[ and ⌘] go back and forward" }],
   Fit: [{ spec: KEYBOARD, test: SHORTCUTS, step: "⇧1 fits; ⌘= and ⌘- zoom in and out" }],
   "Zoom In, Zoom Out": [{ spec: KEYBOARD, test: SHORTCUTS, step: "⇧1 fits; ⌘= and ⌘- zoom in and out" }],
   "Arrange by Call Depth": [{ spec: KEYBOARD, test: SHORTCUTS, step: "⇧A arranges the page by call depth" }],
-  "View Code (the selection's source in the peek sheet)": [{ spec: KEYBOARD, test: SHORTCUTS, step: "C opens the selected card's source in the peek sheet, at its definition" }],
+  "View Code (the selection's source in the peek sheet)": [
+    { spec: KEYBOARD, test: SHORTCUTS, step: "C opens the selected card's source in the peek sheet, at its definition" },
+    { spec: DIAGRAMS, test: DIAGRAM_CANVAS, step: "C on createOrder's condition opens orders.ts in the peek, its line and expression highlighted" },
+  ],
   "Undo, Redo (board edit)": [{ spec: KEYBOARD, test: SHORTCUTS, step: "⌥⌘N adds a page; ⌘Z and ⇧⌘Z undo and redo it" }],
   "Preferences…": [{ spec: KEYBOARD, test: SHORTCUTS, step: "⇧⌘E opens Publish; ⌘, opens Preferences" }],
   Publish: [{ spec: KEYBOARD, test: SHORTCUTS, step: "⇧⌘E opens Publish; ⌘, opens Preferences" }],
