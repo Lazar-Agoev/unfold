@@ -3,14 +3,15 @@
  * path of 1 to 3 keys, outermost first, each checked in the Flow of the block the level before leads
  * to (the card's own block first). A key is a step's main call that resolved, which leads to its
  * callee, or a callback written on a step, which leads to the callback itself, or, when the callback
- * is one call whose main call resolved (`() => sendEmail(job.data)`), to that callee. External and
+ * is one call whose main call resolved (`() => sendEmail(job.data)`), to that callee unless it already
+ * shows above (the canvas's rule, `callbackCallee`; then the callback itself). External and
  * unresolved calls, other keys, deeper paths, and a block that already shows above (a repeated
  * ancestor) are refused, each with what to pass instead. Pure: models come from a lookup, and a
  * model not loaded yet is asked for (`load`), so the edit's prepare step can load it and check again.
  */
 
 import type { CardView, FlowModel, FlowNode, Key } from "../../../ipc/generated";
-import { oneCallTarget } from "../../../flow/insets";
+import { callbackCallee } from "../../../flow/insets";
 import { keyDisplayName, MAX_EXPANSION_DEPTH } from "../document";
 
 /** A model as loaded: null when the key isn't in the graph, undefined when it wasn't loaded yet. */
@@ -38,16 +39,8 @@ export function mainCall(node: Pick<FlowNode, "chips" | "call">): NonNullable<Fl
   return node.call === undefined ? undefined : node.chips?.[node.call];
 }
 
-/**
- * The callee of a one-call callback (the canvas's rule, `oneCallTarget`): one step, whose one call
- * resolved. Undefined for any other callback, which expands to itself.
- */
-export function oneCallCallee(flow: Pick<FlowModel, "source" | "nodes">): Key | undefined {
-  return oneCallTarget(flow)?.target;
-}
-
-/** Where `key` leads in the Flow of `block`. */
-function leadOf(block: Key, flow: FlowModel, key: Key, models: ModelLookup): Lead {
+/** Where `key` leads in the Flow of `block`, below the blocks `shown` (the card's own block first). */
+function leadOf(block: Key, flow: FlowModel, key: Key, models: ModelLookup, shown: readonly Key[]): Lead {
   const name = blockName(block, models(block));
   for (const node of flow.nodes) {
     const main = mainCall(node);
@@ -71,7 +64,7 @@ function leadOf(block: Key, flow: FlowModel, key: Key, models: ModelLookup): Lea
       if (model === undefined) {
         return { ok: "load", key };
       }
-      const callee = model?.type === "block" && model.flow ? oneCallCallee(model.flow) : undefined;
+      const callee = model?.type === "block" ? callbackCallee(model.flow, shown)?.target : undefined;
       return { ok: true, block: callee ?? key };
     }
   }
@@ -103,7 +96,7 @@ export function checkCallPath(root: Key, path: readonly Key[], models: ModelLook
         reason: `${blockName(block, model)}'s Flow isn't available (its file changed since the last compile, it isn't in the graph, or it isn't a function), so nothing in it expands. Compile the project, then try again.`,
       };
     }
-    const lead = leadOf(block, flow, key, models);
+    const lead = leadOf(block, flow, key, models, shown);
     if (lead.ok !== true) {
       return lead;
     }

@@ -6,8 +6,8 @@
  * - A card saves paths of keys, outermost first: at each level the main call's occurrence key or the
  *   callback's key, in the block shown at that level. Several calls of one function stay distinct.
  * - A call shows the callee's written Flow. A callback shows its own definition's Flow, unless it is a
- *   one-call callback (its one step makes one call, resolved to a target): then the proven callee's,
- *   captioned "via <callback>", never as a direct call.
+ *   one-call callback (its one step makes one call, resolved to a target) whose callee isn't shown above:
+ *   then the proven callee's, captioned "via <callback>", never as a direct call.
  * - At most `maxDepth` levels; a call to the card's own block or to an inset above it has no chevron
  *   (its follow link stays), so nothing repeats.
  *
@@ -64,6 +64,16 @@ export function oneCallTarget(flow: Pick<FlowModel, "source" | "nodes">): FlowCh
   }
   const [call, ...more] = (only.chips ?? []).filter((chip) => chip.kind === "calls" || chip.kind === "constructs");
   return call && more.length === 0 && call.resolution === "resolved" && call.target !== undefined ? call : undefined;
+}
+
+/**
+ * The callee an expanded callback shows instead of its own Flow (`flow`): a one-call callback's proven
+ * callee, unless that callee already shows above (in `lineage`), so the repeated ancestor stays
+ * unexpanded. Undefined when the callback shows its own Flow. The canvas and MCP's `set_view` share it.
+ */
+export function callbackCallee(flow: Pick<FlowModel, "source" | "nodes"> | null | undefined, lineage: readonly Key[]): FlowChip | undefined {
+  const proven = flow ? oneCallTarget(flow) : undefined;
+  return proven?.target !== undefined && !lineage.includes(proven.target) ? proven : undefined;
 }
 
 /** Whether `path` starts with `prefix`. */
@@ -145,8 +155,8 @@ function planLevel(
       let via: string | undefined;
       let model = first;
       // A one-call callback shows its proven callee, unless that callee is already shown above.
-      const proven = call.callback && first.state === "ready" && first.view.type === "block" && first.view.flow ? oneCallTarget(first.view.flow) : undefined;
-      if (call.callback && proven?.target !== undefined && !lineage.includes(proven.target)) {
+      const proven = call.callback && first.state === "ready" && first.view.type === "block" ? callbackCallee(first.view.flow, lineage) : undefined;
+      if (call.callback && proven?.target !== undefined) {
         owner = proven.target;
         name = proven.name;
         via = call.callback.label;

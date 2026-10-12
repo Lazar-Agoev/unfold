@@ -199,3 +199,86 @@ fn a_page_spanning_projects_exports_placeholders_and_drawn_links() {
     let text = board::serialize(&parsed);
     assert_eq!(board::serialize(&board::parse(&text).expect("it parses")), text);
 }
+
+#[test]
+fn a_proposed_step_goes_only_where_the_card_flow_lets_one_go() {
+    const REQUIRE_USER: &str = "src/routes/middleware.ts#function:requireUser";
+    let (parsed, graph) = loaded();
+    let graphs = PageGraphs::own_only(&graph);
+    let health = board::board_health(&parsed, &graphs);
+    let proposal = |id: &str, after: &str, path: Option<board::ProposalPath>| board::Proposal {
+        id: id.to_owned(),
+        card: "middleware-0".to_owned(),
+        after: unfold_core::Key::from_text(&format!("{REQUIRE_USER}/{after}")),
+        path,
+        title: "Record the refusal".to_owned(),
+        reason: None,
+        author: board::Author::agent("test").expect("an author"),
+    };
+    let with = |proposal: board::Proposal| {
+        let mut board = parsed.clone();
+        board.pages[0].proposals.push(proposal);
+        board
+    };
+    let refused =
+        |board: Board, previous: Option<(&Board, &board::Health)>, expected: &str| match board::prepare_save(
+            board, previous, &graphs,
+        ) {
+            Err(board::BoardError::Problem { target, message, .. }) => {
+                assert_eq!(target, board::Target::Proposal("p".to_owned()), "{message}");
+                assert!(message.contains(expected), "{expected:?} in {message:?}");
+            }
+            Ok(_) => panic!("expected `{expected}`, but it saved"),
+            Err(other) => panic!("expected `{expected}`, got {other:?}"),
+        };
+
+    // After a step with one way on, or on one of a decision's actual paths.
+    let (saved, saved_health) = board::prepare_save(
+        with(proposal("p", "if[0]", Some(board::ProposalPath::Yes))),
+        Some((&parsed, &health)),
+        &graphs,
+    )
+    .expect("a decision's yes path takes a proposal");
+    assert!(saved_health.is_healthy(), "{:#?}", saved_health.items);
+    let (_, next_health) = board::prepare_save(
+        with(proposal("p", "expression_statement[0]", None)),
+        Some((&parsed, &health)),
+        &graphs,
+    )
+    .expect("a call statement takes a proposal");
+    assert!(next_health.is_healthy());
+
+    for (after, path, expected) in [
+        ("if[0]/return[0]", None, "nothing runs after it"),
+        ("if[0]", None, "has 2 paths: choose yes or no"),
+        (
+            "if[0]",
+            Some(board::ProposalPath::Each),
+            "has no each path: choose yes or no",
+        ),
+        (
+            "expression_statement[0]/call[0]",
+            None,
+            "is not a step of its card's Flow",
+        ),
+        (
+            "expression_statement[0]",
+            Some(board::ProposalPath::Yes),
+            "has one way on",
+        ),
+    ] {
+        refused(
+            with(proposal("p", after, path)),
+            Some((&parsed, &health)),
+            expected,
+        );
+    }
+
+    // A path-only edit is a new placement, checked again.
+    let mut rerouted = saved.clone();
+    rerouted.pages[0].proposals[0].path = Some(board::ProposalPath::Each);
+    refused(rerouted, Some((&saved, &saved_health)), "has no each path");
+    let mut rerouted = saved.clone();
+    rerouted.pages[0].proposals[0].path = Some(board::ProposalPath::No);
+    assert!(board::prepare_save(rerouted, Some((&saved, &saved_health)), &graphs).is_ok());
+}

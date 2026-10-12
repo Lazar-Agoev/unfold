@@ -6,6 +6,10 @@
  * graph has no edges between projects, so arrows join only cards that resolve to the same project.
  * The board file holds no arrows; they are derived from the cards and their models.
  *
+ * A call expanded in place shows the callee's (or a callback's) own Flow inside the card: the calls
+ * that Flow shows leave from its steps (`insetPort`), each inset's apart, so several calls of one
+ * function keep their own arrows. A callback's own Flow takes its calls from the card's.
+ *
  * A card shown as a Diagram node or a type card's fields has no rows to leave from: its arrows leave
  * from the node's edge, and all its calls to one card merge into one arrow. A type card's fields draw
  * type arrows (design §4.2): from a field's row to each card on the page its written type names, one
@@ -13,6 +17,7 @@
  */
 
 import type { CardView, CodeView, EdgeKind, Key, ProjectId, TypeDefinition, TypeMember, TypeText } from "../ipc/generated";
+import { isWithin } from "../code/outline";
 import type { CardBody } from "../code/typeKinds";
 import { cardRefKey } from "../state/boards/keys";
 
@@ -24,6 +29,14 @@ export interface ArrowCard {
   readonly entrance: boolean;
   /** What its body shows (`cardBody`): a node's and a type card's arrows leave from the node's edge. */
   readonly body: CardBody;
+  /** The calls it shows expanded in place, outermost first (only while its Flow shows them). */
+  readonly insets?: readonly ArrowInset[];
+}
+
+/** A call expanded in place in a card, drawn: its saved path, and the block whose Flow it shows. */
+export interface ArrowInset {
+  readonly path: readonly Key[];
+  readonly owner: Key;
 }
 
 /** One call an arrow draws: its occurrence, its edge, and its calling line. */
@@ -82,6 +95,27 @@ export function fieldPort(row: string): string {
   return `field:${row}`;
 }
 
+const INSET_PORT = "inset:";
+
+/** The port of `port` (a call's occurrence key) shown in the call expanded in place at `path`. */
+export function insetPort(path: readonly Key[], port: string): string {
+  return `${INSET_PORT}${JSON.stringify([path, port])}`;
+}
+
+/** The inset path and inner port of an `insetPort`, if `id` is one. */
+export function insetPortOf(id: string): { readonly path: readonly Key[]; readonly port: string } | undefined {
+  if (!id.startsWith(INSET_PORT)) {
+    return undefined;
+  }
+  const [path, port] = JSON.parse(id.slice(INSET_PORT.length)) as [Key[], string];
+  return { path, port };
+}
+
+/** Whether `path` is one key longer than `prefix` and starts with it. */
+function isChildPath(path: readonly Key[], prefix: readonly Key[]): boolean {
+  return path.length === prefix.length + 1 && prefix.every((key, index) => path[index] === key);
+}
+
 /** Whether a card's arrows leave from its node's edge (a Diagram node, or a type card's fields). */
 function leavesFromEdge(body: CardBody): boolean {
   return body === "node" || body === "fields";
@@ -131,12 +165,24 @@ export function fieldRows(definition: TypeDefinition): FieldRow[] {
   ];
 }
 
-/** The calls of `card` as arrows: one per occurrence, or, leaving a node's edge, one per card reached. */
-function callArrows(card: ArrowCard, project: ProjectId, occurrences: readonly Occurrence[], cardOf: (key: Key) => string | undefined): Arrow[] {
+/**
+ * The calls of `card` as arrows: one per occurrence, or, leaving a node's edge, one per card reached.
+ * `port` names the port each occurrence leaves from (itself in the card's own Flow); `first` is the
+ * source order of the first.
+ */
+function callArrows(
+  card: ArrowCard,
+  project: ProjectId,
+  occurrences: readonly Occurrence[],
+  cardOf: (key: Key) => string | undefined,
+  port: (occurrence: Key) => string = (occurrence) => occurrence,
+  first = 0,
+): Arrow[] {
   const byTarget = new Map<string, { order: number; calls: ArrowCall[] }>();
   const arrows: Arrow[] = [];
   const seen = new Set<string>();
-  occurrences.forEach((occurrence, order) => {
+  occurrences.forEach((occurrence, index) => {
+    const order = first + index;
     const targetCard = cardOf(occurrence.target);
     if (targetCard === undefined || targetCard === card.id) {
       return;
@@ -150,13 +196,14 @@ function callArrows(card: ArrowCard, project: ProjectId, occurrences: readonly O
       byTarget.set(targetCard, merged);
       return;
     }
-    const id = `${card.id}|${occurrence.source}|${targetCard}`;
+    const handle = port(occurrence.source);
+    const id = `${card.id}|${handle}|${targetCard}`;
     if (!seen.has(id)) {
       seen.add(id);
       arrows.push({
         id,
         source: card.id,
-        sourceHandle: occurrence.source,
+        sourceHandle: handle,
         target: targetCard,
         project,
         occurrence: occurrence.source,
@@ -233,6 +280,33 @@ function typeArrows(card: ArrowCard, project: ProjectId, definition: TypeDefinit
 }
 
 /**
+ * The calls of a block card as arrows: its own Flow's, then each call expanded in place's from its
+ * steps. A callback's own Flow (a block inside the one above it) takes its calls from that Flow.
+ */
+function insetCallArrows(
+  card: ArrowCard,
+  project: ProjectId,
+  models: ReadonlyMap<string, CardView>,
+  stale: (project: ProjectId, key: Key) => CodeView | undefined,
+  cardOf: (key: Key) => string | undefined,
+): Arrow[] {
+  const insets = card.insets ?? [];
+  const arrows: Arrow[] = [];
+  let order = 0;
+  for (const { path, owner } of [{ path: [], owner: card.key }, ...insets]) {
+    const model = models.get(cardRefKey(project, owner));
+    if (model?.type !== "block") {
+      continue;
+    }
+    const inner = insets.filter((inset) => isChildPath(inset.path, path) && isWithin(inset.owner, owner));
+    const occurrences = occurrencesOf(model, stale(project, owner)).filter((occurrence) => !inner.some((inset) => isWithin(occurrence.source, inset.owner)));
+    arrows.push(...callArrows(card, project, occurrences, cardOf, path.length === 0 ? undefined : (occurrence) => insetPort(path, occurrence), order));
+    order += occurrences.length;
+  }
+  return arrows;
+}
+
+/**
  * Every arrow on a page. `models` maps `cardRefKey(project, key)` to loaded card models (missing ones
  * draw no arrows yet); `stale` gives the last verified Code of a block whose source changed;
  * `definitions` maps the same keys to the loaded definitions of the type cards that show their fields.
@@ -286,7 +360,7 @@ export function computeArrows(
       }
       continue;
     }
-    arrows.push(...callArrows(card, project, occurrencesOf(model, stale(project, card.key)), cardOf));
+    arrows.push(...insetCallArrows(card, project, models, stale, cardOf));
     const definition = card.body === "fields" ? definitions.get(cardRefKey(project, card.key)) : undefined;
     if (definition) {
       arrows.push(...typeArrows(card, project, definition, cardOf));

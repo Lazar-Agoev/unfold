@@ -3,7 +3,7 @@ import cardCreateOrder from "../../../../../testdata/workspace/commands/card_cre
 import cardFirstEntrance from "../../../../../testdata/workspace/commands/card_first_entrance.json";
 import relationsCreateOrder from "../../../../../testdata/workspace/commands/relations_create_order.json";
 import type { AgentPage } from "../../../shared/agent-api";
-import type { CardView, Relations, TypeDefinition, TypeUses } from "../engine-types";
+import type { CardView, FlowNode, Relations, TypeDefinition, TypeUses } from "../engine-types";
 import { getRelations, readCode } from "./code";
 import { harness, PROJECT, projectRow, recorded } from "./testing";
 
@@ -152,6 +152,58 @@ describe("read_code", () => {
     expect(lines).toContain(
       `  expands in place: the callback “callback to sendEmail” (its expandCalls key ${CREATE_ORDER}/if[0]/arrow_function[0]; a callback that makes one resolved call shows that callee, through the callback)`,
     );
+  });
+
+  it("quotes a step on a callback's first line from the whole file line, where its focus columns count", async () => {
+    // The callback's slice starts partway through line 9, after non-ASCII text (é, and 🚀 as two UTF-16 units).
+    const PATH = "src/queues/email-worker.ts";
+    const RUN = `${PATH}#function:processEmail/variable:run/function:run`;
+    const LINE = '  log("café 🚀"); const run = () => sendEmail(job.data);';
+    const slice = LINE.slice(LINE.indexOf("() =>"), LINE.lastIndexOf(";"));
+    const start = LINE.indexOf("sendEmail(job.data)");
+    const end = start + "sendEmail(job.data)".length;
+    const card = recorded<Extract<CardView, { type: "block" }>>(cardCreateOrder);
+    if (!card.flow || card.code?.source.state !== "current") {
+      throw new Error("createOrder's card has current source and a Flow");
+    }
+    const nodes: FlowNode[] = [
+      { id: 0, key: RUN, kind: "start", blockKind: "function", label: "run", startLine: 9, endLine: 9, lane: 0 },
+      { id: 1, key: `${RUN}/call[0]`, kind: "call", blockKind: "call", label: "sendEmail", fallback: true, startLine: 9, endLine: 9, focus: { startLine: 9, startColumn: start, endLine: 9, endColumn: end }, lane: 0 },
+      { id: 2, kind: "end", label: "End", lane: 0 },
+    ];
+    const callback: CardView = {
+      ...card,
+      header: { ...card.header, key: RUN, name: "run", qualifiedName: "processEmail.run", path: PATH, startLine: 9, endLine: 9 },
+      code: { ...card.code, key: RUN, path: PATH, startLine: 9, endLine: 9, source: { ...card.code.source, text: slice, lines: [{ number: 9, start: 0, end: slice.length, indent: 0 }], dedent: 2, spans: [], outline: [], links: [] } },
+      flow: { ...card.flow, key: RUN, path: PATH, nodes, tree: [{ type: "node", node: 1, ends: false, lanes: 1 }], start: 0, end: 2, lanes: 1 },
+    };
+    const fileView = (graph: string) => ({
+      path: PATH,
+      language: "typescript",
+      graph,
+      fileState: "current",
+      unshowable: null,
+      lineCount: 12,
+      startLine: 9,
+      endLine: 9,
+      textStart: 300,
+      text: `${LINE}\n`,
+      lines: [{ number: 9, start: 300, end: 300 + LINE.length, indent: 2 }],
+      spans: [],
+      outline: [],
+      links: [],
+    });
+    const step = `- 9 call: fallback name “sendEmail”; key ${RUN}/call[0]; focus 9:${start + 1}–9:${end}`;
+
+    const tools = app({ engine: { card: () => callback, relations: () => ({ ...recorded<Relations>(relationsCreateOrder), outgoing: { onBoard: [], openable: [], externalOrUnresolved: [] } }), file_view: () => fileView("current") } });
+    const { text } = await tools.call(readCode, { key: RUN, project: PROJECT });
+    expect(text.split("\n")).toContain(`${step} “sendEmail(job.data)”`);
+    expect(text).toContain("9 | () => sendEmail(job.data)");
+    expect(tools.engineCalls.find(([command]) => command === "file_view")?.[1]).toEqual({ project: PROJECT, path: PATH, range: { startLine: 9, endLine: 9 } });
+
+    // Without the verified file line, the focus keeps its coordinates and quotes nothing.
+    const changed = app({ engine: { card: () => callback, file_view: () => fileView("not_compiled") } });
+    expect((await changed.call(readCode, { key: RUN, project: PROJECT, view: "flow" })).text.split("\n")).toContain(step);
   });
 
   it("says when the file changed instead of showing source", async () => {

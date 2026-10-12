@@ -3,7 +3,7 @@ import type { CallLink, CardView, TypeDefinition, TypeMember, TypeText } from ".
 import { cardBody } from "../code/typeKinds";
 import { cardRefKey } from "../state/boards/keys";
 import { shownView } from "../state/boards/store";
-import { NODE_PORT, computeArrows, fieldPort, fieldRows, portsByCard } from "./arrows";
+import { NODE_PORT, computeArrows, fieldPort, fieldRows, insetPort, insetPortOf, portsByCard } from "./arrows";
 
 function link(source: string, target: string | undefined, kind: CallLink["kind"] = "calls", line = 1): CallLink {
   return {
@@ -230,5 +230,71 @@ describe("type arrows", () => {
     const alias: TypeDefinition = { ...cart, kind: "type_alias", members: [], inherited: [], aliased: written("Cart | null", [["Cart", CART]]) };
     expect(fieldRows(alias).map((row) => row.row)).toEqual(["="]);
     expect(fieldRows(cart).map((row) => row.row)).toEqual(["0", "1", "2", "3", "4", "from0/0"]);
+  });
+});
+
+describe("arrows from calls expanded in place", () => {
+  const PLACE = "src/services/order-service.ts#class:OrderService/method:place";
+  const VALIDATE = "src/validate.ts#function:validateOrder";
+  const CALLBACK = `${A}/call[1]/arrow[0]`;
+  const flowCard = (insets: readonly { path: readonly string[]; owner: string }[]) => ({ id: "a", key: A, project: P, entrance: false, body: "flow" as const, insets });
+  const validateCard = { id: "validate", key: VALIDATE, project: P, entrance: false, body: "node" as const };
+
+  it("leaves a followed callee's card from the inset's own call, though the callee that calls it has no card", () => {
+    const models = inP([
+      [A, block(A, [link(`${A}/call[0]`, PLACE)])],
+      [PLACE, block(PLACE, [link(`${PLACE}/call[0]`, VALIDATE, "calls", 12)])],
+      [VALIDATE, block(VALIDATE, [])],
+    ]);
+    // Collapsed, the inset isn't drawn: no arrow, since the card itself never calls validateOrder.
+    expect(computeArrows([flowCard([]), validateCard], models)).toEqual([]);
+
+    const [arrow, ...rest] = computeArrows([flowCard([{ path: [`${A}/call[0]`], owner: PLACE }]), validateCard], models);
+    expect(rest).toEqual([]);
+    expect(arrow).toMatchObject({
+      source: "a",
+      sourceHandle: insetPort([`${A}/call[0]`], `${PLACE}/call[0]`),
+      target: "validate",
+      project: P,
+      occurrence: `${PLACE}/call[0]`,
+      seq: 0,
+      kind: "calls",
+      line: 12,
+    });
+    expect(insetPortOf(arrow?.sourceHandle ?? "")).toEqual({ path: [`${A}/call[0]`], port: `${PLACE}/call[0]` });
+  });
+
+  it("keeps two calls of one function apart: each inset's call has its own port and arrow", () => {
+    const models = inP([
+      [A, block(A, [link(`${A}/call[0]`, PLACE), link(`${A}/call[1]`, PLACE)])],
+      [PLACE, block(PLACE, [link(`${PLACE}/call[0]`, VALIDATE)])],
+    ]);
+    const card = flowCard([
+      { path: [`${A}/call[0]`], owner: PLACE },
+      { path: [`${A}/call[1]`], owner: PLACE },
+    ]);
+    const arrows = computeArrows([card, validateCard], models);
+    expect(arrows.map((arrow) => [arrow.sourceHandle, arrow.occurrence])).toEqual([
+      [insetPort([`${A}/call[0]`], `${PLACE}/call[0]`), `${PLACE}/call[0]`],
+      [insetPort([`${A}/call[1]`], `${PLACE}/call[0]`), `${PLACE}/call[0]`],
+    ]);
+    expect(new Set(arrows.map((arrow) => arrow.id)).size).toBe(2);
+  });
+
+  it("moves a callback's calls into its inset when it shows as itself, and adds no call the code doesn't make", () => {
+    const models = inP([
+      [A, block(A, [link(`${A}/call[1]`, B, "calls"), link(`${CALLBACK}/call[0]`, VALIDATE, "calls", 4)])],
+      [CALLBACK, block(CALLBACK, [link(`${CALLBACK}/call[0]`, VALIDATE, "calls", 4)])],
+      [B, block(B, [])],
+    ]);
+    const bCard = { id: "b", key: B, project: P, entrance: false, body: "node" as const };
+    // The callback collapsed: its call leaves from the card's own Flow.
+    expect(computeArrows([flowCard([]), validateCard, bCard], models).map((arrow) => arrow.sourceHandle)).toEqual([`${A}/call[1]`, `${CALLBACK}/call[0]`]);
+    // Expanded as itself: the same call, from the inset's step, once.
+    const arrows = computeArrows([flowCard([{ path: [CALLBACK], owner: CALLBACK }]), validateCard, bCard], models);
+    expect(arrows.map((arrow) => [arrow.sourceHandle, arrow.target, arrow.kind])).toEqual([
+      [`${A}/call[1]`, "b", "calls"],
+      [insetPort([CALLBACK], `${CALLBACK}/call[0]`), "validate", "calls"],
+    ]);
   });
 });

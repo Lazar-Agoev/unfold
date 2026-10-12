@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CardView, FlowModel, FlowNode } from "../ipc/generated";
 import { fixture } from "../test/engine";
-import { INSET_GAP, PROPOSAL_INDENT, PROPOSAL_RAIL, UNDRAWN_NOTE, layoutFlow, roundedPath, wrapLines, type FlowLayout, type Measure, type PlacedNode, type ProposalSpec, type StepGroup } from "./layout";
+import { INSET_GAP, PROPOSAL_INDENT, PROPOSAL_RAIL, UNDRAWN_NOTE, insideNote, layoutFlow, roundedPath, wrapLines, type FlowLayout, type Measure, type PlacedNode, type ProposalSpec, type StepGroup } from "./layout";
 
 /** A fixed-width measurer, so the tests don't depend on fonts. */
 const measure: Measure = (text) => text.length * 7;
@@ -560,11 +560,58 @@ describe("Flow layout with proposed steps", () => {
     expect(clear(layout)).toBe(true);
   });
 
-  it("goes after the collapsed step group hiding its step, and below the diagram when its step isn't drawn", () => {
-    const grouped = layoutFlow(createOrder, { ...options, groups: [collapsed(place)], proposals: [proposal()] });
-    expect(room(grouped)).toMatchObject({ host: "group:place-it" });
-    expect(dashed(grouped, "email>out")?.at(-1)?.y).toBe(placed(grouped, "9")?.y);
+  it("goes after a collapsed step group only when its step is the group's last, joined to what follows", () => {
+    const groups = [collapsed(place)];
+    const last = layoutFlow(createOrder, { ...options, groups, proposals: [proposal({ after: REPLY })] });
+    const step = placed(last, "group:place-it");
+    const box = room(last);
+    expect(box).toMatchObject({ host: "group:place-it", y: (step?.y ?? 0) + (step?.height ?? 0) + 30 });
+    expect(box.inside).toBeUndefined();
+    expect(box.note).toBeUndefined();
+    expect(dashed(last, "email>in")?.[0]).toEqual({ x: (step?.x ?? 0) + (step?.width ?? 0) / 2, y: (step?.y ?? 0) + (step?.height ?? 0) });
+    expect(dashed(last, "email>out")?.at(-1)?.y).toBe(placed(last, "9")?.y);
+  });
 
+  it("sits under a collapsed step group hiding a step before its last, saying it goes inside and after which step, without connectors", () => {
+    const groups = [collapsed(place)];
+    const grouped = layoutFlow(createOrder, { ...options, groups });
+    const inside = layoutFlow(createOrder, { ...options, groups, proposals: [proposal()] });
+    const step = placed(inside, "group:place-it");
+    const box = room(inside);
+    const label = createOrder.nodes.find((node) => node.key === ORDER)?.label ?? "";
+    expect(label).not.toBe("");
+    expect(box).toMatchObject({ host: "group:place-it", inside: "place-it", note: insideNote(place.title, label), y: (step?.y ?? 0) + (step?.height ?? 0) + 30 });
+    expect(box.path).toBeUndefined();
+    // Not drawn in sequence after the group: no dashed connectors into it or out of it.
+    expect(inside.proposalEdges).toEqual([]);
+    // Its note has room for the action that shows the group's steps.
+    expect(box.height).toBeGreaterThan(room(layoutFlow(createOrder, { ...options, groups, proposals: [proposal({ after: REPLY })] })).height);
+    // The compiled path is unchanged, and still runs beside it along the lane's rail.
+    expect(inside.nodes.map((item) => item.id)).toEqual(grouped.nodes.map((item) => item.id));
+    expect(edgeIds(inside)).toEqual(edgeIds(grouped));
+    const out = inside.edges.find((item) => item.from === "group:place-it")?.points ?? [];
+    expect(out.some((point) => point.x === (step?.x ?? 0) + PROPOSAL_RAIL)).toBe(true);
+    expect(clear(inside)).toBe(true);
+    // A label the page gives the step names it.
+    const labeled = layoutFlow(createOrder, { ...options, groups, labels: { [ORDER]: "Place the order" }, proposals: [proposal()] });
+    expect(room(labeled).note).toBe(insideNote(place.title, "Place the order"));
+
+    // With one after the group's last step too: inside first, then after, its connector from below the one inside.
+    const both = layoutFlow(createOrder, { ...options, groups, proposals: [proposal(), proposal({ id: "slack", after: REPLY, title: "Post to the orders channel" })] });
+    const [first, second] = both.proposals;
+    expect(first).toMatchObject({ id: "email", inside: "place-it" });
+    expect(second?.inside).toBeUndefined();
+    expect(second?.y).toBe((first?.y ?? 0) + (first?.height ?? 0) + 30);
+    expect(dashed(both, "slack>in")?.[0]?.y).toBe((first?.y ?? 0) + (first?.height ?? 0));
+    expect(both.proposalEdges.map((item) => item.id)).toEqual(["slack>in", "slack>out"]);
+
+    // Expanded, the group shows its steps, and the proposed step goes after its own.
+    const open = layoutFlow(createOrder, { ...options, groups: [place], proposals: [proposal()] });
+    expect(room(open)).toMatchObject({ host: "6" });
+    expect(room(open).inside).toBeUndefined();
+  });
+
+  it("goes below the diagram when its step isn't drawn", () => {
     const missing = layoutFlow(createOrder, { ...options, proposals: [proposal({ after: `${FN}/variable:gone`, note: "The step it went after is missing." })] });
     const box = room(missing);
     expect(box.host).toBeUndefined();

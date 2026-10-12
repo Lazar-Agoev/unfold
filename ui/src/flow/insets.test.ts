@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CardView, FlowChip, FlowModel, FlowNode, Key } from "../ipc/generated";
-import { INSET_CHROME, expandableCalls, expansionState, insetRoom, layoutInsets, oneCallTarget, planInsets, type InsetModel } from "./insets";
+import { INSET_CHROME, callbackCallee, expandableCalls, expansionState, insetRoom, layoutInsets, oneCallTarget, planInsets, type InsetModel } from "./insets";
 import { DIAGRAM_PAD, INSET_GAP, layoutFlow, type Measure } from "./layout";
 
 const measure: Measure = (text) => text.length * 7;
@@ -149,6 +149,10 @@ describe("planning the insets", () => {
     const callback = straight(ONE, [call(1, ONE, WORKER, "worker")]);
     const plans = planInsets(worker, WORKER, [[ONE]], (key) => (key === ONE ? { state: "ready", view: view(callback) } : lookup(key)), MAX_DEPTH);
     expect(plans.map((plan) => [plan.owner, plan.via])).toEqual([[ONE, undefined]]);
+    // The rule MCP's set_view checks paths with.
+    expect(callbackCallee(callback, [WORKER])).toBeUndefined();
+    expect(callbackCallee(oneCall, [WORKER])?.target).toBe(SEND);
+    expect(callbackCallee(oneCall, [WORKER, SEND])).toBeUndefined();
   });
 
   it("nests up to three levels, and waits for a model before planning inside it", () => {

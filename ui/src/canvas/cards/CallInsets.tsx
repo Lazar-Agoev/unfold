@@ -9,33 +9,36 @@
  *
  * Labels are the page's for the card's project; step groups come only from the callee's own card on the
  * page. A step selected in an inset carries its owner (the block whose Flow shows it), and its `</>`
- * and menu open the callee's own source; it is never part of a run to combine. Insets create no ports,
- * and nothing in them changes the caller.
+ * and menu open the callee's own source; it is never part of a run to combine. Nothing in them changes
+ * the caller.
+ *
+ * An inset's steps carry the ports of the calls they show (`insetPort`, one set per inset, so several
+ * calls of one function stay apart) and, in a callback shown as itself, of the connections leaving
+ * its steps (`placeFlowPorts`); their leaders reach the card's edge.
  */
 
 import { useQueries, useQueryClient, type QueryState } from "@tanstack/react-query";
 import { useMemo, type MouseEvent, type ReactNode } from "react";
-import { definitionSource, showSource } from "../../board/viewCode";
+import { viewCode } from "../../board/viewCode";
 import { shortPath } from "../../code/text";
+import { isWithin, portStep } from "../../code/outline";
 import { stepGroups } from "../../flow/groups";
-import { FlowView, type FlowExpansion } from "../../flow/FlowView";
-import { DIAGRAM_PAD, type Measure, type PlacedInset } from "../../flow/layout";
-import { expansionState, layoutInsets, planInsets, type ExpandableCall, type InsetModel, type InsetPlan, type LaidInset } from "../../flow/insets";
+import { FlowView, flowPortNodes, type FlowExpansion } from "../../flow/FlowView";
+import { DIAGRAM_PAD, type FlowLayout, type Measure, type PlacedInset } from "../../flow/layout";
+import { INSET_CHROME, expansionState, layoutInsets, planInsets, type ExpandableCall, type InsetModel, type InsetPlan, type LaidInset } from "../../flow/insets";
 import { Icon } from "../../icons";
 import type { Card, CardView, FlowModel, Group, Key, ProjectId } from "../../ipc/generated";
 import { toUnfoldError } from "../../ipc/unfold";
 import { MAX_EXPANSION_DEPTH, editPage, findCardByRef, findPage, toggleCallExpansion, useOpenBoard, type PageTarget } from "../../state/boards";
+import { insetPortOf } from "../arrows";
 import { cardQuery, isMissing } from "../cardData";
-import { CardNote } from "./parts";
+import { CardNote, renderPorts } from "./parts";
 import { clickCard } from "./select";
 
 const NO_PATHS: readonly (readonly Key[])[] = [];
 const LOADING: InsetModel = { state: "loading" };
+const NO_PORTS: ReadonlyMap<string, readonly string[]> = new Map();
 
-/** Opens an inset's block (a callee's or a callback's definition) in the peek sheet, from the page `target`. */
-function openInsetSource(target: PageTarget, project: ProjectId, header: { readonly path: string; readonly startLine: number }): void {
-  showSource(target, definitionSource(project, header));
-}
 
 /** A card query's state as an inset reads it. */
 function modelOf(data: CardView | undefined, error: unknown): InsetModel {
@@ -129,6 +132,92 @@ export function useCallInsets(input: CallInsetsInput): readonly LaidInset[] {
   }, [flow, own, paths, wantedKey, loaded, ownersKey, ownerCards, groups, broken, labels, openChains, measure, maxWidth]);
 }
 
+/** The insets drawn with a Flow, outermost first. */
+function drawnInsets(insets: readonly LaidInset[], into: LaidInset[] = []): LaidInset[] {
+  for (const inset of insets) {
+    if (inset.layout) {
+      into.push(inset);
+      drawnInsets(inset.children, into);
+    }
+  }
+  return into;
+}
+
+/** The key of an inset's ports: its path. */
+export function insetPortsKey(path: readonly Key[]): string {
+  return path.join("\u0000");
+}
+
+/** Where a card's Flow places its ports: by node of its own Flow and of each inset (by path), and the rest at its header. */
+export interface FlowPorts {
+  readonly byNode: ReadonlyMap<string, readonly string[]>;
+  readonly insets: ReadonlyMap<string, ReadonlyMap<string, readonly string[]>>;
+  readonly unplaced: readonly string[];
+}
+
+/**
+ * Places a card's ports (`card` is its block): a call shown in an inset at its step there; a
+ * connection's step inside a callback shown as itself, in that inset; the rest in the card's own
+ * Flow (`ownerOf` names the callback that owns an occurrence). What no Flow shows goes to the header.
+ */
+export function placeFlowPorts(card: Key, layout: FlowLayout, insets: readonly LaidInset[], ports: readonly string[], ownerOf: (occurrence: string) => string): FlowPorts {
+  const drawn = drawnInsets(insets);
+  const own = new Map<string, string>();
+  // By inset: each port's id in that inset's Flow, its owner there, and the card's port id.
+  const inner = new Map<LaidInset, { owners: Map<string, string>; ids: Map<string, string> }>();
+  const unplaced: string[] = [];
+  const put = (inset: LaidInset, id: string, port: string, owner: string) => {
+    const entry = inner.get(inset) ?? { owners: new Map<string, string>(), ids: new Map<string, string>() };
+    entry.owners.set(id, owner);
+    entry.ids.set(id, port);
+    inner.set(inset, entry);
+  };
+  for (const port of ports) {
+    const at = insetPortOf(port);
+    if (at) {
+      const inset = drawn.find((item) => item.plan.path.length === at.path.length && item.plan.path.every((key, index) => at.path[index] === key));
+      const view = inset?.plan.model.state === "ready" && inset.plan.model.view.type === "block" ? inset.plan.model.view : undefined;
+      const links = view?.code?.source.state === "current" ? view.code.source.links : [];
+      if (inset) {
+        put(inset, at.port, port, links.find((link) => link.source === at.port)?.owner ?? "");
+      } else {
+        unplaced.push(port);
+      }
+      continue;
+    }
+    const step = portStep(port);
+    let holder: LaidInset | undefined;
+    for (const inset of drawn) {
+      const { owner, path } = inset.plan;
+      if (step !== undefined && isWithin(owner, card) && isWithin(step, owner) && (!holder || path.length > holder.plan.path.length)) {
+        holder = inset;
+      }
+    }
+    if (holder) {
+      put(holder, port, port, "");
+    } else {
+      own.set(port, ownerOf(port));
+    }
+  }
+  const placed = flowPortNodes(layout, own);
+  const byInset = new Map<string, Map<string, string[]>>();
+  for (const [{ plan, layout: shown }, { owners, ids }] of inner) {
+    if (!shown) {
+      continue;
+    }
+    const there = flowPortNodes(shown, owners);
+    byInset.set(insetPortsKey(plan.path), new Map([...there.byNode].map(([node, list]) => [node, list.map((id) => ids.get(id) ?? id)])));
+    unplaced.push(...there.unplaced.map((id) => ids.get(id) ?? id));
+  }
+  return { byNode: placed.byNode, insets: byInset, unplaced: [...placed.unplaced, ...unplaced] };
+}
+
+/** Where a Flow's ports reach: its diagram's width, and how far past it to the card's edge. */
+export interface PortFrame {
+  readonly width: number;
+  readonly reach: number;
+}
+
 /** What every inset of one card shares: the card, its expansions, the selection, and the actions. */
 export interface InsetContext {
   readonly target: PageTarget;
@@ -149,10 +238,15 @@ export interface InsetContext {
   readonly onViewGroup: (groupId: string) => void;
   /** Opens the menu of the selection a step's right-click left. */
   readonly onStepMenu: (at: MouseEvent | Element) => void;
+  /** Each inset's ports by node (`placeFlowPorts`), by `insetPortsKey`. */
+  readonly ports: ReadonlyMap<string, ReadonlyMap<string, readonly string[]>>;
 }
 
-/** The chevrons of one Flow (the card's own at `prefix` [], or an inset's) and the insets under its nodes. */
-export function flowExpansion(context: InsetContext, prefix: readonly Key[], lineage: readonly Key[], insets: readonly LaidInset[]): FlowExpansion {
+/**
+ * The chevrons of one Flow (the card's own at `prefix` [], or an inset's) and the insets under its nodes;
+ * `frame` is where that Flow's ports reach.
+ */
+export function flowExpansion(context: InsetContext, prefix: readonly Key[], lineage: readonly Key[], insets: readonly LaidInset[], frame: PortFrame): FlowExpansion {
   return {
     stateOf: (call: ExpandableCall) => expansionState(call, prefix, lineage, context.paths, MAX_EXPANSION_DEPTH),
     onToggle: (call: ExpandableCall) => {
@@ -163,12 +257,12 @@ export function flowExpansion(context: InsetContext, prefix: readonly Key[], lin
     renderInset: (placed: PlacedInset) =>
       insets
         .filter((inset) => inset.plan.node === placed.key)
-        .map((inset) => <CallInset key={inset.plan.path.join("\u0000")} inset={inset} context={context} />),
+        .map((inset) => <CallInset key={insetPortsKey(inset.plan.path)} inset={inset} placed={placed} frame={frame} context={context} />),
   };
 }
 
 /** One call expanded in place: its title row, its caption, and the callee's own Flow. */
-function CallInset({ inset, context }: { readonly inset: LaidInset; readonly context: InsetContext }) {
+function CallInset({ inset, placed, frame, context }: { readonly inset: LaidInset; readonly placed: PlacedInset; readonly frame: PortFrame; readonly context: InsetContext }) {
   const { plan, layout, flow } = inset;
   const view = plan.model.state === "ready" && plan.model.view.type === "block" ? plan.model.view : undefined;
   const header = view?.header;
@@ -184,6 +278,8 @@ function CallInset({ inset, context }: { readonly inset: LaidInset; readonly con
   };
   let body: ReactNode;
   if (flow && layout) {
+    // From this Flow's right edge to the card's: past the room the parent kept, and the parent's own reach.
+    const reach = frame.reach + Math.max(0, frame.width - placed.x - INSET_CHROME.rule - layout.width);
     body = (
       <FlowView
         inset
@@ -211,7 +307,10 @@ function CallInset({ inset, context }: { readonly inset: LaidInset; readonly con
         onStepMenu={(_key, at) => {
           context.onStepMenu(at);
         }}
-        expansion={flowExpansion(context, plan.path, plan.lineage, inset.children)}
+        ports={context.ports.get(insetPortsKey(plan.path)) ?? NO_PORTS}
+        renderPorts={renderPorts}
+        portReach={reach}
+        expansion={flowExpansion(context, plan.path, plan.lineage, inset.children, { width: layout.width, reach })}
       />
     );
   } else {
@@ -243,7 +342,8 @@ function CallInset({ inset, context }: { readonly inset: LaidInset; readonly con
           onClick={(event) => {
             event.stopPropagation();
             if (header) {
-              openInsetSource(context.target, context.project, header);
+              // The inset's block (a callee's or a callback's definition), as View code finds it.
+              viewCode(context.target, { kind: "card", cardId: context.cardId, key: plan.owner, owner: plan.owner });
             }
           }}
         >

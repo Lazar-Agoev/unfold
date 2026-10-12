@@ -15,7 +15,7 @@ import { Handle, Position, useUpdateNodeInternals } from "@xyflow/react";
 import { useLayoutEffect, useMemo } from "react";
 import { Monogram } from "../../components";
 import { reasonText, shortPath } from "../../code/text";
-import { entranceTargetSource, showSource, viewCode } from "../../board/viewCode";
+import { entranceTargetSource, viewCode, viewEntranceTarget } from "../../board/viewCode";
 import { ViewCodeButton } from "../../flow/ViewCodeButton";
 import type { Card, ProjectId, TargetView } from "../../ipc/generated";
 import { editPage, entranceCardText, entranceTitle, followCall, keyDisplayName, lineOffsetIn, select, setCardsFolded, type PageTarget } from "../../state/boards";
@@ -181,10 +181,9 @@ export function EntranceCard({ target, project, card, expandable, ports, selecte
                   <ul className="ecard-handlers">
                     {model.targets.map((handler) => {
                       const handle = targetHandle(handler.position);
-                      const source = entranceTargetSource(project, handler).target;
-                      const onView = source
+                      const onView = entranceTargetSource(project, handler).target
                         ? () => {
-                            showSource(target, source);
+                            viewEntranceTarget(target, project, key, handler.position);
                           }
                         : null;
                       return <HandlerRow key={handle} handler={handler} port={portSet.has(handle) ? handle : null} onFollow={follow} onView={onView} />;

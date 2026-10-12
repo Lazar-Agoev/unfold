@@ -6,8 +6,9 @@
  * of each type its written type names; and the steps of expanded cards still showing names from the
  * code. The rules are copies of the canvas's (`ui/src/canvas/arrows.ts`, `cardBody`, the store's
  * `shownView`, and the outline's count of unlabeled steps), so change both together: a page opens in
- * Diagram or Code, a card is compact or expanded in Diagram, a type card keeps its fields in every
- * view, arrows join cards of one project only, and reach the first card of a key. Two differences are
+ * Diagram or Code, a card is compact or expanded in Diagram, a type declaration's card keeps its
+ * fields in every view while a class's shows them compact (its Flow expanded, its Code in Code),
+ * arrows join cards of one project only, and reach the first card of a key. Two differences are
  * deliberate: calls are listed one by one where a Diagram node merges them, and a block whose source
  * changed reads its Flow's chips (the canvas keeps the last verified Code, which only a window has).
  */
@@ -17,8 +18,8 @@ import type { Card, CardView, EdgeKind, LineLabel, Page, ProjectRow, TypeDefinit
 import { keyKind } from "./format";
 import { ToolError } from "./results";
 
-/** Block kinds whose cards are type cards. */
-const TYPE_KINDS: ReadonlySet<string> = new Set(["interface", "type_alias", "enum", "class"]);
+/** Block kinds of type declarations, whose cards show only their fields. */
+const DECLARATION_KINDS: ReadonlySet<string> = new Set(["interface", "type_alias", "enum"]);
 /** The most lines one `line_labels` request labels. */
 const MAX_LABELED = 500;
 
@@ -82,9 +83,12 @@ export function cardKey(card: Pick<Card, "ref">): string {
   return "block" in card.ref ? card.ref.block : card.ref.entrance;
 }
 
-/** Whether a key is a type card's: a type declaration or a class, which shows its fields in every view. */
-export function isTypeKey(key: string): boolean {
-  return TYPE_KINDS.has(keyKind(key));
+/**
+ * Whether a key's card shows only its fields, in every view, and takes no expansion: a type
+ * declaration's (the canvas's `fieldsOnly`); a class's expands to its detail like a function's.
+ */
+export function fieldsOnlyKey(key: string): boolean {
+  return DECLARATION_KINDS.has(keyKind(key));
 }
 
 /** The lens a page opens in: Code for a page whose default is Code, else Diagram (a legacy Flow default too). */
@@ -105,6 +109,11 @@ function shownView(page: Pick<Page, "defaultView">, card: Pick<Card, "view">): V
   return cardExpanded(page, card) ? "flow" : "diagram";
 }
 
+/** Whether a card shows a type card's fields (the canvas's `cardBody`): a type declaration always, a class while compact in Diagram. */
+function showsFields(page: Pick<Page, "defaultView">, card: Pick<Card, "view">, key: string): boolean {
+  return fieldsOnlyKey(key) || (keyKind(key) === "class" && shownView(page, card) === "diagram");
+}
+
 /** A failed read's reason, for the card's line. */
 function why(error: unknown): string {
   if (error instanceof ToolError) {
@@ -113,12 +122,12 @@ function why(error: unknown): string {
   throw error;
 }
 
-async function loadCard(context: ToolContext, card: Card, project: ProjectRow | null): Promise<CardCode> {
+async function loadCard(context: ToolContext, page: Page, card: Card, project: ProjectRow | null): Promise<CardCode> {
   const key = cardKey(card);
   if (!project) {
     return { card, key, project, model: null, definition: null, problem: `its project ${card.ref.project ?? ""} isn't in the workspace` };
   }
-  const definition = isTypeKey(key)
+  const definition = showsFields(page, card, key)
     ? context.engine("type_definition", { project: project.id, key }).then(
         (found) => found,
         () => null,
@@ -230,7 +239,7 @@ function unlabeledSteps(page: Page, code: CardCode): UnlabeledStep[] {
 export async function pageCode(context: ToolContext, own: ProjectRow, page: Page): Promise<PageCode> {
   const rows = await context.projects();
   const projectOf = (card: Card): ProjectRow | null => (card.ref.project === undefined ? own : (rows.find((row) => row.name === card.ref.project) ?? null));
-  const loaded = await Promise.all(page.cards.map((card) => loadCard(context, card, projectOf(card))));
+  const loaded = await Promise.all(page.cards.map((card) => loadCard(context, page, card, projectOf(card))));
   const cards = new Map(loaded.map((code) => [code.card.id, code]));
   // A call or a type reaches the first card of its key, as the canvas draws it.
   const byKey = new Map<string, string>();

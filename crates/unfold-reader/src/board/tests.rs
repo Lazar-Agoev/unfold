@@ -2317,6 +2317,14 @@ fn proposal(id: &str, after: &str) -> Proposal {
     }
 }
 
+/// Proposed step `email` on card `run`, going after `if (first)` on its yes path.
+fn email() -> Proposal {
+    Proposal {
+        path: Some(ProposalPath::Yes),
+        ..proposal("email", IF0)
+    }
+}
+
 /// Saving `board` over `previous` refuses proposal `id` with a message containing `expected`.
 fn refuses_proposal(
     board: Board,
@@ -2610,11 +2618,11 @@ fn parsing_refuses_bad_expanded_calls_and_proposals() {
 fn proposals_go_after_a_step_inside_their_card_and_are_never_signed() {
     let (_dir, graph) = folder(SOURCE);
     let mut board = sample_board();
-    board.pages[0].proposals.push(proposal("email", IF0));
+    board.pages[0].proposals.push(email());
     let (saved, report) = save(board, None, &graph).unwrap();
     assert!(report.is_healthy());
     let page = &saved.pages[0];
-    assert_eq!(page.proposals, [proposal("email", IF0)], "saved as written");
+    assert_eq!(page.proposals, [email()], "saved as written");
     let guard = page.guard(None, IF0).expect("the anchor is guarded");
     assert_eq!((guard.kind.as_str(), guard.owner.as_str()), ("if", RUN));
     assert!(
@@ -2627,27 +2635,67 @@ fn proposals_go_after_a_step_inside_their_card_and_are_never_signed() {
         "a proposal has nothing to sign"
     );
 
-    // A proposal placed elsewhere must go after a step of the graph inside its card's block.
-    for (after, expected) in [
-        (RUN, "Can't place it after its card itself"),
+    // A proposal placed elsewhere must go after a step of its card's Flow that something runs
+    // after, on one of that step's paths when it has several (the UI's placement rule).
+    for (after, path, expected) in [
+        (RUN, None, "Can't place it after its card itself"),
         (
             "main.ts#function:runner/if[0]",
+            None,
             "that is not inside its card's block. Choose a statement or call under main.ts#function:run/",
         ),
-        ("main.ts#function:run/if[7]", "that step is not in the graph"),
+        (
+            "main.ts#function:run/if[7]",
+            None,
+            "that step is not in the graph",
+        ),
+        (LOG_CALL, None, "that is not a step of its card's Flow"),
+        (RETURN0, None, "nothing runs after it on its path"),
+        (IF0, None, "that step has 2 paths: choose yes or no"),
+        (
+            IF0,
+            Some(ProposalPath::Each),
+            "that step has no each path: choose yes or no",
+        ),
+        (LOG0, Some(ProposalPath::Yes), "that step has one way on"),
     ] {
         let mut moved = saved.clone();
         moved.pages[0].proposals[0].after = Key::from_text(after);
+        moved.pages[0].proposals[0].path = path;
         refuses_proposal(moved, Some((&saved, &report)), &graph, "email", expected);
         let mut added = saved.clone();
-        added.pages[0].proposals.push(proposal("new", after));
+        added.pages[0].proposals.push(Proposal {
+            path,
+            ..proposal("new", after)
+        });
         refuses_proposal(added, Some((&saved, &report)), &graph, "new", expected);
     }
-    // Its words and path change freely.
+    // Its words change freely; a path-only edit is a new placement, checked again.
     let mut retitled = saved.clone();
     retitled.pages[0].proposals[0].title = "Send a receipt".to_owned();
-    retitled.pages[0].proposals[0].path = Some(ProposalPath::Yes);
+    retitled.pages[0].proposals[0].path = Some(ProposalPath::No);
     assert!(save(retitled, Some((&saved, &report)), &graph).is_ok());
+    for (path, expected) in [
+        (None, "that step has 2 paths"),
+        (Some(ProposalPath::Done), "that step has no done path"),
+    ] {
+        let mut rerouted = saved.clone();
+        rerouted.pages[0].proposals[0].path = path;
+        refuses_proposal(rerouted, Some((&saved, &report)), &graph, "email", expected);
+    }
+    let mut after_log = saved.clone();
+    after_log.pages[0].proposals.push(proposal("log", LOG0));
+    assert!(save(after_log, Some((&saved, &report)), &graph).is_ok());
+    // One saved before this rule, placed as before, still reads and saves: only a new placement
+    // is checked.
+    let mut older = saved.clone();
+    older.pages[0].proposals.push(proposal("older", IF0));
+    let older = parse(&serialize(&older)).unwrap();
+    let older_report = page_health(&older, &graph);
+    assert!(older_report.is_healthy(), "{:#?}", older_report.items);
+    let mut reworded = older.clone();
+    reworded.pages[0].proposals[1].title = "Send a receipt".to_owned();
+    assert!(save(reworded, Some((&older, &older_report)), &graph).is_ok());
     // A card whose project isn't connected can't take a proposal.
     let mut elsewhere = saved.clone();
     elsewhere.pages[0].cards.push(run_card("web-run", Some(web())));
@@ -2668,7 +2716,7 @@ fn proposals_go_after_a_step_inside_their_card_and_are_never_signed() {
 fn a_proposal_whose_step_is_gone_waits_for_an_explicit_repair() {
     let (dir, graph) = folder(SOURCE);
     let mut board = sample_board();
-    board.pages[0].proposals.push(proposal("email", IF0));
+    board.pages[0].proposals.push(email());
     board.pages[0].proposals.push(proposal("log", LOG0));
     let (saved, _) = save(board, None, &graph).unwrap();
     let updated = recompiled(dir.path(), &SOURCE.replace("  console.log('done');\n", ""));
@@ -2716,6 +2764,8 @@ fn a_proposal_whose_step_is_gone_waits_for_an_explicit_repair() {
     for (to, expected) in [
         (RUN, "after its card itself"),
         ("main.ts#", "not inside its card's block"),
+        (RETURN0, "nothing runs after it"),
+        (IF0, "that step has 2 paths"),
     ] {
         let mut wrong = saved.clone();
         match repair(
@@ -2742,19 +2792,19 @@ fn a_proposal_whose_step_is_gone_waits_for_an_explicit_repair() {
         &Repair::Reconnect {
             project: None,
             from: LOG0.to_owned(),
-            to: RETURN0.to_owned(),
+            to: FIRST.to_owned(),
         },
     )
     .unwrap();
     let page = &repaired.pages[0];
-    assert_eq!(page.proposal("log").unwrap().after.as_str(), RETURN0);
-    assert!(page.guard(None, RETURN0).is_some() && page.guard(None, LOG0).is_none());
+    assert_eq!(page.proposal("log").unwrap().after.as_str(), FIRST);
+    assert!(page.guard(None, FIRST).is_some() && page.guard(None, LOG0).is_none());
     assert!(page_health(&repaired, &updated).is_healthy());
     assert!(save(repaired, Some((&saved, &report)), &updated).is_ok());
 
     let mut removed = saved;
     repair(&mut removed, &updated, &Repair::RemoveProposal("log".to_owned())).unwrap();
-    assert_eq!(removed.pages[0].proposals, [proposal("email", IF0)]);
+    assert_eq!(removed.pages[0].proposals, [email()]);
     assert!(page_health(&removed, &updated).is_healthy());
 }
 
@@ -2762,7 +2812,7 @@ fn a_proposal_whose_step_is_gone_waits_for_an_explicit_repair() {
 fn a_proposal_whose_step_changed_is_held_for_review() {
     let (dir, graph) = folder(SOURCE);
     let mut board = sample_board();
-    board.pages[0].proposals.push(proposal("email", IF0));
+    board.pages[0].proposals.push(email());
     let (saved, _) = save(board, None, &graph).unwrap();
     let inserted = SOURCE.replace(
         "  if (first)",

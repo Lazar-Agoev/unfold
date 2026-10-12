@@ -17,7 +17,8 @@
  * It reads only the page and the card models already loaded. What it can't prove (an external or
  * unresolved target, a missing reference, a model not loaded) has no source, never a guessed one.
  * `sourceOf` and `combineOf` answer for an open page from the window's query cache; `viewCode` opens
- * the answer in the sheet, which then follows that page's selection (`useFollowSelection`).
+ * the answer in the sheet, which then follows that page's selection (`useFollowSelection`). The sheet
+ * keeps how to find the source again, so a recompile that moves the item moves its highlight too.
  */
 
 import { useEffect } from "react";
@@ -217,12 +218,18 @@ export function selectionSource(page: Page, selection: Selection, context: Sourc
   }
 }
 
-/** The resolver's context for a board's pages now: the workspace's projects and the window's loaded card models. */
-export function loadedContext(boardProject: ProjectId): SourceContext {
+/**
+ * The resolver's context for a board's pages now: the workspace's projects and the window's loaded card
+ * models. `settled` leaves out a model that is refreshing (its data may be from an earlier compile).
+ */
+export function loadedContext(boardProject: ProjectId, settled = false): SourceContext {
   const index = getProjectIndex();
   return {
     project: (name) => resolveRefProject(index, boardProject, name),
-    model: (project, key) => queryClient.getQueryData<CardView>(cardQuery(project, key).queryKey),
+    model: (project, key) => {
+      const state = queryClient.getQueryState<CardView>(cardQuery(project, key).queryKey);
+      return settled && (state?.isInvalidated === true || state?.fetchStatus === "fetching") ? undefined : state?.data;
+    },
   };
 }
 
@@ -243,18 +250,39 @@ export function combineOf(target: PageTarget, selection: Selection = getPageView
   return page ? combineChoice(page, selection, loadedContext(target.board.project)) : { reason: "The page isn't open." };
 }
 
-/** Shows a View code target from a page; the sheet then follows that page's selection. */
-export function showSource(target: PageTarget, source: PeekTarget): void {
-  openPeek({ ...source, follow: target });
+/** Where the source of `selection` is on the settled card models, each time it's asked (`PeekTarget.resolve`). */
+function resolverOf(target: PageTarget, selection: Selection): () => PeekTarget | null {
+  return () => {
+    const page = openPage(target);
+    return page ? selectionSource(page, selection, loadedContext(target.board.project, true)).target : null;
+  };
+}
+
+/** Shows a View code target from a page, found again by `resolve`; the sheet then follows that page's selection. */
+export function showSource(target: PageTarget, source: PeekTarget, resolve: () => PeekTarget | null): void {
+  openPeek({ ...source, follow: target, resolve });
 }
 
 /** View code: opens the source of `selection` (default: the page's) in the peek sheet. Returns whether it had one. */
-export function viewCode(target: PageTarget, selection?: Selection): boolean {
+export function viewCode(target: PageTarget, selection: Selection = getPageView(target).selection): boolean {
   const result = sourceOf(target, selection);
   if (result.target) {
-    showSource(target, result.target);
+    showSource(target, result.target, resolverOf(target, selection));
   }
   return result.target !== null;
+}
+
+/** View code on an entrance's resolved target at `position`: that startup's or handler's definition. */
+export function viewEntranceTarget(target: PageTarget, project: ProjectId, entrance: Key, position: number): void {
+  const find = (settled: boolean) => {
+    const model = loadedContext(target.board.project, settled).model(project, entrance);
+    const handler = model?.type === "entrance" ? model.targets.find((item) => item.position === position) : undefined;
+    return handler ? entranceTargetSource(project, handler).target : null;
+  };
+  const source = find(false);
+  if (source) {
+    showSource(target, source, () => find(true));
+  }
 }
 
 /** Where a source target is, as Selected links it: `orders.ts:27–31` (or the file alone). */
@@ -283,7 +311,7 @@ export function useFollowSelection(target: PageTarget): void {
     }
     const result = sourceOf(target, selection);
     if (result.target && !sameSource(result.target, peek)) {
-      showSource(target, result.target);
+      showSource(target, result.target, resolverOf(target, selection));
     }
   }, [target, selection]);
 }

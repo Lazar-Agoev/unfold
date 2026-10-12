@@ -1,8 +1,9 @@
 /**
  * Type declarations and type cards as the rest of the UI names them: `interface Cart`, `type CartId`,
  * `enum Currency`. A type card is a card of a type declaration or a class (design §4.2): its Diagram view
- * lists its fields. A type declaration has no paths, so Flow shows its fields too; a class keeps its Flow
- * (its methods), since its fields are its Diagram view.
+ * lists its fields. A type declaration has nothing more to show, so it keeps its fields in every view; a
+ * class's fields are its compact view, and it keeps its detail (its Flow, its methods) expanded and its
+ * Code in the Code lens.
  */
 
 import type { Key, TypeKind, TypeMember, View } from "../ipc/generated";
@@ -25,6 +26,14 @@ export function typeKindWord(kind: TypeKind): string {
 /** Whether a block of `kind` is shown as a type card: a type declaration or a class. */
 export function isTypeKind(kind: string): kind is TypeKind {
   return TYPE_KINDS.has(kind);
+}
+
+/**
+ * Whether a key's card shows only its fields, in every view, and takes no expansion: a type
+ * declaration's (`interface`, `type`, `enum`), not a class's, which expands to its detail.
+ */
+export function fieldsOnly(key: Key): boolean {
+  return declarationWord(keyBlockKind(key) ?? "") !== undefined;
 }
 
 /**
@@ -73,8 +82,9 @@ export function newCardView(kind: string): View | undefined {
 /**
  * What a card's body shows in `view` (the view `shownView` gives it under the page's lens): Code, Flow,
  * a Diagram node, a type card's fields, or an entrance's handlers. An entrance is a node in Diagram view
- * and its handlers card otherwise; a type card (a type declaration or a class) keeps its fields in every
- * view, so changing the lens never drops them.
+ * and its handlers card otherwise; a type declaration keeps its fields in every view, so changing the
+ * lens never drops them; a class shows its fields compact in Diagram, and its Flow expanded or its Code
+ * in the Code lens.
  */
 export type CardBody = "code" | "flow" | "node" | "fields" | "handlers";
 
@@ -82,7 +92,8 @@ export function cardBody(key: Key, view: View): CardBody {
   if (key.startsWith("entrance:")) {
     return view === "diagram" ? "node" : "handlers";
   }
-  if (isTypeKind(keyBlockKind(key) ?? "")) {
+  const kind = keyBlockKind(key) ?? "";
+  if (fieldsOnly(key) || (kind === "class" && view === "diagram")) {
     return "fields";
   }
   return view === "diagram" ? "node" : view;

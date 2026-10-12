@@ -9,7 +9,7 @@
 import { z } from "zod";
 import type { ViewSelection } from "../../../shared/agent-api";
 import type { Page } from "../engine-types";
-import { cardExpanded, isTypeKey, pageLens } from "../page-code";
+import { cardExpanded, fieldsOnlyKey, pageLens } from "../page-code";
 import { textResult, windowRefusal } from "../results";
 import { defineTool } from "../tool";
 
@@ -26,7 +26,7 @@ function describeItem(page: Page, id: string): string {
     const calls = card.expanded?.length ?? 0;
     const facts = [
       card.ref.project ? `from project ${card.ref.project}` : null,
-      isTypeKey(key) ? null : cardExpanded(page, card) ? "expanded" : "compact",
+      fieldsOnlyKey(key) ? null : cardExpanded(page, card) ? "expanded" : "compact",
       calls > 0 ? `${calls} ${calls === 1 ? "call" : "calls"} expanded in place` : null,
       card.folded ? "folded" : null,
     ];

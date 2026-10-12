@@ -8,7 +8,7 @@ import type * as Boards from "../state/boards";
 import { openBoard } from "../state/boards";
 import { resetBoards } from "../state/boards/store";
 import { initialLayout, useLayout } from "../state/layout";
-import { closePeek, openPeek } from "../state/overlays";
+import { closePeek, getPeekTarget, openPeek, type PeekTarget } from "../state/overlays";
 import { useTabs } from "../state/tabs";
 import { useWindowStore } from "../state/window";
 import { fixture, installFakeEngine, type FakeEngine } from "../test/engine";
@@ -256,6 +256,40 @@ describe("the peek sheet", () => {
       await screen.findByText("5 lines · TypeScript");
       expect([1, 2, 3, 4, 5].map((line) => notifyRow(line)?.classList.contains("focus"))).toEqual([false, true, true, true, false]);
       expect(notify().querySelector(".peek-focus")).toBeNull();
+    });
+
+    it("keeps the highlight on its item: none while the card models refresh, and it moves when a recompile moved the item", async () => {
+      let now: PeekTarget | null = { project: ORDERS, path: NOTIFY_PATH, line: 2, focus };
+      const resolve = () => now;
+      const { client } = renderWithClient(<PeekSheet />);
+      act(() => {
+        openPeek({ project: ORDERS, path: NOTIFY_PATH, line: 2, focus, resolve });
+      });
+      await screen.findByText("5 lines · TypeScript");
+      expect(notifyRow(2)?.classList.contains("focus")).toBe(true);
+
+      // The card models refresh after a compile: the old range isn't drawn on the new text.
+      now = null;
+      act(() => {
+        client.setQueryData(["refresh"], 1);
+      });
+      expect(notify().querySelector(".peek-row.focus")).toBeNull();
+      expect(notify().querySelector(".peek-focus")).toBeNull();
+
+      // The compile moved the item: the sheet follows it there, still able to find it again.
+      const moved = { startLine: 4, endLine: 4 };
+      now = { project: ORDERS, path: NOTIFY_PATH, line: 4, focus: moved };
+      act(() => {
+        client.setQueryData(["refresh"], 2);
+      });
+      await waitFor(() => {
+        expect(getPeekTarget()?.focus).toEqual(moved);
+      });
+      expect(getPeekTarget()?.resolve).toBe(resolve);
+      await waitFor(() => {
+        expect(notifyRow(4)?.classList.contains("focus")).toBe(true);
+      });
+      expect(notifyRow(2)?.classList.contains("focus")).toBe(false);
     });
 
     it("never draws a range on a file changed since the compile: it says so instead", async () => {

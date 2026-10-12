@@ -22,8 +22,9 @@ description; don't present it as a database.
 ## Type cards
 - add_cards: a type card lists the type's fields (name, written type, `?`,
   `readonly`, a default as ` = …`), an enum's values, or an alias's type, in Diagram
-  and Code alike; it takes no expansion. A card with 12 or more rows shows 8, then
-  "N more".
+  and Code alike; it takes no expansion. A class's card shows its fields while compact;
+  expanded, it shows its detail, and in Code its source. A card with 12 or more rows
+  shows 8, then "N more".
 - follow: {types: 1} on a type card adds the types its fields link to (up to 2 levels).
   Unfold draws a type arrow from the field's row to each linked type card of the same
   project, labeled with the written type. Type arrows are compiled: never connect over

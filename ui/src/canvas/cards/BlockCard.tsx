@@ -6,7 +6,8 @@
  * header, and its arrows attach there. The body never scrolls: the card sizes itself to its content.
  * Flow shows the page's labels for the card's project and the card's groups as step groups (a group's
  * one `collapsed` field folds it in both views), and the calls the card expands in place
- * (`CallInsets`): an inset under the call, while the call's own arrow keeps leaving from its step.
+ * (`CallInsets`): an inset under the call, while the call's own arrow keeps leaving from its step and
+ * the calls the inset shows leave from theirs (`placeFlowPorts`).
  * In Flow, Shift-click selects a run of its own steps (Combine), `</>` on a step or a combined block
  * opens its source (View code), and right-click opens a step's menu. Its proposed steps show in its
  * own Flow only (never in Code, nor in another card's inset), with the missing or held treatment
@@ -22,7 +23,7 @@ import { Monogram, showToast } from "../../components";
 import { CodeView, portSpot } from "../../code/CodeView";
 import { defaultFolds, groupConflict, groupSelection } from "../../code/outline";
 import { shortPath } from "../../code/text";
-import { FlowView, flowPortNodes, type FlowProposals, type ProposalMark } from "../../flow/FlowView";
+import { FlowView, type FlowProposals, type ProposalMark } from "../../flow/FlowView";
 import { stepGroups } from "../../flow/groups";
 import { useEngineQuery } from "../../ipc/queries";
 import { insetRoom } from "../../flow/insets";
@@ -53,7 +54,7 @@ import { CARD_MAX_WIDTH } from "../layout";
 import { useMeasure } from "../measure";
 import { blockCardWidth, codeContentWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";
-import { flowExpansion, useCallInsets, type InsetContext } from "./CallInsets";
+import { flowExpansion, placeFlowPorts, useCallInsets, type InsetContext } from "./CallInsets";
 import { InlineCallee } from "./InlineCallee";
 import { CardGlyph, CardHandles, CardNote, DescriptionStrip, ExpandToggle, HeaderPorts, renderPorts, toggleCardFolded } from "./parts";
 import { ReviewBanner } from "./ReviewBanner";
@@ -62,6 +63,7 @@ import { clickCard } from "./select";
 const NO_FOLDS: readonly string[] = [];
 const NO_KEYS: readonly string[] = [];
 const NO_PROPOSALS: readonly Proposal[] = [];
+const NO_INSET_PORTS: ReadonlyMap<string, ReadonlyMap<string, readonly string[]>> = new Map();
 
 /** Why where a proposed step goes needs review: its step is missing, or held. */
 const PROPOSAL_NOTES = {
@@ -250,17 +252,13 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
     [name, location, foreign, view, bodyWidth, insetWidth, measure],
   );
 
-  // Which ports the body places; the rest (and all of a folded card's) sit on the header.
+  // Which ports the body places (its own Flow's steps, or an inset's); the rest (and all of a folded card's) sit on the header.
   const flowPorts = useMemo(() => {
     if (view !== "flow" || !flowLayout) {
       return null;
     }
-    const owners = new Map<string, string>();
-    for (const id of ports) {
-      owners.set(id, shown?.links.find((link) => link.source === id)?.owner ?? "");
-    }
-    return flowPortNodes(flowLayout, owners);
-  }, [view, flowLayout, ports, shown]);
+    return placeFlowPorts(key, flowLayout, insets, ports, (id) => shown?.links.find((link) => link.source === id)?.owner ?? "");
+  }, [view, flowLayout, insets, ports, shown, key]);
   const headerPorts = folded
     ? ports
     : view === "flow" && flowPorts
@@ -401,6 +399,7 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
       showCode({ kind: "group", groupId });
     },
     onStepMenu: menu.openStepMenu,
+    ports: flowPorts?.insets ?? NO_INSET_PORTS,
   };
 
   let body: ReactNode;
@@ -440,7 +439,7 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
         }}
         ports={flowPorts.byNode}
         renderPorts={renderPorts}
-        expansion={flowExpansion(insetContext, [], [key], insets)}
+        expansion={flowExpansion(insetContext, [], [key], insets, { width: Math.max(flowLayout.width, width - 2), reach: 0 })}
         proposals={flowProposals}
       />
     );
