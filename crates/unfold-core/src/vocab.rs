@@ -1,22 +1,24 @@
 //! The graph's closed vocabularies and the per-kind rules other crates share.
 //!
 //! Every vocabulary is a fieldless enum whose serialized form is the exact string the graph
-//! model uses (`expression_statement`, `express.route`, `POST`, ...). In self-describing formats
+//! model uses (`type_alias`, `unknown_receiver`, `not_a_start`, ...). In self-describing formats
 //! (JSON, the canonical export) values serialize as those strings; in compact formats (postcard,
 //! the facts cache) they serialize as their variant index.
 //!
-//! `docs/graph-model.md` is the authoritative description of every value.
+//! `docs/designs/diagram-blocks.md` ("Records") describes every node and link value.
 
 use std::fmt;
 use std::str::FromStr;
 
-use serde::{Deserialize, Serialize};
+use serde::de::{self, SeqAccess, Visitor};
+use serde::ser::SerializeSeq;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A string that is not part of a vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("unknown {vocabulary} `{value}`")]
 pub struct UnknownValue {
-    /// The vocabulary's name, such as `block kind`.
+    /// The vocabulary's name, such as `node form`.
     pub vocabulary: &'static str,
     /// The rejected input.
     pub value: Box<str>,
@@ -82,7 +84,7 @@ vocabulary! {
         Current = "current",
         /// The file no longer parses; the facts come from the last version that did.
         LastGood = "last_good",
-        /// No version of the file has parsed; it has no blocks.
+        /// No version of the file has parsed; it has no nodes.
         Failed = "failed",
     }
 }
@@ -101,121 +103,169 @@ vocabulary! {
 }
 
 vocabulary! {
-    /// A selected syntax entity.
-    BlockKind, "block kind" {
-        File = "file",
-        Function = "function",
+    /// What a block is: one of the five kinds of block, with definitions split by what they
+    /// define. A node's kind follows from its [`Form`].
+    NodeKind, "node kind" {
+        /// A file's own code.
+        Module = "module",
         Class = "class",
+        /// Any function: declared, a method, an accessor, or written inline.
+        Function = "function",
+        /// An interface, a type alias, or an enum. It has no body.
+        Type = "type",
+        /// Code that chooses which of its parts run.
+        Decision = "decision",
+        /// Code that repeats its body.
+        Loop = "loop",
+        /// Code that protects its body.
+        Try = "try",
+        /// Code that runs its body inside a context.
+        With = "with",
+        /// One lane of a control block.
+        Part = "part",
+        /// A place where this code runs other code.
+        Call = "call",
+        /// A place where a path leaves.
+        Exit = "exit",
+    }
+}
+
+vocabulary! {
+    /// A block's written form. Every form belongs to exactly one [`NodeKind`]
+    /// ([`Form::kind`]), so a node stores only its form and an impossible kind and form pair
+    /// can't be written down.
+    Form, "node form" {
+        Module = "module",
+        Class = "class",
+        Function = "function",
         Method = "method",
         Constructor = "constructor",
+        /// Python's `@property`, a TypeScript `get` accessor.
         Getter = "getter",
+        /// Python's `@x.setter`, a TypeScript `set` accessor.
         Setter = "setter",
-        Variable = "variable",
-        Call = "call",
-        New = "new",
-        Import = "import",
+        /// A Python `lambda`, a TypeScript arrow function or function expression.
+        Lambda = "lambda",
+        Interface = "interface",
+        TypeAlias = "type_alias",
+        Enum = "enum",
         If = "if",
-        For = "for",
-        ForIn = "for_in",
-        ForOf = "for_of",
-        While = "while",
-        DoWhile = "do_while",
+        Match = "match",
         Switch = "switch",
-        Case = "case",
-        Default = "default",
+        /// A conditional expression that contains a call.
+        Ternary = "ternary",
+        For = "for",
+        While = "while",
+        Do = "do",
+        /// A comprehension or generator expression that contains a call.
+        Comprehension = "comprehension",
         Try = "try",
+        With = "with",
+        /// TypeScript's `using` and `await using`.
+        Using = "using",
+        Then = "then",
+        Elif = "elif",
+        Else = "else",
+        Case = "case",
+        /// A `switch`'s `default`, or Python's guardless `case _:`.
+        Default = "default",
+        Body = "body",
+        Except = "except",
         Catch = "catch",
+        Finally = "finally",
+        Call = "call",
+        /// A construction: `new X()`, or a Python call whose class identity is proven.
+        New = "new",
         Return = "return",
+        Raise = "raise",
         Throw = "throw",
         Break = "break",
         Continue = "continue",
-        ExpressionStatement = "expression_statement",
-        With = "with",
-        Match = "match",
-        /// A TypeScript interface.
-        Interface = "interface",
-        /// A TypeScript type alias.
-        TypeAlias = "type_alias",
-        /// A TypeScript enum.
-        Enum = "enum",
+        Yield = "yield",
     }
 }
 
 vocabulary! {
-    /// A block's relationship to its saved parent. A root, or an unmapped structural
-    /// relationship, has no role (`Option<Role>` is `None`).
-    Role, "role" {
-        Body = "body",
-        Parameter = "parameter",
-        Condition = "condition",
-        Then = "then",
-        Else = "else",
-        Initializer = "initializer",
-        Update = "update",
-        Iterable = "iterable",
-        Catch = "catch",
-        Finally = "finally",
-        Expression = "expression",
-        Binding = "binding",
-        Callee = "callee",
-        Argument = "argument",
-        Heritage = "heritage",
+    /// A yes-or-no fact about a node ([`Flag::applies_to`] says which nodes may carry it).
+    Flag, "node flag" {
+        /// An `async` function, or an `async with` or `await using`.
+        Async = "async",
+        /// A function that yields.
+        Generator = "generator",
+        /// A call written under `await`.
+        Awaited = "awaited",
+        /// A call that runs only sometimes inside its expression: the right side of `and`,
+        /// `or`, or `??`, or after `?.`.
+        Conditional = "conditional",
+        /// An expression block whose value is exactly what its exit returns, raises, or yields.
+        ExitValue = "exit_value",
+        /// A `switch` case that runs into the next one.
+        FallsThrough = "falls_through",
+        /// A Python `except*` handler.
+        Group = "group",
+        /// A block the front end could not place: nesting past the depth limit, or a TypeScript
+        /// labeled plain block.
+        Truncated = "truncated",
+    }
+}
+
+vocabulary! {
+    /// Why a call sits in the body it does: it is written in a part's test, or it runs when a
+    /// definition is created (or, for a TypeScript default, when its function is called).
+    CallRole, "call role" {
+        /// Written in a part's test.
+        Test = "test",
+        /// A decorator of a definition.
         Decorator = "decorator",
-        Header = "header",
-        Name = "name",
+        /// A parameter's default value.
+        Default = "default",
+        /// A class base written as a call.
+        Base = "base",
     }
 }
 
 vocabulary! {
-    /// A written part of a block.
-    SlotName, "slot" {
-        Name = "name",
-        Parameter = "parameter",
-        ReturnType = "return_type",
-        Body = "body",
-        Heritage = "heritage",
-        Initializer = "initializer",
-        Condition = "condition",
-        Update = "update",
-        Iterable = "iterable",
-        Then = "then",
-        Else = "else",
-        Expression = "expression",
-        Callee = "callee",
-        Argument = "argument",
-        Catch = "catch",
-        Finally = "finally",
-        Binding = "binding",
-        Specifier = "specifier",
-        /// A TypeScript type alias's aliased type.
-        Type = "type",
+    /// Where an unnamed function is written, which decides its key step.
+    Inline, "inline function" {
+        /// In a call's arguments, object properties included: `callback[n]`.
+        Callback = "callback",
+        /// Anywhere else, including called where it is written: `lambda[n]`.
+        Lambda = "lambda",
     }
 }
 
 vocabulary! {
-    /// A relationship sourced at one occurrence.
-    EdgeKind, "edge kind" {
+    /// A relationship between a block and what it names.
+    LinkKind, "link kind" {
+        /// A call runs a definition, a library, a builtin, or something unknown.
         Calls = "calls",
-        Constructs = "constructs",
+        /// A call passes a definition as a value.
+        Passes = "passes",
+        /// A class or type extends (or, flagged, implements) a class or type.
+        Extends = "extends",
+        /// A module, function, or dynamic-import call imports a module.
         Imports = "imports",
-        References = "references",
+        /// A definition or an `except` part names a class or type in an annotation or clause.
+        Types = "types",
     }
 }
 
 vocabulary! {
-    /// How an edge or entrance target was resolved.
-    Resolution, "resolution" {
-        /// One proven target in the graph.
-        Resolved = "resolved",
-        /// A proven origin outside the graph, with a module label.
-        External = "external",
-        /// No reliable target, with a reason.
-        Unresolved = "unresolved",
+    /// How a link resolved.
+    Outcome, "outcome" {
+        /// To one proven definition in this project.
+        Project = "project",
+        /// To a proven outside module, such as `fastapi` or `python:logging`.
+        Library = "library",
+        /// To the language's own builtins: Python's `builtins`, ECMAScript's standard objects.
+        Builtin = "builtin",
+        /// To nothing proven, for a reason.
+        Unknown = "unknown",
     }
 }
 
 vocabulary! {
-    /// Why an occurrence or entrance target is unresolved.
+    /// Why a link's target is unknown.
     Reason, "reason" {
         UnknownName = "unknown_name",
         UnknownReceiver = "unknown_receiver",
@@ -235,64 +285,18 @@ vocabulary! {
 }
 
 vocabulary! {
-    /// A declared way that a process or unit of work starts.
-    EntranceKind, "entrance kind" {
-        Process = "process",
-        Command = "command",
-        Http = "http",
-        Worker = "worker",
-        Schedule = "schedule",
-        Event = "event",
-    }
-}
-
-vocabulary! {
-    /// How much of an entrance's trigger is known.
-    TriggerStatus, "trigger status" {
-        Exact = "exact",
-        Partial = "partial",
-        /// Exactly when the trigger is absent.
-        Unknown = "unknown",
-    }
-}
-
-vocabulary! {
-    /// What an entrance target is to its entrance.
-    TargetRole, "target role" {
-        /// The module initialization (or console callable) a process starts with.
-        Startup = "startup",
-        /// Declared work for every other entrance kind.
-        Handler = "handler",
-    }
-}
-
-vocabulary! {
-    /// The method of an HTTP entrance.
-    HttpMethod, "HTTP method" {
-        Get = "GET",
-        Head = "HEAD",
-        Post = "POST",
-        Put = "PUT",
-        Patch = "PATCH",
-        Delete = "DELETE",
-        Options = "OPTIONS",
-        All = "ALL",
-    }
-}
-
-vocabulary! {
-    /// An entrance detector.
-    DetectorId, "detector" {
-        Manual = "manual",
-        PackageScript = "package.script",
-        PackageBin = "package.bin",
-        ExpressRoute = "express.route",
-        BullmqWorker = "bullmq.worker",
-        NodeCronSchedule = "node-cron.schedule",
-        PyprojectScript = "pyproject.script",
-        FastapiRoute = "fastapi.route",
-        CeleryTask = "celery.task",
-        ApschedulerJob = "apscheduler.job",
+    /// What an app's or entrance's `code` key names after a compile.
+    TargetState, "target state" {
+        /// A module, a definition, or an inline function.
+        Found = "found",
+        /// No block has the key.
+        Missing = "missing",
+        /// Scope or ignore rules exclude the key's file.
+        NotAnalyzed = "not_analyzed",
+        /// A call, an exit, a control block, or a part.
+        NotAStart = "not_a_start",
+        /// The key's file stopped parsing; the block is its last good one.
+        Stale = "stale",
     }
 }
 
@@ -357,134 +361,199 @@ vocabulary! {
     }
 }
 
-vocabulary! {
-    /// Where a call's value lands.
-    ResultBinding, "result binding" {
-        /// It is exactly the initializer of a `variable` block.
-        Variable = "variable",
-        /// It is exactly a returned expression (Python: also a lambda body; TypeScript: also an
-        /// arrow function's expression body).
-        Return = "return",
-        /// It is exactly an argument of another call or construction.
-        Argument = "argument",
-        /// It is exactly the expression of an `expression_statement`.
-        Discard = "discard",
-        /// Anything else.
-        Other = "other",
+impl NodeKind {
+    /// `module`, `class`, `function`, or `type`: something that can be a card, and the kinds
+    /// that own the blocks under them ([`crate::model::owner`]).
+    pub const fn is_definition(self) -> bool {
+        matches!(self, Self::Module | Self::Class | Self::Function | Self::Type)
+    }
+
+    /// `decision`, `loop`, `try`, or `with`: a block whose lanes are parts.
+    pub const fn is_control(self) -> bool {
+        matches!(self, Self::Decision | Self::Loop | Self::Try | Self::With)
     }
 }
 
-vocabulary! {
-    /// How a type name written in a heritage clause relates its declaration to the type it
-    /// names.
-    Heritage, "heritage" {
-        /// A base the declaration extends: TypeScript `extends` (an interface's or a class's), a
-        /// Python class base.
-        Extends = "extends",
-        /// An interface a TypeScript class implements.
-        Implements = "implements",
+impl Form {
+    /// The kind every block of this form is.
+    pub const fn kind(self) -> NodeKind {
+        use NodeKind as K;
+        match self {
+            Self::Module => K::Module,
+            Self::Class => K::Class,
+            Self::Function
+            | Self::Method
+            | Self::Constructor
+            | Self::Getter
+            | Self::Setter
+            | Self::Lambda => K::Function,
+            Self::Interface | Self::TypeAlias | Self::Enum => K::Type,
+            Self::If | Self::Match | Self::Switch | Self::Ternary => K::Decision,
+            Self::For | Self::While | Self::Do | Self::Comprehension => K::Loop,
+            Self::Try => K::Try,
+            Self::With | Self::Using => K::With,
+            Self::Then
+            | Self::Elif
+            | Self::Else
+            | Self::Case
+            | Self::Default
+            | Self::Body
+            | Self::Except
+            | Self::Catch
+            | Self::Finally => K::Part,
+            Self::Call | Self::New => K::Call,
+            Self::Return | Self::Raise | Self::Throw | Self::Break | Self::Continue | Self::Yield => K::Exit,
+        }
     }
-}
 
-impl BlockKind {
-    /// `function`, `method`, `constructor`, `getter`, or `setter`: a block with a callable body.
-    pub const fn is_function_like(self) -> bool {
-        matches!(
-            self,
-            Self::Function | Self::Method | Self::Constructor | Self::Getter | Self::Setter
-        )
-    }
-
-    /// `call`, `new`, or `import`: a block that is the source of exactly one occurrence edge.
-    pub const fn is_occurrence(self) -> bool {
-        matches!(self, Self::Call | Self::New | Self::Import)
-    }
-
-    /// `class`, `interface`, `type_alias`, or `enum`: a declaration a type name can resolve to,
-    /// and the kinds that carry `member` records.
-    pub const fn is_type_declaration(self) -> bool {
-        matches!(self, Self::Class | Self::Interface | Self::TypeAlias | Self::Enum)
-    }
-
-    /// Whether files of `language` can contain this kind. Python never emits `new`, `for`,
-    /// `for_in`, `do_while`, `switch`, `default`, `interface`, `type_alias`, or `enum`; `with`
-    /// and `match` are Python only.
+    /// Whether files of `language` can contain this form, following the design's language
+    /// mapping. Python has no `switch`, `do`, `using`, `catch`, `throw`, or type declarations;
+    /// TypeScript has no `match`, comprehensions, `with`, `except`, or `raise`.
     pub const fn allowed_in(self, language: Language) -> bool {
         match language {
-            Language::TypeScript => !matches!(self, Self::With | Self::Match),
             Language::Python => !matches!(
                 self,
-                Self::New
-                    | Self::For
-                    | Self::ForIn
-                    | Self::DoWhile
-                    | Self::Switch
-                    | Self::Default
+                Self::Switch
+                    | Self::Do
+                    | Self::Using
+                    | Self::Catch
+                    | Self::Throw
                     | Self::Interface
                     | Self::TypeAlias
                     | Self::Enum
             ),
+            Language::TypeScript => !matches!(
+                self,
+                Self::Match | Self::Comprehension | Self::With | Self::Except | Self::Raise
+            ),
         }
     }
+}
 
-    /// The slots a block of this kind may have in `language`, in canonical order.
-    pub const fn slots(self, language: Language) -> &'static [SlotName] {
-        use SlotName as S;
-        let python = matches!(language, Language::Python);
+impl Flag {
+    /// Whether a node of `form` may carry this flag: `async` on functions and `with` blocks,
+    /// `generator` on functions, `awaited` and `conditional` on calls, `exit_value` on calls,
+    /// ternaries, and comprehensions, `falls_through` on a `switch`'s `case` and `default`
+    /// parts, `group` on `except` parts, and `truncated` on any node.
+    pub const fn applies_to(self, form: Form) -> bool {
         match self {
-            Self::Function | Self::Method | Self::Constructor | Self::Getter | Self::Setter => {
-                &[S::Name, S::Parameter, S::ReturnType, S::Body]
+            Self::Async => matches!(form.kind(), NodeKind::Function | NodeKind::With),
+            Self::Generator => matches!(form.kind(), NodeKind::Function),
+            Self::Awaited | Self::Conditional => matches!(form.kind(), NodeKind::Call),
+            Self::ExitValue => {
+                matches!(form.kind(), NodeKind::Call) || matches!(form, Form::Ternary | Form::Comprehension)
             }
-            Self::Class => &[S::Name, S::Heritage],
-            Self::Interface => &[S::Name, S::Heritage, S::Body],
-            Self::TypeAlias => &[S::Name, S::Type],
-            Self::Enum => &[S::Name, S::Body],
-            Self::Variable => &[S::Name, S::Initializer],
-            Self::Call | Self::New => &[S::Callee, S::Argument],
-            Self::If => &[S::Condition, S::Then, S::Else],
-            Self::For => &[S::Initializer, S::Condition, S::Update, S::Body],
-            Self::ForOf if python => &[S::Initializer, S::Iterable, S::Body, S::Else],
-            Self::ForIn | Self::ForOf => &[S::Initializer, S::Iterable, S::Body],
-            Self::While if python => &[S::Condition, S::Body, S::Else],
-            Self::While | Self::DoWhile => &[S::Condition, S::Body],
-            Self::Switch | Self::With | Self::Match => &[S::Expression, S::Body],
-            Self::Case => &[S::Condition, S::Body],
-            Self::Default => &[S::Body],
-            Self::Try if python => &[S::Body, S::Catch, S::Else, S::Finally],
-            Self::Try => &[S::Body, S::Catch, S::Finally],
-            Self::Catch => &[S::Binding, S::Body],
-            Self::Return | Self::Throw | Self::ExpressionStatement => &[S::Expression],
-            Self::Import => &[S::Specifier],
-            Self::File | Self::Break | Self::Continue => &[],
+            Self::FallsThrough => matches!(form, Form::Case | Form::Default),
+            Self::Group => matches!(form, Form::Except),
+            Self::Truncated => true,
         }
     }
 
-    /// Whether `slot` may appear on this kind in `language` (see [`BlockKind::slots`]).
-    pub fn has_slot(self, slot: SlotName, language: Language) -> bool {
-        self.allowed_in(language) && self.slots(language).contains(&slot)
+    const fn bit(self) -> u16 {
+        1 << self as u16
+    }
+}
+
+/// A set of [`Flag`]s.
+///
+/// In self-describing formats it serializes as an array of flag strings in declaration order
+/// (`["async", "generator"]`); in compact formats, as one integer.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct Flags(u16);
+
+impl Flags {
+    /// No flags.
+    pub const NONE: Self = Self(0);
+
+    /// The set with exactly `flags`.
+    pub fn of(flags: &[Flag]) -> Self {
+        flags.iter().fold(Self::NONE, |set, &flag| set.with(flag))
     }
 
-    /// Whether `slot` repeats on this kind and so carries a contiguous zero-based index:
-    /// every `parameter` and `argument`, and Python `try` handlers (`catch`).
-    pub const fn slot_is_indexed(self, slot: SlotName, language: Language) -> bool {
-        match slot {
-            SlotName::Parameter | SlotName::Argument => true,
-            SlotName::Catch => matches!(self, Self::Try) && matches!(language, Language::Python),
-            _ => false,
-        }
+    /// This set with `flag` added.
+    #[must_use]
+    pub const fn with(self, flag: Flag) -> Self {
+        Self(self.0 | flag.bit())
     }
 
-    /// The occurrence edge kinds a block of this kind may source in `language`: `calls` for a
-    /// call (or `constructs` for a Python call with proven class identity), `constructs` for
-    /// `new`, `imports` for `import`. Empty for every other kind.
-    pub const fn occurrence_edge_kinds(self, language: Language) -> &'static [EdgeKind] {
-        match (self, language) {
-            (Self::Call, Language::Python) => &[EdgeKind::Calls, EdgeKind::Constructs],
-            (Self::Call, Language::TypeScript) => &[EdgeKind::Calls],
-            (Self::New, _) => &[EdgeKind::Constructs],
-            (Self::Import, _) => &[EdgeKind::Imports],
-            _ => &[],
+    /// Adds `flag`.
+    pub fn insert(&mut self, flag: Flag) {
+        self.0 |= flag.bit();
+    }
+
+    /// Whether `flag` is in the set.
+    pub const fn contains(self, flag: Flag) -> bool {
+        self.0 & flag.bit() != 0
+    }
+
+    /// Whether the set is empty.
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    /// The flags in the set, in declaration order.
+    pub fn iter(self) -> impl Iterator<Item = Flag> {
+        Flag::ALL.iter().copied().filter(move |&flag| self.contains(flag))
+    }
+}
+
+impl fmt::Debug for Flags {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_set().entries(self.iter()).finish()
+    }
+}
+
+impl FromIterator<Flag> for Flags {
+    fn from_iter<I: IntoIterator<Item = Flag>>(flags: I) -> Self {
+        flags.into_iter().fold(Self::NONE, Self::with)
+    }
+}
+
+impl Serialize for Flags {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if !serializer.is_human_readable() {
+            return serializer.serialize_u16(self.0);
         }
+        let mut seq = serializer.serialize_seq(None)?;
+        for flag in self.iter() {
+            seq.serialize_element(&flag)?;
+        }
+        seq.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Flags {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct FlagsVisitor;
+
+        impl<'de> Visitor<'de> for FlagsVisitor {
+            type Value = Flags;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("an array of node flags")
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Flags, A::Error> {
+                let mut flags = Flags::NONE;
+                while let Some(flag) = seq.next_element::<Flag>()? {
+                    flags.insert(flag);
+                }
+                Ok(flags)
+            }
+        }
+
+        if !deserializer.is_human_readable() {
+            let bits = u16::deserialize(deserializer)?;
+            let all = Flags::of(Flag::ALL).0;
+            return if bits & !all == 0 {
+                Ok(Flags(bits))
+            } else {
+                Err(de::Error::custom(format_args!(
+                    "unknown node flag bits {bits:#x}"
+                )))
+            };
+        }
+        deserializer.deserialize_seq(FlagsVisitor)
     }
 }
 
@@ -538,112 +607,6 @@ impl Expansion {
     }
 }
 
-impl Role {
-    /// Whether a block with this role under a parent of `parent` kind is allowed in `language`.
-    /// `header` is Python only, and `else` under a loop or `try` is Python only.
-    pub const fn allowed_in(self, parent: BlockKind, language: Language) -> bool {
-        match (self, language) {
-            (_, Language::Python) => true,
-            (Self::Header, Language::TypeScript) => false,
-            (Self::Else, Language::TypeScript) => !matches!(
-                parent,
-                BlockKind::For
-                    | BlockKind::ForIn
-                    | BlockKind::ForOf
-                    | BlockKind::While
-                    | BlockKind::DoWhile
-                    | BlockKind::Try
-            ),
-            _ => true,
-        }
-    }
-}
-
-impl EdgeKind {
-    /// The block kinds a resolved edge of this kind may target. For `constructs`, a `class`
-    /// target is permitted only when it declares no direct constructor; the validator checks
-    /// that separately.
-    pub const fn target_kinds(self) -> &'static [BlockKind] {
-        use BlockKind as K;
-        match self {
-            Self::Calls => FUNCTION_LIKE_AND_CLASS,
-            Self::Constructs => &[K::Function, K::Method, K::Constructor, K::Class],
-            Self::Imports => &[K::File],
-            Self::References => &[K::Function, K::Method, K::Class],
-        }
-    }
-
-    /// Whether this is an occurrence edge (every kind except `references`).
-    pub const fn is_occurrence(self) -> bool {
-        !matches!(self, Self::References)
-    }
-}
-
-const FUNCTION_LIKE_AND_CLASS: &[BlockKind] = &[
-    BlockKind::Function,
-    BlockKind::Method,
-    BlockKind::Constructor,
-    BlockKind::Getter,
-    BlockKind::Setter,
-    BlockKind::Class,
-];
-
-impl EntranceKind {
-    /// The role every target of this entrance kind has.
-    pub const fn target_role(self) -> TargetRole {
-        match self {
-            Self::Process => TargetRole::Startup,
-            _ => TargetRole::Handler,
-        }
-    }
-}
-
-impl TargetRole {
-    /// The block kinds a resolved target with this role may name, given its entrance's detector.
-    /// A startup is a file root, except a `pyproject.script` console callable and a configured
-    /// launch's callable or application binding; a manual handler may also be a branch (`if`,
-    /// `case`, `default`) for explicit CLI dispatch.
-    pub const fn target_kinds(self, detector: DetectorId) -> &'static [BlockKind] {
-        use BlockKind as K;
-        match (self, detector) {
-            (Self::Startup, DetectorId::PyprojectScript) => &[K::Function, K::Method],
-            (Self::Startup, DetectorId::Manual) => &[K::File, K::Function, K::Method, K::Class, K::Variable],
-            (Self::Startup, _) => &[K::File],
-            (Self::Handler, DetectorId::Manual) => &[K::Function, K::Method, K::If, K::Case, K::Default],
-            (Self::Handler, _) => &[K::Function, K::Method],
-        }
-    }
-}
-
-impl DetectorId {
-    /// The entrance kinds this detector may produce. Manual declarations may produce any kind.
-    pub const fn entrance_kinds(self) -> &'static [EntranceKind] {
-        match self {
-            Self::Manual => EntranceKind::ALL,
-            Self::PackageScript | Self::PackageBin | Self::PyprojectScript => &[EntranceKind::Process],
-            Self::ExpressRoute | Self::FastapiRoute => &[EntranceKind::Http],
-            Self::BullmqWorker | Self::CeleryTask => &[EntranceKind::Worker],
-            Self::NodeCronSchedule | Self::ApschedulerJob => &[EntranceKind::Schedule],
-        }
-    }
-
-    /// The language whose code this detector reads, or `None` for manual declarations, which
-    /// may target either language.
-    pub const fn language(self) -> Option<Language> {
-        match self {
-            Self::Manual => None,
-            Self::PackageScript
-            | Self::PackageBin
-            | Self::ExpressRoute
-            | Self::BullmqWorker
-            | Self::NodeCronSchedule => Some(Language::TypeScript),
-            Self::PyprojectScript | Self::FastapiRoute | Self::CeleryTask | Self::ApschedulerJob => {
-                Some(Language::Python)
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -671,34 +634,31 @@ mod tests {
         round_trip(Language::ALL);
         round_trip(FileState::ALL);
         round_trip(InputRole::ALL);
-        round_trip(BlockKind::ALL);
-        round_trip(Role::ALL);
-        round_trip(SlotName::ALL);
-        round_trip(EdgeKind::ALL);
-        round_trip(Resolution::ALL);
+        round_trip(NodeKind::ALL);
+        round_trip(Form::ALL);
+        round_trip(Flag::ALL);
+        round_trip(CallRole::ALL);
+        round_trip(Inline::ALL);
+        round_trip(LinkKind::ALL);
+        round_trip(Outcome::ALL);
         round_trip(Reason::ALL);
-        round_trip(EntranceKind::ALL);
-        round_trip(TriggerStatus::ALL);
-        round_trip(TargetRole::ALL);
-        round_trip(HttpMethod::ALL);
-        round_trip(DetectorId::ALL);
+        round_trip(TargetState::ALL);
         round_trip(ParameterKind::ALL);
         round_trip(MemberKind::ALL);
         round_trip(Expansion::ALL);
         round_trip(PairingReason::ALL);
-        round_trip(ResultBinding::ALL);
-        round_trip(Heritage::ALL);
     }
 
     #[test]
-    fn vocabulary_sizes_match_the_graph_model() {
-        assert_eq!(BlockKind::ALL.len(), 32);
-        assert_eq!(Role::ALL.len(), 18);
-        assert_eq!(SlotName::ALL.len(), 19);
+    fn vocabulary_sizes_match_the_design() {
+        assert_eq!(NodeKind::ALL.len(), 11);
+        assert_eq!(Form::ALL.len(), 39);
+        assert_eq!(Flag::ALL.len(), 8);
+        assert_eq!(CallRole::ALL.len(), 4);
+        assert_eq!(LinkKind::ALL.len(), 5);
+        assert_eq!(Outcome::ALL.len(), 4);
         assert_eq!(Reason::ALL.len(), 14);
-        assert_eq!(EntranceKind::ALL.len(), 6);
-        assert_eq!(HttpMethod::ALL.len(), 8);
-        assert_eq!(DetectorId::ALL.len(), 10);
+        assert_eq!(TargetState::ALL.len(), 5);
     }
 
     /// Compact formats (postcard, the facts cache) encode a value as its variant index, so
@@ -712,28 +672,24 @@ mod tests {
             names(Language::ALL),
             names(FileState::ALL),
             names(InputRole::ALL),
-            names(BlockKind::ALL),
-            names(Role::ALL),
-            names(SlotName::ALL),
-            names(EdgeKind::ALL),
-            names(Resolution::ALL),
+            names(NodeKind::ALL),
+            names(Form::ALL),
+            names(Flag::ALL),
+            names(CallRole::ALL),
+            names(Inline::ALL),
+            names(LinkKind::ALL),
+            names(Outcome::ALL),
             names(Reason::ALL),
-            names(EntranceKind::ALL),
-            names(TriggerStatus::ALL),
-            names(TargetRole::ALL),
-            names(HttpMethod::ALL),
-            names(DetectorId::ALL),
+            names(TargetState::ALL),
             names(ParameterKind::ALL),
             names(MemberKind::ALL),
             names(Expansion::ALL),
             names(PairingReason::ALL),
-            names(ResultBinding::ALL),
-            names(Heritage::ALL),
         ]
         .join("\n");
         assert_eq!(
             crate::text::ContentHash::of(encoding.as_bytes()).to_string(),
-            "9177628621122457e2187c52ed231f0c8a514596409e17ffad94b6d8ee7a3d77",
+            "fb9aa03fde7b647f223042852a09811ce52377959465c5fe63e9e11db1f9a86f",
             "a vocabulary's variant order changed: bump unfold-engine's ENGINE_VERSION so cached \
              facts are recomputed, then update this hash"
         );
@@ -741,74 +697,101 @@ mod tests {
 
     #[test]
     fn unknown_values_are_rejected_with_their_vocabulary() {
-        let error = "lambda".parse::<BlockKind>().unwrap_err();
-        assert_eq!(error.to_string(), "unknown block kind `lambda`");
-        assert!("get".parse::<HttpMethod>().is_err());
+        let error = "statement".parse::<Form>().unwrap_err();
+        assert_eq!(error.to_string(), "unknown node form `statement`");
+        assert!("Calls".parse::<LinkKind>().is_err());
         assert!(serde_json::from_str::<Reason>("\"\"").is_err());
     }
 
     #[test]
-    fn language_rules_follow_the_slot_table() {
-        use BlockKind as K;
-        use Language::{Python, TypeScript};
-        assert!(K::ForOf.has_slot(SlotName::Else, Python));
-        assert!(!K::ForOf.has_slot(SlotName::Else, TypeScript));
-        assert!(
-            !K::For.has_slot(SlotName::Body, Python),
-            "Python never emits `for`"
-        );
-        assert!(K::With.has_slot(SlotName::Expression, Python));
-        assert!(!K::With.has_slot(SlotName::Expression, TypeScript));
-        assert!(K::Try.slot_is_indexed(SlotName::Catch, Python));
-        assert!(!K::Try.slot_is_indexed(SlotName::Catch, TypeScript));
-        assert!(K::Call.slot_is_indexed(SlotName::Argument, TypeScript));
-        assert!(K::File.slots(TypeScript).is_empty());
+    fn every_form_has_the_kind_of_the_design_table() {
+        let forms = |kind: NodeKind| -> Vec<&str> {
+            Form::ALL
+                .iter()
+                .filter(|form| form.kind() == kind)
+                .map(|form| form.as_str())
+                .collect()
+        };
+        use NodeKind as K;
+        assert_eq!(forms(K::Module), ["module"]);
+        assert_eq!(forms(K::Class), ["class"]);
         assert_eq!(
-            K::Call.occurrence_edge_kinds(Python),
-            &[EdgeKind::Calls, EdgeKind::Constructs]
+            forms(K::Function),
+            ["function", "method", "constructor", "getter", "setter", "lambda"]
         );
-        assert_eq!(K::Call.occurrence_edge_kinds(TypeScript), &[EdgeKind::Calls]);
-        assert!(K::Variable.occurrence_edge_kinds(TypeScript).is_empty());
-        assert!(!Role::Header.allowed_in(K::Function, TypeScript));
-        assert!(Role::Else.allowed_in(K::If, TypeScript));
-        assert!(!Role::Else.allowed_in(K::While, TypeScript));
-        assert!(Role::Else.allowed_in(K::While, Python));
+        assert_eq!(forms(K::Type), ["interface", "type_alias", "enum"]);
+        assert_eq!(forms(K::Decision), ["if", "match", "switch", "ternary"]);
+        assert_eq!(forms(K::Loop), ["for", "while", "do", "comprehension"]);
+        assert_eq!(forms(K::Try), ["try"]);
+        assert_eq!(forms(K::With), ["with", "using"]);
+        assert_eq!(
+            forms(K::Part),
+            [
+                "then", "elif", "else", "case", "default", "body", "except", "catch", "finally"
+            ]
+        );
+        assert_eq!(forms(K::Call), ["call", "new"]);
+        assert_eq!(
+            forms(K::Exit),
+            ["return", "raise", "throw", "break", "continue", "yield"]
+        );
+        let definitions: Vec<NodeKind> = NodeKind::ALL
+            .iter()
+            .copied()
+            .filter(|kind| kind.is_definition())
+            .collect();
+        assert_eq!(definitions, [K::Module, K::Class, K::Function, K::Type]);
+        let controls: Vec<NodeKind> = NodeKind::ALL
+            .iter()
+            .copied()
+            .filter(|kind| kind.is_control())
+            .collect();
+        assert_eq!(controls, [K::Decision, K::Loop, K::Try, K::With]);
     }
 
     #[test]
-    fn target_rules_follow_the_edge_and_entrance_tables() {
-        use BlockKind as K;
-        assert!(EdgeKind::Calls.target_kinds().contains(&K::Getter));
-        assert!(!EdgeKind::References.target_kinds().contains(&K::Getter));
-        assert_eq!(EdgeKind::Imports.target_kinds(), &[K::File]);
+    fn forms_follow_the_language_mapping() {
+        use Language::{Python, TypeScript};
+        assert!(Form::Match.allowed_in(Python) && !Form::Match.allowed_in(TypeScript));
+        assert!(Form::Switch.allowed_in(TypeScript) && !Form::Switch.allowed_in(Python));
+        assert!(Form::Except.allowed_in(Python) && !Form::Except.allowed_in(TypeScript));
+        assert!(Form::Catch.allowed_in(TypeScript) && !Form::Catch.allowed_in(Python));
+        assert!(Form::Interface.allowed_in(TypeScript) && !Form::Interface.allowed_in(Python));
+        assert!(Form::New.allowed_in(Python) && Form::New.allowed_in(TypeScript));
+        assert!(Form::Default.allowed_in(Python) && Form::Default.allowed_in(TypeScript));
+    }
+
+    #[test]
+    fn flags_apply_to_the_forms_the_design_names() {
+        assert!(Flag::Async.applies_to(Form::Lambda));
+        assert!(Flag::Async.applies_to(Form::Using));
+        assert!(!Flag::Async.applies_to(Form::Call));
+        assert!(Flag::Awaited.applies_to(Form::New));
+        assert!(Flag::ExitValue.applies_to(Form::Ternary));
+        assert!(!Flag::ExitValue.applies_to(Form::If));
+        assert!(Flag::FallsThrough.applies_to(Form::Case));
+        assert!(!Flag::FallsThrough.applies_to(Form::Then));
+        assert!(Flag::Group.applies_to(Form::Except));
+        assert!(Form::ALL.iter().all(|&form| Flag::Truncated.applies_to(form)));
+    }
+
+    #[test]
+    fn flag_sets_serialize_as_names_or_bits() {
+        let flags = Flags::of(&[Flag::Generator, Flag::Async]);
+        assert!(flags.contains(Flag::Async) && !flags.contains(Flag::Awaited));
+        assert_eq!(flags.iter().collect::<Vec<_>>(), [Flag::Async, Flag::Generator]);
+        assert_eq!(serde_json::to_string(&flags).unwrap(), r#"["async","generator"]"#);
         assert_eq!(
-            TargetRole::Startup.target_kinds(DetectorId::PackageScript),
-            &[K::File]
+            serde_json::from_str::<Flags>(r#"["generator","async"]"#).unwrap(),
+            flags
         );
-        assert!(
-            TargetRole::Startup
-                .target_kinds(DetectorId::PyprojectScript)
-                .contains(&K::Function)
-        );
-        assert!(
-            TargetRole::Handler
-                .target_kinds(DetectorId::Manual)
-                .contains(&K::Case)
-        );
-        assert!(
-            !TargetRole::Handler
-                .target_kinds(DetectorId::ExpressRoute)
-                .contains(&K::Case)
-        );
-        assert_eq!(DetectorId::CeleryTask.entrance_kinds(), &[EntranceKind::Worker]);
-        assert_eq!(DetectorId::Manual.language(), None);
-        assert_eq!(DetectorId::FastapiRoute.language(), Some(Language::Python));
-        assert_eq!(EntranceKind::Process.target_role(), TargetRole::Startup);
-        let function_like: Vec<BlockKind> = BlockKind::ALL
-            .iter()
-            .copied()
-            .filter(|kind| kind.is_function_like())
-            .collect();
-        assert_eq!(&function_like, &EdgeKind::Calls.target_kinds()[..5]);
+        assert_eq!(serde_json::to_string(&Flags::NONE).unwrap(), "[]");
+        assert!(serde_json::from_str::<Flags>(r#"["fast"]"#).is_err());
+        let packed = postcard::to_allocvec(&flags).unwrap();
+        assert_eq!(postcard::from_bytes::<Flags>(&packed).unwrap(), flags);
+        let unknown = postcard::to_allocvec(&0x8000_u16).unwrap();
+        assert!(postcard::from_bytes::<Flags>(&unknown).is_err());
+        assert_eq!(Flag::ALL.iter().copied().collect::<Flags>(), Flags::of(Flag::ALL));
+        assert_eq!(format!("{flags:?}"), "{Async, Generator}");
     }
 }

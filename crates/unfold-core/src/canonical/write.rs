@@ -5,13 +5,12 @@ use std::io;
 use serde::Serialize;
 
 use super::{FORMAT, VERSION};
-use crate::model::{Edge, Entrance, FileGraph, Graph, Slot};
+use crate::model::{App, EntranceTarget, FileGraph, Graph, Link, LinkTarget};
 use crate::text::{ByteRange, ContentHash, LineSpan};
 use crate::typed::{FileTypes, Pairing};
 use crate::vocab::{
-    BlockKind, DetectorId, EdgeKind, EntranceKind, Expansion, FileState, Heritage, HttpMethod, InputRole,
-    Language, MemberKind, PairingReason, ParameterKind, Reason, Resolution, ResultBinding, Role, SlotName,
-    TargetRole, TriggerStatus,
+    CallRole, Expansion, FileState, Flags, Form, InputRole, Language, LinkKind, MemberKind, NodeKind,
+    Outcome, PairingReason, ParameterKind, TargetState,
 };
 
 #[derive(Serialize)]
@@ -34,56 +33,59 @@ struct FileOut<'a> {
 }
 
 #[derive(Serialize)]
-struct BlockOut<'a> {
+struct NodeOut<'a> {
     t: &'static str,
     key: &'a str,
-    kind: BlockKind,
     #[serde(skip_serializing_if = "Option::is_none")]
-    role: Option<Role>,
+    parent: Option<&'a str>,
+    kind: NodeKind,
+    form: Form,
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<&'a str>,
     range: ByteRange,
     lines: LineSpan,
-}
-
-#[derive(Serialize)]
-struct SlotOut<'a> {
-    t: &'static str,
-    block: &'a str,
-    slot: SlotName,
     #[serde(skip_serializing_if = "Option::is_none")]
-    index: Option<u32>,
-    range: ByteRange,
-}
-
-#[derive(Serialize)]
-struct EdgeOut<'a> {
-    t: &'static str,
-    source: &'a str,
-    seq: u32,
-    kind: EdgeKind,
+    head: Option<ByteRange>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    body: Option<ByteRange>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    doc: Option<ByteRange>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stmt: Option<ByteRange>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    value: Option<ByteRange>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    binds: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    role: Option<CallRole>,
+    #[serde(rename = "for", skip_serializing_if = "Option::is_none")]
+    r#for: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    flags: Option<Flags>,
     #[serde(skip_serializing_if = "Option::is_none")]
     target: Option<&'a str>,
-    text: &'a str,
-    resolution: Resolution,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reason: Option<Reason>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    module: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    position: Option<u32>,
 }
 
-/// Whether a flag is absent from the export (it is written only when true).
-#[allow(clippy::trivially_copy_pass_by_ref)] // serde passes fields by reference.
-fn is_false(flag: &bool) -> bool {
-    !*flag
+#[derive(Serialize)]
+struct LinkOut<'a> {
+    t: &'static str,
+    from: &'a str,
+    seq: u32,
+    kind: LinkKind,
+    range: ByteRange,
+    text: &'a str,
+    outcome: Outcome,
+    to: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    implements: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bound: Option<u32>,
 }
 
 #[derive(Serialize)]
 struct SignatureOut<'a> {
     t: &'static str,
-    block: &'a str,
+    node: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     returns: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -93,15 +95,16 @@ struct SignatureOut<'a> {
 #[derive(Serialize)]
 struct ParameterOut<'a> {
     t: &'static str,
-    block: &'a str,
+    node: &'a str,
     index: u32,
+    range: ByteRange,
     kind: ParameterKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<&'a str>,
-    #[serde(skip_serializing_if = "is_false")]
-    optional: bool,
-    #[serde(skip_serializing_if = "is_false")]
-    default: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    optional: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default: Option<bool>,
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     ty: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -111,17 +114,17 @@ struct ParameterOut<'a> {
 #[derive(Serialize)]
 struct MemberOut<'a> {
     t: &'static str,
-    block: &'a str,
+    node: &'a str,
     index: u32,
     kind: MemberKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<&'a str>,
-    #[serde(skip_serializing_if = "is_false")]
-    optional: bool,
-    #[serde(skip_serializing_if = "is_false")]
-    readonly: bool,
-    #[serde(skip_serializing_if = "is_false")]
-    default: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    optional: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    readonly: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default: Option<bool>,
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     ty: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -135,6 +138,7 @@ struct ArgumentOut<'a> {
     t: &'static str,
     call: &'a str,
     index: u32,
+    range: ByteRange,
     #[serde(skip_serializing_if = "Option::is_none")]
     expand: Option<Expansion>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -148,38 +152,6 @@ struct ArgumentOut<'a> {
 }
 
 #[derive(Serialize)]
-struct ResultOut<'a> {
-    t: &'static str,
-    call: &'a str,
-    binding: ResultBinding,
-    #[serde(skip_serializing_if = "is_false")]
-    awaited: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    target: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    position: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    bound: Option<u32>,
-}
-
-#[derive(Serialize)]
-struct TypeLinkOut<'a> {
-    t: &'static str,
-    block: &'a str,
-    range: ByteRange,
-    text: &'a str,
-    resolution: Resolution,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    target: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reason: Option<Reason>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    module: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    heritage: Option<Heritage>,
-}
-
-#[derive(Serialize)]
 struct InputOut<'a> {
     t: &'static str,
     path: &'a str,
@@ -188,52 +160,48 @@ struct InputOut<'a> {
 }
 
 #[derive(Serialize)]
+struct AppOut<'a> {
+    t: &'static str,
+    key: &'a str,
+    name: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    run: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    about: Option<&'a str>,
+}
+
+#[derive(Serialize)]
 struct EntranceOut<'a> {
     t: &'static str,
     key: &'a str,
-    kind: EntranceKind,
+    name: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    label: Option<&'a str>,
+    on: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    method: Option<HttpMethod>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    trigger: Option<&'a str>,
-    trigger_status: TriggerStatus,
-    detector: DetectorId,
-    evidence_path: &'a str,
-    evidence_range: ByteRange,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    evidence_block: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    evidence_pointer: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    binding: Option<&'a str>,
+    about: Option<&'a str>,
 }
 
 #[derive(Serialize)]
 struct TargetOut<'a> {
     t: &'static str,
-    entrance: &'a str,
-    position: u32,
-    role: TargetRole,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    target: Option<&'a str>,
-    text: &'a str,
-    resolution: Resolution,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reason: Option<Reason>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    module: Option<&'a str>,
+    of: &'a str,
+    code: &'a str,
+    state: TargetState,
+}
+
+/// A flag as the export writes it: present only when true.
+fn flag(value: bool) -> Option<bool> {
+    value.then_some(true)
 }
 
 /// Writes `graph` as canonical JSON Lines.
 ///
-/// Files are written in path order, each followed by its blocks (preorder), slots (by block,
-/// range, slot, index), edges (by source, sequence), and typed records (signatures, parameters,
-/// members, arguments, and results by block then index; type links by block then range); then
-/// inputs in path order; then
-/// entrances in canonical order, each followed by its targets in position order. The output
-/// depends only on the graph's contents, not on the order its vectors happen to be in.
+/// The header comes first; then files in path order, each followed by its nodes (in the
+/// graph's preorder), its links (by `from`, then `seq`), and its typed records (signatures,
+/// parameters, members, and arguments, each by node, then index); then inputs in path order;
+/// then apps in file order, each followed by its own `code` target and its entrances, and each
+/// entrance by its targets. Apart from the nodes and the apps, whose order is their meaning,
+/// the output doesn't depend on the order of the graph's vectors.
 ///
 /// Each record is several small writes, so pass a buffered writer (such as a `BufWriter` or a
 /// `Vec`).
@@ -244,16 +212,10 @@ pub fn write(graph: &Graph, out: &mut impl io::Write) -> io::Result<()> {
         format: FORMAT,
         version: VERSION,
     })?;
-
-    let mut files: Vec<&FileGraph> = graph.files.iter().collect();
-    files.sort_by(|a, b| a.file.path.cmp(&b.file.path));
-    for file in files {
+    for file in sorted(&graph.files, |file| file.file.path.clone()) {
         write_file(&mut writer, file)?;
     }
-
-    let mut inputs: Vec<_> = graph.inputs.iter().collect();
-    inputs.sort_by(|a, b| a.path.cmp(&b.path));
-    for input in inputs {
+    for input in sorted(&graph.inputs, |input| input.path.clone()) {
         writer.record(&InputOut {
             t: "input",
             path: input.path.as_str(),
@@ -261,11 +223,8 @@ pub fn write(graph: &Graph, out: &mut impl io::Write) -> io::Result<()> {
             hash: input.hash,
         })?;
     }
-
-    let mut entrances: Vec<&Entrance> = graph.entrances.iter().collect();
-    entrances.sort_by(|a, b| a.canonical_cmp(b));
-    for entrance in entrances {
-        write_entrance(&mut writer, entrance)?;
+    for app in &graph.apps {
+        write_app(&mut writer, app)?;
     }
     Ok(())
 }
@@ -278,6 +237,13 @@ pub fn to_string(graph: &Graph) -> String {
     String::from_utf8(bytes).unwrap_or_default()
 }
 
+/// The items sorted by `key`, without copying them.
+fn sorted<T, K: Ord>(items: &[T], key: impl Fn(&T) -> K) -> Vec<&T> {
+    let mut sorted: Vec<&T> = items.iter().collect();
+    sorted.sort_by_key(|item| key(item));
+    sorted
+}
+
 fn write_file(writer: &mut LineWriter<'_, impl io::Write>, file: &FileGraph) -> io::Result<()> {
     let record = &file.file;
     writer.record(&FileOut {
@@ -288,99 +254,98 @@ fn write_file(writer: &mut LineWriter<'_, impl io::Write>, file: &FileGraph) -> 
         hash: record.hash,
         failure: record.failure.as_deref(),
     })?;
-    for block in &file.blocks {
-        writer.record(&BlockOut {
-            t: "block",
-            key: block.key.as_str(),
-            kind: block.kind,
-            role: block.role,
-            name: block.name.as_deref(),
-            range: block.range,
-            lines: block.lines,
-        })?;
-    }
-    let block_key = |local_id: u32| {
-        file.blocks
+    // A local ID with no node is a broken graph; it is written as an empty key, which
+    // reading rejects.
+    let key = |local_id: u32| {
+        file.nodes
             .get(local_id as usize)
-            .map_or("", |block| block.key.as_str())
+            .map_or("", |node| node.key.as_str())
     };
-
-    let mut slots: Vec<&Slot> = file.slots.iter().collect();
-    slots.sort_by(|a, b| {
-        (a.block, a.range, a.slot.as_str(), a.index).cmp(&(b.block, b.range, b.slot.as_str(), b.index))
-    });
-    for slot in slots {
-        writer.record(&SlotOut {
-            t: "slot",
-            block: block_key(slot.block),
-            slot: slot.slot,
-            index: slot.index,
-            range: slot.range,
+    for node in &file.nodes {
+        writer.record(&NodeOut {
+            t: "node",
+            key: node.key.as_str(),
+            parent: node.parent.map(key),
+            kind: node.kind(),
+            form: node.form,
+            name: node.name.as_deref(),
+            range: node.range,
+            lines: node.lines,
+            head: node.head,
+            body: node.body,
+            doc: node.doc,
+            stmt: node.stmt,
+            value: node.value,
+            binds: node.binds.as_deref(),
+            role: node.role,
+            r#for: node.r#for.map(key),
+            flags: (!node.flags.is_empty()).then_some(node.flags),
+            target: node.target.map(key),
         })?;
     }
-
-    let mut edges: Vec<&Edge> = file.edges.iter().collect();
-    edges.sort_by_key(|edge| (edge.source, edge.seq));
-    for edge in edges {
-        writer.record(&EdgeOut {
-            t: "edge",
-            source: block_key(edge.source),
-            seq: edge.seq,
-            kind: edge.kind,
-            target: edge.target.as_ref().map(|key| key.as_str()),
-            text: &edge.text,
-            resolution: edge.resolution,
-            reason: edge.reason,
-            module: edge.module.as_ref().map(|module| module.as_str()),
-            position: edge.position,
-        })?;
+    for link in sorted(&file.links, |link| (link.from, link.seq)) {
+        write_link(writer, link, key(link.from))?;
     }
-    write_types(writer, &file.types, &block_key)
+    write_types(writer, &file.types, &key)
 }
 
-/// The records of `items` sorted by `key`, without copying them.
-fn sorted<T, K: Ord>(items: &[T], key: impl Fn(&T) -> K) -> Vec<&T> {
-    let mut sorted: Vec<&T> = items.iter().collect();
-    sorted.sort_by_key(|item| key(item));
-    sorted
+fn write_link(writer: &mut LineWriter<'_, impl io::Write>, link: &Link, from: &str) -> io::Result<()> {
+    let to = match &link.to {
+        LinkTarget::Project(key) => key.as_str(),
+        LinkTarget::Library(label) | LinkTarget::Builtin(label) => label.as_str(),
+        LinkTarget::Unknown(reason) => reason.as_str(),
+    };
+    writer.record(&LinkOut {
+        t: "link",
+        from,
+        seq: link.seq,
+        kind: link.kind,
+        range: link.range,
+        text: &link.text,
+        outcome: link.to.outcome(),
+        to,
+        implements: flag(link.implements),
+        bound: link.bound,
+    })
 }
 
 fn write_types<'a>(
     writer: &mut LineWriter<'_, impl io::Write>,
     types: &'a FileTypes,
-    block_key: &dyn Fn(u32) -> &'a str,
+    key: &dyn Fn(u32) -> &'a str,
 ) -> io::Result<()> {
-    for signature in sorted(&types.signatures, |signature| signature.block) {
+    for signature in sorted(&types.signatures, |signature| signature.node) {
         writer.record(&SignatureOut {
             t: "signature",
-            block: block_key(signature.block),
+            node: key(signature.node),
             returns: signature.returns.as_ref().map(|returns| &*returns.text),
             returns_range: signature.returns.as_ref().map(|returns| returns.range),
         })?;
     }
-    for parameter in sorted(&types.parameters, |parameter| (parameter.block, parameter.index)) {
+    for parameter in sorted(&types.parameters, |parameter| (parameter.node, parameter.index)) {
         writer.record(&ParameterOut {
             t: "parameter",
-            block: block_key(parameter.block),
+            node: key(parameter.node),
             index: parameter.index,
+            range: parameter.range,
             kind: parameter.kind,
             name: parameter.name.as_deref(),
-            optional: parameter.optional,
-            default: parameter.default,
+            optional: flag(parameter.optional),
+            default: flag(parameter.default),
             ty: parameter.ty.as_ref().map(|ty| &*ty.text),
             type_range: parameter.ty.as_ref().map(|ty| ty.range),
         })?;
     }
-    for member in sorted(&types.members, |member| (member.block, member.index)) {
+    for member in sorted(&types.members, |member| (member.node, member.index)) {
         writer.record(&MemberOut {
             t: "member",
-            block: block_key(member.block),
+            node: key(member.node),
             index: member.index,
             kind: member.kind,
             name: member.name.as_deref(),
-            optional: member.optional,
-            readonly: member.readonly,
-            default: member.default,
+            optional: flag(member.optional),
+            readonly: flag(member.readonly),
+            default: flag(member.default),
             ty: member.ty.as_ref().map(|ty| &*ty.text),
             type_range: member.ty.as_ref().map(|ty| ty.range),
             value: member.value.as_deref(),
@@ -394,8 +359,9 @@ fn write_types<'a>(
         };
         writer.record(&ArgumentOut {
             t: "argument",
-            call: block_key(argument.call),
+            call: key(argument.call),
             index: argument.index,
+            range: argument.range,
             expand: argument.expand,
             keyword: argument.keyword.as_deref(),
             parameter,
@@ -403,65 +369,46 @@ fn write_types<'a>(
             bound: argument.bound,
         })?;
     }
-    for result in sorted(&types.results, |result| result.call) {
-        writer.record(&ResultOut {
-            t: "result",
-            call: block_key(result.call),
-            binding: result.binding,
-            awaited: result.awaited,
-            target: result.target.map(block_key),
-            position: result.position,
-            bound: result.bound,
-        })?;
+    Ok(())
+}
+
+fn write_app(writer: &mut LineWriter<'_, impl io::Write>, app: &App) -> io::Result<()> {
+    writer.record(&AppOut {
+        t: "app",
+        key: app.key.as_str(),
+        name: &app.name,
+        run: app.run.as_deref(),
+        about: app.about.as_deref(),
+    })?;
+    if let Some(code) = &app.code {
+        write_target(writer, app.key.as_str(), code)?;
     }
-    for link in sorted(&types.type_links, |link| (link.block, link.range)) {
-        writer.record(&TypeLinkOut {
-            t: "type_link",
-            block: block_key(link.block),
-            range: link.range,
-            text: &link.text,
-            resolution: link.resolution,
-            target: link.target.as_ref().map(|key| key.as_str()),
-            reason: link.reason,
-            module: link.module.as_ref().map(|module| module.as_str()),
-            heritage: link.heritage,
+    for entrance in &app.entrances {
+        writer.record(&EntranceOut {
+            t: "entrance",
+            key: entrance.key.as_str(),
+            name: &entrance.name,
+            on: entrance.on.as_deref(),
+            about: entrance.about.as_deref(),
         })?;
+        for code in &entrance.code {
+            write_target(writer, entrance.key.as_str(), code)?;
+        }
     }
     Ok(())
 }
 
-fn write_entrance(writer: &mut LineWriter<'_, impl io::Write>, entrance: &Entrance) -> io::Result<()> {
-    writer.record(&EntranceOut {
-        t: "entrance",
-        key: entrance.key.as_str(),
-        kind: entrance.kind,
-        label: entrance.label.as_deref(),
-        method: entrance.method,
-        trigger: entrance.trigger.as_deref(),
-        trigger_status: entrance.trigger_status,
-        detector: entrance.detector,
-        evidence_path: entrance.evidence.path.as_str(),
-        evidence_range: entrance.evidence.range,
-        evidence_block: entrance.evidence.block.as_ref().map(|key| key.as_str()),
-        evidence_pointer: entrance.evidence.pointer.as_deref(),
-        binding: entrance.binding.as_ref().map(|key| key.as_str()),
-    })?;
-    let mut targets: Vec<_> = entrance.targets.iter().collect();
-    targets.sort_by_key(|target| target.position);
-    for target in targets {
-        writer.record(&TargetOut {
-            t: "target",
-            entrance: entrance.key.as_str(),
-            position: target.position,
-            role: target.role,
-            target: target.target.as_ref().map(|key| key.as_str()),
-            text: &target.text,
-            resolution: target.resolution,
-            reason: target.reason,
-            module: target.module.as_ref().map(|module| module.as_str()),
-        })?;
-    }
-    Ok(())
+fn write_target(
+    writer: &mut LineWriter<'_, impl io::Write>,
+    of: &str,
+    target: &EntranceTarget,
+) -> io::Result<()> {
+    writer.record(&TargetOut {
+        t: "entrance_target",
+        of,
+        code: target.code.as_str(),
+        state: target.state,
+    })
 }
 
 struct LineWriter<'a, W: io::Write> {

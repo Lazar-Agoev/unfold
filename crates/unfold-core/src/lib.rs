@@ -1,16 +1,16 @@
-//! The contract every Unfold crate shares: the graph model and its vocabularies, structural
-//! keys, source text (snapshots, SHA-256, the line index, UTF-8/UTF-16 offsets), the graph
-//! validator, the canonical export, and the `Highlighter` contract for the Code view.
+//! The contract every Unfold crate shares: the graph's records (nodes, links, typed records,
+//! apps and entrances) and their vocabularies, structural keys, the ownership rule, source text
+//! (snapshots, SHA-256, the line index, UTF-8/UTF-16 offsets), and the `Highlighter` contract
+//! for the code panel.
 //!
-//! `unfold-core` depends on no other Unfold crate. `docs/graph-model.md` describes the
-//! semantics this crate encodes.
+//! `unfold-core` depends on no other Unfold crate. `docs/designs/diagram-blocks.md` describes
+//! the model this crate encodes.
 
 #![forbid(unsafe_code)]
 
 pub mod canonical;
 pub mod highlight;
 pub mod key;
-pub mod launches;
 pub mod model;
 pub mod path;
 #[cfg(any(test, feature = "testkit"))]
@@ -20,17 +20,10 @@ pub mod typed;
 pub mod validate;
 pub mod vocab;
 
-pub use key::{Key, KeyBuilder};
-pub use launches::{
-    DeclaredApplication, DeclaredMember, Launch, LaunchIssue, LaunchMode, LaunchPath, Launches,
-};
+pub use key::{Callee, Child, Key, KeyBuilder, ParsedKey};
 pub use model::{
-    Block, Edge, Entrance, EntranceTarget, Evidence, FileGraph, FileRecord, Graph, InputRecord, ModuleLabel,
-    Slot,
+    App, Entrance, EntranceTarget, File, FileGraph, Graph, Input, Link, LinkTarget, ModuleLabel, Node, owner,
 };
 pub use path::RepoPath;
 pub use text::{ByteRange, ContentHash, LineIndex, LineSpan, Snapshot, Utf16Index};
-pub use typed::{
-    Argument, CallResult, FileTypes, Member, Pairing, Parameter, Signature, TypeLink, WrittenType,
-};
-pub use validate::{Census, Validator, Violation, validate};
+pub use typed::{Argument, FileTypes, Member, Pairing, Parameter, Signature, WrittenType};

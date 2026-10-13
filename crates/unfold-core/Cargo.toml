@@ -1,6 +1,6 @@
 [package]
 name = "unfold-core"
-description = "Unfold's graph model, vocabularies, structural keys, text offsets, validator, and canonical export"
+description = "Unfold's graph model: nodes, links, typed records, apps and entrances, keys, validation, the canonical export, text, and paths"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -27,7 +27,6 @@ ts-rs = { workspace = true, optional = true }
 [dev-dependencies]
 postcard = { workspace = true }
 proptest = { workspace = true }
-tempfile = { workspace = true }
 
 [lints]
 workspace = true

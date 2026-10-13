@@ -1,27 +1,28 @@
-//! The graph's records: files, blocks, slots, edges, inputs, entrances, and entrance targets;
-//! each file also carries its typed records ([`crate::typed`]).
+//! The graph's records (`docs/designs/diagram-blocks.md`, "Records"): files and their nodes,
+//! links, and typed records ([`crate::typed`]); the inputs that shaped them; and the apps and
+//! entrances `unfold.toml` declares.
 //!
-//! Within a file, blocks are identified by a file-scoped `local_id` numbered in preorder;
-//! across files and in everything persisted outside the store, by their structural [`Key`].
-//! Records are compact: offsets are `u32`, names and texts are boxed strings, and keys share
-//! their text through reference counts.
+//! Within a file, a node is identified by its local ID, its position in the file's preorder
+//! (the module is 0), and links, typed records, and the nodes themselves refer to nodes of their
+//! own file that way. Across files and in everything persisted outside the store, a node is
+//! identified by its structural [`Key`]. Records are compact: offsets are `u32`, names and texts
+//! are boxed strings, and keys share their text through reference counts.
 
 use std::cmp::Ordering;
 
 use serde::{Deserialize, Serialize};
 
-use crate::key::{EntranceShape, Key, entrance_keys};
+use crate::key::Key;
 use crate::path::RepoPath;
 use crate::text::{ByteRange, ContentHash, LineSpan};
 use crate::typed::FileTypes;
 use crate::vocab::{
-    BlockKind, DetectorId, EdgeKind, EntranceKind, FileState, HttpMethod, InputRole, Language, Reason,
-    Resolution, Role, SlotName, TargetRole, TriggerStatus,
+    CallRole, FileState, Flags, Form, InputRole, Language, LinkKind, NodeKind, Outcome, Reason, TargetState,
 };
 
 /// An indexed source file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FileRecord {
+pub struct File {
     /// The folder-relative path.
     pub path: RepoPath,
     /// The file's language.
@@ -36,7 +37,7 @@ pub struct FileRecord {
 
 /// A fingerprinted configuration file that shaped the graph, such as `package.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct InputRecord {
+pub struct Input {
     /// The folder-relative path.
     pub path: RepoPath,
     /// What the input is.
@@ -45,207 +46,205 @@ pub struct InputRecord {
     pub hash: ContentHash,
 }
 
-/// A selected syntax entity.
+/// One block: a definition, control block, part, call, or exit.
+///
+/// Ranges are token-exact UTF-8 byte ranges. `head`, `body`, and `value` lie inside `range`;
+/// `stmt` contains it; `doc` lies inside it (a docstring) or just before it (a leading JSDoc).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Block {
-    /// The block's position in its file's preorder; the root is 0.
-    pub local_id: u32,
-    /// The parent's local ID; `None` only for the root.
-    pub parent: Option<u32>,
-    /// The block's kind.
-    pub kind: BlockKind,
-    /// Its relationship to the parent; `None` for the root or an unmapped relationship.
-    pub role: Option<Role>,
-    /// The declared or inferred name; never empty, and never identity.
-    pub name: Option<Box<str>>,
-    /// The token-exact byte range; the root spans the whole file.
-    pub range: ByteRange,
-    /// The lines the range starts and ends on.
-    pub lines: LineSpan,
+pub struct Node {
     /// The structural key.
     pub key: Key,
-}
-
-/// The range of a written part of a block.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Slot {
-    /// The owning block's local ID.
-    pub block: u32,
-    /// Which part.
-    pub slot: SlotName,
-    /// The zero-based index of a repeated part (parameters, arguments, Python handlers).
-    pub index: Option<u32>,
-    /// The token-exact byte range, inside the block's range.
+    /// The parent's local ID; `None` only for the module.
+    pub parent: Option<u32>,
+    /// The written form, which decides the kind ([`Node::kind`]).
+    pub form: Form,
+    /// A named definition's name, or a call's normalized callee
+    /// ([`crate::key::Callee::text`]); never empty.
+    pub name: Option<Box<str>>,
+    /// The whole block; the module spans the whole file.
     pub range: ByteRange,
+    /// The lines `range` starts and ends on.
+    pub lines: LineSpan,
+    /// A definition's signature, a control block's header, a part's test or clause, or a call's
+    /// callee.
+    pub head: Option<ByteRange>,
+    /// The suite of a definition or a part.
+    pub body: Option<ByteRange>,
+    /// A definition's docstring or JSDoc: its description from code, never a step.
+    pub doc: Option<ByteRange>,
+    /// For the first block of a statement, and for every exit: the statement's range.
+    pub stmt: Option<ByteRange>,
+    /// For an exit with a value: the value's range.
+    pub value: Option<ByteRange>,
+    /// For a call, ternary, or comprehension whose value is exactly what a statement assigns:
+    /// the written target (`receipt`, `order.receipt`, `email_row_id, inserted`).
+    pub binds: Option<Box<str>>,
+    /// Why a call sits where it does: in a test, or run when a definition is created.
+    pub role: Option<CallRole>,
+    /// For a decorator, base, or Python default: the local ID of the definition it belongs to.
+    pub r#for: Option<u32>,
+    /// Yes-or-no facts ([`crate::vocab::Flag`]).
+    pub flags: Flags,
+    /// For `break` and `continue`: the local ID of their loop.
+    pub target: Option<u32>,
 }
 
-/// A relationship sourced at one occurrence (a `call`, `new`, or `import` block).
+impl Node {
+    /// The node's kind, which its form decides.
+    pub const fn kind(&self) -> NodeKind {
+        self.form.kind()
+    }
+}
+
+/// The local ID of the definition `node` belongs to: the nearest definition (module, class,
+/// function, or type) above it. The module belongs to nothing.
+///
+/// This is the only ownership rule. A decorator, base, or Python default sits in the enclosing
+/// body, so it belongs to the enclosing definition; a call inside a callback belongs to the
+/// callback.
+///
+/// `nodes` is one file's nodes in preorder, indexed by local ID.
+pub fn owner(nodes: &[Node], node: u32) -> Option<u32> {
+    let mut parent = nodes.get(node as usize)?.parent;
+    while let Some(id) = parent {
+        let ancestor = nodes.get(id as usize)?;
+        if ancestor.kind().is_definition() {
+            return Some(id);
+        }
+        parent = ancestor.parent;
+    }
+    None
+}
+
+/// What a link reaches.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LinkTarget {
+    /// The key of one proven definition (or, for `imports`, module) in this project.
+    Project(Key),
+    /// A proven outside module.
+    Library(ModuleLabel),
+    /// The language's builtins: `python:builtins`, `ecmascript`.
+    Builtin(ModuleLabel),
+    /// Nothing proven, for this reason.
+    Unknown(Reason),
+}
+
+impl LinkTarget {
+    /// How the link resolved.
+    pub const fn outcome(&self) -> Outcome {
+        match self {
+            Self::Project(_) => Outcome::Project,
+            Self::Library(_) => Outcome::Library,
+            Self::Builtin(_) => Outcome::Builtin,
+            Self::Unknown(_) => Outcome::Unknown,
+        }
+    }
+}
+
+/// One relationship from a block to what it names.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Edge {
-    /// The occurrence block's local ID.
-    pub source: u32,
-    /// The edge's position among its source's edges: the occurrence is 0, then references in
-    /// argument order.
+pub struct Link {
+    /// The local ID of the call, definition, or part it starts at.
+    pub from: u32,
+    /// Its position among the links of `from`, contiguous from 0.
     pub seq: u32,
     /// The relationship.
-    pub kind: EdgeKind,
-    /// The target's key, exactly when resolved.
-    pub target: Option<Key>,
-    /// The short written callee, argument, or specifier (at most 120 UTF-16 units).
+    pub kind: LinkKind,
+    /// Where the target is written: the callee, the passed name, the base, the specifier, or
+    /// the type name.
+    pub range: ByteRange,
+    /// How it is written (at most 120 UTF-16 units).
     pub text: Box<str>,
-    /// How the edge resolved.
-    pub resolution: Resolution,
-    /// Why it is unresolved, exactly when unresolved.
-    pub reason: Option<Reason>,
-    /// The module label, exactly when external.
-    pub module: Option<ModuleLabel>,
-    /// The argument position of a reference, or the owner's parameter position of an
-    /// unresolved `parameter` call.
-    pub position: Option<u32>,
+    /// What it reaches.
+    pub to: LinkTarget,
+    /// For `extends`: the target is an interface a TypeScript class implements.
+    pub implements: bool,
+    /// For a `calls` link to a project function: how many of its leading parameters the call
+    /// binds itself (a Python method called through an instance binds `self`), when that is
+    /// proven.
+    pub bound: Option<u32>,
 }
 
-/// One file's blocks, slots, edges, and typed records.
+/// One file's nodes, links, and typed records.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileGraph {
     /// The file.
-    pub file: FileRecord,
-    /// Blocks in preorder; `blocks[i].local_id == i`.
-    pub blocks: Vec<Block>,
-    /// Slots ordered by block, then start.
-    pub slots: Vec<Slot>,
-    /// Edges ordered by source, then sequence.
-    pub edges: Vec<Edge>,
-    /// Signatures, parameters, members, arguments, call results, and type links.
+    pub file: File,
+    /// Nodes in preorder, indexed by local ID; the module is 0. Empty for a failed file.
+    pub nodes: Vec<Node>,
+    /// Links ordered by `from`, then `seq`.
+    pub links: Vec<Link>,
+    /// Signatures, parameters, members, and arguments.
     pub types: FileTypes,
 }
 
-/// Where an entrance is declared.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Evidence {
-    /// The source file or configuration input.
-    pub path: RepoPath,
-    /// The byte range of the declaration in that file.
-    pub range: ByteRange,
-    /// For source evidence, the block with exactly that range.
-    pub block: Option<Key>,
-    /// For configuration evidence, the RFC 6901 pointer into the parsed JSON or TOML value.
-    pub pointer: Option<Box<str>>,
+impl FileGraph {
+    /// The local ID of the node with `key`, if this file has one.
+    pub fn local_id(&self, key: &str) -> Option<u32> {
+        let index = self.nodes.iter().position(|node| node.key.as_str() == key)?;
+        u32::try_from(index).ok()
+    }
 }
 
-/// One independently resolved handler or startup target of an entrance.
+/// One `code` key of an app or entrance, and what it names after the last compile.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EntranceTarget {
-    /// The zero-based declaration order within the entrance.
-    pub position: u32,
-    /// `startup` for a process, `handler` otherwise.
-    pub role: TargetRole,
-    /// The target's key, exactly when resolved.
-    pub target: Option<Key>,
-    /// The handler label, locator, or launch path as written (at most 120 UTF-16 units).
-    pub text: Box<str>,
-    /// How the target resolved.
-    pub resolution: Resolution,
-    /// Why it is unresolved, exactly when unresolved.
-    pub reason: Option<Reason>,
-    /// The module label, exactly when external.
-    pub module: Option<ModuleLabel>,
+    /// The block key as written.
+    pub code: Key,
+    /// What it names.
+    pub state: TargetState,
 }
 
-/// A declared way that a process or unit of work starts.
+/// Something an app handles: one entry of its `entrances`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entrance {
-    /// The structural key, derived from the fields below and the entrance's order; a manual
-    /// entrance's key is `entrance:configured:<id>`, from its `[[entrance]]` table's ID.
+    /// `entrance:<app slug>/<entrance slug>` ([`Key::entrance`]).
     pub key: Key,
-    /// The entrance's kind.
-    pub kind: EntranceKind,
-    /// A display label; manual declarations only.
-    pub label: Option<Box<str>>,
-    /// The HTTP method; `http` entrances only.
-    pub method: Option<HttpMethod>,
-    /// The activating value; absent exactly when its status is `unknown`.
-    pub trigger: Option<Box<str>>,
-    /// How much of the trigger is known.
-    pub trigger_status: TriggerStatus,
-    /// The detector that produced it.
-    pub detector: DetectorId,
-    /// Where it is declared.
-    pub evidence: Evidence,
-    /// The application its registration's mount chain reaches, for a route: the key of the
-    /// block binding the application object (what a `module:attribute` ASGI launch target
-    /// resolves to); absent when unknown or not a route.
-    pub binding: Option<Key>,
-    /// Its targets in declaration order (not execution order).
-    pub targets: Vec<EntranceTarget>,
+    /// What a person calls it.
+    pub name: Box<str>,
+    /// What starts it, as written; never parsed.
+    pub on: Option<Box<str>>,
+    /// One sentence for its card.
+    pub about: Option<Box<str>>,
+    /// The blocks it starts at, in the order they run; never empty.
+    pub code: Vec<EntranceTarget>,
 }
 
-impl Entrance {
-    /// What the entrance contributes to its key.
-    pub fn key_shape(&self) -> EntranceShape<'_> {
-        EntranceShape {
-            detector: self.detector,
-            kind: self.kind,
-            method: self.method,
-            trigger: self.trigger.as_deref(),
-            first_target: self.targets.first().map(|target| &*target.text),
-            configured: match self.detector {
-                DetectorId::Manual => self.key.configured_id(),
-                _ => None,
-            },
-        }
-    }
-
-    /// The canonical entrance order: evidence path, start, end, then detector, kind, method,
-    /// and trigger compared as their vocabulary strings (absent values as empty strings).
-    pub fn canonical_cmp(&self, other: &Self) -> Ordering {
-        self.evidence
-            .path
-            .cmp(&other.evidence.path)
-            .then(self.evidence.range.start.cmp(&other.evidence.range.start))
-            .then(self.evidence.range.end.cmp(&other.evidence.range.end))
-            .then_with(|| self.detector.as_str().cmp(other.detector.as_str()))
-            .then_with(|| self.kind.as_str().cmp(other.kind.as_str()))
-            .then_with(|| {
-                self.method
-                    .map_or("", HttpMethod::as_str)
-                    .cmp(other.method.map_or("", HttpMethod::as_str))
-            })
-            .then_with(|| {
-                self.trigger
-                    .as_deref()
-                    .unwrap_or("")
-                    .cmp(other.trigger.as_deref().unwrap_or(""))
-            })
-    }
+/// Something a person runs: one `[[app]]` table of `unfold.toml`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct App {
+    /// `entrance:<app slug>` ([`Key::app`]).
+    pub key: Key,
+    /// Its heading on Home.
+    pub name: Box<str>,
+    /// The command that starts it, as written; never run or parsed.
+    pub run: Option<Box<str>>,
+    /// Where that command starts, usually a module.
+    pub code: Option<EntranceTarget>,
+    /// One sentence for its card.
+    pub about: Option<Box<str>>,
+    /// What it handles, in file order.
+    pub entrances: Vec<Entrance>,
 }
 
-/// The whole graph: files in path order, the inputs that shaped it, and entrances in canonical
-/// order.
+/// The whole graph: files in path order, the inputs that shaped it, and the apps of
+/// `unfold.toml` in file order.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Graph {
     /// Files sorted by path.
     pub files: Vec<FileGraph>,
     /// Inputs sorted by path.
-    pub inputs: Vec<InputRecord>,
-    /// Entrances in canonical order, each with its key.
-    pub entrances: Vec<Entrance>,
+    pub inputs: Vec<Input>,
+    /// Apps in file order, each with its entrances in file order.
+    pub apps: Vec<App>,
 }
 
 impl Graph {
-    /// Puts files, inputs, and entrances in canonical order and derives every entrance key.
-    ///
-    /// Entrances that tie on every ordering field keep their relative input order (detectors
-    /// run in a fixed order), so the result is deterministic for deterministic producers.
-    /// Entrance keys are recomputed, so any keys already present are replaced, except that a
-    /// manual entrance keeps its configured key (`entrance:configured:<id>`).
+    /// Puts files and inputs in path order. Apps keep the order `unfold.toml` writes them in.
     pub fn normalize(&mut self) {
         self.files.sort_by(|a, b| a.file.path.cmp(&b.file.path));
         self.inputs.sort_by(|a, b| a.path.cmp(&b.path));
-        self.entrances.sort_by(Entrance::canonical_cmp);
-        let keys = entrance_keys(self.entrances.iter().map(Entrance::key_shape));
-        for (entrance, key) in self.entrances.iter_mut().zip(keys) {
-            entrance.key = key;
-        }
     }
 
     /// The file graph at `path`, if indexed.
@@ -257,9 +256,9 @@ impl Graph {
     }
 }
 
-/// An external origin: one plain label (`express`, `node:fs`, `global`, `python:builtins`, a
-/// repository-relative path), or, when several origins are possible, a compact JSON array of
-/// two or more distinct nonempty labels sorted by their UTF-16 code units, stored as its text.
+/// An external origin: one plain label (`express`, `node:fs`, `python:builtins`, `ecmascript`),
+/// or, when several origins are possible, a compact JSON array of two or more distinct nonempty
+/// labels sorted by their UTF-16 code units, stored as its text.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(type = "string"))]
@@ -333,16 +332,102 @@ impl ModuleLabel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testkit::sample;
 
     #[test]
     fn graphs_round_trip_through_postcard_and_json() {
-        let graph = crate::testkit::sample::sample().build();
+        let graph = sample::shop().build();
         let packed = postcard::to_allocvec(&graph).unwrap();
         assert_eq!(postcard::from_bytes::<Graph>(&packed).unwrap(), graph);
         let json = serde_json::to_string(&graph).unwrap();
         assert_eq!(serde_json::from_str::<Graph>(&json).unwrap(), graph);
-        assert!(graph.file("src/orders.ts").is_some());
-        assert!(graph.file("src/absent.ts").is_none());
+        assert!(graph.file("shop/service.py").is_some());
+        assert!(graph.file("shop/absent.py").is_none());
+    }
+
+    #[test]
+    fn link_targets_serialize_with_their_outcome() {
+        let project = LinkTarget::Project(Key::from_text("shop/payments.py#charge_card"));
+        assert_eq!(project.outcome(), Outcome::Project);
+        assert_eq!(
+            serde_json::to_string(&project).unwrap(),
+            r#"{"project":"shop/payments.py#charge_card"}"#
+        );
+        let unknown = LinkTarget::Unknown(Reason::UnknownReceiver);
+        assert_eq!(unknown.outcome(), Outcome::Unknown);
+        assert_eq!(
+            serde_json::to_string(&unknown).unwrap(),
+            r#"{"unknown":"unknown_receiver"}"#
+        );
+        let builtin = LinkTarget::Builtin(ModuleLabel::single("python:builtins").unwrap());
+        assert_eq!(builtin.outcome(), Outcome::Builtin);
+        assert_eq!(
+            LinkTarget::Library(ModuleLabel::single("fastapi").unwrap()).outcome(),
+            Outcome::Library
+        );
+    }
+
+    /// A block belongs to the nearest definition above it, through control blocks, parts,
+    /// calls, and exits, and a callback owns what is inside it.
+    #[test]
+    fn a_block_belongs_to_the_nearest_definition_above_it() {
+        let graph = sample::shop().build();
+        let owner_key = |path: &str, key: &str| {
+            let file = graph.file(path).unwrap();
+            let id = file
+                .local_id(key)
+                .unwrap_or_else(|| panic!("{key} is in the sample"));
+            owner(&file.nodes, id).map(|owner| file.nodes[owner as usize].key.as_str())
+        };
+        let service = "shop/service.py";
+        assert_eq!(owner_key(service, "shop/service.py#"), None);
+        assert_eq!(
+            owner_key(service, "shop/service.py#place_order"),
+            Some("shop/service.py#")
+        );
+        assert_eq!(
+            owner_key(service, "shop/service.py#/call:logging.getLogger"),
+            Some("shop/service.py#")
+        );
+        assert_eq!(
+            owner_key(
+                service,
+                "shop/service.py#place_order/try[0]/except[0]/return[0]/call:mark_failed"
+            ),
+            Some("shop/service.py#place_order")
+        );
+        assert_eq!(
+            owner_key(service, "shop/service.py#place_order/if[0]/then"),
+            Some("shop/service.py#place_order")
+        );
+        let orders = "src/orders.ts";
+        let route = "src/orders.ts#/call:ordersRouter.post(\"/orders/:id\")";
+        assert_eq!(owner_key(orders, route), Some("src/orders.ts#"));
+        let callback = format!("{route}/callback[0]");
+        assert_eq!(owner_key(orders, &callback), Some("src/orders.ts#"));
+        assert_eq!(
+            owner_key(orders, &format!("{callback}/call:loadOrder")),
+            Some(callback.as_str())
+        );
+        assert_eq!(
+            owner_key(
+                orders,
+                &format!("{callback}/call:res.status().json/call:res.status")
+            ),
+            Some(callback.as_str())
+        );
+        let payments = "shop/payments.py";
+        assert_eq!(
+            owner_key(payments, "shop/payments.py#PaymentDeclined"),
+            Some("shop/payments.py#")
+        );
+        // A decorator sits in the enclosing body, so it belongs to the enclosing definition.
+        assert_eq!(
+            owner_key(payments, "shop/payments.py#/call:retry"),
+            Some("shop/payments.py#")
+        );
+        let file = graph.file(service).unwrap();
+        assert_eq!(owner(&file.nodes, u32::MAX), None);
     }
 
     #[test]

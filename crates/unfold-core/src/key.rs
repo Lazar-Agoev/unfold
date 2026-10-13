@@ -1,16 +1,33 @@
-//! Structural keys: names for blocks and entrances that survive most edits.
+//! Structural keys: one readable name for every block, app, and entrance, which survives most
+//! edits (`docs/designs/diagram-blocks.md`, "Keys"; `docs/designs/entrance-definitions.md`,
+//! "Keys").
 //!
-//! | Key part | Derivation |
+//! ```text
+//! key    = path "#"                               a module
+//!        | path "#" names [ "/" steps ]           a named definition, and the blocks inside it
+//!        | path "#/" steps                        the blocks of a module's own code
+//!        | "entrance:" app [ "/" entrance ]       an app's start, or one of its entrances
+//! names  = name [ "[" n "]" ] { "." name [ "[" n "]" ] }
+//! steps  = step { "/" step }
+//! step   = control "[" n "]" | part | exit "[" n "]"
+//!        | "call:" callee [ "(" literal ")" ] [ "[" n "]" ]
+//!        | inline "[" n "]" [ "." names ]
+//! ```
+//!
+//! | Block | Step |
 //! | --- | --- |
-//! | File root | `path#` |
-//! | Named step | `kind:name`, with `%`, `/`, `#`, `[`, `]` percent-escaped and `[n]` for the n-th (n ≥ 1) earlier sibling of the same kind and name |
-//! | Unnamed step | `kind[n]`: the zero-based position among siblings of that kind, named or not |
-//! | Nested block | The parent key, then `/step` (no `/` directly after the file's `#`) |
-//! | Entrance | `entrance:` plus a JSON array of detector, kind, method, trigger, and first target text, with `#n` for the n-th (n ≥ 1) earlier entrance with the same array |
-//! | Configured entrance | `entrance:configured:` plus the `[[entrance]]` table's `id`, whatever else the table says |
+//! | Named definition | its name after `#` (in a module) or after its enclosing definition's key and `.`, wherever it sits; `[n]` for the n-th (n ≥ 1) repeat of that key |
+//! | Control block, exit | its form and its ordinal among the parent's children of that form: `if[0]`, `return[1]` |
+//! | Part | `then`, `else`, `default`, `body`, `catch`, `finally`; `elif[n]`, `case[n]`, `except[n]` |
+//! | Inline function | `callback[n]` in a call's arguments, `lambda[n]` anywhere else |
+//! | Call | `call:` and its normalized callee ([`Callee`]); its first argument as a double-quoted literal when it is a string and the call takes a callback; `[n]` for the n-th (n ≥ 1) repeat of that step under the same parent |
 //!
-//! These rules reproduce the proof of concept's keys exactly, so boards and references carry
-//! over unchanged.
+//! Names and callees percent-encode `%`, `/`, `#`, `[`, and `]`. A literal is read up to its
+//! closing quote, so only `"` and `\` are escaped in it, with a backslash.
+//!
+//! This module is the only place keys are made ([`KeyBuilder`], [`Key::app`],
+//! [`Key::entrance`]) and the only place they are read ([`Key::parse`]). Everything else treats
+//! a key as opaque text and gets kinds, parents, and files from records.
 
 use std::borrow::Borrow;
 use std::fmt;
@@ -21,7 +38,7 @@ use rustc_hash::FxHashMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::path::RepoPath;
-use crate::vocab::{BlockKind, DetectorId, EntranceKind, HttpMethod};
+use crate::vocab::{Form, Inline, NodeKind};
 
 /// A structural key. Cloning is cheap (a reference count).
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -29,18 +46,30 @@ use crate::vocab::{BlockKind, DetectorId, EntranceKind, HttpMethod};
 pub struct Key(Arc<str>);
 
 impl Key {
-    /// Wraps key text read from storage or an export. The text is not checked; the validator
-    /// compares stored keys with freshly derived ones.
+    /// Wraps key text read from storage, an export, or `unfold.toml`. The text is not checked;
+    /// [`Key::parse`] reads it.
     pub fn from_text(text: &str) -> Self {
         Self(Arc::from(text))
     }
 
-    /// The key of `path`'s file root: `path#`.
-    pub fn file_root(path: &RepoPath) -> Self {
+    /// The key of `path`'s module: `path#`.
+    pub fn module(path: &RepoPath) -> Self {
         let mut text = String::with_capacity(path.as_str().len() + 1);
         text.push_str(path.as_str());
         text.push('#');
         Self(Arc::from(text))
+    }
+
+    /// The key of the app named `name`: `entrance:<slug>`.
+    pub fn app(name: &str) -> Result<Self, SlugError> {
+        Ok(Self(Arc::from(format!("{ENTRANCE_PREFIX}{}", slug(name)?))))
+    }
+
+    /// The key of the entrance named `entrance` in the app named `app`:
+    /// `entrance:<app slug>/<entrance slug>`.
+    pub fn entrance(app: &str, entrance: &str) -> Result<Self, SlugError> {
+        let text = format!("{ENTRANCE_PREFIX}{}/{}", slug(app)?, slug(entrance)?);
+        Ok(Self(Arc::from(text)))
     }
 
     /// The key's text.
@@ -48,19 +77,9 @@ impl Key {
         &self.0
     }
 
-    /// Whether this is an entrance key.
-    pub fn is_entrance(&self) -> bool {
-        self.0.starts_with(ENTRANCE_PREFIX)
-    }
-
-    /// The key of the configured entrance with `id`: `entrance:configured:<id>`.
-    pub fn configured_entrance(id: &str) -> Self {
-        Self(Arc::from(format!("{CONFIGURED_PREFIX}{id}")))
-    }
-
-    /// The ID of a configured entrance's key.
-    pub fn configured_id(&self) -> Option<&str> {
-        self.0.strip_prefix(CONFIGURED_PREFIX)
+    /// Reads the key's structure.
+    pub fn parse(&self) -> Result<ParsedKey, KeyParseError> {
+        ParsedKey::parse(&self.0)
     }
 }
 
@@ -101,117 +120,250 @@ impl<'de> Deserialize<'de> for Key {
     }
 }
 
-/// Appends `name` to `out` with the step's reserved characters (`%`, `/`, `#`, `[`, `]`)
-/// percent-encoded in uppercase hex, as JavaScript's `encodeURIComponent` writes them.
-pub fn escape_name(name: &str, out: &mut String) {
-    for character in name.chars() {
-        match character {
-            '%' => out.push_str("%25"),
-            '/' => out.push_str("%2F"),
-            '#' => out.push_str("%23"),
-            '[' => out.push_str("%5B"),
-            ']' => out.push_str("%5D"),
-            _ => out.push(character),
+const ENTRANCE_PREFIX: &str = "entrance:";
+const CALL_PREFIX: &str = "call:";
+
+/// A name with no letters or digits, which can't make an app or entrance key.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("name `{0}` has no letters or digits")]
+pub struct SlugError(pub Box<str>);
+
+/// The slug of an app or entrance name: lowercased, every run of characters other than letters
+/// and digits replaced by `-`, and leading and trailing `-` dropped.
+pub fn slug(name: &str) -> Result<String, SlugError> {
+    let mut slug = String::with_capacity(name.len());
+    let mut gap = false;
+    for character in name.to_lowercase().chars() {
+        if !character.is_alphanumeric() {
+            gap = true;
+            continue;
+        }
+        if gap && !slug.is_empty() {
+            slug.push('-');
+        }
+        gap = false;
+        slug.push(character);
+    }
+    if slug.is_empty() {
+        return Err(SlugError(name.into()));
+    }
+    Ok(slug)
+}
+
+/// A call's callee as the key and the node's name write it, built from the written expression
+/// with each language's syntax already read:
+///
+/// | Written | Callee |
+/// | --- | --- |
+/// | an identifier, a member name | itself, members after `.` (`?.` is written `.`) |
+/// | arguments | `()` |
+/// | a subscript | `[]` |
+/// | a string literal | `""` |
+/// | any other expression | `(…)` |
+///
+/// Front ends drop `await`, parentheses, TypeScript's `!`, and type casts before building it.
+/// So `res.status(500).json(…)` is `Callee::name("res").member("status").call().member("json")`,
+/// and `(row.get("x") or "").strip()` is `Callee::expression().member("strip")`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Callee(String);
+
+impl Callee {
+    /// The most characters a callee keeps; a longer one is cut.
+    pub const MAX_CHARS: usize = 80;
+
+    /// A callee that starts with the name `name`.
+    pub fn name(name: &str) -> Self {
+        Self(name.to_owned())
+    }
+
+    /// A callee that starts with a string literal: `""`.
+    pub fn string() -> Self {
+        Self("\"\"".to_owned())
+    }
+
+    /// A callee that starts with any other expression: `(…)`.
+    pub fn expression() -> Self {
+        Self("(…)".to_owned())
+    }
+
+    /// Adds a member access: `.name`.
+    #[must_use]
+    pub fn member(mut self, name: &str) -> Self {
+        self.0.push('.');
+        self.0.push_str(name);
+        self
+    }
+
+    /// Adds a call: `()`.
+    #[must_use]
+    pub fn call(mut self) -> Self {
+        self.0.push_str("()");
+        self
+    }
+
+    /// Adds a subscript: `[]`.
+    #[must_use]
+    pub fn index(mut self) -> Self {
+        self.0.push_str("[]");
+        self
+    }
+
+    /// The callee as the node's name records it: unescaped, and cut at
+    /// [`Callee::MAX_CHARS`] characters.
+    pub fn text(&self) -> &str {
+        match self.0.char_indices().nth(Self::MAX_CHARS) {
+            Some((cut, _)) => &self.0[..cut],
+            None => &self.0,
         }
     }
 }
 
-/// Why a block's key cannot be derived.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum KeyError {
-    /// The first block of a file must be its `file` root, with no parent.
-    #[error("block 0 must be the file root with no parent")]
-    MissingRoot,
-    /// Only the first block of a file may be a `file` root, and every other block has a parent.
-    #[error("block {local_id} is a second root")]
-    SecondRoot {
-        /// The offending block.
-        local_id: u32,
+/// What a node contributes to its key, given to [`KeyBuilder::push`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Child<'a> {
+    /// A named definition: a class, a type, or a function with a name. A function bound by a
+    /// declaration or a simple assignment takes that name (`const handler = …` is `handler`),
+    /// an object-literal method or class property its property name qualified by its object
+    /// (`handlers.onCreate`), and an anonymous default export `default`.
+    Definition(&'a str),
+    /// An unnamed function, keyed by where it is written.
+    Inline(Inline),
+    /// A call.
+    Call {
+        /// Its normalized callee.
+        callee: &'a Callee,
+        /// The value of its first argument, when that argument is a string literal.
+        first_literal: Option<&'a str>,
+        /// Whether any function is written in its arguments ([`Inline::Callback`]). Only then
+        /// does the first literal join the key.
+        takes_callback: bool,
     },
-    /// A parent must come before its children in preorder.
-    #[error("block {local_id} names parent {parent}, which does not precede it")]
-    ParentNotBefore {
-        /// The offending block.
-        local_id: u32,
-        /// Its claimed parent.
-        parent: u32,
-    },
+    /// A control block, a part, or an exit, keyed by its form.
+    Form(Form),
 }
 
-/// Assigns keys to one file's blocks, given in preorder.
+/// Why a node's key can't be derived.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum KeyError {
+    /// A parent must be pushed before its children.
+    #[error("parent {parent} has not been pushed")]
+    UnknownParent {
+        /// The claimed parent's local ID.
+        parent: u32,
+    },
+    /// Definitions are keyed by name or as inline functions, and calls by their callee.
+    #[error("`{0}` is keyed by a name or a callee, not by its form")]
+    NotAStep(Form),
+    /// A part without an ordinal appears once under its parent.
+    #[error("a second `{0}` part under one parent")]
+    RepeatedPart(Form),
+    /// Definitions and callees have nonempty names.
+    #[error("an empty name or callee")]
+    EmptyName,
+}
+
+/// What a node's step is counted with: steps under one parent with the same counter take
+/// ordinals 0, 1, 2, … in preorder.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum Counter {
+    Form(Form),
+    Inline(Inline),
+    /// A call step without its repeat ordinal.
+    Call(Box<str>),
+}
+
+/// Derives the keys of one file's nodes, pushed in preorder. Local ID 0 is the module.
 ///
-/// Sibling ordinals count only siblings already pushed, which in preorder are exactly the
-/// earlier siblings.
+/// A front end lowering its tree pushes each node under its parent's local ID as it creates
+/// it; the builder numbers repeats and ordinals among the siblings already pushed, which in
+/// preorder are exactly the earlier ones.
+///
+/// ```
+/// use unfold_core::key::{Callee, Child, KeyBuilder};
+/// use unfold_core::vocab::Form;
+/// use unfold_core::RepoPath;
+///
+/// let mut keys = KeyBuilder::new(&RepoPath::new("shop/service.py").unwrap());
+/// keys.push(0, Child::Definition("place_order")).unwrap(); // 1
+/// keys.push(1, Child::Form(Form::Try)).unwrap(); // 2
+/// keys.push(2, Child::Form(Form::Body)).unwrap(); // 3
+/// let charge = Callee::name("charge_card");
+/// let call = Child::Call { callee: &charge, first_literal: None, takes_callback: false };
+/// let key = keys.push(3, call).unwrap();
+/// assert_eq!(key.as_str(), "shop/service.py#place_order/try[0]/body/call:charge_card");
+/// ```
 #[derive(Debug)]
 pub struct KeyBuilder {
-    root: Key,
     keys: Vec<Key>,
-    /// Siblings of each kind under each parent, named or not.
-    kinds: FxHashMap<(u32, BlockKind), u32>,
-    /// Siblings with the same kind and name, keyed by the step's ordinal-free key.
-    names: FxHashMap<Key, u32>,
+    /// For each node, the nearest definition at or above it, whose key the names of the named
+    /// definitions under it extend.
+    scopes: Vec<u32>,
+    /// Steps pushed under each parent, by counter.
+    steps: FxHashMap<(u32, Counter), u32>,
+    /// Named definitions pushed, by their key without a repeat ordinal.
+    names: FxHashMap<Box<str>, u32>,
 }
 
 impl KeyBuilder {
-    /// Starts a file at `path`.
+    /// Starts the file at `path`, with its module as local ID 0.
     pub fn new(path: &RepoPath) -> Self {
         Self {
-            root: Key::file_root(path),
-            keys: Vec::new(),
-            kinds: FxHashMap::default(),
+            keys: vec![Key::module(path)],
+            scopes: vec![0],
+            steps: FxHashMap::default(),
             names: FxHashMap::default(),
         }
     }
 
-    /// Derives the key of the next block in preorder. `name` is the block's name; an empty
-    /// name counts as no name.
-    pub fn push(
-        &mut self,
-        parent: Option<u32>,
-        kind: BlockKind,
-        name: Option<&str>,
-    ) -> Result<Key, KeyError> {
+    /// Derives the key of the next node in preorder, a child of `parent`. Its local ID is the
+    /// number of nodes pushed before it, the module included. On an error nothing is pushed.
+    pub fn push(&mut self, parent: u32, child: Child<'_>) -> Result<Key, KeyError> {
+        let parent_index = parent as usize;
+        if parent_index >= self.keys.len() {
+            return Err(KeyError::UnknownParent { parent });
+        }
         let local_id = u32::try_from(self.keys.len()).unwrap_or(u32::MAX);
-        let key = match parent {
-            None if local_id == 0 && kind == BlockKind::File => self.root.clone(),
-            None if local_id == 0 => return Err(KeyError::MissingRoot),
-            Some(_) if local_id == 0 => return Err(KeyError::MissingRoot),
-            None => return Err(KeyError::SecondRoot { local_id }),
-            Some(_) if kind == BlockKind::File => return Err(KeyError::SecondRoot { local_id }),
-            Some(parent) if parent >= local_id => return Err(KeyError::ParentNotBefore { local_id, parent }),
-            Some(parent) => self.child_key(parent, kind, name.filter(|name| !name.is_empty())),
+        let (key, scope) = match child {
+            Child::Definition(name) => (self.definition(parent_index, name)?, local_id),
+            Child::Inline(inline) => {
+                let ordinal = self.next(parent, Counter::Inline(inline));
+                let step = Segment::Inline { inline, ordinal };
+                (self.step_key(parent_index, &step), local_id)
+            }
+            Child::Call {
+                callee,
+                first_literal,
+                takes_callback,
+            } => {
+                let callee = callee.text();
+                if callee.is_empty() {
+                    return Err(KeyError::EmptyName);
+                }
+                let literal = first_literal.filter(|_| takes_callback);
+                let mut base = String::new();
+                write_call(&mut base, callee, literal);
+                let repeat = self.next(parent, Counter::Call(base.into()));
+                let step = Segment::Call {
+                    callee: callee.into(),
+                    literal: literal.map(Into::into),
+                    repeat: (repeat > 0).then_some(repeat),
+                };
+                (self.step_key(parent_index, &step), self.scopes[parent_index])
+            }
+            Child::Form(form) => {
+                let numbering = Numbering::of(form).ok_or(KeyError::NotAStep(form))?;
+                if numbering == Numbering::Once && self.steps.contains_key(&(parent, Counter::Form(form))) {
+                    return Err(KeyError::RepeatedPart(form));
+                }
+                let ordinal = self.next(parent, Counter::Form(form));
+                let ordinal = (numbering == Numbering::Ordinal).then_some(ordinal);
+                let step = Segment::Form { form, ordinal };
+                (self.step_key(parent_index, &step), self.scopes[parent_index])
+            }
         };
         self.keys.push(key.clone());
+        self.scopes.push(scope);
         Ok(key)
-    }
-
-    fn child_key(&mut self, parent: u32, kind: BlockKind, name: Option<&str>) -> Key {
-        let parent_key = self.keys[parent as usize].as_str();
-        let mut text = String::with_capacity(parent_key.len() + kind.as_str().len() + 8);
-        text.push_str(parent_key);
-        if !parent_key.ends_with('#') {
-            text.push('/');
-        }
-        text.push_str(kind.as_str());
-        let kind_count = self.kinds.entry((parent, kind)).or_insert(0);
-        let kind_ordinal = *kind_count;
-        *kind_count += 1;
-        let Some(name) = name else {
-            // Writing to a String cannot fail.
-            let _ = write!(text, "[{kind_ordinal}]");
-            return Key(Arc::from(text));
-        };
-        text.push(':');
-        escape_name(name, &mut text);
-        if let Some(count) = self.names.get_mut(text.as_str()) {
-            let _ = write!(text, "[{count}]");
-            *count += 1;
-            Key(Arc::from(text))
-        } else {
-            let key = Key(Arc::from(text));
-            self.names.insert(key.clone(), 1);
-            key
-        }
     }
 
     /// The keys derived so far, indexed by local ID.
@@ -223,380 +375,452 @@ impl KeyBuilder {
     pub fn finish(self) -> Vec<Key> {
         self.keys
     }
-}
 
-const ENTRANCE_PREFIX: &str = "entrance:";
-const CONFIGURED_PREFIX: &str = "entrance:configured:";
-
-/// What an entrance contributes to its key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EntranceShape<'a> {
-    /// The detector that produced the entrance.
-    pub detector: DetectorId,
-    /// The entrance's kind.
-    pub kind: EntranceKind,
-    /// The HTTP method, if any.
-    pub method: Option<HttpMethod>,
-    /// The trigger, if known.
-    pub trigger: Option<&'a str>,
-    /// The text of the entrance's first target, if it has one.
-    pub first_target: Option<&'a str>,
-    /// The ID of a configured entrance, which alone makes its key.
-    pub configured: Option<&'a str>,
-}
-
-/// The ordinal-free key of one entrance: `entrance:configured:<id>` for a configured entrance,
-/// otherwise `entrance:` and a compact JSON array of detector, kind, method, trigger, and first
-/// target text, with absent values as empty strings.
-pub fn entrance_key_base(shape: &EntranceShape<'_>) -> String {
-    if let Some(id) = shape.configured {
-        return format!("{CONFIGURED_PREFIX}{id}");
-    }
-    let parts = [
-        shape.detector.as_str(),
-        shape.kind.as_str(),
-        shape.method.map_or("", HttpMethod::as_str),
-        shape.trigger.unwrap_or(""),
-        shape.first_target.unwrap_or(""),
-    ];
-    let mut text =
-        String::with_capacity(ENTRANCE_PREFIX.len() + parts.iter().map(|p| p.len() + 3).sum::<usize>() + 2);
-    text.push_str(ENTRANCE_PREFIX);
-    text.push('[');
-    for (index, part) in parts.iter().enumerate() {
-        if index > 0 {
-            text.push(',');
+    fn definition(&mut self, parent: usize, name: &str) -> Result<Key, KeyError> {
+        if name.is_empty() {
+            return Err(KeyError::EmptyName);
         }
-        push_json_string(part, &mut text);
+        let scope = self.scopes[parent];
+        let mut text = self.keys[scope as usize].as_str().to_owned();
+        if scope != 0 {
+            text.push('.');
+        }
+        escape(name, &mut text);
+        if let Some(count) = self.names.get_mut(text.as_str()) {
+            let _ = write!(text, "[{count}]");
+            *count += 1;
+        } else {
+            self.names.insert(text.as_str().into(), 1);
+        }
+        Ok(Key(Arc::from(text)))
     }
-    text.push(']');
-    text
+
+    /// The number of earlier steps under `parent` with `counter`, counting this one.
+    fn next(&mut self, parent: u32, counter: Counter) -> u32 {
+        let count = self.steps.entry((parent, counter)).or_insert(0);
+        let ordinal = *count;
+        *count += 1;
+        ordinal
+    }
+
+    fn step_key(&self, parent: usize, step: &Segment) -> Key {
+        let mut text = self.keys[parent].as_str().to_owned();
+        // Writing to a String cannot fail.
+        let _ = write!(text, "/{step}");
+        Key(Arc::from(text))
+    }
 }
 
-/// Derives the keys of a graph's entrances, given in their canonical order: the n-th (n ≥ 1)
-/// entrance whose base repeats an earlier one gets `#n`.
-pub fn entrance_keys<'a>(entrances: impl IntoIterator<Item = EntranceShape<'a>>) -> Vec<Key> {
-    // Bases seen so far, keyed by the first entrance's key (which is the base itself), so a
-    // unique base costs one allocation.
-    let mut seen: FxHashMap<Key, u32> = FxHashMap::default();
-    entrances
-        .into_iter()
-        .map(|shape| {
-            let mut base = entrance_key_base(&shape);
-            if let Some(count) = seen.get_mut(base.as_str()) {
-                let _ = write!(base, "#{count}");
-                *count += 1;
-                Key(Arc::from(base))
-            } else {
-                let key = Key(Arc::from(base));
-                seen.insert(key.clone(), 1);
-                key
+/// Whether a step of a form carries an ordinal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Numbering {
+    /// Always: control blocks, exits, and the parts that repeat (`elif`, `case`, `except`).
+    Ordinal,
+    /// Never, because it appears at most once under its parent: the other parts.
+    Once,
+}
+
+impl Numbering {
+    /// How a form's step is numbered, or `None` for a form that isn't keyed by its form.
+    const fn of(form: Form) -> Option<Self> {
+        match form.kind() {
+            NodeKind::Part => match form {
+                Form::Elif | Form::Case | Form::Except => Some(Self::Ordinal),
+                _ => Some(Self::Once),
+            },
+            kind if kind.is_control() => Some(Self::Ordinal),
+            NodeKind::Exit => Some(Self::Ordinal),
+            _ => None,
+        }
+    }
+}
+
+/// One step of a block key, or one name in its `names`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Segment {
+    /// A named definition's name, unescaped, and its repeat ordinal (n ≥ 1).
+    Name {
+        /// The name.
+        name: Box<str>,
+        /// The ordinal of a repeated name, absent for the first.
+        repeat: Option<u32>,
+    },
+    /// A control block, part, or exit.
+    Form {
+        /// Its form.
+        form: Form,
+        /// Its ordinal among siblings of that form; absent for the parts that appear once.
+        ordinal: Option<u32>,
+    },
+    /// A call.
+    Call {
+        /// The normalized callee, unescaped.
+        callee: Box<str>,
+        /// Its first argument's value, when the key carries it.
+        literal: Option<Box<str>>,
+        /// The ordinal of a repeated step (n ≥ 1), absent for the first.
+        repeat: Option<u32>,
+    },
+    /// An unnamed function.
+    Inline {
+        /// Where it is written.
+        inline: Inline,
+        /// Its ordinal among siblings written the same way.
+        ordinal: u32,
+    },
+}
+
+impl fmt::Display for Segment {
+    /// Writes the segment without its leading separator.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut text = String::new();
+        match self {
+            Self::Name { name, repeat } => {
+                escape(name, &mut text);
+                write_ordinal(&mut text, *repeat);
             }
-        })
-        .collect()
+            Self::Form { form, ordinal } => {
+                text.push_str(form.as_str());
+                write_ordinal(&mut text, *ordinal);
+            }
+            Self::Call {
+                callee,
+                literal,
+                repeat,
+            } => {
+                write_call(&mut text, callee, literal.as_deref());
+                write_ordinal(&mut text, *repeat);
+            }
+            Self::Inline { inline, ordinal } => {
+                text.push_str(inline.as_str());
+                write_ordinal(&mut text, Some(*ordinal));
+            }
+        }
+        f.write_str(&text)
+    }
 }
 
-/// Appends `value` as a JSON string, escaped exactly as JavaScript's `JSON.stringify` escapes
-/// it: `"` and `\` with a backslash, the short escapes for backspace, form feed, newline,
-/// carriage return, and tab, and every other control character as `\u00xx` in lowercase hex.
-/// Everything else, including non-ASCII, is written as is.
-fn push_json_string(value: &str, out: &mut String) {
-    out.push('"');
-    for character in value.chars() {
+/// Appends `call:`, the escaped callee, and the quoted literal, if any.
+fn write_call(out: &mut String, callee: &str, literal: Option<&str>) {
+    out.push_str(CALL_PREFIX);
+    escape(callee, out);
+    if let Some(literal) = literal {
+        out.push_str("(\"");
+        for character in literal.chars() {
+            if matches!(character, '"' | '\\') {
+                out.push('\\');
+            }
+            out.push(character);
+        }
+        out.push_str("\")");
+    }
+}
+
+fn write_ordinal(out: &mut String, ordinal: Option<u32>) {
+    if let Some(ordinal) = ordinal {
+        // Writing to a String cannot fail.
+        let _ = write!(out, "[{ordinal}]");
+    }
+}
+
+/// Appends `text` with the reserved characters (`%`, `/`, `#`, `[`, `]`) percent-encoded in
+/// uppercase hex.
+fn escape(text: &str, out: &mut String) {
+    for character in text.chars() {
         match character {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\u{8}' => out.push_str("\\b"),
-            '\u{c}' => out.push_str("\\f"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            control if u32::from(control) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", u32::from(control));
-            }
+            '%' => out.push_str("%25"),
+            '/' => out.push_str("%2F"),
+            '#' => out.push_str("%23"),
+            '[' => out.push_str("%5B"),
+            ']' => out.push_str("%5D"),
             _ => out.push(character),
         }
     }
-    out.push('"');
+}
+
+/// Reverses [`escape`]; `None` for a reserved character written raw or an unknown escape.
+fn unescape(text: &str) -> Option<String> {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(index) = rest.find(['%', '/', '#', '[', ']']) {
+        out.push_str(&rest[..index]);
+        let escaped = rest[index..].get(..3)?;
+        out.push(match escaped {
+            "%25" => '%',
+            "%2F" => '/',
+            "%23" => '#',
+            "%5B" => '[',
+            "%5D" => ']',
+            _ => return None,
+        });
+        rest = &rest[index + 3..];
+    }
+    out.push_str(rest);
+    Some(out)
+}
+
+/// A key's structure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParsedKey {
+    /// A block's key.
+    Block(BlockKey),
+    /// An app's key: `entrance:<app>`.
+    App {
+        /// The app's slug.
+        app: Box<str>,
+    },
+    /// An entrance's key: `entrance:<app>/<entrance>`.
+    Entrance {
+        /// The app's slug.
+        app: Box<str>,
+        /// The entrance's slug.
+        entrance: Box<str>,
+    },
+}
+
+impl ParsedKey {
+    fn parse(text: &str) -> Result<Self, KeyParseError> {
+        let error = |problem| KeyParseError {
+            key: text.into(),
+            problem,
+        };
+        if let Some(rest) = text
+            .strip_prefix(ENTRANCE_PREFIX)
+            .filter(|rest| !rest.contains('#'))
+        {
+            let is_slug = |part: &str| slug(part).is_ok_and(|slug| slug == part);
+            return match rest.split_once('/') {
+                None if is_slug(rest) => Ok(Self::App { app: rest.into() }),
+                Some((app, entrance)) if is_slug(app) && is_slug(entrance) => Ok(Self::Entrance {
+                    app: app.into(),
+                    entrance: entrance.into(),
+                }),
+                _ => Err(error("an app or entrance name is not a slug")),
+            };
+        }
+        // A path may itself contain `#`, so the path ends at the first `#` after which the
+        // rest reads as a key.
+        let mut problem = "it has no `#` after a file path";
+        for (index, _) in text.match_indices('#') {
+            let Ok(path) = RepoPath::new(&text[..index]) else {
+                continue;
+            };
+            match Steps::new(&text[index + 1..]).segments() {
+                Ok(segments) => return Ok(Self::Block(BlockKey { path, segments })),
+                Err(first) => problem = first,
+            }
+        }
+        Err(error(problem))
+    }
+}
+
+/// A block key's file and the segments after its `#`, in order: the names of a named
+/// definition, then steps, with an inline function's names following it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockKey {
+    path: RepoPath,
+    segments: Vec<Segment>,
+}
+
+impl BlockKey {
+    /// The block's file.
+    pub fn path(&self) -> &RepoPath {
+        &self.path
+    }
+
+    /// The segments after `#`; empty for a module.
+    pub fn segments(&self) -> &[Segment] {
+        &self.segments
+    }
+
+    /// The key as text, the same text it was read from.
+    pub fn to_key(&self) -> Key {
+        Key(Arc::from(self.to_string()))
+    }
+}
+
+impl fmt::Display for BlockKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}#", self.path)?;
+        for (index, segment) in self.segments.iter().enumerate() {
+            match segment {
+                Segment::Name { .. } if index == 0 => {}
+                Segment::Name { .. } => f.write_str(".")?,
+                _ => f.write_str("/")?,
+            }
+            write!(f, "{segment}")?;
+        }
+        Ok(())
+    }
+}
+
+/// Key text that does not follow the key grammar.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("`{key}` is not a key: {problem}")]
+pub struct KeyParseError {
+    /// The rejected text.
+    pub key: Box<str>,
+    /// What is wrong with it.
+    pub problem: &'static str,
+}
+
+/// A reader over the text after a block key's `#`.
+struct Steps<'a> {
+    rest: &'a str,
+}
+
+impl<'a> Steps<'a> {
+    fn new(text: &'a str) -> Self {
+        Self { rest: text }
+    }
+
+    fn segments(mut self) -> Result<Vec<Segment>, &'static str> {
+        let mut segments = Vec::new();
+        if self.rest.is_empty() {
+            return Ok(segments);
+        }
+        if !self.rest.starts_with('/') {
+            self.names(&mut segments)?;
+        }
+        while let Some(rest) = self.rest.strip_prefix('/') {
+            self.rest = rest;
+            let step = self.step()?;
+            let inline = matches!(step, Segment::Inline { .. });
+            segments.push(step);
+            if inline && self.rest.starts_with('.') {
+                self.rest = &self.rest[1..];
+                self.names(&mut segments)?;
+            }
+        }
+        if !self.rest.is_empty() {
+            return Err("a step or name ends with unexpected text");
+        }
+        if segments.is_empty() {
+            return Err("`#/` is followed by no step");
+        }
+        Ok(segments)
+    }
+
+    /// Reads `name { "." name }`, each with an optional repeat ordinal.
+    fn names(&mut self, segments: &mut Vec<Segment>) -> Result<(), &'static str> {
+        loop {
+            let end = self.rest.find(['.', '/', '[']).unwrap_or(self.rest.len());
+            let (raw, rest) = self.rest.split_at(end);
+            if raw.is_empty() {
+                return Err("a name is empty");
+            }
+            let name = unescape(raw).ok_or("a name has an unescaped reserved character")?;
+            self.rest = rest;
+            let repeat = self.repeat()?;
+            segments.push(Segment::Name {
+                name: name.into(),
+                repeat,
+            });
+            match self.rest.strip_prefix('.') {
+                Some(rest) => self.rest = rest,
+                None => return Ok(()),
+            }
+        }
+    }
+
+    fn step(&mut self) -> Result<Segment, &'static str> {
+        if let Some(rest) = self.rest.strip_prefix(CALL_PREFIX) {
+            self.rest = rest;
+            return self.call();
+        }
+        let end = self.rest.find(['[', '/', '.']).unwrap_or(self.rest.len());
+        let (word, rest) = self.rest.split_at(end);
+        self.rest = rest;
+        if let Ok(inline) = word.parse::<Inline>() {
+            let ordinal = self.ordinal()?.ok_or("an inline function has no ordinal")?;
+            return Ok(Segment::Inline { inline, ordinal });
+        }
+        let form = word.parse::<Form>().map_err(|_| "a step is not a known form")?;
+        let numbering = Numbering::of(form).ok_or("a definition or call form is written as a step")?;
+        let ordinal = self.ordinal()?;
+        match (numbering, ordinal) {
+            (Numbering::Ordinal, None) => Err("a control block, exit, or repeating part has no ordinal"),
+            (Numbering::Once, Some(_)) => Err("a part that appears once has an ordinal"),
+            _ => Ok(Segment::Form { form, ordinal }),
+        }
+    }
+
+    fn call(&mut self) -> Result<Segment, &'static str> {
+        let end = [self.rest.find('/'), self.rest.find('['), self.rest.find("(\"")]
+            .into_iter()
+            .flatten()
+            .min()
+            .unwrap_or(self.rest.len());
+        let (raw, rest) = self.rest.split_at(end);
+        if raw.is_empty() {
+            return Err("a callee is empty");
+        }
+        let callee = unescape(raw).ok_or("a callee has an unescaped reserved character")?;
+        self.rest = rest;
+        let literal = match self.rest.strip_prefix("(\"") {
+            Some(rest) => {
+                self.rest = rest;
+                Some(self.literal()?)
+            }
+            None => None,
+        };
+        let repeat = self.repeat()?;
+        Ok(Segment::Call {
+            callee: callee.into(),
+            literal: literal.map(Into::into),
+            repeat,
+        })
+    }
+
+    /// Reads a literal's characters after `("`, through its closing `")`.
+    fn literal(&mut self) -> Result<String, &'static str> {
+        let mut literal = String::new();
+        let mut characters = self.rest.char_indices();
+        while let Some((index, character)) = characters.next() {
+            match character {
+                '\\' => match characters.next() {
+                    Some((_, escaped @ ('"' | '\\'))) => literal.push(escaped),
+                    _ => return Err("a literal has an escape other than `\\\"` or `\\\\`"),
+                },
+                '"' => {
+                    let rest = &self.rest[index + 1..];
+                    self.rest = rest
+                        .strip_prefix(')')
+                        .ok_or("a literal's quote is not followed by `)`")?;
+                    return Ok(literal);
+                }
+                _ => literal.push(character),
+            }
+        }
+        Err("a literal has no closing quote")
+    }
+
+    /// Reads an optional repeat ordinal, which is never `[0]`.
+    fn repeat(&mut self) -> Result<Option<u32>, &'static str> {
+        match self.ordinal()? {
+            Some(0) => Err("a repeat ordinal is 0"),
+            repeat => Ok(repeat),
+        }
+    }
+
+    /// Reads an optional `[n]`: decimal digits without leading zeros.
+    fn ordinal(&mut self) -> Result<Option<u32>, &'static str> {
+        let Some(rest) = self.rest.strip_prefix('[') else {
+            return Ok(None);
+        };
+        let (digits, rest) = rest.split_once(']').ok_or("an ordinal has no `]`")?;
+        let canonical = !digits.is_empty()
+            && digits.bytes().all(|byte| byte.is_ascii_digit())
+            && (digits == "0" || !digits.starts_with('0'));
+        let ordinal = digits
+            .parse()
+            .ok()
+            .filter(|_| canonical)
+            .ok_or("an ordinal is not a plain number")?;
+        self.rest = rest;
+        Ok(Some(ordinal))
+    }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use BlockKind as K;
-
-    /// What a block contributes to its key.
-    #[derive(Debug, Clone, Copy)]
-    struct BlockShape<'a> {
-        parent: Option<u32>,
-        kind: BlockKind,
-        name: Option<&'a str>,
-    }
-
-    /// Derives the keys of one file's blocks, given in preorder.
-    fn block_keys<'a>(
-        path: &RepoPath,
-        blocks: impl IntoIterator<Item = BlockShape<'a>>,
-    ) -> Result<Vec<Key>, KeyError> {
-        let mut builder = KeyBuilder::new(path);
-        for block in blocks {
-            builder.push(block.parent, block.kind, block.name)?;
-        }
-        Ok(builder.finish())
-    }
-
-    fn path(text: &str) -> RepoPath {
-        RepoPath::new(text).unwrap()
-    }
-
-    fn shape(parent: Option<u32>, kind: BlockKind, name: &str) -> BlockShape<'_> {
-        BlockShape {
-            parent,
-            kind,
-            name: (!name.is_empty()).then_some(name),
-        }
-    }
-
-    /// Blocks of `ts-playground/src/lib/validate.ts` from the proof of concept's frozen
-    /// generation (local IDs are the generation's `b1171`... renumbered from zero), with the
-    /// keys its reader derives.
-    #[test]
-    fn matches_the_proof_of_concept_on_validate_ts() {
-        let blocks = [
-            (None, K::File, ""),
-            (Some(0), K::Function, "validateOrder"),
-            (Some(1), K::If, ""),
-            (Some(2), K::Throw, ""),
-            (Some(3), K::New, ""),
-            (Some(1), K::Variable, ""),
-            (Some(5), K::Variable, "customerId"),
-            (Some(5), K::Variable, "email"),
-            (Some(1), K::If, ""),
-            (Some(8), K::Call, ""),
-            (Some(1), K::Variable, "validatedItems"),
-            (Some(10), K::Call, ""),
-            (Some(11), K::Function, ""),
-            (Some(1), K::Return, ""),
-            (Some(13), K::Call, ""),
-            (Some(13), K::Call, ""),
-        ];
-        let keys = block_keys(
-            &path("ts-playground/src/lib/validate.ts"),
-            blocks
-                .iter()
-                .map(|&(parent, kind, name)| shape(parent, kind, name)),
-        )
-        .unwrap();
-        let expected = [
-            "ts-playground/src/lib/validate.ts#",
-            "ts-playground/src/lib/validate.ts#function:validateOrder",
-            "ts-playground/src/lib/validate.ts#function:validateOrder/if[0]",
-            "ts-playground/src/lib/validate.ts#function:validateOrder/if[0]/throw[0]",
-            "ts-playground/src/lib/validate.ts#function:validateOrder/if[0]/throw[0]/new[0]",
-            "ts-playground/src/lib/validate.ts#function:validateOrder/variable[0]",
-            "ts-playground/src/lib/validate.ts#function:validateOrder/variable[0]/variable:customerId",
-            "ts-playground/src/lib/validate.ts#function:validateOrder/variable[0]/variable:email",
-            "ts-playground/src/lib/validate.ts#function:validateOrder/if[1]",
-            "ts-playground/src/lib/validate.ts#function:validateOrder/if[1]/call[0]",
-            "ts-playground/src/lib/validate.ts#function:validateOrder/variable:validatedItems",
-            "ts-playground/src/lib/validate.ts#function:validateOrder/variable:validatedItems/call[0]",
-            "ts-playground/src/lib/validate.ts#function:validateOrder/variable:validatedItems/call[0]/function[0]",
-            "ts-playground/src/lib/validate.ts#function:validateOrder/return[0]",
-            "ts-playground/src/lib/validate.ts#function:validateOrder/return[0]/call[0]",
-            "ts-playground/src/lib/validate.ts#function:validateOrder/return[0]/call[1]",
-        ];
-        let keys: Vec<&str> = keys.iter().map(Key::as_str).collect();
-        assert_eq!(keys, expected);
-    }
-
-    /// Duplicate names in `py-playground/src/orders_playground/features/decorators.py`.
-    #[test]
-    fn numbers_duplicate_names_like_the_proof_of_concept() {
-        let blocks = [
-            (None, K::File, ""),
-            (Some(0), K::Import, ""),
-            (Some(0), K::Function, "normalize_sku"),
-            (Some(0), K::Function, "stringify"),
-            (Some(3), K::ExpressionStatement, ""),
-            (Some(0), K::Function, "stringify"),
-            (Some(0), K::Function, "stringify"),
-            (Some(0), K::Class, "Named"),
-        ];
-        let keys = block_keys(
-            &path("py-playground/src/orders_playground/features/decorators.py"),
-            blocks
-                .iter()
-                .map(|&(parent, kind, name)| shape(parent, kind, name)),
-        )
-        .unwrap();
-        let prefix = "py-playground/src/orders_playground/features/decorators.py#";
-        let suffixes: Vec<&str> = keys.iter().map(|key| &key.as_str()[prefix.len()..]).collect();
-        assert_eq!(
-            suffixes,
-            [
-                "",
-                "import[0]",
-                "function:normalize_sku",
-                "function:stringify",
-                "function:stringify/expression_statement[0]",
-                "function:stringify[1]",
-                "function:stringify[2]",
-                "class:Named"
-            ]
-        );
-    }
-
-    #[test]
-    fn escapes_reserved_characters_like_the_proof_of_concept() {
-        let mut builder = KeyBuilder::new(&path("py-playground/src/orders_playground/db/repository.py"));
-        builder.push(None, K::File, None).unwrap();
-        builder.push(Some(0), K::Class, Some("OrderRepository")).unwrap();
-        builder.push(Some(1), K::Method, Some("insert")).unwrap();
-        let key = builder
-            .push(Some(2), K::Variable, Some("self.orders[order[\"id\"]]"))
-            .unwrap();
-        assert_eq!(
-            key.as_str(),
-            "py-playground/src/orders_playground/db/repository.py#class:OrderRepository/method:insert/variable:self.orders%5Border%5B\"id\"%5D%5D"
-        );
-        let mut out = String::new();
-        escape_name("a%b/c#d[e]f:g é", &mut out);
-        assert_eq!(out, "a%25b%2Fc%23d%5Be%5Df:g é");
-    }
-
-    #[test]
-    fn unnamed_ordinals_count_named_siblings_of_the_same_kind() {
-        let keys = block_keys(
-            &path("a.ts"),
-            [
-                shape(None, K::File, ""),
-                shape(Some(0), K::Function, "named"),
-                shape(Some(0), K::Function, ""),
-                shape(Some(0), K::Variable, ""),
-                shape(Some(0), K::Function, "named"),
-            ],
-        )
-        .unwrap();
-        let keys: Vec<&str> = keys.iter().map(Key::as_str).collect();
-        assert_eq!(
-            keys,
-            [
-                "a.ts#",
-                "a.ts#function:named",
-                "a.ts#function[1]",
-                "a.ts#variable[0]",
-                "a.ts#function:named[1]"
-            ]
-        );
-    }
-
-    #[test]
-    fn empty_names_count_as_unnamed() {
-        let keys = block_keys(
-            &path("a.ts"),
-            [
-                shape(None, K::File, ""),
-                BlockShape {
-                    parent: Some(0),
-                    kind: K::If,
-                    name: Some(""),
-                },
-            ],
-        )
-        .unwrap();
-        assert_eq!(keys[1].as_str(), "a.ts#if[0]");
-    }
-
-    #[test]
-    fn rejects_blocks_out_of_preorder() {
-        let mut builder = KeyBuilder::new(&path("a.ts"));
-        assert_eq!(
-            builder.push(Some(0), K::Function, None),
-            Err(KeyError::MissingRoot)
-        );
-        assert_eq!(builder.push(None, K::Function, None), Err(KeyError::MissingRoot));
-        builder.push(None, K::File, None).unwrap();
-        assert_eq!(
-            builder.push(Some(1), K::If, None),
-            Err(KeyError::ParentNotBefore {
-                local_id: 1,
-                parent: 1
-            })
-        );
-        assert_eq!(
-            builder.push(None, K::If, None),
-            Err(KeyError::SecondRoot { local_id: 1 })
-        );
-        assert_eq!(
-            builder.push(Some(0), K::File, None),
-            Err(KeyError::SecondRoot { local_id: 1 })
-        );
-        assert_eq!(builder.keys().len(), 1);
-    }
-
-    #[test]
-    fn entrance_keys_match_the_proof_of_concept() {
-        let route = EntranceShape {
-            detector: DetectorId::ExpressRoute,
-            kind: EntranceKind::Http,
-            method: Some(HttpMethod::Post),
-            trigger: Some("/orders"),
-            first_target: Some("requireUser"),
-            configured: None,
-        };
-        let worker = EntranceShape {
-            detector: DetectorId::BullmqWorker,
-            kind: EntranceKind::Worker,
-            method: None,
-            trigger: None,
-            first_target: Some("new URL(\"../../report-processor.js\", import.meta.url)"),
-            configured: None,
-        };
-        let keys = entrance_keys([route, worker, route, route]);
-        let keys: Vec<&str> = keys.iter().map(Key::as_str).collect();
-        assert_eq!(
-            keys,
-            [
-                r#"entrance:["express.route","http","POST","/orders","requireUser"]"#,
-                r#"entrance:["bullmq.worker","worker","","","new URL(\"../../report-processor.js\", import.meta.url)"]"#,
-                r#"entrance:["express.route","http","POST","/orders","requireUser"]#1"#,
-                r#"entrance:["express.route","http","POST","/orders","requireUser"]#2"#,
-            ]
-        );
-        assert!(Key::from_text(keys[0]).is_entrance());
-    }
-
-    #[test]
-    fn configured_entrance_keys_are_their_id() {
-        let shape = |trigger| EntranceShape {
-            detector: DetectorId::Manual,
-            kind: EntranceKind::Process,
-            method: None,
-            trigger,
-            first_target: Some("src/server.ts"),
-            configured: Some("api-start"),
-        };
-        let keys = entrance_keys([shape(Some("start")), shape(None)]);
-        assert_eq!(keys[0].as_str(), "entrance:configured:api-start");
-        assert_eq!(keys[0], Key::configured_entrance("api-start"));
-        assert_eq!(keys[0].configured_id(), Some("api-start"));
-        assert!(keys[0].is_entrance());
-        assert_eq!(Key::from_text(r#"entrance:["manual"]"#).configured_id(), None);
-    }
-
-    #[test]
-    fn entrance_json_escaping_matches_json_stringify() {
-        // serde_json escapes strings the same way JSON.stringify does.
-        let tricky = "tab\t nl\n cr\r bs\\ q\" \u{1} \u{1f} \u{7f} \u{2028} é 😀 \u{8}\u{c}";
-        let base = entrance_key_base(&EntranceShape {
-            detector: DetectorId::Manual,
-            kind: EntranceKind::Event,
-            method: None,
-            trigger: Some(tricky),
-            first_target: None,
-            configured: None,
-        });
-        let expected = serde_json::to_string(&["manual", "event", "", tricky, ""]).unwrap();
-        assert_eq!(base, format!("entrance:{expected}"));
-    }
-}
+mod tests;

@@ -7,18 +7,14 @@ pub mod sample;
 
 use std::path::{Path, PathBuf};
 
-use crate::key::{Key, KeyBuilder};
+use crate::key::{Callee, Child, Key, KeyBuilder};
 use crate::model::{
-    Block, Edge, Entrance, EntranceTarget, Evidence, FileGraph, FileRecord, Graph, InputRecord, ModuleLabel,
-    Slot,
+    App, Entrance, EntranceTarget, File, FileGraph, Graph, Input, Link, LinkTarget, ModuleLabel, Node,
 };
 use crate::path::RepoPath;
 use crate::text::{ByteRange, LineIndex, Snapshot};
-use crate::typed::{FileTypes, TypeLink, WrittenType};
-use crate::vocab::{
-    BlockKind, DetectorId, EdgeKind, EntranceKind, FileState, Heritage, HttpMethod, InputRole, Language,
-    Reason, Resolution, Role, SlotName, TriggerStatus,
-};
+use crate::typed::{FileTypes, WrittenType};
+use crate::vocab::{FileState, Flags, Form, Inline, InputRole, Language, LinkKind, Reason, TargetState};
 
 /// The repository's `testdata/` directory.
 pub fn testdata_dir() -> PathBuf {
@@ -59,68 +55,70 @@ pub fn assert_golden(relative: impl AsRef<Path>, actual: &str) {
     }
 }
 
-/// A block added to a [`GraphBuilder`].
+/// A link target in this project.
+pub fn project(key: &Key) -> LinkTarget {
+    LinkTarget::Project(key.clone())
+}
+
+/// A link target in the outside module `label`.
+pub fn library(label: &str) -> LinkTarget {
+    LinkTarget::Library(ModuleLabel::single(label).expect("a nonempty plain module label"))
+}
+
+/// A link target in the language's builtins, `label` (`python:builtins`, `ecmascript`).
+pub fn builtin(label: &str) -> LinkTarget {
+    LinkTarget::Builtin(ModuleLabel::single(label).expect("a nonempty plain module label"))
+}
+
+/// An unknown link target.
+pub fn unknown(reason: Reason) -> LinkTarget {
+    LinkTarget::Unknown(reason)
+}
+
+/// An app's or entrance's `code` key and its state.
+pub fn target(code: &str, state: TargetState) -> EntranceTarget {
+    EntranceTarget {
+        code: Key::from_text(code),
+        state,
+    }
+}
+
+/// A node added to a [`GraphBuilder`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BlockRef {
+pub struct NodeRef {
     file: usize,
     local_id: u32,
 }
 
-impl BlockRef {
-    /// The block's local ID in its file.
+impl NodeRef {
+    /// The node's local ID in its file.
     pub fn local_id(self) -> u32 {
         self.local_id
     }
 }
 
-/// An entrance added to a [`GraphBuilder`].
+/// An app added to a [`GraphBuilder`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EntranceRef(usize);
-
-/// How an edge or target resolved.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Outcome {
-    /// To this target.
-    Resolved(Key),
-    /// To this module label.
-    External(ModuleLabel),
-    /// For this reason.
-    Unresolved(Reason),
-}
-
-impl Outcome {
-    /// An external outcome with a single plain label.
-    pub fn external(label: &str) -> Self {
-        Self::External(ModuleLabel::single(label).expect("a nonempty plain module label"))
-    }
-
-    fn split(self) -> (Option<Key>, Resolution, Option<Reason>, Option<ModuleLabel>) {
-        match self {
-            Self::Resolved(key) => (Some(key), Resolution::Resolved, None, None),
-            Self::External(module) => (None, Resolution::External, None, Some(module)),
-            Self::Unresolved(reason) => (None, Resolution::Unresolved, Some(reason), None),
-        }
-    }
-}
+pub struct AppRef(usize);
 
 #[derive(Debug)]
 struct FileDraft {
     snapshot: Snapshot,
-    language: Language,
     lines: LineIndex,
     keys: KeyBuilder,
     graph: FileGraph,
 }
 
-/// Builds small graphs by hand, computing hashes, lines, keys, and edge sequence numbers.
+/// Builds small graphs by hand, computing hashes, lines, keys, link sequence numbers, and
+/// app and entrance keys.
 ///
-/// Add blocks in preorder. The result is normalized but not validated, so tests can build
-/// deliberately broken graphs and mutate them further.
+/// Add each file's nodes in preorder. The result is normalized but not validated, so tests can
+/// build deliberately broken graphs and change them further.
 #[derive(Debug, Default)]
 pub struct GraphBuilder {
     files: Vec<FileDraft>,
-    inputs: Vec<(InputRecord, Snapshot)>,
-    entrances: Vec<Entrance>,
+    inputs: Vec<(Input, Snapshot)>,
+    apps: Vec<App>,
 }
 
 impl GraphBuilder {
@@ -129,30 +127,35 @@ impl GraphBuilder {
         Self::default()
     }
 
-    /// Adds a current file with `text` and returns its root block.
-    pub fn file(&mut self, path: &str, language: Language, text: &str) -> BlockRef {
+    /// Adds a current file with `text` and returns its module, which spans the whole file.
+    pub fn file(&mut self, path: &str, language: Language, text: &str) -> NodeRef {
         let path = RepoPath::new(path).expect("a valid test path");
         let snapshot = Snapshot::from_text(path.clone(), text).expect("test text fits in a snapshot");
         let lines = LineIndex::new(text);
+        let keys = KeyBuilder::new(&path);
         let range = ByteRange {
             start: 0,
             end: snapshot.len(),
         };
-        let mut keys = KeyBuilder::new(&path);
-        let key = keys
-            .push(None, BlockKind::File, None)
-            .expect("the first block is the root");
-        let root = Block {
-            local_id: 0,
+        let module = Node {
+            key: keys.keys()[0].clone(),
             parent: None,
-            kind: BlockKind::File,
-            role: None,
+            form: Form::Module,
             name: None,
             range,
             lines: lines.span(range),
-            key,
+            head: None,
+            body: Some(range),
+            doc: None,
+            stmt: None,
+            value: None,
+            binds: None,
+            role: None,
+            r#for: None,
+            flags: Flags::NONE,
+            target: None,
         };
-        let file = FileRecord {
+        let file = File {
             path,
             language,
             state: FileState::Current,
@@ -161,27 +164,25 @@ impl GraphBuilder {
         };
         self.files.push(FileDraft {
             snapshot,
-            language,
             lines,
             keys,
             graph: FileGraph {
                 file,
-                blocks: vec![root],
-                slots: Vec::new(),
-                edges: Vec::new(),
+                nodes: vec![module],
+                links: Vec::new(),
                 types: FileTypes::default(),
             },
         });
-        BlockRef {
+        NodeRef {
             file: self.files.len() - 1,
             local_id: 0,
         }
     }
 
     /// The byte range of the first occurrence of `needle` at or after byte `from` in the file
-    /// that contains `block`.
-    pub fn find_from(&self, block: BlockRef, needle: &str, from: u32) -> ByteRange {
-        let text = self.files[block.file].snapshot.text();
+    /// that contains `node`.
+    pub fn find_from(&self, node: NodeRef, needle: &str, from: u32) -> ByteRange {
+        let text = self.files[node.file].snapshot.text();
         let start = text[from as usize..]
             .find(needle)
             .map(|offset| offset + from as usize);
@@ -193,147 +194,187 @@ impl GraphBuilder {
         }
     }
 
-    /// The byte range of the first occurrence of `needle` in the file that contains `block`.
-    pub fn find(&self, block: BlockRef, needle: &str) -> ByteRange {
-        self.find_from(block, needle, 0)
+    /// The byte range of the first occurrence of `needle` in the file that contains `node`.
+    pub fn find(&self, node: NodeRef, needle: &str) -> ByteRange {
+        self.find_from(node, needle, 0)
     }
 
-    /// Adds the next block in preorder under `parent`.
-    pub fn block(
-        &mut self,
-        parent: BlockRef,
-        kind: BlockKind,
-        role: Option<Role>,
-        name: Option<&str>,
-        range: ByteRange,
-    ) -> BlockRef {
+    /// The byte range of the first occurrence of `needle` at or after the start of `node`.
+    pub fn find_in(&self, node: NodeRef, needle: &str) -> ByteRange {
+        self.find_from(node, needle, self.range(node).start)
+    }
+
+    /// The byte range of the first occurrence of `needle` at or after the start of `node`
+    /// that is not part of a longer identifier: `order` in `save_order(order)` is the argument.
+    pub fn find_word_in(&self, node: NodeRef, needle: &str) -> ByteRange {
+        let text = self.files[node.file].snapshot.text();
+        let is_word = |character: Option<char>| character.is_some_and(|c| c.is_alphanumeric() || c == '_');
+        let mut from = self.range(node).start;
+        loop {
+            let found = self.find_from(node, needle, from);
+            let before = text[..found.start as usize].chars().next_back();
+            let after = text[found.end as usize..].chars().next();
+            if !is_word(before) && !is_word(after) {
+                return found;
+            }
+            from = found.start + 1;
+        }
+    }
+
+    /// The text of `range` in the file that contains `node`.
+    pub fn source(&self, node: NodeRef, range: ByteRange) -> &str {
+        &self.files[node.file].snapshot.text()[range.as_usize()]
+    }
+
+    /// Adds the next node in preorder under `parent`, keyed by `child`. A definition's name
+    /// and a call's callee become the node's name; every optional field starts empty.
+    pub fn node(&mut self, parent: NodeRef, child: Child<'_>, form: Form, range: ByteRange) -> NodeRef {
         let draft = &mut self.files[parent.file];
         let key = draft
             .keys
-            .push(Some(parent.local_id), kind, name)
-            .expect("blocks are added in preorder");
-        let local_id = u32::try_from(draft.graph.blocks.len()).expect("test block counts fit in u32");
-        draft.graph.blocks.push(Block {
-            local_id,
+            .push(parent.local_id, child)
+            .expect("nodes are added in preorder");
+        let name = match child {
+            Child::Definition(name) => Some(name.into()),
+            Child::Call { callee, .. } => Some(callee.text().into()),
+            Child::Inline(_) | Child::Form(_) => None,
+        };
+        let local_id = u32::try_from(draft.graph.nodes.len()).expect("test node counts fit in u32");
+        draft.graph.nodes.push(Node {
+            key,
             parent: Some(parent.local_id),
-            kind,
-            role,
-            name: name.map(Into::into),
+            form,
+            name,
             range,
             lines: draft.lines.span(range),
-            key,
+            head: None,
+            body: None,
+            doc: None,
+            stmt: None,
+            value: None,
+            binds: None,
+            role: None,
+            r#for: None,
+            flags: Flags::NONE,
+            target: None,
         });
-        BlockRef {
+        NodeRef {
             file: parent.file,
             local_id,
         }
     }
 
-    /// Adds a slot to `block`.
-    pub fn slot(&mut self, block: BlockRef, slot: SlotName, index: Option<u32>, range: ByteRange) {
-        self.files[block.file].graph.slots.push(Slot {
-            block: block.local_id,
-            slot,
-            index,
-            range,
-        });
+    /// Adds a named definition of `form` (a class, function, or type).
+    pub fn def(&mut self, parent: NodeRef, form: Form, name: &str, range: ByteRange) -> NodeRef {
+        self.node(parent, Child::Definition(name), form, range)
     }
 
-    /// Adds the next edge sourced at `source`, numbering it after the source's earlier edges.
-    pub fn edge(
+    /// Adds an unnamed function (`lambda`) written as `inline`.
+    pub fn inline(&mut self, parent: NodeRef, inline: Inline, range: ByteRange) -> NodeRef {
+        self.node(parent, Child::Inline(inline), Form::Lambda, range)
+    }
+
+    /// Adds a control block, part, or exit of `form`.
+    pub fn block(&mut self, parent: NodeRef, form: Form, range: ByteRange) -> NodeRef {
+        self.node(parent, Child::Form(form), form, range)
+    }
+
+    /// Adds a call that takes no callback.
+    pub fn call(&mut self, parent: NodeRef, callee: &Callee, range: ByteRange) -> NodeRef {
+        let child = Child::Call {
+            callee,
+            first_literal: None,
+            takes_callback: false,
+        };
+        self.node(parent, child, Form::Call, range)
+    }
+
+    /// Adds a construction (form `new`) that takes no callback.
+    pub fn construction(&mut self, parent: NodeRef, callee: &Callee, range: ByteRange) -> NodeRef {
+        let child = Child::Call {
+            callee,
+            first_literal: None,
+            takes_callback: false,
+        };
+        self.node(parent, child, Form::New, range)
+    }
+
+    /// Adds a call that takes a callback, whose first argument is the string `literal` when
+    /// there is one.
+    pub fn registration(
         &mut self,
-        source: BlockRef,
-        kind: EdgeKind,
-        outcome: Outcome,
-        text: &str,
-        position: Option<u32>,
-    ) {
-        let edges = &mut self.files[source.file].graph.edges;
-        let seq = u32::try_from(edges.iter().filter(|edge| edge.source == source.local_id).count())
-            .expect("test edge counts fit in u32");
-        let (target, resolution, reason, module) = outcome.split();
-        edges.push(Edge {
-            source: source.local_id,
-            seq,
-            kind,
-            target,
-            text: text.into(),
-            resolution,
-            reason,
-            module,
-            position,
-        });
+        parent: NodeRef,
+        callee: &Callee,
+        literal: Option<&str>,
+        range: ByteRange,
+    ) -> NodeRef {
+        let child = Child::Call {
+            callee,
+            first_literal: literal,
+            takes_callback: true,
+        };
+        self.node(parent, child, Form::Call, range)
     }
 
-    /// The typed records of the file that contains `block`, to add records to by hand.
-    pub fn types(&mut self, block: BlockRef) -> &mut FileTypes {
-        &mut self.files[block.file].graph.types
+    /// The node, to fill in its optional fields.
+    pub fn node_mut(&mut self, node: NodeRef) -> &mut Node {
+        &mut self.files[node.file].graph.nodes[node.local_id as usize]
+    }
+
+    /// Adds the next link from `from`, numbering it after the node's earlier links. Its
+    /// `implements` is false and its `bound` absent; set them on the returned link.
+    pub fn link(
+        &mut self,
+        from: NodeRef,
+        kind: LinkKind,
+        range: ByteRange,
+        text: &str,
+        to: LinkTarget,
+    ) -> &mut Link {
+        let links = &mut self.files[from.file].graph.links;
+        let seq = links.iter().filter(|link| link.from == from.local_id).count();
+        links.push(Link {
+            from: from.local_id,
+            seq: u32::try_from(seq).expect("test link counts fit in u32"),
+            kind,
+            range,
+            text: text.into(),
+            to,
+            implements: false,
+            bound: None,
+        });
+        links.last_mut().expect("a link was just pushed")
+    }
+
+    /// The typed records of the file that contains `node`, to add records to by hand.
+    pub fn types(&mut self, node: NodeRef) -> &mut FileTypes {
+        &mut self.files[node.file].graph.types
     }
 
     /// The written type `needle`, found at or after byte `from` in the file that contains
-    /// `block`.
-    pub fn written_from(&self, block: BlockRef, needle: &str, from: u32) -> WrittenType {
+    /// `node`.
+    pub fn written_from(&self, node: NodeRef, needle: &str, from: u32) -> WrittenType {
         WrittenType {
             text: needle.into(),
-            range: self.find_from(block, needle, from),
+            range: self.find_from(node, needle, from),
         }
     }
 
-    /// Adds a type link sourced at `block` over the first `needle` at or after byte `from`.
-    pub fn type_link(&mut self, block: BlockRef, needle: &str, from: u32, outcome: Outcome) {
-        self.push_type_link(block, needle, from, outcome, None);
-    }
-
-    /// Adds a type link naming a base of `block` (a class or interface) in a heritage clause,
-    /// over the first `needle` at or after byte `from`.
-    pub fn heritage_link(
-        &mut self,
-        block: BlockRef,
-        needle: &str,
-        from: u32,
-        outcome: Outcome,
-        heritage: Heritage,
-    ) {
-        self.push_type_link(block, needle, from, outcome, Some(heritage));
-    }
-
-    fn push_type_link(
-        &mut self,
-        block: BlockRef,
-        needle: &str,
-        from: u32,
-        outcome: Outcome,
-        heritage: Option<Heritage>,
-    ) {
-        let range = self.find_from(block, needle, from);
-        let (target, resolution, reason, module) = outcome.split();
-        self.types(block).type_links.push(TypeLink {
-            block: block.local_id,
-            range,
-            text: needle.into(),
-            resolution,
-            target,
-            reason,
-            module,
-            heritage,
-        });
-    }
-
-    /// The structural key of `block`.
-    pub fn key(&self, block: BlockRef) -> Key {
-        self.files[block.file].graph.blocks[block.local_id as usize]
+    /// The structural key of `node`.
+    pub fn key(&self, node: NodeRef) -> Key {
+        self.files[node.file].graph.nodes[node.local_id as usize]
             .key
             .clone()
     }
 
-    /// The byte range of `block`.
-    pub fn range(&self, block: BlockRef) -> ByteRange {
-        self.files[block.file].graph.blocks[block.local_id as usize].range
+    /// The byte range of `node`.
+    pub fn range(&self, node: NodeRef) -> ByteRange {
+        self.files[node.file].graph.nodes[node.local_id as usize].range
     }
 
-    /// The language of the file containing `block`.
-    pub fn language(&self, block: BlockRef) -> Language {
-        self.files[block.file].language
+    /// The language of the file containing `node`.
+    pub fn language(&self, node: NodeRef) -> Language {
+        self.files[node.file].graph.file.language
     }
 
     /// Adds a configuration input with `text`.
@@ -341,7 +382,7 @@ impl GraphBuilder {
         let path = RepoPath::new(path).expect("a valid test path");
         let snapshot = Snapshot::from_text(path.clone(), text).expect("test text fits in a snapshot");
         self.inputs.push((
-            InputRecord {
+            Input {
                 path,
                 role,
                 hash: snapshot.hash(),
@@ -350,87 +391,34 @@ impl GraphBuilder {
         ));
     }
 
-    /// Evidence that is the source block `block`.
-    pub fn source_evidence(&self, block: BlockRef) -> Evidence {
-        let draft = &self.files[block.file];
-        let block = &draft.graph.blocks[block.local_id as usize];
-        Evidence {
-            path: draft.graph.file.path.clone(),
-            range: block.range,
-            block: Some(block.key.clone()),
-            pointer: None,
-        }
-    }
-
-    /// Evidence in a configuration input: the range of `needle` in it, and `pointer`.
-    pub fn config_evidence(&self, path: &str, needle: &str, pointer: &str) -> Evidence {
-        let (input, snapshot) = self
-            .inputs
-            .iter()
-            .find(|(input, _)| input.path.as_str() == path)
-            .expect("the input was added");
-        let start = snapshot
-            .text()
-            .find(needle)
-            .unwrap_or_else(|| panic!("`{needle}` not found in {path}"));
-        let start = u32::try_from(start).expect("test offsets fit in u32");
-        let end = start + u32::try_from(needle.len()).expect("test offsets fit in u32");
-        Evidence {
-            path: input.path.clone(),
-            range: ByteRange { start, end },
-            block: None,
-            pointer: Some(pointer.into()),
-        }
-    }
-
-    /// Adds an entrance with no targets. The trigger status is `exact` for a trigger and
-    /// `unknown` without one; change it on the built graph if a test needs `partial`.
-    pub fn entrance(
-        &mut self,
-        detector: DetectorId,
-        kind: EntranceKind,
-        method: Option<HttpMethod>,
-        trigger: Option<&str>,
-        evidence: Evidence,
-    ) -> EntranceRef {
-        self.entrances.push(Entrance {
-            key: Key::from_text(""),
-            kind,
-            label: None,
-            method,
-            trigger: trigger.map(Into::into),
-            trigger_status: if trigger.is_some() {
-                TriggerStatus::Exact
-            } else {
-                TriggerStatus::Unknown
-            },
-            detector,
-            evidence,
-            binding: None,
-            targets: Vec::new(),
+    /// Adds an app with no entrances, keyed by its name.
+    pub fn app(&mut self, name: &str, run: Option<&str>, code: Option<EntranceTarget>) -> AppRef {
+        self.apps.push(App {
+            key: Key::app(name).expect("an app name with letters or digits"),
+            name: name.into(),
+            run: run.map(Into::into),
+            code,
+            about: None,
+            entrances: Vec::new(),
         });
-        EntranceRef(self.entrances.len() - 1)
+        AppRef(self.apps.len() - 1)
     }
 
-    /// Gives a manual entrance its configured key, `entrance:configured:<id>`.
-    pub fn configure(&mut self, entrance: EntranceRef, id: &str) {
-        self.entrances[entrance.0].key = Key::configured_entrance(id);
-    }
-
-    /// Adds the next target of `entrance`, with the role its kind requires.
-    pub fn target(&mut self, entrance: EntranceRef, outcome: Outcome, text: &str) {
-        let entrance = &mut self.entrances[entrance.0];
-        let (target, resolution, reason, module) = outcome.split();
-        let position = u32::try_from(entrance.targets.len()).expect("test target counts fit in u32");
-        entrance.targets.push(EntranceTarget {
-            position,
-            role: entrance.kind.target_role(),
-            target,
-            text: text.into(),
-            resolution,
-            reason,
-            module,
+    /// Adds the next entrance of `app`, keyed by the two names.
+    pub fn entrance(&mut self, app: AppRef, name: &str, on: Option<&str>, code: Vec<EntranceTarget>) {
+        let app = &mut self.apps[app.0];
+        app.entrances.push(Entrance {
+            key: Key::entrance(&app.name, name).expect("names with letters or digits"),
+            name: name.into(),
+            on: on.map(Into::into),
+            about: None,
+            code,
         });
+    }
+
+    /// The app, to fill in its optional fields.
+    pub fn app_mut(&mut self, app: AppRef) -> &mut App {
+        &mut self.apps[app.0]
     }
 
     /// Snapshots of every file and input, for source-aware validation.
@@ -441,16 +429,16 @@ impl GraphBuilder {
             .collect()
     }
 
-    /// The graph, normalized (files, inputs, and entrances sorted; entrance keys derived;
-    /// typed records in canonical order).
+    /// The graph, normalized (files and inputs sorted, typed records in canonical order).
     pub fn build(&self) -> Graph {
         let mut graph = Graph {
             files: self.files.iter().map(|draft| draft.graph.clone()).collect(),
             inputs: self.inputs.iter().map(|(input, _)| input.clone()).collect(),
-            entrances: self.entrances.clone(),
+            apps: self.apps.clone(),
         };
         graph.normalize();
         for file in &mut graph.files {
+            file.links.sort_by_key(|link| (link.from, link.seq));
             file.types.sort();
         }
         graph
@@ -479,12 +467,51 @@ mod tests {
     }
 
     #[test]
-    fn the_builder_numbers_edges_per_source() {
-        let graph = sample::sample().build();
-        let orders = graph.file("src/orders.ts").unwrap();
-        let seqs: Vec<(u32, u32)> = orders.edges.iter().map(|edge| (edge.source, edge.seq)).collect();
-        assert_eq!(seqs, [(1, 0), (5, 0), (7, 0), (7, 1)]);
-        assert_eq!(graph.entrances.len(), 3);
-        assert!(graph.entrances.iter().all(|entrance| entrance.key.is_entrance()));
+    fn the_builder_keys_nodes_and_numbers_links_per_source() {
+        let mut g = GraphBuilder::new();
+        let file = g.file("a.py", Language::Python, "def f():\n    g()\n    g()\n");
+        let f = g.def(
+            file,
+            Form::Function,
+            "f",
+            g.find(file, "def f():\n    g()\n    g()"),
+        );
+        let first = g.call(f, &Callee::name("g"), g.find(file, "g()"));
+        let second = g.call(
+            f,
+            &Callee::name("g"),
+            g.find_from(file, "g()", g.range(first).end),
+        );
+        g.link(
+            first,
+            LinkKind::Calls,
+            g.find(file, "g"),
+            "g",
+            unknown(Reason::UnknownName),
+        );
+        g.link(
+            second,
+            LinkKind::Calls,
+            g.find_in(second, "g"),
+            "g",
+            unknown(Reason::UnknownName),
+        );
+        g.link(
+            second,
+            LinkKind::Passes,
+            g.find_in(second, "g"),
+            "g",
+            unknown(Reason::UnknownName),
+        )
+        .bound = Some(0);
+        let graph = g.build();
+        let file = graph.file("a.py").unwrap();
+        let keys: Vec<&str> = file.nodes.iter().map(|node| node.key.as_str()).collect();
+        assert_eq!(keys, ["a.py#", "a.py#f", "a.py#f/call:g", "a.py#f/call:g[1]"]);
+        assert_eq!(file.nodes[3].name.as_deref(), Some("g"));
+        assert_eq!(file.nodes[3].lines.start, 3);
+        let seqs: Vec<(u32, u32)> = file.links.iter().map(|link| (link.from, link.seq)).collect();
+        assert_eq!(seqs, [(2, 0), (3, 0), (3, 1)]);
+        assert_eq!(file.links[2].bound, Some(0));
     }
 }
