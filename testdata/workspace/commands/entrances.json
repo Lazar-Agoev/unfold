@@ -45,12 +45,7 @@
                 "path": "package.json",
                 "line": 9
               },
-              "editable": "override",
-              "match": {
-                "detector": "package.script",
-                "path": "package.json",
-                "pointer": "/scripts/start"
-              }
+              "editable": "override"
             },
             {
               "key": "entrance:[\"package.script\",\"process\",\"\",\"dev\",\"src/server.ts\"]",
@@ -77,12 +72,7 @@
                 "path": "package.json",
                 "line": 10
               },
-              "editable": "override",
-              "match": {
-                "detector": "package.script",
-                "path": "package.json",
-                "pointer": "/scripts/dev"
-              }
+              "editable": "override"
             }
           ]
         }
@@ -125,12 +115,7 @@
                 "path": "package.json",
                 "line": 5
               },
-              "editable": "override",
-              "match": {
-                "detector": "package.bin",
-                "path": "package.json",
-                "pointer": "/bin/orders"
-              }
+              "editable": "override"
             },
             {
               "key": "entrance:[\"package.script\",\"process\",\"\",\"cli\",\"src/cli.ts\"]",
@@ -157,12 +142,7 @@
                 "path": "package.json",
                 "line": 13
               },
-              "editable": "override",
-              "match": {
-                "detector": "package.script",
-                "path": "package.json",
-                "pointer": "/scripts/cli"
-              }
+              "editable": "override"
             }
           ]
         },
@@ -196,12 +176,7 @@
                 "path": "package.json",
                 "line": 14
               },
-              "editable": "override",
-              "match": {
-                "detector": "package.script",
-                "path": "package.json",
-                "pointer": "/scripts/legacy:export"
-              }
+              "editable": "override"
             }
           ]
         },
@@ -239,12 +214,7 @@
                 "path": "package.json",
                 "line": 11
               },
-              "editable": "override",
-              "match": {
-                "detector": "package.script",
-                "path": "package.json",
-                "pointer": "/scripts/worker"
-              }
+              "editable": "override"
             }
           ]
         }
@@ -287,12 +257,7 @@
                 "path": "package.json",
                 "line": 12
               },
-              "editable": "override",
-              "match": {
-                "detector": "package.script",
-                "path": "package.json",
-                "pointer": "/scripts/scheduler"
-              }
+              "editable": "override"
             }
           ]
         }

@@ -10,7 +10,7 @@ import { NO_RENDERER } from "./tools/testing";
 vi.mock("electron", async () => (await import("../fake-electron")).electronModule);
 
 const services = {
-  bridge: new AgentBridge({ windows: { get: () => undefined, current: () => undefined, open: () => { throw new Error("no window"); }, deliver: () => undefined, focus: () => undefined }, views: new ViewTracker() }),
+  bridge: new AgentBridge({ window: { get: () => undefined, current: () => undefined, deliver: () => undefined, focus: () => undefined }, openWindow: () => Promise.reject(new Error("no window")), views: new ViewTracker() }),
   renderer: NO_RENDERER,
   engine: () => Promise.resolve(null),
   engineAs: () => Promise.resolve(null),

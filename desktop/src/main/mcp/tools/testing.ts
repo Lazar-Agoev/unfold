@@ -10,7 +10,7 @@ import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
 import type { z } from "zod";
 import type { AgentIdentity, AgentShellEvent, ViewReport } from "../../../shared/agent-api";
 import type { AddedProject } from "../../../shared/unfold-api";
-import { AgentBridge, type AgentWindows } from "../../agents/bridge";
+import { AgentBridge, type AgentWindow } from "../../agents/bridge";
 import { ViewTracker } from "../../agents/views";
 import { EngineRequestError } from "../../engine-host";
 import type { WindowEntry } from "../../windows";
@@ -93,10 +93,9 @@ export function harness(options: HarnessOptions = {}) {
   const confirmations: string[] = [];
   const views = new ViewTracker();
   const entry = { id: 1, loaded: true } as WindowEntry;
-  const windows: AgentWindows = {
+  const appWindow: AgentWindow = {
     get: (id) => (id === 1 ? entry : undefined),
     current: () => entry,
-    open: () => entry,
     focus: () => {
       focused.push(1);
     },
@@ -112,7 +111,7 @@ export function harness(options: HarnessOptions = {}) {
       }
     },
   };
-  const bridge = new AgentBridge({ windows, views, timeoutMs: 500 });
+  const bridge = new AgentBridge({ window: appWindow, openWindow: () => Promise.resolve(entry), views, timeoutMs: 500 });
   const answers: Readonly<Record<string, Answer>> = { workspace: () => workspace, ...options.engine };
   const agent = options.agent ?? { author: "agent:claude", name: "Claude" };
 

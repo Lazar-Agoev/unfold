@@ -1,7 +1,7 @@
 //! One live project: [`Workspace`], the open engine, watcher, store writer, and reader cache of a
 //! project's current folder, which every command for that project goes through. The workspace
 //! knows nothing of windows: [`crate::projects::Projects`] opens and closes it as the project
-//! wakes and rests, and its events go to every window.
+//! wakes and rests, and its events go to the window.
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -28,7 +28,7 @@ use crate::problems::ProblemItem;
 use crate::projects::ProjectId;
 use crate::settings_edit::{SettingsEdit, apply_edits};
 use crate::shared::{Job, Shared, lock};
-use crate::state::{LocalState, read_json, write_atomically, write_json};
+use crate::state::{LocalState, write_atomically, write_json};
 use crate::status::{Activity, GraphCounts, GraphStatus, ProjectState};
 use crate::storage::open_store;
 use crate::watcher;
@@ -120,7 +120,7 @@ impl Workspace {
             drop(reader);
             store = Some((opened, folder_lock));
         }
-        let local_state = read_json(&layout.state_file());
+        let local_state = LocalState::read(&layout.state_file());
         let shared = Arc::new(Shared::new(
             project,
             root,
@@ -331,8 +331,8 @@ impl Workspace {
         lock(&self.shared.local_state).clone()
     }
 
-    /// Changes the remembered state and saves it to `.unfold/local/state.json`, or keeps it in
-    /// memory until the first Compile creates `local/`.
+    /// Changes the remembered state and saves it to `.unfold/local/state.json`, creating
+    /// `local/` first when the folder has none yet ([`Layout::prepare`]).
     pub fn update_local_state(&self, change: impl FnOnce(&mut LocalState)) -> Result<LocalState> {
         // The file is written while the state is locked, so writes land in the order the changes
         // were made: an older state can never overwrite a newer one.
@@ -341,10 +341,11 @@ impl Workspace {
             change(&mut state);
             let layout = &self.shared.layout;
             let written = if layout.is_compiled() {
-                write_json(&layout.state_file(), &*state, "state.json")
-            } else {
                 Ok(())
-            };
+            } else {
+                layout.prepare()
+            }
+            .and_then(|()| write_json(&layout.state_file(), &*state, "state.json"));
             (state.clone(), written)
         };
         written?;

@@ -20,11 +20,15 @@ afterEach(() => {
   engine = null;
 });
 
-async function open(saved: AppSettings = {}, status: AgentServerStatus = LISTENING) {
+async function open(
+  saved: AppSettings = {},
+  status: AgentServerStatus = LISTENING,
+  setSettings: (args: { readonly settings: AppSettings }) => AppSettings = ({ settings }) => settings,
+) {
   const fake = installFakeEngine({
     handlers: {
       get_settings: () => saved,
-      set_settings: ({ settings }) => settings,
+      set_settings: setSettings,
     },
     windowHandlers: { agent_server_status: () => status },
   });
@@ -68,6 +72,29 @@ describe("Settings › Editor", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     await waitFor(() => {
       expect(fake.callsOf("set_settings")).toEqual([{ settings: { editorCommand: "subl" } }]);
+    });
+  });
+
+  it("tries a failed save again when the field is left again", async () => {
+    let failures = 1;
+    const { dialog, fake, user } = await open({}, LISTENING, ({ settings }) => {
+      if (failures > 0) {
+        failures -= 1;
+        // Rejections are plain {code, message} data, as from the real preload.
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw { code: "io", message: "Disk full." };
+      }
+      return settings;
+    });
+    await user.type(editorField(dialog), "subl");
+    await user.tab();
+    await waitFor(() => {
+      expect(fake.callsOf("set_settings")).toHaveLength(1);
+    });
+    await user.click(editorField(dialog));
+    await user.tab();
+    await waitFor(() => {
+      expect(fake.callsOf("set_settings")).toEqual([{ settings: { editorCommand: "subl" } }, { settings: { editorCommand: "subl" } }]);
     });
   });
 

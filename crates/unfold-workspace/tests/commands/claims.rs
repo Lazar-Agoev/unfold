@@ -73,7 +73,7 @@ fn the_example_board_saves_to_itself() {
     let example =
         std::fs::read_to_string(testdata_dir().join("boards/order-system.json")).expect("read the example");
     let parsed: Value = serde_json::from_str(&example).expect("the example is JSON");
-    let id = id_of(&harness.draft(1, "Order system"));
+    let id = id_of(&harness.new_board(1, "Order system"));
     let saved = harness.save(
         1,
         &id,
@@ -91,7 +91,7 @@ fn the_example_board_saves_to_itself() {
 #[test]
 fn the_design_connections_are_grounded_in_ts_orders() {
     let harness = Harness::compiled("ts-orders");
-    let id = id_of(&harness.draft(1, "Orders"));
+    let id = id_of(&harness.new_board(1, "Orders"));
     let mut page = json!({
         "title": "Placing an order", "defaultView": "diagram", "groups": [],
         "cards": [
@@ -196,7 +196,7 @@ fn evidence_files_anchor_claims_that_go_outdated_when_the_file_changes() {
     harness.write("db/schema.sql", SCHEMA);
     harness.ok(1, "select_project", json!({ "project": harness.project }));
     harness.ok(1, "compile", json!({ "project": harness.project }));
-    let board = harness.draft(1, "Customers");
+    let board = harness.new_board(1, "Customers");
     let id = id_of(&board);
     let customers = |columns: &[&str]| {
         json!({

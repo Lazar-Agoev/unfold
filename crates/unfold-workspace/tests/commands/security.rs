@@ -28,7 +28,6 @@ fn every_path_a_window_names_stays_inside_its_project() {
             );
         }
     }
-    #[cfg(unix)]
     {
         let outside = tempfile::tempdir().expect("outside");
         std::fs::write(

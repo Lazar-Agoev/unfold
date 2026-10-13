@@ -299,7 +299,6 @@ button.relation-value:hover { color: var(--color-accent-text); }
 .relation-more { font-family: var(--font-ui); }
 .relation-more { color: var(--color-muted); }
 .relation-path { font-family: var(--font-ui); color: var(--color-muted); }
-.relation-card { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .relation-code { overflow: hidden; text-overflow: ellipsis; }
 
 /* A call's contract: the arrow between its sides, a side with no written value, and a quiet note ("caught"). */

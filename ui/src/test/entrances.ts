@@ -22,7 +22,6 @@ function launchRow(overrides: Partial<LaunchRow> & Pick<LaunchRow, "key" | "fold
     routes: null,
     declaredIn: { path: "unfold.toml", line: null },
     editable: "configured",
-    match: null,
     ...overrides,
   };
 }
@@ -57,7 +56,6 @@ const REVIEW_WORKER = launchRow({
   reaches: 64,
   declaredIn: { path: "package.json", line: 11 },
   editable: "override",
-  match: { detector: "package.script", path: "package.json", pointer: "/scripts/worker" },
 });
 
 /** The overview: one application in each category. */

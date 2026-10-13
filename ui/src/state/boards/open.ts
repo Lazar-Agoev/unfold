@@ -9,7 +9,7 @@ import type { ProjectId } from "../../ipc/generated";
 import { hideBoard, showBoard } from "../shownBoard";
 import { call } from "./engine";
 import { boardKey } from "./keys";
-import { adoptBoardState, adoptOutsideChange, flushAllBoards, flushBoard, forgetBoard, getOpenBoard, isDirty, openBoards, setActivePage } from "./store";
+import { adoptBoardState, adoptOutsideChange, flushAllBoards, flushBoard, forgetBoard, getOpenBoard, openBoards, setActivePage } from "./store";
 import type { BoardRef, PageId } from "./types";
 
 const opening = new Map<string, Promise<BoardRef>>();
@@ -60,7 +60,10 @@ export async function newBoard(
   return ref;
 }
 
-/** Saves the board's unsaved edits, closes it in the engine, and forgets its session. Home shows if it was in front. */
+/**
+ * Saves the board's unsaved edits, closes it in the engine, and forgets its session. Home shows if it
+ * was in front. Throws `unsaved_edits`, keeping the board open, when its edits can't be saved.
+ */
 export async function closeBoard(ref: BoardRef): Promise<void> {
   if (getOpenBoard(ref)) {
     await flushBoard(ref);
@@ -92,8 +95,8 @@ export async function reopenBoards(): Promise<void> {
     const { ref } = board;
     try {
       const state = await call("open_board", { project: ref.project, id: ref.id });
-      if (state.revision !== board.revision && !isDirty(board)) {
-        await adoptOutsideChange(state);
+      if (state.revision !== board.revision) {
+        adoptOutsideChange(state);
       }
     } catch (cause) {
       const error = toUnfoldError(cause);

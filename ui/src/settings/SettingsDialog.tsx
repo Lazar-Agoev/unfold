@@ -17,7 +17,7 @@ import "./settings.css";
 function SettingsForm({ saved, onClose }: { readonly saved: AppSettings; readonly onClose: () => void }) {
   const client = useQueryClient();
   const [editor, setEditor] = useState(saved.editorCommand ?? "");
-  // What was last saved, so leaving the field and then closing writes once.
+  // What was last saved, so leaving the field and then closing writes once, and a failed save is tried again.
   const stored = useRef(saved);
 
   const commit = async () => {
@@ -26,9 +26,10 @@ function SettingsForm({ saved, onClose }: { readonly saved: AppSettings; readonl
       return;
     }
     const settings: AppSettings = editorCommand === "" ? {} : { editorCommand };
-    stored.current = settings;
     try {
-      client.setQueryData(engineKey("get_settings", {}), await call("set_settings", { settings }));
+      const next = await call("set_settings", { settings });
+      stored.current = next;
+      client.setQueryData(engineKey("get_settings", {}), next);
     } catch (error) {
       showToast({ title: "Couldn't save the editor command", body: toUnfoldError(error).message, tone: "danger" });
     }

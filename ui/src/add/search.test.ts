@@ -3,11 +3,11 @@ import type { FileHit, SearchHit, SearchResults } from "../ipc/generated";
 import { kindText, resultItems, searchArgs } from "./search";
 
 function hit(name: string, kind: string, score: number): SearchHit {
-  return { project: "p-a", key: `src/a.ts#${kind}:${name}`, name, qualifiedName: name, path: "src/a.ts", kind, line: 3, application: null, score, nameMatches: [] };
+  return { project: "p-a", key: `src/a.ts#${kind}:${name}`, name, qualifiedName: name, path: "src/a.ts", kind, line: 3, application: null, score };
 }
 
 function file(path: string, score: number): FileHit {
-  return { project: "p-a", path, name: path.slice(path.lastIndexOf("/") + 1), definitions: 2, score, matches: [] };
+  return { project: "p-a", path, name: path.slice(path.lastIndexOf("/") + 1), definitions: 2, score };
 }
 
 function results(definitions: SearchHit[], entrances: SearchHit[], files: FileHit[]): SearchResults {
@@ -17,8 +17,6 @@ function results(definitions: SearchHit[], entrances: SearchHit[], files: FileHi
     definitions: group(definitions),
     entrances: group(entrances),
     files: group(files),
-    projects: [{ project: "p-a", definitions: definitions.length, entrances: entrances.length, files: files.length }],
-    tookMs: 1,
   };
 }
 

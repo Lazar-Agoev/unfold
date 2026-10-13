@@ -228,7 +228,6 @@ fn files_are_classified_with_stamps() {
     assert_eq!(inputs, ["package.json", "tsconfig.build.json", "tsconfig.json"]);
 }
 
-#[cfg(unix)]
 #[test]
 fn symlinks_never_lead_out_of_the_folder() {
     use std::os::unix::fs::symlink;
@@ -254,7 +253,6 @@ fn symlinks_never_lead_out_of_the_folder() {
     assert!(!exists_in_root(root, &RepoPath::new("missing.ts").unwrap()));
 }
 
-#[cfg(unix)]
 #[test]
 fn names_that_cannot_be_paths_are_left_out() {
     let dir = folder(&[("ok.ts", ""), ("bad\\name.ts", "")]);

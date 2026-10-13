@@ -124,7 +124,6 @@ enum Edit {
     AddSubclass,
     DeleteOrRestore(usize),
     BreakOrFix(usize),
-    #[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
     CaseRename(usize),
 }
 

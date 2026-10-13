@@ -1,9 +1,10 @@
 //! `search`: definitions, entrances, and files by name across the workspace's projects
-//! (decisions cross-project search, project liveness). It also serves Add's name search and quick open. Definitions are the
-//! catalog's: functions, methods, classes, and type declarations, each hit naming its block
-//! kind; `definitionKinds` narrows them (to types: `interface`, `type_alias`, `enum`, `class`).
+//! (decisions cross-project search, project liveness). It serves Add's name search and the
+//! agents' `search`. Definitions are the catalog's: functions, methods, classes, and type
+//! declarations, each hit naming its block kind; `definitionKinds` narrows them (to types:
+//! `interface`, `type_alias`, `enum`, `class`).
 //!
-//! One request is one fan-out in Rust: every project in "Look in" (all of them by default) is
+//! One request is one fan-out in Rust: every project asked for (all of them by default) is
 //! searched in parallel, and the results are merged. In each project, definitions and entrances
 //! come from the store's FTS5 index, which returns every item whose name, qualified name, or path
 //! contains each word of the query; files come from the live project's file list under
@@ -17,7 +18,6 @@
 
 use std::cmp::Ordering;
 use std::sync::Arc;
-use std::time::Instant;
 
 use nucleo_matcher::pattern::{AtomKind, CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
@@ -102,8 +102,6 @@ pub struct SearchHit {
     pub application: Option<String>,
     /// The rank score (higher is better).
     pub score: u32,
-    /// UTF-16 offsets of the matched characters in `name`, for highlighting.
-    pub name_matches: Vec<u32>,
 }
 
 /// A file result.
@@ -120,8 +118,6 @@ pub struct FileHit {
     pub definitions: Option<u32>,
     /// The rank score (higher is better).
     pub score: u32,
-    /// UTF-16 offsets of the matched characters in `path`, for highlighting.
-    pub matches: Vec<u32>,
 }
 
 /// One kind's results.
@@ -146,20 +142,6 @@ impl<T> Default for SearchGroup<T> {
     }
 }
 
-/// One project's match counts (at most 2,000 per kind).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct ProjectMatches {
-    /// The project.
-    pub project: ProjectId,
-    /// Definitions that matched.
-    pub definitions: u32,
-    /// Entrances that matched.
-    pub entrances: u32,
-    /// Files that matched.
-    pub files: u32,
-}
-
 /// Search results by kind.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -172,10 +154,6 @@ pub struct SearchResults {
     pub entrances: SearchGroup<SearchHit>,
     /// Files.
     pub files: SearchGroup<FileHit>,
-    /// Each searched project's match counts, in workspace order.
-    pub projects: Vec<ProjectMatches>,
-    /// How long the search took, in milliseconds.
-    pub took_ms: u32,
 }
 
 /// One kind's results in one project: its best hits, and how many matched.
@@ -207,7 +185,6 @@ struct ProjectFound {
 /// `search`: ranked definitions, entrances, and files across the projects. Definitions and
 /// entrances need a compiled project; a live project's files don't.
 pub fn search(ctx: &Ctx<'_>, args: SearchArgs) -> CommandResult<SearchResults> {
-    let started = Instant::now();
     let limit = args.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT) as usize;
     let wants = |kind: SearchKind| args.kinds.as_ref().is_none_or(|kinds| kinds.contains(&kind));
     let wanted = (
@@ -229,8 +206,6 @@ pub fn search(ctx: &Ctx<'_>, args: SearchArgs) -> CommandResult<SearchResults> {
             definitions: SearchGroup::default(),
             entrances: SearchGroup::default(),
             files: SearchGroup::default(),
-            projects: Vec::new(),
-            took_ms: 0,
         });
     }
     let found: Vec<ProjectFound> = projects
@@ -238,16 +213,6 @@ pub fn search(ctx: &Ctx<'_>, args: SearchArgs) -> CommandResult<SearchResults> {
         .map(|project| search_project(ctx, project, &query, &definition_kinds, limit, wanted))
         .collect::<CommandResult<_>>()?;
     ctx.check_cancelled()?;
-    let totals = projects
-        .iter()
-        .zip(&found)
-        .map(|(project, found)| ProjectMatches {
-            project: project.id().clone(),
-            definitions: count(found.definitions.total),
-            entrances: count(found.entrances.total),
-            files: count(found.files.total),
-        })
-        .collect();
     let position = |id: &ProjectId| projects.iter().position(|project| project.id() == id);
     let order_hits = |a: &SearchHit, b: &SearchHit| {
         b.score
@@ -287,8 +252,6 @@ pub fn search(ctx: &Ctx<'_>, args: SearchArgs) -> CommandResult<SearchResults> {
         definitions,
         entrances,
         files,
-        projects: totals,
-        took_ms: u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX),
     })
 }
 
@@ -454,40 +417,9 @@ fn file_list(project: &ProjectHandle<'_>, readers: Option<&ReadPool>) -> Command
     }))
 }
 
-/// The matched characters of `haystack` as UTF-16 offsets, with the score. `chars` is a
-/// reusable buffer.
-fn score_with_matches(
-    pattern: &Pattern,
-    matcher: &mut Matcher,
-    haystack: &str,
-    chars: &mut Vec<char>,
-) -> Option<(u32, Vec<u32>)> {
-    let mut indices = Vec::new();
-    let score = pattern.indices(Utf32Str::new(haystack, chars), matcher, &mut indices)?;
-    indices.sort_unstable();
-    indices.dedup();
-    // Indices count characters; convert them to UTF-16 offsets.
-    let matches = if haystack.is_ascii() {
-        indices
-    } else {
-        let mut offsets = Vec::with_capacity(indices.len());
-        let mut wanted = indices.iter().peekable();
-        let mut unit = 0u32;
-        for (index, character) in haystack.chars().enumerate() {
-            if wanted.peek().is_some_and(|&&next| next as usize == index) {
-                offsets.push(unit);
-                wanted.next();
-            }
-            unit += count(character.len_utf16());
-        }
-        offsets
-    };
-    Some((score, matches))
-}
-
 /// Ranks store candidates: a name match counts four times, a qualified-name match twice, a path
 /// match once. Every candidate is scored, but only the `limit` best are turned into hits (with
-/// their match positions and owned strings).
+/// owned strings).
 fn rank(
     project: &ProjectId,
     pattern: &Pattern,
@@ -520,8 +452,6 @@ fn rank(
         .into_iter()
         .filter_map(|(score, index)| {
             let candidate = candidates[index].take()?;
-            let name_matches = score_with_matches(pattern, matcher, &candidate.name, &mut chars)
-                .map_or_else(Vec::new, |(_, matches)| matches);
             Some(SearchHit {
                 project: project.clone(),
                 key: candidate.key.as_str().to_owned(),
@@ -532,7 +462,6 @@ fn rank(
                 line: None,
                 application: None,
                 score,
-                name_matches,
             })
         })
         .collect()
@@ -571,8 +500,6 @@ fn rank_files(
             name: path.rsplit('/').next().unwrap_or(path).to_owned(),
             definitions: None,
             score,
-            matches: score_with_matches(pattern, matcher, path, &mut chars)
-                .map_or_else(Vec::new, |(_, matches)| matches),
         })
         .collect();
     Found {
@@ -609,15 +536,6 @@ mod tests {
         assert_eq!(found.total, 2);
         let hits = found.hits;
         assert_eq!(hits.len(), 2);
-        assert!(hits.iter().all(|hit| !hit.matches.is_empty()));
         assert!(hits.iter().all(|hit| hit.path != "README.md"));
-    }
-
-    #[test]
-    fn match_offsets_count_utf16_units() {
-        let pattern = Pattern::new("b", CaseMatching::Smart, Normalization::Smart, AtomKind::Fuzzy);
-        let mut matcher = Matcher::new(Config::DEFAULT);
-        let (_, matches) = score_with_matches(&pattern, &mut matcher, "😀b", &mut Vec::new()).expect("match");
-        assert_eq!(matches, [2]);
     }
 }

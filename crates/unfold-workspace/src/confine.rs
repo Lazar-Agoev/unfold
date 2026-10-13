@@ -126,7 +126,6 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
     #[test]
     fn rejects_links_that_leave_the_folder() {
         let (_dir, root) = root();

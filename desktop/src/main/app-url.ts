@@ -47,10 +47,10 @@ export function devContentSecurityPolicy(devOrigin: string): string {
   ].join("; ");
 }
 
-/** Where windows load the UI from. */
+/** Where the window and the render window load the UI from. */
 export type UiSource = { readonly kind: "app"; readonly dir: string } | { readonly kind: "dev"; readonly url: string };
 
-/** The URL a new window loads. */
+/** The URL the window loads. */
 export function entryUrl(source: UiSource): string {
   return source.kind === "app" ? APP_ENTRY_URL : source.url;
 }

@@ -1,8 +1,8 @@
 /**
  * An agent's repair (design §6.8, `repair`): one repair a health item offers, applied the way Review
  * applies one (`repairBoard`, `engineStep`): the board's unsaved edits are saved first (refused while
- * they can't be, or a conflict is open), the engine repairs and saves, and the result becomes one undo
- * step; edits the person makes meanwhile are kept, and the repair is refused (`page_changed`). The main
+ * they can't be), the engine repairs and saves, and the result becomes one undo step; edits the person
+ * makes meanwhile are kept, and the repair is refused (`page_changed`). The main
  * process chose the repair and checked that the agent may sign off on it (D6); the items it changed
  * are marked as the agent's work.
  */

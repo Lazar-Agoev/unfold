@@ -27,7 +27,8 @@ function report(held: ViewReport["held"]): ViewReport {
   return { selection: { kind: "none" }, visible: [], held };
 }
 
-function setup(timeoutMs = 1_000) {
+/** `openWindow` as the workspace answers it: after the launch restore, which `restored` holds back. */
+function setup(timeoutMs = 1_000, restored: Promise<void> = Promise.resolve()) {
   const views = new ViewTracker();
   let bridge: AgentBridge | null = null;
   const appWindow = new AppWindow(
@@ -42,7 +43,7 @@ function setup(timeoutMs = 1_000) {
     },
     false,
   );
-  bridge = new AgentBridge({ windows: appWindow, views, timeoutMs });
+  bridge = new AgentBridge({ window: appWindow, openWindow: () => restored.then(() => appWindow.open()), views, timeoutMs });
   const open = (): Entry => {
     const entry = appWindow.open() as Entry;
     entry.window.finishLoad();
@@ -102,13 +103,18 @@ describe("routing an edit", () => {
     expect(views.holder(BOARD)).toBe(entry.id);
   });
 
-  it("opens the window when it is closed, and sends the request once its UI has loaded", async () => {
-    const { bridge, appWindow } = setup();
+  it("opens the window when it is closed, after the launch restore, and sends the request once its UI has loaded", async () => {
+    let restore!: () => void;
+    const { bridge, appWindow } = setup(1_000, new Promise((resolve) => (restore = resolve)));
     const outcome = bridge.open({ board: BOARD });
-    const created = appWindow.current() as Entry | undefined;
-    if (!created) {
-      throw new Error("the window wasn't opened");
-    }
+    await Promise.resolve();
+    expect(appWindow.current()).toBeUndefined();
+
+    restore();
+    await vi.waitFor(() => {
+      expect(appWindow.current()).toBeDefined();
+    });
+    const created = appWindow.current() as Entry;
     expect(requests(created)).toEqual([]);
     created.window.finishLoad();
     const opening = await request(created, 1);
@@ -284,10 +290,10 @@ describe("boards as a whole", () => {
   it("opens the window to create a board when it is closed", async () => {
     const { bridge, views, appWindow } = setup();
     const outcome = bridge.create({ project: BOARD.project, title: "Order placement" });
-    const created = appWindow.current() as Entry | undefined;
-    if (!created) {
-      throw new Error("the window wasn't opened");
-    }
+    await vi.waitFor(() => {
+      expect(appWindow.current()).toBeDefined();
+    });
+    const created = appWindow.current() as Entry;
     created.window.finishLoad();
     const sent = await request(created, 1);
     expect(sent).toMatchObject({ type: "agent_create_board", project: BOARD.project, title: "Order placement" });

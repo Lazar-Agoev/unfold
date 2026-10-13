@@ -2,8 +2,8 @@
 //!
 //! A board is a titled list of **pages**, optionally filed in a folder. Each page holds authored
 //! choices only: references to blocks and entrances of the board's project by structural key,
-//! canvas positions, each card's saved
-//! view, fold, and calls expanded in place, groups, descriptions, Flow labels, the guards that
+//! canvas positions, each card's saved view and calls expanded in place, groups, descriptions,
+//! Flow labels, the guards that
 //! keep references from silently reattaching to different code, links drawn between cards
 //! (connections, when they have a kind), frames around items, resource cards, notes, and proposed
 //! steps. It never holds copied source or compiled arrows.

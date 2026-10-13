@@ -107,7 +107,7 @@ export function registerWindowCommands({ window, workspace, ui, agents, mcp, ren
     report_view: (entry, args) => {
       const report = parseViewReport(args);
       if (!report) {
-        throw invalid("report_view: pass {board?, page?, selection, lens?, visible, tabs}.");
+        throw invalid("report_view: pass {board?, page?, selection, lens?, visible, held}.");
       }
       agents.views.report(entry.id, report);
       return null;

@@ -12,7 +12,8 @@
 //! ```
 //!
 //! Opening and browsing a folder never creates `.unfold/`: [`Layout::prepare`] creates `local/`
-//! on the first Compile (and again if `local/cache/` was deleted while the folder is open).
+//! on the first Compile or the first write of remembered state (and again if `local/cache/` was
+//! deleted while the folder is open).
 //!
 //! Unfold needs to write `.unfold/` in the folder. [`check_writable`] refuses a folder that is
 //! read-only, sits on a network volume (where SQLite's write-ahead log is unsafe), or whose
@@ -210,16 +211,8 @@ fn has_link(root: &Path) -> bool {
 
 /// Whether this process may create entries in the folder `dir`, asked of the operating system
 /// (permissions, access control lists, read-only volumes) without writing.
-#[cfg(unix)]
 fn is_writable(dir: &Path) -> bool {
     nix::unistd::access(dir, nix::unistd::AccessFlags::W_OK).is_ok()
-}
-
-/// Whether this process may create entries in the folder `dir`: the read-only attribute is all
-/// that can be checked without writing; `prepare` still finds out for sure.
-#[cfg(not(unix))]
-fn is_writable(dir: &Path) -> bool {
-    std::fs::metadata(dir).is_ok_and(|metadata| !metadata.permissions().readonly())
 }
 
 /// Whether an I/O error means the location can't be written.
@@ -272,7 +265,6 @@ mod tests {
         layout.prepare().expect("prepare again");
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_read_only_folder_is_refused_before_anything_is_written() {
         use std::os::unix::fs::PermissionsExt;
@@ -293,7 +285,6 @@ mod tests {
         assert!(!root.join(UNFOLD_DIR).exists());
     }
 
-    #[cfg(unix)]
     #[test]
     fn links_in_the_local_folder_are_refused() {
         let (_dir, root) = dirs();
@@ -310,7 +301,6 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_dangling_gitignore_link_is_never_followed() {
         let (_dir, root) = dirs();

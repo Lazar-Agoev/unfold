@@ -30,7 +30,7 @@ export interface SpanRange {
 
 /**
  * The underlined ranges of a model's links, sorted by start. Links never overlap (reader rule).
- * `base` is subtracted from every offset when the shown text doesn't start at 0 (a source tab's page).
+ * `base` is subtracted from every offset when the shown text doesn't start at 0 (a page of a file in the peek sheet).
  */
 export function linkRanges(links: readonly CallLink[], base = 0): LinkRange[] {
   const ranges: LinkRange[] = [];

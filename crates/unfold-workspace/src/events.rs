@@ -1,10 +1,10 @@
 //! Events to windows (docs/ipc.md#how-a-command-travels, docs/ipc.md › Events) and the sink they go through.
 //!
-//! Every window shows the whole workspace, so every event is for every window: a project's
-//! workspace hands each event to the [`EventSink`], and the host sends it as
-//! `{"kind":"broadcast","event":{…}}`, which the engine host's router posts to every window it
-//! has. The one exception is `board_reloaded`, which only the window that opened the board
-//! receives (`{"kind":"event","windows":[w],"event":{…}}`). Project events name their project
+//! The window shows the whole workspace, so every event is for it: a project's workspace hands
+//! each event to the [`EventSink`], and the host sends it as `{"kind":"broadcast","event":{…}}`,
+//! which the engine host's router posts to every window port it has (a closing window's and a
+//! reopened one's). The one exception is `board_reloaded`, which only the window that opened the
+//! board receives (`{"kind":"event","windows":[w],"event":{…}}`). Project events name their project
 //! ([`WorkspaceEvent::project`]). Events serialize with a snake_case `type` tag and camelCase
 //! fields, the shape the UI's `window.unfold.on(type, …)` receives.
 //!

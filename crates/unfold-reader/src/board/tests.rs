@@ -1757,7 +1757,6 @@ fn board_files_are_saved_in_place_and_created_once() {
     assert_eq!(slug("Café Crème"), "cafe-creme");
 }
 
-#[cfg(unix)]
 #[test]
 fn board_directories_must_not_be_links() {
     let dir = tempfile::tempdir().unwrap();
@@ -1809,21 +1808,6 @@ fn free_names_stay_valid_and_bounded() {
         result => panic!("expected a collision, got {result:?}"),
     }
     assert_eq!(dirs.free_name("fresh"), "fresh");
-}
-
-#[test]
-fn board_names_avoid_reserved_device_names() {
-    for reserved in ["con", "CON", "aux.v2", "nul", "com1", "LPT9"] {
-        assert!(
-            matches!(BoardFile::new(reserved), Err(BoardError::InvalidName { .. })),
-            "{reserved}"
-        );
-    }
-    for fine in ["console", "com0", "com10", "auxiliary", "board"] {
-        assert!(BoardFile::new(fine).is_ok(), "{fine}");
-    }
-    assert_eq!(slug("Con"), "con-board");
-    assert!(BoardFile::new(&slug("AUX")).is_ok());
 }
 
 #[test]

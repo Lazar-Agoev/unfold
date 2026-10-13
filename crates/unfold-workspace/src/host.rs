@@ -15,7 +15,7 @@
 //! function and never blocks the JavaScript thread. Results are JSON strings; errors are
 //! [`CommandError`]s whose [`CommandError::to_json`] is the rejected promise's message.
 //!
-//! Windows attach to nothing here: a window is known by the id its commands carry, and every
+//! The window attaches to nothing here: it is known by the id its commands carry, and every
 //! command that concerns a project names it ([`crate::projects`]). A command is
 //! `{"command": "<name>", "args": {…}}` (the [`Request`] table). The engine host may add
 //! `"trusted": true` to a command **the main process** sent (never to one a window sent):
@@ -29,7 +29,9 @@
 //! the moment `dispatch` is called; [`Host::detach_window`] waits (up to [`CLOSE_WAIT`]) until the
 //! window has none in flight, so those saves land while the window's boards are still open. Then
 //! it closes the window's boards (their sessions go, so their projects can rest) and releases its
-//! Home selection.
+//! Home selection. A command of the window that finishes later (an agent's open in the
+//! background) can't open a board or select a project for it (`window_closed`); a window that
+//! opens again has a new id.
 //!
 //! Sink messages are `{"kind":"broadcast","event":{…}}` (every event but one is for every window),
 //! `{"kind":"event","windows":[w],"event":{…}}` (`board_reloaded`, for the window that opened

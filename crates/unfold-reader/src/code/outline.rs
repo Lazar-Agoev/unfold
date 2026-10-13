@@ -11,7 +11,7 @@
 //! `else if` chain of three or more checks start folded.
 
 use unfold_core::vocab::{BlockKind, Language, Role, SlotName};
-use unfold_core::{ByteRange, FileGraph, Key};
+use unfold_core::{ByteRange, FileGraph};
 
 use super::{Fold, Offsets, OutlineItem};
 use crate::error::Result;
@@ -247,47 +247,4 @@ pub(super) fn outline(
         open.push((ends[local] as usize, index));
     }
     Ok(items)
-}
-
-/// The members of the group a gutter selection of lines `from` through `to` makes: consecutive
-/// sibling statements with one parent and one role. The selection descends into a compound item
-/// only when it lies strictly inside it. Empty when the selection makes no valid group.
-pub fn group_for_lines(outline: &[OutlineItem], from: u32, to: u32) -> Vec<Key> {
-    let (from, to) = if from <= to { (from, to) } else { (to, from) };
-    let children = |parent: Option<u32>| {
-        outline
-            .iter()
-            .enumerate()
-            .filter(move |(_, item)| item.parent == parent)
-            .map(|(index, item)| (to_u32(index), item))
-    };
-    let mut level: Option<u32> = None;
-    loop {
-        let inside = children(level).find(|(index, item)| {
-            !is_callback(item.kind)
-                && children(Some(*index)).next().is_some()
-                && from > item.start_line
-                && to < item.end_line
-        });
-        match inside {
-            Some((index, _)) => level = Some(index),
-            None => break,
-        }
-    }
-    let covered: Vec<&OutlineItem> = children(level)
-        .map(|(_, item)| item)
-        .filter(|item| !is_callback(item.kind) && item.end_line >= from && item.start_line <= to)
-        .collect();
-    let Some(role) = covered
-        .first()
-        .map(|item| item.role)
-        .filter(|&role| is_group_role(role))
-    else {
-        return Vec::new();
-    };
-    covered
-        .into_iter()
-        .filter(|item| item.role == role)
-        .map(|item| item.key.clone())
-        .collect()
 }

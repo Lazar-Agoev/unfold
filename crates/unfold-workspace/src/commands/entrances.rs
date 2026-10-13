@@ -37,7 +37,6 @@ use crate::error::WorkspaceError;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::ProjectId;
-use crate::settings_edit::MatchSpec;
 
 /// Rows per page when the request doesn't say.
 const DEFAULT_LIMIT: u32 = 100;
@@ -208,10 +207,6 @@ pub struct LaunchRow {
     pub declared_in: DeclaredIn,
     /// How it is edited.
     pub editable: Editable,
-    /// The detected launch an `[[entrance_override]]` matches, for a detected launch.
-    #[serde(rename = "match")]
-    #[ts(rename = "match")]
-    pub match_: Option<MatchSpec>,
 }
 
 /// Whether Unfold can follow a launch into the code.
@@ -688,11 +683,6 @@ impl Context<'_> {
             } else {
                 Editable::Override
             },
-            match_: (detector != DetectorId::Manual).then(|| MatchSpec {
-                detector: detector.as_str().to_owned(),
-                path: evidence.path.as_str().to_owned(),
-                pointer: evidence.pointer.as_deref().unwrap_or_default().to_owned(),
-            }),
         })
     }
 }

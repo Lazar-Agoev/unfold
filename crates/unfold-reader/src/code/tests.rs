@@ -5,7 +5,7 @@ use unfold_core::testkit::{BlockRef, GraphBuilder, Outcome};
 use unfold_core::vocab::{BlockKind as K, EdgeKind, Language, Reason, Role, SlotName as S};
 use unfold_core::{ByteRange, FileGraph, Graph, Key};
 
-use super::{CodeSource, CodeText, FoldPolicy, code_view, group_for_lines, render};
+use super::{CodeSource, CodeText, FoldPolicy, code_view, render};
 
 /// Highlights every occurrence of a few keywords, wherever they are.
 struct Keywords;
@@ -247,7 +247,7 @@ fn a_card_has_lines_spans_and_call_links() {
 }
 
 #[test]
-fn outline_rows_and_groups() {
+fn outline_items_and_folds() {
     let (file, handle, callback) = handle();
     let text = render(&file, handle, HANDLE_TS, None, FoldPolicy::Card).unwrap();
     let rows: Vec<(K, Option<u32>, bool)> = text
@@ -271,20 +271,6 @@ fn outline_rows_and_groups() {
     assert_eq!(fold.summary, "2 lines");
     assert_eq!(text.outline[3].key, callback);
     assert!(text.spans.is_empty());
-
-    let keys = |from, to| group_for_lines(&text.outline, from, to);
-    assert_eq!(
-        keys(3, 5),
-        [
-            text.outline[0].key.clone(),
-            text.outline[1].key.clone(),
-            text.outline[2].key.clone()
-        ]
-    );
-    assert_eq!(keys(4, 3), keys(3, 4));
-    // Strictly inside the statement that holds the callback: only the callback is there, and a
-    // nested definition is never a group member.
-    assert!(keys(6, 6).is_empty());
 }
 
 /// A function longer than a card's limit when `filler` is set, with a three-check `else if`
@@ -393,9 +379,9 @@ fn long_cards_fold_callbacks_and_long_chains() {
     assert_eq!(head.summary, "6 lines");
     assert_eq!(text.outline[2].fold.as_ref().unwrap().chain, Some(2));
 
-    // A source tab never starts folded; nor does a short card.
-    let tab = render(&file, big, &source, None, FoldPolicy::SourceTab).unwrap();
-    assert!(folded(&tab).is_empty());
+    // A whole file never starts folded; nor does a short card.
+    let whole = render(&file, big, &source, None, FoldPolicy::File).unwrap();
+    assert!(folded(&whole).is_empty());
     let (source, file, big) = long_function(false);
     let short = render(&file, big, &source, None, FoldPolicy::Card).unwrap();
     assert!(folded(&short).is_empty());
@@ -450,7 +436,7 @@ fn python_folds_keep_their_header_and_offsets_are_utf16() {
     );
     let file = only_file(g.build());
 
-    let text = render(&file, 0, source, Some(&Keywords), FoldPolicy::SourceTab).unwrap();
+    let text = render(&file, 0, source, Some(&Keywords), FoldPolicy::File).unwrap();
     // CRLF ends lines (the final one adds no empty line); offsets count UTF-16 units.
     let bounds: Vec<(u32, u32)> = text.lines.iter().map(|line| (line.start, line.end)).collect();
     let line_starts: Vec<usize> = [

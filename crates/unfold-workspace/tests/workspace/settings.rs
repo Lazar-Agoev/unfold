@@ -56,20 +56,16 @@ fn defaults_are_never_written_and_invalid_edits_are_refused() {
     let sink = RecordingSink::new();
     let workspace = playground.open(&sink, false);
     let outcome = workspace
-        .edit_settings(&[SettingsEdit::SetDetector {
-            detector: "express.route".into(),
-            enabled: true,
-        }])
+        .edit_settings(&[SettingsEdit::IncludeInGraph { path: "src".into() }])
         .expect("no-op edit");
     assert!(!outcome.written);
     assert!(!playground.path(".unfold").exists());
 
     let refused = workspace
-        .edit_settings(&[SettingsEdit::SetDetector {
-            detector: "no-such-detector".into(),
-            enabled: false,
+        .edit_settings(&[SettingsEdit::AddEvidencePattern {
+            pattern: "../secrets.sql".into(),
         }])
-        .expect_err("unknown detector");
+        .expect_err("a pattern outside the folder");
     assert!(
         matches!(refused, WorkspaceError::InvalidSettings { line: Some(_), .. }),
         "{refused}"

@@ -58,19 +58,8 @@ impl BoardFile {
     }
 }
 
-/// Stems Windows reserves for devices (`con.json` cannot be created there), compared without
-/// case on the part before the first `.`.
-fn is_reserved(name: &str) -> bool {
-    let stem = name.split('.').next().unwrap_or(name).to_ascii_lowercase();
-    matches!(stem.as_str(), "con" | "prn" | "aux" | "nul")
-        || (stem.len() == 4
-            && (stem.starts_with("com") || stem.starts_with("lpt"))
-            && matches!(stem.as_bytes()[3], b'1'..=b'9'))
-}
-
 /// A file name must be a plain stem: letters, digits, `.`, `_`, `-`, starting with a letter or
-/// digit, at most 100 characters, and not a name Windows reserves. Paths, separators, and `..`
-/// are refused.
+/// digit, at most 100 characters. Paths, separators, and `..` are refused.
 fn check_name(name: &str) -> Result<(), BoardError> {
     let valid = !name.is_empty()
         && name.len() <= MAX_NAME
@@ -80,8 +69,7 @@ fn check_name(name: &str) -> Result<(), BoardError> {
             .is_some_and(|first| first.is_ascii_alphanumeric())
         && name
             .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-'))
-        && !is_reserved(name);
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-'));
     if valid {
         Ok(())
     } else {
@@ -93,8 +81,7 @@ fn check_name(name: &str) -> Result<(), BoardError> {
 
 /// The file name for a title: `Order placement` → `order-placement`. Accents are dropped
 /// (`Café` → `cafe`), every other run of non-alphanumeric characters becomes one `-`, and the
-/// result has at most 80 characters; a title with nothing left becomes `board`, and a name
-/// Windows reserves gets `-board` (`con-board`).
+/// result has at most 80 characters; a title with nothing left becomes `board`.
 pub fn slug(title: &str) -> String {
     let mut slug = String::new();
     let mut pending_dash = false;
@@ -114,8 +101,6 @@ pub fn slug(title: &str) -> String {
     let slug = slug.trim_end_matches('-');
     if slug.is_empty() {
         "board".to_owned()
-    } else if is_reserved(slug) {
-        format!("{slug}-board")
     } else {
         slug.to_owned()
     }

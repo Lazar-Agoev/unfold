@@ -11,14 +11,7 @@
         "kind": "method",
         "line": 13,
         "application": null,
-        "score": 560,
-        "nameMatches": [
-          0,
-          1,
-          2,
-          3,
-          4
-        ]
+        "score": 560
       }
     ],
     "total": 1,
@@ -33,14 +26,5 @@
     "hits": [],
     "total": 0,
     "truncated": false
-  },
-  "projects": [
-    {
-      "project": "<project>",
-      "definitions": 1,
-      "entrances": 0,
-      "files": 0
-    }
-  ],
-  "tookMs": 0
+  }
 }

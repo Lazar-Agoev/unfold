@@ -18,9 +18,10 @@ One page, one level. When the question needs two, make two pages (edit_pages add
 page) rather than one page that does both.
 
 ## Diagram and Code
-A page opens in one of two lenses: Diagram (⌘1, the default for new pages) or Code
-(⌘2, every card's verified source). set_view's defaultView sets which; the person's
-lens changes what they see, never the page. In Diagram:
+A page opens in one of two lenses: Diagram (the default for new pages) or Code (every
+card's verified source); the person switches with Diagram | Code in the top bar.
+set_view's defaultView sets which; the person's lens changes what they see, never the
+page. In Diagram:
 - **Compact**: a function card is one node with its name, file:line, and description.
   All the calls from a compact card to another card merge into one arrow ("3 calls").
   Use it for context and overviews.

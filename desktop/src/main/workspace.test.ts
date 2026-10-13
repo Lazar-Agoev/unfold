@@ -125,20 +125,30 @@ describe("restore", () => {
     }
   });
 
-  it("restores once, and leaves a window an agent opened meanwhile as it is", async () => {
-    const { engine, appWindow, workspace } = setup();
+  it("restores once, and a window an agent needs meanwhile opens where it was, on the board it showed", async () => {
+    vi.useFakeTimers();
+    const { engine, workspace, current } = setup();
     const answer = deferred<unknown>();
     engine.answers.set("window_state", () => answer.promise);
     const first = workspace.restore();
     const second = workspace.restore();
-    const opened = appWindow.open();
-    answer.resolve(SAVED);
-    await Promise.all([first, second]);
+    const opening = workspace.open();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(createdWindows).toEqual([]);
 
+    answer.resolve(SAVED);
+    const opened = (await opening) as Entry;
+    await Promise.all([first, second]);
     expect(engine.callsOf("window_state")).toHaveLength(1);
-    expect(appWindow.current()).toBe(opened);
+    expect(current()).toBe(opened);
     expect(createdWindows).toHaveLength(1);
-    expect(workspace.shownBoard()).toBeNull();
+    expect(opened.window.bounds).toEqual(SAVED.bounds);
+    expect(workspace.shownBoard()).toEqual(BOARD);
+
+    // The window's first save keeps them.
+    opened.window.emit("move");
+    await vi.advanceTimersByTimeAsync(500);
+    expect(engine.callsOf("save_window_state")).toEqual([{ state: SAVED }]);
   });
 });
 

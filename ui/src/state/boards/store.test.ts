@@ -89,6 +89,17 @@ describe("opening and closing", () => {
     await closeBoard(other);
     expect(getShownBoard()).toBeNull();
   });
+
+  it("refuses to close a board whose edits couldn't be saved, keeping it open with its edits", async () => {
+    store.adoptBoardState(state());
+    showBoard(REF);
+    engine.call.mockRejectedValue(new UnfoldError({ code: "io", message: "Disk full." }));
+    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    await expect(closeBoardsOfProject(P)).rejects.toMatchObject({ code: "unsaved_edits", message: "Disk full." });
+    expect(engine.call.mock.calls.map(([command]) => command as string)).toEqual(["save_board"]);
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["a"]);
+    expect(getShownBoard()).toEqual(REF);
+  });
 });
 
 describe("editing and autosave", () => {
@@ -529,7 +540,7 @@ describe("outside changes", () => {
     engine.call.mockImplementation(savesAs("r2"));
     edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     await vi.advanceTimersByTimeAsync(store.AUTOSAVE_MS);
-    await store.adoptOutsideChange(state(theirs, "r9"));
+    store.adoptOutsideChange(state(theirs, "r9"));
     const board = store.getOpenBoard(REF);
     expect(board?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["x"]);
     expect(board?.revision).toBe("r9");
@@ -537,24 +548,40 @@ describe("outside changes", () => {
     expect(store.undo(REF)).toBe(false);
   });
 
-  it("wait for a save on its way, then reload", async () => {
+  it("are ignored while a save is on its way: the engine writes that save after the outside change", async () => {
     store.adoptBoardState(state());
     let release: (() => void) | undefined;
     engine.call.mockImplementation(
       (_command: string, args: SaveBoardArgs) =>
         new Promise((resolve) => {
           release = () => {
-            resolve(state({ ...doc(), pages: args.board.pages as BoardDocument["pages"] }, "r2"));
+            resolve(state({ ...doc(), pages: args.board.pages as BoardDocument["pages"] }, "r10"));
           };
         }),
     );
     edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     const saving = store.saveBoard(REF);
-    const reloading = store.adoptOutsideChange(state(theirs, "r9"));
+    store.adoptOutsideChange(state(theirs, "r9"));
     release?.();
-    await Promise.all([saving, reloading]);
-    expect(store.getOpenBoard(REF)?.revision).toBe("r9");
-    expect(store.canUndo(REF)).toBe(false);
+    await saving;
+    const board = store.getOpenBoard(REF);
+    expect(board?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["a"]);
+    expect(board?.revision).toBe("r10");
+    expect(store.canUndo(REF)).toBe(true);
+  });
+
+  it("are ignored while edits wait for the autosave, which then writes the person's version over the file", async () => {
+    store.adoptBoardState(state());
+    engine.call.mockImplementation(savesAs("r10"));
+    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    store.adoptOutsideChange(state(theirs, "r9"));
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["a"]);
+    expect(store.canUndo(REF)).toBe(true);
+    await vi.advanceTimersByTimeAsync(store.AUTOSAVE_MS);
+    const [command, args] = engine.call.mock.calls.at(-1) as [string, SaveBoardArgs];
+    expect(command).toBe("save_board");
+    expect(args.board.pages[0]?.cards.map((card) => card.id)).toEqual(["a"]);
+    expect(store.getOpenBoard(REF)?.revision).toBe("r10");
   });
 
   it("are ignored while the board's save is failing; the next save writes the person's version over the file", async () => {
@@ -562,7 +589,7 @@ describe("outside changes", () => {
     engine.call.mockRejectedValueOnce(new UnfoldError({ code: "io", message: "Disk full." }));
     edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     await store.saveBoard(REF);
-    await store.adoptOutsideChange(state(theirs, "r9"));
+    store.adoptOutsideChange(state(theirs, "r9"));
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["a"]);
     expect(store.canUndo(REF)).toBe(true);
     engine.call.mockImplementation(savesAs("r10"));

@@ -1,4 +1,4 @@
-//! The Code render model (docs/reader.md#code-view): what a Code card or a source tab renders for one
+//! The Code render model (docs/reader.md#code-view): what a Code card or the peek sheet renders for one
 //! block or a whole file.
 //!
 //! The model crosses IPC as JSON, so it is compact and every offset is a UTF-16 code-unit offset
@@ -29,8 +29,6 @@ use unfold_core::{ByteRange, FileGraph, Key, ModuleLabel, RepoPath, Utf16Index};
 use crate::error::{ReaderError, Result};
 use crate::source::{Verified, verify_file};
 
-pub use outline::group_for_lines;
-
 /// Which folds start closed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FoldPolicy {
@@ -38,8 +36,8 @@ pub enum FoldPolicy {
     /// of three or more checks start folded.
     #[default]
     Card,
-    /// A source tab: nothing starts folded.
-    SourceTab,
+    /// A whole file (the peek sheet): nothing starts folded.
+    File,
 }
 
 /// A card with more lines than this starts with its callbacks and long `else if` chains folded.

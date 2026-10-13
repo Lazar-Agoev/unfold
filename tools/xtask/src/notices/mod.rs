@@ -249,8 +249,7 @@ struct NpmPackage {
 }
 
 fn npm_components(root: &Path) -> Result<Vec<Component>> {
-    let pnpm = if cfg!(windows) { "pnpm.cmd" } else { "pnpm" };
-    let mut command = Command::new(pnpm);
+    let mut command = Command::new("pnpm");
     command.args(["licenses", "list", "--json", "--prod"]);
     for package in SHIPPED_PACKAGES {
         command.args(["--filter", package]);

@@ -8,11 +8,9 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { cardQuery } from "../../canvas";
-import { Monogram } from "../../components";
 import type { Card, CallContract, CardView, ContractReturn, ContractSend } from "../../ipc/generated";
 import { useEngineQuery } from "../../ipc/queries";
 import { cardKey, findCard, findPage, focusCard, keyDisplayName, useOpenBoard, type PageTarget, type SelectedLine as Line } from "../../state/boards";
-import { useProjectRow } from "../../state/workspace";
 import { RelationRow } from "./Relations";
 
 /** A side of a contract row: what it says, and whether it reads as a gap (no value written). */
@@ -66,7 +64,7 @@ export function writtenCallee(model: CardView | undefined, source: string, seq: 
 }
 
 /** One end of a line: its card, which a click brings into view. */
-export function End({ target, label, card, boardProject }: { readonly target: PageTarget; readonly label: string; readonly card: Card | undefined; readonly boardProject: string }) {
+export function End({ target, label, card }: { readonly target: PageTarget; readonly label: string; readonly card: Card | undefined }) {
   if (!card) {
     return <RelationRow label={label}>a removed card</RelationRow>;
   }
@@ -77,10 +75,7 @@ export function End({ target, label, card, boardProject }: { readonly target: Pa
         focusCard(target, card.id);
       }}
     >
-      <span className="relation-card">
-        <Monogram name={boardProject} size={14} />
-        <span className="relation-code">{keyDisplayName(cardKey(card))}</span>
-      </span>
+      <span className="relation-code">{keyDisplayName(cardKey(card))}</span>
     </RelationRow>
   );
 }
@@ -139,7 +134,6 @@ function Contract({ contract }: { readonly contract: CallContract }) {
 
 export function SelectedLine({ target, line }: { readonly target: PageTarget; readonly line: Line }) {
   const page = useOpenBoard(target.board, (board) => findPage(board.document, target.page));
-  const boardProject = useProjectRow(target.board.project)?.name ?? "";
   const from = page ? findCard(page, line.from) : undefined;
   const to = page ? findCard(page, line.to) : undefined;
   const call = line.seq === 0;
@@ -152,8 +146,8 @@ export function SelectedLine({ target, line }: { readonly target: PageTarget; re
   if (!call) {
     body = (
       <div className="selected-relations link">
-        <End target={target} label="From" card={from} boardProject={boardProject} />
-        <End target={target} label="To" card={to} boardProject={boardProject} />
+        <End target={target} label="From" card={from} />
+        <End target={target} label="To" card={to} />
       </div>
     );
   } else if (contract.data) {

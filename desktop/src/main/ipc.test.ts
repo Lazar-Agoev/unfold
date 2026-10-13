@@ -66,9 +66,9 @@ function setup() {
     { onLoaded: () => undefined, onPlacementChanged: () => undefined, onClosing: () => undefined, onClosed: () => undefined },
     false,
   );
-  const agents = new AgentBridge({ windows: appWindow, views: new ViewTracker() });
-  const mcp = { status: () => SERVER_STATUS };
   const workspace = new Workspace(appWindow, engine);
+  const agents = new AgentBridge({ window: appWindow, openWindow: () => workspace.open(), views: new ViewTracker() });
+  const mcp = { status: () => SERVER_STATUS };
   registerWindowCommands({ window: appWindow, workspace, ui: UI, agents, mcp, renderer });
   const handler = ipcHandlers.get(IPC.windowCommand);
   if (!handler) {
@@ -309,16 +309,10 @@ describe("the agent channel", () => {
 });
 
 describe("the window command channel", () => {
-  it("refuses deleted window commands and unknown names", async () => {
+  it("refuses unknown command names", async () => {
     const { open, invoke } = setup();
     const entry = open();
-    for (const command of [
-      "focus_window",
-      "close_window",
-      "add_dropped_folder",
-      "toString",
-      3,
-    ]) {
+    for (const command of ["no_such_command", "toString", 3]) {
       expect(await invoke(entry, command as string)).toMatchObject({ ok: false, error: { code: "invalid_command" } });
     }
   });

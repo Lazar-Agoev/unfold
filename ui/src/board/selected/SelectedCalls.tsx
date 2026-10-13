@@ -8,13 +8,11 @@ import { useQuery } from "@tanstack/react-query";
 import { cardQuery } from "../../canvas";
 import { plural } from "../../lib/format";
 import { cardKey, findCard, findPage, keyDisplayName, select, useOpenBoard, type PageTarget, type SelectedCalls as Calls } from "../../state/boards";
-import { useProjectRow } from "../../state/workspace";
 import { RelationRow } from "./Relations";
 import { End, writtenCallee } from "./SelectedLine";
 
 export function SelectedCalls({ target, calls }: { readonly target: PageTarget; readonly calls: Calls }) {
   const page = useOpenBoard(target.board, (board) => findPage(board.document, target.page));
-  const boardProject = useProjectRow(target.board.project)?.name ?? "";
   const from = page ? findCard(page, calls.from) : undefined;
   const to = page ? findCard(page, calls.to) : undefined;
   const model = useQuery({ ...cardQuery(target.board.project, from ? cardKey(from) : ""), enabled: from !== undefined });
@@ -26,8 +24,8 @@ export function SelectedCalls({ target, calls }: { readonly target: PageTarget; 
         <span className="selected-location">To {callee}</span>
       </div>
       <div className="selected-relations link">
-        <End target={target} label="From" card={from} boardProject={boardProject} />
-        <End target={target} label="To" card={to} boardProject={boardProject} />
+        <End target={target} label="From" card={from} />
+        <End target={target} label="To" card={to} />
       </div>
       <div className="selected-relations">
         {calls.calls.map((call, index) => {

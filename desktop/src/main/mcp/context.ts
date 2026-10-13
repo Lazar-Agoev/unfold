@@ -1,6 +1,6 @@
 /**
  * What a tool works with (design §5.5): who is calling, the agent bridge (edits, reads, and opens go
- * to the window that holds the board), the windows' views, links, page revisions, the render window
+ * to the window that holds the board), the window's view, links, page revisions, the render window
  * (page images and checks), and the engine. The engine's commands go untrusted, as a window's do: an
  * agent reaches only the fixed actions its tools take, and nothing that takes a path outside a
  * project, except adding a project after the person confirms it in Unfold.
@@ -45,7 +45,7 @@ export interface ToolContext {
   readonly agent: AgentIdentity;
   /** Edits, reads of held boards, background opens, and finishes, through the window that holds the board. */
   readonly bridge: AgentBridge;
-  /** What each window shows, and which was used last. */
+  /** What the window shows, as it last reported it. */
   readonly views: ViewTracker;
   /** Page images and page checks, drawn in the render window. */
   readonly renderer: PageImages;

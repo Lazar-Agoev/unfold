@@ -43,8 +43,6 @@ describe("parseViewReport", () => {
       expect(parseViewReport({ ...REPORT, selection })?.selection).toEqual(selection);
     }
     expect(parseViewReport({ selection: { kind: "none" }, visible: [], held: [] })).toEqual({ selection: { kind: "none" }, visible: [], held: [] });
-    // A window from before the Diagram/Code switch reports Flow, which is Diagram now.
-    expect(parseViewReport({ ...REPORT, lens: "flow" })?.lens).toBe("diagram");
     expect(parseViewReport({ ...REPORT, lens: "code" })?.lens).toBe("code");
   });
 
@@ -55,6 +53,7 @@ describe("parseViewReport", () => {
       { ...REPORT, board: { project: "p" } },
       { ...REPORT, page: 3 },
       { ...REPORT, lens: "table" },
+      { ...REPORT, lens: "flow" },
       { ...REPORT, selection: { kind: "card" } },
       { ...REPORT, selection: { kind: "frame" } },
       { ...REPORT, selection: { kind: "table", id: "x" } },

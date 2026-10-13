@@ -8,7 +8,7 @@ import { openBoard } from "../state/boards";
 import { resetBoards } from "../state/boards/store";
 import type * as Overlays from "../state/overlays";
 import { closeAdd, openAdd } from "../state/overlays";
-import { useShownBoardStore } from "../state/shownBoard";
+import { showBoard, useShownBoardStore } from "../state/shownBoard";
 import { installFakeEngine, type FakeEngine } from "../test/engine";
 import { renderWithClient } from "../test/render";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../test/workspace";
@@ -25,12 +25,13 @@ vi.mock("../state/overlays", async (original) => ({ ...(await original<typeof Ov
 const ORDERS = "p-orders0000";
 const BOARD = { project: ORDERS, id: ".unfold/boards/orders.json" };
 const PAGE = { board: BOARD, page: "page-1" };
+const OTHER = { project: ORDERS, id: ".unfold/boards/refunds.json" };
 
 function hit(key: string, name: string, kind: string, score: number, extra: Partial<SearchHit> = {}): SearchHit {
-  return { project: ORDERS, key, name, qualifiedName: name, path: "shop/store.py", kind, line: 12, application: null, score, nameMatches: [], ...extra };
+  return { project: ORDERS, key, name, qualifiedName: name, path: "shop/store.py", kind, line: 12, application: null, score, ...extra };
 }
 
-const FILE: FileHit = { project: ORDERS, path: "tests/test_orders.py", name: "test_orders.py", definitions: 3, score: 900, matches: [] };
+const FILE: FileHit = { project: ORDERS, path: "tests/test_orders.py", name: "test_orders.py", definitions: 3, score: 900 };
 
 /** `order`: an entrance, three definitions (one a class), and a file. */
 const RESULTS: SearchResults = {
@@ -50,8 +51,6 @@ const RESULTS: SearchResults = {
     truncated: false,
   },
   files: { hits: [FILE], total: 1, truncated: false },
-  projects: [{ project: ORDERS, definitions: 3, entrances: 1, files: 1 }],
-  tookMs: 1,
 };
 
 let engine: FakeEngine;
@@ -63,12 +62,13 @@ beforeEach(async () => {
       workspace: () => workspaceView([projectRow(ORDERS, "shop")]),
       search: () => RESULTS,
       board_refs: () => ({ refs: [], truncated: false }),
-      open_board: () => boardState(ORDERS, BOARD.id, boardDocument([page("page-1", [], { title: "Placing an order" })])),
+      open_board: ({ id }) => boardState(ORDERS, id, boardDocument([page("page-1", [], { title: "Placing an order" })])),
     },
   });
   resetBoards();
   useShownBoardStore.setState({ board: null });
   await act(async () => {
+    await openBoard(OTHER, { background: true });
     await openBoard(BOARD);
   });
 });
@@ -104,6 +104,19 @@ describe("the Add box", () => {
     openBox();
     expect(screen.getByRole("dialog", { name: "Add" })).toBeTruthy();
     press("Escape");
+    expect(screen.queryByRole("dialog", { name: "Add" })).toBeNull();
+  });
+
+  it("closes when the window shows another board, and stays closed there and on coming back", () => {
+    openBox();
+    expect(screen.getByRole("dialog", { name: "Add" })).toBeTruthy();
+    act(() => {
+      showBoard(OTHER);
+    });
+    expect(screen.queryByRole("dialog", { name: "Add" })).toBeNull();
+    act(() => {
+      showBoard(BOARD);
+    });
     expect(screen.queryByRole("dialog", { name: "Add" })).toBeNull();
   });
 

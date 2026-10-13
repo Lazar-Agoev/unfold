@@ -45,7 +45,7 @@ describe("TextButton", () => {
       <>
         <TextButton onClick={onClick}>Show callers</TextButton>
         <TextButton weight={400} tone="muted">
-          Copy diagnostics
+          Copy link
         </TextButton>
       </>,
     );
@@ -53,6 +53,6 @@ describe("TextButton", () => {
     expect(label.className).toBe("text-button text-button-accent");
     fireEvent.click(label);
     expect(onClick).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "Copy diagnostics" }).className).toBe("text-button text-button-muted text-button-regular");
+    expect(screen.getByRole("button", { name: "Copy link" }).className).toBe("text-button text-button-muted text-button-regular");
   });
 });

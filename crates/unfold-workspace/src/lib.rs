@@ -32,8 +32,8 @@
 //!    never compiled. A folder compiled before takes its lock (a second copy of Unfold gets
 //!    `open_elsewhere`), opens its store, and is readable at once; the engine thread restores the
 //!    stored graph and checks every file by size and modification time in the background.
-//! 3. **First Compile.** Creates `.unfold/local/` (with its `.gitignore` and `cache/`); takes
-//!    the lock; opens the store; compiles; commits; and writes `state.json`.
+//! 3. **First Compile.** Creates `.unfold/local/` (with its `.gitignore` and `cache/`) unless
+//!    remembered state already did; takes the lock; opens the store; compiles; and commits.
 //! 4. **Background updates.** The watcher feeds changed paths to the scheduler; an update
 //!    starts about 300 ms after the last change, and newer changes cancel and restart it.
 //!    Without usable file-system events the folder is scanned periodically.

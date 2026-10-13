@@ -58,10 +58,12 @@ export type AgentShowOutcome = { readonly ok: true; readonly windowId: number; r
 export type AgentRepairOutcome = (Extract<AgentRepairResult, { ok: true }> & { readonly revision: string }) | AgentFailure;
 
 /** What the bridge needs of the app's window. */
-export type AgentWindows = Pick<AppWindow, "get" | "current" | "open" | "deliver" | "focus">;
+export type AgentWindow = Pick<AppWindow, "get" | "current" | "deliver" | "focus">;
 
 export interface AgentBridgeOptions {
-  readonly windows: AgentWindows;
+  readonly window: AgentWindow;
+  /** The window, opened when it is closed (after the launch restore: `Workspace.open`). */
+  readonly openWindow: () => Promise<WindowEntry>;
   readonly views: ViewTracker;
   /** How long a window may take to answer one request. */
   readonly timeoutMs?: number;
@@ -123,7 +125,8 @@ function checked(kind: RequestKind, result: unknown): unknown {
 
 export class AgentBridge {
   readonly views: ViewTracker;
-  private readonly windows: AgentWindows;
+  private readonly window: AgentWindow;
+  private readonly openWindow: () => Promise<WindowEntry>;
   private readonly timeoutMs: number;
   private readonly pending = new Map<number, Pending>();
   /** The boards each agent (by author) edited since it last finished, by `boardKey`. */
@@ -131,7 +134,8 @@ export class AgentBridge {
   private nextId = 1;
 
   constructor(options: AgentBridgeOptions) {
-    this.windows = options.windows;
+    this.window = options.window;
+    this.openWindow = options.openWindow;
     this.views = options.views;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
@@ -148,7 +152,7 @@ export class AgentBridge {
       if (!opened.ok) {
         return opened;
       }
-      const entry = this.windows.get(opened.windowId);
+      const entry = this.window.get(opened.windowId);
       if (!entry) {
         return this.closed();
       }
@@ -202,7 +206,7 @@ export class AgentBridge {
     if (holder) {
       return { ok: true, windowId: holder.id };
     }
-    const entry = this.windows.open();
+    const entry = await this.openWindow();
     const result = (await this.ask(entry, "open", { type: "agent_open_board", ...target })) as AgentOpenResult;
     if (!result.ok) {
       return result;
@@ -216,7 +220,7 @@ export class AgentBridge {
    * window opens when it is closed).
    */
   async create(request: Omit<AgentCreateRequest, "requestId">): Promise<AgentCreateOutcome> {
-    const entry = this.windows.open();
+    const entry = await this.openWindow();
     const result = (await this.ask(entry, "create", { type: "agent_create_board", ...request })) as AgentCreateSuccess | AgentFailure;
     if (!result.ok) {
       return result;
@@ -243,7 +247,7 @@ export class AgentBridge {
     if (!opened.ok || background) {
       return opened;
     }
-    const entry = this.windows.get(opened.windowId);
+    const entry = this.window.get(opened.windowId);
     if (!entry) {
       return this.closed();
     }
@@ -251,7 +255,7 @@ export class AgentBridge {
     if (!result.ok) {
       return result;
     }
-    this.windows.focus(entry);
+    this.window.focus(entry);
     return { ok: true, windowId: entry.id, page: result.page };
   }
 
@@ -279,9 +283,9 @@ export class AgentBridge {
    */
   finish(finish: AgentFinish): void {
     this.worked.get(finish.agent.author)?.delete(boardKey(finish.board));
-    const entry = this.windows.current();
+    const entry = this.window.current();
     if (entry) {
-      this.windows.deliver(entry, { type: "agent_finish", ...finish });
+      this.window.deliver(entry, { type: "agent_finish", ...finish });
     }
   }
 
@@ -325,7 +329,7 @@ export class AgentBridge {
       if (!opened.ok) {
         return opened;
       }
-      const entry = this.windows.get(opened.windowId);
+      const entry = this.window.get(opened.windowId);
       if (!entry) {
         return this.closed();
       }
@@ -340,7 +344,7 @@ export class AgentBridge {
 
   private holderOf(board: AgentBoardRef): WindowEntry | undefined {
     const holder = this.views.holder(board);
-    return holder === undefined ? undefined : this.windows.get(holder);
+    return holder === undefined ? undefined : this.window.get(holder);
   }
 
   private recordWork(author: string, board: AgentBoardRef): void {
@@ -363,7 +367,7 @@ export class AgentBridge {
         resolve(CHANGES.has(kind) ? failure("unconfirmed", `${waited}, so the change may still land.`) : failure("timeout", `${waited}.`));
       }, this.timeoutMs);
       this.pending.set(requestId, { windowId: entry.id, kind, resolve, timer });
-      this.windows.deliver(entry, { ...event, requestId } as AgentShellEvent);
+      this.window.deliver(entry, { ...event, requestId } as AgentShellEvent);
     });
   }
 }

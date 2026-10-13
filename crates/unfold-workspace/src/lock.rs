@@ -1,11 +1,10 @@
 //! The per-folder lock (docs/engine.md#facts-cache-and-failures, window restore): `local/cache/lock` keeps a second
 //! copy of Unfold (another version, a development build) from opening a folder this copy has
-//! open. Windows within one copy share the folder's workspace and never contend for it.
+//! open. The copy's window shares the folder's workspace and never contends for it.
 //!
-//! The lock is an advisory, exclusive operating-system file lock (`flock` on Unix,
-//! `LockFileEx` on Windows) on an open handle, so it disappears with the process that held it:
-//! a crash never leaves a stale lock behind. The file holds the owner's process ID for
-//! diagnostics only.
+//! The lock is an advisory, exclusive operating-system file lock (`flock`) on an open handle,
+//! so it disappears with the process that held it: a crash never leaves a stale lock behind.
+//! The file holds the owner's process ID for diagnostics only.
 
 use std::fs::{File, OpenOptions, TryLockError};
 use std::io::Write as _;

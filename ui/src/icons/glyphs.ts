@@ -31,7 +31,7 @@ export const ICON_NAMES = [
   "search",
   "folder",
   "board",
-  "board-draft",
+  "board-new",
   "check",
   "gear",
   "arrange",
@@ -92,7 +92,8 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   search: { box: 16, shapes: [{ circle: [7, 7, 4.5] }, { d: "M10.5 10.5L13.5 13.5" }] },
   folder: { box: 16, shapes: [{ d: FOLDER }] },
   board: { box: 16, shapes: [{ d: "M5.5 2.5H11.5C12.6 2.5 13.5 3.4 13.5 4.5V10.5" }, { rect: [2.5, 4.75, 8.75, 8.75, 1.5] }] },
-  "board-draft": {
+  // A new board, dashed (Trace on a New Board).
+  "board-new": {
     box: 16,
     shapes: [
       { d: "M5.5 2.5H11.5C12.6 2.5 13.5 3.4 13.5 4.5V10.5", dash: "2 2" },

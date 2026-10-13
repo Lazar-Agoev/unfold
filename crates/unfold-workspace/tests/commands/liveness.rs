@@ -156,6 +156,38 @@ fn every_open_board_keeps_its_project_live_until_its_window_closes() {
     });
 }
 
+/// A command a window sent that finishes after its detach (an agent's open in the background)
+/// can't leave a board open, or a project selected, for the window that is gone.
+#[test]
+fn a_closed_window_opens_no_board_and_selects_no_project() {
+    let harness = Harness::with("ts-orders", restless());
+    compile_unselected(&harness, &harness.project);
+    let board = harness.ok(
+        1,
+        "new_board",
+        json!({ "project": harness.project, "title": "Kept" }),
+    );
+    harness.host.detach_window(1).expect("detach");
+    let id = json!({ "project": harness.project, "id": board["id"] });
+    assert_eq!(harness.code(1, "open_board", id), "window_closed");
+    assert_eq!(
+        harness.code(
+            1,
+            "new_board",
+            json!({ "project": harness.project, "title": "Late" })
+        ),
+        "window_closed"
+    );
+    assert_eq!(
+        harness.code(1, "select_project", json!({ "project": harness.project })),
+        "window_closed"
+    );
+    eventually("the project rests", || !live(&harness, &harness.project));
+    // The late board was made, closed; the project leaves the workspace.
+    assert!(harness.root.join(".unfold/boards/late.json").is_file());
+    harness.ok(2, "remove_project", json!({ "project": harness.project }));
+}
+
 #[test]
 fn a_resting_project_answers_reads_from_its_stored_graph() {
     let harness = Harness::with("ts-orders", restless());

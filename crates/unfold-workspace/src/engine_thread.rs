@@ -3,7 +3,7 @@
 //!
 //! Each piece of work follows the same path: prepare the update (`Engine::prepare`), commit its
 //! outcome in one transaction ([`crate::commit`]), let the engine adopt it (`Engine::adopt`),
-//! //! install a fresh `ReaderIndex` built from the new graph, and tell the windows (`graph_updated`,
+//! install a fresh `ReaderIndex` built from the new graph, and tell the windows (`graph_updated`,
 //! `problems_changed`, `project_state`). Work comes from the scheduler in [`crate::shared`]:
 //!
 //! | Work | Request | Pool |
@@ -14,8 +14,8 @@
 //! | Reopen | store graph → `restore` → `reopen()` | background pool |
 //! | Recompile (engine version changed, cache recreated) | fresh engine, `reopen()` | background pool |
 //!
-//! **The first Compile** creates `.unfold/`, takes the folder lock, and opens the store, and
-//! only then. **If `local/cache/` disappears** while the folder is open, the next piece of work
+//! **The first Compile** creates `local/` (unless remembered state already did), takes the
+//! folder lock, and opens the store. **If `local/cache/` disappears** while the folder is open, the next piece of work
 //! notices, recreates it, and compiles everything again with a fresh engine. **The reopen check** restores the stored graph and checks every file by size and
 //! time; when nothing the graph was built from changed while the folder was closed, it neither
 //! links again nor commits. **A failed or cancelled commit** rolls back and the engine doesn't adopt the
@@ -40,7 +40,6 @@ use crate::facts_cache::StoreFactsCache;
 use crate::lock::FolderLock;
 use crate::publish;
 use crate::shared::{Job, Running, Shared, lock};
-use crate::state::write_json;
 use crate::status::{Activity, WatchMode};
 use crate::storage::open_store;
 
@@ -279,13 +278,6 @@ impl EngineThread {
         self.lock = Some(folder_lock);
         self.shared.set_readers(Some(readers));
         self.shared.reader_cache.invalidate();
-        // Under the state lock, like `Workspace::update_local_state`, so this first write can't
-        // overwrite a newer state saved meanwhile.
-        let state = lock(&self.shared.local_state);
-        let state_file = self.shared.layout.state_file();
-        if !state_file.exists() {
-            write_json(&state_file, &*state, "state.json")?;
-        }
         Ok(())
     }
 

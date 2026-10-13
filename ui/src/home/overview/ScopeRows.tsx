@@ -2,7 +2,7 @@
  * One scope's entrance rows on How it starts (an application's, or the ones no launch reaches): its
  * pages, asked for one `nextCursor` at a time, and its rows under their section headings. A launch row
  * leads; a router mounted from a file other apps also mount collapses into one row. Hover a row to
- * Trace it onto a new draft.
+ * Trace it onto a new board.
  */
 
 import { useQueries } from "@tanstack/react-query";
@@ -19,7 +19,7 @@ export type OnMenu = (event: MouseEvent, entries: MenuEntry[]) => void;
 
 /** An entrance's menu: Trace on a New Board. */
 export function entranceMenu(project: ProjectId, key: string): MenuEntry[] {
-  return [{ id: "trace", label: "Trace on a New Board", icon: "board-draft", onSelect: () => void traceFromHome(project, key) }];
+  return [{ id: "trace", label: "Trace on a New Board", icon: "board-new", onSelect: () => void traceFromHome(project, key) }];
 }
 
 export type ScopeArgs = { readonly application: string } | { readonly unreached: true };

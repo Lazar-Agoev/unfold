@@ -45,7 +45,7 @@ fn revision_of(text: &str) -> String {
 
 impl Harness {
     /// A new board titled `title` in the first project, opened in `window`.
-    pub(crate) fn draft(&self, window: u32, title: &str) -> Value {
+    pub(crate) fn new_board(&self, window: u32, title: &str) -> Value {
         self.ok(
             window,
             "new_board",
@@ -201,27 +201,27 @@ fn an_open_board_keeps_its_session_until_it_closes() {
     assert_eq!(reopened["document"]["title"], "Order placement");
     assert_eq!(reopened["document"]["pages"][0]["cards"][0]["id"], "create");
 
-    // Closing the window closes it; opening it then reads the file.
+    // Closing the window closes it; opening it in the reopened window (a new id) reads the file.
     harness.host.detach_window(1).expect("detach");
-    assert_eq!(harness.on_code(1, "board_health", &id), "board_not_open");
-    let fresh = harness.on(1, "open_board", &id);
+    assert_eq!(harness.on_code(2, "board_health", &id), "board_not_open");
+    let fresh = harness.on(2, "open_board", &id);
     assert_eq!(fresh["document"]["title"], "Theirs");
 
     // Closing it closes it.
-    harness.on(1, "close_board", &id);
-    assert_eq!(harness.on_code(1, "board_health", &id), "board_not_open");
-    assert_eq!(harness.on_code(1, "close_board", &id), "board_not_open");
-    assert_eq!(harness.on_code(1, "open_board", "../x.json"), "invalid_args");
+    harness.on(2, "close_board", &id);
+    assert_eq!(harness.on_code(2, "board_health", &id), "board_not_open");
+    assert_eq!(harness.on_code(2, "close_board", &id), "board_not_open");
+    assert_eq!(harness.on_code(2, "open_board", "../x.json"), "invalid_args");
     assert_eq!(
-        harness.on_code(1, "open_board", ".unfold/local/x.json"),
+        harness.on_code(2, "open_board", ".unfold/local/x.json"),
         "invalid_args"
     );
     assert_eq!(
-        harness.on_code(1, "open_board", ".unfold/boards/nope.json"),
+        harness.on_code(2, "open_board", ".unfold/boards/nope.json"),
         "not_found"
     );
     assert_eq!(
-        harness.on_code(1, "close_board", ".unfold/boards/nope.json"),
+        harness.on_code(2, "close_board", ".unfold/boards/nope.json"),
         "board_not_open",
         "a board that can't be opened isn't open"
     );
@@ -230,8 +230,8 @@ fn an_open_board_keeps_its_session_until_it_closes() {
 #[test]
 fn boards_are_files_saved_over_whatever_they_hold() {
     let harness = Harness::compiled("ts-orders");
-    let first = harness.draft(1, "Order placement");
-    let second = harness.draft(1, "Order placement");
+    let first = harness.new_board(1, "Order placement");
+    let second = harness.new_board(1, "Order placement");
     assert_eq!(id_of(&first), ".unfold/boards/order-placement.json");
     assert_eq!(
         id_of(&second),
@@ -378,7 +378,7 @@ fn the_boards_list_puts_the_last_edited_first() {
     let harness = Harness::compiled("ts-orders");
     let ids: Vec<String> = ["Alpha", "Beta", "Gamma"]
         .into_iter()
-        .map(|title| id_of(&harness.draft(1, title)))
+        .map(|title| id_of(&harness.new_board(1, title)))
         .collect();
     // A board's last edit is its file's modification time.
     touch(&harness.path(&ids[0]), 3_000);
@@ -415,7 +415,7 @@ fn the_boards_list_puts_the_last_edited_first() {
 fn board_refs_find_a_key_on_the_projects_boards() {
     let harness = Harness::compiled("ts-orders");
     let (python, _) = harness.add("py-orders", "py-orders");
-    let board = harness.draft(1, "Refs");
+    let board = harness.new_board(1, "Refs");
     let id = id_of(&board);
     let mut edit = edit_of(&board);
     edit["pages"][0]["cards"] = json!([card("create", CREATE_ORDER)]);
@@ -559,12 +559,50 @@ fn folders_are_one_level_and_hold_boards_open_or_not() {
     assert_eq!(empty(), json!(["Checkout", "Old"]));
 }
 
+/// An open board whose file was deleted outside keeps the person's version, which moves to
+/// another folder like any board; a closed board with no file is `not_found`.
+#[test]
+fn an_open_board_deleted_outside_still_moves() {
+    let harness = Harness::compiled("ts-orders");
+    let project = harness.project.clone();
+    let board = harness.ok(
+        1,
+        "new_board",
+        json!({ "project": project, "title": "Gone", "folder": "Checkout" }),
+    );
+    let id = id_of(&board);
+    std::fs::remove_file(harness.path(&id)).expect("delete");
+    let moved = harness.ok(
+        1,
+        "set_board_folder",
+        json!({ "project": project, "id": id, "folder": "Archive" }),
+    );
+    assert_eq!(moved["folder"], "Archive");
+    let written: Value = serde_json::from_str(&harness.read(&id)).expect("board JSON");
+    assert_eq!(written["title"], "Gone");
+    assert_eq!(written["folder"], "Archive");
+    let mut edit = edit_of(&board);
+    edit["title"] = json!("Gone, renamed");
+    assert_eq!(harness.save(1, &id, edit)["document"]["folder"], "Archive");
+
+    harness.on(1, "close_board", &id);
+    std::fs::remove_file(harness.path(&id)).expect("delete");
+    assert_eq!(
+        harness.code(
+            1,
+            "set_board_folder",
+            json!({ "project": project, "id": id, "folder": null })
+        ),
+        "not_found"
+    );
+}
+
 #[test]
 fn an_outside_edit_reloads_the_open_board() {
     let harness = Harness::new("ts-orders", true);
     harness.ok(1, "select_project", json!({ "project": harness.project }));
     harness.ok(1, "compile", json!({ "project": harness.project }));
-    let board = harness.draft(1, "Outside");
+    let board = harness.new_board(1, "Outside");
     let id = id_of(&board);
 
     // An agent rewrites the file: the session reloads, and the window that opened the board is
@@ -610,6 +648,74 @@ fn an_outside_edit_reloads_the_open_board() {
     assert_eq!(back["revision"], revision_of(&harness.read(&id)));
 }
 
+/// A window whose save is failing ignores a reload; its Retry is checked against the version it
+/// was editing on, so a problem that version already had doesn't refuse it, even when the
+/// outside change fixed it.
+#[test]
+fn a_retry_after_an_ignored_reload_keeps_the_persons_problems() {
+    let harness = Harness::new("ts-orders", true);
+    harness.ok(1, "select_project", json!({ "project": harness.project }));
+    harness.ok(1, "compile", json!({ "project": harness.project }));
+    let board = harness.new_board(1, "Retry");
+    let id = id_of(&board);
+    const GHOST: &str = "src/routes/orders.ts#function:noSuchThing";
+
+    // An agent writes a card whose code is missing; the window takes the reload.
+    let mut document = board["document"].clone();
+    document["pages"][0]["cards"] = json!([card("ghost", GHOST)]);
+    let broken = serde_json::to_string_pretty(&document).expect("json");
+    write_atomically(&harness.path(&id), &broken);
+    let taken = harness.reload(&id, "the agent's version", |message| {
+        message["event"]["state"]["revision"] == revision_of(&broken)
+    });
+    let taken = &taken["event"]["state"];
+    assert_eq!(taken["health"]["items"][0]["kind"], "missing");
+
+    // The person edits it, and the save fails (unseen here). Meanwhile the agent fixes the card,
+    // and the window ignores that reload.
+    let mut person = edit_of(taken);
+    person["title"] = json!("Retry, renamed");
+    document["pages"][0]["cards"] = json!([card("create", CREATE_ORDER)]);
+    let fixed = serde_json::to_string_pretty(&document).expect("json");
+    write_atomically(&harness.path(&id), &fixed);
+    harness.reload(&id, "the agent's fix", |message| {
+        message["event"]["state"]["revision"] == revision_of(&fixed)
+    });
+
+    // A new problem is still refused; the person's version, with the problem it had, is written.
+    let mut worse = person.clone();
+    worse["pages"][0]["cards"] = json!([
+        card("ghost", GHOST),
+        card("other", "src/routes/orders.ts#function:nope")
+    ]);
+    assert_eq!(
+        harness.code(
+            1,
+            "save_board",
+            json!({ "project": harness.project, "id": id, "board": worse })
+        ),
+        "board_problem"
+    );
+    let retried = harness.save(1, &id, person.clone());
+    assert_eq!(retried["document"]["title"], "Retry, renamed");
+    assert_eq!(retried["document"]["pages"][0]["cards"][0]["id"], "ghost");
+    assert!(harness.read(&id).contains("Retry, renamed"));
+
+    // Once saved, the replaced versions are forgotten: the session is the person's version.
+    let mut next = edit_of(&retried);
+    next["pages"][0]["cards"] = json!([card("create", CREATE_ORDER)]);
+    harness.save(1, &id, next);
+    assert_eq!(
+        harness.code(
+            1,
+            "save_board",
+            json!({ "project": harness.project, "id": id, "board": person })
+        ),
+        "board_problem",
+        "the ghost card is new again"
+    );
+}
+
 /// A writer that truncates the file and writes it in pieces is caught mid-write: the board
 /// reloads only once it is finished, never from the empty or half-written file.
 #[test]
@@ -617,7 +723,7 @@ fn a_non_atomic_writer_reloads_the_board_once_it_finishes() {
     let harness = Harness::new("ts-orders", true);
     harness.ok(1, "select_project", json!({ "project": harness.project }));
     harness.ok(1, "compile", json!({ "project": harness.project }));
-    let board = harness.draft(1, "Outside");
+    let board = harness.new_board(1, "Outside");
     let id = id_of(&board);
     let mut document = board["document"].clone();
     document["title"] = json!("Written in pieces");
@@ -654,7 +760,7 @@ fn a_non_atomic_writer_reloads_the_board_once_it_finishes() {
 #[test]
 fn frames_resources_connections_and_notes_are_saved_as_sent() {
     let harness = Harness::compiled("ts-orders");
-    let board = harness.draft(1, "System");
+    let board = harness.new_board(1, "System");
     let id = id_of(&board);
     let mut edit = edit_of(&board);
     edit["pages"][0]["defaultView"] = json!("diagram");
@@ -722,7 +828,7 @@ fn frames_resources_connections_and_notes_are_saved_as_sent() {
 #[test]
 fn pages_cards_and_drawn_links_are_checked_and_signed() {
     let harness = Harness::compiled("ts-orders");
-    let board = harness.draft(1, "Pages");
+    let board = harness.new_board(1, "Pages");
     let id = id_of(&board);
     let mut edit = edit_of(&board);
     edit["pages"] = json!([
@@ -807,7 +913,7 @@ fn closing_a_window_waits_for_its_last_board_save() {
     // follows at once on another channel. The detach must let the save land.
     for round in 0..5 {
         let harness = Harness::compiled("ts-orders");
-        let board = harness.draft(1, &format!("Closing {round}"));
+        let board = harness.new_board(1, &format!("Closing {round}"));
         let id = id_of(&board);
         let mut edit = edit_of(&board);
         edit["pages"][0]["cards"] = json!([card("create", CREATE_ORDER)]);
@@ -837,7 +943,7 @@ fn closing_a_window_waits_for_its_last_board_save() {
 #[test]
 fn health_reaches_problems_and_repairs_fix_it() {
     let harness = Harness::compiled("ts-orders");
-    let board = harness.draft(1, "Health");
+    let board = harness.new_board(1, "Health");
     let id = id_of(&board);
     let mut edit = edit_of(&board);
     edit["pages"][0]["cards"] = json!([card("create", CREATE_ORDER)]);

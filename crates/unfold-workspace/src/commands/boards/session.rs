@@ -4,7 +4,8 @@
 //! A **session** is the version of an open board last loaded or saved, which the window edits on
 //! top of: the board, its file's revision, and its health. A save writes the window's version
 //! over the file, whatever it holds; an outside change to the file reloads the session
-//! ([`super::health::check_disk`]).
+//! ([`super::health::check_disk`]), keeping the version it replaced until the next save: a window
+//! whose save is failing ignores the reload and still edits on that version.
 //!
 //! The **health cache** holds the health of every board of the project (Home's Health line and
 //! the Problems list), each under the [`HealthKey`] it was computed for: a cached health is
@@ -36,6 +37,10 @@ pub(super) struct Session {
     /// The outside change last found that the session didn't take (the file gone, or not a
     /// valid board), so it is handled once.
     pub(super) skipped: Option<Change>,
+    /// The versions (with their health) that outside changes replaced since the board was last
+    /// saved or loaded by a command, oldest first. A window whose save was failing ignored those
+    /// reloads, so its Retry is checked against them too.
+    pub(super) replaced: Vec<(Board, Health)>,
 }
 
 impl Session {
@@ -46,7 +51,15 @@ impl Session {
             revision: loaded.revision,
             health,
             skipped: None,
+            replaced: Vec::new(),
         }
+    }
+
+    /// Takes `reloaded`, an outside change's version, keeping the version it replaces.
+    pub(super) fn reload(&mut self, reloaded: Self) {
+        let previous = std::mem::replace(self, reloaded);
+        self.replaced = previous.replaced;
+        self.replaced.push((previous.board, previous.health));
     }
 }
 

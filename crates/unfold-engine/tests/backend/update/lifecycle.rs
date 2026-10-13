@@ -338,7 +338,6 @@ fn progress_counts_files() {
 
 /// A changed path under a symlinked folder is out of scope, as a full discovery (which never
 /// follows linked folders) decides; a background update reporting it agrees with a compile.
-#[cfg(unix)]
 #[test]
 fn changed_paths_under_a_symlinked_folder_stay_out_of_scope() {
     let folder = Folder::new();

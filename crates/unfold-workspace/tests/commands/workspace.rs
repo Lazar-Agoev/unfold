@@ -89,7 +89,6 @@ fn every_folder_is_a_project_of_its_own() {
     assert_eq!(ids.len(), 3, "every folder is its own row");
 }
 
-#[cfg(unix)]
 #[test]
 fn a_folder_unfold_cant_write_into_is_refused() {
     use std::os::unix::fs::PermissionsExt;
@@ -190,8 +189,8 @@ fn removing_keeps_the_folder_and_adding_it_again_makes_a_new_row() {
     let board = ".unfold/boards/board-1.json";
     host.handle(&id(&python))
         .expect("project")
-        .open_boards()
-        .open(board, 2);
+        .open_board(board, 2)
+        .expect("open");
     assert_eq!(
         harness.code(1, "remove_project", json!({ "project": python })),
         "boards_open"
@@ -260,7 +259,6 @@ fn the_workspace_comes_back_after_a_restart_resting() {
     let text = std::fs::read_to_string(harness.base.join("app/workspace.json")).expect("workspace.json");
     assert!(text.ends_with("}\n"));
     let saved: Value = serde_json::from_str(&text).expect("json");
-    assert_eq!(saved["version"], 1);
     assert_eq!(saved["projects"][0]["lastKnown"]["state"]["kind"], "current");
 
     let host = Host::with_options(options(false));

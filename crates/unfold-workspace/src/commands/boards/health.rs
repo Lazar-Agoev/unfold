@@ -71,8 +71,9 @@ const SETTLE_LIMIT: Duration = Duration::from_secs(5);
 /// tells the window that opened it with `board_reloaded` (runs on its own thread after
 /// `boards_changed`).
 ///
-/// - A file that is a valid board replaces the session (its health computed again), and the
-///   event carries the board as the window now shows it.
+/// - A file that is a valid board replaces the session (its health computed again; see
+///   [`super::session::Session::reload`]), and the event carries the board as the window now
+///   shows it.
 /// - A file that is gone is reported once with no board; the session keeps the version last
 ///   loaded or saved, which the next save writes back.
 /// - A file that isn't a valid board is left alone: the session keeps its version, and the next
@@ -124,7 +125,7 @@ pub(crate) fn check_disk(host: &HostState, projects: &Projects, workspace: &Work
             Change::Changed(_) => match load_session(&files, extras, &source, &id, &file) {
                 Ok(reloaded) => {
                     let state = board_state(workspace.project(), &id, &file, &reloaded);
-                    *session = reloaded;
+                    session.reload(reloaded);
                     Some(Box::new(state))
                 }
                 Err(_) => {

@@ -562,16 +562,6 @@ pub struct FlowModel {
     pub warnings: Vec<FlowWarning>,
 }
 
-impl FlowModel {
-    /// The nodes still showing a fallback name where an authored label could go (every node
-    /// with a block except Start).
-    pub fn unlabeled(&self) -> impl Iterator<Item = &FlowNode> {
-        self.nodes
-            .iter()
-            .filter(|node| node.fallback && node.key.is_some() && node.kind != FlowNodeKind::Start)
-    }
-}
-
 /// The Flow of block `local_id` of `file`, reading and verifying its source under `root`.
 pub fn flow_view(
     root: &Path,

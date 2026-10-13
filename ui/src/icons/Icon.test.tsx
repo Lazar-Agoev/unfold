@@ -17,7 +17,7 @@ const PLANNED = [
   "search",
   "folder",
   "board",
-  "board-draft",
+  "board-new",
   "check",
   "gear",
   "arrange",
@@ -66,11 +66,11 @@ describe("Icon", () => {
   it("keeps the designs' dashes and filled dots", () => {
     const { container } = render(
       <>
-        <Icon name="board-draft" />
+        <Icon name="board-new" />
         <Icon name="dots" />
       </>,
     );
-    expect(container.querySelector("[data-icon='board-draft'] rect")?.getAttribute("stroke-dasharray")).toBe("2 1.75");
+    expect(container.querySelector("[data-icon='board-new'] rect")?.getAttribute("stroke-dasharray")).toBe("2 1.75");
     expect(container.querySelectorAll("[data-icon='dots'] circle[fill='currentColor']")).toHaveLength(3);
   });
 });

@@ -15,8 +15,7 @@ fn normalize(value: &mut Value, root: &str, project: &str) {
         Value::Array(items) => items.iter_mut().for_each(|item| normalize(item, root, project)),
         Value::Object(map) => {
             for (key, item) in map.iter_mut() {
-                if matches!(key.as_str(), "tookMs" | "durationMs" | "atMs" | "updatedAtMs") && !item.is_null()
-                {
+                if matches!(key.as_str(), "durationMs" | "atMs" | "updatedAtMs") && !item.is_null() {
                     *item = json!(0);
                 } else {
                     normalize(item, root, project);

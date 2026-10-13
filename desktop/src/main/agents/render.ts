@@ -1,7 +1,7 @@
 /**
  * Page images and page checks (design §5.1, §6.5, §7.7). A hidden render window draws one page of a
  * board read-only, the way the board view draws it, from the page the main process hands it; the main
- * process then captures it (`screenshot`, and Share › Export PNG), or takes the layout and content
+ * process then captures it (`screenshot`, and the board menu's Export PNG…), or takes the layout and content
  * checks the window ran on the drawn page and adds the board's health (`check`, `checkBoard`).
  *
  * - **The page** comes from the window that holds the board (unsaved edits included) or, for an image

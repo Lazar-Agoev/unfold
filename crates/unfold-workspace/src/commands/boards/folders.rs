@@ -109,12 +109,14 @@ fn move_board(
     {
         session.board.folder = board.folder;
         session.revision = revision;
+        session.skipped = None;
     }
     Ok(true)
 }
 
 /// `set_board_folder`: moves a board into a folder (or to the top level), whether or not it is
-/// open.
+/// open. An open board whose file is gone or isn't a valid board moves its session's version,
+/// which is what the window's next save would write.
 pub fn set_board_folder(ctx: &Ctx<'_>, args: SetBoardFolderArgs) -> CommandResult<BoardSummary> {
     let project = ctx.project(&args.project)?;
     let file = parse_id(&args.id)?;
@@ -125,7 +127,14 @@ pub fn set_board_folder(ctx: &Ctx<'_>, args: SetBoardFolderArgs) -> CommandResul
     let source = Source::live(&workspace)?;
     let left = {
         let mut sessions = extras.boards.sessions();
-        let loaded = files.load(&file)?;
+        let loaded = match (files.load(&file), sessions.get(&args.id)) {
+            (Ok(loaded), _) => loaded,
+            (Err(_), Some(session)) => Loaded {
+                board: session.board.clone(),
+                revision: session.revision,
+            },
+            (Err(error), None) => return Err(error),
+        };
         let previous = loaded.board.folder.clone();
         let moved = move_board(
             &files,

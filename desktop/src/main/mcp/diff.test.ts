@@ -3,15 +3,15 @@ import { lineDiff } from "./diff";
 
 describe("lineDiff", () => {
   it("shows added and removed lines with a line of context, and … between hunks", () => {
-    const before = "[scope]\nexclude = [\"dist/**\"]\n\n[python]\nversion = \"3.11\"\n\n[project]\nname = \"shop\"\n";
-    const after = "[scope]\nexclude = [\"dist/**\", \"tmp\"]\n\n[python]\nversion = \"3.11\"\n\n[project]\nname = \"store\"\n";
+    const before = "[scope]\nexclude = [\"dist/**\"]\n\n[python]\nversion = \"3.11\"\n\n[[app]]\nname = \"shop\"\n";
+    const after = "[scope]\nexclude = [\"dist/**\", \"tmp\"]\n\n[python]\nversion = \"3.11\"\n\n[[app]]\nname = \"store\"\n";
     expect(lineDiff(before, after)).toEqual([
       " [scope]",
       '-exclude = ["dist/**"]',
       '+exclude = ["dist/**", "tmp"]',
       " ",
       "…",
-      " [project]",
+      " [[app]]",
       '-name = "shop"',
       '+name = "store"',
     ]);

@@ -7,8 +7,7 @@
 //! invalid is refused with the parser's message and position, and nothing is written. The file
 //! is written atomically (a temporary file renamed over it), and only when it would differ from
 //! the defaults: an edit that leaves an absent file's settings at their defaults writes nothing.
-//! Edits to applications, entrances, and overrides name them by ID (an override by its
-//! `match`), never by position.
+//! Edits to entrances name them by ID, never by position.
 //!
 //! | Edit | Effect |
 //! | --- | --- |
@@ -17,10 +16,7 @@
 //! | Graph only this folder | Sets `include` to the one folder |
 //! | Remove a scope pattern | Removes one pattern, exactly as written, from `include` or `exclude` (the folder settings' remove buttons); an emptied list's key goes |
 //! | Manual entrances | Adds an `[[entrance]]` table, or replaces or removes the one with an ID |
-//! | Applications | Adds or replaces the `[[application]]` table with an ID, or removes it; removing one that entrances or overrides still name is refused, since the file would be invalid |
-//! | Overrides | Adds or replaces the `[[entrance_override]]` table with a `match`, or removes it |
 //! | Python project | Adds or replaces the `[[python.project]]` table with that root, or removes it |
-//! | Detector toggle | Adds the detector to, or removes it from, `[detectors] disabled` |
 //! | Evidence files | Adds a pattern to `[evidence] files` (unless it is listed), or removes one exactly as written; an emptied list's key goes, and so does the emptied table |
 
 use std::collections::BTreeMap;
@@ -29,9 +25,7 @@ use serde::{Deserialize, Serialize};
 use toml_edit::{Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, Value};
 use ts_rs::TS;
 use unfold_engine::launch::LaunchTarget;
-use unfold_engine::settings::{
-    Application, EntranceOverride, FolderPath, OverrideMatch, ScopeStatus, Settings, SettingsError,
-};
+use unfold_engine::settings::{FolderPath, ScopeStatus, Settings, SettingsError};
 
 use crate::error::{Result, WorkspaceError};
 
@@ -78,28 +72,6 @@ pub enum SettingsEdit {
         /// The entrance's ID.
         id: String,
     },
-    /// Add or replace the application with this ID.
-    SetApplication {
-        /// The application.
-        application: ApplicationSpec,
-    },
-    /// Remove the application with this ID.
-    RemoveApplication {
-        /// The application's ID.
-        id: String,
-    },
-    /// Add or replace the override with this `match`.
-    SetOverride {
-        /// The override.
-        #[serde(rename = "override")]
-        entrance_override: OverrideSpec,
-    },
-    /// Remove the override with this `match`.
-    RemoveOverride {
-        /// The override's `match`.
-        #[serde(rename = "match")]
-        selector: MatchSpec,
-    },
     /// Add or replace the Python project with this root.
     SetPythonProject {
         /// The project.
@@ -109,13 +81,6 @@ pub enum SettingsEdit {
     RemovePythonProject {
         /// The project's root.
         root: String,
-    },
-    /// Turn a detector on or off.
-    SetDetector {
-        /// The detector ID, such as `node-cron.schedule`.
-        detector: String,
-        /// Whether it runs.
-        enabled: bool,
     },
     /// Add a pattern to `[evidence] files`, unless it is listed already.
     AddEvidencePattern {
@@ -243,84 +208,6 @@ impl From<&LaunchTarget> for LaunchTargetSpec {
     }
 }
 
-/// An `[[application]]` table, as the editor submits it and the settings view lists it.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct ApplicationSpec {
-    /// The application's ID.
-    pub id: String,
-    /// The display name.
-    pub name: String,
-    /// A description.
-    #[serde(default)]
-    pub description: Option<String>,
-}
-
-impl From<&Application> for ApplicationSpec {
-    fn from(application: &Application) -> Self {
-        Self {
-            id: application.id.to_string(),
-            name: application.name.to_string(),
-            description: application.description.as_deref().map(str::to_owned),
-        }
-    }
-}
-
-/// An `[[entrance_override]]` table, as the editor submits it and the settings view lists it.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct OverrideSpec {
-    /// The detected launch it applies to.
-    #[serde(rename = "match")]
-    pub selector: MatchSpec,
-    /// The `[[application]]` the launch belongs to.
-    #[serde(default)]
-    pub application: Option<String>,
-    /// A display label.
-    #[serde(default)]
-    pub label: Option<String>,
-    /// A description.
-    #[serde(default)]
-    pub description: Option<String>,
-    /// A schedule, as written.
-    #[serde(default)]
-    pub schedule: Option<String>,
-}
-
-impl From<&EntranceOverride> for OverrideSpec {
-    fn from(entrance_override: &EntranceOverride) -> Self {
-        Self {
-            selector: MatchSpec::from(&entrance_override.selector),
-            application: entrance_override.application.as_deref().map(str::to_owned),
-            label: entrance_override.label.as_deref().map(str::to_owned),
-            description: entrance_override.description.as_deref().map(str::to_owned),
-            schedule: entrance_override.schedule.as_deref().map(str::to_owned),
-        }
-    }
-}
-
-/// An override's `match`: a launch detector, its input file, and the pointer into it.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct MatchSpec {
-    /// `package.script`, `package.bin`, or `pyproject.script`.
-    pub detector: String,
-    /// The input file, such as `apps/api/package.json`.
-    pub path: String,
-    /// The pointer to the launch's member, such as `/scripts/start`.
-    pub pointer: String,
-}
-
-impl From<&OverrideMatch> for MatchSpec {
-    fn from(selector: &OverrideMatch) -> Self {
-        Self {
-            detector: selector.detector.to_string(),
-            path: selector.path.to_string(),
-            pointer: selector.pointer.to_string(),
-        }
-    }
-}
-
 /// A `[[python.project]]` table as the editor submits it.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
@@ -406,41 +293,6 @@ fn apply(doc: &mut DocumentMut, edit: &SettingsEdit) -> Result<()> {
             |tables| with_id(tables, id),
             || missing("entrance", id),
         ),
-        SettingsEdit::SetApplication { application } => {
-            let tables = tables(doc, "application")?;
-            let fresh = application_table(application);
-            match with_id(tables, &application.id).and_then(|index| tables.get_mut(index)) {
-                Some(table) => replace(table, fresh),
-                None => tables.push(fresh),
-            }
-            Ok(())
-        }
-        SettingsEdit::RemoveApplication { id } => remove_table(
-            doc,
-            "application",
-            |tables| with_id(tables, id),
-            || missing("application", id),
-        ),
-        SettingsEdit::SetOverride { entrance_override } => {
-            let tables = tables(doc, "entrance_override")?;
-            let fresh = override_table(entrance_override);
-            match with_match(tables, &entrance_override.selector).and_then(|index| tables.get_mut(index)) {
-                Some(table) => replace(table, fresh),
-                None => tables.push(fresh),
-            }
-            Ok(())
-        }
-        SettingsEdit::RemoveOverride { selector } => remove_table(
-            doc,
-            "entrance_override",
-            |tables| with_match(tables, selector),
-            || {
-                WorkspaceError::SettingsConflict(format!(
-                    "no override matches {} `{}` at `{}`",
-                    selector.detector, selector.path, selector.pointer
-                ))
-            },
-        ),
         SettingsEdit::SetPythonProject { project } => set_python_project(doc, project),
         SettingsEdit::RemovePythonProject { root } => {
             let root = folder(root)?;
@@ -455,19 +307,6 @@ fn apply(doc: &mut DocumentMut, edit: &SettingsEdit) -> Result<()> {
                     WorkspaceError::SettingsConflict(format!("no Python project has root `{root}`"))
                 })?;
             projects.remove(position);
-            Ok(())
-        }
-        SettingsEdit::SetDetector { detector, enabled } => {
-            let detectors = table(doc, "detectors")?;
-            let disabled = array(detectors, "disabled")?;
-            let listed = disabled.iter().position(|value| value.as_str() == Some(detector));
-            match (enabled, listed) {
-                (false, None) => disabled.push(detector.as_str()),
-                (true, Some(index)) => {
-                    disabled.remove(index);
-                }
-                _ => {}
-            }
             Ok(())
         }
         SettingsEdit::AddEvidencePattern { pattern } => {
@@ -622,19 +461,6 @@ fn with_id(tables: &ArrayOfTables, id: &str) -> Option<usize> {
         .position(|table| table.get("id").and_then(Item::as_str) == Some(id))
 }
 
-/// The position of the override table whose `match` is `selector`.
-fn with_match(tables: &ArrayOfTables, selector: &MatchSpec) -> Option<usize> {
-    tables.iter().position(|table| {
-        let Some(found) = table.get("match").and_then(Item::as_table_like) else {
-            return false;
-        };
-        let field = |key: &str| found.get(key).and_then(Item::as_str);
-        field("detector") == Some(selector.detector.as_str())
-            && field("path") == Some(selector.path.as_str())
-            && field("pointer") == Some(selector.pointer.as_str())
-    })
-}
-
 /// Removes the table `find` picks from the array at `key`; an emptied array's key goes.
 fn remove_table(
     doc: &mut DocumentMut,
@@ -740,28 +566,6 @@ fn target_table(target: &LaunchTargetSpec) -> InlineTable {
             }
         }
     }
-    table
-}
-
-fn application_table(spec: &ApplicationSpec) -> Table {
-    let mut table = Table::new();
-    table.insert("id", toml_edit::value(spec.id.as_str()));
-    table.insert("name", toml_edit::value(spec.name.as_str()));
-    text(&mut table, "description", spec.description.as_ref());
-    table
-}
-
-fn override_table(spec: &OverrideSpec) -> Table {
-    let mut selector = InlineTable::new();
-    selector.insert("detector", spec.selector.detector.as_str().into());
-    selector.insert("path", spec.selector.path.as_str().into());
-    selector.insert("pointer", spec.selector.pointer.as_str().into());
-    let mut table = Table::new();
-    table.insert("match", toml_edit::value(selector));
-    text(&mut table, "application", spec.application.as_ref());
-    text(&mut table, "label", spec.label.as_ref());
-    text(&mut table, "description", spec.description.as_ref());
-    text(&mut table, "schedule", spec.schedule.as_ref());
     table
 }
 
@@ -1000,79 +804,7 @@ mod tests {
     }
 
     #[test]
-    fn applications_and_overrides_are_set_and_removed() {
-        let application = |name: &str| SettingsEdit::SetApplication {
-            application: ApplicationSpec {
-                id: "orders-api".into(),
-                name: name.into(),
-                description: None,
-            },
-        };
-        let selector = MatchSpec {
-            detector: "package.script".into(),
-            path: "apps/api/package.json".into(),
-            pointer: "/scripts/start".into(),
-        };
-        let set_override = |label: &str| SettingsEdit::SetOverride {
-            entrance_override: OverrideSpec {
-                selector: selector.clone(),
-                application: Some("orders-api".into()),
-                label: Some(label.into()),
-                ..OverrideSpec::default()
-            },
-        };
-        let edited =
-            apply_edits(Some(COMMENTED), &[application("Orders"), set_override("Start")]).expect("set");
-        assert!(edited.text.starts_with(COMMENTED), "{}", edited.text);
-        assert!(
-            edited.text.ends_with("[[application]]\nid = \"orders-api\"\nname = \"Orders\"\n\n[[entrance_override]]\nmatch = { detector = \"package.script\", path = \"apps/api/package.json\", pointer = \"/scripts/start\" }\napplication = \"orders-api\"\nlabel = \"Start\"\n"),
-            "{}",
-            edited.text
-        );
-        let renamed = apply_edits(
-            Some(&edited.text),
-            &[application("Orders API"), set_override("Start API")],
-        )
-        .expect("replace");
-        assert_eq!(renamed.settings.applications.len(), 1);
-        assert_eq!(&*renamed.settings.applications[0].name, "Orders API");
-        assert_eq!(renamed.settings.overrides.len(), 1);
-        assert_eq!(renamed.settings.overrides[0].label.as_deref(), Some("Start API"));
-
-        let remove_application = SettingsEdit::RemoveApplication {
-            id: "orders-api".into(),
-        };
-        let named = apply_edits(Some(&renamed.text), std::slice::from_ref(&remove_application))
-            .expect_err("an override still names it");
-        assert!(matches!(
-            named,
-            WorkspaceError::InvalidSettings { line: Some(_), .. }
-        ));
-        let removed = apply_edits(
-            Some(&renamed.text),
-            &[
-                SettingsEdit::RemoveOverride {
-                    selector: selector.clone(),
-                },
-                remove_application.clone(),
-            ],
-        )
-        .expect("remove");
-        assert_eq!(removed.text, COMMENTED);
-        let missing = apply_edits(Some(COMMENTED), &[SettingsEdit::RemoveOverride { selector }])
-            .expect_err("no such override");
-        assert_eq!(missing.code(), "settings_conflict");
-        let missing = apply_edits(Some(COMMENTED), &[remove_application]).expect_err("no such application");
-        assert_eq!(missing.code(), "settings_conflict");
-        let edit: SettingsEdit = serde_json::from_str(
-            r#"{"op": "remove_override", "match": {"detector": "package.bin", "path": "package.json", "pointer": "/bin"}}"#,
-        )
-        .expect("deserialize");
-        assert!(matches!(edit, SettingsEdit::RemoveOverride { .. }));
-    }
-
-    #[test]
-    fn python_projects_and_detectors() {
+    fn python_projects_are_set_and_removed() {
         let python = apply_edits(
             None,
             &[SettingsEdit::SetPythonProject {
@@ -1107,33 +839,6 @@ mod tests {
         )
         .expect("remove");
         assert!(gone.settings.python_projects.is_empty());
-
-        let off = apply_edits(
-            None,
-            &[SettingsEdit::SetDetector {
-                detector: "node-cron.schedule".into(),
-                enabled: false,
-            }],
-        )
-        .expect("off");
-        assert_eq!(off.settings.disabled_detectors.len(), 1);
-        let on = apply_edits(
-            Some(&off.text),
-            &[SettingsEdit::SetDetector {
-                detector: "node-cron.schedule".into(),
-                enabled: true,
-            }],
-        )
-        .expect("on");
-        assert!(on.settings.disabled_detectors.is_empty());
-        let manual = apply_edits(
-            None,
-            &[SettingsEdit::SetDetector {
-                detector: "manual".into(),
-                enabled: false,
-            }],
-        );
-        assert!(manual.is_err());
     }
 
     #[test]

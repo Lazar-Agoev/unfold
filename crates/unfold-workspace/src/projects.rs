@@ -11,7 +11,8 @@
 //!       open:      OpenBoards               board id -> window
 //!       interest:  compile pins, lease_until
 //!   }
-//!   selection: WindowId -> ProjectId         each window's Home selection
+//!   selection: Option<(WindowId, ProjectId)> the window's Home selection
+//!   detached:  WindowId set                  windows that closed (a reopened window has a new id)
 //! ```
 //!
 //! # Live and resting projects
@@ -20,7 +21,7 @@
 //! owns liveness; the router knows nothing of projects):
 //!
 //! ```text
-//! interest(p) = a board of p is open || a window has p selected || a compile of p is running
+//! interest(p) = a board of p is open || the window has p selected || a compile of p is running
 //! wake(p)     on a command that uses p's engine (ProjectHandle::wake), select_project, and
 //!             gaining interest otherwise (the reaper's next tick); opens the Workspace (readable
 //!             at once; the reopen check runs in the background). A wake that fails marks the row
@@ -45,8 +46,8 @@
 //! with `inner` released, so a workspace's event (which may reach back into the registry) never
 //! waits on it.
 
-use std::collections::BTreeMap;
 use std::collections::hash_map::RandomState;
+use std::collections::{BTreeMap, BTreeSet};
 use std::hash::BuildHasher as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -150,13 +151,13 @@ pub struct ProjectRow {
     pub state: ProjectState,
 }
 
-/// The whole workspace, as every window shows it.
+/// The whole workspace, as the window shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceView {
     /// The projects, in sidebar order.
     pub projects: Vec<ProjectRow>,
-    /// The project last selected in any window: the default for a new window.
+    /// The project last selected: the one Home shows when the window opens.
     pub selected: Option<ProjectId>,
 }
 
@@ -181,29 +182,18 @@ pub struct AddedProject {
 }
 
 /// `workspace.json`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 struct WorkspaceFile {
-    version: u32,
     projects: Vec<ProjectRecord>,
     selected: Option<ProjectId>,
-}
-
-impl Default for WorkspaceFile {
-    fn default() -> Self {
-        Self {
-            version: 1,
-            projects: Vec::new(),
-            selected: None,
-        }
-    }
 }
 
 impl WorkspaceFile {
     /// Drops what the file can't hold: duplicate ids, rows past the limit, and a selection of a
     /// project that isn't in it.
     fn sanitize(&mut self) {
-        let mut seen = std::collections::BTreeSet::new();
+        let mut seen = BTreeSet::new();
         self.projects.retain(|record| seen.insert(record.id.clone()));
         self.projects.truncate(MAX_PROJECTS);
         let known = |id: &ProjectId| self.projects.iter().any(|record| record.id == *id);
@@ -223,7 +213,7 @@ impl WorkspaceFile {
 
 /// One `workspace.json` project.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ProjectRecord {
     id: ProjectId,
     path: String,
@@ -234,7 +224,7 @@ struct ProjectRecord {
 
 /// The state a project had when it last went to rest.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct LastKnown {
     state: ProjectState,
     at_ms: i64,
@@ -298,7 +288,12 @@ impl ProjectEntry {
 struct Inner {
     file: WorkspaceFile,
     entries: BTreeMap<ProjectId, Arc<ProjectEntry>>,
-    selection: BTreeMap<WindowId, ProjectId>,
+    /// The window's Home selection, with the window that made it: a closing window's detach
+    /// releases only its own selection, never that of the window that reopened meanwhile.
+    selection: Option<(WindowId, ProjectId)>,
+    /// The windows that closed. No board is opened ([`ProjectHandle::open_board`]) and no
+    /// project selected for one of them, so nothing stays held after its window's detach.
+    detached: BTreeSet<WindowId>,
 }
 
 /// Called after a project woke (the host starts its board-health refresh).
@@ -378,7 +373,8 @@ impl Projects {
             inner: Mutex::new(Inner {
                 file,
                 entries,
-                selection: BTreeMap::new(),
+                selection: None,
+                detached: BTreeSet::new(),
             }),
             shut: AtomicBool::new(false),
         }
@@ -435,7 +431,7 @@ impl Projects {
         })
     }
 
-    /// The workspace as every window shows it.
+    /// The workspace as the window shows it.
     pub fn view(&self) -> WorkspaceView {
         let (rows, selected) = {
             let inner = lock(&self.inner);
@@ -579,7 +575,7 @@ impl Projects {
         })
     }
 
-    /// Removes project `id` from the workspace: closes it if live and forgets its selections.
+    /// Removes project `id` from the workspace: closes it if live and forgets its selection.
     /// Never touches its `.unfold/`. Refused with `boards_open` while one of its boards is open.
     pub fn remove(&self, id: &ProjectId) -> Result<()> {
         let entry = self.handle(id)?.entry;
@@ -597,7 +593,13 @@ impl Projects {
                 .ok_or_else(|| WorkspaceError::UnknownProject(id.clone()))?;
             inner.file.projects.remove(index);
             inner.entries.remove(id);
-            inner.selection.retain(|_, selected| selected != id);
+            if inner
+                .selection
+                .as_ref()
+                .is_some_and(|(_, selected)| selected == id)
+            {
+                inner.selection = None;
+            }
             if inner.file.selected.as_ref() == Some(id) {
                 inner.file.selected = None;
             }
@@ -664,29 +666,34 @@ impl Projects {
         Ok(())
     }
 
-    /// Sets `window`'s Home selection (interest for liveness, and the default for new windows).
-    /// A project is woken before it is selected, so the window's next query finds it live.
+    /// Sets the Home selection `window` made (interest for liveness, and the project Home shows
+    /// when the window opens). A project is woken before it is selected, so the window's next
+    /// query finds it live. Refused with `window_closed` once the window detached.
     pub fn select(&self, window: WindowId, project: Option<&ProjectId>) -> Result<()> {
         if let Some(id) = project {
             self.handle(id)?.wake()?;
         }
         let previous = {
             let mut inner = lock(&self.inner);
+            if inner.detached.contains(&window) {
+                return Err(WorkspaceError::WindowClosed);
+            }
             let previous = match project {
                 Some(id) => {
                     if !inner.entries.contains_key(id) {
                         return Err(WorkspaceError::UnknownProject(id.clone()));
                     }
-                    let previous = inner.selection.insert(window, id.clone());
+                    let previous = inner.selection.replace((window, id.clone()));
                     if inner.file.selected.as_ref() != Some(id) {
                         inner.file.selected = Some(id.clone());
                         self.save(&inner)?;
                     }
                     previous
                 }
-                None => inner.selection.remove(&window),
+                None => inner.selection.take(),
             };
             previous
+                .map(|(_, previous)| previous)
                 .filter(|previous| Some(previous) != project)
                 .and_then(|previous| inner.entries.get(&previous).cloned())
         };
@@ -700,7 +707,10 @@ impl Projects {
     fn interested(&self, inner: &Inner, entry: &ProjectEntry, state: &EntryState) -> bool {
         state.pins > 0
             || !entry.open.is_empty()
-            || inner.selection.values().any(|selected| *selected == entry.id)
+            || inner
+                .selection
+                .as_ref()
+                .is_some_and(|(_, selected)| *selected == entry.id)
     }
 
     /// Lets project `entry` stay live at least `rest_after` from now.
@@ -775,9 +785,9 @@ impl Projects {
         }
     }
 
-    /// Closes every board `window` opened and releases its Home selection (the window closed).
-    /// Calls `released` with each project whose boards it closed; projects losing interest start
-    /// their lease.
+    /// Closes every board `window` opened and releases its Home selection (the window closed);
+    /// from now on no board opens for it. Calls `released` with each project whose boards it
+    /// closed; projects losing interest start their lease.
     pub(crate) fn detach_window(
         &self,
         window: WindowId,
@@ -785,7 +795,16 @@ impl Projects {
     ) {
         let (previous, entries) = {
             let mut inner = lock(&self.inner);
-            let previous = inner.selection.remove(&window);
+            inner.detached.insert(window);
+            let previous = if inner
+                .selection
+                .as_ref()
+                .is_some_and(|(selector, _)| *selector == window)
+            {
+                inner.selection.take().map(|(_, previous)| previous)
+            } else {
+                None
+            };
             (previous, inner.entries.values().cloned().collect::<Vec<_>>())
         };
         for entry in entries {
@@ -993,6 +1012,20 @@ impl ProjectHandle<'_> {
         &self.entry.open
     }
 
+    /// Opens `board` in `window` ([`OpenBoards::open`]); whether it was closed before. Refused
+    /// with `window_closed` once the window detached: a command it sent that finishes after its
+    /// detach (an agent's open in the background) mustn't leave a board open for a window that
+    /// is gone, which would keep the project live and refuse its removal. The check and the
+    /// record happen under the registry's lock, which the detach takes to mark the window
+    /// closed before it closes the window's boards.
+    pub fn open_board(&self, board: &str, window: WindowId) -> Result<bool> {
+        let inner = lock(&self.projects.inner);
+        if inner.detached.contains(&window) {
+            return Err(WorkspaceError::WindowClosed);
+        }
+        Ok(self.entry.open.open(board, window))
+    }
+
     /// The project's command-side state (dropped when it rests).
     pub fn extras(&self) -> Arc<ProjectExtras> {
         Arc::clone(&lock(&self.entry.state).extras)
@@ -1076,7 +1109,23 @@ mod tests {
     fn a_damaged_workspace_file_reads_as_an_empty_workspace() {
         let dir = tempfile::tempdir().expect("temp dir");
         std::fs::create_dir_all(dir.path().join("app")).expect("mkdir");
-        std::fs::write(dir.path().join("app/workspace.json"), "{ nope").expect("write");
-        assert!(projects(dir.path()).view().projects.is_empty());
+        let file = dir.path().join("app/workspace.json");
+        let record =
+            r#"{"id": "p-aaaaaaaaaa", "path": "/x", "expanded": true, "addedAtMs": 0, "lastKnown": null}"#;
+        std::fs::write(&file, format!(r#"{{"projects": [{record}]}}"#)).expect("write");
+        assert_eq!(
+            projects(dir.path()).view().projects.len(),
+            1,
+            "a valid file reads"
+        );
+        let unknown = record.replace(r#""expanded""#, r#""repository": null, "expanded""#);
+        for damaged in [
+            "{ nope".to_owned(),
+            format!(r#"{{"version": 1, "projects": [{record}]}}"#),
+            format!(r#"{{"projects": [{unknown}]}}"#),
+        ] {
+            std::fs::write(&file, &damaged).expect("write");
+            assert!(projects(dir.path()).view().projects.is_empty(), "{damaged}");
+        }
     }
 }

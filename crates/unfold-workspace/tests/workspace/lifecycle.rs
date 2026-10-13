@@ -10,7 +10,7 @@ use unfold_workspace::{GraphState, LocalState, ProjectState, Workspace, Workspac
 use crate::common::{Playground, RecordingSink, compile, has_block, project, settle, updates};
 
 #[test]
-fn opening_writes_nothing_and_the_first_compile_creates_local() {
+fn opening_writes_nothing_and_remembered_state_is_written_before_any_compile() {
     let playground = Playground::new("ts-orders", false);
     let sink = RecordingSink::new();
     let workspace = playground.open(&sink, false);
@@ -18,14 +18,20 @@ fn opening_writes_nothing_and_the_first_compile_creates_local() {
     assert_eq!(workspace.project_state(), ProjectState::NotCompiled);
     assert_eq!(workspace.project(), &project());
     assert!(matches!(workspace.readers(), Err(WorkspaceError::NotCompiled)));
-    workspace
-        .update_local_state(|state| state.empty_folders.push("Later".into()))
-        .expect("state in memory");
     settle(&workspace);
     assert!(
         !playground.path(".unfold").exists(),
         "opening wrote into the folder"
     );
+    // Remembered state is written at once, before any compile, in a hidden `local/`.
+    workspace
+        .update_local_state(|state| state.empty_folders.push("Later".into()))
+        .expect("state written");
+    assert_eq!(
+        std::fs::read_to_string(playground.path(".unfold/local/.gitignore")).expect(".gitignore"),
+        "*\n"
+    );
+    assert!(playground.path(".unfold/local/state.json").is_file());
 
     let mark = sink.mark();
     let outcome = compile(&workspace);
@@ -46,11 +52,7 @@ fn opening_writes_nothing_and_the_first_compile_creates_local() {
         &std::fs::read(playground.path(".unfold/local/state.json")).expect("state.json"),
     )
     .expect("state.json parses");
-    assert_eq!(
-        saved.empty_folders,
-        ["Later"],
-        "the state kept in memory was written"
-    );
+    assert_eq!(saved.empty_folders, ["Later"], "the compile kept the state");
     match workspace.status().state {
         GraphState::Current { files, languages }
         | GraphState::DoesntParse {
@@ -150,7 +152,6 @@ fn a_second_copy_sees_the_folder_open_elsewhere() {
     again.close();
 }
 
-#[cfg(unix)]
 #[test]
 fn a_read_only_folder_is_refused_at_the_first_compile() {
     use std::os::unix::fs::PermissionsExt;
@@ -183,7 +184,6 @@ fn deleting_the_cache_while_open_recreates_it() {
     assert!(playground.path(".unfold/local/cache/graph.sqlite").exists());
     assert!(playground.path(".unfold/local/cache/lock").exists());
     assert!(has_block(&workspace, "src/services/order-service.ts", "place"));
-    assert!(playground.path(".unfold/local/state.json").exists());
 }
 
 #[test]
@@ -296,7 +296,6 @@ fn paths_are_confined_to_the_folder() {
     for bad in ["../ts-orders/src/server.ts", "/etc/passwd", "src/../../x", "a\0b"] {
         assert_eq!(workspace.confine(bad).expect_err(bad).code(), "invalid_path");
     }
-    #[cfg(unix)]
     {
         let outside = tempfile::tempdir().expect("temp dir");
         std::os::unix::fs::symlink(outside.path(), playground.path("outside")).expect("link");
@@ -321,7 +320,7 @@ fn concurrent_local_state_updates_leave_the_file_equal_to_the_final_state() {
                 for update in 0..UPDATES {
                     workspace
                         .update_local_state(|state| {
-                            state.empty_folders.push(format!("t{thread}/u{update}"));
+                            state.empty_folders.push(format!("t{thread}-u{update}"));
                         })
                         .expect("concurrent writes all succeed");
                 }

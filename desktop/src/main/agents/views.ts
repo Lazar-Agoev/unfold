@@ -8,8 +8,6 @@
 
 import type { AgentBoardRef, AgentLens, ViewReport, ViewSelection } from "../../shared/agent-api";
 
-/** A reported lens as agents read it: Diagram or Code; a window from before the Diagram/Code switch reports Flow, which is Diagram. */
-const LENSES: Readonly<Record<string, AgentLens>> = { diagram: "diagram", flow: "diagram", code: "code" };
 /** The most ids a report's lists may hold (far more boards or items in view than a window has). */
 const MAX_IDS = 5_000;
 
@@ -19,6 +17,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
+}
+
+function isLens(value: unknown): value is AgentLens {
+  return value === "diagram" || value === "code";
 }
 
 function boardRef(value: unknown): AgentBoardRef | null {
@@ -87,7 +89,7 @@ export function parseViewReport(value: unknown): ViewReport | null {
   if (
     board === null ||
     (page !== undefined && !isString(page)) ||
-    (lens !== undefined && !(typeof lens === "string" && LENSES[lens] !== undefined)) ||
+    (lens !== undefined && !isLens(lens)) ||
     !chosen ||
     !visible ||
     !held ||
@@ -98,7 +100,7 @@ export function parseViewReport(value: unknown): ViewReport | null {
   return {
     ...(board ? { board } : {}),
     ...(page !== undefined ? { page } : {}),
-    ...(typeof lens === "string" && LENSES[lens] !== undefined ? { lens: LENSES[lens] } : {}),
+    ...(isLens(lens) ? { lens } : {}),
     selection: chosen,
     visible,
     held: held as AgentBoardRef[],

@@ -14,6 +14,7 @@ unfold-lang-python = { workspace = true }
 unfold-store = { workspace = true }
 unfold-reader = { workspace = true, features = ["ts"] }
 ignore = { workspace = true }
+nix = { workspace = true }
 notify = { workspace = true }
 notify-debouncer-full = { workspace = true }
 nucleo-matcher = { workspace = true }
@@ -25,9 +26,6 @@ sha2 = { workspace = true }
 thiserror = { workspace = true }
 toml_edit = { workspace = true }
 ts-rs = { workspace = true }
-
-[target.'cfg(unix)'.dependencies]
-nix = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

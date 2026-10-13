@@ -1,5 +1,5 @@
 //! The change summary that `graph_updated` carries: which files, structural keys, and entrances
-//! differ between the previous graph and the new one, so each window refreshes only the cards
+//! differ between the previous graph and the new one, so the window refreshes only the cards
 //! that depend on them.
 //!
 //! This is not the store's delta: the workspace builds the store's `Update` from the same two

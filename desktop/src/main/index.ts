@@ -83,7 +83,7 @@ if (!app.requestSingleInstanceLock()) {
       devTools,
     );
     const workspace = new Workspace(appWindow, engine);
-    const agents = new AgentBridge({ windows: appWindow, views: new ViewTracker() });
+    const agents = new AgentBridge({ window: appWindow, openWindow: () => workspace.open(), views: new ViewTracker() });
     const renderer: PageRenderer = new PageRenderer({ ui, bridge: agents, engine, reserveId: () => appWindow.reserveId() });
     const mcp = new McpService({
       services: {

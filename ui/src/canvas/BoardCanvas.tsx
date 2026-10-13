@@ -154,7 +154,7 @@ export interface BoardCanvasProps {
   readonly notes?: readonly Note[] | undefined;
   /** The page's drawn links and connections. */
   readonly links: readonly Link[] | undefined;
-  /** The arrows and ports derived from the cards' models (`useBoardArrows`, computed by the tab). */
+  /** The arrows and ports derived from the cards' models (`useBoardArrows`, computed by the caller). */
   readonly boardArrows: BoardArrows;
 }
 

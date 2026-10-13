@@ -13,10 +13,10 @@
 //! - **`local/cache/` disappearing**: a cache check, which recreates it and recompiles.
 //!
 //! `.git/` and everything else under `.unfold/` are dropped on arrival. (Recursive watching
-//! can't exclude subtrees on every platform, so "never watched" means their events are never
-//! acted on.) An event that says the back end dropped events asks for a full rescan. Errors
-//! that mean events can't be trusted (inotify's watch limit, an unsupported file system)
-//! switch the folder to a periodic scan, which the status reports.
+//! can't exclude subtrees, so "never watched" means their events are never acted on.)
+//! An event that says the back end dropped events asks for a full rescan. Errors that mean
+//! events can't be trusted (an unsupported file system) switch the folder to a periodic scan,
+//! which the status reports.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};

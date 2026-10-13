@@ -5,7 +5,7 @@ import fileViewPage from "../../../../testdata/workspace/commands/file_view_orde
 import relationsCreateOrder from "../../../../testdata/workspace/commands/relations_create_order.json";
 import searchPlace from "../../../../testdata/workspace/commands/search_place.json";
 import type { AgentPage, AgentShellEvent, ViewReport } from "../../shared/agent-api";
-import { AgentBridge, type AgentWindows } from "../agents/bridge";
+import { AgentBridge, type AgentWindow } from "../agents/bridge";
 import { pageRevision } from "../agents/revision";
 import { ViewTracker } from "../agents/views";
 import { EngineRequestError } from "../engine-host";
@@ -155,9 +155,8 @@ const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>)
   project_config: () => ({
     exists: true,
     text: "",
-    settings: { languages: null, include: [], exclude: ["dist/**"], disabledDetectors: [], pythonProjects: [], applications: [], entrances: [], overrides: [], evidence: ["docs/queues.md"] },
+    settings: { languages: null, include: [], exclude: ["dist/**"], disabledDetectors: [], pythonProjects: [], entrances: [], evidence: ["docs/queues.md"] },
     error: null,
-    name: { value: "ts-orders", isDefault: true },
   }),
   entrances: () => ({
     view: "overview",
@@ -167,9 +166,9 @@ const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>)
     unreached: 0,
   }),
   compile: () => ({ files: 12, changedFiles: 12, removedFiles: 0, changedEntrances: 3, complete: true, problems: 0, durationMs: 900 }),
-  update_project_config: () => ({ exists: true, text: '[scope]\nexclude = ["scripts"]\n', settings: null, error: null, name: { value: "ts-orders", isDefault: true } }),
+  update_project_config: () => ({ exists: true, text: '[scope]\nexclude = ["scripts"]\n', settings: null, error: null }),
   peek: () => ({ key: "entrance:x" }),
-  search: () => ({ ...searchPlace, projects: [] }),
+  search: () => searchPlace,
   file_view: () => fileViewPage,
   card: () => cardCreateOrder,
   relations: () => relationsCreateOrder,
@@ -213,13 +212,14 @@ function windowAnswer(request: AgentShellEvent): ["edit" | "read" | "open" | "cr
   }
 }
 
+/** The app's window, open with its UI loaded. */
+const WINDOW = { id: 1, loaded: true } as WindowEntry;
+
 /** A window that holds the board and answers agent requests at once, as the UI does. */
-function fakeWindows(bridge: () => AgentBridge): AgentWindows {
-  const entry = { id: 1, loaded: true } as WindowEntry;
+function fakeWindow(bridge: () => AgentBridge): AgentWindow {
   return {
-    get: (id) => (id === 1 ? entry : undefined),
-    current: () => entry,
-    open: () => entry,
+    get: (id) => (id === 1 ? WINDOW : undefined),
+    current: () => WINDOW,
     focus: () => undefined,
     deliver: (_entry, event) => {
       const request = event as AgentShellEvent & { requestId: number };
@@ -257,7 +257,7 @@ afterEach(async () => {
 async function start(overrides: Partial<McpServices> = {}, options: Partial<ConstructorParameters<typeof McpService>[0]> = {}): Promise<Running> {
   const views = new ViewTracker();
   const calls: Running["calls"] = [];
-  const bridge: AgentBridge = new AgentBridge({ windows: fakeWindows(() => bridge), views, timeoutMs: 1_000 });
+  const bridge: AgentBridge = new AgentBridge({ window: fakeWindow(() => bridge), openWindow: () => Promise.resolve(WINDOW), views, timeoutMs: 1_000 });
   const service = new McpService({
     services: {
       bridge,

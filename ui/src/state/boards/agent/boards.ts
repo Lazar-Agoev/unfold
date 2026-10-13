@@ -244,8 +244,8 @@ function itemFocus(page: Page, id: string): { readonly selection: Selection; rea
 }
 
 /**
- * Shows an open board to the person: the board, the page, and the item selected and centered (Back
- * returns to where they were). The main process brings the window to the front.
+ * Shows an open board to the person: the board, the page, and the item selected and centered. The main
+ * process brings the window to the front.
  */
 export function showForAgent(request: AgentShowRequest): AgentShowResult {
   const ref: BoardRef = { project: request.board.project, id: request.board.id };

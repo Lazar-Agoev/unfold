@@ -9,7 +9,7 @@
 //! `ctx.live(&args.project)` (waking it), and confines every path it names to that project's
 //! folder.
 //!
-//! [`ProjectExtras`] is the command-side state of one live project, shared by every window: the
+//! [`ProjectExtras`] is the command-side state of one live project, shared by every command: the
 //! cached file list that search walks, rendered source files, and the board
 //! commands' state ([`board_hooks`]).
 

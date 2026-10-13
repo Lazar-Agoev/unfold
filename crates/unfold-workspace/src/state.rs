@@ -6,8 +6,6 @@
 //!   [`WindowState`]), and `workspace.json` (the projects, owned by
 //!   [`crate::projects::Projects`]).
 //! - **Per project:** `.unfold/local/state.json` ([`LocalState`]): the empty board folders.
-//!   Before the first Compile nothing may be written into the folder, so changes are kept in
-//!   memory and written when `local/` is created.
 //!
 //! Every file is written atomically (a synced temporary file renamed over it), pretty-printed
 //! with a final newline, and writes to one file are serialized. A file that is missing,
@@ -20,8 +18,8 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use unfold_reader::board::BoardError;
 use unfold_reader::board::files::write_atomic;
+use unfold_reader::board::{BoardError, is_folder_name};
 
 use crate::error::{Result, WorkspaceError};
 use crate::projects::ProjectId;
@@ -64,21 +62,20 @@ pub struct WindowState {
 }
 
 /// `.unfold/local/state.json`: what one project remembers on this machine.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct LocalState {
-    /// The format version, `1`.
-    pub version: u32,
     /// Board folders with no board in them, sorted (board folder metadata).
     pub empty_folders: Vec<String>,
 }
 
-impl Default for LocalState {
-    fn default() -> Self {
-        Self {
-            version: 1,
-            empty_folders: Vec::new(),
-        }
+impl LocalState {
+    /// The state in the file at `path` ([`read_json`]), without folder names a folder can't
+    /// have (folders are one level deep).
+    pub(crate) fn read(path: &Path) -> Self {
+        let mut state: Self = read_json(path);
+        state.empty_folders.retain(|folder| is_folder_name(folder));
+        state
     }
 }
 
@@ -187,18 +184,31 @@ mod tests {
     fn local_state_round_trips_and_defaults() {
         let dir = tempfile::tempdir().expect("temp dir");
         let path = dir.path().join("local/state.json");
-        assert_eq!(read_json::<LocalState>(&path), LocalState::default());
+        assert_eq!(LocalState::read(&path), LocalState::default());
         let state = LocalState {
-            empty_folders: vec!["Checkout/Refunds".into()],
-            ..LocalState::default()
+            empty_folders: vec!["Checkout".into(), "Refunds".into()],
         };
         write_json(&path, &state, "state.json").expect("write");
         let text = std::fs::read_to_string(&path).expect("read");
-        assert!(text.contains("\"emptyFolders\""));
-        assert!(text.ends_with("}\n"));
-        assert_eq!(read_json::<LocalState>(&path), state);
-        std::fs::write(&path, "{ not json").expect("write");
-        assert_eq!(read_json::<LocalState>(&path), LocalState::default());
+        assert_eq!(
+            text,
+            "{\n  \"emptyFolders\": [\n    \"Checkout\",\n    \"Refunds\"\n  ]\n}\n"
+        );
+        assert_eq!(LocalState::read(&path), state);
+        std::fs::write(
+            &path,
+            r#"{"emptyFolders": ["Checkout/Refunds", "..", "Refunds"]}"#,
+        )
+        .expect("write");
+        assert_eq!(
+            LocalState::read(&path).empty_folders,
+            ["Refunds"],
+            "nested and invalid names go"
+        );
+        for invalid in ["{ not json", r#"{"version": 1, "emptyFolders": ["Refunds"]}"#] {
+            std::fs::write(&path, invalid).expect("write");
+            assert_eq!(LocalState::read(&path), LocalState::default(), "{invalid}");
+        }
     }
 
     #[test]

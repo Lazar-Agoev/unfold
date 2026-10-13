@@ -3,6 +3,7 @@ import "../test/dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { Dialog } from "../components";
 import { queryClient } from "../ipc/client";
 import type { Card, Link } from "../ipc/generated";
 import { engineKey } from "../ipc/queries";
@@ -138,6 +139,31 @@ describe("the board view", () => {
     unmount();
     engine.emit({ type: "menu_command", command: "undo" });
     expect(store.getOpenBoard(REF)?.document.title).toBe("Order flow");
+  });
+
+  it("leaves the board alone on Edit › Undo while a dialog is open over it", async () => {
+    store.adoptBoardState(state([]));
+    renderBoard();
+    await screen.findByRole("heading", { name: "Page page-1" });
+    act(() => {
+      store.editBoard(REF, (document) => {
+        document.title = "Order flow";
+      });
+    });
+    const dialog = render(
+      <Dialog open title="Delete page" width={400} placement="window" onClose={() => undefined}>
+        <button type="button">Cancel</button>
+      </Dialog>,
+    );
+    act(() => {
+      engine.emit({ type: "menu_command", command: "undo" });
+    });
+    expect(store.getOpenBoard(REF)?.document.title).toBe("Order flow");
+    dialog.unmount();
+    act(() => {
+      engine.emit({ type: "menu_command", command: "undo" });
+    });
+    expect(store.getOpenBoard(REF)?.document.title).not.toBe("Order flow");
   });
 
   it("shows the page's name in the top bar, with no Share or Publish, and the dock: Add, Arrange, and the camera", async () => {

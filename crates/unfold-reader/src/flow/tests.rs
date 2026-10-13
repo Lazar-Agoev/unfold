@@ -327,11 +327,6 @@ fn authored_labels_replace_fallbacks_but_never_the_type() {
     assert_eq!(flow.nodes[flow.start as usize].label, "createOrder");
     let gate = node(&flow, "createOrder/if[0]");
     assert!(gate.fallback, "a blank label is no label");
-    assert_eq!(
-        flow.unlabeled().count(),
-        flow.nodes.len() - 3,
-        "all but Start, End, and the labeled node"
-    );
 }
 
 /// A TypeScript function `f` whose body is built by `body`, with the builder and the function.

@@ -132,23 +132,6 @@ export type AppSettings = {
 editorCommand?: string, };
 
 /**
- * An `[[application]]` table, as the editor submits it and the settings view lists it.
- */
-export type ApplicationSpec = { 
-/**
- * The application's ID.
- */
-id: string, 
-/**
- * The display name.
- */
-name: string, 
-/**
- * A description.
- */
-description: string | null, };
-
-/**
  * Who wrote something: `person:<name>` or `agent:<name>`.
  */
 export type Author = string;
@@ -1463,11 +1446,7 @@ definitions: number | null,
 /**
  * The rank score (higher is better).
  */
-score: number, 
-/**
- * UTF-16 offsets of the matched characters in `path`, for highlighting.
- */
-matches: Array<number>, };
+score: number, };
 
 /**
  * Whether a file's facts come from the bytes on disk.
@@ -1548,7 +1527,7 @@ project: ProjectId,
  */
 path: string, 
 /**
- * Only these lines (a page of a virtualized tab); the whole file when absent.
+ * Only these lines (a page of the peek sheet); the whole file when absent.
  */
 range?: LineRange, };
 
@@ -2310,11 +2289,7 @@ declaredIn: DeclaredIn,
 /**
  * How it is edited.
  */
-editable: Editable, 
-/**
- * The detected launch an `[[entrance_override]]` matches, for a detected launch.
- */
-match: MatchSpec | null, };
+editable: Editable, };
 
 /**
  * What a launch starts.
@@ -2526,23 +2501,6 @@ schedule: string | null,
 line: number, };
 
 /**
- * An override's `match`: a launch detector, its input file, and the pointer into it.
- */
-export type MatchSpec = { 
-/**
- * `package.script`, `package.bin`, or `pyproject.script`.
- */
-detector: string, 
-/**
- * The input file, such as `apps/api/package.json`.
- */
-path: string, 
-/**
- * The pointer to the launch's member, such as `/scripts/start`.
- */
-pointer: string, };
-
-/**
  * What a member of a type declaration or class is.
  */
 export type MemberKind = "property" | "method" | "index" | "call" | "construct" | "value";
@@ -2736,31 +2694,6 @@ groupable: boolean,
  * How it folds, for a compound block spanning several lines.
  */
 fold?: Fold, };
-
-/**
- * An `[[entrance_override]]` table, as the editor submits it and the settings view lists it.
- */
-export type OverrideSpec = { 
-/**
- * The detected launch it applies to.
- */
-match: MatchSpec, 
-/**
- * The `[[application]]` the launch belongs to.
- */
-application: string | null, 
-/**
- * A display label.
- */
-label: string | null, 
-/**
- * A description.
- */
-description: string | null, 
-/**
- * A schedule, as written.
- */
-schedule: string | null, };
 
 /**
  * One page of a board.
@@ -2961,27 +2894,6 @@ project: ProjectId,
  * The structural key.
  */
 key: string, };
-
-/**
- * One project's match counts (at most 2,000 per kind).
- */
-export type ProjectMatches = { 
-/**
- * The project.
- */
-project: ProjectId, 
-/**
- * Definitions that matched.
- */
-definitions: number, 
-/**
- * Entrances that matched.
- */
-entrances: number, 
-/**
- * Files that matched.
- */
-files: number, };
 
 /**
  * The arguments of a command about one path of a project.
@@ -3591,11 +3503,7 @@ application: string | null,
 /**
  * The rank score (higher is better).
  */
-score: number, 
-/**
- * UTF-16 offsets of the matched characters in `name`, for highlighting.
- */
-nameMatches: Array<number>, };
+score: number, };
 
 /**
  * A result kind.
@@ -3621,15 +3529,7 @@ entrances: SearchGroup<SearchHit>,
 /**
  * Files.
  */
-files: SearchGroup<FileHit>, 
-/**
- * Each searched project's match counts, in workspace order.
- */
-projects: Array<ProjectMatches>, 
-/**
- * How long the search took, in milliseconds.
- */
-tookMs: number, };
+files: SearchGroup<FileHit>, };
 
 /**
  * What a section holds.
@@ -3745,23 +3645,7 @@ entrance: EntranceSpec, } | { "op": "remove_entrance",
 /**
  * The entrance's ID.
  */
-id: string, } | { "op": "set_application", 
-/**
- * The application.
- */
-application: ApplicationSpec, } | { "op": "remove_application", 
-/**
- * The application's ID.
- */
-id: string, } | { "op": "set_override", 
-/**
- * The override.
- */
-override: OverrideSpec, } | { "op": "remove_override", 
-/**
- * The override's `match`.
- */
-match: MatchSpec, } | { "op": "set_python_project", 
+id: string, } | { "op": "set_python_project", 
 /**
  * The project.
  */
@@ -3769,15 +3653,7 @@ project: PythonProjectSpec, } | { "op": "remove_python_project",
 /**
  * The project's root.
  */
-root: string, } | { "op": "set_detector", 
-/**
- * The detector ID, such as `node-cron.schedule`.
- */
-detector: string, 
-/**
- * Whether it runs.
- */
-enabled: boolean, } | { "op": "add_evidence_pattern", 
+root: string, } | { "op": "add_evidence_pattern", 
 /**
  * The pattern: a file, a folder, or a glob, relative to the project's folder.
  */
@@ -3829,17 +3705,9 @@ disabledDetectors: Array<DetectorId>,
  */
 pythonProjects: Array<PythonProjectView>, 
 /**
- * Applications, in file order.
- */
-applications: Array<ApplicationSpec>, 
-/**
  * Manual entrances, in file order.
  */
 entrances: Array<ManualEntranceView>, 
-/**
- * Overrides of detected launches, in file order.
- */
-overrides: Array<OverrideSpec>, 
 /**
  * `[evidence] files` patterns, as written.
  */
@@ -4395,7 +4263,7 @@ state: BoardState | null, } | { "type": "config_changed",
 project: ProjectId, };
 
 /**
- * The whole workspace, as every window shows it.
+ * The whole workspace, as the window shows it.
  */
 export type WorkspaceView = { 
 /**
@@ -4403,7 +4271,7 @@ export type WorkspaceView = {
  */
 projects: Array<ProjectRow>, 
 /**
- * The project last selected in any window: the default for a new window.
+ * The project last selected: the one Home shows when the window opens.
  */
 selected: ProjectId | null, };
 

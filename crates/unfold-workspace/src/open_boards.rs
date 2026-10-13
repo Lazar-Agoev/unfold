@@ -3,7 +3,8 @@
 //! nothing here refuses an open.
 //!
 //! [`OpenBoards`] maps each open board of a project (by board id) to the window that opened it.
-//! Opening a board records it; `close_board` and `delete_board` remove it, and a window that
+//! Opening a board records it ([`crate::projects::ProjectHandle::open_board`], which refuses a
+//! window that already closed); `close_board` and `delete_board` remove it, and a window that
 //! closes releases every board it opened ([`OpenBoards::close_window`]), so its project can rest.
 //! Board commands other than the reads and the folder commands work only on an open board
 //! ([`OpenBoards::check`]).
@@ -31,7 +32,7 @@ impl OpenBoards {
     }
 
     /// Opens `board` in `window`; whether it was closed before.
-    pub fn open(&self, board: &str, window: WindowId) -> bool {
+    pub(crate) fn open(&self, board: &str, window: WindowId) -> bool {
         self.lock().insert(board.to_owned(), window).is_none()
     }
 

@@ -19,7 +19,7 @@ function setup(overrides: Partial<McpServices> = {}) {
   const confirmations: [string, string][] = [];
   const added: string[] = [];
   const services: McpServices = {
-    bridge: new AgentBridge({ windows: { get: () => undefined, current: () => undefined, open: () => { throw new Error("no window"); }, deliver: () => undefined, focus: () => undefined }, views: new ViewTracker() }),
+    bridge: new AgentBridge({ window: { get: () => undefined, current: () => undefined, deliver: () => undefined, focus: () => undefined }, openWindow: () => Promise.reject(new Error("no window")), views: new ViewTracker() }),
     renderer: NO_RENDERER,
     engine: (command) => {
       engineCalls.push(command);

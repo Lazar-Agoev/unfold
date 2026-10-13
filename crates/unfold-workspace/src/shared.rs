@@ -143,8 +143,8 @@ pub(crate) struct Shared {
     pub(crate) readers: RwLock<Option<ReadPool>>,
     pub(crate) reader_cache: ReaderCache,
     pub(crate) local_state: Mutex<LocalState>,
-    /// Held across a settings edit's read, edit, and write, so concurrent edits (two windows)
-    /// apply one after the other instead of the later write dropping the earlier edit.
+    /// Held across a settings edit's read, edit, and write, so concurrent edits (the window and
+    /// an agent) apply one after the other instead of the later write dropping the earlier edit.
     pub(crate) settings_edit: Mutex<()>,
     pub(crate) own_writes: OwnWrites,
     pub(crate) watcher: Mutex<Option<Debouncer<RecommendedWatcher, NoCache>>>,

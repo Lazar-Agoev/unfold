@@ -1,4 +1,4 @@
-//! Workspace commands: the project rows every window shows, adding (from the main process
+//! Workspace commands: the project rows the window shows, adding (from the main process
 //! only), removing, ordering, expanding, and selecting projects.
 
 use std::path::Path;
@@ -82,8 +82,8 @@ pub struct SelectProjectArgs {
 }
 
 /// `select_project`: the calling window's Home selection. It keeps the project live (it wakes
-/// before this returns, so the window's next query finds it live) and becomes the default for
-/// new windows.
+/// before this returns, so the window's next query finds it live), and Home shows it when the
+/// window opens again.
 pub fn select_project(ctx: &Ctx<'_>, args: SelectProjectArgs) -> CommandResult<()> {
     Ok(ctx.projects().select(ctx.window, args.project.as_ref())?)
 }

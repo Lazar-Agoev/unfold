@@ -16,7 +16,8 @@
 //! file, whatever the file holds now. When the file changes outside the app (another program, a
 //! `git pull`), the session is reloaded from it and the window that opened the board gets
 //! `board_reloaded` ([`health::check_disk`]); while the window's save is failing, it ignores the
-//! reload, and its Retry writes the person's version over the file.
+//! reload, and its Retry writes the person's version over the file, checked against the version
+//! the window was editing on (the session keeps it: [`session`]).
 //!
 //! Every board's health is cached per board ([`session::BoardExtras`]) and feeds the Problems
 //! list and Home's Health line; it is refreshed after the project's graph changes.
@@ -148,9 +149,22 @@ impl Opened<'_> {
 
     /// Validates, signs, and writes `board` over the board's file, whatever the file holds now,
     /// as the session's new version.
+    ///
+    /// `board` is checked against the session's version, and when that refuses it, against each
+    /// version an outside change replaced since the last save, newest first: a window whose save
+    /// was failing ignored those reloads, so its Retry builds on one of them, and a problem that
+    /// version already had isn't new. The first check that passes wins.
     fn save(&self, session: &mut Session, source: &Source, board: Board) -> CommandResult<BoardState> {
         let graph = source.board(&board)?;
-        let (signed, health) = prepare_save(board, Some((&session.board, &session.health)), &graph)?;
+        let check = |previous: (&Board, &Health)| prepare_save(board.clone(), Some(previous), &graph);
+        let (signed, health) = check((&session.board, &session.health)).or_else(|refused| {
+            session
+                .replaced
+                .iter()
+                .rev()
+                .find_map(|(old, old_health)| check((old, old_health)).ok())
+                .ok_or(refused)
+        })?;
         let revision = self.files().save(&self.file, &signed)?;
         self.boards().cache(source, &self.id, &signed, revision, &health);
         *session = Session::new(
@@ -201,7 +215,7 @@ pub fn open_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardState>
     let project = ctx.project(&args.project)?;
     let file = parse_id(&args.id)?;
     // A board open already stays open whatever happens here.
-    let newly_opened = project.open_boards().open(&args.id, ctx.window);
+    let newly_opened = project.open_board(&args.id, ctx.window)?;
     let release = |project: &ProjectHandle<'_>| {
         if newly_opened {
             project.open_boards().close(&args.id);
@@ -226,7 +240,7 @@ pub fn open_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardState>
 
 /// `new_board`: creates an empty board with one page as a new file in `.unfold/boards/` (named
 /// from its title, never overwriting another board), opens it in the calling window, and
-/// returns it.
+/// returns it. A window that closed meanwhile gets `window_closed`, and the board stays closed.
 pub fn new_board(ctx: &Ctx<'_>, args: NewBoardArgs) -> CommandResult<BoardState> {
     let project = ctx.project(&args.project)?;
     let folder = args.folder.map(folder_arg).transpose()?;
@@ -240,7 +254,6 @@ pub fn new_board(ctx: &Ctx<'_>, args: NewBoardArgs) -> CommandResult<BoardState>
     let source = Source::live(&workspace)?;
     let (file, revision) = files.create(&board)?;
     let id = file.relative();
-    project.open_boards().open(&id, ctx.window);
     // An empty board is healthy.
     let extras = project.extras();
     extras
@@ -249,10 +262,15 @@ pub fn new_board(ctx: &Ctx<'_>, args: NewBoardArgs) -> CommandResult<BoardState>
     let session = Session::new(Loaded { board, revision }, Health::default());
     let state = board_state(project.id(), &id, &file, &session);
     extras.boards.sessions().insert(id.clone(), session);
+    let opened = project.open_board(&id, ctx.window);
+    if opened.is_err() {
+        extras.boards.forget_sessions(std::slice::from_ref(&id));
+    }
     if let Some(folder) = &folder {
         folder_used(&workspace, folder);
     }
     announce(&workspace, &mut vec![id], folder.is_some());
+    opened?;
     Ok(state)
 }
 

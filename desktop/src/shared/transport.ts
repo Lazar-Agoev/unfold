@@ -43,8 +43,8 @@ export type MainToHost =
   /** First message after every (re)start. `addonPath` is the module to `require`. */
   | { readonly type: "init"; readonly addonPath: string; readonly folders: AppFolders }
   /**
-   * Attach a window (its port is transferred with this message). Its commands dispatch at once:
-   * every window shows the whole workspace. A re-attach of the same id (a reload) swaps the port.
+   * Attach a window (its port is transferred with this message). Its commands dispatch at once. A
+   * re-attach of the same id (a reload) swaps the port.
    */
   | { readonly type: "attach"; readonly windowId: number }
   /** The window closed: its closing writes land, then Rust releases its board sessions. */

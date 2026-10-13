@@ -1,5 +1,5 @@
 /**
- * The workspace: its projects as every window shows them, and this window's selection.
+ * The workspace: its projects, and the window's selection.
  *
  * The `workspace` query is replaced by `workspace_changed` and patched by `project_state`, so the
  * project index below changes identity exactly when the workspace does.

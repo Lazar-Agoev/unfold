@@ -67,6 +67,11 @@ export function useRestoreFocus(active: boolean): void {
 /** How many modal layers are open; the app root is inert while any is. */
 let openModals = 0;
 
+/** Whether a modal dialog is open (the board behind it then ignores Edit › Undo and Redo). */
+export function isModalOpen(): boolean {
+  return openModals > 0;
+}
+
 /**
  * For modal layers (dialogs), while `open`: make the app behind inert. On close, the app becomes interactive again before focus returns to where it
  * was (focus can't land inside an inert subtree).

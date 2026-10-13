@@ -1,4 +1,4 @@
-/** How an entrance row reads, on Home's How it starts and in Add's entrance browser. */
+/** How an entrance row reads on Home's How it starts. */
 
 import type { CatalogRow } from "../ipc/generated";
 

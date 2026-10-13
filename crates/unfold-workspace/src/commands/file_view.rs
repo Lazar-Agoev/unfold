@@ -51,7 +51,7 @@ pub struct FileViewArgs {
     pub project: ProjectId,
     /// The file, relative to the project's folder.
     pub path: String,
-    /// Only these lines (a page of a virtualized tab); the whole file when absent.
+    /// Only these lines (a page of the peek sheet); the whole file when absent.
     #[serde(default)]
     #[ts(optional)]
     pub range: Option<LineRange>,
@@ -77,7 +77,7 @@ pub enum GraphMatch {
 pub enum Unshowable {
     /// It isn't UTF-8 text.
     Binary,
-    /// It is larger than the tab shows.
+    /// It is larger than the peek sheet shows.
     TooLarge,
 }
 
@@ -274,7 +274,7 @@ fn render_page(
                 .filter(|file| file.file.hash == Some(snapshot.hash()));
             let (code, matched) = match verified {
                 Some(file) => (
-                    render(file, 0, snapshot.text(), highlighter, FoldPolicy::SourceTab)?,
+                    render(file, 0, snapshot.text(), highlighter, FoldPolicy::File)?,
                     GraphMatch::Current,
                 ),
                 None => {

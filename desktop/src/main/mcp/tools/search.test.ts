@@ -78,11 +78,11 @@ describe("search", () => {
   it("fits the largest page under the size guard, keeping its cursor, and reaches every hit across pages", async () => {
     const deep = `src/${"very-long-folder-name/".repeat(8)}module.ts`;
     const many = (kind: string, count: number) =>
-      Array.from({ length: count }, (_, index) => ({ project: PROJECT, key: `${deep}#class:Service${index}/method:${kind}${index}`, name: `${kind}${index}`, qualifiedName: `Service${index}.${kind}${index}`, path: deep, kind: "method", line: index + 1, application: null, score: 1, nameMatches: [] }));
+      Array.from({ length: count }, (_, index) => ({ project: PROJECT, key: `${deep}#class:Service${index}/method:${kind}${index}`, name: `${kind}${index}`, qualifiedName: `Service${index}.${kind}${index}`, path: deep, kind: "method", line: index + 1, application: null, score: 1 }));
     const group = (kind: string) => ({ hits: many(kind, 120), total: 120, truncated: false });
     const app = harness({
       engine: {
-        search: (args): SearchResults => ({ query: "x", definitions: group(String(args["definitionKinds"])), entrances: group("entrance"), files: { hits: [], total: 0, truncated: false }, projects: [], tookMs: 0 }),
+        search: (args): SearchResults => ({ query: "x", definitions: group(String(args["definitionKinds"])), entrances: group("entrance"), files: { hits: [], total: 0, truncated: false } }),
       },
     });
     const seen = new Set<string>();

@@ -7,10 +7,10 @@
 import { useMemo } from "react";
 import { create } from "zustand";
 import type { ProjectId } from "../ipc/generated";
-import { boardKey } from "./boards/keys";
+import { boardKey, sameBoard } from "./boards/keys";
 import { useBoards } from "./boards/store";
 import type { BoardRef, PageTarget } from "./boards/types";
-import { useShownBoard } from "./shownBoard";
+import { useShownBoard, useShownBoardStore } from "./shownBoard";
 
 /**
  * The source View code highlights: one-based lines `startLine`–`endLine`, and with columns (UTF-16
@@ -62,6 +62,13 @@ export function openAdd(): void {
 export function closeAdd(): void {
   useOverlays.setState({ add: false });
 }
+
+// Add belongs to the board it opened on: it closes when the window shows another board, or Home.
+useShownBoardStore.subscribe((state, previous) => {
+  if (!sameBoard(state.board, previous.board)) {
+    closeAdd();
+  }
+});
 
 export function useAddOpen(): boolean {
   return useOverlays((state) => state.add);

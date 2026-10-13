@@ -1,4 +1,4 @@
-/** String keys for boards, pages, and project-qualified cards (for maps, tabs, and on-page marks). */
+/** String keys for boards, pages, and project-qualified cards (for maps and on-page marks). */
 
 import type { Key, ProjectId } from "../../ipc/generated";
 import type { BoardRef, PageTarget } from "./types";

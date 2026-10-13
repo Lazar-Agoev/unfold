@@ -8,8 +8,9 @@
  *   folder is Rust's), written over the board's file; saves never overlap, and edits made during one are
  *   saved right after. A failed save keeps the edits, and the next edit or Retry writes them.
  * - An outside change to the file arrives as `board_reloaded`: the board takes the file's version and
- *   its undo history starts over, except while its save is failing (the person's version is written
- *   over the file then). A file deleted outside is written back by the next save.
+ *   its undo history starts over, except while it has edits not yet saved or a save is in flight (the
+ *   person's version is written over the file then). A file deleted outside is written back by the
+ *   next save.
  * - View state (each page's camera, lens, and selection, and the active page) lasts only while the app
  *   runs; view changes are never undo steps.
  * - An agent's edit is saved at once (`saveStep`), and a repair is written by the engine itself
@@ -501,6 +502,11 @@ function notSaved(code: string, message: string): NotSaved {
   return { ok: false, error: new UnfoldError({ code, message }) };
 }
 
+/** Why a board's edits are still unsaved after a save: the save's failure, or edits made meanwhile. */
+function unsavedEdits(board: OpenBoard): UnfoldError {
+  return new UnfoldError({ code: "unsaved_edits", message: board.saveError ?? "The board has edits Unfold couldn't save yet. Try again in a moment." });
+}
+
 /**
  * Runs `step` once the board's unsaved edits are saved, holding the board's save slot meanwhile (no
  * other save of it starts), so a step's refusal is about the step alone. Refuses while the board's
@@ -517,7 +523,7 @@ async function withSaveSlot<T>(ref: BoardRef, step: (board: OpenBoard) => Promis
     return notSaved("board_not_open", "This window no longer holds the board.");
   }
   if (isDirty(board)) {
-    return notSaved("unsaved_edits", board.saveError ?? "The board has edits Unfold couldn't save yet. Try again in a moment.");
+    return { ok: false, error: unsavedEdits(board) };
   }
   let release: () => void = () => undefined;
   inflight.set(
@@ -652,15 +658,22 @@ export async function engineStep(ref: BoardRef, page: PageId, write: () => Promi
   });
 }
 
-/** Saves now whatever is waiting for the autosave (before closing, exporting, or deleting a board). */
+/**
+ * Saves now whatever is waiting for the autosave (before closing, renaming, exporting, or deleting a
+ * board). Throws `unsaved_edits` when the board still has edits that aren't saved.
+ */
 export async function flushBoard(ref: BoardRef): Promise<void> {
   cancelSaveTimer(ref);
   await saveBoard(ref);
+  const board = getOpenBoard(ref);
+  if (board && isDirty(board)) {
+    throw unsavedEdits(board);
+  }
 }
 
-/** Saves every open board's unsaved edits (after the engine reconnects). */
+/** Saves every open board's unsaved edits (after the engine reconnects); a failed save shows on its board. */
 export async function flushAllBoards(): Promise<void> {
-  await Promise.all(openBoards().map(async (board) => flushBoard(board.ref)));
+  await Promise.all(openBoards().map(async (board) => saveBoard(board.ref)));
 }
 
 /**
@@ -682,17 +695,15 @@ export function saveAllNow(): void {
 
 /**
  * Handles `board_reloaded` with the board as its file now holds it: the session takes that version,
- * and its undo history starts over. Ignored while the board's save is failing: Retry, or the next
- * edit, writes the person's version over the file.
+ * and its undo history starts over. Ignored while the board has edits not yet saved (waiting for the
+ * autosave, or failing to save): the pending save, or Retry, writes the person's version over the file.
+ * Ignored too while a save is in flight: the engine sends the event while holding the board's session,
+ * so that save is written after the outside change, and the file holds the person's version.
  */
-export async function adoptOutsideChange(state: BoardState): Promise<void> {
+export function adoptOutsideChange(state: BoardState): void {
   const ref = { project: state.project, id: state.id };
-  const running = inflight.get(boardKey(ref));
-  if (running) {
-    await running;
-  }
   const board = getOpenBoard(ref);
-  if (!board || board.readOnly || board.saveError !== null) {
+  if (!board || board.readOnly || inflight.has(boardKey(ref)) || isDirty(board)) {
     return;
   }
   cancelSaveTimer(ref);

@@ -11,7 +11,7 @@
 import { ReactFlowProvider, useReactFlow, useStoreApi } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { BoardCanvas, arrangeBoard, useBoardArrows } from "../canvas";
-import { showToast } from "../components";
+import { isModalOpen, showToast } from "../components";
 import { onShellEvent } from "../ipc";
 import { boardKey, canUndo, findPage, redo, requestCardFocus, undo, useOpenBoard, usePageView, type BoardRef, type PageTarget } from "../state/boards";
 import { useLayout } from "../state/layout";
@@ -100,11 +100,17 @@ function useCoveredRight(): string {
   return peek !== null && !pinned ? "var(--peek-width)" : "0px";
 }
 
-/** Applies Edit › Undo and Redo to the board while it is shown (a focused text field never sends them). */
+/**
+ * Applies Edit › Undo and Redo to the board while it is shown (a focused text field never sends them),
+ * except while a dialog covers it.
+ */
 function useMenuUndo(board: BoardRef): void {
   useEffect(
     () =>
       onShellEvent("menu_command", ({ command }) => {
+        if (isModalOpen()) {
+          return;
+        }
         if (command === "undo") {
           undo(board);
         } else {

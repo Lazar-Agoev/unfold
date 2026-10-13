@@ -14,7 +14,7 @@ use crate::error::WorkspaceError;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::ProjectId;
-use crate::settings_edit::{ApplicationSpec, LaunchTargetSpec, OverrideSpec, SettingsEdit};
+use crate::settings_edit::{LaunchTargetSpec, SettingsEdit};
 use crate::state::AppSettings;
 use crate::workspace::{load_settings, settings_text};
 
@@ -123,12 +123,8 @@ pub struct SettingsView {
     pub disabled_detectors: Vec<DetectorId>,
     /// Python projects.
     pub python_projects: Vec<PythonProjectView>,
-    /// Applications, in file order.
-    pub applications: Vec<ApplicationSpec>,
     /// Manual entrances, in file order.
     pub entrances: Vec<ManualEntranceView>,
-    /// Overrides of detected launches, in file order.
-    pub overrides: Vec<OverrideSpec>,
     /// `[evidence] files` patterns, as written.
     pub evidence: Vec<String>,
 }
@@ -162,7 +158,6 @@ impl From<&Settings> for SettingsView {
                     version: project.version.as_str().to_owned(),
                 })
                 .collect(),
-            applications: settings.applications.iter().map(ApplicationSpec::from).collect(),
             entrances: settings
                 .entrances
                 .iter()
@@ -217,7 +212,6 @@ impl From<&Settings> for SettingsView {
                     view
                 })
                 .collect(),
-            overrides: settings.overrides.iter().map(OverrideSpec::from).collect(),
             evidence: settings
                 .evidence
                 .patterns()
@@ -292,10 +286,9 @@ pub struct UpdateProjectConfigArgs {
     pub edits: Vec<SettingsEdit>,
 }
 
-/// `update_project_config`: applies validated edits (scope, applications, manual entrances,
-/// overrides, Python projects, detector toggles, evidence files), keeping comments and
-/// formatting; an edit that would make the file invalid is refused with `invalid_settings` and
-/// nothing is written. Sends `config_changed`.
+/// `update_project_config`: applies validated edits (scope, manual entrances, Python projects,
+/// evidence files), keeping comments and formatting; an edit that would make the file invalid is
+/// refused with `invalid_settings` and nothing is written. Sends `config_changed`.
 pub fn update_project_config(ctx: &Ctx<'_>, args: UpdateProjectConfigArgs) -> CommandResult<ProjectConfig> {
     let workspace = ctx.live(&args.project)?;
     let outcome = workspace.edit_settings(&args.edits)?;

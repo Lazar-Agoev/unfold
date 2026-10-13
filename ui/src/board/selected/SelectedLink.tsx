@@ -1,23 +1,21 @@
 /**
  * Selected for a drawn link: "Link · drawn by <author>", its kind (a menu that makes it a connection),
- * its label (edited in place), the items it joins (cards with their project's monogram), what a drawn
- * link is, and Edit label and Remove link.
+ * its label (edited in place), the items it joins, what a drawn link is, and Edit label and Remove link.
  */
 
 import { useId, useRef } from "react";
 import { LINK_LABEL_FIELD } from "../../canvas/cards/select";
 import { Author } from "../../agent";
 import { kindEntries } from "../../canvas/connections/linkMenu";
-import { Button, MenuButton, Monogram } from "../../components";
+import { Button, MenuButton } from "../../components";
 import type { Link, Page } from "../../ipc/generated";
 import { requestFocus, useFocusTarget } from "../../lib/focus-targets";
 import { useAuthor } from "../../state/author";
 import { cardKey, findCard, findPage, focusCard, keyDisplayName, removeLink, setLinkLabel, useOpenBoard, type PageTarget } from "../../state/boards";
-import { useProjectRow } from "../../state/workspace";
 import { itemName, selectItem } from "./ClaimRows";
 import { RelationRow } from "./Relations";
 
-function End({ target, label, page, id, boardProject }: { readonly target: PageTarget; readonly label: string; readonly page: Page | undefined; readonly id: string; readonly boardProject: string }) {
+function End({ target, label, page, id }: { readonly target: PageTarget; readonly label: string; readonly page: Page | undefined; readonly id: string }) {
   const card = page ? findCard(page, id) : undefined;
   if (page && !card) {
     return (
@@ -41,10 +39,7 @@ function End({ target, label, page, id, boardProject }: { readonly target: PageT
         focusCard(target, card.id);
       }}
     >
-      <span className="relation-card">
-        <Monogram name={boardProject} size={14} />
-        <span className="relation-code">{keyDisplayName(cardKey(card))}</span>
-      </span>
+      <span className="relation-code">{keyDisplayName(cardKey(card))}</span>
     </RelationRow>
   );
 }
@@ -52,7 +47,6 @@ function End({ target, label, page, id, boardProject }: { readonly target: PageT
 export function SelectedLink({ target, link }: { readonly target: PageTarget; readonly link: Link }) {
   const author = useAuthor();
   const page = useOpenBoard(target.board, (board) => findPage(board.document, target.page));
-  const boardProject = useProjectRow(target.board.project)?.name ?? "";
   const field = useRef<HTMLInputElement>(null);
   const labelId = useId();
   useFocusTarget(LINK_LABEL_FIELD, field);
@@ -90,8 +84,8 @@ export function SelectedLink({ target, link }: { readonly target: PageTarget; re
             }}
           />
         </div>
-        <End target={target} label="From" page={page} id={link.from} boardProject={boardProject} />
-        <End target={target} label="To" page={page} id={link.to} boardProject={boardProject} />
+        <End target={target} label="From" page={page} id={link.from} />
+        <End target={target} label="To" page={page} id={link.to} />
       </div>
       <p className="selected-note">Drawn by hand. Unfold doesn’t trace calls between projects; health checks that both ends still exist.</p>
       <div className="selected-actions">

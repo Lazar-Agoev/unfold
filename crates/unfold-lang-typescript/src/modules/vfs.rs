@@ -14,10 +14,7 @@ use oxc_resolver::{FileMetadata, FileSystem, ResolveError};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// The virtual folder root every path hangs from.
-#[cfg(not(windows))]
 const ROOT: &str = "/";
-#[cfg(windows)]
-const ROOT: &str = "C:\\";
 
 /// The absolute virtual path of a folder-relative path (`""` is the root).
 pub(crate) fn absolute(path: &str) -> PathBuf {

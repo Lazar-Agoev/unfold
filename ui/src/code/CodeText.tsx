@@ -1,5 +1,5 @@
 /**
- * The line/token/link renderer shared by Code cards and source tabs: one range of shown text,
+ * The line/token/link renderer shared by Code cards and the peek sheet: one range of shown text,
  * colored by the model's token classes (v7 syntax palette) with call links at their written ranges.
  * Callers decide what a link is (`renderLink`); without it, linked text renders plain.
  */

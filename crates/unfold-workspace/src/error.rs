@@ -84,6 +84,9 @@ pub enum WorkspaceError {
     /// The board isn't open.
     #[error("board `{0}` is not open")]
     BoardNotOpen(String),
+    /// The window that sent the command has closed.
+    #[error("the window has closed")]
+    WindowClosed,
     /// The project has no graph yet.
     #[error("the project has not been compiled yet")]
     NotCompiled,
@@ -122,6 +125,7 @@ impl WorkspaceError {
             Self::InvalidSettings { .. } => "invalid_settings",
             Self::SettingsConflict(_) => "settings_conflict",
             Self::BoardNotOpen(_) => "board_not_open",
+            Self::WindowClosed => "window_closed",
             Self::NotCompiled => "not_compiled",
             Self::Closed => "closed",
             Self::Encode { .. } | Self::Internal(_) => "internal",
@@ -152,6 +156,7 @@ mod tests {
             WorkspaceError::BoardNotOpen("b".into()),
             WorkspaceError::UnknownProject(ProjectId::new_unchecked("p-aaaaaaaaaa")),
             WorkspaceError::BoardsOpen,
+            WorkspaceError::WindowClosed,
             WorkspaceError::FolderNotWritable {
                 path: "/x".into(),
                 reason: Unwritable::ReadOnly,

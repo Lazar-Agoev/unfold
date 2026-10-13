@@ -1,4 +1,4 @@
-//! Search: one fan-out across the projects, merged and ranked, "Look in", per-project totals,
+//! Search: one fan-out across the projects, merged and ranked, the projects to look in, totals,
 //! resting projects, and latency.
 
 use std::time::{Duration, Instant};
@@ -55,28 +55,23 @@ fn search_fans_out_and_merges_by_score_then_workspace_order() {
         }
     }
     assert!(definitions.iter().all(|hit| hit["line"].is_u64()), "{results}");
-    let totals = results["projects"].as_array().expect("projects");
-    assert_eq!(totals.len(), 2);
-    assert_eq!(totals[0]["project"], harness.project);
-    assert_eq!(totals[1]["project"], python);
-    let sum: u64 = totals
-        .iter()
-        .map(|total| total["definitions"].as_u64().expect("count"))
-        .sum();
+
+    // One project only; the totals add up across projects.
+    let only = |project: &str| {
+        let results = harness.ok(1, "search", json!({ "query": "order", "projects": [project] }));
+        assert!(
+            hits(&results, "definitions")
+                .iter()
+                .all(|hit| hit["project"] == project)
+        );
+        results["definitions"]["total"].as_u64().expect("total")
+    };
+    let sum = only(&harness.project) + only(&python);
     assert_eq!(results["definitions"]["total"].as_u64(), Some(sum));
     assert_eq!(
         results["definitions"]["truncated"],
         definitions.len() < sum as usize
     );
-
-    // "Look in" one project.
-    let python_only = harness.ok(1, "search", json!({ "query": "order", "projects": [python] }));
-    assert!(
-        hits(&python_only, "definitions")
-            .iter()
-            .all(|hit| hit["project"] == python)
-    );
-    assert_eq!(python_only["projects"].as_array().map(Vec::len), Some(1));
 }
 
 #[test]
@@ -88,11 +83,6 @@ fn kinds_and_limits_apply_across_projects() {
     let first = &hits(&files, "files")[0];
     assert_eq!(first["path"], "src/services/order-service.ts");
     assert_eq!(first["project"], harness.project);
-    assert!(
-        first["matches"]
-            .as_array()
-            .is_some_and(|matches| !matches.is_empty())
-    );
 
     // Definitions only, limited across every project.
     let symbols = harness.ok(
@@ -106,7 +96,7 @@ fn kinds_and_limits_apply_across_projects() {
 
     let empty = harness.ok(1, "search", json!({ "query": "   " }));
     assert_eq!(hits(&empty, "files"), Vec::<Value>::new());
-    assert_eq!(empty["projects"], json!([]));
+    assert_eq!(empty["definitions"]["total"], 0);
 }
 
 #[test]

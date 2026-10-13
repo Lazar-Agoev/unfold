@@ -127,7 +127,6 @@ fn entrances_are_paged_filtered_and_ordered_per_application() {
                 .is_some_and(|command| !command.is_empty())
         );
         assert_eq!(launch["editable"], "override");
-        assert_eq!(launch["match"]["path"], "package.json");
         assert!(
             launch["reaches"].is_u64(),
             "a live project counts reach: {launch}"

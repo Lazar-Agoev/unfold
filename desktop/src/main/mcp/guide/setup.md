@@ -16,7 +16,7 @@ changed: it shows in their git diff.
   a network volume, is refused, and the error says so.
 - The project compiles as it is added. The result waits up to 50 seconds for that
   compile, as compile_project does.
-- You can't remove a project: the person does (File › Remove Project).
+- You can't remove a project: the person does (the project menu's Remove from workspace…).
 
 ## Compile
 - compile_project reads the project's TypeScript and Python without running anything,

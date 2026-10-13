@@ -136,7 +136,7 @@ describe("the peek sheet", () => {
     expect(row(2)?.querySelector(".tok-keyword")?.textContent).toBe("import");
     expect(within(sheet()).getByText("a new board")).toBeTruthy();
 
-    // ⊕ beside a definition (only definitions get one); from Home it starts a draft.
+    // ⊕ beside a definition (only definitions get one); from Home it starts a new board.
     expect(row(1)?.querySelector(".peek-add-button")).toBeNull();
     fireEvent.click(within(sheet()).getByRole("button", { name: "Add listOrders to the page" }));
     await waitFor(() => {

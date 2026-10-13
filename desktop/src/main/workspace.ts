@@ -4,7 +4,9 @@
  * - At launch, the window comes back ({@link Workspace.restore}): the main process asks the engine
  *   (trusted `window_state`) and opens the window with its bounds, moved onto a visible screen if
  *   its display is gone. The UI asks `window_info` for the board to show. With nothing saved, or no
- *   answer from the engine, the window opens at its default size on Home.
+ *   answer from the engine, the window opens at its default size on Home. Anything else that needs
+ *   the window (an agent, the Dock, File › Add Project…) opens it through {@link Workspace.open},
+ *   which waits for the restore.
  * - The UI reports the board it shows (`report_shown_board`). The window's bounds, whether it is
  *   maximized, and that board are saved with `save_window_state` whenever one of them changes
  *   (debounced, and flushed as the window closes so the last change before closing or quitting is
@@ -20,7 +22,7 @@ import type { EngineHost } from "./engine-host";
 import { EngineRequestError } from "./engine-host";
 import type { WindowState } from "./window-placement";
 import { debouncedSave, savedWindowState } from "./window-placement";
-import type { AppWindow } from "./windows";
+import type { AppWindow, WindowEntry } from "./windows";
 
 /** How long launch waits for the saved state before opening the window at its default size. */
 const RESTORE_TIMEOUT_MS = 3_000;
@@ -35,7 +37,7 @@ export class Workspace {
   private shown: ShownBoard | null = null;
   /** The latest `save_window_state` until it settles (never rejects). */
   private saving: Promise<void> = Promise.resolve();
-  /** The launch restore, so a dock click or a menu command during it waits for the window. */
+  /** The launch restore, so anything that needs the window during it waits for it ({@link Workspace.open}). */
   private restoring: Promise<void> | null = null;
   private readonly pendingSave = debouncedSave(() => {
     this.save();
@@ -52,10 +54,18 @@ export class Workspace {
     return this.restoring;
   }
 
+  /**
+   * The window, opened when it is closed: always after the launch restore, so a window an agent or
+   * a menu command needs at launch still opens where it was, on the board it showed.
+   */
+  async open(): Promise<WindowEntry> {
+    await this.restore();
+    return this.window.open();
+  }
+
   /** Opens the window if it is closed (after the launch restore), and brings it to the front. */
   async show(): Promise<void> {
-    await this.restoring;
-    this.window.focus(this.window.open());
+    this.window.focus(await this.open());
   }
 
   /** The board the window shows, for `window_info`. */
@@ -108,8 +118,7 @@ export class Workspace {
       const message = error instanceof EngineRequestError ? error.error.message : describe(error);
       event = { type: "project_add_failed", path, message };
     }
-    await this.restoring;
-    this.window.deliver(this.window.open(), event);
+    this.window.deliver(await this.open(), event);
   }
 
   private async restoreNow(): Promise<void> {
@@ -118,9 +127,6 @@ export class Workspace {
       saved = savedWindowState(await withTimeout(this.engine.request(0, "window_state", {}), RESTORE_TIMEOUT_MS));
     } catch (error) {
       console.warn(`[main] could not read the window's state: ${describe(error)}`);
-    }
-    if (this.window.current()) {
-      return; // An agent needed the window before the saved state arrived.
     }
     this.shown = saved?.board ?? null;
     this.window.open(saved ?? undefined);
