@@ -1,5 +1,0 @@
-entrypoint_id,position,role,target_id,target_text,resolution,reason,module
-e1,0,handler,b27,src/worker.ts#processOrder,resolved,,
-e2,0,startup,b10,dist/server.js,resolved,,
-e3,0,startup,b24,src/worker.ts,resolved,,
-e4,0,handler,b3,createOrder,resolved,,

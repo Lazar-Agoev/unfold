@@ -77,7 +77,7 @@ export interface SelectedLine {
 }
 
 /** One call of a selected arrow that stands for several: its occurrence, its edge, and its calling line. */
-export interface SelectedCall {
+interface SelectedCall {
   readonly source: Key;
   readonly seq: number;
   readonly line: number | null;

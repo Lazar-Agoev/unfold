@@ -1,5 +1,5 @@
 /**
- * Calls expanded in place, as `set_view` checks them (docs/proposals/unified-code-diagrams.md §3): a
+ * Calls expanded in place, as `set_view` checks them: a
  * path of 1 to 3 keys, outermost first, each checked in the Flow of the block the level before leads
  * to (the card's own block first). A key is a step's main call that resolved, which leads to its
  * callee, or a callback written on a step, which leads to the callback itself, or, when the callback
@@ -35,7 +35,7 @@ function blockName(key: Key, model: CardView | null | undefined): string {
 }
 
 /** A node's main call: the chip that makes it a call step. */
-export function mainCall(node: Pick<FlowNode, "chips" | "call">): NonNullable<FlowNode["chips"]>[number] | undefined {
+function mainCall(node: Pick<FlowNode, "chips" | "call">): NonNullable<FlowNode["chips"]>[number] | undefined {
   return node.call === undefined ? undefined : node.chips?.[node.call];
 }
 

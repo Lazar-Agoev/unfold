@@ -65,7 +65,7 @@ its entire file. Sibling PoC code and product MCP teaching assets are optional t
 Choose the smallest checks that verify the changed contract, then stop when they pass.
 Repeat/broaden only after another edit, failure, or specific unresolved risk.
 
-- Docs/design: verify links, paths, semantics; no app build. Static doc-coverage checks may apply.
+- Docs/design: verify links, paths, semantics; no app build.
 - Rust: `cargo test -p <crate> <filter>`; broaden for affected shared contracts.
 - UI/desktop: `pnpm --filter @unfold/<package> test <file>` and that package's `typecheck`.
 - IPC types: regenerate, `cargo xtask gen-ipc --check`, and affected Rust/UI checks.
@@ -74,8 +74,7 @@ Repeat/broaden only after another edit, failure, or specific unresolved risk.
 the running app, an Electron/rendered-interaction regression cannot be reproduced in focused
 tests, or the user requests it. Docs, isolated logic, and styling without interaction changes
 do not trigger E2E. Full suites require an explicit request or broad app changes that cannot
-be covered by a bounded set of journeys. Budget and packaged-smoke checks apply to their own
-performance/packaging boundaries.
+be covered by a bounded set of journeys.
 
 `just e2e` invokes all app builds. Repeat selected tests with
 `pnpm --filter @unfold/e2e test <spec>` only while those outputs match current sources.

@@ -123,5 +123,5 @@ Start with relevant tests in `crates/unfold-lang-typescript/tests/structure/` an
 resolution changes need evidence and precision checks; module changes need configuration,
 export, emit, and unindexed-target cases. Run the matching detector cases for detector edits.
 
-Parity/oracle policy lives in [testing](../testing.md#precision-and-recall-gates). A deliberate
-change needs a specific reviewed divergence, not a lowered recall floor or blanket exception.
+Oracle policy lives in [testing](../testing.md#precision-and-recall-gates). A deliberate
+change needs a specific justified entry, not a lowered recall floor or blanket exception.

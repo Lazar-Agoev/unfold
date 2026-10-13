@@ -1,7 +1,5 @@
 //! The peek sheet (`file_view`), cards (`card`, `peek`, `relations`, `callers`), and Add's
-//! previews (`preview`), each naming its project: paging, freshness, shapes, and latency.
-
-use std::time::{Duration, Instant};
+//! previews (`preview`), each naming its project: paging, freshness, and shapes.
 
 use serde_json::{Value, json};
 
@@ -261,60 +259,5 @@ fn cards_peeks_relations_callers_and_previews_name_their_project() {
         preview["externalModules"]
             .as_array()
             .is_some_and(|modules| modules.len() <= 5)
-    );
-}
-
-fn percentile(mut timings: Vec<Duration>, percent: usize) -> Duration {
-    timings.sort_unstable();
-    timings[(timings.len() * percent / 100).min(timings.len() - 1)]
-}
-
-/// Prints page, card, relations, and search latency on a large generated file. Run it with
-/// `cargo test -p unfold-workspace --release --test commands -- --ignored --nocapture views`.
-#[test]
-#[ignore = "a benchmark"]
-fn view_latency() {
-    let harness = Harness::compiled("ts-orders");
-    harness.write("src/generated.ts", &generated(3_000));
-    harness.ok(1, "compile", json!({ "project": harness.project }));
-    let path = "src/generated.ts";
-    let mut pages = Vec::new();
-    for start in (1..20_000).step_by(400) {
-        let started = Instant::now();
-        page(&harness, path, start, start + 99);
-        pages.push(started.elapsed());
-    }
-    let mut cards = Vec::new();
-    let mut relations = Vec::new();
-    for index in (0..3_000).step_by(60) {
-        let key = format!("{path}#function:step{index}");
-        let started = Instant::now();
-        harness.ok(1, "card", json!({ "project": harness.project, "key": key }));
-        cards.push(started.elapsed());
-        let started = Instant::now();
-        harness.ok(1, "relations", json!({ "project": harness.project, "key": key }));
-        relations.push(started.elapsed());
-    }
-    let mut searches = Vec::new();
-    for query in ["step", "step1", "value", "s2", "generated", "stp9"] {
-        for _ in 0..10 {
-            let started = Instant::now();
-            harness.ok(1, "search", json!({ "query": query }));
-            searches.push(started.elapsed());
-        }
-    }
-    println!(
-        "search p50 {:?} p95 {:?}",
-        percentile(searches.clone(), 50),
-        percentile(searches, 95)
-    );
-    println!(
-        "file_view page p50 {:?} p95 {:?}; card p50 {:?} p95 {:?}; relations p50 {:?} p95 {:?}",
-        percentile(pages.clone(), 50),
-        percentile(pages, 95),
-        percentile(cards.clone(), 50),
-        percentile(cards, 95),
-        percentile(relations.clone(), 50),
-        percentile(relations, 95),
     );
 }

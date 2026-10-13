@@ -1,5 +1,5 @@
 /**
- * Pure edits of a page's proposed steps (docs/proposals/unified-code-diagrams.md §7): an intended
+ * Pure edits of a page's proposed steps: an intended
  * addition after a real step of a block card, with a title, an optional reason, and its author. A
  * proposal is not a compiler fact: it has no source of its own and is never signed; its anchor is
  * guarded like any reference. Each function is an Immer recipe over a draft page; an empty list is
@@ -146,11 +146,6 @@ export function stepPaths(flow: Pick<FlowModel, "routes">, node: number): Propos
     return path === undefined ? [] : [path];
   });
   return [...new Set(paths)];
-}
-
-/** The proposal path a route out of a decision is on (`elseIf` is "no", `again` is "each"); none for any other route. */
-export function routePath(kind: RouteKind): ProposalPath | undefined {
-  return ROUTE_PATHS[kind];
 }
 
 /** Steps nothing runs after on their path: a proposed step can't go after one. */

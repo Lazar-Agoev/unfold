@@ -2,8 +2,8 @@
 //! (`testdata/boards/order-system.json`: Diagram views, an attributed step group, nested frames,
 //! every kind of resource card, connections of every line style, and notes): it round-trips,
 //! counts its changes, and repairs without leaving anything dangling. Saving it to itself, its
-//! health, and its Mermaid export need the typed records of a live compile (the reference graph
-//! has none): `unfold-workspace`'s `tests/commands/claims.rs` checks them on `ts-orders`.
+//! health, and its Mermaid export need a live compile: `unfold-workspace`'s
+//! `tests/commands/claims.rs` checks them on `ts-orders`.
 
 mod common;
 
@@ -17,7 +17,7 @@ fn example() -> String {
 
 /// The example board and its graph, loaded for the keys it references.
 fn loaded() -> (Board, BoardGraph) {
-    let loaded = load("playground-ts-native");
+    let loaded = load("ts-orders");
     let reader = loaded.store.readers.get().expect("get a reader");
     let parsed = board::parse(&example()).expect("the example board parses");
     let graph = BoardGraph::load(&reader, &playground_root("ts-orders"), &parsed.references(None))

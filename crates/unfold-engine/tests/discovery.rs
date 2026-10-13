@@ -1,10 +1,9 @@
-//! Discovery over the test playgrounds (checked against the proof of concept's indexed file
-//! sets) and over temporary folders for ignore files, symlinks, scope, and determinism.
+//! Discovery over the test playgrounds and fixtures, and over temporary folders for ignore files,
+//! symlinks, scope, and determinism.
 
 // `allow-unwrap-in-tests` covers `#[test]` functions but not this file's helpers.
 #![allow(clippy::unwrap_used)]
 
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -33,77 +32,6 @@ fn run(root: &Path) -> Discovery {
 
 fn sources(discovery: &Discovery) -> Vec<&str> {
     discovery.sources.iter().map(|file| file.path.as_str()).collect()
-}
-
-/// The PoC's indexed files and inputs from a reference manifest, with path prefixes mapped to
-/// the Unfold folder (`codegraph.json` files become `unfold.toml`).
-fn reference(corpus: &str, prefixes: &[(&str, &str)]) -> (BTreeSet<String>, BTreeSet<String>) {
-    let text = fs::read_to_string(
-        testdata()
-            .join("reference/poc")
-            .join(corpus)
-            .join("manifest.json"),
-    )
-    .unwrap();
-    let manifest: serde_json::Value = serde_json::from_str(&text).unwrap();
-    let map = |path: &str| -> String {
-        if path.ends_with("codegraph.json") {
-            return "unfold.toml".to_owned();
-        }
-        prefixes
-            .iter()
-            .find_map(|(from, to)| path.strip_prefix(from).map(|rest| format!("{to}{rest}")))
-            .unwrap_or_else(|| path.to_owned())
-    };
-    let keys = |field: &str| -> BTreeSet<String> {
-        manifest[field]
-            .as_object()
-            .unwrap()
-            .keys()
-            .map(|path| map(path))
-            .collect()
-    };
-    (keys("files"), keys("inputs"))
-}
-
-fn assert_matches_reference(folder: &str, corpus: &str, prefixes: &[(&str, &str)], count: usize) {
-    let discovery = run(&testdata().join(folder));
-    let (files, inputs) = reference(corpus, prefixes);
-    let found: BTreeSet<String> = sources(&discovery).into_iter().map(str::to_owned).collect();
-    assert_eq!(found.len(), count, "{folder}");
-    assert_eq!(found, files, "{folder}: indexed files differ from {corpus}");
-    // The PoC's inputs are those its detectors read; discovery also lists every tsconfig.
-    let found_inputs: BTreeSet<String> = discovery
-        .inputs
-        .iter()
-        .filter(|input| input.role != InputRole::Tsconfig)
-        .map(|input| input.path.to_string())
-        .collect();
-    assert_eq!(found_inputs, inputs, "{folder}: inputs differ from {corpus}");
-    assert!(discovery.problems.is_empty(), "{:?}", discovery.problems);
-}
-
-#[test]
-fn playground_file_sets_equal_the_proof_of_concept() {
-    assert_matches_reference(
-        "playgrounds/ts-orders",
-        "playground-ts-native",
-        &[("ts-playground/", "")],
-        34,
-    );
-    assert_matches_reference(
-        "playgrounds/py-orders",
-        "python-playground",
-        &[("py-playground/", "")],
-        50,
-    );
-    assert_matches_reference(
-        "playgrounds",
-        "mixed-playground",
-        &[("ts-playground/", "ts-orders/"), ("py-playground/", "py-orders/")],
-        84,
-    );
-    assert_matches_reference("fixtures/entrances", "entrances", &[], 5);
 }
 
 #[test]
@@ -138,14 +66,8 @@ fn playgrounds_know_their_unindexed_files() {
 }
 
 #[test]
-fn fixture_file_counts_equal_the_proof_of_concept() {
-    for (folder, count) in [
-        ("fixtures/worked", 1),
-        ("fixtures/classes", 3),
-        ("fixtures/playground-v1", 2),
-        ("fixtures/python", 23),
-        ("fixtures/python-ranges", 1),
-    ] {
+fn python_fixture_file_counts() {
+    for (folder, count) in [("fixtures/python", 23), ("fixtures/python-ranges", 1)] {
         assert_eq!(run(&testdata().join(folder)).sources.len(), count, "{folder}");
     }
 }

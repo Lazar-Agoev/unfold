@@ -5,8 +5,7 @@
   "description": "End-to-end journeys on the built, unpackaged app (Playwright's Electron support).",
   "type": "module",
   "scripts": {
-    "test": "playwright test --project=journeys",
-    "budgets": "playwright test --project=budgets",
+    "test": "playwright test",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint ."
   },

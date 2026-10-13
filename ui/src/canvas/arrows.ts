@@ -40,7 +40,7 @@ export interface ArrowInset {
 }
 
 /** One call an arrow draws: its occurrence, its edge, and its calling line. */
-export interface ArrowCall {
+interface ArrowCall {
   readonly source: Key;
   readonly seq: number;
   readonly line: number;

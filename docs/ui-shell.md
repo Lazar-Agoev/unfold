@@ -90,35 +90,8 @@ layer rules in the existing tests when changing overlay interaction.
 
 ## Keyboard
 
-The action registry and dispatcher own runtime bindings and focus scopes. The table is
-checked against journey coverage; preserve its action IDs when updating shortcuts.
-
-| Action | Id | macOS | Windows and Linux |
-| --- | --- | --- | --- |
-| Add… | `add.open` | `A`, ⌘K, `/` | `A`, Ctrl+K, `/` |
-| Commands… (Add with `>`) | `add.commands` | ⇧⌘P | Ctrl+Shift+P |
-| Go to File…, Go to Function… | `add.files`, `add.functions` | ⌘P, ⌘T | Ctrl+P, Ctrl+T |
-| Home | `tabs.home` | ⌘0 | Ctrl+0 |
-| Next Tab, Previous Tab | `tabs.next`, `tabs.previous` | ⌃Tab or ⇧⌘], ⌃⇧Tab or ⇧⌘[ | Ctrl+Tab or Ctrl+Shift+], Ctrl+Shift+Tab or Ctrl+Shift+[ |
-| Close Tab | `tabs.close` | ⌘W | Ctrl+W |
-| New Board | `board.new` | ⌘N | Ctrl+N |
-| New Page | `board.newPage` | ⌥⌘N | Ctrl+Alt+N |
-| New Window | `window.new` | ⇧⌘N | Ctrl+Shift+N |
-| Close Window | `window.close` | ⇧⌘W | Ctrl+Shift+W |
-| Add Project… | `project.add` | ⌘O | Ctrl+O |
-| Compile (the selected project, or the active board's) | `project.compile` | ⇧⌘B | Ctrl+Shift+B |
-| Diagram, Code (the page's lens) | `board.lensDiagram`, `board.lensCode` | ⌘1, ⌘2 | Ctrl+1, Ctrl+2 |
-| Toggle Sidebar | `view.toggleSidebar` | ⌘B | Ctrl+B |
-| Back, Forward | `navigation.back`, `navigation.forward` | ⌘[, ⌘] | Ctrl+[, Ctrl+] |
-| Fit | `board.fit` | ⇧1 | Shift+1 |
-| Zoom In, Zoom Out | `board.zoomIn`, `board.zoomOut` | ⌘= (or ⇧⌘+), ⌘- | Ctrl+= (or Ctrl+Shift++), Ctrl+- |
-| Arrange by Call Depth | `board.arrange` | ⇧A | Shift+A |
-| View Code (the selection's source in the peek sheet) | `board.viewCode` | `C` | `C` |
-| Undo, Redo (board edit) | `edit.undo`, `edit.redo` | ⌘Z, ⇧⌘Z | Ctrl+Z, Ctrl+Shift+Z |
-| Preferences… | `app.preferences` | ⌘, | Ctrl+, |
-| Publish | `board.publish` | ⇧⌘E | Ctrl+Shift+E |
-| Remove Project from Workspace… | `project.remove` | none | none |
-| Copy Diagnostics | `help.copyDiagnostics` | none | none |
+The action registry and dispatcher own runtime bindings and focus scopes. Preserve action IDs
+when updating shortcuts.
 
 Preferences can replace action defaults, including an empty binding. Parse/ignore invalid
 hand-edited bindings conservatively. `preferences_changed` updates registry, menus/tooltips,
@@ -136,34 +109,7 @@ state indicators, and toasts. Virtualize long lists. `theme/contrast.test.ts` ch
 keep exceptions explicit and justified. Local styling changes need visual inspection and
 focused checks, not automatic full app E2E.
 
-## Where V1's parts went
-
-This compact coverage map is retained because `e2e/journeys/coverage.spec.ts` matches its
-rows to existing journey steps. It is optional context when changing those journeys.
-
-| V1 | Now |
-| --- | --- |
-| Title bar folder switcher (recent folders, Open Folder, New Window, Folder Settings, Close Folder, Preferences) | Home's sidebar: the projects, Add project, the project menu, the gear; recent folders became Recents (recent boards) |
-| Title bar board title, Code \| Flow, Compile, Publish | The board header (rename in place); the canvas top bar's lens and Publish; Compile on a new project's Home, then the project menu |
-| Inspector, and its toggle | The board sidebar's Selected section, and editing on the card; ⌘B toggles the whole sidebar |
-| Board menu `⋯` | The board header's menu; Fold all and Unfold all also in the canvas menu; Mermaid and PNG under Share |
-| Activity bar | Gone |
-| Files view (the disk tree and its marks and menu) | Finding a file: Add → Files. Scope actions: Project settings → Scope. Open in editor and Reveal in Finder: the peek sheet's menu and the project menu. Show callers: the card menu |
-| Entrances view | Home → How it starts, and Add's entrance browser. Add Entrance: the project menu and How it starts; editing and removing a manual entrance: its row on Home |
-| Search view (and match case, whole word, regex) | Add, with the same tabs and text options |
-| Boards view (boards, drafts, outline, the Flow-label stepper, groups, health and repairs) | Home's Boards and the sidebar's tree; On this page; "Label them"; the card's review banner and Home's Health |
-| Editor tabs; source tabs | Window tabs; the peek sheet |
-| The board bar (Back, trail, zoom, Fit, Arrange) | The dock, with Forward added |
-| Bottom panel: Problems, Index log, References | Home's Health line and Health and activity; Selected's Called by and Reached from, and Show callers |
-| Status bar (graph state, notes, connection, problem count, zoom) and its menu | The project row and Home's state line; the notes in the state line's tooltip and Project settings → General; the connection as a toast; zoom in the dock; the menu's items in the project menu |
-| Welcome screen; first-Compile screen | First launch on Home, Add project, and dropping a folder; a new project's Home with the scope tree |
-| Close Folder | Remove from workspace, in the project menu (it never deletes `.unfold/`) |
-| Folder Settings dialog | The Project settings dialog |
-| Command palette, Go to File, Go to Symbol | Add: `>` for commands; ⌘P opens it on Files, ⌘T on Functions |
-| Several windows on one folder | Several windows on the workspace; Open in new window on a tab or in the board menu |
-
 ## Checks
 
-Run the affected Vitest files and UI typecheck. If changing either table above or mapped
-journey steps, run the static coverage check from [testing](testing.md#end-to-end-journeys).
-Use a focused Electron journey only when integrated interactions need the running app.
+Run the affected Vitest files and UI typecheck. Use a focused Electron journey only when
+integrated interactions need the running app.

@@ -1,5 +1,5 @@
 # Expected entrances for testdata/playgrounds/ts-orders: 25 entrances, 28 targets.
-# Derived from testdata/reference/poc/playground-ts-native/ (PoC 5c98a6e). Format: testdata/README.md.
+# Derived from the PoC's playground-ts-native generation (5c98a6e). Format: testdata/README.md.
 entrance	package.bin	process	-	orders	exact	package.json:5
 	target	startup	resolved	src/cli.ts#	dist/cli.js
 entrance	package.script	process	-	start	exact	package.json:9

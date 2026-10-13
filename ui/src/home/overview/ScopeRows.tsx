@@ -99,7 +99,7 @@ type Item =
  * The rows in display order with a heading where each section starts (the launch section has none);
  * a section other applications also serve is one row, followed by its rows while it is open.
  */
-export function scopeItems(sections: readonly EntranceSection[], rows: readonly CatalogRow[], open: ReadonlySet<number>): Item[] {
+function scopeItems(sections: readonly EntranceSection[], rows: readonly CatalogRow[], open: ReadonlySet<number>): Item[] {
   const items: Item[] = [];
   let current = -1;
   for (const row of rows) {

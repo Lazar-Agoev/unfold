@@ -1,5 +1,5 @@
 /**
- * Add proposed step after… (docs/proposals/unified-code-diagrams.md §7): where a person can propose a
+ * Add proposed step after…: where a person can propose a
  * step from a Flow step's menu, and the edit that does it. Only a real step of a function card's own
  * Flow offers it (not one shown in a call expanded in place, not a run, not inside a collapsed combined
  * block), by the same placement rule the agent's `propose` follows (`placesAfter`): none after a step
@@ -14,7 +14,7 @@ import { addProposal, cardKey, editPage, findCard, findPage, getOpenBoard, getPa
 import { loadedContext, type SourceContext } from "./viewCode";
 
 /** The title a new proposed step starts with, for the person to replace. */
-export const PROPOSAL_PLACEHOLDER = "Proposed step";
+const PROPOSAL_PLACEHOLDER = "Proposed step";
 
 /** The focus target of the selected proposed step's title field in Selected. */
 export const PROPOSAL_TITLE_FIELD = "selected.proposalTitle";

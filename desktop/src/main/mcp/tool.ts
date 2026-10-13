@@ -15,7 +15,7 @@ import type { ToolResult } from "./results";
 const ALWAYS_LOAD = "anthropic/alwaysLoad";
 
 /** The annotations the design sets (§5.3): read tools are read-only; creating by id is idempotent. */
-export interface ToolHints {
+interface ToolHints {
   readonly readOnlyHint: boolean;
   readonly destructiveHint?: boolean;
   readonly idempotentHint?: boolean;

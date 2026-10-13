@@ -1,18 +1,18 @@
 /**
- * Geometry for the Flow view (docs/reader.md#flow-view: Rust computes structure, TypeScript lays
- * it out). A small structured layout of the reader's lane tree, top to bottom like a Mermaid
- * flowchart: conditions put `no` in their own lane and `yes` to the right, loops and try/catch get
- * regions, folded "▸ N checks" chains collapse into one summary, and step groups get a titled region
- * or, collapsed, one step. A call expanded in place keeps room below its node (`insets`): what follows
+ * Geometry for the Flow view (docs/reader.md#flow-view: Rust computes structure, TypeScript lays it
+ * out). A small structured layout of the reader's lane tree, top to bottom like a Mermaid flowchart:
+ * conditions put `no` in their own lane and `yes` to the right, loops and try/catch get regions,
+ * folded "▸ N checks" chains collapse into one summary, and step groups get a titled region or,
+ * collapsed, one step. A call expanded in place keeps room below its node (`insets`): what follows
  * moves down, the lane widens to fit it, and routes leave from below it. Routes come from the model
- * and are drawn as orthogonal paths by their kind. A proposed step (docs/proposals/unified-code-diagrams.md
- * §7) keeps room after its anchor, or at the start of the anchor's chosen path, indented in that lane:
- * the anchor's compiled route keeps running beside it along the lane's left rail, and dashed
- * connectors show where it would go. One whose step a collapsed step group hides goes after the
- * group's step only when its step is the group's last; otherwise it sits under that step, says it goes
- * inside the group and after which step, and has no connectors. Proposals are not compiler facts:
- * they are never nodes, routes, or ports. The result depends only on the model, the open chains, the labels, the step groups, the
- * insets' sizes, the proposals, and the text measurer, so the same input always lays out the same way.
+ * and are drawn as orthogonal paths by their kind. A proposed step keeps room after its anchor, or at
+ * the start of the anchor's chosen path, indented in that lane: the anchor's compiled route keeps
+ * running beside it along the lane's left rail, and dashed connectors show where it would go. One
+ * whose step a collapsed step group hides goes after the group's step only when its step is the
+ * group's last; otherwise it sits under that step, says it goes inside the group and after which step,
+ * and has no connectors. Proposals are not compiler facts: they are never nodes, routes, or ports. The
+ * result depends only on the model, the open chains, the labels, the step groups, the insets' sizes,
+ * the proposals, and the text measurer, so the same input always lays out the same way.
  */
 
 import type { FlowItem, FlowModel, FlowNode, Key, ProposalPath, RouteKind } from "../ipc/generated";
@@ -226,7 +226,7 @@ export interface PlacedProposal {
 }
 
 /** A dashed connector showing where a proposed step would go: into it from its step, or from it to the step after it on that path. */
-export interface ProposalEdge {
+interface ProposalEdge {
   readonly id: string;
   /** The proposed step it leads into or out of. */
   readonly proposal: string;

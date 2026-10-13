@@ -1,0 +1,117 @@
+# Core rebuild log
+
+The build log for [the core rebuild plan](core-rebuild-plan.md) (rule 10). Each step records what was done, the
+choices made, deviations from the plan or the designs, and the gate results. It is kept current so the work can resume
+after a context reset.
+
+**Started:** 2026-10-13, on `main` at `06569d5`, with `docs/analysis/` and `docs/designs/` untracked.
+
+**Git:** the kickoff said "Don't commit or push unless I say so"; the owner then allowed commits ("feel free to keep
+committing changes as you go"). So each green step is committed with its title (plan rule 8); sub-agents stay off git;
+nothing is pushed. The untracked design docs this build didn't write stay uncommitted.
+
+## Where the build is
+
+| Step | State |
+| --- | --- |
+| Before step 1 | done |
+| 1. Tooling, tests, and docs | done, committed |
+| 2. One window | in progress |
+
+## Working setup
+
+- Cargo: `source "$HOME/.cargo/env"` first.
+- Shared target dirs for parallel sub-agents: `target/agent-1`, `target/agent-2`, `target/agent-3` (seeded from
+  `target/debug` with `cp -Rc`). Delete them when the build ends.
+- Scratchpad (session-only): `/private/tmp/claude-501/-Users-lazaragoev-Desktop-repos-unfold/4fd2ec4c-f0f1-4976-b91e-93fb8771188b/scratchpad`.
+
+## Before step 1
+
+### Baseline on the untouched tree
+
+Run 2026-10-13 at `06569d5`, before any change.
+
+| Check | Result |
+| --- | --- |
+| `just test` | **Red.** 17 failures in `unfold-workspace --test commands` (cargo stopped there). Cause: stray local state in `testdata/playgrounds/.unfold/local/` (old drafts and a cache), which the plan's "Before step 1" deletes |
+| `just js-check` | **Red.** typecheck and lint pass; `@unfold/node`'s test "wakes a selected project…" fails for the same stray cache (`compiling` instead of `not_compiled`); the run stops there |
+| `pnpm --filter @unfold/ui test` | 150 files, 1,190 tests pass |
+| `pnpm --filter @unfold/desktop test` | 37 files, 331 tests pass |
+| `just check` (fmt, clippy) | Green |
+| `cargo xtask gen-ipc --check`, `notices --check`, `cargo deny check`, `cargo machete` | Green |
+| `cargo xtask oracles check ts-orders entrances py-orders mixed-playground python-ranges` | **Red.** All six corpus/language pairs report "stale oracle": the corpus hash covers `unfold.toml` inputs, which changed after the oracles were generated on 2026-10-11 |
+| `knip` (not wired yet; run with `npx knip@5`) | **Red.** 6 unused files (entry points knip doesn't see), 1 unused dependency (`electron-updater`), 31 unused exports, 174 unused exported types |
+
+### Stray state deleted
+
+`testdata/playgrounds/.unfold/` (with `local/cache`, `local/drafts`, `local/state.json`),
+`testdata/playgrounds/ts-orders/.unfold/`, and the two `node_modules/` folders in
+`testdata/fixtures/typescript-evidence/`.
+
+After deleting it, `cargo test --workspace --no-fail-fast`: 941 pass, **2 fail**, 5 ignored. The two failures are
+`launches::{configured_launches_group_into_applications_by_category, check_launch_previews_a_draft_against_the_current_graph}`:
+they expect `evals/` files that `.gitignore` keeps out of the checkout (`not_found` instead of `not_indexed`). Step 3
+deletes both tests with `commands/launches.rs`; until then they are known baseline failures.
+
+### Real-data corpus
+
+`../pathway-agents` cloned with `cp -Rc` to `<scratchpad>/pathway-agents` (3.1 GB, APFS clone). The original is not
+touched. **For the owner:** its untracked `unfold.toml` uses `[detectors]`, `[[application]]`, and two process
+`[[entrance]]` tables, so it stops parsing in step 8. Rewrite it with `[[app]]` tables (or ask for it to be
+rewritten); step 8 writes the clone's tables as the plan describes.
+
+## Step 1 — Tooling, tests, and docs
+
+**Done.** Two sub-agents (Rust side; JS/CI/docs side), verified and gated by the orchestrator.
+
+**What was done**
+
+- **Parity:** deleted `testdata/reference/{poc,poc-reader,canonical}`, `divergences.toml`, `corpora.toml` (README
+  trimmed to the oracles); xtask `parity`, `ledger`, `reference`, `compare`, `canonical_diff`, `canonical_check` and
+  their subcommands (plus `compile::copy_folder`, which only parity used); `tools/oracles/export-reader.mjs`; the parity
+  tests in both language crates and the reader; `testdata/fixtures/{classes,worked,playground-v1}` and the discovery
+  test that compared with the proof of concept; `canonical/view.rs`, `OLDEST_VERSION`, `read_versioned`,
+  `write_version`; `csv`, and the TypeScript crate's `toml`/`anyhow` dev-dependencies. `read_graph`, `PathMapping`,
+  and `utf16_to_bytes` moved into `tools/xtask/src/oracles/` first.
+- **Goldens:** `testdata/goldens/{ts-orders,py-orders}.jsonl` written with `cargo xtask export` (version 2); the
+  reader's `tests/common/mod.rs::load` and `flow/tests.rs` read them. No kept assertion needed changing.
+- **Fuzzing, budgets, coverage:** `fuzz/` and its `exclude`; `e2e/budgets/`, the measurements reporter, the
+  `e2e-budgets` recipe, the `budgets` project; the store and workspace benchmarks; `coverage.spec.ts`,
+  `e2e/src/coverage.ts`, and the keyboard and "Where V1's parts went" tables in `docs/ui-shell.md`.
+- **CI:** `nightly.yml` and `release.yml` deleted; `pr.yml` is one macOS job without parity, bundling, or the smoke
+  test, plus a knip step; `cargo-deny` stays on Ubuntu.
+- **Packaging:** electron-builder's signing, publish, dmg/zip, notarize, Gatekeeper, document types, Windows and Linux
+  sections; `bundle`, `smoke`, `windows-shell` recipes; `desktop/scripts/`; `@electron/fuses` and `playwright-core`;
+  the `.ico` note in `tools/icons`.
+- **Docs:** `docs/entrances.md`, `docs/proposals/`, `docs/reviews/` and every link to them (12 code comments too);
+  minimal edits where reference docs described what was deleted.
+- **knip 6.41.0** pinned as a root devDependency with a `knip` script. Its electron-vite and vite plugins find the real
+  entries, so no entries were added; the baseline's "unused files" came from knip 5. Fixed: one unused export
+  deleted, `export` dropped from 18 values and 8 types used only in their own file.
+- **Oracles refreshed** (`cargo xtask oracles refresh` on the five corpora): only the header hashes changed; every
+  answer row is identical. `../graph-compiler` stayed clean.
+
+**Choices**
+
+- `testdata/mermaid/` deleted now: only the deleted `mermaid_reference.rs` wrote it (step 5 deletes the rest of
+  Mermaid).
+- The validator's version-1 mode (`without_typed_records`, the `complete` flag) went with the old export reader:
+  typed records are always required.
+- e2e stays outside knip (it already was in `ignoreWorkspaces`).
+- `electron-updater` stays until step 2, which deletes it.
+
+**Deviations:** none.
+
+**Gate** (2026-10-13)
+
+| Check | Result |
+| --- | --- |
+| fmt, clippy | pass |
+| `cargo test --workspace --no-fail-fast` | 893 pass; 2 fail: the known `launches::` baseline failures (step 3 deletes them) |
+| gen-ipc, notices, deny, machete | pass |
+| `oracles check` (5 corpora) | pass. Precision exact everywhere; recall at its floor: ts-orders 71/71, entrances 3/3, py-orders 91/96, mixed TS 71/71, mixed Python 91/96, python-ranges 3/3 |
+| `pnpm -r typecheck`, `lint`, unit tests | pass (ui 1,190 tests, desktop 331) |
+| `pnpm knip` | pass |
+| `just addon-test` | 10/10 |
+| `just e2e` | 44 journeys pass (2.0 min) |
+| Residue `rg -i 'parity\|divergence\|poc-reader\|fuzz\|budgets\|notariz'` | only "fuzzy" name matching in search and a made-up `fuzz.py` in a robustness test |

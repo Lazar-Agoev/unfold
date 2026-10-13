@@ -2,9 +2,9 @@
  * Build a page (design §6.6): `add_cards`, `set_view`, `arrange_page`, and `remove_items`. Each is one
  * agent edit of one page (one undo step in the window that holds the board, saved at once); the
  * window places cards, lays out, checks calls to expand in place against the compiled models, and
- * applies the document's rules, and the result names what it did. A page opens in Diagram or Code
- * (docs/proposals/unified-code-diagrams.md §2); in Diagram each card is compact or expanded, and a
- * card's older `view` stays accepted (Diagram is compact, Flow or Code expanded).
+ * applies the document's rules, and the result names what it did. A page opens in Diagram or Code;
+ * in Diagram each card is compact or expanded, and a card's older `view` stays accepted (Diagram is
+ * compact, Flow or Code expanded).
  */
 
 import { z } from "zod";

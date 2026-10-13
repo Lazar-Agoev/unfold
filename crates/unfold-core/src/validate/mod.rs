@@ -205,14 +205,12 @@ impl Sources for BTreeMap<RepoPath, Snapshot> {
 pub struct Validator<'a> {
     sources: Option<&'a dyn Sources>,
     censuses: Vec<&'a dyn Census>,
-    untyped: bool,
 }
 
 impl fmt::Debug for Validator<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Validator")
             .field("sources", &self.sources.is_some())
-            .field("untyped", &self.untyped)
             .field(
                 "censuses",
                 &self
@@ -239,13 +237,6 @@ impl<'a> Validator<'a> {
         self
     }
 
-    /// Doesn't require typed records: for a graph read from a version-1 export, which predates
-    /// them. Typed records that are present are still checked.
-    pub fn without_typed_records(mut self) -> Self {
-        self.untyped = true;
-        self
-    }
-
     /// Also checks the files of `census.language()` against that census.
     pub fn with_census(mut self, census: &'a dyn Census) -> Self {
         self.censuses.push(census);
@@ -268,7 +259,7 @@ impl<'a> Validator<'a> {
                 let mut checker = Checker::new(graph, self.sources, &index);
                 files::check(&mut checker, file);
                 edges::check(&mut checker, file);
-                types::check(&mut checker, file, !self.untyped);
+                types::check(&mut checker, file);
                 let census = self
                     .censuses
                     .iter()

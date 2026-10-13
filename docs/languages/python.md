@@ -130,5 +130,5 @@ and relevant `testdata/fixtures/python/` or detector cases. Syntax changes need 
 encoding, census, and ranges checks; binder changes need writes, imports, classes, decorators,
 reflection, and receiver cases. Detector changes need false-positive and body-proof cases.
 
-Parity/oracle policy lives in [testing](../testing.md#precision-and-recall-gates); preserve
-precision and reviewed divergences rather than silently replacing uncertain answers.
+Oracle policy lives in [testing](../testing.md#precision-and-recall-gates); preserve
+precision rather than silently replacing uncertain answers.

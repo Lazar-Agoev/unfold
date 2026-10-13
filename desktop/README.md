@@ -15,7 +15,7 @@ See [architecture](../docs/architecture.md#processes) and [IPC](../docs/ipc.md).
 | Agent bridge/rendering | `src/main/agents/`, `src/shared/{agent,render}-api.ts` |
 | MCP | `src/main/mcp/`; tools, teaching assets, listener and server |
 | Restore/location/updates | `src/main/workspace.ts`, `window-placement.ts`, `app-paths.ts`, `updater.ts`, `update-policy.ts` |
-| Build/package | `electron.vite.config.ts`, `electron-builder.yml`, `scripts/smoke.mts` |
+| Build/package | `electron.vite.config.ts`, `electron-builder.yml` |
 
 ## Transport and windows
 
@@ -59,17 +59,13 @@ renderers. UI handling is in [render window](../docs/ui-shell.md#the-render-wind
 
 ## Packaging
 
-`electron-builder.yml` configures macOS DMG/ZIP, Windows NSIS, and Linux AppImage/deb/rpm.
-`just bundle` creates installers; `just bundle-dir` creates the unpacked app. The release
-addon, built renderer/shell, assets/fonts, and third-party notices must be included.
+`electron-builder.yml` configures the unpacked macOS app, which `just bundle-dir` creates. The
+release addon, built renderer/shell, assets/fonts, and third-party notices must be included.
 
 Hardening includes sandbox/context isolation, no renderer Node integration, protocol/CSP
-checks, denied navigation/permissions, and package-time Electron fuses. The packaged smoke
-test reads those settings back and compiles without external Node/Python on PATH.
+checks, denied navigation/permissions, and package-time Electron fuses.
 
-Signing is enabled only with explicit certificate configuration; verify publisher identity,
-notarization, and update-feed placeholders before a release. Updater traffic is optional.
-Do not claim other platforms work solely because their packaging is configured.
+Signing is enabled only with explicit certificate configuration. Updater traffic is optional.
 
 ## Running and checks
 

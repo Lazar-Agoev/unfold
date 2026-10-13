@@ -1,5 +1,5 @@
 /**
- * Calls expanded in place in an expanded function card (docs/proposals/unified-code-diagrams.md §3):
+ * Calls expanded in place in an expanded function card:
  * which calls of a Flow node can expand (its main call when it resolved to a target, and each
  * callback), what an expanded one shows, and how big each inset is.
  *

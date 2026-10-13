@@ -1,7 +1,5 @@
 # Unfold developer commands. Run `just --list` to see them.
 
-set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
-
 # --- Rust recipes ---
 
 # Run every Rust test in the workspace.
@@ -13,7 +11,7 @@ check:
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets -- -D warnings
 
-# Run a developer task: `just xtask canonical-check graph.jsonl`.
+# Run a developer task: `just xtask gen-ipc --check`.
 xtask *args:
     cargo xtask {{args}}
 
@@ -82,27 +80,15 @@ e2e *args: addon-release js-build
     pnpm --filter @unfold/desktop exec node -e "require('electron')"
     pnpm --filter @unfold/e2e test {{args}}
 
-# Measure the architecture §17 budgets on this machine (release addon; see docs/testing.md).
-e2e-budgets *args: addon-release js-build
-    pnpm --filter @unfold/e2e budgets {{args}}
-
 # --- Packaging (desktop/electron-builder.yml) ---
 
 # macOS signing only with a certificate named in the environment (CSC_LINK or CSC_NAME), never with
 # whichever identity happens to be in the login keychain; without one the build is unsigned.
 csc_discovery := if env("CSC_LINK", "") + env("CSC_NAME", "") == "" { "false" } else { env("CSC_IDENTITY_AUTO_DISCOVERY", "true") }
 
-# Build installers for this platform (unsigned unless certificates are set; see desktop/electron-builder.yml).
-bundle $CSC_IDENTITY_AUTO_DISCOVERY=csc_discovery: _bundle-inputs
-    pnpm --filter @unfold/desktop run bundle
-
-# The unpacked app only (desktop/dist/<platform>-unpacked or mac*/Unfold.app), for smoke tests.
+# The unpacked app (desktop/dist/mac*/Unfold.app).
 bundle-dir $CSC_IDENTITY_AUTO_DISCOVERY=csc_discovery: _bundle-inputs
     pnpm --filter @unfold/desktop run bundle:dir
-
-# Launch the unpacked app from `just bundle-dir` and check fuses, hardening, and a compile.
-smoke:
-    pnpm --filter @unfold/desktop run smoke
 
 # Write THIRD_PARTY_NOTICES.md (it ships inside the app).
 notices:

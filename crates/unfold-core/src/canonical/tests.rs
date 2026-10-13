@@ -284,29 +284,6 @@ fn typed_records_follow_edges_in_their_file() {
 }
 
 #[test]
-fn version_one_exports_read_without_typed_records() {
-    let mut graph = sample().build();
-    for file in &mut graph.files {
-        file.types = crate::typed::FileTypes::default();
-    }
-    let mut bytes = Vec::new();
-    write_version(&graph, 1, &mut bytes).unwrap();
-    let text = String::from_utf8(bytes).unwrap();
-    assert!(text.starts_with(r#"{"t":"header","format":"unfold-graph","version":1}"#));
-    let (read_back, version) = read_versioned(&text).unwrap();
-    assert_eq!((read_back, version), (graph, 1));
-
-    // Typed records written at version 1 are refused, and writing at version 1 drops them.
-    let typed = to_string(&crate::testkit::sample::typed().build());
-    let downgraded = typed.replacen(r#""version":2"#, r#""version":1"#, 1);
-    let failure = read(&downgraded).unwrap_err();
-    assert!(failure.message.contains("needs export version 2"), "{failure}");
-    let mut bytes = Vec::new();
-    write_version(&crate::testkit::sample::typed().build(), 1, &mut bytes).unwrap();
-    assert!(!String::from_utf8(bytes).unwrap().contains(r#""t":"signature""#));
-}
-
-#[test]
 fn rejects_malformed_typed_records() {
     let good = to_string(&crate::testkit::sample::typed().build());
     let falsy = good.replacen(r#""optional":true"#, r#""optional":false"#, 1);

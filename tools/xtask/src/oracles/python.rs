@@ -2,21 +2,20 @@
 //! Unfold's blocks. Each row is one call site with Pyright's canonical targets; a site's target
 //! counts only when there is exactly one and it is indexed, as the proof of concept's
 //! `comparePythonCalls` counted it (`compilers/codegraph/test/python-reference.ts`). Offsets go from
-//! UTF-16 to UTF-8 bytes through each file's text, as `cargo xtask reference import` converts them,
-//! and every site and target is named by the Unfold block with exactly its range.
+//! UTF-16 to UTF-8 bytes through each file's text, and every site and target is named by the
+//! Unfold block with exactly its range.
 
 use std::path::Path;
 
 use anyhow::{Context, bail};
 use rustc_hash::FxHashMap;
 use serde::Deserialize;
+use unfold_core::text::Utf16Range;
 use unfold_core::vocab::{BlockKind, Language};
-use unfold_core::{ContentHash, Graph, RepoPath, Snapshot, Utf16Index, canonical};
+use unfold_core::{ByteRange, ContentHash, Graph, RepoPath, Snapshot, Utf16Index, canonical};
 
-use super::corpora::{Lock, OracleCorpus, PyrightRows};
+use super::corpora::{Lock, OracleCorpus, PathMapping, PyrightRows};
 use super::file::{CallRow, FORMAT, Header, OracleFile, Provenance, ReferenceRow, corpus_sha256};
-use crate::reference::convert::utf16_to_bytes;
-use crate::reference::corpora::PathMapping;
 
 /// The Pyright version the saved rows were produced with.
 pub(crate) const PYRIGHT_VERSION: &str = "1.1.407";
@@ -78,6 +77,13 @@ impl Canonical {
             _ => None,
         }
     }
+}
+
+/// Converts a half-open UTF-16 range to bytes.
+fn utf16_to_bytes(index: &Utf16Index, start: u32, end: u32) -> anyhow::Result<ByteRange> {
+    index
+        .range_to_utf8(Utf16Range { start, end })
+        .with_context(|| format!("UTF-16 range [{start}, {end})"))
 }
 
 /// Maps a rows path onto the corpus folder: the longest matching prefix wins.

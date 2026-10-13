@@ -1,6 +1,6 @@
 // Renders desktop/build/icon.svg to desktop/build/icon.png (1024 x 1024, transparent corners) with
-// Electron's own Chromium, so no image tools are needed. electron-builder derives the macOS .icns,
-// the Windows .ico, and the Linux icon sizes from that PNG.
+// Electron's own Chromium, so no image tools are needed. electron-builder derives the macOS .icns
+// from that PNG.
 //
 // Run from the repository root: pnpm --filter @unfold/desktop exec electron ../tools/icons/render-icon.mjs
 

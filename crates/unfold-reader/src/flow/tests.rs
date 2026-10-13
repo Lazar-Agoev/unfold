@@ -32,22 +32,21 @@ impl FlowContext for Names<'_> {
 }
 
 impl Playground {
-    fn load(corpus: &str, folder: &str) -> Self {
+    fn load(playground: &str) -> Self {
         let text =
-            std::fs::read_to_string(testdata_dir().join(format!("reference/canonical/{corpus}.jsonl")))
-                .unwrap();
+            std::fs::read_to_string(testdata_dir().join(format!("goldens/{playground}.jsonl"))).unwrap();
         let graph: Graph = canonical::read(&text).unwrap();
         Self {
-            graph: BoardGraph::from_graph(&graph, &testdata_dir().join("playgrounds").join(folder)),
+            graph: BoardGraph::from_graph(&graph, &testdata_dir().join("playgrounds").join(playground)),
         }
     }
 
     fn typescript() -> Self {
-        Self::load("playground-ts-native", "ts-orders")
+        Self::load("ts-orders")
     }
 
     fn python() -> Self {
-        Self::load("python-playground", "py-orders")
+        Self::load("py-orders")
     }
 
     fn flow(&self, key: &str) -> FlowModel {

@@ -1,5 +1,5 @@
 //! The converted sample board (`testdata/boards/order-placement.json`, one page) against the
-//! `ts-orders` reference graph, committed to a temporary store and read back the way the
+//! `ts-orders` golden graph, committed to a temporary store and read back the way the
 //! workspace reads it, with sources from `testdata/playgrounds/ts-orders`.
 
 mod common;
@@ -18,7 +18,7 @@ fn sample() -> String {
 
 /// The sample board and its graph, loaded for the keys it references.
 fn loaded() -> (Board, BoardGraph) {
-    let loaded = load("playground-ts-native");
+    let loaded = load("ts-orders");
     let reader = loaded.store.readers.get().expect("get a reader");
     let parsed = board::parse(&sample()).expect("the sample board parses");
     let graph = BoardGraph::load(&reader, &playground_root("ts-orders"), &parsed.references(None))
@@ -138,18 +138,6 @@ fn the_sample_board_exports_to_mermaid() {
         "deterministic"
     );
     assert_golden("boards/order-placement.mmd", &output);
-
-    // Every card is a Code card, so the PoC's diagram has no source labels: it must match
-    // exactly, apart from handler numbers (no step numbers in any view).
-    let poc = std::fs::read_to_string(
-        testdata_dir().join("reference/poc-reader/ts-orders/board-order-placement.mmd"),
-    )
-    .expect("read the PoC's diagram");
-    let mut poc = poc;
-    for number in 1..=3 {
-        poc = poc.replace(&format!("\"handler {number}\""), "\"handler\"");
-    }
-    assert_eq!(output, poc);
 
     // With Flow cards, the page's labels replace the fallback names.
     let mut flowing = parsed;

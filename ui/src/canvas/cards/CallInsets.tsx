@@ -1,11 +1,11 @@
 /**
- * Calls expanded in place on an expanded function card in Diagram (docs/proposals/unified-code-diagrams.md
- * §3). The card saves which call occurrences are expanded (`Card.expanded`); this module loads the
- * models they reveal through the card query (the same cache as the callee's own card), lays them out
- * from the inside out (`flow/insets`), and draws each inset: a title row (the chevron, `ƒ`, the callee's
- * name, which opens its definition in the peek sheet (View code), its `file:line`, and `→`, which opens
- * it as its own card), a "via …" caption for a one-call callback, then the callee's written Flow, where
- * calls can expand again, three levels at most.
+ * Calls expanded in place on an expanded function card in Diagram. The card saves which call
+ * occurrences are expanded (`Card.expanded`); this module loads the models they reveal through the
+ * card query (the same cache as the callee's own card), lays them out from the inside out
+ * (`flow/insets`), and draws each inset: a title row (the chevron, `ƒ`, the callee's name, which opens
+ * its definition in the peek sheet (View code), its `file:line`, and `→`, which opens it as its own
+ * card), a "via …" caption for a one-call callback, then the callee's written Flow, where calls can
+ * expand again, three levels at most.
  *
  * Labels are the page's for the card's project; step groups come only from the callee's own card on the
  * page. A step selected in an inset carries its owner (the block whose Flow shows it), and its `</>`
@@ -144,7 +144,7 @@ function drawnInsets(insets: readonly LaidInset[], into: LaidInset[] = []): Laid
 }
 
 /** The key of an inset's ports: its path. */
-export function insetPortsKey(path: readonly Key[]): string {
+function insetPortsKey(path: readonly Key[]): string {
   return path.join("\u0000");
 }
 

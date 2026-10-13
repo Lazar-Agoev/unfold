@@ -24,10 +24,8 @@ smallvec = { workspace = true }
 
 [dev-dependencies]
 unfold-core = { workspace = true, features = ["testkit"] }
-anyhow = { workspace = true }
 proptest = { workspace = true }
 tempfile = { workspace = true }
-toml = { workspace = true }
 
 [lints]
 workspace = true

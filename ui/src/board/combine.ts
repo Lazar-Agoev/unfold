@@ -1,5 +1,5 @@
 /**
- * Combine (docs/proposals/unified-code-diagrams.md §4): a run of steps Shift-selected in one function
+ * Combine: a run of steps Shift-selected in one function
  * card's own Flow, and whether it can become a combined block (an existing step group). The run's
  * statements come from the same outline rule the gutter and MCP `group_steps` use: `groupSelection`
  * over the lines from its first step to its last, then `groupConflict` against the card's groups, so

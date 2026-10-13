@@ -14,7 +14,7 @@
 import type { LabelInput, LineLabel, TypeText } from "../../ipc/generated";
 
 /** How a part reads: a type, a parameter name without a type, punctuation, or something unknown. */
-export type LabelTone = "type" | "name" | "punct" | "unknown";
+type LabelTone = "type" | "name" | "punct" | "unknown";
 
 export interface LabelPart {
   readonly text: string;
@@ -22,7 +22,7 @@ export interface LabelPart {
 }
 
 /** Inputs from this many on fold to the first and `+N`. */
-export const FOLD_AT = 3;
+const FOLD_AT = 3;
 
 function inputParts(input: LabelInput): LabelPart[] {
   if (input.type !== undefined) {

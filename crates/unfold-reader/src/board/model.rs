@@ -875,8 +875,7 @@ pub struct Note {
 }
 
 /// A proposed step: an intended addition after a real step of a block card, clearly not a compiler
-/// fact (docs/proposals/unified-code-diagrams.md §7). It has no implementation source and is never
-/// signed.
+/// fact. It has no implementation source and is never signed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]

@@ -1,5 +1,5 @@
 # Expected entrances for testdata/playgrounds/py-orders: 25 entrances, 28 targets.
-# Derived from testdata/reference/poc/python-playground/ (PoC 5c98a6e). Format: testdata/README.md.
+# Derived from the PoC's python-playground generation (5c98a6e). Format: testdata/README.md.
 # The binding lines are Unfold's: the PoC recorded no application bindings.
 entrance	pyproject.script	process	-	orders-api	exact	pyproject.toml:18
 	target	startup	resolved	src/orders_playground/server.py#function:main	orders_playground.server:main

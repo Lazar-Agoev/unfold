@@ -27,7 +27,7 @@ const COMMANDS: Record<MenuCommand, true> = {
   copy_diagnostics: true,
 };
 
-/** The keyboard table (docs/ui-shell.md#keyboard) as menu accelerators, by item label. */
+/** The keyboard map (ui/src/keyboard/keymap.ts) as menu accelerators, by item label. */
 const ACCELERATORS: Readonly<Record<string, string>> = {
   "Add Project…": "CmdOrCtrl+O",
   "New Board": "CmdOrCtrl+N",

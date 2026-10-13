@@ -91,7 +91,7 @@ export async function invoke<T>(page: Page, command: string, args: Record<string
 }
 
 /** Runs one main-process window command from the window. */
-export async function windowCommand<T>(page: Page, command: string, args: Record<string, unknown> = {}): Promise<T> {
+async function windowCommand<T>(page: Page, command: string, args: Record<string, unknown> = {}): Promise<T> {
   const result = await page.evaluate(
     ([name, input]) =>
       (window.unfold.window as (command: string, args: unknown) => Promise<unknown>)(name, input).then(

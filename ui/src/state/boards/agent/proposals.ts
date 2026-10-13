@@ -1,14 +1,14 @@
 /**
- * `propose`: creates or updates proposed steps on one block card (docs/proposals/unified-code-diagrams.md
- * §7): an intended addition after a real step of the card's own Flow, with a title, an optional reason,
- * and its author. Never code, never a claim that code does it, and no status: a proposal is placed,
- * reworded, moved, or removed. A placement is checked against the card's compiled Flow by the rule a
- * person's Add proposed step after… also follows (`placementProblem`): a real step
- * (not Start or End) that something runs after (not a return, throw, break, continue, or opaque step),
- * and, for a step with several outgoing paths (a condition's yes and no, a loop's each and done), one
- * of those paths. A new `after` or `path` on an existing proposal is its explicit placement repair,
- * also for an anchor gone missing or held; it keeps the proposal's author. New words are the agent's,
- * and a person's words are changed only when the person asked (`replacePeopleText`).
+ * `propose`: creates or updates proposed steps on one block card: an intended addition after a real
+ * step of the card's own Flow, with a title, an optional reason, and its author. Never code, never a
+ * claim that code does it, and no status: a proposal is placed, reworded, moved, or removed. A
+ * placement is checked against the card's compiled Flow by the rule a person's Add proposed step
+ * after… also follows (`placementProblem`): a real step (not Start or End) that something runs after
+ * (not a return, throw, break, continue, or opaque step), and, for a step with several outgoing paths
+ * (a condition's yes and no, a loop's each and done), one of those paths. A new `after` or `path` on
+ * an existing proposal is its explicit placement repair, also for an anchor gone missing or held; it
+ * keeps the proposal's author. New words are the agent's, and a person's words are changed only when
+ * the person asked (`replacePeopleText`).
  */
 
 import type { AgentItemStatus, AgentProposalResult, AgentProposalSpec, ProposeOp } from "@unfold/desktop/agent-api";

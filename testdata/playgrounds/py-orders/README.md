@@ -16,7 +16,7 @@ intentional examples of `not_indexed`; unresolved/wrapper/unsupported targets ar
 the expected policy, not automatically missing test setup.
 
 Use the relevant Python binder/typed/entrance test and fixture for an edit. Broader semantic
-changes may need parity/oracle checks for `py-orders` or `mixed-playground`.
+changes may need oracle checks for `py-orders` or `mixed-playground`.
 
 - [Test-data conventions](../../README.md)
 - [Python rules](../../../docs/languages/python.md)

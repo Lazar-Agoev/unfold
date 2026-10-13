@@ -1,4 +1,4 @@
-{"t":"header","format":"unfold-oracle","version":1,"corpus":"entrances","language":"typescript","oracle":"typescript","oracle_version":"6.0.3","corpus_sha256":"1e7d097d9b3823f899ae727b91834d08ce2e67954544fdb69c60e60b6696ecd9","export_sha256":"2f6ae6b0d08c713e54507823decbf268f0b5b3644f8b5f8fe3399a0b75379254","files":5,"sites":8,"resolved":3,"references":2,"unfold_sites_without_checker_site":0}
+{"t":"header","format":"unfold-oracle","version":1,"corpus":"entrances","language":"typescript","oracle":"typescript","oracle_version":"6.0.3","corpus_sha256":"a26f5a58d20c619a692e6f0cc65dd457e9cde4077a00f5f01e2f7ae018752665","export_sha256":"9251616dc5a628daad3aa0a91635fdc22382df147217fbd53b8bc66fc1deb2b9","files":5,"sites":8,"resolved":3,"references":2,"unfold_sites_without_checker_site":0}
 {"t":"call","site":"src/orders.ts#function:createOrder/expression_statement[0]/call[0]","target":"src/validate.ts#function:validateOrder"}
 {"t":"call","site":"src/queue.ts#function:startConsumer/expression_statement[0]/call[0]","outcome":"parameter"}
 {"t":"call","site":"src/server.ts#variable:app/call[0]","outcome":"unknown"}

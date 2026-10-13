@@ -503,9 +503,9 @@ impl EngineThread {
             UpdateError::Cancelled => WorkspaceError::Cancelled,
             other => WorkspaceError::Update(other.to_string()),
         };
-        // A Compile the user cancels stops even while committing (the cancel acknowledgement
-        // budget, docs/testing.md#budgets); background work that newer changes cancel always commits
-        // once it has started committing (§7.5), so a stream of edits can't starve it.
+        // A Compile the user cancels stops even while committing, so the cancel is acknowledged
+        // promptly; background work that newer changes cancel always commits once it has started
+        // committing (§7.5), so a stream of edits can't starve it.
         let commit_cancel = matches!(kind, RunKind::Compile | RunKind::Rebuild).then(|| cancel.clone());
         let request = kind.request().with_cancel(cancel).with_progress(&on_progress);
         let prepared = engine.prepare(request).map_err(update_error)?;

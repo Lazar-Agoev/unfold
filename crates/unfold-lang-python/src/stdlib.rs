@@ -8,7 +8,7 @@
 //! proof of concept pinned. It is data, not a dependency: an external module whose first part is
 //! listed here is labeled `python:<root>`; any other external module is labeled with its first
 //! part (`fastapi`). To update it, list that folder of a newer typeshed and record its commit
-//! here; the parity corpora and labels change with it.
+//! here; the module labels in the goldens and oracle corpora change with it.
 
 /// Top-level standard-library names, sorted bytewise.
 pub const STDLIB_ROOTS: &[&str] = &[

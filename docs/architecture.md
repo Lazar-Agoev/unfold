@@ -86,13 +86,10 @@ new windows, permissions, protocol responses, CSP, and packaging fuses are contr
 and [electron-builder.yml](../desktop/electron-builder.yml). The updater is the app's
 network feature; agent MCP is local and opt-in. See [desktop agent handling](../desktop/README.md#agents).
 
-## Validation and releases
+## Validation and builds
 
 Choose focused checks with [testing](testing.md#choose-checks-for-a-local-change). Routine
-proposals and docs do not require app builds. E2E is conditional on integrated behavior;
-packaged smoke tests and budget measurements cover their respective boundaries.
+proposals and docs do not require app builds. E2E is conditional on integrated behavior.
 
-Builds are configured for macOS, Windows, and Linux. Local verification has been recorded
-on Apple-silicon macOS; configuration alone does not establish verification elsewhere.
-Signing, notarization, publisher identity, and update-feed configuration are release work.
-See [desktop packaging](../desktop/README.md#packaging) and the workflow files in `.github/workflows/`.
+Builds are configured for macOS only. See [desktop packaging](../desktop/README.md#packaging)
+and the workflow in `.github/workflows/`.

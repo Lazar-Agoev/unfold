@@ -5,7 +5,7 @@ import type { AppRow, DeployImport, EntranceOverview, EntranceScope, ImportedLau
 type Overview = { readonly view: "overview" } & EntranceOverview;
 type Scope = { readonly view: "scope" } & EntranceScope;
 
-export function launchRow(overrides: Partial<LaunchRow> & Pick<LaunchRow, "key" | "folder" | "command">): LaunchRow {
+function launchRow(overrides: Partial<LaunchRow> & Pick<LaunchRow, "key" | "folder" | "command">): LaunchRow {
   return {
     id: null,
     label: null,
@@ -31,7 +31,7 @@ function app(overrides: Partial<AppRow> & Pick<AppRow, "id" | "name" | "launches
   return { description: null, origin: "declared", entrances: overrides.launches.length, routes: 0, alsoIn: [], ...overrides };
 }
 
-export const DASHBOARD_WEB = launchRow({
+const DASHBOARD_WEB = launchRow({
   key: "entrance:configured:dashboard-web",
   id: "dashboard-web",
   folder: "data-pipelines",

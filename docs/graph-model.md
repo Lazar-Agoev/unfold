@@ -115,9 +115,8 @@ References use keys; a header identifies the format and producer versions. The c
 reader/writer own exact field names, omission rules, record ordering, and compatibility:
 [canonical/](../crates/unfold-core/src/canonical/mod.rs).
 
-Use `cargo xtask canonical-check <export.jsonl>` for round-tripping, `canonical-diff` for
-record comparisons, and parity/incremental tests for behavior changes. Do not hand-edit
-frozen exports merely to make a test pass.
+Use `cargo xtask export` to write an export, and incremental tests for behavior changes. Do not
+hand-edit exports merely to make a test pass.
 
 ## Validation invariants
 

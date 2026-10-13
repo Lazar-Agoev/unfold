@@ -99,16 +99,6 @@ fn every_function_like_block_has_one_signature() {
         returns.range.start -= 2;
     }
     assert_violation(&graph, "returns range [84, 102) is outside [86, 102)");
-
-    // Version 1 graphs don't need typed records at all.
-    let mut graph = typed().build();
-    types(&mut graph, CHARGE).signatures.clear();
-    assert!(
-        Validator::new()
-            .without_typed_records()
-            .validate(&graph)
-            .is_empty()
-    );
 }
 
 #[test]

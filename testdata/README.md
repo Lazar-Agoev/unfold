@@ -17,7 +17,7 @@ testdata/
 │       ├── unfold.toml
 │       └── expected-entrances.txt   # 25 entrances, 28 targets
 ├── fixtures/                     # small exact cases
-│   ├── worked/ classes/ entrances/ playground-v1/   # ← PoC compilers/codegraph/test/fixtures/…
+│   ├── entrances/                # ← PoC compilers/codegraph/test/fixtures/entrances (oracle corpus `entrances`)
 │   ├── python/policy/            # ← PoC fixtures/python (binder positives and refusals)
 │   ├── python-launches/          # Python launch contexts, launch targets, application bindings (written for Unfold)
 │   ├── python-ranges/            # Unicode/CRLF range corpus (see corpora.lock.toml)
@@ -30,10 +30,9 @@ testdata/
 │   ├── order-placement.json      # sample board, unfold-board v1
 │   ├── order-placement*.mmd      # its Mermaid export (snapshots: as saved, and with every card in Flow)
 │   └── order-system.json, .mmd   # example board with frames, resource cards, connections, and notes; its export
-├── mermaid/<playground>.json     # snapshots: Unfold's Mermaid for every entrance and every callable's Flow
 ├── workspace/commands/           # golden JSON of representative commands on ts-orders (unfold-workspace tests)
-├── reference/                    # frozen PoC generations; see reference/README.md
-│   └── poc/<corpus>/
+├── goldens/<playground>.jsonl    # canonical exports of ts-orders and py-orders (`cargo xtask export`), read by the reader's tests
+├── reference/oracles/            # cached precision oracle answers; see reference/README.md
 └── corpora.lock.toml             # larger corpora pinned by URL and hash, not copied
 ```
 
@@ -122,15 +121,12 @@ the set of entrance lines and, per entrance, the ordered target lines; the line 
 
 ## Fixtures
 
-Copied from `compilers/codegraph/test/fixtures/{worked,classes,entrances,playground-v1,python}`. Their expected rows
-are the reference generations in `reference/` (the `*-golden` folders went there, not here).
+Copied from `compilers/codegraph/test/fixtures/{entrances,python}`.
 
 - `entrances/codegraph.json` → `entrances/unfold.toml` (one manual worker entrance).
 - `python/policy/{single-root,duplicate-roots}/codegraph.json` → `unfold.toml` with
   `[[python.project]] root = "."`, the same `source_roots`, and `version = "3.14"`. Open each of those subfolders
   on its own.
-- `playground-v1/` is the PoC's frozen v1 release target; its graph root is `playground-v1/`, not
-  `playground-v1/ts-playground/`.
 - `python-ranges/fixtures/unicode.py` is the PoC's range corpus (astral and Greek identifiers, CRLF), written out of
   `spikes/python/prepare.mjs` byte for byte; its hash matches the PoC's recall-floor lock. Its source root is
   `fixtures`.
@@ -192,11 +188,10 @@ Signatures are hashes of source text, which is unchanged: all 69 (29 labels, 35 
 the files involved are ASCII, so UTF-16 and byte ranges coincide. Serialized with sorted keys, two-space
 indentation, and a final newline.
 
-`crates/unfold-reader/tests/sample_board.rs` loads it against the `ts-orders` reference graph with every description
+`crates/unfold-reader/tests/sample_board.rs` loads it against the `ts-orders` golden graph with every description
 and label attached and healthy, checks that it round-trips byte for byte, and snapshots its Mermaid export
-(`order-placement.mmd`, identical to the PoC's apart from handler numbers, and `order-placement-flow.mmd`, every card
-switched to Flow). `UNFOLD_BLESS=1` rewrites the snapshots; `tools/oracles/check-mermaid.mjs` parses them and
-`testdata/mermaid/*.json` with the real Mermaid parser.
+(`order-placement.mmd`, and `order-placement-flow.mmd`, every card switched to Flow). `UNFOLD_BLESS=1` rewrites the snapshots; `tools/oracles/check-mermaid.mjs` parses them with the real
+Mermaid parser.
 
 ## Example board (`boards/order-system.json`)
 
@@ -207,8 +202,8 @@ notes, free and attached. `crates/unfold-workspace/tests/commands/claims.rs` sav
 and its Mermaid export (`order-system.mmd`); `UNFOLD_BLESS=1` rewrites both. `crates/unfold-reader/tests/board_items.rs`
 checks that it round-trips, counts its changes, and repairs without leaving anything dangling.
 
-## Reference and corpora
+## Oracles and corpora
 
-See [`reference/README.md`](reference/README.md) for the frozen PoC generations and their path mapping, and
+See [`reference/README.md`](reference/README.md) for the precision oracles, and
 [`corpora.lock.toml`](corpora.lock.toml) for the larger corpora (TypeScript 6.0.3 `src`, the PoC's own source,
 the FastAPI full-stack template 0.12.0, and the Python range and isolation corpora).

@@ -1,5 +1,5 @@
 /**
- * The launch editor (docs/proposals/configured-entrances.md, "Entrance editor"): a 1000×720 dialog
+ * The launch editor: a 1000×720 dialog
  * that adds or edits one `[[entrance]]` table in `unfold.toml`, either a launch ("Starts a
  * process": its command, folder, application, schedule, and Analysis details, beside a live preview
  * of what Unfold reads from it) or a handler entrance ("Handles a route, queue, or event"). It also

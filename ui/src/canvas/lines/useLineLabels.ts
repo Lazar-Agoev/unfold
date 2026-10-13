@@ -16,7 +16,7 @@ import type { Arrow } from "../arrows";
 export const LABELS_PER_CALL = 500;
 
 /** A line's key in the result: its project, occurrence, and edge. */
-export function lineKey(project: ProjectId, source: string, seq: number): string {
+function lineKey(project: ProjectId, source: string, seq: number): string {
   return `${project}\u0000${source}\u0000${seq}`;
 }
 

@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /** The Electron app directory: `electron <desktopDir>` runs the built `out/` with `ui/dist`. */
 export const desktopDir = join(repoRoot, "desktop");

@@ -10,13 +10,15 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
-    "build": "pnpm --filter @unfold/ui build && pnpm --filter @unfold/desktop build"
+    "build": "pnpm --filter @unfold/ui build && pnpm --filter @unfold/desktop build",
+    "knip": "knip"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "eslint": "10.12.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "globals": "17.13.0",
+    "knip": "6.41.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.1"
   }

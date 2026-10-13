@@ -22,7 +22,7 @@ implementation must follow it; only an explicit user request to change the visio
 | UI state, interaction, keyboard, theme | [UI shell](ui-shell.md) | `ui/src/<feature>/`, `state/`, `keyboard/`, `theme/` |
 | Electron, MCP, windows, packaged runtime | [Desktop](../desktop/README.md) | `desktop/src/main/`, `engine-host/`, `preload/`, `shared/` |
 | Choose checks | [Testing](testing.md#choose-checks-for-a-local-change) | Nearby tests, then the relevant crate/journey |
-| Using the product | [User guide](user-guide.md), [Configure entrances](entrances.md) | User-facing behavior and configuration examples; optional for development |
+| Using the product | [User guide](user-guide.md) | User-facing behavior; optional for development |
 
 ## Ownership
 
@@ -45,7 +45,7 @@ reference instead of keeping a second description of current behavior.
 
 These are optional for their specific tasks:
 
-- [Test-data conventions](../testdata/README.md) and [frozen reference/oracles](../testdata/reference/README.md).
-- [Oracle tools](../tools/oracles/README.md) and [fuzzing](../fuzz/README.md).
+- [Test-data conventions](../testdata/README.md) and [oracles](../testdata/reference/README.md).
+- [Oracle tools](../tools/oracles/README.md).
 - `desktop/src/main/mcp/guide/` and `tasks.md`: product teaching assets for agents using
   Unfold, not onboarding material for agents developing this repository.

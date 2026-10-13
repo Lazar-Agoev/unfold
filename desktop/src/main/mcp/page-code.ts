@@ -38,7 +38,7 @@ export interface CardCode {
 }
 
 /** An arrow the board draws for a call or a handler. */
-export interface CallArrow {
+interface CallArrow {
   readonly from: string;
   readonly to: string;
   readonly kind: EdgeKind | "handler";
@@ -52,7 +52,7 @@ export interface CallArrow {
 }
 
 /** A type arrow: from a field of a type card to the card of a type its written type names. */
-export interface TypeArrow {
+interface TypeArrow {
   readonly from: string;
   readonly to: string;
   /** The field's name (`=` for an alias's aliased type), with `from <Base>` for an inherited one. */
@@ -61,7 +61,7 @@ export interface TypeArrow {
 }
 
 /** A Flow step still showing its name from the code. */
-export interface UnlabeledStep {
+interface UnlabeledStep {
   readonly card: string;
   readonly key: string;
   readonly kind: string;

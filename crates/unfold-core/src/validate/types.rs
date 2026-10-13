@@ -52,15 +52,15 @@ impl Slots {
     }
 }
 
-/// Checks one file's typed records. With `complete`, every function-like block needs a
-/// signature, every parameter and argument slot its record, and every call its result.
-pub(super) fn check(checker: &mut Checker<'_>, file: &FileGraph, complete: bool) {
+/// Checks one file's typed records: every function-like block needs a signature, every
+/// parameter and argument slot its record, and every call its result.
+pub(super) fn check(checker: &mut Checker<'_>, file: &FileGraph) {
     let slots = Slots::of(file);
-    check_signatures(checker, file, &slots, complete);
-    check_parameters(checker, file, &slots, complete);
+    check_signatures(checker, file, &slots);
+    check_parameters(checker, file, &slots);
     check_members(checker, file);
-    check_arguments(checker, file, &slots, complete);
-    check_results(checker, file, &slots, complete);
+    check_arguments(checker, file, &slots);
+    check_results(checker, file, &slots);
     check_type_links(checker, file, &slots);
 }
 
@@ -112,7 +112,7 @@ fn check_written(
     }
 }
 
-fn check_signatures(checker: &mut Checker<'_>, file: &FileGraph, slots: &Slots, complete: bool) {
+fn check_signatures(checker: &mut Checker<'_>, file: &FileGraph, slots: &Slots) {
     let mut previous: Option<u32> = None;
     for signature in &file.types.signatures {
         let Some(found) = block(checker, file, signature.block, "signature") else {
@@ -132,9 +132,6 @@ fn check_signatures(checker: &mut Checker<'_>, file: &FileGraph, slots: &Slots, 
             (None, Some(_)) => checker.report(subject(), "the return_type slot's type is not recorded"),
             (None, None) => {}
         }
-    }
-    if !complete {
-        return;
     }
     let mut signatures = file
         .types
@@ -157,7 +154,7 @@ fn check_signatures(checker: &mut Checker<'_>, file: &FileGraph, slots: &Slots, 
     }
 }
 
-fn check_parameters(checker: &mut Checker<'_>, file: &FileGraph, slots: &Slots, complete: bool) {
+fn check_parameters(checker: &mut Checker<'_>, file: &FileGraph, slots: &Slots) {
     let language = file.file.language;
     let mut previous: Option<(u32, u32)> = None;
     // Per block: the last kind's Python order, and whether a rest or keywords was seen.
@@ -215,9 +212,6 @@ fn check_parameters(checker: &mut Checker<'_>, file: &FileGraph, slots: &Slots, 
         if repeated {
             checker.report(subject(), format!("a second {} parameter", parameter.kind));
         }
-    }
-    if !complete {
-        return;
     }
     let recorded: FxHashSet<(u32, u32)> = file
         .types
@@ -295,7 +289,7 @@ fn check_members(checker: &mut Checker<'_>, file: &FileGraph) {
     }
 }
 
-fn check_arguments(checker: &mut Checker<'_>, file: &FileGraph, slots: &Slots, complete: bool) {
+fn check_arguments(checker: &mut Checker<'_>, file: &FileGraph, slots: &Slots) {
     let language = file.file.language;
     let occurrences: FxHashMap<u32, &crate::model::Edge> = file
         .edges
@@ -372,9 +366,6 @@ fn check_arguments(checker: &mut Checker<'_>, file: &FileGraph, slots: &Slots, c
             ),
             (Some(pairing), Some(target)) => check_pairing(checker, &subject, pairing, target),
         }
-    }
-    if !complete {
-        return;
     }
     let recorded: FxHashSet<(u32, u32)> = file
         .types
@@ -462,7 +453,7 @@ fn is_ancestor(file: &FileGraph, ancestor: u32, local: u32) -> bool {
     false
 }
 
-fn check_results(checker: &mut Checker<'_>, file: &FileGraph, slots: &Slots, complete: bool) {
+fn check_results(checker: &mut Checker<'_>, file: &FileGraph, slots: &Slots) {
     let resolved: FxHashMap<u32, &Key> = file
         .edges
         .iter()
@@ -535,9 +526,6 @@ fn check_results(checker: &mut Checker<'_>, file: &FileGraph, slots: &Slots, com
                 );
             }
         }
-    }
-    if !complete {
-        return;
     }
     let mut results = file.types.results.iter().map(|result| result.call).peekable();
     for (local, found) in file.blocks.iter().enumerate() {

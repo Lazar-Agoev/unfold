@@ -10,7 +10,6 @@ use unfold_core::vocab::Language;
 use unfold_core::{ContentHash, Graph};
 
 use crate::compile::{compile_with, languages};
-use crate::reference::corpora::PathMapping;
 use crate::repo;
 
 /// The environment variable naming a folder that holds lock corpora as `<lock id>/`.
@@ -56,6 +55,16 @@ pub(crate) struct PyrightRows {
     pub lock: String,
     /// Prefix mappings from the rows' paths to the corpus folder's paths.
     pub paths: Vec<PathMapping>,
+}
+
+/// One path-prefix mapping.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PathMapping {
+    /// The PoC prefix (empty matches every path).
+    pub poc: String,
+    /// What replaces it.
+    pub unfold: String,
 }
 
 const fn default_true() -> bool {

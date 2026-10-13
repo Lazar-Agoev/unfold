@@ -33,7 +33,6 @@ use self::corpora::{Lock, OracleCorpora, OracleCorpus};
 use self::file::{OracleFile, corpus_sha256};
 use self::floors::Floors;
 use self::justified::Justified;
-use crate::canonical_diff::read_graph;
 use crate::repo;
 
 /// Arguments of `oracles`.
@@ -131,6 +130,12 @@ fn run_check(args: &CheckArgs) -> anyhow::Result<()> {
         bail!("{} oracle gate failure(s)", failures.len());
     }
     Ok(())
+}
+
+/// Reads a canonical export.
+fn read_graph(path: &Path) -> anyhow::Result<Graph> {
+    let text = std::fs::read_to_string(path).with_context(|| format!("cannot read {}", path.display()))?;
+    canonical::read(&text).with_context(|| format!("cannot parse {}", path.display()))
 }
 
 fn check_corpus(

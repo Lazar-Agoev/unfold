@@ -18,7 +18,7 @@ Do not remove difficult examples or bless changed output without explaining the 
 ## Working on a case
 
 Find the relevant source and its language/detector test, edit one behavior, and run that focused
-check. Larger changes may need parity/oracle checks for `ts-orders` or `mixed-playground`.
+check. Larger changes may need oracle checks for `ts-orders` or `mixed-playground`.
 Runtime scripts in `package.json` are analyzed examples, not prerequisites for compiler tests.
 
 - [Test-data conventions](../../README.md)

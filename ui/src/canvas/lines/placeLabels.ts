@@ -88,11 +88,11 @@ export interface Placement {
 /** Points tried along a curve, in order. */
 export const CURVE_STEPS: readonly number[] = [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8];
 /** Vertical steps tried above, then below, each of those points. */
-export const NUDGES: readonly number[] = [12, 24, 36];
+const NUDGES: readonly number[] = [12, 24, 36];
 /** Space kept between a label and a card or another label. */
-export const LABEL_GAP = 2;
+const LABEL_GAP = 2;
 /** How far a hanging label's near edge stays from its point on the curve. */
-export const HANG_GAP = 4;
+const HANG_GAP = 4;
 
 function meets(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.width + LABEL_GAP && b.x < a.x + a.width + LABEL_GAP && a.y < b.y + b.height + LABEL_GAP && b.y < a.y + a.height + LABEL_GAP;

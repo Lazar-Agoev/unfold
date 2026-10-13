@@ -1,9 +1,0 @@
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    // Callbacks passed to Playwright's page.evaluate run in the window, so they see the DOM.
-    "lib": ["ES2024", "DOM"],
-    "types": ["node"]
-  },
-  "include": ["./**/*.mts"]
-}

@@ -2,7 +2,7 @@
 
 Unfold helps you read a codebase by following how it starts and where it goes. It reads TypeScript and Python. It
 never runs your code, installs anything, or runs Git. Shortcuts below are for macOS; on Windows and Linux use Ctrl
-where you see ⌘. The full list is in [the keyboard map](ui-shell.md#keyboard).
+where you see ⌘.
 
 ## Projects and boards
 
@@ -347,9 +347,6 @@ its kind, trigger, and the functions that handle it, in order; **Add as entrance
 one from that function. Either can join an application, which only groups them on Home and in Add. Unfold writes each
 to `unfold.toml` and never runs the command. Configured launches and entrances are edited or removed from their menu
 on Home; a detected launch's **Edit…** changes only its name, application, schedule, and description.
-
-For examples of editing the file directly, application groups, handler locators, and agent setup, see
-[Configure entrances](entrances.md).
 
 **Remove from workspace**, in the project menu, takes a project out of Unfold. It never deletes the project's
 `.unfold/` folder.

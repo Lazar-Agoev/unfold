@@ -4,9 +4,8 @@
 // Usage: node tools/oracles/check-mermaid.mjs [file ...]
 //
 // Each file is either a `.mmd` diagram or a JSON object whose string values (at any depth) are
-// diagrams, like the snapshots in testdata/mermaid/. With no arguments it checks every Unfold
-// snapshot: testdata/boards/*.mmd and testdata/mermaid/*.json. Exits non-zero if any diagram
-// fails to parse.
+// diagrams. With no arguments it checks every Unfold snapshot: testdata/boards/*.mmd. Exits
+// non-zero if any diagram fails to parse.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -16,12 +15,11 @@ import { JSDOM } from "jsdom";
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 function defaultFiles() {
-  const inDirectory = (directory, extension) =>
-    readdirSync(join(repository, directory))
-      .filter(name => name.endsWith(extension))
-      .sort()
-      .map(name => join(repository, directory, name));
-  return [...inDirectory("testdata/boards", ".mmd"), ...inDirectory("testdata/mermaid", ".json")];
+  const boards = join(repository, "testdata/boards");
+  return readdirSync(boards)
+    .filter(name => name.endsWith(".mmd"))
+    .sort()
+    .map(name => join(boards, name));
 }
 
 /** Every diagram in a file, as [label, text] pairs. */

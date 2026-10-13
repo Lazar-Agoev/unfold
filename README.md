@@ -54,8 +54,7 @@ pnpm --filter @unfold/desktop start -- /absolute/path/to/your/project
 
 For development with hot reload, use `just dev` after `pnpm install`. This recipe uses
 Bash and Unix process utilities; the build-and-start commands above avoid that recipe
-on Windows. Linux also needs Electron's system libraries; the
-[CI setup](.github/workflows/pr.yml) lists the packages used on Ubuntu.
+on Windows.
 
 ## Open your first project
 
@@ -105,10 +104,8 @@ behind an explanation changes, Unfold marks it for review.
 
 If an entry point is missing, use **Add entrance…** in the project menu. Project
 **Settings** controls analysis scope, detectors, Python import roots, and evidence
-files such as SQL or Prisma schemas. See
-[Configure entrances](docs/entrances.md) for `unfold.toml` examples, application
-groups, launch commands, and instructions for agents. The
-[user guide](docs/user-guide.md) covers the full workflow.
+files such as SQL or Prisma schemas. The [user guide](docs/user-guide.md) covers the
+full workflow.
 
 ## Connect an agent with MCP
 
@@ -223,8 +220,7 @@ GitHub Markdown, or **Share → Export PNG…** for an image.
 ## Further reading
 
 - [User guide](docs/user-guide.md): navigation, shortcuts, editing, settings, and agent workflows.
-- [Configure entrances](docs/entrances.md): set up `unfold.toml` for launches, routes, workers, and agents.
 - [Documentation map](docs/README.md): focused references for contributing to Unfold.
 - [Architecture](docs/architecture.md): the Rust engine, Electron shell, and React UI.
 - [Testing](docs/testing.md#choose-checks-for-a-local-change): choose checks for a change.
-- [Desktop packaging](desktop/README.md#packaging): build installers with `just bundle`.
+- [Desktop packaging](desktop/README.md#packaging): build the unpacked macOS app with `just bundle-dir`.

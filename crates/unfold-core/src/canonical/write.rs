@@ -238,23 +238,17 @@ struct TargetOut<'a> {
 /// Each record is several small writes, so pass a buffered writer (such as a `BufWriter` or a
 /// `Vec`).
 pub fn write(graph: &Graph, out: &mut impl io::Write) -> io::Result<()> {
-    write_version(graph, VERSION, out)
-}
-
-/// [`write`] with the header's `version`. Version 1 predates typed records, so they are not
-/// written; it is for writing back an export read at version 1.
-pub fn write_version(graph: &Graph, version: u32, out: &mut impl io::Write) -> io::Result<()> {
     let mut writer = LineWriter { out };
     writer.record(&HeaderOut {
         t: "header",
         format: FORMAT,
-        version,
+        version: VERSION,
     })?;
 
     let mut files: Vec<&FileGraph> = graph.files.iter().collect();
     files.sort_by(|a, b| a.file.path.cmp(&b.file.path));
     for file in files {
-        write_file(&mut writer, file, version >= 2)?;
+        write_file(&mut writer, file)?;
     }
 
     let mut inputs: Vec<_> = graph.inputs.iter().collect();
@@ -284,7 +278,7 @@ pub fn to_string(graph: &Graph) -> String {
     String::from_utf8(bytes).unwrap_or_default()
 }
 
-fn write_file(writer: &mut LineWriter<'_, impl io::Write>, file: &FileGraph, typed: bool) -> io::Result<()> {
+fn write_file(writer: &mut LineWriter<'_, impl io::Write>, file: &FileGraph) -> io::Result<()> {
     let record = &file.file;
     writer.record(&FileOut {
         t: "file",
@@ -341,10 +335,7 @@ fn write_file(writer: &mut LineWriter<'_, impl io::Write>, file: &FileGraph, typ
             position: edge.position,
         })?;
     }
-    if typed {
-        write_types(writer, &file.types, &block_key)?;
-    }
-    Ok(())
+    write_types(writer, &file.types, &block_key)
 }
 
 /// The records of `items` sorted by `key`, without copying them.

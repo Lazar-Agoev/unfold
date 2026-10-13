@@ -20,7 +20,7 @@ function relativeImport(from: number, to: number): string {
 }
 
 /** The text of file `index` of `count` on `branch`. */
-export function syntheticFile(index: number, count: number, branch: "main" | "feature"): string {
+function syntheticFile(index: number, count: number, branch: "main" | "feature"): string {
   const step = branch === "main" ? 1 : 7;
   const callee = (index + step) % count;
   const lines = [
@@ -51,8 +51,4 @@ export function writeSyntheticRepo(folder: string, count: number, branch: "main"
   for (let index = 0; index < count; index++) {
     writeFile(join(folder, filePath(index)), syntheticFile(index, count, branch));
   }
-}
-
-export function syntheticPath(index: number): string {
-  return filePath(index);
 }

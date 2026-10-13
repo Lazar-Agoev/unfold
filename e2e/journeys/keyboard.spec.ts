@@ -1,5 +1,5 @@
 /**
- * The keyboard map (`docs/ui-shell.md#keyboard`), each shortcut once with its effect; the dispatcher's
+ * The keyboard map (`ui/src/keyboard/keymap.ts`), each shortcut once with its effect; the dispatcher's
  * rules (a plain key never fires while typing, no window shortcut fires while a dialog is open); and
  * the application menu's Unfold items.
  */

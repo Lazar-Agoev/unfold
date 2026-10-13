@@ -152,7 +152,7 @@ function setCardShow(ctx: OpContext, page: Page, card: Card, item: AgentViewSpec
   return cardResult(ctx, card, status, typeCard ? {} : { expanded: cardExpanded(card, page.defaultView), expandedCalls: callExpansions(card).map((path) => [...path]) });
 }
 
-export function applySetView(page: Page, op: SetViewOp, ctx: OpContext): AgentItemResult[] {
+function applySetView(page: Page, op: SetViewOp, ctx: OpContext): AgentItemResult[] {
   // The page's default first, so each card's result says how it shows with it.
   if (op.defaultView !== undefined) {
     setDefaultView(page, op.defaultView);

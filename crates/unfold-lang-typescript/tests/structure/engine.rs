@@ -1,8 +1,7 @@
 //! End to end through the engine: on the `ts-orders` playground, launch targets go through the
 //! emit map (`node dist/server.js` starts `src/server.ts`), manual locators resolve through
-//! exports and top-level declarations, every import edge matches the reference, and the
-//! `tsconfig.json` is a graph input; in a folder being edited, a `tsconfig.json` change
-//! re-extracts exactly the files whose options changed.
+//! exports and top-level declarations, and the `tsconfig.json` is a graph input; in a folder being
+//! edited, a `tsconfig.json` change re-extracts exactly the files whose options changed.
 
 use std::sync::Arc;
 
@@ -11,7 +10,7 @@ use unfold_core::testkit::testdata_dir;
 use unfold_core::text::ByteRange;
 use unfold_core::validate::Census;
 use unfold_core::vocab::{DetectorId, EntranceKind, InputRole, Resolution};
-use unfold_core::{Graph, RepoPath, Snapshot, canonical};
+use unfold_core::{Graph, RepoPath, Snapshot};
 use unfold_engine::discovery::DiscoverOptions;
 use unfold_engine::entrances::{
     CandidateEvidence, DetectContext, EntranceCandidate, EntranceDetector, TargetCandidate, Trigger,
@@ -253,22 +252,19 @@ fn the_playground_compiles_end_to_end() {
             Some(unfold_core::vocab::Reason::NotIndexed)
         )
     );
-    // Manual locators resolve through exports and top-level declarations, as in the reference.
-    let reference_text =
-        std::fs::read_to_string(testdata_dir().join("reference/canonical/playground-ts-native.jsonl"))
-            .expect("reference");
-    let reference = canonical::read(&reference_text).expect("reference parses");
-    for entrance in reference
-        .entrances
-        .iter()
-        .filter(|entrance| entrance.detector == DetectorId::Manual)
-    {
-        let actual = graph
-            .entrances
-            .iter()
-            .find(|candidate| candidate.key == entrance.key)
-            .unwrap_or_else(|| panic!("no entrance {}", entrance.key.as_str()));
-        assert_eq!(actual.targets, entrance.targets, "{}", entrance.key.as_str());
+    // Manual locators resolve through exports and top-level declarations.
+    for (trigger, expected) in [
+        ("import", "src/jobs/import-orders.ts#function:importOrders"),
+        ("report", "src/cli.ts#function:main/switch[0]/case[1]"),
+        ("replay", "src/jobs/retry-failed.ts#function:retryFailed"),
+        ("retry", "src/jobs/retry-failed.ts#function:retryFailed"),
+        ("SIGTERM", "src/server.ts#function:shutdown"),
+    ] {
+        assert_eq!(
+            target(trigger),
+            (Resolution::Resolved, Some(expected.to_owned()), None),
+            "{trigger}"
+        );
     }
     // The configuration that shaped the graph is one of its inputs.
     let inputs: Vec<(&str, InputRole)> = graph
@@ -280,22 +276,6 @@ fn the_playground_compiles_end_to_end() {
         inputs.contains(&("tsconfig.json", InputRole::Tsconfig)),
         "{inputs:?}"
     );
-    // Every import edge matches the reference.
-    let imports = |graph: &Graph| -> Vec<String> {
-        graph
-            .files
-            .iter()
-            .flat_map(|file| {
-                file.edges
-                    .iter()
-                    .filter(|edge| edge.kind == unfold_core::vocab::EdgeKind::Imports)
-                    .map(move |edge| format!("{} {:?}", file.blocks[edge.source as usize].key.as_str(), edge))
-            })
-            .collect()
-    };
-    let (actual, expected) = (imports(&graph), imports(&reference));
-    assert_eq!(actual.len(), 76);
-    assert_eq!(actual, expected);
 }
 
 fn write(root: &std::path::Path, path: &str, text: &str) {

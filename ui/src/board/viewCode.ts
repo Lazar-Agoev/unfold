@@ -1,5 +1,5 @@
 /**
- * View code (docs/proposals/unified-code-diagrams.md §5): where the actual source of what is selected
+ * View code: where the actual source of what is selected
  * on a page is, as a peek sheet target with the lines (and, for a step, the exact expression) to
  * highlight. Every View code entry point resolves through `selectionSource`: the `</>` buttons, the
  * card and step menus, Selected's location links, `C`, and the sheet following the selection.
@@ -58,7 +58,7 @@ function linesOf(project: ProjectId, path: string, startLine: number, endLine: n
 }
 
 /** A definition's source: its file, focused on its first line. */
-export function definitionSource(project: ProjectId, header: Pick<BlockHeader, "path" | "startLine">): PeekTarget {
+function definitionSource(project: ProjectId, header: Pick<BlockHeader, "path" | "startLine">): PeekTarget {
   return linesOf(project, header.path, header.startLine, header.startLine);
 }
 
@@ -259,7 +259,7 @@ function resolverOf(target: PageTarget, selection: Selection): () => PeekTarget 
 }
 
 /** Shows a View code target from a page, found again by `resolve`; the sheet then follows that page's selection. */
-export function showSource(target: PageTarget, source: PeekTarget, resolve: () => PeekTarget | null): void {
+function showSource(target: PageTarget, source: PeekTarget, resolve: () => PeekTarget | null): void {
   openPeek({ ...source, follow: target, resolve });
 }
 

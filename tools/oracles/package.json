@@ -2,13 +2,12 @@
   "name": "@unfold/oracles",
   "private": true,
   "version": "0.0.0",
-  "description": "Developer-only tools: reference exports from the frozen proof of concept, and independent oracles (the TypeScript checker). Never shipped.",
+  "description": "Developer-only tools: independent oracles (the TypeScript checker) and checks of Unfold's outputs. Never shipped.",
   "type": "module",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "export-reader": "node export-reader.mjs",
     "check-mermaid": "node check-mermaid.mjs",
     "check-board-schema": "node check-board-schema.mjs",
     "typescript-oracle": "node typescript-oracle.mjs"

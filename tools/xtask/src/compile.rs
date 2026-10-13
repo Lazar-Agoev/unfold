@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{Context, bail};
+use anyhow::Context;
 use unfold_core::canonical;
 use unfold_core::vocab::FileState;
 use unfold_engine::update::MemoryFactsCache;
@@ -126,51 +126,4 @@ pub(crate) fn run_export(args: &ExportArgs) -> anyhow::Result<()> {
         }
     }
     Ok(())
-}
-
-/// Copies the folder at `from` into `to` byte for byte, without `.unfold/local/` (which only
-/// a running app writes), so a compile never touches `testdata/`.
-pub(crate) fn copy_folder(from: &Path, to: &Path) -> anyhow::Result<()> {
-    let entries = std::fs::read_dir(from).with_context(|| format!("cannot read {}", from.display()))?;
-    std::fs::create_dir_all(to).with_context(|| format!("cannot create {}", to.display()))?;
-    for entry in entries {
-        let entry = entry?;
-        let source = entry.path();
-        let target = to.join(entry.file_name());
-        let kind = entry.file_type()?;
-        if kind.is_dir() {
-            if entry.file_name() == "local" && from.file_name().is_some_and(|name| name == ".unfold") {
-                continue;
-            }
-            copy_folder(&source, &target)?;
-        } else if kind.is_file() {
-            std::fs::copy(&source, &target).with_context(|| format!("cannot copy {}", source.display()))?;
-        } else {
-            bail!("{} is neither a file nor a folder", source.display());
-        }
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn copies_folders_without_local_state() {
-        let from = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(from.path().join(".unfold/local/cache")).unwrap();
-        std::fs::write(from.path().join("unfold.toml"), "languages = [\"python\"]\n").unwrap();
-        std::fs::write(from.path().join(".unfold/local/cache/x"), "x").unwrap();
-        std::fs::create_dir_all(from.path().join("src")).unwrap();
-        std::fs::write(from.path().join("src/a.ts"), b"\xef\xbb\xbfa\r\n").unwrap();
-        let to = tempfile::tempdir().unwrap();
-        copy_folder(from.path(), to.path()).unwrap();
-        assert_eq!(
-            std::fs::read(to.path().join("src/a.ts")).unwrap(),
-            b"\xef\xbb\xbfa\r\n"
-        );
-        assert!(to.path().join("unfold.toml").is_file());
-        assert!(!to.path().join(".unfold/local").exists());
-    }
 }

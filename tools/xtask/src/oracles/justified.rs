@@ -1,6 +1,6 @@
 //! `testdata/reference/oracles/justified.toml`: resolved edges the oracle does not confirm, each
 //! with a written reason (such as decision C-8). An entry covers exactly one edge; an entry that
-//! covers nothing is stale and fails the check, like a stale divergence.
+//! covers nothing is stale and fails the check.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};

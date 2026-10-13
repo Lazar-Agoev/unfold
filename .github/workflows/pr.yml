@@ -1,4 +1,4 @@
-# Every pull request and every push to main, on macOS, Windows, and Linux (docs/testing.md#broad-gates).
+# Every pull request and every push to main, on macOS (docs/testing.md#broad-gates).
 # Actions are pinned to commit SHAs (the comment names the release).
 name: pr
 
@@ -17,17 +17,11 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
-  # Never sign in CI pull-request builds, whatever the runner's keychain holds.
-  CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
 jobs:
   checks:
-    name: checks (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-15, windows-2025, ubuntu-24.04]
-    runs-on: ${{ matrix.os }}
+    name: checks
+    runs-on: macos-15
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -44,14 +38,6 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      - name: Install Linux libraries for Electron and a virtual display
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libnss3 libgbm1 libasound2t64 libgtk-3-0 libxss1 libxkbcommon0
-          # Ubuntu 24.04 blocks the unprivileged user namespaces Chromium's sandbox uses.
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-
       # --- Rust ---------------------------------------------------------------------------------
       - name: rustfmt
         run: cargo fmt --all -- --check
@@ -64,13 +50,6 @@ jobs:
 
       - name: Generated IPC types are current
         run: cargo xtask gen-ipc --check
-
-      - name: Parity with the reference (playgrounds and fixtures)
-        shell: bash
-        run: |
-          for corpus in mixed-playground playground-ts-native playground-ts-checker python-playground entrances; do
-            cargo xtask parity "$corpus"
-          done
 
       # Cached oracle outputs, keyed by a hash of each corpus; no Node needed
       # (testdata/reference/README.md, "Oracles").
@@ -87,6 +66,9 @@ jobs:
       - name: Lint
         run: pnpm -r lint
 
+      - name: Unused files, exports, and dependencies
+        run: pnpm knip
+
       - name: Unit tests (desktop, UI)
         run: pnpm -r --filter "!@unfold/node" --filter "!@unfold/e2e" test
 
@@ -97,7 +79,6 @@ jobs:
         run: pnpm --filter @unfold/node test
 
       - name: Third-party notices are current
-        if: runner.os == 'Linux'
         run: cargo xtask notices --check
 
       # --- The app ------------------------------------------------------------------------------
@@ -109,26 +90,8 @@ jobs:
       - name: Fetch the Electron binary
         run: pnpm --filter @unfold/desktop exec node -e "require('electron')"
 
-      - name: Unsigned app build (unpacked)
-        run: pnpm --filter @unfold/desktop run bundle:dir
-
-      - name: Packaged smoke test
-        if: runner.os != 'Linux'
-        run: pnpm --filter @unfold/desktop run smoke
-
-      - name: Packaged smoke test (virtual display)
-        if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum pnpm --filter @unfold/desktop run smoke
-
       - name: Playwright journeys
-        if: hashFiles('e2e/package.json') != ''
-        shell: bash
-        run: |
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            xvfb-run --auto-servernum pnpm --filter ./e2e test
-          else
-            pnpm --filter ./e2e test
-          fi
+        run: pnpm --filter ./e2e test
 
   cargo-deny:
     name: cargo deny

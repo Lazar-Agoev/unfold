@@ -4294,8 +4294,7 @@ matches: number, };
 
 /**
  * A proposed step: an intended addition after a real step of a block card, clearly not a compiler
- * fact (docs/proposals/unified-code-diagrams.md §7). It has no implementation source and is never
- * signed.
+ * fact. It has no implementation source and is never signed.
  */
 export type Proposal = { 
 /**

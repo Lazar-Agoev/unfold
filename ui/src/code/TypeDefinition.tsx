@@ -17,15 +17,15 @@ import { memberName, memberValue, typeKindWord } from "./typeKinds";
 import "./types.css";
 
 /** Types open inside types up to this depth; deeper names read as plain names. */
-export const MAX_TYPE_DEPTH = 4;
+const MAX_TYPE_DEPTH = 4;
 
 /** `src/cart.ts` and 4 → `cart.ts:4`. */
-export function placeText(path: string, line: number): string {
+function placeText(path: string, line: number): string {
   return `${path.slice(path.lastIndexOf("/") + 1)}:${line}`;
 }
 
 /** "Used in 6 places", "Used in 1 place". */
-export function usesText(count: number): string {
+function usesText(count: number): string {
   return `Used in ${count} ${count === 1 ? "place" : "places"}`;
 }
 

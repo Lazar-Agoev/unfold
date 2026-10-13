@@ -1,22 +1,14 @@
 # electron-builder: how Unfold is packaged (docs/architecture.md#security).
 #
-#   just bundle       # installers for this platform (unsigned without certificates)
-#   just bundle-dir   # the unpacked app only, for the packaged smoke test
-#
-# Signing comes from the environment, never from this file:
-# - macOS: CSC_LINK / CSC_KEY_PASSWORD (Developer ID Application certificate). Notarization runs
-#   only when APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER are set (or APPLE_ID,
-#   APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID); without them it is skipped.
-# - Windows: WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD (Authenticode certificate).
-# Without certificates the build is unsigned (macOS arm64 builds get an ad-hoc signature).
+#   just bundle-dir   # the unpacked app
 
-# PLACEHOLDER (release naming): the bundle identifier and the Windows app ID are chosen together with the
-# trademark check of the name Unfold. Changing appId later changes where Windows installs the app
-# and which macOS keychain items it owns, so settle it before the first public release.
+# PLACEHOLDER (release naming): the bundle identifier is chosen together with the trademark check of
+# the name Unfold. Changing appId later changes which macOS keychain items the app owns, so settle
+# it before the first public release.
 appId: dev.unfold.app
 productName: Unfold
-# The app's package name (the workspace calls it @unfold/desktop): it names the Linux packages and
-# the updater's cache folder.
+# The app's package name (the workspace calls it @unfold/desktop): it names the updater's cache
+# folder.
 extraMetadata:
   name: unfold
 copyright: Copyright © 2026 The Unfold authors
@@ -90,92 +82,17 @@ electronFuses:
   # re-sign the app ad-hoc so Apple silicon runs it. A real signature replaces this one.
   resetAdHocDarwinSignature: true
 
-# Updates come from GitHub Releases (desktop/src/main/updater.ts). PLACEHOLDER owner and repository
-# until the project's public home is settled (release naming); keep RELEASES_URL in update-policy.ts in step.
-# electron-builder writes this into <resources>/app-update.yml; `just bundle` never publishes.
-publish:
-  provider: github
-  owner: unfold-placeholder
-  repo: unfold
-  releaseType: release
-
-artifactName: ${productName}-${version}-${os}-${arch}.${ext}
-
 mac:
   category: public.app-category.developer-tools
   icon: build/icon.png
-  # Apple silicon and Intel ship as separate builds (`--arm64` / `--x64`), not a universal app.
-  target:
-    - dmg
-    - zip # what the updater downloads
   hardenedRuntime: true
-  gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  notarize: true
   minimumSystemVersion: "12.0"
-  # Windows and Linux builds keep Electron's LICENSE (as LICENSE.electron.txt) and
-  # LICENSES.chromium.html beside the executable; macOS builds drop them, so copy them from the
+  # macOS builds drop Electron's LICENSE and LICENSES.chromium.html, so copy them from the
   # Electron package (`node -e "require('electron')"` downloads it).
   extraResources:
     - from: node_modules/electron/dist/LICENSE
       to: LICENSE.electron.txt
     - from: node_modules/electron/dist/LICENSES.chromium.html
       to: LICENSES.chromium.html
-  extendInfo:
-    # Unfold opens folders (dock drops, `open -a Unfold <folder>`).
-    CFBundleDocumentTypes:
-      - CFBundleTypeName: Folder
-        CFBundleTypeRole: Viewer
-        LSHandlerRank: Alternate
-        LSItemContentTypes:
-          - public.folder
-
-dmg:
-  writeUpdateInfo: false
-
-win:
-  icon: build/icon.png
-  target:
-    - target: nsis
-      arch:
-        - x64
-  signtoolOptions:
-    signingHashAlgorithms:
-      - sha256
-    # PLACEHOLDER: the subject CN of the Authenticode certificate. electron-updater installs an
-    # update only if it is signed by one of these publishers, and the app turns updates off when
-    # none is named. Replace it when the certificate is issued.
-    publisherName:
-      - Unfold (placeholder publisher)
-
-nsis:
-  oneClick: true
-  perMachine: false
-  deleteAppDataOnUninstall: false
-  differentialPackage: true
-
-linux:
-  icon: build/icon.png
-  category: Development
-  synopsis: Read a codebase as a graph
-  description: >-
-    Unfold compiles TypeScript and Python repositories, without running them, into a graph of
-    their code and the ways it can start, and lets you read it as cards on a board.
-  executableName: unfold
-  # PLACEHOLDER: the package maintainer, settled with the project's public home.
-  maintainer: Unfold maintainers <maintainers@unfold.invalid>
-  target:
-    - target: AppImage
-      arch:
-        - x64
-    - target: deb
-      arch:
-        - x64
-    - target: rpm
-      arch:
-        - x64
-
-deb:
-  # Electron's runtime libraries (electron-builder's defaults), nothing more.
-  packageCategory: devel

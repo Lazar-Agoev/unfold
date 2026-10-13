@@ -1,5 +1,5 @@
 /**
- * Selected for a proposed step (docs/proposals/unified-code-diagrams.md §7): "PROPOSED STEP", its title
+ * Selected for a proposed step: "PROPOSED STEP", its title
  * (required, one line, edited in place) and optional Why, who wrote them (editing either makes them
  * yours; typing in one field merges into one undo step), and Where it would go: after which real step
  * (and on which path), with that step's `file:line` as View placement code, since a proposal has no code

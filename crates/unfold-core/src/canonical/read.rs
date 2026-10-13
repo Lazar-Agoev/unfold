@@ -6,7 +6,7 @@ use std::str::FromStr;
 use rustc_hash::FxHashMap;
 use serde::Deserialize;
 
-use super::{FORMAT, OLDEST_VERSION, VERSION};
+use super::{FORMAT, VERSION};
 use crate::key::Key;
 use crate::model::{
     Block, Edge, Entrance, EntranceTarget, Evidence, FileGraph, FileRecord, Graph, InputRecord, ModuleLabel,
@@ -260,8 +260,6 @@ enum Section {
 struct Reader {
     graph: Graph,
     seen_header: bool,
-    /// The header's version.
-    version: u32,
     section: Section,
     /// The current file's block keys, by local ID.
     local_ids: FxHashMap<Key, u32>,
@@ -269,21 +267,12 @@ struct Reader {
     root: String,
 }
 
-/// Reads a canonical export. It accepts exactly the shapes [`write`](super::write) produces
-/// (and version 1 exports, which have no typed records) and rebuilds local IDs and parents from
-/// the keys; graph invariants are left to the validator.
+/// Reads a canonical export. It accepts exactly the shapes [`write`](super::write) produces and
+/// rebuilds local IDs and parents from the keys; graph invariants are left to the validator.
 pub fn read(text: &str) -> Result<Graph, CanonicalError> {
-    read_versioned(text).map(|(graph, _)| graph)
-}
-
-/// [`read`], also returning the header's `version` (1 or 2), so a version-1 export can be
-/// validated as one ([`crate::validate::Validator::without_typed_records`]) and written again
-/// at its version ([`write_version`](super::write_version)).
-pub fn read_versioned(text: &str) -> Result<(Graph, u32), CanonicalError> {
     let mut reader = Reader {
         graph: Graph::default(),
         seen_header: false,
-        version: VERSION,
         section: Section::Files,
         local_ids: FxHashMap::default(),
         root: String::new(),
@@ -307,7 +296,7 @@ pub fn read_versioned(text: &str) -> Result<(Graph, u32), CanonicalError> {
             message,
         })?;
     }
-    Ok((reader.graph, reader.version))
+    Ok(reader.graph)
 }
 
 impl Reader {
@@ -325,8 +314,7 @@ impl Reader {
                 return Err(format!("field `{field}` is not allowed on a `header` record"));
             }
             self.seen_header = true;
-            self.version = header(raw)?;
-            return Ok(());
+            return header(raw);
         }
         let (section, allowed): (Section, &[&str]) = match &*record {
             "file" => (Section::Files, &["path", "language", "state", "hash", "failure"]),
@@ -346,14 +334,6 @@ impl Reader {
                     "position",
                 ],
             ),
-            "signature" | "parameter" | "member" | "argument" | "result" | "type_link"
-                if self.version < 2 =>
-            {
-                return Err(format!(
-                    "a `{record}` record needs export version 2, not {}",
-                    self.version
-                ));
-            }
             "signature" => (Section::Files, &["block", "returns", "returns_range"]),
             "parameter" => (
                 Section::Files,
@@ -714,14 +694,14 @@ impl Reader {
     }
 }
 
-/// Checks the header and returns its version.
-fn header(raw: Raw<'_>) -> Result<u32, Fail> {
+/// Checks the header.
+fn header(raw: Raw<'_>) -> Result<(), Fail> {
     let format = required(raw.format, "format")?;
     if format != FORMAT {
         return Err(format!("unknown export format `{format}`"));
     }
     match required(raw.version, "version")? {
-        version @ OLDEST_VERSION..=VERSION => Ok(version),
+        VERSION => Ok(()),
         other => Err(format!("unsupported export version {other}")),
     }
 }

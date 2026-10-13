@@ -9,7 +9,6 @@ publish.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
-csv = { workspace = true }
 oxc_allocator = { workspace = true }
 oxc_ast = { workspace = true }
 oxc_parser = { workspace = true }

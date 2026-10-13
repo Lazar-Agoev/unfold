@@ -18,7 +18,7 @@ import "./lines.css";
 
 /** The label's padding (6px each side) and height (16px text, 2px above and below). */
 const PADDING = 12;
-export const LABEL_HEIGHT = 20;
+const LABEL_HEIGHT = 20;
 
 export interface LineLabelProps {
   /** The arrow's id. */

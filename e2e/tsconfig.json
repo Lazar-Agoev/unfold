@@ -5,5 +5,5 @@
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "journeys/**/*.ts", "budgets/**/*.ts", "playwright.config.ts"]
+  "include": ["src/**/*.ts", "journeys/**/*.ts", "playwright.config.ts"]
 }

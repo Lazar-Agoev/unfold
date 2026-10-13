@@ -1,58 +1,7 @@
 # Oracles
 
-Developer-only tools that export reference outputs from the frozen proof of concept (product name
-"Codegraph", at `/Users/lazaragoev/Desktop/repos/graph-compiler`) and run independent oracles over
-Unfold's output. Nothing here ships, and Unfold's tests never run these tools: they read the outputs
-committed under `testdata/reference/`.
-
-The PoC is only read. Its TypeScript runs in memory through the PoC's own installed `tsx`
-(`reader/node_modules/tsx`, with its transform cache disabled); nothing is built, installed, or
-written inside the PoC checkout.
-
-## Reader reference
-
-`export-reader.mjs` loads the PoC's frozen mixed playground generation (`.codecodegraph/` at the PoC
-root, the same generation as `testdata/reference/poc/mixed-playground`) through the PoC's own
-`reader/core/repository.ts` and writes, for each playground, what the PoC reader derives:
-
-```sh
-node tools/oracles/export-reader.mjs --poc /Users/lazaragoev/Desktop/repos/graph-compiler
-# or: UNFOLD_POC=… pnpm --filter @unfold/oracles export-reader
-```
-
-| File | Contents (PoC function) |
-| --- | --- |
-| `catalog.json` | Every definition: `key`, `kind`, `name` (the label), `qualifiedName` (`Repository.definitions()`) |
-| `applications.json` | `applications` (startup key, the sidebar's name, launch and member entrance keys), `otherEntrances`, `unindexedLaunches` (`Repository.overview()`) |
-| `relations.json` | Per definition key: `callers` (owner, occurrence, kind, position), `outgoing` (owned edges in source order), `reachedFrom` (`Repository.relations()`) |
-| `closures.json` | Per entrance key: the sorted closure (`Repository.closure()`), seeded with every resolved target, or for a process its startup plus, for a console script, the callable's module root |
-| `mermaid.json` | Per entrance key: the PoC's Mermaid for that entrance and its handlers (`exportEntrance()`, what `codegraph export --entrance <key> --mermaid` prints), with the corpus's paths mapped in the text |
-| `flows.json` | Per definition key: the PoC's Flow model (`buildFlow()`), compacted: exact source (`code`) dropped, chips reduced to occurrence, kind, target, and name, nested definitions to key, lines, and exits |
-| `board-order-placement.mmd` | `ts-orders` only: the Mermaid of the PoC's `codegraph/boards/order-placement.board.json` (`exportMermaid()`, `codegraph export --board order-placement --mermaid`), the board `testdata/boards/order-placement.json` was converted from |
-
-Outputs go to `testdata/reference/poc-reader/<playground>/` (`--out` overrides the root):
-
-| Playground | Corpus whose path mapping applies |
-| --- | --- |
-| `ts-orders` | `playground-ts-native` (`ts-playground/` → ``) |
-| `py-orders` | `python-playground` (`py-playground/` → ``) |
-
-- **Paths and block keys** are mapped by the corpus's `paths` in `testdata/reference/corpora.toml`
-  (read from that file), exactly as `cargo xtask reference import` maps them.
-- **Entrance keys** are the keys in `testdata/reference/canonical/<corpus>.jsonl`. Each PoC entrance
-  is matched to the canonical entrance with the same detector, kind, method, trigger, and first
-  target text (a manual locator mapped like a path), in order among equal ones; the script fails if
-  any entrance does not match exactly one.
-- **Order** is deterministic: keys are sorted by UTF-16 code units, outgoing edges keep source
-  order, and the JSON is indented with two spaces. Running the script twice gives identical bytes.
-- The script fails if any playground source in the PoC checkout no longer matches the generation's
-  hash, because the PoC's closures skip unverified files.
-
-`crates/unfold-reader/tests/reference.rs` loads the canonical graphs into a temporary store and
-compares every view with these files; `flow_reference.rs` compares the Flow of every definition,
-`mermaid_reference.rs` every entrance diagram (structurally, modulo the labels reader semantics
-changed), and `sample_board.rs` the sample board's diagram. `testdata/reference/divergences.toml` records the deliberate differences in what
-each comparison allows to differ.
+Developer-only tools that run independent oracles and checks over Unfold's output. Nothing here
+ships, and Unfold's tests never run these tools.
 
 ## Checks
 
@@ -65,8 +14,8 @@ node tools/oracles/check-board-schema.mjs   # or: pnpm --filter @unfold/oracles 
 ```
 
 - **`check-mermaid.mjs`** parses every Mermaid snapshot Unfold's tests write
-  (`testdata/boards/*.mmd`, and every diagram in `testdata/mermaid/*.json`) with the real Mermaid
-  parser (`mermaid.parse` over jsdom) and fails if any does not parse. Pass files to check others.
+  (`testdata/boards/*.mmd`) with the real Mermaid parser (`mermaid.parse` over jsdom) and fails if
+  any does not parse. Pass files to check others.
 - **`check-board-schema.mjs`** validates `testdata/boards/*.json` (or the files passed) against
   `crates/unfold-reader/schema/unfold-board.schema.json` with Ajv (draft 2020-12, strict mode), and
   checks that `docs/schemas/unfold-board.schema.json` is an identical copy.
@@ -153,7 +102,7 @@ calls on `ts-orders`.
 - Rows are sorted by file path bytes, then range; references follow their call by position.
   Running the script twice gives identical bytes.
 
-The PoC's 602-file corpus takes about 15 seconds and 1.9 GB peak memory on an M-series Mac
+The proof of concept's 602-file corpus takes about 15 seconds and 1.9 GB peak memory on an M-series Mac
 (`refresh` passes `--max-old-space-size=8192`) and writes about 23 MB, which is why its oracle outputs live in `target/oracles/` instead of the
 repository ([testdata/reference/README.md](../../testdata/reference/README.md#oracles)).
 
