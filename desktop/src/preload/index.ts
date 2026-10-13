@@ -6,20 +6,16 @@
  * arrives are queued; requests in flight when a connection drops are rejected with `disconnected`.
  * Window commands go to the main process over IPC.
  *
- * Two pieces of window behavior live here because they need the DOM and the person's gesture:
- * - Edit > Undo / Redo arrive as `menu_command`s. With focus in a text field, the field's native
- *   undo runs instead, so the UI's board undo never swallows typing undo.
- * - Dropping a folder on the window adds it to the workspace as a project. Only paths of the latest
- *   real drop are accepted (from `webUtils.getPathForFile`); the engine checks the path is a folder.
+ * Edit > Undo / Redo arrive as `menu_command`s. They are handled here because they need the DOM:
+ * with focus in a text field, the field's native undo runs instead, so the board's undo never
+ * swallows typing undo.
  */
 
-import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
 import type { EngineLost, HostToRenderer, RendererToHost, WindowReply } from "../shared/transport";
-import { IPC, PRELOAD_COMMANDS, transportError } from "../shared/transport";
+import { IPC, transportError } from "../shared/transport";
 import type {
-  AddedProject,
   ConnectionState,
-  DroppedFile,
   ShellEvent,
   StreamHandle,
   TransportError,
@@ -152,83 +148,14 @@ function textFieldFocused(): boolean {
 const TEXT_INPUT_TYPES = new Set(["text", "search", "url", "tel", "email", "password", "number"]);
 
 ipcRenderer.on(IPC.shellEvent, (_event, shellEvent: ShellEvent) => {
-  if (shellEvent.type === "menu_command" && (shellEvent.command === "undo" || shellEvent.command === "redo")) {
-    if (textFieldFocused()) {
-      // The field's own undo stack. execCommand is deprecated but remains the only way to drive it.
-      // eslint-disable-next-line @typescript-eslint/no-deprecated
-      document.execCommand(shellEvent.command);
-      return;
-    }
+  if (shellEvent.type === "menu_command" && textFieldFocused()) {
+    // The field's own undo stack. execCommand is deprecated but remains the only way to drive it.
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
+    document.execCommand(shellEvent.command);
+    return;
   }
   emit(shellEvent);
 });
-
-/** Paths of the items in the latest drop on this window: the only ones `addDroppedFolder` accepts. */
-let droppedPaths = new Set<string>();
-
-function pathsOf(event: DragEvent): Set<string> {
-  const paths = new Set<string>();
-  for (const file of event.dataTransfer?.files ?? []) {
-    const path = webUtils.getPathForFile(file);
-    if (path) {
-      paths.add(path);
-    }
-  }
-  return paths;
-}
-
-function hasFiles(event: DragEvent): boolean {
-  return event.dataTransfer?.types.includes("Files") ?? false;
-}
-
-// Capture: record what was dropped before any UI handler asks to add it.
-window.addEventListener(
-  "drop",
-  (event) => {
-    droppedPaths = pathsOf(event);
-  },
-  true,
-);
-// Let files be dropped anywhere (the UI may still handle a drop itself).
-window.addEventListener("dragover", (event) => {
-  if (hasFiles(event)) {
-    event.preventDefault();
-  }
-});
-// Bubble: a drop the UI didn't handle adds the dropped folder, and the UI selects it (or says why it couldn't).
-window.addEventListener("drop", (event) => {
-  if (event.defaultPrevented || !hasFiles(event)) {
-    return;
-  }
-  event.preventDefault();
-  const [path, ...more] = droppedPaths;
-  if (path !== undefined && more.length === 0) {
-    sendWindowCommand(PRELOAD_COMMANDS.addDroppedFolder, { path }).then(
-      (added) => {
-        emit({ type: "project_added", project: (added as AddedProject).project } satisfies ShellEvent);
-      },
-      (error: unknown) => {
-        // Not a folder (a file was dropped), or the workspace is full: the UI says why.
-        const { message } = error as TransportError;
-        emit({ type: "project_add_failed", path, message } satisfies ShellEvent);
-      },
-    );
-  }
-});
-
-async function addDroppedFolder(file: DroppedFile): Promise<AddedProject> {
-  let path = "";
-  try {
-    path = webUtils.getPathForFile(file as File);
-  } catch {
-    // Not a File from a drop.
-  }
-  if (!path || !droppedPaths.has(path)) {
-    // eslint-disable-next-line @typescript-eslint/only-throw-error -- plain data survives the bridge
-    throw transportError("invalid_command", "Only a folder dropped on this window can be added.");
-  }
-  return (await sendWindowCommand(PRELOAD_COMMANDS.addDroppedFolder, { path })) as AddedProject;
-}
 
 /** Starts one request. Its message is posted now if a port is present, or queued until one is. */
 function request(
@@ -269,26 +196,16 @@ function cancel(id: number): void {
   }
 }
 
-async function sendWindowCommand(command: string, args: unknown): Promise<unknown> {
-  const reply = (await ipcRenderer.invoke(IPC.windowCommand, command, args)) as WindowReply;
-  if (!reply.ok) {
-    // eslint-disable-next-line @typescript-eslint/only-throw-error -- plain data survives the bridge
-    throw reply.error;
-  }
-  return reply.value;
-}
-
-const preloadOnly = new Set<string>(Object.values(PRELOAD_COMMANDS));
-
 async function windowCommand<C extends WindowCommand>(
   command: C,
   ...args: WindowCommandArgs<C>
 ): Promise<WindowCommands[C]["result"]> {
-  if (preloadOnly.has(command)) {
+  const reply = (await ipcRenderer.invoke(IPC.windowCommand, command, args[0] ?? {})) as WindowReply;
+  if (!reply.ok) {
     // eslint-disable-next-line @typescript-eslint/only-throw-error -- plain data survives the bridge
-    throw transportError("invalid_command", `Unknown window command: ${command}.`);
+    throw reply.error;
   }
-  return (await sendWindowCommand(command, args[0] ?? {})) as WindowCommands[C]["result"];
+  return reply.value as WindowCommands[C]["result"];
 }
 
 const api: UnfoldApi = {
@@ -321,7 +238,6 @@ const api: UnfoldApi = {
     };
   },
   window: windowCommand,
-  addDroppedFolder,
 };
 
 contextBridge.exposeInMainWorld("unfold", api);

@@ -3,8 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { BoardDocument, BoardState, SaveBoardArgs } from "../../../ipc/generated";
 import { installFakeEngine, type FakeEngine } from "../../../test/engine";
 import { boardDocument, boardState, page } from "../../../test/workspace";
-import { openBoardTab, useTabs } from "../../tabStore";
-import { boardKey } from "../keys";
+import { getShownBoard, showHome, useShownBoardStore } from "../../shownBoard";
 import * as store from "../store";
 import { createBoardForAgent, editBoardForAgent, showForAgent } from "./boards";
 
@@ -26,7 +25,7 @@ function savedState(args: SaveBoardArgs): BoardState {
 
 beforeEach(() => {
   store.resetBoards();
-  useTabs.setState({ boards: [], active: "home" });
+  useShownBoardStore.setState({ board: null });
   saved.length = 0;
   engine = installFakeEngine({ handlers: { save_board: savedState } });
 });
@@ -38,11 +37,10 @@ afterEach(() => {
 
 function openWith(document: BoardDocument): void {
   store.adoptBoardState(boardState(P, ID, document));
-  openBoardTab(REF);
 }
 
 describe("creating a board for an agent", () => {
-  it("creates a draft with its pages, saved before it becomes a background tab", async () => {
+  it("creates a draft with its pages, saved before its session opens, without showing it", async () => {
     engine.uninstall();
     engine = installFakeEngine({
       handlers: {
@@ -67,18 +65,19 @@ describe("creating a board for an agent", () => {
         { id: "page-2", title: "Async path" },
       ],
     });
-    expect(useTabs.getState()).toEqual({ boards: [REF], active: "home" });
+    expect(store.getOpenBoard(REF)).toBeDefined();
+    expect(getShownBoard()).toBeNull();
     expect(store.canUndo(REF)).toBe(false);
   });
 
-  it("copies a board this window holds, after saving it, into a background tab", async () => {
+  it("copies a board this window holds, after saving it, opening the copy without showing it", async () => {
     const copy = { project: P, id: ".unfold/local/drafts/b-copy.json" };
     engine.uninstall();
     engine = installFakeEngine({
       handlers: {
         save_board: savedState,
-        duplicate_board: () => ({ project: P, id: copy.id, place: "draft", name: "b-copy", title: "Order placement copy", folder: null, pages: 1, cards: 1, projects: [], changes: 0, updatedAtMs: 0, heldBy: null, label: null, error: null }),
-        open_board: (args) => ({ status: "opened", board: boardState(P, args.id, boardDocument([page("page-1", [CARD])], { title: "Order placement copy" })) }),
+        duplicate_board: () => ({ project: P, id: copy.id, place: "draft", name: "b-copy", title: "Order placement copy", folder: null, pages: 1, cards: 1, projects: [], changes: 0, updatedAtMs: 0, label: null, error: null }),
+        open_board: (args) => boardState(P, args.id, boardDocument([page("page-1", [CARD])], { title: "Order placement copy" })),
       },
     });
     openWith(boardDocument([page("page-1", [CARD])]));
@@ -88,7 +87,8 @@ describe("creating a board for an agent", () => {
     const result = await createBoardForAgent({ requestId: 2, project: P, copyOf: ID });
     expect(engine.calls.map((call) => call.command)).toEqual(["save_board", "duplicate_board", "open_board"]);
     expect(result).toMatchObject({ ok: true, board: copy, info: { title: "Order placement copy" }, pages: [{ id: "page-1", title: "Page page-1" }] });
-    expect(useTabs.getState().active).toBe(boardKey(REF));
+    expect(store.getOpenBoard(copy)).toBeDefined();
+    expect(getShownBoard()).toBeNull();
     expect(await createBoardForAgent({ requestId: 3, project: P, copyOf: "other.json" })).toMatchObject({ ok: false, code: "board_not_open" });
   });
 });
@@ -173,12 +173,12 @@ describe("editing a board's pages for an agent", () => {
 });
 
 describe("showing a board for an agent", () => {
-  it("switches to the board's tab and page, selects the item, and centers it", () => {
+  it("shows the board and page, selects the item, and centers it", () => {
     const group = { id: "g", card: "a", title: "Check", members: [], collapsed: false };
     openWith(boardDocument([page("page-1"), page("page-2", [CARD], { groups: [group] })]));
-    useTabs.setState({ active: "home" });
+    showHome();
     expect(showForAgent({ requestId: 1, board: REF, page: "page-2", item: "a" })).toEqual({ ok: true, page: "page-2" });
-    expect(useTabs.getState().active).toBe(boardKey(REF));
+    expect(getShownBoard()).toEqual(REF);
     const target = { board: REF, page: "page-2" };
     expect(store.getOpenBoard(REF)?.activePage).toBe("page-2");
     expect(store.getPageView(target).selection).toEqual({ kind: "card", cardId: "a", key: null });

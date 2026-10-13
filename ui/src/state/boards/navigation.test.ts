@@ -20,7 +20,7 @@ const { arrangeBoard } = await import("../../canvas/arrangeBoard");
 const { FOLLOW_GAP, HEADER_PORT, STACK_GAP, fallbackSize } = await import("../../canvas/layout");
 const { estimateText } = await import("../../canvas/measure");
 const { entranceCardWidth, entranceHandlerRows } = await import("../../canvas/sizing");
-const tabs = await import("../tabStore");
+const { getShownBoard, useShownBoardStore } = await import("../shownBoard");
 
 const P = "p-orders0000";
 const Q = "p-payments00";
@@ -57,7 +57,7 @@ beforeEach(() => {
   queryClient.clear();
   // Two projects share the name "orders": the first in workspace order is the one refs name (shared project names).
   queryClient.setQueryData(engineKey("workspace", {}), workspaceView([projectRow(P, "orders"), projectRow(Q, "payments"), projectRow(SAME, "orders")]));
-  tabs.useTabs.setState({ boards: [REF], active: "home" });
+  useShownBoardStore.setState({ board: null });
 });
 
 describe("following a call", () => {
@@ -142,13 +142,13 @@ describe("following a call", () => {
 });
 
 describe("adding cards from any project", () => {
-  it("adds a definition once, shows its page and tab, and focuses it the second time", () => {
+  it("adds a definition once, shows its board and page, and focuses it the second time", () => {
     open([], boardDocument([page("page-1"), page("page-2")]));
     const second = { board: REF, page: "page-2" };
     const id = addBlock(second, P, "src/a.ts#function:a");
     expect(id).toBe("a");
     expect(store.getOpenBoard(REF)?.activePage).toBe("page-2");
-    expect(tabs.getActiveBoard()).toEqual(REF);
+    expect(getShownBoard()).toEqual(REF);
     expect(addBlock(second, P, "src/a.ts#function:a")).toBe("a");
     expect(store.getOpenBoard(REF)?.document.pages[1]?.cards).toHaveLength(1);
     expect(store.getPageView(second).focus?.cardIds).toEqual(["a"]);
@@ -232,7 +232,7 @@ describe("adding cards from any project", () => {
     await expect(traceEntrance(Q, "entrance:x")).resolves.toEqual(draft);
     expect(engine.call).toHaveBeenCalledWith("new_board", { project: Q, title: "POST /orders" });
     expect(store.getOpenBoard(draft)?.document.pages[0]?.cards).toHaveLength(3);
-    expect(tabs.getActiveBoard()).toEqual(draft);
+    expect(getShownBoard()).toEqual(draft);
   });
 });
 

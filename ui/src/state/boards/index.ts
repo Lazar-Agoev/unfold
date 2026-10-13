@@ -1,8 +1,7 @@
 /**
- * The window's open boards: sessions keyed by `BoardRef`, pages, edits as
- * undo steps across pages, autosave of `BoardEdit`, view state per page, cards from any connected
- * project, frames, resource cards, connections, notes, health and repairs, file operations, and Move to
- * New Window. Screens import from here.
+ * The open boards: sessions keyed by `BoardRef`, pages, edits as undo steps across pages, autosave of
+ * `BoardEdit`, view state per page, cards from any connected project, frames, resource cards,
+ * connections, notes, health and repairs, and file operations. Screens import from here.
  */
 
 export {
@@ -97,7 +96,7 @@ export {
 export { itemsFor, kindWord, repairEffect, repairLabel, repairSpec } from "./health";
 export { boardKey, cardRefKey, pageKey, sameBoard } from "./keys";
 export { lineOffsetIn, followCall, type FollowRequest } from "./navigation";
-export { closeBoard, closeBoardsOfProject, newBoard, openBoard, reclaimBoards, type OpenOutcome } from "./open";
+export { closeBoard, closeBoardsOfProject, newBoard, openBoard, reopenBoards } from "./open";
 export { addPage, deletePage, duplicatePage, movePage, renamePage } from "./pages";
 export {
   canUndo,
@@ -107,7 +106,6 @@ export {
   editPage,
   flushAllBoards,
   flushBoard,
-  flushBoardView,
   getOpenBoard,
   getPageView,
   isDirty,
@@ -135,11 +133,9 @@ export {
   usePageView,
   type EditOptions,
 } from "./store";
-export { installTransferReceiver, moveBoardToNewWindow, setTransfersReady } from "./transfer";
 export type {
   BoardId,
   BoardRef,
-  BoardSession,
   Camera,
   CardSize,
   FocusMove,
@@ -153,5 +149,4 @@ export type {
   SelectedLine,
   Selection,
   TrailItem,
-  WindowId,
 } from "./types";

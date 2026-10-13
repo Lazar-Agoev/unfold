@@ -1,15 +1,13 @@
 /**
  * Health and activity: a mode of Home under the project header with a Health |
  * Activity switch showing one list at a time. Health: every problem with its action, the boards
- * that need review, and a quiet note. Activity: the index log as a table, newest first, with Copy
- * diagnostics.
+ * that need review, and a quiet note. Activity: the index log as a table, newest first.
  */
 
 import { useMemo, type CSSProperties } from "react";
-import { SegmentedControl, TextButton } from "../../components";
+import { SegmentedControl } from "../../components";
 import { Icon } from "../../icons";
 import { useEngineQuery, type ProjectId, type ProjectSummary } from "../../ipc";
-import { copyDiagnostics } from "../../settings";
 import { setHomeView } from "../../state/layout";
 import { reviewBoard } from "../actions";
 import { useWindowed } from "../windowed";
@@ -106,9 +104,6 @@ function ActivityLog({ project }: { readonly project: ProjectId }) {
     <div className="home-activity">
       <div className="home-activity-header">
         <p className="home-activity-note">Every update to the graph, newest first</p>
-        <TextButton weight={400} onClick={() => void copyDiagnostics(project)}>
-          Copy diagnostics
-        </TextButton>
       </div>
       {log.error ? <p className="home-health-quiet">{log.error.message}</p> : null}
       {log.data && rows.length === 0 ? <p className="home-health-quiet">Nothing compiled yet. Each compile and background update is listed here.</p> : null}

@@ -1,5 +1,5 @@
 /**
- * Hover layers in the popover style. A Tooltip names a control (with its shortcut) or explains
+ * Hover layers in the popover style. A Tooltip names a control or explains
  * a mark (the problems dot's count, the state line's notes); a HoverCard shows richer, delayed detail,
  * such as a call link's signature and location. Both open on hover after a delay and on keyboard
  * focus, close on Escape, and wrap their trigger without adding a box to the layout.
@@ -20,7 +20,6 @@ import {
 import { cx } from "./internal/dom";
 import { useFloatingPosition, type Align, type Side } from "./internal/floating";
 import { Portal } from "./internal/layers";
-import { ShortcutText } from "./internal/shortcut";
 import "./Tooltip.css";
 
 interface HoverLayerOptions {
@@ -149,7 +148,6 @@ function useDescribedBy(wrapper: RefObject<HTMLSpanElement | null>, id: string, 
 export interface TooltipProps {
   /** Short text. With `describe`, it is also the trigger's accessible description. */
   readonly content: ReactNode;
-  readonly shortcut?: string;
   readonly side?: Side;
   readonly align?: Align;
   /**
@@ -163,7 +161,7 @@ export interface TooltipProps {
 }
 
 /** Names a control after a short delay. Nearby tooltips open at once while one was just showing. */
-export function Tooltip({ content, shortcut, side = "bottom", align, describe = true, disabled = false, children }: TooltipProps) {
+export function Tooltip({ content, side = "bottom", align, describe = true, disabled = false, children }: TooltipProps) {
   const id = useId();
   const { anchor, wrapper, triggerProps } = useHoverLayer({
     openDelay: 500,
@@ -192,7 +190,6 @@ export function Tooltip({ content, shortcut, side = "bottom", align, describe = 
         <Portal>
           <div ref={layer} className="tooltip" role="tooltip" aria-hidden="true">
             <span>{content}</span>
-            {shortcut ? <ShortcutText shortcut={shortcut} className="tooltip-shortcut" /> : null}
           </div>
         </Portal>
       ) : null}

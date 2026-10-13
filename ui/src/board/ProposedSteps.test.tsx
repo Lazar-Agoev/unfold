@@ -59,7 +59,6 @@ beforeEach(() => {
       line_labels: () => [],
       list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
       save_board: () => boardState(P, REF.id, store.getOpenBoard(REF)?.document, { health: store.getOpenBoard(REF)?.health ?? HEALTHY }),
-      save_board_view: () => null,
       repair_board: (args: RepairBoardArgs) => boardState(args.project, args.id, store.getOpenBoard(REF)?.document, { revision: "r2" }),
     },
   });

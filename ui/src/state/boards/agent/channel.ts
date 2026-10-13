@@ -5,7 +5,7 @@
  * `agent_open_board_result`, `agent_create_board_result`, `agent_edit_board_result`,
  * `agent_show_result`, `agent_repair_result`). It is installed before the window renders, so a request
  * sent while the window loads isn't missed, and requests wait until the window's own state is restored
- * (restoring replaces the tabs). Working marks of boards the window no longer holds are dropped.
+ * (restoring shows the board it showed last). Working marks of boards the window no longer holds are dropped.
  */
 
 import { onShellEvent } from "../../../ipc/unfold";

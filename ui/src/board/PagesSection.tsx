@@ -10,7 +10,6 @@ import { copyLink } from "../agent";
 import { ConfirmDialog, IconButton, ListRow, MenuButton, SectionLabel, useContextMenu, type MenuEntry } from "../components";
 import { Icon } from "../icons";
 import type { Page } from "../ipc/generated";
-import { ActionIds, useShortcut } from "../keyboard";
 import { addPage, deletePage, duplicatePage, movePage, renamePage, setActivePage, useOpenBoard, type BoardRef, type PageTarget } from "../state/boards";
 import { InlineRename } from "./InlineRename";
 
@@ -30,7 +29,6 @@ export function PagesSection({ board }: { readonly board: BoardRef }) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Page | null>(null);
   const contextMenu = useContextMenu("Page actions", PAGE_MENU_WIDTH);
-  const newPageKey = useShortcut(ActionIds.newPage);
   const count = pages?.length ?? 0;
 
   const entries = (page: Page, index: number): MenuEntry[] => {
@@ -55,7 +53,6 @@ export function PagesSection({ board }: { readonly board: BoardRef }) {
             icon="plus"
             label="New page"
             size={24}
-            {...(newPageKey !== null ? { shortcut: newPageKey } : {})}
             onClick={() => {
               addPage(board);
             }}

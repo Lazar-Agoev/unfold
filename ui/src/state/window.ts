@@ -1,7 +1,6 @@
 /**
- * This window: its id, stable key, and platform (from `window_info`), and the project its Home shows
- * (per window, app-data state; saved in `windows.json`). Each window is its own renderer, so a module-level
- * store is per window.
+ * This window: what `window_info` said about it at boot (its id, and the board it showed last), and the
+ * project its Home shows (the engine keeps the selection, `select_project`).
  */
 
 import { create } from "zustand";
@@ -11,7 +10,7 @@ import type { WindowInfo } from "../ipc/unfold";
 export interface WindowStore {
   /** Null outside the app, where there is no main process to ask. */
   readonly info: WindowInfo | null;
-  /** The project Home shows; never changed by activating a board tab. */
+  /** The project Home shows; never changed by showing a board. */
   readonly selectedProject: ProjectId | null;
 }
 

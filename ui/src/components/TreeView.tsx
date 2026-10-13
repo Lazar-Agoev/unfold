@@ -381,7 +381,7 @@ export function TreeView<T>({
         break;
       }
       default:
-        // Letters, digits, and name punctuation jump by name; other keys (`/`, `]`) stay shortcuts.
+        // Letters, digits, and name punctuation jump by name.
         if (/^[\p{L}\p{N}_.$-]$/u.test(event.key)) {
           typeahead(event.key);
           break;

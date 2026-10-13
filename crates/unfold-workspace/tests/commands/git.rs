@@ -123,14 +123,14 @@ fn switching_points_the_row_at_another_worktree() {
         ),
         "not_a_worktree"
     );
-    // A board held by a window keeps the row where it is.
+    // An open board keeps the row where it is.
     let id: ProjectId = serde_json::from_value(json!(harness.project)).expect("id");
     let projects = harness.host.projects().expect("initialized");
-    let claims = projects.handle(&id).expect("project");
-    claims
-        .claims()
-        .claim(".unfold/local/drafts/board-1.json", 2)
-        .expect("claim");
+    projects
+        .handle(&id)
+        .expect("project")
+        .open_boards()
+        .open(".unfold/local/drafts/board-1.json", 2);
     let target = json!({ "project": harness.project, "path": path(&harness, "wt/app") });
     assert_eq!(harness.code(1, "switch_worktree", target.clone()), "boards_open");
     harness.host.detach_window(2).expect("detach");

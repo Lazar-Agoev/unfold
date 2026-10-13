@@ -8,10 +8,8 @@ use unfold_reader::board::{
     Anchor, Board, Health, PageOutline, ProjectKey, ProjectName, Repair, Target, View,
 };
 
-use crate::events::WindowId;
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::ProjectId;
-use crate::state::BoardView;
 
 /// An `unfold-board` document as the window edits it: the board's working version, without a
 /// changes copy's `publishes` and `baseRevision`.
@@ -96,8 +94,6 @@ pub struct BoardState {
     pub outlines: Vec<PageOutline>,
     /// The board list's label when something is wrong ("2 outdated").
     pub label: Option<String>,
-    /// The view state remembered in `state.json`.
-    pub view: Option<BoardView>,
 }
 
 /// A board as its working file holds it, read without opening it (`read_board`).
@@ -118,8 +114,6 @@ pub struct ReadBoardResult {
     pub revision: String,
     /// For a published board, its publish state, as `open_board` reports it; `None` for a draft.
     pub published: Option<PublishedState>,
-    /// The window that has it open, if any.
-    pub held_by: Option<WindowId>,
 }
 
 /// A board's health and outlines.
@@ -132,22 +126,6 @@ pub struct BoardHealthView {
     pub outlines: Vec<PageOutline>,
     /// The board list's label when something is wrong.
     pub label: Option<String>,
-}
-
-/// What `open_board` did.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
-#[serde(tag = "status", rename_all = "snake_case", rename_all_fields = "camelCase")]
-pub enum OpenBoardResult {
-    /// The board is now open in the calling window.
-    Opened {
-        /// The board.
-        board: Box<BoardState>,
-    },
-    /// Another window has it open: ask the main process to focus that window.
-    Held {
-        /// The window holding it.
-        held_by: WindowId,
-    },
 }
 
 /// One board in the sidebar tree, Home's Boards, or Drafts.
@@ -177,8 +155,6 @@ pub struct BoardSummary {
     /// When the working file (the changes copy, when there is one) was last written, in
     /// milliseconds since the Unix epoch.
     pub updated_at_ms: i64,
-    /// The window that has it open, if any.
-    pub held_by: Option<WindowId>,
     /// A label when something is wrong ("1 missing · 2 outdated"); `None` when healthy or while
     /// the project rests.
     pub label: Option<String>,
@@ -373,18 +349,6 @@ pub struct NewBoardArgs {
     pub page_title: Option<String>,
 }
 
-/// The arguments of `move_board`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct MoveBoardArgs {
-    /// The board's project.
-    pub project: ProjectId,
-    /// The board's id.
-    pub id: String,
-    /// The window to move it to.
-    pub to_window: WindowId,
-}
-
 /// The arguments of `save_board`.
 #[derive(Debug, Clone, PartialEq, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
@@ -399,18 +363,6 @@ pub struct SaveBoardArgs {
     #[serde(default)]
     #[ts(optional)]
     pub force: Option<bool>,
-}
-
-/// The arguments of `save_board_view`.
-#[derive(Debug, Clone, PartialEq, Deserialize, TS)]
-#[serde(deny_unknown_fields)]
-pub struct SaveBoardViewArgs {
-    /// The board's project.
-    pub project: ProjectId,
-    /// The board's id.
-    pub id: String,
-    /// The view state.
-    pub view: BoardView,
 }
 
 /// How `publish_board` settles a conflict.

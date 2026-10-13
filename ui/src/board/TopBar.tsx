@@ -18,7 +18,7 @@ import { usePublishState } from "./publishState";
 /** The share menu's width. */
 const SHARE_MENU_WIDTH = 196;
 
-/** The page's two lenses, in order (⌘1, ⌘2). */
+/** The page's two lenses, in order. */
 const LENS_OPTIONS = [
   { value: "diagram", label: "Diagram" },
   { value: "code", label: "Code" },

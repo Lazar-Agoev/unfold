@@ -373,7 +373,6 @@ fn home_lists_every_board_with_thumbnails_and_health() {
         (json!(1), json!(6))
     );
     assert_eq!(sample["label"], Value::Null, "the sample is healthy");
-    assert_eq!(sample["heldBy"], Value::Null);
     assert_eq!(boards[1]["projects"], json!(["storefront-web"]));
     assert_eq!(boards[1]["label"], "1 not connected");
 

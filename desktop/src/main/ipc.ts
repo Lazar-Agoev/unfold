@@ -1,17 +1,19 @@
 /**
  * Window and dialog commands, the only IPC the main process answers (docs/ipc.md#how-a-command-travels). Engine
- * commands never come here: they travel over each window's port to the engine host. A few window
+ * commands never come here: they travel over the window's port to the engine host. A few window
  * commands end in an engine request the main process sends itself, with `"trusted": true`
  * (`add_project`, `export_mermaid`), because they involve a path only the main process may choose.
- * The agent channel's commands (`report_view` and the answers to agent requests) go to the agent bridge;
- * `agent_server_status` reads the MCP server's state for Preferences › Agents. The render window may
- * send only `render_ready`, its answers; `export_png` has it draw a page for the person.
+ * `window_info` and `report_shown_board` hand the window's shown board to and from the workspace,
+ * which saves it with the window's bounds. The agent channel's commands (`report_view` and the
+ * answers to agent requests) go to the agent bridge; `agent_server_status` reads the MCP server's
+ * state for Settings. The render window may send only `render_ready`, its answers; `export_png` has
+ * it draw a page for the person.
  */
 
 import { writeFile } from "node:fs/promises";
 import { clipboard, ipcMain } from "electron";
 import type { ExportedFile, TransportError, WindowCommand, WindowCommands, WindowInfo } from "../shared/unfold-api";
-import { IPC, PRELOAD_COMMANDS, transportError, type WindowReply } from "../shared/transport";
+import { IPC, transportError, type WindowReply } from "../shared/transport";
 import type { AgentBridge } from "./agents/bridge";
 import type { PageRenderer } from "./agents/render";
 import { parseViewReport } from "./agents/views";
@@ -21,7 +23,8 @@ import type { EngineHost } from "./engine-host";
 import { EngineRequestError } from "./engine-host";
 import { exportFileName } from "./export-name";
 import { trustedSender } from "./security";
-import type { WindowEntry, WindowRegistry } from "./windows";
+import { shownBoard } from "./window-placement";
+import type { AppWindow, WindowEntry } from "./windows";
 import type { McpService } from "./mcp/service";
 import type { Workspace } from "./workspace";
 
@@ -46,8 +49,8 @@ function invalid(message: string): CommandError {
 }
 
 export interface WindowCommandServices {
-  readonly registry: WindowRegistry;
-  readonly workspace: Pick<Workspace, "add">;
+  readonly window: Pick<AppWindow, "forWebContents">;
+  readonly workspace: Pick<Workspace, "add" | "shownBoard" | "showBoard">;
   readonly engine: Pick<EngineHost, "request">;
   readonly ui: UiSource;
   readonly agents: Pick<AgentBridge, "views" | "settle">;
@@ -55,29 +58,8 @@ export interface WindowCommandServices {
   readonly renderer: Pick<PageRenderer, "owns" | "settle" | "screenshot">;
 }
 
-export function registerWindowCommands({ registry, workspace, engine, ui, agents, mcp, renderer }: WindowCommandServices): void {
+export function registerWindowCommands({ window, workspace, engine, ui, agents, mcp, renderer }: WindowCommandServices): void {
   const handlers: { [C in WindowCommand]: Handler<C> } = {
-    new_window: () => ({ windowId: registry.create().id }),
-    focus_window: (_entry, args) => {
-      const { windowId, board } = args;
-      const target = typeof windowId === "number" ? registry.get(windowId) : undefined;
-      if (!target) {
-        throw invalid("focus_window: no such window.");
-      }
-      const focusBoard = board === undefined ? null : boardRef(board);
-      if (focusBoard === undefined) {
-        throw invalid("focus_window: board must be {project, board} (strings).");
-      }
-      registry.focus(target);
-      if (focusBoard) {
-        registry.deliver(target, { type: "focus_board", ...focusBoard });
-      }
-      return null;
-    },
-    close_window: (entry) => {
-      entry.window.close();
-      return null;
-    },
     add_project: async (entry) => {
       const path = await chooseFolder(entry.window);
       return path === null ? null : await addProject(entry, path);
@@ -119,16 +101,6 @@ export function registerWindowCommands({ registry, workspace, engine, ui, agents
       await writeFile(path, image.png);
       return { path, bytes: image.png.length };
     },
-    move_tab_to_new_window: () => ({ windowId: registry.create().id }),
-    transfer_board_state: (entry, args) => {
-      const toWindow = args["toWindow"];
-      const target = typeof toWindow === "number" ? registry.get(toWindow) : undefined;
-      if (!target || target === entry) {
-        throw invalid("transfer_board_state: no such other window.");
-      }
-      registry.deliver(target, { type: "board_state_transferred", fromWindow: entry.id, payload: args["payload"] });
-      return null;
-    },
     copy_to_clipboard: async (_entry, args) => {
       const text = args["text"];
       if (typeof text !== "string" || text.length > MAX_CLIPBOARD_CHARS) {
@@ -137,11 +109,16 @@ export function registerWindowCommands({ registry, workspace, engine, ui, agents
       await clipboard.writeText(text);
       return null;
     },
-    window_info: (entry): WindowInfo => ({
-      windowId: entry.id,
-      key: entry.key,
-      platform: process.platform === "darwin" || process.platform === "win32" ? process.platform : "linux",
-    }),
+    window_info: (entry): WindowInfo => ({ windowId: entry.id, board: workspace.shownBoard() }),
+    report_shown_board: (_entry, args) => {
+      const { board } = args;
+      const shown = shownBoard(board);
+      if (board !== null && shown === null) {
+        throw invalid("report_shown_board: board must be {project, board} (strings), or null for Home.");
+      }
+      workspace.showBoard(shown);
+      return null;
+    },
     report_view: (entry, args) => {
       const report = parseViewReport(args);
       if (!report) {
@@ -184,17 +161,6 @@ export function registerWindowCommands({ registry, workspace, engine, ui, agents
     },
   };
 
-  /** Commands the preload sends on the person's behalf, outside `window.unfold.window`. */
-  const preloadHandlers: Readonly<Record<string, Handler<WindowCommand>>> = {
-    [PRELOAD_COMMANDS.addDroppedFolder]: async (entry, args) => {
-      const { path } = args;
-      if (typeof path !== "string" || path.length === 0) {
-        throw invalid("add_dropped_folder: path must be a string.");
-      }
-      return addProject(entry, path);
-    },
-  };
-
   async function addProject(entry: WindowEntry, path: string) {
     try {
       return await workspace.add(entry.id, path);
@@ -220,19 +186,15 @@ export function registerWindowCommands({ registry, workspace, engine, ui, agents
       renderer.settle(args["requestId"], args["result"]);
       return { ok: true, value: null };
     }
-    const entry = sender ? registry.forWebContents(sender) : undefined;
+    const entry = sender ? window.forWebContents(sender) : undefined;
     if (!entry) {
-      return { ok: false, error: transportError("invalid_command", "Window commands are accepted only from Unfold windows.") };
+      return { ok: false, error: transportError("invalid_command", "Window commands are accepted only from Unfold's window.") };
     }
     // Own properties only: a command named after an Object.prototype member must not reach it.
     const handler =
-      typeof command !== "string"
-        ? undefined
-        : Object.hasOwn(handlers, command)
-          ? (handlers[command as WindowCommand] as Handler<WindowCommand>)
-          : Object.hasOwn(preloadHandlers, command)
-            ? preloadHandlers[command]
-            : undefined;
+      typeof command === "string" && Object.hasOwn(handlers, command)
+        ? (handlers[command as WindowCommand] as Handler<WindowCommand>)
+        : undefined;
     if (!handler) {
       return { ok: false, error: transportError("invalid_command", `Unknown window command: ${String(command)}.`) };
     }
@@ -250,15 +212,6 @@ export function registerWindowCommands({ registry, workspace, engine, ui, agents
       return { ok: false, error: transportError("internal", `${String(command)} failed.`) };
     }
   });
-}
-
-/** `focus_window`'s `board`: `{project, board}`, or undefined when malformed. */
-function boardRef(value: unknown): { project: string; board: string } | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const { project, board } = value;
-  return typeof project === "string" && typeof board === "string" ? { project, board } : undefined;
 }
 
 /**

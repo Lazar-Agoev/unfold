@@ -123,15 +123,7 @@ impl Workspace {
             drop(reader);
             store = Some((opened, folder_lock));
         }
-        let state_file = layout.state_file();
-        let local_state = if state_file.exists() {
-            read_json(&state_file)
-        } else {
-            LocalState {
-                background_updates: options.background_updates_default,
-                ..LocalState::default()
-            }
-        };
+        let local_state = read_json(&layout.state_file());
         let shared = Arc::new(Shared::new(
             project,
             root,

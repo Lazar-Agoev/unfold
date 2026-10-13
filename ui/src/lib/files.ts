@@ -21,7 +21,7 @@ export async function openInEditor(project: string, path: string, line?: number 
   }
 }
 
-/** Shows `path` (relative to the project's folder; `""` is the folder itself) in Finder or Explorer. */
+/** Shows `path` (relative to the project's folder; `""` is the folder itself) in Finder. */
 export async function revealInFinder(project: string, path: string): Promise<void> {
   const args = { project, path };
   try {

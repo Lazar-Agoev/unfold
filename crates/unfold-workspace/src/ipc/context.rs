@@ -6,7 +6,7 @@ use std::sync::Arc;
 use serde::Serialize;
 use unfold_engine::CancelToken;
 
-use crate::events::{WindowId, WorkspaceEvent};
+use crate::events::WindowId;
 use crate::host::HostState;
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::{ProjectHandle, ProjectId, Projects};
@@ -68,15 +68,5 @@ impl Ctx<'_> {
                 format!("{what} is accepted only from the main process"),
             ))
         }
-    }
-
-    /// Sends an event to some windows only (`board_conflict`, to the window holding the board).
-    pub fn deliver(&self, windows: &[WindowId], event: &WorkspaceEvent) {
-        self.host.deliver(windows, event);
-    }
-
-    /// Sends an event to every window.
-    pub fn broadcast(&self, event: &WorkspaceEvent) {
-        self.host.broadcast(event);
     }
 }

@@ -1,20 +1,19 @@
 /**
- * Agents (docs/ipc.md) on a compiled `ts-orders`: Preferences ›
- * Agents turns the local MCP server on; the server refuses web pages and other hosts; a real MCP
- * client, connected as Claude Code, lists the tools and prompts and builds the page of design §1.3
- * the way an agent would, while the window shows each piece as it lands: cards, frames, step groups,
- * a table, connections with their chips, a note, and the agent marks. A table the code doesn't back
- * is refused and leaves no undo step, so one ⌘Z undoes the agent's last edit; a write with a stale
- * revision is refused; and finish_work ends the work with a toast.
+ * Agents (docs/ipc.md) on a compiled `ts-orders`: Settings copies the command that connects Claude
+ * Code to the local MCP server, which runs while the app does; the server refuses web pages and other
+ * hosts; a real MCP client, connected as Claude Code, lists the tools and prompts and builds the page
+ * of design §1.3 the way an agent would, while the window shows each piece as it lands: cards, frames,
+ * step groups, a table, connections with their chips, a note, and the agent marks. A table the code
+ * doesn't back is refused and leaves no undo step, so one Edit › Undo undoes the agent's last edit; a
+ * write with a stale revision is refused; and finish_work ends the work with a toast.
  */
 
 import type { Locator, Page } from "@playwright/test";
-import { AgentClient, freePort, openPreferences, rawStatus, revisionOf } from "../src/agents";
-import { boardView, card, clickCanvas, expectCardsLoaded, readBoard, type BoardFile } from "../src/board";
+import { AGENT_ADDRESS, AgentClient, openSettings, rawStatus, revisionOf } from "../src/agents";
+import { boardView, card, clickCanvas, expectCardsLoaded, readBoard, showBoard, type BoardFile } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { launchCompiled } from "../src/flows";
-import { boardTab, homeTab, toast } from "../src/home";
-import { enterText } from "../src/window";
+import { homeMain, sidebarBoard, toast } from "../src/home";
 
 const POST_ORDERS = 'entrance:["express.route","http","POST","/orders","requireUser"]';
 const ORDERS_WORKER = 'entrance:["bullmq.worker","worker","","orders","processOrder"]';
@@ -73,10 +72,8 @@ function pngSize(base64: string): { width: number; height: number } {
 
 test.describe("agents", () => {
   test("an agent connects over MCP and builds a page the person watches, undoes, and reviews", async ({ sandbox, launch }) => {
-    const { page, folders } = await launchCompiled(launch, sandbox);
+    const { app, page, folders } = await launchCompiled(launch, sandbox);
     const folder = folders[0] ?? "";
-    const port = await freePort();
-    const address = `http://127.0.0.1:${port}/mcp`;
     const clients: AgentClient[] = [];
     const ids: Record<string, string> = {};
     let board = "";
@@ -85,56 +82,53 @@ test.describe("agents", () => {
     let before = "";
 
     try {
-      await test.step("Preferences › Agents: Let agents connect and a port, saved, start the server at the address shown", async () => {
-        const preferences = await openPreferences(page);
-        await preferences.getByRole("switch", { name: "Let agents connect" }).click();
-        await enterText(preferences.getByRole("textbox", { name: "Port" }), String(port));
-        await expect(preferences.getByText("Agents can connect once you save.")).toBeVisible();
-        await preferences.getByRole("button", { name: "Save", exact: true }).click();
-        await expect(preferences).toBeHidden();
-        const again = await openPreferences(page);
-        await expect(again.getByText(/^Listening\./)).toBeVisible();
-        await expect(again.getByRole("group", { name: "Connect an agent" }).getByText(address, { exact: true })).toBeVisible();
-        await again.getByRole("button", { name: "Cancel", exact: true }).click();
-        await expect(again).toBeHidden();
+      await test.step("Settings copies the command that adds the server to Claude Code; no agent has connected yet", async () => {
+        const settings = await openSettings(page);
+        await settings.getByRole("button", { name: "Copy the Claude Code command", exact: true }).click();
+        await expect(toast(page, "Copied the Claude Code command")).toBeVisible();
+        await expect.poll(() => app.clipboardText()).toBe(`claude mcp add --transport http --scope user unfold ${AGENT_ADDRESS}`);
+        await expect(settings.getByRole("button", { name: "Copy the Codex command", exact: true })).toBeVisible();
+        await expect(settings.getByRole("status")).toHaveCount(0);
+        await page.keyboard.press("Escape");
+        await expect(settings).toBeHidden();
       });
 
       await test.step("the server refuses a request from a web page and one for another host", async () => {
-        expect(await rawStatus(address, { origin: "https://example.com" })).toBe(403);
-        expect(await rawStatus(address, { host: `example.com:${port}` })).toBe(403);
+        expect(await rawStatus(AGENT_ADDRESS, { origin: "https://example.com" })).toBe(403);
+        expect(await rawStatus(AGENT_ADDRESS, { host: `example.com:${new URL(AGENT_ADDRESS).port}` })).toBe(403);
       });
 
-      const claude = await AgentClient.connect(address);
+      const claude = await AgentClient.connect(AGENT_ADDRESS);
       clients.push(claude);
 
-      await test.step("an agent connects as Claude: the 35 tools, the six prompts, the start guide, and Preferences lists it", async () => {
+      await test.step("an agent connects as Claude: the 35 tools, the six prompts, the start guide, and Settings says so", async () => {
         const tools = await claude.tools();
         expect(tools).toHaveLength(35);
         expect(tools.slice(0, 2)).toEqual(["get_guide", "get_current_view"]);
         expect(tools.at(-1)).toBe("finish_work");
         expect(await claude.prompts()).toEqual(["explain-entrance", "simplify-function", "service-map", "data-model", "tour", "fix-boards"]);
         expect(await claude.ok("get_guide", { topic: "start" })).toContain("# Working in Unfold");
-        const preferences = await openPreferences(page);
-        await expect(preferences.getByRole("group", { name: "Connected agents" }).getByText(/^Claude · /)).toBeVisible();
-        await preferences.getByRole("button", { name: "Cancel", exact: true }).click();
-        await expect(preferences).toBeHidden();
+        const settings = await openSettings(page);
+        await expect(settings.getByRole("status")).toHaveText("Claude Code connected");
+        await page.keyboard.press("Escape");
+        await expect(settings).toBeHidden();
       });
 
-      await test.step("create_board traces POST /orders onto a draft in a background tab; the person stays on Home", async () => {
+      await test.step("create_board traces POST /orders onto a draft in the background; the person stays on Home", async () => {
         const created = await claude.ok("create_board", { project: "ts-orders", title: "Order placement", trace: POST_ORDERS });
         expect(created).toContain("Traced POST /orders on the first page");
         board = /\(board id ([^)]+)\)/.exec(created)?.[1] ?? "";
         pageId = /\(page id ([^)]+)\)/.exec(created)?.[1] ?? "";
         expect(board).toMatch(/^\.unfold\/local\/drafts\//);
-        await expect(boardTab(page, "Order placement")).toBeVisible();
-        await expect(homeTab(page)).toHaveAttribute("aria-selected", "true");
+        await expect(sidebarBoard(page, "Order placement")).toBeVisible();
+        await expect(homeMain(page)).toBeVisible();
         for (const [name, key] of Object.entries({ post: POST_ORDERS, requireUser: REQUIRE_USER, validateBody: VALIDATE_BODY, createOrder: CREATE_ORDER })) {
           ids[name] = cardId(folder, board, key);
         }
       });
 
       await test.step("get_current_view reports the board and the card the person selects", async () => {
-        await boardTab(page, "Order placement").click();
+        await showBoard(page, "Order placement");
         await expectCardsLoaded(page);
         await card(page, "#function:createOrder").locator(".card-header").click();
         // The card's line ends with how it shows: compact or expanded.
@@ -308,14 +302,14 @@ test.describe("agents", () => {
         expect(firstPage(folder, board).resources?.map((resource) => resource.id)).toEqual(["orders-table"]);
       });
 
-      await test.step("one ⌘Z undoes Claude's last edit, the three connections, as one step; ⇧⌘Z brings them back", async () => {
+      await test.step("one Edit › Undo undoes Claude's last edit, the three connections, as one step; Redo brings them back", async () => {
         await clickCanvas(page);
-        await page.keyboard.press("Meta+Z");
+        await app.clickMenu(page, ["Edit", "Undo"]);
         for (const id of ["enqueue-order", "charge-stripe", "insert-order"]) {
           await expect(connectionLine(page, id)).toHaveCount(0);
         }
         await expect(boardView(page).getByRole("article", { name: "table orders" })).toBeVisible();
-        await page.keyboard.press("Meta+Shift+Z");
+        await app.clickMenu(page, ["Edit", "Redo"]);
         for (const id of ["enqueue-order", "charge-stripe", "insert-order"]) {
           await expect(connectionLine(page, id)).toBeVisible();
         }

@@ -10,7 +10,7 @@ import type { BoardDocument, Card, CardView, Group, LabelEntry, Link, Page, Rela
 import { engineKey } from "../../../ipc/queries";
 import { fixture, installFakeEngine, type FakeEngine } from "../../../test/engine";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../../../test/workspace";
-import { useTabs } from "../../tabStore";
+import { getShownBoard, showBoard, useShownBoardStore } from "../../shownBoard";
 import { displayedRects } from "../api";
 import { keyDisplayName } from "../document";
 import { addNote } from "../notes";
@@ -108,7 +108,7 @@ beforeEach(() => {
   queryClient.clear();
   queryClient.setQueryData(engineKey("workspace", {}), workspaceView([projectRow(P, "orders")]));
   toast.showToast.mockClear();
-  useTabs.setState({ boards: [], active: "home" });
+  useShownBoardStore.setState({ board: null });
   saved = [];
   refuseSave = null;
   holdSave = null;
@@ -552,19 +552,26 @@ describe("reading and opening for an agent", () => {
     expect(readAgentPage({ requestId: 1, board: REF, page: "page-2" })).toMatchObject({ ok: false, code: "page_not_found" });
   });
 
-  it("opens a board in a background tab, and leaves a window that holds it alone", async () => {
+  it("opens a board without showing it, and passes on the engine's refusal", async () => {
     const other = { project: P, id: ".unfold/boards/other.json" };
-    let held = false;
     engine.uninstall();
     engine = installFakeEngine({
-      handlers: { open_board: () => (held ? { status: "held", heldBy: 7 } : { status: "opened", board: boardState(P, other.id) }) },
+      handlers: {
+        open_board: ({ id }) => {
+          if (id !== other.id) {
+            // eslint-disable-next-line @typescript-eslint/only-throw-error
+            throw { code: "not_found", message: "No such board." };
+          }
+          return boardState(P, other.id);
+        },
+      },
     });
     open();
-    useTabs.setState({ boards: [REF], active: `${P}\u0000${ID}` });
+    showBoard(REF);
     expect(await openBoardForAgent({ requestId: 1, board: other })).toEqual({ ok: true });
-    expect(useTabs.getState()).toEqual({ boards: [REF, other], active: `${P}\u0000${ID}` });
-    held = true;
-    expect(await openBoardForAgent({ requestId: 2, board: { project: P, id: "third.json" } })).toMatchObject({ ok: false, code: "held", heldBy: 7 });
-    expect(engine.windowCalls).toEqual([]);
+    expect(store.getOpenBoard(other)).toBeDefined();
+    expect(getShownBoard()).toEqual(REF);
+    expect(await openBoardForAgent({ requestId: 2, board: { project: P, id: "third.json" } })).toMatchObject({ ok: false, code: "not_found" });
+    expect(engine.windowCalls.filter((call) => call.command !== "report_shown_board")).toEqual([]);
   });
 });

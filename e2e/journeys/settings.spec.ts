@@ -1,12 +1,13 @@
 /**
  * Settings (docs/engine.md#shared-config): Project settings (Scope, Detectors, General's name, and the guard on
  * unsaved edits), the launch editor (a handler entrance from the project menu, Home, and a card; a
- * configured Python launch with its live preview), and Preferences (the theme, and a key binding
- * stored by action id).
+ * configured Python launch with its live preview), and the app's Settings (the editor command, and
+ * the commands that connect an agent).
  */
 
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
+import { AGENT_ADDRESS } from "../src/agents";
 import { card, cardMenu } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { CREATE_ORDER, launchCompiled, traceEntrance } from "../src/flows";
@@ -35,9 +36,8 @@ interface SearchResults {
   readonly definitions: { readonly hits: readonly { readonly name: string }[] };
 }
 
-interface Preferences {
-  readonly theme: string;
-  readonly keyBindings: Readonly<Record<string, string>>;
+interface AppSettings {
+  readonly editorCommand?: string;
 }
 
 /** The project settings dialog of the project named `name`. */
@@ -313,82 +313,39 @@ test.describe("the launch editor", () => {
   });
 });
 
-test.describe("preferences", () => {
-  test("the theme applies at once and is saved; a key binding is stored by action id", async ({ sandbox, launch }) => {
-    const { page } = await launchCompiled(launch, sandbox);
-    const preferences = dialog(page, "Preferences");
-    const root = page.locator("html");
+test.describe("app settings", () => {
+  test("the sidebar's gear opens Settings: the editor command is saved, and an agent's command is copied", async ({ sandbox, launch }) => {
+    const { app, page } = await launchCompiled(launch, sandbox);
+    const settings = dialog(page, "Settings");
+    const editor = settings.getByRole("textbox", { name: "Editor command" });
 
-    await test.step("the sidebar's gear opens Preferences; Dark applies at once and Save keeps it", async () => {
-      await sidebar(page).getByRole("button", { name: "Preferences…" }).click();
-      await expect(preferences).toBeVisible();
-      await expect(root).not.toHaveAttribute("data-theme", /./);
-      await preferences.getByRole("radiogroup", { name: "Theme" }).getByRole("radio", { name: "Dark" }).click();
-      await expect(root).toHaveAttribute("data-theme", "dark");
-      await preferences.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(preferences).toBeHidden();
-      await expect(root).toHaveAttribute("data-theme", "dark");
-      expect((await invoke<Preferences>(page, "get_preferences")).theme).toBe("dark");
+    await test.step("the editor command is saved on Enter", async () => {
+      await sidebar(page).getByRole("button", { name: "Settings", exact: true }).click();
+      await expect(settings).toBeVisible();
+      await expect(editor).toHaveValue("");
+      await enterText(editor, "code -g {path}:{line}");
+      await editor.press("Enter");
+      await expect.poll(async () => (await invoke<AppSettings>(page, "get_settings")).editorCommand).toBe("code -g {path}:{line}");
     });
 
-    await test.step("⌘, opens Preferences; Light previews, Cancel returns to the saved theme", async () => {
-      await page.keyboard.press("Meta+Comma");
-      await expect(preferences).toBeVisible();
-      await preferences.getByRole("radiogroup", { name: "Theme" }).getByRole("radio", { name: "Light" }).click();
-      await expect(root).toHaveAttribute("data-theme", "light");
-      await preferences.getByRole("button", { name: "Cancel", exact: true }).click();
-      await expect(preferences).toBeHidden();
-      await expect(root).toHaveAttribute("data-theme", "dark");
+    await test.step("the Codex command is copied with the app's address", async () => {
+      await settings.getByRole("button", { name: "Copy the Codex command", exact: true }).click();
+      await expect(toast(page, "Copied the Codex command")).toBeVisible();
+      await expect.poll(() => app.clipboardText()).toBe(`codex mcp add unfold --url ${AGENT_ADDRESS}`);
     });
 
-    await test.step("System follows the computer again", async () => {
-      await page.keyboard.press("Meta+Comma");
-      await preferences.getByRole("radiogroup", { name: "Theme" }).getByRole("radio", { name: "System" }).click();
-      await preferences.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(preferences).toBeHidden();
-      await expect(root).not.toHaveAttribute("data-theme", /./);
-      expect((await invoke<Preferences>(page, "get_preferences")).theme).toBe("system");
-    });
-
-    await test.step("Keyboard: Toggle Sidebar rebound to ⇧⌘Y is stored under view.toggleSidebar", async () => {
-      await page.keyboard.press("Meta+Comma");
-      const record = preferences.getByRole("button", { name: "Shortcut for Toggle Sidebar" });
-      await record.click();
-      await expect(record).toHaveAttribute("aria-pressed", "true");
-      await record.press("Meta+Shift+Y");
-      await expect(record).toHaveAttribute("aria-pressed", "false");
-      await expect(preferences.getByRole("button", { name: "Reset Toggle Sidebar" })).toBeEnabled();
-      await preferences.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(preferences).toBeHidden();
-      const bindings = (await invoke<Preferences>(page, "get_preferences")).keyBindings;
-      expect(Object.keys(bindings)).toEqual(["view.toggleSidebar"]);
-      expect(bindings["view.toggleSidebar"]).toMatch(/Shift\+Y$/);
-    });
-
-    await test.step("the new key toggles the sidebar and the old one no longer does", async () => {
-      await expect(sidebar(page)).toBeVisible();
-      await page.keyboard.press("Meta+Shift+Y");
-      await expect(sidebar(page)).toBeHidden();
-      await page.keyboard.press("Meta+Shift+Y");
-      await expect(sidebar(page)).toBeVisible();
-      await page.keyboard.press("Meta+B");
-      // ⌘B does nothing now: Add opened with A afterwards proves the key went through the dispatcher.
-      await page.keyboard.press("a");
-      await expect(page.getByRole("dialog", { name: "Add" })).toBeVisible();
+    await test.step("Escape closes Settings, and it opens again with the saved command", async () => {
       await page.keyboard.press("Escape");
-      await expect(sidebar(page)).toBeVisible();
+      await expect(settings).toBeHidden();
+      await sidebar(page).getByRole("button", { name: "Settings", exact: true }).click();
+      await expect(editor).toHaveValue("code -g {path}:{line}");
     });
 
-    await test.step("Reset returns the action to its default and drops the stored binding", async () => {
-      await page.keyboard.press("Meta+Comma");
-      await preferences.getByRole("button", { name: "Reset Toggle Sidebar" }).click();
-      await preferences.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(preferences).toBeHidden();
-      expect((await invoke<Preferences>(page, "get_preferences")).keyBindings).toEqual({});
-      await page.keyboard.press("Meta+B");
-      await expect(sidebar(page)).toBeHidden();
-      await page.keyboard.press("Meta+B");
-      await expect(sidebar(page)).toBeVisible();
+    await test.step("an emptied command is saved as none when Settings closes", async () => {
+      await enterText(editor, "");
+      await page.keyboard.press("Escape");
+      await expect(settings).toBeHidden();
+      await expect.poll(async () => (await invoke<AppSettings>(page, "get_settings")).editorCommand).toBeUndefined();
     });
   });
 });

@@ -4,7 +4,8 @@
  * Syntax colors, folds on definitions, calls as links (hover peeks, click adds the callee), a `⊕`
  * beside each definition to add it to the page (`●` when it's there), the text matches it was opened
  * with (ticks beside the scrollbar), and Open in editor / Reveal in Finder. One sheet per window, kept
- * across tab switches; Escape closes it.
+ * when the window shows another board; Escape closes it, unless a field, a menu, a dialog, or the
+ * canvas (a line's contract) had it first.
  *
  * Opened by View code, it highlights its focus: the rows tinted with an accent edge, and the exact
  * expression marked when the focus has columns. Only verified source shows it (`showsFocus`); a file
@@ -21,11 +22,11 @@ import { CallLink } from "../code/CallLink";
 import { tokenClass } from "../code/CodeText";
 import { newCardView } from "../code/typeKinds";
 import { groupByLink, linkRanges, segmentRange, spanRanges, type LinkRange, type SpanRange } from "../code/segments";
-import { EmptyState, IconButton, KeyChip, MenuButton, Monogram, Sheet, showToast, type MenuEntry } from "../components";
+import { EmptyState, IconButton, MenuButton, Monogram, Sheet, showToast, type MenuEntry } from "../components";
 import { Icon } from "../icons";
 import { engineQueryOptions, toUnfoldError, useEngineQuery, type CallLink as CallLinkModel, type CodeLine, type FileView, type Key, type OutlineItem, type ProjectId, type TextMatch, type View } from "../ipc";
-import { usePlatform, useRegisterActions, type ActionSpec } from "../keyboard";
 import { openInEditor, revealInFinder } from "../lib/files";
+import { isTyping } from "../lib/typing";
 import { languageList, plural } from "../lib/format";
 import { addBlock, cardRefKey, findPage, getOpenBoard, keyDisplayName, newBoard, useOpenBoard, usePageKeys, type BoardRef, type PageTarget } from "../state/boards";
 import { setPeekPinned, useLayout } from "../state/layout";
@@ -159,18 +160,10 @@ const FOCUS_WITHHELD: Readonly<Record<FileView["graph"], string>> = {
   not_indexed: "Not in the compiled graph · the range isn't shown",
 };
 
-function revealLabel(platform: string): string {
-  if (platform === "darwin") {
-    return "Reveal in Finder";
-  }
-  return platform === "win32" ? "Show in Explorer" : "Show in Files";
-}
-
 function Header({ target, view, pinned, projectName }: { readonly target: PeekTarget; readonly view: FileView | undefined; readonly pinned: boolean; readonly projectName: string }) {
-  const platform = usePlatform();
   const entries: MenuEntry[] = [
-    { id: "editor", label: "Open in editor", icon: "external-link", shortcut: "Mod+Shift+O", onSelect: () => void openInEditor(target.project, target.path, target.line) },
-    { id: "reveal", label: revealLabel(platform), icon: "reveal", onSelect: () => void revealInFinder(target.project, target.path) },
+    { id: "editor", label: "Open in editor", icon: "external-link", onSelect: () => void openInEditor(target.project, target.path, target.line) },
+    { id: "reveal", label: "Reveal in Finder", icon: "reveal", onSelect: () => void revealInFinder(target.project, target.path) },
   ];
   const meta = view && !view.unshowable ? `${plural(view.lineCount, "line")}${view.language ? ` · ${languageList([view.language])}` : ""}${GRAPH_NOTES[view.graph]}` : "";
   return (
@@ -191,7 +184,7 @@ function Header({ target, view, pinned, projectName }: { readonly target: PeekTa
           }}
         />
         <MenuButton variant="icon" icon="dots" label="More" menuLabel="File actions" entries={entries} align="end" width={208} />
-        <IconButton icon="close" label="Close" shortcut="Escape" onClick={closePeek} />
+        <IconButton icon="close" label="Close" onClick={closePeek} />
       </div>
     </header>
   );
@@ -203,9 +196,7 @@ function Footer({ pageTitle }: { readonly pageTitle: string | null }) {
       <Icon name="add-circle" size={14} />
       <span>adds a function to</span>
       <span className="peek-footer-page">{pageTitle ?? "a new draft"}</span>
-      <span>·</span>
-      <KeyChip variant="outlined" glyph="esc" />
-      <span>closes · pin keeps it open</span>
+      <span>· pin keeps it open</span>
     </footer>
   );
 }
@@ -477,34 +468,28 @@ function targetKey(target: PeekTarget): string {
   return [target.project, target.path, target.line ?? "", target.current ?? "", range].join("\u0000");
 }
 
+/** While the sheet is open, Escape closes it wherever focus is, unless something before it took the key. */
+function useEscapeCloses(open: boolean): void {
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented && !isTyping(event.target)) {
+        closePeek();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+}
+
 export function PeekSheet(): JSX.Element | null {
   const target = usePeekTarget();
   const pinned = useLayout((layout) => layout.peek.pinned);
-  const specs: readonly ActionSpec[] = [
-    {
-      id: "peek.close",
-      title: "Close Peek",
-      category: "View",
-      shortcuts: ["Escape"],
-      showInAdd: false,
-      enabled: () => target !== null,
-      run: closePeek,
-    },
-    {
-      id: "peek.openInEditor",
-      title: "Open in Editor",
-      category: "File",
-      icon: "external-link",
-      shortcuts: ["Mod+Shift+O"],
-      enabled: () => target !== null,
-      run: async () => {
-        if (target) {
-          await openInEditor(target.project, target.path, target.line);
-        }
-      },
-    },
-  ];
-  useRegisterActions(specs);
+  useEscapeCloses(target !== null);
   if (!target) {
     return null;
   }

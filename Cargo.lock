@@ -3086,7 +3086,6 @@ dependencies = [
  "grep-regex",
  "grep-searcher",
  "ignore",
- "indexmap",
  "nix",
  "notify",
  "notify-debouncer-full",

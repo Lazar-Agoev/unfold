@@ -1,7 +1,7 @@
 /**
  * First launch and connecting projects (docs/ui-shell.md#screens): an empty workspace, Add project with the
- * picker and ⌘O, a folder dropped on the window, a file dropped by mistake, a folder from the command
- * line and from a second launch; then the not-compiled Home with its scope tree and the first Compile.
+ * picker, from the sidebar, and from File › Add Project…; then the not-compiled Home with its scope tree
+ * and the first Compile.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -20,18 +20,18 @@ import {
   stateLine,
   workspace,
 } from "../src/home";
+import { launchWithProject } from "../src/flows";
 import { writeFile } from "../src/sandbox";
-import { dropPaths, eventMark, expectConnection, invoke, waitForEvent } from "../src/window";
+import { eventMark, expectConnection, invoke, waitForEvent } from "../src/window";
 
 interface SearchResults {
   readonly definitions: { readonly hits: readonly { readonly name: string }[] };
 }
 
 test.describe("first launch", () => {
-  test("an empty workspace; Add project, ⌘O, a dropped folder, a dropped file, and a second launch", async ({ sandbox, launch }) => {
+  test("an empty workspace; Add project…, the sidebar's Add Project…, and File › Add Project…", async ({ sandbox, launch }) => {
     const orders = sandbox.playground("ts-orders");
     const python = sandbox.playground("py-orders");
-    const dropped = sandbox.playground("ts-orders", "dropped-orders");
     const later = sandbox.playground("py-orders", "later-orders");
     const app = await launch();
     const page = await app.firstWindow();
@@ -43,9 +43,9 @@ test.describe("first launch", () => {
       expect((await workspace(page)).projects).toEqual([]);
     });
 
-    await test.step("the window is tabs, one sidebar, and the content: no activity bar, inspector, panel, or status bar", async () => {
+    await test.step("the window is one sidebar and the content: no tabs, activity bar, inspector, panel, or status bar", async () => {
       await expect(page.locator("body > #root > .app > *:not([hidden])")).toHaveCount(2);
-      await expect(page.getByRole("banner").getByRole("tablist", { name: "Window tabs" })).toBeVisible();
+      await expect(page.getByRole("tablist")).toHaveCount(0);
       await expect(page.getByRole("complementary")).toHaveCount(1);
       await expect(page.getByRole("main")).toHaveCount(1);
       await expect(page.getByRole("contentinfo")).toHaveCount(0);
@@ -62,42 +62,28 @@ test.describe("first launch", () => {
       expect(existsSync(join(orders, ".unfold", "local"))).toBe(false);
     });
 
-    await test.step("⌘O adds another", async () => {
+    await test.step("the sidebar's Add Project… adds another", async () => {
       await app.stubFolderDialog(python);
-      await page.keyboard.press("Meta+O");
+      await sidebar(page).getByRole("button", { name: "Add Project…" }).click();
       await expect(projectRow(page, "py-orders")).toBeVisible();
       await expect(homeTitle(page)).toHaveText("py-orders");
     });
 
-    await test.step("a folder dropped on the window is added", async () => {
-      await dropPaths(page, [dropped]);
-      await expect(projectRow(page, "dropped-orders")).toBeVisible();
-      await expect(homeTitle(page)).toHaveText("dropped-orders");
-    });
-
-    await test.step("a dropped file is refused with a toast", async () => {
-      await dropPaths(page, [join(orders, "README.md")]);
-      await expect(page.getByRole("alert").filter({ hasText: "README.md isn't a folder" })).toBeVisible();
-      expect((await workspace(page)).projects).toHaveLength(3);
-    });
-
-    await test.step("a folder from a second launch is added to the running app", async () => {
-      await app.secondLaunch([later]);
+    await test.step("File › Add Project… in the application menu adds one too", async () => {
+      await app.stubFolderDialog(later);
+      await app.clickMenu(page, ["File", "Add Project…"]);
       await expect(projectRow(page, "later-orders")).toBeVisible();
       await expect(homeTitle(page)).toHaveText("later-orders");
-      expect((await workspace(page)).projects.map((row) => row.name)).toEqual(["ts-orders", "py-orders", "dropped-orders", "later-orders"]);
+      expect((await workspace(page)).projects.map((row) => row.name)).toEqual(["ts-orders", "py-orders", "later-orders"]);
     });
   });
 
   test("the not-compiled Home: what it reads and skips, the scope tree, and the first Compile", async ({ sandbox, launch }) => {
     const folder = sandbox.playground("ts-orders");
     writeFile(join(folder, "extra", "extra.ts"), "export function extraThing(): number {\n  return 1;\n}\n");
-    const app = await launch({ args: [folder] });
-    const page = await app.firstWindow();
+    const { page } = await launchWithProject(launch, folder);
 
-    await test.step("a folder on the command line is added and shown, not compiled", async () => {
-      await expect(projectRow(page, "ts-orders")).toBeVisible();
-      await expect(homeTitle(page)).toHaveText("ts-orders");
+    await test.step("the added folder shows, not compiled, with what Unfold will read", async () => {
       await expect(homeMain(page).getByText("Unfold will read 35 TypeScript files.")).toBeVisible();
     });
 

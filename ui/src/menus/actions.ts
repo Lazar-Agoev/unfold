@@ -1,12 +1,11 @@
 /**
  * What the board and project menus do (V1's flows pattern): each runs the operation and says what
- * happened in a toast. Failures are shown, never thrown, so a menu item or an action can call one and
- * forget it. The menus, Add's commands, and the application menu all run these.
+ * happened in a toast. Failures are shown, never thrown, so a menu item can call one and forget it.
  */
 
 import { showToast } from "../components";
 import { call, toUnfoldError, windowCommand, type CompileMode, type ProjectId, type ProjectRow } from "../ipc";
-import { requestFocus } from "../keyboard";
+import { requestFocus } from "../lib/focus-targets";
 import {
   closeBoardsOfProject,
   copyPageMermaid,
@@ -14,9 +13,7 @@ import {
   exportPageMermaid,
   exportPagePng,
   getOpenBoard,
-  moveBoardToNewWindow,
   openBoard,
-  sameBoard,
   setBoardFolder,
   unpublishBoard,
   type BoardRef,
@@ -25,7 +22,7 @@ import {
 import { cancelCompile, setBackgroundUpdates, startCompile } from "../state/compile";
 import { setHomeView } from "../state/layout";
 import { openDialog, type ProjectSettingsSection } from "../state/overlays";
-import { activateHome, getActiveBoard } from "../state/tabs";
+import { showHome } from "../state/shownBoard";
 import { getProjectIndex, selectProject } from "../state/workspace";
 
 /**
@@ -42,15 +39,11 @@ function projectName(project: ProjectId): string {
   return getProjectIndex().byId.get(project)?.name ?? "the project";
 }
 
-/** Whether `ref` is this window's active board tab, opening (and activating) it otherwise. */
+/** Shows `ref` (opening it if needed); false when it couldn't be opened. */
 async function showBoard(ref: BoardRef): Promise<boolean> {
-  const active = getActiveBoard();
-  if (active && sameBoard(active, ref)) {
-    return true;
-  }
   try {
-    // A board another window holds is focused there instead.
-    return (await openBoard(ref, { activate: true })).status === "opened";
+    await openBoard(ref);
+    return true;
   } catch (error) {
     fail("Couldn't open the board", error);
     return false;
@@ -82,23 +75,11 @@ export async function duplicate(ref: BoardRef): Promise<void> {
       body: "A draft, in the same folder.",
       action: {
         label: "Open",
-        run: () => void openBoard({ project: copy.project, id: copy.id }, { activate: true }),
+        run: () => void openBoard({ project: copy.project, id: copy.id }),
       },
     });
   } catch (error) {
     fail("Couldn't duplicate the board", error);
-  }
-}
-
-export async function openInNewWindow(ref: BoardRef): Promise<void> {
-  try {
-    // Only a board this window holds can move; open it here first.
-    if (!getOpenBoard(ref) && (await openBoard(ref, { activate: false })).status !== "opened") {
-      return;
-    }
-    await moveBoardToNewWindow(ref);
-  } catch (error) {
-    fail("Couldn't open the board in a new window", error);
   }
 }
 
@@ -183,18 +164,13 @@ export function addEntrance(project: ProjectId): void {
 /** Health and activity: the project's Home on its Health view. */
 export async function showHealth(project: ProjectId): Promise<void> {
   setHomeView("health");
-  activateHome();
+  showHome();
   await selectProject(project);
 }
 
-/** The toast for `boards_open`: another window holds one of the project's boards. */
-function boardsOpenElsewhere(name: string): void {
-  showToast({ title: `A board of ${name} is open in another window.`, body: "Close it there, then try again.", tone: "danger" });
-}
-
 /**
- * Remove from workspace…: the main process asks; this window's tabs of the project close
- * (saved); then the engine removes it. Its `.unfold/` stays.
+ * Remove from workspace…: the main process asks; the project's open boards close (saved), since the
+ * engine refuses to remove a project with a board open; then the engine removes it. Its `.unfold/` stays.
  */
 export async function removeProject(row: Pick<ProjectRow, "id" | "name">): Promise<void> {
   try {
@@ -205,25 +181,17 @@ export async function removeProject(row: Pick<ProjectRow, "id" | "name">): Promi
     await closeBoardsOfProject(row.id);
     await call("remove_project", { project: row.id });
   } catch (error) {
-    if (toUnfoldError(error).code === "boards_open") {
-      boardsOpenElsewhere(row.name);
-    } else {
-      fail(`Couldn't remove ${row.name}`, error);
-    }
+    fail(`Couldn't remove ${row.name}`, error);
   }
 }
 
-/** Switches the project to another worktree's folder (worktree metadata); this window's tabs of it close first. */
+/** Switches the project to another worktree's folder (worktree metadata); its open boards close first. */
 export async function switchWorktree(row: Pick<ProjectRow, "id" | "name">, path: string, branch: string): Promise<void> {
   try {
     await closeBoardsOfProject(row.id);
     await call("switch_worktree", { project: row.id, path });
     showToast({ title: `Switched ${row.name} to ${branch}`, body: "Drafts and the graph are per worktree." });
   } catch (error) {
-    if (toUnfoldError(error).code === "boards_open") {
-      boardsOpenElsewhere(row.name);
-    } else {
-      fail(`Couldn't switch ${row.name}`, error);
-    }
+    fail(`Couldn't switch ${row.name}`, error);
   }
 }

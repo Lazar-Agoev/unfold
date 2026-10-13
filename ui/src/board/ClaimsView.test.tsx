@@ -174,7 +174,6 @@ beforeEach(() => {
       line_labels: () => [],
       list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
       save_board: (args) => boardState(P, ID, boardDocument(structuredClone(args.board.pages) as Page[])),
-      save_board_view: () => null,
       repair_board: (args) => {
         repairs.push(args.repair);
         return boardState(P, ID, store.getOpenBoard(REF)?.document);

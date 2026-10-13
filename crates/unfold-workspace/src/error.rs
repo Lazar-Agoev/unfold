@@ -3,7 +3,6 @@
 
 use std::path::PathBuf;
 
-use crate::events::WindowId;
 use crate::projects::ProjectId;
 
 /// Why a workspace operation failed.
@@ -12,8 +11,8 @@ pub enum WorkspaceError {
     /// No project with that id is in the workspace.
     #[error("no project `{0}` in the workspace")]
     UnknownProject(ProjectId),
-    /// A window holds a board of the project, so it can't be removed or switched.
-    #[error("a board of this project is open in a window")]
+    /// A board of the project is open, so it can't be removed or switched.
+    #[error("a board of this project is open")]
     BoardsOpen,
     /// `switch_worktree` named a path that isn't an available worktree of the project.
     #[error("`{0}` is not an available worktree of this project")]
@@ -76,17 +75,9 @@ pub enum WorkspaceError {
     /// A settings edit can't be expressed without changing a broader rule.
     #[error("{0}")]
     SettingsConflict(String),
-    /// Another window holds the board.
-    #[error("board `{board}` is open in window {window}")]
-    BoardHeld {
-        /// The board.
-        board: String,
-        /// The window that holds it.
-        window: WindowId,
-    },
-    /// The calling window doesn't hold the board.
-    #[error("board `{0}` is not open in this window")]
-    BoardNotHeld(String),
+    /// The board isn't open.
+    #[error("board `{0}` is not open")]
+    BoardNotOpen(String),
     /// The project has no graph yet.
     #[error("the project has not been compiled yet")]
     NotCompiled,
@@ -124,8 +115,7 @@ impl WorkspaceError {
             Self::InvalidPath { .. } => "invalid_path",
             Self::InvalidSettings { .. } => "invalid_settings",
             Self::SettingsConflict(_) => "settings_conflict",
-            Self::BoardHeld { .. } => "board_held",
-            Self::BoardNotHeld(_) => "board_not_held",
+            Self::BoardNotOpen(_) => "board_not_open",
             Self::NotCompiled => "not_compiled",
             Self::Closed => "closed",
             Self::Encode { .. } | Self::Internal(_) => "internal",
@@ -153,7 +143,7 @@ mod tests {
             WorkspaceError::Cancelled,
             WorkspaceError::NotCompiled,
             WorkspaceError::OpenElsewhere { path: "/x".into() },
-            WorkspaceError::BoardNotHeld("b".into()),
+            WorkspaceError::BoardNotOpen("b".into()),
             WorkspaceError::UnknownProject(ProjectId::new_unchecked("p-aaaaaaaaaa")),
             WorkspaceError::BoardsOpen,
             WorkspaceError::NotAWorktree("/x".into()),

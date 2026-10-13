@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentServerStatus } from "../shared/agent-api";
-import { IPC, PRELOAD_COMMANDS } from "../shared/transport";
+import { IPC } from "../shared/transport";
 import { EngineRequestError } from "./engine-host";
 import { clipboardTexts, dialogs, FakeBrowserWindow, ipcHandlers, resetFakeElectron } from "./fake-electron";
 import { AgentBridge } from "./agents/bridge";
@@ -11,7 +11,7 @@ import type { ScreenshotOutcome, ScreenshotRequest } from "./agents/render";
 import { ViewTracker } from "./agents/views";
 import { registerWindowCommands } from "./ipc";
 import type { WindowEntry } from "./windows";
-import { WindowRegistry } from "./windows";
+import { AppWindow } from "./windows";
 import { Workspace } from "./workspace";
 
 vi.mock("electron", async () => (await import("./fake-electron")).electronModule);
@@ -20,7 +20,6 @@ const UI = { kind: "dev", url: "http://localhost:5173/" } as const;
 const PROJECT = "p-7k2m9q4xab";
 const SERVER_STATUS: AgentServerStatus = {
   state: "listening",
-  port: 29180,
   address: "http://127.0.0.1:29180/mcp",
   agents: [{ author: "agent:claude", name: "Claude", lastSeenMs: 2, lastActedMs: 1 }],
 };
@@ -34,9 +33,9 @@ class FakeEngine {
     this.calls.push([windowId, command, args]);
     return this.answers.get(command)?.(args) ?? Promise.resolve(null);
   }
-  /** The commands requested, without `save_window_bounds` (every new window saves its bounds). */
+  /** The commands requested, without `save_window_state` (the window saves its state as it changes). */
   commands(): [number, string, Readonly<Record<string, unknown>>][] {
-    return this.calls.filter(([, command]) => command !== "save_window_bounds");
+    return this.calls.filter(([, command]) => command !== "save_window_state");
   }
 }
 
@@ -62,20 +61,21 @@ class FakeRenderer {
 function setup() {
   const engine = new FakeEngine();
   const renderer = new FakeRenderer();
-  const registry = new WindowRegistry(
+  const appWindow = new AppWindow(
     UI,
-    { onLoaded: () => undefined, onClosed: () => undefined, onPlacementChanged: () => undefined, onFocused: () => undefined },
+    { onLoaded: () => undefined, onPlacementChanged: () => undefined, onClosing: () => undefined, onClosed: () => undefined },
     false,
   );
-  const agents = new AgentBridge({ windows: registry, views: new ViewTracker() });
+  const agents = new AgentBridge({ windows: appWindow, views: new ViewTracker() });
   const mcp = { status: () => SERVER_STATUS };
-  registerWindowCommands({ registry, workspace: new Workspace(registry, engine), engine, ui: UI, agents, mcp, renderer });
+  const workspace = new Workspace(appWindow, engine);
+  registerWindowCommands({ window: appWindow, workspace, engine, ui: UI, agents, mcp, renderer });
   const handler = ipcHandlers.get(IPC.windowCommand);
   if (!handler) {
     throw new Error("window commands not registered");
   }
   const open = (): WindowEntry & { window: FakeBrowserWindow } => {
-    const entry = registry.create() as WindowEntry & { window: FakeBrowserWindow };
+    const entry = appWindow.open() as WindowEntry & { window: FakeBrowserWindow };
     entry.window.finishLoad();
     return entry;
   };
@@ -83,7 +83,7 @@ function setup() {
     const window = entry.window as FakeBrowserWindow;
     return handler({ sender: window.webContents, senderFrame: frame ?? window.mainFrame }, command, args);
   };
-  return { engine, registry, agents, renderer, open, invoke };
+  return { engine, appWindow, workspace, agents, renderer, open, invoke };
 }
 
 beforeEach(() => {
@@ -127,35 +127,6 @@ describe("add_project", () => {
     engine.answers.set("add_project", () => Promise.resolve({ status: "added", project: PROJECT }));
     dialogs.folder = "/code/shop";
     expect(await invoke(open(), "add_project")).toMatchObject({ ok: false, error: { code: "internal" } });
-  });
-});
-
-describe("add_dropped_folder (from the preload)", () => {
-  it("adds the dropped path with the trusted add_project", async () => {
-    const { engine, open, invoke } = setup();
-    const entry = open();
-    engine.answers.set("add_project", () => Promise.resolve({ status: "exists", project: { id: PROJECT } }));
-    expect(await invoke(entry, PRELOAD_COMMANDS.addDroppedFolder, { path: "/code/shop" })).toEqual({
-      ok: true,
-      value: { status: "exists", project: PROJECT },
-    });
-    expect(engine.commands()).toEqual([[entry.id, "add_project", { path: "/code/shop" }]]);
-  });
-
-  it("refuses a missing path and passes on not_a_folder", async () => {
-    const { engine, open, invoke } = setup();
-    const entry = open();
-    expect(await invoke(entry, PRELOAD_COMMANDS.addDroppedFolder, {})).toMatchObject({
-      ok: false,
-      error: { code: "invalid_command" },
-    });
-    engine.answers.set("add_project", () =>
-      Promise.reject(new EngineRequestError({ code: "not_a_folder", message: "Not a folder." })),
-    );
-    expect(await invoke(entry, PRELOAD_COMMANDS.addDroppedFolder, { path: "/code/notes.txt" })).toEqual({
-      ok: false,
-      error: { code: "not_a_folder", message: "Not a folder." },
-    });
   });
 });
 
@@ -243,11 +214,11 @@ describe("export_mermaid", () => {
 
     dialogs.savePath = "/out/o.mmd";
     engine.answers.set("export_mermaid", () =>
-      Promise.reject(new EngineRequestError({ code: "board_not_held", message: "Open it first." })),
+      Promise.reject(new EngineRequestError({ code: "board_not_open", message: "Open it first." })),
     );
     expect(await invoke(entry, "export_mermaid", args)).toEqual({
       ok: false,
-      error: { code: "board_not_held", message: "Open it first." },
+      error: { code: "board_not_open", message: "Open it first." },
     });
   });
 
@@ -331,68 +302,38 @@ describe("the render window", () => {
   });
 });
 
-describe("windows", () => {
-  it("new_window and move_tab_to_new_window open a window and resolve with its id at once", async () => {
-    const { registry, open, invoke } = setup();
+describe("the window", () => {
+  const BOARD = { project: PROJECT, board: ".unfold/boards/orders.json" };
+
+  it("window_info describes the window and the board it shows: the one saved at launch, else Home", async () => {
+    const { engine, workspace, open, invoke } = setup();
+    engine.answers.set("window_state", () => Promise.resolve({ bounds: { x: 0, y: 0, width: 900, height: 600 }, maximized: false, board: BOARD }));
+    await workspace.restore();
     const entry = open();
-    const created = await invoke(entry, "new_window");
-    const moved = await invoke(entry, "move_tab_to_new_window");
-    expect(registry.all().map((e) => e.id)).toEqual([entry.id, entry.id + 1, entry.id + 2]);
-    expect(created).toEqual({ ok: true, value: { windowId: entry.id + 1 } });
-    expect(moved).toEqual({ ok: true, value: { windowId: entry.id + 2 } });
+    expect(await invoke(entry, "window_info")).toEqual({ ok: true, value: { windowId: entry.id, board: BOARD } });
+
+    resetFakeElectron();
+    const fresh = setup();
+    expect(await fresh.invoke(fresh.open(), "window_info")).toMatchObject({ ok: true, value: { board: null } });
   });
 
-  it("focus_window focuses a window, and with a board tells it to show that board", async () => {
-    const { registry, open, invoke } = setup();
-    const caller = open();
-    const holder = open();
-    const board = { project: PROJECT, board: ".unfold/boards/orders.json" };
-
-    expect(await invoke(caller, "focus_window", { windowId: holder.id })).toEqual({ ok: true, value: null });
-    expect(registry.focused()).toBe(holder);
-    expect(holder.window.sent).toEqual([]);
-
-    await invoke(caller, "focus_window", { windowId: holder.id, board });
-    expect(holder.window.sent).toEqual([{ type: "focus_board", ...board }]);
+  it("report_shown_board hands the board the window shows, or Home, to the workspace", async () => {
+    const { workspace, open, invoke } = setup();
+    const entry = open();
+    expect(await invoke(entry, "report_shown_board", { board: BOARD })).toEqual({ ok: true, value: null });
+    expect(workspace.shownBoard()).toEqual(BOARD);
+    expect(await invoke(entry, "window_info")).toMatchObject({ value: { board: BOARD } });
+    expect(await invoke(entry, "report_shown_board", { board: null })).toEqual({ ok: true, value: null });
+    expect(workspace.shownBoard()).toBeNull();
   });
 
-  it("focus_window refuses an unknown window or a malformed board", async () => {
-    const { open, invoke } = setup();
-    const caller = open();
-    for (const args of [{ windowId: 99 }, { windowId: "1" }, { windowId: caller.id, board: { project: PROJECT } }]) {
-      expect(await invoke(caller, "focus_window", args)).toMatchObject({ ok: false, error: { code: "invalid_command" } });
+  it("report_shown_board refuses a malformed board", async () => {
+    const { workspace, open, invoke } = setup();
+    const entry = open();
+    for (const args of [{}, { board: { project: PROJECT } }, { board: "orders.json" }]) {
+      expect(await invoke(entry, "report_shown_board", args)).toMatchObject({ ok: false, error: { code: "invalid_command" } });
     }
-  });
-
-  it("transfer_board_state hands the payload to the other window once its UI has loaded", async () => {
-    const { registry, open, invoke } = setup();
-    const from = open();
-    const to = registry.create() as WindowEntry & { window: FakeBrowserWindow };
-    const payload = { undo: [1, 2] };
-
-    expect(await invoke(from, "transfer_board_state", { toWindow: to.id, payload })).toEqual({ ok: true, value: null });
-    expect(to.window.sent).toEqual([]);
-    to.window.finishLoad();
-    expect(to.window.sent).toEqual([{ type: "board_state_transferred", fromWindow: from.id, payload }]);
-
-    expect(await invoke(from, "transfer_board_state", { toWindow: from.id, payload })).toMatchObject({
-      ok: false,
-      error: { code: "invalid_command" },
-    });
-  });
-
-  it("window_info describes the window without a folder", async () => {
-    const { open, invoke } = setup();
-    const entry = open();
-    const reply = await invoke(entry, "window_info");
-    expect(reply).toEqual({ ok: true, value: { windowId: entry.id, key: entry.key, platform: expect.any(String) as string } });
-  });
-
-  it("close_window closes the calling window", async () => {
-    const { registry, open, invoke } = setup();
-    const entry = open();
-    await invoke(entry, "close_window");
-    expect(registry.all()).toEqual([]);
+    expect(workspace.shownBoard()).toBeNull();
   });
 });
 
@@ -435,22 +376,20 @@ describe("the agent channel", () => {
     expect(await read).toMatchObject({ ok: true, page, board });
   });
 
-  it("agent_server_status reports the MCP server for Preferences › Agents", async () => {
+  it("agent_server_status reports the MCP server for Settings", async () => {
     const { open, invoke } = setup();
     expect(await invoke(open(), "agent_server_status")).toEqual({ ok: true, value: SERVER_STATUS });
   });
 });
 
 describe("the window command channel", () => {
-  it("refuses deleted folder commands and unknown names", async () => {
+  it("refuses deleted window commands and unknown names", async () => {
     const { open, invoke } = setup();
     const entry = open();
     for (const command of [
-      "close_folder",
-      "choose_folder",
-      "open_folder",
-      "choose_export_path",
-      "open_dropped_folder",
+      "focus_window",
+      "close_window",
+      "add_dropped_folder",
       "toString",
       3,
     ]) {

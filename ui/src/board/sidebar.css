@@ -1,4 +1,4 @@
-/* The board-mode sidebar: a scrolling region over Selected. */
+/* The board-mode sidebar, under the window's buttons: a scrolling region over Selected. */
 
 .board-sidebar {
   display: flex;
@@ -14,7 +14,7 @@
   flex-direction: column;
   gap: 16px;
   min-height: 0;
-  padding: 8px 8px 16px;
+  padding: 0 8px 16px;
   overflow: auto;
 }
 

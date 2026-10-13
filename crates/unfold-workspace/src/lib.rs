@@ -55,7 +55,6 @@
 
 #![forbid(unsafe_code)]
 
-pub mod claims;
 pub mod commands;
 mod commit;
 pub mod compile;
@@ -69,6 +68,7 @@ pub mod host;
 pub mod ipc;
 pub mod layout;
 pub mod lock;
+pub mod open_boards;
 pub mod options;
 pub mod problems;
 pub mod projects;
@@ -82,7 +82,6 @@ mod volume;
 mod watcher;
 pub mod workspace;
 
-pub use claims::BoardClaims;
 pub use compile::{CompileMode, CompileOutcome, CompileProgress, CompileTicket, ProgressFn};
 pub use confine::{ConfinedPath, confine};
 pub use error::{Result, WorkspaceError};
@@ -92,15 +91,13 @@ pub use host::{Host, MessageSink, SinkMessage};
 pub use ipc::{CommandError, CommandResult, Request};
 pub use layout::{BOARDS_PATH, CONFIG_PATH, FallbackReason, LOCAL_PATH, Layout, Location, UNFOLD_DIR};
 pub use lock::FolderLock;
+pub use open_boards::OpenBoards;
 pub use options::{AppConfig, WorkspaceOptions, default_languages, store_version};
 pub use problems::{IndexLogEntry, ProblemCategory, ProblemItem};
 pub use projects::{ProjectHandle, ProjectId, ProjectRow, Projects, WorkspaceView};
 pub use settings_edit::{
     EditedSettings, EntranceSpec, PythonProjectSpec, ScopeList, SettingsEdit, apply_edits,
 };
-pub use state::{
-    AgentPreferences, AppData, BoardView, LocalState, PageView, Preferences, Theme, UpdatePreferences,
-    WindowBounds,
-};
+pub use state::{AppData, AppSettings, LocalState, ShownBoard, WindowBounds, WindowState};
 pub use status::{GraphState, GraphStatus, ProjectState, WatchMode};
 pub use workspace::{OpenContext, SettingsEditOutcome, Workspace};

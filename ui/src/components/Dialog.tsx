@@ -2,10 +2,10 @@
  * Modal dialogs: `Dialog` (the frame), `ConfirmDialog` (Discard changes, Delete), and `PromptDialog`
  * (a name, e.g. New folder).
  *
- * A dialog is placed on the window (Add, Preferences, Project settings) or on the canvas area
+ * A dialog is placed on the window (Settings, Project settings) or on the canvas area
  * (`#content-area`: Publish, Discard, Delete, Rename), with its scrim over just that area.
- * While open, it traps Tab inside itself, makes the app behind it inert, silences window shortcuts,
- * closes on Escape, and returns focus to where it was when it closes.
+ * While open, it traps Tab inside itself, makes the app behind it inert, closes on Escape, and
+ * returns focus to where it was when it closes.
  */
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject, type SyntheticEvent } from "react";
@@ -27,10 +27,10 @@ export interface DialogProps {
   /** Under the title; it becomes the dialog's accessible description. */
   readonly description?: ReactNode;
   /**
-   * 400 for confirmations, 520 for Publish, 880 for Project settings and 1000 for the launch editor
-   * (those two with a close button and ruled header and footer).
+   * 400 for confirmations, 470 for Settings, 520 for Publish, 880 for Project settings and 1000 for the
+   * launch editor (all but 400 and 520 with a close button and a ruled header).
    */
-  readonly width: 400 | 520 | 880 | 1000;
+  readonly width: 400 | 470 | 520 | 880 | 1000;
   /** A fixed height in px (Project settings: 700); otherwise it fits its content. */
   readonly height?: number;
   /** `window`: centered on the window, scrim over everything. `canvas`: centered on the canvas area, scrim over it alone. */
@@ -103,7 +103,7 @@ export function Dialog({
   if (!open) {
     return null;
   }
-  const large = width === 880 || width === 1000;
+  const closable = width === 470 || width === 880 || width === 1000;
   return (
     <Portal>
       <div
@@ -147,7 +147,7 @@ export function Dialog({
               )}
             </div>
             {headerAction}
-            {large ? <IconButton icon="close" label="Close" onClick={onClose} /> : null}
+            {closable ? <IconButton icon="close" label="Close" onClick={onClose} /> : null}
           </div>
           {children === undefined ? null : <div className="dialog-body">{children}</div>}
           {footer === undefined ? null : (

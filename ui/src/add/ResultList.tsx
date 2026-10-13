@@ -64,14 +64,6 @@ export function optionId(id: string, index: number): string {
   return `${id}-${index}`;
 }
 
-/** The list's full height: paddings, headers, and rows. */
-export function listHeight<T>(sections: readonly ListSection<T>[], getHeight: (item: T) => number): number {
-  return rowsOf<T, ListSection<T>>(sections).reduce(
-    (sum, row) => sum + (row.kind === "header" ? HEADER_HEIGHT : getHeight(row.item)),
-    LIST_PADDING.start + LIST_PADDING.end,
-  );
-}
-
 export function ResultList<T, S extends ListSection<T> = ListSection<T>>({
   id,
   label,

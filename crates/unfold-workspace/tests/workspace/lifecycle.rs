@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use unfold_core::vocab::Language;
 use unfold_workspace::{
-    BoardView, CompileMode, FallbackReason, GraphState, LocalState, ProjectState, Workspace, WorkspaceError,
+    CompileMode, FallbackReason, GraphState, LocalState, ProjectState, Workspace, WorkspaceError,
     WorkspaceEvent,
 };
 
@@ -332,13 +332,7 @@ fn concurrent_local_state_updates_leave_the_file_equal_to_the_final_state() {
                 for update in 0..UPDATES {
                     workspace
                         .update_local_state(|state| {
-                            state.put_board_view(
-                                &format!(".unfold/boards/b{thread}.json"),
-                                BoardView {
-                                    page: Some(format!("page-{update}")),
-                                    ..BoardView::default()
-                                },
-                            );
+                            state.empty_folders.push(format!("t{thread}/u{update}"));
                         })
                         .expect("concurrent writes all succeed");
                 }
@@ -352,14 +346,7 @@ fn concurrent_local_state_updates_leave_the_file_equal_to_the_final_state() {
     .expect("state.json parses");
     let in_memory = workspace.local_state();
     assert_eq!(on_disk, in_memory);
-    assert_eq!(in_memory.boards.len(), THREADS as usize);
-    let last = format!("page-{}", UPDATES - 1);
-    assert!(
-        in_memory
-            .boards
-            .values()
-            .all(|view| view.page.as_deref() == Some(last.as_str()))
-    );
+    assert_eq!(in_memory.empty_folders.len(), (THREADS * UPDATES) as usize);
     let leftovers: Vec<_> = std::fs::read_dir(playground.path(".unfold/local"))
         .expect("local/")
         .filter_map(|entry| entry.ok())

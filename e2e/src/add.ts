@@ -1,7 +1,7 @@
 /**
- * The Add box (A, ⌘K, /): the entrance browser before typing (LOOK IN, the scope's list, a preview),
- * search across projects with kind tabs and a preview, and commands after `>`. Focus never leaves its
- * input, so keys go to it.
+ * The Add box (the dock's Add on a board, the sidebar's search on Home): the entrance browser before
+ * typing (LOOK IN, the scope's list, a preview), and search across projects with kind tabs and a
+ * preview. Focus never leaves its input, so keys go to it.
  */
 
 import type { Locator, Page } from "@playwright/test";
@@ -14,7 +14,7 @@ export function addBox(page: Page): Locator {
 
 /** Add's input (a combobox over the results). */
 export function addInput(page: Page): Locator {
-  return addBox(page).getByRole("combobox", { name: "Find or run a command" });
+  return addBox(page).getByRole("combobox", { name: "Find" });
 }
 
 /** Add's kind tabs (Entrances, Functions, Files, Text; All while searching). */
@@ -22,7 +22,7 @@ export function addTab(page: Page, kind: string): Locator {
   return addBox(page).getByRole("tablist", { name: "Kinds" }).getByRole("tab", { name: new RegExp(`^${kind}( |$)`) });
 }
 
-/** The results (or commands) Add lists while searching. */
+/** The results Add lists while searching. */
 export function addResults(page: Page): Locator {
   return addBox(page).getByRole("listbox");
 }

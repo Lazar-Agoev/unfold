@@ -1,7 +1,7 @@
 /**
  * The not-compiled Home: what Unfold will read, what it skips and why, settings or discovery
  * problems as Health rows, the top-level scope with check boxes staged until Compile, the
- * promise that nothing runs, and Compile (⇧⌘B). Once the state leaves not-compiled, Home shows the
+ * promise that nothing runs, and Compile. Once the state leaves not-compiled, Home shows the
  * compiled overview filling in as the compile finds entrances.
  */
 
@@ -9,7 +9,6 @@ import { useState } from "react";
 import { Button, Checkbox, showToast } from "../../components";
 import { Icon } from "../../icons";
 import { toUnfoldError, useEngineQuery, type CompilePreview, type ProjectId, type ProjectRow, type ProjectSummary, type ScopeFolder } from "../../ipc";
-import { ActionIds, useRegisterActions, useShortcut } from "../../keyboard";
 import { formatCount, plural } from "../../lib/format";
 import { HealthRowView, runHealthAction } from "../health/HealthRow";
 import { settingsSection } from "../health/problems";
@@ -143,7 +142,6 @@ function Setup({ project, preview, folders, truncated }: {
   readonly truncated: boolean;
 }) {
   const [starting, setStarting] = useState(false);
-  const shortcut = useShortcut(ActionIds.compile) ?? undefined;
   const staged = useStagedScope(project);
   const nothing = scopeCounts(preview.files, folders, staged).chosen === 0;
   const compile = async () => {
@@ -159,8 +157,6 @@ function Setup({ project, preview, folders, truncated }: {
       setStarting(false);
     }
   };
-  // ⇧⌘B here writes the staged scope first, as the button does (a mounted view's action wins).
-  useRegisterActions([{ id: ActionIds.compile, title: "Compile", category: "Project", enabled: () => !nothing, run: compile }]);
 
   return (
     <div className="home-first-compile">
@@ -170,7 +166,7 @@ function Setup({ project, preview, folders, truncated }: {
       <ScopeCard project={project} preview={preview} folders={folders} truncated={truncated} />
       <PromiseNote preview={preview} />
       <div className="home-compile-row">
-        <Button className="home-compile-button" variant="primary" busy={starting} disabled={nothing} {...(shortcut === undefined ? {} : { shortcut })} onClick={() => void compile()}>
+        <Button className="home-compile-button" variant="primary" busy={starting} disabled={nothing} onClick={() => void compile()}>
           Compile
         </Button>
         <p className="home-compile-caption">{nothing ? "Check a folder to compile." : compileCaption(preview.files)}</p>

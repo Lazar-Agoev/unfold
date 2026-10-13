@@ -95,8 +95,8 @@ export function harness(options: HarnessOptions = {}) {
   const entry = { id: 1, loaded: true } as WindowEntry;
   const windows: AgentWindows = {
     get: (id) => (id === 1 ? entry : undefined),
-    all: () => [entry],
-    create: () => entry,
+    current: () => entry,
+    open: () => entry,
     focus: () => {
       focused.push(1);
     },
@@ -198,10 +198,9 @@ export function harness(options: HarnessOptions = {}) {
     confirmations,
     /** The engine commands called, by name, in order. */
     commands: () => engineCalls.map(([command]) => command),
-    /** Window 1 reports a view (and was used last). */
+    /** Window 1 reports a view. */
     report: (report: ViewReport) => {
       views.report(1, report);
-      views.focused(1);
     },
   };
 }

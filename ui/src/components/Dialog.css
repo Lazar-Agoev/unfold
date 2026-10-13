@@ -36,6 +36,10 @@
   width: 400px;
 }
 
+.dialog-470 {
+  width: 470px;
+}
+
 .dialog-520 {
   width: 520px;
 }
@@ -93,8 +97,24 @@
 }
 
 /* The confirming button is 14px inline in every dialog (Project settings' Save, Publish's Publish). */
-.dialog-footer :is(.button-primary, .button-danger):not(.button-with-icon, .button-with-shortcut, .button-with-trailing) {
+.dialog-footer :is(.button-primary, .button-danger):not(.button-with-icon, .button-with-trailing) {
   padding-inline: 14px;
+}
+
+/* Settings: a 52px ruled header, and a body of sections that pad themselves. */
+.dialog-470 .dialog-header {
+  align-items: center;
+  height: 52px;
+  padding: 0 12px 0 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dialog-470 .dialog-title {
+  line-height: var(--leading-20);
+}
+
+.dialog-470 .dialog-body {
+  padding: 0;
 }
 
 /* Project settings and the launch editor: ruled header and footer, and a body that lays itself out. */

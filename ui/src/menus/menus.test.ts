@@ -36,7 +36,6 @@ function summary(overrides: Partial<BoardSummary> = {}): BoardSummary {
     projects: [],
     changes: 0,
     updatedAtMs: 0,
-    heldBy: null,
     label: null,
     error: null,
     ...overrides,
@@ -52,7 +51,6 @@ describe("the board menu", () => {
       "Rename…",
       "Move to folder",
       "Duplicate",
-      "Open in new window",
       "—",
       "Share",
       "Fold all cards",
@@ -77,8 +75,8 @@ describe("the board menu", () => {
     expect(labels(draft).filter((label) => label === "—")).toHaveLength(2);
   });
 
-  it("disables what needs a page for a board this window doesn't hold", () => {
-    const entries = boardMenuFor(REF, { summary: summary({ heldBy: 2 }), folders: [], open: null });
+  it("disables what needs a page for a board that isn't open", () => {
+    const entries = boardMenuFor(REF, { summary: summary(), folders: [], open: null });
     expect(enabled(entries)).toEqual(["Rename…", "Move to folder", "Duplicate", "Move back to drafts", "Delete…"]);
   });
 
@@ -117,7 +115,6 @@ describe("the project menu", () => {
       "Health and activity",
       "—",
       "Reveal in Finder",
-      "Copy diagnostics",
       "—",
       "Remove from workspace…",
     ]);
@@ -132,11 +129,10 @@ describe("the project menu", () => {
       "Add entrance…",
       "Health and activity",
       "Reveal in Finder",
-      "Copy diagnostics",
       "Remove from workspace…",
     ]);
-    expect(projectMenu({ kind: "not_compiled" })).toEqual(["Compile", "Settings…", "Add entrance…", "Reveal in Finder", "Copy diagnostics", "Remove from workspace…"]);
-    expect(projectMenu({ kind: "unavailable", reason: "gone" })).toEqual(["Copy diagnostics", "Remove from workspace…"]);
+    expect(projectMenu({ kind: "not_compiled" })).toEqual(["Compile", "Settings…", "Add entrance…", "Reveal in Finder", "Remove from workspace…"]);
+    expect(projectMenu({ kind: "unavailable", reason: "gone" })).toEqual(["Remove from workspace…"]);
   });
 
   it("offers Resume for a paused project, also while it rests", () => {

@@ -8,7 +8,7 @@
  * - main → window: the shell events of {@link AgentShellEvent};
  * - window → main: the window commands of {@link AgentWindowCommands}.
  *
- * Preferences › Agents reads the state of the MCP server agents connect to ({@link AgentServerStatus}).
+ * Settings reads the state of the MCP server agents connect to ({@link AgentServerStatus}).
  *
  * The main process owns argument parsing, links, defaults, and page revisions; the window owns
  * placement, the document's rules, and the refusal texts. Every edit is one undo step of the board,
@@ -596,10 +596,10 @@ export interface AgentBoardInfo {
 /**
  * A refusal: what failed and what to do instead (design §7.8). The window's codes are
  * `board_not_open`, `page_not_found`, `invalid_op`, `people_text`, `code_unavailable`,
- * `board_conflict`, `unsaved_edits`, `page_changed`, and, opening a board, `held` and `too_many_tabs`,
- * besides the engine's own (`board_problem`, …); the main process adds `revision_mismatch`,
- * `board_held_elsewhere`, `window_closed`, `timeout` (a read), `unconfirmed` (a change that may still
- * land), and `internal` (a malformed answer).
+ * `board_conflict`, `unsaved_edits`, `page_changed`, and, opening a board, `too_many_tabs`, besides
+ * the engine's own (`board_problem`, …); the main process adds `revision_mismatch`, `window_closed`,
+ * `timeout` (a read), `unconfirmed` (a change that may still land), and `internal` (a malformed
+ * answer).
  */
 export interface AgentFailure {
   readonly ok: false;
@@ -630,8 +630,8 @@ export interface AgentReadSuccess {
 
 export type AgentReadResult = AgentReadSuccess | AgentFailure;
 
-/** Whether a window opened (or already held) a board; `heldBy` names the window that holds it instead. */
-export type AgentOpenResult = { readonly ok: true } | (AgentFailure & { readonly heldBy?: number });
+/** Whether the window opened (or already held) a board. */
+export type AgentOpenResult = { readonly ok: true } | AgentFailure;
 
 // ---------------------------------------------------------------------------------------------
 // Boards as a whole: creating one, its pages and title, and showing it to the person
@@ -797,7 +797,7 @@ export type AgentShellEvent =
   | ShellEventOf<"agent_edit_board", AgentBoardEditRequest>
   | ShellEventOf<"agent_show", AgentShowRequest>
   | ShellEventOf<"agent_repair", AgentRepairRequest>
-  /** The MCP server started, stopped, or failed, or an agent connected or acted (sent to every window). */
+  /** The MCP server started listening or failed to, or an agent connected or acted. */
   | { readonly type: "agent_server_changed"; readonly status: AgentServerStatus };
 
 /** What is selected in a window's view. */
@@ -869,12 +869,12 @@ export interface AgentWindowCommands {
   agent_show_result: { args: { requestId: number; result: AgentShowResult }; result: null };
   /** The answer to an `agent_repair`. */
   agent_repair_result: { args: { requestId: number; result: AgentRepairResult }; result: null };
-  /** The MCP server's state, for Preferences › Agents (`agent_server_changed` follows it). */
+  /** The MCP server's state, for Settings (`agent_server_changed` follows it). */
   agent_server_status: { args: Record<string, never>; result: AgentServerStatus };
 }
 
 // ---------------------------------------------------------------------------------------------
-// The MCP server (Preferences › Agents)
+// The MCP server (Settings)
 
 /** An agent that has connected since the server started, by the identity its edits are signed with. */
 export interface ConnectedAgent {
@@ -887,18 +887,15 @@ export interface ConnectedAgent {
 }
 
 /**
- * What the MCP server is doing: `off` (Preferences › Agents has it off), `starting`, `listening` at
- * `address`, `port_taken` (another program listens on the port), or `failed` (it couldn't listen,
- * for `message`).
+ * What the MCP server is doing: `starting`, `listening` at `address`, `port_taken` (another program
+ * listens on the port), or `failed` (it couldn't listen, for `message`).
  */
-export type AgentServerState = "off" | "starting" | "listening" | "port_taken" | "failed";
+export type AgentServerState = "starting" | "listening" | "port_taken" | "failed";
 
 /** The MCP server's state, the address agents connect to, and the agents that connected. */
 export interface AgentServerStatus {
   readonly state: AgentServerState;
-  /** The port it listens on, or would. */
-  readonly port: number;
-  /** `http://127.0.0.1:<port>/mcp`. */
+  /** `http://127.0.0.1:29180/mcp`. */
   readonly address: string;
   /** Why it failed (`failed` only). */
   readonly message?: string;

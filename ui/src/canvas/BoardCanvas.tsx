@@ -25,7 +25,7 @@ import type { Card, Frame, Health, Link, LinkKind, Note, Resource } from "../ipc
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useContextMenu } from "../components";
 import { authorOf } from "../code/text";
-import { useRegisterActions } from "../keyboard";
+import { isTyping } from "../lib/typing";
 import { useAuthor } from "../state/author";
 import {
   MAX_FRAME_DEPTH,
@@ -468,21 +468,24 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
     };
   }, [linking, target]);
 
-  // Escape closes a selected line's contract, or lets go of an arrow's calls (later registrations win,
-  // so it goes before the peek sheet's).
-  useRegisterActions([
-    {
-      id: "board.closeLine",
-      title: "Close the Line's Contract",
-      category: "Board",
-      shortcuts: ["Escape"],
-      showInAdd: false,
-      enabled: () => ["line", "calls"].includes(getPageView(target).selection.kind),
-      run: () => {
+  // Escape closes a selected line's contract, or lets go of an arrow's calls, unless a field, a menu, or
+  // a dialog had it first. It listens on the document, so it goes before the peek sheet's (on the window).
+  const lineSelected = usePageView(target, (view) => view.selection.kind === "line" || view.selection.kind === "calls");
+  useEffect(() => {
+    if (!lineSelected) {
+      return undefined;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented && !isTyping(event.target)) {
+        event.preventDefault();
         select(target, { kind: "none" });
-      },
-    },
-  ]);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [lineSelected, target]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<CanvasNode>[]) => {
@@ -559,8 +562,8 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
     if (!focus || width === 0 || height === 0 || handled.current === focus.seq) {
       return undefined;
     }
-    // Fit without names waits for everything drawn, so a board opened in a new window fits what it
-    // shows; a frame's box waits for what it draws.
+    // Fit without names waits for everything drawn, so a board just opened fits what it shows; a
+    // frame's box waits for what it draws.
     const drawn = (id: string) => geometry.inside.get(id) ?? [geometry.shownAs.get(id) ?? id];
     const measuredIds = focus.cardIds.length > 0 ? focus.cardIds.flatMap(drawn) : [...display.keys()].filter((id) => !boxes.has(id));
     const ready = settled && measuredIds.every((id) => sizes[id] !== undefined);
@@ -627,7 +630,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
           event.preventDefault();
           const hasCards = cards.length > 0;
           paneMenu.open({ x: event.clientX, y: event.clientY }, [
-            { id: "fit", label: "Fit", shortcut: "Shift+1", disabled: !hasCards && resources.length === 0, onSelect: () => { requestCardFocus(target, [], "fit"); } },
+            { id: "fit", label: "Fit", disabled: !hasCards && resources.length === 0, onSelect: () => { requestCardFocus(target, [], "fit"); } },
             { kind: "separator", id: "s1" },
             { id: "fold", label: "Fold all cards", disabled: !hasCards, onSelect: () => { foldAll(target, true); } },
             { id: "unfold", label: "Unfold all cards", disabled: !hasCards, onSelect: () => { foldAll(target, false); } },

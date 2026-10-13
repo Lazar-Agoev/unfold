@@ -49,34 +49,18 @@ export interface UnfoldEvent {
   readonly [field: string]: unknown;
 }
 
-/** Commands the application menu forwards to the focused window's UI. */
-export type MenuCommand =
-  /** File > Remove Project: the window asks to confirm (`confirm_remove_project`), then removes it. */
-  | "remove_project"
-  | "new_board"
-  | "new_page"
-  | "compile"
-  | "publish"
-  | "close_tab"
-  /** View > Home. */
-  | "show_home"
-  | "toggle_sidebar"
-  /** View > Diagram / Code: the board page's lens. */
-  | "lens_diagram"
-  | "lens_code"
-  /** Go > Add, Go to File, Go to Function, Commands: Add opened as is, on Files, on Functions, or with `>`. */
-  | "add"
-  | "add_files"
-  | "add_functions"
-  | "commands"
-  /**
-   * Edit > Undo / Redo. Sent only when focus is outside a text field: inside one, the preload runs
-   * the field's native undo instead, so these reach the focused board.
-   */
-  | "undo"
-  | "redo"
-  /** Help > Copy Diagnostics: the window builds the redacted summary and copies it. */
-  | "copy_diagnostics";
+/**
+ * Edit > Undo / Redo, which the application menu forwards to the window's UI. Sent only when focus is
+ * outside a text field: inside one, the preload runs the field's native undo instead, so these reach
+ * the board.
+ */
+export type MenuCommand = "undo" | "redo";
+
+/** A board the window shows: its project's id (`ProjectId`) and the board's id. */
+export interface ShownBoard {
+  readonly project: string;
+  readonly board: string;
+}
 
 /**
  * Events that originate in the desktop shell rather than in Rust. They arrive through `on` like
@@ -84,22 +68,9 @@ export type MenuCommand =
  */
 export type ShellEvent =
   | { readonly type: "menu_command"; readonly command: MenuCommand }
-  /**
-   * Another window handed this window a board's state (its undo history) with
-   * `transfer_board_state`, after moving the board's claim here with `move_board`.
-   */
-  | { readonly type: "board_state_transferred"; readonly fromWindow: number; readonly payload: unknown }
-  /** `focus_window` named a board this window holds: show its tab. */
-  | { readonly type: "focus_board"; readonly project: string; readonly board: string }
-  /**
-   * A project was added from the menu, the command line, the OS (`open-file`), a second launch, or a
-   * drop the UI didn't handle: select it. Sent to the focused window.
-   */
+  /** File > Add Project… added a project: select it. */
   | { readonly type: "project_added"; readonly project: string }
-  /**
-   * Adding a folder from the menu, the command line, the OS, a second launch, or a drop the UI didn't
-   * handle failed (it isn't a folder, the workspace is full, …): say why. Sent to the focused window.
-   */
+  /** File > Add Project… couldn't add the folder (the workspace is full, …): say why. */
   | { readonly type: "project_add_failed"; readonly path: string; readonly message: string }
   /** An agent's edit, read, background open, or finish (`agent-api.ts`). */
   | AgentShellEvent
@@ -114,15 +85,14 @@ export interface StreamHandle {
   cancel(): void;
 }
 
-/** What `window_info` reports about the calling window. */
+/** What `window_info` reports about the window. */
 export interface WindowInfo {
   readonly windowId: number;
   /**
-   * The window's stable key for `window_state` / `save_window_state`. A restored window gets its
-   * saved key back.
+   * The board to show: the one it last reported with `report_shown_board`, else the last board shown
+   * when the app last quit. Null for Home.
    */
-  readonly key: string;
-  readonly platform: "darwin" | "win32" | "linux";
+  readonly board: ShownBoard | null;
 }
 
 /** What `export_mermaid` or `export_png` wrote. */
@@ -138,25 +108,8 @@ export interface AddedProject {
   readonly project: string;
 }
 
-/** A dropped item, as the UI receives it in a `drop` event (a DOM `File`). */
-export interface DroppedFile {
-  readonly name: string;
-}
-
 /** Window and dialog commands, handled by the main process (the agent channel's and the render window's too). */
 export interface WindowCommands extends AgentWindowCommands, RenderWindowCommands {
-  /** Open another window on the workspace (it shows the workspace's selected project). */
-  new_window: { args: Record<string, never>; result: { windowId: number } };
-  /**
-   * Bring a window to the front (e.g. the one `open_board` reports in `heldBy`). With `board`, that
-   * window also receives a `focus_board` event, so it shows the board's tab.
-   */
-  focus_window: {
-    args: { windowId: number; board?: { project: string; board: string } };
-    result: null;
-  };
-  /** Close the calling window. */
-  close_window: { args: Record<string, never>; result: null };
   /**
    * Show the folder picker and add the chosen folder to the workspace as a project. Resolves with
    * null when the picker is cancelled; rejects with the engine's error (`not_a_folder`,
@@ -169,10 +122,10 @@ export interface WindowCommands extends AgentWindowCommands, RenderWindowCommand
    */
   confirm_remove_project: { args: { name: string }; result: { confirmed: boolean } };
   /**
-   * Export a page of a board this window holds (its last saved version) or an entrance as Mermaid:
+   * Export a page of an open board (its last saved version) or an entrance as Mermaid:
    * the main process shows the save dialog (default name from `title`, `.mmd`) and has the engine
    * write the file. Resolves with null when the dialog is cancelled; rejects with the engine's error
-   * (`board_not_held`, `io`, …).
+   * (`board_not_open`, `io`, …).
    */
   export_mermaid: {
     args:
@@ -188,22 +141,17 @@ export interface WindowCommands extends AgentWindowCommands, RenderWindowCommand
    */
   export_png: { args: { project: string; board: string; page: string; title?: string }; result: ExportedFile | null };
   /**
-   * Open a new window for a tab. Resolves with its id at once: the UI then calls `move_board` to it
-   * and `transfer_board_state`.
-   */
-  move_tab_to_new_window: { args: Record<string, never>; result: { windowId: number } };
-  /**
-   * Hand a board's window-side state (its undo history) to another window. The target receives a
-   * `board_state_transferred` event (held until its UI has loaded). Call after `move_board`.
-   */
-  transfer_board_state: { args: { toWindow: number; payload: unknown }; result: null };
-  /**
    * Put text on the clipboard (Copy Mermaid, copy a path). The main process writes it: windows have
    * no clipboard permission (`navigator.clipboard.writeText` is denied, like every permission).
    */
   copy_to_clipboard: { args: { text: string }; result: null };
-  /** Describe the calling window. */
+  /** Describe the window, and the board it shows at launch. */
   window_info: { args: Record<string, never>; result: WindowInfo };
+  /**
+   * The board the window now shows, or null for Home. The main process saves it with the window's
+   * bounds, so the window comes back to it.
+   */
+  report_shown_board: { args: { board: ShownBoard | null }; result: null };
 }
 
 export type WindowCommand = keyof WindowCommands;
@@ -234,11 +182,4 @@ export interface UnfoldApi {
     command: C,
     ...args: WindowCommandArgs<C>
   ): Promise<WindowCommands[C]["result"]>;
-  /**
-   * Add a folder the person just dropped on this window as a project, from the `drop` event's
-   * `File`. Only an item of the latest drop is accepted, and the engine checks it is a folder (else
-   * it rejects with `not_a_folder`). Without a handler in the UI, the preload adds a single folder
-   * dropped anywhere in the window by itself and emits `project_added` (or `project_add_failed`).
-   */
-  addDroppedFolder(file: DroppedFile): Promise<AddedProject>;
 }

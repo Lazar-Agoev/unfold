@@ -7,10 +7,10 @@
 import { useRef, useState } from "react";
 import { IconButton, Monogram, showToast } from "../components";
 import { toUnfoldError } from "../ipc";
-import { useFocusTarget } from "../keyboard";
+import { useFocusTarget } from "../lib/focus-targets";
 import { BoardMenuButton } from "../menus";
 import { renameBoard, useOpenBoard, type BoardRef } from "../state/boards";
-import { activateHome } from "../state/tabs";
+import { showHome } from "../state/shownBoard";
 import { useProjectRow } from "../state/workspace";
 import { InlineRename } from "./InlineRename";
 import { useBoardSummary } from "./publishState";
@@ -32,7 +32,7 @@ export function BoardHeader({ board }: { readonly board: BoardRef }) {
   return (
     <div className="board-header">
       <div className="board-crumb">
-        <IconButton icon="chevron-left" label="Home" size={20} onClick={activateHome} />
+        <IconButton icon="chevron-left" label="Home" size={20} onClick={showHome} />
         <Monogram name={name} size={14} />
         <span className="board-crumb-text">{folder !== null ? `${name} / ${folder}` : name}</span>
       </div>

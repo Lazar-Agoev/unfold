@@ -20,7 +20,7 @@ import { entranceCardText, entranceTitle } from "../../canvas/entranceText";
 import { entranceHandlerRows, estimatedCardSize } from "../../canvas/sizing";
 import { cardBody } from "../../code/typeKinds";
 import { showToast } from "../../components/Toast";
-import { activateBoard } from "../tabStore";
+import { showBoard } from "../shownBoard";
 import { getProjectIndex, refProjectFor, resolveRefProject, useProjectIndex } from "../workspace";
 import {
   addCard,
@@ -66,9 +66,9 @@ export function displayedRects(board: OpenBoard, pageId: PageId): ReadonlyMap<st
   return page ? pageGeometry(page, (id) => sizes[id] ?? fallbackItemSize(page, id)).rects : new Map();
 }
 
-/** Shows a page: its board's tab and the page itself. */
+/** Shows a page: its board and the page itself. */
 function showPage(target: PageTarget): void {
-  activateBoard(target.board);
+  showBoard(target.board);
   setActivePage(target.board, target.page);
 }
 

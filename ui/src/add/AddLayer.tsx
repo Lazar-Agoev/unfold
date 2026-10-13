@@ -1,21 +1,20 @@
 /**
  * The Add box: one box over the window. Empty, it browses entrances (LOOK IN, the scope's list, and a
- * preview); typing searches every connected project; `>` lists commands. Focus stays in its input: ↑ ↓
- * move the selection, ← → move between LOOK IN and the list, Enter adds to the current page, ⌘Enter
- * on a new page, Tab switches the kind, Escape closes.
+ * preview); typing searches every connected project. Focus stays in its input: ↑ ↓ move the selection,
+ * ← → move between LOOK IN and the list, Enter adds to the current page, ⌘Enter on a new page, Tab
+ * switches the kind, Escape closes.
  */
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { newCardView } from "../code/typeKinds";
-import { KeyChip, Tooltip } from "../components";
+import { Tooltip } from "../components";
 import { Icon } from "../icons";
 import { engineQueryOptions, type AppRow, type EntranceScope, type ProjectId, type ProjectRow } from "../ipc";
-import { actions, pushModal, shortcutLabel, useActions, usePlatform, useShortcutLookup } from "../keyboard";
 import { plural } from "../lib/format";
 import { findPage, useOpenBoard, usePageKeys, type BoardRef } from "../state/boards";
-import { closeAdd, openDialog, useAddTarget, type AddRequest, type AddTarget, type DialogRequest } from "../state/overlays";
+import { closeAdd, openDialog, useAddTarget, type AddTarget, type DialogRequest } from "../state/overlays";
 import { refProjectFor, useProjectIndex, useWorkspace } from "../state/workspace";
 import { activateChoice, type AddChoice } from "./activate";
 import {
@@ -34,10 +33,9 @@ import {
 } from "./browse";
 import { BrowsePreview } from "./BrowsePreview";
 import { EntranceList, LookIn, navOptionId, type ListHeader } from "./Browser";
-import { commandGroups, type CommandItem } from "./commands";
 import { Preview, type PreviewItem } from "./Preview";
-import { listHeight, optionId, ResultList } from "./ResultList";
-import { CommandRow, MoreRow, ROW_HEIGHT, ResultRow, resultHeight, resultText } from "./Rows";
+import { optionId, ResultList } from "./ResultList";
+import { MoreRow, ResultRow, resultHeight, resultText } from "./Rows";
 import {
   KINDS,
   KIND_LABELS,
@@ -58,13 +56,12 @@ import "./add.css";
 /** Debounces: the query and the preview. */
 const QUERY_DELAY = 120;
 const PREVIEW_DELAY = 150;
-/** The box's fixed height while browsing and searching; its chrome is the input row, the footer, and the border. */
+/** The box's fixed height. */
 const BOX_HEIGHT = 660;
-const CHROME_HEIGHT = 56 + 40 + 2;
 
 const BLOCKED = "Rename one of the projects in its settings";
 
-type Mode = "browse" | "search" | "commands";
+type Mode = "browse" | "search";
 
 /** Where the browser's keyboard is: LOOK IN or the list. */
 type Pane = "nav" | "list";
@@ -120,20 +117,18 @@ function useDebounced<T>(value: T, delay: number): T {
 }
 
 /**
- * While Add is open: window shortcuts stay quiet, the app behind is inert, and focus returns to where it
- * was when Add closes. (The kit's dialogs do the same for their own layers.)
+ * While Add is open: the app behind is inert, and focus returns to where it was when Add closes. (The
+ * kit's dialogs do the same for their own layers.)
  */
 function useModalLayer(): void {
   useLayoutEffect(() => {
     const previous = document.activeElement;
-    const popModal = pushModal();
     const root = document.getElementById("root");
     const madeInert = root !== null && !root.hasAttribute("inert");
     if (madeInert) {
       root.setAttribute("inert", "");
     }
     return () => {
-      popModal();
       if (madeInert) {
         root.removeAttribute("inert");
       }
@@ -145,14 +140,7 @@ function useModalLayer(): void {
 }
 
 function modeOf(query: string): Mode {
-  if (query.trimStart().startsWith(">")) {
-    return "commands";
-  }
   return query.trim().length === 0 ? "browse" : "search";
-}
-
-function initialQuery(request: AddRequest): string {
-  return request.mode === "commands" ? `> ${request.query ?? ""}` : (request.query ?? "");
 }
 
 /** The choice a result stands for (null for a "more" row). */
@@ -189,38 +177,6 @@ function itemProject(item: ResultItem): ProjectId | null {
 /** The tabs of a mode, in Tab order: browsing has no All. */
 function tabsOf(mode: Mode): readonly AddTab[] {
   return mode === "browse" ? KINDS : ["all", ...KINDS];
-}
-
-/** The `>` keycap and the hints along the bottom. */
-function Footer({ mode, onPage }: { readonly mode: Mode; readonly onPage: boolean }) {
-  const platform = usePlatform();
-  const hint = (key: string, label: string) => (
-    <span className="add-hint">
-      <KeyChip variant="keycap" glyph={key} />
-      {label}
-    </span>
-  );
-  if (mode === "commands") {
-    return (
-      <footer className="add-footer">
-        {hint(shortcutLabel(platform, "Enter"), "Run")}
-        {hint("esc", "Close")}
-      </footer>
-    );
-  }
-  return (
-    <footer className="add-footer">
-      {hint(shortcutLabel(platform, "Enter"), onPage ? "Add to this page" : "Add to a new draft")}
-      {onPage ? hint(shortcutLabel(platform, "Mod+Enter"), "Add on a new page") : null}
-      {hint("⇥", "Switch kind")}
-      <span className="add-footer-spacer" />
-      <span className="add-hint">
-        Type
-        <KeyChip variant="keycap" glyph=">" />
-        for commands
-      </span>
-    </footer>
-  );
 }
 
 function OptionToggle({ label, glyph, pressed, onToggle }: { readonly label: string; readonly glyph: string; readonly pressed: boolean; readonly onToggle: () => void }) {
@@ -280,7 +236,7 @@ function usePageTitle(target: AddTarget): string | null {
   return useOpenBoard(page?.board ?? NO_BOARD, (board) => (page ? findPage(board.document, page.page)?.title : undefined)) ?? null;
 }
 
-export function AddLayer({ request }: { readonly request: AddRequest }) {
+export function AddLayer() {
   useModalLayer();
   const listId = useId();
   const navId = useId();
@@ -294,8 +250,8 @@ export function AddLayer({ request }: { readonly request: AddRequest }) {
   const workspace = useWorkspace();
   const rows = useMemo<readonly ProjectRow[]>(() => (workspace?.projects ?? []).filter((row) => row.state.kind !== "unavailable"), [workspace]);
 
-  const [query, setQuery] = useState(() => initialQuery(request));
-  const [chosenTab, setChosenTab] = useState<AddTab | null>(request.kind ?? null);
+  const [query, setQuery] = useState("");
+  const [chosenTab, setChosenTab] = useState<AddTab | null>(null);
   const [options, setOptions] = useState<TextOptions>({ caseSensitive: false, wholeWord: false, regex: false });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [browse, setBrowse] = useState<Browse>(() => initialBrowse(page?.board.project ?? null));
@@ -356,20 +312,8 @@ export function AddLayer({ request }: { readonly request: AddRequest }) {
   const items = useMemo(() => flatItems(groups), [groups]);
   const counts = mode === "search" ? kindCounts(names, textResults) : null;
 
-  // ---- Commands ----
-  const registered = useActions();
-  const shortcutOf = useShortcutLookup();
-  // Which commands apply is decided once per opening: Add is modal, so nothing changes underneath it.
-  const [enabled] = useState(() => new Set(actions.list().flatMap((action) => (actions.isEnabled(action.id) ? [action.id] : []))));
-  const commandQuery = mode === "commands" ? query.trimStart().slice(1) : "";
-  const commands = useMemo(
-    () => (mode === "commands" ? commandGroups(registered, commandQuery, (id) => enabled.has(id)) : []),
-    [mode, registered, commandQuery, enabled],
-  );
-  const commandItems = useMemo(() => commands.flatMap((group) => group.items), [commands]);
-
   // The selection: the chosen row while it is listed, else the first.
-  const listIds = mode === "commands" ? commandItems.map((item) => item.action.id) : items.map((item) => item.id);
+  const listIds = items.map((item) => item.id);
   const selected = selectedId !== null && listIds.includes(selectedId) ? selectedId : (listIds[0] ?? null);
   const selectedIndex = selected === null ? -1 : listIds.indexOf(selected);
   const selectedItem = mode === "search" ? (items[selectedIndex] ?? null) : null;
@@ -412,10 +356,6 @@ export function AddLayer({ request }: { readonly request: AddRequest }) {
       return;
     }
     choose(choiceOf(item), newPage);
-  };
-
-  const runCommand = (item: CommandItem) => {
-    closeThen(() => void actions.run(item.action.id));
   };
 
   const update = (change: Partial<Browse>) => {
@@ -540,9 +480,7 @@ export function AddLayer({ request }: { readonly request: AddRequest }) {
         close();
         break;
       case "Tab":
-        if (mode !== "commands") {
-          switchTab(event.shiftKey ? -1 : 1);
-        }
+        switchTab(event.shiftKey ? -1 : 1);
         break;
       case "ArrowDown":
         moveSelection(1);
@@ -579,11 +517,6 @@ export function AddLayer({ request }: { readonly request: AddRequest }) {
           } else if (browseItem) {
             activateBrowse(browseItem, newPage);
           }
-        } else if (mode === "commands") {
-          const item = commandItems[selectedIndex];
-          if (item) {
-            runCommand(item);
-          }
         } else if (selectedItem) {
           activateResult(selectedItem, newPage);
         }
@@ -605,17 +538,7 @@ export function AddLayer({ request }: { readonly request: AddRequest }) {
         : "Adds to a new draft";
 
   let body: ReactNode;
-  if (mode === "commands") {
-    body = (
-      <CommandsBody
-        listId={listId}
-        groups={commands}
-        selected={selected}
-        shortcutOf={shortcutOf}
-        onRun={runCommand}
-      />
-    );
-  } else if (mode === "browse") {
+  if (mode === "browse") {
     body = !browsing ? (
       <div className="add-body">
         <p className="add-empty">{`Type to find ${tab === "text" ? "text" : KIND_LABELS[browseTab].toLowerCase()} in ${plural(rows.length, "project")}.`}</p>
@@ -711,14 +634,14 @@ export function AddLayer({ request }: { readonly request: AddRequest }) {
         role="dialog"
         aria-modal="true"
         aria-label="Add"
-        className={mode === "commands" ? "add-box commands" : "add-box"}
+        className="add-box"
         onKeyDown={(event) => {
           if (event.key === "Escape" && !event.defaultPrevented) {
             event.preventDefault();
             close();
           }
         }}
-        style={mode === "commands" ? undefined : { height: BOX_HEIGHT }}
+        style={{ height: BOX_HEIGHT }}
       >
         <div className="add-input-row">
           <Icon name="search" className="add-input-icon" />
@@ -730,7 +653,7 @@ export function AddLayer({ request }: { readonly request: AddRequest }) {
             aria-controls={listId}
             aria-autocomplete="list"
             aria-activedescendant={activeDescendant}
-            aria-label="Find or run a command"
+            aria-label="Find"
             placeholder={placeholder}
             spellCheck={false}
             autoComplete="off"
@@ -748,25 +671,21 @@ export function AddLayer({ request }: { readonly request: AddRequest }) {
               <OptionToggle label="Use regular expression" glyph=".*" pressed={options.regex} onToggle={() => { setOptions({ ...options, regex: !options.regex }); }} />
             </div>
           ) : null}
-          <KeyChip variant="keycap" glyph="esc" className="add-esc" />
         </div>
-        {mode === "commands" ? null : (
-          <div className="add-kinds">
-            <Tabs
-              tabs={tabsOf(mode)}
-              active={tab}
-              counts={counts}
-              onChange={(next) => {
-                setChosenTab(next);
-                setSelectedId(null);
-              }}
-            />
-            <span className="add-kinds-spacer" />
-            <span className="add-kinds-text">{rightText}</span>
-          </div>
-        )}
+        <div className="add-kinds">
+          <Tabs
+            tabs={tabsOf(mode)}
+            active={tab}
+            counts={counts}
+            onChange={(next) => {
+              setChosenTab(next);
+              setSelectedId(null);
+            }}
+          />
+          <span className="add-kinds-spacer" />
+          <span className="add-kinds-text">{rightText}</span>
+        </div>
         {body}
-        <Footer mode={mode} onPage={page !== null} />
       </div>
     </div>,
     document.body,
@@ -913,40 +832,6 @@ function SearchResults({
           <ResultRow item={item} selected={isSelected} projectName={projectName(itemProject(item) ?? "")} blocked={blocked(itemProject(item))} />
         )
       }
-    />
-  );
-}
-
-function CommandsBody({
-  listId,
-  groups,
-  selected,
-  shortcutOf,
-  onRun,
-}: {
-  readonly listId: string;
-  readonly groups: ReturnType<typeof commandGroups>;
-  readonly selected: string | null;
-  readonly shortcutOf: (id: string) => string | null;
-  readonly onRun: (item: CommandItem) => void;
-}) {
-  if (groups.length === 0) {
-    return <p className="add-empty commands">No matching commands.</p>;
-  }
-  const height = Math.min(listHeight(groups, () => ROW_HEIGHT), BOX_HEIGHT - CHROME_HEIGHT);
-  return (
-    <ResultList<CommandItem>
-      id={listId}
-      label="Commands"
-      className="add-commands"
-      sections={groups}
-      getId={(item) => item.action.id}
-      getHeight={() => ROW_HEIGHT}
-      getText={(item) => (item.prefix === null ? item.action.title : `${item.prefix} › ${item.action.title}`)}
-      selectedId={selected}
-      onActivate={onRun}
-      renderItem={(item, isSelected) => <CommandRow item={item} selected={isSelected} shortcut={shortcutOf(item.action.id)} />}
-      height={height}
     />
   );
 }

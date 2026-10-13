@@ -10,9 +10,9 @@
 import { cpSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { activeBoardRef, boardView, card, expectCardsLoaded, onThisPage, pagesList, readBoard, selected } from "../src/board";
+import { boardView, card, expectCardsLoaded, onThisPage, pagesList, readBoard, selected, showBoard, shownBoardRef } from "../src/board";
 import { expect, test } from "../src/fixtures";
-import { launchCompiled, openPlace, PLACE, traceEntrance } from "../src/flows";
+import { launchCompiled, launchWithProject, openPlace, PLACE, traceEntrance } from "../src/flows";
 import { addProjectFromSidebar, expectGraphCurrent, firstCompile, homeMain, homeTitle, projectId, showHome, stateLine } from "../src/home";
 import { editFile, writeFile } from "../src/sandbox";
 import { writeSyntheticRepo } from "../src/synthetic";
@@ -78,7 +78,7 @@ test.describe("background updates", () => {
       await place.locator(".card-header").click();
       await enterText(selected(page).getByRole("textbox", { name: "Description" }), "Charges the order and saves it.");
       await expect(place.locator(".card-description")).toContainText("Charges the order and saves it.");
-      const { id } = await activeBoardRef(page);
+      const { id } = await shownBoardRef(page);
       await expect
         .poll(() => readBoard(folder, id).pages[0]?.cards.find((entry) => entry.ref.block?.endsWith(PLACE))?.description?.text)
         .toBe("Charges the order and saves it.");
@@ -126,7 +126,7 @@ test.describe("background updates", () => {
     await test.step("fixing the file brings the card back", async () => {
       writeFileSync(file, original);
       await expectGraphCurrent(page);
-      await page.getByRole("tablist", { name: "Window tabs" }).getByRole("tab", { name: "POST /orders" }).click();
+      await showBoard(page, "POST /orders");
       await expect(place.locator(".code-view")).not.toHaveClass(/\bdimmed\b/);
       await expect(place.locator(".card-note")).toHaveCount(0);
     });
@@ -137,9 +137,7 @@ test.describe("background updates", () => {
     const count = 520;
     const folder = sandbox.folder("synthetic");
     writeSyntheticRepo(folder, count, "main");
-    const app = await launch({ args: [folder] });
-    const page = await app.firstWindow();
-    await expect(homeTitle(page)).toHaveText("synthetic");
+    const { app, page } = await launchWithProject(launch, folder);
     await firstCompile(page);
     await expect(stateLine(page)).toContainText(/Graph current\s*· 520 files · TypeScript/);
     const project = await projectId(page, "synthetic");
@@ -205,9 +203,7 @@ test.describe("background updates", () => {
   test("a read-only folder keeps its graph in the fallback location and everything works", async ({ sandbox, launch }) => {
     const folder = sandbox.playground("ts-orders");
     sandbox.setReadOnly(folder, true);
-    const app = await launch({ args: [folder] });
-    const page = await app.firstWindow();
-    await expect(homeTitle(page)).toHaveText("ts-orders");
+    const { page } = await launchWithProject(launch, folder);
 
     await test.step("the Compile works and Home's state line says it uses the fallback location", async () => {
       await firstCompile(page);

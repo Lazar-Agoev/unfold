@@ -1,25 +1,8 @@
 import { describe, expect, it } from "vitest";
 import tokens from "./tokens.css?raw";
 
-/** The `--color-*` values declared in the first block matching `selector`. */
-function colors(selector: string): Map<string, string> {
-  const start = tokens.indexOf(selector);
-  const open = tokens.indexOf("{", start);
-  let depth = 0;
-  let end = open;
-  for (; end < tokens.length; end += 1) {
-    if (tokens[end] === "{") {
-      depth += 1;
-    } else if (tokens[end] === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        break;
-      }
-    }
-  }
-  const block = tokens.slice(open, end);
-  return new Map([...block.matchAll(/--color-([\w-]+):\s*([^;]+);/g)].map((match) => [match[1] ?? "", (match[2] ?? "").trim()]));
-}
+/** The `--color-*` values `:root` declares. */
+const COLORS = new Map([...tokens.matchAll(/--color-([\w-]+):\s*([^;]+);/g)].map((match) => [match[1] ?? "", (match[2] ?? "").trim()]));
 
 function luminance(hex: string): number {
   const channels = [1, 3, 5].map((index) => Number.parseInt(hex.slice(index, index + 2), 16) / 255);
@@ -35,11 +18,11 @@ function contrast(a: string, b: string): number {
 const HEX = /^#[0-9a-f]{6}$/i;
 
 /**
- * Text on the grounds it sits on: WCAG AA, 4.5:1 (no text lighter than `--color-subtle` on white). Pairs with a translucent value in a theme (dark warn and
- * authored tints) are checked only where both are opaque.
+ * Text on the grounds it sits on: WCAG AA, 4.5:1 (no text lighter than `--color-subtle` on white). Pairs
+ * with a translucent value are checked only where both are opaque.
  */
 const TEXT_PAIRS: readonly (readonly [string, string])[] = [
-  ...["canvas", "home", "sidebar", "chrome", "tabstrip", "surface", "control", "track", "pressed", "hover", "selection", "match", "step"].map(
+  ...["canvas", "home", "sidebar", "chrome", "surface", "control", "track", "pressed", "hover", "selection", "match", "step"].map(
     (ground) => ["text", ground] as const,
   ),
   ...[
@@ -47,7 +30,6 @@ const TEXT_PAIRS: readonly (readonly [string, string])[] = [
     "home",
     "sidebar",
     "chrome",
-    "tabstrip",
     "surface",
     "control",
     "track",
@@ -80,7 +62,7 @@ const TEXT_PAIRS: readonly (readonly [string, string])[] = [
 /**
  * Focus rings, state dots, and marks against their grounds: 3:1. `--color-faint` isn't held to it:
  * it is for rules, icons, and disabled states only (docs/ui-shell.md#theme), and the designs' value is below
- * 3:1 (2.56:1 light, 2.74:1 dark on the surface).
+ * 3:1 (2.56:1 on the surface).
  */
 const MARK_PAIRS: readonly (readonly [string, string])[] = [
   ...["surface", "sidebar", "canvas", "home", "chrome"].map((ground) => ["focus-ring", ground] as const),
@@ -93,18 +75,11 @@ const MARK_PAIRS: readonly (readonly [string, string])[] = [
   // A proposed step's dashed outline and connectors.
   ["proposed", "proposed-tint"],
   ["proposed", "surface"],
-  // The primary button's shortcut hint ("⇧⌘B" on Compile, "⌘O" on Add project) repeats the label's key, as drawn.
-  ["on-accent-soft", "accent"],
 ];
 
-const THEMES = {
-  light: colors(":root {"),
-  dark: new Map([...colors(":root {"), ...colors(':root[data-theme="dark"]')]),
-};
-
-describe.each(Object.entries(THEMES))("%s tokens", (_name, theme) => {
+describe("tokens", () => {
   const color = (name: string) => {
-    const value = theme.get(name);
+    const value = COLORS.get(name);
     if (value === undefined) {
       throw new Error(`no --color-${name}`);
     }
@@ -119,19 +94,5 @@ describe.each(Object.entries(THEMES))("%s tokens", (_name, theme) => {
 
   it.each(opaque(MARK_PAIRS))("%s on %s shows at 3:1", (foreground, background) => {
     expect(contrast(color(foreground), color(background))).toBeGreaterThanOrEqual(3);
-  });
-});
-
-describe("dark set", () => {
-  it("is the same in the OS media query and the explicit override", () => {
-    const fromMedia = colors(':root:not([data-theme="light"])');
-    expect(fromMedia.size).toBeGreaterThan(60);
-    expect(fromMedia).toEqual(colors(':root[data-theme="dark"]'));
-  });
-
-  it("gives every light color a dark value", () => {
-    const light = [...colors(":root {").keys()];
-    const dark = colors(':root[data-theme="dark"]');
-    expect(light.filter((name) => !dark.has(name))).toEqual([]);
   });
 });

@@ -11,9 +11,9 @@
 use serde::Deserialize;
 
 use crate::commands::{
-    NoArgs, ProjectArgs, ProjectKeyArgs, ProjectPathArgs, boards, compiling, deploy_import, diagnostics,
-    entrances, export, file_view, files, graph, launches, projects, relations, search, settings, text_search,
-    types, windows, workspace,
+    NoArgs, ProjectArgs, ProjectKeyArgs, ProjectPathArgs, boards, compiling, deploy_import, entrances,
+    export, file_view, files, graph, launches, projects, relations, search, settings, text_search, types,
+    windows, workspace,
 };
 use crate::compile::{CompileOutcome, CompileProgress};
 use crate::git::GitInfo;
@@ -22,7 +22,7 @@ use crate::ipc::error::CommandResult;
 use crate::ipc::typescript::{Collector, CommandSpec, ts_name};
 use crate::problems::ProblemItem;
 use crate::projects::{AddedProject, ProjectRow, WorkspaceView};
-use crate::state::{Preferences, SavedWindow};
+use crate::state::{AppSettings, WindowState};
 use crate::status::GraphStatus;
 
 macro_rules! stream_name {
@@ -145,21 +145,18 @@ command_table! {
     "project_config" => ProjectConfig(ProjectArgs) -> settings::ProjectConfig = settings::project_config;
     /// Applies validated edits to a project's `unfold.toml`.
     "update_project_config" => UpdateProjectConfig(settings::UpdateProjectConfigArgs) -> settings::ProjectConfig = settings::update_project_config;
-    /// The app preferences.
-    "get_preferences" => GetPreferences(NoArgs) -> Preferences = settings::get_preferences;
-    /// Saves the app preferences.
-    "set_preferences" => SetPreferences(settings::SetPreferencesArgs) -> Preferences = settings::set_preferences;
+    /// The app settings.
+    "get_settings" => GetSettings(NoArgs) -> AppSettings = settings::get_settings;
+    /// Saves the app settings.
+    "set_settings" => SetSettings(settings::SetSettingsArgs) -> AppSettings = settings::set_settings;
     /// The username that signs edits, and the engine version.
     "app_info" => AppInfo(NoArgs) -> settings::AppInfo = settings::app_info;
-    /// A redacted summary for bug reports (Copy Diagnostics): versions, platform, counts; no
-    /// source and no paths.
-    "diagnostics" => Diagnostics(diagnostics::DiagnosticsArgs) -> diagnostics::DiagnosticsReport = diagnostics::diagnostics;
 
     // Files and graph.
     /// The peek sheet's render model of a file, or one page of lines.
     "file_view" => FileView(file_view::FileViewArgs) -> file_view::FileView = file_view::file_view;
-    /// Opens a file in the preferred editor, or as text in the system's text editor.
-    "open_in_editor" => OpenInEditor(files::OpenInEditorArgs) -> files::OpenedWith = files::open_in_editor;
+    /// Opens a file with the editor command, or in TextEdit.
+    "open_in_editor" => OpenInEditor(files::OpenInEditorArgs) -> () = files::open_in_editor;
     /// Shows a file or folder in the system's file manager.
     "reveal_in_finder" => RevealInFinder(ProjectPathArgs) -> () = files::reveal_in_finder;
     /// An entrance card or a block card (Code and Flow).
@@ -198,20 +195,16 @@ command_table! {
     "board_thumbnails" => BoardThumbnails(boards::ThumbnailsArgs) -> boards::Thumbnails = boards::board_thumbnails;
     /// A board as its working file holds it, without opening it.
     "read_board" => ReadBoard(boards::BoardIdArgs) -> boards::ReadBoardResult = boards::read_board;
-    /// Opens a board in the calling window, or names the window that has it.
-    "open_board" => OpenBoard(boards::BoardIdArgs) -> boards::OpenBoardResult = boards::open_board;
+    /// Opens a board in the calling window.
+    "open_board" => OpenBoard(boards::BoardIdArgs) -> boards::BoardState = boards::open_board;
     /// Creates an empty draft and opens it in the calling window.
     "new_board" => NewBoard(boards::NewBoardArgs) -> boards::BoardState = boards::new_board;
     /// Reads an open board's working file again.
     "reload_board" => ReloadBoard(boards::BoardIdArgs) -> boards::BoardState = boards::reload_board;
-    /// Closes a board in the calling window.
+    /// Closes an open board.
     "close_board" => CloseBoard(boards::BoardIdArgs) -> () = boards::close_board;
-    /// Moves an open board to another window.
-    "move_board" => MoveBoard(boards::MoveBoardArgs) -> () = boards::move_board;
     /// Validates, signs, and writes an edited board.
     "save_board" => SaveBoard(boards::SaveBoardArgs) -> boards::BoardState = boards::save_board;
-    /// Remembers a board's active page and each page's camera and lens.
-    "save_board_view" => SaveBoardView(boards::SaveBoardViewArgs) -> () = boards::save_board_view;
     /// An open board's health and outlines.
     "board_health" => BoardHealth(boards::BoardIdArgs) -> boards::BoardHealthView = boards::board_health;
     /// Applies one repair to an open board and saves it.
@@ -241,17 +234,11 @@ command_table! {
     /// A board page or an entrance as Mermaid text.
     "export_mermaid_text" => ExportMermaidText(export::MermaidTextArgs) -> export::MermaidText = export::export_mermaid_text;
 
-    // Windows.
-    /// What a window remembered (Home selection, tabs, layout, bounds).
-    "window_state" => WindowState(windows::WindowKeyArgs) -> Option<SavedWindow> = windows::window_state;
-    /// Remembers the calling window's Home selection, tabs, and layout.
+    // The window.
+    /// The remembered window: bounds and the last board shown (main process only).
+    "window_state" => WindowState(NoArgs) -> Option<WindowState> = windows::window_state;
+    /// Remembers the window's bounds and the board it shows (main process only).
     "save_window_state" => SaveWindowState(windows::SaveWindowStateArgs) -> () = windows::save_window_state;
-    /// Every remembered window, for restoring them at launch (main process only).
-    "saved_windows" => SavedWindows(NoArgs) -> windows::SavedWindows = windows::saved_windows;
-    /// Remembers a window's position and size (main process only).
-    "save_window_bounds" => SaveWindowBounds(windows::WindowBoundsArgs) -> () = windows::save_window_bounds;
-    /// Forgets a closed window (main process only).
-    "forget_window" => ForgetWindow(windows::WindowKeyArgs) -> () = windows::forget_window;
 }
 
 #[cfg(test)]

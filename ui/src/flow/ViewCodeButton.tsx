@@ -1,11 +1,10 @@
 /**
  * The small `</>` button that opens something's actual source in the peek sheet (View code): on a
  * hovered or selected Flow step, on a combined block, beside an entrance's declaration, and on each of
- * its resolved targets. Its tooltip names View code's shortcut. A click never reaches the card under it.
+ * its resolved targets. A click never reaches the card under it.
  */
 
 import { Tooltip } from "../components";
-import { ActionIds, useShortcut } from "../keyboard";
 import "./flow.css";
 
 export interface ViewCodeButtonProps {
@@ -18,9 +17,8 @@ export interface ViewCodeButtonProps {
 }
 
 export function ViewCodeButton({ label = "View code", tabbable = true, className, onView }: ViewCodeButtonProps) {
-  const shortcut = useShortcut(ActionIds.viewCode);
   return (
-    <Tooltip content={label} {...(shortcut !== null && label === "View code" ? { shortcut } : {})} describe={false}>
+    <Tooltip content={label} describe={false}>
       <button
         type="button"
         className={`view-code nodrag${className !== undefined ? ` ${className}` : ""}`}

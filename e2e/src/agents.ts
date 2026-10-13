@@ -1,41 +1,26 @@
 /**
- * Agents (docs/ipc.md): turning the app's MCP server on in Preferences ›
- * Agents, and an MCP client that talks to it over HTTP the way Claude Code does (the official SDK's
- * client, named `claude-code`, so the app signs its edits as Claude). Raw requests check the
- * server's guards, which a client never trips.
+ * Agents (docs/ipc.md): the app's MCP server, which listens on a fixed local port while the app runs,
+ * Settings (where an agent's command is copied and its connection shown), and an MCP client that
+ * talks to the server over HTTP the way Claude Code does (the official SDK's client, named
+ * `claude-code`, so the app signs its edits as Claude). Raw requests check the server's guards, which
+ * a client never trips.
  */
 
 import { request } from "node:http";
-import { createServer } from "node:net";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { dialog, sidebar } from "./home";
 
-/** A port nothing on this machine listens on now (the server takes it once Preferences are saved). */
-export function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      server.close(() => {
-        if (address !== null && typeof address === "object") {
-          resolve(address.port);
-        } else {
-          reject(new Error("no port"));
-        }
-      });
-    });
-  });
-}
+/** Where the app's MCP server listens while the app runs (one app runs at a time). */
+export const AGENT_ADDRESS = "http://127.0.0.1:29180/mcp";
 
-/** Opens Preferences from the sidebar's gear and returns the dialog. */
-export async function openPreferences(page: Page): Promise<Locator> {
-  await sidebar(page).getByRole("button", { name: "Preferences…" }).click();
-  const preferences = dialog(page, "Preferences");
-  await expect(preferences).toBeVisible();
-  return preferences;
+/** Opens Settings from Home's sidebar gear and returns the dialog. */
+export async function openSettings(page: Page): Promise<Locator> {
+  await sidebar(page).getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = dialog(page, "Settings");
+  await expect(settings).toBeVisible();
+  return settings;
 }
 
 /** The status of a POST to the server with `headers` added to a well-formed MCP request. */

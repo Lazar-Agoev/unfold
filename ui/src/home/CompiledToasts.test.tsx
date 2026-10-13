@@ -6,7 +6,7 @@ import { Toaster, dismissToast } from "../components";
 import type { ProjectState } from "../ipc";
 import { startCompile } from "../state/compile";
 import { initialLayout, useLayout } from "../state/layout";
-import { useTabs } from "../state/tabs";
+import { useShownBoardStore } from "../state/shownBoard";
 import { useWindowStore } from "../state/window";
 import { fixture, installFakeEngine, type FakeEngine } from "../test/engine";
 import { renderWithClient } from "../test/render";
@@ -37,7 +37,7 @@ beforeEach(() => {
     },
   });
   useLayout.setState(initialLayout);
-  useTabs.setState({ boards: [], active: "home" });
+  useShownBoardStore.setState({ board: null });
   useWindowStore.setState({ info: null, selectedProject: API });
 });
 

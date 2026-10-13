@@ -1,91 +1,67 @@
 import type { MenuItemConstructorOptions } from "electron";
 import { describe, expect, it, vi } from "vitest";
-import type { MenuCommand } from "../shared/unfold-api";
 import { buildMenu, type MenuActions } from "./menu";
 
 // The template is what matters here: building the menu returns it as is.
 vi.mock("electron", () => ({ Menu: { buildFromTemplate: (template: unknown) => template } }));
 
-/** Every menu command (the record makes the compiler check none is missing). */
-const COMMANDS: Record<MenuCommand, true> = {
-  remove_project: true,
-  new_board: true,
-  new_page: true,
-  compile: true,
-  publish: true,
-  close_tab: true,
-  show_home: true,
-  toggle_sidebar: true,
-  lens_diagram: true,
-  lens_code: true,
-  add: true,
-  add_files: true,
-  add_functions: true,
-  commands: true,
-  undo: true,
-  redo: true,
-  copy_diagnostics: true,
-};
-
-/** The keyboard map (ui/src/keyboard/keymap.ts) as menu accelerators, by item label. */
-const ACCELERATORS: Readonly<Record<string, string>> = {
-  "Add Project…": "CmdOrCtrl+O",
-  "New Board": "CmdOrCtrl+N",
-  "New Page": "Alt+CmdOrCtrl+N",
-  "New Window": "Shift+CmdOrCtrl+N",
-  Compile: "Shift+CmdOrCtrl+B",
-  Publish: "Shift+CmdOrCtrl+E",
-  "Close Tab": "CmdOrCtrl+W",
-  "Close Window": "Shift+CmdOrCtrl+W",
-  Undo: "CmdOrCtrl+Z",
-  Redo: "Shift+CmdOrCtrl+Z",
-  Home: "CmdOrCtrl+0",
-  "Toggle Sidebar": "CmdOrCtrl+B",
-  Diagram: "CmdOrCtrl+1",
-  Code: "CmdOrCtrl+2",
-  Add: "CmdOrCtrl+K",
-  "Go to File": "CmdOrCtrl+P",
-  "Go to Function": "CmdOrCtrl+T",
-  Commands: "Shift+CmdOrCtrl+P",
-};
-
 function items(template: readonly MenuItemConstructorOptions[]): MenuItemConstructorOptions[] {
   return template.flatMap((item) => [item, ...(Array.isArray(item.submenu) ? items(item.submenu) : [])]);
 }
 
-function menu(isMac: boolean) {
-  const actions = { addProject: vi.fn(), newWindow: vi.fn(), forward: vi.fn<MenuActions["forward"]>() };
-  const template = buildMenu(actions, { isMac, devTools: false }) as unknown as MenuItemConstructorOptions[];
-  return { actions, all: items(template) };
+function menu(devTools = false) {
+  const actions = { addProject: vi.fn(), forward: vi.fn<MenuActions["forward"]>() };
+  const template = buildMenu(actions, { devTools }) as unknown as MenuItemConstructorOptions[];
+  return { actions, template, all: items(template) };
 }
 
-function click(item: MenuItemConstructorOptions): void {
-  (item.click as (() => void) | undefined)?.();
+function click(item: MenuItemConstructorOptions | undefined, window?: unknown): void {
+  (item?.click as ((menuItem: unknown, window: unknown) => void) | undefined)?.(item, window);
+}
+
+/** What a menu shows, item by item: a role, a label, or a separator. */
+function shown(submenu: MenuItemConstructorOptions["submenu"]): string[] {
+  return (submenu as MenuItemConstructorOptions[]).map((item) => item.label ?? item.role ?? item.type ?? "");
 }
 
 describe("the application menu", () => {
-  it.each([true, false])("forwards every menu command exactly once (macOS: %s)", (isMac) => {
-    const { actions, all } = menu(isMac);
-    for (const item of all) {
-      click(item);
-    }
-    const forwarded = actions.forward.mock.calls.map(([command]) => command);
-    expect([...forwarded].sort()).toEqual(Object.keys(COMMANDS).sort());
+  it("holds the standard macOS menus, File › Add Project…, and Close Window", () => {
+    const { template } = menu();
+    expect(template.map((item) => item.label ?? item.role)).toEqual(["appMenu", "File", "Edit", "View", "windowMenu"]);
+    expect(shown(template[1]?.submenu)).toEqual(["Add Project…", "separator", "Close Window"]);
+    expect(shown(template[2]?.submenu)).toEqual(["Undo", "Redo", "separator", "cut", "copy", "paste", "selectAll"]);
+    expect(shown(template[3]?.submenu)).toEqual(["togglefullscreen"]);
+    expect(template[1]?.submenu).toContainEqual({ role: "close", label: "Close Window" });
   });
 
-  it("adds a project and opens a window in the main process", () => {
-    const { actions, all } = menu(true);
-    click(all.find((item) => item.label === "Add Project…") ?? {});
-    click(all.find((item) => item.label === "New Window") ?? {});
+  it("adds a project in the main process", () => {
+    const { actions, all } = menu();
+    click(all.find((item) => item.label === "Add Project…"));
     expect(actions.addProject).toHaveBeenCalledTimes(1);
-    expect(actions.newWindow).toHaveBeenCalledTimes(1);
     expect(actions.forward).not.toHaveBeenCalled();
   });
 
-  it("shows the keyboard map's shortcuts, and no item is disabled", () => {
-    const { all } = menu(true);
-    const labelled = all.filter((item) => item.label !== undefined && item.accelerator !== undefined);
-    expect(Object.fromEntries(labelled.map((item) => [item.label, item.accelerator]))).toEqual(ACCELERATORS);
+  it("forwards Undo and Redo, with their shortcuts, to the window the menu acted on", () => {
+    const { actions, all } = menu();
+    const window = { id: "the window" };
+    const undo = all.find((item) => item.label === "Undo");
+    const redo = all.find((item) => item.label === "Redo");
+    click(undo, window);
+    click(redo, window);
+    expect(actions.forward.mock.calls).toEqual([
+      ["undo", window],
+      ["redo", window],
+    ]);
+    expect([undo?.accelerator, redo?.accelerator]).toEqual(["CmdOrCtrl+Z", "Shift+CmdOrCtrl+Z"]);
+  });
+
+  it("has no other shortcut items, and nothing is disabled", () => {
+    const { all } = menu();
+    expect(all.filter((item) => item.accelerator !== undefined).map((item) => item.label)).toEqual(["Undo", "Redo"]);
     expect(all.filter((item) => item.enabled === false)).toEqual([]);
+  });
+
+  it("offers reload and the developer tools only in development", () => {
+    expect(shown(menu(true).template[3]?.submenu)).toEqual(["togglefullscreen", "separator", "reload", "toggleDevTools"]);
   });
 });

@@ -6,7 +6,7 @@
 
 import { useMemo } from "react";
 import type { Unlabeled } from "../ipc/generated";
-import { requestFocus } from "../keyboard";
+import { requestFocus } from "../lib/focus-targets";
 import { findPage, focusCard, labelsFor, pageKey, pushFocusMove, select, useOpenBoard, type PageTarget } from "../state/boards";
 import { setSelectedCollapsed } from "../state/layout";
 

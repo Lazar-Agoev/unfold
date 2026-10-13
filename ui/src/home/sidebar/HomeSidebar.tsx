@@ -1,19 +1,18 @@
 /**
  * The Home-mode sidebar: the workspace row with search, Recents and Drafts, the projects list with
- * each project's state and its folder and board tree, and the footer with Add project and Preferences.
+ * each project's state and its folder and board tree, and the footer with Add project and Settings.
  */
 
 import type { JSX } from "react";
 import { IconButton, Monogram } from "../../components";
 import { Icon, type IconName } from "../../icons";
 import { useEngineQuery } from "../../ipc";
-import { ActionIds, useShortcut } from "../../keyboard";
 import { formatCount } from "../../lib/format";
-import { addProject, openPreferences } from "../../state/actions";
+import { addProject, openSettings } from "../../state/actions";
 import { useAuthor, authorName } from "../../state/author";
 import { setHomeView, useLayout, type HomeView } from "../../state/layout";
 import { openAdd } from "../../state/overlays";
-import { activateHome } from "../../state/tabs";
+import { showHome } from "../../state/shownBoard";
 import { useWorkspace } from "../../state/workspace";
 import { ProjectsList } from "./ProjectsList";
 import "./sidebar.css";
@@ -38,7 +37,7 @@ function NavRow({ icon, label, view, count }: { readonly icon: IconName; readonl
       aria-current={selected ? "page" : undefined}
       onClick={() => {
         setHomeView(view);
-        activateHome();
+        showHome();
       }}
     >
       <span className="home-nav-icon">
@@ -57,9 +56,6 @@ export function HomeSidebar(): JSX.Element {
   const drafts = useEngineQuery("drafts", {}, { enabled: projects.length > 0 });
   // No count without drafts.
   const draftCount = drafts.data && drafts.data.drafts.length > 0 ? formatCount(drafts.data.drafts.length, DRAFTS_CAP) : undefined;
-  const addShortcut = useShortcut(ActionIds.add) ?? undefined;
-  const projectShortcut = useShortcut(ActionIds.addProject) ?? undefined;
-  const preferencesShortcut = useShortcut(ActionIds.preferences) ?? undefined;
 
   return (
     <div className="home-sidebar">
@@ -69,7 +65,6 @@ export function HomeSidebar(): JSX.Element {
         <IconButton
           icon="search"
           label="Add…"
-          {...(addShortcut === undefined ? {} : { shortcut: addShortcut })}
           onClick={() => {
             openAdd();
           }}
@@ -85,7 +80,6 @@ export function HomeSidebar(): JSX.Element {
           icon="plus"
           label="Add Project…"
           size={20}
-          {...(projectShortcut === undefined ? {} : { shortcut: projectShortcut })}
           onClick={() => void addProject()}
         />
       </div>
@@ -99,10 +93,9 @@ export function HomeSidebar(): JSX.Element {
         </button>
         <IconButton
           icon="gear"
-          label="Preferences…"
+          label="Settings"
           tooltipSide="top"
-          {...(preferencesShortcut === undefined ? {} : { shortcut: preferencesShortcut })}
-          onClick={openPreferences}
+          onClick={openSettings}
         />
       </div>
     </div>

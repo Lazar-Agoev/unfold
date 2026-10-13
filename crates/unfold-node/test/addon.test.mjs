@@ -59,8 +59,8 @@ describe("unfold-node addon", { skip: built ? false : "the addon is not built: r
     return JSON.parse(await addon.dispatch(windowId, nextRequest++, JSON.stringify({ command, args })));
   }
 
-  async function trusted(command, args = {}) {
-    return JSON.parse(await addon.dispatch(0, nextRequest++, JSON.stringify({ command, args, trusted: true })));
+  async function trusted(command, args = {}, windowId = 0) {
+    return JSON.parse(await addon.dispatch(windowId, nextRequest++, JSON.stringify({ command, args, trusted: true })));
   }
 
   /** Whether `message` is a broadcast event of `type` about the test's project. */
@@ -122,7 +122,7 @@ describe("unfold-node addon", { skip: built ? false : "the addon is not built: r
     project = added.project.id;
     const changed = await sinkMessage((m) => m.kind === "broadcast" && m.event.type === "workspace_changed");
     assert.equal(changed.event.workspace.projects[0].id, project);
-    assert.deepEqual((await trusted("saved_windows")).windows, []);
+    assert.equal(await trusted("window_state"), null);
   });
 
   it("wakes a selected project, and its events reach the sink from Rust threads", async () => {
@@ -195,11 +195,11 @@ describe("unfold-node addon", { skip: built ? false : "the addon is not built: r
   });
 
   it("detaches windows, waiting for their closing writes", async () => {
-    const state = { key: "w1", selectedProject: project, tabs: [], activeTab: null, layout: {} };
-    const saving = dispatch(1, "save_window_state", { state });
+    const state = { bounds: { x: 0, y: 0, width: 1200, height: 800 }, maximized: false, board: null };
+    const saving = trusted("save_window_state", { state }, 1);
     assert.equal(await addon.detachWindow(1), undefined);
     assert.equal(await saving, null);
-    assert.equal((await dispatch(3, "window_state", { key: "w1" })).selectedProject, project);
+    assert.deepEqual(await trusted("window_state"), state);
     assert.equal(await addon.detachWindow(2), undefined);
     assert.equal(await addon.detachWindow(42), undefined, "an unknown window is fine");
   });

@@ -1,13 +1,13 @@
 /**
  * Board file operations: Publish, Discard changes, Move back to drafts, Delete,
  * Duplicate, Move to folder, Rename, health repairs, Mermaid and PNG export, and board folders. Operations on
- * an open board first write what is unsaved, because the engine works from the version this window
- * last saved; an id that changes (first Publish, Move back to drafts) keeps the session (undo history,
- * page views) and the tab.
+ * an open board first write what is unsaved, because the engine works from the version last saved; an
+ * id that changes (first Publish, Move back to drafts) keeps the session (undo history, page views),
+ * and the board stays in front if it was.
  */
 
 import type { BoardSummary, ExportedFile, ProjectId, PublishOutcome, RenamedFolder, RepairSpec, Resolve } from "../../ipc/generated";
-import { removeBoardTab, renameBoardTab } from "../tabStore";
+import { hideBoard, renameShownBoard } from "../shownBoard";
 import { findPage, setTitle } from "./document";
 import { call, windowCommand } from "./engine";
 import { adoptBoardState, editBoard, engineStep, flushBoard, forgetBoard, getOpenBoard } from "./store";
@@ -39,10 +39,10 @@ export function isValidName(name: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) && name.length <= 120;
 }
 
-/** Adopts a state whose id may differ from the open one, moving the session and its tab along. */
+/** Adopts a state whose id may differ from the open one, moving the session along. */
 function adoptAs(previous: BoardRef, state: Parameters<typeof adoptBoardState>[0]): BoardRef {
   const next = adoptBoardState(state, { replaces: previous });
-  renameBoardTab(previous, next);
+  renameShownBoard(previous, next);
   return next;
 }
 
@@ -71,13 +71,13 @@ export async function unpublishBoard(ref: BoardRef): Promise<BoardRef> {
   return adoptAs(ref, await call("unpublish_board", { project: ref.project, id: ref.id }));
 }
 
-/** Deletes the board's file (the caller has asked first) and closes it in this window. */
+/** Deletes the board's file (the caller has asked first) and forgets its session. */
 export async function deleteBoard(ref: BoardRef): Promise<void> {
   // Nothing may still be on its way to the file being deleted.
   await flushBoard(ref).catch(() => undefined);
   await call("delete_board", { project: ref.project, id: ref.id });
   forgetBoard(ref);
-  removeBoardTab(ref);
+  hideBoard(ref);
 }
 
 /** Copies the board (its working version) into a new draft "<title> copy" in the same folder. */

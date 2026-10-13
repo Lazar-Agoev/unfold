@@ -6,8 +6,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { queryClient } from "../ipc/client";
 import type { Card, CardView, Key, TypeDefinition, TypeMember, TypeText } from "../ipc/generated";
 import { engineKey } from "../ipc/queries";
-import { ActionIds, actions } from "../keyboard";
-import { runMenuCommand } from "../keyboard/menu";
 import * as store from "../state/boards/store";
 import { installFakeEngine, fixture, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../test/workspace";
@@ -146,7 +144,6 @@ beforeEach(() => {
       line_labels: () => [],
       list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
       save_board: () => boardState(P, ID),
-      save_board_view: () => null,
     },
   });
 });
@@ -196,7 +193,7 @@ describe("the lens", () => {
       expect(container.querySelector(".code-view")).not.toBeNull();
     });
     act(() => {
-      actions.run(ActionIds.lensDiagram);
+      store.setPageLens(PAGE, "diagram");
     });
     const node = await waitFor(() => {
       const found = container.querySelector<HTMLElement>(".diagram-card");
@@ -215,15 +212,11 @@ describe("the lens", () => {
     expect(store.getOpenBoard(REF)?.edits).toBe(0);
 
     act(() => {
-      actions.run(ActionIds.lensCode);
+      store.setPageLens(PAGE, "code");
     });
     await waitFor(() => {
       expect(container.querySelector(".diagram-card")).toBeNull();
     });
-    act(() => {
-      expect(runMenuCommand("lens_diagram", actions)).toBe(true);
-    });
-    expect(store.getPageView(PAGE).lens).toBe("diagram");
   });
 
   it("makes one card compact with its chevron, as a board edit, leaving the others expanded", async () => {
@@ -294,7 +287,7 @@ describe("the lens", () => {
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.view).toBe("flow");
     // In Code it shows expanded, without a chevron.
     act(() => {
-      actions.run(ActionIds.lensCode);
+      store.setPageLens(PAGE, "code");
     });
     await waitFor(() => {
       expect(container.querySelector('.entrance-card[data-card-id="import"] .card-expand')).toBeNull();
@@ -321,7 +314,6 @@ describe("the lens", () => {
         },
         line_labels: () => [],
         save_board: () => boardState(P, ID),
-        save_board_view: () => null,
       },
     });
     open(
@@ -381,7 +373,7 @@ describe("type cards", () => {
     // Type cards have nothing to expand: no chevron, in either lens.
     expect(cardElement(container, "currency")?.querySelector(".card-expand")).toBeNull();
     act(() => {
-      actions.run(ActionIds.lensCode);
+      store.setPageLens(PAGE, "code");
     });
     expect(await cellsOf("currency")).toEqual(["Usd", '"usd"', "Eur", '"eur"']);
   });
@@ -422,7 +414,7 @@ describe("type cards", () => {
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.view).toBe("flow");
 
     act(() => {
-      actions.run(ActionIds.lensCode);
+      store.setPageLens(PAGE, "code");
     });
     await waitFor(() => {
       for (const id of ["price", "price-flow", "price-code"]) {

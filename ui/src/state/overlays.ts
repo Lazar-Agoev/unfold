@@ -9,19 +9,10 @@ import type { ApplicationSpec, ImportedLaunch, ProjectId, TextMatch } from "../i
 import { boardKey } from "./boards/keys";
 import { useBoards } from "./boards/store";
 import type { BoardRef, PageTarget } from "./boards/types";
-import { useActiveBoard } from "./tabs";
+import { useShownBoard } from "./shownBoard";
 import { useWindowStore } from "./window";
 
-export type AddKind = "entrances" | "functions" | "files" | "text";
-
-export interface AddRequest {
-  /** `commands` opens Add in its `>` mode. */
-  readonly mode: "find" | "commands";
-  readonly kind?: AddKind;
-  readonly query?: string;
-}
-
-/** Where Add puts what it adds: the active board's active page, or Home with the selected project. */
+/** Where Add puts what it adds: the shown board's active page, or Home with the selected project. */
 export type AddTarget = { readonly kind: "page"; readonly target: PageTarget } | { readonly kind: "home"; readonly project: ProjectId | null };
 
 /**
@@ -87,7 +78,7 @@ export type DialogRequest =
   | { readonly kind: "launchEditor"; readonly project: ProjectId; readonly mode: "edit"; readonly id: string }
   | { readonly kind: "launchEditor"; readonly project: ProjectId; readonly mode: "override"; readonly key: string }
   | { readonly kind: "launchEditor"; readonly project: ProjectId; readonly mode: "review"; readonly launches: readonly ImportedLaunch[] }
-  | { readonly kind: "preferences" }
+  | { readonly kind: "settings" }
   | { readonly kind: "projectSettings"; readonly project: ProjectId; readonly section?: ProjectSettingsSection }
   | { readonly kind: "removeEntrance"; readonly project: ProjectId; readonly id: string; readonly name: string }
   | { readonly kind: "publish"; readonly board: BoardRef }
@@ -99,29 +90,28 @@ export type DialogRequest =
   | { readonly kind: "groupFromLines"; readonly target: PageTarget; readonly cardId: string; readonly members?: readonly string[] };
 
 interface OverlaysState {
-  readonly add: AddRequest | null;
+  readonly add: boolean;
   readonly peek: PeekTarget | null;
   readonly dialog: DialogRequest | null;
 }
 
-const useOverlays = create<OverlaysState>()(() => ({ add: null, peek: null, dialog: null }));
+const useOverlays = create<OverlaysState>()(() => ({ add: false, peek: null, dialog: null }));
 
-/** Opens Add (find mode by default), or changes the request of the open one. */
-export function openAdd(request: AddRequest = { mode: "find" }): void {
-  useOverlays.setState({ add: request });
+export function openAdd(): void {
+  useOverlays.setState({ add: true });
 }
 
 export function closeAdd(): void {
-  useOverlays.setState({ add: null });
+  useOverlays.setState({ add: false });
 }
 
-export function useAddRequest(): AddRequest | null {
+export function useAddOpen(): boolean {
   return useOverlays((state) => state.add);
 }
 
-/** Where Add adds, kept current: the active board tab's active page, else Home and its selected project. */
+/** Where Add adds, kept current: the shown board's active page, else Home and its selected project. */
 export function useAddTarget(): AddTarget {
-  const board = useActiveBoard();
+  const board = useShownBoard();
   const page = useBoards((state) => (board ? state.boards[boardKey(board)]?.activePage : undefined));
   const project = useWindowStore((state) => state.selectedProject);
   if (board && page !== undefined) {
@@ -130,7 +120,7 @@ export function useAddTarget(): AddTarget {
   return { kind: "home", project };
 }
 
-/** Shows a file in the peek sheet (one per window, kept across tab switches). */
+/** Shows a file in the peek sheet (one per window, kept when the window shows another board). */
 export function openPeek(target: PeekTarget): void {
   useOverlays.setState({ peek: target });
 }

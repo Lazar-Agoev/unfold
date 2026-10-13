@@ -15,10 +15,7 @@ export {
 } from "./queries";
 export { createLatestStream, type LatestStream } from "./stream";
 export {
-  addDroppedFolder,
   onShellEvent,
   toUnfoldError,
   windowCommand,
-  type DroppedFile,
-  type MenuCommand,
 } from "./unfold";

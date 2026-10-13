@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { queryClient } from "../ipc/client";
 import type { Card, Link } from "../ipc/generated";
 import { engineKey } from "../ipc/queries";
-import { ActionIds, actions } from "../keyboard";
 import * as store from "../state/boards/store";
 import { installFakeEngine, fixture, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../test/workspace";
@@ -73,7 +72,6 @@ beforeEach(() => {
       list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
       callers: () => fixture("callers", "callers_create_order"),
       save_board: () => state([]),
-      save_board_view: () => null,
     },
   });
 });
@@ -94,18 +92,42 @@ describe("the board view", () => {
     const before = card();
     const viewport = () => container.querySelector<HTMLElement>(".react-flow__viewport")?.style.transform;
     const cameraBefore = viewport();
+    const dock = screen.getByRole("toolbar", { name: "Board" });
     await act(async () => {
-      actions.run(ActionIds.zoomIn);
+      fireEvent.click(within(dock).getByRole("button", { name: "Zoom in" }));
       await new Promise((done) => setTimeout(done, 700));
     });
     expect(viewport()).not.toBe(cameraBefore);
     expect(screen.getByText(/^\d+%$/).textContent).not.toBe("100%");
     await act(async () => {
-      actions.run(ActionIds.fit);
-      actions.run(ActionIds.zoomOut);
+      fireEvent.click(within(dock).getByRole("button", { name: "Fit" }));
+      fireEvent.click(within(dock).getByRole("button", { name: "Zoom out" }));
       await new Promise((done) => setTimeout(done, 700));
     });
     expect(card()).toBe(before);
+  });
+
+  it("applies Edit › Undo and Redo to the board while it is shown", async () => {
+    store.adoptBoardState(state([]));
+    const { unmount } = renderBoard();
+    await screen.findByRole("heading", { name: "Page page-1" });
+    act(() => {
+      store.editBoard(REF, (document) => {
+        document.title = "Order flow";
+      });
+    });
+    act(() => {
+      engine.emit({ type: "menu_command", command: "undo" });
+    });
+    expect(store.getOpenBoard(REF)?.document.title).not.toBe("Order flow");
+    act(() => {
+      engine.emit({ type: "menu_command", command: "redo" });
+    });
+    expect(store.getOpenBoard(REF)?.document.title).toBe("Order flow");
+    // Once another board or Home shows, this board no longer hears them.
+    unmount();
+    engine.emit({ type: "menu_command", command: "undo" });
+    expect(store.getOpenBoard(REF)?.document.title).toBe("Order flow");
   });
 
   it("shows the page, its publish state, and the dock", async () => {
@@ -168,7 +190,7 @@ describe("the board view", () => {
     // Code has no chevron.
     expect(screen.queryByRole("button", { name: "Collapse createOrder" })).toBeNull();
     act(() => {
-      actions.run(ActionIds.lensDiagram);
+      store.setPageLens(PAGE, "diagram");
     });
     // The page's Code default leaves its cards expanded in Diagram: their Flow.
     await waitFor(() => {
@@ -198,13 +220,13 @@ describe("the board view", () => {
     expect(store.getOpenBoard(REF)?.edits).toBe(2);
     // A trip through Code keeps it expanded.
     act(() => {
-      actions.run(ActionIds.lensCode);
+      store.setPageLens(PAGE, "code");
     });
     await waitFor(() => {
       expect(container.querySelector(".code-view")).not.toBeNull();
     });
     act(() => {
-      actions.run(ActionIds.lensDiagram);
+      store.setPageLens(PAGE, "diagram");
     });
     await waitFor(() => {
       expect(container.querySelector(".flow-view")).not.toBeNull();

@@ -81,15 +81,14 @@ fn a_project_id_never_reaches_another_projects_files() {
 }
 
 #[test]
-fn absolute_paths_and_window_lifecycle_need_the_main_process() {
+fn absolute_paths_and_the_window_state_need_the_main_process() {
     let harness = Harness::new("ts-orders", false);
     for (command, args) in [
         ("add_project", json!({ "path": harness.root })),
-        ("saved_windows", json!({})),
-        ("forget_window", json!({ "key": "w" })),
+        ("window_state", json!({})),
         (
-            "save_window_bounds",
-            json!({ "key": "w", "bounds": { "x": 0, "y": 0, "width": 1, "height": 1 }, "maximized": false }),
+            "save_window_state",
+            json!({ "state": { "bounds": { "x": 0, "y": 0, "width": 1, "height": 1 }, "maximized": false, "board": null } }),
         ),
     ] {
         assert_eq!(harness.code(1, command, args.clone()), "untrusted", "{command}");
@@ -124,11 +123,7 @@ fn only_the_main_process_exports_to_a_file() {
     };
     assert_eq!(harness.code(1, "export_mermaid", export.clone()), "untrusted");
     assert!(!target.exists(), "a window never writes outside its projects");
-    // The main process exports for the window holding the board, to the path its dialog chose.
-    assert_eq!(
-        trusted(2, &export).expect_err("held by window 1").code,
-        "board_held"
-    );
+    // The main process exports an open board to the path its dialog chose.
     let written = trusted(1, &export).expect("export");
     assert_eq!(written["path"], target.to_str().expect("utf-8"));
     let text = std::fs::read_to_string(&target).expect("the export");

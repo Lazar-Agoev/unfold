@@ -1,17 +1,14 @@
 /**
- * Types of the window's open boards: the document as its file holds it, plus view state
- * per page that never goes into the file (only each page's camera and lens are remembered, through
- * `save_board_view`).
+ * Types of the open boards: the document as its file holds it, plus view state per page that never
+ * goes into the file and lasts only while the app runs.
  */
 
-import type { BoardDocument, BoardState, Health, Key, PageOutline, Place, ProjectId, PublishedState, View } from "../../ipc/generated";
+import type { BoardDocument, Health, Key, PageOutline, Place, ProjectId, PublishedState, View } from "../../ipc/generated";
 
 /** A board's id: the folder-relative path of its public file. */
 export type BoardId = string;
 /** A page's id, unique in its board (`page-1`). */
 export type PageId = string;
-/** A window's id, as the main process numbers them. */
-export type WindowId = number;
 
 /** A board: its project and its id (the folder-relative path of its public file). */
 export interface BoardRef {
@@ -129,7 +126,7 @@ export interface PendingGroup {
 export interface PageView {
   /**
    * The page's lens: null until the person uses the top Diagram | Code switch on this page (`pageLens`
-   * reads it; a lens saved as Flow by an older version shows Diagram).
+   * reads it; a Flow lens shows Diagram).
    */
   lens: View | null;
   camera: Camera | null;
@@ -185,9 +182,7 @@ export interface OpenBoard {
   name: string;
   /** The working version. Its `folder` and `projects` are Rust's (never edited or sent by the UI). */
   document: BoardDocument;
-  /** The version this window last loaded or saved (what Move to New Window reports as saved). */
-  savedDocument: BoardDocument;
-  /** The revision of the file this window last loaded or saved. */
+  /** The revision of the file last loaded or saved. */
   revision: string;
   /** The publish state at the last open, save, or publish (the header reads `list_boards`). */
   published: PublishedState | null;
@@ -203,17 +198,6 @@ export interface OpenBoard {
   history: BoardHistory;
   activePage: PageId;
   pages: Record<PageId, PageView>;
-  /** The page, a camera, or a lens changed since the last `save_board_view`. */
-  viewDirty: boolean;
-  /** Shown read-only (the render window's page, which holds no claim): nothing of it is ever saved. */
+  /** Shown read-only (the render window's page, which the engine doesn't hold open): nothing of it is ever saved. */
   readonly readOnly?: true;
-}
-
-/** What Move to New Window carries (plain JSON): the board as saved, its unsaved document, its history and view. */
-export interface BoardSession {
-  readonly state: BoardState;
-  readonly document: BoardDocument;
-  readonly history: { readonly past: readonly HistoryEntry[]; readonly future: readonly HistoryEntry[] };
-  readonly activePage: PageId;
-  readonly pages: Readonly<Record<PageId, { readonly camera: Camera | null; readonly lens: View | null }>>;
 }

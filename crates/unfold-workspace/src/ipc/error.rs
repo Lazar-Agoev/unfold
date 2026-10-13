@@ -5,10 +5,10 @@
 //! | --- | --- |
 //! | `invalid_command` | The command JSON is malformed or names no command |
 //! | `invalid_args` | The arguments don't fit the command |
-//! | `untrusted` | The command needs the main process (a path chosen in a dialog, window lifecycle) |
+//! | `untrusted` | The command needs the main process (a path chosen in a dialog, the window state) |
 //! | `not_found` | The key, path, board, or removed folder doesn't exist |
 //! | `unknown_project` | No project with that id is in the workspace |
-//! | `boards_open` | A window holds a board of the project (remove, switch worktree) |
+//! | `boards_open` | A board of the project is open (remove, switch worktree) |
 //! | `not_a_worktree` | `switch_worktree` to a path that isn't an available worktree of the project |
 //! | `too_many_projects` | The workspace has 64 projects |
 //! | `invalid_folder` | A board folder path breaks the folder rules |
@@ -17,10 +17,10 @@
 //! | `board_problem` | A save would introduce a missing reference, broken group, or held reference |
 //! | `board_conflict` | The board changed on disk since the revision the edit is based on |
 //! | `name_taken` | A published board's file name is taken |
-//! | `no_editor` | `open_in_editor` has no editor command and opening the file could run it |
+//! | `editor_not_found` | `open_in_editor` can't find the editor command's program (set its full path) |
 //! | `cancelled` | The request was cancelled |
 //! | `internal` | A bug: a panic or a broken invariant |
-//! | everything else | [`WorkspaceError::code`] (`not_compiled`, `invalid_path`, `board_held`, `not_a_folder`, `open_elsewhere`, ...) |
+//! | everything else | [`WorkspaceError::code`] (`not_compiled`, `invalid_path`, `board_not_open`, `not_a_folder`, `open_elsewhere`, ...) |
 
 use serde::Serialize;
 use ts_rs::TS;

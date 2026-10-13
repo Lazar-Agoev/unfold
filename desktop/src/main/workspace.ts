@@ -1,70 +1,102 @@
 /**
- * The workspace's windows and projects, as the main process sees them (desktop/README.md#transport-and-windows).
+ * The window's state and adding projects, as the main process sees them (desktop/README.md#transport-and-windows).
  *
- * - At launch, the windows open when the app last quit come back ({@link Workspace.restore}): the
- *   main process asks the engine (trusted `saved_windows`) and recreates each with its key and
- *   bounds, moved onto a visible screen if its display is gone. The UI then restores each window's
- *   tabs and layout with `window_state`. With none saved, or no answer from the engine, one new
- *   window opens.
- * - A folder from the menu, the command line, the OS (`open-file`), a second launch, or a drop joins
- *   the workspace through the trusted `add_project`, the only door for an outside path. The menu,
- *   command line, OS, and second launch also tell the focused window to select it (`project_added`),
- *   or why it couldn't be added (`project_add_failed`).
- * - Bounds are saved with `save_window_bounds` when a window is created and whenever it is moved or
- *   resized (debounced by the registry, and flushed as the window closes so the last move before
- *   closing or quitting is kept).
- * - A window the person closes is forgotten (`forget_window`) unless it was the last one: the last
- *   window, and every window open when the app quits, comes back.
+ * - At launch, the window comes back ({@link Workspace.restore}): the main process asks the engine
+ *   (trusted `window_state`) and opens the window with its bounds, moved onto a visible screen if
+ *   its display is gone. The UI asks `window_info` for the board to show. With nothing saved, or no
+ *   answer from the engine, the window opens at its default size on Home.
+ * - The UI reports the board it shows (`report_shown_board`). The window's bounds, whether it is
+ *   maximized, and that board are saved with `save_window_state` whenever one of them changes
+ *   (debounced, and flushed as the window closes so the last change before closing or quitting is
+ *   kept). Nothing else is remembered.
+ * - A folder from File › Add Project… joins the workspace through the trusted `add_project`, the
+ *   only door for an outside path, and the window is told to select it (`project_added`), or why it
+ *   couldn't be added (`project_add_failed`).
  */
 
 import { transportError } from "../shared/transport";
-import type { AddedProject, ShellEvent } from "../shared/unfold-api";
+import type { AddedProject, ShellEvent, ShownBoard } from "../shared/unfold-api";
 import type { EngineHost } from "./engine-host";
 import { EngineRequestError } from "./engine-host";
-import { savedWindowList } from "./window-placement";
-import type { WindowEntry, WindowRegistry } from "./windows";
+import type { WindowState } from "./window-placement";
+import { debouncedSave, savedWindowState } from "./window-placement";
+import type { AppWindow } from "./windows";
 
-/** How long launch waits for the saved windows before opening one fresh window. */
+/** How long launch waits for the saved state before opening the window at its default size. */
 const RESTORE_TIMEOUT_MS = 3_000;
-/** At most this many windows come back. */
-const MAX_RESTORED_WINDOWS = 16;
+/** How long the window's state must stay unchanged before it is saved. */
+const SAVE_DEBOUNCE_MS = 500;
 
 /** The main-process requests this module sends. */
 type EngineRequests = Pick<EngineHost, "request">;
 
 export class Workspace {
-  /** Each window's latest `save_window_bounds` until it settles (never rejects). */
-  private readonly placementSaves = new Map<number, Promise<void>>();
-  /** The restore in progress, so overlapping launches and activations bring windows back once. */
+  /** The board the window shows (null: Home): as saved at launch, then as the UI reports it. */
+  private shown: ShownBoard | null = null;
+  /** The latest `save_window_state` until it settles (never rejects). */
+  private saving: Promise<void> = Promise.resolve();
+  /** The launch restore, so a dock click or a menu command during it waits for the window. */
   private restoring: Promise<void> | null = null;
-  private quitting = false;
+  private readonly pendingSave = debouncedSave(() => {
+    this.save();
+  }, SAVE_DEBOUNCE_MS);
 
   constructor(
-    private readonly registry: WindowRegistry,
+    private readonly window: AppWindow,
     private readonly engine: EngineRequests,
   ) {}
 
-  /** Brings back the saved windows that aren't open already, or opens one window if none come back. */
+  /** At launch: opens the window where it was when the app last quit, on the board it showed. */
   restore(): Promise<void> {
-    this.restoring ??= this.restoreNow().finally(() => {
-      this.restoring = null;
-    });
+    this.restoring ??= this.restoreNow();
     return this.restoring;
   }
 
+  /** Opens the window if it is closed (after the launch restore), and brings it to the front. */
+  async show(): Promise<void> {
+    await this.restoring;
+    this.window.focus(this.window.open());
+  }
+
+  /** The board the window shows, for `window_info`. */
+  shownBoard(): ShownBoard | null {
+    return this.shown;
+  }
+
+  /** The UI shows another board, or Home: remember it. */
+  showBoard(board: ShownBoard | null): void {
+    this.shown = board;
+    this.pendingSave.schedule();
+  }
+
+  /** The person moved or resized the window: remember where it is. */
+  placementChanged(): void {
+    this.pendingSave.schedule();
+  }
+
+  /** The window is closing: save a change still waiting out the debounce while it can report its bounds. */
+  windowClosing(): void {
+    this.pendingSave.flush();
+  }
+
   /**
-   * Adds `path` (absolute, from a dialog, a drop, or the command line) to the workspace on behalf of
-   * window `windowId` (`0` for none). Rejects with an {@link EngineRequestError} (`not_a_folder`,
-   * `too_many_projects`, …).
+   * The window closed (before it is detached): resolves once its last save has settled, so the
+   * detach the caller does next can't race it.
+   */
+  async windowClosed(): Promise<void> {
+    this.pendingSave.cancel();
+    await this.saving;
+  }
+
+  /**
+   * Adds `path` (absolute, from the folder picker) to the workspace on behalf of window `windowId`
+   * (`0` for none). Rejects with an {@link EngineRequestError} (`not_a_folder`, `too_many_projects`, …).
    */
   async add(windowId: number, path: string): Promise<AddedProject> {
     return addedProject(await this.engine.request(windowId, "add_project", { path }));
   }
 
-  /**
-   * Adds a project from the menu, the command line, the OS, or a second launch, then tells the
-   * focused window (else the first one, else a new one) to select it, or why it couldn't be added.
-   */
+  /** Adds a project from File › Add Project…, then tells the window to select it, or why it couldn't be added. */
   async addProject(path: string): Promise<void> {
     let event: ShellEvent;
     try {
@@ -74,70 +106,38 @@ export class Workspace {
       const message = error instanceof EngineRequestError ? error.error.message : describe(error);
       event = { type: "project_add_failed", path, message };
     }
-    // At launch, the windows coming back receive it rather than a window of their own.
     await this.restoring;
-    const target = this.registry.focused() ?? this.registry.all()[0] ?? this.registry.create();
-    this.registry.deliver(target, event);
-  }
-
-  /** The app is quitting: windows closing from now on are remembered, not forgotten. */
-  setQuitting(): void {
-    this.quitting = true;
-  }
-
-  /** A window closed (before it is detached): forget it unless it should come back. */
-  async windowClosed(entry: WindowEntry): Promise<void> {
-    // The bounds flushed as it closed land first, so forgetting the window (or detaching it, which
-    // the caller does next) can't race them.
-    await this.placementSaves.get(entry.id);
-    if (this.quitting || this.registry.all().length === 0) {
-      return;
-    }
-    try {
-      await this.engine.request(entry.id, "forget_window", { key: entry.key });
-    } catch (error) {
-      console.warn(`[main] could not forget window ${entry.id}: ${describe(error)}`);
-    }
-  }
-
-  /** Saves a window's position and size, so it comes back there. */
-  savePlacement(entry: WindowEntry): void {
-    if (entry.window.isDestroyed()) {
-      return;
-    }
-    const { bounds, maximized } = this.registry.placement(entry);
-    const saved = this.engine.request(entry.id, "save_window_bounds", { key: entry.key, bounds, maximized }).then(
-      () => undefined,
-      (error: unknown) => {
-        // Expected while the engine restarts; the next move saves.
-        console.warn(`[main] could not save the bounds of window ${entry.id}: ${describe(error)}`);
-      },
-    );
-    this.placementSaves.set(entry.id, saved);
-    void saved.then(() => {
-      if (this.placementSaves.get(entry.id) === saved) {
-        this.placementSaves.delete(entry.id);
-      }
-    });
+    this.window.deliver(this.window.open(), event);
   }
 
   private async restoreNow(): Promise<void> {
-    let saved: unknown = null;
+    let saved: WindowState | null = null;
     try {
-      saved = await withTimeout(this.engine.request(0, "saved_windows", {}), RESTORE_TIMEOUT_MS);
+      saved = savedWindowState(await withTimeout(this.engine.request(0, "window_state", {}), RESTORE_TIMEOUT_MS));
     } catch (error) {
-      console.warn(`[main] could not read the saved windows: ${describe(error)}`);
+      console.warn(`[main] could not read the window's state: ${describe(error)}`);
     }
-    const inUse = new Set(this.registry.all().map((entry) => entry.key));
-    const windows = savedWindowList(saved)
-      .filter((window) => !inUse.has(window.key))
-      .slice(0, MAX_RESTORED_WINDOWS);
-    for (const window of windows) {
-      this.registry.create(window);
+    if (this.window.current()) {
+      return; // An agent needed the window before the saved state arrived.
     }
-    if (this.registry.all().length === 0) {
-      this.registry.create();
+    this.shown = saved?.board ?? null;
+    this.window.open(saved ?? undefined);
+  }
+
+  /** Saves the window's bounds and the board it shows, so it comes back there. */
+  private save(): void {
+    const entry = this.window.current();
+    if (!entry || entry.window.isDestroyed()) {
+      return;
     }
+    const state: WindowState = { ...this.window.placement(entry), board: this.shown };
+    this.saving = this.engine.request(entry.id, "save_window_state", { state }).then(
+      () => undefined,
+      (error: unknown) => {
+        // Expected while the engine restarts; the next change saves.
+        console.warn(`[main] could not save the window's state: ${describe(error)}`);
+      },
+    );
   }
 }
 

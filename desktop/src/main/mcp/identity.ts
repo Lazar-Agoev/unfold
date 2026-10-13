@@ -6,7 +6,7 @@
  * `User-Agent`'s product token. Claude Code signs as `agent:claude`, Codex as `agent:codex`, and any
  * other client by its own name, lowercased.
  *
- * The directory also keeps the agents seen since the server started, for Preferences › Agents.
+ * The directory also keeps the agents seen since the server started, for Settings.
  */
 
 import type { AgentIdentity, ConnectedAgent } from "../../shared/agent-api";
@@ -105,14 +105,8 @@ export class AgentDirectory {
     this.onChange();
   }
 
-  /** The agents seen since the server started (or was last cleared), the one seen last first. */
+  /** The agents seen since the server started, the one seen last first. */
   agents(): ConnectedAgent[] {
     return [...this.seen.values()].reverse();
-  }
-
-  /** Forgets everyone: the server stopped (which it reports itself). */
-  clear(): void {
-    this.names.clear();
-    this.seen.clear();
   }
 }

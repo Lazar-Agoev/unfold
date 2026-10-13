@@ -14,7 +14,7 @@ import { cardQuery } from "../../canvas";
 import { ReviewButton } from "../../canvas/cards/ReviewBanner";
 import { Button } from "../../components";
 import type { Card, Proposal } from "../../ipc/generated";
-import { useFocusTarget } from "../../keyboard";
+import { useFocusTarget } from "../../lib/focus-targets";
 import { useAuthor } from "../../state/author";
 import {
   PROPOSAL_REASON_MAX,

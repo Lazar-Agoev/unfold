@@ -2,7 +2,7 @@
  * View code: where the actual source of what is selected
  * on a page is, as a peek sheet target with the lines (and, for a step, the exact expression) to
  * highlight. Every View code entry point resolves through `selectionSource`: the `</>` buttons, the
- * card and step menus, Selected's location links, `C`, and the sheet following the selection.
+ * card and step menus, Selected's location links, and the sheet following the selection.
  *
  * - A function or type card opens its definition at its first line; a step, its recorded focus (a
  *   condition, a call's expression, else the statement) in the file of the block whose Flow shows it,

@@ -304,7 +304,6 @@ describe("a step group's one collapse state", () => {
         card: () => createOrder,
         list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
         save_board: () => boardState(P, REF.id),
-        save_board_view: () => null,
       },
     });
   });
@@ -494,7 +493,6 @@ describe("calls expanded in place on a card", () => {
         line_labels: () => [],
         list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
         save_board: () => boardState(P, REF.id, store.getOpenBoard(REF)?.document),
-        save_board_view: () => null,
       },
     });
   });
@@ -629,7 +627,6 @@ describe("calls expanded in place on a card", () => {
         line_labels: () => [],
         list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
         save_board: () => boardState(P, REF.id, store.getOpenBoard(REF)?.document),
-        save_board_view: () => null,
       },
     });
     const pay: Group = { id: "pay", card: "place", title: "Pay for the order", members: [`${PLACE}/n1`, `${PLACE}/n2`], collapsed: true };
@@ -724,7 +721,6 @@ describe("calls expanded in place on a card", () => {
         line_labels: () => [],
         list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
         save_board: () => boardState(P, REF.id, store.getOpenBoard(REF)?.document),
-        save_board_view: () => null,
       },
     });
     const step = `${ONE}/n2`;

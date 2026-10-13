@@ -1,20 +1,14 @@
 /**
  * Launching the built, unpackaged app with a sandbox's user data and home, and driving what only
- * the main process can do: stubbing dialogs, a second launch, the clipboard, finding and killing the
- * engine host, memory, quitting.
+ * the main process can do: stubbing dialogs, the application menu, the clipboard, finding and killing
+ * the engine host, memory, quitting.
  */
 
-import { spawn } from "node:child_process";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { _electron } from "@playwright/test";
 import { desktopDir, electronExecutable } from "./paths";
 import type { Sandbox } from "./sandbox";
 import { prepareWindow } from "./window";
-
-export interface LaunchOptions {
-  /** Extra command-line arguments, such as a folder to add as a project. */
-  readonly args?: readonly string[];
-}
 
 /** The environment the app runs in: this process's, with a throwaway home. */
 function appEnv(sandbox: Sandbox): Record<string, string> {
@@ -34,19 +28,17 @@ export class UnfoldApp {
   readonly electron: ElectronApplication;
   /** The main process's and engine host's output, for failure reports. */
   readonly logs: string[];
-  private readonly sandbox: Sandbox;
   private closed = false;
 
-  private constructor(electron: ElectronApplication, logs: string[], sandbox: Sandbox) {
+  private constructor(electron: ElectronApplication, logs: string[]) {
     this.electron = electron;
     this.logs = logs;
-    this.sandbox = sandbox;
   }
 
-  static async launch(sandbox: Sandbox, options: LaunchOptions = {}): Promise<UnfoldApp> {
+  static async launch(sandbox: Sandbox): Promise<UnfoldApp> {
     const electron = await _electron.launch({
       executablePath: electronExecutable(),
-      args: [desktopDir, `--user-data-dir=${sandbox.userData}`, ...(options.args ?? [])],
+      args: [desktopDir, `--user-data-dir=${sandbox.userData}`],
       env: appEnv(sandbox),
     });
     const logs: string[] = [];
@@ -61,36 +53,23 @@ export class UnfoldApp {
         }
       });
     });
-    return new UnfoldApp(electron, logs, sandbox);
+    return new UnfoldApp(electron, logs);
   }
 
   get isClosed(): boolean {
     return this.closed;
   }
 
-  /** The first window, ready to drive (sized, with the event recorder installed). */
+  /** The app's window, ready to drive (sized, with the event recorder installed). */
   async firstWindow(): Promise<Page> {
     const page = await this.electron.firstWindow();
     await prepareWindow(this, page);
     return page;
   }
 
-  /** Waits for the next window to open and prepares it. Call before the action that opens it. */
-  async nextWindow(action: () => Promise<unknown>): Promise<Page> {
-    const [page] = await Promise.all([this.electron.waitForEvent("window"), action()]);
-    await prepareWindow(this, page);
-    return page;
-  }
-
-  /** Every open window's page. */
+  /** Every open window's page (the app's window, and the render window while it draws a page). */
   windows(): Page[] {
     return this.electron.windows();
-  }
-
-  /** The Electron window id of a page. */
-  async windowId(page: Page): Promise<number> {
-    const handle = await this.electron.browserWindow(page);
-    return handle.evaluate((window: Electron.BrowserWindow) => window.id);
   }
 
   async resize(page: Page, width: number, height: number): Promise<void> {
@@ -143,20 +122,31 @@ export class UnfoldApp {
   }
 
   /**
-   * Launches the app a second time with `args`, as opening a folder from the Finder or a terminal
-   * does: the second copy hands its arguments to this one and exits.
+   * Clicks an item of the application menu (`["Edit", "Undo"]`) for the window of `page`, as choosing
+   * it with the mouse does: Electron passes that window to the item. Key presses never reach the
+   * native menu, so the journeys undo and redo through it.
    */
-  async secondLaunch(args: readonly string[]): Promise<void> {
-    const child = spawn(electronExecutable(), [desktopDir, `--user-data-dir=${this.sandbox.userData}`, ...args], {
-      env: appEnv(this.sandbox),
-      stdio: "ignore",
-    });
-    await new Promise<void>((resolve, reject) => {
-      child.once("error", reject);
-      child.once("exit", () => {
-        resolve();
-      });
-    });
+  async clickMenu(page: Page, path: readonly string[]): Promise<void> {
+    const handle = await this.electron.browserWindow(page);
+    const windowId = await handle.evaluate((window: Electron.BrowserWindow) => window.id);
+    await this.electron.evaluate(({ BrowserWindow, Menu }, { labels, id }) => {
+      let items = Menu.getApplicationMenu()?.items ?? [];
+      let item: Electron.MenuItem | undefined;
+      for (const label of labels) {
+        item = items.find((candidate) => candidate.label === label);
+        if (!item) {
+          throw new Error(`no menu item ${label}`);
+        }
+        items = item.submenu?.items ?? [];
+      }
+      const window = BrowserWindow.fromId(id);
+      if (!item || !window) {
+        throw new Error("nothing to click");
+      }
+      // Typed as a bare `Function`: Electron calls it with the event, the window, and its contents.
+      const click = item.click as (event: unknown, window: Electron.BrowserWindow, contents: Electron.WebContents) => void;
+      click.call(item, undefined, window, window.webContents);
+    }, { labels: [...path], id: windowId });
   }
 
   /** The engine host's process id (the utility process named "Unfold Engine"), or null. */
@@ -181,7 +171,7 @@ export class UnfoldApp {
     );
   }
 
-  /** Quits like the person would (Unfold > Quit): windows are restored from this on relaunch. */
+  /** Quits like the person would (Unfold > Quit): the window is restored from this on relaunch. */
   async quit(): Promise<void> {
     if (this.closed) {
       return;

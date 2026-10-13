@@ -24,6 +24,12 @@
   padding: 0 12px 0 20px;
   border-bottom: 1px solid var(--color-border-shell);
   background: var(--color-chrome);
+  /* It moves the window; its controls don't. */
+  -webkit-app-region: drag;
+}
+
+.board-topbar :is(button, input) {
+  -webkit-app-region: no-drag;
 }
 
 /* The title and publish state; on a narrow canvas they shorten to the room the lens leaves (TopBar). */
@@ -227,7 +233,6 @@
 }
 
 @container dock-lane (width < 440px) {
-  .board-dock-add .key-chip,
   .board-dock-arrange .button-label { display: none; }
 }
 
@@ -241,10 +246,8 @@
   .board-dock-divider.before-arrange { display: none; }
 }
 
-.board-dock .board-dock-add { padding-right: 6px; }
 .board-dock-add .icon { stroke-width: 2; }
 .board-dock .button-ghost .icon { width: 16px; height: 16px; }
-.board-dock-add .button-label { display: flex; align-items: center; gap: 6px; }
 
 .board-dock-divider {
   flex-shrink: 0;

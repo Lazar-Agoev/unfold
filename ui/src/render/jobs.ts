@@ -1,7 +1,7 @@
 /**
  * What the render window is asked to draw: the main process's `render_page` (a page, handed whole)
  * and `render_frame` (the camera to capture it with), and the answers (`render_ready`). Each page is
- * adopted as a read-only board session, so the canvas and the cards draw it exactly as a board tab
+ * adopted as a read-only board session, so the canvas and the cards draw it exactly as the board view
  * would, and nothing of it is ever saved.
  */
 
@@ -9,7 +9,7 @@ import type { RenderAnswer, RenderFrame, RenderJob } from "@unfold/desktop/rende
 import { create } from "zustand";
 import { onShellEvent, windowCommand } from "../ipc";
 import type { BoardState, Health, Page } from "../ipc/generated";
-import { adoptBoardState, forgetBoard } from "../state/boards/store";
+import { adoptBoardState, forgetBoard, setCamera } from "../state/boards/store";
 import type { Camera } from "../state/boards";
 
 interface RenderState {
@@ -45,10 +45,9 @@ export function measureCamera(page: Page, width: number, height: number): Camera
   return { x: -left * zoom, y: -top * zoom, zoom };
 }
 
-/** The board session a job is drawn from: its one page, its health, and the measuring camera, without a lens. */
-export function jobState(job: RenderJob, width: number, height: number): BoardState {
+/** The board session a job is drawn from: its one page and its health. */
+export function jobState(job: RenderJob): BoardState {
   const page = job.page as unknown as Page;
-  const camera = measureCamera(page, width, height);
   return {
     project: job.board.project,
     id: job.board.id,
@@ -60,17 +59,18 @@ export function jobState(job: RenderJob, width: number, height: number): BoardSt
     health: (job.health as Health | null) ?? NO_HEALTH,
     outlines: [],
     label: null,
-    view: { page: page.id, pages: { [page.id]: { ...camera, lens: null } } },
   };
 }
 
-/** Takes a job: the page before it is forgotten, and this one adopted read-only. */
+/** Takes a job: the page before it is forgotten, and this one adopted read-only, with the measuring camera. */
 function receiveJob(job: RenderJob): void {
   const previous = useRenderJob.getState().job;
   if (previous) {
     forgetBoard(previous.board);
   }
-  adoptBoardState(jobState(job, window.innerWidth, window.innerHeight), { readOnly: true });
+  const board = adoptBoardState(jobState(job), { readOnly: true });
+  const page = job.page as unknown as Page;
+  setCamera({ board, page: page.id }, measureCamera(page, window.innerWidth, window.innerHeight));
   useRenderJob.setState({ job, frame: null });
 }
 

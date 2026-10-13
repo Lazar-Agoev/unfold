@@ -102,7 +102,6 @@ describe("add_cards", () => {
       document: { format: "unfold-board", version: 1, title: "Order placement", projects: [], pages: [PAGE as unknown as Page, { ...(PAGE as unknown as Page), id: "page-2", title: "Async path" }] },
       revision: "r1",
       published: null,
-      heldBy: null,
     };
     const test = harness({ window: window([]), engine: { read_board: () => two } });
     const refused = await test.call(addCards, { board: BOARD.id, project: "ts-orders", cards: [{ key: CREATE_ORDER }] });

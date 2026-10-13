@@ -5,11 +5,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { BoardSummary, ProjectRow } from "../../ipc";
 import { resetBoards } from "../../state/boards/store";
 import { initialLayout, useLayout } from "../../state/layout";
-import { useTabs } from "../../state/tabs";
+import { getShownBoard, showBoard, useShownBoardStore } from "../../state/shownBoard";
 import { useWindowStore } from "../../state/window";
 import { installFakeEngine, type FakeEngine } from "../../test/engine";
 import { renderWithClient } from "../../test/render";
-import { projectRow, workspaceView } from "../../test/workspace";
+import { boardState, projectRow, workspaceView } from "../../test/workspace";
 import { HomeSidebar } from "./HomeSidebar";
 
 const API = "p-api0000000";
@@ -28,7 +28,6 @@ function board(title: string, folder: string | null, place: BoardSummary["place"
     projects: [],
     changes: 0,
     updatedAtMs: 0,
-    heldBy: null,
     label: null,
     error: null,
   };
@@ -50,11 +49,11 @@ beforeEach(() => {
       list_boards: ({ project }) => ({ project, boards: [board("Order lifecycle", "Checkout"), board("Auth", null, "draft")], emptyFolders: [] }),
       select_project: () => null,
       set_project_expanded: () => null,
-      open_board: () => ({ status: "held", heldBy: 2 }),
+      open_board: ({ project, id }) => boardState(project, id),
     },
   });
   resetBoards();
-  useTabs.setState({ boards: [], active: "home" });
+  useShownBoardStore.setState({ board: null });
   useLayout.setState(initialLayout);
   useWindowStore.setState({ info: null, selectedProject: API });
 });
@@ -105,14 +104,14 @@ describe("the Home sidebar", () => {
 
   it("selects a project on click and shows its overview; the chevron only expands", async () => {
     useLayout.setState({ ...initialLayout, home: { ...initialLayout.home, view: "drafts" } });
-    useTabs.setState({ boards: [{ project: API, id: "x" }], active: `${API}\u0000x` });
+    showBoard({ project: API, id: "x" });
     renderWithClient(<HomeSidebar />);
     fireEvent.click(await screen.findByText("storefront-web"));
     await waitFor(() => {
       expect(engine.callsOf("select_project")).toEqual([{ project: WEB }]);
     });
     expect(useLayout.getState().home.view).toBe("overview");
-    expect(useTabs.getState().active).toBe("home");
+    expect(getShownBoard()).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Expand storefront-web" }));
     await waitFor(() => {

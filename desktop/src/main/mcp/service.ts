@@ -1,37 +1,22 @@
 /**
- * The agents' MCP server as the app runs it (design §5.2, §5.7): it listens while Preferences › Agents
- * has it on, on the port it names, and moves or stops when that changes. Preferences › Agents reads
- * its status (`agent_server_status`), and every window hears when it changes (`agent_server_changed`):
- * at once when it starts, stops, or fails, and at most once a second while agents act.
+ * The agents' MCP server as the app runs it (design §5.2, §5.7): it listens on `127.0.0.1:29180`
+ * whenever the app is open. Settings reads its status (`agent_server_status`), and the window hears
+ * when it changes (`agent_server_changed`): at once when it starts listening or can't, and at most
+ * once a second while agents act.
  */
 
 import type { AgentServerStatus } from "../../shared/agent-api";
 import type { McpServices } from "./context";
 import { AgentDirectory } from "./identity";
-import { McpListener, type ListenerSettings } from "./listener";
+import { McpListener } from "./listener";
 import type { Prompt } from "./prompt";
 import { mcpHandler } from "./server";
 import type { Tool } from "./tool";
 
-/** The port agents connect to unless Preferences › Agents names another (D7). */
-const DEFAULT_PORT = 29180;
-/** How often, at most, agents' activity is reported to the windows. */
+/** The port agents connect to. It is fixed, so the commands people paste stay the same. */
+const AGENT_PORT = 29180;
+/** How often, at most, agents' activity is reported to the window. */
 const ACTIVITY_INTERVAL_MS = 1_000;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** Preferences › Agents, from the preferences (`get_preferences`, `preferences_changed`); off when unreadable. */
-export function agentSettings(preferences: unknown): ListenerSettings {
-  const agents = isRecord(preferences) ? preferences["agents"] : undefined;
-  const enabled = isRecord(agents) && agents["enabled"] === true;
-  const port = isRecord(agents) ? agents["port"] : undefined;
-  return {
-    enabled,
-    port: typeof port === "number" && Number.isInteger(port) && port > 0 && port <= 65_535 ? port : DEFAULT_PORT,
-  };
-}
 
 export interface McpServiceOptions {
   readonly services: McpServices;
@@ -42,12 +27,13 @@ export interface McpServiceOptions {
   /** The tools and prompts, when not the app's own (tests). */
   readonly tools?: readonly Tool[];
   readonly prompts?: readonly Prompt[];
+  /** The port, when not the agents' port (tests: 0 picks a free one). */
+  readonly port?: number;
 }
 
 export class McpService {
   private readonly directory: AgentDirectory;
   private readonly listener: McpListener;
-  private port = DEFAULT_PORT;
   private activity: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly options: McpServiceOptions) {
@@ -64,34 +50,28 @@ export class McpService {
       ...(options.prompts ? { prompts: options.prompts } : {}),
     });
     this.listener = new McpListener({
+      port: options.port ?? AGENT_PORT,
       serve: (request, body) => {
         this.directory.observe(body, request.headers.get("user-agent"));
         return serve(request, body);
       },
-      onState: (state) => {
-        if (state.state !== "listening") {
-          // Stopped, moving, or failed: whoever was connected is disconnected.
-          this.directory.clear();
-        }
+      onState: () => {
         this.notify();
       },
     });
   }
 
-  /** Follows Preferences › Agents: listens on `port` while `enabled`, else stops. */
-  configure(settings: ListenerSettings): Promise<void> {
-    this.port = settings.port;
-    return this.listener.configure(settings);
+  /** Starts listening; when it can't, the status says why. Never rejects. */
+  start(): Promise<void> {
+    return this.listener.start();
   }
 
-  /** What Preferences › Agents shows. */
+  /** What Settings shows. */
   status(): AgentServerStatus {
     const state = this.listener.state;
-    const port = state.state === "off" ? this.port : state.port;
     return {
       state: state.state,
-      port,
-      address: `http://127.0.0.1:${port}/mcp`,
+      address: `http://127.0.0.1:${state.port}/mcp`,
       ...(state.state === "failed" ? { message: state.message } : {}),
       agents: this.directory.agents(),
     };

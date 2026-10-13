@@ -9,12 +9,7 @@ import { toUnfoldError, type Key, type ProjectId } from "../ipc";
 import { getOpenBoard, newBoard, openBoard, requestCardFocus, select, setActivePage, traceEntrance, type BoardRef } from "../state/boards";
 
 function failed(title: string, error: unknown): void {
-  const failure = toUnfoldError(error);
-  showToast({
-    title,
-    body: failure.code === "too_many_tabs" ? "Close a tab first: a window holds at most 100 boards." : failure.message,
-    tone: "danger",
-  });
+  showToast({ title, body: toUnfoldError(error).message, tone: "danger" });
 }
 
 export async function openBoardFromHome(ref: BoardRef): Promise<void> {
@@ -45,17 +40,14 @@ export async function traceFromHome(project: ProjectId, entrance: Key): Promise<
 /** Opens a board on the page of its first health item, with that card selected. */
 export async function reviewBoard(ref: BoardRef): Promise<void> {
   try {
-    const outcome = await openBoard(ref);
-    if (outcome.status !== "opened") {
-      return;
-    }
-    const item = getOpenBoard(outcome.ref)?.health.items[0];
+    await openBoard(ref);
+    const item = getOpenBoard(ref)?.health.items[0];
     if (!item) {
       return;
     }
-    setActivePage(outcome.ref, item.page);
+    setActivePage(ref, item.page);
     if ("card" in item.target) {
-      const target = { board: outcome.ref, page: item.page };
+      const target = { board: ref, page: item.page };
       select(target, { kind: "card", cardId: item.target.card, key: null });
       requestCardFocus(target, [item.target.card], "center");
     }

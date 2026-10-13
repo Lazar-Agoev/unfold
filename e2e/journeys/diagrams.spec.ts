@@ -1,10 +1,10 @@
 /**
  * One Diagram canvas on a compiled `ts-orders` (docs/user-guide.md#diagram-and-code, View code,
  * grouping, and Proposed steps): a traced entrance shows its ordered handlers and collapses to a
- * compact node, and Code and back keeps the expansions; View code (`C`) on createOrder's condition
+ * compact node, and Code and back keeps the expansions; View code on createOrder's condition
  * opens its source with the condition's line and expression highlighted, and the highlight moves with
- * the condition when an edit above it compiles; Combine… makes two steps one collapsed block, which ⌘Z
- * undoes; Add proposed step after… puts a PROPOSED step on the card beside the compiled steps until
+ * the condition when an edit above it compiles; Combine… makes two steps one collapsed block, which
+ * Edit › Undo undoes; Add proposed step after… puts a PROPOSED step on the card beside the compiled steps until
  * Remove proposal; OrderService.place expanded in place connects its own call to validateOrder's card;
  * and the emails worker's callback to withRetry expands in place to sendEmail's Flow, captioned with
  * the callback it goes through.
@@ -13,7 +13,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { boardView, card, clickCanvas, flowStep, lens, selected } from "../src/board";
+import { boardView, card, chooseLens, clickCanvas, flowStep, selected } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { CREATE_ORDER, launchCompiled, POST_ORDERS, traceEntrance } from "../src/flows";
 import { dialog, showHome } from "../src/home";
@@ -48,7 +48,7 @@ async function chooseStepItem(page: Page, item: string): Promise<void> {
 
 test.describe("diagrams", () => {
   test("expand and collapse, View code, Combine, a proposed step, and a callback expanded in place", async ({ sandbox, launch }) => {
-    const { page, folders } = await launchCompiled(launch, sandbox);
+    const { app, page, folders } = await launchCompiled(launch, sandbox);
     await traceEntrance(page, "POST", "/orders");
     const entrance = card(page, POST_ORDERS);
     const createOrder = card(page, CREATE_ORDER);
@@ -61,24 +61,23 @@ test.describe("diagrams", () => {
       await expect(entrance).toHaveClass(/diagram-card/);
       await expect(entrance.locator(".ecard-handler")).toHaveCount(0);
       await expect(entrance.getByRole("button", { name: "Expand POST /orders", exact: true })).toBeVisible();
-      await clickCanvas(page);
-      await page.keyboard.press("Meta+2");
-      await expect(lens(page).getByRole("radio", { name: "Code" })).toHaveAttribute("aria-checked", "true");
+      await chooseLens(page, "Code");
       await expect(createOrder.locator(".code-view")).toBeVisible();
       // Code shows an entrance whole: its handlers, without a chevron.
       await expect(entrance.locator(".ecard-handler-name")).toHaveText(["requireUser", "validateBody", "createOrder"]);
-      await page.keyboard.press("Meta+1");
-      await expect(lens(page).getByRole("radio", { name: "Diagram" })).toHaveAttribute("aria-checked", "true");
+      await chooseLens(page, "Diagram");
       await expect(entrance).toHaveClass(/diagram-card/);
       await expect(entrance.locator(".ecard-handler")).toHaveCount(0);
       await expect(createOrder.locator(".flow-view")).toBeVisible();
       await expect(createOrder.locator(".code-view")).toHaveCount(0);
     });
 
-    await test.step("C on createOrder's condition opens orders.ts in the peek, its line and expression highlighted", async () => {
-      await clickOnCanvas(page, createOrder.locator(".flow-node.kind-condition .flow-label"));
-      await expect(createOrder.locator(".flow-node.kind-condition")).toHaveClass(/selected/);
-      await page.keyboard.press("c");
+    await test.step("View code on createOrder's condition opens orders.ts in the peek, its line and expression highlighted", async () => {
+      const condition = createOrder.locator(".flow-node.kind-condition");
+      await clickStep(page, condition);
+      await expect(condition).toHaveClass(/selected/);
+      await clickStep(page, condition, { button: "right" });
+      await chooseStepItem(page, "View code");
       const peek = sheet(page, ORDERS_FILE);
       await expect(peek).toBeVisible();
       await expect(peek.locator(".peek-row.focus")).toHaveCount(1);
@@ -100,7 +99,7 @@ test.describe("diagrams", () => {
       await expect(peek).toHaveCount(0);
     });
 
-    await test.step("Shift-selecting two steps and Combine… makes one collapsed COMBINED block; ⌘Z removes it", async () => {
+    await test.step("Shift-selecting two steps and Combine… makes one collapsed COMBINED block; Edit › Undo removes it", async () => {
       const place = flowStep(createOrder, "OrderService.place");
       const slack = flowStep(createOrder, "slack.post");
       await clickStep(page, place);
@@ -125,7 +124,7 @@ test.describe("diagrams", () => {
       await expect(place).toHaveCount(0);
       await expect(slack).toHaveCount(0);
       await clickCanvas(page);
-      await page.keyboard.press("Meta+Z");
+      await app.clickMenu(page, ["Edit", "Undo"]);
       await expect(createOrder.locator(".flow-node.kind-group")).toHaveCount(0);
       await expect(place).toBeVisible();
       await expect(slack).toBeVisible();

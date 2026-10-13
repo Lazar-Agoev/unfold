@@ -1,10 +1,10 @@
 /**
- * An agent's requests about a board as a whole (design §6.3): creating a draft this window then holds
- * in a background tab, changing a held board's pages and title as one undo step, and showing a board
- * to the person.
+ * An agent's requests about a board as a whole (design §6.3): creating a draft, opened without
+ * showing it, changing an open board's pages and title as one undo step, and showing a board to the
+ * person.
  *
- * A new draft is created here, not in the main process, so this window claims it. Its pages are
- * written with it, before it becomes a tab, so creating a board is no undo step. Page and title
+ * A new draft is created here, not in the main process, so its session lives here. Its pages are
+ * written with it, before its session opens, so creating a board is no undo step. Page and title
  * changes use the same pure edits as the page tabs' menus, saved at once (`saveStep`); deleting a
  * page that holds a person's words is refused unless the call says the person asked for it.
  */
@@ -23,7 +23,7 @@ import type {
 import { produce, type Draft } from "immer";
 import type { BoardDocument, BoardState, Page } from "../../../ipc/generated";
 import { toUnfoldError } from "../../../ipc/unfold";
-import { activateBoard, assertTabRoom, openBoardTab } from "../../tabStore";
+import { showBoard } from "../../shownBoard";
 import { addPage, deletePage, duplicatePage, findCard, findPage, renamePage, setTitle } from "../document";
 import { call } from "../engine";
 import { openBoard } from "../open";
@@ -40,21 +40,19 @@ function edited(document: BoardDocument) {
   return { title: document.title, pages: document.pages };
 }
 
-/** Copies a board this window holds into a new draft, opened in a background tab. */
+/** Copies an open board into a new draft, opened without showing it. */
 async function copyBoard(source: BoardRef): Promise<BoardRef> {
   if (!getOpenBoard(source)) {
     throw new AgentRefusal("board_not_open", "This window doesn't hold the board to copy.");
   }
   await flushBoard(source);
   const copy = await call("duplicate_board", source);
-  const opened = await openBoard({ project: source.project, id: copy.id }, { background: true });
-  if (opened.status !== "opened") {
-    throw new AgentRefusal("held", "Another window holds the copy.");
-  }
-  return opened.ref;
+  const ref: BoardRef = { project: source.project, id: copy.id };
+  await openBoard(ref, { background: true });
+  return ref;
 }
 
-/** A new draft with its named pages, saved before it becomes a background tab. */
+/** A new draft with its named pages, saved before its session opens. */
 async function newDraft(request: AgentCreateRequest): Promise<BoardRef> {
   const { project } = request;
   const [first, ...more] = request.pages ?? [];
@@ -73,9 +71,7 @@ async function newDraft(request: AgentCreateRequest): Promise<BoardRef> {
     });
     saved = await savePages(state, document);
   }
-  const ref = adoptBoardState(saved);
-  openBoardTab(ref, { activate: false });
-  return ref;
+  return adoptBoardState(saved);
 }
 
 /** Saves a new draft's other pages; when that fails, the draft is let go with its first page. */
@@ -84,17 +80,16 @@ async function savePages(state: BoardState, document: BoardDocument): Promise<Bo
   try {
     return await call("save_board", { project, id: state.id, board: edited(document) });
   } catch (error) {
-    // Nothing holds the half-made draft in a tab: let it go, and say what happened.
+    // No session holds the half-made draft: let it go, and say what happened.
     await call("close_board", { project, id: state.id }).catch(() => undefined);
     const { message } = toUnfoldError(error);
     throw new AgentRefusal("board_problem", `The draft “${state.document.title}” was created with one page, but its other pages couldn't be saved: ${message}`);
   }
 }
 
-/** Creates a draft for an agent and holds it in a background tab (this window doesn't switch to it). */
+/** Creates a draft for an agent and opens it without showing it. */
 export async function createBoardForAgent(request: AgentCreateRequest): Promise<AgentCreateResult> {
   try {
-    assertTabRoom();
     const ref = request.copyOf === undefined ? await newDraft(request) : await copyBoard({ project: request.project, id: request.copyOf });
     const board = getOpenBoard(ref);
     if (!board) {
@@ -274,7 +269,7 @@ function itemFocus(page: Page, id: string): { readonly selection: Selection; rea
 }
 
 /**
- * Shows a held board to the person: its tab, the page, and the item selected and centered (Back
+ * Shows an open board to the person: the board, the page, and the item selected and centered (Back
  * returns to where they were). The main process brings the window to the front.
  */
 export function showForAgent(request: AgentShowRequest): AgentShowResult {
@@ -292,7 +287,7 @@ export function showForAgent(request: AgentShowRequest): AgentShowResult {
     return failure("invalid_op", `There is no item with id “${request.item}” on the page “${page.title}”. read_page lists the page's ids.`);
   }
   const target: PageTarget = { board: ref, page: page.id };
-  activateBoard(ref);
+  showBoard(ref);
   setActivePage(ref, page.id);
   if (focus) {
     pushFocusMove(target);

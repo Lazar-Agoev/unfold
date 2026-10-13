@@ -13,7 +13,7 @@ vi.mock("../../components/Toast", () => ({ showToast: vi.fn() }));
 const { copyPageMermaid, deleteBoard, exportPagePng, isValidName, publishBoard, publishedPath, slugOf, unpublishBoard } = await import("./files");
 const { itemsFor, repairEffect, repairSpec } = await import("./health");
 const store = await import("./store");
-const tabs = await import("../tabStore");
+const { getShownBoard, showBoard, useShownBoardStore } = await import("../shownBoard");
 
 const P = "p-orders0000";
 const KEY = "src/routes/orders.ts#function:createOrder";
@@ -115,12 +115,12 @@ describe("file operations on an open board", () => {
     engine.call.mockReset();
     engine.windowCommand.mockClear();
     store.resetBoards();
-    tabs.useTabs.setState({ boards: [], active: "home" });
+    useShownBoardStore.setState({ board: null });
     store.adoptBoardState(boardState(P, draft, boardDocument([page("page-1"), page("page-2")])));
-    tabs.openBoardTab(ref);
+    showBoard(ref);
   });
 
-  it("publishing a draft carries the session and its tab over to the published id", async () => {
+  it("publishing a draft carries the session over to the published id, and keeps it in front", async () => {
     store.setActivePage(ref, "page-2");
     store.editBoard(ref, (document) => {
       document.title = "Orders";
@@ -137,8 +137,7 @@ describe("file operations on an open board", () => {
     expect(store.getOpenBoard(ref)).toBeUndefined();
     expect(store.getOpenBoard(next)?.activePage).toBe("page-2");
     expect(store.canUndo(next)).toBe(true);
-    expect(tabs.useTabs.getState().boards).toEqual([next]);
-    expect(tabs.getActiveBoard()).toEqual(next);
+    expect(getShownBoard()).toEqual(next);
   });
 
   it("leaves the board as it is when the name is taken", async () => {
@@ -147,15 +146,15 @@ describe("file operations on an open board", () => {
     expect(store.getOpenBoard(ref)).toBeDefined();
   });
 
-  it("moving back to drafts follows the new id; deleting forgets the board and its tab", async () => {
+  it("moving back to drafts follows the new id; deleting forgets the board and shows Home", async () => {
     engine.call.mockResolvedValueOnce(boardState(P, ".unfold/local/drafts/orders-2.json"));
     const moved = await unpublishBoard(ref);
-    expect(tabs.useTabs.getState().boards).toEqual([moved]);
+    expect(getShownBoard()).toEqual(moved);
     engine.call.mockResolvedValueOnce(null);
     await deleteBoard(moved);
     expect(engine.call).toHaveBeenLastCalledWith("delete_board", { project: P, id: moved.id });
     expect(store.getOpenBoard(moved)).toBeUndefined();
-    expect(tabs.useTabs.getState()).toEqual({ boards: [], active: "home" });
+    expect(getShownBoard()).toBeNull();
   });
 
   it("copies a page's saved version as Mermaid", async () => {

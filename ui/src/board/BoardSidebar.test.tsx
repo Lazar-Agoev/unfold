@@ -30,7 +30,6 @@ const summary: BoardSummary = {
   projects: ["payments"],
   changes: 0,
   updatedAtMs: 0,
-  heldBy: null,
   label: null,
   error: null,
 };
@@ -64,7 +63,7 @@ function renderSidebar() {
 beforeEach(() => {
   store.resetBoards();
   queryClient.clear();
-  engine = installFakeEngine({ handlers: { save_board: () => boardState(P, ID), save_board_view: () => null } });
+  engine = installFakeEngine({ handlers: { save_board: () => boardState(P, ID) } });
 });
 
 afterEach(() => {

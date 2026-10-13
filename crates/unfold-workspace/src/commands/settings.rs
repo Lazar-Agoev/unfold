@@ -1,4 +1,4 @@
-//! Settings commands (docs/engine.md#shared-config, shared settings): the app preferences, a
+//! Settings commands (docs/engine.md#shared-config, shared settings): the app settings, a
 //! project's `unfold.toml` with its shared name (read, and changed through validated
 //! edits that keep its comments), and what the UI needs to sign its edits.
 
@@ -11,54 +11,31 @@ use unfold_engine::settings::{ManualTargets, ProcessStart, Settings};
 
 use super::{NoArgs, ProjectArgs};
 use crate::error::WorkspaceError;
-use crate::events::WorkspaceEvent;
 use crate::git;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::ProjectId;
 use crate::settings_edit::{ApplicationSpec, LaunchTargetSpec, OverrideSpec, SettingsEdit};
-use crate::state::Preferences;
+use crate::state::AppSettings;
 use crate::workspace::{load_settings, settings_text};
 
-/// `get_preferences`: the app preferences (defaults when none are saved).
-pub fn get_preferences(ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<Preferences> {
-    Ok(ctx.projects().app().preferences())
+/// `get_settings`: the app settings (defaults when none are saved).
+pub fn get_settings(ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<AppSettings> {
+    Ok(ctx.projects().app().settings())
 }
 
-/// The arguments of `set_preferences`.
+/// The arguments of `set_settings`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
-pub struct SetPreferencesArgs {
-    /// Every preference (read them with `get_preferences`, change some, send them back).
-    pub preferences: Preferences,
+pub struct SetSettingsArgs {
+    /// Every setting (read them with `get_settings`, change some, send them back).
+    pub settings: AppSettings,
 }
 
-/// The most compile threads a preference may ask for.
-const MAX_THREADS: u32 = 256;
-/// The lowest port agents may connect on: ports below it are reserved for system services.
-const MIN_AGENT_PORT: u16 = 1024;
-
-/// `set_preferences`: saves the preferences and sends `preferences_changed` (with them) to every
-/// window, so other windows apply a new theme or key bindings at once, and the main process starts
-/// or stops the agents' server. The thread limit and background-update default apply to projects
-/// opened afterwards.
-pub fn set_preferences(ctx: &Ctx<'_>, args: SetPreferencesArgs) -> CommandResult<Preferences> {
-    let preferences = args.preferences;
-    if preferences
-        .thread_limit
-        .is_some_and(|limit| limit == 0 || limit > MAX_THREADS)
-    {
-        return Err(CommandError::invalid_args(format!(
-            "the thread limit must be between 1 and {MAX_THREADS}"
-        )));
-    }
-    if preferences.agents.port < MIN_AGENT_PORT {
-        return Err(CommandError::invalid_args(format!(
-            "the agents' port must be between {MIN_AGENT_PORT} and {}",
-            u16::MAX
-        )));
-    }
-    if preferences
+/// `set_settings`: saves the app settings and returns them.
+pub fn set_settings(ctx: &Ctx<'_>, args: SetSettingsArgs) -> CommandResult<AppSettings> {
+    let settings = args.settings;
+    if settings
         .editor_command
         .as_deref()
         .is_some_and(|command| command.contains('\0'))
@@ -67,11 +44,8 @@ pub fn set_preferences(ctx: &Ctx<'_>, args: SetPreferencesArgs) -> CommandResult
             "the editor command contains a NUL character",
         ));
     }
-    ctx.projects().app().set_preferences(&preferences)?;
-    ctx.broadcast(&WorkspaceEvent::PreferencesChanged {
-        preferences: preferences.clone(),
-    });
-    Ok(preferences)
+    ctx.projects().app().set_settings(&settings)?;
+    Ok(settings)
 }
 
 /// A settings problem with its position.
@@ -375,9 +349,15 @@ pub struct AppInfo {
 
 /// `app_info`: the username that signs edits, and the engine version.
 pub fn app_info(_ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<AppInfo> {
-    let username = super::diagnostics::username().unwrap_or_else(|| "unknown".to_owned());
     Ok(AppInfo {
-        username,
+        username: username().unwrap_or_else(|| "unknown".to_owned()),
         engine_version: unfold_engine::ENGINE_VERSION.to_owned(),
     })
+}
+
+/// The username from the environment.
+fn username() -> Option<String> {
+    ["USER", "LOGNAME"]
+        .iter()
+        .find_map(|name| std::env::var(name).ok().filter(|value| !value.trim().is_empty()))
 }

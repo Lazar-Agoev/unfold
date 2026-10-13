@@ -2,20 +2,18 @@
  * Routes messages between window ports and the engine binding. This is all the engine host does:
  * it holds no graph logic and knows nothing about projects (docs/architecture.md#ownership rule 5).
  *
- * - Each window has one port. `invoke` becomes `dispatch` at once, with a host-wide request id (the
- *   addon's `cancel` takes only a request id, so ids must be unique across windows). Every window
- *   shows the whole workspace, so attaching opens nothing.
+ * - Each window (the app's window and the render window) has one port. `invoke` becomes `dispatch`
+ *   at once, with a host-wide request id (the addon's `cancel` takes only a request id, so ids must
+ *   be unique across windows). The window shows the whole workspace, so attaching opens nothing.
  * - Sink messages go to windows: events by their `windows` list, broadcasts (every project event,
- *   and app-wide ones such as `preferences_changed`) to every attached window, and stream messages
- *   by window id and request id. The addon settles a request's promise only after its stream
- *   messages reached the sink, so a window gets them before the result.
+ *   and app-wide ones) to every attached window, and stream messages by window id and request id.
+ *   The addon settles a request's promise only after its stream messages reached the sink, so a
+ *   window gets them before the result.
  * - Trusted commands: the main process's own requests ({@link EngineRouter.trusted}) are dispatched
  *   with `"trusted": true`. A window can never send one: its commands are rebuilt here from `command`
  *   and `args`, and a window message naming a {@link MAIN_PROCESS_ONLY} command or carrying `trusted`
  *   is refused with `untrusted` before it reaches Rust. The requests the main process makes for
  *   agents ({@link EngineRouter.untrusted}) get exactly a window's treatment.
- * - The main process follows a few events too ({@link MAIN_EVENTS}): broadcasts of those also go to
- *   `toMain`.
  * - Closing writes outlive their window: detaching cancels the window's other requests but never a
  *   {@link CLOSING_WRITES} one. Every request is dispatched the moment it arrives, so by the time
  *   `detachWindow` is called each closing write the host has received (the window's own, and the
@@ -24,7 +22,7 @@
  */
 
 import type { HostToRenderer } from "../shared/transport";
-import { MAIN_EVENTS, transportError } from "../shared/transport";
+import { transportError } from "../shared/transport";
 import type { TransportError, UnfoldEvent } from "../shared/unfold-api";
 import type { EngineBinding } from "./binding";
 
@@ -45,22 +43,21 @@ export type MainResult =
 
 /**
  * Commands Rust accepts only with `"trusted": true`, which only the main process may send: they take
- * absolute paths from dialogs, drops, or the command line, or manage window lifecycle. Mirrors the
- * trusted commands of `crates/unfold-workspace/src/host.rs`.
+ * absolute paths from dialogs, or read and save the window's state. Mirrors the trusted commands of
+ * `crates/unfold-workspace/src/host.rs`.
  */
 export const MAIN_PROCESS_ONLY: ReadonlySet<string> = new Set([
   "export_mermaid",
   "add_project",
-  "saved_windows",
-  "save_window_bounds",
-  "forget_window",
+  "window_state",
+  "save_window_state",
 ]);
 
 /**
- * Commands a closing window must not lose: board and folder writes, and the window's remembered
- * state and bounds (their final saves are sent as the window closes, e.g. when the app quits). Keep
- * in sync with `CLOSING_WRITES` in `crates/unfold-workspace/src/host.rs`, whose `detach_window`
- * waits for exactly these.
+ * Commands a closing window must not lose: board and folder writes, and the window's state (its
+ * final save is sent as the window closes, e.g. when the app quits). Keep in sync with
+ * `CLOSING_WRITES` in `crates/unfold-workspace/src/host.rs`, whose `detach_window` waits for exactly
+ * these.
  */
 export const CLOSING_WRITES: ReadonlySet<string> = new Set([
   "save_board",
@@ -74,9 +71,7 @@ export const CLOSING_WRITES: ReadonlySet<string> = new Set([
   "create_folder",
   "rename_folder",
   "delete_folder",
-  "save_board_view",
   "save_window_state",
-  "save_window_bounds",
 ]);
 
 interface Connection {
@@ -109,14 +104,12 @@ export class EngineRouter {
     private readonly log: (message: string) => void = (message) => {
       console.error(`[engine-host] ${message}`);
     },
-    /** Receives the broadcasts of {@link MAIN_EVENTS}, for the main process. */
-    private readonly toMain: (event: UnfoldEvent) => void = () => undefined,
   ) {}
 
   /**
    * Attaches a window. A re-attach of the same id (a reload) replaces the port: the old page's
    * requests other than closing writes are cancelled, and Rust's state for the window (its board
-   * claims and selection) is kept.
+   * sessions) is kept.
    */
   attach(windowId: number, port: WindowPort): void {
     const previous = this.connections.get(windowId);
@@ -270,9 +263,6 @@ export class EngineRouter {
       }
       for (const connection of this.connections.values()) {
         connection.port.post({ kind: "event", event });
-      }
-      if (MAIN_EVENTS.has(event.type)) {
-        this.toMain(event);
       }
       return;
     }

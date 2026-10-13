@@ -22,7 +22,7 @@ const PAGE: AgentPage = {
 const ENTRANCE = 'entrance:["express.route","http","POST","/orders","src/routes/orders.ts"]';
 
 function summary(id: string, title: string): BoardSummary {
-  return { project: PROJECT, id, place: "draft", name: id, title, folder: null, pages: 1, cards: 0, projects: [], changes: 0, updatedAtMs: 0, heldBy: null, label: null, error: null };
+  return { project: PROJECT, id, place: "draft", name: id, title, folder: null, pages: 1, cards: 0, projects: [], changes: 0, updatedAtMs: 0, label: null, error: null };
 }
 
 /** A window that holds what it's asked to, and answers as the UI does. */

@@ -13,15 +13,15 @@ describe("IconButton", () => {
     expect(button.querySelector("svg")?.getAttribute("width")).toBe("16");
   });
 
-  it("names itself and its shortcut in a tooltip on hover", () => {
+  it("names itself in a tooltip on hover", () => {
     vi.useFakeTimers();
-    render(<IconButton icon="dots" label="Board menu" shortcut="Mod+K" />);
+    render(<IconButton icon="dots" label="Board menu" />);
     fireEvent.pointerOver(screen.getByRole("button", { name: "Board menu" }));
     act(() => {
       vi.advanceTimersByTime(600);
     });
     const tooltip = document.querySelector(".tooltip");
-    expect(tooltip?.textContent).toBe("Board menuCtrl+K");
+    expect(tooltip?.textContent).toBe("Board menu");
     vi.useRealTimers();
   });
 });

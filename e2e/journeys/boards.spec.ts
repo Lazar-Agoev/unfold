@@ -7,10 +7,10 @@
 
 import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { activeBoardRef, boardMenu, boardTitle, boardView, cards, chooseMenuPath, layerRow, menuItem, readBoard, type BoardFile } from "../src/board";
+import { boardMenu, boardTitle, boardView, cards, chooseMenuPath, layerRow, menuItem, readBoard, showBoard, shownBoardRef, type BoardFile } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { launchCompiled, traceEntrance } from "../src/flows";
-import { boardTab, dialog, showHome, sidebar, sidebarBoard, sidebarFolder, tabs, toast } from "../src/home";
+import { dialog, homeMain, showHome, sidebar, sidebarBoard, sidebarFolder, toast } from "../src/home";
 import { describeSelected, DRAFTS, expectBoardFile, firstDescription } from "../src/lifecycle";
 import { enterText } from "../src/window";
 
@@ -19,7 +19,7 @@ test.describe("boards", () => {
     const { app, page, folders } = await launchCompiled(launch, sandbox);
     const folder = folders[0] ?? "";
     await traceEntrance(page, "POST", "/orders");
-    const { id } = await activeBoardRef(page);
+    const { id } = await shownBoardRef(page);
 
     await test.step("double-clicking the title in the sidebar header renames the board in place", async () => {
       await boardTitle(page).dblclick();
@@ -27,7 +27,6 @@ test.describe("boards", () => {
       await enterText(field, "Placing an order");
       await field.press("Enter");
       await expect(boardTitle(page)).toHaveText("Placing an order");
-      await expect(boardTab(page, "Placing an order")).toHaveAttribute("aria-selected", "true");
       await expectBoardFile(folder, id, (board) => board.title === "Placing an order", "the new title is saved");
     });
 
@@ -45,12 +44,12 @@ test.describe("boards", () => {
       await boardMenu(page, "Duplicate");
       const made = toast(page, "Made Orders copy");
       await made.getByRole("button", { name: "Open" }).click();
-      await expect(boardTab(page, "Orders copy")).toHaveAttribute("aria-selected", "true");
-      const copy = await activeBoardRef(page);
+      await expect(boardTitle(page)).toHaveText("Orders copy");
+      const copy = await shownBoardRef(page);
       expect(copy.id).not.toBe(id);
       expect(readBoard(folder, copy.id).title).toBe("Orders copy");
-      await boardTab(page, "Orders").click();
-      await expect(boardTitle(page)).toHaveText("Orders");
+      await showHome(page);
+      await showBoard(page, "Orders");
     });
 
     await test.step("Share › Export Mermaid… writes the page through the save dialog", async () => {
@@ -88,13 +87,14 @@ test.describe("boards", () => {
       await expect(boardView(page).locator(".board-card.folded")).toHaveCount(0);
     });
 
-    await test.step("Delete… asks, then deletes the file and closes the tab", async () => {
+    await test.step("Delete… asks, then deletes the file and shows Home", async () => {
       await boardMenu(page, "Delete…");
       const confirm = dialog(page, "Delete “Orders”?");
       await confirm.getByRole("button", { name: "Delete", exact: true }).click();
       await expect(toast(page, "Deleted Orders")).toBeVisible();
-      await expect(boardTab(page, "Orders")).toHaveCount(0);
-      await expect(tabs(page)).toHaveCount(2);
+      await expect(homeMain(page)).toBeVisible();
+      await expect(sidebarBoard(page, "Orders")).toHaveCount(0);
+      await expect(sidebarBoard(page, "Orders copy")).toBeVisible();
       expect(existsSync(join(folder, id))).toBe(false);
     });
   });
@@ -103,7 +103,7 @@ test.describe("boards", () => {
     const { page, folders } = await launchCompiled(launch, sandbox);
     const folder = folders[0] ?? "";
     await traceEntrance(page, "POST", "/orders");
-    const { id } = await activeBoardRef(page);
+    const { id } = await shownBoardRef(page);
 
     await test.step("Move to folder › New folder… moves the board into a new folder", async () => {
       await boardMenu(page, "Move to folder", "New folder…");
@@ -156,10 +156,15 @@ test.describe("boards", () => {
       await expect(sidebarFolder(page, "journeys")).toBeVisible();
       await expect(sidebarFolder(page, "flows")).toHaveCount(0);
       await expectBoardFile(folder, id, (board) => board.folder === "journeys", "the board moved with its folder");
+      const journeys = sidebarFolder(page, "journeys");
+      if ((await journeys.getAttribute("aria-expanded")) !== "true") {
+        await journeys.click();
+      }
+      await expect(sidebarBoard(page, "POST /orders")).toHaveAttribute("aria-level", "3");
     });
 
     await test.step("Move to folder › Top level moves the board out again", async () => {
-      await boardTab(page, "POST /orders").click();
+      await showBoard(page, "POST /orders");
       await expect(sidebar(page).locator(".board-crumb-text")).toHaveText("ts-orders / journeys");
       await boardMenu(page, "Move to folder", "Top level");
       await expectBoardFile(folder, id, (board) => board.folder === undefined, "the board is at the top level");
@@ -173,7 +178,7 @@ test.describe("boards", () => {
     const { page, folders } = await launchCompiled(launch, sandbox);
     const folder = folders[0] ?? "";
     await traceEntrance(page, "POST", "/orders");
-    const { id } = await activeBoardRef(page);
+    const { id } = await shownBoardRef(page);
     // Wait for the trace's cards to be saved: an outside edit then meets a board without unsaved changes.
     await expectBoardFile(folder, id, (board) => board.pages[0]?.cards.length === 4, "the traced cards are saved");
 
@@ -181,7 +186,7 @@ test.describe("boards", () => {
       const board = JSON.parse(readFileSync(join(folder, id), "utf8")) as BoardFile & Record<string, unknown>;
       writeFileSync(join(folder, id), `${JSON.stringify({ ...board, title: "Edited elsewhere" }, null, 2)}\n`);
       await expect(boardTitle(page)).toHaveText("Edited elsewhere");
-      await expect(boardTab(page, "Edited elsewhere")).toBeVisible();
+      await expect(page).toHaveTitle("Edited elsewhere — Unfold");
     });
 
     await test.step("deleting the open board's file shows the banner at the top of the canvas", async () => {

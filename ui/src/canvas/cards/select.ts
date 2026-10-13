@@ -4,7 +4,7 @@
  */
 
 import type { Key } from "../../ipc/generated";
-import { requestFocus } from "../../keyboard";
+import { requestFocus } from "../../lib/focus-targets";
 import { addLink, getPageView, select, setLinking, type PageTarget, type Selection } from "../../state/boards";
 import { setSelectedCollapsed } from "../../state/layout";
 

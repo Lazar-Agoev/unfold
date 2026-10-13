@@ -17,7 +17,7 @@ use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::ProjectId;
 
-/// A page of a board the calling window holds.
+/// A page of an open board.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 pub struct BoardPage {
@@ -33,7 +33,7 @@ pub struct BoardPage {
 pub struct MermaidTextArgs {
     /// The project.
     pub project: ProjectId,
-    /// A page of a board the calling window holds (its last saved version).
+    /// A page of an open board (its last saved version).
     #[serde(default)]
     #[ts(optional)]
     pub board: Option<BoardPage>,

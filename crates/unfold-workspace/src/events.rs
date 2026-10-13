@@ -3,8 +3,8 @@
 //! Every window shows the whole workspace, so every event is for every window: a project's
 //! workspace hands each event to the [`EventSink`], and the host sends it as
 //! `{"kind":"broadcast","event":{…}}`, which the engine host's router posts to every window it
-//! has. The one exception is `board_conflict`, which only the window holding the board receives
-//! (`{"kind":"event","windows":[w],"event":{…}}`). Project events name their project
+//! has. The one exception is `board_conflict`, which only the window that opened the board
+//! receives (`{"kind":"event","windows":[w],"event":{…}}`). Project events name their project
 //! ([`WorkspaceEvent::project`]). Events serialize with a snake_case `type` tag and camelCase
 //! fields, the shape the UI's `window.unfold.on(type, …)` receives.
 //!
@@ -18,15 +18,13 @@
 //! | `problems_changed` | The Problems list changed |
 //! | `files_changed` | The watcher saw files appear, change, or disappear |
 //! | `boards_changed` | Board files, folders, or a board's publish state changed |
-//! | `board_conflict` | The file an open board's session reads changed on disk outside the app (only the holder) |
+//! | `board_conflict` | The file an open board's session reads changed on disk outside the app (only the window that opened it) |
 //! | `config_changed` | `unfold.toml` changed |
-//! | `preferences_changed` | `set_preferences` saved the app preferences |
 
 use serde::Serialize;
 use ts_rs::TS;
 
 use crate::projects::{ProjectId, WorkspaceView};
-use crate::state::Preferences;
 use crate::status::ProjectState;
 
 /// A window's ID, chosen by the desktop shell.
@@ -139,7 +137,7 @@ pub enum WorkspaceEvent {
         folders: bool,
     },
     /// The file an open board's session reads changed on disk outside this app (an agent or a
-    /// teammate wrote it, or it was deleted). Sent only to the window holding the board. A
+    /// teammate wrote it, or it was deleted). Sent only to the window that opened the board. A
     /// window without unsaved edits reloads it (`reload_board`); one with unsaved edits asks
     /// which version to keep (`save_board` with `force` keeps its own).
     BoardConflict {
@@ -159,12 +157,6 @@ pub enum WorkspaceEvent {
         /// The project.
         project: ProjectId,
     },
-    /// The app preferences were saved (by any window), so each window applies the new theme and
-    /// key bindings without asking for them again.
-    PreferencesChanged {
-        /// The preferences now saved.
-        preferences: Preferences,
-    },
 }
 
 impl WorkspaceEvent {
@@ -181,7 +173,6 @@ impl WorkspaceEvent {
             Self::BoardsChanged { .. } => "boards_changed",
             Self::BoardConflict { .. } => "board_conflict",
             Self::ConfigChanged { .. } => "config_changed",
-            Self::PreferencesChanged { .. } => "preferences_changed",
         }
     }
 
@@ -197,7 +188,7 @@ impl WorkspaceEvent {
             | Self::BoardsChanged { project, .. }
             | Self::BoardConflict { project, .. }
             | Self::ConfigChanged { project } => Some(project),
-            Self::WorkspaceChanged { .. } | Self::PreferencesChanged { .. } => None,
+            Self::WorkspaceChanged { .. } => None,
         }
     }
 }
@@ -243,13 +234,5 @@ mod tests {
             state["state"],
             serde_json::json!({"kind": "problems", "count": 3})
         );
-        let preferences = WorkspaceEvent::PreferencesChanged {
-            preferences: Preferences::default(),
-        };
-        assert_eq!(preferences.project(), None);
-        let json = serde_json::to_value(&preferences).expect("serialize");
-        assert_eq!(json["type"], "preferences_changed");
-        assert_eq!(json["preferences"]["theme"], "system");
-        assert_eq!(json["preferences"]["keyBindings"], serde_json::json!({}));
     }
 }

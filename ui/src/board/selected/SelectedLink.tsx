@@ -10,7 +10,7 @@ import { Author } from "../../agent";
 import { kindEntries } from "../../canvas/connections/linkMenu";
 import { Button, MenuButton, Monogram } from "../../components";
 import type { Link, Page } from "../../ipc/generated";
-import { requestFocus, useFocusTarget } from "../../keyboard";
+import { requestFocus, useFocusTarget } from "../../lib/focus-targets";
 import { useAuthor } from "../../state/author";
 import { cardKey, findCard, findPage, focusCard, keyDisplayName, removeLink, setLinkLabel, useOpenBoard, type PageTarget } from "../../state/boards";
 import { useProjectRow } from "../../state/workspace";

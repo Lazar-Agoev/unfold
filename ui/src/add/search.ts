@@ -6,8 +6,8 @@
 
 import { declarationWord } from "../code/typeKinds";
 import type { FileHit, ProjectId, SearchArgs, SearchHit, SearchKind, SearchResults, TextMatch, TextSearchFile } from "../ipc/generated";
-import type { AddKind } from "../state/overlays";
 
+type AddKind = "entrances" | "functions" | "files" | "text";
 export type AddTab = "all" | AddKind;
 
 /** The kinds in tab and group order. */

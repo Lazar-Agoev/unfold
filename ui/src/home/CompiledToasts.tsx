@@ -1,7 +1,7 @@
 /**
  * "<project> compiled": when a Compile this window started ends well, a toast with
  * the project's monogram, how many entrances it found, and Open Home, unless this window's Home is
- * already showing that project. Mounted once per window, so it speaks from a board tab too.
+ * already showing that project. Mounted once per window, so it speaks while a board shows too.
  */
 
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
@@ -11,7 +11,7 @@ import { engineQueryOptions, type ProjectId } from "../ipc";
 import { plural } from "../lib/format";
 import { showProject } from "../state/actions";
 import { useLayout } from "../state/layout";
-import { useTabs } from "../state/tabs";
+import { getShownBoard } from "../state/shownBoard";
 import { useWindowStore } from "../state/window";
 import { getProjectIndex, useWorkspace } from "../state/workspace";
 import { useCompileStartedHere } from "../state/compile";
@@ -20,7 +20,7 @@ import { useCompileStartedHere } from "../state/compile";
 function homeShows(project: ProjectId): boolean {
   const view = useLayout.getState().home.view;
   return (
-    useTabs.getState().active === "home" &&
+    getShownBoard() === null &&
     useWindowStore.getState().selectedProject === project &&
     (view === "overview" || view === "health" || view === "activity")
   );

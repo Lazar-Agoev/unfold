@@ -3,13 +3,12 @@ import "../test/dom";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileView } from "../ipc";
-import { actions } from "../keyboard";
 import type * as Boards from "../state/boards";
 import { openBoard } from "../state/boards";
 import { resetBoards } from "../state/boards/store";
 import { initialLayout, useLayout } from "../state/layout";
 import { closePeek, getPeekTarget, openPeek, type PeekTarget } from "../state/overlays";
-import { useTabs } from "../state/tabs";
+import { useShownBoardStore } from "../state/shownBoard";
 import { useWindowStore } from "../state/window";
 import { fixture, installFakeEngine, type FakeEngine } from "../test/engine";
 import { renderWithClient } from "../test/render";
@@ -99,16 +98,13 @@ beforeEach(() => {
       workspace: () => workspaceView([projectRow(ORDERS, "storefront-api")]),
       file_view: ({ path }) =>
         path === TYPES_PATH ? typesView() : path === SCHEMA_PATH ? schemaView() : path === NOTIFY_PATH ? notifyView() : fixture("file_view", "file_view_orders_page"),
-      open_in_editor: () => ({ editor: "code" }) as never,
-      open_board: () => ({
-        status: "opened",
-        board: boardState(ORDERS, BOARD.id, boardDocument([page("page-1", [{ id: "listOrders", ref: { block: LIST_ORDERS }, at: [0, 0] }], { title: "Placing an order" })])),
-      }),
+      open_in_editor: () => null,
+      open_board: () => boardState(ORDERS, BOARD.id, boardDocument([page("page-1", [{ id: "listOrders", ref: { block: LIST_ORDERS }, at: [0, 0] }], { title: "Placing an order" })])),
     },
   });
   resetBoards();
   notifyGraph = "current";
-  useTabs.setState({ boards: [], active: "home" });
+  useShownBoardStore.setState({ board: null });
   useLayout.setState(initialLayout);
   useWindowStore.setState({ info: null, selectedProject: ORDERS });
 });
@@ -211,7 +207,6 @@ describe("the peek sheet", () => {
       openPeek({ project: ORDERS, path: PATH, line: 3 });
     });
     await screen.findByText("50 lines · TypeScript");
-    expect(actions.isEnabled("peek.openInEditor")).toBe(true);
 
     fireEvent.click(within(sheet()).getByRole("button", { name: "Pin" }));
     expect(useLayout.getState().peek.pinned).toBe(true);
@@ -225,7 +220,30 @@ describe("the peek sheet", () => {
 
     fireEvent.keyDown(sheet(), { key: "Escape" });
     expect(screen.queryByRole("complementary")).toBeNull();
-    expect(actions.isEnabled("peek.openInEditor")).toBe(false);
+  });
+
+  it("closes on Escape with focus outside it, unless something before it took the key or a field has focus", async () => {
+    renderWithClient(<PeekSheet />);
+    act(() => {
+      openPeek({ project: ORDERS, path: PATH, line: 3 });
+    });
+    await screen.findByText("50 lines · TypeScript");
+
+    const taken = (event: KeyboardEvent) => {
+      event.preventDefault();
+    };
+    document.addEventListener("keydown", taken);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    document.removeEventListener("keydown", taken);
+    expect(screen.queryByRole("complementary")).not.toBeNull();
+
+    const field = document.body.appendChild(document.createElement("input"));
+    fireEvent.keyDown(field, { key: "Escape" });
+    expect(screen.queryByRole("complementary")).not.toBeNull();
+    field.remove();
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByRole("complementary")).toBeNull();
   });
 
   describe("View code's focus", () => {

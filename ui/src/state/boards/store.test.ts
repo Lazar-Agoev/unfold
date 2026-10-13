@@ -15,9 +15,9 @@ vi.mock("../../components/Toast", () => toast);
 
 const { addCard, moveItems, setCardsFolded, setTitle } = await import("./document");
 const store = await import("./store");
-const { closeBoard, closeBoardsOfProject, openBoard, reclaimBoards } = await import("./open");
+const { closeBoard, closeBoardsOfProject, openBoard, reopenBoards } = await import("./open");
 const { addPage } = await import("./pages");
-const tabs = await import("../tabStore");
+const { getShownBoard, showBoard, useShownBoardStore } = await import("../shownBoard");
 
 const P = "p-orders0000";
 const Q = "p-payments00";
@@ -49,7 +49,7 @@ beforeEach(() => {
   engine.windowCommand.mockClear();
   toast.showToast.mockClear();
   store.resetBoards();
-  tabs.useTabs.setState({ boards: [], active: "home" });
+  useShownBoardStore.setState({ board: null });
 });
 
 afterEach(() => {
@@ -57,59 +57,40 @@ afterEach(() => {
 });
 
 describe("opening and closing", () => {
-  it("claims a board, opens its tab, and shows the page its saved view names with that camera and lens", async () => {
-    const two = boardDocument([page("page-1"), page("page-2")]);
-    engine.call.mockResolvedValueOnce({
-      status: "opened",
-      board: state(two, "r1", { view: { page: "page-2", pages: { "page-2": { x: 5, y: 6, zoom: 0.5, lens: "flow" } } } }),
-    });
-    await expect(openBoard(REF)).resolves.toEqual({ status: "opened", ref: REF });
+  it("opens a board on its first page and shows it", async () => {
+    engine.call.mockResolvedValueOnce(state(boardDocument([page("page-1"), page("page-2")])));
+    await openBoard(REF);
     expect(engine.call).toHaveBeenCalledWith("open_board", { project: P, id: ID });
     const board = store.getOpenBoard(REF);
-    expect(board?.activePage).toBe("page-2");
-    expect(board?.pages["page-2"]).toMatchObject({ camera: { x: 5, y: 6, zoom: 0.5 }, lens: "flow" });
-    expect(tabs.useTabs.getState()).toEqual({ boards: [REF], active: `${P}\u0000${ID}` });
+    expect(board?.activePage).toBe("page-1");
+    expect(board?.pages["page-1"]).toMatchObject({ camera: null, lens: null });
+    expect(getShownBoard()).toEqual(REF);
   });
 
-  it("opens on the page the window's tab remembered, and claims once for two quick opens", async () => {
-    engine.call.mockResolvedValue({ status: "opened", board: state(boardDocument([page("page-1"), page("page-2")])) });
-    const [first, second] = await Promise.all([openBoard(REF, { page: "page-2", activate: false }), openBoard(REF)]);
-    expect(first).toEqual(second);
+  it("opens on a page when asked, and opens once for two quick opens", async () => {
+    engine.call.mockResolvedValue(state(boardDocument([page("page-1"), page("page-2")])));
+    await Promise.all([openBoard(REF, { page: "page-2", background: true }), openBoard(REF)]);
     expect(engine.call).toHaveBeenCalledTimes(1);
     expect(store.getOpenBoard(REF)?.activePage).toBe("page-2");
-    expect(tabs.useTabs.getState().active).toBe("home");
+    expect(getShownBoard()).toEqual(REF);
   });
 
-  it("focuses the window that holds a board instead of opening it", async () => {
-    engine.call.mockResolvedValueOnce({ status: "held", heldBy: 7 });
-    await expect(openBoard(REF)).resolves.toEqual({ status: "held", heldBy: 7 });
-    expect(engine.windowCommand).toHaveBeenCalledWith("focus_window", { windowId: 7, board: { project: P, board: ID } });
-    expect(store.getOpenBoard(REF)).toBeUndefined();
-    expect(tabs.useTabs.getState().boards).toEqual([]);
-  });
-
-  it("refuses a 101st board tab before claiming it", async () => {
-    tabs.useTabs.setState({ boards: Array.from({ length: tabs.MAX_BOARD_TABS }, (_, index) => ({ project: P, id: `b${index}` })), active: "home" });
-    await expect(openBoard(REF)).rejects.toMatchObject({ code: "too_many_tabs" });
-    expect(engine.call).not.toHaveBeenCalled();
-  });
-
-  it("saves edits and view, releases the claim, and closes the tab; closes only one project's boards", async () => {
+  it("saves edits, closes the board in the engine, and shows Home; closes only one project's boards", async () => {
     const other = { project: Q, id: ID };
     store.adoptBoardState(state());
     store.adoptBoardState(boardState(Q, ID));
-    tabs.openBoardTab(REF);
-    tabs.openBoardTab(other);
+    showBoard(REF);
     engine.call.mockImplementation(savesAs("r2"));
     edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     store.setCamera(PAGE, { x: 1, y: 2, zoom: 1 });
     await closeBoardsOfProject(P);
-    expect(engine.call.mock.calls.map(([command]) => command as string).sort()).toEqual(["close_board", "save_board", "save_board_view"]);
+    expect(engine.call.mock.calls.map(([command]) => command as string).sort()).toEqual(["close_board", "save_board"]);
     expect(store.getOpenBoard(REF)).toBeUndefined();
     expect(store.getOpenBoard(other)).toBeDefined();
-    expect(tabs.useTabs.getState()).toEqual({ boards: [other], active: `${Q}\u0000${ID}` });
+    expect(getShownBoard()).toBeNull();
+    showBoard(other);
     await closeBoard(other);
-    expect(tabs.useTabs.getState()).toEqual({ boards: [], active: "home" });
+    expect(getShownBoard()).toBeNull();
   });
 });
 
@@ -199,16 +180,16 @@ describe("editing and autosave", () => {
     expect(store.isDirty(store.getOpenBoard(REF) as never)).toBe(true);
   });
 
-  it("sends every unsaved board and view at once when the page goes away", () => {
+  it("sends every unsaved board at once when the page goes away", () => {
     store.adoptBoardState(state());
     engine.call.mockReturnValue(new Promise(() => undefined));
     edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     store.setPageLens(PAGE, "code");
     store.saveAllNow();
-    expect(engine.call.mock.calls.map(([command]) => command as string)).toEqual(["save_board", "save_board_view"]);
-    // The autosaves it replaced don't run later.
-    vi.advanceTimersByTime(store.VIEW_SAVE_MS * 2);
-    expect(engine.call).toHaveBeenCalledTimes(2);
+    expect(engine.call.mock.calls.map(([command]) => command as string)).toEqual(["save_board"]);
+    // The autosave it replaced doesn't run later.
+    vi.advanceTimersByTime(store.AUTOSAVE_MS * 2);
+    expect(engine.call).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -482,7 +463,6 @@ describe("a step the engine writes (a repair)", () => {
     expect(await outcome).toMatchObject({ ok: false, error: { code: "page_changed" } });
     const board = store.getOpenBoard(REF);
     expect(board?.document.pages[0]?.cards[0]?.at).toEqual([10, 0]);
-    expect(board?.savedDocument.pages[0]?.cards).toEqual([]);
     expect(board?.revision).toBe("r3");
     expect(board?.history.past).toHaveLength(1);
     expect(board && store.isDirty(board)).toBe(true);
@@ -493,21 +473,17 @@ describe("a step the engine writes (a repair)", () => {
 });
 
 describe("view state", () => {
-  it("saves the active page and each page's camera and lens once they settle, never as undo steps", async () => {
+  it("keeps the active page and each page's camera and lens while the app runs, never saving them or making undo steps", async () => {
     store.adoptBoardState(state(boardDocument([page("page-1"), page("page-2")])));
-    engine.call.mockResolvedValue(null);
     store.setCamera(PAGE, { x: 10, y: 20, zoom: 0.8 });
     store.setActivePage(REF, "page-2");
     store.setPageLens({ board: REF, page: "page-2" }, "code");
+    await vi.advanceTimersByTimeAsync(store.AUTOSAVE_MS * 2);
+    expect(engine.call).not.toHaveBeenCalled();
     expect(store.getOpenBoard(REF)?.history.past).toHaveLength(0);
-    await vi.advanceTimersByTimeAsync(store.VIEW_SAVE_MS);
-    expect(engine.call).toHaveBeenCalledTimes(1);
-    expect(engine.call).toHaveBeenCalledWith("save_board_view", {
-      project: P,
-      id: ID,
-      view: { page: "page-2", pages: { "page-1": { x: 10, y: 20, zoom: 0.8, lens: null }, "page-2": { x: 40, y: 40, zoom: 1, lens: "code" } } },
-    });
-    expect(store.getOpenBoard(REF)?.viewDirty).toBe(false);
+    expect(store.getOpenBoard(REF)?.activePage).toBe("page-2");
+    expect(store.getPageView(PAGE).camera).toEqual({ x: 10, y: 20, zoom: 0.8 });
+    expect(store.getPageView({ board: REF, page: "page-2" }).lens).toBe("code");
   });
 
   it("shows Code in the Code lens, and each card compact or expanded in Diagram", () => {
@@ -516,7 +492,7 @@ describe("view state", () => {
     expect(store.pageLens(null, "code")).toBe("code");
     expect(store.pageLens(null, "flow")).toBe("diagram");
     expect(store.pageLens(null, "diagram")).toBe("diagram");
-    // A saved Flow lens is Diagram.
+    // A Flow lens is Diagram.
     expect(store.pageLens("flow", "code")).toBe("diagram");
     expect(store.shownView("code", { view: "diagram" }, "diagram")).toBe("code");
     // In Diagram a card's own view, else the page's default, says whether it is expanded; a legacy Code card is.
@@ -531,14 +507,11 @@ describe("view state", () => {
     expect(store.getOpenBoard(REF)?.edits).toBe(0);
   });
 
-  it("restores a saved Flow lens as Diagram without writing it back, and keeps camera, selection, and expansions across Code", async () => {
+  it("keeps camera, selection, and expansions across Code", () => {
     const card = { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] as [number, number], view: "flow" as const, expanded: [["src/a.ts#function:a/call[0]"]] };
-    store.adoptBoardState(state(doc([card]), "r1", { view: { page: "page-1", pages: { "page-1": { x: 1, y: 2, zoom: 0.5, lens: "flow" } } } }));
+    store.adoptBoardState(state(doc([card])));
+    store.setCamera(PAGE, { x: 1, y: 2, zoom: 0.5 });
     const { defaultView } = store.getOpenBoard(REF)?.document.pages[0] ?? { defaultView: "code" as const };
-    expect(store.pageLens(store.getPageView(PAGE).lens, defaultView)).toBe("diagram");
-    expect(store.getOpenBoard(REF)?.viewDirty).toBe(false);
-    await vi.advanceTimersByTimeAsync(store.VIEW_SAVE_MS * 2);
-    expect(engine.call).not.toHaveBeenCalled();
 
     store.select(PAGE, { kind: "card", cardId: "a", key: "src/a.ts#function:a/call[0]" });
     const document = store.getOpenBoard(REF)?.document;
@@ -592,32 +565,20 @@ describe("outside edits", () => {
 });
 
 describe("engine-host restarts", () => {
-  it("claims each board tab again before writing its unsaved edits", async () => {
+  it("opens each board again before writing its unsaved edits", async () => {
     store.adoptBoardState(state());
-    tabs.openBoardTab(REF);
     edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
-    engine.call.mockImplementation((command: string, args: SaveBoardArgs) =>
-      command === "open_board" ? Promise.resolve({ status: "opened", board: state() }) : savesAs("r2")(command, args),
-    );
-    await reclaimBoards();
+    engine.call.mockImplementation((command: string, args: SaveBoardArgs) => (command === "open_board" ? Promise.resolve(state()) : savesAs("r2")(command, args)));
+    await reopenBoards();
     expect(engine.call.mock.calls.map(([command]) => command as string)).toEqual(["open_board", "save_board"]);
     expect(store.isDirty(store.getOpenBoard(REF) as never)).toBe(false);
   });
 
-  it("asks about unsaved edits when the file changed meanwhile, and drops a board another window took", async () => {
-    const other = { project: Q, id: ID };
+  it("asks about unsaved edits when the file changed meanwhile", async () => {
     store.adoptBoardState(state());
-    store.adoptBoardState(boardState(Q, ID));
-    tabs.openBoardTab(REF);
-    tabs.openBoardTab(other);
     edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
-    engine.call.mockImplementation((_command: string, args: { project: string }) =>
-      Promise.resolve(args.project === P ? { status: "opened", board: state(doc(), "r7") } : { status: "held", heldBy: 3 }),
-    );
-    await reclaimBoards();
+    engine.call.mockImplementation((command: string) => Promise.resolve(command === "open_board" ? state(doc(), "r7") : null));
+    await reopenBoards();
     expect(store.getOpenBoard(REF)?.conflict).toEqual({ diskRevision: "r7" });
-    expect(store.getOpenBoard(other)).toBeUndefined();
-    expect(tabs.useTabs.getState().boards).toEqual([REF]);
-    expect(toast.showToast).toHaveBeenCalledTimes(1);
   });
 });

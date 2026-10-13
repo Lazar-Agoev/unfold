@@ -46,7 +46,7 @@ pub(super) struct Session {
     pub(super) health: Health,
     /// For a published board, its publish state then.
     pub(super) published: Option<PublishedState>,
-    /// The outside change last reported to the holding window, so it is reported once.
+    /// The outside change last reported to the window that opened it, so it is reported once.
     pub(super) reported: Option<Change>,
 }
 

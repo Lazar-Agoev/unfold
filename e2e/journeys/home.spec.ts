@@ -1,23 +1,21 @@
 /**
  * Home of a compiled project (docs/ui-shell.md#screens): the header with the branch and worktree switcher, How it
  * starts (applications by category, an expanded application, Not reached) and Trace, the Boards section, the sidebar's tree, Recents and Drafts; then Health and
- * activity for a project with a file that doesn't parse.
+ * activity for a project with a file that doesn't parse; and the engine host restarting (§11.11)
+ * without losing an edit.
  */
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { boardView } from "../src/board";
+import { boardTitle, boardView, card, readBoard, selected, showBoard, shownBoardRef } from "../src/board";
 import { expect, test } from "../src/fixtures";
-import { traceEntrance } from "../src/flows";
+import { launchCompiled, launchWithProject, openPlace, PLACE, traceEntrance } from "../src/flows";
 import {
   applicationRow,
-  boardTab,
   compileButton,
   entranceRow,
   expectGraphCurrent,
   homeMain,
-  homeTab,
-  homeTitle,
   howItStarts,
   projectRow,
   rowState,
@@ -26,9 +24,10 @@ import {
   showEntrances,
   sidebarBoard,
   stateLine,
-  tabs,
+  toast,
 } from "../src/home";
 import { writeFile } from "../src/sandbox";
+import { enterText, expectConnection, invoke } from "../src/window";
 
 test.describe("Home", () => {
   test("a compiled project's Home: header, How it starts, Trace, Boards, the sidebar tree, Recents and Drafts", async ({ sandbox, launch }) => {
@@ -38,9 +37,7 @@ test.describe("Home", () => {
     // A command entrance no launch reaches, for "Not reached from a launch".
     const config = join(folder, "unfold.toml");
     writeFile(config, `${readFileSync(config, "utf8")}\n[[entrance]]\nid = "metrics"\nkind = "command"\ntrigger = "metrics"\nhandler = "src/jobs/report.ts#reportMetrics"\n`);
-    const app = await launch({ args: [folder] });
-    const page = await app.firstWindow();
-    await expect(homeTitle(page)).toHaveText("ts-orders");
+    const { page } = await launchWithProject(launch, folder);
     await compileButton(page).click();
     await expectGraphCurrent(page);
 
@@ -98,7 +95,7 @@ test.describe("Home", () => {
 
     await test.step("Trace opens an entrance on a new page of a new draft board", async () => {
       await traceEntrance(page, "POST", "/orders");
-      await expect(boardTab(page, "POST /orders")).toHaveAttribute("aria-selected", "true");
+      await expect(boardTitle(page)).toHaveText("POST /orders");
       await expect(boardView(page).locator(".board-publish-text")).toHaveText("Draft");
       await expect(boardView(page).getByRole("article", { name: "POST /orders" })).toBeVisible();
     });
@@ -115,7 +112,7 @@ test.describe("Home", () => {
 
     await test.step("New board on Home makes an empty draft and opens it", async () => {
       await homeMain(page).locator(".home-header").getByRole("button", { name: "New board" }).click();
-      await expect(boardTab(page, "Untitled board")).toHaveAttribute("aria-selected", "true");
+      await expect(boardTitle(page)).toHaveText("Untitled board");
       await expect(boardView(page).getByText("Open an entrance or a definition to start this page.")).toBeVisible();
       await showHome(page);
     });
@@ -137,15 +134,9 @@ test.describe("Home", () => {
     await test.step("the sidebar lists the project's boards, and a board row opens its board", async () => {
       await expect(sidebarBoard(page, "POST /orders")).toBeVisible();
       await expect(sidebarBoard(page, "Untitled board")).toBeVisible();
-      // Close its tab, so the row opens the board again (and records it as a recent board).
-      await boardTab(page, "POST /orders").hover();
-      await page.getByRole("button", { name: "Close POST /orders" }).click();
-      await expect(tabs(page)).toHaveCount(2);
-      await sidebarBoard(page, "POST /orders").click();
-      await expect(boardTab(page, "POST /orders")).toHaveAttribute("aria-selected", "true");
+      await showBoard(page, "POST /orders");
       await expect(boardView(page).getByRole("article", { name: "POST /orders" })).toBeVisible();
-      await expect(tabs(page)).toHaveCount(3);
-      await homeTab(page).click();
+      await showHome(page);
     });
 
     await test.step("Recents lists the boards opened lately, across projects", async () => {
@@ -161,11 +152,11 @@ test.describe("Home", () => {
       const drafts = homeMain(page).getByRole("group", { name: "Drafts" });
       await expect(drafts.getByRole("button")).toHaveCount(2);
       await drafts.getByRole("button", { name: "Untitled board" }).click();
-      await expect(boardTab(page, "Untitled board")).toHaveAttribute("aria-selected", "true");
+      await expect(boardTitle(page)).toHaveText("Untitled board");
     });
 
     await test.step("a project row shows the project's overview on Home", async () => {
-      await homeTab(page).click();
+      await showHome(page);
       await projectRow(page, "ts-orders").locator(".home-project-title").click();
       await expect(howItStarts(page)).toBeVisible();
     });
@@ -174,9 +165,7 @@ test.describe("Home", () => {
   test("Health and activity: a file that doesn't parse, the Health list, and the Activity log", async ({ sandbox, launch }) => {
     const folder = sandbox.playground("ts-orders");
     writeFile(join(folder, "src", "broken.ts"), "export function broken( {\n  return 1;\n");
-    const app = await launch({ args: [folder] });
-    const page = await app.firstWindow();
-    await expect(homeTitle(page)).toHaveText("ts-orders");
+    const { page } = await launchWithProject(launch, folder);
     await compileButton(page).click();
 
     await test.step("the project row and the state line say a file doesn't parse", async () => {
@@ -207,12 +196,42 @@ test.describe("Home", () => {
       await show.getByRole("radio", { name: "Activity" }).click();
       const log = section.getByRole("table", { name: "Activity" });
       await expect(log.getByRole("cell", { name: "Compile", exact: true })).toBeVisible();
-      await expect(section.getByRole("button", { name: "Copy diagnostics" })).toBeVisible();
     });
 
     await test.step("Back to overview returns to How it starts", async () => {
       await section.getByRole("button", { name: "Back to overview" }).click();
       await expect(howItStarts(page)).toBeVisible();
+    });
+  });
+
+  test("a killed engine host reconnects the window without losing an edit", async ({ sandbox, launch }) => {
+    const { app, page, folders } = await launchCompiled(launch, sandbox);
+    const folder = folders[0] ?? "";
+    await openPlace(page);
+    const { project, id } = await shownBoardRef(page);
+
+    await test.step("an edit is waiting to be saved when the engine host dies", async () => {
+      await card(page, PLACE).locator(".card-header").click();
+      await enterText(selected(page).getByRole("textbox", { name: "Description" }), "Written as the engine went away.");
+      const pid = await app.killEngineHost();
+      await expect(toast(page, "Reconnecting to the engine…")).toBeVisible();
+      await expect.poll(() => app.engineHostPid()).not.toBe(pid);
+    });
+
+    await test.step("the window reconnects; the toast goes and the board stays shown", async () => {
+      await expectConnection(page, "connected");
+      await expect(toast(page, "Reconnecting to the engine…")).toHaveCount(0, { timeout: 30_000 });
+      await expect(boardTitle(page)).toHaveText("POST /orders");
+      await expect(card(page, PLACE).locator(".code-view")).toBeVisible();
+    });
+
+    await test.step("the edit is saved after the reconnect, and the engine answers again", async () => {
+      await expect
+        .poll(() => readBoard(folder, id).pages[0]?.cards.find((entry) => entry.ref.block?.endsWith(PLACE))?.description?.text)
+        .toBe("Written as the engine went away.");
+      await expect.poll(async () => (await invoke<{ boards: { id: string }[] }>(page, "list_boards", { project })).boards.map((board) => board.id)).toContain(id);
+      await showHome(page);
+      await expectGraphCurrent(page);
     });
   });
 });

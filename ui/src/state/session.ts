@@ -1,41 +1,31 @@
 /**
- * The window's session: what the window remembers in `windows.json`, how it comes
- * back at launch or on reload, and how it recovers when the engine host restarts.
+ * The window's session: how it comes back at launch or on reload, and how it recovers when the engine
+ * host restarts.
  *
- * - Restore: `window_state {key}` → the layout → the Home selection → the saved board tabs, reopened
- *   on their pages (a board that can't open loses its tab) → the active tab. Only then are boards
- *   moved here from another window adopted, agents' requests answered, and the window's state followed.
- * - Save: `save_window_state` 400 ms after the selection, the tabs, a board's active page, or the
- *   layout change, and at once when the page goes away (the window closes, the app quits).
- * - Engine restart: a toast while the engine is away; once it is back, the
- *   selection is sent again, every board tab is claimed again and its unsaved edits saved, the window's
- *   state saved, and the query cache reset, in that order.
- * - `focus_board`: another window asked for a board this one holds, so its tab is shown.
+ * - Restore: the board `window_info` names is opened and shown (Home when it is gone). Only then are
+ *   agents' requests answered, and the shown board reported to the main process as it changes.
+ * - Engine restart: a toast while the engine is away; once it is back, the selection is sent again,
+ *   every open board is opened again and its unsaved edits saved, and the query cache reset, in that
+ *   order.
  */
 
 import type { QueryClient } from "@tanstack/react-query";
 import { createElement } from "react";
 import { create } from "zustand";
 import { ProgressRing, dismissToast, showToast } from "../components";
-import { call } from "../ipc/commands";
-import type { SavedWindow, WindowStateInput } from "../ipc/generated";
-import { engineQueryOptions, resetEngineQueries } from "../ipc/queries";
-import { onConnection, onShellEvent } from "../ipc/unfold";
-import { boardKey, openBoard, reclaimBoards, setAgentChannelReady, setTransfersReady, type BoardRef } from "./boards";
-import { applyLayoutSnapshot, layoutSnapshot, subscribeToLayout } from "./layout";
-import { activateBoard, moveTab, subscribeToTabs, tabsSnapshot } from "./tabs";
+import { resetEngineQueries } from "../ipc/queries";
+import { onConnection } from "../ipc/unfold";
+import { openBoard, reopenBoards, setAgentChannelReady } from "./boards";
+import { reportShownBoard } from "./shownBoard";
 import { useWindowStore } from "./window";
 import { selectProject } from "./workspace";
-
-/** How long the window waits after a change before saving its state. */
-export const SAVE_DELAY_MS = 400;
 
 /** The engine toast's id, so showing it again replaces it. */
 const ENGINE_TOAST = "engine";
 
 const useSession = create<{ readonly restored: boolean }>()(() => ({ restored: false }));
 
-/** Whether the window's saved state is back (its selection and tabs are the restored ones from then on). */
+/** Whether the window's last board is back (shown, or found gone). */
 export function useRestored(): boolean {
   return useSession((state) => state.restored);
 }
@@ -43,141 +33,29 @@ export function useRestored(): boolean {
 /** The restore, run once per page load (the session may be installed again, as under StrictMode). */
 let restoring: Promise<void> | null = null;
 
-function windowKey(): string | null {
-  return useWindowStore.getState().info?.key ?? null;
-}
-
-/** The window's state as `save_window_state` takes it. */
-function windowState(key: string): WindowStateInput {
-  const layout = layoutSnapshot();
-  return {
-    key,
-    selectedProject: useWindowStore.getState().selectedProject,
-    ...tabsSnapshot(),
-    layout: { ...layout, folders: [...layout.folders] },
-  };
-}
-
-async function saveWindowState(key: string): Promise<void> {
-  try {
-    await call("save_window_state", { state: windowState(key) });
-  } catch (error) {
-    console.warn("Saving the window's state failed:", error);
+/** Shows the board the window showed last, if it still exists. */
+async function restore(): Promise<void> {
+  const board = useWindowStore.getState().info?.board ?? null;
+  if (board !== null) {
+    try {
+      await openBoard({ project: board.project, id: board.board });
+    } catch (error) {
+      console.warn(`Reopening ${board.board} failed:`, error);
+    }
   }
-}
-
-/** Selects the saved project if the workspace still has it; otherwise the frame picks one (the workspace's). */
-async function restoreSelection(client: QueryClient, saved: SavedWindow): Promise<void> {
-  const project = saved.selectedProject;
-  if (project === null) {
-    return;
-  }
-  const workspace = await client.query(engineQueryOptions("workspace", {})).catch(() => undefined);
-  if (workspace?.projects.some((row) => row.id === project)) {
-    await selectProject(project);
-  }
-}
-
-/** Reopens the saved board tabs on their pages, in their order, then activates the saved one. */
-async function reopenTabs(saved: SavedWindow): Promise<void> {
-  const opened = await Promise.all(
-    saved.tabs.map(async (tab): Promise<BoardRef | null> => {
-      try {
-        const outcome = await openBoard({ project: tab.project, id: tab.board }, { activate: false, ...(tab.page === null ? {} : { page: tab.page }) });
-        return outcome.status === "opened" ? outcome.ref : null;
-      } catch (error) {
-        console.warn(`Reopening ${tab.board} failed:`, error);
-        return null;
-      }
-    }),
-  );
-  // The boards open in parallel, so their tabs arrive in any order: put them back in the saved one.
-  opened
-    .filter((ref) => ref !== null)
-    .forEach((ref, index) => {
-      moveTab(boardKey(ref), index);
-    });
-  const active = saved.activeTab === null ? null : opened[saved.activeTab];
-  if (active) {
-    activateBoard(active);
-  }
-}
-
-async function restore(client: QueryClient): Promise<void> {
-  const key = windowKey();
-  const saved =
-    key === null
-      ? null
-      : await call("window_state", { key }).catch((error: unknown) => {
-          console.warn("Reading the window's saved state failed:", error);
-          return null;
-        });
-  if (saved) {
-    applyLayoutSnapshot(saved.layout);
-    await restoreSelection(client, saved);
-    await reopenTabs(saved);
-  }
-  setTransfersReady(true);
   setAgentChannelReady();
   useSession.setState({ restored: true });
 }
 
 /**
- * Saves the window's state after each change (debounced). A save still waiting when the page goes away
- * is sent at once, so the last change isn't lost. Returns the stop function.
- */
-function followWindowState(key: string): () => void {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const save = () => {
-    timer = null;
-    void saveWindowState(key);
-  };
-  const schedule = () => {
-    if (timer !== null) {
-      clearTimeout(timer);
-    }
-    timer = setTimeout(save, SAVE_DELAY_MS);
-  };
-  const saveNow = () => {
-    if (timer !== null) {
-      clearTimeout(timer);
-      save();
-    }
-  };
-  const stops = [
-    useWindowStore.subscribe((state, previous) => {
-      if (state.selectedProject !== previous.selectedProject) {
-        schedule();
-      }
-    }),
-    subscribeToTabs(schedule),
-    subscribeToLayout(schedule),
-  ];
-  window.addEventListener("pagehide", saveNow);
-  return () => {
-    window.removeEventListener("pagehide", saveNow);
-    if (timer !== null) {
-      clearTimeout(timer);
-    }
-    for (const stop of stops) {
-      stop();
-    }
-  };
-}
-
-/**
- * After an engine-host restart: Rust came back with every project resting and no
- * claims, so the window sends its selection again, claims its boards again and saves their unsaved
- * edits (`reclaimBoards`), saves its own state, and only then drops what the cache held.
+ * After an engine-host restart: Rust came back with every project resting and no board open, so the
+ * window sends its selection again, opens its boards again and saves their unsaved edits
+ * (`reopenBoards`), and only then drops what the cache held.
  */
 async function reconnect(client: QueryClient): Promise<void> {
   await restoring;
   await selectProject(useWindowStore.getState().selectedProject);
-  await reclaimBoards();
-  const key = windowKey();
-  if (key !== null) {
-    await saveWindowState(key);
-  }
+  await reopenBoards();
   await resetEngineQueries(client);
 }
 
@@ -210,31 +88,23 @@ function followConnection(client: QueryClient): () => void {
 }
 
 /**
- * Restores the window (once per page load), then saves its state as it changes; follows the engine
- * connection; and shows the tab of a board another window asked for. Returns the uninstall function.
+ * Restores the window (once per page load), then reports the shown board as it changes, and follows
+ * the engine connection. Returns the uninstall function.
  */
 export function installSession(client: QueryClient): () => void {
   let installed = true;
-  let stopSaving: (() => void) | null = null;
-  const stops = [
-    followConnection(client),
-    onShellEvent("focus_board", ({ project, board }) => {
-      activateBoard({ project, id: board });
-    }),
-  ];
-  restoring ??= restore(client);
+  let stopReporting: (() => void) | null = null;
+  const stopFollowing = followConnection(client);
+  restoring ??= restore();
   void restoring.then(() => {
-    const key = windowKey();
-    if (installed && key !== null) {
-      stopSaving = followWindowState(key);
+    if (installed) {
+      stopReporting = reportShownBoard();
     }
   });
   return () => {
     installed = false;
-    stopSaving?.();
-    for (const stop of stops) {
-      stop();
-    }
+    stopReporting?.();
+    stopFollowing();
   };
 }
 

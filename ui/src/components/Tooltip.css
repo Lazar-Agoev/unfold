@@ -28,12 +28,6 @@
   pointer-events: none;
 }
 
-.tooltip-shortcut {
-  font-family: var(--font-ui);
-  color: var(--color-muted);
-  white-space: nowrap;
-}
-
 .hovercard {
   z-index: var(--z-popover);
   max-width: 440px;

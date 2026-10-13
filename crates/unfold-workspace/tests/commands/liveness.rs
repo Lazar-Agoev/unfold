@@ -130,6 +130,42 @@ fn a_running_compile_keeps_its_project_live() {
 }
 
 #[test]
+fn every_open_board_keeps_its_project_live_until_its_window_closes() {
+    let harness = Harness::with("ts-orders", restless());
+    compile_unselected(&harness, &harness.project);
+    eventually("the project rests", || !live(&harness, &harness.project));
+    let first = harness.ok(
+        1,
+        "new_board",
+        json!({ "project": harness.project, "title": "One" }),
+    );
+    let second = harness.ok(
+        1,
+        "new_board",
+        json!({ "project": harness.project, "title": "Two" }),
+    );
+    // Closing one board leaves the other's session, which keeps the project live.
+    harness.ok(
+        1,
+        "close_board",
+        json!({ "project": harness.project, "id": first["id"] }),
+    );
+    std::thread::sleep(Duration::from_millis(400));
+    assert!(live(&harness, &harness.project), "an open board keeps it live");
+    let health = json!({ "project": harness.project, "id": second["id"] });
+    assert_eq!(
+        harness.ok(1, "board_health", health.clone())["label"],
+        Value::Null
+    );
+    // Closing the window closes its boards, so the project rests.
+    harness.host.detach_window(1).expect("detach");
+    assert_eq!(harness.code(1, "board_health", health), "board_not_open");
+    eventually("the project rests once its window closed", || {
+        !live(&harness, &harness.project)
+    });
+}
+
+#[test]
 fn an_open_board_keeps_the_projects_its_cards_use_live() {
     let harness = Harness::with("ts-orders", restless());
     let (python, _) = harness.add("py-orders", "py-orders");
@@ -139,19 +175,21 @@ fn an_open_board_keeps_the_projects_its_cards_use_live() {
     let projects = harness.host.projects().expect("initialized");
     let board = ".unfold/local/drafts/board-1.json";
     let own = projects.handle(&id(&harness.project)).expect("project");
-    own.claims().claim(board, 1).expect("claim");
-    own.claims().set_references(board, BTreeSet::from([id(&python)]));
+    own.open_boards().open(board, 1);
+    own.open_boards()
+        .set_references(board, BTreeSet::from([id(&python)]));
     std::thread::sleep(Duration::from_millis(400));
     assert!(live(&harness, &python), "a board with its cards keeps it live");
-    own.claims().release(board, 1);
+    own.open_boards().close(board);
     eventually("it rests once the board closed", || !live(&harness, &python));
     assert!(
         live(&harness, &harness.project),
         "the selected project stays live"
     );
     // An open board gaining cards from a resting project wakes it.
-    own.claims().claim(board, 1).expect("claim");
-    own.claims().set_references(board, BTreeSet::from([id(&python)]));
+    own.open_boards().open(board, 1);
+    own.open_boards()
+        .set_references(board, BTreeSet::from([id(&python)]));
     eventually("the referenced project wakes", || live(&harness, &python));
 }
 

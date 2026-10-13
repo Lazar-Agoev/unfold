@@ -14,7 +14,7 @@ import { PATH_WORDS, PROPOSAL_TITLE_FIELD, proposalChoiceOf, proposeStep, type P
 import { combineOf, sourceOf, viewCode } from "../../board/viewCode";
 import { useContextMenu, type MenuEntry } from "../../components";
 import type { ProjectId, ProposalPath } from "../../ipc/generated";
-import { ActionIds, actions, requestFocus } from "../../keyboard";
+import { requestFocus } from "../../lib/focus-targets";
 import { canBeHandler } from "../../launches";
 import { useAuthor } from "../../state/author";
 import { editGroup, editPage, findPage, getOpenBoard, getPageView, removeCard, select, setCardsFolded, setLinking, ungroup, type PageTarget, type Selection } from "../../state/boards";
@@ -51,11 +51,9 @@ interface CardMenu {
 /** View code for `selection`: enabled when it has a source, else disabled with why. */
 function viewCodeEntry(target: PageTarget, selection: Selection): MenuEntry {
   const source = sourceOf(target, selection);
-  const shortcut = actions.shortcutsFor(ActionIds.viewCode)[0];
   return {
     id: "view-code",
     label: "View code",
-    ...(shortcut !== undefined ? { shortcut } : {}),
     disabled: source.target === null,
     ...(source.reason !== undefined ? { hint: source.reason } : {}),
     onSelect: () => {

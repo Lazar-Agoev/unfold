@@ -1,6 +1,6 @@
 /**
- * The content area (`#content-area`, a positioned flex row): Home's main area while Home is active, else
- * the active board's view (only that board is mounted), with the peek sheet as its last child. The
+ * The content area (`#content-area`, a positioned flex row): Home's main area while Home shows, else
+ * the shown board's view (only that board is mounted), with the peek sheet as its last child. The
  * window's title follows what it shows.
  */
 
@@ -9,7 +9,7 @@ import { BoardView } from "../board";
 import { HomeMain } from "../home";
 import { PeekSheet } from "../peek";
 import { boardKey, useOpenBoard, type BoardRef } from "../state/boards";
-import { useActiveBoard } from "../state/tabs";
+import { useShownBoard } from "../state/shownBoard";
 import { useSelectedProject } from "../state/window";
 import { useProjectRow } from "../state/workspace";
 
@@ -31,7 +31,7 @@ function BoardContent({ board }: { readonly board: BoardRef }) {
 }
 
 export function Content() {
-  const board = useActiveBoard();
+  const board = useShownBoard();
   return (
     <main id="content-area" className="app-content">
       {board ? <BoardContent key={boardKey(board)} board={board} /> : <HomeContent />}

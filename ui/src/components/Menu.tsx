@@ -15,7 +15,6 @@ import { IconButton, type IconButtonProps } from "./IconButton";
 import { cx, pointBelow, type Point } from "./internal/dom";
 import { useFloatingPosition, type Align, type Anchor, type Side } from "./internal/floating";
 import { Portal, useDismiss, useRestoreFocus } from "./internal/layers";
-import { ShortcutText } from "./internal/shortcut";
 import "./Menu.css";
 
 interface MenuItemBase {
@@ -23,8 +22,6 @@ interface MenuItemBase {
   readonly id: string;
   readonly label: string;
   readonly icon?: IconName;
-  /** Shown on the right, e.g. `Mod+W`. Display only: the action registry owns the key. */
-  readonly shortcut?: string;
   readonly disabled?: boolean;
   /** Its tooltip, such as why it is disabled. */
   readonly hint?: string;
@@ -241,7 +238,6 @@ function MenuList({ entries, label, onClose, initialFocus, width, className, onB
                 </span>
               ) : null}
               <span className="menu-item-label">{entry.label}</span>
-              {entry.shortcut ? <ShortcutText shortcut={entry.shortcut} className="menu-item-shortcut" /> : null}
               {hasTrailing ? (
                 <span className="menu-item-trailing" aria-hidden={parent || undefined}>
                   {parent ? <Icon name="chevron-right" size={14} /> : entry.trailing}

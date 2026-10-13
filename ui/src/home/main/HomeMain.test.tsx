@@ -6,7 +6,7 @@ import type { ProblemItem, ProjectRow, ProjectSummary, WorkspaceView } from "../
 import { resetBoards } from "../../state/boards/store";
 import { initialLayout, useLayout, type HomeView } from "../../state/layout";
 import { useDialog, usePeekTarget } from "../../state/overlays";
-import { useTabs } from "../../state/tabs";
+import { useShownBoardStore } from "../../state/shownBoard";
 import { useWindowStore } from "../../state/window";
 import { OVERVIEW } from "../../test/entrances";
 import { fixture, installFakeEngine, type EngineHandlers, type FakeEngine } from "../../test/engine";
@@ -62,7 +62,7 @@ function Probe() {
 beforeEach(() => {
   resetBoards();
   clearStagedScope();
-  useTabs.setState({ boards: [], active: "home" });
+  useShownBoardStore.setState({ board: null });
 });
 
 afterEach(() => {
@@ -78,7 +78,6 @@ describe("first launch", () => {
     });
     renderWithClient(<HomeMain />);
     expect(await screen.findByRole("heading", { name: "Read a codebase by how it starts." })).toBeTruthy();
-    expect(screen.getByText("Drop a folder here")).toBeTruthy();
     expect(screen.getByText("~/code/storefront-api")).toBeTruthy();
     expect(screen.getByText("last opened 3 days ago")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Add storefront-api" }));
@@ -250,7 +249,6 @@ describe("Health and activity", () => {
     expect(within(table).getByText("Update").getAttribute("title")).toBe("Background update");
     expect(cells[1]).toContain("1 / 33 / 1");
     expect(cells[2]).toContain("34 / 0 / 0");
-    expect(screen.getByRole("button", { name: "Copy diagnostics" })).toBeTruthy();
   });
 });
 

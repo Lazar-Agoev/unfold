@@ -4,7 +4,6 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { isModalOpen } from "../keyboard";
 import { Button } from "./Button";
 import { ConfirmDialog, Dialog, PromptDialog } from "./Dialog";
 
@@ -59,7 +58,6 @@ describe("Dialog", () => {
     expect(dialog.getAttribute("aria-modal")).toBe("true");
     expect(dialog.getAttribute("aria-describedby")).not.toBeNull();
     expect(root.hasAttribute("inert")).toBe(true);
-    expect(isModalOpen()).toBe(true);
 
     const field = screen.getByRole("textbox", { name: "Type the name" });
     expect(document.activeElement).toBe(field);
@@ -75,7 +73,6 @@ describe("Dialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(root.hasAttribute("inert")).toBe(false);
-    expect(isModalOpen()).toBe(false);
     expect(document.activeElement).toBe(opener);
     root.remove();
   });

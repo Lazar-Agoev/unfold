@@ -5,7 +5,7 @@ import type { RepairBoardArgs } from "../../../ipc/generated";
 import { installFakeEngine, type FakeEngine } from "../../../test/engine";
 import { boardDocument, boardState, page } from "../../../test/workspace";
 import { moveItems } from "../document";
-import { openBoardTab, useTabs } from "../../tabStore";
+import { useShownBoardStore } from "../../shownBoard";
 import * as store from "../store";
 import { repairForAgent } from "./repair";
 import { resetWorking, useWorkingItems } from "./working";
@@ -22,7 +22,7 @@ let engine: FakeEngine;
 beforeEach(() => {
   store.resetBoards();
   resetWorking();
-  useTabs.setState({ boards: [], active: "home" });
+  useShownBoardStore.setState({ board: null });
   engine = installFakeEngine({
     handlers: {
       repair_board: (args: RepairBoardArgs) => boardState(args.project, args.id, boardDocument([page("page-1", [{ ...CARD, ref: { block: "src/a.ts#function:b" } }])]), { revision: "r2" }),
@@ -38,7 +38,6 @@ afterEach(() => {
 describe("repairing a board for an agent", () => {
   it("applies the repair as one undo step, answers with the page as saved, and marks what it changed", async () => {
     store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", [CARD])])));
-    openBoardTab(REF);
     const result = await repairForAgent({ requestId: 1, board: REF, page: "page-1", agent: CLAUDE, repair: REPAIR, items: ["a"] });
     expect(engine.callsOf("repair_board")).toEqual([{ project: P, id: ID, repair: REPAIR }]);
     expect(result).toMatchObject({ ok: true, page: { id: "page-1", cards: [{ id: "a", ref: { block: "src/a.ts#function:b" } }] }, board: { revision: "r2", place: "draft" } });
@@ -57,14 +56,12 @@ describe("repairing a board for an agent", () => {
       },
     });
     store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", [CARD])])));
-    openBoardTab(REF);
     expect(await repairForAgent({ requestId: 1, board: REF, page: "page-1", agent: CLAUDE, repair: REPAIR, items: [] })).toMatchObject({ ok: false });
     expect(store.canUndo(REF)).toBe(false);
   });
 
   it("refuses while a conflict is open, and keeps a person's edit made while it runs", async () => {
     store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", [CARD])])));
-    openBoardTab(REF);
     store.useBoards.setState((draft) => {
       const open = Object.values(draft.boards)[0];
       if (open) {

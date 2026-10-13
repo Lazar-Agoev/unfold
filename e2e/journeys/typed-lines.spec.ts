@@ -2,14 +2,15 @@
  * Typed lines (docs/reader.md) on the `typed-lines` fixture: a line between cards
  * carries its call's signature at rest; clicking the label opens the call's contract in its place,
  * with what it sends, returns, and throws; a written type opens its definition under its row, and
- * "Used in" lists where it is used; Escape closes the contract. The same in the dark theme.
+ * "Used in" lists where it is used; Escape closes the contract.
  */
 
 import type { Locator, Page } from "@playwright/test";
 import { addInput, openAdd, result, selectResult } from "../src/add";
 import { boardView, cameraSettled, card, chooseLens, dock, expectCardsLoaded, follow, panUntilHittable } from "../src/board";
 import { expect, test } from "../src/fixtures";
-import { firstCompile, homeTitle, projectRow } from "../src/home";
+import { launchWithProject } from "../src/flows";
+import { firstCompile } from "../src/home";
 import { enterText } from "../src/window";
 
 const CREATE_ORDER = "src/orders/create.ts#function:createOrder";
@@ -52,12 +53,9 @@ async function rows(section: Locator): Promise<string[][]> {
 }
 
 test.describe("typed lines", () => {
-  test("a line's label, its contract, a type's definition and uses, and Escape, in light and dark", async ({ sandbox, launch }) => {
+  test("a line's label, its contract, a type's definition and uses, and Escape", async ({ sandbox, launch }) => {
     const folder = sandbox.fixture("typed-lines/ts", "typed-lines");
-    const app = await launch({ args: [folder] });
-    const page = await app.firstWindow();
-    await expect(projectRow(page, "typed-lines")).toBeVisible();
-    await expect(homeTitle(page)).toHaveText("typed-lines");
+    const { page } = await launchWithProject(launch, folder);
     await firstCompile(page);
 
     await test.step("createOrder and the two functions it calls go on a new board", async () => {
@@ -93,7 +91,7 @@ test.describe("typed lines", () => {
       const placed = await labelsOverCards(page);
       expect(placed.overlaps).toEqual([]);
       expect(placed.drawn).toBeGreaterThan(0);
-      await test.info().attach("board, light", { body: await boardView(page).screenshot(), contentType: "image/png" });
+      await test.info().attach("board", { body: await boardView(page).screenshot(), contentType: "image/png" });
     });
 
     await test.step("clicking a label opens the call's contract in its place", async () => {
@@ -121,7 +119,7 @@ test.describe("typed lines", () => {
       await expect(definition.getByText("cart.ts:12")).toBeVisible();
       await expect(definition.getByText("coupon?")).toBeVisible();
       await expect(definition.getByRole("button", { name: "CartItem", exact: true })).toBeVisible();
-      await test.info().attach("type opened, light", { body: await boardView(page).screenshot(), contentType: "image/png" });
+      await test.info().attach("type opened", { body: await boardView(page).screenshot(), contentType: "image/png" });
     });
 
     await test.step("Used in lists the places a type is used", async () => {
@@ -139,22 +137,6 @@ test.describe("typed lines", () => {
       await expect(contract(page)).toBeHidden();
       await expect(label(page, "(Cart, User) → Promise<Charge>")).toBeVisible();
       await expect(card(page, CHARGE).locator(".code-row.marked")).toHaveCount(0);
-    });
-
-    await test.step("the dark theme draws the label and the contract with its own tokens", async () => {
-      await page.evaluate(() => {
-        document.documentElement.setAttribute("data-theme", "dark");
-      });
-      const charge = label(page, "(Cart, User) → Promise<Charge>");
-      // The label sits on the canvas color; the contract on the surface.
-      await expect(charge).toHaveCSS("background-color", "rgb(21, 22, 25)");
-      await charge.click();
-      await expect(contract(page)).toHaveCSS("background-color", "rgb(29, 31, 35)");
-      await contract(page).getByRole("button", { name: "Cart", exact: true }).click();
-      await expect(contract(page).getByRole("group", { name: "interface Cart" })).toBeVisible();
-      await test.info().attach("type opened, dark", { body: await boardView(page).screenshot(), contentType: "image/png" });
-      await page.keyboard.press("Escape");
-      await expect(contract(page)).toBeHidden();
     });
   });
 });

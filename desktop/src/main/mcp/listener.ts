@@ -1,6 +1,6 @@
 /**
- * The MCP server's HTTP listener (design §5.3, §5.7): `127.0.0.1:<port>`, path `/mcp`, only while
- * Preferences › Agents has it on. It serves this machine's programs and nothing else:
+ * The MCP server's HTTP listener (design §5.3, §5.7): `127.0.0.1:<port>`, path `/mcp`, from launch
+ * until the app quits. It serves this machine's programs and nothing else:
  *
  * - a request with an `Origin` header comes from a web page, and one whose `Host` isn't
  *   `127.0.0.1:<port>` or `localhost:<port>` could be a web page reaching it by DNS rebinding: both
@@ -9,8 +9,7 @@
  * - every other path is 404.
  *
  * What passes goes to `serve` (the MCP SDK's handler) as a web `Request`, with its JSON body parsed
- * once here, and the `Response` streams back. Stopping closes every connection, so turning agents
- * off disconnects everyone at once.
+ * once here, and the `Response` streams back. Closing it closes every connection.
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -27,17 +26,12 @@ export const MAX_BODY_BYTES = 1024 * 1024;
 
 /** Whether it listens, and on which port (the one asked for, or the one it got when asked for 0). */
 export type ListenerState =
-  | { readonly state: "off" }
   | { readonly state: "starting" | "listening" | "port_taken"; readonly port: number }
   | { readonly state: "failed"; readonly port: number; readonly message: string };
 
-/** Where to listen: `port` while `enabled`, nowhere otherwise. */
-export interface ListenerSettings {
-  readonly enabled: boolean;
-  readonly port: number;
-}
-
 export interface McpListenerOptions {
+  /** The port to listen on. There is no fallback: when another program holds it, the state says so. */
+  readonly port: number;
   /** Serves one checked request; `body` is the parsed JSON body (undefined when absent or not JSON). */
   readonly serve: (request: Request, body: unknown) => Promise<Response>;
   /** Hears every change of state. */
@@ -148,45 +142,19 @@ async function send(res: ServerResponse, response: Response): Promise<void> {
 
 export class McpListener {
   private server: Server | null = null;
-  private current: ListenerState = { state: "off" };
-  private wanted: ListenerSettings = { enabled: false, port: 0 };
-  /** Changes run one at a time, in order. */
-  private changes: Promise<void> = Promise.resolve();
+  private current: ListenerState;
 
-  constructor(private readonly options: McpListenerOptions) {}
+  constructor(private readonly options: McpListenerOptions) {
+    this.current = { state: "starting", port: options.port };
+  }
 
   get state(): ListenerState {
     return this.current;
   }
 
-  /**
-   * Listens on `port` while `enabled`, else stops. A change of port restarts it; the same settings
-   * again try once more when the port was taken or listening failed, and otherwise change nothing.
-   */
-  configure(settings: ListenerSettings): Promise<void> {
-    this.changes = this.changes.then(() => this.apply(settings));
-    return this.changes;
-  }
-
-  /** Stops listening and closes every connection. */
-  close(): Promise<void> {
-    return this.configure({ enabled: false, port: this.wanted.port });
-  }
-
-  private async apply(settings: ListenerSettings): Promise<void> {
-    const same = settings.enabled === this.wanted.enabled && settings.port === this.wanted.port;
-    this.wanted = settings;
-    if (same && (this.current.state === "listening" || this.current.state === "off")) {
-      return;
-    }
-    await this.stop();
-    if (settings.enabled) {
-      await this.start(settings.port);
-    }
-  }
-
-  private async start(port: number): Promise<void> {
-    this.setState({ state: "starting", port });
+  /** Starts listening; when it can't, the state says why. Never rejects. */
+  async start(): Promise<void> {
+    const port = this.options.port;
     const server = createServer((req, res) => {
       void this.handle(server, req, res);
     });
@@ -214,7 +182,8 @@ export class McpListener {
     this.setState({ state: "listening", port: (server.address() as AddressInfo).port });
   }
 
-  private async stop(): Promise<void> {
+  /** Stops listening and closes every connection (the app is quitting). */
+  async close(): Promise<void> {
     const server = this.server;
     this.server = null;
     if (server) {
@@ -224,9 +193,6 @@ export class McpListener {
         });
         server.closeAllConnections();
       });
-    }
-    if (this.current.state !== "off") {
-      this.setState({ state: "off" });
     }
   }
 

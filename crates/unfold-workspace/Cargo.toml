@@ -17,7 +17,6 @@ grep-matcher = { workspace = true }
 grep-regex = { workspace = true }
 grep-searcher = { workspace = true }
 ignore = { workspace = true }
-indexmap = { workspace = true }
 notify = { workspace = true }
 notify-debouncer-full = { workspace = true }
 nucleo-matcher = { workspace = true }

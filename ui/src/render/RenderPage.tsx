@@ -1,5 +1,5 @@
 /**
- * One page drawn for the main process: the page's canvas exactly as a board tab draws it (the same
+ * One page drawn for the main process: the page's canvas exactly as the board view draws it (the same
  * canvas, cards, arrows, and labels), with nothing around it and nothing to edit. Once every drawn card
  * is measured, every query has loaded, the fonts are in, and nothing has moved for a moment, it
  * answers: the bounds an image captures, or the page checks. For an image, it then takes the camera the

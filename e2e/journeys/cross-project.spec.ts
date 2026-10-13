@@ -7,7 +7,7 @@
 import type { Page } from "@playwright/test";
 import { addBox, addInput, openAdd, result, selectResult } from "../src/add";
 import {
-  activeBoardRef,
+  shownBoardRef,
   boardView,
   card,
   cardMenu,
@@ -18,10 +18,11 @@ import {
   panUntilHittable,
   readBoard,
   selected,
+  showBoard,
 } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { CREATE_ORDER, launchCompiled, traceEntrance } from "../src/flows";
-import { boardTab, dialog, projectMenu, projectRow, selectProject, showHome } from "../src/home";
+import { dialog, projectMenu, projectRow, selectProject, showHome } from "../src/home";
 import { enterText } from "../src/window";
 
 const PY_PLACE = "src/orders_playground/services/order_service.py#class:OrderService/method:place";
@@ -43,7 +44,7 @@ test.describe("boards across projects", () => {
     const [orders = ""] = folders;
     await selectProject(page, "ts-orders");
     await traceEntrance(page, "POST", "/orders");
-    const board = await activeBoardRef(page);
+    const board = await shownBoardRef(page);
 
     await test.step("Add puts a card from the other project on the page", async () => {
       // Read in Code: a card from the other project shows that project's verified source.
@@ -98,7 +99,7 @@ test.describe("boards across projects", () => {
     await test.step("renaming the other project's shared name leaves a placeholder", async () => {
       await renameProject(page, "py-orders", "py-renamed");
       await expect(projectRow(page, "py-renamed")).toBeVisible();
-      await boardTab(page, "POST /orders").click();
+      await showBoard(page, "POST /orders");
       const placeholder = boardView(page).locator(`.placeholder-card[data-key='${PY_PLACE}']`);
       await expect(placeholder).toBeVisible();
       await expect(placeholder).toHaveAccessibleName(/, from py-orders, not connected$/);
@@ -112,7 +113,7 @@ test.describe("boards across projects", () => {
     await test.step("renaming it back reads the card again", async () => {
       await renameProject(page, "py-renamed", "py-orders");
       await expect(projectRow(page, "py-orders")).toBeVisible();
-      await boardTab(page, "POST /orders").click();
+      await showBoard(page, "POST /orders");
       await expect(card(page, PY_PLACE).locator(".code-view")).toBeVisible();
       await expect(boardView(page).locator(".placeholder-card")).toHaveCount(0);
     });

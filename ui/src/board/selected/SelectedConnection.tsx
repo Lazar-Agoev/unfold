@@ -19,7 +19,7 @@ import { stepPort } from "../../code/outline";
 import { shortPath } from "../../code/text";
 import { Button, MenuButton } from "../../components";
 import type { Link, Page, ProjectId } from "../../ipc/generated";
-import { useFocusTarget } from "../../keyboard";
+import { useFocusTarget } from "../../lib/focus-targets";
 import { useAuthor } from "../../state/author";
 import { describeLink, findCard, findPage, itemsFor, removeLink, setLinkLabel, useOpenBoard, type PageTarget } from "../../state/boards";
 import { openPeek } from "../../state/overlays";

@@ -19,20 +19,21 @@
 //! command that concerns a project names it ([`crate::projects`]). A command is
 //! `{"command": "<name>", "args": {…}}` (the [`Request`] table). The engine host may add
 //! `"trusted": true` to a command **the main process** sent (never to one a window sent):
-//! commands that take an absolute path or manage windows (`add_project`, `export_mermaid`,
-//! `saved_windows`, `save_window_bounds`, `forget_window`) require it.
+//! commands that take an absolute path or keep the window's state (`add_project`,
+//! `export_mermaid`, `window_state`, `save_window_state`) require it.
 //!
-//! **Closing while a board is saved.** A window's final saves (its boards, its remembered state)
+//! **Closing while a board is saved.** A window's final saves (its boards, the remembered window)
 //! and its detach travel on different channels (the window's port and the main process's
 //! lifecycle message), so `detachWindow` can arrive while a save it should follow is still
 //! running, or just after the save was dispatched. [`CLOSING_WRITES`] are counted per window from
 //! the moment `dispatch` is called; [`Host::detach_window`] waits (up to [`CLOSE_WAIT`]) until the
-//! window has none in flight, so those saves land while the window still holds its boards. Then
-//! it releases the window's board claims and sessions and its Home selection.
+//! window has none in flight, so those saves land while the window's boards are still open. Then
+//! it closes the window's boards (their sessions go, so their projects can rest) and releases its
+//! Home selection.
 //!
 //! Sink messages are `{"kind":"broadcast","event":{…}}` (every event but one is for every window),
-//! `{"kind":"event","windows":[w],"event":{…}}` (`board_conflict`, for the window holding the
-//! board), and `{"kind":"stream","windowId":…,"requestId":…,"message":{…}}` ([`SinkMessage`]). A
+//! `{"kind":"event","windows":[w],"event":{…}}` (`board_conflict`, for the window that opened
+//! the board), and `{"kind":"stream","windowId":…,"requestId":…,"message":{…}}` ([`SinkMessage`]). A
 //! panic in a command is caught and becomes an `internal` error; the process keeps running.
 
 use std::any::Any;
@@ -63,9 +64,9 @@ pub type MessageSink = Arc<dyn Fn(String) + Send + Sync>;
 /// takes milliseconds; the bound only keeps a stuck write from blocking a detach forever.
 pub const CLOSE_WAIT: Duration = Duration::from_secs(15);
 
-/// Commands a closing window's detach waits for: board and board-folder writes, and the window's
-/// remembered state and bounds (saved one last time as the window closes, e.g. when the app
-/// quits). Keep in sync with `CLOSING_WRITES` in `desktop/src/engine-host/router.ts`.
+/// Commands a closing window's detach waits for: board and board-folder writes, and the
+/// remembered window (saved one last time as the window closes, e.g. when the app quits). Keep in
+/// sync with `CLOSING_WRITES` in `desktop/src/engine-host/router.ts`.
 const CLOSING_WRITES: &[&str] = &[
     "save_board",
     "repair_board",
@@ -78,16 +79,14 @@ const CLOSING_WRITES: &[&str] = &[
     "create_folder",
     "rename_folder",
     "delete_folder",
-    "save_board_view",
     "save_window_state",
-    "save_window_bounds",
 ];
 
 /// One message to the engine host's sink.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum SinkMessage {
-    /// An event for some windows only (`board_conflict`, for the window holding the board).
+    /// An event for some windows only (`board_conflict`, for the window that opened the board).
     Event {
         /// The windows to deliver it to.
         windows: Vec<WindowId>,
@@ -300,11 +299,11 @@ impl Host {
     }
 
     /// Forgets `window` (it closed), after its closing writes in flight finish (see the
-    /// [module documentation](self)): releases its board claims and sessions and its Home
-    /// selection. Projects losing interest start their lease.
+    /// [module documentation](self)): closes the boards it opened, with their sessions, and
+    /// releases its Home selection. Projects losing interest start their lease.
     pub fn detach_window(&self, window: WindowId) -> CommandResult<()> {
         let projects = self.state.projects()?;
-        // A write still running after the wait fails cleanly once the window's claims are gone.
+        // A write still running after the wait fails cleanly once the window's boards are closed.
         let _ = self.state.writes.wait_idle(window, CLOSE_WAIT);
         guarded(|| {
             projects.detach_window(window, |project, boards| {
@@ -518,7 +517,7 @@ impl HostState {
         }
     }
 
-    /// Sends `event` to `windows` only (`board_conflict`, to the window holding the board).
+    /// Sends `event` to `windows` only (`board_conflict`, to the window that opened the board).
     pub(crate) fn deliver(&self, windows: &[WindowId], event: &WorkspaceEvent) {
         if windows.is_empty() {
             return;
@@ -709,8 +708,8 @@ mod tests {
         })
         .expect("owned");
         assert_eq!(borrowed, owned);
-        let event = WorkspaceEvent::PreferencesChanged {
-            preferences: crate::state::Preferences::default(),
+        let event = WorkspaceEvent::ProjectReset {
+            project: ProjectId::new_unchecked("p-aaaaaaaaaa"),
         };
         let borrowed = serde_json::to_value(Outgoing::<()>::Broadcast { event: &event }).expect("borrowed");
         let owned = serde_json::to_value(SinkMessage::Broadcast { event }).expect("owned");

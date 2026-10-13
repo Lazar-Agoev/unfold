@@ -1,8 +1,8 @@
 /**
- * What each window shows (design §5.6): windows report their board, page, selection, lens, the items
- * in view, and their board tabs (`report_view`) when any of them changes and when they gain focus. The
- * main process keeps the last report of each window and the order windows were used in, so tools
- * default to the view of the window used last and edits find the window that holds a board.
+ * What the window shows (design §5.6): it reports its board, page, selection, lens, the items in
+ * view, and the boards it holds (`report_view`) when any of them changes and when it gains focus. The
+ * main process keeps the last report, so tools default to the window's view and edits know whether
+ * it holds a board. Reports are kept by window id: each opening of the window gets a new one.
  */
 
 import type { AgentBoardRef, AgentLens, ViewReport, ViewSelection } from "../../shared/agent-api";
@@ -110,26 +110,24 @@ function sameBoard(a: AgentBoardRef, b: AgentBoardRef): boolean {
 
 const NO_REPORT: ViewReport = { selection: { kind: "none" }, visible: [], tabs: [] };
 
-/** The last view of each window, and which window was used last. */
+/** The last view of the window. */
 export class ViewTracker {
   private readonly reports = new Map<number, ViewReport>();
-  /** Window ids, least recently used first. */
-  private used: number[] = [];
+  /** The window that reported last. */
+  private last: number | undefined;
 
   /** A window reported its view. */
   report(windowId: number, report: ViewReport): void {
     this.reports.set(windowId, report);
-  }
-
-  /** A window gained focus: it is the one used last. */
-  focused(windowId: number): void {
-    this.used = [...this.used.filter((id) => id !== windowId), windowId];
+    this.last = windowId;
   }
 
   /** A window closed. */
   forget(windowId: number): void {
     this.reports.delete(windowId);
-    this.used = this.used.filter((id) => id !== windowId);
+    if (this.last === windowId) {
+      this.last = undefined;
+    }
   }
 
   /** The window's last report. */
@@ -137,9 +135,9 @@ export class ViewTracker {
     return this.reports.get(windowId);
   }
 
-  /** The window used last (by focus), or else the first that reported; undefined before any did either. */
+  /** The window that reported last, while it is open; undefined before it reports. */
   lastUsed(): number | undefined {
-    return this.used.at(-1) ?? this.reports.keys().next().value;
+    return this.last;
   }
 
   /** The window whose tabs hold the board, if any reported it. */

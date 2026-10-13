@@ -1,6 +1,6 @@
 /**
- * The window's open boards: each an `unfold-board` document plus view state per
- * page. A board is open in one window at a time, so its edits and undo history live here alone.
+ * The open boards: each an `unfold-board` document plus view state per page. Every board opened while
+ * the app runs stays open, so its edits and undo history live here until the app quits.
  *
  * - Every edit is one undo step (bursts with a `coalesce` key merge); a step remembers the page it
  *   changed, and undo or redo shows that page. One history per board, across its pages.
@@ -8,8 +8,8 @@
  *   saves never overlap, and edits made during one are saved right after.
  * - Outside edits arrive as `board_conflict`: a board without unsaved edits reloads, one with unsaved
  *   edits gets a `conflict` for the person to resolve.
- * - Each page's camera and lens, and the active page, are saved with `save_board_view` (debounced);
- *   view changes are never undo steps.
+ * - View state (each page's camera, lens, and selection, and the active page) lasts only while the app
+ *   runs; view changes are never undo steps.
  * - An agent's edit is saved at once (`saveStep`), and a repair is written by the engine itself
  *   (`engineStep`); either becomes an undo step only once the engine accepts it.
  */
@@ -19,14 +19,13 @@ import { produce, type Draft } from "immer";
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import { showToast } from "../../components/Toast";
-import type { BoardDocument, BoardState, BoardView, Card, Page, PageOutline, View } from "../../ipc/generated";
+import type { BoardDocument, BoardState, Card, Page, PageOutline, View } from "../../ipc/generated";
 import { UnfoldError, toUnfoldError } from "../../ipc/unfold";
 import { findPage } from "./document";
 import { call } from "./engine";
 import { boardKey } from "./keys";
 import type {
   BoardRef,
-  BoardSession,
   Camera,
   FocusMove,
   HistoryEntry,
@@ -45,14 +44,8 @@ export const AUTOSAVE_MS = 600;
 const COALESCE_MS = 1200;
 /** Undo steps kept per board. */
 export const HISTORY_LIMIT = 200;
-/** How long after the last camera, lens, or page change a board's view is saved. */
-export const VIEW_SAVE_MS = 1000;
 /** Focus moves kept for Back, per page. */
 const TRAIL_LIMIT = 100;
-/** Pages whose view `state.json` keeps per board. */
-const VIEW_PAGES_LIMIT = 200;
-/** The camera saved for a page that has a lens but was never moved (the canvas's starting camera). */
-const START_CAMERA: Camera = { x: 40, y: 40, zoom: 1 };
 
 export interface EditOptions {
   /** Merges consecutive edits with this key (a drag, typing a title) into one undo step. */
@@ -111,10 +104,10 @@ export function openBoards(): OpenBoard[] {
 // ---------------------------------------------------------------------------------------------
 // Page views
 
-function pageView(camera: Camera | null = null, lens: View | null = null): PageView {
+function pageView(): PageView {
   return {
-    lens,
-    camera,
+    lens: null,
+    camera: null,
     selection: { kind: "none" },
     codeFolds: {},
     expanded: {},
@@ -155,24 +148,11 @@ export function getPageView(target: PageTarget): PageView {
   return getOpenBoard(target.board)?.pages[target.page] ?? EMPTY_VIEW;
 }
 
-/**
- * Changes a page's view state. Never an undo step; a changed camera or lens is saved with the
- * board's view (debounced).
- */
+/** Changes a page's view state. Never an undo step, and never saved. */
 export function updatePageView(target: PageTarget, recipe: (view: Draft<PageView>) => void): void {
-  const changed = { view: false };
   update(target.board, (board) => {
-    const view = viewOf(board, target.page);
-    const { camera, lens } = view;
-    recipe(view);
-    if (view.camera !== camera || view.lens !== lens) {
-      board.viewDirty = true;
-      changed.view = true;
-    }
+    recipe(viewOf(board, target.page));
   });
-  if (changed.view) {
-    scheduleViewSave(target.board);
-  }
 }
 
 /** Shows another page of the board. */
@@ -184,9 +164,7 @@ export function setActivePage(ref: BoardRef, page: PageId): void {
   update(ref, (open) => {
     open.activePage = page;
     viewOf(open, page);
-    open.viewDirty = true;
   });
-  scheduleViewSave(ref);
 }
 
 export function setCamera(target: PageTarget, camera: Camera): void {
@@ -196,7 +174,7 @@ export function setCamera(target: PageTarget, camera: Camera): void {
 }
 
 /**
- * Sets the page's lens (⌘1 Diagram, ⌘2 Code; a Flow lens reads as Diagram). View state only: the
+ * Sets the page's lens (Diagram or Code; a Flow lens reads as Diagram). View state only: the
  * camera, the selection, and the cards' saved expansions (in the document) stay as they are.
  */
 export function setPageLens(target: PageTarget, lens: View): void {
@@ -209,7 +187,7 @@ export function setPageLens(target: PageTarget, lens: View): void {
 export type Lens = "diagram" | "code";
 
 /**
- * The lens a page shows: the one the person picked (a saved Flow lens is Diagram), else the page's
+ * The lens a page shows: the one the person picked (a Flow lens is Diagram), else the page's
  * default view, where only a Code default opens Code.
  */
 export function pageLens(lens: View | null, defaultView: View): Lens {
@@ -334,22 +312,12 @@ function outlinesOf(outlines: readonly PageOutline[]): Record<PageId, PageOutlin
 }
 
 function freshBoard(state: BoardState, page: PageId | null, readOnly: boolean): OpenBoard {
-  const saved = state.view?.pages ?? {};
-  const pages: Record<PageId, PageView> = {};
-  for (const { id } of state.document.pages) {
-    const view = saved[id];
-    if (view) {
-      pages[id] = pageView({ x: view.x, y: view.y, zoom: view.zoom }, view.lens);
-    }
-  }
-  const activePage = existingPage(state.document, page ?? state.view?.page);
-  pages[activePage] ??= pageView();
+  const activePage = existingPage(state.document, page);
   return {
     ref: { project: state.project, id: state.id },
     place: state.place,
     name: state.name,
     document: state.document,
-    savedDocument: state.document,
     revision: state.revision,
     published: state.published,
     health: state.health,
@@ -362,17 +330,16 @@ function freshBoard(state: BoardState, page: PageId | null, readOnly: boolean): 
     conflict: null,
     history: { past: [], future: [], coalesce: null },
     activePage,
-    pages,
-    viewDirty: false,
+    pages: { [activePage]: pageView() },
     ...(readOnly ? { readOnly } : {}),
   };
 }
 
 /**
- * Adds a board this window now holds (from `open_board`, `new_board`, or a moved session), showing
- * `page` (else the page its saved view names, else the first). With `replaces` (Publish and Move back
- * to drafts change the id), the replaced session's history and view carry over. A `readOnly` board
- * (the render window's, which holds no claim) is shown, never saved.
+ * Adds a board just opened (from `open_board` or `new_board`), showing `page` (else the first). With
+ * `replaces` (Publish and Move back to drafts change the id), the replaced session's history and view
+ * carry over. A `readOnly` board (the render window's, which the engine doesn't hold open) is shown,
+ * never saved.
  */
 export function adoptBoardState(
   state: BoardState,
@@ -384,7 +351,7 @@ export function adoptBoardState(
     board.history = replaced.history;
     board.pages = replaced.pages;
     board.activePage = existingPage(state.document, replaced.activePage);
-    cancelTimers(replaced.ref);
+    cancelSaveTimer(replaced.ref);
   }
   set((draft) => {
     if (replaced) {
@@ -400,9 +367,9 @@ function without(boards: Draft<Record<string, OpenBoard>>, key: string): Draft<R
   return Object.fromEntries(Object.entries(boards).filter(([open]) => open !== key));
 }
 
-/** Forgets a board without asking the engine (closed, moved to another window, or deleted). */
+/** Forgets a board without asking the engine (closed or deleted). */
 export function forgetBoard(ref: BoardRef): void {
-  cancelTimers(ref);
+  cancelSaveTimer(ref);
   set((draft) => {
     draft.boards = without(draft.boards, boardKey(ref));
   });
@@ -485,16 +452,10 @@ function step(ref: BoardRef, from: "past" | "future"): boolean {
     open.history.coalesce = null;
     open.document = entry.document;
     open.edits += 1;
-    if (open.activePage !== page) {
-      open.activePage = page;
-      open.viewDirty = true;
-    }
+    open.activePage = page;
     viewOf(open, page);
   });
   scheduleSave(ref);
-  if (board.activePage !== page) {
-    scheduleViewSave(ref);
-  }
   return true;
 }
 
@@ -512,7 +473,6 @@ export function redo(ref: BoardRef): boolean {
 // Autosave
 
 const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const viewTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const inflight = new Map<string, Promise<void>>();
 
 function cancelSaveTimer(ref: BoardRef): void {
@@ -522,20 +482,6 @@ function cancelSaveTimer(ref: BoardRef): void {
     clearTimeout(timer);
     saveTimers.delete(key);
   }
-}
-
-function cancelViewTimer(ref: BoardRef): void {
-  const key = boardKey(ref);
-  const timer = viewTimers.get(key);
-  if (timer !== undefined) {
-    clearTimeout(timer);
-    viewTimers.delete(key);
-  }
-}
-
-function cancelTimers(ref: BoardRef): void {
-  cancelSaveTimer(ref);
-  cancelViewTimer(ref);
 }
 
 /** Saves a moment after the last change; repeated changes push the save back. A read-only board never saves. */
@@ -585,7 +531,6 @@ function applySaved(ref: BoardRef, saved: BoardState, coveredEdits: number): voi
     open.published = saved.published;
     open.savedEdits = Math.max(open.savedEdits, coveredEdits);
     open.saveError = null;
-    open.savedDocument = (open.edits === coveredEdits ? document : saved.document);
     if (open.edits === coveredEdits) {
       open.document = document;
     }
@@ -788,7 +733,6 @@ function commitStep(
     open.place = saved.place;
     open.published = saved.published;
     open.saveError = null;
-    open.savedDocument = next;
     if (document !== base) {
       pushPast(open, { document: base, page, name });
       open.history.future = [];
@@ -833,81 +777,27 @@ export async function engineStep(ref: BoardRef, page: PageId, write: () => Promi
   });
 }
 
-/** Saves now whatever is waiting for the autosave (before closing, moving, or publishing a board). */
+/** Saves now whatever is waiting for the autosave (before closing or publishing a board). */
 export async function flushBoard(ref: BoardRef): Promise<void> {
   cancelSaveTimer(ref);
   await saveBoard(ref);
 }
 
-/** What `save_board_view` takes: the active page, and each page's camera and lens that has either. */
-function boardView(board: OpenBoard): BoardView {
-  const pages: BoardView["pages"] = {};
-  let count = 0;
-  for (const { id } of board.document.pages) {
-    const view = board.pages[id];
-    if (!view || (view.camera === null && view.lens === null) || count >= VIEW_PAGES_LIMIT) {
-      continue;
-    }
-    const camera = view.camera ?? START_CAMERA;
-    pages[id] = { x: camera.x, y: camera.y, zoom: camera.zoom, lens: view.lens };
-    count += 1;
-  }
-  return { page: board.activePage, pages };
-}
-
-function scheduleViewSave(ref: BoardRef): void {
-  cancelViewTimer(ref);
-  if (getOpenBoard(ref)?.readOnly) {
-    return;
-  }
-  viewTimers.set(
-    boardKey(ref),
-    setTimeout(() => {
-      viewTimers.delete(boardKey(ref));
-      void flushBoardView(ref);
-    }, VIEW_SAVE_MS),
-  );
-}
-
-/** Saves the board's view (active page, cameras, lenses) now if it changed. */
-export async function flushBoardView(ref: BoardRef): Promise<void> {
-  cancelViewTimer(ref);
-  const board = getOpenBoard(ref);
-  if (!board?.viewDirty) {
-    return;
-  }
-  update(ref, (open) => {
-    open.viewDirty = false;
-  });
-  try {
-    await call("save_board_view", { project: ref.project, id: ref.id, view: boardView(board) });
-  } catch (error) {
-    // Kept for the next flush (the view is a convenience: nothing else waits on it).
-    update(ref, (open) => {
-      open.viewDirty = true;
-    });
-    console.warn("Saving the board's view failed:", error);
-  }
-}
-
-/** Saves every open board's unsaved edits and view (before the window restores or reconnects). */
+/** Saves every open board's unsaved edits (after the engine reconnects). */
 export async function flushAllBoards(): Promise<void> {
-  await Promise.all(openBoards().map(async (board) => Promise.all([flushBoard(board.ref), flushBoardView(board.ref)])));
+  await Promise.all(openBoards().map(async (board) => flushBoard(board.ref)));
 }
 
 /**
- * The page is going away: sends every unsaved board and view now. Nothing runs after the page hides,
- * so this can't wait for a save in flight; the newer document simply follows it.
+ * The page is going away: sends every unsaved board now. Nothing runs after the page hides, so this
+ * can't wait for a save in flight; the newer document simply follows it.
  */
 export function saveAllNow(): void {
   for (const board of openBoards()) {
-    cancelTimers(board.ref);
+    cancelSaveTimer(board.ref);
     const { project, id } = board.ref;
     if (isDirty(board) && !board.conflict) {
       call("save_board", { project, id, board: boardEdit(board.document) }).catch(() => undefined);
-    }
-    if (board.viewDirty) {
-      call("save_board_view", { project, id, view: boardView(board) }).catch(() => undefined);
     }
   }
 }
@@ -923,7 +813,6 @@ function adoptReloaded(ref: BoardRef, state: BoardState): void {
     open.history.future = [];
     open.history.coalesce = null;
     open.document = state.document;
-    open.savedDocument = state.document;
     open.revision = state.revision;
     open.published = state.published;
     open.health = state.health;
@@ -1018,72 +907,28 @@ export async function refreshHealth(ref: BoardRef): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------------------------------------
-// Sessions (Move to New Window)
-
-/** The board as this window last loaded or saved it. */
+/** The board as it was last loaded or saved (`withSaveSlot` has saved its edits). */
 function savedState(board: OpenBoard): BoardState {
   return {
     project: board.ref.project,
     id: board.ref.id,
     place: board.place,
     name: board.name,
-    document: board.savedDocument,
+    document: board.document,
     revision: board.revision,
     published: board.published,
     health: board.health,
     outlines: Object.values(board.outlines),
     label: board.label,
-    view: null,
   };
-}
-
-/** The board with its unsaved document, undo history, and each page's camera and lens, as plain JSON. */
-export function exportSession(ref: BoardRef): BoardSession | null {
-  const board = getOpenBoard(ref);
-  if (!board) {
-    return null;
-  }
-  return {
-    state: savedState(board),
-    document: board.document,
-    history: { past: [...board.history.past], future: [...board.history.future] },
-    activePage: board.activePage,
-    pages: Object.fromEntries(Object.entries(board.pages).map(([id, view]) => [id, { camera: view.camera, lens: view.lens }])),
-  };
-}
-
-/** Opens a moved board with its history and views; unsaved edits from the other window save here. */
-export function adoptSession(session: BoardSession): BoardRef {
-  const ref = adoptBoardState(session.state, { page: session.activePage });
-  // Structured cloning keeps no identity across windows, so unsaved edits show as a different document.
-  const dirty = JSON.stringify(session.document) !== JSON.stringify(session.state.document);
-  update(ref, (open) => {
-    open.document = session.document;
-    open.history.past = [...session.history.past] as Draft<HistoryEntry>[];
-    open.history.future = [...session.history.future] as Draft<HistoryEntry>[];
-    for (const [id, view] of Object.entries(session.pages)) {
-      open.pages[id] = pageView(view.camera, view.lens) as Draft<PageView>;
-    }
-    open.activePage = existingPage(session.document, session.activePage);
-    viewOf(open, open.activePage);
-    if (dirty) {
-      open.edits += 1;
-    }
-  });
-  if (dirty) {
-    scheduleSave(ref);
-  }
-  return ref;
 }
 
 /** Forgets every board and timer (tests). */
 export function resetBoards(): void {
-  for (const timer of [...saveTimers.values(), ...viewTimers.values()]) {
+  for (const timer of saveTimers.values()) {
     clearTimeout(timer);
   }
   saveTimers.clear();
-  viewTimers.clear();
   inflight.clear();
   useBoards.setState({ boards: {} });
 }

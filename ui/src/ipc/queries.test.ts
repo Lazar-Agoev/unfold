@@ -1,7 +1,7 @@
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { projectRow, workspaceView } from "../test/workspace";
-import type { CommandArgs, CommandName, Events, Preferences, WorkspaceView } from "./generated";
+import type { CommandArgs, CommandName, Events, WorkspaceView } from "./generated";
 import { applyEngineEvent, engineKey, engineQueryOptions, keyFile, resetEngineQueries } from "./queries";
 
 const P = "p-orders0000";
@@ -79,7 +79,7 @@ function seedAll(): void {
   seed("search", { query: "only-q", projects: [Q] });
   seed("search", { query: "defs", kinds: ["definitions"] });
   seed("drafts", {});
-  seed("get_preferences", {});
+  seed("get_settings", {});
   seed("app_info", {});
 }
 
@@ -225,7 +225,7 @@ describe("invalidation by event", () => {
     expect(refreshed).toContain("workspace::");
     expect(refreshed).toContain("search::all");
     expect(refreshed).not.toContain("drafts::");
-    expect(refreshed).not.toContain("get_preferences::");
+    expect(refreshed).not.toContain("get_settings::");
   });
 
   it("files_changed refreshes the changed files and their cards, and file search", () => {
@@ -271,13 +271,6 @@ describe("invalidation by event", () => {
     expect(stale()).toEqual([`compile_preview:${P}:`, `project_config:${P}:`, `scope_dir:${P}:`]);
   });
 
-  it("preferences_changed replaces the preferences without a refetch", () => {
-    const preferences = { theme: "dark" } as Preferences;
-    applyEngineEvent(client, { type: "preferences_changed", preferences });
-    expect(client.getQueryData(engineKey("get_preferences", {}))).toEqual(preferences);
-    expect(stale()).toEqual([]);
-  });
-
   it("leaves the cache alone for compile progress and board conflicts", () => {
     applyEngineEvent(client, { type: "compile_progress", project: P, stage: "extract", done: 1, total: 2 });
     applyEngineEvent(client, { type: "board_conflict", project: P, board: "b", file: "draft", savedRevision: "r1", diskRevision: null });
@@ -286,13 +279,13 @@ describe("invalidation by event", () => {
 });
 
 describe("resetEngineQueries", () => {
-  it("resets every project query after an engine restart, keeping preferences and app info", async () => {
+  it("resets every project query after an engine restart, keeping settings and app info", async () => {
     await resetEngineQueries(client);
     const left = client
       .getQueryCache()
       .getAll()
       .filter((query) => query.state.data !== undefined)
       .map((query) => label(query.queryKey));
-    expect(left.sort()).toEqual(["app_info::", "get_preferences::"]);
+    expect(left.sort()).toEqual(["app_info::", "get_settings::"]);
   });
 });

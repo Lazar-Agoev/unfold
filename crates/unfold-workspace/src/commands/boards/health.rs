@@ -1,7 +1,6 @@
 //! Keeping a live project's board health and open sessions in step with the disk and the
-//! graphs: the health refresh after graph updates, and the checks that
-//! tell a window when the working file of a board it holds changed outside the app
-//! (`board_conflict`).
+//! graphs: the health refresh after graph updates, and the checks that tell a window when the
+//! working file of a board it opened changed outside the app (`board_conflict`).
 
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
@@ -73,7 +72,7 @@ const SETTLE_QUIET: Duration = Duration::from_millis(1000);
 /// The longest a check waits for a board file to settle; after it, the bytes then are reported.
 const SETTLE_LIMIT: Duration = Duration::from_secs(5);
 
-/// Tells each window holding an open board of a live project that the board's working file
+/// Tells the window that opened each open board of a live project that the board's working file
 /// changed on disk outside the app (runs on its own thread after `boards_changed`).
 ///
 /// Writers that don't replace the file atomically (truncate, then write) let a check catch the
@@ -110,7 +109,7 @@ pub(crate) fn check_disk(host: &HostState, projects: &Projects, workspace: &Work
             continue;
         }
         session.reported = Some(change);
-        let Some(window) = project.claims().holder(&id) else {
+        let Some(window) = project.open_boards().window(&id) else {
             continue;
         };
         let disk_revision = match change {

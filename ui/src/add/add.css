@@ -1,4 +1,4 @@
-/* The Add box: one box over the window, the entrance browser, search results with a preview, and commands. */
+/* The Add box: one box over the window, the entrance browser, and search results with a preview. */
 
 .add-scrim {
   position: fixed;
@@ -7,7 +7,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  /* 50px under the 38px tab strip. */
+  /* 88px from the window's top. */
   padding: 88px 24px 24px;
   background: var(--color-scrim);
   animation: hover-layer-in var(--duration) ease-out;
@@ -67,11 +67,6 @@
 
 .add-input:focus-visible {
   outline: none;
-}
-
-.add-esc.key-chip {
-  padding: 0 7px;
-  background: var(--color-canvas);
 }
 
 /* Text search options: Match case, Whole word, Regex, on the Text tab. */
@@ -147,8 +142,7 @@
 }
 
 .add-kinds-spacer,
-.add-preview-spacer,
-.add-footer-spacer {
+.add-preview-spacer {
   flex: 1;
 }
 
@@ -170,10 +164,6 @@
 .add-empty {
   padding: 20px 24px;
   color: var(--color-muted);
-}
-
-.add-empty.commands {
-  padding: 16px 20px;
 }
 
 .add-code {
@@ -697,10 +687,9 @@
   line-height: 18px;
 }
 
-/* Lists: results and commands */
+/* Lists: results */
 
-.add-results,
-.add-commands {
+.add-results {
   position: relative;
   min-width: 0;
   overflow-y: auto;
@@ -833,50 +822,6 @@
   line-height: var(--leading-16);
   font-weight: 500;
   color: var(--color-accent-text);
-}
-
-.add-command {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: 100%;
-  padding: 0 12px;
-}
-
-.add-command-icon {
-  display: grid;
-  flex-shrink: 0;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  color: var(--color-muted);
-}
-
-.add-list-row.selected .add-command-icon {
-  color: var(--color-accent-text);
-}
-
-.add-command-name {
-  display: flex;
-  flex: 1;
-  gap: 6px;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.add-command-group {
-  color: var(--color-muted);
-}
-
-.add-list-row.selected .add-command-title {
-  font-weight: 500;
-}
-
-.add-command-match {
-  background: none;
-  font-weight: 600;
-  color: inherit;
 }
 
 /* Preview */
@@ -1049,34 +994,7 @@
   flex: 1;
 }
 
-/* As drawn: 12px each side and 8px before the shortcut, set in the regular weight. */
+/* As drawn: 12px each side. */
 .add-preview-buttons .button {
   padding: 0 12px;
-}
-
-.add-preview-buttons .button-shortcut {
-  margin-left: 2px;
-  font-weight: 400;
-}
-
-/* Footer */
-
-.add-footer {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 20px;
-  height: 40px;
-  padding: 0 16px;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-canvas);
-}
-
-.add-hint {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--text-12);
-  line-height: var(--leading-16);
-  color: var(--color-muted);
 }

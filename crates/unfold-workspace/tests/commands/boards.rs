@@ -1,7 +1,7 @@
-//! Boards (docs/ipc.md › Boards): claims across windows, reading a board without claiming it,
+//! Boards (docs/ipc.md › Boards): open boards and their sessions, reading a board without opening it,
 //! pages, cards from other projects and placeholders, drawn links, connections, frames, resource
 //! cards, and notes, unpublished changes and Publish (conflicts, keep mine, discard), Move back to
-//! drafts, folders, view state, outside edits per working file, drafts and references across
+//! drafts, folders, outside edits per working file, drafts and references across
 //! projects, thumbnails, and export.
 
 use std::path::PathBuf;
@@ -58,7 +58,7 @@ fn revision_of(text: &str) -> String {
 }
 
 impl Harness {
-    /// A new draft titled `title` in the first project, held by `window`.
+    /// A new draft titled `title` in the first project, opened in `window`.
     pub(crate) fn draft(&self, window: u32, title: &str) -> Value {
         self.ok(
             window,
@@ -135,7 +135,7 @@ fn write_atomically(path: &std::path::Path, text: &str) {
 }
 
 #[test]
-fn a_board_is_open_in_one_window_at_a_time() {
+fn an_open_board_keeps_its_session_until_it_closes() {
     let harness = Harness::compiled("ts-orders");
     let project = harness.project.clone();
     let board = harness.ok(
@@ -160,15 +160,9 @@ fn a_board_is_open_in_one_window_at_a_time() {
     assert_eq!(document["pages"][0]["title"], "Placing");
     assert!(harness.path(&id).is_file());
 
-    // Window 2 is told who holds it, and can't touch it.
-    assert_eq!(
-        harness.on(2, "open_board", &id),
-        json!({ "status": "held", "heldBy": 1 })
-    );
     let mut edit = edit_of(&board);
     edit["pages"][0]["cards"] = json!([card("create", CREATE_ORDER)]);
     let save = json!({ "project": project, "id": id, "board": edit });
-    assert_eq!(harness.code(2, "save_board", save.clone()), "board_held");
     let saved = harness.ok(1, "save_board", save);
     let page = &saved["document"]["pages"][0];
     assert_eq!(page["cards"][0]["id"], "create");
@@ -176,64 +170,54 @@ fn a_board_is_open_in_one_window_at_a_time() {
     assert_eq!(saved["document"]["folder"], "Checkout", "the folder is Rust's");
     assert_ne!(saved["revision"], board["revision"]);
     let row = {
-        let list = harness.ok(2, "list_boards", json!({ "project": project }));
+        let list = harness.ok(1, "list_boards", json!({ "project": project }));
         list["boards"][0].clone()
     };
     assert_eq!(row["id"], id.as_str());
-    assert_eq!(row["heldBy"], 1);
     assert_eq!((row["pages"].clone(), row["cards"].clone()), (json!(1), json!(1)));
     assert_eq!(row["title"], "Order placement");
     assert_eq!(row["folder"], "Checkout");
     assert_eq!(row["changes"], 0);
     assert_eq!(row["label"], Value::Null);
     assert!(row["updatedAtMs"].as_i64().is_some_and(|at| at > 0));
-
-    // Open in New Window hands the claim over.
-    harness.ok(
-        1,
-        "move_board",
-        json!({ "project": project, "id": id, "toWindow": 2 }),
-    );
-    assert_eq!(harness.on_code(1, "board_health", &id), "board_held");
-    let health = harness.on(2, "board_health", &id);
+    let health = harness.on(1, "board_health", &id);
     assert_eq!(health["outlines"][0]["page"], "page-1");
     assert_eq!(health["outlines"][0]["rows"][0]["card"], "create");
     assert_eq!(health["label"], Value::Null);
-    assert_eq!(
-        harness.code(
-            1,
-            "move_board",
-            json!({ "project": project, "id": id, "toWindow": 1 })
-        ),
-        "board_held"
-    );
 
-    // Closing window 2 releases it; window 1 opens it again and it becomes a recent board.
-    harness.host.detach_window(2).expect("detach");
-    let reopened = harness.on(1, "open_board", &id);
-    assert_eq!(reopened["status"], "opened");
-    assert_eq!(
-        reopened["board"]["document"]["pages"][0]["cards"][0]["id"],
-        "create"
+    // Opening it again keeps its session: the version last saved, even after the file changed.
+    write_atomically(
+        &harness.path(&id),
+        &harness.read(&id).replace("Order placement", "Theirs"),
     );
+    let reopened = harness.on(1, "open_board", &id);
+    assert_eq!(reopened["revision"], saved["revision"]);
+    assert_eq!(reopened["document"]["title"], "Order placement");
+    assert_eq!(reopened["document"]["pages"][0]["cards"][0]["id"], "create");
     let recent = harness.ok(1, "workspace", json!({}))["recentBoards"][0].clone();
     assert_eq!(recent["board"], id.as_str());
     assert_eq!(recent["project"], project.as_str());
     assert_eq!(recent["title"], "Order placement");
 
-    // Closing it releases it.
+    // Closing the window closes it; opening it then reads the file.
+    harness.host.detach_window(1).expect("detach");
+    assert_eq!(harness.on_code(1, "board_health", &id), "board_not_open");
+    let fresh = harness.on(1, "open_board", &id);
+    assert_eq!(fresh["document"]["title"], "Theirs");
+
+    // Closing it closes it.
     harness.on(1, "close_board", &id);
-    assert_eq!(harness.on_code(1, "board_health", &id), "board_not_held");
-    assert_eq!(harness.on_code(1, "close_board", &id), "board_not_held");
+    assert_eq!(harness.on_code(1, "board_health", &id), "board_not_open");
+    assert_eq!(harness.on_code(1, "close_board", &id), "board_not_open");
     assert_eq!(harness.on_code(1, "open_board", "../x.json"), "invalid_args");
     assert_eq!(
         harness.on_code(1, "open_board", ".unfold/boards/nope.json"),
         "not_found"
     );
     assert_eq!(
-        harness.on_code(2, "open_board", ".unfold/boards/nope.json"),
-        "not_found",
-        "a board that can't be opened isn't claimed"
+        harness.on_code(1, "close_board", ".unfold/boards/nope.json"),
+        "board_not_open",
+        "a board that can't be opened isn't open"
     );
 }
 
@@ -251,7 +235,7 @@ fn a_project_without_a_graph_has_no_drafts_and_no_board_health() {
     );
     // A teammate's published board opens, but health needs a graph: no labels, no Problems.
     let id = ".unfold/boards/order-placement.json";
-    assert_eq!(harness.on(1, "open_board", id)["status"], "opened");
+    assert_eq!(harness.on(1, "open_board", id)["id"], id);
     assert_eq!(harness.listed(id)["label"], Value::Null);
     let summary = harness.ok(1, "project_summary", json!({ "project": harness.project }));
     assert_eq!(summary["health"]["boards"], json!([]));
@@ -267,7 +251,7 @@ fn sample_board() -> String {
 }
 
 #[test]
-fn a_board_reads_without_being_claimed_or_waking_its_project() {
+fn a_board_reads_without_being_opened_or_waking_its_project() {
     let harness = Harness::with("ts-orders", restless());
     harness.ok(9, "compile", json!({ "project": harness.project }));
     let live = || harness.row(&harness.project)["live"] == true;
@@ -290,17 +274,14 @@ fn a_board_reads_without_being_claimed_or_waking_its_project() {
         read["published"],
         json!({ "revision": revision_of(&sample), "changes": 0, "baseChanged": false })
     );
-    assert_eq!(read["heldBy"], Value::Null);
     assert!(!live(), "reading a board file doesn't wake its project");
 
-    // It isn't claimed: another window opens it, and the read says who holds it.
+    // It isn't opened: board commands refuse it until it is.
+    assert_eq!(harness.on_code(1, "board_health", id), "board_not_open");
     let opened = harness.on(2, "open_board", id);
-    assert_eq!(opened["status"], "opened");
-    assert_eq!(harness.on(1, "read_board", id)["heldBy"], 2);
-    assert_eq!(harness.on_code(1, "board_health", id), "board_held");
 
     // An unpublished edit is the working version: the changes copy, with its count.
-    let mut edit = edit_of(&opened["board"]);
+    let mut edit = edit_of(&opened);
     edit["title"] = json!("Order placement, edited");
     let saved = harness.save(2, id, edit);
     let read = harness.on(1, "read_board", id);
@@ -529,11 +510,11 @@ fn pages_cards_and_drawn_links_are_checked_and_signed() {
     );
     assert_eq!(
         harness.code(
-            2,
+            1,
             "export_mermaid_text",
-            json!({ "project": harness.project, "board": { "id": id, "page": "page-1" } })
+            json!({ "project": harness.project, "board": { "id": ".unfold/boards/nope.json", "page": "page-1" } })
         ),
-        "board_held"
+        "board_not_open"
     );
     assert_eq!(
         harness.code(
@@ -602,7 +583,7 @@ fn cards_from_other_projects_and_placeholders() {
     // The open board keeps the project its cards come from live.
     let projects = harness.host.projects().expect("initialized");
     let own = projects.handle(&project_id(&harness.project)).expect("project");
-    assert!(own.claims().references(&project_id(&python)));
+    assert!(own.open_boards().references(&project_id(&python)));
 
     // Thumbnails, references, and export know which project each card is from.
     let thumbnails = harness.ok(
@@ -679,15 +660,8 @@ fn published_boards_keep_unpublished_changes_until_publish() {
     let harness = Harness::compiled("ts-orders");
     let draft = harness.draft(1, "Order placement");
     let draft_id = id_of(&draft);
-    let view = json!({ "page": "page-1", "pages": { "page-1": { "x": 10.0, "y": -4.5, "zoom": 0.8, "lens": "flow" } } });
-    harness.ok(
-        1,
-        "save_board_view",
-        json!({ "project": harness.project, "id": draft_id, "view": view }),
-    );
-    assert_eq!(harness.on(1, "open_board", &draft_id)["board"]["view"], view);
 
-    // The first Publish moves the board, its claim, view state, and recent entry.
+    // The first Publish moves the board, its open entry, and its recent entry.
     let published = harness.on(1, "publish_board", &draft_id);
     assert_eq!(published["status"], "done");
     let state = &published["board"];
@@ -695,14 +669,14 @@ fn published_boards_keep_unpublished_changes_until_publish() {
     assert_eq!(id, ".unfold/boards/order-placement.json");
     assert_eq!(state["place"], "published");
     assert_eq!(state["name"], "order-placement");
-    assert_eq!(state["view"], view);
     let original = harness.read(&id);
     assert_eq!(
         state["published"],
         json!({ "revision": revision_of(&original), "changes": 0, "baseChanged": false })
     );
     assert!(!harness.path(&draft_id).exists(), "the draft is gone");
-    assert_eq!(harness.on_code(1, "board_health", &draft_id), "board_not_held");
+    assert_eq!(harness.on_code(1, "board_health", &draft_id), "board_not_open");
+    assert_eq!(harness.on(1, "board_health", &id)["label"], Value::Null);
     let recent = harness.ok(1, "workspace", json!({}))["recentBoards"][0].clone();
     assert_eq!(recent["board"], id.as_str());
 
@@ -863,7 +837,7 @@ fn moving_back_to_drafts_and_deleting() {
             .exists()
     );
     assert!(harness.path(&draft_id).is_file());
-    assert_eq!(harness.on_code(1, "board_health", &id), "board_not_held");
+    assert_eq!(harness.on_code(1, "board_health", &id), "board_not_open");
     harness.on(1, "board_health", &draft_id);
     let recents = harness.ok(1, "workspace", json!({}))["recentBoards"].clone();
     assert_eq!(recents[0]["board"], draft_id.as_str());
@@ -879,7 +853,7 @@ fn moving_back_to_drafts_and_deleting() {
     let mark = harness.sink.mark();
     harness.on(1, "delete_board", &draft_id);
     assert!(!harness.path(&draft_id).exists());
-    assert_eq!(harness.on_code(1, "board_health", &draft_id), "board_not_held");
+    assert_eq!(harness.on_code(1, "board_health", &draft_id), "board_not_open");
     assert_eq!(harness.boards()["boards"], json!([]));
     assert_eq!(harness.ok(1, "workspace", json!({}))["recentBoards"], json!([]));
     let changed = harness.sink.events(mark, "boards_changed");
@@ -904,20 +878,27 @@ fn moving_back_to_drafts_and_deleting() {
     let copy = harness.on(1, "duplicate_board", &id_of(&source));
     assert_eq!(copy["title"], "Source copy");
     assert_eq!(copy["folder"], "Kept");
-    assert_eq!(copy["heldBy"], Value::Null);
     assert_ne!(copy["id"], source["id"]);
     assert_eq!(
+        harness.code(
+            1,
+            "board_health",
+            json!({ "project": harness.project, "id": copy["id"] })
+        ),
+        "board_not_open"
+    );
+    assert_eq!(
         harness.ok(
-            2,
+            1,
             "open_board",
             json!({ "project": harness.project, "id": copy["id"] })
-        )["status"],
-        "opened"
+        )["id"],
+        copy["id"]
     );
 }
 
 #[test]
-fn folders_hold_boards_held_or_not() {
+fn folders_hold_boards_open_or_not() {
     let harness = Harness::compiled("ts-orders");
     let project = harness.project.clone();
     let folder =
@@ -949,7 +930,7 @@ fn folders_hold_boards_held_or_not() {
     let inside_id = id_of(&inside);
     assert_eq!(empty(), json!([]));
 
-    // Any window moves any board; the holder's next save keeps the folder without a conflict.
+    // Any board moves, open or not; an open board's next save keeps the folder without a conflict.
     let mark = harness.sink.mark();
     let moved = harness.ok(
         1,
@@ -957,7 +938,6 @@ fn folders_hold_boards_held_or_not() {
         json!({ "project": project, "id": inside_id, "folder": "Archive" }),
     );
     assert_eq!(moved["folder"], "Archive");
-    assert_eq!(moved["heldBy"], 2);
     let changed = harness.sink.events(mark, "boards_changed");
     assert_eq!(changed[0]["boards"], json!([inside_id]));
     assert_eq!(changed[0]["folders"], true);
@@ -1190,8 +1170,8 @@ fn closing_a_window_waits_for_its_last_board_save() {
         assert!(saved.contains("createOrder"), "{saved}");
         let written: Value = serde_json::from_str(&harness.read(&id)).expect("board JSON");
         assert_eq!(written["pages"][0]["cards"][0]["id"], "create", "round {round}");
-        // After the detach, the window holds nothing.
-        assert_eq!(harness.on_code(1, "board_health", &id), "board_not_held");
+        // After the detach, the window's boards are closed.
+        assert_eq!(harness.on_code(1, "board_health", &id), "board_not_open");
     }
 }
 
@@ -1227,7 +1207,6 @@ fn drafts_span_every_project() {
     let python_list = harness.ok(1, "list_boards", json!({ "project": python }));
     assert_eq!(python_list["project"], python.as_str());
     assert_eq!(python_list["boards"][0]["title"], "Python draft");
-    assert_eq!(python_list["boards"][0]["heldBy"], 2);
 }
 
 #[test]

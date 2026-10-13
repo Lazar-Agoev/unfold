@@ -7,8 +7,7 @@
 # it before the first public release.
 appId: dev.unfold.app
 productName: Unfold
-# The app's package name (the workspace calls it @unfold/desktop): it names the updater's cache
-# folder.
+# The app's package name (the workspace calls it @unfold/desktop).
 extraMetadata:
   name: unfold
 copyright: Copyright © 2026 The Unfold authors
@@ -18,8 +17,7 @@ directories:
   buildResources: build
 
 # Every file inside the app archive. The main process, engine host and preload are bundled by
-# electron-vite (electron-updater included), and the UI is the Vite build: no node_modules, sources,
-# source maps, or tests ship.
+# electron-vite, and the UI is the Vite build: no node_modules, sources, source maps, or tests ship.
 files:
   - package.json
   - out/**/*

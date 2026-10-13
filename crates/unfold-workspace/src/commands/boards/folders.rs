@@ -3,7 +3,7 @@
 //! A board sits in a folder through its `folder` field; the sidebar builds the tree from the
 //! boards. A folder with no board in or under it is kept in `state.json`'s `emptyFolders` until a
 //! board goes into it, and a folder a board leaves stays there, empty, until it is deleted. A
-//! folder is metadata Rust owns: these commands work on any board, held or not, and a published
+//! folder is metadata Rust owns: these commands work on any board, open or not, and a published
 //! board's move is an unpublished change (its changes copy). An open board's session follows the
 //! move, so the window's next save doesn't conflict with it.
 
@@ -127,8 +127,8 @@ fn move_board(
     Ok(true)
 }
 
-/// `set_board_folder`: moves a board into a folder (or to the top level), whether or not a
-/// window holds it.
+/// `set_board_folder`: moves a board into a folder (or to the top level), whether or not it is
+/// open.
 pub fn set_board_folder(ctx: &Ctx<'_>, args: SetBoardFolderArgs) -> CommandResult<BoardSummary> {
     let project = ctx.project(&args.project)?;
     let file = parse_id(&args.id)?;
@@ -164,14 +164,7 @@ pub fn set_board_folder(ctx: &Ctx<'_>, args: SetBoardFolderArgs) -> CommandResul
         Err(_) => None,
     };
     announce(&workspace, &mut vec![args.id.clone()], true);
-    Ok(summary(
-        project.id(),
-        &files,
-        project.claims().holder(&args.id),
-        &file,
-        working,
-        label,
-    ))
+    Ok(summary(project.id(), &files, &file, working, label))
 }
 
 /// `create_folder`: adds an empty folder (nothing when the folder exists).

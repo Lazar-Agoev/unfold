@@ -22,7 +22,7 @@ function Row({ entries }: { entries: readonly MenuEntry[] }) {
 }
 
 const entries = (onOpen: () => void, onReveal: () => void): MenuEntry[] => [
-  { id: "open", label: "Open card", shortcut: "Mod+O", onSelect: onOpen },
+  { id: "open", label: "Open card", onSelect: onOpen },
   { id: "source", label: "Open source", disabled: true, onSelect: vi.fn() },
   { kind: "separator", id: "s1" },
   { id: "reveal", label: "Reveal in Finder", onSelect: onReveal },

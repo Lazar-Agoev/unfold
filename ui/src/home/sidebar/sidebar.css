@@ -1,11 +1,11 @@
-/* The Home-mode sidebar. The frame's container gives the width, edge, and fill. */
+/* The Home-mode sidebar, under the window's buttons. The frame's container gives the width, edge, and fill. */
 
 .home-sidebar {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  padding: 12px 6px;
+  padding: 0 6px 12px;
 }
 
 /* 1. Workspace row */

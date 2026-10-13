@@ -4,13 +4,14 @@
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use ts_rs::TS;
 
 use super::ProjectPathArgs;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::ProjectId;
+use crate::state::AppSettings;
 use crate::workspace::Workspace;
 
 /// The arguments of `open_in_editor`.
@@ -27,23 +28,13 @@ pub struct OpenInEditorArgs {
     pub line: Option<u32>,
 }
 
-/// How a file was opened.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
-#[serde(rename_all = "snake_case")]
-pub enum OpenedWith {
-    /// The editor command from the preferences.
-    Editor,
-    /// The system's text editor (never the file's default app, which could run it).
-    DefaultApp,
-}
-
-/// `open_in_editor`: runs the preferences' editor command (without a shell), or opens the file
-/// as text in the system's text editor when none is set.
+/// `open_in_editor`: runs the settings' editor command (without a shell), or opens the file in
+/// TextEdit when none is set.
 ///
-/// The fallback never hands the file to its default app: a `.py` file's default app can be a
-/// launcher that runs it, and `.command`, `.bat`, or `.js` files run when "opened", while Unfold
+/// TextEdit opens any file as text: handing the file to its default app could run it (a `.py`
+/// file's default app can be a launcher, and `.command` files run when "opened"), while Unfold
 /// never runs the code it indexes (docs/architecture.md#security).
-pub fn open_in_editor(ctx: &Ctx<'_>, args: OpenInEditorArgs) -> CommandResult<OpenedWith> {
+pub fn open_in_editor(ctx: &Ctx<'_>, args: OpenInEditorArgs) -> CommandResult<()> {
     let workspace = ctx.live(&args.project)?;
     let path = existing(&workspace, &args.path)?;
     if !path.is_file() {
@@ -52,54 +43,22 @@ pub fn open_in_editor(ctx: &Ctx<'_>, args: OpenInEditorArgs) -> CommandResult<Op
             args.path
         )));
     }
-    let preferences = ctx.projects().app().preferences();
-    match preferences
+    let settings = ctx.projects().app().settings();
+    let argv = open_argv(&settings, path.as_os_str().to_string_lossy().as_ref(), args.line)?;
+    spawn_detached(&argv)
+}
+
+/// The program and arguments that open `path` at `line`: the editor command when the settings
+/// have one, else `/usr/bin/open -t`, which opens TextEdit.
+fn open_argv(settings: &AppSettings, path: &str, line: Option<u32>) -> CommandResult<Vec<String>> {
+    match settings
         .editor_command
         .as_deref()
         .filter(|command| !command.trim().is_empty())
     {
-        Some(template) => {
-            let argv = editor_argv(template, path.as_os_str().to_string_lossy().as_ref(), args.line)?;
-            spawn_detached(&argv)?;
-            Ok(OpenedWith::Editor)
-        }
-        None => {
-            open_as_text(&path)?;
-            Ok(OpenedWith::DefaultApp)
-        }
+        Some(template) => editor_argv(template, path, line),
+        None => Ok(vec!["/usr/bin/open".to_owned(), "-t".to_owned(), path.to_owned()]),
     }
-}
-
-/// Opens a file in the system's text editor: `open -t` on macOS, Notepad on Windows.
-#[cfg(any(target_os = "macos", windows))]
-fn open_as_text(path: &Path) -> CommandResult<()> {
-    let path = path.as_os_str().to_string_lossy().into_owned();
-    #[cfg(target_os = "macos")]
-    let argv = ["/usr/bin/open".to_owned(), "-t".to_owned(), path];
-    #[cfg(windows)]
-    let argv = ["notepad.exe".to_owned(), path];
-    spawn_detached(&argv)
-}
-
-/// Opens a file with the desktop's handler for its type, unless opening could run it (an
-/// executable file or a `.desktop` launcher): there is no system text editor to name here.
-#[cfg(not(any(target_os = "macos", windows)))]
-fn open_as_text(path: &Path) -> CommandResult<()> {
-    #[cfg(unix)]
-    let executable = {
-        use std::os::unix::fs::PermissionsExt as _;
-        std::fs::metadata(path).is_ok_and(|metadata| metadata.permissions().mode() & 0o111 != 0)
-    };
-    #[cfg(not(unix))]
-    let executable = false;
-    let launcher = path.extension().is_some_and(|extension| extension == "desktop");
-    if executable || launcher {
-        return Err(CommandError::new(
-            "no_editor",
-            "opening this file could run it; set an editor command in Preferences",
-        ));
-    }
-    opener::open(path).map_err(|error| CommandError::new("io", error.to_string()))
 }
 
 /// `reveal_in_finder`: shows the file or folder in the system's file manager (`""` for the
@@ -226,11 +185,27 @@ fn spawn_detached(argv: &[String]) -> CommandResult<()> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|error| CommandError::new("io", format!("cannot start `{program}`: {error}")))?;
+        .map_err(|error| spawn_error(program, &error))?;
     let _ = std::thread::Builder::new()
         .name("unfold-editor".to_owned())
         .spawn(move || child.wait());
     Ok(())
+}
+
+/// Why `program` didn't start. A program not found asks for its full path: an app started from
+/// the Dock gets a short `PATH`, without what a shell profile adds.
+fn spawn_error(program: &str, error: &std::io::Error) -> CommandError {
+    if error.kind() == std::io::ErrorKind::NotFound {
+        CommandError::new(
+            "editor_not_found",
+            format!(
+                "cannot find `{program}`: give the editor command its full path (`which {program}` \
+                 prints it), since an app started from the Dock doesn't get your shell's PATH"
+            ),
+        )
+    } else {
+        CommandError::new("io", format!("cannot start `{program}`: {error}"))
+    }
 }
 
 #[cfg(test)]
@@ -263,5 +238,40 @@ mod tests {
         );
         assert!(editor_argv("  ", "/r/a.ts", None).is_err());
         assert!(editor_argv("code \"unclosed", "/r/a.ts", None).is_err());
+    }
+
+    #[test]
+    fn files_open_in_the_editor_command_or_text_edit() {
+        let none = AppSettings::default();
+        assert_eq!(
+            open_argv(&none, "/r/a.py", Some(4)).expect("argv"),
+            ["/usr/bin/open", "-t", "/r/a.py"]
+        );
+        let blank = AppSettings {
+            editor_command: Some("  ".to_owned()),
+        };
+        assert_eq!(
+            open_argv(&blank, "/r/a.py", None).expect("argv"),
+            ["/usr/bin/open", "-t", "/r/a.py"]
+        );
+        let code = AppSettings {
+            editor_command: Some("code -g {path}:{line}:{column}".to_owned()),
+        };
+        assert_eq!(
+            open_argv(&code, "/r/a.py", Some(4)).expect("argv"),
+            ["code", "-g", "/r/a.py:4:1"]
+        );
+    }
+
+    #[test]
+    fn a_missing_program_asks_for_its_full_path() {
+        let missing = spawn_detached(&["unfold-no-such-editor".to_owned()]).expect_err("missing");
+        assert_eq!(missing.code, "editor_not_found");
+        assert!(missing.message.contains("full path"), "{}", missing.message);
+        let denied = spawn_error(
+            "code",
+            &std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+        );
+        assert_eq!(denied.code, "io");
     }
 }

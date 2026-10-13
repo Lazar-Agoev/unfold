@@ -2,7 +2,6 @@
 
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { pushModal } from "../../keyboard";
 
 /** Renders children at the end of <body>, above the shell. */
 export function Portal({ children }: { children: ReactNode }) {
@@ -69,8 +68,7 @@ export function useRestoreFocus(active: boolean): void {
 let openModals = 0;
 
 /**
- * For modal layers (dialogs, the command palette), while `open`: silence window shortcuts and make
- * the app behind inert. On close, the app becomes interactive again before focus returns to where it
+ * For modal layers (dialogs), while `open`: make the app behind inert. On close, the app becomes interactive again before focus returns to where it
  * was (focus can't land inside an inert subtree).
  */
 export function useModal(open: boolean): void {
@@ -80,12 +78,10 @@ export function useModal(open: boolean): void {
       return undefined;
     }
     const previous = document.activeElement;
-    const popModal = pushModal();
     const root = document.getElementById("root");
     openModals += 1;
     root?.setAttribute("inert", "");
     return () => {
-      popModal();
       openModals -= 1;
       if (openModals === 0) {
         root?.removeAttribute("inert");

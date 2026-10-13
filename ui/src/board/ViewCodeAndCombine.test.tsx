@@ -7,8 +7,6 @@ import { DialogHost } from "../dialogs/DialogHost";
 import { queryClient } from "../ipc/client";
 import type { Card, Group } from "../ipc/generated";
 import { engineKey } from "../ipc/queries";
-import { ActionIds, actions, pushModal } from "../keyboard";
-import { dispatchShortcut } from "../keyboard/dispatcher";
 import * as store from "../state/boards/store";
 import { closeDialog, closePeek, getPeekTarget, openPeek } from "../state/overlays";
 import { fixture, installFakeEngine, type FakeEngine } from "../test/engine";
@@ -84,7 +82,6 @@ beforeEach(() => {
       line_labels: () => [],
       list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
       save_board: () => boardState(P, REF.id, store.getOpenBoard(REF)?.document),
-      save_board_view: () => null,
     },
   });
 });
@@ -234,37 +231,6 @@ describe("Combine", () => {
 });
 
 describe("View code", () => {
-  it("C opens the selection's source: only with a source-backed selection, never while typing or under a dialog", async () => {
-    const { container } = open();
-    await step(container, IF);
-    expect(actions.isEnabled(ActionIds.viewCode)).toBe(false);
-    act(() => {
-      store.select(PAGE, { kind: "frame", frameId: "nowhere" });
-    });
-    expect(actions.isEnabled(ActionIds.viewCode)).toBe(false);
-
-    fireEvent.click(await step(container, IF));
-    expect(actions.isEnabled(ActionIds.viewCode)).toBe(true);
-    const press = (target: EventTarget) => {
-      const event = new KeyboardEvent("keydown", { key: "c", bubbles: true, cancelable: true });
-      Object.defineProperty(event, "target", { value: target });
-      return dispatchShortcut(event, actions, { platform: "darwin" });
-    };
-    const field = document.createElement("input");
-    document.body.append(field);
-    expect(press(field)).toBeNull();
-    const popModal = pushModal();
-    expect(press(document.body)).toBeNull();
-    popModal();
-    expect(getPeekTarget()).toBeNull();
-
-    act(() => {
-      expect(press(document.body)).toBe(ActionIds.viewCode);
-    });
-    expect(peeked()).toEqual({ project: P, path: ORDERS, line: 27, focus: { startLine: 27, startColumn: 6, endLine: 27, endColumn: 46 }, follow: PAGE });
-    field.remove();
-  });
-
   it("a step's </> selects it and opens its source; the sheet then follows the selection, and stays for an item without source", async () => {
     const { container } = open([createCard], [placeGroup]);
     fireEvent.click(await within(await step(container, IF)).findByRole("button", { name: "View code" }));

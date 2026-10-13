@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { BoardState, PublishOutcome } from "../ipc";
 import { openBoard, type BoardRef } from "../state/boards";
 import { resetBoards } from "../state/boards/store";
-import { useTabs } from "../state/tabs";
+import { useShownBoardStore } from "../state/shownBoard";
 import { installFakeEngine, type FakeEngine } from "../test/engine";
 import { renderWithClient } from "../test/render";
 import { boardDocument, boardState, projectRow, workspaceView } from "../test/workspace";
@@ -21,7 +21,7 @@ afterEach(() => {
   engine?.uninstall();
   engine = null;
   resetBoards();
-  useTabs.setState({ boards: [], active: "home" });
+  useShownBoardStore.setState({ board: null });
 });
 
 function publishedState(changes: number): BoardState {
@@ -32,7 +32,7 @@ async function open(ref: BoardRef, state: BoardState, publish: (args: Record<str
   const fake = installFakeEngine({
     handlers: {
       workspace: () => workspaceView([projectRow(P, "storefront-api")]),
-      open_board: () => ({ status: "opened", board: state }),
+      open_board: () => state,
       list_boards: () => ({
         project: P,
         emptyFolders: [],
@@ -49,7 +49,6 @@ async function open(ref: BoardRef, state: BoardState, publish: (args: Record<str
             projects: [],
             changes: state.published?.changes ?? 0,
             updatedAtMs: Date.now(),
-            heldBy: 1,
             label: null,
             error: null,
           },
@@ -60,7 +59,7 @@ async function open(ref: BoardRef, state: BoardState, publish: (args: Record<str
     },
   });
   engine = fake;
-  await openBoard(ref, { activate: true });
+  await openBoard(ref);
   let closed = 0;
   const { rerender } = renderWithClient(
     <PublishDialog

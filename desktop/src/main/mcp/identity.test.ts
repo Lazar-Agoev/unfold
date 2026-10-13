@@ -53,9 +53,6 @@ describe("AgentDirectory", () => {
       { author: "agent:codex", name: "Codex", lastSeenMs: 20, lastActedMs: 20 },
     ]);
     expect(changes).toBe(5);
-    directory.clear();
-    expect(directory.agents()).toEqual([]);
-    expect(directory.identify(undefined, "node").author).toBe("agent:node");
   });
 
   it("remembers a bounded number of clients", () => {

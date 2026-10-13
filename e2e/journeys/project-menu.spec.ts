@@ -1,19 +1,16 @@
 /**
  * The project menu (`⋯` on a project's sidebar row and on its Home; docs/ui-shell.md#screens):
  * Compile again, Rebuild from scratch, Cancel, Pause and Resume background updates, Settings…,
- * Add entrance…, Health and activity, Reveal in Finder, Copy diagnostics, and Remove from workspace…,
- * with Help › Copy Diagnostics and File › Remove Project from the application menu.
+ * Add entrance…, Health and activity, Reveal in Finder, and Remove from workspace….
  */
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import type { UnfoldApp } from "../src/app";
-import { card, chooseLens } from "../src/board";
+import { card, chooseLens, showBoard } from "../src/board";
 import { expect, test } from "../src/fixtures";
-import { CREATE_ORDER, launchCompiled, traceEntrance } from "../src/flows";
+import { CREATE_ORDER, launchCompiled, launchWithProject, traceEntrance } from "../src/flows";
 import {
-  boardTab,
   chooseMenuItem,
   dialog,
   expectGraphCurrent,
@@ -26,7 +23,6 @@ import {
   rowState,
   showHome,
   stateLine,
-  toast,
   workspace,
 } from "../src/home";
 import { editFile } from "../src/sandbox";
@@ -56,29 +52,12 @@ async function compiledAgain(page: Page, project: string, mark: number): Promise
   await expectGraphCurrent(page);
 }
 
-/** Clicks an application-menu item by its path (`["File", "Remove Project"]`), for the first window. */
-async function clickAppMenu(app: UnfoldApp, path: readonly string[]): Promise<void> {
-  await app.electron.evaluate(({ Menu, BrowserWindow }, labels) => {
-    let items = Menu.getApplicationMenu()?.items ?? [];
-    let item: Electron.MenuItem | undefined;
-    for (const label of labels) {
-      item = items.find((entry) => entry.label === label || entry.role === label.toLowerCase());
-      items = item?.submenu?.items ?? [];
-    }
-    if (!item) {
-      throw new Error(`no menu item ${labels.join(" › ")}`);
-    }
-    // The menu passes the window it acted on, as when the person chooses the item.
-    (item.click as (event: unknown, window: Electron.BrowserWindow | undefined) => void)(undefined, BrowserWindow.getAllWindows()[0]);
-  }, path);
-}
-
 test.describe("the project menu", () => {
-  test("Compile again, Rebuild from scratch, Health and activity, Settings…, Add entrance…, Reveal in Finder, Copy diagnostics", async ({ sandbox, launch }) => {
-    const { app, page, folders } = await launchCompiled(launch, sandbox);
+  test("Compile again, Rebuild from scratch, Health and activity, Settings…, Add entrance…, Reveal in Finder", async ({ sandbox, launch }) => {
+    const { page } = await launchCompiled(launch, sandbox);
     const project = await projectId(page, "ts-orders");
 
-    await test.step("the menu on Home's header lists every item, with ⇧⌘B on Compile again and Cancel disabled", async () => {
+    await test.step("the menu on Home's header lists every item, with Cancel disabled", async () => {
       const menu = await openHeaderMenu(page);
       const names = await menu.getByRole("menuitem").allInnerTexts();
       expect(names.map((name) => name.split("\n")[0]?.trim())).toEqual([
@@ -90,10 +69,8 @@ test.describe("the project menu", () => {
         "Add entrance…",
         "Health and activity",
         "Reveal in Finder",
-        "Copy diagnostics",
         "Remove from workspace…",
       ]);
-      await expect(menu.getByRole("menuitem", { name: /^Compile again/ })).toContainText("⇧⌘B");
       await expect(menu.getByRole("menuitem", { name: "Cancel" })).toHaveAttribute("aria-disabled", "true");
       await expect(menu.getByRole("menuitem", { name: "Reveal in Finder" })).not.toHaveAttribute("aria-disabled", "true");
       // Reveal in Finder isn't chosen: Rust opens the real file manager.
@@ -144,36 +121,13 @@ test.describe("the project menu", () => {
       await page.keyboard.press("Escape");
       await expect(editor).toBeHidden();
     });
-
-    await test.step("Copy diagnostics copies a report with versions and counts, and no paths", async () => {
-      await app.electron.evaluate(({ clipboard }) => {
-        void clipboard.writeText("e2e: before Copy diagnostics");
-      });
-      await projectMenu(page, "ts-orders", "Copy diagnostics");
-      await expect(toast(page, "Copied diagnostics").last()).toBeVisible();
-      await expect.poll(() => app.clipboardText()).not.toBe("e2e: before Copy diagnostics");
-      const report = await app.clipboardText();
-      expect(report).toContain("Unfold");
-      expect(report).not.toContain(folders[0] ?? "");
-    });
-
-    await test.step("Help › Copy Diagnostics in the application menu copies it too", async () => {
-      await app.electron.evaluate(({ clipboard }) => {
-        void clipboard.writeText("e2e: before Help › Copy Diagnostics");
-      });
-      await clickAppMenu(app, ["Help", "Copy Diagnostics"]);
-      await expect.poll(() => app.clipboardText()).not.toBe("e2e: before Help › Copy Diagnostics");
-      expect(await app.clipboardText()).toContain("Unfold");
-    });
   });
 
   test("Cancel stops a Rebuild from scratch before it commits", async ({ sandbox, launch }) => {
     test.setTimeout(300_000);
     const folder = sandbox.folder("synthetic");
     writeSyntheticRepo(folder, 8000, "main");
-    const app = await launch({ args: [folder] });
-    const page = await app.firstWindow();
-    await expect(homeTitle(page)).toHaveText("synthetic");
+    const { page } = await launchWithProject(launch, folder);
     await firstCompile(page);
     const project = await projectId(page, "synthetic");
     const before = await logActions(page, project);
@@ -231,12 +185,12 @@ test.describe("the project menu", () => {
     });
 
     await test.step("the card shows the edited code", async () => {
-      await boardTab(page, "POST /orders").click();
+      await showBoard(page, "POST /orders");
       await expect(card(page, CREATE_ORDER)).toContainText("was placed for");
     });
   });
 
-  test("Remove from workspace… asks, keeps .unfold/, and the folder can be added back", async ({ sandbox, launch }) => {
+  test("Remove from workspace… asks, keeps .unfold/, and the folders can be added back", async ({ sandbox, launch }) => {
     const { app, page, folders } = await launchCompiled(launch, sandbox, ["ts-orders", "py-orders"]);
     const [orders = "", python = ""] = folders;
 
@@ -257,8 +211,8 @@ test.describe("the project menu", () => {
       expect((await workspace(page)).projects.map((row) => row.name)).toEqual(["ts-orders"]);
     });
 
-    await test.step("File › Remove Project in the application menu removes the project Home shows", async () => {
-      await clickAppMenu(app, ["File", "Remove Project"]);
+    await test.step("removing the last project leaves an empty workspace", async () => {
+      await projectMenu(page, "ts-orders", "Remove from workspace…");
       await expect(projectRow(page, "ts-orders")).toHaveCount(0);
       expect(await app.messageBoxes()).toEqual(["Remove py-orders from the workspace?", "Remove ts-orders from the workspace?"]);
       expect(existsSync(join(orders, ".unfold", "local"))).toBe(true);

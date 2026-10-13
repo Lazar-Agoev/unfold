@@ -94,7 +94,6 @@ beforeEach(() => {
       line_labels: () => [],
       list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
       save_board: () => boardState(P, ID),
-      save_board_view: () => null,
     },
   });
 });

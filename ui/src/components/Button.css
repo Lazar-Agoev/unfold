@@ -27,10 +27,6 @@
   padding-left: 10px;
 }
 
-.button-with-shortcut {
-  padding-right: 10px;
-}
-
 .button-with-trailing {
   padding-right: 8px;
 }
@@ -40,16 +36,7 @@
   text-overflow: ellipsis;
 }
 
-/* 10px between the label and its shortcut, 4px before a trailing chevron. */
-.button-shortcut {
-  margin-left: 4px;
-  font-family: var(--font-ui);
-  font-size: var(--text-12);
-  line-height: var(--leading-16);
-  font-weight: 500;
-  color: var(--color-muted);
-}
-
+/* 4px before a trailing chevron. */
 .button-trailing {
   margin-left: -2px;
   color: var(--color-muted);
@@ -62,10 +49,6 @@
 
 .button-primary:not(:disabled):hover {
   background: color-mix(in srgb, var(--color-accent) 90%, var(--color-text));
-}
-
-.button-primary .button-shortcut {
-  color: var(--color-on-accent-soft);
 }
 
 .button-secondary {

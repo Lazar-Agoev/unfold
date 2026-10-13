@@ -40,7 +40,6 @@ export function boardState(project: ProjectId, id: string, document: BoardDocume
     health: HEALTHY,
     outlines: document.pages.map((item) => ({ page: item.id, rows: [], unlabeled: [] })),
     label: null,
-    view: null,
     ...overrides,
   };
 }

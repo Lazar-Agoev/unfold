@@ -1,47 +1,37 @@
 /**
- * The window factory and registry. Every window gets a numeric id (used on the wire to the engine)
- * and a stable key (its remembered state in `windows.json` survives restarts). Every window shows
- * the whole workspace (desktop/README.md#transport-and-windows, window restore).
+ * The app's one window (desktop/README.md#transport-and-windows). It has no title bar: the macOS
+ * window buttons sit over the sidebar, and the UI's top bar moves the window. On macOS, closing it
+ * keeps the app running; it opens again from the Dock, a second launch, or an agent that needs it,
+ * where it was last. Each opening gets a fresh numeric id, used on the wire to the engine, so a
+ * closed window's detach never touches the next one.
  */
 
-import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import type { BaseWindow, Rectangle, WebContents, WebPreferences } from "electron";
-import { BrowserWindow, nativeTheme, screen } from "electron";
+import type { BaseWindow, WebContents, WebPreferences } from "electron";
+import { BrowserWindow, screen } from "electron";
 import type { ShellEvent } from "../shared/unfold-api";
 import { IPC } from "../shared/transport";
 import { entryUrl, type UiSource } from "./app-url";
-import type { Rect, RestoredWindow } from "./window-placement";
-import { debouncedSave, placeOnScreen } from "./window-placement";
+import type { Rect, WindowPlacement } from "./window-placement";
+import { placeOnScreen } from "./window-placement";
 
 export interface WindowEntry {
   readonly id: number;
   readonly window: BrowserWindow;
-  /** The stable key the window's state is remembered by in `windows.json`. */
-  readonly key: string;
   /** True once the UI has loaded (and after each reload); only then can it receive an engine port. */
   loaded: boolean;
 }
 
-/** A window's position and size, and whether it is maximized, as `save_window_bounds` takes them. */
-export interface WindowPlacement {
-  readonly bounds: Rectangle;
-  readonly maximized: boolean;
-}
-
-/** What the rest of the main process wants to hear about windows. */
+/** What the rest of the main process wants to hear about the window. */
 export interface WindowHooks {
   /** The UI finished loading (first load or a reload): hand it a fresh engine port. */
   onLoaded(entry: WindowEntry): void;
+  /** The person moved, resized, maximized, or restored the window. */
+  onPlacementChanged(entry: WindowEntry): void;
+  /** The window is closing and can still report where it is. */
+  onClosing(entry: WindowEntry): void;
   /** The window closed. */
   onClosed(entry: WindowEntry): void;
-  /** The window gained focus: it is the one used last. */
-  onFocused(entry: WindowEntry): void;
-  /**
-   * The window was created, or the person moved, resized, maximized, or restored it (debounced), so
-   * it comes back where it is.
-   */
-  onPlacementChanged(entry: WindowEntry): void;
 }
 
 /**
@@ -66,14 +56,16 @@ export function hardenedPreferences(devTools: boolean): WebPreferences {
   };
 }
 
-const CASCADE_OFFSET = 24;
-const PLACEMENT_DEBOUNCE_MS = 500;
-const BACKGROUND = { light: "#F7F8FA", dark: "#15161A" } as const;
+const BACKGROUND = "#F7F8FA";
+/** The window buttons, centered in the sidebar's top, level with the UI's 48px top bar. */
+const TRAFFIC_LIGHTS = { x: 16, y: 18 } as const;
 
-export class WindowRegistry {
-  private readonly entries = new Map<number, WindowEntry>();
-  /** Shell events for windows whose UI hasn't loaded yet, sent once it has. */
-  private readonly queued = new Map<number, ShellEvent[]>();
+export class AppWindow {
+  private entry: WindowEntry | null = null;
+  /** Shell events for the window while its UI hasn't loaded yet, sent once it has. */
+  private queued: ShellEvent[] = [];
+  /** Where the window was when it last closed, so it opens there again. */
+  private lastPlacement: WindowPlacement | null = null;
   private nextId = 1;
 
   constructor(
@@ -83,114 +75,98 @@ export class WindowRegistry {
   ) {}
 
   /**
-   * Opens a window on the workspace. A restored window comes back with its key and bounds (moved
-   * onto a visible screen if its display is gone); a new one is cascaded from the focused window.
+   * The window: the open one, or a new one at `placement` (moved onto a visible screen if its
+   * display is gone), else where it was when it last closed.
    */
-  create(restore?: RestoredWindow): WindowEntry {
-    const near = BrowserWindow.getFocusedWindow();
-    const position = near ? near.getPosition() : undefined;
-    const bounds = restore?.bounds ? visibleBounds(restore.bounds) : undefined;
+  open(placement?: WindowPlacement): WindowEntry {
+    if (this.entry) {
+      return this.entry;
+    }
+    const at = placement ?? this.lastPlacement;
     const window = new BrowserWindow({
       width: 1280,
       height: 820,
       minWidth: 760,
       minHeight: 480,
-      ...(position ? { x: (position[0] ?? 0) + CASCADE_OFFSET, y: (position[1] ?? 0) + CASCADE_OFFSET } : {}),
-      ...(bounds ?? {}),
+      ...(at ? visibleBounds(at.bounds) : {}),
       show: false,
       title: "Unfold",
-      backgroundColor: nativeTheme.shouldUseDarkColors ? BACKGROUND.dark : BACKGROUND.light,
-      ...(process.platform === "darwin"
-        ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 14, y: 13 } }
-        : {}),
+      backgroundColor: BACKGROUND,
+      titleBarStyle: "hidden",
+      trafficLightPosition: TRAFFIC_LIGHTS,
       webPreferences: hardenedPreferences(this.devTools),
     });
 
-    const entry: WindowEntry = { id: this.nextId++, window, key: restore?.key ?? randomUUID(), loaded: false };
-    this.entries.set(entry.id, entry);
+    const entry: WindowEntry = { id: this.nextId++, window, loaded: false };
+    this.entry = entry;
 
     window.once("ready-to-show", () => {
-      if (restore?.maximized) {
+      if (at?.maximized) {
         window.maximize();
       }
       window.show();
     });
-    const placement = debouncedSave(() => {
-      if (!window.isDestroyed()) {
-        this.hooks.onPlacementChanged(entry);
-      }
-    }, PLACEMENT_DEBOUNCE_MS);
     const placementChanged = (): void => {
-      placement.schedule();
+      this.hooks.onPlacementChanged(entry);
     };
     window.on("move", placementChanged);
     window.on("resize", placementChanged);
     window.on("maximize", placementChanged);
     window.on("unmaximize", placementChanged);
-    window.on("focus", () => {
-      this.hooks.onFocused(entry);
-    });
     window.webContents.on("did-start-loading", () => {
       entry.loaded = false;
     });
     window.webContents.on("did-finish-load", () => {
       entry.loaded = true;
-      for (const event of this.queued.get(entry.id) ?? []) {
+      for (const event of this.queued.splice(0)) {
         this.send(entry, event);
       }
-      this.queued.delete(entry.id);
       this.hooks.onLoaded(entry);
     });
-    // Save a move or resize still waiting out the debounce while the window can still report its
-    // bounds: it is sent before `onClosed`, so it reaches the engine before the window detaches.
     window.on("close", () => {
-      placement.flush();
+      this.lastPlacement = this.placement(entry);
+      this.hooks.onClosing(entry);
     });
     window.on("closed", () => {
-      placement.cancel();
-      this.entries.delete(entry.id);
-      this.queued.delete(entry.id);
+      this.entry = null;
+      this.queued = [];
       this.hooks.onClosed(entry);
     });
 
     void window.loadURL(entryUrl(this.ui));
-    // Remember the window from the start, before it is ever moved.
-    this.hooks.onPlacementChanged(entry);
     return entry;
   }
 
-  get(id: number): WindowEntry | undefined {
-    return this.entries.get(id);
+  /** The open window, if any. */
+  current(): WindowEntry | undefined {
+    return this.entry ?? undefined;
   }
 
-  /** An id from the windows' sequence for a window the registry doesn't list (the render window), so engine window ids never collide. */
+  /** The open window, if it has id `id`. */
+  get(id: number): WindowEntry | undefined {
+    return this.entry !== null && this.entry.id === id ? this.entry : undefined;
+  }
+
+  /** An id from the window's sequence for a window it doesn't track (the render window), so engine window ids never collide. */
   reserveId(): number {
     return this.nextId++;
   }
 
-  all(): WindowEntry[] {
-    return [...this.entries.values()];
-  }
-
   forWebContents(contents: WebContents): WindowEntry | undefined {
-    return this.all().find((entry) => !entry.window.isDestroyed() && entry.window.webContents === contents);
+    const entry = this.entry;
+    return entry && !entry.window.isDestroyed() && entry.window.webContents === contents ? entry : undefined;
   }
 
-  forWindow(window: BaseWindow): WindowEntry | undefined {
-    return this.all().find((entry) => entry.window === window);
+  forWindow(window: BaseWindow | undefined): WindowEntry | undefined {
+    return this.entry !== null && this.entry.window === window ? this.entry : undefined;
   }
 
-  focused(): WindowEntry | undefined {
-    const window = BrowserWindow.getFocusedWindow();
-    return window ? this.all().find((entry) => entry.window === window) : undefined;
-  }
-
-  /** Where the window is, for `save_window_bounds`: its normal (unmaximized) bounds. */
+  /** Where the window is: its normal (unmaximized) bounds. */
   placement(entry: WindowEntry): WindowPlacement {
     return { bounds: entry.window.getNormalBounds(), maximized: entry.window.isMaximized() };
   }
 
-  /** Sends a shell event (a menu command) to one window's UI. */
+  /** Sends a shell event (a menu command) to the window's UI. */
   send(entry: WindowEntry, event: ShellEvent): void {
     if (!entry.window.isDestroyed()) {
       entry.window.webContents.send(IPC.shellEvent, event);
@@ -201,8 +177,8 @@ export class WindowRegistry {
   deliver(entry: WindowEntry, event: ShellEvent): void {
     if (entry.loaded) {
       this.send(entry, event);
-    } else {
-      this.queued.set(entry.id, [...(this.queued.get(entry.id) ?? []), event]);
+    } else if (entry === this.entry) {
+      this.queued.push(event);
     }
   }
 
@@ -216,7 +192,7 @@ export class WindowRegistry {
 }
 
 /** Saved bounds, moved onto a visible screen if their display is gone. */
-function visibleBounds(bounds: Rect): Rectangle {
+function visibleBounds(bounds: Rect): Rect {
   const primary = screen.getPrimaryDisplay();
   const others = screen.getAllDisplays().filter((display) => display.id !== primary.id);
   return placeOnScreen(bounds, [primary.workArea, ...others.map((display) => display.workArea)]);

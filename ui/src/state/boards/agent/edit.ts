@@ -1,6 +1,6 @@
 /**
- * An agent's requests in this window (design §5.5): edits, reads of a held page, opening a board in
- * a background tab, and finishing a piece of work.
+ * An agent's requests in this window (design §5.5): edits, reads of a held page, opening a board
+ * without showing it, and finishing a piece of work.
  *
  * An edit loads what its operations read (card models, calls, callers), then applies them to the
  * session's working document with the same pure edits people's actions use, as one undo step named
@@ -219,11 +219,11 @@ export function readAgentPage(request: AgentReadRequest): AgentReadResult {
   };
 }
 
-/** Opens a board in a background tab for an agent (this window doesn't switch to it). */
+/** Opens a board for an agent without showing it. */
 export async function openBoardForAgent(request: AgentOpenRequest): Promise<AgentOpenResult> {
   try {
-    const outcome = await openBoard(refOf(request), { background: true, ...(request.page !== undefined ? { page: request.page } : {}) });
-    return outcome.status === "opened" ? { ok: true } : { ...failure("held", "Another window holds the board."), heldBy: outcome.heldBy };
+    await openBoard(refOf(request), { background: true, ...(request.page !== undefined ? { page: request.page } : {}) });
+    return { ok: true };
   } catch (error) {
     const { code, message } = toUnfoldError(error);
     return failure(code, message);

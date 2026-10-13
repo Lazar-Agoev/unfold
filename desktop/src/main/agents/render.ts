@@ -105,7 +105,7 @@ export interface PageRendererOptions {
   readonly ui: UiSource;
   readonly bridge: Pick<AgentBridge, "read" | "open" | "views">;
   readonly engine: RenderEngine;
-  /** A window id from the windows' sequence (`WindowRegistry.reserveId`). */
+  /** A window id from the app window's sequence (`AppWindow.reserveId`). */
   readonly reserveId: () => number;
   /** How long a page may take to load and be measured. */
   readonly timeoutMs?: number;
@@ -404,10 +404,9 @@ export class PageRenderer {
     return { ok: true, page: found, title: result.document.title, health: null };
   }
 
-  /** The board's health and pages' outlines, as the window holding it sees them. */
   /**
-   * The board's health, as the window that holds it (opening the board in a background tab when none
-   * does). A report that still listed a board the window let go of fails with `board_not_held`: the
+   * The board's health, as the window sees it (opening the board in the background when it isn't
+   * open). A report that still listed a board the window let go of fails with `board_not_open`: the
    * bridge forgets it and the board is opened again, once.
    */
   private async heldHealth(board: AgentBoardRef): Promise<{ readonly ok: true; readonly view: BoardHealthView } | AgentFailure> {
@@ -417,7 +416,7 @@ export class PageRenderer {
         return opened;
       }
       const health = await this.health(opened.windowId, board);
-      if (health.ok || health.code !== "board_not_held" || attempt > 0) {
+      if (health.ok || health.code !== "board_not_open" || attempt > 0) {
         return health;
       }
       this.options.bridge.views.released(opened.windowId, board);
@@ -457,7 +456,7 @@ export class PageRenderer {
       skipTaskbar: true,
       webPreferences: { ...hardenedPreferences(false), offscreen: { deviceScaleFactor: scale }, backgroundThrottling: false },
     });
-    const entry: WindowEntry = { id: this.options.reserveId(), window, key: "render", loaded: false };
+    const entry: WindowEntry = { id: this.options.reserveId(), window, loaded: false };
     const created: RenderWindow = { entry, scale, queued: [] };
     window.webContents.on("did-start-loading", () => {
       entry.loaded = false;

@@ -1,31 +1,27 @@
 /**
  * Add (docs/ui-shell.md#screens, cross-project search): one box that finds entrances, functions, files, and text in every
- * connected project and puts what you pick on a page, and runs commands after `>`. It replaces V1's
- * Search and Entrances views, the command palette, Go to File, and Go to Symbol.
+ * connected project and puts what you pick on a page. It replaces V1's Search and Entrances views.
  */
 
 import { addBox, addInput, addPreview, addResults, addTab, browseList, entranceRow, lookIn, lookInCount, lookInItem, openAdd, result, selectResult } from "../src/add";
-import { activeBoardRef, boardView, card, cards, pagesList } from "../src/board";
+import { boardTitle, boardView, card, cards, pagesList, shownBoardRef } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { launchCompiled, PLACE, traceEntrance } from "../src/flows";
-import { boardTab, projectId, sidebar, toast } from "../src/home";
+import { projectId } from "../src/home";
 import { enterText } from "../src/window";
 
 const PY_PLACE = "src/orders_playground/services/order_service.py#class:OrderService/method:place";
 
 test.describe("Add", () => {
-  test("on a board: A, ⌘K and / open it, the entrance browser, Enter and ⌘Enter add, Escape closes", async ({ sandbox, launch }) => {
+  test("on a board: the dock's Add opens it, the entrance browser, Enter and ⌘Enter add, Escape closes", async ({ sandbox, launch }) => {
     const { page } = await launchCompiled(launch, sandbox);
     await traceEntrance(page, "POST", "/orders");
     const before = await cards(page).count();
 
-    await test.step("A, ⌘K and / open Add; Escape closes it", async () => {
-      for (const key of ["a", "Meta+k", "/"]) {
-        await page.keyboard.press(key);
-        await expect(addInput(page)).toBeFocused();
-        await page.keyboard.press("Escape");
-        await expect(addBox(page)).toBeHidden();
-      }
+    await test.step("the dock's Add opens Add with its input focused; Escape closes it", async () => {
+      await openAdd(page);
+      await page.keyboard.press("Escape");
+      await expect(addBox(page)).toBeHidden();
     });
 
     await test.step("LOOK IN unfolds the board's project; an application lists its launch and routes and marks the one on the page", async () => {
@@ -167,9 +163,9 @@ test.describe("Add", () => {
     await test.step("from Home, Enter starts a new draft in the result's project", async () => {
       await addInput(page).press("Enter");
       await expect(addBox(page)).toBeHidden();
-      await expect(boardTab(page, "place")).toHaveAttribute("aria-selected", "true");
+      await expect(boardTitle(page)).toHaveText("place");
       await expect(card(page, PY_PLACE)).toBeVisible();
-      expect((await activeBoardRef(page)).project).toBe(python);
+      expect((await shownBoardRef(page)).project).toBe(python);
     });
   });
 
@@ -218,65 +214,6 @@ test.describe("Add", () => {
       await expect(line("src/lib/retry.ts", 11)).toBeVisible();
       await expect(line("src/cli.ts", 18)).toBeHidden();
       await expect(addTab(page, "Text")).toHaveText(/^Text\s*8$/);
-    });
-  });
-
-  test("commands: `>`, ⇧⌘P, ⌘P on Files, ⌘T on Functions, and Copy Diagnostics", async ({ sandbox, launch }) => {
-    const { app, page } = await launchCompiled(launch, sandbox);
-    await traceEntrance(page, "POST", "/orders");
-
-    await test.step("typing > switches Add to commands, grouped", async () => {
-      await openAdd(page);
-      await enterText(addInput(page), ">");
-      const commands = addBox(page).getByRole("listbox", { name: "Commands" });
-      await expect(commands.getByRole("option", { name: "Fit", exact: true })).toBeVisible();
-      await expect(commands.getByRole("option", { name: "Copy Mermaid", exact: true })).toBeVisible();
-      await expect(addBox(page).getByRole("tablist", { name: "Kinds" })).toBeHidden();
-    });
-
-    await test.step("a filtered command runs on Enter", async () => {
-      await enterText(addInput(page), ">toggle sidebar");
-      await expect(addBox(page).getByRole("listbox", { name: "Commands" }).getByRole("option").first()).toHaveAccessibleName("Toggle Sidebar");
-      await addInput(page).press("Enter");
-      await expect(addBox(page)).toBeHidden();
-      await expect(sidebar(page)).toBeHidden();
-    });
-
-    await test.step("⇧⌘P opens Add in commands mode", async () => {
-      await page.keyboard.press("Meta+Shift+P");
-      await expect(addInput(page)).toHaveValue(/^>\s*$/);
-      await enterText(addInput(page), ">toggle sidebar");
-      await expect(addBox(page).getByRole("listbox", { name: "Commands" }).getByRole("option").first()).toHaveAccessibleName("Toggle Sidebar");
-      await addInput(page).press("Enter");
-      await expect(sidebar(page)).toBeVisible();
-    });
-
-    await test.step("Copy Diagnostics is one of Add's commands", async () => {
-      await page.keyboard.press("Meta+Shift+P");
-      await enterText(addInput(page), ">copy diagnostics");
-      await expect(addBox(page).getByRole("listbox", { name: "Commands" }).getByRole("option").first()).toHaveAccessibleName("Copy Diagnostics");
-      await addInput(page).press("Enter");
-      await expect(toast(page, "Copied diagnostics")).toBeVisible();
-      await expect.poll(() => app.clipboardText()).toContain("Electron:");
-    });
-
-    await test.step("⌘P opens Add on Files", async () => {
-      await page.keyboard.press("Meta+P");
-      await expect(addTab(page, "Files")).toHaveAttribute("aria-selected", "true");
-      await enterText(addInput(page), "order-service");
-      await expect(result(page, "File src/services/order-service.ts")).toBeVisible();
-      await expect(addTab(page, "Files")).toHaveAttribute("aria-selected", "true");
-      await addInput(page).press("Escape");
-      await expect(addBox(page)).toBeHidden();
-    });
-
-    await test.step("⌘T opens Add on Functions", async () => {
-      await page.keyboard.press("Meta+T");
-      await expect(addTab(page, "Functions")).toHaveAttribute("aria-selected", "true");
-      await enterText(addInput(page), "createOrder");
-      await expect(result(page, /^Function createOrder, src\/routes\/orders\.ts$/)).toBeVisible();
-      await addInput(page).press("Escape");
-      await expect(addBox(page)).toBeHidden();
     });
   });
 });

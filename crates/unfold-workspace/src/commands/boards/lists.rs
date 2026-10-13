@@ -18,7 +18,7 @@ use super::types::{
     ReadBoardResult, Thumbnail, ThumbnailCard, ThumbnailPage, Thumbnails, ThumbnailsArgs,
 };
 use crate::commands::{NoArgs, ProjectArgs, ProjectKeyArgs, count, key_arg};
-use crate::events::{WindowId, WorkingFile};
+use crate::events::WorkingFile;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::{ProjectHandle, ProjectId, Projects};
@@ -40,7 +40,6 @@ const MAX_REFS: usize = 50;
 pub(super) fn summary(
     project: &ProjectId,
     files: &Files<'_>,
-    held_by: Option<WindowId>,
     file: &BoardFile,
     working: CommandResult<Working>,
     label: Option<String>,
@@ -57,7 +56,6 @@ pub(super) fn summary(
         projects: Vec::new(),
         changes: 0,
         updated_at_ms: files.modified_ms(file),
-        held_by,
         label,
         error: None,
     };
@@ -118,14 +116,7 @@ impl<'p> Lister<'p> {
             }
             _ => None,
         };
-        summary(
-            self.project.id(),
-            &self.files,
-            self.project.claims().holder(&id),
-            file,
-            working,
-            label,
-        )
+        summary(self.project.id(), &self.files, file, working, label)
     }
 
     /// The project's drafts and published boards with unpublished changes.
@@ -163,8 +154,8 @@ pub fn list_boards(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<BoardList>
     })
 }
 
-/// `read_board`: board `id`'s working version as its file holds it, with the file's revision,
-/// its publish state, and the window holding it. Neither claims the board nor wakes its project.
+/// `read_board`: board `id`'s working version as its file holds it, with the file's revision and
+/// its publish state. Neither opens the board nor wakes its project.
 pub fn read_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<ReadBoardResult> {
     let project = ctx.project(&args.project)?;
     let file = parse_id(&args.id)?;
@@ -173,7 +164,6 @@ pub fn read_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<ReadBoardRe
     let published = files.published_state(&file, &working.loaded.board, working.kind, working.loaded.base);
     let id = file.relative();
     Ok(ReadBoardResult {
-        held_by: project.claims().holder(&id),
         project: args.project,
         place: file.place,
         name: file.name,

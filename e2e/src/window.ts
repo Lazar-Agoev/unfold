@@ -1,7 +1,7 @@
 /**
- * Driving one window at the transport level: engine commands through `window.unfold` (exactly what the
- * UI uses), the events it receives, its engine connection, and a folder dropped on it the way the
- * operating system drops one. Waits are on state (locators, `expect.poll`), never fixed sleeps.
+ * Driving the window at the transport level: engine commands through `window.unfold` (exactly what the
+ * UI uses), the events it receives, and its engine connection. Waits are on state (locators,
+ * `expect.poll`), never fixed sleeps.
  */
 
 import type { Locator, Page } from "@playwright/test";
@@ -20,9 +20,6 @@ const RECORDED = [
   "board_conflict",
   "problems_changed",
   "config_changed",
-  "preferences_changed",
-  "board_state_transferred",
-  "focus_board",
   "project_added",
 ] as const;
 
@@ -88,31 +85,6 @@ export async function invoke<T>(page: Page, command: string, args: Record<string
     [command, args] as const,
   );
   return settle(result) as T;
-}
-
-/** Runs one main-process window command from the window. */
-async function windowCommand<T>(page: Page, command: string, args: Record<string, unknown> = {}): Promise<T> {
-  const result = await page.evaluate(
-    ([name, input]) =>
-      (window.unfold.window as (command: string, args: unknown) => Promise<unknown>)(name, input).then(
-        (value): Settled => ({ ok: true, value }),
-        (error: unknown): Settled => {
-          const { code, message } = error as { code?: unknown; message?: unknown };
-          return { ok: false, code: String(code), message: String(message) };
-        },
-      ),
-    [command, args] as const,
-  );
-  return settle(result) as T;
-}
-
-interface WindowInfo {
-  readonly windowId: number;
-  readonly key: string;
-}
-
-export function windowInfo(page: Page): Promise<WindowInfo> {
-  return windowCommand<WindowInfo>(page, "window_info");
 }
 
 /** Every recorded event of `type`, oldest first, with its arrival time. */
@@ -188,25 +160,6 @@ async function connection(page: Page): Promise<string> {
 
 export async function expectConnection(page: Page, state: string, timeout = 30_000): Promise<void> {
   await expect.poll(() => connection(page), { timeout, message: `connection ${state}` }).toBe(state);
-}
-
-/**
- * Drops files or folders on the window at the middle of `target` (default: the content area), as
- * the operating system does: Chromium builds the drag data from the paths, so the preload sees real
- * dropped files.
- */
-export async function dropPaths(page: Page, paths: readonly string[], target?: Locator): Promise<void> {
-  const box = await (target ?? page.locator("#content-area")).boundingBox();
-  if (!box) {
-    throw new Error("nothing to drop on");
-  }
-  const session = await page.context().newCDPSession(page);
-  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-  const data = { items: [], files: [...paths], dragOperationsMask: 1 };
-  for (const type of ["dragEnter", "dragOver", "drop"] as const) {
-    await session.send("Input.dispatchDragEvent", { type, ...point, data });
-  }
-  await session.detach();
 }
 
 /**

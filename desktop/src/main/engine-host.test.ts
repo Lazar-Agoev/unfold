@@ -50,15 +50,4 @@ describe("the main process's engine requests", () => {
     expect(await found).toEqual({ files: 1 });
     expect(heard).toEqual([{ path: "src/a.ts" }]);
   });
-
-  it("hands the events the engine host forwards to whoever follows them", () => {
-    const { host, child } = started();
-    const heard: unknown[] = [];
-    const stop = host.onEvent((event) => heard.push(event));
-    const event = { type: "preferences_changed", preferences: { agents: { enabled: true, port: 29180 } } };
-    child.emit("message", { type: "event", event });
-    stop();
-    child.emit("message", { type: "event", event });
-    expect(heard).toEqual([event]);
-  });
 });

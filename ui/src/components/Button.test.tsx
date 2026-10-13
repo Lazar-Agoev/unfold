@@ -13,7 +13,7 @@ describe("Button", () => {
     expect(button.getAttribute("type")).toBe("button");
   });
 
-  it("lays out a leading icon, a trailing icon, and a shortcut hint", () => {
+  it("lays out a leading icon and a trailing icon", () => {
     render(
       <>
         <Button variant="primary" icon="plus">
@@ -22,17 +22,12 @@ describe("Button", () => {
         <Button variant="secondary" trailingIcon="chevron-down">
           Share
         </Button>
-        <Button variant="primary" shortcut="Shift+Mod+B">
-          Compile
-        </Button>
       </>,
     );
     const newBoard = screen.getByRole("button", { name: "New board" });
     expect(newBoard.classList.contains("button-with-icon")).toBe(true);
     expect(newBoard.querySelector("[data-icon='plus']")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Share" }).querySelector(".button-trailing[data-icon='chevron-down']")).not.toBeNull();
-    const compile = screen.getByRole("button", { name: /Compile/ });
-    expect(compile.querySelector(".button-shortcut")?.getAttribute("aria-label")).toBe("Control Shift B");
   });
 
   it("shows the ring while busy and stays focusable", () => {

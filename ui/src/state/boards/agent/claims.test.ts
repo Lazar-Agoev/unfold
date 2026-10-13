@@ -7,7 +7,7 @@ import type { BoardDocument, Card, CardView, Frame, Link, Page, Relations, Resou
 import { engineKey } from "../../../ipc/queries";
 import { fixture, installFakeEngine, type FakeEngine } from "../../../test/engine";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../../../test/workspace";
-import { useTabs } from "../../tabStore";
+import { useShownBoardStore } from "../../shownBoard";
 import * as store from "../store";
 import { applyAgentEdit } from "./edit";
 import { resetWorking, useWorkingItems } from "./working";
@@ -92,7 +92,7 @@ beforeEach(() => {
   resetWorking();
   queryClient.clear();
   queryClient.setQueryData(engineKey("workspace", {}), workspaceView([projectRow(P, "orders")]));
-  useTabs.setState({ boards: [], active: "home" });
+  useShownBoardStore.setState({ board: null });
   saves = 0;
   refuseSave = null;
   engine = installFakeEngine({

@@ -7,9 +7,9 @@ export default defineConfig({
   main: {
     build: {
       outDir: "out/main",
-      // electron-updater and the MCP server SDK (with zod) are bundled into the main process, so the
-      // packaged app ships no node_modules.
-      externalizeDeps: { exclude: ["electron-updater", "@modelcontextprotocol/server", "zod"] },
+      // The MCP server SDK (with zod) is bundled into the main process, so the packaged app ships no
+      // node_modules.
+      externalizeDeps: { exclude: ["@modelcontextprotocol/server", "zod"] },
       rollupOptions: {
         input: {
           index: resolve(import.meta.dirname, "src/main/index.ts"),

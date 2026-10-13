@@ -4,8 +4,8 @@
  */
 
 import type { JSX } from "react";
+import { SettingsDialog } from "../appSettings";
 import { GroupFromLinesDialog } from "../board";
-import { PreferencesDialog } from "../preferences";
 import { LaunchEditorDialog, RemoveEntranceDialog } from "../launches";
 import { ProjectSettingsDialog } from "../settings";
 import { closeDialog, useDialog, type DialogRequest } from "../state/overlays";
@@ -17,8 +17,8 @@ import "./dialogs.css";
 
 function DialogFor({ request }: { readonly request: DialogRequest }): JSX.Element | null {
   switch (request.kind) {
-    case "preferences":
-      return <PreferencesDialog onClose={closeDialog} />;
+    case "settings":
+      return <SettingsDialog onClose={closeDialog} />;
     case "projectSettings":
       return <ProjectSettingsDialog project={request.project} section={request.section} onClose={closeDialog} />;
     case "launchEditor":

@@ -28,7 +28,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.1.0",
-    "electron-updater": "6.8.9",
     "zod": "4.6.5"
   },
   "devDependencies": {

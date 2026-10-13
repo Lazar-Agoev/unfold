@@ -14,12 +14,10 @@ import {
   card,
   cards,
   chooseLens,
-  clickCanvas,
   dock,
   expectCardsLoaded,
   follow,
   layerRow,
-  lens,
   onThisPage,
   pageRow,
   pageTitle,
@@ -127,19 +125,12 @@ test.describe("the board", () => {
       await expect(forward).toBeDisabled();
     });
 
-    await test.step("the lens in the top bar switches the page between Diagram and Code, and ⌘1 / ⌘2 switch it", async () => {
-      await lens(page).getByRole("radio", { name: "Code" }).click();
+    await test.step("the lens in the top bar switches the page between Diagram and Code", async () => {
+      await chooseLens(page, "Code");
       await expectEveryBlockCardShows(page, "code-view");
       // In Code, the call followed from createOrder's Flow is an opened link: its card is on the page.
       await expect(callLink(card(page, CREATE_ORDER), "orderService.place")).toHaveClass(/opened/);
-      await lens(page).getByRole("radio", { name: "Diagram" }).click();
-      await expect(boardView(page).locator(".block-card .code-view")).toHaveCount(0);
-      await clickCanvas(page);
-      await page.keyboard.press("Meta+2");
-      await expect(lens(page).getByRole("radio", { name: "Code" })).toHaveAttribute("aria-checked", "true");
-      await expectEveryBlockCardShows(page, "code-view");
-      await page.keyboard.press("Meta+1");
-      await expect(lens(page).getByRole("radio", { name: "Diagram" })).toHaveAttribute("aria-checked", "true");
+      await chooseLens(page, "Diagram");
       await expect(boardView(page).locator(".block-card .code-view")).toHaveCount(0);
     });
 
@@ -151,17 +142,15 @@ test.describe("the board", () => {
       await clickOnCanvas(page, requireUser.getByRole("button", { name: "Collapse requireUser" }));
       await expect(requireUser).toHaveClass(/diagram-card/);
       await expect(card(page, VALIDATE_BODY).locator(".flow-view")).toBeVisible();
-      await clickCanvas(page);
-      await page.keyboard.press("Meta+2");
+      await chooseLens(page, "Code");
       await expectEveryBlockCardShows(page, "code-view");
-      await page.keyboard.press("Meta+1");
+      await chooseLens(page, "Diagram");
       await expect(requireUser).toHaveClass(/diagram-card/);
       await expect(card(page, VALIDATE_BODY).locator(".flow-view")).toBeVisible();
       await clickOnCanvas(page, requireUser.getByRole("button", { name: "Expand requireUser" }));
       await expect(requireUser.locator(".flow-view")).toBeVisible();
       // Back to Code for reading the source inline.
-      await clickCanvas(page);
-      await page.keyboard.press("Meta+2");
+      await chooseLens(page, "Code");
       await expectEveryBlockCardShows(page, "code-view");
     });
 
@@ -180,7 +169,7 @@ test.describe("the board", () => {
   });
 
   test("pages, descriptions, groups, Flow labels, and undo and redo across pages", async ({ sandbox, launch }) => {
-    const { page, folders } = await launchCompiled(launch, sandbox);
+    const { app, page, folders } = await launchCompiled(launch, sandbox);
     const folder = folders[0] ?? "";
     await traceEntrance(page, "POST", "/orders");
     const createOrder = card(page, CREATE_ORDER);
@@ -288,11 +277,11 @@ test.describe("the board", () => {
       await expect(card(page, REQUIRE_USER)).toHaveCount(0);
       await pageRow(page, "Page 1").click();
       await expect(card(page, REQUIRE_USER)).toBeVisible();
-      await page.keyboard.press("Meta+Z");
+      await app.clickMenu(page, ["Edit", "Undo"]);
       await expect(pageTitle(page)).toHaveText("Page 1 copy");
       await expect(card(page, REQUIRE_USER)).toBeVisible();
       await pageRow(page, "Page 1").click();
-      await page.keyboard.press("Meta+Shift+Z");
+      await app.clickMenu(page, ["Edit", "Redo"]);
       await expect(pageTitle(page)).toHaveText("Page 1 copy");
       await expect(card(page, REQUIRE_USER)).toHaveCount(0);
     });

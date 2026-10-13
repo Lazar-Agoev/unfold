@@ -3,9 +3,9 @@ import "../test/dom";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { GitInfo } from "../ipc";
-import { openBoard } from "../state/boards";
+import { getOpenBoard, openBoard } from "../state/boards";
 import { resetBoards } from "../state/boards/store";
-import { useTabs } from "../state/tabs";
+import { useShownBoardStore } from "../state/shownBoard";
 import { installFakeEngine, type FakeEngine } from "../test/engine";
 import { renderWithClient } from "../test/render";
 import { boardState, projectRow, workspaceView } from "../test/workspace";
@@ -33,7 +33,7 @@ afterEach(() => {
   engine?.uninstall();
   engine = null;
   resetBoards();
-  useTabs.setState({ boards: [], active: "home" });
+  useShownBoardStore.setState({ board: null });
 });
 
 async function install(handlers: Parameters<typeof installFakeEngine>[0] = {}): Promise<FakeEngine> {
@@ -46,21 +46,20 @@ async function install(handlers: Parameters<typeof installFakeEngine>[0] = {}): 
           projectRow(Q, "billing", { git: null }),
         ]),
       git_info: () => GIT,
-      open_board: ({ project, id }) => ({ status: "opened", board: boardState(project, id) }),
+      open_board: ({ project, id }) => boardState(project, id),
       close_board: () => null,
-      save_board_view: () => null,
       switch_worktree: () => projectRow(P, "unfold"),
       remove_project: () => null,
       ...handlers.handlers,
     },
   });
-  await openBoard(MINE, { activate: false });
-  await openBoard(OTHER, { activate: false });
+  await openBoard(MINE, { background: true });
+  await openBoard(OTHER, { background: true });
   return engine;
 }
 
 describe("the worktree switcher", () => {
-  it("shows the branch and worktree count, lists the worktrees, and switches after closing this project's tabs", async () => {
+  it("shows the branch and worktree count, lists the worktrees, and switches after closing this project's boards", async () => {
     const fake = await install();
     renderWithClient(<WorktreeButton project={P} />);
     const button = await screen.findByRole("button", { name: /Branch main/ });
@@ -79,7 +78,8 @@ describe("the worktree switcher", () => {
     const order = fake.calls.map((call) => call.command).filter((command) => command === "close_board" || command === "switch_worktree");
     expect(order).toEqual(["close_board", "switch_worktree"]);
     expect(fake.callsOf("close_board")).toEqual([{ project: P, id: MINE.id }]);
-    expect(useTabs.getState().boards).toEqual([OTHER]);
+    expect(getOpenBoard(MINE)).toBeUndefined();
+    expect(getOpenBoard(OTHER)).toBeDefined();
   });
 
   it("is absent for a project outside a repository", async () => {
@@ -93,7 +93,7 @@ describe("the worktree switcher", () => {
 });
 
 describe("Remove from workspace", () => {
-  it("asks the main process, closes this window's tabs of the project, then removes it", async () => {
+  it("asks the main process, closes the project's open boards, then removes it", async () => {
     const fake = await install({ windowHandlers: { confirm_remove_project: () => ({ confirmed: true }) } });
     await removeProject({ id: P, name: "unfold" });
     expect(fake.windowCalls.map((call) => call.command)).toContain("confirm_remove_project");

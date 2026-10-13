@@ -31,15 +31,14 @@ describe("jobState", () => {
     health: null,
   };
 
-  it("is a board of the one page, with no health, measured without a lens", () => {
-    const state = jobState(job, 1600, 1000);
+  it("is a board of the one page, with no health", () => {
+    const state = jobState(job);
     expect(state.document).toEqual({ format: "unfold-board", version: 1, title: "Order placement", projects: [], pages: [job.page] });
     expect(state.health.items).toEqual([]);
-    expect(state.view).toEqual({ page: "page-2", pages: { "page-2": { x: 400, y: 400, zoom: 1, lens: null } } });
   });
 
   it("carries the board's health for the review banners", () => {
     const health: Health = { items: [], missing: 1, outdated: 0, brokenGroups: 0, review: 0, notConnected: 0, brokenLinks: 0 };
-    expect(jobState({ ...job, health }, 1600, 1000).health).toBe(health);
+    expect(jobState({ ...job, health }).health).toBe(health);
   });
 });

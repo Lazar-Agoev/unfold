@@ -75,20 +75,19 @@ describe("parseViewReport", () => {
 });
 
 describe("ViewTracker", () => {
-  it("keeps each window's last report and which window was used last", () => {
+  it("keeps the window's last report until it closes", () => {
     const views = new ViewTracker();
     expect(views.lastUsed()).toBeUndefined();
-    views.report(2, { ...REPORT, tabs: [] });
-    expect(views.lastUsed()).toBe(2);
+    views.report(1, { ...REPORT, tabs: [] });
     views.report(1, REPORT);
-    views.focused(1);
-    views.focused(2);
-    expect(views.lastUsed()).toBe(2);
-    views.focused(1);
     expect(views.lastUsed()).toBe(1);
     expect(views.get(1)).toEqual(REPORT);
     views.forget(1);
     expect(views.get(1)).toBeUndefined();
+    expect(views.lastUsed()).toBeUndefined();
+
+    // The window opened again, with a new id.
+    views.report(2, REPORT);
     expect(views.lastUsed()).toBe(2);
   });
 

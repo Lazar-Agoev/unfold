@@ -1,6 +1,6 @@
 /**
- * An icon-only button with an accessible label and a tooltip that shows the label
- * and shortcut. Pressed (a toggle that is on, or a menu that is open) shows the pressed fill.
+ * An icon-only button with an accessible label and a tooltip that shows the label.
+ * Pressed (a toggle that is on, or a menu that is open) shows the pressed fill.
  */
 
 import type { ButtonHTMLAttributes, Ref } from "react";
@@ -18,8 +18,6 @@ export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
   readonly size?: 28 | 24 | 20;
   /** For toggles: rendered as `aria-pressed` and the pressed fill. */
   readonly pressed?: boolean;
-  /** Shown in the tooltip, e.g. `Mod+B`. */
-  readonly shortcut?: string;
   readonly tooltipSide?: Side;
   readonly ref?: Ref<HTMLButtonElement>;
 }
@@ -29,14 +27,13 @@ export function IconButton({
   label,
   size = 28,
   pressed,
-  shortcut,
   tooltipSide = "bottom",
   className,
   type = "button",
   ...rest
 }: IconButtonProps) {
   return (
-    <Tooltip content={label} {...(shortcut ? { shortcut } : {})} side={tooltipSide} describe={false}>
+    <Tooltip content={label} side={tooltipSide} describe={false}>
       <button
         {...rest}
         type={type}

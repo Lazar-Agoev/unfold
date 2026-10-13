@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EngineRequestError } from "./engine-host";
 import type { FakeBrowserWindow } from "./fake-electron";
-import { resetFakeElectron } from "./fake-electron";
+import { createdWindows, resetFakeElectron } from "./fake-electron";
 import type { WindowEntry } from "./windows";
-import { WindowRegistry } from "./windows";
+import { AppWindow } from "./windows";
 import { Workspace } from "./workspace";
 
 vi.mock("electron", async () => (await import("./fake-electron")).electronModule);
 
 const PROJECT = "p-7k2m9q4xab";
+const BOARD = { project: PROJECT, board: ".unfold/boards/orders.json" };
+const SAVED = { bounds: { x: 80, y: 60, width: 1440, height: 900 }, maximized: false, board: BOARD };
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -25,40 +27,53 @@ function deferred<T>(): Deferred<T> {
 
 /** Records the main process's trusted engine requests and answers them per command. */
 class FakeEngine {
-  readonly calls: string[] = [];
+  readonly calls: [number, string, Readonly<Record<string, unknown>>][] = [];
   readonly answers = new Map<string, (args: Readonly<Record<string, unknown>>) => Promise<unknown>>();
 
   request(windowId: number, command: string, args: Readonly<Record<string, unknown>>): Promise<unknown> {
-    this.calls.push(`${command} ${windowId} ${JSON.stringify(args)}`);
+    this.calls.push([windowId, command, args]);
     return this.answers.get(command)?.(args) ?? Promise.resolve(null);
   }
-  /** The commands requested, by name and window. */
-  names(): string[] {
-    return this.calls.map((call) => call.split(" ").slice(0, 2).join(" "));
+  /** The arguments of every call of `command`, in order. */
+  callsOf(command: string): Readonly<Record<string, unknown>>[] {
+    return this.calls.filter(([, name]) => name === command).map(([, , args]) => args);
   }
 }
 
 type Entry = WindowEntry & { window: FakeBrowserWindow };
 
+/** The window and the workspace, wired as the app wires them. */
 function setup() {
   const engine = new FakeEngine();
-  const registry = new WindowRegistry(
+  const detached: number[] = [];
+  const appWindow = new AppWindow(
     { kind: "dev", url: "http://localhost:5173/" },
     {
       onLoaded: () => undefined,
+      onPlacementChanged: () => {
+        workspace.placementChanged();
+      },
+      onClosing: () => {
+        workspace.windowClosing();
+      },
       onClosed: (entry) => {
-        void workspace.windowClosed(entry);
+        void workspace.windowClosed().then(() => {
+          detached.push(entry.id);
+        });
       },
-      onPlacementChanged: (entry) => {
-        workspace.savePlacement(entry);
-      },
-      onFocused: () => undefined,
     },
     false,
   );
-  const workspace = new Workspace(registry, engine);
-  const windows = () => registry.all() as Entry[];
-  return { engine, registry, workspace, windows };
+  const workspace = new Workspace(appWindow, engine);
+  const current = () => appWindow.current() as Entry | undefined;
+  const opened = (): Entry => {
+    const entry = current();
+    if (!entry) {
+      throw new Error("the window isn't open");
+    }
+    return entry;
+  };
+  return { engine, appWindow, workspace, current, opened, detached };
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -70,203 +85,190 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
 describe("restore", () => {
-  it("brings back the saved windows with their keys and bounds, onto a visible screen", async () => {
-    const { engine, workspace, windows } = setup();
-    engine.answers.set("saved_windows", () =>
-      Promise.resolve({
-        windows: [
-          { key: "a", bounds: { x: 80, y: 60, width: 1440, height: 900 }, maximized: false, tabs: [] },
-          { key: "b", bounds: { x: 9000, y: 9000, width: 800, height: 600 }, maximized: true, tabs: [] },
-          { key: "", bounds: null },
-        ],
-      }),
-    );
+  it("opens the window where it was, maximized if it was, and hands the UI the last board shown", async () => {
+    const { engine, workspace, current } = setup();
+    engine.answers.set("window_state", () => Promise.resolve({ ...SAVED, maximized: true }));
     await workspace.restore();
 
-    expect(windows().map((entry) => entry.key)).toEqual(["a", "b"]);
-    expect(windows().map((entry) => entry.window.bounds)).toEqual([
-      { x: 80, y: 60, width: 1440, height: 900 },
-      { x: 560, y: 240, width: 800, height: 600 },
-    ]);
-    windows()[1]?.window.emit("ready-to-show");
-    expect(windows()[1]?.window.maximized).toBe(true);
-    expect(engine.names().filter((name) => !name.startsWith("save_window_bounds"))).toEqual(["saved_windows 0"]);
+    expect(engine.calls).toEqual([[0, "window_state", {}]]);
+    expect(createdWindows).toHaveLength(1);
+    expect(current()?.window.bounds).toEqual(SAVED.bounds);
+    current()?.window.emit("ready-to-show");
+    expect(current()?.window.maximized).toBe(true);
+    expect(workspace.shownBoard()).toEqual(BOARD);
   });
 
-  it("brings back at most 16 windows", async () => {
-    const { engine, workspace, windows } = setup();
-    const saved = Array.from({ length: 20 }, (_, i) => ({ key: `w${i}`, bounds: null, maximized: false }));
-    engine.answers.set("saved_windows", () => Promise.resolve({ windows: saved }));
+  it("moves the window onto a visible screen when its display is gone", async () => {
+    const { engine, workspace, current } = setup();
+    engine.answers.set("window_state", () => Promise.resolve({ ...SAVED, bounds: { x: 9000, y: 9000, width: 800, height: 600 } }));
     await workspace.restore();
-    expect(windows()).toHaveLength(16);
+    expect(current()?.window.bounds).toEqual({ x: 560, y: 240, width: 800, height: 600 });
   });
 
-  it("opens one new window when none were saved or the engine can't say", async () => {
+  it("opens the window on Home at its default size when nothing was saved or the engine can't say", async () => {
     for (const answer of [
-      () => Promise.resolve({ windows: [] }),
+      () => Promise.resolve(null),
       () => Promise.reject(new EngineRequestError({ code: "engine_unavailable", message: "down" })),
     ]) {
-      const { engine, workspace, windows } = setup();
-      engine.answers.set("saved_windows", answer);
+      resetFakeElectron();
+      const { engine, workspace, current } = setup();
+      engine.answers.set("window_state", answer);
       await workspace.restore();
-      expect(windows()).toHaveLength(1);
+      expect(createdWindows).toHaveLength(1);
+      expect(current()?.window.bounds).toEqual({ x: 0, y: 0, width: 1280, height: 820 });
+      expect(workspace.shownBoard()).toBeNull();
     }
   });
 
-  it("restores once when asked again while restoring, and skips windows already open", async () => {
-    const { engine, registry, workspace, windows } = setup();
+  it("restores once, and leaves a window an agent opened meanwhile as it is", async () => {
+    const { engine, appWindow, workspace } = setup();
     const answer = deferred<unknown>();
-    engine.answers.set("saved_windows", () => answer.promise);
+    engine.answers.set("window_state", () => answer.promise);
     const first = workspace.restore();
     const second = workspace.restore();
-    answer.resolve({ windows: [{ key: "a", bounds: null, maximized: false }] });
+    const opened = appWindow.open();
+    answer.resolve(SAVED);
     await Promise.all([first, second]);
-    expect(windows().map((entry) => entry.key)).toEqual(["a"]);
 
-    engine.answers.set("saved_windows", () =>
-      Promise.resolve({ windows: [{ key: "a", bounds: null, maximized: false }, { key: "b", bounds: null }] }),
-    );
+    expect(engine.callsOf("window_state")).toHaveLength(1);
+    expect(appWindow.current()).toBe(opened);
+    expect(createdWindows).toHaveLength(1);
+    expect(workspace.shownBoard()).toBeNull();
+  });
+});
+
+describe("saving the window's state", () => {
+  it("saves the bounds and the board shown once they settle, and nothing else", async () => {
+    vi.useFakeTimers();
+    const { engine, workspace, current } = setup();
     await workspace.restore();
-    expect(registry.all().map((entry) => entry.key)).toEqual(["a", "b"]);
+    const entry = current();
+    entry?.window.emit("move");
+    workspace.showBoard(BOARD);
+    entry?.window.emit("resize");
+    await vi.advanceTimersByTimeAsync(400);
+    expect(engine.callsOf("save_window_state")).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(engine.calls.at(-1)).toEqual([entry?.id, "save_window_state", { state: { bounds: { x: 0, y: 0, width: 1280, height: 820 }, maximized: false, board: BOARD } }]);
+
+    workspace.showBoard(null);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(engine.callsOf("save_window_state").at(-1)).toMatchObject({ state: { board: null } });
+    expect(workspace.shownBoard()).toBeNull();
+  });
+
+  it("saves a change still waiting as the window closes, and detaches it only after that save settled", async () => {
+    const { engine, workspace, opened, detached } = setup();
+    await workspace.restore();
+    const entry = opened();
+    const saved = deferred<unknown>();
+    engine.answers.set("save_window_state", () => saved.promise);
+    entry.window.maximized = true;
+    entry.window.emit("maximize");
+    workspace.showBoard(BOARD);
+
+    entry.window.close();
+    expect(engine.callsOf("save_window_state")).toEqual([{ state: { bounds: { x: 0, y: 0, width: 1280, height: 820 }, maximized: true, board: BOARD } }]);
+    await flush();
+    expect(detached).toEqual([]);
+
+    saved.resolve(null);
+    await flush();
+    expect(detached).toEqual([entry.id]);
+  });
+
+  it("saves nothing as the window closes when nothing changed, and nothing while it is closed", async () => {
+    vi.useFakeTimers();
+    const { engine, workspace, opened, detached } = setup();
+    await workspace.restore();
+    const entry = opened();
+    entry.window.close();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(detached).toEqual([entry.id]);
+
+    workspace.showBoard(BOARD);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(engine.callsOf("save_window_state")).toEqual([]);
+  });
+});
+
+describe("showing the window again", () => {
+  it("reopens a closed window where it was, on the board it showed, with a new id", async () => {
+    const { engine, workspace, opened } = setup();
+    engine.answers.set("window_state", () => Promise.resolve(SAVED));
+    await workspace.restore();
+    const first = opened();
+    first.window.bounds.x = 200;
+    first.window.close();
+
+    await workspace.show();
+    const second = opened();
+    expect(second).not.toBe(first);
+    expect(second.id).toBeGreaterThan(first.id);
+    expect(second.window.bounds).toEqual({ ...SAVED.bounds, x: 200 });
+    expect(second.window.shows).toBe(1);
+    expect(workspace.shownBoard()).toEqual(BOARD);
+    expect(engine.callsOf("window_state")).toHaveLength(1);
+  });
+
+  it("brings the open window to the front, after the launch restore", async () => {
+    const { engine, workspace, current } = setup();
+    const answer = deferred<unknown>();
+    engine.answers.set("window_state", () => answer.promise);
+    void workspace.restore();
+    const shown = workspace.show();
+    await flush();
+    expect(createdWindows).toEqual([]);
+
+    answer.resolve(SAVED);
+    await shown;
+    expect(createdWindows).toHaveLength(1);
+    expect(current()?.window.bounds).toEqual(SAVED.bounds);
+    expect(current()?.window.shows).toBe(1);
   });
 });
 
 describe("addProject", () => {
-  it("adds the folder with the trusted add_project and tells the focused window to select it", async () => {
-    const { engine, registry, workspace } = setup();
+  it("adds the folder with the trusted add_project and tells the window to select it once its UI has loaded", async () => {
+    const { engine, workspace, current } = setup();
     engine.answers.set("add_project", () => Promise.resolve({ status: "added", project: { id: PROJECT } }));
-    const [a, b] = [registry.create() as Entry, registry.create() as Entry];
-    a.window.finishLoad();
-    b.window.finishLoad();
-    b.window.focus();
-
+    await workspace.restore();
     await workspace.addProject("/code/shop");
-    expect(engine.names()).toContain("add_project 0");
-    expect(engine.calls.find((call) => call.startsWith("add_project"))).toBe('add_project 0 {"path":"/code/shop"}');
-    expect(a.window.sent).toEqual([]);
-    expect(b.window.sent).toEqual([{ type: "project_added", project: PROJECT }]);
+
+    expect(engine.calls.at(-1)).toEqual([0, "add_project", { path: "/code/shop" }]);
+    expect(current()?.window.sent).toEqual([]);
+    current()?.window.finishLoad();
+    expect(current()?.window.sent).toEqual([{ type: "project_added", project: PROJECT }]);
   });
 
-  it("tells the first window when none is focused, and an existing project is selected too", async () => {
-    const { engine, registry, workspace } = setup();
+  it("opens the window when it is closed, and an existing project is selected too", async () => {
+    const { engine, workspace, current } = setup();
     engine.answers.set("add_project", () => Promise.resolve({ status: "exists", project: { id: PROJECT } }));
-    const first = registry.create() as Entry;
-    registry.create();
-    first.window.finishLoad();
+    await workspace.restore();
+    current()?.window.close();
     await workspace.addProject("/code/shop");
-    expect(first.window.sent).toEqual([{ type: "project_added", project: PROJECT }]);
+    current()?.window.finishLoad();
+    expect(createdWindows).toHaveLength(2);
+    expect(current()?.window.sent).toEqual([{ type: "project_added", project: PROJECT }]);
   });
 
-  it("opens a window when there is none, and tells it once its UI has loaded", async () => {
-    const { engine, workspace, windows } = setup();
-    engine.answers.set("add_project", () => Promise.resolve({ status: "added", project: { id: PROJECT } }));
-    await workspace.addProject("/code/shop");
-    const [created] = windows();
-    expect(created?.window.sent).toEqual([]);
-    created?.window.finishLoad();
-    expect(created?.window.sent).toEqual([{ type: "project_added", project: PROJECT }]);
-  });
-
-  it("at launch, waits for the restored windows instead of opening one", async () => {
-    const { engine, workspace, windows } = setup();
-    const saved = deferred<unknown>();
-    engine.answers.set("saved_windows", () => saved.promise);
-    engine.answers.set("add_project", () => Promise.resolve({ status: "added", project: { id: PROJECT } }));
-    const restored = workspace.restore();
-    const added = workspace.addProject("/code/shop");
-    await flush();
-    expect(windows()).toEqual([]);
-
-    saved.resolve({ windows: [{ key: "a", bounds: null, maximized: false }] });
-    await Promise.all([restored, added]);
-    expect(windows().map((entry) => entry.key)).toEqual(["a"]);
-    windows()[0]?.window.finishLoad();
-    expect(windows()[0]?.window.sent).toEqual([{ type: "project_added", project: PROJECT }]);
-  });
-
-  it("tells the focused window why the engine refused a folder, and logs it", async () => {
-    const { engine, registry, workspace } = setup();
-    engine.answers.set("add_project", () =>
-      Promise.reject(new EngineRequestError({ code: "not_a_folder", message: "Not a folder: /code/gone." })),
-    );
-    const [a, b] = [registry.create() as Entry, registry.create() as Entry];
-    a.window.finishLoad();
-    b.window.finishLoad();
-    b.window.focus();
-    await workspace.addProject("/code/gone");
-    expect(a.window.sent).toEqual([]);
-    expect(b.window.sent).toEqual([
-      { type: "project_add_failed", path: "/code/gone", message: "Not a folder: /code/gone." },
-    ]);
-    expect(console.error).toHaveBeenCalledWith(
-      "[main] adding /code/gone to the workspace failed: not_a_folder: Not a folder: /code/gone.",
-    );
-  });
-
-  it("at launch, tells a restored window about a folder it couldn't add once its UI has loaded", async () => {
-    const { engine, workspace, windows } = setup();
-    engine.answers.set("saved_windows", () => Promise.resolve({ windows: [{ key: "a", bounds: null, maximized: false }] }));
+  it("tells the window why the engine refused a folder, and logs it", async () => {
+    const { engine, workspace, current } = setup();
     engine.answers.set("add_project", () =>
       Promise.reject(new EngineRequestError({ code: "too_many_projects", message: "The workspace is full." })),
     );
-    await Promise.all([workspace.restore(), workspace.addProject("/code/shop")]);
-    expect(windows().map((entry) => entry.key)).toEqual(["a"]);
-    windows()[0]?.window.finishLoad();
-    expect(windows()[0]?.window.sent).toEqual([
-      { type: "project_add_failed", path: "/code/shop", message: "The workspace is full." },
-    ]);
-  });
-});
-
-describe("remembering windows", () => {
-  it("saves a window's bounds as soon as it is created", () => {
-    const { engine, registry } = setup();
-    const entry = registry.create({ key: "a", bounds: { x: 10, y: 20, width: 900, height: 700 }, maximized: false });
-    expect(engine.calls).toEqual([
-      `save_window_bounds ${entry.id} ${JSON.stringify({ key: "a", bounds: { x: 10, y: 20, width: 900, height: 700 }, maximized: false })}`,
-    ]);
-  });
-
-  it("forgets a closed window unless it was the last one", async () => {
-    const { engine, registry } = setup();
-    const [a, b] = [registry.create() as Entry, registry.create() as Entry];
-    engine.calls.length = 0;
-    a.window.close();
-    await flush();
-    expect(engine.calls).toEqual([`forget_window ${a.id} ${JSON.stringify({ key: a.key })}`]);
-
-    b.window.close();
-    await flush();
-    expect(engine.names()).toEqual([`forget_window ${a.id}`]);
-  });
-
-  it("remembers every window closing while the app quits", async () => {
-    const { engine, registry, workspace } = setup();
-    const [a] = [registry.create() as Entry, registry.create()];
-    engine.calls.length = 0;
-    workspace.setQuitting();
-    a.window.close();
-    await flush();
-    expect(engine.calls).toEqual([]);
-  });
-
-  it("forgets a window only after its last bounds save settled", async () => {
-    const { engine, registry } = setup();
-    const [a] = [registry.create() as Entry, registry.create()];
-    const saved = deferred<unknown>();
-    engine.answers.set("save_window_bounds", () => saved.promise);
-    a.window.emit("move");
-    engine.calls.length = 0;
-    a.window.close(); // Flushes the debounced move.
-    await flush();
-    expect(engine.names()).toEqual([`save_window_bounds ${a.id}`]);
-
-    saved.resolve(null);
-    await flush();
-    expect(engine.names()).toEqual([`save_window_bounds ${a.id}`, `forget_window ${a.id}`]);
+    await workspace.restore();
+    current()?.window.finishLoad();
+    await workspace.addProject("/code/shop");
+    expect(current()?.window.sent).toEqual([{ type: "project_add_failed", path: "/code/shop", message: "The workspace is full." }]);
+    expect(console.error).toHaveBeenCalledWith(
+      "[main] adding /code/shop to the workspace failed: too_many_projects: The workspace is full.",
+    );
   });
 });

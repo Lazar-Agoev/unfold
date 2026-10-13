@@ -44,7 +44,7 @@ const RELATIONS_SHOWN = 3;
 const UNOPENED_SHOWN = 5;
 
 /** The focus target of the selected card's description. */
-export const DESCRIPTION_FIELD = "selected.description";
+const DESCRIPTION_FIELD = "selected.description";
 
 /** One entry per target (several calls to one function are one row), in source order. */
 function uniqueTargets(calls: readonly OutgoingCall[]): OutgoingCall[] {

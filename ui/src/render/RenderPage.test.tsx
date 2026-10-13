@@ -5,7 +5,7 @@ import { render, waitFor } from "@testing-library/react";
 import type { RenderAnswer, RenderJob } from "@unfold/desktop/render-api";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { queryClient } from "../ipc/client";
-import type { Card, Page, Preferences } from "../ipc/generated";
+import type { Card, Page } from "../ipc/generated";
 import { engineKey } from "../ipc/queries";
 import { getOpenBoard, getPageView } from "../state/boards";
 import { resetBoards } from "../state/boards/store";
@@ -18,16 +18,6 @@ const P = "p-orders0000";
 const BOARD = { project: P, id: ".unfold/local/drafts/b.json" };
 const KEY = "src/routes/orders.ts#function:createOrder";
 const GONE = "src/routes/orders.ts#function:gone";
-
-const PREFERENCES: Preferences = {
-  theme: "dark",
-  editorCommand: null,
-  backgroundUpdates: true,
-  threadLimit: null,
-  keyBindings: {},
-  updates: { enabled: true },
-  agents: { enabled: false, port: 29180 },
-};
 
 if (!("DOMMatrixReadOnly" in globalThis)) {
   // React Flow reads the viewport transform through DOMMatrixReadOnly; jsdom lacks it.
@@ -81,7 +71,6 @@ beforeEach(() => {
         throw { code: "not_found", message: "no such key" };
       },
       line_labels: () => [],
-      get_preferences: () => PREFERENCES,
     },
   });
   uninstallJobs = installRenderJobs();
@@ -91,7 +80,6 @@ afterEach(() => {
   uninstallJobs();
   engine.uninstall();
   resetBoards();
-  document.documentElement.removeAttribute("data-theme");
 });
 
 function cards(): Card[] {
@@ -132,15 +120,14 @@ function answerTo(requestId: number): Promise<RenderAnswer> {
 }
 
 describe("the render window", () => {
-  it("draws the page it is handed, read-only, in the person's theme, and answers with its bounds once measured", async () => {
+  it("draws the page it is handed, read-only, and answers with its bounds once measured", async () => {
     const sent = job("image");
     const { container } = draw(sent);
     expect(getOpenBoard(BOARD)?.readOnly).toBe(true);
     expect(await answerTo(sent.requestId)).toEqual({ ok: true, bounds: { x: 0, y: 0, width: 1000, height: 220 } });
     expect(container.querySelectorAll(".react-flow__node")).toHaveLength(2);
     expect(container.querySelector(".board-topbar, .board-dock, .board-sidebar")).toBeNull();
-    expect(document.documentElement.dataset["theme"]).toBe("dark");
-    // Nothing of a board that holds no claim is ever opened or saved.
+    // Nothing of a board the engine doesn't hold open is ever opened or saved.
     expect(engine.calls.map((call) => call.command).filter((command) => command.includes("board"))).toEqual([]);
   });
 
@@ -152,8 +139,6 @@ describe("the render window", () => {
     engine.emit({ type: "render_frame", requestId: 99, camera, width: 400, height: 220 });
     expect(await answerTo(99)).toEqual({ ok: true });
     expect(getPageView({ board: BOARD, page: "page-1" }).camera).toEqual(camera);
-    await new Promise((resolve) => setTimeout(resolve, 1100));
-    expect(engine.callsOf("save_board_view")).toEqual([]);
     expect(engine.callsOf("save_board")).toEqual([]);
   });
 

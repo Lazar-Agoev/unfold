@@ -19,7 +19,6 @@ function board(title: string, folder: string | null, place: BoardSummary["place"
     projects: [],
     changes: 0,
     updatedAtMs: 0,
-    heldBy: null,
     label: null,
     error: null,
   };

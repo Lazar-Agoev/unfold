@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Card, Page } from "../ipc/generated";
 import * as store from "../state/boards/store";
-import { useTabs } from "../state/tabStore";
+import { showBoard, useShownBoardStore } from "../state/shownBoard";
 import { installFakeEngine, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, page } from "../test/workspace";
 import { REPORT_DELAY_MS, currentView, installViewReports, visibleItems } from "./viewReport";
@@ -27,7 +27,7 @@ let engine: FakeEngine;
 
 beforeEach(() => {
   store.resetBoards();
-  useTabs.setState({ boards: [], active: "home" });
+  useShownBoardStore.setState({ board: null });
   engine = installFakeEngine();
 });
 
@@ -67,12 +67,12 @@ describe("visibleItems", () => {
 });
 
 describe("currentView", () => {
-  it("reports Home with the board tabs, and a board's page, selection, and lens (Diagram or Code)", () => {
+  it("reports Home with the open boards, and the shown board's page, selection, and lens (Diagram or Code)", () => {
     store.adoptBoardState(boardState(P, ID, boardDocument([PAGE])));
-    useTabs.setState({ boards: [REF, OTHER], active: "home" });
+    store.adoptBoardState(boardState(P, OTHER.id));
     expect(currentView(null)).toEqual({ selection: { kind: "none" }, visible: [], tabs: [REF, OTHER] });
 
-    useTabs.setState({ active: `${P}\u0000${ID}` });
+    showBoard(REF);
     store.select(TARGET, { kind: "card", cardId: "a", key: "src/a.ts#function:a/if[0]" });
     expect(currentView(null)).toEqual({
       board: REF,
@@ -82,7 +82,7 @@ describe("currentView", () => {
       visible: ["a", "b", "a-checks", "b-email", "a-to-b"],
       tabs: [REF, OTHER],
     });
-    // A legacy Flow lens is Diagram.
+    // A Flow lens is Diagram.
     store.setPageLens(TARGET, "flow");
     const line = { arrowId: "x", project: P, source: "src/a.ts#function:a/call[0]", seq: 0, from: "a", to: "b", line: 7 };
     store.select(TARGET, { kind: "line", ...line });
@@ -115,9 +115,9 @@ describe("installViewReports", () => {
     store.adoptBoardState(boardState(P, ID, boardDocument([PAGE])));
     const stop = installViewReports();
     await vi.advanceTimersByTimeAsync(REPORT_DELAY_MS);
-    expect(engine.windowCalls).toEqual([{ command: "report_view", args: { selection: { kind: "none" }, visible: [], tabs: [] } }]);
+    expect(engine.windowCalls).toEqual([{ command: "report_view", args: { selection: { kind: "none" }, visible: [], tabs: [REF] } }]);
 
-    useTabs.setState({ boards: [REF], active: `${P}\u0000${ID}` });
+    showBoard(REF);
     store.select(TARGET, { kind: "card", cardId: "b", key: null });
     await vi.advanceTimersByTimeAsync(REPORT_DELAY_MS - 1);
     expect(engine.windowCalls).toHaveLength(1);

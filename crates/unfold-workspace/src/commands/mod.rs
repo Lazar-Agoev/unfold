@@ -17,7 +17,6 @@ pub mod board_hooks;
 pub mod boards;
 pub mod compiling;
 pub mod deploy_import;
-pub mod diagnostics;
 pub mod entrances;
 pub mod export;
 pub mod file_view;

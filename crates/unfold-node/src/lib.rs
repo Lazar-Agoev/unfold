@@ -98,8 +98,8 @@ pub fn cancel(request_id: i64) {
     }
 }
 
-/// A window closed: waits (at most 15 s) for its closing writes in flight, then releases its board
-/// claims and sessions and its Home selection.
+/// A window closed: waits (at most 15 s) for its closing writes in flight, then closes the boards it
+/// opened, with their sessions, and releases its Home selection.
 #[napi(catch_unwind, ts_return_type = "Promise<void>")]
 pub fn detach_window(env: &Env, window_id: u32) -> Result<Object<'_>> {
     promise(env, move |done| {

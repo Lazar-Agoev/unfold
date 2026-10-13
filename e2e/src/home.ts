@@ -1,7 +1,6 @@
 /**
  * The window in Home mode: the sidebar's projects, Home's header and state line, the not-compiled
- * setup, How it starts, and the window tabs. Locators use what a person sees (roles and names); waits
- * are on state.
+ * setup, and How it starts. Locators use what a person sees (roles and names); waits are on state.
  */
 
 import type { Locator, Page } from "@playwright/test";
@@ -36,37 +35,16 @@ export async function projectId(page: Page, name: string): Promise<string> {
   return row.id;
 }
 
-// --- Window tabs ------------------------------------------------------------------------------
-
-/** The window's tab strip. */
-function tabStrip(page: Page): Locator {
-  return page.getByRole("tablist", { name: "Window tabs" });
-}
-
-/** The window's tabs: Home first, then a tab per open board (named by its title). */
-export function tabs(page: Page): Locator {
-  return tabStrip(page).getByRole("tab");
-}
-
-export function homeTab(page: Page): Locator {
-  return tabStrip(page).getByRole("tab", { name: "Home", exact: true });
-}
-
-/** A board's tab, by its title. */
-export function boardTab(page: Page, title: string): Locator {
-  return tabStrip(page).getByRole("tab", { name: title, exact: true });
-}
-
-/** Shows Home (its tab). */
-export async function showHome(page: Page): Promise<void> {
-  await homeTab(page).click();
-  await expect(homeTab(page)).toHaveAttribute("aria-selected", "true");
-}
-
 // --- Sidebar ----------------------------------------------------------------------------------
 
 export function sidebar(page: Page): Locator {
   return page.getByRole("complementary", { name: "Sidebar" });
+}
+
+/** Goes back to Home from the shown board (the chevron of the board sidebar's crumb). */
+export async function showHome(page: Page): Promise<void> {
+  await sidebar(page).getByRole("button", { name: "Home", exact: true }).click();
+  await expect(homeMain(page)).toBeVisible();
 }
 
 /** The projects tree of Home's sidebar. */

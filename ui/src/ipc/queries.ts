@@ -97,7 +97,7 @@ export function keyFile(key: string): string {
 }
 
 /** Commands that don't depend on any project; the engine-restart reset leaves them alone. */
-const APP_COMMANDS: ReadonlySet<string> = new Set<CommandName>(["get_preferences", "app_info"]);
+const APP_COMMANDS: ReadonlySet<string> = new Set<CommandName>(["get_settings", "app_info"]);
 
 const WORKSPACE_KEY = engineKey("workspace", {});
 
@@ -215,10 +215,6 @@ export function applyEngineEvent(client: QueryClient, event: WorkspaceEvent): vo
           args["project"] === event.project && (command === "project_config" || command === "compile_preview" || command === "scope_dir"),
       );
       return;
-    case "preferences_changed":
-      // Another window (or this one) saved the preferences; the event carries them.
-      client.setQueryData(engineKey("get_preferences", {}), event.preferences);
-      return;
     case "compile_progress":
     case "board_conflict":
       // Not about the cache: the compile and board stores follow these.
@@ -236,7 +232,6 @@ const CACHE_EVENTS: readonly EventType[] = [
   "boards_changed",
   "problems_changed",
   "config_changed",
-  "preferences_changed",
 ];
 
 /**
@@ -267,7 +262,7 @@ export function installEngineInvalidation(client: QueryClient): () => void {
 /**
  * After an engine-host restart: whatever the engine answered before may be out of date
  * (no events arrived while it was down), so every project query is reset and the shown ones fetched
- * again. Preferences and app info don't depend on the engine's state and stay.
+ * again. Settings and app info don't depend on the engine's state and stay.
  */
 export function resetEngineQueries(client: QueryClient): Promise<void> {
   return client.resetQueries({

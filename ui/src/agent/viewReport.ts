@@ -1,15 +1,15 @@
 /**
  * What this window shows, reported to the main process (`report_view`, design §5.6) so agents work on
- * the view of the window used last by default: the active board and page, the selection, the lens
- * (Diagram or Code), the items in view, and the board tabs (the boards this window holds). Sent ~150 ms after any of them
- * changes, and at once when the window gains focus.
+ * the view of the window used last by default: the shown board and page, the selection, the lens
+ * (Diagram or Code), the items in view, and the open boards (`tabs`: the boards this window holds). Sent
+ * ~150 ms after any of them changes, and at once when the window gains focus.
  */
 
 import type { ViewReport, ViewSelection } from "@unfold/desktop/agent-api";
 import type { Rect, Size } from "../canvas/layout";
 import { windowCommand, type Page } from "../ipc";
 import { displayedRects, findPage, getOpenBoard, getPageView, pageLens, useBoards, type Camera, type Selection } from "../state/boards";
-import { getActiveBoard, useTabs } from "../state/tabs";
+import { getShownBoard, useShownBoardStore } from "../state/shownBoard";
 
 /** How long the window waits after a change before reporting its view. */
 export const REPORT_DELAY_MS = 150;
@@ -81,8 +81,8 @@ export function visibleItems(page: Page, rects: ReadonlyMap<string, Rect>, camer
 
 /** The window's view now; `canvas` is the canvas's size on screen (null when none is shown). */
 export function currentView(canvas: Size | null): ViewReport {
-  const tabs = useTabs.getState().boards.map((ref) => ({ project: ref.project, id: ref.id }));
-  const ref = getActiveBoard();
+  const tabs = Object.values(useBoards.getState().boards).map(({ ref }) => ({ project: ref.project, id: ref.id }));
+  const ref = getShownBoard();
   const board = ref ? getOpenBoard(ref) : undefined;
   const page = board ? findPage(board.document, board.activePage) : undefined;
   if (!ref || !board || !page) {
@@ -130,7 +130,7 @@ export function installViewReports(): () => void {
     sent = "";
     send();
   };
-  const stops = [useTabs.subscribe(schedule), useBoards.subscribe(schedule)];
+  const stops = [useShownBoardStore.subscribe(schedule), useBoards.subscribe(schedule)];
   window.addEventListener("focus", onFocus);
   window.addEventListener("resize", schedule);
   schedule();

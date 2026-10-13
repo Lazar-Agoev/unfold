@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentEditSuccess, AgentShellEvent, ViewReport } from "../../shared/agent-api";
 import { FakeBrowserWindow, resetFakeElectron } from "../fake-electron";
 import type { WindowEntry } from "../windows";
-import { WindowRegistry } from "../windows";
+import { AppWindow } from "../windows";
 import { AgentBridge, type AgentEditInput } from "./bridge";
 import { pageRevision } from "./revision";
 import { ViewTracker } from "./views";
@@ -30,27 +30,25 @@ function report(tabs: ViewReport["tabs"]): ViewReport {
 function setup(timeoutMs = 1_000) {
   const views = new ViewTracker();
   let bridge: AgentBridge | null = null;
-  const registry = new WindowRegistry(
+  const appWindow = new AppWindow(
     { kind: "dev", url: "http://localhost:5173/" },
     {
       onLoaded: () => undefined,
+      onPlacementChanged: () => undefined,
+      onClosing: () => undefined,
       onClosed: (entry) => {
         bridge?.windowClosed(entry.id);
-      },
-      onPlacementChanged: () => undefined,
-      onFocused: (entry) => {
-        views.focused(entry.id);
       },
     },
     false,
   );
-  bridge = new AgentBridge({ windows: registry, views, timeoutMs });
+  bridge = new AgentBridge({ windows: appWindow, views, timeoutMs });
   const open = (): Entry => {
-    const entry = registry.create() as Entry;
+    const entry = appWindow.open() as Entry;
     entry.window.finishLoad();
     return entry;
   };
-  return { bridge, views, registry, open };
+  return { bridge, views, appWindow, open };
 }
 
 /** The agent requests a window received, in order. */
@@ -75,11 +73,9 @@ afterEach(() => {
 });
 
 describe("routing an edit", () => {
-  it("goes to the window whose tabs hold the board, and comes back with the page's revision", async () => {
+  it("goes to the window when it holds the board, and comes back with the page's revision", async () => {
     const { bridge, views, open } = setup();
-    const other = open();
     const holder = open();
-    views.report(other.id, report([]));
     views.report(holder.id, report([BOARD]));
 
     const outcome = bridge.edit(EDIT);
@@ -88,33 +84,30 @@ describe("routing an edit", () => {
     expect(sent).not.toHaveProperty("expectRevision");
     bridge.settle(holder.id, "edit", sent.requestId, SAVED);
     expect(await outcome).toEqual({ ...SAVED, revision: pageRevision(PAGE) });
-    expect(requests(other)).toEqual([]);
   });
 
-  it("opens a board no window holds in a background tab of the window used last, then edits it there", async () => {
+  it("opens a board the window doesn't hold in the background, then edits it there", async () => {
     const { bridge, views, open } = setup();
-    const first = open();
-    const second = open();
-    first.window.focus();
+    const entry = open();
+    views.report(entry.id, report([]));
 
     const outcome = bridge.edit(EDIT);
-    const opening = await request(first, 1);
+    const opening = await request(entry, 1);
     expect(opening).toMatchObject({ type: "agent_open_board", board: BOARD, page: "page-1" });
-    bridge.settle(first.id, "open", opening.requestId, { ok: true });
-    const editing = await request(first, 2);
+    bridge.settle(entry.id, "open", opening.requestId, { ok: true });
+    const editing = await request(entry, 2);
     expect(editing.type).toBe("agent_edit");
-    bridge.settle(first.id, "edit", editing.requestId, SAVED);
+    bridge.settle(entry.id, "edit", editing.requestId, SAVED);
     expect((await outcome).ok).toBe(true);
-    expect(views.holder(BOARD)).toBe(first.id);
-    expect(requests(second)).toEqual([]);
+    expect(views.holder(BOARD)).toBe(entry.id);
   });
 
-  it("opens a window when none is open, and sends the request once its UI has loaded", async () => {
-    const { bridge, registry } = setup();
+  it("opens the window when it is closed, and sends the request once its UI has loaded", async () => {
+    const { bridge, appWindow } = setup();
     const outcome = bridge.open({ board: BOARD });
-    const [created] = registry.all() as Entry[];
+    const created = appWindow.current() as Entry | undefined;
     if (!created) {
-      throw new Error("no window was opened");
+      throw new Error("the window wasn't opened");
     }
     expect(requests(created)).toEqual([]);
     created.window.finishLoad();
@@ -123,42 +116,32 @@ describe("routing an edit", () => {
     expect(await outcome).toEqual({ ok: true, windowId: created.id });
   });
 
-  it("follows a board another window turns out to hold, and refuses one held where no window can reach", async () => {
+  it("passes on the window's refusal to open a board", async () => {
     const { bridge, views, open } = setup();
-    const first = open();
-    const holder = open();
-    first.window.focus();
-
+    const entry = open();
     const outcome = bridge.open({ board: BOARD });
-    const opening = await request(first, 1);
-    bridge.settle(first.id, "open", opening.requestId, { ok: false, code: "held", message: "Held.", heldBy: holder.id });
-    expect(await outcome).toEqual({ ok: true, windowId: holder.id });
-    expect(views.holder(BOARD)).toBe(holder.id);
-
-    const elsewhere = { project: "p-orders0000", id: "other.json" };
-    const refused = bridge.open({ board: elsewhere });
-    const again = await request(first, 2);
-    bridge.settle(first.id, "open", again.requestId, { ok: false, code: "held", message: "Held.", heldBy: 99 });
-    expect(await refused).toMatchObject({ ok: false, code: "board_held_elsewhere" });
+    const opening = await request(entry, 1);
+    const refusal = { ok: false, code: "too_many_tabs", message: "Close a board first." };
+    bridge.settle(entry.id, "open", opening.requestId, refusal);
+    expect(await outcome).toEqual(refusal);
+    expect(views.holder(BOARD)).toBeUndefined();
   });
 
-  it("opens the board again when the window its report named no longer holds it", async () => {
+  it("opens the board again when the window's report still listed a board it closed", async () => {
     const { bridge, views, open } = setup();
-    const stale = open();
-    const last = open();
-    views.report(stale.id, report([BOARD]));
-    last.window.focus();
+    const entry = open();
+    views.report(entry.id, report([BOARD]));
 
     const outcome = bridge.edit(EDIT);
-    const first = await request(stale, 1);
-    bridge.settle(stale.id, "edit", first.requestId, { ok: false, code: "board_not_open", message: "Not here." });
-    const opening = await request(last, 1);
+    const first = await request(entry, 1);
+    bridge.settle(entry.id, "edit", first.requestId, { ok: false, code: "board_not_open", message: "Not here." });
+    const opening = await request(entry, 2);
     expect(opening.type).toBe("agent_open_board");
-    bridge.settle(last.id, "open", opening.requestId, { ok: true });
-    const editing = await request(last, 2);
-    bridge.settle(last.id, "edit", editing.requestId, SAVED);
+    bridge.settle(entry.id, "open", opening.requestId, { ok: true });
+    const editing = await request(entry, 3);
+    bridge.settle(entry.id, "edit", editing.requestId, SAVED);
     expect((await outcome).ok).toBe(true);
-    expect(views.holder(BOARD)).toBe(last.id);
+    expect(views.holder(BOARD)).toBe(entry.id);
   });
 
   it("passes on the window's refusal", async () => {
@@ -197,31 +180,28 @@ describe("expected revisions", () => {
     expect((await accepted).ok).toBe(true);
   });
 
-  it("opens the board again when the window its report named no longer holds it, then reads it there", async () => {
+  it("opens the board again when the window's report still listed a board it closed, then reads it", async () => {
     const { bridge, views, open } = setup();
-    const stale = open();
-    const last = open();
-    views.report(stale.id, report([BOARD]));
-    last.window.focus();
+    const entry = open();
+    views.report(entry.id, report([BOARD]));
 
     const outcome = bridge.edit({ ...EDIT, expectRevision: pageRevision(PAGE) });
-    const first = await request(stale, 1);
+    const first = await request(entry, 1);
     expect(first.type).toBe("agent_read");
-    bridge.settle(stale.id, "read", first.requestId, { ok: false, code: "board_not_open", message: "Not here." });
-    const opening = await request(last, 1);
+    bridge.settle(entry.id, "read", first.requestId, { ok: false, code: "board_not_open", message: "Not here." });
+    const opening = await request(entry, 2);
     expect(opening.type).toBe("agent_open_board");
-    bridge.settle(last.id, "open", opening.requestId, { ok: true });
-    const read = await request(last, 2);
-    bridge.settle(last.id, "read", read.requestId, { ok: true, page: PAGE, board: { ...BOARD_INFO, unsaved: false } });
-    const editing = await request(last, 3);
-    bridge.settle(last.id, "edit", editing.requestId, SAVED);
+    bridge.settle(entry.id, "open", opening.requestId, { ok: true });
+    const read = await request(entry, 3);
+    bridge.settle(entry.id, "read", read.requestId, { ok: true, page: PAGE, board: { ...BOARD_INFO, unsaved: false } });
+    const editing = await request(entry, 4);
+    bridge.settle(entry.id, "edit", editing.requestId, SAVED);
     expect((await outcome).ok).toBe(true);
-    expect(requests(stale)).toHaveLength(1);
   });
 });
 
 describe("reading a held page", () => {
-  it("reads from the holding window with the page's revision, and refuses a board no window holds", async () => {
+  it("reads from the window with the page's revision, and refuses a board it doesn't hold", async () => {
     const { bridge, views, open } = setup();
     const holder = open();
     expect(await bridge.read({ board: BOARD, page: "page-1" })).toMatchObject({ ok: false, code: "board_not_open" });
@@ -235,7 +215,7 @@ describe("reading a held page", () => {
     expect(await outcome).toEqual({ ...read, revision: pageRevision(PAGE) });
   });
 
-  it("forgets a board the window its report named no longer holds", async () => {
+  it("forgets a board the window's report still listed after it closed it", async () => {
     const { bridge, views, open } = setup();
     const stale = open();
     views.report(stale.id, report([BOARD]));
@@ -276,11 +256,10 @@ describe("answers", () => {
   it("takes an answer only from the window asked, for the request's kind, and checks its shape", async () => {
     const { bridge, views, open } = setup();
     const holder = open();
-    const other = open();
     views.report(holder.id, report([BOARD]));
     const outcome = bridge.edit(EDIT);
     const sent = await request(holder, 1);
-    bridge.settle(other.id, "edit", sent.requestId, SAVED);
+    bridge.settle(holder.id + 1, "edit", sent.requestId, SAVED);
     bridge.settle(holder.id, "read", sent.requestId, SAVED);
     bridge.settle(holder.id, "edit", "1", SAVED);
     bridge.settle(holder.id, "edit", sent.requestId, { ok: true, page: PAGE });
@@ -291,26 +270,21 @@ describe("answers", () => {
 describe("boards as a whole", () => {
   const CREATED = { ok: true, board: BOARD, info: BOARD_INFO, folder: null, pages: [{ id: "page-1", title: "Page 1" }] };
 
-  it("has the window used last create a draft, which it then holds", async () => {
+  it("has the window create a draft, which it then holds", async () => {
     const { bridge, views, open } = setup();
-    const other = open();
-    const last = open();
-    last.window.focus();
+    const entry = open();
     const outcome = bridge.create({ project: BOARD.project, title: "Order placement", pages: ["Page 1"] });
-    const sent = await request(last, 1);
+    const sent = await request(entry, 1);
     expect(sent).toMatchObject({ type: "agent_create_board", project: BOARD.project, title: "Order placement", pages: ["Page 1"] });
-    bridge.settle(last.id, "create", sent.requestId, CREATED);
-    expect(await outcome).toEqual({ ...CREATED, windowId: last.id });
-    expect(views.holder(BOARD)).toBe(last.id);
-    expect(requests(other)).toEqual([]);
+    bridge.settle(entry.id, "create", sent.requestId, CREATED);
+    expect(await outcome).toEqual({ ...CREATED, windowId: entry.id });
+    expect(views.holder(BOARD)).toBe(entry.id);
   });
 
-  it("copies a board in the window that holds it", async () => {
+  it("copies a board the window holds", async () => {
     const { bridge, views, open } = setup();
     const holder = open();
-    const last = open();
     views.report(holder.id, report([BOARD]));
-    last.window.focus();
     const copy = { ...CREATED, board: { project: BOARD.project, id: ".unfold/local/drafts/orders-copy.json" } };
     const outcome = bridge.create({ project: BOARD.project, copyOf: BOARD.id });
     const sent = await request(holder, 1);
@@ -318,33 +292,29 @@ describe("boards as a whole", () => {
     bridge.settle(holder.id, "create", sent.requestId, copy);
     expect(await outcome).toMatchObject({ ok: true, windowId: holder.id });
     expect(views.holder(copy.board)).toBe(holder.id);
-    expect(requests(last)).toEqual([]);
   });
 
-  it("copies a board after opening it again when the window its report named no longer holds it", async () => {
+  it("copies a board after opening it again when the window's report still listed it", async () => {
     const { bridge, views, open } = setup();
-    const stale = open();
-    const last = open();
-    views.report(stale.id, report([BOARD]));
-    last.window.focus();
+    const entry = open();
+    views.report(entry.id, report([BOARD]));
     const copy = { ...CREATED, board: { project: BOARD.project, id: ".unfold/local/drafts/orders-copy.json" } };
     const outcome = bridge.create({ project: BOARD.project, copyOf: BOARD.id });
-    bridge.settle(stale.id, "create", (await request(stale, 1)).requestId, { ok: false, code: "board_not_open", message: "This window doesn't hold the board to copy." });
-    const opening = await request(last, 1);
+    bridge.settle(entry.id, "create", (await request(entry, 1)).requestId, { ok: false, code: "board_not_open", message: "This window doesn't hold the board to copy." });
+    const opening = await request(entry, 2);
     expect(opening.type).toBe("agent_open_board");
-    bridge.settle(last.id, "open", opening.requestId, { ok: true });
-    const copying = await request(last, 2);
+    bridge.settle(entry.id, "open", opening.requestId, { ok: true });
+    const copying = await request(entry, 3);
     expect(copying).toMatchObject({ type: "agent_create_board", copyOf: BOARD.id });
-    bridge.settle(last.id, "create", copying.requestId, copy);
-    expect(await outcome).toMatchObject({ ok: true, windowId: last.id });
-    expect(views.holder(BOARD)).toBe(last.id);
-    expect(views.holder(copy.board)).toBe(last.id);
+    bridge.settle(entry.id, "create", copying.requestId, copy);
+    expect(await outcome).toMatchObject({ ok: true, windowId: entry.id });
+    expect(views.holder(BOARD)).toBe(entry.id);
+    expect(views.holder(copy.board)).toBe(entry.id);
   });
 
-  it("edits a board's pages in the window that holds it, opening it there first when none does", async () => {
+  it("edits a board's pages in the window, opening the board there first", async () => {
     const { bridge, open } = setup();
     const last = open();
-    last.window.focus();
     const edit = { board: BOARD, agent: EDIT.agent, title: "Edit pages", ops: [{ op: "add_page", title: "More" }] } as const;
     const outcome = bridge.editBoard(edit);
     const opening = await request(last, 1);
@@ -361,12 +331,10 @@ describe("boards as a whole", () => {
     expect(await malformed).toMatchObject({ ok: false, code: "internal" });
   });
 
-  it("shows a board: the holding window switches to it and comes to the front, or a background tab only", async () => {
+  it("shows a board: the window switches to it and comes to the front, or opens it in the background only", async () => {
     const { bridge, views, open } = setup();
     const holder = open();
-    const last = open();
     views.report(holder.id, report([BOARD]));
-    last.window.focus();
 
     const shown = bridge.show({ board: BOARD, page: "page-1", item: "create-order" }, false);
     const sent = await request(holder, 1);
@@ -375,12 +343,12 @@ describe("boards as a whole", () => {
     expect(await shown).toEqual({ ok: true, windowId: holder.id, page: "page-1" });
     expect(FakeBrowserWindow.focused).toBe(holder.window);
 
-    last.window.focus();
+    FakeBrowserWindow.focused = null;
     const refused = bridge.show({ board: BOARD, item: "nope" }, false);
     const second = await request(holder, 2);
     bridge.settle(holder.id, "show", second.requestId, { ok: false, code: "invalid_op", message: "No item nope." });
     expect(await refused).toMatchObject({ ok: false, code: "invalid_op" });
-    expect(FakeBrowserWindow.focused).toBe(last.window);
+    expect(FakeBrowserWindow.focused).toBeNull();
 
     expect(await bridge.show({ board: BOARD }, true)).toEqual({ ok: true, windowId: holder.id });
     expect(requests(holder)).toHaveLength(2);
@@ -425,18 +393,13 @@ describe("finishing", () => {
     expect(bridge.workedOn("agent:claude")).toEqual([]);
   });
 
-  it("tells the window that holds the board, else the window used last", () => {
-    const { bridge, views, open } = setup();
-    const holder = open();
-    const last = open();
-    views.report(holder.id, report([BOARD]));
-    last.window.focus();
+  it("tells the window when it is open", () => {
+    const { bridge, open } = setup();
     const finish = { board: BOARD, agent: EDIT.agent, summary: "Added the order flow" };
-
     bridge.finish(finish);
-    expect(holder.window.sent).toContainEqual({ type: "agent_finish", ...finish });
 
-    bridge.finish({ ...finish, board: { project: "p-orders0000", id: "other.json" } });
-    expect(last.window.sent).toContainEqual({ type: "agent_finish", ...finish, board: { project: "p-orders0000", id: "other.json" } });
+    const entry = open();
+    bridge.finish(finish);
+    expect(entry.window.sent).toEqual([{ type: "agent_finish", ...finish }]);
   });
 });

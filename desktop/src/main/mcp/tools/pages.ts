@@ -52,7 +52,7 @@ async function pagesText(context: ToolContext, board: BoardSummary): Promise<str
 async function boardLines(context: ToolContext, board: BoardSummary, project?: string): Promise<string[]> {
   const ref = { project: board.project, id: board.id };
   const view = currentView(context);
-  const held = board.heldBy !== null || context.views.holder(ref) !== undefined;
+  const held = context.views.holder(ref) !== undefined;
   const facts = [
     project,
     board.place === "draft" ? "draft" : board.changes > 0 ? `published, ${count(board.changes, "unpublished change")}` : "published",

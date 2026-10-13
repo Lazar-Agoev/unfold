@@ -1,20 +1,20 @@
 /**
- * Starts and supervises the engine host (docs/architecture.md#processes, process hardening). The main process hands every
- * window its own MessagePort to the engine host and then stays out of the data path. If the engine
- * host exits, it is restarted and every window is re-attached with fresh ports.
+ * Starts and supervises the engine host (docs/architecture.md#processes, process hardening). The main process hands the
+ * window (and the render window) its own MessagePort to the engine host and then stays out of the
+ * data path. If the engine host exits, it is restarted and every window is re-attached with fresh
+ * ports.
  *
  * The main process also sends the engine a few requests of its own ({@link EngineHost.request}),
- * which the engine host dispatches with `"trusted": true`: adding a project from a dialog, a drop,
- * or the command line, exporting to a path from a save dialog, and remembering windows. The MCP
- * server's requests for agents go without it ({@link EngineHost.untrusted}), as a window's do. The
- * engine host also forwards the events the main process follows ({@link EngineHost.onEvent}).
+ * which the engine host dispatches with `"trusted": true`: adding a project from the folder picker,
+ * exporting to a path from a save dialog, and the window's state. The MCP server's requests for
+ * agents go without it ({@link EngineHost.untrusted}), as a window's do.
  */
 
 import type { UtilityProcess } from "electron";
 import { MessageChannelMain, utilityProcess } from "electron";
 import type { AppFolders, EngineLost, HostToMain, MainToHost } from "../shared/transport";
 import { IPC, transportError } from "../shared/transport";
-import type { TransportError, UnfoldEvent } from "../shared/unfold-api";
+import type { TransportError } from "../shared/unfold-api";
 import type { WindowEntry } from "./windows";
 
 /** A failed main-process request, carrying the engine's `{code, message}`. */
@@ -36,7 +36,7 @@ export interface EngineHostOptions {
   readonly modulePath: string;
   readonly addonPath: string;
   readonly folders: AppFolders;
-  /** Every open window, for re-attaching after a restart. */
+  /** Every open window (the app's window and the render window), for re-attaching after a restart. */
   readonly windows: () => readonly WindowEntry[];
 }
 
@@ -56,7 +56,6 @@ export class EngineHost {
   private stopping = false;
   private nextRequestId = 1;
   private readonly requests = new Map<number, PendingRequest>();
-  private readonly eventListeners = new Set<(event: UnfoldEvent) => void>();
 
   constructor(private readonly options: EngineHostOptions) {}
 
@@ -147,14 +146,6 @@ export class EngineHost {
     return this.send(windowId, command, args, false, onStream);
   }
 
-  /** Follows the engine events the engine host forwards (`MAIN_EVENTS`). Returns an unsubscribe function. */
-  onEvent(listener: (event: UnfoldEvent) => void): () => void {
-    this.eventListeners.add(listener);
-    return () => {
-      this.eventListeners.delete(listener);
-    };
-  }
-
   private send(
     windowId: number,
     command: string,
@@ -179,12 +170,6 @@ export class EngineHost {
   }
 
   private onHostMessage(message: HostToMain): void {
-    if (message.type === "event") {
-      for (const listener of this.eventListeners) {
-        listener(message.event);
-      }
-      return;
-    }
     if (message.type === "stream") {
       this.requests.get(message.id)?.onStream?.(message.message);
       return;

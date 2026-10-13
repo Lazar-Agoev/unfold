@@ -217,7 +217,6 @@ export function AddButtons({ label, newPage, disabled, onActivate }: { readonly 
       <Button
         variant="primary"
         className="add-preview-primary"
-        shortcut="Enter"
         disabled={disabled}
         onMouseDown={(event) => {
           event.preventDefault();
@@ -231,7 +230,6 @@ export function AddButtons({ label, newPage, disabled, onActivate }: { readonly 
       {newPage ? (
         <Button
           variant="secondary"
-          shortcut="Mod+Enter"
           disabled={disabled}
           onMouseDown={(event) => {
             event.preventDefault();

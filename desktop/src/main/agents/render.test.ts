@@ -347,7 +347,7 @@ describe("check", () => {
     });
     engine.answers.set("board_health", () => {
       if (engine.calls.at(-1)?.[0] === 3) {
-        throw new EngineRequestError({ code: "board_not_held", message: "The window doesn't hold the board." });
+        throw new EngineRequestError({ code: "board_not_open", message: "The board isn't open." });
       }
       return HEALTH;
     });
@@ -362,8 +362,8 @@ describe("check", () => {
 
   it("passes on why the board couldn't be opened or checked", async () => {
     const { engine, bridge, renderer } = setup();
-    bridge.open.mockResolvedValueOnce({ ok: false, code: "board_held_elsewhere", message: "Elsewhere." } as never);
-    expect(await renderer.check({ board: BOARD, page: "page-1" })).toEqual({ ok: false, code: "board_held_elsewhere", message: "Elsewhere." });
+    bridge.open.mockResolvedValueOnce({ ok: false, code: "board_not_found", message: "No such board." } as never);
+    expect(await renderer.check({ board: BOARD, page: "page-1" })).toEqual({ ok: false, code: "board_not_found", message: "No such board." });
     engine.answers.delete("board_health");
     expect(await renderer.checkBoard({ board: BOARD })).toMatchObject({ ok: false, code: "board_not_found" });
   });

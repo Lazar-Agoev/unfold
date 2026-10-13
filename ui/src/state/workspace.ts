@@ -102,8 +102,8 @@ export function refProjectFor(index: ProjectIndex, boardProject: ProjectId, card
 }
 
 /**
- * Shows a project on this window's Home: the selection is the window's own (saved with the window), and
- * `select_project` tells Rust to keep that project live. A failed call only loses liveness, which the
+ * Shows a project on this window's Home: `select_project` tells Rust, which remembers the selection and
+ * keeps that project live. A failed call only loses liveness, which the
  * next query wakes anyway.
  */
 export async function selectProject(id: ProjectId | null): Promise<void> {

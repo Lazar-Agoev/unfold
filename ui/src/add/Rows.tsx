@@ -1,20 +1,17 @@
 /**
  * The rows of Add's lists: a result of any kind (project monogram, kind column, name, trailing meta:
- * an entrance's `project · application`, a file's definition count), the "N more <kind>" link, and a
- * command (icon, group ›, name with its match in bold, keycaps). A type declaration reads with its kind
- * before its name, as its definition does (`interface Cart`).
+ * an entrance's `project · application`, a file's definition count), and the "N more <kind>" link. A
+ * type declaration reads with its kind before its name, as its definition does (`interface Cart`).
  */
 
 import { declarationWord } from "../code/typeKinds";
-import { KeyChip, Monogram } from "../components";
-import { Icon } from "../icons";
+import { Monogram } from "../components";
 import { plural } from "../lib/format";
-import type { CommandItem } from "./commands";
 import { highlightRanges } from "./highlight";
 import { baseName, definitionColumn, definitionText, entranceColumn, trimmedMatch, type ResultItem } from "./search";
 
-/** Row heights: results and commands 32, the "more" link 28. */
-export const ROW_HEIGHT = 32;
+/** Row heights: results 32, the "more" link 28. */
+const ROW_HEIGHT = 32;
 const MORE_HEIGHT = 28;
 
 export function resultHeight(item: ResultItem): number {
@@ -111,23 +108,4 @@ export function ResultRow({ item, selected, projectName, blocked }: ResultRowPro
 
 export function MoreRow({ label }: { readonly label: string }) {
   return <div className="add-more">{label}</div>;
-}
-
-export function CommandRow({ item, selected, shortcut }: { readonly item: CommandItem; readonly selected: boolean; readonly shortcut: string | null }) {
-  const { action, prefix, ranges } = item;
-  return (
-    <div className="add-command">
-      <span className="add-command-icon">{action.icon ? <Icon name={action.icon} /> : null}</span>
-      <span className="add-command-name">
-        {prefix === null ? null : (
-          <>
-            <span className="add-command-group">{prefix}</span>
-            <span className="add-command-group">›</span>
-          </>
-        )}
-        <span className="add-command-title">{highlightRanges(action.title, ranges, "add-command-match")}</span>
-      </span>
-      {shortcut === null ? null : <KeyChip variant="keycap" shortcut={shortcut} selected={selected} />}
-    </div>
-  );
 }

@@ -8,10 +8,10 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { activeBoardRef, boardMenu, boardView, clickCanvas, expectCardsLoaded, layerRow, publishState, readBoard, type BoardFile } from "../src/board";
+import { boardMenu, boardView, expectCardsLoaded, layerRow, publishState, readBoard, showBoard, shownBoardRef, type BoardFile } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { launchCompiled, traceEntrance } from "../src/flows";
-import { boardTab, dialog, entranceRow, homeMain, homeTab, showEntrances, showHome, sidebar, toast } from "../src/home";
+import { dialog, entranceRow, homeMain, showEntrances, showHome, sidebar, toast } from "../src/home";
 import { boardFiles, describeSelected, DRAFTS, expectBoardFile, firstDescription, PUBLISHED } from "../src/lifecycle";
 
 const DRAFT_ID = /^\.unfold\/local\/drafts\/board-\d+(-\d+)?\.json$/;
@@ -40,7 +40,7 @@ test.describe("publishing", () => {
       await showEntrances(page);
       await entranceRow(page, "POST", "/orders").click();
       await expect(boardView(page).locator(".entrance-card")).toBeAttached();
-      const { id } = await activeBoardRef(page);
+      const { id } = await shownBoardRef(page);
       await showHome(page);
       expect(id).toMatch(DRAFT_ID);
       const draft = await expectBoardFile(folder, id, (board) => board.title === "POST /orders" && board.pages[0]?.cards.length === 4, "the draft is written with the traced cards");
@@ -57,9 +57,8 @@ test.describe("publishing", () => {
       await expectCardsLoaded(page);
     });
 
-    await test.step("the first Publish (⇧⌘E) names the file and writes it to .unfold/boards", async () => {
-      await clickCanvas(page);
-      await page.keyboard.press("Meta+Shift+E");
+    await test.step("the first Publish names the file and writes it to .unfold/boards", async () => {
+      await boardView(page).getByRole("button", { name: "Publish", exact: true }).click();
       const publish = dialog(page, "Publish POST /orders");
       await expect(publish).toBeVisible();
       await expect(publish.getByRole("textbox", { name: "File name" })).toHaveValue("post-orders");
@@ -68,7 +67,7 @@ test.describe("publishing", () => {
       await expect(publish).toBeHidden();
       await expect(toast(page, "Published POST /orders")).toBeVisible();
       await expect(publishState(page)).toHaveText("Published");
-      expect((await activeBoardRef(page)).id).toBe(PUBLISHED_ID);
+      expect((await shownBoardRef(page)).id).toBe(PUBLISHED_ID);
       const published = readBoard(folder, PUBLISHED_ID);
       expect(published.title).toBe("POST /orders");
       expect(places(published), "the cards stand where the trace saved them").toBe(traced);
@@ -78,7 +77,7 @@ test.describe("publishing", () => {
     await test.step("a published board without changes has nothing to publish, shown again too", async () => {
       await expect(boardView(page).getByRole("button", { name: "Publish", exact: true })).toBeDisabled();
       await showHome(page);
-      await boardTab(page, "POST /orders").click();
+      await showBoard(page, "POST /orders");
       await expectCardsLoaded(page);
       // Long enough for an autosave (600 ms) of anything that moved after showing the board.
       await page.waitForTimeout(1_500);
@@ -94,7 +93,7 @@ test.describe("publishing", () => {
       await expect(publishState(page)).toHaveText("Published · 1 unpublished change");
       await expectBoardFile(folder, ".unfold/local/drafts/post-orders.changes.json", (board) => firstDescription(board) === "Takes an order from the web", "the changes copy holds the edit");
       expect(readFileSync(join(folder, PUBLISHED_ID), "utf8")).toBe(published);
-      expect((await activeBoardRef(page)).id).toBe(PUBLISHED_ID);
+      expect((await shownBoardRef(page)).id).toBe(PUBLISHED_ID);
     });
 
     await test.step("Publish (top bar) writes the changes over the published file", async () => {
@@ -125,7 +124,7 @@ test.describe("publishing", () => {
       await boardMenu(page, "Move back to drafts");
       await expect(toast(page, "POST /orders is a draft again")).toBeVisible();
       await expect(publishState(page)).toHaveText("Draft");
-      const { id } = await activeBoardRef(page);
+      const { id } = await shownBoardRef(page);
       expect(id).toMatch(/^\.unfold\/local\/drafts\//);
       expect(existsSync(join(folder, PUBLISHED_ID))).toBe(false);
       expect(firstDescription(readBoard(folder, id))).toBe("Takes an order from the web");
@@ -141,7 +140,7 @@ test.describe("publishing", () => {
     await expect(publishState(page)).toHaveText("Published");
 
     await test.step("publishing a second board under the same name suggests another", async () => {
-      await homeTab(page).click();
+      await showHome(page);
       await traceEntrance(page, "POST", "/orders");
       await boardView(page).getByRole("button", { name: "Publish", exact: true }).click();
       const publish = dialog(page, "Publish POST /orders");
@@ -154,7 +153,7 @@ test.describe("publishing", () => {
       await publish.getByRole("button", { name: "Publish", exact: true }).click();
       await expect(publish).toBeHidden();
       await expect(publishState(page)).toHaveText("Published");
-      expect((await activeBoardRef(page)).id).toBe(`.unfold/boards/${suggestion}.json`);
+      expect((await shownBoardRef(page)).id).toBe(`.unfold/boards/${suggestion}.json`);
       expect(boardFiles(folder, PUBLISHED)).toEqual(["post-orders.json", `${suggestion}.json`].sort());
     });
   });

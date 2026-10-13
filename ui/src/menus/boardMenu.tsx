@@ -1,9 +1,9 @@
 /**
  * The board menu: the `⋯` in the board header, and the right-click menu of
- * a board on Home and in the sidebar. Rename…, Move to folder ›, Duplicate, Open in new window, Share ›,
- * Fold all cards, Unfold all cards, Discard changes… (only with unpublished changes), Move back to
- * drafts (only published), Delete…. Share, Fold, and Unfold need a page, so they are disabled for a
- * board this window doesn't hold.
+ * a board on Home and in the sidebar. Rename…, Move to folder ›, Duplicate, Share ›, Fold all cards,
+ * Unfold all cards, Discard changes… (only with unpublished changes), Move back to drafts (only
+ * published), Delete…. Share, Fold, and Unfold need a page, so they are disabled for a board that
+ * isn't open.
  */
 
 import type { JSX } from "react";
@@ -12,7 +12,7 @@ import { engineKey, queryClient, useEngineQuery, type BoardList, type BoardSumma
 import { openMoveToFolder } from "../dialogs";
 import { foldAll, getOpenBoard, useOpenBoard, type BoardRef, type PageId, type PageTarget } from "../state/boards";
 import { openDialog } from "../state/overlays";
-import { copyMermaid, duplicate, exportMermaid, exportPng, moveBackToDrafts, moveToFolder, openInNewWindow, renameBoardInPlace } from "./actions";
+import { copyMermaid, duplicate, exportMermaid, exportPng, moveBackToDrafts, moveToFolder, renameBoardInPlace } from "./actions";
 
 /** What the menu needs to know about a board. */
 export interface BoardFacts {
@@ -85,7 +85,7 @@ function folderEntries(ref: BoardRef, current: string | null, folders: readonly 
 }
 
 /** A board's title, place, unpublished changes (`list_boards` follows every save), and folder. */
-export function describeBoard({ summary, open }: BoardFacts): {
+function describeBoard({ summary, open }: BoardFacts): {
   readonly title: string;
   readonly place: "published" | "draft";
   readonly changes: number;
@@ -101,7 +101,7 @@ export function describeBoard({ summary, open }: BoardFacts): {
 
 /** The menu for a board, from what is known about it. */
 export function boardMenuFor(ref: BoardRef, facts: BoardFacts): MenuEntry[] {
-  const { summary, open } = facts;
+  const { open } = facts;
   const { title, place, changes, folder } = describeBoard(facts);
   const target: PageTarget | null = open ? { board: ref, page: open.page } : null;
   const fold = (folded: boolean) => () => {
@@ -127,7 +127,6 @@ export function boardMenuFor(ref: BoardRef, facts: BoardFacts): MenuEntry[] {
     { id: "rename", label: "Rename…", onSelect: () => void renameBoardInPlace(ref) },
     { id: "move", label: "Move to folder", submenu: folderEntries(ref, folder, facts.folders) },
     { id: "duplicate", label: "Duplicate", onSelect: () => void duplicate(ref) },
-    { id: "new-window", label: "Open in new window", disabled: !open && (summary?.heldBy ?? null) !== null, onSelect: () => void openInNewWindow(ref) },
     { kind: "separator", id: "s1" },
     target
       ? { id: "share", label: "Share", submenu: shareMenuEntries(target) }
@@ -148,7 +147,7 @@ export function boardMenuFor(ref: BoardRef, facts: BoardFacts): MenuEntry[] {
 }
 
 /** What is known about a board now: the cached `list_boards` and this window's session. */
-export function cachedBoardFacts(ref: BoardRef): BoardFacts {
+function cachedBoardFacts(ref: BoardRef): BoardFacts {
   return factsOf(ref, queryClient.getQueryData<BoardList>(engineKey("list_boards", { project: ref.project })));
 }
 

@@ -80,14 +80,6 @@
   text-overflow: ellipsis;
 }
 
-.menu-item-shortcut {
-  margin-left: 8px;
-  font-family: var(--font-ui);
-  font-size: var(--text-12);
-  line-height: var(--leading-16);
-  color: var(--color-muted);
-}
-
 /* 9px in all: a 1px rule with 4px above and below. */
 .menu-separator {
   flex-shrink: 0;

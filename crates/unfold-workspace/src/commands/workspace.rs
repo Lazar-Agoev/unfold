@@ -53,7 +53,7 @@ pub fn readd_project(ctx: &Ctx<'_>, args: AddProjectArgs) -> CommandResult<Added
 }
 
 /// `remove_project`: removes the project from the workspace (never touching its `.unfold/`).
-/// Refused with `boards_open` while a window holds one of its boards.
+/// Refused with `boards_open` while one of its boards is open.
 pub fn remove_project(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<()> {
     Ok(ctx.projects().remove(&args.project)?)
 }
@@ -121,8 +121,8 @@ pub struct SwitchWorktreeArgs {
 
 /// `switch_worktree`: points the project at another worktree of its repository (its graph,
 /// boards, drafts, and `state.json` become that folder's). Refused with `not_a_worktree` for a
-/// path `git_info` doesn't list as available, and with `boards_open` while a window holds one of
-/// its boards.
+/// path `git_info` doesn't list as available, and with `boards_open` while one of its boards is
+/// open.
 pub fn switch_worktree(ctx: &Ctx<'_>, args: SwitchWorktreeArgs) -> CommandResult<ProjectRow> {
     Ok(ctx.projects().switch_worktree(&args.project, &args.path)?)
 }

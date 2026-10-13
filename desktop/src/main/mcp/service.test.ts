@@ -4,13 +4,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentServerStatus } from "../../shared/agent-api";
 import { AgentBridge } from "../agents/bridge";
 import { ViewTracker } from "../agents/views";
-import { agentSettings, McpService } from "./service";
+import { McpService } from "./service";
 import { NO_RENDERER } from "./tools/testing";
 
 vi.mock("electron", async () => (await import("../fake-electron")).electronModule);
 
 const services = {
-  bridge: new AgentBridge({ windows: { get: () => undefined, all: () => [], create: () => { throw new Error("no windows"); }, deliver: () => undefined, focus: () => undefined }, views: new ViewTracker() }),
+  bridge: new AgentBridge({ windows: { get: () => undefined, current: () => undefined, open: () => { throw new Error("no window"); }, deliver: () => undefined, focus: () => undefined }, views: new ViewTracker() }),
   renderer: NO_RENDERER,
   engine: () => Promise.resolve(null),
   engineAs: () => Promise.resolve(null),
@@ -27,9 +27,9 @@ afterEach(async () => {
   await Promise.all(blockers.splice(0).map((server) => new Promise((resolve) => server.close(resolve))));
 });
 
-function setup() {
+function setup(port = 0) {
   const statuses: AgentServerStatus[] = [];
-  const service = new McpService({ services, version: "1.0.0", onStatus: (status) => statuses.push(status) });
+  const service = new McpService({ services, version: "1.0.0", onStatus: (status) => statuses.push(status), port });
   started.push(service);
   return { service, statuses };
 }
@@ -43,44 +43,36 @@ function post(status: AgentServerStatus, method: string, name: string): Promise<
   });
 }
 
-describe("agentSettings", () => {
-  it("reads Preferences › Agents, and is off when it can't", () => {
-    expect(agentSettings({ agents: { enabled: true, port: 31000 } })).toEqual({ enabled: true, port: 31000 });
-    expect(agentSettings({ agents: { enabled: "yes", port: 70_000 } })).toEqual({ enabled: false, port: 29180 });
-    expect(agentSettings({ theme: "dark" })).toEqual({ enabled: false, port: 29180 });
-    expect(agentSettings(null)).toEqual({ enabled: false, port: 29180 });
-  });
-});
-
 describe("McpService", () => {
-  it("is off until Preferences › Agents turns it on, and reports each change", async () => {
-    const { service, statuses } = setup();
-    expect(service.status()).toEqual({ state: "off", port: 29180, address: "http://127.0.0.1:29180/mcp", agents: [] });
-    await service.configure({ enabled: false, port: 29180 });
-    expect(statuses).toEqual([]);
-
-    await service.configure({ enabled: true, port: 0 });
-    const port = service.status().port;
-    expect(statuses.map((status) => status.state)).toEqual(["starting", "listening"]);
-    expect(service.status()).toEqual({ state: "listening", port, address: `http://127.0.0.1:${port}/mcp`, agents: [] });
-
-    await service.configure({ enabled: false, port: 0 });
-    expect(statuses.at(-1)).toMatchObject({ state: "off" });
+  it("listens on the agents' port, 127.0.0.1:29180, unless told otherwise", () => {
+    const service = new McpService({ services, version: "1.0.0", onStatus: () => undefined });
+    expect(service.status()).toEqual({ state: "starting", address: "http://127.0.0.1:29180/mcp", agents: [] });
   });
 
-  it("says the port is taken", async () => {
+  it("starts listening and reports it", async () => {
+    const { service, statuses } = setup();
+    await service.start();
+    const address = service.status().address;
+    expect(address).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
+    expect(address).not.toBe("http://127.0.0.1:0/mcp");
+    expect(statuses).toEqual([{ state: "listening", address, agents: [] }]);
+  });
+
+  it("says another program holds the port", async () => {
     const blocker = createServer();
     blockers.push(blocker);
     await new Promise<void>((resolve) => blocker.listen(0, "127.0.0.1", resolve));
     const port = (blocker.address() as AddressInfo).port;
-    const { service } = setup();
-    await service.configure({ enabled: true, port });
-    expect(service.status()).toEqual({ state: "port_taken", port, address: `http://127.0.0.1:${port}/mcp`, agents: [] });
+    const { service, statuses } = setup(port);
+    await service.start();
+    const taken = { state: "port_taken", address: `http://127.0.0.1:${port}/mcp`, agents: [] };
+    expect(service.status()).toEqual(taken);
+    expect(statuses).toEqual([taken]);
   });
 
-  it("lists the agents that connect, reports their activity at most once a second, and forgets them when turned off", async () => {
+  it("lists the agents that connect, and reports their activity at most once a second", async () => {
     const { service, statuses } = setup();
-    await service.configure({ enabled: true, port: 0 });
+    await service.start();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const listening = service.status();
     const before = statuses.length;
@@ -92,9 +84,5 @@ describe("McpService", () => {
     vi.advanceTimersByTime(1_000);
     expect(statuses).toHaveLength(before + 1);
     expect(statuses.at(-1)?.agents.map((agent) => agent.name)).toEqual(["Codex", "Claude"]);
-
-    await service.configure({ enabled: false, port: listening.port });
-    expect(service.status().agents).toEqual([]);
-    expect(statuses.at(-1)).toMatchObject({ state: "off", agents: [] });
   });
 });

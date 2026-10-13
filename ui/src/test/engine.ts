@@ -15,7 +15,7 @@ export function fixture<C extends CommandName>(_command: C, name: string): Comma
   if (value === undefined) {
     throw new Error(`No golden response named ${name}`);
   }
-  return structuredClone(value) as CommandResult<C>;
+  return structuredClone(value);
 }
 
 type Handler<C extends CommandName> = (args: CommandArgs<C>) => CommandResult<C> | Promise<CommandResult<C>>;
@@ -100,9 +100,6 @@ export function installFakeEngine({ handlers = {}, streams = {}, windowHandlers 
       const handler = windowHandlers[command];
       return handler ? await handler(args) : null;
     }) as UnfoldApi["window"],
-    // Rejections are plain {code, message} data, as from the real preload.
-    // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
-    addDroppedFolder: () => Promise.reject({ code: "invalid_command", message: "No drops in tests." }),
   };
 
   Object.defineProperty(window, "unfold", { configurable: true, value: api });

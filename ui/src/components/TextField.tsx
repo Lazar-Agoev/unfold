@@ -1,12 +1,12 @@
 /**
  * Text inputs: `TextField` (a labeled field with hint and error) and `SearchField` (a filter box with
- * a clear button; Escape clears it). A SearchField with a `focusKey` is the target of actions such as
- * "Focus search" (`/`), even if it mounts after the action runs.
+ * a clear button; Escape clears it). A SearchField with a `focusKey` is a named focus target
+ * (`requestFocus`), even if it mounts after the request.
  */
 
 import { useId, useRef, type ChangeEvent, type InputHTMLAttributes, type KeyboardEvent, type Ref } from "react";
 import { Icon } from "../icons";
-import { useFocusTarget } from "../keyboard";
+import { useFocusTarget } from "../lib/focus-targets";
 import { assignRef, cx } from "./internal/dom";
 import "./TextField.css";
 

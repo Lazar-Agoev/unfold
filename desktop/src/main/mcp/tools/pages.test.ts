@@ -123,7 +123,6 @@ function file(page: AgentPage = PAGE): ReadBoardResult {
     document: { format: "unfold-board", version: 1, title: "Order placement", projects: [], pages: [page as unknown as Page, { ...(page as unknown as Page), id: "page-2", title: "Async path" }] },
     revision: "r1",
     published: null,
-    heldBy: null,
   };
 }
 
@@ -391,7 +390,7 @@ describe("read_page", () => {
 });
 
 function summary(id: string, title: string, overrides: Partial<BoardSummary> = {}): BoardSummary {
-  return { project: PROJECT, id, place: "draft", name: id, title, folder: null, pages: 2, cards: 6, projects: [], changes: 0, updatedAtMs: 0, heldBy: null, label: null, error: null, ...overrides };
+  return { project: PROJECT, id, place: "draft", name: id, title, folder: null, pages: 2, cards: 6, projects: [], changes: 0, updatedAtMs: 0, label: null, error: null, ...overrides };
 }
 
 describe("list_boards", () => {
@@ -401,7 +400,7 @@ describe("list_boards", () => {
         list_boards: () => ({
           project: PROJECT,
           boards: [
-            summary(".unfold/boards/orders.json", "Orders", { place: "published", changes: 2, folder: "flows", label: "1 missing · 2 outdated", heldBy: 1 }),
+            summary(".unfold/boards/orders.json", "Orders", { place: "published", changes: 2, folder: "flows", label: "1 missing · 2 outdated" }),
             summary(BOARD.id, "Order placement"),
             summary(".unfold/boards/broken.json", "Broken", { place: "published", error: "the file isn't a board" }),
           ],
@@ -410,7 +409,7 @@ describe("list_boards", () => {
         read_board: (args) => file({ ...PAGE, title: args["id"] === BOARD.id ? "Placing an order" : "Overview" }),
       },
     });
-    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD, { project: PROJECT, id: ".unfold/boards/orders.json" }] });
     const { text } = await test.call(listBoards);
     expect(text.split("\n")).toEqual([
       "Unfold · ts-orders · as Claude",

@@ -31,20 +31,6 @@ status: AddStatus,
 project: ProjectRow, };
 
 /**
- * Preferences › Agents: the MCP server the main process runs on `127.0.0.1` while it is on. Off
- * until the person turns it on.
- */
-export type AgentPreferences = { 
-/**
- * Whether agents may connect: the server listens only while this is on.
- */
-enabled: boolean, 
-/**
- * The port the server listens on.
- */
-port: number, };
-
-/**
  * What a resource card or a connection cites, which Unfold can verify: a block or entrance key,
  * or a line range of an evidence file, in the board's own project (`project` absent) or in the
  * project with that shared name.
@@ -152,6 +138,16 @@ alsoIn: Array<string>,
  * Its launches; empty for "No launch defined".
  */
 launches: Array<LaunchRow>, };
+
+/**
+ * `settings.json` in the app-data folder.
+ */
+export type AppSettings = { 
+/**
+ * The command that opens a file in the person's editor, such as `code -g {path}:{line}`;
+ * without one, files open in TextEdit.
+ */
+editorCommand?: string, };
 
 /**
  * An `[[application]]` table, as the editor submits it and the settings view lists it.
@@ -334,7 +330,7 @@ boards: Array<BoardSummary>,
 emptyFolders: Array<string>, };
 
 /**
- * A page of a board the calling window holds.
+ * A page of an open board.
  */
 export type BoardPage = { 
 /**
@@ -427,11 +423,7 @@ outlines: Array<PageOutline>,
 /**
  * The board list's label when something is wrong ("2 outdated").
  */
-label: string | null, 
-/**
- * The view state remembered in `state.json`.
- */
-view: BoardView | null, };
+label: string | null, };
 
 /**
  * One board in the sidebar tree, Home's Boards, or Drafts.
@@ -483,10 +475,6 @@ changes: number,
  */
 updatedAtMs: number, 
 /**
- * The window that has it open, if any.
- */
-heldBy: number | null, 
-/**
  * A label when something is wrong ("1 missing · 2 outdated"); `None` when healthy or while
  * the project rests.
  */
@@ -495,20 +483,6 @@ label: string | null,
  * Why the file can't be read, if it can't.
  */
 error: string | null, };
-
-/**
- * A board's view state (`state.json` `boards[id]`): its last active page and each
- * page's camera and lens.
- */
-export type BoardView = { 
-/**
- * The last active page.
- */
-page: string | null, 
-/**
- * Each page's camera and lens, by page id.
- */
-pages: { [key in string]: PageView }, };
 
 /**
  * The contract of one selected line: a resolved call or construction.
@@ -1374,24 +1348,6 @@ signature: string, };
  * An entrance detector.
  */
 export type DetectorId = "manual" | "package.script" | "package.bin" | "express.route" | "bullmq.worker" | "node-cron.schedule" | "pyproject.script" | "fastapi.route" | "celery.task" | "apscheduler.job";
-
-/**
- * The arguments of `diagnostics`.
- */
-export type DiagnosticsArgs = { 
-/**
- * The project to describe as well, if any.
- */
-project?: ProjectId, };
-
-/**
- * What `diagnostics` returns.
- */
-export type DiagnosticsReport = { 
-/**
- * The summary, one fact per line, already redacted.
- */
-text: string, };
 
 /**
  * The draft application a launch joins.
@@ -3381,7 +3337,7 @@ export type MermaidTextArgs = {
  */
 project: ProjectId, 
 /**
- * A page of a board the calling window holds (its last saved version).
+ * A page of an open board (its last saved version).
  */
 board?: BoardPage, 
 /**
@@ -3395,23 +3351,6 @@ entrance?: string, };
  * two or more distinct nonempty labels sorted by their UTF-16 code units, stored as its text.
  */
 export type ModuleLabel = string;
-
-/**
- * The arguments of `move_board`.
- */
-export type MoveBoardArgs = { 
-/**
- * The board's project.
- */
-project: ProjectId, 
-/**
- * The board's id.
- */
-id: string, 
-/**
- * The window to move it to.
- */
-toWindow: number, };
 
 /**
  * The arguments of `new_board`.
@@ -3467,19 +3406,6 @@ attach?: string,
 author: Author, };
 
 /**
- * What `open_board` did.
- */
-export type OpenBoardResult = { "status": "opened", 
-/**
- * The board.
- */
-board: BoardState, } | { "status": "held", 
-/**
- * The window holding it.
- */
-heldBy: number, };
-
-/**
  * The arguments of `open_in_editor`.
  */
 export type OpenInEditorArgs = { 
@@ -3495,11 +3421,6 @@ path: string,
  * The one-based line to open at.
  */
 line?: number, };
-
-/**
- * How a file was opened.
- */
-export type OpenedWith = "editor" | "default_app";
 
 /**
  * A definition's outgoing edges, grouped for the inspector.
@@ -3724,27 +3645,6 @@ rows: Array<OutlineRow>,
 unlabeled: Array<Unlabeled>, };
 
 /**
- * One page's camera and lens in a board's view state.
- */
-export type PageView = { 
-/**
- * The camera's x.
- */
-x: number, 
-/**
- * The camera's y.
- */
-y: number, 
-/**
- * The zoom.
- */
-zoom: number, 
-/**
- * The page's lens, or `None` for its default view.
- */
-lens: View | null, };
-
-/**
  * Why an argument fills no proven parameter.
  */
 export type PairingReason = "spread" | "no_parameter" | "receiver" | "no_signature";
@@ -3795,39 +3695,6 @@ language: Language | null, };
  * Where a board file lives.
  */
 export type Place = "published" | "draft";
-
-/**
- * `preferences.json` in the app-data folder.
- */
-export type Preferences = { 
-/**
- * The theme.
- */
-theme: Theme, 
-/**
- * The command that opens a file in the person's editor, such as `code -g {path}:{line}`.
- */
-editorCommand: string | null, 
-/**
- * Whether background updates start on for newly compiled projects.
- */
-backgroundUpdates: boolean, 
-/**
- * The most threads a compile uses; `None` means every core but one.
- */
-threadLimit: number | null, 
-/**
- * Key binding overrides, by command.
- */
-keyBindings: { [key in string]: string }, 
-/**
- * The update check.
- */
-updates: UpdatePreferences, 
-/**
- * Whether agents may connect to the app's local MCP server, and on which port.
- */
-agents: AgentPreferences, };
 
 /**
  * What Add's preview pane and the map popover show for one result.
@@ -4457,11 +4324,7 @@ revision: string,
 /**
  * For a published board, its publish state, as `open_board` reports it; `None` for a draft.
  */
-published: PublishedState | null, 
-/**
- * The window that has it open, if any.
- */
-heldBy: number | null, };
+published: PublishedState | null, };
 
 /**
  * Why an occurrence or entrance target is unresolved.
@@ -4830,73 +4693,13 @@ board: BoardEdit,
 force?: boolean, };
 
 /**
- * The arguments of `save_board_view`.
- */
-export type SaveBoardViewArgs = { 
-/**
- * The board's project.
- */
-project: ProjectId, 
-/**
- * The board's id.
- */
-id: string, 
-/**
- * The view state.
- */
-view: BoardView, };
-
-/**
  * The arguments of `save_window_state`.
  */
 export type SaveWindowStateArgs = { 
 /**
- * The window's state; `key` names it.
+ * The window's position and size, and the board it shows.
  */
-state: WindowStateInput, };
-
-/**
- * One window as it should come back at launch (a `windows.json` entry).
- */
-export type SavedWindow = { 
-/**
- * The stable key the main process assigns (window ids change every run).
- */
-key: string, 
-/**
- * Position and size, once the main process saved them.
- */
-bounds: WindowBounds | null, 
-/**
- * Whether the window was maximized.
- */
-maximized: boolean, 
-/**
- * The project the window's Home shows.
- */
-selectedProject: ProjectId | null, 
-/**
- * The board tabs, in order.
- */
-tabs: Array<WindowTab>, 
-/**
- * The active tab's position in `tabs`, or `None` for Home.
- */
-activeTab: number | null, 
-/**
- * What the UI keeps about the window's layout (sidebar width and mode, peek pin, Home's
- * view, …), as the UI describes it.
- */
-layout: JsonValue, };
-
-/**
- * The windows that come back at launch.
- */
-export type SavedWindows = { 
-/**
- * Oldest first.
- */
-windows: Array<SavedWindow>, };
+state: WindowState, };
 
 /**
  * One level of the scope tree.
@@ -5137,15 +4940,6 @@ id: string,
 folder: string | null, };
 
 /**
- * The arguments of `set_preferences`.
- */
-export type SetPreferencesArgs = { 
-/**
- * Every preference (read them with `get_preferences`, change some, send them back).
- */
-preferences: Preferences, };
-
-/**
  * The arguments of `set_project_expanded`.
  */
 export type SetProjectExpandedArgs = { 
@@ -5157,6 +4951,15 @@ project: ProjectId,
  * Whether its sidebar row is expanded.
  */
 expanded: boolean, };
+
+/**
+ * The arguments of `set_settings`.
+ */
+export type SetSettingsArgs = { 
+/**
+ * Every setting (read them with `get_settings`, change some, send them back).
+ */
+settings: AppSettings, };
 
 /**
  * One change to the settings file. See the [module documentation](self).
@@ -5330,6 +5133,19 @@ routes: number,
  * The other applications that mount it, by name.
  */
 alsoIn: Array<string>, };
+
+/**
+ * The board the window shows, by project id and board id.
+ */
+export type ShownBoard = { 
+/**
+ * The board's project.
+ */
+project: ProjectId, 
+/**
+ * The board's id.
+ */
+board: string, };
 
 /**
  * `sha256:` and the hash of the exact selected source bytes.
@@ -5642,11 +5458,6 @@ filesTruncated: boolean,
  * Each searched project's counts, in workspace order.
  */
 projects: Array<ProjectTextMatches>, };
-
-/**
- * The light or dark theme.
- */
-export type Theme = "system" | "light" | "dark";
 
 /**
  * What a board thumbnail draws: its first page's cards and the arrows between them.
@@ -5995,15 +5806,6 @@ note: string, };
 export type Unshowable = "binary" | "too_large";
 
 /**
- * The update check (desktop/README.md#packaging): the app's only network use, which can be turned off.
- */
-export type UpdatePreferences = { 
-/**
- * Whether the app checks GitHub Releases for a new version of itself.
- */
-enabled: boolean, };
-
-/**
  * The arguments of `update_project_config`.
  */
 export type UpdateProjectConfigArgs = { 
@@ -6053,72 +5855,22 @@ width: number,
 height: number, };
 
 /**
- * The arguments of `save_window_bounds`.
+ * `window.json` in the app-data folder: the window as it should come back at launch. The main
+ * process saves it; the window's renderer reports the board it shows to the main process.
  */
-export type WindowBoundsArgs = { 
+export type WindowState = { 
 /**
- * The window's stable key.
- */
-key: string, 
-/**
- * Its position and size.
+ * Position and size.
  */
 bounds: WindowBounds, 
 /**
- * Whether it is maximized.
+ * Whether the window was maximized.
  */
-maximized: boolean, };
-
+maximized: boolean, 
 /**
- * The arguments of a command about one remembered window.
+ * The last board shown, or `None` for Home.
  */
-export type WindowKeyArgs = { 
-/**
- * The window's stable key.
- */
-key: string, };
-
-/**
- * What the UI saves about its window.
- */
-export type WindowStateInput = { 
-/**
- * The window's stable key.
- */
-key: string, 
-/**
- * The project its Home shows.
- */
-selectedProject: ProjectId | null, 
-/**
- * Its board tabs, in order (at most 100).
- */
-tabs: Array<WindowTab>, 
-/**
- * The active tab's position in `tabs`, or `None` for Home.
- */
-activeTab: number | null, 
-/**
- * Its layout, as the UI describes it (at most 64 KiB serialized).
- */
-layout: JsonValue, };
-
-/**
- * One board tab of a window. Home is implicit and always first.
- */
-export type WindowTab = { 
-/**
- * The board's project.
- */
-project: ProjectId, 
-/**
- * The board's id.
- */
-board: string, 
-/**
- * The page the tab shows, or `None` for the board's first page.
- */
-page: string | null, };
+board: ShownBoard | null, };
 
 /**
  * Which file an open board's session reads (unpublished edits).
@@ -6250,11 +6002,7 @@ diskRevision: string | null, } | { "type": "config_changed",
 /**
  * The project.
  */
-project: ProjectId, } | { "type": "preferences_changed", 
-/**
- * The preferences now saved.
- */
-preferences: Preferences, };
+project: ProjectId, };
 
 /**
  * The whole workspace, as every window shows it.
@@ -6413,30 +6161,25 @@ export interface Commands {
    */
   update_project_config: { args: UpdateProjectConfigArgs; result: ProjectConfig };
   /**
-   * The app preferences.
+   * The app settings.
    */
-  get_preferences: { args: NoArgs; result: Preferences };
+  get_settings: { args: NoArgs; result: AppSettings };
   /**
-   * Saves the app preferences.
+   * Saves the app settings.
    */
-  set_preferences: { args: SetPreferencesArgs; result: Preferences };
+  set_settings: { args: SetSettingsArgs; result: AppSettings };
   /**
    * The username that signs edits, and the engine version.
    */
   app_info: { args: NoArgs; result: AppInfo };
   /**
-   * A redacted summary for bug reports (Copy Diagnostics): versions, platform, counts; no
-   * source and no paths.
-   */
-  diagnostics: { args: DiagnosticsArgs; result: DiagnosticsReport };
-  /**
    * The peek sheet's render model of a file, or one page of lines.
    */
   file_view: { args: FileViewArgs; result: FileView };
   /**
-   * Opens a file in the preferred editor, or as text in the system's text editor.
+   * Opens a file with the editor command, or in TextEdit.
    */
-  open_in_editor: { args: OpenInEditorArgs; result: OpenedWith };
+  open_in_editor: { args: OpenInEditorArgs; result: null };
   /**
    * Shows a file or folder in the system's file manager.
    */
@@ -6502,9 +6245,9 @@ export interface Commands {
    */
   read_board: { args: BoardIdArgs; result: ReadBoardResult };
   /**
-   * Opens a board in the calling window, or names the window that has it.
+   * Opens a board in the calling window.
    */
-  open_board: { args: BoardIdArgs; result: OpenBoardResult };
+  open_board: { args: BoardIdArgs; result: BoardState };
   /**
    * Creates an empty draft and opens it in the calling window.
    */
@@ -6514,21 +6257,13 @@ export interface Commands {
    */
   reload_board: { args: BoardIdArgs; result: BoardState };
   /**
-   * Closes a board in the calling window.
+   * Closes an open board.
    */
   close_board: { args: BoardIdArgs; result: null };
-  /**
-   * Moves an open board to another window.
-   */
-  move_board: { args: MoveBoardArgs; result: null };
   /**
    * Validates, signs, and writes an edited board.
    */
   save_board: { args: SaveBoardArgs; result: BoardState };
-  /**
-   * Remembers a board's active page and each page's camera and lens.
-   */
-  save_board_view: { args: SaveBoardViewArgs; result: null };
   /**
    * An open board's health and outlines.
    */
@@ -6582,25 +6317,13 @@ export interface Commands {
    */
   export_mermaid_text: { args: MermaidTextArgs; result: MermaidText };
   /**
-   * What a window remembered (Home selection, tabs, layout, bounds).
+   * The remembered window: bounds and the last board shown (main process only).
    */
-  window_state: { args: WindowKeyArgs; result: SavedWindow | null };
+  window_state: { args: NoArgs; result: WindowState | null };
   /**
-   * Remembers the calling window's Home selection, tabs, and layout.
+   * Remembers the window's bounds and the board it shows (main process only).
    */
   save_window_state: { args: SaveWindowStateArgs; result: null };
-  /**
-   * Every remembered window, for restoring them at launch (main process only).
-   */
-  saved_windows: { args: NoArgs; result: SavedWindows };
-  /**
-   * Remembers a window's position and size (main process only).
-   */
-  save_window_bounds: { args: WindowBoundsArgs; result: null };
-  /**
-   * Forgets a closed window (main process only).
-   */
-  forget_window: { args: WindowKeyArgs; result: null };
 }
 
 /** A command's name. */
@@ -6652,10 +6375,9 @@ export const COMMAND_NAMES = [
   "set_background_updates",
   "project_config",
   "update_project_config",
-  "get_preferences",
-  "set_preferences",
+  "get_settings",
+  "set_settings",
   "app_info",
-  "diagnostics",
   "file_view",
   "open_in_editor",
   "reveal_in_finder",
@@ -6678,9 +6400,7 @@ export const COMMAND_NAMES = [
   "new_board",
   "reload_board",
   "close_board",
-  "move_board",
   "save_board",
-  "save_board_view",
   "board_health",
   "repair_board",
   "publish_board",
@@ -6696,9 +6416,6 @@ export const COMMAND_NAMES = [
   "export_mermaid_text",
   "window_state",
   "save_window_state",
-  "saved_windows",
-  "save_window_bounds",
-  "forget_window",
 ] as const satisfies readonly CommandName[];
 
 /** The commands that stream messages. */

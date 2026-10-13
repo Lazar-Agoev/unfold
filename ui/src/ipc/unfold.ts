@@ -8,9 +8,7 @@
  */
 
 import type {
-  AddedProject,
   ConnectionState,
-  DroppedFile,
   ShellEvent,
   StreamHandle,
   TransportError,
@@ -23,8 +21,6 @@ import type {
 
 export type {
   ConnectionState,
-  DroppedFile,
-  MenuCommand,
   ShellEvent,
   UnfoldEvent,
   WindowInfo,
@@ -117,22 +113,6 @@ export async function windowCommand<C extends WindowCommand>(
   }
   try {
     return await api.window(command, ...args);
-  } catch (error) {
-    throw toUnfoldError(error);
-  }
-}
-
-/**
- * Adds a folder the person dropped on the window as a project (the drop event's `File`). Rejects
- * with `not_a_folder` when it isn't one.
- */
-export async function addDroppedFolder(file: DroppedFile): Promise<AddedProject> {
-  const api = bridge();
-  if (!api) {
-    throw new UnfoldError(NO_BRIDGE);
-  }
-  try {
-    return await api.addDroppedFolder(file);
   } catch (error) {
     throw toUnfoldError(error);
   }

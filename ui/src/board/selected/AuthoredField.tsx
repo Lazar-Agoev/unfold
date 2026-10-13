@@ -8,7 +8,7 @@
 import { useRef, type ReactNode } from "react";
 import { Author } from "../../agent";
 import type { Description } from "../../ipc/generated";
-import { useFocusTarget } from "../../keyboard";
+import { useFocusTarget } from "../../lib/focus-targets";
 
 export interface AuthoredFieldProps {
   /** The field's accessible name ("Description", "Flow label"). */

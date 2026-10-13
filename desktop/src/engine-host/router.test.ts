@@ -229,18 +229,6 @@ describe("EngineRouter: sink fan-out", () => {
     expect(gone.received()).toEqual([]);
   });
 
-  it("also hands the main process the events it follows", () => {
-    const toMain: unknown[] = [];
-    const router = new EngineRouter({ binding: new FakeBinding() }, () => undefined, (event) => toMain.push(event));
-    const port = new FakePort();
-    router.attach(1, port);
-    const preferences = { type: "preferences_changed", preferences: { agents: { enabled: true, port: 29180 } } };
-    router.handleSinkMessage(JSON.stringify({ kind: "broadcast", event: { type: "graph_updated", project: "p-aaaaaaaaaa" } }));
-    router.handleSinkMessage(JSON.stringify({ kind: "broadcast", event: preferences }));
-    expect(toMain).toEqual([preferences]);
-    expect(port.received()).toHaveLength(2);
-  });
-
   it("routes stream messages by request id and window, and drops late ones", async () => {
     const { binding, router } = setup();
     const [a, b] = [new FakePort(), new FakePort()];
@@ -288,7 +276,7 @@ describe("EngineRouter: sink fan-out", () => {
     router.handleSinkMessage("not json");
     router.handleSinkMessage("[]");
     router.handleSinkMessage(JSON.stringify({ kind: "event", windows: 1, event: {} }));
-    router.handleSinkMessage(JSON.stringify({ kind: "broadcast", event: "preferences_changed" }));
+    router.handleSinkMessage(JSON.stringify({ kind: "broadcast", event: "graph_updated" }));
     router.handleSinkMessage(JSON.stringify({ kind: "mystery" }));
     expect(logs).toEqual([
       "dropped a sink message that is not JSON",
@@ -303,7 +291,7 @@ describe("EngineRouter: sink fan-out", () => {
 describe("EngineRouter: trusted commands", () => {
   it("lists exactly the main-process-only commands and closing writes", () => {
     expect([...MAIN_PROCESS_ONLY].sort()).toEqual(
-      ["add_project", "export_mermaid", "forget_window", "save_window_bounds", "saved_windows"].sort(),
+      ["add_project", "export_mermaid", "save_window_state", "window_state"].sort(),
     );
     expect([...CLOSING_WRITES].sort()).toEqual(
       [
@@ -318,9 +306,7 @@ describe("EngineRouter: trusted commands", () => {
         "create_folder",
         "rename_folder",
         "delete_folder",
-        "save_board_view",
         "save_window_state",
-        "save_window_bounds",
       ].sort(),
     );
   });
@@ -356,12 +342,12 @@ describe("EngineRouter: trusted commands", () => {
     dispatched?.result.resolve('{"status":"added","project":{"id":"p-aaaaaaaaaa"}}');
     expect(await added).toEqual({ ok: true, value: { status: "added", project: { id: "p-aaaaaaaaaa" } } });
 
-    const forgotten = router.trusted(4, "forget_window", { key: "k" });
-    binding.dispatches.get(2)?.result.reject(new Error('{"code":"invalid_args","message":"bad key"}'));
-    expect(await forgotten).toEqual({ ok: false, error: { code: "invalid_args", message: "bad key" } });
+    const refused = router.trusted(4, "save_window_state", { state: null });
+    binding.dispatches.get(2)?.result.reject(new Error('{"code":"invalid_args","message":"bad state"}'));
+    expect(await refused).toEqual({ ok: false, error: { code: "invalid_args", message: "bad state" } });
 
     expect(await router.trusted(0, "Bad Name", {})).toMatchObject({ ok: false, error: { code: "invalid_message" } });
-    const garbled = router.trusted(0, "saved_windows", {});
+    const garbled = router.trusted(0, "window_state", {});
     binding.dispatches.get(3)?.result.resolve("{");
     expect(await garbled).toMatchObject({ ok: false, error: { code: "internal" } });
   });
@@ -397,7 +383,7 @@ describe("EngineRouter: trusted commands", () => {
 
   it("answers trusted requests with engine_unavailable when the addon is missing", async () => {
     const router = new EngineRouter({ unavailable: UNAVAILABLE }, () => undefined);
-    expect(await router.trusted(0, "saved_windows", {})).toEqual({ ok: false, error: UNAVAILABLE });
+    expect(await router.trusted(0, "window_state", {})).toEqual({ ok: false, error: UNAVAILABLE });
   });
 });
 
@@ -421,7 +407,7 @@ describe("EngineRouter: detach", () => {
     const { binding, router, logs } = setup();
     const port = new FakePort();
     router.attach(1, port);
-    // save_window_bounds is a closing write only the main process sends (tested below).
+    // save_window_state is a closing write only the main process sends (tested below).
     const windowWrites = [...CLOSING_WRITES].filter((command) => !MAIN_PROCESS_ONLY.has(command));
     windowWrites.forEach((command, i) => {
       port.send({ kind: "invoke", id: i + 1, command, args: { project: "p-aaaaaaaaaa" } });
@@ -442,11 +428,11 @@ describe("EngineRouter: detach", () => {
     expect(logs).toEqual([]);
   });
 
-  it("detaches after the main process's trusted bounds save for the window reached Rust", async () => {
+  it("detaches after the main process's trusted save of the window's state reached Rust", async () => {
     const { binding, router } = setup();
     router.attach(1, new FakePort());
-    const bounds = { key: "k", bounds: { x: 0, y: 0, width: 1100, height: 760 }, maximized: false };
-    const saved = router.trusted(1, "save_window_bounds", bounds);
+    const state = { state: { bounds: { x: 0, y: 0, width: 1100, height: 760 }, maximized: false, board: null } };
+    const saved = router.trusted(1, "save_window_state", state);
     router.detach(1);
     await flush();
 

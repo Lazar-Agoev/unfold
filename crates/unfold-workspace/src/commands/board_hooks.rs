@@ -5,17 +5,16 @@
 //! | Hook | Called by | When |
 //! | --- | --- | --- |
 //! | [`BoardExtras`] | [`super::ProjectExtras::boards`] | A live project's open board sessions, its boards' health cache, and the lock that orders disk checks; dropped when the project rests or switches worktree |
-//! | [`released`] | `Host::detach_window` | A closing window's claims on a project's boards were released: forget their sessions |
+//! | [`released`] | `Host::detach_window` | A closing window's boards of a project were closed: forget their sessions |
 //! | [`refresh_health`] | The coalesced health refresh (one thread per project) | After the project woke, after `graph_updated` of the project, and after `graph_updated` of a project its boards reference ([`dependents`]) |
 //! | [`dependents`] | The host, on `graph_updated` of a project | Which other live projects' boards have cards from it |
 //! | [`boards_changed`] | The host, on `boards_changed` (its own thread) | Board files changed on disk: check open sessions for `board_conflict`, refresh those boards' health |
 //! | [`health_rows`] | `project_summary` | Home's Health line: the boards that need review |
 //!
-//! The core keeps the claims (with each open board's cross-project references, which keep those
-//! projects live: [`crate::claims::BoardClaims::set_references`]), the recent boards
-//! ([`crate::projects::Projects::record_recent_board`] and its siblings), and the view state
-//! ([`crate::state::LocalState::put_board_view`] and its siblings); the board commands keep them
-//! current. Board health items reach the Problems list (not the row's problem count) through
+//! The core keeps the open boards (with each one's cross-project references, which keep those
+//! projects live: [`crate::open_boards::OpenBoards::set_references`]) and the recent boards
+//! ([`crate::projects::Projects::record_recent_board`] and its siblings); the board commands keep
+//! them current. Board health items reach the Problems list (not the row's problem count) through
 //! [`crate::Workspace::set_board_problems`], which [`refresh_health`] calls.
 
 use std::sync::Arc;
@@ -28,7 +27,7 @@ use crate::host::HostState;
 use crate::projects::{ProjectHandle, ProjectId};
 use crate::workspace::Workspace;
 
-/// A closing window's claims on boards `boards` of `project` were released: their sessions go.
+/// A closing window's boards `boards` of `project` were closed: their sessions go.
 /// (Health doesn't change: it is kept for every board, open or not.)
 pub(crate) fn released(_host: &Arc<HostState>, project: &ProjectHandle<'_>, boards: &[String]) {
     project.extras().boards.forget_sessions(boards);
@@ -61,8 +60,8 @@ pub(crate) fn dependents(host: &HostState, project: &ProjectId) -> Vec<ProjectId
         .collect()
 }
 
-/// Boards `boards` of a live project changed on disk: tell each window holding one whose
-/// session's working file changed (`board_conflict`), and refresh those boards' health.
+/// Boards `boards` of a live project changed on disk: tell the window that opened each open board
+/// whose session's working file changed (`board_conflict`), and refresh those boards' health.
 pub(crate) fn boards_changed(
     host: &Arc<HostState>,
     workspace: &Workspace,

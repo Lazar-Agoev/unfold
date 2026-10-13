@@ -49,11 +49,12 @@ afterEach(async () => {
   await Promise.all(blockers.splice(0).map((server) => new Promise((resolve) => server.close(resolve))));
 });
 
-/** A listener whose `serve` echoes what reached it. */
-function setup(serve?: (request: Request, body: unknown) => Promise<Response>) {
+/** A listener on `port` (0: a free one) whose `serve` echoes what reached it. */
+function setup(serve?: (request: Request, body: unknown) => Promise<Response>, port = 0) {
   const states: ListenerState[] = [];
   const served: { request: Request; body: unknown }[] = [];
   const listener = new McpListener({
+    port,
     serve:
       serve ??
       ((request, body) => {
@@ -67,7 +68,7 @@ function setup(serve?: (request: Request, body: unknown) => Promise<Response>) {
 }
 
 async function listening(listener: McpListener): Promise<number> {
-  await listener.configure({ enabled: true, port: 0 });
+  await listener.start();
   const state = listener.state;
   if (state.state !== "listening") {
     throw new Error(`not listening: ${state.state}`);
@@ -151,48 +152,32 @@ describe("the listener's checks", () => {
 });
 
 describe("starting and stopping", () => {
-  it("listens while enabled, moves with the port, and stops when turned off", async () => {
-    const { listener, states } = setup();
-    const first = await listening(listener);
-    await listener.configure({ enabled: true, port: 0 });
-    // The same settings again change nothing.
-    expect(states).toEqual([
-      { state: "starting", port: 0 },
-      { state: "listening", port: first },
-    ]);
-    const second = await takenPort();
+  it("starts on the port it was given, and stops when closed", async () => {
+    const free = await takenPort();
     await new Promise<void>((resolve) => {
       blockers.pop()?.close(() => {
         resolve();
       });
     });
-    await listener.configure({ enabled: true, port: second });
-    expect(listener.state).toEqual({ state: "listening", port: second });
-    expect((await send(second, { body: "{}" })).status).toBe(200);
-    await expect(send(first, { body: "{}" })).rejects.toThrow();
+    const { listener, states } = setup(undefined, free);
+    expect(listener.state).toEqual({ state: "starting", port: free });
+    await listener.start();
+    expect(states).toEqual([{ state: "listening", port: free }]);
+    expect((await send(free, { body: "{}" })).status).toBe(200);
 
-    await listener.configure({ enabled: false, port: second });
-    expect(listener.state).toEqual({ state: "off" });
-    await expect(send(second, { body: "{}" })).rejects.toThrow();
+    await listener.close();
+    await expect(send(free, { body: "{}" })).rejects.toThrow();
   });
 
-  it("says when the port is taken, and tries again when asked", async () => {
-    const { listener, states } = setup();
+  it("says when another program holds the port, with no fallback", async () => {
     const port = await takenPort();
-    await listener.configure({ enabled: true, port });
+    const { listener, states } = setup(undefined, port);
+    await listener.start();
     expect(listener.state).toEqual({ state: "port_taken", port });
-    expect(states.at(-1)).toEqual({ state: "port_taken", port });
-
-    await new Promise<void>((resolve) => {
-      blockers.pop()?.close(() => {
-        resolve();
-      });
-    });
-    await listener.configure({ enabled: true, port });
-    expect(listener.state).toEqual({ state: "listening", port });
+    expect(states).toEqual([{ state: "port_taken", port }]);
   });
 
-  it("disconnects everyone when it stops", async () => {
+  it("disconnects everyone when it closes", async () => {
     let reached!: () => void;
     const waiting = new Promise<void>((resolve) => {
       reached = resolve;

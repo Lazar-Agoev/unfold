@@ -2,11 +2,11 @@
 
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
-import { activeBoardRef, cameraSettled, panUntilHittable, readBoard, type BoardFile } from "./board";
+import { shownBoardRef, cameraSettled, panUntilHittable, readBoard, type BoardFile } from "./board";
 
-/** Waits until the active board's saved file satisfies `check` (autosave runs after a short pause). */
+/** Waits until the shown board's saved file satisfies `check` (autosave runs after a short pause). */
 export async function expectSaved(page: Page, folder: string, check: (board: BoardFile) => boolean, message: string): Promise<BoardFile> {
-  const { id } = await activeBoardRef(page);
+  const { id } = await shownBoardRef(page);
   let saved: BoardFile | undefined;
   await expect
     .poll(

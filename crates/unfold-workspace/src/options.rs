@@ -11,7 +11,8 @@ use unfold_engine::{EngineOptions, Language};
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
-    /// Preferences, the workspace (`workspace.json`), and remembered windows (`windows.json`).
+    /// The settings (`settings.json`), the workspace (`workspace.json`), and the remembered window
+    /// (`window.json`).
     pub app_data_dir: PathBuf,
     /// Logs.
     pub logs_dir: PathBuf,
@@ -32,8 +33,6 @@ pub struct WorkspaceOptions {
     pub scan_interval: Duration,
     /// The least time between two `compile_progress` events.
     pub progress_interval: Duration,
-    /// Whether background updates are on for a folder with no `state.json` yet.
-    pub background_updates_default: bool,
     /// How long a project stays live after its last use or its last interest (a selection, an
     /// open board) before it rests (project liveness).
     pub rest_after: Duration,
@@ -49,7 +48,6 @@ impl Default for WorkspaceOptions {
             watch: true,
             scan_interval: Duration::from_secs(10),
             progress_interval: Duration::from_millis(50),
-            background_updates_default: true,
             rest_after: Duration::from_secs(300),
             reap_interval: Duration::from_secs(30),
         }

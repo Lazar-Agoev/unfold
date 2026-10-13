@@ -8,7 +8,7 @@
 //!       live:      Option<Arc<Workspace>>   the open engine, watcher, store writer, and lock
 //!       resting:   Option<RestingReader>    a read-only pool on the stored graph, opened lazily
 //!       extras:    Arc<ProjectExtras>       command-side state, dropped on rest and switch
-//!       claims:    BoardClaims              board id -> window (and the projects its cards use)
+//!       open:      OpenBoards               board id -> window (and the projects its cards use)
 //!       interest:  compile pins, lease_until
 //!   }
 //!   selection: WindowId -> ProjectId         each window's Home selection
@@ -20,7 +20,7 @@
 //! owns liveness; the router knows nothing of projects):
 //!
 //! ```text
-//! interest(p) = a window holds a board of p || a window has p selected
+//! interest(p) = a board of p is open || a window has p selected
 //!            || an open board (of any project) has cards from p || a compile of p is running
 //! wake(p)     on a command that uses p's engine (ProjectHandle::wake), select_project, and
 //!             gaining interest otherwise (the reaper's next tick); opens the Workspace (readable
@@ -42,7 +42,7 @@
 //!
 //! Each entry has a `life` lock, held across a wake, a rest, a switch, or a removal (the slow
 //! parts: opening and closing a `Workspace`). The order is `life` → `inner` → an entry's `state`
-//! → its claims; nothing calls into a `Workspace` while holding `inner`, and events are emitted
+//! → its open boards; nothing calls into a `Workspace` while holding `inner`, and events are emitted
 //! with `inner` released, so a workspace's event (which may reach back into the registry) never
 //! waits on it.
 
@@ -59,7 +59,6 @@ use sha2::{Digest, Sha256};
 use ts_rs::TS;
 use unfold_store::ReadPool;
 
-use crate::claims::BoardClaims;
 use crate::commands::ProjectExtras;
 use crate::commit::now_ms;
 use crate::confine::{ConfinedPath, confine};
@@ -67,6 +66,7 @@ use crate::error::{Result, WorkspaceError};
 use crate::events::{EventSink, WindowId, WorkspaceEvent};
 use crate::git::{self, GitSummary, RepositoryId};
 use crate::layout::Layout;
+use crate::open_boards::OpenBoards;
 use crate::options::{AppConfig, WorkspaceOptions, default_languages, store_version};
 use crate::shared::lock;
 use crate::state::{AppData, read_json, write_json};
@@ -306,10 +306,10 @@ pub(crate) struct ProjectEntry {
     /// Held across a wake, a rest, a switch, or a removal.
     life: Mutex<()>,
     state: Mutex<EntryState>,
-    claims: BoardClaims,
+    open: OpenBoards,
 }
 
-/// What a project entry holds besides its claims.
+/// What a project entry holds besides its open boards.
 struct EntryState {
     /// The canonical folder the project points at.
     root: PathBuf,
@@ -349,7 +349,7 @@ impl ProjectEntry {
                 unavailable: None,
                 removed: false,
             }),
-            claims: BoardClaims::new(),
+            open: OpenBoards::new(),
         })
     }
 }
@@ -450,7 +450,7 @@ impl Projects {
         &self.config
     }
 
-    /// App preferences and remembered windows.
+    /// The settings and the remembered window.
     pub fn app(&self) -> &AppData {
         &self.app
     }
@@ -694,11 +694,11 @@ impl Projects {
 
     /// Removes project `id` from the workspace: closes it if live, forgets its recent boards and
     /// selections, and lists its folder under "Opened before". Never touches its `.unfold/`.
-    /// Refused with `boards_open` while a window holds one of its boards.
+    /// Refused with `boards_open` while one of its boards is open.
     pub fn remove(&self, id: &ProjectId) -> Result<()> {
         let entry = self.handle(id)?.entry;
         let _life = life(&entry);
-        if !entry.claims.is_empty() {
+        if !entry.open.is_empty() {
             return Err(WorkspaceError::BoardsOpen);
         }
         let closing = {
@@ -822,8 +822,8 @@ impl Projects {
     }
 
     /// Re-points project `id` at another worktree of its repository: `path` must be one of the
-    /// available worktree paths `git_info` lists. Refused with `boards_open` while a window holds
-    /// one of its boards. The project's graph, boards, drafts, and `state.json` become the new
+    /// available worktree paths `git_info` lists. Refused with `boards_open` while one of its
+    /// boards is open. The project's graph, boards, drafts, and `state.json` become the new
     /// folder's; it reopens there when it has interest.
     pub fn switch_worktree(&self, id: &ProjectId, path: &str) -> Result<ProjectRow> {
         let handle = self.handle(id)?;
@@ -838,7 +838,7 @@ impl Projects {
         let root = canonical_folder(Path::new(path))?;
         let entry = handle.entry;
         let _life = life(&entry);
-        if !entry.claims.is_empty() {
+        if !entry.open.is_empty() {
             return Err(WorkspaceError::BoardsOpen);
         }
         if lock(&entry.state).root == root {
@@ -966,12 +966,12 @@ impl Projects {
     /// Whether anything keeps project `entry` live. Call with `inner` and its `state` locked.
     fn interested(&self, inner: &Inner, entry: &ProjectEntry, state: &EntryState) -> bool {
         state.pins > 0
-            || !entry.claims.is_empty()
+            || !entry.open.is_empty()
             || inner.selection.values().any(|selected| *selected == entry.id)
             || inner
                 .entries
                 .values()
-                .any(|other| other.claims.references(&entry.id))
+                .any(|other| other.open.references(&entry.id))
     }
 
     /// Lets project `entry` stay live at least `rest_after` from now.
@@ -1037,27 +1037,20 @@ impl Projects {
         }
     }
 
-    /// What opening project `project`'s folder needs: the preferences' background default and
-    /// thread limit apply to every project opened after they change.
+    /// What opening project `project`'s folder needs.
     fn context(&self, project: ProjectId) -> OpenContext {
-        let preferences = self.app.preferences();
-        let mut options = self.options.clone();
-        options.background_updates_default = preferences.background_updates;
-        if let Some(limit) = preferences.thread_limit.filter(|limit| *limit > 0) {
-            options.engine.compile_threads = limit as usize;
-        }
         OpenContext {
             project,
             fallback_cache_dir: self.config.fallback_cache_dir.clone(),
-            options,
+            options: self.options.clone(),
             sink: Arc::clone(&self.sink),
             languages: default_languages(),
         }
     }
 
-    /// Releases every board `window` holds and its Home selection (the window closed). Calls
-    /// `released` with each project whose boards it held; projects losing interest start their
-    /// lease.
+    /// Closes every board `window` opened and releases its Home selection (the window closed).
+    /// Calls `released` with each project whose boards it closed; projects losing interest start
+    /// their lease.
     pub(crate) fn detach_window(
         &self,
         window: WindowId,
@@ -1069,7 +1062,7 @@ impl Projects {
             (previous, inner.entries.values().cloned().collect::<Vec<_>>())
         };
         for entry in entries {
-            let boards = entry.claims.release_window(window);
+            let boards = entry.open.close_window(window);
             if !boards.is_empty()
                 && let Ok(handle) = self.handle(&entry.id)
             {
@@ -1273,9 +1266,9 @@ impl ProjectHandle<'_> {
         confine(&self.root, path)
     }
 
-    /// Which window holds each open board of the project.
-    pub fn claims(&self) -> &BoardClaims {
-        &self.entry.claims
+    /// The project's open boards.
+    pub fn open_boards(&self) -> &OpenBoards {
+        &self.entry.open
     }
 
     /// The project's command-side state (dropped when it rests or switches worktree).

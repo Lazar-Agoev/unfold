@@ -1,6 +1,6 @@
 /**
- * A stand-in for the `electron` module, for the main process's tests: enough for the window registry
- * to create, address, focus, close, and message windows, for the render window to be sized and
+ * A stand-in for the `electron` module, for the main process's tests: enough for the app's window
+ * to open, address, focus, close, and message, for the render window to be sized and
  * captured, for the window commands to show dialogs, and for the engine host to fork its utility
  * process. Tests install it with
  * `vi.mock("electron", async () => (await import("./fake-electron")).electronModule)` and drive it
@@ -28,9 +28,6 @@ export class FakeBrowserWindow {
   static focused: FakeBrowserWindow | null = null;
   /** The largest content size a window may take (a screen's limit), or null for any. */
   static largest: { width: number; height: number } | null = null;
-  static getFocusedWindow(): FakeBrowserWindow | null {
-    return FakeBrowserWindow.focused;
-  }
 
   /** Shell events sent to the window's UI, in order. */
   readonly sent: unknown[] = [];
@@ -91,9 +88,6 @@ export class FakeBrowserWindow {
   }
   isDestroyed(): boolean {
     return this.destroyed;
-  }
-  getPosition(): number[] {
-    return [this.bounds.x, this.bounds.y];
   }
   getNormalBounds(): Rect {
     return { ...this.bounds };
@@ -251,7 +245,6 @@ export const electronModule = {
       appFocuses.push(options);
     },
   },
-  nativeTheme: { shouldUseDarkColors: false },
   screen: {
     getPrimaryDisplay: () => ({ id: 1, workArea }),
     getAllDisplays: () => [{ id: 1, workArea }],

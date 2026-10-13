@@ -4,9 +4,9 @@
  * - renderer -> host, over the window's MessagePort: {@link RendererToHost}
  * - host -> renderer, over the same port: {@link HostToRenderer}
  * - main <-> host, over the utility process's parent port: {@link MainToHost} and
- *   {@link HostToMain} (lifecycle, the main process's own trusted requests: adding a project from a
- *   dialog, a drop, or the command line, export to a path from a save dialog, and window restore;
- *   the MCP server's untrusted requests for agents; and the events the main process follows)
+ *   {@link HostToMain} (lifecycle, the main process's own trusted requests: adding a project from
+ *   the folder picker, export to a path from a save dialog, and the window's state; and the MCP
+ *   server's untrusted requests for agents)
  * - main <-> preload, over Electron IPC: the {@link IPC} channels
  */
 
@@ -50,13 +50,12 @@ export type MainToHost =
    * every window shows the whole workspace. A re-attach of the same id (a reload) swaps the port.
    */
   | { readonly type: "attach"; readonly windowId: number }
-  /** The window closed: its closing writes land, then Rust releases its claims and selection. */
+  /** The window closed: its closing writes land, then Rust releases its board sessions. */
   | { readonly type: "detach"; readonly windowId: number }
   /**
    * A command the main process itself originates, run on behalf of window `windowId` (`0` for
    * none). With `trusted`, it carries `"trusted": true`: the only way the main-process-only commands
-   * (`add_project`, `export_mermaid`, `saved_windows`, `save_window_bounds`, `forget_window`) reach
-   * Rust. Without it (the MCP server's requests for agents), it is refused or dispatched exactly as
+   * (`add_project`, `export_mermaid`, `window_state`, `save_window_state`) reach Rust. Without it (the MCP server's requests for agents), it is refused or dispatched exactly as
    * a window's would be. Answered with a {@link HostToMain} `result` carrying the same `id`; with
    * `stream` (an untrusted streamed command, such as `search_text`), each stream message first comes
    * as a `stream` message with that `id`.
@@ -75,20 +74,13 @@ export type MainToHost =
 
 /**
  * Messages from the engine host to the main process, over the utility process's parent port: the
- * outcome of a main-process {@link MainToHost} `request` (after its stream messages, when it asked
- * for them), and the engine events the main process follows ({@link MAIN_EVENTS}).
+ * outcome of a main-process {@link MainToHost} `request`, after its stream messages when it asked for
+ * them.
  */
 export type HostToMain =
   | { readonly type: "result"; readonly id: number; readonly ok: true; readonly value: unknown }
   | { readonly type: "result"; readonly id: number; readonly ok: false; readonly error: TransportError }
-  | { readonly type: "stream"; readonly id: number; readonly message: unknown }
-  | { readonly type: "event"; readonly event: UnfoldEvent };
-
-/**
- * Engine events the engine host also sends the main process: `preferences_changed`, so it starts or
- * stops the agents' server when Preferences › Agents changes.
- */
-export const MAIN_EVENTS: ReadonlySet<string> = new Set(["preferences_changed"]);
+  | { readonly type: "stream"; readonly id: number; readonly message: unknown };
 
 /** Electron IPC channels between the main process and the preload script. */
 export const IPC = {
@@ -100,15 +92,6 @@ export const IPC = {
   shellEvent: "unfold:shell-event",
   /** preload -> main (invoke): a window command. Reply is a {@link WindowReply}. */
   windowCommand: "unfold:window-command",
-} as const;
-
-/**
- * Window commands only the preload script sends, on the person's behalf, over
- * {@link IPC.windowCommand}; `window.unfold.window(...)` refuses them.
- */
-export const PRELOAD_COMMANDS = {
-  /** `{path}`: a folder dropped on the window, added as a project (the path comes from the drop's `File`). */
-  addDroppedFolder: "add_dropped_folder",
 } as const;
 
 /** Payload of {@link IPC.engineLost}. `restarting: false` means the main process gave up. */

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { debouncedSave, placeOnScreen, savedWindowList } from "./window-placement";
+import { debouncedSave, placeOnScreen, savedWindowState, shownBoard } from "./window-placement";
 
 const primary = { x: 0, y: 25, width: 1440, height: 875 };
 const right = { x: 1440, y: 0, width: 1920, height: 1080 };
@@ -33,25 +33,36 @@ describe("placeOnScreen", () => {
   });
 });
 
-describe("savedWindowList", () => {
-  it("reads saved windows and skips malformed ones", () => {
-    const result = {
-      windows: [
-        { key: "a", bounds: { x: 10.4, y: 20, width: 800, height: 600 }, maximized: true, selectedProject: null, tabs: [], activeTab: null, layout: {} },
-        { key: "b", bounds: null, maximized: false },
-        { key: "c", bounds: { x: 0, y: 0, width: 0, height: 600 } },
-        { key: "", bounds: null },
-        { bounds: null },
-        "nope",
-      ],
-    };
-    expect(savedWindowList(result)).toEqual([
-      { key: "a", bounds: { x: 10, y: 20, width: 800, height: 600 }, maximized: true },
-      { key: "b", bounds: null, maximized: false },
-      { key: "c", bounds: null, maximized: false },
-    ]);
-    expect(savedWindowList(null)).toEqual([]);
-    expect(savedWindowList({ windows: "x" })).toEqual([]);
+describe("savedWindowState", () => {
+  const BOARD = { project: "p-7k2m9q4xab", board: ".unfold/boards/orders.json" };
+
+  it("reads the window's bounds as whole pixels, whether it was maximized, and the board it showed", () => {
+    expect(savedWindowState({ bounds: { x: 10.4, y: 20, width: 800, height: 600 }, maximized: true, board: BOARD })).toEqual({
+      bounds: { x: 10, y: 20, width: 800, height: 600 },
+      maximized: true,
+      board: BOARD,
+    });
+    expect(savedWindowState({ bounds: { x: 0, y: 0, width: 800, height: 600 }, board: null })).toEqual({
+      bounds: { x: 0, y: 0, width: 800, height: 600 },
+      maximized: false,
+      board: null,
+    });
+  });
+
+  it("is null when nothing was saved or the bounds are malformed, and drops a malformed board", () => {
+    expect(savedWindowState(null)).toBeNull();
+    expect(savedWindowState({ bounds: { x: 0, y: 0, width: 0, height: 600 }, maximized: false, board: BOARD })).toBeNull();
+    expect(savedWindowState({ bounds: null, maximized: false, board: BOARD })).toBeNull();
+    expect(savedWindowState({ bounds: { x: 0, y: 0, width: 800, height: 600 }, board: { project: "p" } })?.board).toBeNull();
+  });
+});
+
+describe("shownBoard", () => {
+  it("takes {project, board} as nonempty strings, and nothing else", () => {
+    expect(shownBoard({ project: "p", board: "b.json", extra: 1 })).toEqual({ project: "p", board: "b.json" });
+    for (const value of [null, "b.json", { project: "p" }, { project: "", board: "b.json" }, { project: "p", board: 3 }]) {
+      expect(shownBoard(value)).toBeNull();
+    }
   });
 });
 

@@ -1,8 +1,11 @@
 /**
- * Restoring windows (desktop/README.md#transport-and-windows): reading the saved windows, and where each one goes:
- * back where it was, unless no screen shows it any more (a display was unplugged or rearranged), in
- * which case it moves onto the primary screen. Pure functions, so they are tested without Electron.
+ * Restoring the window (desktop/README.md#transport-and-windows): reading its saved state, and where
+ * it goes: back where it was, unless no screen shows it any more (a display was unplugged or
+ * rearranged), in which case it moves onto the primary screen. Pure functions, so they are tested
+ * without Electron.
  */
+
+import type { ShownBoard } from "../shared/unfold-api";
 
 export interface Rect {
   readonly x: number;
@@ -11,24 +14,37 @@ export interface Rect {
   readonly height: number;
 }
 
-/** How a remembered window comes back. */
-export interface RestoredWindow {
-  readonly key: string;
-  readonly bounds: Rect | null;
+/** Where the window is: its normal (unmaximized) bounds, and whether it is maximized. */
+export interface WindowPlacement {
+  readonly bounds: Rect;
   readonly maximized: boolean;
 }
 
-/** The windows of a `saved_windows` result, skipping malformed entries. */
-export function savedWindowList(result: unknown): RestoredWindow[] {
-  if (!isRecord(result) || !Array.isArray(result["windows"])) {
-    return [];
+/** The window's state as `window_state` returns it and `save_window_state` takes it. */
+export interface WindowState extends WindowPlacement {
+  /** The board the window showed; null for Home. */
+  readonly board: ShownBoard | null;
+}
+
+/** A `window_state` result, or null when there is none or it is malformed. */
+export function savedWindowState(result: unknown): WindowState | null {
+  if (!isRecord(result)) {
+    return null;
   }
-  return result["windows"].flatMap((window: unknown): RestoredWindow[] => {
-    if (!isRecord(window) || typeof window["key"] !== "string" || window["key"].length === 0) {
-      return [];
-    }
-    return [{ key: window["key"], bounds: rectangle(window["bounds"]), maximized: window["maximized"] === true }];
-  });
+  const bounds = rectangle(result["bounds"]);
+  if (bounds === null) {
+    return null;
+  }
+  return { bounds, maximized: result["maximized"] === true, board: shownBoard(result["board"]) };
+}
+
+/** A saved board as `{project, board}`, or null unless both are strings. */
+export function shownBoard(value: unknown): ShownBoard | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const { project, board } = value;
+  return typeof project === "string" && project.length > 0 && typeof board === "string" && board.length > 0 ? { project, board } : null;
 }
 
 /** Saved `{x, y, width, height}` as whole pixels, or null unless it is a nonempty rectangle. */
@@ -76,15 +92,16 @@ export function placeOnScreen(bounds: Rect, workAreas: readonly Rect[]): Rect {
 export interface DebouncedSave {
   /** (Re)starts the wait; the save runs once nothing changed for the debounce period. */
   schedule(): void;
-  /** Runs a waiting save immediately (a window closing must not lose its last move); no-op if none waits. */
+  /** Runs a waiting save immediately (the window closing must not lose its last move); no-op if none waits. */
   flush(): void;
   /** Drops a waiting save. */
   cancel(): void;
 }
 
 /**
- * Debounces `save` by `ms`. A window's placement is saved this way (a drag fires many `move`s), and
- * flushed as the window closes so the last move or resize before closing or quitting is kept.
+ * Debounces `save` by `ms`. The window's state is saved this way (a drag fires many `move`s), and
+ * flushed as the window closes so the last move, resize, or board shown before closing or quitting
+ * is kept.
  */
 export function debouncedSave(save: () => void, ms: number): DebouncedSave {
   let timer: ReturnType<typeof setTimeout> | undefined;

@@ -14,7 +14,7 @@ import { memo, useLayoutEffect, useMemo } from "react";
 import { AgentMark } from "../agent";
 import { useContextMenu } from "../components";
 import type { Measure } from "../flow/layout";
-import { requestFocus } from "../keyboard";
+import { requestFocus } from "../lib/focus-targets";
 import { useAuthor } from "../state/author";
 import { select, type PageTarget } from "../state/boards";
 import { setSelectedCollapsed } from "../state/layout";

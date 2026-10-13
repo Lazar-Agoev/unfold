@@ -83,7 +83,6 @@ const BOARDS: BoardList = {
       projects: [],
       changes: 0,
       updatedAtMs: 0,
-      heldBy: null,
       label: null,
       error: null,
     },
@@ -101,7 +100,6 @@ const FILE: ReadBoardResult = {
   document: { format: "unfold-board", version: 1, title: "Order placement", projects: [], pages: [PAGE as unknown as Page] },
   revision: "r1",
   published: null,
-  heldBy: null,
 };
 
 /** The board's health: the card is missing. */
@@ -244,8 +242,8 @@ function fakeWindows(bridge: () => AgentBridge): AgentWindows {
   const entry = { id: 1, loaded: true } as WindowEntry;
   return {
     get: (id) => (id === 1 ? entry : undefined),
-    all: () => [entry],
-    create: () => entry,
+    current: () => entry,
+    open: () => entry,
     focus: () => undefined,
     deliver: (_entry, event) => {
       const request = event as AgentShellEvent & { requestId: number };
@@ -306,10 +304,11 @@ async function start(overrides: Partial<McpServices> = {}, options: Partial<Cons
     },
     version: "1.2.3",
     onStatus: () => undefined,
+    port: 0,
     ...options,
   });
   running.push(service);
-  await service.configure({ enabled: true, port: 0 });
+  await service.start();
   return { service, url: new URL(service.status().address), views, calls };
 }
 

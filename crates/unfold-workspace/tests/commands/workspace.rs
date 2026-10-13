@@ -145,14 +145,13 @@ fn removed_folders_can_be_added_back_and_nothing_else() {
     harness.ok(1, "select_project", json!({ "project": python }));
     harness.ok(1, "compile", json!({ "project": python }));
 
-    // A window holding one of its boards keeps it in the workspace.
+    // An open board keeps its project in the workspace.
     let host = harness.host.projects().expect("initialized");
     let board = ".unfold/local/drafts/board-1.json";
     host.handle(&id(&python))
         .expect("project")
-        .claims()
-        .claim(board, 2)
-        .expect("claim");
+        .open_boards()
+        .open(board, 2);
     assert_eq!(
         harness.code(1, "remove_project", json!({ "project": python })),
         "boards_open"

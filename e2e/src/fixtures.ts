@@ -5,12 +5,12 @@
  */
 
 import { test as base } from "@playwright/test";
-import { UnfoldApp, type LaunchOptions } from "./app";
+import { UnfoldApp } from "./app";
 import { Sandbox } from "./sandbox";
 
 export interface Fixtures {
   readonly sandbox: Sandbox;
-  readonly launch: (options?: LaunchOptions) => Promise<UnfoldApp>;
+  readonly launch: () => Promise<UnfoldApp>;
 }
 
 /** How long a quit may take before the process is killed (a hung quit fails the test anyway). */
@@ -48,8 +48,8 @@ export const test = base.extend<Fixtures>({
 
   launch: async ({ sandbox }, use, testInfo) => {
     const apps: UnfoldApp[] = [];
-    await use(async (options) => {
-      const app = await UnfoldApp.launch(sandbox, options);
+    await use(async () => {
+      const app = await UnfoldApp.launch(sandbox);
       apps.push(app);
       return app;
     });

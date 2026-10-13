@@ -3,12 +3,11 @@ import "../test/dom";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EntrancesArgs, EntrancesView, SearchGroup, SearchResults } from "../ipc";
-import { actions, type ActionSpec } from "../keyboard";
 import type * as Boards from "../state/boards";
 import { openBoard } from "../state/boards";
 import { resetBoards } from "../state/boards/store";
 import { closeAdd, openAdd, useDialog } from "../state/overlays";
-import { useTabs } from "../state/tabs";
+import { useShownBoardStore } from "../state/shownBoard";
 import { useWindowStore } from "../state/window";
 import { fixture, installFakeEngine, type FakeEngine } from "../test/engine";
 import { INVOICE_SCOPE, OVERVIEW, REVIEW_WORKER, UNREACHED_SCOPE } from "../test/entrances";
@@ -80,17 +79,14 @@ beforeEach(() => {
       search: ({ query }) => (query === "cart" ? typeResults() : searchResults(query === "worker" ? "search_worker" : "search_place")),
       preview: ({ key }) => ({ ...fixture("preview", key.startsWith("entrance:") ? "preview_first_entrance" : "preview_create_order"), project: ORDERS }),
       board_refs: () => ({ refs: [], truncated: false }),
-      open_board: () => ({
-        status: "opened",
-        board: boardState(ORDERS, BOARD.id, boardDocument([page("page-1", [{ id: "import", ref: { entrance: ON_PAGE }, at: [0, 0] }], { title: "Placing an order" })])),
-      }),
+      open_board: () => boardState(ORDERS, BOARD.id, boardDocument([page("page-1", [{ id: "import", ref: { entrance: ON_PAGE }, at: [0, 0] }], { title: "Placing an order" })])),
     },
     streams: {
       search_text: () => Promise.resolve({ files: 0, matches: 0, searched: 0, truncated: false, filesTruncated: false, projects: [] }),
     },
   });
   resetBoards();
-  useTabs.setState({ boards: [], active: "home" });
+  useShownBoardStore.setState({ board: null });
   useWindowStore.setState({ info: null, selectedProject: ORDERS });
 });
 
@@ -102,7 +98,7 @@ afterEach(() => {
 });
 
 function input(): HTMLInputElement {
-  return screen.getByRole("combobox", { name: "Find or run a command" });
+  return screen.getByRole("combobox", { name: "Find" });
 }
 
 function type(text: string): void {
@@ -114,13 +110,10 @@ function press(key: string, init: KeyboardEventInit = {}): void {
 }
 
 describe("the Add box", () => {
-  it("opens with A, ⌘K or /, and closes on Escape", async () => {
+  it("opens when asked, and closes on Escape", () => {
     renderWithClient(<AddBox />);
-    await waitFor(() => {
-      expect(actions.get("add.open")?.shortcuts).toEqual(["A", "Mod+K", "/"]);
-    });
     act(() => {
-      actions.run("add.open");
+      openAdd();
     });
     expect(screen.getByRole("dialog", { name: "Add" })).toBeTruthy();
     press("Escape");
@@ -301,8 +294,9 @@ describe("the Add box", () => {
   it("streams text matches from two characters, with the text options on the Text tab", async () => {
     renderWithClient(<AddBox />);
     act(() => {
-      openAdd({ mode: "find", kind: "text" });
+      openAdd();
     });
+    fireEvent.click(screen.getByRole("tab", { name: "Text" }));
     expect(screen.getByText(/Type to find text/)).toBeTruthy();
     type("pl");
     await waitFor(() => {
@@ -312,32 +306,5 @@ describe("the Add box", () => {
     await waitFor(() => {
       expect(engine.callsOf("search_text").at(-1)).toEqual({ query: "pl", caseSensitive: true, wholeWord: false, regex: false });
     });
-  });
-
-  it("lists commands after >, bolds the match, and runs the chosen one after closing", async () => {
-    const run = vi.fn();
-    const specs: ActionSpec[] = [
-      { id: "help.copyDiagnostics", title: "Copy Diagnostics", category: "Help", run },
-      { id: "board.copyMermaid", title: "Copy Mermaid", category: "Board", group: "Share", run: () => undefined },
-      { id: "hidden", title: "Copy Hidden", category: "Board", showInAdd: false, run: () => undefined },
-    ];
-    const unregister = actions.register(specs);
-    renderWithClient(<AddBox />);
-    act(() => {
-      openAdd({ mode: "commands" });
-    });
-    expect(input().value).toBe("> ");
-    type("> copy");
-    const list = screen.getByRole("listbox", { name: "Commands" });
-    const options = within(list).getAllByRole("option");
-    expect(options.map((option) => option.getAttribute("aria-label"))).toEqual(["Share › Copy Mermaid", "Copy Diagnostics"]);
-    expect(list.querySelector("mark.add-command-match")?.textContent).toBe("Copy");
-    press("ArrowDown");
-    press("Enter");
-    expect(screen.queryByRole("dialog", { name: "Add" })).toBeNull();
-    await waitFor(() => {
-      expect(run).toHaveBeenCalledTimes(1);
-    });
-    unregister();
   });
 });

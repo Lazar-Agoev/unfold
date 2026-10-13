@@ -18,7 +18,6 @@ function board(id: string, title: string | null, place: BoardSummary["place"], u
     projects: [],
     changes: 0,
     updatedAtMs,
-    heldBy: null,
     label: null,
     error: null,
     ...overrides,

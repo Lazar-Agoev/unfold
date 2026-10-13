@@ -1,23 +1,23 @@
 /**
- * The window in board mode: the active board's view (top bar, canvas, cards, dock) and its sidebar
- * (header, Pages, On this page, Selected), and the board files on disk. Only the active board tab is
- * mounted, so every locator here is the active board's.
+ * The window in board mode: the shown board's view (top bar, canvas, cards, dock) and its sidebar
+ * (header, Pages, On this page, Selected), and the board files on disk. Only the shown board is
+ * mounted, so every locator here is the shown board's.
  */
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
-import { sidebar } from "./home";
+import { sidebar, sidebarBoard } from "./home";
 import { escapeRegExp } from "./window";
 
-/** The active board's view. */
+/** The shown board's view. */
 export function boardView(page: Page): Locator {
   return page.locator(".board-view");
 }
 
-/** The active board, as the engine names it (`project`, `id`). */
-export async function activeBoardRef(page: Page): Promise<{ readonly project: string; readonly id: string }> {
+/** The shown board, as the engine names it (`project`, `id`). */
+export async function shownBoardRef(page: Page): Promise<{ readonly project: string; readonly id: string }> {
   const key = await boardView(page).getAttribute("data-board-key");
   const [project, id] = (key ?? "").split("\u0000");
   if (!project || !id) {
@@ -190,6 +190,12 @@ export async function cardMenu(target: Locator, item: string | RegExp): Promise<
 /** The board's title in the sidebar header. */
 export function boardTitle(page: Page): Locator {
   return sidebar(page).locator("h1.board-title");
+}
+
+/** Shows a board from Home's sidebar tree (a click on its row), by its title. */
+export async function showBoard(page: Page, title: string): Promise<void> {
+  await sidebarBoard(page, title).click();
+  await expect(boardTitle(page)).toHaveText(title);
 }
 
 /** The board menu (`⋯` in the sidebar header): opens it and chooses `item` (a submenu path for Move to folder). */

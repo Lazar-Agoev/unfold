@@ -2,27 +2,25 @@
  * The project menu: `⋯` on a project's sidebar row and on its Home header.
  * Every item is there in every state, disabled when it doesn't apply: Compile (again), Rebuild from
  * scratch, Cancel, Pause or Resume background updates; Settings…, Add entrance…, Health and activity;
- * Reveal in Finder, Copy diagnostics; Remove from workspace….
+ * Reveal in Finder; Remove from workspace….
  */
 
 import type { JSX } from "react";
 import { MenuButton, type MenuEntry } from "../components";
 import type { ProjectId, ProjectRow, ProjectState } from "../ipc";
-import { ActionIds, actions } from "../keyboard";
 import { revealInFinder } from "../lib/files";
-import { copyDiagnostics } from "../settings";
 import { useProjectRow } from "../state/workspace";
 import { addEntrance, backgroundUpdates, cancel, compile, openSettings, removeProject, showHealth } from "./actions";
 
 /** What a project's state allows: a resting project answers as its last state did. */
-export interface ProjectAbilities {
+interface ProjectAbilities {
   readonly compiled: boolean;
   readonly compiling: boolean;
   readonly paused: boolean;
   readonly available: boolean;
 }
 
-export function projectAbilities(state: ProjectState): ProjectAbilities {
+function projectAbilities(state: ProjectState): ProjectAbilities {
   const settled = state.kind === "resting" ? state.last : state;
   return {
     compiled: settled.kind !== "not_compiled" && settled.kind !== "unavailable",
@@ -35,12 +33,10 @@ export function projectAbilities(state: ProjectState): ProjectAbilities {
 export function projectMenuEntries(row: ProjectRow): MenuEntry[] {
   const project = row.id;
   const can = projectAbilities(row.state);
-  const compileShortcut = actions.shortcutsFor(ActionIds.compile)[0];
   return [
     {
       id: "compile",
       label: can.compiled ? "Compile again" : "Compile",
-      ...(compileShortcut === undefined ? {} : { shortcut: compileShortcut }),
       disabled: !can.available || can.compiling,
       onSelect: () => void compile(project, "check"),
     },
@@ -74,7 +70,6 @@ export function projectMenuEntries(row: ProjectRow): MenuEntry[] {
     { id: "health", label: "Health and activity", disabled: !can.compiled, onSelect: () => void showHealth(project) },
     { kind: "separator", id: "s2" },
     { id: "reveal", label: "Reveal in Finder", disabled: !can.available, onSelect: () => void revealInFinder(project, "") },
-    { id: "diagnostics", label: "Copy diagnostics", onSelect: () => void copyDiagnostics(project) },
     { kind: "separator", id: "s3" },
     { id: "remove", label: "Remove from workspace…", danger: true, onSelect: () => void removeProject(row) },
   ];
