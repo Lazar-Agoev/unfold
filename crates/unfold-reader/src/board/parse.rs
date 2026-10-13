@@ -5,9 +5,8 @@
 //! items of one page ([`super::items`]); whether keys exist in the current graph is
 //! [`super::health`]'s job.
 //!
-//! Three framings share the page rules: a board file ([`parse`]), the changes copy of a
-//! published board (`parse_changes`, which adds `publishes` and `baseRevision`), and the edit
-//! the UI saves ([`parse_edit`]: only `title` and `pages`).
+//! Two framings share the page rules: a board file ([`parse`]) and the edit the UI saves
+//! ([`parse_edit`]: only `title` and `pages`).
 
 use std::fmt;
 use std::str::FromStr;
@@ -16,17 +15,15 @@ use rustc_hash::FxHashSet;
 use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Number, Value};
 use unfold_core::vocab::{BlockKind, EntranceKind};
-use unfold_core::{ContentHash, Key, RepoPath};
+use unfold_core::{Key, RepoPath};
 
 use super::BoardError;
-use super::files::Revision;
 use super::items::check_items;
 use super::model::{
     Anchor, Author, Board, Card, CardRef, Cardinality, Column, ColumnKey, Description, FORMAT, Frame,
     FrameDirection, FrameIcon, FrameLook, Group, GuardEntry, LabelEntry, Link, LinkKind, MAX_EXPANDED_CALLS,
     MAX_EXPANSION_DEPTH, MAX_NOTE_CHARACTERS, MAX_PROPOSAL_REASON, MAX_PROPOSAL_TITLE, MAX_PROPOSALS, Note,
-    Page, ProjectName, Proposal, ProposalPath, Resource, ResourceKind, Signature, VERSION, View,
-    is_folder_path, is_id,
+    Page, Proposal, ProposalPath, Resource, ResourceKind, Signature, VERSION, View, is_folder_name, is_id,
 };
 
 /// A JSON value read with duplicate keys rejected.
@@ -231,21 +228,6 @@ fn id(value: &Value, path: &Path) -> Parsed<String> {
     Ok(text.to_owned())
 }
 
-fn project(value: &Value, path: &Path) -> Parsed<ProjectName> {
-    ProjectName::parse(string(value, path)?).ok_or_else(|| {
-        path.fail(
-            "must be a project's shared name: a letter or digit followed by up to 63 letters, \
-             digits, `.`, `_`, or `-`",
-        )
-    })
-}
-
-fn optional_project(map: &Map<String, Value>, path: &Path) -> Parsed<Option<ProjectName>> {
-    map.get("project")
-        .map(|value| project(value, &path.join("project")))
-        .transpose()
-}
-
 fn view(value: &Value, path: &Path) -> Parsed<View> {
     word(value, path, View::parse, View::WORDS)
 }
@@ -292,17 +274,16 @@ fn block_key(value: &Value, path: &Path) -> Parsed<Key> {
 }
 
 fn reference(value: &Value, path: &Path) -> Parsed<CardRef> {
-    let map = object(value, path, &["block", "entrance", "project"], &[])?;
-    let project = optional_project(map, path)?;
+    let map = object(value, path, &["block", "entrance"], &[])?;
     match (map.get("block"), map.get("entrance")) {
-        (Some(block), None) => Ok(CardRef::block(block_key(block, &path.join("block"))?, project)),
+        (Some(block), None) => Ok(CardRef::block(block_key(block, &path.join("block"))?)),
         (None, Some(entrance)) => {
             let entrance_path = path.join("entrance");
             let key = nonblank(entrance, &entrance_path)?;
             if !key.starts_with("entrance:") {
                 return Err(entrance_path.fail("must be an entrance key (`entrance:[…]`)"));
             }
-            Ok(CardRef::entrance(Key::from_text(key), project))
+            Ok(CardRef::entrance(Key::from_text(key)))
         }
         _ => Err(path.fail("must have exactly one of `block` or `entrance`")),
     }
@@ -431,11 +412,10 @@ fn label(value: &Value, path: &Path) -> Parsed<LabelEntry> {
     let map = object(
         value,
         path,
-        &["author", "key", "project", "signature", "text"],
+        &["author", "key", "signature", "text"],
         &["author", "key", "text"],
     )?;
     Ok(LabelEntry {
-        project: optional_project(map, path)?,
         key: block_key(field(map, "key"), &path.join("key"))?,
         label: authored(map, path)?,
     })
@@ -453,7 +433,7 @@ fn guard(value: &Value, path: &Path) -> Parsed<GuardEntry> {
     let map = object(
         value,
         path,
-        &["key", "kind", "owner", "project", "signature"],
+        &["key", "kind", "owner", "signature"],
         &["key", "kind", "owner", "signature"],
     )?;
     let kind_path = path.join("kind");
@@ -462,7 +442,6 @@ fn guard(value: &Value, path: &Path) -> Parsed<GuardEntry> {
         return Err(kind_path.fail("must be a block kind or `entrance:<kind>`"));
     }
     Ok(GuardEntry {
-        project: optional_project(map, path)?,
         key: Key::from_text(nonblank(field(map, "key"), &path.join("key"))?),
         kind: kind.to_owned(),
         owner: string(field(map, "owner"), &path.join("owner"))?.to_owned(),
@@ -471,8 +450,7 @@ fn guard(value: &Value, path: &Path) -> Parsed<GuardEntry> {
 }
 
 fn anchor(value: &Value, path: &Path) -> Parsed<Anchor> {
-    let map = object(value, path, &["file", "key", "lines", "project"], &[])?;
-    let project = optional_project(map, path)?;
+    let map = object(value, path, &["file", "key", "lines"], &[])?;
     match (map.get("key"), map.get("file")) {
         (Some(key), None) => {
             if map.contains_key("lines") {
@@ -480,7 +458,6 @@ fn anchor(value: &Value, path: &Path) -> Parsed<Anchor> {
             }
             Ok(Anchor::Key {
                 key: any_key(key, &path.join("key"))?,
-                project,
             })
         }
         (None, Some(file)) => {
@@ -494,7 +471,6 @@ fn anchor(value: &Value, path: &Path) -> Parsed<Anchor> {
             Ok(Anchor::File {
                 file,
                 lines: line_range(lines, &path.join("lines"))?,
-                project,
             })
         }
         _ => Err(path.fail("must have exactly one of `key` or `file`")),
@@ -537,7 +513,6 @@ fn link(value: &Value, path: &Path) -> Parsed<Link> {
             "author",
             "cardinality",
             "carries",
-            "carriesProject",
             "channel",
             "description",
             "from",
@@ -579,12 +554,6 @@ fn link(value: &Value, path: &Path) -> Parsed<Link> {
     link.to_column = optional(map, "toColumn", path, owned_text)?;
     link.channel = optional(map, "channel", path, owned_text)?;
     link.carries = optional(map, "carries", path, block_key)?;
-    link.carries_project = optional(map, "carriesProject", path, project)?;
-    if link.carries_project.is_some() && link.carries.is_none() {
-        return Err(path
-            .join("carriesProject")
-            .fail("names the project of `carries`; give it only with `carries`"));
-    }
     link.cardinality = optional(map, "cardinality", path, |value, path| {
         word(value, path, Cardinality::parse, Cardinality::WORDS)
     })?;
@@ -707,7 +676,6 @@ fn resource(value: &Value, path: &Path) -> Parsed<Resource> {
             "id",
             "kind",
             "name",
-            "project",
             "signature",
             "type",
         ],
@@ -729,12 +697,6 @@ fn resource(value: &Value, path: &Path) -> Parsed<Resource> {
         return Err(path.join(name).fail("only a table has a type and columns"));
     }
     let type_key = optional(map, "type", path, block_key)?;
-    let project = optional_project(map, path)?;
-    if project.is_some() && type_key.is_none() {
-        return Err(path
-            .join("project")
-            .fail("names the project of `type`; give it only with `type`"));
-    }
     let columns_path = path.join("columns");
     let mut columns: Vec<Column> = Vec::new();
     for (index, item) in optional_array(map, "columns", path)?.iter().enumerate() {
@@ -751,7 +713,6 @@ fn resource(value: &Value, path: &Path) -> Parsed<Resource> {
         id: resource_id,
         kind,
         name: nonblank(field(map, "name"), &path.join("name"))?.to_owned(),
-        project,
         type_key,
         columns,
         anchors: anchors(field(map, "anchors"), &path.join("anchors"))?,
@@ -866,7 +827,7 @@ fn page(value: &Value, path: &Path) -> Parsed<Page> {
     for (index, item) in optional_array(map, "labels", path)?.iter().enumerate() {
         let item_path = path.join("labels").join(index);
         let entry = label(item, &item_path)?;
-        if !labeled.insert((entry.project.clone(), entry.key.clone())) {
+        if !labeled.insert(entry.key.clone()) {
             return Err(item_path.fail(format!("repeats the label of `{}`", entry.key)));
         }
         page.labels.push(entry);
@@ -875,7 +836,7 @@ fn page(value: &Value, path: &Path) -> Parsed<Page> {
     for (index, item) in optional_array(map, "guards", path)?.iter().enumerate() {
         let item_path = path.join("guards").join(index);
         let entry = guard(item, &item_path)?;
-        if !guarded.insert((entry.project.clone(), entry.key.clone())) {
+        if !guarded.insert(entry.key.clone()) {
             return Err(item_path.fail(format!("repeats the guard of `{}`", entry.key)));
         }
         page.guards.push(entry);
@@ -914,31 +875,16 @@ fn json(text: &str) -> Parsed<Value> {
     Ok(value)
 }
 
-/// How a document is framed.
-#[derive(Clone, Copy)]
-enum Framing<'a> {
-    /// A draft or published board file.
-    File,
-    /// The changes copy of published board `name`.
-    Changes(&'a str),
-}
-
-/// A board file's document, and the base revision when it is a changes copy.
-fn document(text: &str, framing: Framing<'_>) -> Parsed<(Board, Option<Revision>)> {
+/// Parses board file text.
+pub fn parse(text: &str) -> Result<Board, BoardError> {
     let value = json(text)?;
     let root = Path::default();
-    let common = ["folder", "format", "pages", "projects", "title", "version"];
-    let required = ["format", "pages", "projects", "title", "version"];
-    let map = match framing {
-        Framing::File => object(&value, &root, &common, &required)?,
-        Framing::Changes(_) => {
-            let mut allowed = common.to_vec();
-            allowed.extend(["baseRevision", "publishes"]);
-            let mut needed = required.to_vec();
-            needed.extend(["baseRevision", "publishes"]);
-            object(&value, &root, &allowed, &needed)?
-        }
-    };
+    let map = object(
+        &value,
+        &root,
+        &["folder", "format", "pages", "title", "version"],
+        &["format", "pages", "title", "version"],
+    )?;
     if field(map, "format").as_str() != Some(FORMAT) {
         return Err(root.join("format").fail(format!("must be \"{FORMAT}\"")));
     }
@@ -953,71 +899,24 @@ fn document(text: &str, framing: Framing<'_>) -> Parsed<(Board, Option<Revision>
         Some(value) => {
             let folder_path = root.join("folder");
             let folder = string(value, &folder_path)?;
-            if !is_folder_path(folder) {
+            if !is_folder_name(folder) {
                 return Err(folder_path.fail(
-                    "must be a folder path: 1 to 8 names joined by `/`, each 1 to 64 characters \
-                     without leading or trailing spaces, control characters, or `\\`, and not \
-                     `.` or `..`",
+                    "must be a folder name: 1 to 64 characters without `/`, `\\`, control \
+                     characters, or leading or trailing spaces, and not `.` or `..`",
                 ));
             }
             Some(folder.to_owned())
         }
     };
-    let board = Board::with_pages(title, folder, pages(field(map, "pages"), &root.join("pages"))?);
-
-    let projects_path = root.join("projects");
-    let mut projects = Vec::new();
-    for (index, item) in array(field(map, "projects"), &projects_path)?.iter().enumerate() {
-        projects.push(project(item, &projects_path.join(index))?);
-    }
-    if projects != board.projects {
-        let expected: Vec<String> = board.projects.iter().map(|name| format!("\"{name}\"")).collect();
-        return Err(projects_path.fail(format!(
-            "must list exactly the other projects the board's items name, sorted, without repeats: [{}]",
-            expected.join(", ")
-        )));
-    }
-
-    let base = match framing {
-        Framing::File => None,
-        Framing::Changes(name) => {
-            let publishes_path = root.join("publishes");
-            let expected = publishes(name);
-            if string(field(map, "publishes"), &publishes_path)? != expected {
-                return Err(publishes_path.fail(format!(
-                    "must be \"{expected}\", the published board this copy holds changes for"
-                )));
-            }
-            let base_path = root.join("baseRevision");
-            let base = ContentHash::from_hex(string(field(map, "baseRevision"), &base_path)?)
-                .map_err(|_| base_path.fail("must be 64 lowercase hex digits"))?;
-            Some(Revision(base))
-        }
-    };
-    Ok((board, base))
+    Ok(Board::with_pages(
+        title,
+        folder,
+        pages(field(map, "pages"), &root.join("pages"))?,
+    ))
 }
 
-/// The `publishes` value of the changes copy of published board `name`.
-pub(crate) fn publishes(name: &str) -> String {
-    format!("boards/{name}.json")
-}
-
-/// Parses board file text (a draft or a published board).
-pub fn parse(text: &str) -> Result<Board, BoardError> {
-    document(text, Framing::File).map(|(board, _)| board)
-}
-
-/// Parses the text of the changes copy of published board `name` (its file stem): the board
-/// and the published revision the copy started from.
-pub(crate) fn parse_changes(text: &str, name: &str) -> Result<(Board, Revision), BoardError> {
-    let (board, base) = document(text, Framing::Changes(name))?;
-    let base = base.ok_or_else(|| Path::default().fail("missing field `baseRevision`"))?;
-    Ok((board, base))
-}
-
-/// Parses an edit the UI saves (`{title, pages}`): the pages with the page
-/// rules, `projects` derived from the cards, and `folder` from the caller (the folder is the
-/// board's metadata, never part of an edit).
+/// Parses an edit the UI saves (`{title, pages}`): the pages with the page rules, and `folder`
+/// from the caller (the folder is the board's metadata, never part of an edit).
 pub fn parse_edit(text: &str, folder: Option<String>) -> Result<Board, BoardError> {
     let value = json(text)?;
     let root = Path::default();

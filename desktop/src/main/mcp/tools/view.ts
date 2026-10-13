@@ -25,7 +25,6 @@ function describeItem(page: Page, id: string): string {
     const key = "block" in card.ref ? card.ref.block : card.ref.entrance;
     const calls = card.expanded?.length ?? 0;
     const facts = [
-      card.ref.project ? `from project ${card.ref.project}` : null,
       fieldsOnlyKey(key) ? null : cardExpanded(page, card) ? "expanded" : "compact",
       calls > 0 ? `${calls} ${calls === 1 ? "call" : "calls"} expanded in place` : null,
       card.folded ? "folded" : null,
@@ -74,9 +73,9 @@ function selectionText(page: Page, selection: ViewSelection): string {
         ? `Selected: the step ${selection.key} of card ${selection.card}.`
         : `Selected: the step ${selection.key} of ${selection.owner}, shown in a call card ${selection.card} expands in place; read_code without key reads that block.`;
     case "line":
-      return `Selected: the line from card ${selection.from} to card ${selection.to}: ${callText(selection)}, in project ${selection.project}. read_call says what it sends.`;
+      return `Selected: the line from card ${selection.from} to card ${selection.to}: ${callText(selection)}. read_call says what it sends.`;
     case "calls":
-      return `Selected: the arrow from card ${selection.from} to card ${selection.to}, which draws ${selection.calls.length} calls: ${selection.calls.map(callText).join("; ")}, in project ${selection.project}. read_call says what each sends.`;
+      return `Selected: the arrow from card ${selection.from} to card ${selection.to}, which draws ${selection.calls.length} calls: ${selection.calls.map(callText).join("; ")}. read_call says what each sends.`;
   }
 }
 
@@ -105,7 +104,7 @@ export const getCurrentView = defineTool({
     if (!report.board || report.page === undefined) {
       return textResult(
         context.header(),
-        `The window used last shows Home, not a board${report.tabs.length > 0 ? ` (it has ${report.tabs.length} board tabs in the background)` : ""}.`,
+        "The window shows Home, not a board.",
         "Next: ask the person which board to work on, or start from list_projects.",
       );
     }
@@ -119,7 +118,7 @@ export const getCurrentView = defineTool({
     return textResult(
       context.header({
         project: project?.name ?? report.board.project,
-        board: { title: read.board.title, draft: read.board.place === "draft" },
+        board: read.board.title,
         page: page.title,
         revision: read.revision,
       }),

@@ -1,4 +1,4 @@
-//! The workspace's projects (docs/ui-shell.md#state-and-engine-data–11.2; decisions project-scoped commands, shared project names, project liveness): one per
+//! The workspace's projects (docs/ui-shell.md#state-and-engine-data–11.2; decisions project-scoped commands, project liveness): one per
 //! [`crate::host::Host`], owned by it.
 //!
 //! ```text
@@ -8,7 +8,7 @@
 //!       live:      Option<Arc<Workspace>>   the open engine, watcher, store writer, and lock
 //!       resting:   Option<RestingReader>    a read-only pool on the stored graph, opened lazily
 //!       extras:    Arc<ProjectExtras>       command-side state, dropped on rest
-//!       open:      OpenBoards               board id -> window (and the projects its cards use)
+//!       open:      OpenBoards               board id -> window
 //!       interest:  compile pins, lease_until
 //!   }
 //!   selection: WindowId -> ProjectId         each window's Home selection
@@ -20,8 +20,7 @@
 //! owns liveness; the router knows nothing of projects):
 //!
 //! ```text
-//! interest(p) = a board of p is open || a window has p selected
-//!            || an open board (of any project) has cards from p || a compile of p is running
+//! interest(p) = a board of p is open || a window has p selected || a compile of p is running
 //! wake(p)     on a command that uses p's engine (ProjectHandle::wake), select_project, and
 //!             gaining interest otherwise (the reaper's next tick); opens the Workspace (readable
 //!             at once; the reopen check runs in the background). A wake that fails marks the row
@@ -57,7 +56,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use ts_rs::TS;
-use unfold_engine::settings::default_project_name;
 use unfold_store::ReadPool;
 
 use crate::commands::ProjectExtras;
@@ -71,7 +69,7 @@ use crate::options::{AppConfig, WorkspaceOptions, default_languages, store_versi
 use crate::shared::lock;
 use crate::state::{AppData, read_json, write_json};
 use crate::status::ProjectState;
-use crate::workspace::{OpenContext, Workspace, canonical_folder, load_settings};
+use crate::workspace::{OpenContext, Workspace, canonical_folder};
 
 /// The most projects a workspace holds.
 pub const MAX_PROJECTS: usize = 64;
@@ -81,7 +79,7 @@ const RESTING_POOL_IDLE: Duration = Duration::from_secs(60);
 const FOLDER_GONE: &str = "The folder is gone or can't be read.";
 
 /// A project's id: `p-` and 10 characters of `[a-z2-7]`, random, assigned when the project is
-/// added (shared project names). It survives restarts.
+/// added. It survives restarts.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, TS)]
 #[serde(transparent)]
 pub struct ProjectId(String);
@@ -140,7 +138,7 @@ impl std::fmt::Display for ProjectId {
 pub struct ProjectRow {
     /// The project's id.
     pub id: ProjectId,
-    /// Its shared name.
+    /// Its folder's name.
     pub name: String,
     /// The canonical path of its folder.
     pub path: String,
@@ -229,7 +227,6 @@ impl WorkspaceFile {
 struct ProjectRecord {
     id: ProjectId,
     path: String,
-    name: String,
     expanded: bool,
     added_at_ms: i64,
     last_known: Option<LastKnown>,
@@ -343,21 +340,11 @@ fn unavailable_reason(error: &WorkspaceError) -> String {
     }
 }
 
-/// The shared name of the canonical folder `root`: `[project] name`, or the default (shared project names).
-pub(crate) fn shared_name(root: &Path) -> String {
-    load_settings(root)
-        .ok()
-        .and_then(|settings| settings.project_name)
-        .unwrap_or_else(|| default_name(root))
-}
-
-/// The default shared name of the canonical folder `root`: its name, as a valid project name.
-pub(crate) fn default_name(root: &Path) -> String {
-    let basename = root
-        .file_name()
+/// A project's name: its folder's name (`path` is the folder's canonical path).
+fn folder_name(path: &Path) -> String {
+    path.file_name()
         .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    default_project_name(&basename)
+        .unwrap_or_default()
 }
 
 impl Projects {
@@ -435,38 +422,17 @@ impl Projects {
 
     /// The project with `id` (without waking it).
     pub fn handle(&self, id: &ProjectId) -> Result<ProjectHandle<'_>> {
-        let (entry, name) = {
-            let inner = lock(&self.inner);
-            let entry = inner
-                .entries
-                .get(id)
-                .cloned()
-                .ok_or_else(|| WorkspaceError::UnknownProject(id.clone()))?;
-            let name = inner
-                .file
-                .record(id)
-                .map(|record| record.name.clone())
-                .unwrap_or_default();
-            (entry, name)
-        };
+        let entry = lock(&self.inner)
+            .entries
+            .get(id)
+            .cloned()
+            .ok_or_else(|| WorkspaceError::UnknownProject(id.clone()))?;
         let root = lock(&entry.state).root.clone();
         Ok(ProjectHandle {
             projects: self,
             entry,
             root,
-            name,
         })
-    }
-
-    /// The first project in workspace order whose shared name is `name` (shared project names): what a
-    /// board's `ref.project` names.
-    pub fn resolve_name(&self, name: &str) -> Option<ProjectId> {
-        lock(&self.inner)
-            .file
-            .projects
-            .iter()
-            .find(|record| record.name == name)
-            .map(|record| record.id.clone())
     }
 
     /// The workspace as every window shows it.
@@ -500,7 +466,7 @@ impl Projects {
         let (live, state) = self.row_state(record, entry);
         ProjectRow {
             id: record.id.clone(),
-            name: record.name.clone(),
+            name: folder_name(Path::new(&record.path)),
             path: record.path.clone(),
             expanded: record.expanded,
             live,
@@ -575,7 +541,6 @@ impl Projects {
         let root = canonical_folder(path)?;
         let text = root.to_string_lossy().into_owned();
         let writable = check_writable(&root);
-        let name = shared_name(&root);
         let entry = {
             let mut inner = lock(&self.inner);
             if let Some(existing) = inner.file.projects.iter().find(|record| record.path == text) {
@@ -594,7 +559,6 @@ impl Projects {
             inner.file.projects.push(ProjectRecord {
                 id: id.clone(),
                 path: text,
-                name,
                 expanded: true,
                 added_at_ms: now_ms(),
                 last_known: None,
@@ -732,39 +696,11 @@ impl Projects {
         Ok(())
     }
 
-    /// Reads project `id`'s shared name from its folder again; when it changed, saves it and
-    /// sends `workspace_changed`.
-    pub(crate) fn refresh_name(&self, id: &ProjectId) {
-        let Ok(handle) = self.handle(id) else {
-            return;
-        };
-        let name = shared_name(&handle.root);
-        let changed = {
-            let mut inner = lock(&self.inner);
-            match inner.file.record_mut(id) {
-                Some(record) if record.name != name => {
-                    record.name = name;
-                    // The name is a cache; a failed write is rewritten with the next change.
-                    let _ = self.save(&inner);
-                    true
-                }
-                _ => false,
-            }
-        };
-        if changed {
-            self.announce();
-        }
-    }
-
     /// Whether anything keeps project `entry` live. Call with `inner` and its `state` locked.
     fn interested(&self, inner: &Inner, entry: &ProjectEntry, state: &EntryState) -> bool {
         state.pins > 0
             || !entry.open.is_empty()
             || inner.selection.values().any(|selected| *selected == entry.id)
-            || inner
-                .entries
-                .values()
-                .any(|other| other.open.references(&entry.id))
     }
 
     /// Lets project `entry` stay live at least `rest_after` from now.
@@ -814,7 +750,6 @@ impl Projects {
                     state.extras = Arc::default();
                     state.lease_until = state.lease_until.max(Instant::now() + self.options.rest_after);
                 }
-                self.refresh_name(&entry.id);
                 (self.on_wake)(&entry.id);
                 Ok(workspace)
             }
@@ -867,8 +802,7 @@ impl Projects {
     }
 
     /// The reaper's tick: rests every project that may rest, wakes every resting project that
-    /// gained interest (an open board with cards from it), and closes resting read pools unused
-    /// for a minute.
+    /// gained interest, and closes resting read pools unused for a minute.
     pub(crate) fn reap(&self) {
         let entries: Vec<Arc<ProjectEntry>> = lock(&self.inner).entries.values().cloned().collect();
         for entry in entries {
@@ -972,13 +906,12 @@ impl Projects {
     }
 }
 
-/// One project, as a command sees it: its id, folder, and shared name when it was looked up, and
-/// doors to its engine (which wake it) and its stored graph (which don't).
+/// One project, as a command sees it: its id and folder when it was looked up, and doors to its
+/// engine (which wake it) and its stored graph (which don't).
 pub struct ProjectHandle<'a> {
     projects: &'a Projects,
     entry: Arc<ProjectEntry>,
     root: PathBuf,
-    name: String,
 }
 
 impl std::fmt::Debug for ProjectHandle<'_> {
@@ -1001,9 +934,9 @@ impl ProjectHandle<'_> {
         &self.root
     }
 
-    /// The project's shared name.
-    pub fn name(&self) -> &str {
-        &self.name
+    /// The project's name: its folder's name.
+    pub fn name(&self) -> String {
+        folder_name(&self.root)
     }
 
     /// The live workspace, or `None` while the project rests. Never wakes it.

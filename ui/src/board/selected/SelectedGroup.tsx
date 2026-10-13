@@ -11,7 +11,6 @@ import { Button } from "../../components";
 import type { Group } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
 import { cardKey, editGroup, findCard, findPage, itemsFor, keyDisplayName, select, ungroup, useOpenBoard, type PageTarget } from "../../state/boards";
-import { resolveRefProject, useProjectIndex } from "../../state/workspace";
 import { sourceLines, sourceOf, viewCode } from "../viewCode";
 import { AuthoredField } from "./AuthoredField";
 import { RelationRow } from "./Relations";
@@ -22,8 +21,7 @@ function GroupLines({ target, group }: { readonly target: PageTarget; readonly g
     const page = findPage(board.document, target.page);
     return page ? findCard(page, group.card) : undefined;
   });
-  const project = resolveRefProject(useProjectIndex(), target.board.project, card?.ref.project);
-  const query = useQuery({ ...cardQuery(project ?? "", card ? cardKey(card) : ""), enabled: project !== null && card !== undefined });
+  const query = useQuery({ ...cardQuery(target.board.project, card ? cardKey(card) : ""), enabled: card !== undefined });
   const selection = { kind: "group", groupId: group.id } as const;
   // Read through the resolver once the model is in (`query.data` keeps this current).
   const source = query.data ? sourceOf(target, selection).target : null;

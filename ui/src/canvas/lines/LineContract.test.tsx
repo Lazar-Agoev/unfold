@@ -11,7 +11,7 @@ import { boardDocument, boardState, page } from "../../test/workspace";
 import { LineContract, bindingText, sentText } from "./LineContract";
 
 const P = "p-shop000000";
-const ID = ".unfold/local/drafts/b.json";
+const ID = ".unfold/boards/b.json";
 const REF = { project: P, id: ID };
 const PAGE = { board: REF, page: "page-1" };
 const CALL = "src/orders/create.ts#function:createOrder/try[0]/call[0]";

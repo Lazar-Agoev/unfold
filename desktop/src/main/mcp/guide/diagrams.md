@@ -169,12 +169,11 @@ frame, and 12 visible steps in an expanded card. Over that, in this order:
 - take off cards that don't serve the question;
 - split the page (edit_pages adds one).
 
-## Pages across projects
-A page can hold cards from several projects: pass project in add_cards. The graph has
-no arrows between projects, so a client's call to another project's route is an http
-connection you draw (connections topic). Frame each project (a zone per repository, a
-box per application). A card from a project that isn't connected shows as a
-placeholder; say so rather than remove it.
+## Other repositories
+A page shows one project. Two applications in one project are two frames on one page,
+and a call from one to the other is an http or queue connection you draw, citing both
+sides (connections topic). A service in another repository is an external resource
+card, with a connection to it that cites the client code.
 
 ## Recipes
 Adapt them; the tools are listed in the order you'd call them. When the person pasted a
@@ -210,8 +209,9 @@ compact.
 
 ### Service map
 "Show me the services." A zone, and a box per application with its entrances, all
-compact; connections between services; resource cards for queues and stores.
-- list_projects, list_entrances for each project.
+compact; connections between services; resource cards for queues and stores, and
+external cards for services in other repositories.
+- list_entrances for the project.
 - add_cards for each application's entrances, frame_cards a box per application (icon
   api, worker, schedule, or cli) inside a zone.
 - search text for where services talk (`.add(`, `new Queue(`, `fetch(`, `.delay(`),
@@ -255,11 +255,11 @@ sends and receives them.
   connection that names the type it carries (connect with carries).
 
 ### Across repositories
-"From the web app to the API." A frame per project, and an http connection from the
-client's call to the route.
-- search in both projects, add_cards with project, frame_cards a zone per project,
-  connect kind http from the calling card (step: the call) to the route's entrance
-  card, anchored to that entrance.
+"From the web app to the API." On the web app's page, the API is an external resource
+card, and an http connection goes from the client's call to it.
+- search the web app for the call, add_cards its function, add_resources an external
+  card for the API anchored to the client code, then connect kind http from the
+  calling card (step: the call) to that card.
 
 ## Reviewing a page
 check returns the page's health (repairs topic) and these page checks, each with its

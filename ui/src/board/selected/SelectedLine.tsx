@@ -44,7 +44,7 @@ export function End({ target, label, card, boardProject }: { readonly target: Pa
       }}
     >
       <span className="relation-card">
-        <Monogram name={card.ref.project ?? boardProject} size={14} />
+        <Monogram name={boardProject} size={14} />
         <span className="relation-code">{keyDisplayName(cardKey(card))}</span>
       </span>
     </RelationRow>
@@ -56,8 +56,8 @@ export function SelectedLine({ target, line }: { readonly target: PageTarget; re
   const boardProject = useProjectRow(target.board.project)?.name ?? "";
   const from = page ? findCard(page, line.from) : undefined;
   const to = page ? findCard(page, line.to) : undefined;
-  const model = useQuery({ ...cardQuery(line.project, from ? cardKey(from) : ""), enabled: from !== undefined });
-  const contract = useEngineQuery("call_contract", { project: line.project, source: line.source, seq: line.seq });
+  const model = useQuery({ ...cardQuery(target.board.project, from ? cardKey(from) : ""), enabled: from !== undefined });
+  const contract = useEngineQuery("call_contract", { project: target.board.project, source: line.source, seq: line.seq });
   const callee = writtenCallee(model.data, line.source, line.seq) ?? (contract.data ? keyDisplayName(contract.data.target) : "…");
   const args = contract.data?.sends.flatMap((send) => (send.argument ? [send.argument.text ?? "…"] : []));
   const written = line.seq === 0 ? `${callee}(${args ? args.join(", ") : "…"})` : callee;

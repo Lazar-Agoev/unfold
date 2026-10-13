@@ -4,7 +4,7 @@ import { queryClient } from "../ipc/client";
 import { engineKey } from "../ipc/queries";
 import { installFakeEngine, type FakeEngine } from "../test/engine";
 import { projectRow, workspaceView } from "../test/workspace";
-import { boardLink, copyLink } from "./links";
+import { boardLink, copyBoardLink, copyLink } from "./links";
 
 const toast = vi.hoisted(() => ({ showToast: vi.fn() }));
 vi.mock("../components/Toast", () => toast);
@@ -25,11 +25,11 @@ afterEach(() => {
 });
 
 describe("boardLink", () => {
-  it("names the project by its shared name, then the board, page, and item (D9)", () => {
+  it("names the project by its folder name, then the board, page, and item (D9)", () => {
     expect(boardLink({ project: "ts-orders", board: ".unfold/boards/order-placement.json", page: "page-1", item: "create-order" })).toBe(
       "unfold://ts-orders/.unfold/boards/order-placement.json?page=page-1&item=create-order",
     );
-    expect(boardLink({ project: "ts-orders", board: ".unfold/local/drafts/b.json" })).toBe("unfold://ts-orders/.unfold/local/drafts/b.json");
+    expect(boardLink({ project: "ts-orders", board: ".unfold/boards/b.json" })).toBe("unfold://ts-orders/.unfold/boards/b.json");
   });
 
   it("encodes each part, keeping the board's slashes", () => {
@@ -40,11 +40,13 @@ describe("boardLink", () => {
 });
 
 describe("copyLink", () => {
-  it("copies a link to the page or an item with the project's shared name", async () => {
+  it("copies a link to the board, the page, or an item with the project's folder name", async () => {
     queryClient.setQueryData(engineKey("workspace", {}), workspaceView([projectRow(P, "ts-orders")]));
+    await copyBoardLink(TARGET.board);
     await copyLink(TARGET);
     await copyLink(TARGET, "create-order");
     expect(engine.windowCalls).toEqual([
+      { command: "copy_to_clipboard", args: { text: "unfold://ts-orders/.unfold/boards/order-placement.json" } },
       { command: "copy_to_clipboard", args: { text: "unfold://ts-orders/.unfold/boards/order-placement.json?page=page-1" } },
       { command: "copy_to_clipboard", args: { text: "unfold://ts-orders/.unfold/boards/order-placement.json?page=page-1&item=create-order" } },
     ]);

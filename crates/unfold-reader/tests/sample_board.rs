@@ -6,7 +6,7 @@ mod common;
 
 use common::{load, playground_root};
 use unfold_core::testkit::{assert_golden, testdata_dir};
-use unfold_reader::board::{self, Board, BoardGraph, OutlineRow, PageGraphs};
+use unfold_reader::board::{self, Board, BoardGraph, OutlineRow};
 use unfold_reader::mermaid;
 
 const PAGE: &str = "page-1";
@@ -21,7 +21,7 @@ fn loaded() -> (Board, BoardGraph) {
     let loaded = load("ts-orders");
     let reader = loaded.store.readers.get().expect("get a reader");
     let parsed = board::parse(&sample()).expect("the sample board parses");
-    let graph = BoardGraph::load(&reader, &playground_root("ts-orders"), &parsed.references(None))
+    let graph = BoardGraph::load(&reader, &playground_root("ts-orders"), &parsed.references())
         .expect("load the board's graph");
     (parsed, graph)
 }
@@ -31,7 +31,6 @@ fn the_sample_board_round_trips_byte_for_byte() {
     let text = sample();
     let parsed = board::parse(&text).expect("the sample board parses");
     assert_eq!(board::serialize(&parsed), text);
-    assert!(parsed.projects.is_empty());
     let [page] = parsed.pages.as_slice() else {
         panic!("one page");
     };
@@ -46,8 +45,7 @@ fn the_sample_board_round_trips_byte_for_byte() {
 #[test]
 fn the_sample_board_loads_healthy_with_every_description_and_label_attached() {
     let (parsed, graph) = loaded();
-    let graphs = PageGraphs::own_only(&graph);
-    let health = board::board_health(&parsed, &graphs);
+    let health = board::board_health(&parsed, &graph);
     assert!(health.is_healthy(), "{:#?}", health.items);
     assert_eq!(health.label(), None);
 
@@ -85,7 +83,7 @@ fn the_sample_board_loads_healthy_with_every_description_and_label_attached() {
     for guard in &page.guards {
         assert_eq!(
             Some(guard),
-            board::current_guard(&graph, None, guard.key.as_str()).as_ref(),
+            board::current_guard(&graph, guard.key.as_str()).as_ref(),
             "{}",
             guard.key
         );
@@ -93,16 +91,15 @@ fn the_sample_board_loads_healthy_with_every_description_and_label_attached() {
 
     // Saving it again changes nothing, whether the page is reused or checked again.
     let (saved, saved_health) =
-        board::prepare_save(parsed.clone(), Some((&parsed, &health)), &graphs).expect("the board saves");
+        board::prepare_save(parsed.clone(), Some((&parsed, &health)), &graph).expect("the board saves");
     assert!(saved_health.is_healthy());
     assert_eq!(board::serialize(&saved), sample());
-    let (fresh, fresh_health) = board::prepare_save(parsed.clone(), None, &graphs).expect("the board saves");
+    let (fresh, fresh_health) = board::prepare_save(parsed.clone(), None, &graph).expect("the board saves");
     assert!(fresh_health.is_healthy());
     assert_eq!(board::serialize(&fresh), sample());
-    assert_eq!(board::changes(&fresh, &parsed), 0);
 
     // The outline follows the calls from the entrance.
-    let outline = board::outline(page, &graphs);
+    let outline = board::outline(page, &graph);
     let rows: Vec<(&str, u32)> = outline
         .rows
         .iter()
@@ -122,7 +119,7 @@ fn the_sample_board_loads_healthy_with_every_description_and_label_attached() {
     let labeled = outline
         .unlabeled
         .iter()
-        .filter(|node| page.label_entry(None, node.key.as_str()).is_some())
+        .filter(|node| page.label_entry(node.key.as_str()).is_some())
         .count();
     assert_eq!(labeled, 0, "labeled nodes never count as unlabeled");
 }
@@ -130,10 +127,9 @@ fn the_sample_board_loads_healthy_with_every_description_and_label_attached() {
 #[test]
 fn the_sample_board_exports_to_mermaid() {
     let (parsed, graph) = loaded();
-    let graphs = PageGraphs::own_only(&graph);
-    let output = mermaid::page(&parsed, PAGE, &graphs).expect("the page exists");
+    let output = mermaid::page(&parsed, PAGE, &graph).expect("the page exists");
     assert_eq!(
-        mermaid::page(&parsed, PAGE, &graphs),
+        mermaid::page(&parsed, PAGE, &graph),
         Some(output.clone()),
         "deterministic"
     );
@@ -144,46 +140,28 @@ fn the_sample_board_exports_to_mermaid() {
     for card in &mut flowing.pages[0].cards {
         card.view = Some(board::View::Flow);
     }
-    let output = mermaid::page(&flowing, PAGE, &graphs).expect("the page exists");
+    let output = mermaid::page(&flowing, PAGE, &graph).expect("the page exists");
     assert!(output.contains("Is the input not an object?"));
     assert!(output.contains("subgraph c0_g0[\"Queue async placement"));
     assert_golden("boards/order-placement-flow.mmd", &output);
 }
 
 #[test]
-fn a_page_spanning_projects_exports_placeholders_and_drawn_links() {
+fn a_page_exports_its_drawn_links() {
     let (mut parsed, graph) = loaded();
-    let web = board::ProjectName::parse("storefront-web").expect("a shared name");
-    let page = &mut parsed.pages[0];
-    page.cards.push(board::Card {
-        id: "checkout".to_owned(),
-        reference: board::CardRef::entrance(
-            unfold_core::Key::from_text("entrance:[\"next.route\",\"http\",\"POST\",\"/api/cart/checkout\"]"),
-            Some(web.clone()),
-        ),
-        at: [-704.0, -2.0],
-        view: None,
-        folded: false,
-        description: None,
-        expanded: Vec::new(),
-    });
-    page.links.push(board::Link {
+    parsed.pages[0].links.push(board::Link {
         label: Some(board::Description {
-            text: "calls POST /orders".to_owned(),
+            text: "replies with the order".to_owned(),
             author: board::Author::person("you").expect("an author"),
             signature: None,
         }),
-        ..board::Link::new("checkout-calls-orders", "checkout", "post-orders")
+        ..board::Link::new("place-replies", "place-order", "post-orders")
     });
-    parsed.refresh_projects();
-    assert_eq!(parsed.projects, [web]);
-    let graphs = PageGraphs::own_only(&graph);
-    let output = mermaid::page(&parsed, PAGE, &graphs).expect("the page exists");
-    assert!(output.contains("c6[\"From storefront-web, not connected\"]"));
-    assert!(output.contains("c6 -.->|\"calls POST /orders\"| c4"));
+    let output = mermaid::page(&parsed, PAGE, &graph).expect("the page exists");
+    assert!(output.contains("-.->|\"replies with the order\"|"), "{output}");
     assert_golden("boards/order-placement-links.mmd", &output);
 
-    // The page still round-trips with its link and its other project.
+    // The page still round-trips with its link.
     let text = board::serialize(&parsed);
     assert_eq!(board::serialize(&board::parse(&text).expect("it parses")), text);
 }
@@ -192,8 +170,7 @@ fn a_page_spanning_projects_exports_placeholders_and_drawn_links() {
 fn a_proposed_step_goes_only_where_the_card_flow_lets_one_go() {
     const REQUIRE_USER: &str = "src/routes/middleware.ts#function:requireUser";
     let (parsed, graph) = loaded();
-    let graphs = PageGraphs::own_only(&graph);
-    let health = board::board_health(&parsed, &graphs);
+    let health = board::board_health(&parsed, &graph);
     let proposal = |id: &str, after: &str, path: Option<board::ProposalPath>| board::Proposal {
         id: id.to_owned(),
         card: "middleware-0".to_owned(),
@@ -210,7 +187,7 @@ fn a_proposed_step_goes_only_where_the_card_flow_lets_one_go() {
     };
     let refused =
         |board: Board, previous: Option<(&Board, &board::Health)>, expected: &str| match board::prepare_save(
-            board, previous, &graphs,
+            board, previous, &graph,
         ) {
             Err(board::BoardError::Problem { target, message, .. }) => {
                 assert_eq!(target, board::Target::Proposal("p".to_owned()), "{message}");
@@ -224,14 +201,14 @@ fn a_proposed_step_goes_only_where_the_card_flow_lets_one_go() {
     let (saved, saved_health) = board::prepare_save(
         with(proposal("p", "if[0]", Some(board::ProposalPath::Yes))),
         Some((&parsed, &health)),
-        &graphs,
+        &graph,
     )
     .expect("a decision's yes path takes a proposal");
     assert!(saved_health.is_healthy(), "{:#?}", saved_health.items);
     let (_, next_health) = board::prepare_save(
         with(proposal("p", "expression_statement[0]", None)),
         Some((&parsed, &health)),
-        &graphs,
+        &graph,
     )
     .expect("a call statement takes a proposal");
     assert!(next_health.is_healthy());
@@ -268,5 +245,5 @@ fn a_proposed_step_goes_only_where_the_card_flow_lets_one_go() {
     refused(rerouted, Some((&saved, &saved_health)), "has no each path");
     let mut rerouted = saved.clone();
     rerouted.pages[0].proposals[0].path = Some(board::ProposalPath::No);
-    assert!(board::prepare_save(rerouted, Some((&saved, &saved_health)), &graphs).is_ok());
+    assert!(board::prepare_save(rerouted, Some((&saved, &saved_health)), &graph).is_ok());
 }

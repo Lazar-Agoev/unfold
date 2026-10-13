@@ -1,7 +1,7 @@
 //! Derived views over a stored graph: owners, the catalog, activation closures, applications,
 //! relations, the Flow model, the code render model, typed lines, and Mermaid export; and boards (the
 //! `unfold-board` format with pages, its JSON Schema, validation, signatures, guards, drawn
-//! links, health across projects, drafts, unpublished changes, and publishing). It never parses source; highlighting arrives through a `Highlighter` trait.
+//! links, health, and board files). It never parses source; highlighting arrives through a `Highlighter` trait.
 //!
 //! `docs/reader.md` is the authoritative description of the rules implemented here.
 //!
@@ -23,9 +23,9 @@
 //! - [`flow::flow_view`] builds a card's Flow (paths from written structure) from the same facts.
 //! - [`contracts`] builds typed lines (an arrow's label, a call's contract, a type's definition
 //!   and uses) from one or two files' typed records, per request.
-//! - [`board`] reads, checks, signs, and writes `unfold-board` files against
-//!   [`board::PageGraphs`] (one [`board::BoardGraph`] of the files a board touches per connected
-//!   project); [`mermaid`] exports a board page, an entrance, or a Flow.
+//! - [`board`] reads, checks, signs, and writes `unfold-board` files against a
+//!   [`board::BoardGraph`] of the files a board touches; [`mermaid`] exports a board page, an
+//!   entrance, or a Flow.
 
 #![forbid(unsafe_code)]
 

@@ -22,21 +22,19 @@ export function page(id: string, cards: readonly Card[] = [], overrides: Partial
 
 /** A board document with these pages (one empty `page-1` when none are given). */
 export function boardDocument(pages: readonly Page[] = [page("page-1")], overrides: Partial<BoardDocument> = {}): BoardDocument {
-  return { format: "unfold-board", version: 1, title: "Order placement", projects: [], pages: [...pages], ...overrides };
+  return { format: "unfold-board", version: 1, title: "Order placement", pages: [...pages], ...overrides };
 }
 
-export const HEALTHY: Health = { items: [], missing: 0, outdated: 0, brokenGroups: 0, review: 0, notConnected: 0, brokenLinks: 0 };
+export const HEALTHY: Health = { items: [], missing: 0, outdated: 0, brokenGroups: 0, review: 0, brokenLinks: 0 };
 
-/** A draft's state as `open_board` and `save_board` return it. */
+/** A board's state as `open_board` and `save_board` return it. */
 export function boardState(project: ProjectId, id: string, document: BoardDocument = boardDocument(), overrides: Partial<BoardState> = {}): BoardState {
   return {
     project,
     id,
-    place: "draft",
     name: id.replace(/^.*\//, "").replace(/\.json$/, ""),
     document,
     revision: "r1",
-    published: null,
     health: HEALTHY,
     outlines: document.pages.map((item) => ({ page: item.id, rows: [], unlabeled: [] })),
     label: null,

@@ -1,10 +1,10 @@
 /**
  * A block card: one definition (or another indexed block) of a project in Code (the Code lens) or Flow
  * (expanded in the Diagram lens, where its header starts with the chevron that makes it compact again).
- * The header shows the project monogram (a card from another project), `ƒ`, the name, and the file; a
+ * The header shows `ƒ`, the name, and the file; a
  * review banner and the description follow. A folded card (double-click its header) shows only the
  * header, and its arrows attach there. The body never scrolls: the card sizes itself to its content.
- * Flow shows the page's labels for the card's project and the card's groups as step groups (a group's
+ * Flow shows the page's labels and the card's groups as step groups (a group's
  * one `collapsed` field folds it in both views), and the calls the card expands in place
  * (`CallInsets`): an inset under the call, while the call's own arrow keeps leaving from its step and
  * the calls the inset shows leave from theirs (`placeFlowPorts`).
@@ -19,7 +19,7 @@ import { useUpdateNodeInternals } from "@xyflow/react";
 import { useLayoutEffect, useMemo, type ReactNode } from "react";
 import { stepRun } from "../../board/combine";
 import { viewCode } from "../../board/viewCode";
-import { Monogram, showToast } from "../../components";
+import { showToast } from "../../components";
 import { CodeView, portSpot } from "../../code/CodeView";
 import { defaultFolds, groupConflict, groupSelection } from "../../code/outline";
 import { shortPath } from "../../code/text";
@@ -37,7 +37,7 @@ import {
   followCall,
   getPageView,
   keyDisplayName,
-  labelsFor,
+  labelTexts,
   lineOffsetIn,
   select,
   setPendingGroup,
@@ -49,7 +49,6 @@ import {
   type Selection,
 } from "../../state/boards";
 import { cardQuery, isMissing, lastVerifiedCode } from "../cardData";
-import { ProjectScope } from "../ProjectScope";
 import { CARD_MAX_WIDTH } from "../layout";
 import { useMeasure } from "../measure";
 import { blockCardWidth, codeContentWidth } from "../sizing";
@@ -130,7 +129,7 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
   const calleeOf = line !== null && line.to === card.id ? line : null;
   const contract = useEngineQuery(
     "call_contract",
-    { project: calleeOf?.project ?? project, source: calleeOf?.source ?? "", seq: calleeOf?.seq ?? 0 },
+    { project, source: calleeOf?.source ?? "", seq: calleeOf?.seq ?? 0 },
     { enabled: calleeOf !== null },
   );
   const calleeLines = calleeOf !== null ? contract.data?.calleeLines : undefined;
@@ -186,8 +185,8 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
     codeModel?.source.state === "current" ? codeModel.source : stale?.source.state === "current" ? stale.source : null;
   const folds = useMemo(() => new Set(codeFolds ?? (shown ? defaultFolds(shown.outline) : NO_FOLDS)), [codeFolds, shown]);
   const portSet = useMemo(() => new Set(ports), [ports]);
-  // The page's labels for this card's project (`ref.project` names it the same way labels do).
-  const labelText = useMemo(() => labelsFor(labels ?? [], card.ref.project), [labels, card.ref.project]);
+  // The page's labels, by key.
+  const labelText = useMemo(() => labelTexts(labels ?? []), [labels]);
   const chainSet = useMemo(() => new Set(openChains), [openChains]);
 
   // Laid out only while the card shows Flow: measuring and placing nodes is the costly part of a card.
@@ -235,15 +234,13 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
 
   const name = model?.header.qualifiedName ?? keyDisplayName(key);
   const location = model ? shortPath(model.header.path) : "";
-  // A card from another project names it with its monogram (`ref.project` is its shared name).
-  const foreign = card.ref.project;
   const bodyWidth = folded ? null : view === "flow" && flowLayout ? flowLayout.width + 2 : shown ? codeContentWidth(shown, measure) : null;
   // A call expanded in place may need more than a card's usual widest; the card grows rather than clip it.
   const insetWidth = !folded && flowLayout && flowLayout.insets.length > 0 ? flowLayout.width + 2 : 0;
   // `measure` changes when the bundled fonts load, so widths come from the real fonts.
   const width = useMemo(
-    () => Math.max(insetWidth, blockCardWidth({ name, location, monogram: foreign !== undefined, chevron: view === "flow", body: bodyWidth }, measure)),
-    [name, location, foreign, view, bodyWidth, insetWidth, measure],
+    () => Math.max(insetWidth, blockCardWidth({ name, location, chevron: view === "flow", body: bodyWidth }, measure)),
+    [name, location, view, bodyWidth, insetWidth, measure],
   );
 
   // Which ports the body places (its own Flow's steps, or an inset's); the rest (and all of a folded card's) sit on the header.
@@ -446,6 +443,7 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
           </CardNote>
         ) : null}
         <CodeView
+          project={project}
           code={shown}
           language={model.header.language}
           label={name}
@@ -507,7 +505,6 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
       <CardHandles />
       <header className="card-header card-drag" onDoubleClick={toggleFolded}>
         {view === "flow" && !folded ? <ExpandToggle target={target} cardId={card.id} expanded name={name} /> : null}
-        {foreign !== undefined ? <Monogram name={foreign} size={20} /> : null}
         <CardGlyph kind={model?.header.kind ?? null} />
         <h3 className="card-title" title={model?.header.qualifiedName ?? key}>
           {name}
@@ -522,7 +519,7 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
         <>
           <DescriptionStrip target={target} cardId={card.id} description={card.description} />
           <div className="card-body nodrag nopan">
-            <ProjectScope.Provider value={project}>{body}</ProjectScope.Provider>
+            {body}
           </div>
         </>
       )}

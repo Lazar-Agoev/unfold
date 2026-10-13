@@ -1,151 +1,106 @@
-//! What lists and reads boards without opening them: a project's boards and empty folders, the
-//! drafts of every project, board thumbnails, where a key is on boards, and one board's working
-//! version. All of them read from disk and serve resting projects without waking them; only a
-//! live project's boards carry a health label (health needs a current graph).
+//! What lists and reads boards without opening them: a project's boards and empty folders,
+//! where a key is on a project's boards, and one board's file. All of them read from disk and
+//! serve resting projects without waking them; only a live project's boards carry a health
+//! label (health needs a current graph).
 
-use std::collections::{BTreeMap, BTreeSet};
+use unfold_reader::board::files::{BoardFile, Loaded};
 
-use rayon::prelude::*;
-use unfold_core::vocab::BlockKind;
-use unfold_reader::board::files::{BoardFile, Place};
-use unfold_reader::board::{CardRef, ProjectName, References, card_links};
-
-use super::files::{Files, Working, parse_id, working_file};
-use super::graphs::Resolver;
-use super::session::{BoardExtras, health_of};
+use super::files::{Files, parse_id};
+use super::graphs::Source;
+use super::session::health_of;
 use super::types::{
-    BoardDocument, BoardIdArgs, BoardList, BoardRefHit, BoardRefs, BoardSummary, CardKind, Drafts,
-    ReadBoardResult, Thumbnail, ThumbnailCard, ThumbnailPage, Thumbnails, ThumbnailsArgs,
+    BoardDocument, BoardIdArgs, BoardList, BoardRefHit, BoardRefs, BoardSummary, ReadBoardResult,
 };
-use crate::commands::{NoArgs, ProjectArgs, ProjectKeyArgs, count, key_arg};
-use crate::events::WorkingFile;
+use crate::commands::{ProjectArgs, ProjectExtras, ProjectKeyArgs, count, key_arg};
 use crate::ipc::context::Ctx;
-use crate::ipc::error::{CommandError, CommandResult};
-use crate::projects::{ProjectHandle, ProjectId, Projects};
+use crate::ipc::error::CommandResult;
+use crate::projects::ProjectId;
 use crate::state::{LocalState, read_json};
 
 /// The most boards `list_boards` lists.
 const MAX_BOARDS: usize = 2_000;
-/// The most boards `drafts` lists.
-const MAX_DRAFTS: usize = 500;
-/// The most boards one `board_thumbnails` call draws.
-const MAX_THUMBNAILS: usize = 60;
-/// The most cards a thumbnail lists.
-const MAX_THUMBNAIL_CARDS: usize = 200;
 /// The most pages `board_refs` lists.
 const MAX_REFS: usize = 50;
 
-/// Board `file` of project `project` as lists show it, from its working version (or why it
-/// can't be read), with health label `label`.
+/// Board `file` of project `project` as lists show it, from its file (or why it can't be read),
+/// last edited at `updated_at_ms`, with health label `label`.
 pub(super) fn summary(
     project: &ProjectId,
-    files: &Files<'_>,
     file: &BoardFile,
-    working: CommandResult<Working>,
+    updated_at_ms: i64,
+    loaded: CommandResult<Loaded>,
     label: Option<String>,
 ) -> BoardSummary {
     let mut summary = BoardSummary {
         project: project.clone(),
         id: file.relative(),
-        place: file.place,
-        name: file.name.clone(),
+        name: file.name().to_owned(),
         title: None,
         folder: None,
         pages: 0,
         cards: 0,
-        projects: Vec::new(),
-        changes: 0,
-        updated_at_ms: files.modified_ms(file),
+        updated_at_ms,
         label,
         error: None,
     };
-    let working = match working {
-        Ok(working) => working,
-        Err(error) => {
-            summary.error = Some(error.message);
-            return summary;
+    match loaded {
+        Ok(loaded) => {
+            let board = loaded.board;
+            summary.pages = count(board.pages.len());
+            summary.cards = count(board.pages.iter().map(|page| page.cards.len()).sum());
+            summary.title = Some(board.title);
+            summary.folder = board.folder;
         }
-    };
-    if working.kind == WorkingFile::Changes {
-        summary.updated_at_ms = files.modified_ms(&working_file(file, working.kind));
-        summary.changes = files
-            .published_state(file, &working.loaded.board, working.kind, working.loaded.base)
-            .map_or(0, |published| published.changes);
+        Err(error) => summary.error = Some(error.message),
     }
-    let board = working.loaded.board;
-    summary.pages = count(board.pages.len());
-    summary.cards = count(board.pages.iter().map(|page| page.cards.len()).sum());
-    summary.title = Some(board.title);
-    summary.folder = board.folder;
-    summary.projects = board.projects;
     summary
 }
 
-/// Lists one project's boards, live or resting.
-struct Lister<'p> {
-    project: ProjectHandle<'p>,
-    files: Files<'p>,
-    /// A live project's health cache and graphs (labels); `None` while it rests.
-    health: Option<(std::sync::Arc<crate::commands::ProjectExtras>, Resolver<'p>)>,
+/// A board's health label as a live project's cache and graph give it; `None` while the
+/// project rests or has no graph, when the board is healthy, or when it can't be read.
+pub(super) fn label_of(
+    health: Option<&(std::sync::Arc<ProjectExtras>, Source)>,
+    id: &str,
+    loaded: &CommandResult<Loaded>,
+) -> Option<String> {
+    let (Some((extras, source)), Ok(loaded)) = (health, loaded) else {
+        return None;
+    };
+    health_of(&extras.boards, source, id, loaded)
+        .ok()
+        .flatten()
+        .and_then(|health| health.label())
 }
 
-impl<'p> Lister<'p> {
-    fn new(projects: &'p Projects, project: ProjectHandle<'p>) -> CommandResult<Self> {
-        let files = Files::reading(project.root(), &project.layout());
-        let health = match project.live() {
-            Some(workspace) => Some((project.extras(), Resolver::live(projects, &workspace)?)),
-            None => None,
-        };
-        Ok(Self {
-            project,
-            files,
-            health,
-        })
-    }
-
-    fn summary(&mut self, file: &BoardFile) -> BoardSummary {
-        let id = file.relative();
-        let working = self.files.working(file);
-        let label = match (&working, &mut self.health) {
-            (Ok(working), Some((extras, resolver))) => {
-                let extras: &BoardExtras = &extras.boards;
-                health_of(extras, resolver, &id, &working.loaded)
-                    .ok()
-                    .flatten()
-                    .and_then(|health| health.label())
-            }
-            _ => None,
-        };
-        summary(self.project.id(), &self.files, file, working, label)
-    }
-
-    /// The project's drafts and published boards with unpublished changes.
-    fn drafts(&mut self) -> Vec<BoardSummary> {
-        let mut files = self.files.dirs.list(Place::Draft).unwrap_or_default();
-        files.extend(self.files.dirs.changed().unwrap_or_default());
-        files
-            .iter()
-            .map(|file| self.summary(file))
-            .filter(|summary| summary.place == Place::Draft || summary.changes > 0)
-            .collect()
-    }
-}
-
-/// `list_boards`: a project's boards (published, then drafts, each by name) and its empty
-/// folders, for the sidebar tree and Home's Boards.
+/// `list_boards`: a project's boards, most recently edited first (then by id), and its empty
+/// folders, for the sidebar and Home's Boards. A board's last edit is its file's modification
+/// time.
 pub fn list_boards(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<BoardList> {
     let project = ctx.project(&args.project)?;
-    let empty_folders = match project.live() {
-        Some(workspace) => workspace.local_state().empty_folders,
-        None => read_json::<LocalState>(&project.layout().state_file()).empty_folders,
+    let files = Files::reading(project.root());
+    let (empty_folders, health) = match project.live() {
+        Some(workspace) => (
+            workspace.local_state().empty_folders,
+            Some((project.extras(), Source::live(&workspace)?)),
+        ),
+        None => (
+            read_json::<LocalState>(&project.layout().state_file()).empty_folders,
+            None,
+        ),
     };
-    let mut lister = Lister::new(ctx.projects(), project)?;
-    let mut files = lister.files.boards()?;
-    files.truncate(MAX_BOARDS);
-    let mut boards = Vec::with_capacity(files.len());
-    for file in &files {
+    let mut edited: Vec<(i64, BoardFile)> = files
+        .boards()?
+        .into_iter()
+        .map(|file| (files.modified_ms(&file), file))
+        .collect();
+    edited.sort_by(|(a_ms, a), (b_ms, b)| b_ms.cmp(a_ms).then_with(|| a.name().cmp(b.name())));
+    edited.truncate(MAX_BOARDS);
+    let mut boards = Vec::with_capacity(edited.len());
+    for (updated_at_ms, file) in &edited {
         ctx.check_cancelled()?;
-        boards.push(lister.summary(file));
+        let loaded = files.load(file);
+        let label = label_of(health.as_ref(), &file.relative(), &loaded);
+        boards.push(summary(project.id(), file, *updated_at_ms, loaded, label));
     }
     Ok(BoardList {
         project: args.project,
@@ -154,234 +109,51 @@ pub fn list_boards(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<BoardList>
     })
 }
 
-/// `read_board`: board `id`'s working version as its file holds it, with the file's revision and
-/// its publish state. Neither opens the board nor wakes its project.
+/// `read_board`: board `id` as its file holds it, with the file's revision. Neither opens the
+/// board nor wakes its project.
 pub fn read_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<ReadBoardResult> {
     let project = ctx.project(&args.project)?;
     let file = parse_id(&args.id)?;
-    let files = Files::reading(project.root(), &project.layout());
-    let working = files.working(&file)?;
-    let published = files.published_state(&file, &working.loaded.board, working.kind, working.loaded.base);
-    let id = file.relative();
+    let loaded = Files::reading(project.root()).load(&file)?;
     Ok(ReadBoardResult {
         project: args.project,
-        place: file.place,
-        name: file.name,
-        document: BoardDocument::new(working.loaded.board),
-        revision: working.loaded.revision.0.to_string(),
-        published,
-        id,
+        id: file.relative(),
+        name: file.name().to_owned(),
+        document: BoardDocument::new(loaded.board),
+        revision: loaded.revision.0.to_string(),
     })
 }
 
-/// `drafts`: every project's drafts and published boards with unpublished changes, most
-/// recently written first.
-pub fn drafts(ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<Drafts> {
-    let projects = ctx.projects();
-    let ids = projects.ids();
-    let mut drafts: Vec<BoardSummary> = ids
-        .par_iter()
-        .map(|id| {
-            // A project that left the workspace meanwhile has no drafts to list.
-            projects
-                .handle(id)
-                .ok()
-                .and_then(|project| Lister::new(projects, project).ok())
-                .map(|mut lister| lister.drafts())
-                .unwrap_or_default()
-        })
-        .flatten()
-        .collect();
-    drafts.sort_by(|a, b| {
-        b.updated_at_ms
-            .cmp(&a.updated_at_ms)
-            .then_with(|| a.project.cmp(&b.project))
-            .then_with(|| a.id.cmp(&b.id))
-    });
-    drafts.truncate(MAX_DRAFTS);
-    Ok(Drafts { drafts })
-}
-
-/// `board_thumbnails`: what the thumbnails of a project's boards draw (their first pages).
-pub fn board_thumbnails(ctx: &Ctx<'_>, args: ThumbnailsArgs) -> CommandResult<Thumbnails> {
-    if args.boards.len() > MAX_THUMBNAILS {
-        return Err(CommandError::invalid_args(format!(
-            "at most {MAX_THUMBNAILS} boards per call"
-        )));
-    }
-    let files = args
-        .boards
-        .iter()
-        .map(|id| parse_id(id))
-        .collect::<CommandResult<Vec<_>>>()?;
-    let project = ctx.project(&args.project)?;
-    let reading = Files::reading(project.root(), &project.layout());
-    let mut resolver = Resolver::of(ctx.projects(), &project)?;
-    let mut thumbnails = Vec::with_capacity(files.len());
-    for (id, file) in args.boards.into_iter().zip(files) {
-        ctx.check_cancelled()?;
-        let drawn = reading
-            .working(&file)
-            .and_then(|working| thumbnail(&mut resolver, &id, &working));
-        thumbnails.push(drawn.unwrap_or_else(|error| Thumbnail {
-            board: id,
-            page: None,
-            pages: 0,
-            cards: Vec::new(),
-            edges: Vec::new(),
-            links: Vec::new(),
-            truncated: false,
-            error: Some(error.message),
-        }));
-    }
-    Ok(Thumbnails { thumbnails })
-}
-
-/// The thumbnail of board `id`, whose working version is `working`.
-fn thumbnail(resolver: &mut Resolver<'_>, id: &str, working: &Working) -> CommandResult<Thumbnail> {
-    let board = &working.loaded.board;
-    let mut thumbnail = Thumbnail {
-        board: id.to_owned(),
-        page: None,
-        pages: count(board.pages.len()),
-        cards: Vec::new(),
-        edges: Vec::new(),
-        links: Vec::new(),
-        truncated: false,
-        error: None,
-    };
-    let Some(page) = board.pages.first() else {
-        return Ok(thumbnail);
-    };
-    // Only the cards' blocks and entrances: a thumbnail draws nothing the claims cite, so it
-    // reads no evidence file and defines no table's type.
-    let graphs = resolver.graphs(&board.projects, |project| References {
-        keys: page
-            .cards
-            .iter()
-            .filter(|card| card.reference.project() == project)
-            .map(|card| card.reference.key().as_str())
-            .collect(),
-        ..References::default()
-    })?;
-    let graphs = graphs.page();
-    let shown = &page.cards[..page.cards.len().min(MAX_THUMBNAIL_CARDS)];
-    let ids: BTreeSet<&str> = shown.iter().map(|card| card.id.as_str()).collect();
-    let both = |from: &str, to: &str| ids.contains(from) && ids.contains(to);
-    thumbnail.page = Some(ThumbnailPage {
-        id: page.id.clone(),
-        title: page.title.clone(),
-    });
-    thumbnail.truncated = shown.len() < page.cards.len();
-    thumbnail.cards = shown
-        .iter()
-        .map(|card| {
-            let project = card.reference.project();
-            let block = card
-                .reference
-                .block_key()
-                .and_then(|key| graphs.get(project)?.block(key.as_str()));
-            let lines = block.map(|block| {
-                let lines = block.block().lines;
-                lines.end.saturating_sub(lines.start) + 1
-            });
-            let kind = match (&card.reference, block.map(|block| block.block().kind)) {
-                (CardRef::Entrance { .. }, _) => CardKind::Entrance,
-                (_, Some(BlockKind::Interface | BlockKind::TypeAlias | BlockKind::Enum)) => CardKind::Type,
-                (_, Some(BlockKind::Class)) => CardKind::Class,
-                _ => CardKind::Block,
-            };
-            let fields = block
-                .filter(|_| matches!(kind, CardKind::Type | CardKind::Class))
-                .map(|block| {
-                    let members = block
-                        .file()
-                        .types
-                        .members
-                        .iter()
-                        .filter(|member| member.block == block.local())
-                        .count();
-                    // An alias with no members lists its aliased type.
-                    count(members.max(usize::from(block.block().kind == BlockKind::TypeAlias)))
-                });
-            ThumbnailCard {
-                id: card.id.clone(),
-                at: card.at,
-                kind,
-                view: page.view_of(card),
-                folded: card.folded,
-                lines,
-                fields,
-                foreign: project.is_some(),
-            }
-        })
-        .collect();
-    let mut seen = BTreeSet::new();
-    thumbnail.edges = card_links(page, &graphs)
-        .into_iter()
-        .filter(|link| both(&link.source, &link.target))
-        .map(|link| [link.source, link.target])
-        .filter(|edge| seen.insert(edge.clone()))
-        .collect();
-    thumbnail.links = page
-        .links
-        .iter()
-        .filter(|link| both(&link.from, &link.to))
-        .map(|link| [link.from.clone(), link.to.clone()])
-        .collect();
-    Ok(thumbnail)
-}
-
-/// `board_refs`: the board pages of every project where key `key` of project `project` is a
-/// card ("Already on …").
+/// `board_refs`: the pages of project `project`'s boards where key `key` is a card ("Already
+/// on …").
 pub fn board_refs(ctx: &Ctx<'_>, args: ProjectKeyArgs) -> CommandResult<BoardRefs> {
-    let target = ctx.project(&args.project)?.id().clone();
+    let project = ctx.project(&args.project)?;
     let key = key_arg(&args.key)?;
-    let projects = ctx.projects();
-    let mut resolved: BTreeMap<ProjectName, Option<ProjectId>> = BTreeMap::new();
+    let files = Files::reading(project.root());
     let mut refs = Vec::new();
-    for id in projects.ids() {
-        let Ok(project) = projects.handle(&id) else {
+    for file in files.boards()? {
+        ctx.check_cancelled()?;
+        let Ok(loaded) = files.load(&file) else {
             continue;
         };
-        let files = Files::reading(project.root(), &project.layout());
-        for file in files.boards().unwrap_or_default() {
-            ctx.check_cancelled()?;
-            let Ok(working) = files.working(&file) else {
+        let board = &loaded.board;
+        for page in &board.pages {
+            if !page.cards.iter().any(|card| card.reference.key().as_str() == key) {
                 continue;
-            };
-            let board = &working.loaded.board;
-            for page in &board.pages {
-                let on_page = page.cards.iter().any(|card| {
-                    card.reference.key().as_str() == key
-                        && match card.reference.project() {
-                            None => id == target,
-                            Some(name) => {
-                                resolved
-                                    .entry(name.clone())
-                                    .or_insert_with(|| projects.resolve_name(name.as_str()))
-                                    .as_ref()
-                                    == Some(&target)
-                            }
-                        }
-                });
-                if !on_page {
-                    continue;
-                }
-                if refs.len() == MAX_REFS {
-                    return Ok(BoardRefs {
-                        refs,
-                        truncated: true,
-                    });
-                }
-                refs.push(BoardRefHit {
-                    project: id.clone(),
-                    board: file.relative(),
-                    title: board.title.clone(),
-                    page: page.id.clone(),
-                    page_title: page.title.clone(),
+            }
+            if refs.len() == MAX_REFS {
+                return Ok(BoardRefs {
+                    refs,
+                    truncated: true,
                 });
             }
+            refs.push(BoardRefHit {
+                project: project.id().clone(),
+                board: file.relative(),
+                title: board.title.clone(),
+                page: page.id.clone(),
+                page_title: page.title.clone(),
+            });
         }
     }
     Ok(BoardRefs {

@@ -1,14 +1,13 @@
 /**
  * Read boards (design §6.5): `list_boards` and `read_page`.
  *
- * `list_boards` lists a project's boards (`list_boards`, which never wakes a project) with each
- * board's pages from its file (`read_board`), or, with no project to go by, every project's drafts and
- * unpublished changes (`drafts`). `read_page` reads a page as the window holding its board has it
- * (unsaved edits included), else as its file has it, then the code of its cards, so it can say what
- * the board draws between them, how each card shows (compact or expanded, and the calls it expands in
- * place), and where each proposed step goes, with a note when its anchor is missing or held (from the
- * board's health while a window holds the board, else from the card's Flow); or the page as Mermaid
- * (`export_mermaid_text`, as last saved).
+ * `list_boards` lists a project's boards (`list_boards`, which never wakes a project), last edited
+ * first, with each board's pages from its file (`read_board`). `read_page` reads a page as the
+ * window holding its board has it (unsaved edits included), else as its file has it, then the code
+ * of its cards, so it can say what the board draws between them, how each card shows (compact or
+ * expanded, and the calls it expands in place), and where each proposed step goes, with a note when
+ * its anchor is missing or held (from the board's health while a window holds the board, else from
+ * the card's Flow); or the page as Mermaid (`export_mermaid_text`, as last saved).
  */
 
 import { z } from "zod";
@@ -48,20 +47,19 @@ async function pagesText(context: ToolContext, board: BoardSummary): Promise<str
   }
 }
 
-/** A board's lines in a listing: its title, id, and state, then its pages (with `project`, the project it is in). */
-async function boardLines(context: ToolContext, board: BoardSummary, project?: string): Promise<string[]> {
+/** A board's lines in a listing: its title, id, and state, then its pages. */
+async function boardLines(context: ToolContext, board: BoardSummary): Promise<string[]> {
   const ref = { project: board.project, id: board.id };
   const view = currentView(context);
   const held = context.views.holder(ref) !== undefined;
   const facts = [
-    project,
-    board.place === "draft" ? "draft" : board.changes > 0 ? `published, ${count(board.changes, "unpublished change")}` : "published",
     board.folder !== null ? `in ${board.folder}` : null,
+    `edited ${new Date(board.updatedAtMs).toISOString()}`,
     count(board.cards, "card"),
     board.label !== null ? `needs review: ${board.label} (check lists it)` : null,
     board.error !== null ? `can't be read: ${board.error}` : null,
     view?.board?.project === ref.project && view.board.id === ref.id ? "in view" : held ? "open in Unfold" : null,
-  ].filter((fact) => fact !== null && fact !== undefined);
+  ].filter((fact) => fact !== null);
   return [`- ${board.title ?? board.name} (board id ${board.id}): ${facts.join(", ")}`, `  ${board.error === null ? await pagesText(context, board) : count(board.pages, "page")}`];
 }
 
@@ -69,47 +67,28 @@ export const listBoards = defineTool({
   name: "list_boards",
   title: "List boards",
   description:
-    'A project\'s boards and drafts: each board\'s title and id, its pages with their ids, publish state (a draft, or published with unpublished changes), folder, card count, health ("needs review: 1 missing · 2 outdated"; check lists the problems and their repairs), and whether it is open in Unfold or in view; then the empty folders. project is a name, id, or link (default: the project of the board in view, else the only project). With several projects and no board in view, it lists every project\'s drafts and published boards with unpublished changes, newest first. Pass a board\'s and a page\'s id to read_page, check, and the tools that build pages. Reading changes nothing.',
+    'A project\'s boards, last edited first: each board\'s title and id, its pages with their ids, folder, when it was last edited, card count, health ("needs review: 1 missing · 2 outdated"; check lists the problems and their repairs), and whether it is open in Unfold or in view; then the empty folders. project is a name, id, or link (default: the project of the board in view, else the only project). Pass a board\'s and a page\'s id to read_page, check, and the tools that build pages. Reading changes nothing.',
   input: z.object({
     project: z.string().min(1).optional().describe("The project's name or id, or a link to one of its boards"),
     cursor: cursorArg,
   }),
   annotations: { readOnlyHint: true },
   async run({ project, cursor }, context) {
-    const rows = await context.projects();
-    const known = project !== undefined || rows.length === 1 || currentView(context)?.board !== undefined;
-    if (!known) {
-      return listDrafts(context, rows, cursor);
-    }
     const row = await projectOrView(context, project);
     const list = await context.engine("list_boards", { project: row.id });
-    const page = paged(list.boards, cursor, BOARDS_PER_PAGE);
+    const boards = list.boards.toSorted((a, b) => b.updatedAtMs - a.updatedAtMs);
+    const page = paged(boards, cursor, BOARDS_PER_PAGE);
     const lines = await Promise.all(page.items.map((board) => boardLines(context, board)));
     return textResult(
       context.header({ project: row.name }),
-      `${row.name} (project id ${row.id}) has ${count(list.boards.length, "board")}${list.boards.length > 0 ? ":" : "."}`,
+      `${row.name} (project id ${row.id}) has ${count(boards.length, "board")}${boards.length > 0 ? ":" : "."}`,
       ...lines.flat(),
       list.emptyFolders.length > 0 && page.next === undefined ? `Empty folders: ${list.emptyFolders.join(", ")}.` : null,
       nextLine(page, "list_boards"),
-      list.boards.length > 0 ? "Next: read_page with a board's and a page's id; check with a board's id lists its problems." : "Next: create_board makes a draft.",
+      boards.length > 0 ? "Next: read_page with a board's and a page's id; check with a board's id lists its problems." : "Next: create_board makes one.",
     );
   },
 });
-
-/** Every project's drafts and changed published boards, newest first. */
-async function listDrafts(context: ToolContext, rows: readonly ProjectRow[], cursor: string | undefined) {
-  const { drafts } = await context.engine("drafts", {});
-  const page = paged(drafts, cursor, BOARDS_PER_PAGE);
-  const names = new Map(rows.map((row) => [row.id, row.name]));
-  const lines = await Promise.all(page.items.map((board) => boardLines(context, board, `in ${names.get(board.project) ?? board.project}`)));
-  return textResult(
-    context.header(),
-    `${count(rows.length, "project")} and no board in view, so these are every project's drafts and published boards with unpublished changes, newest first (${drafts.length}):`,
-    ...lines.flat(),
-    nextLine(page, "list_boards"),
-    "Next: list_boards with project lists all of one project's boards.",
-  );
-}
 
 // ---------------------------------------------------------------------------------------------
 // read_page
@@ -173,7 +152,6 @@ function cardLine(page: Page, read: ReadPage, code: CardCode, frames: ReadonlyMa
   return `- ${cardName(code)} (card id ${card.id}): ${joined([
     cardWhere(code),
     `key ${code.key}`,
-    card.ref.project !== undefined ? `from project ${card.ref.project}` : null,
     expansionText(page, code),
     card.folded === true ? "folded" : null,
     `at [${card.at.join(", ")}]${size ? `, ${Math.round(size.width)}×${Math.round(size.height)}` : ""}`,
@@ -227,8 +205,7 @@ function frameLines(page: Page, code: PageCode, agent: AgentIdentity): string[] 
 
 /** An anchor as results cite it: `OrderRepository (key …)`, `db/schema.sql:3–9`. */
 function anchorText(anchor: Anchor): string {
-  const project = anchor.project !== undefined ? ` in ${anchor.project}` : "";
-  return "key" in anchor ? `${keyName(anchor.key)} (key ${anchor.key}${project})` : `${place(anchor.file, anchor.lines[0], anchor.lines[1])}${project}`;
+  return "key" in anchor ? `${keyName(anchor.key)} (key ${anchor.key})` : place(anchor.file, anchor.lines[0], anchor.lines[1]);
 }
 
 /** A resource card's line: its kind, name, id, place, type, columns, anchors, frame, and words. */
@@ -240,7 +217,7 @@ function resourceLine(resource: Resource, frames: ReadonlyMap<string, string>, a
   const frame = frames.get(resource.id);
   return `- ${resource.kind} “${resource.name}” (resource id ${resource.id}): ${joined([
     `at [${resource.at.join(", ")}]`,
-    resource.type !== undefined ? `backed by ${keyName(resource.type)} (key ${resource.type}${resource.project !== undefined ? ` in ${resource.project}` : ""})` : null,
+    resource.type !== undefined ? `backed by ${keyName(resource.type)} (key ${resource.type})` : null,
     columns.length > 0 ? `${resource.type !== undefined ? "marks" : "columns"} ${columns.join(", ")}` : null,
     resource.anchors.length > 0 ? `anchors ${resource.anchors.map(anchorText).join(", ")}` : "no anchors",
     frame !== undefined ? `in frame ${frame}` : null,
@@ -268,7 +245,7 @@ function linkLine(page: Page, code: PageCode, link: Link, agent: AgentIdentity):
     link.fromColumn !== undefined || link.toColumn !== undefined ? `columns ${link.fromColumn ?? "?"} → ${link.toColumn ?? "?"}` : null,
     link.cardinality,
     link.channel !== undefined ? `channel ${link.channel}` : null,
-    link.carries !== undefined ? `carries ${keyName(link.carries)} (key ${link.carries}${link.carriesProject !== undefined ? ` in ${link.carriesProject}` : ""})` : null,
+    link.carries !== undefined ? `carries ${keyName(link.carries)} (key ${link.carries})` : null,
     link.anchors !== undefined && link.anchors.length > 0 ? `anchors ${link.anchors.map(anchorText).join(", ")}` : link.kind !== undefined ? "no anchors" : null,
     link.author !== undefined ? `by ${authorText(link.author, agent)}` : null,
     wordsText("label", link.label, agent),
@@ -306,7 +283,7 @@ async function proposalHealth(context: ToolContext, board: AgentBoardRef, page: 
 function proposalLine(page: Page, code: CardCode | undefined, proposal: Proposal, health: ProposalHealth, agent: AgentIdentity): string {
   const flow = code?.model?.type === "block" && code.model.flow?.source === "current" ? code.model.flow : null;
   const node = flow?.nodes.find((item) => item.key === proposal.after);
-  const label = node ? (page.labels.find((entry) => entry.project === code?.card.ref.project && entry.key === proposal.after)?.text ?? node.label) : undefined;
+  const label = node ? (page.labels.find((entry) => entry.key === proposal.after)?.text ?? node.label) : undefined;
   const step = node && label !== undefined ? `the step “${label}” (${joined([node.kind, node.startLine !== undefined ? `line ${node.startLine}` : null, `key ${proposal.after}`])})` : `the step ${proposal.after}`;
   const missing = flow && !node ? "anchor missing: no step of its card's code has this key now" : null;
   const anchor = health.get(proposal.id) ?? missing;
@@ -380,7 +357,7 @@ async function mermaid(context: ToolContext, project: ProjectRow, read: ReadPage
   const { text } = await context.held(board, "export_mermaid_text", { project: board.project, board: { id: board.id, page: read.page.id } });
   return textResult(
     context.header(pagePlace(project, read)),
-    `The page as Mermaid, as last saved${read.unsaved ? " (the window's unsaved edits aren't in it)" : ""}${opened ? "; Unfold opened the board in a background tab to export it" : ""}:`,
+    `The page as Mermaid, as last saved${read.unsaved ? " (the window's unsaved edits aren't in it)" : ""}${opened ? "; Unfold loaded the board to export it" : ""}:`,
     "```mermaid",
     text.trimEnd(),
     "```",

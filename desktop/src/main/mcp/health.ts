@@ -42,7 +42,7 @@ export function targetId(target: Target): string {
     return target.group;
   }
   if ("label" in target) {
-    return target.label.key;
+    return target.label;
   }
   if ("link" in target) {
     return target.link;
@@ -64,7 +64,7 @@ export function targetText(page: Page, target: Target): string {
     return group ? `the step group “${group.title}”` : `the step group ${target.group}`;
   }
   if ("label" in target) {
-    return `the Flow label of ${keyName(target.label.key)}`;
+    return `the Flow label of ${keyName(target.label)}`;
   }
   if ("link" in target) {
     const link = page.links.find((item) => item.id === target.link);
@@ -122,7 +122,7 @@ function cardWords(page: Page, card: Card, repair: "resign" | "accept"): Words[]
   }
   const key = cardKey(card);
   const groups = page.groups.filter((group) => group.card === card.id).flatMap(groupWords);
-  const labels = page.labels.filter((label) => label.project === card.ref.project && label.key.startsWith(`${key}/`)).flatMap(labelWords);
+  const labels = page.labels.filter((label) => label.key.startsWith(`${key}/`)).flatMap(labelWords);
   return [...own, ...groups, ...labels];
 }
 
@@ -137,7 +137,7 @@ function targetWords(page: Page, target: Target, repair: "resign" | "accept"): W
     return group ? groupWords(group) : [];
   }
   if ("label" in target) {
-    const label = page.labels.find((entry) => entry.key === target.label.key && entry.project === target.label.project);
+    const label = page.labels.find((entry) => entry.key === target.label);
     return label ? labelWords(label) : [];
   }
   if ("link" in target) {
@@ -157,25 +157,18 @@ function targetWords(page: Page, target: Target, repair: "resign" | "accept"): W
 }
 
 /**
- * The texts the page's guard of (`project`, `key`) holds for review: a guard is one per reference on
- * the page, so accepting it for one item accepts it for every card, step group, Flow label, resource
- * card, and connection that references the key.
+ * The texts the page's guard of `key` holds for review: a guard is one per reference on the page, so
+ * accepting it for one item accepts it for every card, step group, Flow label, resource card, and
+ * connection that references the key.
  */
-function heldWords(page: Page, { project, key }: { readonly project: string | undefined; readonly key: string }): Words[] {
-  const cites = (anchors: readonly Anchor[] | undefined) => (anchors ?? []).some((anchor) => "key" in anchor && anchor.key === key && anchor.project === project);
-  const projectOf = (id: string) => page.cards.find((card) => card.id === id)?.ref.project;
+function heldWords(page: Page, key: string): Words[] {
+  const cites = (anchors: readonly Anchor[] | undefined) => (anchors ?? []).some((anchor) => "key" in anchor && anchor.key === key);
   return [
-    ...page.cards.filter((card) => cardKey(card) === key && card.ref.project === project).flatMap((card) => cardWords(page, card, "accept")),
-    ...page.groups.filter((group) => group.members.includes(key) && projectOf(group.card) === project).flatMap(groupWords),
-    ...page.labels.filter((label) => label.key === key && label.project === project).flatMap(labelWords),
-    ...(page.resources ?? []).filter((resource) => (resource.type === key && resource.project === project) || cites(resource.anchors)).flatMap(resourceWords),
-    ...page.links
-      .filter(
-        (link) =>
-          link.kind !== undefined &&
-          ((link.step === key && projectOf(link.from) === project) || (link.carries === key && link.carriesProject === project) || cites(link.anchors)),
-      )
-      .flatMap(linkWords),
+    ...page.cards.filter((card) => cardKey(card) === key).flatMap((card) => cardWords(page, card, "accept")),
+    ...page.groups.filter((group) => group.members.includes(key)).flatMap(groupWords),
+    ...page.labels.filter((label) => label.key === key).flatMap(labelWords),
+    ...(page.resources ?? []).filter((resource) => resource.type === key || cites(resource.anchors)).flatMap(resourceWords),
+    ...page.links.filter((link) => link.kind !== undefined && (link.step === key || link.carries === key || cites(link.anchors))).flatMap(linkWords),
   ];
 }
 
@@ -185,30 +178,26 @@ function heldWords(page: Page, { project, key }: { readonly project: string | un
  */
 export function personWords(page: Page, item: HealthItem, repair: "resign" | "accept"): Words | null {
   const accepted = repair === "accept" ? reference(page, item) : null;
-  const words = [...targetWords(page, item.target, repair), ...(accepted ? heldWords(page, accepted) : [])];
+  const words = [...targetWords(page, item.target, repair), ...(accepted !== null ? heldWords(page, accepted) : [])];
   return words.find((entry) => entry.author?.startsWith("agent:") !== true) ?? null;
 }
 
-/** The reference a reconnect or accept is about, with its project: the item's key, or its target's own key. */
-function reference(page: Page, item: HealthItem): { readonly key: string; readonly project: string | undefined } | null {
+/** The key a reconnect or accept is about: the item's key, or its target's own key. */
+function reference(page: Page, item: HealthItem): string | null {
   if (item.key !== undefined) {
-    return { key: item.key, project: item.project };
+    return item.key;
   }
   const { target } = item;
   if ("card" in target) {
     const card = page.cards.find((entry) => entry.id === target.card);
-    return card ? { key: cardKey(card), project: card.ref.project } : null;
+    return card ? cardKey(card) : null;
   }
-  return "label" in target ? { key: target.label.key, project: target.label.project } : null;
-}
-
-function named(project: string | undefined): { readonly project?: string } {
-  return project !== undefined ? { project } : {};
+  return "label" in target ? target.label : null;
 }
 
 /**
  * The `repair_board` request for one repair an item offers. `to` is where a reconnect points: a key,
- * or for an anchor, a key or an evidence file's lines (projects by shared name).
+ * or for an anchor, a key or an evidence file's lines.
  */
 export function repairSpec(page: Page, item: HealthItem, repair: RepairName, to: string | AnchorSpec | undefined): RepairSpec {
   const at = { page: item.page };
@@ -226,19 +215,19 @@ export function repairSpec(page: Page, item: HealthItem, repair: RepairName, to:
       if (typeof to !== "string" || from === null) {
         throw cant(`reconnect ${what}`, "it points at a key, so to is a key", "Pass to: the code's new key, from search or get_relations.");
       }
-      return { ...at, kind: "reconnect", ...named(from.project), from: from.key, to };
+      return { ...at, kind: "reconnect", from, to };
     }
     case "accept": {
-      const from = reference(page, item);
-      if (from !== null) {
-        return { ...at, kind: "accept", ...named(from.project), key: from.key };
+      const key = reference(page, item);
+      if (key !== null) {
+        return { ...at, kind: "accept", key };
       }
       break;
     }
     case "remove_label": {
-      const label = "label" in target ? target.label : item.key !== undefined ? { key: item.key, project: item.project } : null;
-      if (label) {
-        return { ...at, kind: "remove_label", ...named(label.project), key: label.key };
+      const key = "label" in target ? target.label : item.key;
+      if (key !== undefined) {
+        return { ...at, kind: "remove_label", key };
       }
       break;
     }

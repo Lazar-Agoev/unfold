@@ -1,7 +1,7 @@
 //! The example board with every item the format has besides cards, groups, and labels
 //! (`testdata/boards/order-system.json`: Diagram views, an attributed step group, nested frames,
-//! every kind of resource card, connections of every line style, and notes): it round-trips,
-//! counts its changes, and repairs without leaving anything dangling. Saving it to itself, its
+//! every kind of resource card, connections of every line style, and notes): it round-trips and
+//! repairs without leaving anything dangling. Saving it to itself, its
 //! health, and its Mermaid export need a live compile: `unfold-workspace`'s
 //! `tests/commands/claims.rs` checks them on `ts-orders`.
 
@@ -9,7 +9,7 @@ mod common;
 
 use common::{load, playground_root};
 use unfold_core::testkit::testdata_dir;
-use unfold_reader::board::{self, Board, BoardGraph, PageGraphs, Repair, ResourceKind, View};
+use unfold_reader::board::{self, Board, BoardGraph, Repair, ResourceKind, View};
 
 fn example() -> String {
     std::fs::read_to_string(testdata_dir().join("boards/order-system.json")).expect("read the example board")
@@ -20,7 +20,7 @@ fn loaded() -> (Board, BoardGraph) {
     let loaded = load("ts-orders");
     let reader = loaded.store.readers.get().expect("get a reader");
     let parsed = board::parse(&example()).expect("the example board parses");
-    let graph = BoardGraph::load(&reader, &playground_root("ts-orders"), &parsed.references(None))
+    let graph = BoardGraph::load(&reader, &playground_root("ts-orders"), &parsed.references())
         .expect("load the board's graph");
     (parsed, graph)
 }
@@ -30,7 +30,6 @@ fn the_example_board_round_trips_byte_for_byte() {
     let text = example();
     let parsed = board::parse(&text).expect("the example board parses");
     assert_eq!(board::serialize(&parsed), text);
-    assert!(parsed.projects.is_empty());
     let page = &parsed.pages[0];
     assert_eq!(page.default_view, View::Diagram);
     assert_eq!(
@@ -65,27 +64,10 @@ fn the_example_board_round_trips_byte_for_byte() {
 }
 
 #[test]
-fn every_item_counts_as_one_unpublished_change() {
-    let published = board::parse(&example()).expect("the example board parses");
-    let mut working = published.clone();
-    let page = &mut working.pages[0];
-    page.notes.retain(|note| note.id != "reading-order");
-    page.frames[0].title = "API".to_owned();
-    page.resources[0].at = [0.0, 0.0];
-    page.links
-        .iter_mut()
-        .filter(|link| link.id == "enqueue-order")
-        .for_each(|link| link.channel = Some("orders-v2".to_owned()));
-    page.groups[0].author = None;
-    assert_eq!(board::changes(&working, &published), 5);
-}
-
-#[test]
 fn removing_a_card_leaves_nothing_dangling() {
     let (parsed, graph) = loaded();
-    let graphs = PageGraphs::own_only(&graph);
     let mut page = parsed.pages[0].clone();
-    board::apply_repair(&mut page, &graphs, &Repair::RemoveCard("create-order".to_owned()))
+    board::apply_repair(&mut page, &graph, &Repair::RemoveCard("create-order".to_owned()))
         .expect("the repair applies");
     let ids = |items: Vec<&str>| items.into_iter().map(str::to_owned).collect::<Vec<_>>();
     assert!(page.groups.is_empty(), "its step group goes with it");
@@ -109,7 +91,7 @@ fn removing_a_card_leaves_nothing_dangling() {
 
     // A frame whose members are all removed goes too, with the links to it.
     for card in ["orders-worker", "process-order"] {
-        board::apply_repair(&mut page, &graphs, &Repair::RemoveCard(card.to_owned()))
+        board::apply_repair(&mut page, &graph, &Repair::RemoveCard(card.to_owned()))
             .expect("the repair applies");
     }
     assert!(page.frame("worker").is_none());

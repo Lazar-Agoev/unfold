@@ -32,7 +32,7 @@
 //! Home selection.
 //!
 //! Sink messages are `{"kind":"broadcast","event":{…}}` (every event but one is for every window),
-//! `{"kind":"event","windows":[w],"event":{…}}` (`board_conflict`, for the window that opened
+//! `{"kind":"event","windows":[w],"event":{…}}` (`board_reloaded`, for the window that opened
 //! the board), and `{"kind":"stream","windowId":…,"requestId":…,"message":{…}}` ([`SinkMessage`]). A
 //! panic in a command is caught and becomes an `internal` error; the process keeps running.
 
@@ -70,11 +70,7 @@ pub const CLOSE_WAIT: Duration = Duration::from_secs(15);
 const CLOSING_WRITES: &[&str] = &[
     "save_board",
     "repair_board",
-    "publish_board",
-    "discard_changes",
-    "unpublish_board",
     "delete_board",
-    "duplicate_board",
     "set_board_folder",
     "create_folder",
     "rename_folder",
@@ -86,7 +82,7 @@ const CLOSING_WRITES: &[&str] = &[
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum SinkMessage {
-    /// An event for some windows only (`board_conflict`, for the window that opened the board).
+    /// An event for some windows only (`board_reloaded`, for the window that opened the board).
     Event {
         /// The windows to deliver it to.
         windows: Vec<WindowId>,
@@ -517,7 +513,7 @@ impl HostState {
         }
     }
 
-    /// Sends `event` to `windows` only (`board_conflict`, to the window that opened the board).
+    /// Sends `event` to `windows` only (`board_reloaded`, to the window that opened the board).
     pub(crate) fn deliver(&self, windows: &[WindowId], event: &WorkspaceEvent) {
         if windows.is_empty() {
             return;
@@ -540,9 +536,8 @@ impl HostState {
     }
 
     /// Keeps command-side state in step with a project: its file list goes stale when files
-    /// change, its shared name is read again when its settings change, its boards' health (and
-    /// that of the projects whose boards reference it) is recomputed after its graph changes, and
-    /// open boards are checked when board files change on disk. Board work runs on its own
+    /// change, its boards' health is recomputed after its graph changes, and open boards are
+    /// reloaded when their files change on disk. Board work runs on its own
     /// threads: events arrive on the engine and watcher threads, which must not wait for it.
     fn observe(state: &Arc<Self>, event: &WorkspaceEvent) {
         let (Some(project), Some(projects)) = (event.project(), state.projects.get()) else {
@@ -559,16 +554,12 @@ impl HostState {
                 if let Some(extras) = extras() {
                     extras.files_changed();
                 }
-                projects.refresh_name(project);
             }
             WorkspaceEvent::GraphUpdated { .. } => {
                 if let Some(extras) = extras() {
                     extras.files_changed();
                 }
                 state.refresh_health(project);
-                for dependent in board_hooks::dependents(state, project) {
-                    state.refresh_health(&dependent);
-                }
             }
             WorkspaceEvent::BoardsChanged { boards, .. } => state.boards_changed(project, boards.clone()),
             _ => {}
@@ -591,7 +582,6 @@ impl HostState {
         if !extras.health.request() {
             return;
         }
-        let state = Arc::clone(self);
         let worker = Arc::clone(&extras);
         let started = std::thread::Builder::new()
             .name("unfold-boards".to_owned())
@@ -601,7 +591,7 @@ impl HostState {
                     // A failure only leaves health stale until the next refresh; it must not take
                     // the process down, nor keep later refreshes from starting.
                     let _ = catch_unwind(AssertUnwindSafe(|| {
-                        board_hooks::refresh_health(&state, &workspace, &worker);
+                        board_hooks::refresh_health(&workspace, &worker);
                     }));
                     if !worker.health.again() {
                         break;
@@ -627,7 +617,7 @@ impl HostState {
         };
         let extras = handle.extras();
         let state = Arc::clone(self);
-        // Without a thread, conflicts surface at the next save (`board_conflict` from it).
+        // Without a thread, the board isn't reloaded: its next save writes the window's version.
         let _ = std::thread::Builder::new()
             .name("unfold-boards".to_owned())
             .spawn(move || {

@@ -9,9 +9,7 @@ const engine = vi.hoisted(() => ({
   onEngineEvent: vi.fn(() => () => undefined),
   windowCommand: vi.fn(() => Promise.resolve(null)),
 }));
-const toast = vi.hoisted(() => ({ showToast: vi.fn() }));
 vi.mock("./engine", () => engine);
-vi.mock("../../components/Toast", () => toast);
 
 const { addCard, moveItems, setCardsFolded, setTitle } = await import("./document");
 const store = await import("./store");
@@ -21,7 +19,7 @@ const { getShownBoard, showBoard, useShownBoardStore } = await import("../shownB
 
 const P = "p-orders0000";
 const Q = "p-payments00";
-const ID = ".unfold/local/drafts/order-placement.json";
+const ID = ".unfold/boards/order-placement.json";
 const REF = { project: P, id: ID };
 const PAGE = { board: REF, page: "page-1" };
 
@@ -47,7 +45,6 @@ beforeEach(() => {
   vi.useFakeTimers();
   engine.call.mockReset();
   engine.windowCommand.mockClear();
-  toast.showToast.mockClear();
   store.resetBoards();
   useShownBoardStore.setState({ board: null });
 });
@@ -96,7 +93,7 @@ describe("opening and closing", () => {
 
 describe("editing and autosave", () => {
   it("autosaves once, after the last of several edits, as a BoardEdit of the title and pages only", async () => {
-    store.adoptBoardState(state(boardDocument([page("page-1")], { folder: "Checkout", projects: ["payments"] })));
+    store.adoptBoardState(state(boardDocument([page("page-1")], { folder: "Checkout" })));
     engine.call.mockImplementation(savesAs("r2"));
     edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     vi.advanceTimersByTime(store.AUTOSAVE_MS - 100);
@@ -167,16 +164,21 @@ describe("editing and autosave", () => {
     expect(after?.outlines).toBe(before?.outlines);
   });
 
-  it("surfaces a failed save and keeps the edit unsaved; a disconnected one stays quiet", async () => {
+  it("keeps a failed save's edit and why it failed until a save succeeds; a disconnected one isn't a failure", async () => {
     store.adoptBoardState(state());
     engine.call.mockRejectedValueOnce(new UnfoldError({ code: "board_problem", message: "missing reference" }));
     edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     await store.saveBoard(REF);
     expect(store.getOpenBoard(REF)?.saveError).toBe("missing reference");
-    expect(toast.showToast).toHaveBeenCalledTimes(1);
+    expect(store.isDirty(store.getOpenBoard(REF) as never)).toBe(true);
+    engine.call.mockImplementation(savesAs("r2"));
+    await store.saveBoard(REF);
+    expect(store.getOpenBoard(REF)?.saveError).toBeNull();
+    expect(store.isDirty(store.getOpenBoard(REF) as never)).toBe(false);
+    edit((draft) => addCard(draft, { ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
     engine.call.mockRejectedValueOnce(new UnfoldError({ code: "disconnected", message: "gone" }));
     await store.saveBoard(REF);
-    expect(toast.showToast).toHaveBeenCalledTimes(1);
+    expect(store.getOpenBoard(REF)?.saveError).toBeNull();
     expect(store.isDirty(store.getOpenBoard(REF) as never)).toBe(true);
   });
 
@@ -233,10 +235,9 @@ describe("a step saved at once (an agent's edit)", () => {
     expect(board?.document).toEqual(doc());
     expect(board?.history).toMatchObject({ past: [], future: [] });
     expect(board?.saveError).toBeNull();
-    expect(toast.showToast).not.toHaveBeenCalled();
   });
 
-  it("saves the person's pending edit first, and refuses while their edits can't be saved or a conflict is open", async () => {
+  it("saves the person's pending edit first, and refuses while their edits can't be saved", async () => {
     store.adoptBoardState(state());
     engine.call.mockImplementation(savesAs("r2"));
     edit((draft) => addCard(draft, { ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
@@ -430,19 +431,12 @@ describe("a step the engine writes (a repair)", () => {
   const CARD = { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] as [number, number] };
   const repaired = () => Promise.resolve(state(doc([]), "r3"));
 
-  it("refuses while the board's edits can't be saved or a conflict is open, without asking the engine", async () => {
+  it("refuses while the board's edits can't be saved, without asking the engine", async () => {
     store.adoptBoardState(state(doc([CARD])));
     const write = vi.fn(repaired);
     engine.call.mockRejectedValueOnce(new UnfoldError({ code: "io", message: "Disk full." }));
     edit((draft) => { moveItems(draft, { a: [10, 0] }); });
     expect(await store.engineStep(REF, "page-1", write)).toMatchObject({ ok: false, error: { code: "unsaved_edits", message: "Disk full." } });
-    store.useBoards.setState((draft) => {
-      const open = Object.values(draft.boards)[0];
-      if (open) {
-        open.conflict = { diskRevision: "r9" };
-      }
-    });
-    expect(await store.engineStep(REF, "page-1", write)).toMatchObject({ ok: false, error: { code: "board_conflict" } });
     expect(write).not.toHaveBeenCalled();
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.at).toEqual([10, 0]);
   });
@@ -528,39 +522,56 @@ describe("view state", () => {
   });
 });
 
-describe("outside edits", () => {
-  it("reloads a board without unsaved edits", async () => {
+describe("outside changes", () => {
+  const theirs = doc([{ id: "x", ref: { block: "src/x.ts#function:x" }, at: [0, 0] }]);
+
+  it("take the file's version and start the undo history over", async () => {
     store.adoptBoardState(state());
-    const theirs = doc([{ id: "x", ref: { block: "src/x.ts#function:x" }, at: [0, 0] }]);
-    engine.call.mockResolvedValueOnce(state(theirs, "r9"));
-    await store.handleOutsideChange(REF, "r9");
-    expect(engine.call).toHaveBeenCalledWith("reload_board", { project: P, id: ID });
-    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["x"]);
-    expect(store.getOpenBoard(REF)?.conflict).toBeNull();
+    engine.call.mockImplementation(savesAs("r2"));
+    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    await vi.advanceTimersByTimeAsync(store.AUTOSAVE_MS);
+    await store.adoptOutsideChange(state(theirs, "r9"));
+    const board = store.getOpenBoard(REF);
+    expect(board?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["x"]);
+    expect(board?.revision).toBe("r9");
+    expect(board?.history).toEqual({ past: [], future: [], coalesce: null });
+    expect(store.undo(REF)).toBe(false);
   });
 
-  it("asks about a board with unsaved edits, then keeps this window's version on request", async () => {
+  it("wait for a save on its way, then reload", async () => {
     store.adoptBoardState(state());
+    let release: (() => void) | undefined;
+    engine.call.mockImplementation(
+      (_command: string, args: SaveBoardArgs) =>
+        new Promise((resolve) => {
+          release = () => {
+            resolve(state({ ...doc(), pages: args.board.pages as BoardDocument["pages"] }, "r2"));
+          };
+        }),
+    );
     edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
-    await store.handleOutsideChange(REF, "r9");
-    expect(store.getOpenBoard(REF)?.conflict).toEqual({ diskRevision: "r9" });
-    // Autosave holds off while the person decides.
-    await vi.advanceTimersByTimeAsync(store.AUTOSAVE_MS * 2);
-    expect(engine.call).not.toHaveBeenCalled();
-    engine.call.mockImplementation(savesAs("r10"));
-    await store.resolveConflict(REF, "mine");
-    expect(engine.call).toHaveBeenCalledWith("save_board", expect.objectContaining({ project: P, id: ID, force: true }));
-    expect(store.getOpenBoard(REF)?.conflict).toBeNull();
+    const saving = store.saveBoard(REF);
+    const reloading = store.adoptOutsideChange(state(theirs, "r9"));
+    release?.();
+    await Promise.all([saving, reloading]);
+    expect(store.getOpenBoard(REF)?.revision).toBe("r9");
+    expect(store.canUndo(REF)).toBe(false);
   });
 
-  it("discards changes as one undo step back to the published version", async () => {
-    store.adoptBoardState(state(doc(), "r1", { place: "published" }));
+  it("are ignored while the board's save is failing; the next save writes the person's version over the file", async () => {
+    store.adoptBoardState(state());
+    engine.call.mockRejectedValueOnce(new UnfoldError({ code: "io", message: "Disk full." }));
     edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
-    engine.call.mockResolvedValueOnce(state(doc(), "r0", { place: "published" }));
-    await store.discardChanges(REF);
-    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards).toHaveLength(0);
-    expect(store.isDirty(store.getOpenBoard(REF) as never)).toBe(false);
+    await store.saveBoard(REF);
+    await store.adoptOutsideChange(state(theirs, "r9"));
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["a"]);
     expect(store.canUndo(REF)).toBe(true);
+    engine.call.mockImplementation(savesAs("r10"));
+    await store.saveBoard(REF);
+    const [command, args] = engine.call.mock.calls.at(-1) as [string, SaveBoardArgs];
+    expect(command).toBe("save_board");
+    expect(args.board.pages[0]?.cards.map((card) => card.id)).toEqual(["a"]);
+    expect(store.getOpenBoard(REF)?.revision).toBe("r10");
   });
 });
 
@@ -574,11 +585,17 @@ describe("engine-host restarts", () => {
     expect(store.isDirty(store.getOpenBoard(REF) as never)).toBe(false);
   });
 
-  it("asks about unsaved edits when the file changed meanwhile", async () => {
+  it("takes the file's version when it changed meanwhile, unless the board has edits that couldn't be saved", async () => {
+    const theirs = doc([{ id: "x", ref: { block: "src/x.ts#function:x" }, at: [0, 0] }]);
     store.adoptBoardState(state());
-    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
-    engine.call.mockImplementation((command: string) => Promise.resolve(command === "open_board" ? state(doc(), "r7") : null));
+    engine.call.mockImplementation((command: string) => Promise.resolve(command === "open_board" ? state(theirs, "r7") : null));
     await reopenBoards();
-    expect(store.getOpenBoard(REF)?.conflict).toEqual({ diskRevision: "r7" });
+    expect(store.getOpenBoard(REF)?.revision).toBe("r7");
+
+    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    engine.call.mockImplementation((command: string, args: SaveBoardArgs) => (command === "open_board" ? Promise.resolve(state(doc(), "r8")) : savesAs("r9")(command, args)));
+    await reopenBoards();
+    expect(engine.call.mock.calls.at(-1)?.[0]).toBe("save_board");
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["x", "a"]);
   });
 });

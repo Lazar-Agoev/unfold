@@ -1,13 +1,12 @@
 /**
  * Following calls on a page: a followed target opens `FOLLOW_GAP` to the right of the calling card with
- * its header level with the calling line, or the existing card is focused (and unfolded). Calls never
- * leave their project, so the target comes from the calling card's project. Every follow is a focus
- * move for Back and Forward and extends the breadcrumb trail.
+ * its header level with the calling line, or the existing card is focused (and unfolded). Every follow
+ * is a focus move for Back and Forward and extends the breadcrumb trail.
  */
 
 import { HEADER_PORT, followPlacement } from "../../canvas/layout";
 import { displayedRects, focusCard } from "./api";
-import { addCard, findCard, findCardByRef, findPage } from "./document";
+import { addCard, findCard, findCardByKey, findPage } from "./document";
 import { editPage, getOpenBoard, getPageView, pushFocusMove, requestCardFocus, select } from "./store";
 import type { PageTarget, TrailItem } from "./types";
 
@@ -49,7 +48,7 @@ export interface FollowRequest {
   /** The card the call is written in. */
   readonly fromCardId: string;
   readonly fromLabel: string;
-  /** The block to open (in the calling card's project). */
+  /** The block to open. */
   readonly targetKey: string;
   readonly targetLabel: string;
   /** The calling line's center below the source card's top (defaults to its header). */
@@ -67,10 +66,9 @@ export function followCall(request: FollowRequest): string | undefined {
   if (!board || !page || !source) {
     return undefined;
   }
-  const project = source.ref.project;
   const from: TrailItem = { cardId: request.fromCardId, label: request.fromLabel };
   const trail = getPageView(target).trail;
-  const existing = findCardByRef(page, request.targetKey, project);
+  const existing = findCardByKey(page, request.targetKey);
   if (existing) {
     pushFocusMove(target, extendTrail(trail, from, request.line, { cardId: existing.id, label: request.targetLabel }));
     focusCard(target, existing.id);
@@ -78,8 +76,7 @@ export function followCall(request: FollowRequest): string | undefined {
   }
   const rect = displayedRects(board, target.page).get(request.fromCardId);
   const at = rect ? followPlacement(rect, request.lineOffset ?? HEADER_PORT) : ([0, 0] as [number, number]);
-  const ref = project !== undefined ? { block: request.targetKey, project } : { block: request.targetKey };
-  const cardId = editPage(target, (draft) => addCard(draft, { ref, at }));
+  const cardId = editPage(target, (draft) => addCard(draft, { ref: { block: request.targetKey }, at }));
   if (cardId === undefined) {
     return undefined;
   }

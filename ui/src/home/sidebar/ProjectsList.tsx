@@ -118,24 +118,24 @@ function ProjectRowView({ row, selected, onContextMenu }: { readonly row: Projec
   );
 }
 
-function treePadding(depth: number): number {
-  return 24 + 18 * (depth - 1);
+/** A folder's rows (depth 1) and its boards' (depth 2) left padding. */
+function treePadding(depth: 1 | 2): number {
+  return depth === 1 ? 24 : 42;
 }
 
 function folderEntries(row: Extract<SidebarRow, { kind: "folder" }>): MenuEntry[] {
-  const { project, path } = row;
+  const { project, name } = row;
   return [
-    { id: "new-board", label: "New Board Here", icon: "board", onSelect: () => void newBoardIn(project, { folder: path }) },
-    { id: "new-folder", label: "New Folder…", icon: "folder", onSelect: () => { openDialog({ kind: "newFolder", project, parent: path }); } },
+    { id: "new-board", label: "New Board Here", icon: "board", onSelect: () => void newBoardIn(project, { folder: name }) },
     { kind: "separator", id: "s1" },
-    { id: "rename", label: "Rename…", onSelect: () => { openDialog({ kind: "renameFolder", project, path }); } },
+    { id: "rename", label: "Rename…", onSelect: () => { openDialog({ kind: "renameFolder", project, folder: name }); } },
     {
       id: "delete",
       label: "Delete",
       danger: true,
       disabled: !row.empty,
       onSelect: () => {
-        deleteFolder(project, path).catch((error: unknown) => {
+        deleteFolder(project, name).catch((error: unknown) => {
           showToast({ title: "Couldn't delete the folder", body: toUnfoldError(error).message, tone: "danger" });
         });
       },
@@ -153,17 +153,17 @@ function TreeRow({ row, onContextMenu }: { readonly row: SidebarRow; readonly on
       return <p className="home-tree-note">{row.text}</p>;
     case "folder": {
       const toggle = (open: boolean) => {
-        setFolderExpanded(row.project, row.path, open);
+        setFolderExpanded(row.project, row.name, open);
       };
       return (
         <div
           role="treeitem"
           tabIndex={0}
-          aria-level={row.depth + 1}
+          aria-level={2}
           aria-expanded={row.expanded}
           data-tree-row=""
           className="home-tree-row"
-          style={{ paddingLeft: treePadding(row.depth) }}
+          style={{ paddingLeft: treePadding(1) }}
           onClick={() => {
             toggle(!row.expanded);
           }}
@@ -189,7 +189,6 @@ function TreeRow({ row, onContextMenu }: { readonly row: SidebarRow; readonly on
             <Icon name="folder" />
           </span>
           <span className="home-tree-label">{row.name}</span>
-          <span className="home-tree-trailing" />
         </div>
       );
     }
@@ -219,10 +218,9 @@ function TreeRow({ row, onContextMenu }: { readonly row: SidebarRow; readonly on
         >
           <span className="home-disclosure" />
           <span className="home-tree-icon">
-            <Icon name={board.place === "draft" ? "board-draft" : "board"} />
+            <Icon name="board" />
           </span>
           <span className="home-tree-label">{boardTitle(board)}</span>
-          <span className="home-tree-trailing">{board.pages}</span>
         </div>
       );
     }
@@ -235,7 +233,6 @@ function treesOf(results: readonly { readonly data?: BoardList | undefined; read
 
 export function ProjectsList({ projects }: { readonly projects: readonly ProjectRow[] }) {
   const selected = useSelectedProject();
-  const view = useLayout((layout) => layout.home.view);
   const folders = useLayout((layout) => layout.folders);
   const expandedFolders = useMemo(() => new Set(folders), [folders]);
   const menu = useContextMenu("Sidebar menu");
@@ -249,14 +246,12 @@ export function ProjectsList({ projects }: { readonly projects: readonly Project
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const { attach, rows: windowRows, height: windowHeight, offsets } = useWindowed({ count: rows.length, size: (index) => rowHeight(rows[index] ?? { kind: "gap", key: "", height: 28 }), threshold: WINDOW_THRESHOLD, scroller });
 
-  // Home's project views select the project row; Drafts selects its own row instead.
-  const projectSelected = view !== "drafts";
   const render = (row: SidebarRow) =>
     row.kind === "project" ? (
       <ProjectRowView
         key={row.key}
         row={row.row}
-        selected={projectSelected && row.row.id === selected}
+        selected={row.row.id === selected}
         onContextMenu={(event) => {
           projectMenu.open(event, projectMenuEntries(row.row));
         }}

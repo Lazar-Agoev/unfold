@@ -3,8 +3,7 @@
  * description (edited here or on the card), then for a block Called by and Reached from (up to 3 each,
  * then "N more · Show callers"), Not opened (up to 5 calls not on the page, each "+ Open"), and its
  * groups. A type card says where the type is used ("Used in N places", a popover of the places),
- * instead of calls for a type declaration. For an entrance, its handlers. A card of a project that
- * isn't connected shows what the board knows about it.
+ * instead of calls for a type declaration. For an entrance, its handlers.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -22,7 +21,7 @@ import {
   cardKey,
   describeCard,
   entranceTitle,
-  findCardByRef,
+  findCardByKey,
   findPage,
   focusCard,
   followCall,
@@ -59,27 +58,24 @@ function uniqueTargets(calls: readonly OutgoingCall[]): OutgoingCall[] {
   });
 }
 
-/** Brings a definition of the card's project into view: its card when the page has one, else a new card. */
-function showDefinition(target: PageTarget, project: ProjectId, card: Card, key: string, label: string): void {
+/** Brings a definition into view: its card when the page has one, else a new card. */
+function showDefinition(target: PageTarget, key: string, label: string): void {
   const board = getOpenBoard(target.board);
   const page = board ? findPage(board.document, target.page) : undefined;
-  const existing = page ? findCardByRef(page, key, card.ref.project) : undefined;
+  const existing = page ? findCardByKey(page, key) : undefined;
   if (existing) {
     pushFocusMove(target, [{ cardId: existing.id, label }]);
     focusCard(target, existing.id);
   } else {
-    addBlock(target, project, key);
+    addBlock(target, key);
   }
 }
 
 function BlockRelations({ target, project, card, name }: { readonly target: PageTarget; readonly project: ProjectId; readonly card: Card; readonly name: string }) {
   const key = cardKey(card);
   const cards = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.cards);
-  // This project's keys on the page, which turn calls to them into "on the page" (not "Not opened").
-  const onPage = useMemo(
-    () => [...new Set((cards ?? []).filter((other) => other.ref.project === card.ref.project).map(cardKey))].sort(),
-    [cards, card.ref.project],
-  );
+  // The keys on the page, which turn calls to them into "on the page" (not "Not opened").
+  const onPage = useMemo(() => [...new Set((cards ?? []).map(cardKey))].sort(), [cards]);
   const relations = useEngineQuery("relations", { project, key, onPage, callersLimit: RELATIONS_SHOWN });
   if (relations.isPending) {
     return <p className="selected-note">Loading…</p>;
@@ -98,7 +94,7 @@ function BlockRelations({ target, project, card, name }: { readonly target: Page
           {...(index === 0 ? { label: "Called by" } : {})}
           title={`${shortPath(caller.path)}:${caller.line}`}
           onActivate={() => {
-            showDefinition(target, project, card, caller.owner, caller.ownerName);
+            showDefinition(target, caller.owner, caller.ownerName);
           }}
         >
           {caller.ownerName}
@@ -124,7 +120,7 @@ function BlockRelations({ target, project, card, name }: { readonly target: Page
           {...(index === 0 ? { label: "Reached from" } : {})}
           title={entrance.path}
           onActivate={() => {
-            void openEntrance(target, project, entrance.key);
+            void openEntrance(target, entrance.key);
           }}
         >
           {entrance.method !== null && entrance.trigger !== null ? `${entrance.method} ${entrance.trigger}` : (entrance.trigger ?? entrance.title)}
@@ -181,7 +177,7 @@ function EntranceHandlers({ target, card, model, name }: { readonly target: Page
     <div className="selected-relations">
       {model.targets.map((handler, index) => {
         const key = handler.resolution === "resolved" ? handler.target : null;
-        const onPage = key !== null && (cards ?? []).some((other) => other.ref.project === card.ref.project && cardKey(other) === key);
+        const onPage = key !== null && (cards ?? []).some((other) => cardKey(other) === key);
         return (
           <RelationRow
             key={handler.position}
@@ -230,10 +226,11 @@ function CardGroups({ target, card }: { readonly target: PageTarget; readonly ca
   );
 }
 
-export function SelectedCard({ target, card, project }: { readonly target: PageTarget; readonly card: Card; readonly project: ProjectId | null }) {
+export function SelectedCard({ target, card }: { readonly target: PageTarget; readonly card: Card }) {
   const key = cardKey(card);
+  const { project } = target.board;
   const author = useAuthor();
-  const query = useQuery({ ...cardQuery(project ?? "", key), enabled: project !== null });
+  const query = useQuery(cardQuery(project, key));
   const health = useOpenBoard(target.board, (board) => board.health);
   const issues = itemsFor(health, target.page, { card: card.id });
   const held = issues.some((item) => item.kind === "review");
@@ -245,21 +242,13 @@ export function SelectedCard({ target, card, project }: { readonly target: PageT
       ? `${model.header.path}:${model.header.startLine}`
       : model?.type === "entrance"
         ? `${model.evidence.path}${model.evidence.startLine !== null ? `:${model.evidence.startLine}` : ""}`
-        : project === null
-          ? `From ${card.ref.project ?? ""} · not connected`
-          : "";
-  const disabledReason = project === null
-    ? "Connect its project to describe it."
-    : held
-      ? "Held for review: accept or reconnect it on the card first."
-      : author === null
-        ? "Loading who you are…"
-        : null;
+        : "";
+  const disabledReason = held ? "Held for review: accept or reconnect it on the card first." : author === null ? "Loading who you are…" : null;
   return (
     <>
       <div className="selected-identity">
         <h3 className="selected-name">{name}</h3>
-        {location && model !== undefined && project !== null ? (
+        {location && model !== undefined ? (
           <p className="selected-location">
             <button
               type="button"
@@ -292,8 +281,8 @@ export function SelectedCard({ target, card, project }: { readonly target: PageT
           }
         }}
       />
-      {project !== null && model?.type === "block" && isTypeKind(model.header.kind) ? <TypeUses project={project} typeKey={key} /> : null}
-      {project !== null && model?.type === "block" && declarationWord(model.header.kind) === undefined ? (
+      {model?.type === "block" && isTypeKind(model.header.kind) ? <TypeUses project={project} typeKey={key} /> : null}
+      {model?.type === "block" && declarationWord(model.header.kind) === undefined ? (
         <BlockRelations target={target} project={project} card={card} name={name} />
       ) : null}
       {model?.type === "entrance" ? <EntranceHandlers target={target} card={card} model={model} name={name} /> : null}

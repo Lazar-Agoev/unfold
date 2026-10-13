@@ -8,26 +8,13 @@
  */
 
 import { z } from "zod";
-import type { AgentAnchor } from "../../../shared/agent-api";
-import type { ToolContext } from "../context";
-import { anchorArg, applyEdit, defined, type Defined, editResult, lineRange, editTarget, expectRevision, itemLine, itemsHeading, localIds, otherProject, pageArgs, type EditTarget } from "../edits";
+import { anchorArg, applyEdit, defined, editResult, lineRange, editTarget, expectRevision, itemLine, itemsHeading, localIds, pageArgs } from "../edits";
 import { isLink } from "../target";
 import { defineTool } from "../tool";
 
 /** What a tool without `replacePeopleText` says when the window refuses to replace a person's words. */
 function keepWords(tool: string, what: string): string {
   return `${tool} keeps them: pass ${what} as they are, or ask the person to change them.`;
-}
-
-/** Anchors with their projects as the window takes them: by id, absent for the board's own. */
-async function anchorsOf(context: ToolContext, target: EditTarget, anchors: readonly Defined<z.output<typeof anchorArg>>[]): Promise<AgentAnchor[]> {
-  return Promise.all(
-    anchors.map(async (given) => {
-      const { project, ...rest } = defined(given);
-      const id = await otherProject(context, target, project);
-      return id === undefined ? rest : { ...rest, project: id };
-    }),
-  );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -132,7 +119,7 @@ export const addResources = defineTool({
   name: "add_resources",
   title: "Add resources",
   description:
-    'Adds resource cards for what code talks to that isn\'t a function: kind table, queue, cache, storage, external (a service outside the workspace, such as Stripe), or actor (who starts things: a customer, a browser). name is the technical name ("orders"). Every kind but actor needs anchors that cite it: a block or entrance key ({key}: where the queue is created, the model class, the client) or an evidence file\'s lines ({file, lines: [from, to]}: a SQL migration, a Prisma schema). Unfold checks that the name, and every column a card lists itself, appear in the verified text of its anchors, and refuses what it can\'t find, saying what to cite. A table backed by a type (type: an interface\'s, dataclass\'s, or model class\'s key, from search or read_code) takes its columns from the type\'s fields, compiled; columns then only mark fields: {name, key: primary | foreign | unique, references}. Without type, list the columns yourself. If you can\'t cite it, don\'t add it: say what you found in the chat. Passing an existing id updates that card. frame puts it in a frame; near places it beside an item. Read get_guide("data-models") for tables. One undo step for the whole call.',
+    'Adds resource cards for what code talks to that isn\'t a function: kind table, queue, cache, storage, external (a service outside the project: another repository, or one such as Stripe), or actor (who starts things: a customer, a browser). name is the technical name ("orders"). Every kind but actor needs anchors that cite it: a block or entrance key ({key}: where the queue is created, the model class, the client) or an evidence file\'s lines ({file, lines: [from, to]}: a SQL migration, a Prisma schema). Unfold checks that the name, and every column a card lists itself, appear in the verified text of its anchors, and refuses what it can\'t find, saying what to cite. A table backed by a type (type: an interface\'s, dataclass\'s, or model class\'s key, from search or read_code) takes its columns from the type\'s fields, compiled; columns then only mark fields: {name, key: primary | foreign | unique, references}. Without type, list the columns yourself. If you can\'t cite it, don\'t add it: say what you found in the chat. Passing an existing id updates that card. frame puts it in a frame; near places it beside an item. Read get_guide("data-models") for tables. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
     resources: z
@@ -142,7 +129,6 @@ export const addResources = defineTool({
           kind: z.enum(["table", "queue", "cache", "storage", "external", "actor"]),
           name: z.string().trim().min(1).max(120).describe("The technical name, as the code writes it"),
           type: z.string().min(1).optional().describe("A table's type: a type declaration's or class's key"),
-          project: z.string().min(1).optional().describe("The type's project, when not the board's own"),
           description: z.string().trim().min(1).max(400).optional(),
           columns: z.array(column).optional(),
           anchors: z.array(anchorArg).optional().describe("What it cites"),
@@ -156,16 +142,9 @@ export const addResources = defineTool({
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
   async run({ board, page, project, resources, expectRevision: revision }, context) {
     const target = await editTarget(context, { board, page, project });
-    const specs = await Promise.all(
-      resources.map(async (resource) => {
-        const { project: typeProject, anchors, ...rest } = defined(resource);
-        const id = await otherProject(context, target, typeProject);
-        return { ...rest, ...(id !== undefined ? { project: id } : {}), ...(anchors !== undefined ? { anchors: await anchorsOf(context, target, anchors) } : {}) };
-      }),
-    );
     const edit = await applyEdit(context, target, {
       title: "Add resources",
-      op: { op: "add_resources", resources: specs },
+      op: { op: "add_resources", resources: defined(resources) },
       expectRevision: revision,
       peopleAdvice: keepWords("add_resources", "a resource card's name and description"),
     });
@@ -202,7 +181,6 @@ export const connect = defineTool({
           cardinality: z.enum(["one-to-one", "one-to-many", "many-to-one", "many-to-many"]).optional(),
           channel: z.string().trim().min(1).optional().describe("What travels: a route, a queue, an event (filled in when to is an entrance)"),
           carries: z.string().min(1).optional().describe("The key of the type it carries"),
-          carriesProject: z.string().min(1).optional().describe("The carried type's project, when not the board's own"),
           label: z.string().trim().min(1).max(120).optional().describe('What travels, in words ("place-order job")'),
           description: z.string().trim().min(1).max(400).describe("The evidence, in one sentence"),
           anchors: z.array(anchorArg).optional().describe("What it cites on the receiving side"),
@@ -214,16 +192,9 @@ export const connect = defineTool({
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
   async run({ board, page, project, connections, expectRevision: revision }, context) {
     const target = await editTarget(context, { board, page, project });
-    const specs = await Promise.all(
-      connections.map(async (connection) => {
-        const { carriesProject, anchors, ...rest } = defined(connection);
-        const id = await otherProject(context, target, carriesProject);
-        return { ...rest, ...(id !== undefined ? { carriesProject: id } : {}), ...(anchors !== undefined ? { anchors: await anchorsOf(context, target, anchors) } : {}) };
-      }),
-    );
     const edit = await applyEdit(context, target, {
       title: "Connect",
-      op: { op: "connect", connections: specs },
+      op: { op: "connect", connections: defined(connections) },
       expectRevision: revision,
       peopleAdvice: keepWords("connect", "a connection's label and description"),
     });

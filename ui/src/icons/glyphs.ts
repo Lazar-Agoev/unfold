@@ -1,6 +1,6 @@
 /**
  * The icon set's drawings. Path data is the designs' own, verbatim, in the viewBox each was drawn in:
- * the custom 16px icons of Home, the 24px icons of the board, Add, the peek sheet, and Publish, and the
+ * the custom 16px icons of Home, the 24px icons of the board, Add, and the peek sheet, and the
  * 10px disclosure chevrons. The Lucide-style icons of Health (check, close, folder, warning, info) are
  * redrawn in the 16px style, and the frames' icons are drawn in it. Strokes are `currentColor`, 1.5
  * unless noted, with round caps and joins.
@@ -32,7 +32,6 @@ export const ICON_NAMES = [
   "group",
   "link",
   "search",
-  "drafts",
   "folder",
   "board",
   "board-draft",
@@ -46,7 +45,6 @@ export const ICON_NAMES = [
   "warning-circle",
   "warning-triangle",
   "info",
-  "publish",
   "copy",
   "edit",
   "minus",
@@ -103,7 +101,6 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   link: { box: 16, shapes: [{ d: "M2 8h9", dash: "2.5 2" }, { d: "M10 5l3 3-3 3" }] },
   // Home sidebar.
   search: { box: 16, shapes: [{ circle: [7, 7, 4.5] }, { d: "M10.5 10.5L13.5 13.5" }] },
-  drafts: { box: 16, shapes: [{ rect: [3, 2.5, 10, 11, 1.5], dash: "2 2" }] },
   folder: { box: 16, shapes: [{ d: FOLDER }] },
   board: { box: 16, shapes: [{ d: "M5.5 2.5H11.5C12.6 2.5 13.5 3.4 13.5 4.5V10.5" }, { rect: [2.5, 4.75, 8.75, 8.75, 1.5] }] },
   "board-draft": {
@@ -150,7 +147,7 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   close: { box: 16, shapes: [{ d: "M4 4L12 12M12 4L4 12" }] },
   // The peek's ⊕.
   "add-circle": { box: 24, stroke: 1.75, shapes: [{ circle: [12, 12, 9] }, { d: "M12 8v8" }, { d: "M8 12h8" }] },
-  // Health's problem icon and Publish's conflict icon, redrawn; the triangle follows the failed state glyph.
+  // Health's problem icon, redrawn; the triangle follows the failed state glyph.
   "warning-circle": { box: 16, shapes: [{ circle: [8, 8, 6] }, { d: "M8 5V8.75" }, { circle: [8, 11, 0.9], filled: true }] },
   "warning-triangle": {
     box: 16,
@@ -162,8 +159,7 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   },
   // The state line's scanning note; also Health's quiet note.
   info: { box: 16, shapes: [{ circle: [8, 8, 6] }, { d: "M8 7.25V11" }, { circle: [8, 5, 0.9], filled: true }] },
-  // Add's commands and the Publish changes list.
-  publish: { box: 24, shapes: [{ d: "M12 15V3" }, { d: "m7 8 5-5 5 5" }, { d: "M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" }] },
+  // Copy (Settings' commands) and edit (a note's and a link's menus).
   copy: { box: 24, shapes: [{ rect: [8, 8, 13, 13, 2] }, { d: "M4 16V5a2 2 0 0 1 2-2h11" }] },
   edit: { box: 24, shapes: [{ d: "M12 20h9" }, { d: "M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" }] },
   // The agent mark beside an agent's name: a small four-point spark.

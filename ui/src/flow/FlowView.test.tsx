@@ -290,7 +290,7 @@ describe("the Flow view's steps and View code", () => {
 
 describe("a step group's one collapse state", () => {
   const P = "p-orders0000";
-  const REF = { project: P, id: ".unfold/local/drafts/b.json" };
+  const REF = { project: P, id: ".unfold/boards/b.json" };
   const PAGE = { board: REF, page: "page-1" };
   const card: Card = { id: "create-order", ref: { block: FN }, at: [0, 0], view: "flow" };
   const placeGroup: Group = { id: "place-it", card: "create-order", title: PLACE, members: [...place.members], collapsed: false };
@@ -404,7 +404,7 @@ describe("calls expanded in place, as the Flow view draws them", () => {
 
 describe("calls expanded in place on a card", () => {
   const P = "p-orders0000";
-  const REF = { project: P, id: ".unfold/local/drafts/b.json" };
+  const REF = { project: P, id: ".unfold/boards/b.json" };
   const PAGE = { board: REF, page: "page-1" };
   const PLACE = "src/services/order-service.ts#class:OrderService/method:place";
   const CHARGE = "src/services/payment.ts#function:charge";

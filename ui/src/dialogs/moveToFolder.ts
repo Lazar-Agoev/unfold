@@ -1,7 +1,7 @@
 /**
- * The Move to folder prompt: the board menu's "New folder…" and Add's "Move Board to Folder…" name a
- * folder for one board. It is this module's own request (the window's `DialogRequest` has no board for
- * a folder), shown by `DialogHost` like the others.
+ * The board menu's Move to folder › New folder… prompt: names a new folder and moves one board into it.
+ * It is this module's own request (the window's `DialogRequest` has no board for a folder), shown by
+ * `DialogHost` like the others.
  */
 
 import { create } from "zustand";
@@ -11,8 +11,6 @@ export interface MoveToFolderRequest {
   readonly board: BoardRef;
   /** The board's folder now (null: the top level). */
   readonly folder: string | null;
-  /** `new` asks for a new folder (a path from the top level); `path` for any folder, the current one filled in. */
-  readonly mode: "new" | "path";
 }
 
 export const useMoveToFolder = create<{ readonly request: MoveToFolderRequest | null }>()(() => ({ request: null }));

@@ -6,14 +6,13 @@
 
 import { useRef, useState } from "react";
 import { IconButton, Monogram, showToast } from "../components";
-import { toUnfoldError } from "../ipc";
+import { toUnfoldError, useEngineQuery } from "../ipc";
 import { useFocusTarget } from "../lib/focus-targets";
 import { BoardMenuButton } from "../menus";
 import { renameBoard, useOpenBoard, type BoardRef } from "../state/boards";
 import { showHome } from "../state/shownBoard";
 import { useProjectRow } from "../state/workspace";
 import { InlineRename } from "./InlineRename";
-import { useBoardSummary } from "./publishState";
 
 /** The focus target that starts renaming the board in place. */
 const BOARD_TITLE_FIELD = "board.title";
@@ -23,7 +22,7 @@ export function BoardHeader({ board }: { readonly board: BoardRef }) {
   const title = useOpenBoard(board, (open) => open.document.title) ?? "";
   const savedFolder = useOpenBoard(board, (open) => open.document.folder);
   // The list's folder once it has the board (null = top level), else the one the board opened with.
-  const summary = useBoardSummary(board);
+  const summary = useEngineQuery("list_boards", { project: board.project }).data?.boards.find((item) => item.id === board.id);
   const folder = summary ? summary.folder : (savedFolder ?? null);
   const [editing, setEditing] = useState(false);
   const slot = useRef<HTMLDivElement>(null);

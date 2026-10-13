@@ -33,12 +33,12 @@ describe("jobState", () => {
 
   it("is a board of the one page, with no health", () => {
     const state = jobState(job);
-    expect(state.document).toEqual({ format: "unfold-board", version: 1, title: "Order placement", projects: [], pages: [job.page] });
+    expect(state.document).toEqual({ format: "unfold-board", version: 1, title: "Order placement", pages: [job.page] });
     expect(state.health.items).toEqual([]);
   });
 
   it("carries the board's health for the review banners", () => {
-    const health: Health = { items: [], missing: 1, outdated: 0, brokenGroups: 0, review: 0, notConnected: 0, brokenLinks: 0 };
+    const health: Health = { items: [], missing: 1, outdated: 0, brokenGroups: 0, review: 0, brokenLinks: 0 };
     expect(jobState({ ...job, health }).health).toBe(health);
   });
 });

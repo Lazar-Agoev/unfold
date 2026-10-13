@@ -4,9 +4,9 @@ const boards = vi.hoisted(() => ({
   addBlock: vi.fn(),
   addPage: vi.fn(() => "page-2"),
   getOpenBoard: vi.fn(() => ({ activePage: "page-1" })),
-  newBoard: vi.fn(() => Promise.resolve({ project: "p-a", id: "draft" })),
+  newBoard: vi.fn(() => Promise.resolve({ project: "p-b", id: "new" })),
   openEntrance: vi.fn(() => Promise.resolve()),
-  traceEntrance: vi.fn(() => Promise.resolve({ project: "p-a", id: "draft" })),
+  traceEntrance: vi.fn(() => Promise.resolve({ project: "p-b", id: "new" })),
 }));
 const overlays = vi.hoisted(() => ({ openPeek: vi.fn() }));
 const components = vi.hoisted(() => ({ showToast: vi.fn() }));
@@ -26,33 +26,33 @@ beforeEach(() => {
 
 describe("activateChoice", () => {
   it("adds a function or an entrance to the current page", async () => {
-    await activateChoice({ kind: "definition", project: "p-b", key: "k", name: "processRefund" }, PAGE, false);
-    expect(boards.addBlock).toHaveBeenCalledWith(PAGE.target, "p-b", "k", undefined);
-    await activateChoice({ kind: "entrance", project: "p-b", key: "e" }, PAGE, false);
-    expect(boards.openEntrance).toHaveBeenCalledWith(PAGE.target, "p-b", "e");
+    await activateChoice({ kind: "definition", project: "p-a", key: "k", name: "processRefund" }, PAGE, false);
+    expect(boards.addBlock).toHaveBeenCalledWith(PAGE.target, "k", undefined);
+    await activateChoice({ kind: "entrance", project: "p-a", key: "e" }, PAGE, false);
+    expect(boards.openEntrance).toHaveBeenCalledWith(PAGE.target, "e");
     expect(boards.addPage).not.toHaveBeenCalled();
   });
 
   it("adds onto a new page after the current one with ⌘Enter", async () => {
-    await activateChoice({ kind: "definition", project: "p-b", key: "k", name: "processRefund" }, PAGE, true);
+    await activateChoice({ kind: "definition", project: "p-a", key: "k", name: "processRefund" }, PAGE, true);
     expect(boards.addPage).toHaveBeenCalledWith(BOARD);
-    expect(boards.addBlock).toHaveBeenCalledWith({ board: BOARD, page: "page-2" }, "p-b", "k", undefined);
+    expect(boards.addBlock).toHaveBeenCalledWith({ board: BOARD, page: "page-2" }, "k", undefined);
   });
 
-  it("from Home starts a new draft in the result's own project", async () => {
+  it("from Home starts a new board in the result's own project", async () => {
     await activateChoice({ kind: "entrance", project: "p-b", key: "e" }, HOME, false);
     expect(boards.traceEntrance).toHaveBeenCalledWith("p-b", "e");
     await activateChoice({ kind: "definition", project: "p-b", key: "k", name: "processRefund" }, HOME, false);
     expect(boards.newBoard).toHaveBeenCalledWith("p-b", { title: "processRefund" });
-    expect(boards.addBlock).toHaveBeenCalledWith({ board: { project: "p-a", id: "draft" }, page: "page-1" }, "p-b", "k", undefined);
+    expect(boards.addBlock).toHaveBeenCalledWith({ board: { project: "p-b", id: "new" }, page: "page-1" }, "k", undefined);
   });
 
-  it("adds a type declaration in its own view, on the page or in a new draft", async () => {
-    const cart = { kind: "definition", project: "p-b", key: "src/cart.ts#interface:Cart", name: "Cart", view: "diagram" } as const;
+  it("adds a type declaration in its own view, on the page or on a new board", async () => {
+    const cart = { kind: "definition", project: "p-a", key: "src/cart.ts#interface:Cart", name: "Cart", view: "diagram" } as const;
     await activateChoice(cart, PAGE, false);
-    expect(boards.addBlock).toHaveBeenLastCalledWith(PAGE.target, "p-b", cart.key, "diagram");
+    expect(boards.addBlock).toHaveBeenLastCalledWith(PAGE.target, cart.key, "diagram");
     await activateChoice(cart, HOME, false);
-    expect(boards.addBlock).toHaveBeenLastCalledWith({ board: { project: "p-a", id: "draft" }, page: "page-1" }, "p-b", cart.key, "diagram");
+    expect(boards.addBlock).toHaveBeenLastCalledWith({ board: { project: "p-b", id: "new" }, page: "page-1" }, cart.key, "diagram");
   });
 
   it("opens a file in the peek sheet, and a text match at its line", async () => {

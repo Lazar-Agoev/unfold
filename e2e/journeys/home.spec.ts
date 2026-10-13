@@ -1,7 +1,7 @@
 /**
  * Home of a compiled project (docs/ui-shell.md#screens): the header and its state line, How it starts
- * (applications by category, an expanded application, Not reached) and Trace, the Boards section, the
- * Health line, the sidebar's tree, and Drafts; then Health for a project with a file that doesn't
+ * (applications by category, an expanded application, Not reached) and Trace, the Boards list (by last
+ * edit), the Health line, and the sidebar's tree; then Health for a project with a file that doesn't
  * parse; the engine host restarting (§11.11) without losing an edit; and the app's Settings (the
  * editor command, and the commands that connect an agent).
  */
@@ -17,6 +17,7 @@ import {
   dialog,
   entranceRow,
   expectGraphCurrent,
+  homeBoardRows,
   homeMain,
   howItStarts,
   projectRow,
@@ -36,7 +37,7 @@ interface AppSettings {
 }
 
 test.describe("Home", () => {
-  test("a compiled project's Home: header, How it starts, Trace, Boards, Health, the sidebar tree, and Drafts", async ({ sandbox, launch }) => {
+  test("a compiled project's Home: header, How it starts, Trace, Boards, Health, and the sidebar tree", async ({ sandbox, launch }) => {
     const folder = sandbox.playground("ts-orders");
     // A command entrance no launch reaches, for "Not reached from a launch".
     const config = join(folder, "unfold.toml");
@@ -103,42 +104,27 @@ test.describe("Home", () => {
       await expect(health.getByRole("button")).toHaveCount(0);
     });
 
-    await test.step("Trace opens an entrance on a new page of a new draft board", async () => {
+    await test.step("Trace opens an entrance on a new page of a new board", async () => {
       await traceEntrance(page, "POST", "/orders");
       await expect(boardTitle(page)).toHaveText("POST /orders");
-      await expect(boardView(page).locator(".board-publish-text")).toHaveText("Draft");
       await expect(boardView(page).getByRole("article", { name: "POST /orders" })).toBeVisible();
     });
 
-    const boards = homeMain(page).getByRole("region", { name: "Boards" });
+    const rows = homeBoardRows(page);
 
-    await test.step("Home's Boards shows the board as a card with a thumbnail of its first page", async () => {
+    await test.step("Home's Boards lists the board with when it was last edited", async () => {
       await showHome(page);
-      const board = boards.getByRole("button", { name: "POST /orders" });
-      await expect(board).toBeVisible();
-      // Drawn from card positions: the entrance and its three handlers.
-      await expect(board.locator(".home-thumb-card")).toHaveCount(4);
+      await expect(rows).toHaveCount(1);
+      await expect(rows.locator(".home-board-title")).toHaveText(["POST /orders"]);
+      await expect(rows.locator(".home-board-edited")).toHaveText(["edited just now"]);
     });
 
-    await test.step("New board on Home makes an empty draft and opens it", async () => {
+    await test.step("New board on Home makes an empty board and opens it", async () => {
       await homeMain(page).locator(".home-header").getByRole("button", { name: "New board" }).click();
       await expect(boardTitle(page)).toHaveText("Untitled board");
       await expect(boardView(page).getByText("Open an entrance or a definition to start this page.")).toBeVisible();
       await showHome(page);
-    });
-
-    await test.step("Boards filters All, Published, and Drafts, and sorts by last edited or title", async () => {
-      const titles = boards.locator(".home-board-title");
-      await expect(titles).toHaveText(["Untitled board", "POST /orders"]);
-      const show = boards.getByRole("radiogroup", { name: "Show" });
-      await show.getByRole("radio", { name: "Published" }).click();
-      await expect(boards.getByText("No published boards")).toBeVisible();
-      await show.getByRole("radio", { name: "Drafts" }).click();
-      await expect(titles).toHaveText(["Untitled board", "POST /orders"]);
-      await show.getByRole("radio", { name: "All" }).click();
-      await boards.getByRole("button", { name: "Last edited" }).click();
-      await page.getByRole("menu", { name: "Sort boards" }).getByRole("menuitemcheckbox", { name: "Title" }).click();
-      await expect(titles).toHaveText(["POST /orders", "Untitled board"]);
+      await expect(rows.locator(".home-board-title")).toHaveText(["Untitled board", "POST /orders"]);
     });
 
     await test.step("the sidebar lists the project's boards, and a board row opens its board", async () => {
@@ -146,15 +132,17 @@ test.describe("Home", () => {
       await expect(sidebarBoard(page, "Untitled board")).toBeVisible();
       await showBoard(page, "POST /orders");
       await expect(boardView(page).getByRole("article", { name: "POST /orders" })).toBeVisible();
-      await showHome(page);
     });
 
-    await test.step("Drafts lists every project's drafts, and a card opens its board", async () => {
-      await sidebar(page).getByRole("button", { name: "Drafts" }).click();
-      await expect(homeMain(page).getByRole("heading", { name: "Drafts", level: 1 })).toBeVisible();
-      const drafts = homeMain(page).getByRole("group", { name: "Drafts" });
-      await expect(drafts.getByRole("button")).toHaveCount(2);
-      await drafts.getByRole("button", { name: "Untitled board" }).click();
+    await test.step("an edited board moves to the top of Home's Boards, and a row opens its board", async () => {
+      await boardTitle(page).dblclick();
+      const field = sidebar(page).getByRole("textbox", { name: "Board title" });
+      await enterText(field, "Placing an order");
+      await field.press("Enter");
+      await expect(boardTitle(page)).toHaveText("Placing an order");
+      await showHome(page);
+      await expect(rows.locator(".home-board-title")).toHaveText(["Placing an order", "Untitled board"]);
+      await rows.filter({ hasText: "Untitled board" }).click();
       await expect(boardTitle(page)).toHaveText("Untitled board");
     });
 

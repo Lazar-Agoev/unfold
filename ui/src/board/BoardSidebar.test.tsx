@@ -13,7 +13,7 @@ import { HEALTHY, boardDocument, boardState, page, projectRow, workspaceView } f
 import { BoardSidebar } from "./BoardSidebar";
 
 const P = "p-orders0000";
-const ID = ".unfold/local/drafts/b.json";
+const ID = ".unfold/boards/b.json";
 const REF = { project: P, id: ID };
 const PAGE = { board: REF, page: "page-1" };
 const KEY = "src/routes/orders.ts#function:createOrder";
@@ -21,14 +21,11 @@ const KEY = "src/routes/orders.ts#function:createOrder";
 const summary: BoardSummary = {
   project: P,
   id: ID,
-  place: "draft",
   name: "b",
   title: "Order placement",
   folder: "Checkout",
   pages: 2,
   cards: 2,
-  projects: ["payments"],
-  changes: 0,
   updatedAtMs: 0,
   label: null,
   error: null,
@@ -38,14 +35,14 @@ let engine: FakeEngine;
 
 const cards: Card[] = [
   { id: "create-order", ref: { block: KEY }, at: [0, 0] },
-  { id: "pay", ref: { block: "src/pay.ts#function:pay", project: "payments" }, at: [600, 0] },
+  { id: "pay", ref: { block: "src/pay.ts#function:pay" }, at: [600, 0] },
 ];
 
 function open(items: HealthItem[] = []) {
-  const document = boardDocument(
-    [page("page-1", cards, { title: "Placing an order", links: [{ id: "a-to-pay", from: "create-order", to: "pay" }] }), page("page-2", [], { title: "Refunds" })],
-    { projects: ["payments"] },
-  );
+  const document = boardDocument([
+    page("page-1", cards, { title: "Placing an order", links: [{ id: "a-to-pay", from: "create-order", to: "pay" }] }),
+    page("page-2", [], { title: "Refunds" }),
+  ]);
   store.adoptBoardState(boardState(P, ID, document, { health: { ...HEALTHY, items } }));
 }
 
@@ -110,12 +107,28 @@ describe("the board sidebar", () => {
     expect(store.getOpenBoard(REF)?.document.pages.map((item) => item.title)).toEqual(["Placing an order", "Refunds", "Page 3"]);
   });
 
-  it("lists the cards with a project column, a card that isn't connected, and drawn links", () => {
+  it("has the drawn page menu: Rename, Copy link, Move up, Move down, then Delete page…", () => {
+    open();
+    renderSidebar();
+    fireEvent.click(screen.getByRole("button", { name: "Refunds actions" }));
+    const menu = screen.getByRole("menu");
+    expect([...menu.querySelectorAll("[role=menuitem], [role=separator]")].map((item) => (item.getAttribute("role") === "separator" ? "—" : item.textContent))).toEqual([
+      "Rename",
+      "Copy link",
+      "Move up",
+      "Move down",
+      "—",
+      "Delete page…",
+    ]);
+    expect(within(menu).getByRole("menuitem", { name: "Move down" }).getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("lists the cards and drawn links", () => {
     open();
     renderSidebar();
     const list = screen.getByRole("listbox", { name: "Cards on this page" });
     const rows = within(list).getAllByRole("option");
-    expect(rows.map((row) => row.textContent)).toEqual(["OƒcreateOrder", "link to pay", "Pƒpaynot connected"]);
+    expect(rows.map((row) => row.textContent)).toEqual(["ƒcreateOrder", "link to pay", "ƒpay"]);
     act(() => {
       rows[1]?.click();
     });

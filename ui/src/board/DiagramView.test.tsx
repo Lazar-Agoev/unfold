@@ -13,7 +13,7 @@ import { BoardView } from "./BoardView";
 
 const P = "p-orders0000";
 const Q = "p-shop000000";
-const ID = ".unfold/local/drafts/b.json";
+const ID = ".unfold/boards/b.json";
 const REF = { project: P, id: ID };
 const PAGE = { board: REF, page: "page-1" };
 const KEY = "src/routes/orders.ts#function:createOrder";
@@ -95,7 +95,7 @@ const MODELS: Readonly<Record<Key, CardView>> = {
 let engine: FakeEngine;
 
 function open(cards: Card[], defaultView: "code" | "flow" | "diagram" = "code") {
-  store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", cards, { defaultView })], { projects: cards.some((card) => card.ref.project) ? ["shop"] : [] })));
+  store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", cards, { defaultView })])));
 }
 
 function renderBoard() {
@@ -440,25 +440,15 @@ describe("type cards", () => {
     });
   });
 
-  it("anchor a type arrow at its field's row, only to a card of the same project", async () => {
+  it("anchor a type arrow at its field's row", async () => {
     open(
       [
         { id: "cart", ref: { block: CART }, at: [0, 0] },
-        { id: "item-elsewhere", ref: { block: ITEM, project: "shop" }, at: [600, 0] },
+        { id: "item", ref: { block: ITEM }, at: [600, 400] },
       ],
       "diagram",
     );
     const { container } = renderBoard();
-    await waitFor(() => {
-      expect(cardElement(container, "item-elsewhere")?.querySelector(".tcard-fields")).not.toBeNull();
-    });
-    expect(cardElement(container, "cart")?.querySelector('[data-handleid^="field:"]')).toBeNull();
-
-    act(() => {
-      store.editPage(PAGE, (draft) => {
-        draft.cards.push({ id: "item", ref: { block: ITEM }, at: [600, 400] });
-      });
-    });
     await waitFor(() => {
       const rows = [...(cardElement(container, "cart")?.querySelectorAll(".tcard-type") ?? [])];
       // `items` (row 1) and the inherited `lines` name CartItem; the arrows leave from those rows.

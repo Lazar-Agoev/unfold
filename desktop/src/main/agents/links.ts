@@ -1,8 +1,8 @@
 /**
- * Links (D9): `unfold://<project's shared name>/<board id>?page=<page id>&item=<item id>`, which a
+ * Links (D9): `unfold://<project's folder name>/<board id>?page=<page id>&item=<item id>`, which the
  * window's Copy link builds and a person pastes into an agent's chat. Only the main process reads
- * them: it parses the text, then resolves the shared name against the workspace (the first project
- * with that name, shared project names). A link names things and carries no code.
+ * them: it parses the text, then resolves the folder name against the workspace (the first project
+ * whose folder has that name). A link names things and carries no code.
  */
 
 import type { AgentLink } from "../../shared/agent-api";
@@ -82,8 +82,8 @@ export function parseLink(input: string): LinkParse {
 }
 
 /**
- * Resolves a link's project by shared name among the workspace's projects (in workspace order: the
- * first with the name wins). Fails with a message an agent can act on.
+ * Resolves a link's project by folder name among the workspace's projects (each row's `name`; in
+ * workspace order, the first with the name wins). Fails with a message an agent can act on.
  */
 export function resolveLink(
   link: AgentLink,
@@ -93,7 +93,7 @@ export function resolveLink(
   if (!project) {
     return {
       ok: false,
-      message: `No project named “${link.project}” is in the workspace. The link may come from another machine, or the project was renamed; list_projects shows the names.`,
+      message: `No project named “${link.project}” is in the workspace. The link may come from another machine, or the project's folder was renamed; list_projects shows the names.`,
     };
   }
   return { ok: true, link: { ...link, project: project.id } };

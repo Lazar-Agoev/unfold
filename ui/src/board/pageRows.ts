@@ -8,7 +8,7 @@
  */
 
 import { KIND_WORDS } from "../canvas/connections/chip";
-import type { Card, Frame, Group, HealthItem, Link, Page, PageOutline, ProjectName, Proposal, Resource } from "../ipc/generated";
+import type { Card, Frame, Group, HealthItem, Link, Page, PageOutline, Proposal, Resource } from "../ipc/generated";
 import { cardKey, keyDisplayName, proposalsOf } from "../state/boards";
 
 interface RowBase {
@@ -25,30 +25,12 @@ export type PageRow =
       readonly card: Card;
       readonly name: string;
       readonly entrance: boolean;
-      /** The shared name of the card's project, for the monogram column. */
-      readonly project: ProjectName;
-      /** Whether its project is connected here (else it shows "not connected"). */
-      readonly connected: boolean;
     })
   | (RowBase & { readonly kind: "group"; readonly group: Group })
   | (RowBase & { readonly kind: "proposal"; readonly proposal: Proposal })
   | (RowBase & { readonly kind: "link"; readonly link: Link; readonly label: string })
   | (RowBase & { readonly kind: "frame"; readonly frame: Frame })
   | (RowBase & { readonly kind: "resource"; readonly resource: Resource });
-
-interface PageRows {
-  readonly rows: readonly PageRow[];
-  /** Whether the page holds cards from more than one project: the rows then carry a monogram. */
-  readonly multiProject: boolean;
-}
-
-interface RowContext {
-  /** The shared name of the board's own project. */
-  readonly boardProject: ProjectName;
-  /** Whether a card's `ref.project` (undefined: the board's own) resolves to a connected project. */
-  readonly connected: (project: ProjectName | undefined) => boolean;
-  readonly items: readonly HealthItem[];
-}
 
 /** The page's cards in follow order with their call depth. */
 export function followOrder(outline: PageOutline | undefined, cards: readonly Card[]): { card: Card; depth: number }[] {
@@ -70,11 +52,11 @@ export function followOrder(outline: PageOutline | undefined, cards: readonly Ca
   return rows;
 }
 
-/** Every row of On this page. */
-export function pageRows(page: Page, outline: PageOutline | undefined, context: RowContext): PageRows {
+/** Every row of On this page; `items` are the board's health items, which mark the rows they are about. */
+export function pageRows(page: Page, outline: PageOutline | undefined, items: readonly HealthItem[]): PageRow[] {
   const marked = new Set(
-    context.items.flatMap((item) => {
-      if (item.page !== page.id || item.kind === "notConnected") {
+    items.flatMap((item) => {
+      if (item.page !== page.id) {
         return [];
       }
       const { target } = item;
@@ -90,7 +72,6 @@ export function pageRows(page: Page, outline: PageOutline | undefined, context: 
   const frames = new Map((page.frames ?? []).map((frame) => [frame.id, frame]));
   const resources = new Map((page.resources ?? []).map((resource) => [resource.id, resource]));
   const rows: PageRow[] = [];
-  const projects = new Set<ProjectName>();
   /** The links and connections leaving item `id`, one level under it. */
   const linkRows = (id: string, depth: number) => {
     for (const link of page.links) {
@@ -102,8 +83,6 @@ export function pageRows(page: Page, outline: PageOutline | undefined, context: 
     }
   };
   const cardRow = (card: Card, depth: number) => {
-    const project = card.ref.project ?? context.boardProject;
-    projects.add(project);
     rows.push({
       kind: "card",
       id: card.id,
@@ -112,8 +91,6 @@ export function pageRows(page: Page, outline: PageOutline | undefined, context: 
       card,
       name: names.get(card.id) ?? card.id,
       entrance: "entrance" in card.ref,
-      project,
-      connected: context.connected(card.ref.project),
     });
     for (const group of page.groups) {
       if (group.card === card.id) {
@@ -156,5 +133,5 @@ export function pageRows(page: Page, outline: PageOutline | undefined, context: 
     }
   };
   emit([...follow.map(({ card }) => card.id), ...resources.keys(), ...frames.keys()].filter((id) => !held.has(id)), 0);
-  return { rows, multiProject: projects.size > 1 };
+  return rows;
 }

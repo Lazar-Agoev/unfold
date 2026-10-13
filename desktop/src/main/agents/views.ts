@@ -1,15 +1,16 @@
 /**
  * What the window shows (design §5.6): it reports its board, page, selection, lens, the items in
- * view, and the boards it holds (`report_view`) when any of them changes and when it gains focus. The
- * main process keeps the last report, so tools default to the window's view and edits know whether
- * it holds a board. Reports are kept by window id: each opening of the window gets a new one.
+ * view, and the boards whose sessions it holds (`report_view`) when any of them changes and when it
+ * gains focus. The main process keeps the last report, so tools default to the window's view and
+ * edits know whether it holds a board. Reports are kept by window id: each opening of the window gets
+ * a new one.
  */
 
 import type { AgentBoardRef, AgentLens, ViewReport, ViewSelection } from "../../shared/agent-api";
 
 /** A reported lens as agents read it: Diagram or Code; a window from before the Diagram/Code switch reports Flow, which is Diagram. */
 const LENSES: Readonly<Record<string, AgentLens>> = { diagram: "diagram", flow: "diagram", code: "code" };
-/** The most ids a report's lists may hold (a window holds at most 100 tabs; a page, far fewer items in view). */
+/** The most ids a report's lists may hold (far more boards or items in view than a window has). */
 const MAX_IDS = 5_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -37,7 +38,7 @@ function selection(value: unknown): ViewSelection | null {
   if (!isRecord(value)) {
     return null;
   }
-  const { kind, id, card, key, owner, from, to, project, source, seq, line, calls } = value;
+  const { kind, id, card, key, owner, from, to, source, seq, line, calls } = value;
   switch (kind) {
     case "none":
       return { kind };
@@ -55,13 +56,13 @@ function selection(value: unknown): ViewSelection | null {
       }
       return isString(card) && isString(key) ? { kind, card, key, ...(owner !== undefined ? { owner } : {}) } : null;
     case "line":
-      return isString(from) && isString(to) && isString(project) && isString(source) && Number.isInteger(seq) && (line === null || Number.isInteger(line))
-        ? { kind, from, to, project, source, seq: seq as number, line: line as number | null }
+      return isString(from) && isString(to) && isString(source) && Number.isInteger(seq) && (line === null || Number.isInteger(line))
+        ? { kind, from, to, source, seq: seq as number, line: line as number | null }
         : null;
     case "calls": {
       const listed = Array.isArray(calls) && calls.length <= MAX_IDS ? calls.map(call) : [null];
       const valid = listed.filter((item) => item !== null);
-      return isString(from) && isString(to) && isString(project) && valid.length === listed.length ? { kind, from, to, project, calls: valid } : null;
+      return isString(from) && isString(to) && valid.length === listed.length ? { kind, from, to, calls: valid } : null;
     }
     default:
       return null;
@@ -82,15 +83,15 @@ export function parseViewReport(value: unknown): ViewReport | null {
   const lens = value["lens"];
   const chosen = selection(value["selection"]);
   const visible = ids(value["visible"]);
-  const tabs = Array.isArray(value["tabs"]) && value["tabs"].length <= MAX_IDS ? value["tabs"].map(boardRef) : null;
+  const held = Array.isArray(value["held"]) && value["held"].length <= MAX_IDS ? value["held"].map(boardRef) : null;
   if (
     board === null ||
     (page !== undefined && !isString(page)) ||
     (lens !== undefined && !(typeof lens === "string" && LENSES[lens] !== undefined)) ||
     !chosen ||
     !visible ||
-    !tabs ||
-    tabs.some((tab) => tab === null)
+    !held ||
+    held.some((ref) => ref === null)
   ) {
     return null;
   }
@@ -100,7 +101,7 @@ export function parseViewReport(value: unknown): ViewReport | null {
     ...(typeof lens === "string" && LENSES[lens] !== undefined ? { lens: LENSES[lens] } : {}),
     selection: chosen,
     visible,
-    tabs: tabs as AgentBoardRef[],
+    held: held as AgentBoardRef[],
   };
 }
 
@@ -108,7 +109,7 @@ function sameBoard(a: AgentBoardRef, b: AgentBoardRef): boolean {
   return a.project === b.project && a.id === b.id;
 }
 
-const NO_REPORT: ViewReport = { selection: { kind: "none" }, visible: [], tabs: [] };
+const NO_REPORT: ViewReport = { selection: { kind: "none" }, visible: [], held: [] };
 
 /** The last view of the window. */
 export class ViewTracker {
@@ -140,26 +141,26 @@ export class ViewTracker {
     return this.last;
   }
 
-  /** The window whose tabs hold the board, if any reported it. */
+  /** The window that holds the board's session, if any reported it. */
   holder(board: AgentBoardRef): number | undefined {
     for (const [windowId, report] of this.reports) {
-      if (report.tabs.some((tab) => sameBoard(tab, board))) {
+      if (report.held.some((ref) => sameBoard(ref, board))) {
         return windowId;
       }
     }
     return undefined;
   }
 
-  /** A window now holds a board (opened for an agent), before its next report says so. */
+  /** A window now holds a board's session (loaded for an agent), before its next report says so. */
   holds(windowId: number, board: AgentBoardRef): void {
     for (const [id, report] of this.reports) {
-      if (id !== windowId && report.tabs.some((tab) => sameBoard(tab, board))) {
-        this.reports.set(id, { ...report, tabs: report.tabs.filter((tab) => !sameBoard(tab, board)) });
+      if (id !== windowId && report.held.some((ref) => sameBoard(ref, board))) {
+        this.reports.set(id, { ...report, held: report.held.filter((ref) => !sameBoard(ref, board)) });
       }
     }
     const report = this.reports.get(windowId) ?? NO_REPORT;
-    if (!report.tabs.some((tab) => sameBoard(tab, board))) {
-      this.reports.set(windowId, { ...report, tabs: [...report.tabs, board] });
+    if (!report.held.some((ref) => sameBoard(ref, board))) {
+      this.reports.set(windowId, { ...report, held: [...report.held, board] });
     }
   }
 
@@ -167,7 +168,7 @@ export class ViewTracker {
   released(windowId: number, board: AgentBoardRef): void {
     const report = this.reports.get(windowId);
     if (report) {
-      this.reports.set(windowId, { ...report, tabs: report.tabs.filter((tab) => !sameBoard(tab, board)) });
+      this.reports.set(windowId, { ...report, held: report.held.filter((ref) => !sameBoard(ref, board)) });
     }
   }
 }

@@ -195,7 +195,7 @@ mod tests {
             assert!(text.contains(&format!("  {name}: {{ args: ")), "{name}");
         }
         assert!(text.contains("export type WorkspaceEvent ="));
-        assert!(text.contains("\"board_conflict\""));
+        assert!(text.contains("\"board_reloaded\""));
         assert!(
             text.contains("compile: { args: ProjectArgs; result: CompileOutcome; stream: CompileProgress }")
         );

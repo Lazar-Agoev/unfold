@@ -1,6 +1,6 @@
 /**
- * The board canvas: the React Flow canvas of a page with its cards, frames, arrows, drawn links, and
- * placeholders; Arrange and Show callers; the card data and geometry. Screens import from here.
+ * The board canvas: the React Flow canvas of a page with its cards, frames, arrows, and drawn links;
+ * Arrange and Show callers; the card data and geometry. Screens import from here.
  */
 
 export { arrangeBoard } from "./arrangeBoard";

@@ -7,7 +7,7 @@
 import { useMemo } from "react";
 import type { Unlabeled } from "../ipc/generated";
 import { requestFocus } from "../lib/focus-targets";
-import { findPage, focusCard, labelsFor, pageKey, pushFocusMove, select, useOpenBoard, type PageTarget } from "../state/boards";
+import { findPage, focusCard, labelTexts, pageKey, pushFocusMove, select, useOpenBoard, type PageTarget } from "../state/boards";
 import { setSelectedCollapsed } from "../state/layout";
 
 /** The focus target of the selected Flow node's label field. */
@@ -26,7 +26,7 @@ export function useUnlabeled(target: PageTarget): readonly Unlabeled[] {
     const cards = new Map(page.cards.map((card) => [card.id, card]));
     return outline.unlabeled.filter((item) => {
       const card = cards.get(item.card);
-      return card !== undefined && labelsFor(page.labels, card.ref.project)[item.key] === undefined;
+      return card !== undefined && labelTexts(page.labels)[item.key] === undefined;
     });
   }, [outline, page]);
 }

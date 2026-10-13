@@ -4,7 +4,7 @@ import { installFakeEngine, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, page } from "../test/workspace";
 import { canUndo, closeBoard, editBoard, getOpenBoard, openBoard, undo } from "./boards";
 import { resetBoards } from "./boards/store";
-import { getShownBoard, hideBoard, renameShownBoard, reportShownBoard, showBoard, showHome, useShownBoardStore } from "./shownBoard";
+import { getShownBoard, hideBoard, reportShownBoard, showBoard, showHome, useShownBoardStore } from "./shownBoard";
 
 const P = "p-orders0000";
 const A = { project: P, id: ".unfold/boards/a.json" };
@@ -44,12 +44,8 @@ describe("the shown board", () => {
     expect(getShownBoard()).toBeNull();
   });
 
-  it("keeps a board in front when its id changes, and shows Home when it closes", () => {
-    showBoard(A);
-    renameShownBoard(B, A);
-    expect(getShownBoard()).toEqual(A);
-    renameShownBoard(A, B);
-    expect(getShownBoard()).toEqual(B);
+  it("shows Home when the board in front closes, and nothing changes when another one does", () => {
+    showBoard(B);
     hideBoard(A);
     expect(getShownBoard()).toEqual(B);
     hideBoard(B);

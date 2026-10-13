@@ -13,7 +13,7 @@ type Entry = WindowEntry & { window: FakeBrowserWindow };
 
 const BOARD = { project: "p-orders0000", id: ".unfold/boards/orders.json" };
 const PAGE = { id: "page-1", title: "Placing an order", cards: [] };
-const BOARD_INFO = { title: "Order placement", place: "draft", changes: 0, revision: "r2" } as const;
+const BOARD_INFO = { title: "Order placement", revision: "r2" } as const;
 const EDIT: AgentEditInput = {
   board: BOARD,
   page: "page-1",
@@ -23,8 +23,8 @@ const EDIT: AgentEditInput = {
 };
 const SAVED: AgentEditSuccess = { ok: true, page: PAGE, board: BOARD_INFO, items: [], warnings: [] };
 
-function report(tabs: ViewReport["tabs"]): ViewReport {
-  return { selection: { kind: "none" }, visible: [], tabs };
+function report(held: ViewReport["held"]): ViewReport {
+  return { selection: { kind: "none" }, visible: [], held };
 }
 
 function setup(timeoutMs = 1_000) {
@@ -86,7 +86,7 @@ describe("routing an edit", () => {
     expect(await outcome).toEqual({ ...SAVED, revision: pageRevision(PAGE) });
   });
 
-  it("opens a board the window doesn't hold in the background, then edits it there", async () => {
+  it("loads a board the window doesn't hold without showing it, then edits it there", async () => {
     const { bridge, views, open } = setup();
     const entry = open();
     views.report(entry.id, report([]));
@@ -121,13 +121,13 @@ describe("routing an edit", () => {
     const entry = open();
     const outcome = bridge.open({ board: BOARD });
     const opening = await request(entry, 1);
-    const refusal = { ok: false, code: "too_many_tabs", message: "Close a board first." };
+    const refusal = { ok: false, code: "board_problem", message: "The board file isn't a board." };
     bridge.settle(entry.id, "open", opening.requestId, refusal);
     expect(await outcome).toEqual(refusal);
     expect(views.holder(BOARD)).toBeUndefined();
   });
 
-  it("opens the board again when the window's report still listed a board it closed", async () => {
+  it("loads the board again when the window's report still listed a board it no longer holds", async () => {
     const { bridge, views, open } = setup();
     const entry = open();
     views.report(entry.id, report([BOARD]));
@@ -180,7 +180,7 @@ describe("expected revisions", () => {
     expect((await accepted).ok).toBe(true);
   });
 
-  it("opens the board again when the window's report still listed a board it closed, then reads it", async () => {
+  it("loads the board again when the window's report still listed a board it no longer holds, then reads it", async () => {
     const { bridge, views, open } = setup();
     const entry = open();
     views.report(entry.id, report([BOARD]));
@@ -215,7 +215,7 @@ describe("reading a held page", () => {
     expect(await outcome).toEqual({ ...read, revision: pageRevision(PAGE) });
   });
 
-  it("forgets a board the window's report still listed after it closed it", async () => {
+  it("forgets a board the window's report still listed after it stopped holding it", async () => {
     const { bridge, views, open } = setup();
     const stale = open();
     views.report(stale.id, report([BOARD]));
@@ -270,7 +270,7 @@ describe("answers", () => {
 describe("boards as a whole", () => {
   const CREATED = { ok: true, board: BOARD, info: BOARD_INFO, folder: null, pages: [{ id: "page-1", title: "Page 1" }] };
 
-  it("has the window create a draft, which it then holds", async () => {
+  it("has the window create a board, which it then holds", async () => {
     const { bridge, views, open } = setup();
     const entry = open();
     const outcome = bridge.create({ project: BOARD.project, title: "Order placement", pages: ["Page 1"] });
@@ -281,35 +281,29 @@ describe("boards as a whole", () => {
     expect(views.holder(BOARD)).toBe(entry.id);
   });
 
-  it("copies a board the window holds", async () => {
-    const { bridge, views, open } = setup();
-    const holder = open();
-    views.report(holder.id, report([BOARD]));
-    const copy = { ...CREATED, board: { project: BOARD.project, id: ".unfold/local/drafts/orders-copy.json" } };
-    const outcome = bridge.create({ project: BOARD.project, copyOf: BOARD.id });
-    const sent = await request(holder, 1);
-    expect(sent).toMatchObject({ type: "agent_create_board", copyOf: BOARD.id });
-    bridge.settle(holder.id, "create", sent.requestId, copy);
-    expect(await outcome).toMatchObject({ ok: true, windowId: holder.id });
-    expect(views.holder(copy.board)).toBe(holder.id);
+  it("opens the window to create a board when it is closed", async () => {
+    const { bridge, views, appWindow } = setup();
+    const outcome = bridge.create({ project: BOARD.project, title: "Order placement" });
+    const created = appWindow.current() as Entry | undefined;
+    if (!created) {
+      throw new Error("the window wasn't opened");
+    }
+    created.window.finishLoad();
+    const sent = await request(created, 1);
+    expect(sent).toMatchObject({ type: "agent_create_board", project: BOARD.project, title: "Order placement" });
+    bridge.settle(created.id, "create", sent.requestId, CREATED);
+    expect(await outcome).toEqual({ ...CREATED, windowId: created.id });
+    expect(views.holder(BOARD)).toBe(created.id);
   });
 
-  it("copies a board after opening it again when the window's report still listed it", async () => {
+  it("passes on the window's refusal to create a board, which no one holds then", async () => {
     const { bridge, views, open } = setup();
     const entry = open();
-    views.report(entry.id, report([BOARD]));
-    const copy = { ...CREATED, board: { project: BOARD.project, id: ".unfold/local/drafts/orders-copy.json" } };
-    const outcome = bridge.create({ project: BOARD.project, copyOf: BOARD.id });
-    bridge.settle(entry.id, "create", (await request(entry, 1)).requestId, { ok: false, code: "board_not_open", message: "This window doesn't hold the board to copy." });
-    const opening = await request(entry, 2);
-    expect(opening.type).toBe("agent_open_board");
-    bridge.settle(entry.id, "open", opening.requestId, { ok: true });
-    const copying = await request(entry, 3);
-    expect(copying).toMatchObject({ type: "agent_create_board", copyOf: BOARD.id });
-    bridge.settle(entry.id, "create", copying.requestId, copy);
-    expect(await outcome).toMatchObject({ ok: true, windowId: entry.id });
-    expect(views.holder(BOARD)).toBe(entry.id);
-    expect(views.holder(copy.board)).toBe(entry.id);
+    const outcome = bridge.create({ project: BOARD.project, title: "Order placement", folder: "flows" });
+    const refusal = { ok: false, code: "invalid_folder", message: "A folder is one name." };
+    bridge.settle(entry.id, "create", (await request(entry, 1)).requestId, refusal);
+    expect(await outcome).toEqual(refusal);
+    expect(views.holder(BOARD)).toBeUndefined();
   });
 
   it("edits a board's pages in the window, opening the board there first", async () => {
@@ -331,7 +325,7 @@ describe("boards as a whole", () => {
     expect(await malformed).toMatchObject({ ok: false, code: "internal" });
   });
 
-  it("shows a board: the window switches to it and comes to the front, or opens it in the background only", async () => {
+  it("shows a board: the window switches to it and comes to the front, or loads it without showing it", async () => {
     const { bridge, views, open } = setup();
     const holder = open();
     views.report(holder.id, report([BOARD]));

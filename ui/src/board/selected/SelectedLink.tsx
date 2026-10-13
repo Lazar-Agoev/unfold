@@ -1,6 +1,6 @@
 /**
  * Selected for a drawn link: "Link · drawn by <author>", its kind (a menu that makes it a connection),
- * its label (edited in place), the items it joins (cards with their projects' monograms), what a drawn
+ * its label (edited in place), the items it joins (cards with their project's monogram), what a drawn
  * link is, and Edit label and Remove link.
  */
 
@@ -42,7 +42,7 @@ function End({ target, label, page, id, boardProject }: { readonly target: PageT
       }}
     >
       <span className="relation-card">
-        <Monogram name={card.ref.project ?? boardProject} size={14} />
+        <Monogram name={boardProject} size={14} />
         <span className="relation-code">{keyDisplayName(cardKey(card))}</span>
       </span>
     </RelationRow>

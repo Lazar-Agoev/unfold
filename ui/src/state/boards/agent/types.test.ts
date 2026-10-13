@@ -13,7 +13,7 @@ import { resetWorking } from "./working";
 vi.mock("../../../components/Toast", () => ({ showToast: vi.fn() }));
 
 const P = "p-shop000000";
-const ID = ".unfold/local/drafts/b.json";
+const ID = ".unfold/boards/b.json";
 const REF = { project: P, id: ID };
 const CREATE = "src/routes/orders.ts#function:createOrder";
 const CART = "src/cart.ts#interface:Cart";

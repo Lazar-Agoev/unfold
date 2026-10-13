@@ -13,7 +13,6 @@ export { MenuButton, useContextMenu, type MenuEntry } from "./Menu";
 export { Monogram } from "./Monogram";
 export { Popover } from "./Popover";
 export { ProgressRing } from "./ProgressRing";
-export { RadioGroup } from "./RadioGroup";
 export { SectionLabel } from "./SectionLabel";
 export { SegmentedControl } from "./SegmentedControl";
 export { Sheet } from "./Sheet";

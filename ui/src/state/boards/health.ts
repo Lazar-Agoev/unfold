@@ -3,17 +3,13 @@
  * repair does in words (shown before it is applied), and the `repair_board` request for it.
  */
 
-import type { Health, HealthItem, HealthKind, Key, Page, ProjectKey, ProjectName, RepairKind, RepairSpec, Target } from "../../ipc/generated";
+import type { Health, HealthItem, HealthKind, Key, Page, RepairKind, RepairSpec, Target } from "../../ipc/generated";
 import { cardKey, findCard, keyDisplayName } from "./document";
 import type { PageId } from "./types";
 
 /** The items about one target (a card, group, label, link, resource card, or frame) of a page, in the engine's order. */
 export function itemsFor(health: Health | undefined, page: PageId, target: Target): HealthItem[] {
   return (health?.items ?? []).filter((item) => item.page === page && sameTarget(item.target, target));
-}
-
-function sameLabel(a: ProjectKey, b: ProjectKey): boolean {
-  return a.key === b.key && a.project === b.project;
 }
 
 function sameTarget(a: Target, b: Target): boolean {
@@ -23,7 +19,7 @@ function sameTarget(a: Target, b: Target): boolean {
   if ("resource" in a) return "resource" in b && a.resource === b.resource;
   if ("frame" in a) return "frame" in b && a.frame === b.frame;
   if ("proposal" in a) return "proposal" in b && a.proposal === b.proposal;
-  return "label" in b && sameLabel(a.label, b.label);
+  return "label" in b && a.label === b.label;
 }
 
 const KIND_WORDS: Readonly<Record<HealthKind, string>> = {
@@ -31,7 +27,6 @@ const KIND_WORDS: Readonly<Record<HealthKind, string>> = {
   outdated: "Outdated",
   brokenGroup: "Broken group",
   review: "Needs review",
-  notConnected: "Not connected",
   brokenLink: "Broken link",
 };
 
@@ -67,7 +62,7 @@ function targetName(target: Target, page: Page): string {
     const proposal = (page.proposals ?? []).find((item) => item.id === target.proposal);
     return proposal ? `the proposed step "${proposal.title}"` : "the proposed step";
   }
-  return `the Flow label of ${keyDisplayName(target.label.key)}`;
+  return `the Flow label of ${keyDisplayName(target.label)}`;
 }
 
 /** The kind of item a target is, in words, for "The … stays". */
@@ -80,16 +75,16 @@ function targetNoun(target: Target): string {
   return "card";
 }
 
-/** The reference a reconnect or accept repair is about, with its project: the item's key, or its target's own key. */
-function itemReference(item: HealthItem, page: Page): { readonly key: Key; readonly project: ProjectName | undefined } | null {
+/** The reference a reconnect or accept repair is about: the item's key, or its target's own key. */
+function itemReference(item: HealthItem, page: Page): Key | null {
   if (item.key !== undefined) {
-    return { key: item.key, project: item.project };
+    return item.key;
   }
   if ("card" in item.target) {
     const card = findCard(page, item.target.card);
-    return card ? { key: cardKey(card), project: card.ref.project } : null;
+    return card ? cardKey(card) : null;
   }
-  return "label" in item.target ? { key: item.target.label.key, project: item.target.label.project } : null;
+  return "label" in item.target ? item.target.label : null;
 }
 
 const REPAIR_LABELS: Readonly<Record<RepairKind, string>> = {
@@ -140,10 +135,6 @@ export function repairEffect(kind: RepairKind, item: HealthItem, page: Page): st
   }
 }
 
-function named(project: ProjectName | undefined): { readonly project?: ProjectName } {
-  return project !== undefined ? { project } : {};
-}
-
 /** The `repair_board` request for one of an item's repairs (`to` is the reconnect target). */
 export function repairSpec(kind: RepairKind, item: HealthItem, page: Page, to?: Key): RepairSpec | null {
   const { target } = item;
@@ -155,17 +146,17 @@ export function repairSpec(kind: RepairKind, item: HealthItem, page: Page, to?: 
       }
       const from = itemReference(item, page);
       if (from !== null) {
-        return { ...at, kind: "reconnect", ...named(from.project), from: from.key, to };
+        return { ...at, kind: "reconnect", from, to };
       }
       // An evidence range has no key: its claim's anchor is pointed at the key chosen, by position.
       const claim = "resource" in target ? target.resource : "link" in target ? target.link : undefined;
-      return claim !== undefined && item.anchor !== undefined ? { ...at, kind: "reconnect_anchor", item: claim, anchor: item.anchor, to: { key: to, ...named(item.project) } } : null;
+      return claim !== undefined && item.anchor !== undefined ? { ...at, kind: "reconnect_anchor", item: claim, anchor: item.anchor, to: { key: to } } : null;
     }
     case "removeCard":
       return "card" in target ? { ...at, kind: "remove_card", card: target.card } : null;
     case "removeLabel": {
-      const label = "label" in target ? target.label : item.key !== undefined ? { key: item.key, project: item.project } : null;
-      return label ? { ...at, kind: "remove_label", ...named(label.project), key: label.key } : null;
+      const key = "label" in target ? target.label : item.key;
+      return key !== undefined ? { ...at, kind: "remove_label", key } : null;
     }
     case "ungroup":
       return "group" in target ? { ...at, kind: "ungroup", group: target.group } : null;
@@ -179,7 +170,7 @@ export function repairSpec(kind: RepairKind, item: HealthItem, page: Page, to?: 
       return { ...at, kind: "resign", target };
     case "accept": {
       const reference = itemReference(item, page);
-      return reference !== null ? { ...at, kind: "accept", ...named(reference.project), key: reference.key } : null;
+      return reference !== null ? { ...at, kind: "accept", key: reference } : null;
     }
     case "removeProposal":
       return "proposal" in target ? { ...at, kind: "remove_proposal", proposal: target.proposal } : null;

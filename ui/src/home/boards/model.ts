@@ -1,8 +1,7 @@
-/** Board lists on Home: filtering, sorting, and how a board card describes its board. */
+/** How Home and the sidebar name boards, and how a board row on Home describes its board. */
 
 import type { BoardSummary } from "../../ipc";
-import { plural, relativeTime } from "../../lib/format";
-import type { BoardsFilter, BoardsSort } from "../../state/layout";
+import { relativeTime } from "../../lib/format";
 
 /** Natural, case-insensitive name order ("Page 2" before "Page 10"), as the sidebar tree sorts. */
 export const byName = new Intl.Collator("en", { numeric: true, sensitivity: "base" }).compare;
@@ -12,27 +11,7 @@ export function boardTitle(board: Pick<BoardSummary, "title" | "name">): string 
   return board.title ?? board.name;
 }
 
-export function filterBoards(boards: readonly BoardSummary[], filter: BoardsFilter): BoardSummary[] {
-  return filter === "all" ? [...boards] : boards.filter((board) => (filter === "drafts" ? board.place === "draft" : board.place === "published"));
-}
-
-/** Last edited (newest first) or by title; ties fall back to the other order. */
-export function sortBoards(boards: readonly BoardSummary[], sort: BoardsSort): BoardSummary[] {
-  return [...boards].sort((a, b) => {
-    const title = byName(boardTitle(a), boardTitle(b));
-    const edited = b.updatedAtMs - a.updatedAtMs;
-    return sort === "edited" ? edited || title : title || edited;
-  });
-}
-
-/** The subline's words before any "with <project>": "3 pages · Published · edited 2 hours ago". */
-export function boardSubline(board: Pick<BoardSummary, "pages" | "place" | "changes" | "updatedAtMs" | "projects">, nowMs?: number): string {
-  const parts = [plural(board.pages, "page"), board.place === "draft" ? "Draft" : "Published"];
-  if (board.place === "published" && board.changes > 0) {
-    parts.push(plural(board.changes, "unpublished change"));
-  }
-  if (board.projects.length === 0) {
-    parts.push(`edited ${relativeTime(board.updatedAtMs, nowMs)}`);
-  }
-  return parts.join(" · ");
+/** When a board was last edited, as its row on Home says it: "edited 2 minutes ago", "edited Oct 9". */
+export function editedText(board: Pick<BoardSummary, "updatedAtMs">, nowMs?: number): string {
+  return `edited ${relativeTime(board.updatedAtMs, nowMs)}`;
 }

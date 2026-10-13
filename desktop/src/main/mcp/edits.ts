@@ -29,14 +29,10 @@ export const lineRange = z
 
 /** What a claim cites (design §4.9): a block's or an entrance's key, or an evidence file's lines. */
 export const anchorArg = z.union([
+  z.object({ key: z.string().min(1).describe("A block's or entrance's key") }),
   z.object({
-    key: z.string().min(1).describe("A block's or entrance's key"),
-    project: z.string().min(1).optional().describe("Its project, when not the board's own"),
-  }),
-  z.object({
-    file: z.string().min(1).describe("An evidence file's path in its project (read_file reads it)"),
+    file: z.string().min(1).describe("An evidence file's path in the project (read_file reads it)"),
     lines: lineRange.describe("Its lines [from, to], 1-based and inclusive"),
-    project: z.string().min(1).optional().describe("Its project, when not the board's own"),
   }),
 ]);
 
@@ -48,7 +44,7 @@ export const expectRevision = z
   .describe("The page's revision you read (rev in a result's header); the edit is refused if the page changed since");
 
 /** Zod's output for optional fields (`{a?: string | undefined}`) as the channel's types take them (`{a?: string}`), at every depth. */
-export type Defined<T> = T extends object ? { [K in keyof T]: Defined<Exclude<T[K], undefined>> } : T;
+type Defined<T> = T extends object ? { [K in keyof T]: Defined<Exclude<T[K], undefined>> } : T;
 
 /** Arguments as the channel takes them: fields that are undefined left out, at every depth. */
 export function defined<T>(value: T): Defined<T> {
@@ -91,18 +87,6 @@ export async function editTarget(context: ToolContext, args: TargetArgs): Promis
     `“${file.document.title}” has ${count(file.document.pages.length, "page")} and none was named`,
     `Pass page, one of: ${file.document.pages.map((page) => `${page.title} (page id ${page.id})`).join(", ")}.`,
   );
-}
-
-/**
- * A project an argument names (by name, id, or link) as the window takes it: its id, or undefined for
- * the board's own project (and when none is named).
- */
-export async function otherProject(context: ToolContext, target: EditTarget, project: string | undefined): Promise<string | undefined> {
-  if (project === undefined) {
-    return undefined;
-  }
-  const row = await context.project(project);
-  return row.id === target.project.id ? undefined : row.id;
 }
 
 /**
@@ -228,7 +212,7 @@ export function itemLine(item: AgentItemResult): string {
 /** A write tool's answer: the header with the new revision, what changed, the warnings, the ids, and what to do next. */
 export function editResult(context: ToolContext, target: EditTarget, edit: AppliedEdit, lines: readonly (string | null)[], next: string): ToolResult {
   return textResult(
-    context.header({ project: target.project.name, board: { title: edit.board.title, draft: edit.board.place === "draft" }, page: edit.page.title, revision: edit.revision }),
+    context.header({ project: target.project.name, board: edit.board.title, page: edit.page.title, revision: edit.revision }),
     ...lines,
     ...edit.warnings,
     `Ids: board ${target.board.id}, page ${target.page}. One undo step in Unfold, saved.`,

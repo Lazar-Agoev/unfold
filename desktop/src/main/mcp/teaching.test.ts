@@ -181,7 +181,7 @@ describe("the prompts (design §6.9)", () => {
   const FULL: Readonly<Record<string, Readonly<Record<string, string>>>> = {
     "explain-entrance": { entrance: "POST", path: "/orders" },
     "simplify-function": { function: "createOrder" },
-    "service-map": { projects: "ts-orders,web" },
+    "service-map": { project: "ts-orders" },
     "data-model": { project: "ts-orders" },
     tour: { project: "ts-orders" },
     "fix-boards": { project: "ts-orders" },
@@ -195,9 +195,7 @@ describe("the prompts (design §6.9)", () => {
     expect(promptText("explain-entrance", FULL["explain-entrance"] ?? {})).toContain("Explain the entrance “POST /orders” end to end");
     expect(promptText("explain-entrance", {})).toContain("Explain the entrance selected in Unfold end to end");
     expect(promptText("simplify-function", FULL["simplify-function"] ?? {})).toContain("Simplify the function “createOrder”");
-    expect(promptText("service-map", FULL["service-map"] ?? {})).toContain("Map the services of “ts-orders” and “web”");
-    expect(promptText("service-map", {})).toContain("Map the services of the project I'm viewing in Unfold");
-    for (const name of ["data-model", "tour", "fix-boards"]) {
+    for (const name of ["service-map", "data-model", "tour", "fix-boards"]) {
       expect(promptText(name, FULL[name] ?? {}), name).toContain("the project “ts-orders”");
       expect(promptText(name, {}), name).toContain("the project I'm viewing in Unfold");
     }

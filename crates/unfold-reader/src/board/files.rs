@@ -1,13 +1,6 @@
-//! Board files of a project (docs/architecture.md#storage; unpublished edits): published boards
-//! in `.unfold/boards/`, drafts and the changes copies of published boards in the drafts
-//! directory (`.unfold/local/drafts/`), written atomically, never overwriting a published file by
-//! accident, with change detection for edits made outside the app.
-//!
-//! | File | Path | Holds |
-//! | --- | --- | --- |
-//! | Draft | `<drafts>/<name>.json` | A board |
-//! | Published | `.unfold/boards/<name>.json` | A board |
-//! | Changes copy | `<drafts>/<name>.changes.json` | The working version of published board `<name>`, with `publishes` and `baseRevision` |
+//! Board files of a project (docs/architecture.md#storage): one file per board in
+//! `.unfold/boards/`, written atomically as it is edited, created without ever overwriting
+//! another board, with change detection for edits made outside the app.
 //!
 //! These are the only functions here that touch the disk; parsing, checking, and serializing
 //! are pure ([`super::parse`], [`super::health`], [`super::serialize`]).
@@ -25,98 +18,39 @@ use unicode_normalization::char::is_combining_mark;
 use super::BoardError;
 use super::model::Board;
 
-/// Published boards, relative to the folder.
+/// The boards folder, relative to the project's folder.
 pub const BOARDS_DIR: &str = ".unfold/boards";
-/// Drafts, relative to the folder (when `local/` is in the folder; board ids use it either way).
-pub const DRAFTS_DIR: &str = ".unfold/local/drafts";
 /// Every board file's extension.
 pub const EXTENSION: &str = "json";
-/// What a changes copy's stem adds to its published board's name. No draft name ends in it.
-const CHANGES_SUFFIX: &str = ".changes";
 /// The largest board file read. Boards hold references and short texts, so a bigger file is
 /// not a board, and reading it whole would only waste memory.
 pub const MAX_BOARD_BYTES: u64 = 16 * 1024 * 1024;
 /// The longest file stem.
 const MAX_NAME: usize = 100;
 
-/// Where a board file lives.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[serde(rename_all = "camelCase")]
-pub enum Place {
-    /// Committed with the code.
-    Published,
-    /// On this machine only: a draft, or a published board's changes copy.
-    Draft,
-}
-
-impl Place {
-    /// The place's directory, relative to the folder.
-    const fn directory(self) -> &'static str {
-        match self {
-            Self::Published => BOARDS_DIR,
-            Self::Draft => DRAFTS_DIR,
-        }
-    }
-}
-
-/// A board file: its place and its name (the file stem: a slug for a published board, an id
-/// for a draft, `<published name>.changes` for a changes copy).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[serde(rename_all = "camelCase")]
+/// A board file, by its name (the file stem in [`BOARDS_DIR`]).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BoardFile {
-    /// Where it lives.
-    pub place: Place,
-    /// The file stem.
-    pub name: String,
+    name: String,
 }
 
 impl BoardFile {
-    /// A published board.
-    pub fn published(name: &str) -> Result<Self, BoardError> {
+    /// The board file named `name`, a plain stem ([`BoardError::InvalidName`] otherwise).
+    pub fn new(name: &str) -> Result<Self, BoardError> {
         check_name(name)?;
         Ok(Self {
-            place: Place::Published,
             name: name.to_owned(),
         })
     }
 
-    /// A draft. Its name never ends in `.changes`, which marks changes copies (unpublished edits).
-    pub fn draft(name: &str) -> Result<Self, BoardError> {
-        check_name(name)?;
-        if name.ends_with(CHANGES_SUFFIX) {
-            return Err(BoardError::InvalidName {
-                name: name.to_owned(),
-            });
-        }
-        Ok(Self {
-            place: Place::Draft,
-            name: name.to_owned(),
-        })
+    /// The file stem.
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
-    /// The changes copy of `published` (`None` when it is not a published board).
-    pub fn changes_of(published: &Self) -> Option<Self> {
-        (published.place == Place::Published).then(|| Self {
-            place: Place::Draft,
-            name: format!("{}{CHANGES_SUFFIX}", published.name),
-        })
-    }
-
-    /// For a changes copy, the published board it holds changes for.
-    pub fn publishes(&self) -> Option<Self> {
-        if self.place != Place::Draft {
-            return None;
-        }
-        let name = self.name.strip_suffix(CHANGES_SUFFIX)?;
-        Self::published(name).ok()
-    }
-
-    /// The path relative to the folder, with `/` separators: the board's id for a draft or a
-    /// published board.
+    /// The path relative to the project's folder, with `/` separators: the board's id.
     pub fn relative(&self) -> String {
-        format!("{}/{}.{EXTENSION}", self.place.directory(), self.name)
+        format!("{BOARDS_DIR}/{}.{EXTENSION}", self.name)
     }
 
     fn file_name(&self) -> String {
@@ -157,10 +91,10 @@ fn check_name(name: &str) -> Result<(), BoardError> {
     }
 }
 
-/// The published file name for a title: `Order placement` → `order-placement`. Accents are
-/// dropped (`Café` → `cafe`), every other run of non-alphanumeric characters becomes one `-`,
-/// and the result has at most 80 characters; a title with nothing left becomes `board`, and a
-/// name Windows reserves gets `-board` (`con-board`).
+/// The file name for a title: `Order placement` → `order-placement`. Accents are dropped
+/// (`Café` → `cafe`), every other run of non-alphanumeric characters becomes one `-`, and the
+/// result has at most 80 characters; a title with nothing left becomes `board`, and a name
+/// Windows reserves gets `-board` (`con-board`).
 pub fn slug(title: &str) -> String {
     let mut slug = String::new();
     let mut pending_dash = false;
@@ -207,14 +141,10 @@ pub struct Loaded {
     pub board: Board,
     /// The bytes' revision.
     pub revision: Revision,
-    /// For a changes copy, the published revision it started from (`baseRevision`).
-    pub base: Option<Revision>,
 }
 
 /// What a file is now, compared with a revision.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[serde(tag = "state", content = "revision", rename_all = "camelCase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Change {
     /// The bytes are the ones last loaded or saved.
     Unchanged,
@@ -248,36 +178,29 @@ fn not_found(path: &Path) -> BoardError {
     io_error(path, &io::Error::from(io::ErrorKind::NotFound))
 }
 
-/// The board files of one project: its folder (`root`, for published boards) and its drafts
-/// directory (`drafts`, from the workspace layout: `<root>/.unfold/local/drafts` or the fallback
-/// location).
+/// The board files of one project, under its folder.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoardDirs {
     root: PathBuf,
-    drafts: PathBuf,
 }
 
 impl BoardDirs {
-    /// The board files under folder `root` with drafts in `drafts`.
-    pub fn new(root: &Path, drafts: &Path) -> Self {
+    /// The board files of the project in folder `root`.
+    pub fn new(root: &Path) -> Self {
         Self {
             root: root.to_path_buf(),
-            drafts: drafts.to_path_buf(),
         }
     }
 
-    /// The file on disk, unchecked: use it for messages and metadata (a board's `updatedAtMs`),
-    /// and the other methods to read or write it.
+    /// The file on disk, unchecked: use it for messages and metadata (a board's last edit), and
+    /// the other methods to read or write it.
     pub fn path(&self, file: &BoardFile) -> PathBuf {
-        match file.place {
-            Place::Published => self.root.join(file.relative()),
-            Place::Draft => self.drafts.join(file.file_name()),
-        }
+        self.root.join(file.relative())
     }
 
-    /// The published directory once `.unfold/` and `boards/` are checked to be real
-    /// directories, not links that could lead outside the folder; `None` when one is missing.
-    fn published_directory(&self) -> Result<Option<PathBuf>, BoardError> {
+    /// The boards directory once `.unfold/` and `boards/` are checked to be real directories,
+    /// not links that could lead outside the folder; `None` when one is missing.
+    fn directory(&self) -> Result<Option<PathBuf>, BoardError> {
         let mut path = self.root.clone();
         for part in [".unfold", "boards"] {
             path.push(part);
@@ -290,57 +213,30 @@ impl BoardDirs {
         Ok(Some(path))
     }
 
-    /// The drafts directory once checked to be a real directory; `None` when it is missing.
-    fn drafts_directory(&self) -> Result<Option<PathBuf>, BoardError> {
-        match fs::symlink_metadata(&self.drafts) {
-            Ok(_) => real_directory(&self.drafts).map(|()| Some(self.drafts.clone())),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(io_error(&self.drafts, &error)),
-        }
-    }
-
-    fn directory(&self, place: Place) -> Result<Option<PathBuf>, BoardError> {
-        match place {
-            Place::Published => self.published_directory(),
-            Place::Draft => self.drafts_directory(),
-        }
-    }
-
-    /// The file's checked path; `None` when its directory does not exist, so neither does it.
+    /// The file's checked path; `None` when the boards directory does not exist, so neither does
+    /// the file.
     fn resolve(&self, file: &BoardFile) -> Result<Option<PathBuf>, BoardError> {
         Ok(self
-            .directory(file.place)?
+            .directory()?
             .map(|directory| directory.join(file.file_name())))
     }
 
-    /// Creates the place's directory (real directories only) and returns it.
-    fn prepare(&self, place: Place) -> Result<PathBuf, BoardError> {
-        let create = |path: &Path| match fs::create_dir(path) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => Ok(()),
-            Err(error) => Err(io_error(path, &error)),
-        };
-        match place {
-            Place::Published => {
-                let mut path = self.root.clone();
-                for part in [".unfold", "boards"] {
-                    path.push(part);
-                    create(&path)?;
-                    real_directory(&path)?;
-                }
-                Ok(path)
+    /// Creates the boards directory (real directories only) and returns it.
+    fn prepare(&self) -> Result<PathBuf, BoardError> {
+        let mut path = self.root.clone();
+        for part in [".unfold", "boards"] {
+            path.push(part);
+            match fs::create_dir(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(io_error(&path, &error)),
             }
-            Place::Draft => {
-                fs::create_dir_all(&self.drafts).map_err(|error| io_error(&self.drafts, &error))?;
-                real_directory(&self.drafts)?;
-                Ok(self.drafts.clone())
-            }
+            real_directory(&path)?;
         }
+        Ok(path)
     }
 
-    /// Reads and parses a board file: a draft, a published board, or a changes copy (whose
-    /// `publishes` must name its published board, and whose `baseRevision` becomes
-    /// [`Loaded::base`]).
+    /// Reads and parses a board file.
     pub fn load(&self, file: &BoardFile) -> Result<Loaded, BoardError> {
         let path = self.resolve(file)?.ok_or_else(|| not_found(&self.path(file)))?;
         let bytes = read_regular(&path)?;
@@ -349,17 +245,9 @@ impl BoardDirs {
             column: 0,
             message: "the file is not UTF-8".to_owned(),
         })?;
-        let (board, base) = match file.publishes() {
-            Some(published) => {
-                let (board, base) = super::parse::parse_changes(text, &published.name)?;
-                (board, Some(base))
-            }
-            None => (super::parse(text)?, None),
-        };
         Ok(Loaded {
-            board,
+            board: super::parse(text)?,
             revision: Revision::of(&bytes),
-            base,
         })
     }
 
@@ -379,48 +267,24 @@ impl BoardDirs {
         })
     }
 
-    /// Saves `text` (a serialized board, or for a changes copy [`super::serialize_changes`]) to
-    /// a draft or a changes copy, replacing it atomically, and returns the new revision.
-    /// Published files are written only by [`BoardDirs::create_published`] and
-    /// [`BoardDirs::overwrite_published`].
-    pub fn save_draft(&self, file: &BoardFile, text: &str) -> Result<Revision, BoardError> {
-        if file.place != Place::Draft {
-            return Err(BoardError::Io {
-                path: file.relative(),
-                message: "a published board is written only by Publish".to_owned(),
-            });
-        }
-        let path = self.prepare(Place::Draft)?.join(file.file_name());
-        replace(&path, text)
+    /// Writes `text` (a serialized board) to board `file`, replacing whatever the file holds
+    /// atomically (creating it when it is gone), and returns the new revision.
+    pub fn save(&self, file: &BoardFile, text: &str) -> Result<Revision, BoardError> {
+        replace(&self.prepare()?.join(file.file_name()), text)
     }
 
-    /// Creates published board `name` with `text`, never overwriting: if a file has that name,
-    /// fails with [`BoardError::NameTaken`] carrying the path and a free alternative, so the UI
-    /// can let the person edit the name (a draft's first Publish).
-    pub fn create_published(&self, name: &str, text: &str) -> Result<(BoardFile, Revision), BoardError> {
-        let file = BoardFile::published(name)?;
-        let path = self.prepare(Place::Published)?.join(file.file_name());
+    /// Creates board `file` with `text`, never overwriting: if a file has that name, fails with
+    /// [`BoardError::NameTaken`] carrying the path and a free alternative.
+    pub fn create(&self, file: &BoardFile, text: &str) -> Result<Revision, BoardError> {
+        let path = self.prepare()?.join(file.file_name());
         if create_atomic(&path, text.as_bytes())? {
-            Ok((file, Revision::of(text.as_bytes())))
+            Ok(Revision::of(text.as_bytes()))
         } else {
             Err(BoardError::NameTaken {
                 path: file.relative(),
-                suggestion: self.free_name(name),
+                suggestion: self.free_name(&file.name),
             })
         }
-    }
-
-    /// Replaces published board `file` with `text` atomically, creating it when it is gone
-    /// (Publish of a changes copy, including "keep mine" after the published file was deleted).
-    pub fn overwrite_published(&self, file: &BoardFile, text: &str) -> Result<Revision, BoardError> {
-        if file.place != Place::Published {
-            return Err(BoardError::Io {
-                path: file.relative(),
-                message: "not a published board".to_owned(),
-            });
-        }
-        let path = self.prepare(Place::Published)?.join(file.file_name());
-        replace(&path, text)
     }
 
     /// Deletes a board file (the app asks first). A file that is already gone is not an error.
@@ -436,43 +300,9 @@ impl BoardDirs {
         }
     }
 
-    /// The board files with valid names in one place, sorted by name: published boards, or
-    /// drafts (never changes copies; see [`BoardDirs::changed`]). Missing directories list
-    /// nothing.
-    pub fn list(&self, place: Place) -> Result<Vec<BoardFile>, BoardError> {
-        let mut files: Vec<BoardFile> = self
-            .stems(place)?
-            .iter()
-            .filter_map(|stem| match place {
-                Place::Published => BoardFile::published(stem).ok(),
-                Place::Draft => BoardFile::draft(stem).ok(),
-            })
-            .collect();
-        files.sort_by(|a, b| a.name.cmp(&b.name));
-        Ok(files)
-    }
-
-    /// The published boards that have a changes copy, sorted by name (whether or not their
-    /// published file still exists).
-    pub fn changed(&self) -> Result<Vec<BoardFile>, BoardError> {
-        let mut files: Vec<BoardFile> = self
-            .stems(Place::Draft)?
-            .iter()
-            .filter_map(|stem| {
-                BoardFile {
-                    place: Place::Draft,
-                    name: stem.clone(),
-                }
-                .publishes()
-            })
-            .collect();
-        files.sort_by(|a, b| a.name.cmp(&b.name));
-        Ok(files)
-    }
-
-    /// The stems of the `.json` files in one place.
-    fn stems(&self, place: Place) -> Result<Vec<String>, BoardError> {
-        let Some(directory) = self.directory(place)? else {
+    /// The board files with valid names, sorted by name. A missing directory lists nothing.
+    pub fn list(&self) -> Result<Vec<BoardFile>, BoardError> {
+        let Some(directory) = self.directory()? else {
             return Ok(Vec::new());
         };
         let entries = match fs::read_dir(&directory) {
@@ -480,47 +310,28 @@ impl BoardDirs {
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => return Err(io_error(&directory, &error)),
         };
-        let mut stems = Vec::new();
+        let mut files = Vec::new();
         for entry in entries {
             let entry = entry.map_err(|error| io_error(&directory, &error))?;
-            if let Some(stem) = entry
+            if let Some(file) = entry
                 .file_name()
                 .to_str()
                 .and_then(|name| name.strip_suffix(".json"))
+                .and_then(|stem| BoardFile::new(stem).ok())
             {
-                stems.push(stem.to_owned());
+                files.push(file);
             }
         }
-        Ok(stems)
+        files.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(files)
     }
 
-    /// A draft that does not exist yet: `base`, then `base-2`, `base-3`, … (never a changes
-    /// copy's name).
-    pub fn free_draft(&self, base: &str) -> Result<BoardFile, BoardError> {
-        let base = base.strip_suffix(CHANGES_SUFFIX).unwrap_or(base);
-        for number in 1..10_000u32 {
-            let name = if number == 1 {
-                base.to_owned()
-            } else {
-                suffixed(base, number)
-            };
-            let file = BoardFile::draft(&name)?;
-            if fs::symlink_metadata(self.path(&file)).is_err() {
-                return Ok(file);
-            }
-        }
-        Err(BoardError::Io {
-            path: self.drafts.display().to_string(),
-            message: "no free draft name".to_owned(),
-        })
-    }
-
-    /// The first published name from `name`, `name-2`, `name-3`, … that no file has; the base
-    /// is shortened when a suffix would make the name too long. After 10,000 taken names,
-    /// `name` itself (which the next create then refuses again).
+    /// The first name from `name`, `name-2`, `name-3`, … that no file has; the base is shortened
+    /// when a suffix would make the name too long. After 10,000 taken names, `name` itself
+    /// (which the next create then refuses again).
     pub fn free_name(&self, name: &str) -> String {
         let free = |candidate: &str| {
-            BoardFile::published(candidate).is_ok_and(|file| fs::symlink_metadata(self.path(&file)).is_err())
+            BoardFile::new(candidate).is_ok_and(|file| fs::symlink_metadata(self.path(&file)).is_err())
         };
         if free(name) {
             return name.to_owned();

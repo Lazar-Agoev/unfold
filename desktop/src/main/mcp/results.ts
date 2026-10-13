@@ -15,9 +15,10 @@ export const MAX_RESULT_CHARS = 24_000;
 
 /** Where a result is: the project, and the board, page, and the page's revision when it's about one. */
 export interface ResultPlace {
-  /** The project's shared name. */
+  /** The project's name. */
   readonly project?: string;
-  readonly board?: { readonly title: string; readonly draft: boolean };
+  /** The board's title. */
+  readonly board?: string;
   /** The page's title. */
   readonly page?: string;
   /** The page's revision (D4). */
@@ -26,14 +27,10 @@ export interface ResultPlace {
 
 /**
  * The first line of every result (design §5.6):
- * `Unfold · ts-orders › Order placement (draft) › Placing an order · rev 1a2b3c4d · as Claude`.
+ * `Unfold · ts-orders › Order placement › Placing an order · rev 1a2b3c4d · as Claude`.
  */
 export function header(agent: AgentIdentity, place: ResultPlace = {}): string {
-  const where = [
-    place.project,
-    place.board ? `${place.board.title}${place.board.draft ? " (draft)" : ""}` : undefined,
-    place.page,
-  ].filter((part) => part !== undefined);
+  const where = [place.project, place.board, place.page].filter((part) => part !== undefined);
   return [
     "Unfold",
     ...(where.length > 0 ? [where.join(" › ")] : []),
@@ -163,9 +160,7 @@ export function cant(what: string, why: string, instead: string): ToolError {
 
 /** What to do about a window's refusal, by its code. */
 const WINDOW_HINTS: Readonly<Record<string, string>> = {
-  too_many_tabs: "Ask the person to close a board tab, then try again.",
   unsaved_edits: "The person's own edits are being saved; try again in a moment.",
-  board_conflict: "The board changed on disk and the person hasn't chosen which version to keep; ask them to, then try again.",
   page_changed: "read_page reads it.",
   revision_mismatch: "read_page reads it, with its new rev.",
   window_closed: "Try again.",

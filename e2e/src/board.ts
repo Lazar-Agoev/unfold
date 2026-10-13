@@ -59,11 +59,6 @@ export function pageTitle(page: Page): Locator {
   return boardView(page).locator(".board-topbar-title");
 }
 
-/** The board's publish state in the top bar ("Draft", "Published · 1 unpublished change"). */
-export function publishState(page: Page): Locator {
-  return boardView(page).locator(".board-publish-text");
-}
-
 /** The top bar's Diagram | Code lens. */
 export function lens(page: Page): Locator {
   return boardView(page).getByRole("radiogroup", { name: "Lens" });
@@ -257,14 +252,12 @@ export function selected(page: Page): Locator {
 export interface BoardFile {
   readonly title?: string;
   readonly folder?: string;
-  readonly projects?: readonly string[];
-  readonly publishes?: string;
   readonly pages: readonly {
     readonly id: string;
     readonly title: string;
     readonly cards: readonly {
       readonly id: string;
-      readonly ref: { readonly block?: string; readonly entrance?: string; readonly project?: string };
+      readonly ref: { readonly block?: string; readonly entrance?: string };
       readonly at: readonly [number, number];
       readonly folded?: boolean;
       readonly view?: string;
@@ -287,7 +280,7 @@ export interface BoardFile {
   }[];
 }
 
-/** Reads a board file (`id` is the project-relative path, such as `.unfold/local/drafts/board-1.json`). */
+/** Reads a board file (`id` is the project-relative path, such as `.unfold/boards/board-1.json`). */
 export function readBoard(folder: string, id: string): BoardFile {
   return JSON.parse(readFileSync(join(folder, id), "utf8")) as BoardFile;
 }

@@ -125,9 +125,7 @@
   box-shadow: inset 0 0 0 1.5px var(--color-focus-ring);
 }
 
-.layer-monogram,
 .layer-glyph { display: flex; flex-shrink: 0; }
-.layer-monogram { width: 14px; }
 
 .layer-label {
   flex: 1;
@@ -148,7 +146,6 @@
 .layer-row.frame .layer-label { font: 600 13px/20px var(--font-ui); color: var(--color-authored); }
 .layer-row.selected .layer-label { font-weight: 600; }
 .layer-row.link.selected .layer-label { font-weight: 500; }
-.layer-row.muted .layer-label { color: var(--color-muted); }
 
 .layer-trailing {
   display: grid;

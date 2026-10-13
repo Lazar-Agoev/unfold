@@ -1,8 +1,8 @@
 //! Deterministic board serialization: object keys sorted by UTF-16 code units, two-space
 //! indentation, numbers and string escapes exactly as JavaScript's `JSON.stringify(value, null,
 //! 2)` writes them, and a final newline. Pages keep their order; cards, groups, links, frames,
-//! resources, notes, and proposals are sorted by id; labels and guards by (`project` or `""`,
-//! `key`); `projects` is the sorted set the items name. Optional fields are omitted when absent,
+//! resources, notes, and proposals are sorted by id; labels and guards by key. Optional fields
+//! are omitted when absent,
 //! and a card's `expanded` and the page arrays `frames`, `resources`, `notes`, and `proposals`
 //! when empty, so boards without them read as they always did. One board has exactly one serialization, so a file written by Unfold, or by
 //! an agent using `JSON.stringify` with sorted keys and arrays, reads back and writes out byte
@@ -11,12 +11,10 @@
 use std::cmp::Ordering;
 use std::fmt::Write as _;
 
-use super::files::Revision;
 use super::model::{
     Anchor, Board, Card, CardRef, Column, Description, FORMAT, Frame, Group, GuardEntry, LabelEntry, Link,
-    Note, Page, ProjectName, Proposal, Resource, VERSION,
+    Note, Page, Proposal, Resource, VERSION,
 };
-use super::parse::publishes;
 
 /// A JSON value to write.
 enum Out {
@@ -27,38 +25,16 @@ enum Out {
     Object(Vec<(&'static str, Out)>),
 }
 
-/// Writes `board` as its canonical file text (a draft or a published board).
+/// Writes `board` as its canonical file text.
 pub fn serialize(board: &Board) -> String {
-    finish(board_fields(board))
-}
-
-/// Writes `board` as the canonical text of the changes copy of published board `name` (its
-/// file stem), started from published revision `base`.
-pub fn serialize_changes(board: &Board, name: &str, base: Revision) -> String {
-    let mut fields = board_fields(board);
-    fields.push(("baseRevision", Out::Text(base.0.to_string())));
-    fields.push(("publishes", Out::Text(publishes(name))));
-    finish(fields)
-}
-
-fn finish(fields: Vec<(&'static str, Out)>) -> String {
     let mut out = String::new();
-    write_value(&mut out, &Out::Object(fields), 0);
+    write_value(&mut out, &Out::Object(board_fields(board)), 0);
     out.push('\n');
     out
 }
 
 fn by_utf16(a: &str, b: &str) -> Ordering {
     a.encode_utf16().cmp(b.encode_utf16())
-}
-
-/// The order of labels and guards: by project (the board's own first), then key.
-fn by_project_key(a: (Option<&ProjectName>, &str), b: (Option<&ProjectName>, &str)) -> Ordering {
-    by_utf16(project_text(a.0), project_text(b.0)).then_with(|| by_utf16(a.1, b.1))
-}
-
-fn project_text(name: Option<&ProjectName>) -> &str {
-    name.map_or("", ProjectName::as_str)
 }
 
 fn text(value: &str) -> Out {
@@ -102,18 +78,11 @@ fn description(value: &Description) -> Out {
     Out::Object(authored(value))
 }
 
-fn project(fields: &mut Vec<(&'static str, Out)>, project: Option<&ProjectName>) {
-    if let Some(name) = project {
-        fields.push(("project", text(name.as_str())));
-    }
-}
-
 fn card(value: &Card) -> Out {
-    let mut reference = vec![match &value.reference {
-        CardRef::Block { block, .. } => ("block", text(block.as_str())),
-        CardRef::Entrance { entrance, .. } => ("entrance", text(entrance.as_str())),
+    let reference = vec![match &value.reference {
+        CardRef::Block { block } => ("block", text(block.as_str())),
+        CardRef::Entrance { entrance } => ("entrance", text(entrance.as_str())),
     }];
-    project(&mut reference, value.reference.project());
     let mut fields = vec![("at", position(value.at))];
     if let Some(item) = &value.description {
         fields.push(("description", description(item)));
@@ -159,34 +128,29 @@ fn group(value: &Group) -> Out {
 fn label(value: &LabelEntry) -> Out {
     let mut fields = authored(&value.label);
     fields.push(("key", text(value.key.as_str())));
-    project(&mut fields, value.project.as_ref());
     Out::Object(fields)
 }
 
 fn guard(value: &GuardEntry) -> Out {
-    let mut fields = vec![
+    Out::Object(vec![
         ("key", text(value.key.as_str())),
         ("kind", text(&value.kind)),
         ("owner", text(&value.owner)),
         ("signature", Out::Text(value.signature.to_string())),
-    ];
-    project(&mut fields, value.project.as_ref());
-    Out::Object(fields)
+    ])
 }
 
 fn anchor(value: &Anchor) -> Out {
-    let mut fields = match value {
-        Anchor::Key { key, .. } => vec![("key", text(key.as_str()))],
-        Anchor::File { file, lines, .. } => vec![
+    Out::Object(match value {
+        Anchor::Key { key } => vec![("key", text(key.as_str()))],
+        Anchor::File { file, lines } => vec![
             ("file", text(file.as_str())),
             (
                 "lines",
                 Out::Array(lines.iter().map(|&line| Out::Number(f64::from(line))).collect()),
             ),
         ],
-    };
-    project(&mut fields, value.project());
-    Out::Object(fields)
+    })
 }
 
 fn anchors(values: &[Anchor]) -> Out {
@@ -207,12 +171,6 @@ fn link(value: &Link) -> Out {
     optional(&mut fields, "carries", value.carries.as_ref(), |key| {
         text(key.as_str())
     });
-    optional(
-        &mut fields,
-        "carriesProject",
-        value.carries_project.as_ref(),
-        |name| text(name.as_str()),
-    );
     optional(&mut fields, "channel", value.channel.as_deref(), text);
     optional(
         &mut fields,
@@ -287,7 +245,6 @@ fn resource(value: &Resource) -> Out {
     fields.push(("id", text(&value.id)));
     fields.push(("kind", text(value.kind.as_str())));
     fields.push(("name", text(&value.name)));
-    project(&mut fields, value.project.as_ref());
     optional(&mut fields, "signature", value.signature, |signature| {
         Out::Text(signature.to_string())
     });
@@ -328,19 +285,9 @@ fn by_id<T>(items: &[T], id: impl Fn(&T) -> &str, write: impl Fn(&T) -> Out) -> 
 
 fn page(value: &Page) -> Out {
     let mut labels: Vec<&LabelEntry> = value.labels.iter().collect();
-    labels.sort_by(|a, b| {
-        by_project_key(
-            (a.project.as_ref(), a.key.as_str()),
-            (b.project.as_ref(), b.key.as_str()),
-        )
-    });
+    labels.sort_by(|a, b| by_utf16(a.key.as_str(), b.key.as_str()));
     let mut guards: Vec<&GuardEntry> = value.guards.iter().collect();
-    guards.sort_by(|a, b| {
-        by_project_key(
-            (a.project.as_ref(), a.key.as_str()),
-            (b.project.as_ref(), b.key.as_str()),
-        )
-    });
+    guards.sort_by(|a, b| by_utf16(a.key.as_str(), b.key.as_str()));
     let mut fields = vec![
         ("cards", by_id(&value.cards, |item| &item.id, card)),
         ("defaultView", text(value.default_view.as_str())),
@@ -374,16 +321,6 @@ fn board_fields(board: &Board) -> Vec<(&'static str, Out)> {
     fields.extend([
         ("format", text(FORMAT)),
         ("pages", Out::Array(board.pages.iter().map(page).collect())),
-        (
-            "projects",
-            Out::Array(
-                board
-                    .used_projects()
-                    .iter()
-                    .map(|name| text(name.as_str()))
-                    .collect(),
-            ),
-        ),
         ("title", text(&board.title)),
         ("version", Out::Number(f64::from(VERSION))),
     ]);

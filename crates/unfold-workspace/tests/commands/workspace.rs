@@ -187,7 +187,7 @@ fn removing_keeps_the_folder_and_adding_it_again_makes_a_new_row() {
 
     // An open board keeps its project in the workspace.
     let host = harness.host.projects().expect("initialized");
-    let board = ".unfold/local/drafts/board-1.json";
+    let board = ".unfold/boards/board-1.json";
     host.handle(&id(&python))
         .expect("project")
         .open_boards()
@@ -325,45 +325,17 @@ fn unknown_projects_are_refused_everywhere() {
 }
 
 #[test]
-fn a_new_shared_name_reaches_every_window() {
+fn a_project_is_named_after_its_folder() {
     let harness = Harness::new("ts-orders", false);
-    let mark = harness.sink.mark();
-    let config = harness.ok(
-        1,
-        "update_project_config",
-        json!({ "project": harness.project, "edits": [{ "op": "set_project_name", "name": "storefront-api" }] }),
-    );
-    assert_eq!(
-        config["name"],
-        json!({ "value": "storefront-api", "isDefault": false })
-    );
-    assert_eq!(harness.row(&harness.project)["name"], "storefront-api");
-    let changed = harness.sink.events(mark, "workspace_changed");
-    assert_eq!(
-        changed.last().expect("workspace_changed")["workspace"]["projects"][0]["name"],
-        "storefront-api"
-    );
-    assert_eq!(
-        harness
-            .host
-            .projects()
-            .expect("initialized")
-            .resolve_name("storefront-api"),
-        Some(id(&harness.project))
-    );
-    // Removing it brings the default back.
-    harness.ok(
-        1,
-        "update_project_config",
-        json!({ "project": harness.project, "edits": [{ "op": "set_project_name", "name": null }] }),
-    );
     assert_eq!(harness.row(&harness.project)["name"], "ts-orders");
+    let config = harness.ok(1, "project_config", json!({ "project": harness.project }));
+    assert!(config.get("name").is_none(), "{config}");
     assert_eq!(
         harness.code(
             1,
             "update_project_config",
-            json!({ "project": harness.project, "edits": [{ "op": "set_project_name", "name": "no spaces" }] })
+            json!({ "project": harness.project, "edits": [{ "op": "set_project_name", "name": "shop" }] })
         ),
-        "invalid_settings"
+        "invalid_args"
     );
 }

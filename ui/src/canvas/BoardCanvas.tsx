@@ -53,7 +53,6 @@ import {
   useWorkingItems,
   type PageTarget,
 } from "../state/boards";
-import { resolveRefProject, useProjectIndex, type ProjectIndex } from "../state/workspace";
 import { ArrowEdge, type ArrowEdgeType } from "./ArrowEdge";
 import { portsByCard, type Arrow } from "./arrows";
 import type { BoardArrows } from "./useBoardArrows";
@@ -106,12 +105,11 @@ function onFlowError(code: string, message: string): void {
   }
 }
 
-/** What a connection's edge reads besides the line: the page, its health, the projects, the selection, and agents' work. */
+/** What a connection's edge reads besides the line: the page, its health, the selection, and agents' work. */
 interface ConnectionContext {
   readonly target: PageTarget;
   readonly page: { readonly resources?: readonly Resource[] | undefined };
   readonly health: Health | undefined;
-  readonly index: ProjectIndex;
   readonly selectedLink: string | null;
   readonly working: ReadonlySet<string>;
 }
@@ -132,7 +130,6 @@ function connectionData(routed: RoutedLink, kind: LinkKind, context: ConnectionC
   });
   const writer = link?.author !== undefined ? authorOf(link.author) : null;
   const issue = link ? itemsFor(context.health, target.page, { link: link.id })[0] : undefined;
-  const project = link?.carries !== undefined ? resolveRefProject(context.index, target.board.project, link.carriesProject) : null;
   return {
     target,
     kind,
@@ -144,7 +141,7 @@ function connectionData(routed: RoutedLink, kind: LinkKind, context: ConnectionC
     problem: issue ? claimProblem(issue) : null,
     ...(link ? { linkId: link.id } : {}),
     ...(link?.cardinality !== undefined ? { cardinality: link.cardinality } : {}),
-    ...(link?.carries !== undefined && project !== null ? { carries: { project, key: link.carries } } : {}),
+    ...(link?.carries !== undefined ? { carries: { project: target.board.project, key: link.carries } } : {}),
   };
 }
 
@@ -176,7 +173,6 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
   const working = useWorkingItems(target);
   const health = useOpenBoard(target.board, (board) => board.health);
   const author = useAuthor();
-  const index = useProjectIndex();
   const [labelLayout] = useState(() => new LabelLayout());
   const [initialCamera] = useState(() => getPageView(target).camera);
 
@@ -339,7 +335,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
         return cached.edge;
       }
       const ends = arrow.cards ?? { from: arrow.source, to: arrow.target };
-      const line = { arrowId: arrow.id, project: arrow.project, source: arrow.occurrence, seq: arrow.seq, from: ends.from, to: ends.to, line: arrow.line };
+      const line = { arrowId: arrow.id, source: arrow.occurrence, seq: arrow.seq, from: ends.from, to: ends.to, line: arrow.line };
       const edge: ArrowEdgeType = {
         id: arrow.id,
         type: "arrow",
@@ -364,7 +360,6 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
             ? {
                 calls: {
                   arrowId: arrow.id,
-                  project: arrow.project,
                   from: ends.from,
                   to: ends.to,
                   calls: arrow.calls.map(({ source, seq, line: at }) => ({ source, seq, line: at })),
@@ -420,7 +415,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
         };
         made = { signature: JSON.stringify([ends, data.selected, label, data.author, data.agent, data.working]), make: () => ({ ...ends, type: "link", className: "board-link-edge", data }) };
       } else {
-        const data = connectionData(routed, kind, { target, page: framed, health, index, selectedLink, working });
+        const data = connectionData(routed, kind, { target, page: framed, health, selectedLink, working });
         made = {
           signature: JSON.stringify([ends, kind, data.full, data.forms.map(chipText), data.agent, data.selected, data.working, data.problem, data.cardinality, data.carries]),
           make: () => ({ ...ends, type: "connection", className: "board-connection-edge", data }),
@@ -438,7 +433,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       }
     }
     return list;
-  }, [links, shownAs, display, bodies, selectedLink, target, linkCache, working, framed, health, index]);
+  }, [links, shownAs, display, bodies, selectedLink, target, linkCache, working, framed, health]);
   const edges = useMemo((): CanvasEdge[] => [...arrowEdges, ...linkEdges], [arrowEdges, linkEdges]);
 
   // The cards (and collapsed frames) as drawn, which the lines' labels keep clear of.

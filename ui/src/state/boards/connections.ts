@@ -6,7 +6,7 @@
  * an Immer recipe over a draft page; optional fields are deleted rather than set to `undefined`.
  */
 
-import type { Anchor, Cardinality, Key, Link, LinkKind, Page, ProjectName } from "../../ipc/generated";
+import type { Anchor, Cardinality, Key, Link, LinkKind, Page } from "../../ipc/generated";
 import { description, uniqueId } from "./document";
 
 /** Every connection kind, in the order menus list them. */
@@ -23,14 +23,12 @@ export interface ConnectionClaim {
   readonly cardinality?: Cardinality;
   readonly channel?: string;
   readonly carries?: Key;
-  /** The carried type's project (absent: the board's own). */
-  readonly carriesProject?: ProjectName;
   readonly anchors: readonly Anchor[];
 }
 
 /** Writes a claim onto `link`, leaving out what it doesn't have (columns and cardinality only on `relates`). */
 function writeClaim(link: Link, claim: ConnectionClaim): void {
-  const { kind, from, to, step, fromColumn, toColumn, cardinality, channel, carries, carriesProject, anchors } = claim;
+  const { kind, from, to, step, fromColumn, toColumn, cardinality, channel, carries, anchors } = claim;
   const relates = kind === "relates";
   delete link.step;
   delete link.fromColumn;
@@ -38,7 +36,6 @@ function writeClaim(link: Link, claim: ConnectionClaim): void {
   delete link.cardinality;
   delete link.channel;
   delete link.carries;
-  delete link.carriesProject;
   delete link.anchors;
   Object.assign(link, {
     kind,
@@ -49,14 +46,14 @@ function writeClaim(link: Link, claim: ConnectionClaim): void {
     ...(relates && toColumn !== undefined ? { toColumn } : {}),
     ...(relates && cardinality !== undefined ? { cardinality } : {}),
     ...(channel !== undefined ? { channel } : {}),
-    ...(carries !== undefined ? { carries, ...(carriesProject !== undefined ? { carriesProject } : {}) } : {}),
+    ...(carries !== undefined ? { carries } : {}),
     ...(anchors.length > 0 ? { anchors: anchors.map((anchor) => ({ ...anchor })) } : {}),
   });
 }
 
 /** What a link says, in the file's order of meaning: what `saysConnection` compares. */
 function said(link: Link): string {
-  return JSON.stringify([link.kind, link.from, link.to, link.step, link.fromColumn, link.toColumn, link.cardinality, link.channel, link.carries, link.carriesProject, link.anchors ?? []]);
+  return JSON.stringify([link.kind, link.from, link.to, link.step, link.fromColumn, link.toColumn, link.cardinality, link.channel, link.carries, link.anchors ?? []]);
 }
 
 /** Whether a link already says `claim`. */

@@ -15,7 +15,6 @@ import { BoardCanvas, useBoardArrows } from "../canvas";
 import { collapsedPlaces } from "../canvas/frames/geometry";
 import type { Card, Page } from "../ipc/generated";
 import { cardKey, cardRefKey, findPage, useOpenBoard } from "../state/boards";
-import { resolveRefProject, useProjectIndex } from "../state/workspace";
 import { drawnGeometry, drawnNodeIds, unlabeledSteps } from "./geometry";
 import { answer, useRenderJob } from "./jobs";
 import { whenQuiet } from "./quiet";
@@ -55,16 +54,13 @@ export function RenderPage({ job }: { readonly job: RenderJob }) {
   const links = useOpenBoard(target.board, (open) => findPage(open.document, target.page)?.links);
   const boardArrows = useBoardArrows(target, cards);
   const frame = useRenderJob((state) => state.frame);
-  const index = useProjectIndex();
 
   // Read once the page is drawn, by functions that must stay the same while it loads.
   const settled = useRef(boardArrows.settled);
   const models = useRef(boardArrows.models);
-  const projects = useRef(index);
   useLayoutEffect(() => {
     settled.current = boardArrows.settled;
     models.current = boardArrows.models;
-    projects.current = index;
   });
 
   // The cards drawn as themselves: a collapsed frame draws the ones it holds as its own node.
@@ -116,8 +112,7 @@ export function RenderPage({ job }: { readonly job: RenderJob }) {
       const page = job.page as unknown as Page;
       const unlabeledOf = (id: string) => {
         const card = page.cards.find((item) => item.id === id);
-        const project = card ? resolveRefProject(projects.current, job.board.project, card.ref.project) : null;
-        return card && project !== null ? unlabeledSteps(page, card, models.current.get(cardRefKey(project, cardKey(card)))) : 0;
+        return card ? unlabeledSteps(page, card, models.current.get(cardRefKey(job.board.project, cardKey(card)))) : 0;
       };
       const geometry = drawnGeometry(element, store.getState(), unlabeledOf);
       answer(job.requestId, job.purpose === "check" ? { ok: true, checks: pageChecks(page, geometry) } : imageBounds(page, geometry, job.item));

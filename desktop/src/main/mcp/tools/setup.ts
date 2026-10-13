@@ -179,7 +179,6 @@ const settingsEdit = z.discriminatedUnion("op", [
     version: z.string().min(1).optional().describe("The Python version, such as 3.12"),
   }),
   z.object({ op: z.literal("remove_python_project"), root: folderPath }),
-  z.object({ op: z.literal("set_project_name"), name: z.string().min(1).nullable().describe("The shared name; null for the folder's name") }),
   z.object({ op: z.literal("add_evidence_pattern"), pattern: z.string().min(1).describe("A file, folder, or glob relative to the project's folder") }),
   z.object({ op: z.literal("remove_evidence_pattern"), pattern: z.string().min(1).describe("The pattern exactly as get_project lists it") }),
 ]);
@@ -226,7 +225,7 @@ export const updateProjectSettings = defineTool({
   name: "update_project_settings",
   title: "Update project settings",
   description:
-    "Changes a project's settings, all or nothing, and returns the change to unfold.toml as a diff. Settings shape the graph and are shared through the repository, so change them only when the person asks, and say in chat that the file changed (it shows in their git diff). edits apply in order: scope (exclude_from_graph, include_in_graph, graph_only one folder, remove_scope_pattern exactly as listed); Python projects (set_python_project with its root, optional sourceRoots and version; remove_python_project); manual entrances (add_entrance with a new id; replace_entrance and remove_entrance by the id get_project lists); the project's shared name (set_project_name, null for the folder's name); evidence files (add_evidence_pattern, remove_evidence_pattern: files Unfold doesn't compile but boards may cite by lines, such as a migration or a Prisma schema; then read_file reads them). An edit that would make the file invalid, or that needs a broader rule changed, is refused with the reason, and nothing changes. The graph follows at the next compile_project or background update. get_project shows the settings now. Agents can't change the app's preferences. Read get_guide(\"setup\") first.",
+    "Changes a project's settings, all or nothing, and returns the change to unfold.toml as a diff. Settings shape the graph and are shared through the repository, so change them only when the person asks, and say in chat that the file changed (it shows in their git diff). edits apply in order: scope (exclude_from_graph, include_in_graph, graph_only one folder, remove_scope_pattern exactly as listed); Python projects (set_python_project with its root, optional sourceRoots and version; remove_python_project); manual entrances (add_entrance with a new id; replace_entrance and remove_entrance by the id get_project lists); evidence files (add_evidence_pattern, remove_evidence_pattern: files Unfold doesn't compile but boards may cite by lines, such as a migration or a Prisma schema; then read_file reads them). An edit that would make the file invalid, or that needs a broader rule changed, is refused with the reason, and nothing changes. The graph follows at the next compile_project or background update. get_project shows the settings now. Agents can't change the app's preferences. Read get_guide(\"setup\") first.",
   input: z.object({
     project: z.string().min(1).describe("The project's name or id, or a link to one of its boards"),
     edits: z.array(settingsEdit).min(1).describe("The changes, in order"),
@@ -238,11 +237,10 @@ export const updateProjectSettings = defineTool({
     const after = await context.engine("update_project_config", { project: row.id, edits: edits.map(engineEdit) });
     const diff = lineDiff(configText(before), configText(after));
     return textResult(
-      context.header({ project: after.name.value }),
+      context.header({ project: row.name }),
       diff.length > 0
         ? `Changed unfold.toml of ${row.name}:\n${["```diff", ...diff, "```"].join("\n")}`
         : "Nothing in unfold.toml changed: the settings already said that.",
-      after.name.value !== row.name ? `The project is now named ${after.name.value}; links and other tools use the new name.` : null,
       diff.length > 0 ? "The file is shared through the repository: tell the person it changed. The graph follows at the next compile_project or background update." : null,
     );
   },

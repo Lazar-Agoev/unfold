@@ -208,7 +208,7 @@ describe("list_entrances", () => {
     expect((await app.call(listEntrances, {})).text).toBe(
       "Can't tell which project you mean: the workspace has 2 projects and no board is in view. Pass project: a name or id from list_projects.",
     );
-    app.report({ board: { project: "p-python0000", id: ".unfold/boards/a.json" }, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [] });
+    app.report({ board: { project: "p-python0000", id: ".unfold/boards/a.json" }, page: "page-1", selection: { kind: "none" }, visible: [], held: [] });
     expect((await app.call(listEntrances, {})).text.split("\n")[0]).toBe("Unfold · py-orders · as Claude");
   });
 

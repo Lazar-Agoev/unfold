@@ -18,12 +18,11 @@ import { portSpot } from "../../code/CodeView";
 import { stepPort } from "../../code/outline";
 import { shortPath } from "../../code/text";
 import { Button, MenuButton } from "../../components";
-import type { Link, Page, ProjectId } from "../../ipc/generated";
+import type { Link, Page } from "../../ipc/generated";
 import { useFocusTarget } from "../../lib/focus-targets";
 import { useAuthor } from "../../state/author";
 import { describeLink, findCard, findPage, itemsFor, removeLink, setLinkLabel, useOpenBoard, type PageTarget } from "../../state/boards";
 import { openPeek } from "../../state/overlays";
-import { resolveRefProject, useProjectIndex } from "../../state/workspace";
 import { AuthoredField } from "./AuthoredField";
 import { AnchorRows, TypeRow, itemName, selectItem } from "./ClaimRows";
 import { RelationRow } from "./Relations";
@@ -31,9 +30,9 @@ import { RelationRow } from "./Relations";
 /** The step a connection leaves from, as `file:line` opening its source (its card's Code model reads where it is). */
 function StepRow({ target, page, link, step }: { readonly target: PageTarget; readonly page: Page; readonly link: Link; readonly step: string }) {
   const card = findCard(page, link.from);
-  const project = resolveRefProject(useProjectIndex(), target.board.project, card?.ref.project);
+  const { project } = target.board;
   const key = card && "block" in card.ref ? card.ref.block : "";
-  const query = useQuery({ ...cardQuery(project ?? "", key), enabled: project !== null && key.length > 0 });
+  const query = useQuery({ ...cardQuery(project, key), enabled: key.length > 0 });
   const model = query.data?.type === "block" ? query.data : undefined;
   const code = model?.code?.source.state === "current" ? model.code.source : undefined;
   const spot = code ? portSpot(code, stepPort(step)) : undefined;
@@ -42,7 +41,7 @@ function StepRow({ target, page, link, step }: { readonly target: PageTarget; re
     <RelationRow
       label="Step"
       title={step}
-      {...(place && project !== null
+      {...(place
         ? {
             onActivate: () => {
               openPeek({ project, path: place.path, line: place.line });
@@ -86,12 +85,10 @@ export function SelectedConnection({ target, link }: { readonly target: PageTarg
   const author = useAuthor();
   const page = useOpenBoard(target.board, (board) => findPage(board.document, target.page));
   const health = useOpenBoard(target.board, (board) => board.health);
-  const index = useProjectIndex();
   if (!page) {
     return null;
   }
   const issues = itemsFor(health, target.page, { link: link.id });
-  const carriesProject: ProjectId | null = link.carries !== undefined ? resolveRefProject(index, target.board.project, link.carriesProject) : null;
   const end = (label: string, id: string) => (
     <RelationRow
       label={label}
@@ -136,7 +133,7 @@ export function SelectedConnection({ target, link }: { readonly target: PageTarg
             <span className="relation-code">{link.channel}</span>
           </RelationRow>
         ) : null}
-        {link.carries !== undefined ? <TypeRow label="Carries" project={carriesProject} typeKey={link.carries} /> : null}
+        {link.carries !== undefined ? <TypeRow label="Carries" project={target.board.project} typeKey={link.carries} /> : null}
         <AnchorRows target={target} anchors={link.anchors ?? []} />
       </div>
       <AuthoredField

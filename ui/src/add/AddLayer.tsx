@@ -14,7 +14,7 @@ import { engineQueryOptions, type ProjectId, type ProjectRow } from "../ipc";
 import { plural } from "../lib/format";
 import { findPage, useOpenBoard, type BoardRef } from "../state/boards";
 import { closeAdd, useAddTarget, type AddTarget } from "../state/overlays";
-import { refProjectFor, useProjectIndex, useWorkspace } from "../state/workspace";
+import { useProjectIndex, useWorkspace } from "../state/workspace";
 import { activateChoice, type AddChoice } from "./activate";
 import { Preview, type PreviewItem } from "./Preview";
 import { optionId, ResultList } from "./ResultList";
@@ -41,7 +41,8 @@ const PREVIEW_DELAY = 150;
 /** The box's fixed height. */
 const BOX_HEIGHT = 660;
 
-const BLOCKED = "Rename one of the projects in its settings";
+/** Why a result can't go onto the page: a page shows one project. */
+const BLOCKED = "In another project";
 
 type Mode = "empty" | "search";
 
@@ -209,7 +210,7 @@ export function AddLayer() {
 
   /** Why results of `project` can't be added to the page, if they can't. */
   const blocked = (project: ProjectId | null): string | null =>
-    page !== null && project !== null && !refProjectFor(index, page.board.project, project).ok ? BLOCKED : null;
+    page !== null && project !== null && project !== page.board.project ? BLOCKED : null;
   const projectName = (project: string) => index.byId.get(project)?.name ?? "?";
 
   const settled = useDebounced(query, QUERY_DELAY);
@@ -337,7 +338,7 @@ export function AddLayer() {
       ? `${plural(projectsWithResults(names, textResults), "project")} · ${plural(totalResults, "result")}`
       : page
         ? `Adds to “${pageTitle ?? "this page"}”`
-        : "Adds to a new draft";
+        : "Adds to a new board";
 
   let body: ReactNode;
   if (mode === "empty") {

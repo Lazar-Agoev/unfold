@@ -1,25 +1,23 @@
-//! Saving: preparing a board for writing, page by page and project by project — signing what
+//! Saving: preparing a board for writing, page by page — signing what
 //! is unsigned (descriptions, labels, link labels, and the claims: resource cards, connections,
 //! and frame descriptions), saving guards, refusing new problems, placing new or moved proposed
 //! steps, and grounding new or changed claims ([`claims`]).
 //!
 //! A signature is only ever computed from bytes that verified against the facts' hash, so text
-//! can never be signed against source the graph has not seen. Text about a project that is not
-//! connected stays as it is: it is signed once its project is connected again. Notes and cards'
-//! expanded calls pass through as they are; proposed steps are never signed, but their anchors
+//! can never be signed against source the graph has not seen. Notes and cards' expanded calls pass through as they are; proposed steps are never signed, but their anchors
 //! are guarded.
 
 use rustc_hash::FxHashSet;
 
 use super::BoardError;
 use super::check::{
-    Health, HealthKind, ProjectKey, Target, current_guard, group_problem, guard_problem, health,
-    placement_problem, put_guard,
+    Health, HealthKind, Target, current_guard, group_problem, guard_problem, health, placement_problem,
+    put_guard,
 };
 use super::claims::{self, Signed};
-use super::graph::PageGraphs;
+use super::graph::BoardGraph;
 use super::items::check_items;
-use super::model::{Board, Description, Page, ProjectName, Proposal, Signature};
+use super::model::{Board, Description, Page, Proposal, Signature};
 use super::parse::Path;
 
 fn refuse(page: &Page, target: &Target, message: &str) -> BoardError {
@@ -35,7 +33,7 @@ fn refuse(page: &Page, target: &Target, message: &str) -> BoardError {
 fn link_signature(page: &Page, from: &str, to: &str) -> Option<Signature> {
     let end = |id: &str| {
         let card = page.card(id)?;
-        page.guard(card.reference.project(), card.reference.key().as_str())
+        page.guard(card.reference.key().as_str())
             .map(|guard| guard.signature.0)
     };
     let (from, to) = (end(from)?, end(to)?);
@@ -47,7 +45,6 @@ fn claim_signature(page: &Page, target: &Target, signed: Signed) -> Result<Signa
     match signed {
         Signed::Signature(signature) => Ok(signature),
         Signed::Nothing => Err(refuse(page, target, "cites no code to sign against")),
-        Signed::NotConnected => Err(refuse(page, target, "its project is not connected")),
         Signed::Missing => Err(refuse(
             page,
             target,
@@ -63,26 +60,19 @@ fn claim_signature(page: &Page, target: &Target, signed: Signed) -> Result<Signa
 /// ends, a connection's or resource card's cited code, or a frame's member cards.
 pub(crate) fn current_signature(
     page: &Page,
-    graphs: &PageGraphs<'_>,
+    graph: &BoardGraph,
     target: &Target,
 ) -> Result<Signature, BoardError> {
     let unverified = |what: &str| BoardError::Unverified {
         what: what.to_owned(),
-    };
-    let connected = |project: Option<&ProjectName>| {
-        graphs
-            .get(project)
-            .ok_or_else(|| refuse(page, target, "its project is not connected"))
     };
     match target {
         Target::Card(id) => {
             let card = page
                 .card(id)
                 .ok_or_else(|| refuse(page, target, "unknown card"))?;
-            let project = card.reference.project();
-            let graph = connected(project)?;
             let key = card.reference.key().as_str();
-            if let Some(problem) = guard_problem(page, graph, project, key) {
+            if let Some(problem) = guard_problem(page, graph, key) {
                 return Err(refuse(page, target, problem));
             }
             graph.signature(key).ok_or_else(|| unverified(key))
@@ -91,15 +81,13 @@ pub(crate) fn current_signature(
             let group = page
                 .group(id)
                 .ok_or_else(|| refuse(page, target, "unknown group"))?;
-            let project = page.group_project(group);
-            let graph = connected(project)?;
             if let Some(problem) = group_problem(page, graph, group) {
                 return Err(refuse(page, target, problem));
             }
             if let Some(problem) = group
                 .members
                 .iter()
-                .find_map(|key| guard_problem(page, graph, project, key.as_str()))
+                .find_map(|key| guard_problem(page, graph, key.as_str()))
             {
                 return Err(refuse(page, target, problem));
             }
@@ -110,9 +98,8 @@ pub(crate) fn current_signature(
                 .span_signature(first.as_str(), last.as_str())
                 .ok_or_else(|| unverified(id))
         }
-        Target::Label(ProjectKey { project, key }) => {
-            let graph = connected(project.as_ref())?;
-            if let Some(problem) = guard_problem(page, graph, project.as_ref(), key) {
+        Target::Label(key) => {
+            if let Some(problem) = guard_problem(page, graph, key) {
                 return Err(refuse(page, target, problem));
             }
             graph.signature(key).ok_or_else(|| unverified(key))
@@ -121,8 +108,8 @@ pub(crate) fn current_signature(
             let link = page
                 .link(id)
                 .ok_or_else(|| refuse(page, target, "unknown link"))?;
-            if claims::cites(page, link) {
-                return claim_signature(page, target, claims::connection_signed(page, graphs, link));
+            if claims::cites(link) {
+                return claim_signature(page, target, claims::connection_signed(graph, link));
             }
             link_signature(page, &link.from, &link.to).ok_or_else(|| unverified(id))
         }
@@ -130,13 +117,13 @@ pub(crate) fn current_signature(
             let resource = page
                 .resource(id)
                 .ok_or_else(|| refuse(page, target, "unknown resource card"))?;
-            claim_signature(page, target, claims::resource_signed(graphs, resource))
+            claim_signature(page, target, claims::resource_signed(graph, resource))
         }
         Target::Frame(id) => {
             let frame = page
                 .frame(id)
                 .ok_or_else(|| refuse(page, target, "unknown frame"))?;
-            claim_signature(page, target, claims::frame_signed(page, graphs, frame))
+            claim_signature(page, target, claims::frame_signed(page, graph, frame))
         }
         Target::Proposal(_) => Err(refuse(
             page,
@@ -159,7 +146,7 @@ fn signatures_mut<'a>(page: &'a mut Page, target: &Target) -> Vec<&'a mut Option
     };
     match target {
         Target::Link(id) => {
-            let cites = page.link(id).is_some_and(|link| claims::cites(page, link));
+            let cites = page.link(id).is_some_and(claims::cites);
             let Some(link) = page.links.iter_mut().find(|link| &link.id == id) else {
                 return Vec::new();
             };
@@ -192,8 +179,8 @@ fn signatures_mut<'a>(page: &'a mut Page, target: &Target) -> Vec<&'a mut Option
 
 /// Signs `target`'s text (and a resource card's or connection's own signature) against the
 /// current source, keeping the text: the Resign repair.
-pub(crate) fn resign(page: &mut Page, graphs: &PageGraphs<'_>, target: &Target) -> Result<(), BoardError> {
-    let signature = current_signature(page, graphs, target)?;
+pub(crate) fn resign(page: &mut Page, graph: &BoardGraph, target: &Target) -> Result<(), BoardError> {
+    let signature = current_signature(page, graph, target)?;
     let slots = signatures_mut(page, target);
     if slots.is_empty() {
         return Err(refuse(page, target, "has no description to sign"));
@@ -217,10 +204,10 @@ fn description_mut<'a>(page: &'a mut Page, target: &Target) -> Option<&'a mut De
             .iter_mut()
             .find(|group| &group.id == id)
             .and_then(|group| group.description.as_mut()),
-        Target::Label(ProjectKey { project, key }) => page
+        Target::Label(key) => page
             .labels
             .iter_mut()
-            .find(|entry| &entry.project == project && entry.key.as_str() == key)
+            .find(|entry| entry.key.as_str() == key)
             .map(|entry| &mut entry.label),
         Target::Link(id) => page
             .links
@@ -231,49 +218,33 @@ fn description_mut<'a>(page: &'a mut Page, target: &Target) -> Option<&'a mut De
     }
 }
 
-/// The projects a page's references are in: the board's own first, then the others it names
-/// (cards, labels, and the claims' projects), without duplicates.
-fn page_projects(page: &Page) -> Vec<Option<ProjectName>> {
-    let mut projects = vec![None];
-    for project in page
-        .projects()
-        .chain(page.labels.iter().filter_map(|entry| entry.project.as_ref()))
-    {
-        if !projects.iter().any(|known| known.as_ref() == Some(project)) {
-            projects.push(Some(project.clone()));
-        }
-    }
-    projects
-}
-
-/// Signs every unsigned description and label of a connected project from verified source,
-/// keeps the guards of references still on the page (adding fresh ones for new references of
-/// connected projects), drops the rest, then signs unsigned link labels from the ends' guards.
-fn sign(page: &mut Page, graphs: &PageGraphs<'_>) -> Result<(), BoardError> {
-    let connected = |project: Option<&ProjectName>| graphs.get(project).is_some();
+/// Signs every unsigned description and label from verified source, keeps the guards of
+/// references still on the page (adding fresh ones for new references), drops the rest, then
+/// signs unsigned link labels from the ends' guards.
+fn sign(page: &mut Page, graph: &BoardGraph) -> Result<(), BoardError> {
     let unsigned =
         |description: Option<&Description>| description.is_some_and(|item| item.signature.is_none());
     let targets: Vec<Target> = page
         .cards
         .iter()
-        .filter(|card| unsigned(card.description.as_ref()) && connected(card.reference.project()))
+        .filter(|card| unsigned(card.description.as_ref()))
         .map(|card| Target::Card(card.id.clone()))
         .chain(
             page.groups
                 .iter()
-                .filter(|group| unsigned(group.description.as_ref()) && connected(page.group_project(group)))
+                .filter(|group| unsigned(group.description.as_ref()))
                 .map(|group| Target::Group(group.id.clone())),
         )
         .chain(
             page.labels
                 .iter()
-                .filter(|entry| entry.label.signature.is_none() && connected(entry.project.as_ref()))
-                .map(|entry| Target::Label(ProjectKey::new(entry.project.as_ref(), entry.key.as_str()))),
+                .filter(|entry| entry.label.signature.is_none())
+                .map(|entry| Target::Label(entry.key.as_str().to_owned())),
         )
         .collect();
     let mut signatures = Vec::with_capacity(targets.len());
     for target in targets {
-        let signature = current_signature(page, graphs, &target)?;
+        let signature = current_signature(page, graph, &target)?;
         signatures.push((target, signature));
     }
     for (target, signature) in signatures {
@@ -282,23 +253,12 @@ fn sign(page: &mut Page, graphs: &PageGraphs<'_>) -> Result<(), BoardError> {
         }
     }
 
-    let mut referenced: Vec<(Option<ProjectName>, String)> = Vec::new();
-    for project in page_projects(page) {
-        for key in page.references(project.as_ref()).keys {
-            referenced.push((project.clone(), key.to_owned()));
-        }
-    }
-    let kept: FxHashSet<(Option<&ProjectName>, &str)> = referenced
-        .iter()
-        .map(|(project, key)| (project.as_ref(), key.as_str()))
-        .collect();
-    page.guards
-        .retain(|entry| kept.contains(&(entry.project.as_ref(), entry.key.as_str())));
-    for (project, key) in &referenced {
-        if page.guard(project.as_ref(), key).is_none()
-            && let Some(guard) = graphs
-                .get(project.as_ref())
-                .and_then(|graph| current_guard(graph, project.as_ref(), key))
+    let referenced: Vec<String> = page.references().keys.into_iter().map(str::to_owned).collect();
+    let kept: FxHashSet<&str> = referenced.iter().map(String::as_str).collect();
+    page.guards.retain(|entry| kept.contains(entry.key.as_str()));
+    for key in &referenced {
+        if page.guard(key).is_none()
+            && let Some(guard) = current_guard(graph, key)
         {
             put_guard(page, guard);
         }
@@ -310,7 +270,7 @@ fn sign(page: &mut Page, graphs: &PageGraphs<'_>) -> Result<(), BoardError> {
         .iter()
         .enumerate()
         .filter(|(_, link)| link.label.as_ref().is_some_and(|label| label.signature.is_none()))
-        .filter(|(_, link)| !claims::cites(page, link))
+        .filter(|(_, link)| !claims::cites(link))
         .filter_map(|(index, link)| Some((index, link_signature(page, &link.from, &link.to)?)))
         .collect();
     for (index, signature) in links {
@@ -331,33 +291,16 @@ fn unchanged(old: &Page, new: &Page, target: &Target) -> bool {
             (Some(a), Some(b)) => a.card == b.card && a.members == b.members,
             _ => false,
         },
-        Target::Label(ProjectKey { project, key }) => {
-            old.label_entry(project.as_ref(), key) == new.label_entry(project.as_ref(), key)
-        }
+        Target::Label(key) => old.label_entry(key) == new.label_entry(key),
         Target::Link(id) => match (old.link(id), new.link(id)) {
             (Some(a), Some(b)) => {
-                (
-                    &a.from,
-                    &a.to,
-                    &a.step,
-                    &a.carries,
-                    &a.carries_project,
-                    &a.anchors,
-                ) == (
-                    &b.from,
-                    &b.to,
-                    &b.step,
-                    &b.carries,
-                    &b.carries_project,
-                    &b.anchors,
-                )
+                (&a.from, &a.to, &a.step, &a.carries, &a.anchors)
+                    == (&b.from, &b.to, &b.step, &b.carries, &b.anchors)
             }
             _ => false,
         },
         Target::Resource(id) => match (old.resource(id), new.resource(id)) {
-            (Some(a), Some(b)) => {
-                (&a.project, &a.type_key, &a.anchors) == (&b.project, &b.type_key, &b.anchors)
-            }
+            (Some(a), Some(b)) => (&a.type_key, &a.anchors) == (&b.type_key, &b.anchors),
             _ => false,
         },
         Target::Frame(id) => {
@@ -381,7 +324,7 @@ fn same_place(old: &Page, a: &Proposal, new: &Page, b: &Proposal) -> bool {
 /// unless it goes after a step of its card's own Flow that something runs after, on a path that
 /// step has ([`placement_problem`]). One placed as before is kept as it is, even when its anchor went
 /// missing or is held: that is health's to report.
-fn place_proposals(page: &Page, previous: Option<&Page>, graphs: &PageGraphs<'_>) -> Result<(), BoardError> {
+fn place_proposals(page: &Page, previous: Option<&Page>, graph: &BoardGraph) -> Result<(), BoardError> {
     for proposal in &page.proposals {
         if previous
             .and_then(|old| Some((old, old.proposal(&proposal.id)?)))
@@ -393,17 +336,6 @@ fn place_proposals(page: &Page, previous: Option<&Page>, graphs: &PageGraphs<'_>
         // The page's items were checked: the card is a block card of the page.
         let Some(card) = page.card(&proposal.card) else {
             return Err(refuse(page, &target, "unknown card"));
-        };
-        let project = card.reference.project();
-        let Some(graph) = graphs.get(project) else {
-            let name = project.map_or("", ProjectName::as_str);
-            return Err(refuse(
-                page,
-                &target,
-                &format!(
-                    "Can't place it: its card's project {name} is not connected. Connect that project, or propose the step on a card of a connected project"
-                ),
-            ));
         };
         if let Some(message) = placement_problem(
             graph,
@@ -426,29 +358,29 @@ fn place_proposals(page: &Page, previous: Option<&Page>, graphs: &PageGraphs<'_>
 /// broken link that `previous` did not already have (with the same reference), or has a new or
 /// changed claim that isn't grounded ([`claims::ground`]). Problems carried over unchanged are
 /// kept, so a page with a placeholder can still be moved, retitled, or described elsewhere.
-/// Outdated text and cards of projects that are not connected never refuse a save.
+/// Outdated text never refuses a save.
 fn prepare_page(
     mut page: Page,
     path: &Path,
     previous: Option<(&Page, &Health)>,
-    graphs: &PageGraphs<'_>,
+    graph: &BoardGraph,
 ) -> Result<(Page, Health), BoardError> {
     check_items(&page, path)?;
     if let Some((old, _)) = previous {
         for guard in &old.guards {
-            if page.guard(guard.project.as_ref(), guard.key.as_str()).is_none() {
+            if page.guard(guard.key.as_str()).is_none() {
                 page.guards.push(guard.clone());
             }
         }
     }
-    sign(&mut page, graphs)?;
-    claims::sign(&mut page, previous.map(|(old, _)| old), graphs)?;
-    place_proposals(&page, previous.map(|(old, _)| old), graphs)?;
-    let health = health(&page, graphs);
+    sign(&mut page, graph)?;
+    claims::sign(&mut page, previous.map(|(old, _)| old), graph)?;
+    place_proposals(&page, previous.map(|(old, _)| old), graph)?;
+    let health = health(&page, graph);
     for item in health
         .items
         .iter()
-        .filter(|item| !matches!(item.kind, HealthKind::Outdated | HealthKind::NotConnected))
+        .filter(|item| item.kind != HealthKind::Outdated)
     {
         let carried = previous.is_some_and(|(old, old_health)| {
             old_health.items.iter().any(|known| {
@@ -459,17 +391,18 @@ fn prepare_page(
             return Err(refuse(&page, &item.target, &item.message));
         }
     }
-    claims::ground(&page, previous.map(|(old, _)| old), graphs)?;
+    claims::ground(&page, previous.map(|(old, _)| old), graph)?;
     Ok((page, health))
 }
 
 /// Prepares `board` for writing over `previous` (the version being replaced, with its health,
-/// if any), page by page against `graphs`: a page equal to the previous version's page keeps
-/// its health unchecked; every other page is signed and checked (see the module documentation). [`Board::projects`] is refreshed. Returns the board and its health.
+/// if any), page by page against `graph`: a page equal to the previous version's page keeps
+/// its health unchecked; every other page is signed and checked (see the module documentation).
+/// Returns the board and its health.
 pub fn prepare_save(
     mut board: Board,
     previous: Option<(&Board, &Health)>,
-    graphs: &PageGraphs<'_>,
+    graph: &BoardGraph,
 ) -> Result<(Board, Health), BoardError> {
     let mut health = Health::default();
     let mut pages = Vec::with_capacity(board.pages.len());
@@ -482,13 +415,12 @@ pub fn prepare_save(
         let path = pages_path.join(index);
         let (page, page_health) = match &old {
             Some((old_page, old_health)) if **old_page == page => (page, old_health.clone()),
-            Some((old_page, old_health)) => prepare_page(page, &path, Some((old_page, old_health)), graphs)?,
-            None => prepare_page(page, &path, None, graphs)?,
+            Some((old_page, old_health)) => prepare_page(page, &path, Some((old_page, old_health)), graph)?,
+            None => prepare_page(page, &path, None, graph)?,
         };
         health.append(page_health);
         pages.push(page);
     }
     board.pages = pages;
-    board.refresh_projects();
     Ok((board, health))
 }

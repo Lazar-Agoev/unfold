@@ -1,6 +1,6 @@
 /**
- * Home's main area: the selected project's overview or Health; the Drafts board grid; or, for an empty
- * workspace, Add project. It scrolls as one; the sidebar stays put.
+ * Home's main area: the selected project's overview or Health; or, for an empty workspace, Add
+ * project. It scrolls as one; the sidebar stays put.
  */
 
 import { useState, type JSX, type ReactNode } from "react";
@@ -9,7 +9,6 @@ import { useEngineQuery, type ProjectRow } from "../../ipc";
 import { useLayout } from "../../state/layout";
 import { useSelectedProject } from "../../state/window";
 import { useProjectRow, useWorkspace } from "../../state/workspace";
-import { DraftsView } from "../boards/DraftsView";
 import { EmptyWorkspace } from "../emptyWorkspace/EmptyWorkspace";
 import { HealthView } from "../health/HealthView";
 import { Overview } from "../overview/Overview";
@@ -40,12 +39,8 @@ function ProjectHome({ row }: { readonly row: ProjectRow }) {
 }
 
 function MainView() {
-  const view = useLayout((layout) => layout.home.view);
   const workspace = useWorkspace();
   const row = useProjectRow(useSelectedProject());
-  if (view === "drafts") {
-    return <DraftsView />;
-  }
   if (!workspace) {
     return null;
   }

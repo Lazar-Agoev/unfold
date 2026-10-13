@@ -3,11 +3,10 @@
 //!
 //! - Each card becomes a node (an entrance, or a Code- or Diagram-view card as its name and
 //!   location; a type declaration in Flow view too) or a subgraph (a Flow-view card, with its
-//!   groups as nested subgraphs). A card from a project that is not connected is a "From <name>,
-//!   not connected" placeholder.
+//!   groups as nested subgraphs).
 //! - Resource cards are nodes shaped by their kind; frames are subgraphs around their members,
 //!   nested as the frames are; notes are `%%` comments where they sit.
-//! - Arrows between cards of one project come from its graph: solid for calls and
+//! - Arrows between cards come from the graph: solid for calls and
 //!   constructions, dashed for imports and passed references; a Diagram-view card draws one
 //!   arrow to each card it calls ("3 calls"); an entrance points at its handlers. Links drawn on the page are dashed arrows with their label; a connection's line
 //!   and words follow its kind.
@@ -16,7 +15,7 @@
 //!   `(description outdated)`, and so is an outdated frame description; an outdated resource
 //!   card or connection is marked `(outdated)`. References held for review and broken groups
 //!   are drawn as opaque "needs review" nodes instead of being applied to changed code.
-//! - Output is deterministic: it depends only on the page, the graphs, and verified sources.
+//! - Output is deterministic: it depends only on the page, the graph, and verified sources.
 
 use rustc_hash::{FxHashMap, FxHashSet};
 use unfold_core::vocab::{BlockKind, EdgeKind, Resolution};
@@ -24,7 +23,7 @@ use unfold_core::{Entrance, Key};
 
 use crate::board::{
     Board, BoardGraph, Card, CardRef, Column, ColumnKey, Description, FrameDirection, HealthKind, Link,
-    LinkKind, Note, Page, PageGraphs, ProjectKey, ProjectName, Resource, ResourceKind, Target, View, health,
+    LinkKind, Note, Page, Resource, ResourceKind, Target, View, health,
 };
 use crate::flow::{FlowContext, FlowModel, FlowNode, FlowNodeKind};
 use crate::notes::note;
@@ -210,7 +209,7 @@ pub fn entrance_board(graph: &BoardGraph, key: &str) -> Option<Board> {
     let page = &mut board.pages[0];
     page.cards.push(Card {
         id: "entrance".to_owned(),
-        reference: CardRef::entrance(entrance.key.clone(), None),
+        reference: CardRef::entrance(entrance.key.clone()),
         at: [0.0, 0.0],
         view: Some(View::Code),
         folded: false,
@@ -235,7 +234,7 @@ pub fn entrance_board(graph: &BoardGraph, key: &str) -> Option<Board> {
         let row = u32::try_from(index).unwrap_or(u32::MAX);
         page.cards.push(Card {
             id: format!("handler-{}", index + 1),
-            reference: CardRef::block(target_key.clone(), None),
+            reference: CardRef::block(target_key.clone()),
             at: [420.0, f64::from(row) * 180.0],
             view: Some(View::Flow),
             folded: false,
@@ -246,27 +245,27 @@ pub fn entrance_board(graph: &BoardGraph, key: &str) -> Option<Board> {
     Some(board)
 }
 
-/// An entrance and its handlers as a diagram, from `graph` (the entrance's project's).
+/// An entrance and its handlers as a diagram, from `graph`.
 pub fn entrance(graph: &BoardGraph, key: &str) -> Option<String> {
     let board = entrance_board(graph, key)?;
-    Some(render(&board.pages[0], &PageGraphs::own_only(graph)))
+    Some(render(&board.pages[0], graph))
 }
 
 /// Board page `page` as a diagram, or `None` when the board has no such page.
-pub fn page(board: &Board, page: &str, graphs: &PageGraphs<'_>) -> Option<String> {
-    board.page(page).map(|page| render(page, graphs))
+pub fn page(board: &Board, page: &str, graph: &BoardGraph) -> Option<String> {
+    board.page(page).map(|page| render(page, graph))
 }
 
-/// The labels of one project's blocks for Flows inside an export (authored labels, marked when
+/// The labels of a page's blocks for Flows inside an export (authored labels, marked when
 /// outdated, dropped when held for review) and target names from its graph.
 struct Context<'a> {
-    labels: Option<&'a FxHashMap<&'a str, String>>,
+    labels: &'a FxHashMap<&'a str, String>,
     graph: &'a BoardGraph,
 }
 
 impl FlowContext for Context<'_> {
     fn label(&self, key: &str) -> Option<&str> {
-        self.labels?.get(key).map(String::as_str)
+        self.labels.get(key).map(String::as_str)
     }
 
     fn target_name(&self, key: &str) -> Option<String> {
@@ -290,7 +289,6 @@ fn health_kind(kind: HealthKind) -> &'static str {
         HealthKind::Outdated => "outdated",
         HealthKind::BrokenGroup => "brokenGroup",
         HealthKind::Review => "review",
-        HealthKind::NotConnected => "notConnected",
         HealthKind::BrokenLink => "brokenLink",
     }
 }
@@ -436,12 +434,12 @@ fn connection(link: &Link, from: &str, to: &str, outdated: bool) -> String {
 }
 
 /// One page as a diagram.
-fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
-    let health = health(page, graphs);
+fn render(page: &Page, graph: &BoardGraph) -> String {
+    let health = health(page, graph);
     let broken: FxHashSet<&Target> = health
         .items
         .iter()
-        .filter(|item| !matches!(item.kind, HealthKind::Outdated | HealthKind::NotConnected))
+        .filter(|item| item.kind != HealthKind::Outdated)
         .map(|item| &item.target)
         .collect();
     let is_outdated = |target: &Target| health.has(&page.id, HealthKind::Outdated, target);
@@ -449,11 +447,10 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
         "flowchart LR".to_owned(),
         "  %% Paths from written structure; call arrows come from the index.".to_owned(),
     ];
-    let mut labels: FxHashMap<Option<&ProjectName>, FxHashMap<&str, String>> = FxHashMap::default();
+    let mut labels: FxHashMap<&str, String> = FxHashMap::default();
     for entry in &page.labels {
-        let project = entry.project.as_ref();
-        let target = Target::Label(ProjectKey::new(project, entry.key.as_str()));
-        if graphs.get(project).is_none() || broken.contains(&target) || entry.label.text.trim().is_empty() {
+        let target = Target::Label(entry.key.as_str().to_owned());
+        if broken.contains(&target) || entry.label.text.trim().is_empty() {
             continue;
         }
         let text = if is_outdated(&target) {
@@ -461,12 +458,9 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
         } else {
             entry.label.text.clone()
         };
-        labels
-            .entry(project)
-            .or_default()
-            .insert(entry.key.as_str(), text);
+        labels.insert(entry.key.as_str(), text);
     }
-    let mut first_card: FxHashMap<(Option<&ProjectName>, &str), &str> = FxHashMap::default();
+    let mut first_card: FxHashMap<&str, &str> = FxHashMap::default();
     let mut ports: FxHashMap<&str, String> = FxHashMap::default();
     let mut flows: FxHashMap<&str, FlowModel> = FxHashMap::default();
     // Each item's lines, written where the item sits: at the top level or inside its frame.
@@ -476,17 +470,6 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
         let target = Target::Card(card.id.clone());
         let out = blocks.entry(card.id.as_str()).or_default();
         let key = card.reference.key().as_str();
-        let project = card.reference.project();
-        let Some(graph) = graphs.get(project) else {
-            let name = project.map_or("", ProjectName::as_str);
-            out.push(format!(
-                "  {}",
-                shape(&id, Shape::Box, &format!("From {name}, not connected"))
-            ));
-            out.push(format!("  class {id} opaque"));
-            ports.insert(&card.id, id);
-            continue;
-        };
         if broken.contains(&target) {
             out.push(format!(
                 "  {}",
@@ -504,7 +487,7 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
             ports.insert(&card.id, id);
             continue;
         }
-        first_card.entry((project, key)).or_insert(&card.id);
+        first_card.entry(key).or_insert(&card.id);
         let Some(block) = graph.block(key) else {
             out.push(format!(
                 "  {}",
@@ -516,7 +499,7 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
         };
         let name = graph.qualified_name(key).unwrap_or_else(|| key.to_owned());
         let context = Context {
-            labels: labels.get(&project),
+            labels: &labels,
             graph,
         };
         // A type declaration has no paths: in Flow view it is a box, as its fields are in the app.
@@ -648,10 +631,6 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
         if broken.contains(&Target::Card(card.id.clone())) {
             continue;
         }
-        let project = card.reference.project();
-        let Some(graph) = graphs.get(project) else {
-            continue;
-        };
         let key = card.reference.key().as_str();
         if let CardRef::Entrance { .. } = card.reference {
             let Some(entrance) = graph.entrance(key) else {
@@ -663,7 +642,7 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
                     .as_ref()
                     .filter(|_| target.resolution == Resolution::Resolved);
                 let port = resolved
-                    .and_then(|target_key| first_card.get(&(project, target_key.as_str())))
+                    .and_then(|target_key| first_card.get(target_key.as_str()))
                     .and_then(|card_id| ports.get(card_id));
                 if let Some(port) = port {
                     lines.push(format!("  {}", arrow(&id, false, "handler", port)));
@@ -707,7 +686,7 @@ fn render(page: &Page, graphs: &PageGraphs<'_>) -> String {
                 .target
                 .as_ref()
                 .filter(|_| edge.resolution == Resolution::Resolved)
-                .and_then(|target| first_card.get(&(project, target.as_str())))
+                .and_then(|target| first_card.get(target.as_str()))
             else {
                 continue;
             };

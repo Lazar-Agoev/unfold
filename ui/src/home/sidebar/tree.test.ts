@@ -6,18 +6,15 @@ import { sidebarRows, treeRows, type SidebarRow } from "./tree";
 
 const P = "p-shop000000";
 
-function board(title: string, folder: string | null, place: BoardSummary["place"] = "published"): BoardSummary {
+function board(title: string, folder: string | null): BoardSummary {
   return {
     project: P,
     id: `.unfold/boards/${title}.json`,
-    place,
     name: title,
     title,
     folder,
     pages: 2,
     cards: 3,
-    projects: [],
-    changes: 0,
     updatedAtMs: 0,
     label: null,
     error: null,
@@ -26,8 +23,8 @@ function board(title: string, folder: string | null, place: BoardSummary["place"
 
 const LIST: BoardList = {
   project: P,
-  boards: [board("Payment webhooks", "Checkout"), board("Auth, end to end", null, "draft"), board("Order lifecycle", "Checkout"), board("Nightly", "Jobs/Cron")],
-  emptyFolders: ["Archive", "Checkout/Old"],
+  boards: [board("Payment webhooks", "Checkout"), board("Auth, end to end", null), board("Order lifecycle", "Checkout"), board("Nightly", "Jobs")],
+  emptyFolders: ["Archive"],
 };
 
 function describeRows(rows: readonly SidebarRow[]): string[] {
@@ -36,7 +33,7 @@ function describeRows(rows: readonly SidebarRow[]): string[] {
       case "project":
         return `project ${row.row.name}`;
       case "folder":
-        return `${"  ".repeat(row.depth - 1)}${row.expanded ? "v" : ">"} ${row.name}${row.empty ? " (empty)" : ""}`;
+        return `${row.expanded ? "v" : ">"} ${row.name}${row.empty ? " (empty)" : ""}`;
       case "board":
         return `${"  ".repeat(row.depth - 1)}- ${row.board.title ?? ""}`;
       case "gap":
@@ -52,17 +49,15 @@ describe("the sidebar tree", () => {
     expect(describeRows(treeRows(P, LIST, new Set()))).toEqual(["> Archive (empty)", "> Checkout", "> Jobs", "- Auth, end to end"]);
   });
 
-  it("opens the folders the window remembers", () => {
-    const open = new Set([folderKey(P, "Checkout"), folderKey(P, "Jobs"), folderKey(P, "Jobs/Cron")]);
+  it("opens the folders the window remembers, one level deep: a folder holds boards", () => {
+    const open = new Set([folderKey(P, "Checkout"), folderKey(P, "Jobs")]);
     expect(describeRows(treeRows(P, LIST, open))).toEqual([
       "> Archive (empty)",
       "v Checkout",
-      "  > Old (empty)",
       "  - Order lifecycle",
       "  - Payment webhooks",
       "v Jobs",
-      "  v Cron",
-      "    - Nightly",
+      "  - Nightly",
       "- Auth, end to end",
     ]);
   });

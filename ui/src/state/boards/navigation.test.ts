@@ -9,9 +9,7 @@ const engine = vi.hoisted(() => ({
   onEngineEvent: vi.fn(() => () => undefined),
   windowCommand: vi.fn(() => Promise.resolve(null)),
 }));
-const toast = vi.hoisted(() => ({ showToast: vi.fn() }));
 vi.mock("./engine", () => engine);
-vi.mock("../../components/Toast", () => toast);
 
 const store = await import("./store");
 const { followCall, extendTrail } = await import("./navigation");
@@ -24,8 +22,7 @@ const { getShownBoard, useShownBoardStore } = await import("../shownBoard");
 
 const P = "p-orders0000";
 const Q = "p-payments00";
-const SAME = "p-orders2000";
-const ID = ".unfold/local/drafts/b.json";
+const ID = ".unfold/boards/b.json";
 const REF = { project: P, id: ID };
 const PAGE = { board: REF, page: "page-1" };
 
@@ -52,11 +49,9 @@ const entrance: CardView = {
 beforeEach(() => {
   engine.call.mockReset();
   engine.call.mockImplementation(() => Promise.resolve(null));
-  toast.showToast.mockClear();
   store.resetBoards();
   queryClient.clear();
-  // Two projects share the name "orders": the first in workspace order is the one refs name (shared project names).
-  queryClient.setQueryData(engineKey("workspace", {}), workspaceView([projectRow(P, "orders"), projectRow(Q, "payments"), projectRow(SAME, "orders")]));
+  queryClient.setQueryData(engineKey("workspace", {}), workspaceView([projectRow(P, "orders"), projectRow(Q, "payments")]));
   useShownBoardStore.setState({ board: null });
 });
 
@@ -86,12 +81,6 @@ describe("following a call", () => {
     ]);
     expect(view.selection).toEqual({ kind: "card", cardId: id, key: null });
     expect(view.back).toHaveLength(1);
-  });
-
-  it("stays in the calling card's project", () => {
-    open([{ id: "charge", ref: { block: "src/pay.ts#function:charge", project: "payments" }, at: [0, 0] }]);
-    const id = followCall({ target: PAGE, fromCardId: "charge", fromLabel: "charge", targetKey: "src/stripe.ts#function:post", targetLabel: "post" });
-    expect(cards().find((item) => item.id === id)?.ref).toEqual({ block: "src/stripe.ts#function:post", project: "payments" });
   });
 
   it("focuses and unfolds a target that is already on the page instead of adding it", () => {
@@ -141,48 +130,29 @@ describe("following a call", () => {
   });
 });
 
-describe("adding cards from any project", () => {
+describe("adding cards of the board's project", () => {
   it("adds a definition once, shows its board and page, and focuses it the second time", () => {
     open([], boardDocument([page("page-1"), page("page-2")]));
     const second = { board: REF, page: "page-2" };
-    const id = addBlock(second, P, "src/a.ts#function:a");
+    const id = addBlock(second, "src/a.ts#function:a");
     expect(id).toBe("a");
     expect(store.getOpenBoard(REF)?.activePage).toBe("page-2");
     expect(getShownBoard()).toEqual(REF);
-    expect(addBlock(second, P, "src/a.ts#function:a")).toBe("a");
+    expect(addBlock(second, "src/a.ts#function:a")).toBe("a");
     expect(store.getOpenBoard(REF)?.document.pages[1]?.cards).toHaveLength(1);
     expect(store.getPageView(second).focus?.cardIds).toEqual(["a"]);
   });
 
-  it("names another project by its shared name, and keeps the same key from two projects apart", () => {
+  it("labels a node by its key", () => {
     open();
-    addBlock(PAGE, P, "src/a.ts#function:a");
-    addBlock(PAGE, Q, "src/a.ts#function:a");
-    expect(cards().map((card) => card.ref)).toEqual([{ block: "src/a.ts#function:a" }, { block: "src/a.ts#function:a", project: "payments" }]);
-    expect(new Set(cards().map((card) => card.id)).size).toBe(2);
-  });
-
-  it("refuses a card from a project with the board project's own name", () => {
-    open();
-    expect(addBlock(PAGE, SAME, "src/a.ts#function:a")).toBeUndefined();
-    expect(cards()).toHaveLength(0);
-    expect(toast.showToast).toHaveBeenCalledTimes(1);
-  });
-
-  it("labels a node of another project under that project's name", () => {
-    open();
-    labelNode(PAGE, Q, "src/a.ts#function:a/if[0]", "Paid?", "person:a");
-    labelNode(PAGE, P, "src/a.ts#function:a/if[0]", "Valid?", "person:a");
-    expect(store.getOpenBoard(REF)?.document.pages[0]?.labels).toEqual([
-      { key: "src/a.ts#function:a/if[0]", text: "Valid?", author: "person:a", signature: "" },
-      { project: "payments", key: "src/a.ts#function:a/if[0]", text: "Paid?", author: "person:a", signature: "" },
-    ]);
+    labelNode(PAGE, "src/a.ts#function:a/if[0]", "Valid?", "person:a");
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.labels).toEqual([{ key: "src/a.ts#function:a/if[0]", text: "Valid?", author: "person:a", signature: "" }]);
   });
 
   it("draws links between two cards and removes them with either card", () => {
     open([
       { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] },
-      { id: "b", ref: { block: "src/b.ts#function:b", project: "payments" }, at: [600, 0] },
+      { id: "b", ref: { block: "src/b.ts#function:b" }, at: [600, 0] },
     ]);
     expect(addLink(PAGE, "a", "a")).toBeUndefined();
     expect(addLink(PAGE, "a", "b")).toBe("a-to-b");
@@ -190,26 +160,22 @@ describe("adding cards from any project", () => {
     expect(store.getOpenBoard(REF)?.document.pages[0]?.links).toEqual([]);
   });
 
-  it("opens an entrance card and one full card per resolved handler, in its project", async () => {
+  it("opens an entrance card and one full card per resolved handler, in the board's project", async () => {
     open();
     engine.call.mockImplementation((command: string) => Promise.resolve(command === "card" ? entrance : null));
-    await openEntrance(PAGE, Q, "entrance:x");
-    expect(engine.call).toHaveBeenCalledWith("card", { project: Q, key: "entrance:x" });
-    expect(cards().map((card) => card.ref)).toEqual([
-      { entrance: "entrance:x", project: "payments" },
-      { block: "src/m.ts#function:requireUser", project: "payments" },
-      { block: "src/o.ts#function:createOrder", project: "payments" },
-    ]);
+    await openEntrance(PAGE, "entrance:x");
+    expect(engine.call).toHaveBeenCalledWith("card", { project: P, key: "entrance:x" });
+    expect(cards().map((card) => card.ref)).toEqual([{ entrance: "entrance:x" }, { block: "src/m.ts#function:requireUser" }, { block: "src/o.ts#function:createOrder" }]);
     expect(store.getPageView(PAGE).trail).toEqual([{ cardId: cards()[0]?.id, label: "POST /orders" }]);
   });
 
   it("places the handlers beside the entrance, level with their rows, in the step that opens them", async () => {
     open();
     engine.call.mockImplementation((command: string) => Promise.resolve(command === "card" ? entrance : null));
-    await openEntrance(PAGE, P, "entrance:x");
+    await openEntrance(PAGE, "entrance:x");
     const text = entranceCardText(entrance);
     const width = entranceCardWidth(text, estimateText);
-    const rows = entranceHandlerRows(text, false, width, estimateText);
+    const rows = entranceHandlerRows(text, width, estimateText);
     const [first, second] = [rows[0] ?? 0, rows[2] ?? 0];
     const top = first - HEADER_PORT;
     expect(cards().map((card) => card.at)).toEqual([
@@ -224,8 +190,8 @@ describe("adding cards from any project", () => {
     expect(cards()).toEqual([]);
   });
 
-  it("traces an entrance into a new draft titled after it", async () => {
-    const draft = { project: Q, id: ".unfold/local/drafts/trace.json" };
+  it("traces an entrance into a new board titled after it", async () => {
+    const draft = { project: Q, id: ".unfold/boards/post-orders.json" };
     engine.call.mockImplementation((command: string) =>
       Promise.resolve(command === "card" ? entrance : command === "new_board" ? boardState(Q, draft.id, boardDocument([page("page-1")], { title: "POST /orders" })) : null),
     );

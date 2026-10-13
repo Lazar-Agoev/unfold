@@ -1,8 +1,8 @@
 /**
- * The agent channel (design §5.5, §5.6): how the main process has a window apply an agent's edits to
- * a board it holds, read a page it holds, open a board in a background tab, create a board, change a
- * board's pages and title, show a board to the person, apply a health repair, and end a piece of
- * work, and what each window reports about its view. Types only, so the UI imports them as
+ * The agent channel (design §5.5, §5.6): how the main process has the window apply an agent's edits
+ * to a board it holds, read a page it holds, load a board's session without showing it, create a
+ * board, change a board's pages and title, show a board to the person, apply a health repair, and end
+ * a piece of work, and what the window reports about its view. Types only, so the UI imports them as
  * `@unfold/desktop/agent-api`.
  *
  * - main → window: the shell events of {@link AgentShellEvent};
@@ -15,7 +15,7 @@
  * saved at once, and signed with the agent's identity.
  */
 
-/** A board: its project's id (`ProjectId`) and the board's id (its public file's folder-relative path). */
+/** A board: its project's id (`ProjectId`) and the board's id (its file's path in the project, under `.unfold/boards/`). */
 export interface AgentBoardRef {
   readonly project: string;
   readonly id: string;
@@ -58,8 +58,6 @@ export interface AgentPage {
 export interface AgentCardSpec {
   /** A block's key (`src/routes/orders.ts#function:createOrder`) or an entrance's (`entrance:[…]`). */
   readonly key: string;
-  /** The project it is from, by id; absent: the board's own project. */
-  readonly project?: string;
   /** Its own view (types reached by following its fields too); absent: the page's default view. A legacy `code` is expanded. */
   readonly view?: AgentView;
   /** Whether it shows its detail in Diagram (a function's written flow, an entrance's evidence and targets); wins over `view`. */
@@ -226,17 +224,14 @@ export interface LabelStepsOp {
   readonly replacePeopleText?: boolean;
 }
 
-/** What a resource card stands for (design §4.5): a table, a queue, a cache, storage, a service outside the workspace, or who starts things. */
+/** What a resource card stands for (design §4.5): a table, a queue, a cache, storage, a service outside the project, or who starts things. */
 export type AgentResourceKind = "table" | "queue" | "cache" | "storage" | "external" | "actor";
 
 /**
  * What an authored claim cites (design §4.9): a block's or an entrance's key, or lines of an evidence
- * file (relative to its project's folder; 1-based and inclusive), in `project` (by id; absent: the
- * board's own project).
+ * file (relative to the project's folder; 1-based and inclusive).
  */
-export type AgentAnchor =
-  | { readonly key: string; readonly project?: string }
-  | { readonly file: string; readonly lines: readonly [number, number]; readonly project?: string };
+export type AgentAnchor = { readonly key: string } | { readonly file: string; readonly lines: readonly [number, number] };
 
 /**
  * A column of a table card: its name, its type as written, and its marks (primary key, foreign key
@@ -263,8 +258,6 @@ export interface AgentResourceSpec {
   readonly name: string;
   /** A table's type: a type declaration's or class's key, whose fields are its columns. */
   readonly type?: string;
-  /** The type's project, by id; absent: the board's own project. */
-  readonly project?: string;
   readonly description?: string;
   /** A table's columns: its own (without `type`), or marks on the type's fields. On an update, `type` and `columns` are replaced together when either is given. */
   readonly columns?: readonly AgentColumn[];
@@ -311,8 +304,6 @@ export interface AgentConnectionSpec {
   readonly channel?: string;
   /** The key of the type it carries. */
   readonly carries?: string;
-  /** The carried type's project, by id; absent: the board's own project. */
-  readonly carriesProject?: string;
   /** A short label for what travels; on an update, replaced when given. */
   readonly label?: string;
   /** The evidence in words; on an update, replaced when given. */
@@ -429,8 +420,6 @@ export interface AgentCardResult {
   readonly id: string;
   readonly status: AgentItemStatus;
   readonly key: string;
-  /** Its project's id. */
-  readonly project: string;
   /** Unfold's name for it: `OrderService.place`, `POST /orders`. */
   readonly name: string;
   /** Its canvas position, when an operation placed or moved it. */
@@ -586,9 +575,6 @@ export type AgentItemResult =
 /** The board a page is on, as the window holds it. */
 export interface AgentBoardInfo {
   readonly title: string;
-  readonly place: "draft" | "published";
-  /** A published board's unpublished changes (0 for a draft). */
-  readonly changes: number;
   /** The board file's revision (the engine's), as last loaded or saved. */
   readonly revision: string;
 }
@@ -596,10 +582,9 @@ export interface AgentBoardInfo {
 /**
  * A refusal: what failed and what to do instead (design §7.8). The window's codes are
  * `board_not_open`, `page_not_found`, `invalid_op`, `people_text`, `code_unavailable`,
- * `board_conflict`, `unsaved_edits`, `page_changed`, and, opening a board, `too_many_tabs`, besides
- * the engine's own (`board_problem`, …); the main process adds `revision_mismatch`, `window_closed`,
- * `timeout` (a read), `unconfirmed` (a change that may still land), and `internal` (a malformed
- * answer).
+ * `unsaved_edits`, and `page_changed`, besides the engine's own (`board_problem`, …); the main
+ * process adds `revision_mismatch`, `window_closed`, `timeout` (a read), `unconfirmed` (a change that
+ * may still land), and `internal` (a malformed answer).
  */
 export interface AgentFailure {
   readonly ok: false;
@@ -643,15 +628,13 @@ export interface AgentPageSummary {
 }
 
 /**
- * One change to a board's pages or title. A page added or duplicated goes after `after` (a page id;
- * absent: right after the page it copies, or last); `move_page` puts a page at `to` (0 is first).
- * The only page of a board is never deleted.
+ * One change to a board's pages or title. A page added goes after `after` (a page id; absent: last);
+ * `move_page` puts a page at `to` (0 is first). The only page of a board is never deleted.
  */
 export type AgentBoardOp =
   | { readonly op: "add_page"; readonly title: string; readonly after?: string }
   | { readonly op: "rename_page"; readonly page: string; readonly title: string }
   | { readonly op: "move_page"; readonly page: string; readonly to: number }
-  | { readonly op: "duplicate_page"; readonly page: string; readonly title?: string }
   | { readonly op: "delete_page"; readonly page: string }
   | { readonly op: "set_title"; readonly title: string };
 
@@ -673,7 +656,7 @@ export interface AgentBoardEditSuccess {
 
 export type AgentBoardEditResult = AgentBoardEditSuccess | AgentFailure;
 
-/** A draft a window created and holds in a background tab: its id, folder, and pages. */
+/** A board the window created and holds without showing it: its id, folder, and pages. */
 export interface AgentCreateSuccess {
   readonly ok: true;
   readonly board: AgentBoardRef;
@@ -712,18 +695,17 @@ export interface AgentReadRequest {
   readonly page: string;
 }
 
-/** Opens a board in a background tab of the window (it doesn't switch to it). */
+/** Loads a board's session in the window without changing what the person sees. */
 export interface AgentOpenRequest {
   readonly requestId: number;
   readonly board: AgentBoardRef;
-  /** The page its tab shows. */
+  /** The page it shows when the person switches to it. */
   readonly page?: string;
 }
 
 /**
- * Creates a draft in `project` and opens it in a background tab (the window claims it): empty, with
- * one page per title in `pages` ("Page 1" when absent), or, with `copyOf`, a copy of a board of the
- * project the window holds ("<title> copy", in the same folder).
+ * Creates a board file in `project`'s `.unfold/boards/` and loads its session in the window without
+ * changing what the person sees: empty, with one page per title in `pages` ("Page 1" when absent).
  */
 export interface AgentCreateRequest {
   readonly requestId: number;
@@ -732,8 +714,6 @@ export interface AgentCreateRequest {
   /** Its folder (absent: the project's top level). */
   readonly folder?: string;
   readonly pages?: readonly string[];
-  /** The id of the board to copy. */
-  readonly copyOf?: string;
 }
 
 /**
@@ -750,7 +730,7 @@ export interface AgentBoardEditRequest {
   readonly replacePeopleText?: boolean;
 }
 
-/** Shows a held board to the person: its tab, a page, and an item selected and centered. */
+/** Shows a held board to the person: the board, a page, and an item selected and centered. */
 export interface AgentShowRequest {
   readonly requestId: number;
   readonly board: AgentBoardRef;
@@ -822,8 +802,6 @@ export type ViewSelection =
       readonly kind: "line";
       readonly from: string;
       readonly to: string;
-      /** The project both cards resolve to. */
-      readonly project: string;
       readonly source: string;
       readonly seq: number;
       readonly line: number | null;
@@ -833,12 +811,10 @@ export type ViewSelection =
       readonly kind: "calls";
       readonly from: string;
       readonly to: string;
-      /** The project both cards resolve to. */
-      readonly project: string;
       readonly calls: readonly { readonly source: string; readonly seq: number; readonly line: number | null }[];
     };
 
-/** What a window shows: its active board and page (none on Home), selection, lens, the items in view, and its board tabs. */
+/** What the window shows: its board and page (none on Home), selection, lens, and the items in view; and the boards it holds. */
 export interface ViewReport {
   readonly board?: AgentBoardRef;
   readonly page?: string;
@@ -847,8 +823,8 @@ export interface ViewReport {
   readonly lens?: AgentLens;
   /** The ids of the page's cards, step groups, links, frames, resource cards, and notes in view. */
   readonly visible: readonly string[];
-  /** Every board tab of the window, in order: the boards it holds. */
-  readonly tabs: readonly AgentBoardRef[];
+  /** Every board whose session the window holds (each board opened while the app runs), the one shown included. */
+  readonly held: readonly AgentBoardRef[];
 }
 
 /** Window commands for the agent channel (part of `WindowCommands`). */
@@ -904,11 +880,11 @@ export interface AgentServerStatus {
 }
 
 /**
- * A link to a board, a page, or an item (D9): `unfold://<project's shared name>/<board id>?page=<page
+ * A link to a board, a page, or an item (D9): `unfold://<project's folder name>/<board id>?page=<page
  * id>&item=<item id>`, each part URI-encoded. Only the main process parses links.
  */
 export interface AgentLink {
-  /** The project's shared name. */
+  /** The name of the project's folder. */
   readonly project: string;
   readonly board: string;
   readonly page?: string;

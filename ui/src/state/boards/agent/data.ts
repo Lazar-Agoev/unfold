@@ -78,8 +78,8 @@ export class AgentData {
   }
 
   /** A loaded model (undefined when it wasn't loaded, or the key isn't in the graph). */
-  model(project: ProjectId | null, key: Key): CardView | undefined {
-    return project === null ? undefined : (this.models.get(cardRefKey(project, key)) ?? undefined);
+  model(project: ProjectId, key: Key): CardView | undefined {
+    return this.models.get(cardRefKey(project, key)) ?? undefined;
   }
 
   /** A model as loaded: null when the key isn't in the graph, undefined when it wasn't loaded yet. */
@@ -109,8 +109,8 @@ export class AgentData {
   }
 
   /** A loaded type definition (undefined when it wasn't loaded, or the key isn't a type). */
-  definition(project: ProjectId | null, key: Key): TypeDefinition | undefined {
-    return project === null ? undefined : (this.definitions.get(cardRefKey(project, key)) ?? undefined);
+  definition(project: ProjectId, key: Key): TypeDefinition | undefined {
+    return this.definitions.get(cardRefKey(project, key)) ?? undefined;
   }
 
   /** Every loaded type definition by `cardRefKey(project, key)`, as type arrows are computed from them. */

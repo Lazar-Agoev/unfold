@@ -13,7 +13,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Handle, Position, useUpdateNodeInternals } from "@xyflow/react";
 import { useLayoutEffect, useMemo } from "react";
-import { Monogram } from "../../components";
 import { reasonText, shortPath } from "../../code/text";
 import { entranceTargetSource, viewCode, viewEntranceTarget } from "../../board/viewCode";
 import { ViewCodeButton } from "../../flow/ViewCodeButton";
@@ -107,7 +106,6 @@ export function EntranceCard({ target, project, card, expandable, ports, selecte
   const title = model ? entranceTitle(model) : keyDisplayName(key);
   const text = useMemo(() => (model ? entranceCardText(model) : { method: null, title, location: "", handlers: [] }), [model, title]);
   const portSet = useMemo(() => new Set(ports), [ports]);
-  const foreign = card.ref.project;
 
   const width = useMemo(() => entranceCardWidth(text, measure), [text, measure]);
 
@@ -149,7 +147,6 @@ export function EntranceCard({ target, project, card, expandable, ports, selecte
       <CardHandles />
       <header className="card-header card-drag" onDoubleClick={toggleFolded}>
         {expandable && !folded ? <ExpandToggle target={target} cardId={card.id} expanded name={title} /> : null}
-        {foreign !== undefined ? <Monogram name={foreign} size={20} /> : null}
         {text.method !== null ? <span className="ecard-method">{text.method}</span> : null}
         <h3 className="card-title" title={title}>
           {text.title}
@@ -182,7 +179,7 @@ export function EntranceCard({ target, project, card, expandable, ports, selecte
                       const handle = targetHandle(handler.position);
                       const onView = entranceTargetSource(project, handler).target
                         ? () => {
-                            viewEntranceTarget(target, project, key, handler.position);
+                            viewEntranceTarget(target, key, handler.position);
                           }
                         : null;
                       return <HandlerRow key={handle} handler={handler} port={portSet.has(handle) ? handle : null} onFollow={follow} onView={onView} />;

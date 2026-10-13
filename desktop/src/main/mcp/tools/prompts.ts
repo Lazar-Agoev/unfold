@@ -70,23 +70,17 @@ export const serviceMap = definePrompt({
   title: "Service map",
   description: "A page with a frame per service, its entrances, and how the services talk through HTTP, queues, events, and stores.",
   args: z.object({
-    projects: word("Projects or applications to map, by name, joined with commas (ts-orders, or ts-orders,web); absent: the project I'm viewing"),
+    project: word("The project, by name; absent: the project I'm viewing"),
   }),
-  text: ({ projects }) => {
-    const names = projects
-      ?.split(",")
-      .map((name) => name.trim())
-      .filter((name) => name.length > 0);
-    const scope = names === undefined || names.length === 0 ? projectText(undefined) : names.map((name) => `“${name}”`).join(" and ");
-    return [
-      `Map the services of ${scope} on one page: a frame per service with its entrances, and how the services talk.`,
+  text: ({ project }) =>
+    [
+      `Map the services of ${projectText(project)} on one page: a frame per service with its entrances, and how the services talk.`,
       '- Read get_guide({topic: "diagrams"}) (its recipe "Service map") and get_guide({topic: "connections"}) first, unless you have this session.',
-      "- Understand: list_projects, then list_entrances for each project. search text for where services talk (queues, HTTP clients, events, stores), and read_code each hit before you draw anything.",
-      "- Post a diagram brief in chat, then build: create_board (or the page I linked), the entrances compact, frame_cards with a box per application inside a zone per project, add_resources for the queues and stores, and connect producers to consumers, each anchored where the code shows it. Shared code goes in a box of its own.",
+      "- Understand: list_entrances. search text for where services talk (queues, HTTP clients, events, stores), and read_code each hit before you draw anything.",
+      "- Post a diagram brief in chat, then build: create_board (or the page I linked), the entrances compact, frame_cards with a box per application inside a zone, add_resources for the queues and stores (and an external card for a service in another repository), and connect producers to consumers, each anchored where the code shows it. Shared code goes in a box of its own.",
       `- ${REVIEW}`,
       `- ${FINISH} Name what you saw but couldn't cite.`,
-    ].join("\n");
-  },
+    ].join("\n"),
 });
 
 export const dataModel = definePrompt({

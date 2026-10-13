@@ -1,15 +1,12 @@
 //! The slice of one project's graph a board needs: the files its references live in (with
 //! their bytes verified against the facts' hash), the entrances it shows, and the qualified
-//! names of the targets its cards call. A page's cards can come from several projects, so a
-//! page reads through [`PageGraphs`]: one [`BoardGraph`] per connected project. Board checks,
-//! signatures, guards, health, Mermaid export, and the outline all read through them, so they
-//! are pure functions of the graphs.
+//! names of the targets its cards call. Board checks, signatures, guards, health, Mermaid export,
+//! and the outline all read through it, so they are pure functions of the graph.
 //!
 //! Build a [`BoardGraph`] with [`BoardGraph::load`] from a store snapshot (only the files and
 //! inputs a page's references touch), with [`BoardGraph::from_graph`] from a whole in-memory
 //! graph, or piece by piece.
 
-use std::collections::BTreeMap;
 use std::path::Path;
 
 use rustc_hash::FxHashMap;
@@ -17,7 +14,7 @@ use unfold_core::vocab::{MemberKind, Resolution, Role};
 use unfold_core::{Block, ByteRange, Edge, Entrance, FileGraph, Graph, Key, LineIndex, RepoPath};
 use unfold_store::Reader;
 
-use super::model::{ProjectName, References, Signature};
+use super::model::{References, Signature};
 use crate::catalog;
 use crate::contracts::{FactSource, Facts, TypeDefinition, type_definition};
 use crate::error::Result;
@@ -244,8 +241,8 @@ impl BoardGraph {
         loaded
     }
 
-    /// What `references` (of one project, as [`super::Board::references`] or
-    /// [`super::Page::references`] lists them) need from that project's store snapshot: the
+    /// What `references` (as [`super::Board::references`] or [`super::Page::references`] lists
+    /// them) need from the project's store snapshot: the
     /// files of the blocks and of the entrances' evidence, the entrances, the inputs holding
     /// configuration evidence and the evidence files anchors cite, the fields of the tables'
     /// types, and the qualified names of targets outside those files. Sources are verified under
@@ -484,37 +481,4 @@ fn fields_of(definition: &TypeDefinition) -> Vec<Box<str>> {
         }
     }
     fields
-}
-
-/// The graphs a page reads: the board's own project's, and one per other connected project by
-/// shared name. A project a card names that has no graph here is **not connected**: its cards
-/// are placeholders, and its labels, groups, and guards are kept unchecked.
-#[derive(Debug, Clone, Copy)]
-pub struct PageGraphs<'a> {
-    own: &'a BoardGraph,
-    others: &'a BTreeMap<ProjectName, BoardGraph>,
-}
-
-/// No other project.
-static NONE: BTreeMap<ProjectName, BoardGraph> = BTreeMap::new();
-
-impl<'a> PageGraphs<'a> {
-    /// The board's own project's graph and the graphs of the other connected projects (those
-    /// absent from `others` are not connected).
-    pub fn new(own: &'a BoardGraph, others: &'a BTreeMap<ProjectName, BoardGraph>) -> Self {
-        Self { own, others }
-    }
-
-    /// Only the board's own project.
-    pub fn own_only(own: &'a BoardGraph) -> Self {
-        Self::new(own, &NONE)
-    }
-
-    /// The graph of `project` (`None`: the board's own), when it is connected.
-    pub fn get(&self, project: Option<&ProjectName>) -> Option<&'a BoardGraph> {
-        match project {
-            None => Some(self.own),
-            Some(name) => self.others.get(name),
-        }
-    }
 }

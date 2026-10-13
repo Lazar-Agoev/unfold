@@ -47,14 +47,14 @@ describe("read_call", () => {
 
   it("reads the line selected in the person's view, and each call of a merged arrow", async () => {
     const app = harness({ engine: { call_contract: (args) => ({ ...CONTRACT, source: String(args["source"]) }) } });
-    app.report({ board: BOARD, page: "page-1", selection: { kind: "line", from: "a", to: "b", project: PROJECT, source: SOURCE, seq: 0, line: 27 }, visible: [], tabs: [BOARD] });
+    app.report({ board: BOARD, page: "page-1", selection: { kind: "line", from: "a", to: "b", source: SOURCE, seq: 0, line: 27 }, visible: [], held: [BOARD] });
     expect((await app.call(readCall, {})).text).toContain(`(source ${SOURCE}, seq 0)`);
     app.report({
       board: BOARD,
       page: "page-1",
-      selection: { kind: "calls", from: "a", to: "b", project: PROJECT, calls: [{ source: SOURCE, seq: 0, line: 27 }, { source: `${SOURCE}x`, seq: 0, line: 30 }] },
+      selection: { kind: "calls", from: "a", to: "b", calls: [{ source: SOURCE, seq: 0, line: 27 }, { source: `${SOURCE}x`, seq: 0, line: 30 }] },
       visible: [],
-      tabs: [BOARD],
+      held: [BOARD],
     });
     const merged = await app.call(readCall, {});
     expect(merged.text).toContain("The selected arrow draws 2 calls:");

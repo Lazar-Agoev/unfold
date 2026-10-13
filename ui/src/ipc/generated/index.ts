@@ -31,56 +31,39 @@ project: ProjectRow, };
 
 /**
  * What a resource card or a connection cites, which Unfold can verify: a block or entrance key,
- * or a line range of an evidence file, in the board's own project (`project` absent) or in the
- * project with that shared name.
+ * or a line range of an evidence file.
  */
 export type Anchor = { 
 /**
  * The key.
  */
-key: Key, 
+key: Key, } | { 
 /**
- * Its project; absent for the board's own.
- */
-project?: ProjectName, } | { 
-/**
- * The file, relative to its project's folder.
+ * The file, relative to the project's folder.
  */
 file: RepoPath, 
 /**
  * The first and last line, 1-based and inclusive.
  */
-lines: [number, number], 
-/**
- * Its project; absent for the board's own.
- */
-project?: ProjectName, };
+lines: [number, number], };
 
 /**
  * An anchor a repair points a resource card or connection at: a block or entrance key, or
- * lines of an evidence file, with the project's shared name for another project.
+ * lines of an evidence file.
  */
 export type AnchorSpec = { 
 /**
  * The key.
  */
-key: string, 
+key: string, } | { 
 /**
- * The project's shared name; absent for the board's own.
- */
-project?: ProjectName, } | { 
-/**
- * The file, relative to its project's folder.
+ * The file, relative to the project's folder.
  */
 file: string, 
 /**
  * The first and last line, 1-based and inclusive.
  */
-lines: [number, number], 
-/**
- * The project's shared name; absent for the board's own.
- */
-project?: ProjectName, };
+lines: [number, number], };
 
 /**
  * Facts about the app the UI can't get itself (it has no Node APIs).
@@ -225,8 +208,7 @@ owner: string, };
 export type BlockKind = "file" | "function" | "class" | "method" | "constructor" | "getter" | "setter" | "variable" | "call" | "new" | "import" | "if" | "for" | "for_in" | "for_of" | "while" | "do_while" | "switch" | "case" | "default" | "try" | "catch" | "return" | "throw" | "break" | "continue" | "expression_statement" | "with" | "match" | "interface" | "type_alias" | "enum";
 
 /**
- * An `unfold-board` document as the window edits it: the board's working version, without a
- * changes copy's `publishes` and `baseRevision`.
+ * An `unfold-board` document as the window edits it.
  */
 export type BoardDocument = { 
 /**
@@ -242,25 +224,18 @@ version: 1,
  */
 title: string, 
 /**
- * The board folder it is filed in (a `/`-separated path); `None` at the top level.
+ * The board folder it is filed in (one name, [`is_folder_name`]); `None` at the top level.
  */
 folder?: string, 
-/**
- * The other projects its items name, sorted: [`Board::used_projects`]. The constructors,
- * [`super::parse`], [`super::parse_edit`], and [`super::prepare_save`] set it; after
- * editing items in place, call [`Board::refresh_projects`]. The writer always writes the
- * derived set.
- */
-projects: Array<ProjectName>, 
 /**
  * The pages, in order; at least one.
  */
 pages: Array<Page>, };
 
 /**
- * What a window saves: the title and the pages. The folder, the `projects`
- * list, and the file framing are Rust's. Labels, guards, and links (and frames, resources, and
- * notes, as in the file) are optional on input; signatures may be `""` (signed on save).
+ * What a window saves: the title and the pages. The folder and the file framing are Rust's.
+ * Labels, guards, and links (and frames, resources, and notes, as in the file) are optional on
+ * input; signatures may be `""` (signed on save).
  */
 export type BoardEdit = { title: string; pages: Array<Omit<Page, "labels" | "guards" | "links"> & Partial<Pick<Page, "labels" | "guards" | "links">>> };
 
@@ -320,7 +295,7 @@ export type BoardList = {
  */
 project: ProjectId, 
 /**
- * Its published boards, then its drafts, each by name (at most 2,000).
+ * Its boards, most recently edited first, then by id (at most 2,000).
  */
 boards: Array<BoardSummary>, 
 /**
@@ -371,7 +346,7 @@ pageTitle: string, };
  */
 export type BoardRefs = { 
 /**
- * The pages, by project in workspace order, then board id and page order (at most 50).
+ * The pages, by board id, then page order (at most 50).
  */
 refs: Array<BoardRefHit>, 
 /**
@@ -388,31 +363,23 @@ export type BoardState = {
  */
 project: ProjectId, 
 /**
- * The board's id (its public file's folder-relative path).
+ * The board's id (its file's folder-relative path).
  */
 id: string, 
 /**
- * Published or draft.
- */
-place: Place, 
-/**
- * The public file's name without `.json`.
+ * The file's name without `.json`.
  */
 name: string, 
 /**
- * The working version, as last loaded or saved (descriptions and labels signed).
+ * The board as last loaded or saved (descriptions and labels signed).
  */
 document: BoardDocument, 
 /**
- * The revision of the file the board's session reads and writes.
+ * The revision of the board's file then.
  */
 revision: string, 
 /**
- * For a published board, its publish state; `None` for a draft.
- */
-published: PublishedState | null, 
-/**
- * Its health against the graphs of the projects its cards come from.
+ * Its health against the project's graph.
  */
 health: Health, 
 /**
@@ -425,7 +392,7 @@ outlines: Array<PageOutline>,
 label: string | null, };
 
 /**
- * One board in the sidebar tree, Home's Boards, or Drafts.
+ * One board in the sidebar or Home's Boards.
  */
 export type BoardSummary = { 
 /**
@@ -437,11 +404,7 @@ project: ProjectId,
  */
 id: string, 
 /**
- * Published or draft.
- */
-place: Place, 
-/**
- * The public file's name without `.json`.
+ * The file's name without `.json`.
  */
 name: string, 
 /**
@@ -461,16 +424,8 @@ pages: number,
  */
 cards: number, 
 /**
- * The other projects its cards come from (shared names).
- */
-projects: Array<ProjectName>, 
-/**
- * For a published board, its unpublished changes (0: none); 0 for a draft.
- */
-changes: number, 
-/**
- * When the working file (the changes copy, when there is one) was last written, in
- * milliseconds since the Unix epoch.
+ * When it was last edited (its file's modification time), in milliseconds since the Unix
+ * epoch.
  */
 updatedAtMs: number, 
 /**
@@ -756,36 +711,22 @@ key: string,
 lens?: CardLens, };
 
 /**
- * What a card is.
- */
-export type CardKind = "entrance" | "type" | "class" | "block";
-
-/**
  * Which of a block card's models to build.
  */
 export type CardLens = "code" | "flow" | "both";
 
 /**
- * What a card shows: exactly one block or entrance, by structural key, in the board's own
- * project (`project` absent) or in the project with that shared name.
+ * What a card shows: exactly one block or entrance of the board's project, by structural key.
  */
 export type CardRef = { 
 /**
  * The block's key.
  */
-block: Key, 
-/**
- * Its project; absent for the board's own.
- */
-project?: ProjectName, } | { 
+block: Key, } | { 
 /**
  * The entrance's key.
  */
-entrance: Key, 
-/**
- * Its project; absent for the board's own.
- */
-project?: ProjectName, };
+entrance: Key, };
 
 /**
  * A card: an entrance with its evidence and targets, or a block with its Code and Flow.
@@ -1243,15 +1184,6 @@ signature: string, };
  * An entrance detector.
  */
 export type DetectorId = "manual" | "package.script" | "package.bin" | "express.route" | "bullmq.worker" | "node-cron.schedule" | "pyproject.script" | "fastapi.route" | "celery.task" | "apscheduler.job";
-
-/**
- * Every project's drafts and published boards with unpublished changes.
- */
-export type Drafts = { 
-/**
- * Most recently written first (at most 500).
- */
-drafts: Array<BoardSummary>, };
 
 /**
  * A relationship sourced at one occurrence.
@@ -2188,7 +2120,7 @@ export type Group = {
  */
 id: string, 
 /**
- * The card it belongs to; its members are keys of that card's project.
+ * The card it belongs to.
  */
 card: string, 
 /**
@@ -2213,14 +2145,9 @@ description?: Description,
 author?: Author, };
 
 /**
- * What a reference was when it was saved, so it can reconnect safely: one per referenced
- * (project, key).
+ * What a reference was when it was saved, so it can reconnect safely: one per referenced key.
  */
 export type GuardEntry = { 
-/**
- * The reference's project; absent for the board's own.
- */
-project?: ProjectName, 
 /**
  * The referenced key.
  */
@@ -2264,10 +2191,6 @@ brokenGroups: number,
  */
 review: number, 
 /**
- * The number of cards from projects that are not connected.
- */
-notConnected: number, 
-/**
  * The number of broken links.
  */
 brokenLinks: number, };
@@ -2289,10 +2212,6 @@ kind: HealthKind,
  */
 target: Target, 
 /**
- * The project of the reference involved; absent for the board's own (and for links).
- */
-project?: ProjectName, 
-/**
  * The reference involved, when it is not the target itself (a group member; a resource
  * card's or connection's anchor, type, step, or carried type).
  */
@@ -2313,7 +2232,7 @@ repairs: Array<RepairKind>, };
 /**
  * The kind of a health problem.
  */
-export type HealthKind = "missing" | "outdated" | "brokenGroup" | "review" | "notConnected" | "brokenLink";
+export type HealthKind = "missing" | "outdated" | "brokenGroup" | "review" | "brokenLink";
 
 /**
  * How a type name written in a heritage clause relates its declaration to the type it
@@ -2361,13 +2280,9 @@ export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in
 export type Key = string;
 
 /**
- * A Flow-node label: the authored name of a block inside a card, in that card's project.
+ * A Flow-node label: the authored name of a block inside a card.
  */
 export type LabelEntry = { 
-/**
- * The labeled block's project; absent for the board's own.
- */
-project?: ProjectName, 
 /**
  * The labeled block's key.
  */
@@ -2403,20 +2318,6 @@ name?: string,
  * an argument that fills no proven parameter, or a parameter written as a pattern.
  */
 type?: TypeText, };
-
-/**
- * A Flow label's address in a repair: its block key and, for another project, that project's
- * shared name.
- */
-export type LabelSpec = { 
-/**
- * The project's shared name; absent for the board's own.
- */
-project?: ProjectName, 
-/**
- * The block key.
- */
-key: string, };
 
 /**
  * One arrow's at-rest label.
@@ -2639,10 +2540,9 @@ source: string,
 seq: number, };
 
 /**
- * A link drawn between two items of a page (cross-project boards): the graph does not join code
- * across projects, so people and agents do. A link with a `kind` is a **connection**: a typed
- * line that says how its ends talk, with its evidence; one without is drawn as `other`, with an
- * optional signed label ("calls over HTTP").
+ * A link drawn between two items of a page, where the graph draws no arrow. A link with a
+ * `kind` is a **connection**: a typed line that says how its ends talk, with its evidence; one
+ * without is drawn as `other`, with an optional signed label ("calls over HTTP").
  */
 export type Link = { 
 /**
@@ -2666,7 +2566,7 @@ label?: Description,
  */
 kind?: LinkKind, 
 /**
- * The statement or call inside the `from` card's block it leaves from (same project).
+ * The statement or call inside the `from` card's block it leaves from.
  */
 step?: Key, 
 /**
@@ -2685,10 +2585,6 @@ channel?: string,
  * The type it carries: a type declaration or class key.
  */
 carries?: Key, 
-/**
- * The project of `carries`; absent for the board's own.
- */
-carriesProject?: ProjectName, 
 /**
  * For `relates`: how many rows of each table it joins.
  */
@@ -2865,7 +2761,7 @@ project: ProjectId,
  */
 title?: string, 
 /**
- * The folder (the project's top level when absent).
+ * The folder, one name (the project's top level when absent).
  */
 folder?: string, 
 /**
@@ -3098,11 +2994,11 @@ cards: Array<Card>,
  */
 groups: Array<Group>, 
 /**
- * Flow-node labels, one per (project, key).
+ * Flow-node labels, one per key.
  */
 labels: Array<LabelEntry>, 
 /**
- * Guards, one per referenced (project, key).
+ * Guards, one per referenced key.
  */
 guards: Array<GuardEntry>, 
 /**
@@ -3190,11 +3086,6 @@ line: number | null,
  * The file's language.
  */
 language: Language | null, };
-
-/**
- * Where a board file lives.
- */
-export type Place = "published" | "draft";
 
 /**
  * What Add's preview pane and the map popover show for one result.
@@ -3395,11 +3286,7 @@ settings: SettingsView | null,
 /**
  * Why the file is invalid, with its position.
  */
-error: SettingsProblem | null, 
-/**
- * The project's shared name (the default while the file is invalid).
- */
-name: SharedName, };
+error: SettingsProblem | null, };
 
 /**
  * Home's Health line.
@@ -3420,22 +3307,9 @@ boards: Array<BoardHealthCount>, };
 
 /**
  * A project's id: `p-` and 10 characters of `[a-z2-7]`, random, assigned when the project is
- * added (shared project names). It survives restarts.
+ * added. It survives restarts.
  */
 export type ProjectId = string;
-
-/**
- * A Flow label's or a reference's address on a page: its key in a project.
- */
-export type ProjectKey = { 
-/**
- * The project; absent for the board's own.
- */
-project?: ProjectName, 
-/**
- * The key.
- */
-key: string, };
 
 /**
  * The arguments of a command about one block or entrance of a project.
@@ -3472,13 +3346,6 @@ entrances: number,
 files: number, };
 
 /**
- * A project's shared name (`[project] name` in its `unfold.toml`, or its default):
- * a letter or digit, then up to 63 letters, digits, `.`, `_`, or `-`. Boards name other
- * projects by it.
- */
-export type ProjectName = string;
-
-/**
  * The arguments of a command about one path of a project.
  */
 export type ProjectPathArgs = { 
@@ -3500,7 +3367,7 @@ export type ProjectRow = {
  */
 id: ProjectId, 
 /**
- * Its shared name.
+ * Its folder's name.
  */
 name: string, 
 /**
@@ -3571,7 +3438,7 @@ export type ProjectSummary = {
  */
 project: ProjectId, 
 /**
- * Its shared name.
+ * Its folder's name.
  */
 name: string, 
 /**
@@ -3634,7 +3501,7 @@ id: string,
  */
 card: string, 
 /**
- * The real step it goes after: a key inside the card's block, in the card's project. Guarded.
+ * The real step it goes after: a key inside the card's block. Guarded.
  */
 after: Key, 
 /**
@@ -3659,66 +3526,6 @@ author: Author, };
  * Which path of a decision a proposed step goes on.
  */
 export type ProposalPath = "yes" | "no" | "each" | "done";
-
-/**
- * The arguments of `publish_board`.
- */
-export type PublishBoardArgs = { 
-/**
- * The board's project.
- */
-project: ProjectId, 
-/**
- * The board's id.
- */
-id: string, 
-/**
- * The published file's name, for a draft's first Publish (the slug of the title when
- * absent).
- */
-name?: string, 
-/**
- * How to settle a conflict with the published file.
- */
-resolve?: Resolve, };
-
-/**
- * What `publish_board` did.
- */
-export type PublishOutcome = { "status": "done", 
-/**
- * The board.
- */
-board: BoardState, } | { "status": "name_taken", 
-/**
- * The existing file.
- */
-path: string, 
-/**
- * A free name to offer.
- */
-suggestion: string, } | { "status": "conflict", 
-/**
- * The published file's revision now, or `None` when it was deleted.
- */
-theirsRevision: string | null, };
-
-/**
- * A published board's publish state, as of the last open, save, or publish.
- */
-export type PublishedState = { 
-/**
- * The published file's revision now, or `None` when it was deleted on disk.
- */
-revision: string | null, 
-/**
- * How many unpublished changes the working version has (0: none).
- */
-changes: number, 
-/**
- * Whether the published file changed since the changes copy started from it (a pull).
- */
-baseChanged: boolean, };
 
 /**
  * A `[[python.project]]` table as the editor submits it.
@@ -3755,7 +3562,7 @@ sourceRoots: Array<string> | null,
 version: string, };
 
 /**
- * A board as its working file holds it, read without opening it (`read_board`).
+ * A board as its file holds it, read without opening it (`read_board`).
  */
 export type ReadBoardResult = { 
 /**
@@ -3767,25 +3574,17 @@ project: ProjectId,
  */
 id: string, 
 /**
- * Published or draft.
- */
-place: Place, 
-/**
- * The public file's name without `.json`.
+ * The file's name without `.json`.
  */
 name: string, 
 /**
- * The working version: the draft, the changes copy, or the published file.
+ * The board.
  */
 document: BoardDocument, 
 /**
- * The working file's revision.
+ * The file's revision.
  */
-revision: string, 
-/**
- * For a published board, its publish state, as `open_board` reports it; `None` for a draft.
- */
-published: PublishedState | null, };
+revision: string, };
 
 /**
  * Why an occurrence or entrance target is unresolved.
@@ -3865,7 +3664,7 @@ project: ProjectId,
  */
 from: string, 
 /**
- * Its new path.
+ * Its new name.
  */
 to: string, };
 
@@ -3918,10 +3717,6 @@ export type RepairSpec = {
  */
 page: string, } & ({ "kind": "reconnect", 
 /**
- * The reference's project; absent for the board's own.
- */
-project?: ProjectName, 
-/**
  * The missing key.
  */
 from: string, 
@@ -3933,10 +3728,6 @@ to: string, } | { "kind": "remove_card",
  * The card's id.
  */
 card: string, } | { "kind": "remove_label", 
-/**
- * The label's project; absent for the board's own.
- */
-project?: ProjectName, 
 /**
  * The block key.
  */
@@ -3974,10 +3765,6 @@ target: TargetSpec, } | { "kind": "resign",
  */
 target: TargetSpec, } | { "kind": "accept", 
 /**
- * The reference's project; absent for the board's own.
- */
-project?: ProjectName, 
-/**
  * The reference.
  */
 key: string, } | { "kind": "remove_proposal", 
@@ -4002,11 +3789,6 @@ export type RepoPath = string;
 export type Resolution = "resolved" | "external" | "unresolved";
 
 /**
- * How `publish_board` settles a conflict.
- */
-export type Resolve = "keep_mine";
-
-/**
  * A resource card: something the code talks to that isn't a function (a table, a queue, a
  * cache, storage, an outside service, or an actor), authored and anchored.
  */
@@ -4023,10 +3805,6 @@ kind: ResourceKind,
  * Its technical name, such as `orders`; never blank.
  */
 name: string, 
-/**
- * The project of `type`; absent for the board's own.
- */
-project?: ProjectName, 
 /**
  * For a table: the type declaration or class that declares its shape.
  */
@@ -4090,13 +3868,9 @@ project: ProjectId,
  */
 id: string, 
 /**
- * The edited board.
+ * The edited board, written over the board's file whatever it holds.
  */
-board: BoardEdit, 
-/**
- * Write even though the working file changed on disk since it was loaded (keep mine).
- */
-force?: boolean, };
+board: BoardEdit, };
 
 /**
  * The arguments of `save_window_state`.
@@ -4285,7 +4059,7 @@ project: ProjectId,
  */
 id: string, 
 /**
- * The folder, or `None` for the project's top level.
+ * The folder, one name, or `None` for the project's top level.
  */
 folder: string | null, };
 
@@ -4382,11 +4156,7 @@ detector: string,
 /**
  * Whether it runs.
  */
-enabled: boolean, } | { "op": "set_project_name", 
-/**
- * The name; it must match `/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/`.
- */
-name: string | null, } | { "op": "add_evidence_pattern", 
+enabled: boolean, } | { "op": "add_evidence_pattern", 
 /**
  * The pattern: a file, a folder, or a glob, relative to the project's folder.
  */
@@ -4453,19 +4223,6 @@ overrides: Array<OverrideSpec>,
  * `[evidence] files` patterns, as written.
  */
 evidence: Array<string>, };
-
-/**
- * A project's shared name.
- */
-export type SharedName = { 
-/**
- * The name other projects' boards use for this one.
- */
-value: string, 
-/**
- * Whether it is the default made from the folder (no `[project] name`).
- */
-isDefault: boolean, };
 
 /**
  * The board the window shows, by project id and board id.
@@ -4545,7 +4302,7 @@ export type SourceState = "current" | "changed" | "missing";
 /**
  * What a health item or repair is about, on one page.
  */
-export type Target = { "card": string } | { "group": string } | { "label": ProjectKey } | { "link": string } | { "resource": string } | { "frame": string } | { "proposal": string };
+export type Target = { "card": string } | { "group": string } | { "label": string } | { "link": string } | { "resource": string } | { "frame": string } | { "proposal": string };
 
 /**
  * What an entrance target is to its entrance.
@@ -4556,7 +4313,7 @@ export type TargetRole = "startup" | "handler";
  * What a repair is about (a card, group, label, link, resource card, frame, or proposed step) on
  * its page.
  */
-export type TargetSpec = { "card": string } | { "group": string } | { "label": LabelSpec } | { "link": string } | { "resource": string } | { "frame": string } | { "proposal": string };
+export type TargetSpec = { "card": string } | { "group": string } | { "label": string } | { "link": string } | { "resource": string } | { "frame": string } | { "proposal": string };
 
 /**
  * One handler or startup of an entrance, in registration order.
@@ -4698,117 +4455,6 @@ filesTruncated: boolean,
  * Each searched project's counts, in workspace order.
  */
 projects: Array<ProjectTextMatches>, };
-
-/**
- * What a board thumbnail draws: its first page's cards and the arrows between them.
- */
-export type Thumbnail = { 
-/**
- * The board's id.
- */
-board: string, 
-/**
- * The first page, or `None` when the file can't be read.
- */
-page: ThumbnailPage | null, 
-/**
- * How many pages the board has.
- */
-pages: number, 
-/**
- * The first page's cards (at most 200).
- */
-cards: Array<ThumbnailCard>, 
-/**
- * Calls between cards of one project, as card id pairs.
- */
-edges: Array<[string, string]>, 
-/**
- * Drawn links, as card id pairs.
- */
-links: Array<[string, string]>, 
-/**
- * The page has more cards than are listed.
- */
-truncated: boolean, 
-/**
- * Why the file can't be read, if it can't.
- */
-error: string | null, };
-
-/**
- * One card of a thumbnail. The window sizes it with the canvas's own rules.
- */
-export type ThumbnailCard = { 
-/**
- * The card's id.
- */
-id: string, 
-/**
- * Its position on the canvas.
- */
-at: [number, number], 
-/**
- * Entrance or block.
- */
-kind: CardKind, 
-/**
- * The view it shows.
- */
-view: View, 
-/**
- * Whether it is folded.
- */
-folded: boolean, 
-/**
- * The block's line count (`None`: an entrance, a missing block, or a project that is not
- * connected).
- */
-lines: number | null, 
-/**
- * The rows a type card lists: its members, or an alias's aliased type (`None`: any other
- * card).
- */
-fields: number | null, 
-/**
- * Whether it comes from another project.
- */
-foreign: boolean, };
-
-/**
- * A thumbnail's page.
- */
-export type ThumbnailPage = { 
-/**
- * The page's id.
- */
-id: string, 
-/**
- * Its title.
- */
-title: string, };
-
-/**
- * Board thumbnails, in the order asked for.
- */
-export type Thumbnails = { 
-/**
- * One per board asked for.
- */
-thumbnails: Array<Thumbnail>, };
-
-/**
- * The arguments of `board_thumbnails`.
- */
-export type ThumbnailsArgs = { 
-/**
- * The boards' project.
- */
-project: ProjectId, 
-/**
- * The boards (at most 60).
- */
-boards: Array<string>, };
 
 /**
  * What a highlighted span is. Each class serializes as its snake-case name, which the UI maps
@@ -5113,11 +4759,6 @@ maximized: boolean,
 board: ShownBoard | null, };
 
 /**
- * Which file an open board's session reads (unpublished edits).
- */
-export type WorkingFile = "draft" | "changes" | "published";
-
-/**
  * One event. See the [module documentation](self).
  */
 export type WorkspaceEvent = { "type": "workspace_changed", 
@@ -5218,7 +4859,7 @@ boards: Array<string>,
  * Whether the project's folders may have changed too (boards moved, folders created,
  * renamed, or deleted).
  */
-folders: boolean, } | { "type": "board_conflict", 
+folders: boolean, } | { "type": "board_reloaded", 
 /**
  * The project.
  */
@@ -5228,17 +4869,10 @@ project: ProjectId,
  */
 board: string, 
 /**
- * Which file changed.
+ * The board as reloaded, or `None` when its file was deleted (the session keeps the
+ * version last loaded or saved, which the next save writes back).
  */
-file: WorkingFile, 
-/**
- * The revision the app last loaded or saved.
- */
-savedRevision: string, 
-/**
- * The revision on disk now, or `None` when the file is gone.
- */
-diskRevision: string | null, } | { "type": "config_changed", 
+state: BoardState | null, } | { "type": "config_changed", 
 /**
  * The project.
  */
@@ -5284,10 +4918,6 @@ export interface Commands {
    */
   select_project: { args: SelectProjectArgs; result: null };
   /**
-   * Every project's drafts and published boards with unpublished changes.
-   */
-  drafts: { args: NoArgs; result: Drafts };
-  /**
    * Home's header, state line, and Health line.
    */
   project_summary: { args: ProjectArgs; result: ProjectSummary };
@@ -5309,7 +4939,7 @@ export interface Commands {
    */
   cancel_compile: { args: ProjectArgs; result: CancelCompileResult };
   /**
-   * A project's `unfold.toml` and shared name.
+   * A project's `unfold.toml`.
    */
   project_config: { args: ProjectArgs; result: ProjectConfig };
   /**
@@ -5358,7 +4988,7 @@ export interface Commands {
    */
   preview: { args: ProjectKeyArgs; result: Preview };
   /**
-   * The board pages of every project where a key is a card ("Already on …").
+   * The pages of a project's boards where a key is a card ("Already on …").
    */
   board_refs: { args: ProjectKeyArgs; result: BoardRefs };
   /**
@@ -5386,15 +5016,11 @@ export interface Commands {
    */
   search_text: { args: TextSearchArgs; result: TextSearchSummary; stream: TextSearchFile };
   /**
-   * A project's boards and empty folders.
+   * A project's boards, most recently edited first, and its empty folders.
    */
   list_boards: { args: ProjectArgs; result: BoardList };
   /**
-   * What the thumbnails of a project's boards draw.
-   */
-  board_thumbnails: { args: ThumbnailsArgs; result: Thumbnails };
-  /**
-   * A board as its working file holds it, without opening it.
+   * A board as its file holds it, without opening it.
    */
   read_board: { args: BoardIdArgs; result: ReadBoardResult };
   /**
@@ -5402,11 +5028,11 @@ export interface Commands {
    */
   open_board: { args: BoardIdArgs; result: BoardState };
   /**
-   * Creates an empty draft and opens it in the calling window.
+   * Creates an empty board file in `.unfold/boards/` and opens it in the calling window.
    */
   new_board: { args: NewBoardArgs; result: BoardState };
   /**
-   * Reads an open board's working file again.
+   * Reads an open board's file again.
    */
   reload_board: { args: BoardIdArgs; result: BoardState };
   /**
@@ -5414,7 +5040,7 @@ export interface Commands {
    */
   close_board: { args: BoardIdArgs; result: null };
   /**
-   * Validates, signs, and writes an edited board.
+   * Validates, signs, and writes an edited board over its file.
    */
   save_board: { args: SaveBoardArgs; result: BoardState };
   /**
@@ -5426,25 +5052,9 @@ export interface Commands {
    */
   repair_board: { args: RepairBoardArgs; result: BoardState };
   /**
-   * Publishes a draft, or a published board's unpublished changes.
-   */
-  publish_board: { args: PublishBoardArgs; result: PublishOutcome };
-  /**
-   * Drops a published board's unpublished changes.
-   */
-  discard_changes: { args: BoardIdArgs; result: BoardState };
-  /**
-   * Moves a published board back to drafts.
-   */
-  unpublish_board: { args: BoardIdArgs; result: BoardState };
-  /**
    * Deletes a board.
    */
   delete_board: { args: BoardIdArgs; result: null };
-  /**
-   * Copies a board into a new draft.
-   */
-  duplicate_board: { args: BoardIdArgs; result: BoardSummary };
   /**
    * Moves any board into a folder.
    */
@@ -5510,7 +5120,6 @@ export const COMMAND_NAMES = [
   "reorder_projects",
   "set_project_expanded",
   "select_project",
-  "drafts",
   "project_summary",
   "entrances",
   "problems",
@@ -5536,7 +5145,6 @@ export const COMMAND_NAMES = [
   "search",
   "search_text",
   "list_boards",
-  "board_thumbnails",
   "read_board",
   "open_board",
   "new_board",
@@ -5545,11 +5153,7 @@ export const COMMAND_NAMES = [
   "save_board",
   "board_health",
   "repair_board",
-  "publish_board",
-  "discard_changes",
-  "unpublish_board",
   "delete_board",
-  "duplicate_board",
   "set_board_folder",
   "create_folder",
   "rename_folder",

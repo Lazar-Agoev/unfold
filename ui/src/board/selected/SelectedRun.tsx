@@ -8,7 +8,7 @@
 import { useMemo } from "react";
 import type { Card, CardView } from "../../ipc/generated";
 import { plural } from "../../lib/format";
-import { findPage, labelsFor, select, useOpenBoard, type PageTarget } from "../../state/boards";
+import { findPage, labelTexts, select, useOpenBoard, type PageTarget } from "../../state/boards";
 import { stepRun } from "../combine";
 import { viewCode } from "../viewCode";
 import { RelationRow } from "./Relations";
@@ -42,7 +42,7 @@ export function SelectedRun({ target, card, model, first, last }: SelectedRunPro
   if (!run) {
     return NO_RUN;
   }
-  const labels = labelsFor(allLabels ?? [], card.ref.project);
+  const labels = labelTexts(allLabels ?? []);
   const lines = run.startLine === run.endLine ? `line ${run.startLine}` : `lines ${run.startLine}–${run.endLine}`;
   return (
     <>

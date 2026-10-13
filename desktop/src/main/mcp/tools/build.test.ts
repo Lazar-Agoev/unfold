@@ -3,12 +3,12 @@ import type { AgentEditRequest, AgentItemResult, AgentPage, AgentShellEvent } fr
 import { pageRevision } from "../../agents/revision";
 import type { Page, ReadBoardResult } from "../engine-types";
 import { addCards, arrangePage, removeItems, setView } from "./build";
-import { harness, PROJECT, projectRow } from "./testing";
+import { harness, PROJECT } from "./testing";
 
 vi.mock("electron", async () => (await import("../../fake-electron")).electronModule);
 
-const BOARD = { project: PROJECT, id: ".unfold/local/drafts/order-placement.json" };
-const BOARD_INFO = { title: "Order placement", place: "draft", changes: 0, revision: "r1" } as const;
+const BOARD = { project: PROJECT, id: ".unfold/boards/order-placement.json" };
+const BOARD_INFO = { title: "Order placement", revision: "r1" } as const;
 const CREATE_ORDER = "src/routes/orders.ts#function:createOrder";
 const PAGE: AgentPage = { id: "page-1", title: "Placing an order", defaultView: "diagram", cards: [], groups: [], labels: [], guards: [], links: [] };
 const SAVED: AgentPage = { ...PAGE, cards: [{ id: "create-order", ref: { block: CREATE_ORDER }, at: [0, 0] }] };
@@ -30,7 +30,7 @@ function window(items: readonly AgentItemResult[], warnings: readonly string[] =
 }
 
 function inView(test: ReturnType<typeof harness>): void {
-  test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+  test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
 }
 
 function edits(test: ReturnType<typeof harness>): AgentEditRequest[] {
@@ -38,13 +38,12 @@ function edits(test: ReturnType<typeof harness>): AgentEditRequest[] {
 }
 
 describe("add_cards", () => {
-  it("sends one edit to the page in view, with projects by id, and names what it placed and where following stopped", async () => {
+  it("sends one edit to the page in view, and names what it placed and where following stopped", async () => {
     const test = harness({
-      projects: [projectRow(PROJECT, "ts-orders"), projectRow("p-pay", "payments")],
       window: window(
         [
-          { kind: "card", id: "create-order", status: "created", key: CREATE_ORDER, project: PROJECT, name: "createOrder", frame: "server", stops: [{ reason: "external", call: "ordersQueue.add", line: 28, note: "bullmq" }] },
-          { kind: "card", id: "charge", status: "kept", key: "src/pay.ts#function:charge", project: "p-pay", name: "charge" },
+          { kind: "card", id: "create-order", status: "created", key: CREATE_ORDER, name: "createOrder", frame: "server", stops: [{ reason: "external", call: "ordersQueue.add", line: 28, note: "bullmq" }] },
+          { kind: "card", id: "charge", status: "kept", key: "src/services/payment.ts#function:charge", name: "charge" },
         ],
         ["follow.types follows a type's fields, and charge isn't a type declaration or a class, so no types were added for it."],
       ),
@@ -52,8 +51,8 @@ describe("add_cards", () => {
     inView(test);
     const { text } = await test.call(addCards, {
       cards: [
-        { key: CREATE_ORDER, project: "ts-orders", expanded: true, frame: "server", follow: { callees: 2 } },
-        { key: "src/pay.ts#function:charge", project: "payments", view: "diagram", follow: { types: 1 } },
+        { key: CREATE_ORDER, expanded: true, frame: "server", follow: { callees: 2 } },
+        { key: "src/services/payment.ts#function:charge", view: "diagram", follow: { types: 1 } },
       ],
     });
     expect(edits(test)).toMatchObject([
@@ -62,12 +61,11 @@ describe("add_cards", () => {
         page: "page-1",
         agent: { author: "agent:claude", name: "Claude" },
         title: "Add cards",
-        ops: [{ op: "add_cards", cards: [{ key: CREATE_ORDER, expanded: true, frame: "server", follow: { callees: 2 } }, { key: "src/pay.ts#function:charge", project: "p-pay", view: "diagram", follow: { types: 1 } }] }],
+        ops: [{ op: "add_cards", cards: [{ key: CREATE_ORDER, expanded: true, frame: "server", follow: { callees: 2 } }, { key: "src/services/payment.ts#function:charge", view: "diagram", follow: { types: 1 } }] }],
       },
     ]);
-    expect(edits(test)[0]?.ops[0]).not.toHaveProperty(["cards", 0, "project"]);
     expect(text.split("\n")).toEqual([
-      `Unfold · ts-orders › Order placement (draft) › Placing an order · rev ${pageRevision(SAVED)} · as Claude`,
+      `Unfold · ts-orders › Order placement › Placing an order · rev ${pageRevision(SAVED)} · as Claude`,
       "Cards (1 created, 1 kept):",
       "- createOrder (card id create-order, created, in frame server); stopped: ordersQueue.add (line 28) is external, bullmq",
       "- charge (card id charge, kept)",
@@ -97,11 +95,9 @@ describe("add_cards", () => {
     const two: ReadBoardResult = {
       project: PROJECT,
       id: BOARD.id,
-      place: "draft",
       name: "order-placement",
-      document: { format: "unfold-board", version: 1, title: "Order placement", projects: [], pages: [PAGE as unknown as Page, { ...(PAGE as unknown as Page), id: "page-2", title: "Async path" }] },
+      document: { format: "unfold-board", version: 1, title: "Order placement", pages: [PAGE as unknown as Page, { ...(PAGE as unknown as Page), id: "page-2", title: "Async path" }] },
       revision: "r1",
-      published: null,
     };
     const test = harness({ window: window([]), engine: { read_board: () => two } });
     const refused = await test.call(addCards, { board: BOARD.id, project: "ts-orders", cards: [{ key: CREATE_ORDER }] });
@@ -117,8 +113,8 @@ describe("set_view", () => {
   const PLACE_CALL = "src/services/order-service.ts#class:OrderService/method:place/expression_statement[1]/call[0]";
 
   it("sends expansion and calls to expand in place, and says how each card shows and what the page opens in", async () => {
-    const card = { kind: "card", id: "create-order", status: "updated", key: CREATE_ORDER, project: PROJECT, name: "createOrder", expanded: true, expandedCalls: [[CALL], [CALL, PLACE_CALL]] } as const;
-    const test = harness({ window: window([card, { kind: "card", id: "place", status: "updated", key: "k", project: PROJECT, name: "OrderService.place", expanded: false, expandedCalls: [] }]) });
+    const card = { kind: "card", id: "create-order", status: "updated", key: CREATE_ORDER, name: "createOrder", expanded: true, expandedCalls: [[CALL], [CALL, PLACE_CALL]] } as const;
+    const test = harness({ window: window([card, { kind: "card", id: "place", status: "updated", key: "k", name: "OrderService.place", expanded: false, expandedCalls: [] }]) });
     inView(test);
     const { text } = await test.call(setView, {
       items: [
@@ -155,7 +151,7 @@ describe("set_view", () => {
   });
 
   it("takes item links of the page edited, and refuses links to another page", async () => {
-    const test = harness({ window: window([{ kind: "card", id: "create-order", status: "updated", key: CREATE_ORDER, project: PROJECT, name: "createOrder" }]) });
+    const test = harness({ window: window([{ kind: "card", id: "create-order", status: "updated", key: CREATE_ORDER, name: "createOrder" }]) });
     inView(test);
     const { text } = await test.call(setView, { items: [{ id: `unfold://ts-orders/${BOARD.id}?page=page-1&item=create-order`, view: "flow" }], defaultView: "diagram" });
     expect(edits(test)[0]?.ops).toEqual([{ op: "set_view", items: [{ id: "create-order", view: "flow" }], defaultView: "diagram" }]);
@@ -167,7 +163,7 @@ describe("set_view", () => {
 
 describe("arrange_page", () => {
   it("sends the frame, direction, and moves, and says where cards went", async () => {
-    const test = harness({ window: window([{ kind: "card", id: "create-order", status: "updated", key: CREATE_ORDER, project: PROJECT, name: "createOrder", at: [80, 120] }]) });
+    const test = harness({ window: window([{ kind: "card", id: "create-order", status: "updated", key: CREATE_ORDER, name: "createOrder", at: [80, 120] }]) });
     inView(test);
     const { text } = await test.call(arrangePage, { frame: "server", direction: "down", moves: [{ id: "a", rightOf: "b" }, { id: "c", at: [1, 2] }] });
     expect(edits(test)[0]?.ops).toEqual([{ op: "arrange", frame: "server", direction: "down", moves: [{ id: "a", rightOf: "b" }, { id: "c", at: [1, 2] }] }]);

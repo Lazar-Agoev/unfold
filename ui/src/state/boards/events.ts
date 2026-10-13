@@ -1,41 +1,32 @@
 /**
- * Connects the open boards to the engine's events once per window: outside edits (`board_conflict`),
- * graph updates of any project a board's cards resolve to (its health, outlines, and label refresh;
+ * Connects the open boards to the engine's events once per window: outside changes to a board's file
+ * (`board_reloaded`), graph updates of a board's project (its health, outlines, and label refresh;
  * card models refresh through the query cache's own invalidation), a project's folder changing
  * (`project_reset` forgets its remembered renders), and the page going away (unsaved edits and views
  * are sent at once). The engine-restart order lives in the window's session code.
  */
 
 import { forgetVerifiedCode } from "../../canvas/cardData";
-import type { ProjectId } from "../../ipc/generated";
-import { getProjectIndex } from "../workspace";
 import { onEngineEvent } from "./engine";
 import { boardKey } from "./keys";
-import { handleOutsideChange, openBoards, refreshHealth, saveAllNow } from "./store";
-import type { OpenBoard } from "./types";
+import { adoptOutsideChange, openBoards, refreshHealth, saveAllNow } from "./store";
 
 /** Graph updates arrive in bursts while files are saved; a board's health is refreshed once they settle. */
 export const HEALTH_DELAY_MS = 250;
-
-/** Whether any card of the board can resolve to `project` (its own project, or a named one connected as it). */
-function readsProject(board: OpenBoard, project: ProjectId): boolean {
-  if (board.ref.project === project) {
-    return true;
-  }
-  const index = getProjectIndex();
-  return board.document.projects.some((name) => index.byName.get(name) === project);
-}
 
 /** Installs the window's board subscriptions. Returns the uninstall function. */
 export function installBoardEvents(): () => void {
   const healthTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const unsubscribers = [
-    onEngineEvent("board_conflict", (event) => {
-      void handleOutsideChange({ project: event.project, id: event.board }, event.diskRevision);
+    onEngineEvent("board_reloaded", (event) => {
+      // A file deleted outside keeps the person's version, which the next save writes back.
+      if (event.state) {
+        void adoptOutsideChange(event.state);
+      }
     }),
     onEngineEvent("graph_updated", (event) => {
       for (const board of openBoards()) {
-        if (!readsProject(board, event.project)) {
+        if (board.ref.project !== event.project) {
           continue;
         }
         const key = boardKey(board.ref);

@@ -3,7 +3,7 @@ import type { ViewReport } from "../../shared/agent-api";
 import { ViewTracker, parseViewReport } from "./views";
 
 const ORDERS = { project: "p-orders0000", id: ".unfold/boards/orders.json" };
-const DRAFT = { project: "p-orders0000", id: ".unfold/local/drafts/b.json" };
+const EMAILS = { project: "p-orders0000", id: ".unfold/boards/emails.json" };
 
 const REPORT: ViewReport = {
   board: ORDERS,
@@ -11,7 +11,7 @@ const REPORT: ViewReport = {
   selection: { kind: "card", id: "create-order" },
   lens: "diagram",
   visible: ["create-order", "place"],
-  tabs: [ORDERS, DRAFT],
+  held: [ORDERS, EMAILS],
 };
 
 describe("parseViewReport", () => {
@@ -27,13 +27,12 @@ describe("parseViewReport", () => {
       { kind: "frame", id: "server" },
       { kind: "resource", id: "orders-table" },
       { kind: "note", id: "async-note" },
-      { kind: "line", from: "a", to: "b", project: "p-orders0000", source: "src/a.ts#function:a/call[0]", seq: 0, line: 12 },
-      { kind: "line", from: "a", to: "b", project: "p-orders0000", source: "src/a.ts#function:a/call[0]", seq: 1, line: null },
+      { kind: "line", from: "a", to: "b", source: "src/a.ts#function:a/call[0]", seq: 0, line: 12 },
+      { kind: "line", from: "a", to: "b", source: "src/a.ts#function:a/call[0]", seq: 1, line: null },
       {
         kind: "calls",
         from: "a",
         to: "b",
-        project: "p-orders0000",
         calls: [
           { source: "src/a.ts#function:a/call[0]", seq: 0, line: 12 },
           { source: "src/a.ts#function:a/call[1]", seq: 0, line: 14 },
@@ -43,7 +42,7 @@ describe("parseViewReport", () => {
     for (const selection of selections) {
       expect(parseViewReport({ ...REPORT, selection })?.selection).toEqual(selection);
     }
-    expect(parseViewReport({ selection: { kind: "none" }, visible: [], tabs: [] })).toEqual({ selection: { kind: "none" }, visible: [], tabs: [] });
+    expect(parseViewReport({ selection: { kind: "none" }, visible: [], held: [] })).toEqual({ selection: { kind: "none" }, visible: [], held: [] });
     // A window from before the Diagram/Code switch reports Flow, which is Diagram now.
     expect(parseViewReport({ ...REPORT, lens: "flow" })?.lens).toBe("diagram");
     expect(parseViewReport({ ...REPORT, lens: "code" })?.lens).toBe("code");
@@ -62,12 +61,12 @@ describe("parseViewReport", () => {
       { ...REPORT, selection: { kind: "note" } },
       { ...REPORT, selection: { kind: "proposal" } },
       { ...REPORT, selection: { kind: "step", card: "a", key: "k", owner: 3 } },
-      { ...REPORT, selection: { kind: "line", from: "a", to: "b", project: "p", source: "s", seq: 0.5, line: null } },
-      { ...REPORT, selection: { kind: "calls", from: "a", to: "b", project: "p", calls: [{ source: "s", seq: 0, line: "12" }] } },
-      { ...REPORT, selection: { kind: "calls", from: "a", to: "b", project: "p", calls: "s" } },
+      { ...REPORT, selection: { kind: "line", from: "a", to: "b", source: "s", seq: 0.5, line: null } },
+      { ...REPORT, selection: { kind: "calls", from: "a", to: "b", calls: [{ source: "s", seq: 0, line: "12" }] } },
+      { ...REPORT, selection: { kind: "calls", from: "a", to: "b", calls: "s" } },
       { ...REPORT, visible: ["a", 1] },
-      { ...REPORT, tabs: [ORDERS, { id: "b" }] },
-      { ...REPORT, tabs: undefined },
+      { ...REPORT, held: [ORDERS, { id: "b" }] },
+      { ...REPORT, held: undefined },
     ]) {
       expect(parseViewReport(report)).toBeNull();
     }
@@ -78,7 +77,7 @@ describe("ViewTracker", () => {
   it("keeps the window's last report until it closes", () => {
     const views = new ViewTracker();
     expect(views.lastUsed()).toBeUndefined();
-    views.report(1, { ...REPORT, tabs: [] });
+    views.report(1, { ...REPORT, held: [] });
     views.report(1, REPORT);
     expect(views.lastUsed()).toBe(1);
     expect(views.get(1)).toEqual(REPORT);
@@ -91,21 +90,21 @@ describe("ViewTracker", () => {
     expect(views.lastUsed()).toBe(2);
   });
 
-  it("finds the window that holds a board from the reported tabs, and follows boards opened for an agent", () => {
+  it("finds the window that holds a board from the reported boards, and follows boards loaded for an agent", () => {
     const views = new ViewTracker();
     views.report(1, REPORT);
-    views.report(2, { ...REPORT, tabs: [] });
-    expect(views.holder(DRAFT)).toBe(1);
+    views.report(2, { ...REPORT, held: [] });
+    expect(views.holder(EMAILS)).toBe(1);
     expect(views.holder({ project: "p-orders0000", id: "other.json" })).toBeUndefined();
 
-    views.holds(2, DRAFT);
-    expect(views.holder(DRAFT)).toBe(2);
-    expect(views.get(1)?.tabs).toEqual([ORDERS]);
+    views.holds(2, EMAILS);
+    expect(views.holder(EMAILS)).toBe(2);
+    expect(views.get(1)?.held).toEqual([ORDERS]);
 
-    views.released(2, DRAFT);
-    expect(views.holder(DRAFT)).toBeUndefined();
+    views.released(2, EMAILS);
+    expect(views.holder(EMAILS)).toBeUndefined();
 
     views.holds(3, ORDERS);
-    expect(views.get(3)).toEqual({ selection: { kind: "none" }, visible: [], tabs: [ORDERS] });
+    expect(views.get(3)).toEqual({ selection: { kind: "none" }, visible: [], held: [ORDERS] });
   });
 });

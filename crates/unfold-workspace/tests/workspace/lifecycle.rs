@@ -37,7 +37,6 @@ fn opening_writes_nothing_and_the_first_compile_creates_local() {
     for path in [
         ".unfold/local/cache/graph.sqlite",
         ".unfold/local/cache/lock",
-        ".unfold/local/drafts",
         ".unfold/local/state.json",
     ] {
         assert!(playground.path(path).exists(), "{path} is missing");

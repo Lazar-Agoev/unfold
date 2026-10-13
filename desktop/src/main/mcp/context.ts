@@ -58,14 +58,14 @@ export interface ToolContext {
   engine<C extends CommandName>(command: C, args: CommandArgs<C>): Promise<CommandResult<C>>;
   /**
    * Runs an engine command that needs the board's session (`board_health`, `export_mermaid_text`) as
-   * the window that holds the board, opening it in a background tab when none does.
+   * the window that holds the board, loading its session there first.
    */
   held<C extends CommandName>(board: AgentBoardRef, command: C, args: CommandArgs<C>): Promise<CommandResult<C>>;
   /** Runs a streamed engine command (`search_text`), handing each message to `onMessage` before it settles. */
   stream<C extends StreamCommandName>(command: C, args: CommandArgs<C>, onMessage: (message: StreamMessage<C>) => void): Promise<CommandResult<C>>;
   /** The workspace's projects, in its order (read once per call). */
   projects(): Promise<readonly ProjectRow[]>;
-  /** A project by id, by shared name, or by a link to one of its boards. */
+  /** A project by id, by name, or by a link to one of its boards. */
   project(reference: string): Promise<ProjectRow>;
   /** A link the person pasted (D9), with its project resolved to an id. */
   link(text: string): Promise<ResolvedLink>;

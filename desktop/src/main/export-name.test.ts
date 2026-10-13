@@ -10,7 +10,7 @@ describe("exportFileName", () => {
 
   it("uses a board ID's file name", () => {
     expect(exportFileName(".unfold/boards/order-placement.json")).toBe("order-placement.mmd");
-    expect(exportFileName(".unfold/local/drafts/untitled-2.json")).toBe("untitled-2.mmd");
+    expect(exportFileName(".unfold/boards/untitled-2.json")).toBe("untitled-2.mmd");
   });
 
   it("takes another extension", () => {

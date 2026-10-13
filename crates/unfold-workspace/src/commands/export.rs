@@ -1,8 +1,6 @@
 //! Mermaid export (docs/reader.md#boards): one board page or one entrance as a
 //! Mermaid flowchart, written to a file the person chose in the main process's save dialog, or
-//! returned as text for the clipboard. A page's drawn links are dashed arrows with their labels,
-//! and a card from a project that is not connected is a "From <name>, not connected"
-//! placeholder.
+//! returned as text for the clipboard. A page's drawn links are dashed arrows with their labels.
 
 use std::path::Path;
 
@@ -122,7 +120,7 @@ fn mermaid_of(
             let graph = BoardGraph::load(&reader, workspace.root(), &entrance)?;
             let board = mermaid::entrance_board(&graph, key)
                 .ok_or_else(|| CommandError::not_found(format!("no entrance `{key}`")))?;
-            let graph = BoardGraph::load(&reader, workspace.root(), &board.references(None))?;
+            let graph = BoardGraph::load(&reader, workspace.root(), &board.references())?;
             mermaid::entrance(&graph, key)
                 .ok_or_else(|| CommandError::not_found(format!("no entrance `{key}`")))
         }

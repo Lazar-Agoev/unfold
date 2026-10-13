@@ -170,7 +170,8 @@ export interface LineContractProps {
 }
 
 export function LineContract({ target, line, x, y, curve }: LineContractProps) {
-  const { project, source, seq } = line;
+  const { source, seq } = line;
+  const { project } = target.board;
   const query = useEngineQuery("call_contract", { project, source, seq });
   const openTypes = usePageView(target, (view) => view.openTypes);
   const contract = query.data;

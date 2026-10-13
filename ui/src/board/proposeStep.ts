@@ -38,8 +38,7 @@ export function proposalChoice(page: Page, selection: Selection, context: Source
   if (!card || !("block" in card.ref) || selection.key === cardKey(card)) {
     return null;
   }
-  const project = context.project(card.ref.project);
-  const model = project !== null ? context.model(project, cardKey(card)) : undefined;
+  const model = context.model(cardKey(card));
   const flow = model?.type === "block" && model.flow?.source === "current" ? model.flow : null;
   const key = selection.key;
   const hidden = page.groups.some((group) => group.card === card.id && group.collapsed && group.members.some((member) => isWithin(key, member)));

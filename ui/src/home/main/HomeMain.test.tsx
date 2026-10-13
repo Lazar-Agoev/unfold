@@ -3,7 +3,7 @@ import "../../test/dom";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { Toaster } from "../../components";
-import type { ProblemItem, ProjectRow, ProjectSummary, WorkspaceView } from "../../ipc";
+import type { BoardSummary, ProblemItem, ProjectRow, ProjectSummary, WorkspaceView } from "../../ipc";
 import { resetBoards } from "../../state/boards/store";
 import { initialLayout, useLayout, type HomeView } from "../../state/layout";
 import { usePeekTarget } from "../../state/overlays";
@@ -37,7 +37,6 @@ function start(
       ...(row ? { project_summary: () => summaryOf(row) } : {}),
       entrances: ({ project }) => ({ ...OVERVIEW, project }),
       list_boards: ({ project }) => ({ ...fixture("list_boards", "list_boards"), project, boards: fixture("list_boards", "list_boards").boards.map((board) => ({ ...board, project })) }),
-      board_thumbnails: () => ({ thumbnails: [] }),
       ...handlers,
     },
     windowHandlers,
@@ -188,13 +187,52 @@ describe("the overview", () => {
     });
   });
 
-  it("filters and sorts Boards, remembered per window", async () => {
-    start(workspaceView([projectRow(P, "shop")]));
+  it("lists Boards by last edit, each with its folder and when it was edited, as the engine orders them", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 9, 13, 12) });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const now = Date.now();
+    const board = (id: string, title: string, folder: string | null, updatedAtMs: number): BoardSummary => ({
+      project: P,
+      id: `.unfold/boards/${id}.json`,
+      name: id,
+      title,
+      folder,
+      pages: 1,
+      cards: 2,
+      updatedAtMs,
+      label: null,
+      error: null,
+    });
+    const boards = [
+      board("place-an-order", "Place an order", "Checkout", now - 2 * 60_000),
+      board("refunds", "Refunds", "Checkout", now - 24 * 3_600_000),
+      board("data-model", "Data model", null, new Date(2026, 9, 1, 10).getTime()),
+    ];
+    const fake = start(workspaceView([projectRow(P, "shop")]), {
+      list_boards: () => ({ project: P, boards, emptyFolders: [] }),
+      open_board: ({ project, id }) => boardState(project, id),
+    });
     renderWithClient(<HomeMain />);
-    expect(await screen.findByText("Order placement")).toBeTruthy();
-    fireEvent.click(screen.getByRole("radio", { name: "Drafts" }));
-    expect(useLayout.getState().home.boardsFilter).toBe("drafts");
-    expect(await screen.findByText("No drafts")).toBeTruthy();
+    const list = await screen.findByRole("group", { name: "Boards" });
+    const rows = within(list).getAllByRole("button");
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "Place an orderCheckoutedited 2 minutes ago",
+      "RefundsCheckoutedited yesterday",
+      "Data modeledited Oct 1",
+    ]);
+    expect(within(screen.getByRole("region", { name: "Boards" })).queryByRole("radiogroup")).toBeNull();
+    fireEvent.click(within(list).getByText("Refunds"));
+    await waitFor(() => {
+      expect(fake.callsOf("open_board")).toEqual([{ project: P, id: ".unfold/boards/refunds.json" }]);
+    });
+  });
+
+  it("offers New board when the project has no boards", async () => {
+    start(workspaceView([projectRow(P, "shop")]), { list_boards: () => ({ project: P, boards: [], emptyFolders: [] }) });
+    renderWithClient(<HomeMain />);
+    expect(await screen.findByText("No boards yet")).toBeTruthy();
   });
 });
 
@@ -253,16 +291,5 @@ describe("Health", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Back to overview" }));
     expect(useLayout.getState().home.view).toBe("overview");
-  });
-});
-
-describe("Drafts", () => {
-  it("lists the drafts of every project with their project", async () => {
-    const draft = { ...fixture("list_boards", "list_boards").boards[0], project: P, id: ".unfold/local/drafts/trace.json", place: "draft" as const, title: "Trace" };
-    start(workspaceView([projectRow(P, "shop")]), { drafts: () => ({ drafts: [draft] as never }) }, "drafts");
-    renderWithClient(<HomeMain />);
-    expect(await screen.findByRole("heading", { name: "Drafts" })).toBeTruthy();
-    expect(await screen.findByText("Trace")).toBeTruthy();
-    expect(screen.getByText("shop ·")).toBeTruthy();
   });
 });

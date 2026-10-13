@@ -25,20 +25,18 @@ import { useEffect } from "react";
 import { cardQuery } from "../canvas/cardData";
 import { shortPath } from "../code/text";
 import { queryClient } from "../ipc/client";
-import type { Anchor, BlockHeader, CardView, EvidenceView, Key, Page, ProjectId, ProjectName, TargetView } from "../ipc/generated";
+import type { Anchor, BlockHeader, CardView, EvidenceView, Key, Page, ProjectId, TargetView } from "../ipc/generated";
 import { cardKey, findCard, findPage, findProposal, findResource, getOpenBoard, getPageView, sameBoard, usePageView, type PageTarget, type Selection } from "../state/boards";
 import { getPeekTarget, openPeek, type PeekTarget } from "../state/overlays";
-import { getProjectIndex, resolveRefProject } from "../state/workspace";
 import { combineChoice, stepRun, type CombineChoice } from "./combine";
 
 type BlockView = Extract<CardView, { type: "block" }>;
 
-/** What the resolver reads besides the page: projects as the board resolves them, and loaded card models. */
+/** What the resolver reads besides the page: the board's project, and its loaded card models. */
 export interface SourceContext {
-  /** The project a ref's project name (absent: the board's own) resolves to; null when it isn't connected. */
-  readonly project: (name: ProjectName | undefined) => ProjectId | null;
+  readonly project: ProjectId;
   /** A card model, when it is loaded. */
-  readonly model: (project: ProjectId, key: Key) => CardView | undefined;
+  readonly model: (key: Key) => CardView | undefined;
 }
 
 /** Where something's source is, or why it has none. */
@@ -115,11 +113,7 @@ function citedSource(anchors: readonly Anchor[] | undefined, context: SourceCont
   if (!anchor) {
     return none("It cites no source.");
   }
-  const project = context.project(anchor.project);
-  if (project === null) {
-    return none("What it cites is in a project that isn't connected.");
-  }
-  return anchorSource(project, anchor, "key" in anchor ? context.model(project, anchor.key) : undefined);
+  return anchorSource(context.project, anchor, "key" in anchor ? context.model(anchor.key) : undefined);
 }
 
 function cardSource(page: Page, selection: Extract<Selection, { kind: "card" }>, context: SourceContext): SourceResult {
@@ -127,21 +121,18 @@ function cardSource(page: Page, selection: Extract<Selection, { kind: "card" }>,
   if (!card) {
     return none("The card isn't on the page.");
   }
-  const project = context.project(card.ref.project);
-  if (project === null) {
-    return none("Its project isn't connected.");
-  }
+  const { project } = context;
   const key = cardKey(card);
-  const model = context.model(project, key);
+  const model = context.model(key);
   if (!model) {
     return none("The card isn't loaded yet.");
   }
   if (model.type === "entrance") {
     return found(evidenceSource(project, model.evidence));
   }
-  // A step shown in a call expanded in place: the callee's own source (calls never cross projects).
+  // A step shown in a call expanded in place: the callee's own source.
   if (selection.owner !== undefined) {
-    const owner = context.model(project, selection.owner);
+    const owner = context.model(selection.owner);
     if (owner?.type !== "block") {
       return none("The called function isn't loaded.");
     }
@@ -171,14 +162,13 @@ function groupSource(page: Page, groupId: string, context: SourceContext): Sourc
   if (!group || !card) {
     return none("The combined block isn't on the page.");
   }
-  const project = context.project(card.ref.project);
-  const model = project !== null ? context.model(project, cardKey(card)) : undefined;
+  const model = context.model(cardKey(card));
   const outline = model?.type === "block" && model.code?.source.state === "current" ? model.code.source.outline : null;
   const items = outline?.filter((item) => group.members.includes(item.key)) ?? [];
-  if (project === null || model?.type !== "block" || items.length === 0) {
+  if (model?.type !== "block" || items.length === 0) {
     return none("This combined block's code isn't available right now.");
   }
-  return found(linesOf(project, model.header.path, Math.min(...items.map((item) => item.startLine)), Math.max(...items.map((item) => item.endLine))));
+  return found(linesOf(context.project, model.header.path, Math.min(...items.map((item) => item.startLine)), Math.max(...items.map((item) => item.endLine))));
 }
 
 /** A proposed step's placement: the source of the step it goes after (it has no code of its own). */
@@ -188,15 +178,11 @@ function placementSource(page: Page, proposalId: string, context: SourceContext)
   if (!proposal || !card) {
     return none("The proposed step isn't on the page.");
   }
-  const project = context.project(card.ref.project);
-  if (project === null) {
-    return none("Its project isn't connected.");
-  }
-  const model = context.model(project, cardKey(card));
+  const model = context.model(cardKey(card));
   if (model?.type !== "block") {
     return none("The card isn't loaded yet.");
   }
-  const result = stepSource(project, model, proposal.after);
+  const result = stepSource(context.project, model, proposal.after);
   return result.target ? result : none("The step it goes after isn't in the code now. A proposed step has no code of its own.");
 }
 
@@ -219,14 +205,13 @@ export function selectionSource(page: Page, selection: Selection, context: Sourc
 }
 
 /**
- * The resolver's context for a board's pages now: the workspace's projects and the window's loaded card
+ * The resolver's context for a board's pages now: the board's project and the window's loaded card
  * models. `settled` leaves out a model that is refreshing (its data may be from an earlier compile).
  */
-export function loadedContext(boardProject: ProjectId, settled = false): SourceContext {
-  const index = getProjectIndex();
+export function loadedContext(project: ProjectId, settled = false): SourceContext {
   return {
-    project: (name) => resolveRefProject(index, boardProject, name),
-    model: (project, key) => {
+    project,
+    model: (key) => {
       const state = queryClient.getQueryState<CardView>(cardQuery(project, key).queryKey);
       return settled && (state?.isInvalidated === true || state?.fetchStatus === "fetching") ? undefined : state?.data;
     },
@@ -273,11 +258,11 @@ export function viewCode(target: PageTarget, selection: Selection = getPageView(
 }
 
 /** View code on an entrance's resolved target at `position`: that startup's or handler's definition. */
-export function viewEntranceTarget(target: PageTarget, project: ProjectId, entrance: Key, position: number): void {
+export function viewEntranceTarget(target: PageTarget, entrance: Key, position: number): void {
   const find = (settled: boolean) => {
-    const model = loadedContext(target.board.project, settled).model(project, entrance);
+    const model = loadedContext(target.board.project, settled).model(entrance);
     const handler = model?.type === "entrance" ? model.targets.find((item) => item.position === position) : undefined;
-    return handler ? entranceTargetSource(project, handler).target : null;
+    return handler ? entranceTargetSource(target.board.project, handler).target : null;
   };
   const source = find(false);
   if (source) {

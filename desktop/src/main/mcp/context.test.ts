@@ -40,7 +40,7 @@ function setup(overrides: Partial<McpServices> = {}) {
 }
 
 describe("finding projects", () => {
-  it("by id, by shared name, or by a link to one of its boards, reading the workspace once per call", async () => {
+  it("by id, by name, or by a link to one of its boards, reading the workspace once per call", async () => {
     const { context, engineCalls } = setup();
     expect((await context.project("p-bbbbbbbbbb")).name).toBe("payments");
     expect((await context.project(" shop ")).id).toBe("p-aaaaaaaaaa");

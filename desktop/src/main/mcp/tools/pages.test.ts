@@ -14,8 +14,8 @@ const ENTRANCE = 'entrance:["express.route","http","POST","/orders","src/routes/
 const CART = "src/cart.ts#interface:Cart";
 const CART_ITEM = "src/cart.ts#interface:CartItem";
 const BASKET = "src/cart.ts#class:Basket";
-const BOARD = { project: PROJECT, id: ".unfold/local/drafts/order-placement.json" };
-const BOARD_INFO = { title: "Order placement", place: "draft", changes: 0, revision: "r1" } as const;
+const BOARD = { project: PROJECT, id: ".unfold/boards/order-placement.json" };
+const BOARD_INFO = { title: "Order placement", revision: "r1" } as const;
 
 const PAGE: AgentPage = {
   id: "page-1",
@@ -27,7 +27,6 @@ const PAGE: AgentPage = {
     { id: "place", ref: { block: PLACE }, at: [800, 0], folded: true },
     { id: "cart", ref: { block: CART }, at: [0, 400] },
     { id: "cart-item", ref: { block: CART_ITEM }, at: [400, 400] },
-    { id: "charge", ref: { block: "src/pay.ts#function:charge", project: "payments" }, at: [800, 400] },
   ],
   groups: [{ id: "queue-it", card: "create-order", title: "Queue it for a worker", members: [`${CREATE_ORDER}/if[0]/variable:job`, `${CREATE_ORDER}/if[0]/return[0]`], collapsed: true, author: "agent:claude" }],
   labels: [{ key: `${CREATE_ORDER}/variable:draft`, text: "Read the order draft", author: "person:lazar", signature: "s" }],
@@ -43,7 +42,7 @@ const PAGE: AgentPage = {
       author: "agent:codex",
       label: { text: "the order", author: "agent:codex", signature: "s" },
     },
-    { id: "talks", from: "place", to: "charge", label: { text: "calls over HTTP", author: "person:lazar", signature: "s" } },
+    { id: "talks", from: "place", to: "orders", label: { text: "calls over HTTP", author: "person:lazar", signature: "s" } },
   ],
   frames: [
     { id: "server", title: "server", members: ["post-orders", "create-order", "checks"], look: "box", icon: "api", author: "agent:claude" },
@@ -118,11 +117,9 @@ function file(page: AgentPage = PAGE): ReadBoardResult {
   return {
     project: PROJECT,
     id: BOARD.id,
-    place: "draft",
     name: "order-placement",
-    document: { format: "unfold-board", version: 1, title: "Order placement", projects: [], pages: [page as unknown as Page, { ...(page as unknown as Page), id: "page-2", title: "Async path" }] },
+    document: { format: "unfold-board", version: 1, title: "Order placement", pages: [page as unknown as Page, { ...(page as unknown as Page), id: "page-2", title: "Async path" }] },
     revision: "r1",
-    published: null,
   };
 }
 
@@ -151,24 +148,21 @@ const held = (request: AgentShellEvent) =>
 describe("read_page", () => {
   it("reads everything on a page from the window that holds it, with ids, and what the board draws between cards", async () => {
     const test = app(held);
-    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
     const { text, isError } = await test.call(readPage);
     expect(isError).toBe(false);
     const lines = text.split("\n");
     expect(lines.slice(0, 2)).toEqual([
-      `Unfold · ts-orders › Order placement (draft) › Placing an order · rev ${pageRevision(PAGE)} · as Claude`,
+      `Unfold · ts-orders › Order placement › Placing an order · rev ${pageRevision(PAGE)} · as Claude`,
       `Ids: project ${PROJECT}, board ${BOARD.id}, page page-1. The page opens in Diagram; cards without their own setting are compact. The window has edits it hasn't saved yet; they're included.`,
     ]);
-    expect(lines).toContain("Cards (6):");
+    expect(lines).toContain("Cards (5):");
     expect(lines).toContain(`- POST /orders (card id post-orders): http entrance; key ${ENTRANCE}; compact (the page's default); at [0, 0]; in frame server`);
     expect(lines).toContain(
       `- createOrder (card id create-order): function at src/routes/orders.ts:25; key ${CREATE_ORDER}; expanded; at [320, 0], 520×310; in frame server; description by you: “Places the order now, or queues it.”`,
     );
     expect(lines).toContain(`- OrderService.place (card id place): method at src/services/order-service.ts:13; key ${PLACE}; compact (the page's default); folded; at [800, 0]; in frame checks`);
     expect(lines).toContain(`- Cart (card id cart): interface at src/cart.ts:12; key ${CART}; fields; at [0, 400]`);
-    expect(lines).toContain(
-      "- charge (card id charge): key src/pay.ts#function:charge; from project payments; compact (the page's default); at [800, 400]; code unavailable: its project payments isn't in the workspace",
-    );
     expect(lines).toContain("- “Queue it for a worker” (step group id queue-it) in card create-order: 2 statements, lines 28–30; collapsed; titled by you");
     expect(lines).toContain("Frames (2), nested as they are:");
     expect(lines).toContain("- server (frame id server; box, api; by you): holds POST /orders (post-orders), createOrder (create-order)");
@@ -179,7 +173,7 @@ describe("read_page", () => {
     expect(lines).toContain(
       `- writes connection createOrder (create-order) → orders (orders) (link id save-order): from step at src/routes/orders.ts:32 (key ${CREATE_ORDER}/variable:order/call[0]); anchors OrderRepository (key src/db/repository.ts#class:OrderRepository); by Codex (an agent); label by Codex (an agent): “the order”`,
     );
-    expect(lines).toContain("- link OrderService.place (place) → charge (charge) (link id talks): label by Lazar (a person): “calls over HTTP”");
+    expect(lines).toContain("- link OrderService.place (place) → orders (orders) (link id talks): label by Lazar (a person): “calls over HTTP”");
     expect(lines).toContain("- note note-1, attached to createOrder (create-order) at offset [0, -40], by you: “The client gets a job id, not the order.”");
     expect(lines).toContain("- POST /orders (post-orders) → createOrder (create-order): handler createOrder");
     expect(lines).toContain(
@@ -198,7 +192,7 @@ describe("read_page", () => {
     const steps = async (groups: AgentPage["groups"]) => {
       const page: AgentPage = { ...PAGE, groups };
       const test = app((request) => (request.type === "agent_read" ? { ok: true, page, board: BOARD_INFO, sizes: {} } : undefined));
-      test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+      test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
       const { text } = await test.call(readPage);
       return text
         .split("\n")
@@ -282,14 +276,14 @@ describe("read_page", () => {
         card: (args) => CARDS[String(args["key"])]?.() ?? null,
         line_labels: () => [],
         board_health: () => ({
-          health: { items: [{ page: "page-1", kind: "review", target: { proposal: "audit" }, message: review, repairs: ["accept", "reconnect", "removeProposal"] }], missing: 0, outdated: 0, brokenGroups: 0, review: 1, notConnected: 0, brokenLinks: 0 },
+          health: { items: [{ page: "page-1", kind: "review", target: { proposal: "audit" }, message: review, repairs: ["accept", "reconnect", "removeProposal"] }], missing: 0, outdated: 0, brokenGroups: 0, review: 1, brokenLinks: 0 },
           outlines: [],
           label: null,
         }),
       },
       window: (request) => (request.type === "agent_read" ? { ok: true, page, board: { ...BOARD_INFO, unsaved: false }, sizes: {} } : request.type === "agent_open_board" ? { ok: true } : undefined),
     });
-    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
     const lines = (await test.call(readPage)).text.split("\n");
     expect(lines[1]).toContain("The page opens in Code, every card's source; in Diagram, cards without their own setting are expanded.");
     expect(lines).toContain(`- createOrder (card id create-order): function at src/routes/orders.ts:25; key ${CREATE_ORDER}; expanded, calls expanded in place [${CALL}], [${CALL} › ${PLACE}/call[0]]; at [0, 0]`);
@@ -308,33 +302,10 @@ describe("read_page", () => {
     expect(test.windowCalls).toEqual([[1, "board_health", { project: PROJECT, id: BOARD.id }]]);
   });
 
-  it("labels each arrow with its own project's line label when two projects share keys", async () => {
-    const cards: AgentPage["cards"] = [
-      { id: "create-order", ref: { block: CREATE_ORDER }, at: [0, 0] },
-      { id: "place", ref: { block: PLACE }, at: [400, 0] },
-      { id: "create-order-b", ref: { block: CREATE_ORDER, project: "payments" }, at: [0, 400] },
-      { id: "place-b", ref: { block: PLACE, project: "payments" }, at: [400, 400] },
-    ];
-    const page: AgentPage = { ...PAGE, cards, groups: [], links: [], frames: [], resources: [], notes: [] };
-    const receipt: LabeledLine = { ...LABEL, label: { ...ORDER_LABEL, output: { text: "Promise<Receipt>", spans: [] } } };
-    const test = harness({
-      projects: [projectRow(PROJECT, "ts-orders"), projectRow("p-pay", "payments")],
-      engine: {
-        card: (args) => CARDS[String(args["key"])]?.() ?? null,
-        line_labels: (args) => (args["project"] === PROJECT ? [LABEL] : [receipt]),
-        read_board: () => file(page),
-      },
-    });
-    const { text } = await test.call(readPage, { board: BOARD.id, project: "ts-orders" });
-    const source = `source ${CREATE_ORDER}/variable:order/call[0], seq 0`;
-    expect(text).toContain(`- createOrder (create-order) → OrderService.place (place): calls orderService.place at line 32: (OrderDraft) → Promise<Order>; ${source}`);
-    expect(text).toContain(`- createOrder (create-order-b) → OrderService.place (place-b): calls orderService.place at line 32: (OrderDraft) → Promise<Receipt>; ${source}`);
-  });
-
   it("reads a board no window holds from its file, a board's first page by default, and pages long pages", async () => {
     const test = app();
     const { text } = await test.call(readPage, { board: BOARD.id, project: "ts-orders" });
-    expect(text.split("\n")[0]).toBe(`Unfold · ts-orders › Order placement (draft) › Placing an order · rev ${pageRevision(PAGE)} · as Claude`);
+    expect(text.split("\n")[0]).toBe(`Unfold · ts-orders › Order placement › Placing an order · rev ${pageRevision(PAGE)} · as Claude`);
     expect(text).not.toContain("520×310");
     const second = await test.call(readPage, { page: `unfold://ts-orders/${BOARD.id}?page=page-2` });
     expect(second.text.split("\n")[0]).toContain("› Async path ·");
@@ -368,7 +339,7 @@ describe("read_page", () => {
 
   it("gives the page as Mermaid, exported by the window that holds the board", async () => {
     const test = app(held);
-    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
     const { text } = await test.call(readPage, { format: "mermaid" });
     expect(text.split("\n").slice(1)).toEqual([
       "The page as Mermaid, as last saved (the window's unsaved edits aren't in it):",
@@ -390,57 +361,45 @@ describe("read_page", () => {
 });
 
 function summary(id: string, title: string, overrides: Partial<BoardSummary> = {}): BoardSummary {
-  return { project: PROJECT, id, place: "draft", name: id, title, folder: null, pages: 2, cards: 6, projects: [], changes: 0, updatedAtMs: 0, label: null, error: null, ...overrides };
+  return { project: PROJECT, id, name: id, title, folder: null, pages: 2, cards: 6, updatedAtMs: 0, label: null, error: null, ...overrides };
 }
 
 describe("list_boards", () => {
-  it("lists a project's boards with their pages, publish state, health, and whether one is open or in view", async () => {
+  it("lists a project's boards, last edited first, with their pages, folders, health, and whether one is open or in view", async () => {
     const test = harness({
       engine: {
         list_boards: () => ({
           project: PROJECT,
           boards: [
-            summary(".unfold/boards/orders.json", "Orders", { place: "published", changes: 2, folder: "flows", label: "1 missing · 2 outdated" }),
-            summary(BOARD.id, "Order placement"),
-            summary(".unfold/boards/broken.json", "Broken", { place: "published", error: "the file isn't a board" }),
+            summary(".unfold/boards/broken.json", "Broken", { updatedAtMs: Date.UTC(2026, 9, 11), error: "the file isn't a board" }),
+            summary(".unfold/boards/orders.json", "Orders", { updatedAtMs: Date.UTC(2026, 9, 13), folder: "flows", label: "1 missing · 2 outdated" }),
+            summary(BOARD.id, "Order placement", { updatedAtMs: Date.UTC(2026, 9, 12) }),
           ],
           emptyFolders: ["old"],
         }),
         read_board: (args) => file({ ...PAGE, title: args["id"] === BOARD.id ? "Placing an order" : "Overview" }),
       },
     });
-    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD, { project: PROJECT, id: ".unfold/boards/orders.json" }] });
+    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD, { project: PROJECT, id: ".unfold/boards/orders.json" }] });
     const { text } = await test.call(listBoards);
     expect(text.split("\n")).toEqual([
       "Unfold · ts-orders · as Claude",
       `ts-orders (project id ${PROJECT}) has 3 boards:`,
-      "- Orders (board id .unfold/boards/orders.json): published, 2 unpublished changes, in flows, 6 cards, needs review: 1 missing · 2 outdated (check lists it), open in Unfold",
+      "- Orders (board id .unfold/boards/orders.json): in flows, edited 2026-10-13T00:00:00.000Z, 6 cards, needs review: 1 missing · 2 outdated (check lists it), open in Unfold",
       "  pages: Overview (page id page-1), Async path (page id page-2)",
-      `- Order placement (board id ${BOARD.id}): draft, 6 cards, in view`,
+      `- Order placement (board id ${BOARD.id}): edited 2026-10-12T00:00:00.000Z, 6 cards, in view`,
       "  pages: Placing an order (page id page-1), Async path (page id page-2)",
-      "- Broken (board id .unfold/boards/broken.json): published, 6 cards, can't be read: the file isn't a board",
+      "- Broken (board id .unfold/boards/broken.json): edited 2026-10-11T00:00:00.000Z, 6 cards, can't be read: the file isn't a board",
       "  2 pages",
       "Empty folders: old.",
       "Next: read_page with a board's and a page's id; check with a board's id lists its problems.",
     ]);
   });
 
-  it("lists every project's drafts and unpublished changes when no project is named or in view", async () => {
-    const test = harness({
-      projects: [projectRow(PROJECT, "ts-orders"), projectRow("p-pay", "payments")],
-      engine: {
-        drafts: () => ({ drafts: [summary(".unfold/local/drafts/pay.json", "Payments", { project: "p-pay" })] }),
-        read_board: () => file(),
-      },
-    });
+  it("asks which project when several are open and no board is in view", async () => {
+    const test = harness({ projects: [projectRow(PROJECT, "ts-orders"), projectRow("p-pay", "payments")] });
     const { text } = await test.call(listBoards);
-    expect(text.split("\n")).toEqual([
-      "Unfold · as Claude",
-      "2 projects and no board in view, so these are every project's drafts and published boards with unpublished changes, newest first (1):",
-      "- Payments (board id .unfold/local/drafts/pay.json): in payments, draft, 6 cards",
-      "  pages: Placing an order (page id page-1), Async path (page id page-2)",
-      "Next: list_boards with project lists all of one project's boards.",
-    ]);
+    expect(text).toBe("Can't tell which project you mean: the workspace has 2 projects and no board is in view. Pass project: a name or id from list_projects.");
     expect(test.commands()).not.toContain("list_boards");
   });
 });

@@ -124,7 +124,6 @@ describe("update_project_settings", () => {
     text: '# Settings\n[scope]\nexclude = ["dist/**"]\n',
     settings: null,
     error: null,
-    name: { value: "ts-orders", isDefault: true },
   };
 
   it("applies the edits all at once and returns the change to unfold.toml", async () => {

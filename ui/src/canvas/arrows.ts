@@ -3,8 +3,7 @@
  * occurrence shown in a card whose resolved target has a card on the board. Each leaves from its own
  * port (the end of the calling line, or the Flow node), even when several calls go to one card.
  * Imports and passed references are dashed. An entrance points at each handler on the page. The
- * graph has no edges between projects, so arrows join only cards that resolve to the same project.
- * The board file holds no arrows; they are derived from the cards and their models.
+ * board file holds no arrows; they are derived from the cards and their models.
  *
  * A call expanded in place shows the callee's (or a callback's) own Flow inside the card: the calls
  * that Flow shows leave from its steps (`insetPort`), each inset's apart, so several calls of one
@@ -24,8 +23,8 @@ import { cardRefKey } from "../state/boards/keys";
 export interface ArrowCard {
   readonly id: string;
   readonly key: Key;
-  /** The project the card resolves to; null for a card of a project that isn't connected. */
-  readonly project: ProjectId | null;
+  /** The project the card's models are read from: its board's. */
+  readonly project: ProjectId;
   readonly entrance: boolean;
   /** What its body shows (`cardBody`): a node's and a type card's arrows leave from the node's edge. */
   readonly body: CardBody;
@@ -319,16 +318,16 @@ export function computeArrows(
 ): Arrow[] {
   const cardOfRef = new Map<string, string>();
   for (const card of cards) {
-    const ref = card.project !== null ? cardRefKey(card.project, card.key) : null;
-    if (!card.entrance && ref !== null && !cardOfRef.has(ref)) {
+    const ref = cardRefKey(card.project, card.key);
+    if (!card.entrance && !cardOfRef.has(ref)) {
       cardOfRef.set(ref, card.id);
     }
   }
   const arrows: Arrow[] = [];
   for (const card of cards) {
     const { project } = card;
-    const model = project !== null ? models.get(cardRefKey(project, card.key)) : undefined;
-    if (!model || project === null) {
+    const model = models.get(cardRefKey(project, card.key));
+    if (!model) {
       continue;
     }
     const cardOf = (key: Key) => cardOfRef.get(cardRefKey(project, key));

@@ -2538,7 +2538,6 @@ dependencies = [
  "toml",
  "unfold-core",
  "unicode-id-start",
- "unicode-normalization",
 ]
 
 [[package]]

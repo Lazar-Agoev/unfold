@@ -1,8 +1,8 @@
 /**
  * The canvas node for one card. Its data is only the page and the card's ports, so a card re-renders
  * when its own document entry, model, or ports change, never because another card did or because the
- * camera moved (zoom is a camera and never changes what a card shows). The card reads from the project
- * its ref resolves to; one from a project that isn't connected shows as a placeholder. What it shows
+ * camera moved (zoom is a camera and never changes what a card shows). The card reads from the board's
+ * project. What it shows
  * follows the view the page's lens gives it (`shownView`, `cardBody`): in Code, Code (an entrance its
  * handlers); in Diagram, a function or an entrance compact (a Diagram node) or expanded (its Flow, an
  * entrance's evidence and targets) by its own chevron; a type declaration always shows its fields, and
@@ -14,11 +14,9 @@ import { memo } from "react";
 import type { Card } from "../../ipc/generated";
 import { cardBody } from "../../code/typeKinds";
 import { cardKey, findPage, pageLens, shownView, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
-import { resolveRefProject, useProjectIndex } from "../../state/workspace";
 import { BlockCard } from "./BlockCard";
 import { DiagramCard } from "./DiagramCard";
 import { EntranceCard } from "./EntranceCard";
-import { PlaceholderCard } from "./PlaceholderCard";
 import { TypeCard } from "./TypeCard";
 import "./cards.css";
 
@@ -37,14 +35,10 @@ export const CardNode = memo(function CardNode({ id, data }: NodeProps<CardNodeT
   const defaultView = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.defaultView) ?? "code";
   const lens = usePageView(target, (view) => view.lens);
   const selected = usePageView(target, (view) => view.selection.kind === "card" && view.selection.cardId === id);
-  const index = useProjectIndex();
   if (!card) {
     return null;
   }
-  const project = resolveRefProject(index, target.board.project, card.ref.project);
-  if (project === null) {
-    return <PlaceholderCard target={target} card={card} projectName={card.ref.project ?? ""} selected={selected} />;
-  }
+  const { project } = target.board;
   const view = shownView(lens, card, defaultView);
   const body = cardBody(cardKey(card), view);
   if (body === "node") {

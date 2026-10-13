@@ -9,7 +9,7 @@ import { harness, PROJECT } from "./testing";
 vi.mock("electron", async () => (await import("../../fake-electron")).electronModule);
 
 const BOARD = { project: PROJECT, id: ".unfold/boards/orders.json" };
-const BOARD_INFO = { title: "Orders", place: "published", changes: 0, revision: "r1", unsaved: false } as const;
+const BOARD_INFO = { title: "Orders", revision: "r1", unsaved: false } as const;
 const PLACE = "src/services/order-service.ts#class:OrderService/method:place";
 const PAGE: AgentPage = {
   id: "page-1",
@@ -50,7 +50,7 @@ describe("check", () => {
         },
       },
     });
-    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
     const { text } = await test.call(check);
     expect(asked).toEqual([{ board: BOARD, page: "page-1" }]);
     expect(text.split("\n")).toEqual([
@@ -78,7 +78,7 @@ describe("check", () => {
           Promise.resolve({ ok: true, title: "Orders", pages: [{ page: "page-1", pageTitle: "Placing an order", health: [], checks: [] }, { ...CHECKS, page: "page-2", pageTitle: "Async path", health: [MISSING] }] }),
       },
     });
-    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
     const { text } = await test.call(check, { board: BOARD.id, project: "ts-orders" });
     const lines = text.split("\n");
     expect(lines.slice(0, 4)).toEqual([
@@ -92,14 +92,14 @@ describe("check", () => {
 
     // A link with a page checks that page only.
     const linked = harness({ window, renderer: { check: () => Promise.resolve({ ok: true, title: "Orders", page: "page-1", pageTitle: "Placing an order", health: [], checks: [] }) } });
-    linked.report({ selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+    linked.report({ selection: { kind: "none" }, visible: [], held: [BOARD] });
     const one = await linked.call(check, { board: `unfold://ts-orders/${BOARD.id}?page=page-1` });
     expect(one.text.split("\n").slice(1)).toEqual([`Ids: board ${BOARD.id}, page page-1.`, "Nothing to fix: no health problems, and the page checks found nothing.", "Next: get_screenshot, to look at it the way the person will."]);
   });
 
   it("teaches from the render window's refusals", async () => {
     const test = harness({ window, renderer: { check: () => Promise.resolve({ ok: false, code: "empty_page", message: "The page has nothing to draw." }) } });
-    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
     expect(await test.call(check)).toMatchObject({ isError: true, text: "The page has nothing to draw. add_cards puts code on it first." });
   });
 });
@@ -116,7 +116,7 @@ describe("get_screenshot", () => {
         },
       },
     });
-    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
     const { result } = await test.call(getScreenshot, { item: `unfold://ts-orders/${BOARD.id}?page=page-1&item=place`, scale: 2 });
     expect(asked).toEqual([{ board: BOARD, page: "page-1", item: "place", scale: 2 }]);
     expect(result.content).toEqual([
@@ -129,7 +129,7 @@ describe("get_screenshot", () => {
 
   it("refuses a hidden item, saying what to do", async () => {
     const test = harness({ window, renderer: { screenshot: () => Promise.resolve({ ok: false, code: "item_hidden", message: "place is inside the collapsed frame “Shared”." }) } });
-    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
     expect(await test.call(getScreenshot, { item: "place" })).toMatchObject({
       isError: true,
       text: "place is inside the collapsed frame “Shared”. set_view expands the frame that holds it, or take that frame's image.",

@@ -1,7 +1,7 @@
 /**
  * What this window shows, reported to the main process (`report_view`, design §5.6) so agents work on
  * the view of the window used last by default: the shown board and page, the selection, the lens
- * (Diagram or Code), the items in view, and the open boards (`tabs`: the boards this window holds). Sent
+ * (Diagram or Code), the items in view, and the boards whose sessions the window holds (`held`). Sent
  * ~150 ms after any of them changes, and at once when the window gains focus.
  */
 
@@ -41,9 +41,9 @@ function viewSelection(page: Page, selection: Selection): ViewSelection {
     case "note":
       return { kind: "note", id: selection.noteId };
     case "line":
-      return { kind: "line", from: selection.from, to: selection.to, project: selection.project, source: selection.source, seq: selection.seq, line: selection.line };
+      return { kind: "line", from: selection.from, to: selection.to, source: selection.source, seq: selection.seq, line: selection.line };
     case "calls":
-      return { kind: "calls", from: selection.from, to: selection.to, project: selection.project, calls: selection.calls };
+      return { kind: "calls", from: selection.from, to: selection.to, calls: selection.calls };
     case "proposal":
       return { kind: "proposal", id: selection.proposalId };
   }
@@ -81,12 +81,12 @@ export function visibleItems(page: Page, rects: ReadonlyMap<string, Rect>, camer
 
 /** The window's view now; `canvas` is the canvas's size on screen (null when none is shown). */
 export function currentView(canvas: Size | null): ViewReport {
-  const tabs = Object.values(useBoards.getState().boards).map(({ ref }) => ({ project: ref.project, id: ref.id }));
+  const held = Object.values(useBoards.getState().boards).map(({ ref }) => ({ project: ref.project, id: ref.id }));
   const ref = getShownBoard();
   const board = ref ? getOpenBoard(ref) : undefined;
   const page = board ? findPage(board.document, board.activePage) : undefined;
   if (!ref || !board || !page) {
-    return { selection: { kind: "none" }, visible: [], tabs };
+    return { selection: { kind: "none" }, visible: [], held };
   }
   const view = getPageView({ board: ref, page: page.id });
   return {
@@ -95,7 +95,7 @@ export function currentView(canvas: Size | null): ViewReport {
     selection: viewSelection(page, view.selection),
     lens: pageLens(view.lens, page.defaultView),
     visible: visibleItems(page, displayedRects(board, page.id), view.camera, canvas),
-    tabs,
+    held,
   };
 }
 

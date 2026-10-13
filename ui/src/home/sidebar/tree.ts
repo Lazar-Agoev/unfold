@@ -1,6 +1,6 @@
 /**
  * The Home sidebar's projects list as flat rows: each project row, and under an expanded project its
- * folders and boards, folders first, then boards, each by name.
+ * folders (one level deep) and boards, folders first, then boards, each by name.
  */
 
 import type { BoardList, BoardSummary, ProjectId, ProjectRow } from "../../ipc";
@@ -13,14 +13,13 @@ export type SidebarRow =
       readonly kind: "folder";
       readonly key: string;
       readonly project: ProjectId;
-      readonly path: string;
       readonly name: string;
-      readonly depth: number;
       readonly expanded: boolean;
-      /** No board at or under it (Delete applies). */
+      /** No board in it (Delete applies). */
       readonly empty: boolean;
     }
-  | { readonly kind: "board"; readonly key: string; readonly board: BoardSummary; readonly depth: number }
+  /** A board at the project's top level (depth 1) or in a folder (depth 2). */
+  | { readonly kind: "board"; readonly key: string; readonly board: BoardSummary; readonly depth: 1 | 2 }
   /** The tree's 2px top and 4px bottom padding. */
   | { readonly kind: "gap"; readonly key: string; readonly height: number }
   | { readonly kind: "note"; readonly key: string; readonly text: string };
@@ -31,56 +30,28 @@ export function rowHeight(row: SidebarRow): number {
   return row.kind === "gap" ? row.height : ROW_HEIGHT;
 }
 
-function parentOf(path: string): string | null {
-  const slash = path.lastIndexOf("/");
-  return slash < 0 ? null : path.slice(0, slash);
-}
-
-/** Every folder of the list, with its ancestors. */
-function folderPaths(list: BoardList): Set<string> {
-  const paths = new Set<string>();
-  const add = (path: string | null) => {
-    for (let current = path; current !== null && current !== "" && !paths.has(current); current = parentOf(current)) {
-      paths.add(current);
-    }
-  };
-  list.emptyFolders.forEach(add);
-  list.boards.forEach((board) => {
-    add(board.folder);
-  });
-  return paths;
-}
-
-/** The rows under one expanded project, from depth 1. */
+/**
+ * The rows under one expanded project: its folders (one level deep) by name, each followed by its
+ * boards when expanded, then the boards at its top level, each by title.
+ */
 export function treeRows(project: ProjectId, list: BoardList, expandedFolders: ReadonlySet<string>): SidebarRow[] {
-  const folders = folderPaths(list);
-  const childFolders = new Map<string | null, string[]>();
-  for (const path of folders) {
-    const parent = parentOf(path);
-    childFolders.set(parent, [...(childFolders.get(parent) ?? []), path]);
-  }
   const boardsIn = new Map<string | null, BoardSummary[]>();
   for (const board of list.boards) {
     boardsIn.set(board.folder, [...(boardsIn.get(board.folder) ?? []), board]);
   }
-  const hasBoards = (path: string): boolean => (boardsIn.get(path)?.length ?? 0) > 0 || (childFolders.get(path) ?? []).some(hasBoards);
-  const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1);
-
-  const rows: SidebarRow[] = [];
-  const walk = (parent: string | null, depth: number) => {
-    for (const path of [...(childFolders.get(parent) ?? [])].sort((a, b) => byName(nameOf(a), nameOf(b)))) {
-      const expanded = expandedFolders.has(folderKey(project, path));
-      rows.push({ kind: "folder", key: `f:${project}\u0000${path}`, project, path, name: nameOf(path), depth, expanded, empty: !hasBoards(path) });
-      if (expanded) {
-        walk(path, depth + 1);
-      }
-    }
-    for (const board of [...(boardsIn.get(parent) ?? [])].sort((a, b) => byName(boardTitle(a), boardTitle(b)))) {
-      rows.push({ kind: "board", key: `b:${project}\u0000${board.id}`, board, depth });
-    }
-  };
-  walk(null, 1);
-  return rows;
+  const boardRows = (folder: string | null, depth: 1 | 2): SidebarRow[] =>
+    [...(boardsIn.get(folder) ?? [])]
+      .sort((a, b) => byName(boardTitle(a), boardTitle(b)))
+      .map((board) => ({ kind: "board", key: `b:${project}\u0000${board.id}`, board, depth }));
+  const folders = [...new Set([...list.emptyFolders, ...list.boards.flatMap((board) => (board.folder !== null ? [board.folder] : []))])].sort(byName);
+  return [
+    ...folders.flatMap((name): SidebarRow[] => {
+      const expanded = expandedFolders.has(folderKey(project, name));
+      const empty = !boardsIn.has(name);
+      return [{ kind: "folder", key: `f:${project}\u0000${name}`, project, name, expanded, empty }, ...(expanded ? boardRows(name, 2) : [])];
+    }),
+    ...boardRows(null, 1),
+  ];
 }
 
 export interface ProjectTree {

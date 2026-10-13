@@ -35,8 +35,8 @@ type Handler<C extends WindowCommand> = (
 
 /** The most text `copy_to_clipboard` accepts (a large board's Mermaid is well under this). */
 const MAX_CLIPBOARD_CHARS = 8_000_000;
-/** The longest project name `confirm_remove_project` shows (a shared name is at most 64 characters). */
-const MAX_PROJECT_NAME = 64;
+/** The longest project name `confirm_remove_project` shows (a project is named by its folder, and a macOS file name is at most 255 characters). */
+const MAX_PROJECT_NAME = 255;
 
 class CommandError extends Error {
   constructor(readonly error: TransportError) {

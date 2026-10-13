@@ -66,13 +66,13 @@ test.describe("Add", () => {
     });
   });
 
-  test("search across two projects: kind tabs and counts, the preview, and Enter from Home", async ({ sandbox, launch }) => {
+  test("search across two projects: kind tabs and counts, the preview, Enter from Home, and a board's own project", async ({ sandbox, launch }) => {
     const { page } = await launchCompiled(launch, sandbox, ["ts-orders", "py-orders"]);
     const python = await projectId(page, "py-orders");
 
-    await test.step("from Home, Add adds to a new draft", async () => {
+    await test.step("from Home, Add adds to a new board", async () => {
       await openAdd(page);
-      await expect(addBox(page).getByText("Adds to a new draft")).toBeVisible();
+      await expect(addBox(page).getByText("Adds to a new board")).toBeVisible();
       await expect(addBox(page).getByText("Type to find entrances, functions, files and text in 2 projects.")).toBeVisible();
     });
 
@@ -110,17 +110,32 @@ test.describe("Add", () => {
       await expect(preview).toContainText("Reached from");
       await expect(preview).toContainText("Calls");
       await expect(preview).toContainText("Called by");
-      await expect(preview.getByRole("button", { name: /^Add to a new draft/ })).toBeVisible();
+      await expect(preview.getByRole("button", { name: /^Add to a new board/ })).toBeVisible();
       await selectResult(page, result(page, "Function OrderService.place, src/orders_playground/services/order_service.py"));
       await expect(preview.locator(".add-preview-location")).toHaveText(/py-orders\s*·\s*src\/orders_playground\/services\/order_service\.py:20$/);
     });
 
-    await test.step("from Home, Enter starts a new draft in the result's project", async () => {
+    await test.step("from Home, Enter starts a new board in the result's project", async () => {
       await addInput(page).press("Enter");
       await expect(addBox(page)).toBeHidden();
       await expect(boardTitle(page)).toHaveText("place");
       await expect(card(page, PY_PLACE)).toBeVisible();
       expect((await shownBoardRef(page)).project).toBe(python);
+    });
+
+    await test.step("on the board, a result from another project is blocked: it says so, and Enter adds nothing", async () => {
+      await openAdd(page);
+      await enterText(addInput(page), "place");
+      const ts = result(page, "Function OrderService.place, src/services/order-service.ts");
+      await expect(ts).toContainText("In another project");
+      await selectResult(page, ts);
+      await expect(addPreview(page)).toContainText("In another project");
+      await expect(addPreview(page).getByRole("button", { name: /^Add to this page/ })).toBeDisabled();
+      await addInput(page).press("Enter");
+      await expect(addBox(page)).toBeVisible();
+      await addInput(page).press("Escape");
+      await expect(addBox(page)).toBeHidden();
+      await expect(cards(page)).toHaveCount(1);
     });
   });
 

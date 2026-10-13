@@ -14,7 +14,7 @@ import { cardKey, findCard, isFreeId, isItemId, setLinkLabel } from "../document
 import { findFrame } from "../frames";
 import { findResource } from "../resources";
 import { addConnection, saysConnection, setConnectionClaim, setLinkDescription, type ConnectionClaim } from "../connections";
-import { cardName, guardPeopleText, invalid, lineWords, refProject, resourceName, resourceProject, type OpContext } from "./context";
+import { cardName, guardPeopleText, invalid, lineWords, resourceName, type OpContext } from "./context";
 import { fileAnchor } from "./resources";
 
 /** A link's result entry: its ends, its label, and, for a connection, its kind, step, channel, and carried type. */
@@ -62,7 +62,7 @@ function knownColumns(ctx: OpContext, page: Page, id: string): readonly string[]
   if (!resource) {
     return null;
   }
-  const definition = resource.type !== undefined ? ctx.data.definition(resourceProject(ctx, resource), resource.type) : undefined;
+  const definition = resource.type !== undefined ? ctx.data.definition(ctx.board.project, resource.type) : undefined;
   return resource.type !== undefined && !definition ? null : tableColumns(resource, definition).map((column) => column.name);
 }
 
@@ -108,22 +108,17 @@ function claimOf(ctx: OpContext, page: Page, spec: AgentConnectionSpec): Connect
   if (channel?.length === 0) {
     throw invalid(`The channel of ${what} is blank: name what travels (the route, the queue, the event), or leave channel out.`);
   }
-  if (spec.carriesProject !== undefined && spec.carries === undefined) {
-    throw invalid(`carriesProject names the project of the type ${what} carries; give carries too, or leave it out.`);
-  }
-  const carriesProject = spec.carries !== undefined && spec.carriesProject !== undefined ? refProject(ctx, spec.carriesProject) : undefined;
   return {
     kind: spec.kind,
     from: spec.from,
     to: spec.to,
-    anchors: (spec.anchors ?? []).map((anchor) => fileAnchor(ctx, anchor, what)),
+    anchors: (spec.anchors ?? []).map((anchor) => fileAnchor(anchor, what)),
     ...(spec.step !== undefined ? { step: spec.step } : {}),
     ...(spec.fromColumn !== undefined ? { fromColumn: spec.fromColumn } : {}),
     ...(spec.toColumn !== undefined ? { toColumn: spec.toColumn } : {}),
     ...(spec.cardinality !== undefined ? { cardinality: spec.cardinality } : {}),
     ...(channel !== undefined ? { channel } : {}),
     ...(spec.carries !== undefined ? { carries: spec.carries } : {}),
-    ...(carriesProject !== undefined ? { carriesProject } : {}),
   };
 }
 

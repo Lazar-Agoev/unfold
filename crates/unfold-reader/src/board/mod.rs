@@ -1,21 +1,19 @@
 //! Boards (docs/reader.md#boards; decisions board format, board references): the `unfold-board`
 //! version 1 format with pages, its JSON Schema, strict parsing, deterministic serialization,
 //! signatures, guards, groups, drawn links and connections, frames, resource cards, notes,
-//! proposed steps, the claims' signatures and grounding, health with repairs per page and per
-//! project, page outlines, the unpublished-changes count, and the board files of a project.
+//! proposed steps, the claims' signatures and grounding, health with repairs per page, page
+//! outlines, and the board files of a project.
 //!
 //! ```text
-//! text ─parse─► Board ─health(Page, PageGraphs)─► Health, repairs
-//!   edit ─parse_edit─┘ └─prepare_save(previous, PageGraphs)─► signed Board ─serialize─► text ─BoardDirs─► disk
-//!                      └─outline(Page, PageGraphs), changes(working, published), mermaid::page
+//! text ─parse─► Board ─health(Page, BoardGraph)─► Health, repairs
+//!   edit ─parse_edit─┘ └─prepare_save(previous, BoardGraph)─► signed Board ─serialize─► text ─BoardDirs─► disk
+//!                      └─outline(Page, BoardGraph), mermaid::page
 //! ```
 //!
-//! A page's cards and claims can come from several projects: each project's references are read
-//! through its own [`BoardGraph`] ([`BoardGraph::load`] with [`Board::references`] of that
-//! project), gathered in [`PageGraphs`]. Everything except [`files`] and [`BoardGraph::load`] is
-//! pure.
+//! A board shows one project: its references are read through that project's [`BoardGraph`]
+//! ([`BoardGraph::load`] with [`Board::references`]). Everything except [`files`] and
+//! [`BoardGraph::load`] is pure.
 
-mod changes;
 mod check;
 mod claims;
 pub mod files;
@@ -27,21 +25,20 @@ mod outline;
 mod parse;
 mod save;
 
-pub use changes::changes;
 pub use check::{
-    Health, HealthItem, HealthKind, ProjectKey, Repair, RepairKind, Target, apply_repair, board_health,
-    current_guard, health,
+    Health, HealthItem, HealthKind, Repair, RepairKind, Target, apply_repair, board_health, current_guard,
+    health,
 };
-pub use graph::{BlockAt, BoardGraph, Lines, PageGraphs};
-pub use json::{serialize, serialize_changes};
+pub use graph::{BlockAt, BoardGraph, Lines};
+pub use json::serialize;
 pub use model::{
     Anchor, Author, AuthorKind, Board, Card, CardRef, Cardinality, Column, ColumnKey, Description, FORMAT,
     Frame, FrameDirection, FrameIcon, FrameLook, Group, GuardEntry, LabelEntry, Link, LinkKind,
     MAX_EXPANDED_CALLS, MAX_EXPANSION_DEPTH, MAX_FRAME_DEPTH, MAX_NOTE_CHARACTERS, MAX_PROPOSAL_REASON,
-    MAX_PROPOSAL_TITLE, MAX_PROPOSALS, Note, Page, ProjectName, Proposal, ProposalPath, References, Resource,
-    ResourceKind, SCHEMA, Signature, VERSION, View, is_folder_path,
+    MAX_PROPOSAL_TITLE, MAX_PROPOSALS, Note, Page, Proposal, ProposalPath, References, Resource,
+    ResourceKind, SCHEMA, Signature, VERSION, View, is_folder_name,
 };
-pub use outline::{CardLink, OutlineRow, PageOutline, Unlabeled, card_links, outline};
+pub use outline::{OutlineRow, PageOutline, Unlabeled, outline};
 pub use parse::{parse, parse_edit};
 pub use save::prepare_save;
 
@@ -90,7 +87,7 @@ pub enum BoardError {
         /// The refused name.
         name: String,
     },
-    /// A file with that name exists; a draft's first Publish never overwrites a board.
+    /// A file with that name exists; a new board never overwrites one.
     #[error("{path} already exists; choose another name (for example {suggestion})")]
     NameTaken {
         /// The existing file, relative to the folder.

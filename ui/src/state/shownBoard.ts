@@ -27,13 +27,6 @@ export function showBoard(ref: BoardRef): void {
   }
 }
 
-/** A board's id changed (Publish, Move back to drafts): if it is in front, it stays there. */
-export function renameShownBoard(from: BoardRef, to: BoardRef): void {
-  if (sameBoard(useShownBoardStore.getState().board, from)) {
-    useShownBoardStore.setState({ board: to });
-  }
-}
-
 /** A board closed or was deleted: if it was in front, Home shows instead. */
 export function hideBoard(ref: BoardRef): void {
   if (sameBoard(useShownBoardStore.getState().board, ref)) {

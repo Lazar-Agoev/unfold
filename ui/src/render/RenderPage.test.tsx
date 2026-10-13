@@ -15,7 +15,7 @@ import { installRenderJobs, useRenderJob } from "./jobs";
 import { RenderApp } from "./RenderApp";
 
 const P = "p-orders0000";
-const BOARD = { project: P, id: ".unfold/local/drafts/b.json" };
+const BOARD = { project: P, id: ".unfold/boards/b.json" };
 const KEY = "src/routes/orders.ts#function:createOrder";
 const GONE = "src/routes/orders.ts#function:gone";
 

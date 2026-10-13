@@ -9,7 +9,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { cardQuery } from "../../canvas";
 import { IconButton, SectionLabel } from "../../components";
-import { cardKey, findCard, findFrame, findNote, findPage, findProposal, findResource, useOpenBoard, usePageView, useResolvedCardProject, type PageTarget } from "../../state/boards";
+import { cardKey, findCard, findFrame, findNote, findPage, findProposal, findResource, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
 import { setSelectedCollapsed, useLayout } from "../../state/layout";
 import { SelectedCalls } from "./SelectedCalls";
 import { SelectedCard } from "./SelectedCard";
@@ -28,7 +28,7 @@ import type { Card, Key } from "../../ipc/generated";
 /**
  * A card, or the Flow node of it that is selected (a statement key falls back to the card), or the run
  * of its steps Shift-selected from that node to `last`. A step shown in a call expanded in place is
- * read from its owner's Flow (same project: calls never cross).
+ * read from its owner's Flow.
  */
 function CardOrNode({
   target,
@@ -43,20 +43,20 @@ function CardOrNode({
   readonly owner: Key | undefined;
   readonly last: Key | undefined;
 }) {
-  const project = useResolvedCardProject(target.board, card);
+  const { project } = target.board;
   const block = owner ?? cardKey(card);
-  const query = useQuery({ ...cardQuery(project ?? "", block), enabled: project !== null });
+  const query = useQuery(cardQuery(project, block));
   const view = query.data?.type === "block" ? query.data : undefined;
   const flow = view?.flow ?? null;
   const node = nodeKey !== null && nodeKey !== block ? flowNodeFor(flow, nodeKey) : undefined;
   if (view && node && last !== undefined && owner === undefined) {
     return <SelectedRun target={target} card={card} model={view} first={node.key ?? ""} last={last} />;
   }
-  if (project !== null && view && flow && node) {
+  if (view && flow && node) {
     const shownIn = owner !== undefined ? { owner: { key: owner, name: view.header.qualifiedName } } : {};
-    return <SelectedNode target={target} card={card} project={project} node={node} model={flow} {...shownIn} />;
+    return <SelectedNode target={target} card={card} node={node} model={flow} {...shownIn} />;
   }
-  return <SelectedCard target={target} card={card} project={project} />;
+  return <SelectedCard target={target} card={card} />;
 }
 
 function SelectedBody({ target }: { readonly target: PageTarget }) {

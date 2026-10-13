@@ -63,10 +63,6 @@ get_project lists).
 - ts-orders declares its SIGTERM handler: kind event, trigger SIGTERM, handler
   `src/server.ts#shutdown`.
 
-### The project's name
-set_project_name sets the shared name other projects' boards use to name this one;
-null goes back to the folder's name. Links and tools use the new name afterwards.
-
 ### Evidence files
 Files Unfold doesn't compile but can cite: SQL migrations, Prisma schemas, OpenAPI
 specs, Terraform, docker-compose files. add_evidence_pattern adds a file, folder, or
@@ -90,17 +86,17 @@ a TypeScript declaration file, or a configuration input keeps that role.
   unfold.toml, which is shared, so it will show in your git diff."
 
 ## Boards
-- create_board makes a draft, with named pages, optionally in a folder and traced from
-  an entrance, in a background tab of the window the person used last: their view
-  doesn't move. Pass its board and page ids to the next tools.
+- A board is a file in the project's .unfold/boards/, saved as it is edited. Git is
+  how a team shares it.
+- create_board makes one, with named pages, optionally in a folder and traced from an
+  entrance. Unfold loads it without moving the person's view. Pass its board and page
+  ids to the next tools.
 - organize_boards: create_folder, rename_folder, delete_folder (an empty one), move a
-  board into a folder, rename a board, duplicate a board. Ops run in order and stop at
-  the first that fails, saying what was done.
-- edit_pages: add, rename, move, duplicate, and delete a board's pages, as one undo step.
+  board into a folder, rename a board. Folders are one level deep. Ops run in order
+  and stop at the first that fails, saying what was done.
+- edit_pages: add, rename, move, and delete a board's pages, as one undo step.
 - show brings a board, page, or item into the person's view. Use it when they ask to
   see something, or to present finished work, never while building.
-- A draft lives on this machine until the person publishes it, and its id changes
-  then. Your edits to a published board wait as unpublished changes: say which board
-  you changed.
-- You can't publish, delete, or discard a board, or move one back to drafts: those
-  are the person's, from the board's menu.
+- A page shows one project. A service in another repository is an external resource
+  card, with a connection to it that cites the client code.
+- You can't delete a board: that is the person's, from the board's menu.

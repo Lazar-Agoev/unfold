@@ -8,7 +8,7 @@ import * as store from "../store";
 import { createBoardForAgent, editBoardForAgent, showForAgent } from "./boards";
 
 const P = "p-orders0000";
-const ID = ".unfold/local/drafts/b.json";
+const ID = ".unfold/boards/b.json";
 const REF = { project: P, id: ID };
 const CLAUDE = { author: "agent:claude", name: "Claude" } as const;
 const CARD = { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] as [number, number] };
@@ -19,7 +19,7 @@ const saved: SaveBoardArgs[] = [];
 /** What `save_board` answers: the document as sent. */
 function savedState(args: SaveBoardArgs): BoardState {
   saved.push(args);
-  const document = { format: "unfold-board", version: 1, projects: [], ...args.board } as BoardDocument;
+  const document = { format: "unfold-board", version: 1, ...args.board } as BoardDocument;
   return boardState(args.project, args.id, document, { revision: `r${saved.length + 1}` });
 }
 
@@ -40,7 +40,7 @@ function openWith(document: BoardDocument): void {
 }
 
 describe("creating a board for an agent", () => {
-  it("creates a draft with its pages, saved before its session opens, without showing it", async () => {
+  it("creates a board file with its pages, saved before its session opens, without showing it", async () => {
     engine.uninstall();
     engine = installFakeEngine({
       handlers: {
@@ -58,7 +58,7 @@ describe("creating a board for an agent", () => {
     expect(result).toEqual({
       ok: true,
       board: REF,
-      info: { title: "Orders", place: "draft", changes: 0, revision: "r2" },
+      info: { title: "Orders", revision: "r2" },
       folder: "flows",
       pages: [
         { id: "page-1", title: "Placing an order" },
@@ -68,28 +68,6 @@ describe("creating a board for an agent", () => {
     expect(store.getOpenBoard(REF)).toBeDefined();
     expect(getShownBoard()).toBeNull();
     expect(store.canUndo(REF)).toBe(false);
-  });
-
-  it("copies a board this window holds, after saving it, opening the copy without showing it", async () => {
-    const copy = { project: P, id: ".unfold/local/drafts/b-copy.json" };
-    engine.uninstall();
-    engine = installFakeEngine({
-      handlers: {
-        save_board: savedState,
-        duplicate_board: () => ({ project: P, id: copy.id, place: "draft", name: "b-copy", title: "Order placement copy", folder: null, pages: 1, cards: 1, projects: [], changes: 0, updatedAtMs: 0, label: null, error: null }),
-        open_board: (args) => boardState(P, args.id, boardDocument([page("page-1", [CARD])], { title: "Order placement copy" })),
-      },
-    });
-    openWith(boardDocument([page("page-1", [CARD])]));
-    store.editBoard(REF, (document) => {
-      document.title = "Orders";
-    });
-    const result = await createBoardForAgent({ requestId: 2, project: P, copyOf: ID });
-    expect(engine.calls.map((call) => call.command)).toEqual(["save_board", "duplicate_board", "open_board"]);
-    expect(result).toMatchObject({ ok: true, board: copy, info: { title: "Order placement copy" }, pages: [{ id: "page-1", title: "Page page-1" }] });
-    expect(store.getOpenBoard(copy)).toBeDefined();
-    expect(getShownBoard()).toBeNull();
-    expect(await createBoardForAgent({ requestId: 3, project: P, copyOf: "other.json" })).toMatchObject({ ok: false, code: "board_not_open" });
   });
 });
 
@@ -105,25 +83,22 @@ describe("editing a board's pages for an agent", () => {
         { op: "add_page", title: "Async path", after: "page-1" },
         { op: "rename_page", page: "page-3", title: "Third" },
         { op: "move_page", page: "page-3", to: 0 },
-        { op: "duplicate_page", page: "page-1", title: "Placing again" },
         { op: "delete_page", page: "page-2" },
         { op: "set_title", title: "Orders" },
       ],
     });
     expect(result).toEqual({
       ok: true,
-      board: { title: "Orders", place: "draft", changes: 0, revision: "r2" },
+      board: { title: "Orders", revision: "r2" },
       pages: [
         { id: "page-3", title: "Third" },
         { id: "page-1", title: "Page page-1" },
-        { id: "page-5", title: "Placing again" },
         { id: "page-4", title: "Async path" },
       ],
       results: [
         { op: "add_page", status: "created", page: "page-4", title: "Async path" },
         { op: "rename_page", status: "kept", page: "page-3", title: "Third" },
         { op: "move_page", status: "updated", page: "page-3", title: "Third" },
-        { op: "duplicate_page", status: "created", page: "page-5", title: "Placing again" },
         { op: "delete_page", status: "removed", page: "page-2", title: "Scratch" },
         { op: "set_title", status: "updated", title: "Orders" },
       ],

@@ -9,7 +9,7 @@ import type { ProjectId } from "../../ipc/generated";
 import { hideBoard, showBoard } from "../shownBoard";
 import { call } from "./engine";
 import { boardKey } from "./keys";
-import { adoptBoardState, flushAllBoards, flushBoard, forgetBoard, getOpenBoard, handleOutsideChange, openBoards, setActivePage } from "./store";
+import { adoptBoardState, adoptOutsideChange, flushAllBoards, flushBoard, forgetBoard, getOpenBoard, isDirty, openBoards, setActivePage } from "./store";
 import type { BoardRef, PageId } from "./types";
 
 const opening = new Map<string, Promise<BoardRef>>();
@@ -43,7 +43,7 @@ export async function openBoard(ref: BoardRef, options: { readonly page?: PageId
   }
 }
 
-/** Creates an empty draft in `project`, opens it, and shows it. */
+/** Creates an empty board file in `project`'s `.unfold/boards/`, opens it, and shows it. */
 export async function newBoard(
   project: ProjectId,
   options: { readonly title?: string; readonly folder?: string; readonly pageTitle?: string } = {},
@@ -83,17 +83,17 @@ export async function closeBoardsOfProject(project: ProjectId): Promise<void> {
 
 /**
  * After an engine-host restart: the engine came back with no board open, so each open board is opened
- * again before anything is saved. One whose file changed meanwhile reloads, or asks about its unsaved
- * edits. Then every unsaved edit is written. (The window's session code orders this after
- * `select_project`.)
+ * again before anything is saved. One whose file changed meanwhile takes the file's version, unless it
+ * has edits that couldn't be saved: those are kept, and written over the file next. Then every unsaved
+ * edit is written. (The window's session code orders this after `select_project`.)
  */
 export async function reopenBoards(): Promise<void> {
   for (const board of openBoards()) {
     const { ref } = board;
     try {
       const state = await call("open_board", { project: ref.project, id: ref.id });
-      if (state.revision !== board.revision) {
-        await handleOutsideChange(ref, state.revision);
+      if (state.revision !== board.revision && !isDirty(board)) {
+        await adoptOutsideChange(state);
       }
     } catch (cause) {
       const error = toUnfoldError(cause);

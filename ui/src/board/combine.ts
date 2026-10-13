@@ -91,8 +91,7 @@ export function combineChoice(page: Page, selection: Selection, context: SourceC
     return { reason: "Shift-click the last step of the run to combine it." };
   }
   const card = findCard(page, selection.cardId);
-  const project = card ? context.project(card.ref.project) : null;
-  const model = card && project !== null ? context.model(project, cardKey(card)) : undefined;
+  const model = card ? context.model(cardKey(card)) : undefined;
   if (!card || model?.type !== "block") {
     return { reason: "This card's steps aren't loaded." };
   }

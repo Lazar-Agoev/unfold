@@ -1,7 +1,7 @@
 /**
  * The open boards: sessions keyed by `BoardRef`, pages, edits as undo steps across pages, autosave of
- * `BoardEdit`, view state per page, cards from any connected project, frames, resource cards,
- * connections, notes, health and repairs, and file operations. Screens import from here.
+ * `BoardEdit`, view state per page, cards, frames, resource cards, connections, notes, health and
+ * repairs, and file operations. Screens import from here.
  */
 
 export {
@@ -31,7 +31,6 @@ export {
   traceEntrance,
   ungroup,
   usePageKeys,
-  useResolvedCardProject,
 } from "./api";
 export { CONNECTION_KINDS } from "./connections";
 export { NOTE_MAX, findNote, noteLength, placeNote } from "./notes";
@@ -58,10 +57,10 @@ export {
   callExpansions,
   cardKey,
   findCard,
-  findCardByRef,
+  findCardByKey,
   findPage,
   keyDisplayName,
-  labelsFor,
+  labelTexts,
   moveItems,
   isCallExpanded,
   setCardExpanded,
@@ -75,32 +74,14 @@ export { MAX_FRAME_DEPTH, findFrame, frameItems, frameOf, moveFrame } from "./fr
 export { installAgentChannel, setAgentChannelReady } from "./agent/channel";
 export { useWorkingAgents, useWorkingItems, workingText } from "./agent/working";
 export { installBoardEvents } from "./events";
-export {
-  copyPageMermaid,
-  createFolder,
-  deleteBoard,
-  deleteFolder,
-  duplicateBoard,
-  exportPageMermaid,
-  exportPagePng,
-  isValidName,
-  publishBoard,
-  publishedPath,
-  renameBoard,
-  renameFolder,
-  repairBoard,
-  setBoardFolder,
-  slugOf,
-  unpublishBoard,
-} from "./files";
+export { deleteBoard, deleteFolder, exportPagePng, renameBoard, renameFolder, repairBoard, setBoardFolder } from "./files";
 export { itemsFor, kindWord, repairEffect, repairLabel, repairSpec } from "./health";
 export { boardKey, cardRefKey, pageKey, sameBoard } from "./keys";
 export { lineOffsetIn, followCall, type FollowRequest } from "./navigation";
 export { closeBoard, closeBoardsOfProject, newBoard, openBoard, reopenBoards } from "./open";
-export { addPage, deletePage, duplicatePage, movePage, renamePage } from "./pages";
+export { addPage, deletePage, movePage, renamePage } from "./pages";
 export {
   canUndo,
-  discardChanges,
   editBoard,
   cardExpanded,
   editPage,
@@ -112,7 +93,6 @@ export {
   pushFocusMove,
   redo,
   requestCardFocus,
-  resolveConflict,
   saveBoard,
   select,
   setActivePage,

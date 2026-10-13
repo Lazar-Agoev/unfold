@@ -22,7 +22,7 @@ const toast = vi.hoisted(() => ({ showToast: vi.fn() }));
 vi.mock("../../../components/Toast", () => toast);
 
 const P = "p-orders0000";
-const ID = ".unfold/local/drafts/b.json";
+const ID = ".unfold/boards/b.json";
 const REF = { project: P, id: ID };
 const TARGET = { board: REF, page: "page-1" };
 const CREATE = "src/routes/orders.ts#function:createOrder";
@@ -170,10 +170,10 @@ describe("an agent's edit", () => {
     expect(saved).toHaveLength(1);
     expect(result.page.id).toBe("page-1");
     expect((result.page as unknown as Page).cards[0]?.description).toEqual({ text: "Takes an order.", author: "agent:claude", signature: "sha256:signed" });
-    expect(result.board).toEqual({ title: "Order placement", place: "draft", changes: 0, revision: "r2" });
+    expect(result.board).toEqual({ title: "Order placement", revision: "r2" });
     expect(result.items).toEqual([
-      { kind: "card", id: "create-order", status: "created", key: CREATE, project: P, name: "createOrder", at: [0, 0] },
-      { kind: "card", id: "create-order", status: "created", key: CREATE, project: P, name: "createOrder" },
+      { kind: "card", id: "create-order", status: "created", key: CREATE, name: "createOrder", at: [0, 0] },
+      { kind: "card", id: "create-order", status: "created", key: CREATE, name: "createOrder" },
     ]);
     const board = store.getOpenBoard(REF);
     expect(board?.history.past.map((entry) => entry.name)).toEqual(["Claude · Add cards"]);
@@ -254,7 +254,7 @@ describe("add_cards", () => {
   it("keeps a card already on the page, and changes only its view when asked", async () => {
     open();
     const kept = await edit([{ op: "add_cards", cards: [{ key: CREATE }] }]);
-    expect(kept.items).toEqual([{ kind: "card", id: "create-order", status: "kept", key: CREATE, project: P, name: "createOrder" }]);
+    expect(kept.items).toEqual([{ kind: "card", id: "create-order", status: "kept", key: CREATE, name: "createOrder" }]);
     const viewed = await edit([{ op: "add_cards", cards: [{ key: CREATE, view: "diagram" }] }]);
     expect(viewed.items).toMatchObject([{ id: "create-order", status: "updated" }]);
     expect(onPage().cards).toEqual([{ ...createCard, view: "diagram" }]);
@@ -263,7 +263,7 @@ describe("add_cards", () => {
   it("places a card beside the card that calls it, level with the calling line, never covering a card", async () => {
     open({}, [createCard, { id: "in-the-way", ref: { block: SLACK }, at: [600, 220] }]);
     const result = await edit([{ op: "add_cards", cards: [{ key: PLACE }] }]);
-    const added = onPage().cards.find((card) => card.ref.project === undefined && "block" in card.ref && card.ref.block === PLACE);
+    const added = onPage().cards.find((card) => "block" in card.ref && card.ref.block === PLACE);
     expect(result.items).toMatchObject([{ status: "created", key: PLACE, name: "OrderService.place" }]);
     const board = store.getOpenBoard(REF);
     const rects = board ? displayedRects(board, "page-1") : new Map<string, Rect>();
@@ -286,11 +286,9 @@ describe("add_cards", () => {
     expect((await refusal([{ op: "add_cards", cards: [{ key: MISSING.replace("gone", "other"), near: "nowhere" }] }])).message).toContain("no item with id “nowhere”");
   });
 
-  it("refuses a key that isn't in the graph, or a project that isn't in the workspace", async () => {
+  it("refuses a key that isn't in the graph", async () => {
     open();
     expect(await refusal([{ op: "add_cards", cards: [{ key: MISSING }] }])).toMatchObject({ code: "invalid_op" });
-    const unknown = await refusal([{ op: "add_cards", cards: [{ key: CREATE, project: "p-elsewhere0" }] }]);
-    expect(unknown.message).toContain("No project with the id “p-elsewhere0”");
   });
 
   it("follows resolved calls to the depth asked for, and says where following stopped", async () => {
@@ -368,7 +366,7 @@ describe("arrange", () => {
     expect(cards.get("slack-post")?.[0]).toBeGreaterThan(cards.get("create-order")?.[0] ?? 0);
     // The page was never drawn: sizes are estimated from the cards' models.
     const create = cards.get("create-order") ?? [0, 0];
-    expect(cards.get("insert-order")).toEqual([create[0], create[1] + estimatedBlockSize(model(CREATE), false, measureText).height + STACK_GAP]);
+    expect(cards.get("insert-order")).toEqual([create[0], create[1] + estimatedBlockSize(model(CREATE), measureText).height + STACK_GAP]);
     expect(result.items.map((item) => (item.kind === "card" ? item.id : "")).sort()).toEqual(["create-order", "insert-order", "slack-post"]);
     expect((await refusal([{ op: "arrange", moves: [{ id: "nope", at: [0, 0] }] }])).code).toBe("invalid_op");
   });
@@ -546,7 +544,7 @@ describe("reading and opening for an agent", () => {
     expect(readAgentPage({ requestId: 1, board: REF, page: "page-1" })).toMatchObject({
       ok: true,
       page: { id: "page-1", title: "Placing an order" },
-      board: { title: "Order placement", place: "draft", changes: 0, revision: "r1", unsaved: true },
+      board: { title: "Order placement", revision: "r1", unsaved: true },
       sizes: { "create-order": { width: 520, height: 310 } },
     });
     expect(readAgentPage({ requestId: 1, board: REF, page: "page-2" })).toMatchObject({ ok: false, code: "page_not_found" });

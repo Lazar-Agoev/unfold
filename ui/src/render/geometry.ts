@@ -10,7 +10,7 @@ import type { ReactFlowState } from "@xyflow/react";
 import type { Box, DrawnFlow, DrawnLine, PageGeometry, Point } from "../board/checks";
 import { isWithin } from "../code/outline";
 import type { Card, CardView, FlowNodeKind, Page } from "../ipc/generated";
-import { labelsFor } from "../state/boards";
+import { labelTexts } from "../state/boards";
 
 /** One sample of a line's path per this many canvas units. */
 const SAMPLE_EVERY = 12;
@@ -52,7 +52,7 @@ export function unlabeledSteps(page: Page, card: Card, model: CardView | undefin
   if (model?.type !== "block" || model.flow?.source !== "current") {
     return 0;
   }
-  const labels = labelsFor(page.labels, card.ref.project);
+  const labels = labelTexts(page.labels);
   const hidden = page.groups.filter((group) => group.card === card.id && group.collapsed).flatMap((group) => group.members);
   const counts = (key: string | undefined, kind: FlowNodeKind) =>
     key !== undefined && kind !== "start" && kind !== "end" && labels[key] === undefined && !hidden.some((member) => isWithin(key, member));

@@ -1,9 +1,9 @@
 /**
- * Modal dialogs: `Dialog` (the frame), `ConfirmDialog` (Discard changes, Delete), and `PromptDialog`
- * (a name, e.g. New folder).
+ * Modal dialogs: `Dialog` (the frame), `ConfirmDialog` (Delete), and `PromptDialog` (a name, e.g. New
+ * folder).
  *
  * A dialog is placed on the window (Settings) or on the canvas area
- * (`#content-area`: Publish, Discard, Delete, Rename), with its scrim over just that area.
+ * (`#content-area`: Delete, Rename), with its scrim over just that area.
  * While open, it traps Tab inside itself, makes the app behind it inert, closes on Escape, and
  * returns focus to where it was when it closes.
  */
@@ -26,8 +26,8 @@ export interface DialogProps {
   readonly title: string;
   /** Under the title; it becomes the dialog's accessible description. */
   readonly description?: ReactNode;
-  /** 400 for confirmations, 470 for Settings (with a close button and a ruled header), 520 for Publish. */
-  readonly width: 400 | 470 | 520;
+  /** 400 for confirmations, 470 for Settings (with a close button and a ruled header). */
+  readonly width: 400 | 470;
   /** `window`: centered on the window, scrim over everything. `canvas`: centered on the canvas area, scrim over it alone. */
   readonly placement: "window" | "canvas";
   /** Buttons, right-aligned at the bottom. */

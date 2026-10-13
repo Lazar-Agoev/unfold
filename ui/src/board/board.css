@@ -32,7 +32,7 @@
   -webkit-app-region: no-drag;
 }
 
-/* The title and publish state; on a narrow canvas they shorten to the room the lens leaves (TopBar). */
+/* The title; on a narrow canvas it shortens to the room the lens leaves (TopBar). */
 .board-topbar-left {
   display: flex;
   align-items: center;
@@ -55,34 +55,6 @@
   text-overflow: ellipsis;
 }
 
-.board-publish-state {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 6px;
-  padding-left: 4px;
-  font-size: var(--text-12);
-  line-height: var(--leading-16);
-  color: var(--color-muted);
-  white-space: nowrap;
-}
-
-/* The state gives way before the title does. */
-.board-topbar-left.narrow .board-publish-state { flex-shrink: 10; min-width: 0; }
-
-.board-publish-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.board-publish-dot {
-  flex-shrink: 0;
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-full);
-}
-
 /* "Claude is working…" while an agent works on the page. */
 .board-working {
   display: flex;
@@ -102,12 +74,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-.board-publish-dot.faint { background: var(--color-faint); }
-.board-publish-dot.accent { background: var(--color-accent); }
-.board-topbar-spacer { flex: 1; }
-
-.board-topbar .button-trailing { stroke-width: 1.75; }
 
 .board-topbar .board-lens {
   position: absolute;
@@ -156,20 +122,13 @@
 }
 
 .board-banner {
-  padding: 5px 6px 5px 12px;
+  gap: 6px;
+  padding: 6px 12px;
   color: var(--color-text);
 }
 
 .board-banner > .icon { flex-shrink: 0; color: var(--color-muted); }
 .board-banner-text { min-width: 0; }
-
-.board-banner.conflict {
-  border-color: color-mix(in srgb, var(--color-review) 40%, transparent);
-  background: var(--color-warn-fill);
-  color: var(--color-warn);
-}
-
-.board-banner.conflict > .icon { color: var(--color-review); }
 
 .board-hint {
   padding: 6px 12px;

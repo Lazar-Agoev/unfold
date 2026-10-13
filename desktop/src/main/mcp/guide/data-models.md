@@ -60,7 +60,6 @@ add_resources({board, page, resources: [{
   (`private orders = new Map…`).
 - **anchors**: even a typed table needs one, where the table is created, declared, or
   used (the repository, the model's table name, a migration).
-- **project**: the type's project, when it isn't the board's own.
 - It follows the code: when the type changes, the columns change with it, and the
   marks go to review; when the type is gone, the table is missing (repairs topic).
 

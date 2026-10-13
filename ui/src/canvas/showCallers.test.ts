@@ -10,7 +10,7 @@ import { FOLLOW_GAP } from "./layout";
 import { showCallers } from "./showCallers";
 
 const P = "p-orders0000";
-const REF = { project: P, id: ".unfold/local/drafts/b.json" };
+const REF = { project: P, id: ".unfold/boards/b.json" };
 const PAGE = { board: REF, page: "page-1" };
 const KEY = "src/routes/orders.ts#function:createOrder";
 const CALLER = "src/routes/index.ts#function:routes";

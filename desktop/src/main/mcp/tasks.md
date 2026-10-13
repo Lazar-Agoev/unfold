@@ -17,8 +17,8 @@ suite; agents never see it.
    - Codex: `codex mcp add unfold --url http://127.0.0.1:29180/mcp`. Codex doesn't offer MCP prompts, so type the
      task's request.
 4. **Record** the transcript (tool calls, refusals, the chat), the board (Share › Export PNG of each page, and the
-   board file from `.unfold/local/drafts/`), and the session's token use.
-5. **Score** it on the sheet below, then reset: delete the copy's `.unfold/local/drafts/` or the whole copy.
+   board file from `.unfold/boards/`), and the session's token use.
+5. **Score** it on the sheet below, then reset: delete the copy's `.unfold/boards/` or the whole copy.
 
 ## The rubric
 
@@ -43,7 +43,7 @@ suite; agents never see it.
 - **Request:** "Show me how an order is placed through POST /orders, including the async path. Make it readable for
   someone new."
 - **A correct result:**
-  - A new draft with one page, traced from POST /orders: the entrance card and its handlers requireUser,
+  - A new board with one page, traced from POST /orders: the entrance card and its handlers requireUser,
     validateBody, and createOrder (src/routes/orders.ts:25).
   - createOrder expanded, the context cards compact; OrderService.place
     (src/services/order-service.ts:13) on the page, as its own card or expanded in place from createOrder's
@@ -187,7 +187,7 @@ suite; agents never see it.
 
 ### 11. Build the page the person linked (ts-orders)
 
-- **Setup:** in Unfold, add a page "Sending emails" to a draft and use its Copy link; leave another page in view.
+- **Setup:** in Unfold, add a page "Sending emails" to a board and use its Copy link; leave another page in view.
 - **Request:** "<the pasted link> Use this page to show how my email service works."
 - **A correct result:**
   - Everything lands on the linked page; the page in view doesn't change.

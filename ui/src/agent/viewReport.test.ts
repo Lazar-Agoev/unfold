@@ -9,7 +9,7 @@ import { REPORT_DELAY_MS, currentView, installViewReports, visibleItems } from "
 
 const P = "p-orders0000";
 const ID = ".unfold/boards/orders.json";
-const OTHER = { project: P, id: ".unfold/local/drafts/b.json" };
+const OTHER = { project: P, id: ".unfold/boards/b.json" };
 const REF = { project: P, id: ID };
 const TARGET = { board: REF, page: "page-1" };
 
@@ -70,7 +70,7 @@ describe("currentView", () => {
   it("reports Home with the open boards, and the shown board's page, selection, and lens (Diagram or Code)", () => {
     store.adoptBoardState(boardState(P, ID, boardDocument([PAGE])));
     store.adoptBoardState(boardState(P, OTHER.id));
-    expect(currentView(null)).toEqual({ selection: { kind: "none" }, visible: [], tabs: [REF, OTHER] });
+    expect(currentView(null)).toEqual({ selection: { kind: "none" }, visible: [], held: [REF, OTHER] });
 
     showBoard(REF);
     store.select(TARGET, { kind: "card", cardId: "a", key: "src/a.ts#function:a/if[0]" });
@@ -80,15 +80,15 @@ describe("currentView", () => {
       selection: { kind: "step", card: "a", key: "src/a.ts#function:a/if[0]" },
       lens: "code",
       visible: ["a", "b", "a-checks", "b-email", "a-to-b"],
-      tabs: [REF, OTHER],
+      held: [REF, OTHER],
     });
     // A Flow lens is Diagram.
     store.setPageLens(TARGET, "flow");
-    const line = { arrowId: "x", project: P, source: "src/a.ts#function:a/call[0]", seq: 0, from: "a", to: "b", line: 7 };
+    const line = { arrowId: "x", source: "src/a.ts#function:a/call[0]", seq: 0, from: "a", to: "b", line: 7 };
     store.select(TARGET, { kind: "line", ...line });
     expect(currentView(null)).toMatchObject({
       lens: "diagram",
-      selection: { kind: "line", from: "a", to: "b", project: P, source: line.source, seq: 0, line: 7 },
+      selection: { kind: "line", from: "a", to: "b", source: line.source, seq: 0, line: 7 },
     });
     for (const [selection, reported] of [
       [{ kind: "card", cardId: "a", key: null }, { kind: "card", id: "a" }],
@@ -115,7 +115,7 @@ describe("installViewReports", () => {
     store.adoptBoardState(boardState(P, ID, boardDocument([PAGE])));
     const stop = installViewReports();
     await vi.advanceTimersByTimeAsync(REPORT_DELAY_MS);
-    expect(engine.windowCalls).toEqual([{ command: "report_view", args: { selection: { kind: "none" }, visible: [], tabs: [REF] } }]);
+    expect(engine.windowCalls).toEqual([{ command: "report_view", args: { selection: { kind: "none" }, visible: [], held: [REF] } }]);
 
     showBoard(REF);
     store.select(TARGET, { kind: "card", cardId: "b", key: null });

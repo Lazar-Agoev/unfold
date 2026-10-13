@@ -1,12 +1,12 @@
 /**
- * An agent's requests about a board as a whole (design §6.3): creating a draft, opened without
+ * An agent's requests about a board as a whole (design §6.3): creating a board, opened without
  * showing it, changing an open board's pages and title as one undo step, and showing a board to the
  * person.
  *
- * A new draft is created here, not in the main process, so its session lives here. Its pages are
+ * A new board is created here, not in the main process, so its session lives here. Its pages are
  * written with it, before its session opens, so creating a board is no undo step. Page and title
- * changes use the same pure edits as the page tabs' menus, saved at once (`saveStep`); deleting a
- * page that holds a person's words is refused unless the call says the person asked for it.
+ * changes use the same pure edits as the page menus, saved at once (`saveStep`); deleting a page that
+ * holds a person's words is refused unless the call says the person asked for it.
  */
 
 import type {
@@ -24,10 +24,9 @@ import { produce, type Draft } from "immer";
 import type { BoardDocument, BoardState, Page } from "../../../ipc/generated";
 import { toUnfoldError } from "../../../ipc/unfold";
 import { showBoard } from "../../shownBoard";
-import { addPage, deletePage, duplicatePage, findCard, findPage, renamePage, setTitle } from "../document";
+import { addPage, deletePage, findCard, findPage, renamePage, setTitle } from "../document";
 import { call } from "../engine";
-import { openBoard } from "../open";
-import { adoptBoardState, flushBoard, getOpenBoard, pushFocusMove, requestCardFocus, saveStep, select, setActivePage } from "../store";
+import { adoptBoardState, getOpenBoard, pushFocusMove, requestCardFocus, saveStep, select, setActivePage } from "../store";
 import type { BoardRef, PageTarget, Selection } from "../types";
 import { AgentRefusal, boardInfo, failure, guardPeopleText, invalid, itemWords, type Words } from "./context";
 
@@ -40,20 +39,8 @@ function edited(document: BoardDocument) {
   return { title: document.title, pages: document.pages };
 }
 
-/** Copies an open board into a new draft, opened without showing it. */
-async function copyBoard(source: BoardRef): Promise<BoardRef> {
-  if (!getOpenBoard(source)) {
-    throw new AgentRefusal("board_not_open", "This window doesn't hold the board to copy.");
-  }
-  await flushBoard(source);
-  const copy = await call("duplicate_board", source);
-  const ref: BoardRef = { project: source.project, id: copy.id };
-  await openBoard(ref, { background: true });
-  return ref;
-}
-
-/** A new draft with its named pages, saved before its session opens. */
-async function newDraft(request: AgentCreateRequest): Promise<BoardRef> {
+/** A new board with its named pages, saved before its session opens. */
+async function newBoardFile(request: AgentCreateRequest): Promise<BoardRef> {
   const { project } = request;
   const [first, ...more] = request.pages ?? [];
   const state = await call("new_board", {
@@ -74,26 +61,26 @@ async function newDraft(request: AgentCreateRequest): Promise<BoardRef> {
   return adoptBoardState(saved);
 }
 
-/** Saves a new draft's other pages; when that fails, the draft is let go with its first page. */
+/** Saves a new board's other pages; when that fails, the board is let go with its first page. */
 async function savePages(state: BoardState, document: BoardDocument): Promise<BoardState> {
   const { project } = state;
   try {
     return await call("save_board", { project, id: state.id, board: edited(document) });
   } catch (error) {
-    // No session holds the half-made draft: let it go, and say what happened.
+    // No session holds the half-made board: let it go, and say what happened.
     await call("close_board", { project, id: state.id }).catch(() => undefined);
     const { message } = toUnfoldError(error);
-    throw new AgentRefusal("board_problem", `The draft “${state.document.title}” was created with one page, but its other pages couldn't be saved: ${message}`);
+    throw new AgentRefusal("board_problem", `The board “${state.document.title}” was created with one page, but its other pages couldn't be saved: ${message}`);
   }
 }
 
-/** Creates a draft for an agent and opens it without showing it. */
+/** Creates a board for an agent and opens it without showing it. */
 export async function createBoardForAgent(request: AgentCreateRequest): Promise<AgentCreateResult> {
   try {
-    const ref = request.copyOf === undefined ? await newDraft(request) : await copyBoard({ project: request.project, id: request.copyOf });
+    const ref = await newBoardFile(request);
     const board = getOpenBoard(ref);
     if (!board) {
-      return failure("board_not_open", "The new draft closed before it could be read.");
+      return failure("board_not_open", "The new board closed before it could be read.");
     }
     return { ok: true, board: { project: ref.project, id: ref.id }, info: boardInfo(board), folder: board.document.folder ?? null, pages: pagesOf(board.document) };
   } catch (error) {
@@ -133,7 +120,7 @@ function pageWords(page: Page): Words[] {
   ];
 }
 
-/** Applies one operation to the draft document and says what it did. */
+/** Applies one operation to the document being edited and says what it did. */
 function applyBoardOp(document: Draft<BoardDocument>, op: AgentBoardOp, replacePeopleText: boolean | undefined): AgentBoardOpResult {
   switch (op.op) {
     case "add_page": {
@@ -164,18 +151,6 @@ function applyBoardOp(document: Draft<BoardDocument>, op: AgentBoardOp, replaceP
         document.pages.splice(op.to, 0, page);
       }
       return { op: op.op, status: from === op.to ? "kept" : "updated", page: page.id, title: page.title };
-    }
-    case "duplicate_page": {
-      const source = pageOf(document, op.page);
-      const id = duplicatePage(document, source.id);
-      const copy = id === undefined ? undefined : document.pages.find((page) => page.id === id);
-      if (!copy) {
-        throw invalid(`The page “${source.title}” couldn't be copied.`);
-      }
-      if (op.title !== undefined) {
-        copy.title = titleOf(op.title, "A page's title");
-      }
-      return { op: op.op, status: "created", page: copy.id, title: copy.title };
     }
     case "delete_page": {
       const page = pageOf(document, op.page);

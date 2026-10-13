@@ -24,7 +24,7 @@ vi.mock("../state/boards", async (original) => ({ ...(await original<typeof Boar
 
 const ORDERS = "p-orders0000";
 const PAYMENTS = "p-payments00";
-const BOARD = { project: ORDERS, id: ".unfold/local/drafts/orders.json" };
+const BOARD = { project: ORDERS, id: ".unfold/boards/orders.json" };
 
 /** A search golden (`search_place`, `search_worker`) with its hits in the orders project. */
 function searchResults(name: string): SearchResults {
@@ -93,7 +93,7 @@ describe("the Add box", () => {
     expect(screen.queryByRole("dialog", { name: "Add" })).toBeNull();
   });
 
-  it("searches every project with one call while typing, groups results by kind, and adds from Home to a new draft", async () => {
+  it("searches every project with one call while typing, groups results by kind, and adds from Home to a new board", async () => {
     renderWithClient(<AddBox />);
     act(() => {
       openAdd();
@@ -138,7 +138,7 @@ describe("the Add box", () => {
     expect(row.querySelector(".add-row-name")?.textContent).toBe("interface Cart");
     press("Enter");
     await waitFor(() => {
-      expect(adds.addBlock).toHaveBeenCalledWith({ board: BOARD, page: "page-1" }, ORDERS, CART, "diagram");
+      expect(adds.addBlock).toHaveBeenCalledWith({ board: BOARD, page: "page-1" }, CART, "diagram");
     });
   });
 

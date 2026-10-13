@@ -11,13 +11,13 @@ describe("parseLink", () => {
       ok: true,
       link: { project: "ts-orders", board: ".unfold/boards/order-placement.json", page: "page-2" },
     });
-    expect(parseLink("UNFOLD://shop/.unfold/local/drafts/b.json")).toEqual({ ok: true, link: { project: "shop", board: ".unfold/local/drafts/b.json" } });
+    expect(parseLink("UNFOLD://shop/.unfold/boards/b.json")).toEqual({ ok: true, link: { project: "shop", board: ".unfold/boards/b.json" } });
   });
 
   it("decodes each part", () => {
-    expect(parseLink("unfold://my%20shop%2Fweb/.unfold/boards/caf%C3%A9.json?page=page%201&item=a%26b")).toEqual({
+    expect(parseLink("unfold://my%20shop%23web/.unfold/boards/caf%C3%A9.json?page=page%201&item=a%26b")).toEqual({
       ok: true,
-      link: { project: "my shop/web", board: ".unfold/boards/café.json", page: "page 1", item: "a&b" },
+      link: { project: "my shop#web", board: ".unfold/boards/café.json", page: "page 1", item: "a&b" },
     });
   });
 
@@ -53,7 +53,7 @@ describe("resolveLink", () => {
     { id: "p-payments00", name: "payments" },
   ];
 
-  it("names the first project with the link's shared name", () => {
+  it("names the first project whose folder has the link's name", () => {
     expect(resolveLink({ project: "ts-orders", board: "b.json", page: "page-1" }, projects)).toEqual({
       ok: true,
       link: { project: "p-orders0000", board: "b.json", page: "page-1" },

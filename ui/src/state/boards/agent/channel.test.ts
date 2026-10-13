@@ -14,7 +14,7 @@ const toast = vi.hoisted(() => ({ showToast: vi.fn() }));
 vi.mock("../../../components/Toast", () => toast);
 
 const P = "p-orders0000";
-const ID = ".unfold/local/drafts/b.json";
+const ID = ".unfold/boards/b.json";
 const REF = { project: P, id: ID };
 const BOARD = { project: P, id: ID };
 const CLAUDE = { author: "agent:claude", name: "Claude" } as const;
@@ -74,14 +74,15 @@ describe("the agent channel", () => {
     setAgentChannelReady();
     engine.emit({ type: "agent_edit_board", requestId: 7, board: BOARD, agent: CLAUDE, title: "Edit pages", ops: [{ op: "add_page", title: "More" }] });
     engine.emit({ type: "agent_show", requestId: 8, board: BOARD, item: "a" });
-    engine.emit({ type: "agent_create_board", requestId: 9, project: P, copyOf: "other.json" });
+    // No fake engine answers `new_board`: the failure is answered as it came.
+    engine.emit({ type: "agent_create_board", requestId: 9, project: P, title: "Orders" });
     await vi.waitFor(() => {
       expect(engine.windowCalls.map((entry) => entry.command).sort()).toEqual(["agent_create_board_result", "agent_edit_board_result", "agent_show_result"]);
     });
     const answers = new Map(engine.windowCalls.map((entry) => [entry.command, entry.args]));
     expect(answers.get("agent_edit_board_result")).toMatchObject({ requestId: 7, result: { ok: true, results: [{ op: "add_page", status: "created", title: "More" }] } });
     expect(answers.get("agent_show_result")).toEqual({ requestId: 8, result: { ok: true, page: "page-1" } });
-    expect(answers.get("agent_create_board_result")).toMatchObject({ requestId: 9, result: { ok: false, code: "board_not_open" } });
+    expect(answers.get("agent_create_board_result")).toMatchObject({ requestId: 9, result: { ok: false, code: "not_found" } });
   });
 
   it("answers a repair with the page as saved", async () => {

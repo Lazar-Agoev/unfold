@@ -25,6 +25,7 @@ if (card.code?.source.state !== "current") {
   throw new Error("the fixture's code should verify");
 }
 const base: CodeText = card.code.source;
+const P = "p-orders0000";
 const PLACE = "src/services/order-service.ts#class:OrderService/method:place";
 // The fixture predates call resolution; make `orderService.place` resolved for these tests.
 const code: CodeText = {
@@ -133,7 +134,7 @@ describe("group validation", () => {
 
 describe("Code view", () => {
   it("renders the exact source with syntax classes and every line number", () => {
-    const { container } = render(wrap(<CodeView code={code} language="typescript" label="createOrder" folds={new Set()} />));
+    const { container } = render(wrap(<CodeView project={P} code={code} language="typescript" label="createOrder" folds={new Set()} />));
     expect(container.querySelectorAll(".code-row")).toHaveLength(code.lines.length);
     expect(container.querySelector(".tok-keyword")?.textContent).toBe("export");
     expect(container.querySelector(".code-view")?.textContent).toContain('const order = orderService.place(draft);');
@@ -143,7 +144,7 @@ describe("Code view", () => {
   it("marks external calls, opened calls, and a calling line's step fill (02 §4.3)", () => {
     const ports = new Set([placeLink.source]);
     const { container } = render(
-      wrap(<CodeView code={code} language="typescript" label="createOrder" folds={new Set()} ports={ports} renderPorts={() => null} onFollow={vi.fn()} />),
+      wrap(<CodeView project={P} code={code} language="typescript" label="createOrder" folds={new Set()} ports={ports} renderPorts={() => null} onFollow={vi.fn()} />),
     );
     expect(container.querySelector(".code-link.external")?.textContent).toBe("req.header");
     expect(container.querySelector(".code-link.resolved.opened")?.textContent).toBe("orderService.place");
@@ -155,7 +156,7 @@ describe("Code view", () => {
   it("follows on click, expands inline on ⌥-click, and explains unresolved calls", () => {
     const onFollow = vi.fn();
     const onExpand = vi.fn();
-    const { container } = render(wrap(<CodeView code={code} language="typescript" label="createOrder" folds={new Set()} onFollow={onFollow} onExpand={onExpand} />));
+    const { container } = render(wrap(<CodeView project={P} code={code} language="typescript" label="createOrder" folds={new Set()} onFollow={onFollow} onExpand={onExpand} />));
     const link = screen.getByRole("button", { name: "Follow orderService.place" });
     expect(link.textContent).toBe("orderService.place");
     fireEvent.click(link);
@@ -187,6 +188,7 @@ describe("Code view", () => {
     const { container } = render(
       wrap(
         <CodeView
+          project={P}
           code={code}
           language="typescript"
           label="createOrder"
@@ -223,6 +225,7 @@ describe("Code view", () => {
     const { container } = render(
       wrap(
         <CodeView
+          project={P}
           code={code}
           language="typescript"
           label="createOrder"
@@ -237,7 +240,7 @@ describe("Code view", () => {
   });
 
   it("copies exactly the code: tooltips' descriptions are not part of a row's text", () => {
-    const { container } = render(wrap(<CodeView code={code} language="typescript" label="createOrder" folds={new Set()} />));
+    const { container } = render(wrap(<CodeView project={P} code={code} language="typescript" label="createOrder" folds={new Set()} />));
     // A line holding an external or unresolved call, whose tooltip explains it.
     const plain = code.links.find((item) => item.resolution !== "resolved");
     const number = plain?.line ?? 0;

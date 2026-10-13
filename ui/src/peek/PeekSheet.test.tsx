@@ -24,7 +24,7 @@ vi.mock("../state/boards", async (original) => ({ ...(await original<typeof Boar
 const ORDERS = "p-orders0000";
 const PATH = "src/routes/orders.ts";
 const LIST_ORDERS = "src/routes/orders.ts#function:listOrders";
-const BOARD = { project: ORDERS, id: ".unfold/local/drafts/orders.json" };
+const BOARD = { project: ORDERS, id: ".unfold/boards/orders.json" };
 
 const TYPES_PATH = "src/types.ts";
 const SCHEMA_PATH = "db/schema.sql";
@@ -134,7 +134,7 @@ describe("the peek sheet", () => {
     expect(engine.callsOf("file_view")[0]).toEqual({ project: ORDERS, path: PATH, range: { startLine: 1, endLine: 200 } });
     expect(row(2)?.textContent).toContain('import { asyncHandler } from "../lib/async-handler.ts";');
     expect(row(2)?.querySelector(".tok-keyword")?.textContent).toBe("import");
-    expect(within(sheet()).getByText("a new draft")).toBeTruthy();
+    expect(within(sheet()).getByText("a new board")).toBeTruthy();
 
     // ⊕ beside a definition (only definitions get one); from Home it starts a draft.
     expect(row(1)?.querySelector(".peek-add-button")).toBeNull();
@@ -171,7 +171,7 @@ describe("the peek sheet", () => {
       openPeek({ project: ORDERS, path: TYPES_PATH });
     });
     fireEvent.click(await screen.findByRole("button", { name: "Add Query to the page" }));
-    expect(adds.addBlock).toHaveBeenCalledWith({ board: BOARD, page: "page-1" }, ORDERS, QUERY, "diagram");
+    expect(adds.addBlock).toHaveBeenCalledWith({ board: BOARD, page: "page-1" }, QUERY, "diagram");
   });
 
   it("shows an evidence file as text with line numbers", async () => {

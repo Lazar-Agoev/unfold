@@ -3,14 +3,14 @@
  * goes into the file and lasts only while the app runs.
  */
 
-import type { BoardDocument, Health, Key, PageOutline, Place, ProjectId, PublishedState, View } from "../../ipc/generated";
+import type { BoardDocument, Health, Key, PageOutline, ProjectId, View } from "../../ipc/generated";
 
-/** A board's id: the folder-relative path of its public file. */
+/** A board's id: the folder-relative path of its file. */
 export type BoardId = string;
 /** A page's id, unique in its board (`page-1`). */
 export type PageId = string;
 
-/** A board: its project and its id (the folder-relative path of its public file). */
+/** A board: its project and its id (the folder-relative path of its file). */
 export interface BoardRef {
   readonly project: ProjectId;
   readonly id: BoardId;
@@ -62,7 +62,6 @@ export type Selection =
  */
 export interface SelectedLine {
   readonly arrowId: string;
-  readonly project: ProjectId;
   readonly source: Key;
   readonly seq: number;
   /** The calling card. */
@@ -83,8 +82,6 @@ interface SelectedCall {
 /** A selected arrow from a Diagram node to a card it calls more than once: the calls it stands for, in source order. */
 export interface SelectedCalls {
   readonly arrowId: string;
-  /** The project both cards resolve to. */
-  readonly project: ProjectId;
   /** The calling card. */
   readonly from: string;
   /** The called card. */
@@ -170,22 +167,13 @@ interface BoardHistory {
   coalesce: { readonly key: string; readonly at: number } | null;
 }
 
-/** An outside change to a board with unsaved edits, waiting for the person to choose. */
-interface BoardConflict {
-  /** The revision on disk, or null when the file was deleted. */
-  readonly diskRevision: string | null;
-}
-
 export interface OpenBoard {
   readonly ref: BoardRef;
-  place: Place;
   name: string;
-  /** The working version. Its `folder` and `projects` are Rust's (never edited or sent by the UI). */
+  /** The board as this window edits it. Its `folder` is Rust's (never edited or sent by the UI). */
   document: BoardDocument;
   /** The revision of the file last loaded or saved. */
   revision: string;
-  /** The publish state at the last open, save, or publish (the header reads `list_boards`). */
-  published: PublishedState | null;
   health: Health;
   outlines: Record<PageId, PageOutline>;
   label: string | null;
@@ -193,8 +181,8 @@ export interface OpenBoard {
   edits: number;
   savedEdits: number;
   saving: boolean;
+  /** Why the last save failed, until one succeeds; while set, outside changes don't reload the board. */
   saveError: string | null;
-  conflict: BoardConflict | null;
   history: BoardHistory;
   activePage: PageId;
   pages: Record<PageId, PageView>;

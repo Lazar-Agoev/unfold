@@ -76,9 +76,10 @@ async function callsOf(
   if (args.source !== undefined) {
     return { calls: [{ project: await projectOrView(context, args.project), source: args.source, seq: args.seq }], total: 1 };
   }
-  const selection = currentView(context)?.selection;
-  if (selection?.kind === "line" || selection?.kind === "calls") {
-    const project = await context.project(selection.project);
+  const view = currentView(context);
+  const selection = view?.selection;
+  if (view?.board && (selection?.kind === "line" || selection?.kind === "calls")) {
+    const project = await context.project(view.board.project);
     const selected = selection.kind === "line" ? [selection] : selection.calls;
     return { calls: selected.slice(0, MAX_CALLS).map((call) => ({ project, source: call.source, seq: call.seq })), total: selected.length };
   }

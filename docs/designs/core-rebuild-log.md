@@ -18,7 +18,8 @@ nothing is pushed. The untracked design docs this build didn't write stay uncomm
 | 1. Tooling, tests, and docs | done, committed |
 | 2. One window | done, committed |
 | 3. Projects, Home, and entrance screens | done, committed |
-| 4. Boards are files | in progress |
+| 4. Boards are files | done, committed |
+| 5. Reading, Add, and sharing | in progress |
 
 ## Working setup
 
@@ -240,3 +241,64 @@ rewritten); step 8 writes the clone's tables as the plan describes.
 | `just e2e` | 33 journeys pass |
 | Residue `rg` | nothing |
 | Screenshots: Home and the project menu vs core-scope.html | match the Home and Menus frames |
+
+## Step 4 — Boards are files
+
+**Done.** Rust and desktop agents in parallel, then the UI, then the journeys.
+
+**What was done**
+
+- **Engine:** boards are plain files in `.unfold/boards/`. `new_board` writes `.unfold/boards/<slug(title)>.json`
+  (`-2`, `-3` when taken; no compile needed); `save_board` = `{ project, id, board }` overwrites with no revision
+  check, writing a deleted file back. An outside change to an open board's file reloads its session and sends
+  `board_reloaded { project, board, state: BoardState | null }` to the window (`null` when the file was deleted).
+  `list_boards` is sorted by file modification time (`updatedAtMs`), lists invalid files with `error`, and folders are
+  one name (`invalid_folder` for a `/`). Deleted: drafts, Publish, changes copies, conflicts, `board_thumbnails`,
+  `duplicate_board`, the `drafts` command, cross-project cards (`ProjectName`, `ProjectKey`, every `project`,
+  `carriesProject`, `Board.projects`, `NotConnected`, `PageGraphs`, the `others` graphs, `open_boards` references),
+  `[project] name` with `settings/project.rs`, `SetProjectName`, and `unicode-normalization`. A project's name is its
+  folder's name and is no longer stored in `workspace.json`.
+- **Schema:** `docs/schemas/` lost `projects`, `project`, `carriesProject`, `publishes`, `baseRevision`; `folder` is
+  one name. `testdata/boards/*.json` regenerated.
+- **Desktop:** MCP `list_boards` (no drafts or publish state; asks for a project when several exist), `create_board`
+  (a file), `organize_boards`/`edit_pages` (no duplicate; one-level folders), no `project` fields on tools, no
+  `set_project_name`, no "not connected" health; the guide's "Pages across projects" became "Other repositories" (an
+  `external` resource card). `unfold://` links name the project by its folder name. The bridge loads a board that
+  isn't shown in the background before an agent's edit, read, or repair; the view report's `tabs` became `held`.
+- **UI:** deleted the Publish dialog, publish state, Discard, the conflict banner, Drafts, placeholders and Connect
+  project, duplicating, thumbnails and `BoardGrid`, Home's radios and sort, the Share menu (its Mermaid items one step
+  early), `RadioGroup`, and tokens and glyphs left without users. Built "Not saved · Retry" (reason in a tooltip),
+  the silent reload with undo reset (ignored while a save fails), Home's Boards list by last edit with folders, and
+  the board and page menus from the Menus frame.
+- **Journeys:** `publish.spec.ts` and `cross-project.spec.ts` deleted; `boards.spec.ts` rewritten (board menu,
+  one-level folders, outside edits: reload, undo reset, deletion, failed save, Retry).
+
+**Choices**
+
+- `board_reloaded` carries the whole board state, so the UI needs no second call.
+- `new_board` no longer requires a compiled project (that check existed because drafts lived in `.unfold/local/`).
+- A file deleted outside keeps the person's version with no banner; the next save writes it back.
+- Board menu's Export PNG… is disabled for a board that isn't open (it exports the shown page).
+- A new folder comes from Move to folder › New folder… (the folder menu's New Folder… went: folders don't nest).
+- Add still lists other projects' results, marked "In another project"; step 5 limits Add to the board's project.
+- Fold all / Unfold all left the board menu and stay in the canvas menu until step 5 deletes folding.
+
+**Deviations**
+
+- The Share menu's Mermaid items went in this step with the menu; the rest of Mermaid goes in step 5.
+- Cards still take a `project` prop (always the board's project) until step 11 rebuilds them.
+- `desktop/README.md` lines about tabs, updates, opt-in agents, and drafts were fixed now (the residue search covers
+  `desktop/`); step 18 rewrites the docs.
+
+**Gate** (2026-10-13)
+
+| Check | Result |
+| --- | --- |
+| fmt, clippy, `cargo test --workspace` (838), gen-ipc, notices, deny, machete, oracles | pass |
+| typecheck, lint, unit tests (ui 897, desktop 321), knip, addon test | pass |
+| `just e2e` | 29 journeys pass |
+| Residue `rg` (both searches) | nothing |
+| Screenshots: Home's Boards and the board menu | match the Home and Menus frames |
+
+A journey flake seen once: the engine-restart test in `home.spec.ts` typed an extra "s" (macOS inline prediction in a
+focused field); it passed in every other run.

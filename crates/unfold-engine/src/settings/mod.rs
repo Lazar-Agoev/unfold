@@ -7,14 +7,12 @@
 //!
 //! [`Settings::hash`] fingerprints everything that can change a compile; languages hash only the
 //! part that affects one file, such as [`Settings::python_hash`], so a settings edit re-extracts
-//! only the files it touches. The project's shared name ([`Settings::project_name`]) changes no
-//! compile, so neither hash includes it.
+//! only the files it touches.
 
 mod evidence;
 mod folder;
 mod hash;
 mod parse;
-mod project;
 mod scope;
 
 use std::collections::BTreeMap;
@@ -28,7 +26,6 @@ pub use evidence::Evidence;
 pub use folder::{FolderPath, FolderPathError};
 pub use hash::{SettingsHash, SettingsHasher};
 pub use parse::SettingsError;
-pub use project::{MAX_PROJECT_NAME, default_project_name, is_project_name};
 pub use scope::{Scope, ScopePatternError, ScopeStatus};
 
 use crate::launch::LaunchTarget;
@@ -40,12 +37,6 @@ pub const SETTINGS_PATH: &str = "unfold.toml";
 /// The validated settings of one open folder. [`Settings::default`] is what an absent file means.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct Settings {
-    /// `[project] name`: the shared name other projects' boards use for this one, always a
-    /// valid name ([`is_project_name`]). `None` means the default the workspace makes from the
-    /// folder ([`default_project_name`]). Not part of [`Settings::hash`]: a rename re-extracts
-    /// nothing.
-    #[serde(skip)]
-    pub project_name: Option<String>,
     /// The languages to graph, sorted and without duplicates. `None` means every supported
     /// language found in the folder.
     pub languages: Option<Vec<Language>>,

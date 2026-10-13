@@ -1,6 +1,6 @@
 //! Authored claims: resource cards and connections (links with a `kind`) cite code, and frame
 //! descriptions describe their members. This module says what each claim is signed over, checks
-//! what it cites against the graphs (health), and grounds the claims an agent adds or changes
+//! what it cites against the graph (health), and grounds the claims an agent adds or changes
 //! (at save).
 //!
 //! A claim cites **parts**: a resource card its table's type, then its anchors; a connection its
@@ -38,10 +38,9 @@ use unfold_core::vocab::{BlockKind, EntranceKind, Resolution};
 
 use super::BoardError;
 use super::check::{HealthItem, HealthKind, RepairKind, Target, guard_problem};
-use super::graph::{BoardGraph, Lines, PageGraphs};
+use super::graph::{BoardGraph, Lines};
 use super::model::{
-    Anchor, AuthorKind, Card, CardRef, Frame, Link, LinkKind, Page, ProjectName, Resource, ResourceKind,
-    Signature,
+    Anchor, AuthorKind, Card, CardRef, Frame, Link, LinkKind, Page, Resource, ResourceKind, Signature,
 };
 use crate::mermaid::entrance_title;
 
@@ -57,55 +56,43 @@ const ANCHORED: &[LinkKind] = &[
 /// The most field names a refusal lists.
 const LISTED_FIELDS: usize = 12;
 
-/// One thing a claim cites, in a project (`None`: the board's own).
+/// One thing a claim cites.
 #[derive(Debug, Clone, Copy)]
 enum Part<'p> {
     /// A block or entrance key.
-    Key(Option<&'p ProjectName>, &'p str),
+    Key(&'p str),
     /// Lines of an evidence file.
-    Lines(Option<&'p ProjectName>, &'p RepoPath, [u32; 2]),
+    Lines(&'p RepoPath, [u32; 2]),
 }
 
 impl<'p> Part<'p> {
     fn of(anchor: &'p Anchor) -> Self {
         match anchor {
-            Anchor::Key { key, project } => Self::Key(project.as_ref(), key.as_str()),
-            Anchor::File { file, lines, project } => Self::Lines(project.as_ref(), file, *lines),
-        }
-    }
-
-    fn project(self) -> Option<&'p ProjectName> {
-        match self {
-            Self::Key(project, _) | Self::Lines(project, ..) => project,
+            Anchor::Key { key } => Self::Key(key.as_str()),
+            Anchor::File { file, lines } => Self::Lines(file, *lines),
         }
     }
 }
 
 /// What resource card `resource` cites: its type, then its anchors.
 fn resource_parts(resource: &Resource) -> Vec<Part<'_>> {
-    let table = resource
-        .type_key
-        .iter()
-        .map(|key| Part::Key(resource.project.as_ref(), key.as_str()));
+    let table = resource.type_key.iter().map(|key| Part::Key(key.as_str()));
     table.chain(resource.anchors.iter().map(Part::of)).collect()
 }
 
-/// What connection `link` of `page` cites: its step, then its anchors (nothing for a drawn link).
-fn connection_parts<'p>(page: &'p Page, link: &'p Link) -> Vec<Part<'p>> {
+/// What connection `link` cites: its step, then its anchors (nothing for a drawn link).
+fn connection_parts(link: &Link) -> Vec<Part<'_>> {
     if link.kind.is_none() {
         return Vec::new();
     }
-    let step = link
-        .step
-        .iter()
-        .map(|key| Part::Key(page.step_project(link), key.as_str()));
+    let step = link.step.iter().map(|key| Part::Key(key.as_str()));
     step.chain(link.anchors.iter().map(Part::of)).collect()
 }
 
-/// Whether link `link` of `page` is a connection that cites code (a step or anchors): its texts
-/// are signed over that code, not over its ends.
-pub(crate) fn cites(page: &Page, link: &Link) -> bool {
-    !connection_parts(page, link).is_empty()
+/// Whether link `link` is a connection that cites code (a step or anchors): its texts are signed
+/// over that code, not over its ends.
+pub(crate) fn cites(link: &Link) -> bool {
+    !connection_parts(link).is_empty()
 }
 
 /// What one part's bytes are now.
@@ -113,17 +100,13 @@ enum Found<'g> {
     Bytes(&'g [u8]),
     Missing,
     Unverified,
-    NotConnected,
 }
 
-fn found<'g>(graphs: &PageGraphs<'g>, part: Part<'_>) -> Found<'g> {
-    let Some(graph) = graphs.get(part.project()) else {
-        return Found::NotConnected;
-    };
+fn found<'g>(graph: &'g BoardGraph, part: Part<'_>) -> Found<'g> {
     match part {
-        Part::Key(_, key) if !graph.exists(key) => Found::Missing,
-        Part::Key(_, key) => graph.key_bytes(key).map_or(Found::Unverified, Found::Bytes),
-        Part::Lines(_, file, lines) => match graph.lines(file, lines) {
+        Part::Key(key) if !graph.exists(key) => Found::Missing,
+        Part::Key(key) => graph.key_bytes(key).map_or(Found::Unverified, Found::Bytes),
+        Part::Lines(file, lines) => match graph.lines(file, lines) {
             Lines::Bytes(bytes) => Found::Bytes(bytes),
             Lines::Unverified => Found::Unverified,
             Lines::NotRecorded | Lines::PastEnd => Found::Missing,
@@ -138,8 +121,6 @@ pub(crate) enum Signed {
     Nothing,
     /// Its parts verify: their signature.
     Signature(Signature),
-    /// A part is in a project that is not connected: kept as it is.
-    NotConnected,
     /// A part is gone from its graph.
     Missing,
     /// A part's bytes don't verify against the graph's hash.
@@ -156,19 +137,18 @@ impl Signed {
 }
 
 /// The signature over `parts`' bytes, each followed by `\n`.
-fn signed(graphs: &PageGraphs<'_>, parts: &[Part<'_>]) -> Signed {
+fn signed(graph: &BoardGraph, parts: &[Part<'_>]) -> Signed {
     if parts.is_empty() {
         return Signed::Nothing;
     }
     let mut bytes = Vec::new();
     let mut problem = None;
     for part in parts {
-        match found(graphs, *part) {
+        match found(graph, *part) {
             Found::Bytes(found) => {
                 bytes.extend_from_slice(found);
                 bytes.push(b'\n');
             }
-            Found::NotConnected => return Signed::NotConnected,
             Found::Missing => problem = Some(Signed::Missing),
             Found::Unverified => problem = problem.or(Some(Signed::Unverified)),
         }
@@ -177,13 +157,13 @@ fn signed(graphs: &PageGraphs<'_>, parts: &[Part<'_>]) -> Signed {
 }
 
 /// Resource card `resource`'s signature now.
-pub(crate) fn resource_signed(graphs: &PageGraphs<'_>, resource: &Resource) -> Signed {
-    signed(graphs, &resource_parts(resource))
+pub(crate) fn resource_signed(graph: &BoardGraph, resource: &Resource) -> Signed {
+    signed(graph, &resource_parts(resource))
 }
 
 /// Connection `link`'s signature now ([`Signed::Nothing`] for a drawn link).
-pub(crate) fn connection_signed(page: &Page, graphs: &PageGraphs<'_>, link: &Link) -> Signed {
-    signed(graphs, &connection_parts(page, link))
+pub(crate) fn connection_signed(graph: &BoardGraph, link: &Link) -> Signed {
+    signed(graph, &connection_parts(link))
 }
 
 /// The cards of frame `frame`, directly and in the frames it holds, sorted by id.
@@ -209,13 +189,10 @@ fn member_cards<'p>(page: &'p Page, frame: &'p Frame) -> Vec<&'p Card> {
 }
 
 /// The signature frame `frame`'s description gets now: over its member cards' signatures.
-pub(crate) fn frame_signed(page: &Page, graphs: &PageGraphs<'_>, frame: &Frame) -> Signed {
+pub(crate) fn frame_signed(page: &Page, graph: &BoardGraph, frame: &Frame) -> Signed {
     let mut hexes = Vec::new();
     let mut problem = None;
     for card in member_cards(page, frame) {
-        let Some(graph) = graphs.get(card.reference.project()) else {
-            return Signed::NotConnected;
-        };
         let key = card.reference.key().as_str();
         match graph.signature(key) {
             Some(signature) => hexes.push(signature.0.to_string()),
@@ -229,12 +206,12 @@ pub(crate) fn frame_signed(page: &Page, graphs: &PageGraphs<'_>, frame: &Frame) 
 /// The channel a save fills in for connection `link`: its `to` end's route (`METHOD path`) for
 /// an `http` connection, or its worker's queue for a `queue` connection, when that end is such
 /// an entrance card.
-pub(crate) fn entrance_channel(page: &Page, graphs: &PageGraphs<'_>, link: &Link) -> Option<String> {
+pub(crate) fn entrance_channel(page: &Page, graph: &BoardGraph, link: &Link) -> Option<String> {
     let card = page.card(&link.to)?;
-    let CardRef::Entrance { entrance: key, .. } = &card.reference else {
+    let CardRef::Entrance { entrance: key } = &card.reference else {
         return None;
     };
-    let entrance = graphs.get(card.reference.project())?.entrance(key.as_str())?;
+    let entrance = graph.entrance(key.as_str())?;
     let trigger = entrance.trigger.as_deref()?;
     match (link.kind?, entrance.kind) {
         (LinkKind::Http, EntranceKind::Http) => entrance
@@ -250,7 +227,7 @@ fn item(
     page: &Page,
     kind: HealthKind,
     target: &Target,
-    part: Option<(Option<&ProjectName>, &str)>,
+    key: Option<&str>,
     anchor: Option<usize>,
     message: String,
     repairs: &[RepairKind],
@@ -259,8 +236,7 @@ fn item(
         page: page.id.clone(),
         kind,
         target: target.clone(),
-        project: part.and_then(|(project, _)| project.cloned()),
-        key: part.map(|(_, key)| key.to_owned()),
+        key: key.map(str::to_owned),
         anchor: anchor.and_then(|index| u32::try_from(index).ok()),
         message,
         repairs: repairs.to_vec(),
@@ -271,7 +247,7 @@ fn item(
 /// "connection").
 fn anchor_gone(graph: &BoardGraph, anchor: &Anchor, claim: &str) -> Option<String> {
     match anchor {
-        Anchor::Key { key, .. } => (!graph.exists(key.as_str())).then(|| {
+        Anchor::Key { key } => (!graph.exists(key.as_str())).then(|| {
             format!(
                 "Anchor {key} is not in the graph: the code was renamed, moved, or removed. Reconnect it to the code's new key, or remove the {claim}"
             )
@@ -279,7 +255,6 @@ fn anchor_gone(graph: &BoardGraph, anchor: &Anchor, claim: &str) -> Option<Strin
         Anchor::File {
             file,
             lines: [first, last],
-            ..
         } => match graph.lines(file, [*first, *last]) {
             Lines::NotRecorded => Some(format!(
                 "Anchor {file} is not an evidence file of the project: list it under `[evidence] files` in unfold.toml and compile, or reconnect the anchor"
@@ -308,21 +283,20 @@ fn type_gone(graph: &BoardGraph, key: &str, role: &str, claim: &str) -> Option<S
 
 /// The health items of the page's claims: resource cards (missing, held, outdated), connections
 /// (broken, held, outdated; a missing end is reported with every link), and frame descriptions
-/// (outdated). Claims citing a project that is not connected are kept unchecked.
-pub(super) fn health(page: &Page, graphs: &PageGraphs<'_>) -> Vec<HealthItem> {
+/// (outdated).
+pub(super) fn health(page: &Page, graph: &BoardGraph) -> Vec<HealthItem> {
     let mut items = Vec::new();
     for resource in &page.resources {
-        resource_health(page, graphs, resource, &mut items);
+        resource_health(page, graph, resource, &mut items);
     }
     for link in page.links.iter().filter(|link| link.kind.is_some()) {
-        connection_health(page, graphs, link, &mut items);
+        connection_health(page, graph, link, &mut items);
     }
     for frame in &page.frames {
         let Some(description) = &frame.description else {
             continue;
         };
-        let current = frame_signed(page, graphs, frame);
-        if current != Signed::NotConnected && outdated(description.signature, current) {
+        if outdated(description.signature, frame_signed(page, graph, frame)) {
             items.push(item(
                 page,
                 HealthKind::Outdated,
@@ -354,21 +328,18 @@ struct Claim<'w> {
 /// anchors) held for review; whether there is one.
 fn parts_health(
     page: &Page,
-    graphs: &PageGraphs<'_>,
+    graph: &BoardGraph,
     target: &Target,
     claim: Claim<'_>,
     anchors: &[Anchor],
-    keys: &[(Option<&ProjectName>, &str)],
+    keys: &[&str],
     items: &mut Vec<HealthItem>,
 ) -> bool {
     let mut broken = false;
     for (index, anchor) in anchors.iter().enumerate() {
-        let Some(graph) = graphs.get(anchor.project()) else {
-            continue;
-        };
         if let Some(message) = anchor_gone(graph, anchor, claim.word) {
             broken = true;
-            let key = anchor.key().map(|key| (anchor.project(), key.as_str()));
+            let key = anchor.key().map(|key| key.as_str());
             let repairs = [RepairKind::Reconnect, claim.remove];
             items.push(item(
                 page,
@@ -384,12 +355,9 @@ fn parts_health(
     let held = [RepairKind::Accept, RepairKind::Reconnect, claim.remove];
     let anchor_keys = anchors
         .iter()
-        .filter_map(|anchor| anchor.key().map(|key| (anchor.project(), key.as_str())));
-    for (project, key) in keys.iter().copied().chain(anchor_keys) {
-        let Some(graph) = graphs.get(project) else {
-            continue;
-        };
-        if let Some(problem) = guard_problem(page, graph, project, key) {
+        .filter_map(|anchor| anchor.key().map(|key| key.as_str()));
+    for key in keys.iter().copied().chain(anchor_keys) {
+        if let Some(problem) = guard_problem(page, graph, key) {
             broken = true;
             let at = anchors
                 .iter()
@@ -398,7 +366,7 @@ fn parts_health(
                 page,
                 HealthKind::Review,
                 target,
-                Some((project, key)),
+                Some(key),
                 at,
                 problem.to_owned(),
                 &held,
@@ -408,7 +376,7 @@ fn parts_health(
     broken
 }
 
-fn resource_health(page: &Page, graphs: &PageGraphs<'_>, resource: &Resource, items: &mut Vec<HealthItem>) {
+fn resource_health(page: &Page, graph: &BoardGraph, resource: &Resource, items: &mut Vec<HealthItem>) {
     let target = Target::Resource(resource.id.clone());
     let claim = Claim {
         gone: HealthKind::Missing,
@@ -419,28 +387,25 @@ fn resource_health(page: &Page, graphs: &PageGraphs<'_>, resource: &Resource, it
     let mut broken = false;
     let mut keys = Vec::new();
     if let Some(table) = &resource.type_key {
-        let project = resource.project.as_ref();
-        if let Some(graph) = graphs.get(project) {
-            if let Some(message) = type_gone(graph, table.as_str(), "table's type", "resource card") {
-                broken = true;
-                items.push(item(
-                    page,
-                    HealthKind::Missing,
-                    &target,
-                    Some((project, table.as_str())),
-                    None,
-                    message,
-                    &remove,
-                ));
-            }
-            keys.push((project, table.as_str()));
+        if let Some(message) = type_gone(graph, table.as_str(), "table's type", "resource card") {
+            broken = true;
+            items.push(item(
+                page,
+                HealthKind::Missing,
+                &target,
+                Some(table.as_str()),
+                None,
+                message,
+                &remove,
+            ));
         }
+        keys.push(table.as_str());
     }
-    broken |= parts_health(page, graphs, &target, claim, &resource.anchors, &keys, items);
-    let current = resource_signed(graphs, resource);
-    if broken || current == Signed::NotConnected {
+    broken |= parts_health(page, graph, &target, claim, &resource.anchors, &keys, items);
+    if broken {
         return;
     }
+    let current = resource_signed(graph, resource);
     let description = resource.description.as_ref();
     if outdated(resource.signature, current)
         || description.is_some_and(|description| outdated(description.signature, current))
@@ -460,7 +425,7 @@ fn resource_health(page: &Page, graphs: &PageGraphs<'_>, resource: &Resource, it
     }
 }
 
-fn connection_health(page: &Page, graphs: &PageGraphs<'_>, link: &Link, items: &mut Vec<HealthItem>) {
+fn connection_health(page: &Page, graph: &BoardGraph, link: &Link, items: &mut Vec<HealthItem>) {
     let target = Target::Link(link.id.clone());
     let claim = Claim {
         gone: HealthKind::BrokenLink,
@@ -471,56 +436,50 @@ fn connection_health(page: &Page, graphs: &PageGraphs<'_>, link: &Link, items: &
     let mut broken = false;
     let mut keys = Vec::new();
     if let Some(step) = &link.step {
-        let project = page.step_project(link);
-        if let Some(graph) = graphs.get(project) {
-            let card = page
-                .card(&link.from)
-                .and_then(|card| graph.block(card.reference.key().as_str()));
-            let message = match (graph.block(step.as_str()), card) {
-                (None, _) => Some(format!(
-                    "Step {step} is not in the graph: the code changed. Reconnect it to the statement's new key, or remove the connection"
-                )),
-                (Some(block), Some(card)) if !block.within(&card) => Some(format!(
-                    "Step {step} is not inside its card's block: a connection leaves from a statement or call of its `from` card. Reconnect the step, or remove the connection"
-                )),
-                _ => None,
-            };
-            if let Some(message) = message {
-                broken = true;
-                items.push(item(
-                    page,
-                    HealthKind::BrokenLink,
-                    &target,
-                    Some((project, step.as_str())),
-                    None,
-                    message,
-                    &remove,
-                ));
-            }
-            keys.push((project, step.as_str()));
+        let card = page
+            .card(&link.from)
+            .and_then(|card| graph.block(card.reference.key().as_str()));
+        let message = match (graph.block(step.as_str()), card) {
+            (None, _) => Some(format!(
+                "Step {step} is not in the graph: the code changed. Reconnect it to the statement's new key, or remove the connection"
+            )),
+            (Some(block), Some(card)) if !block.within(&card) => Some(format!(
+                "Step {step} is not inside its card's block: a connection leaves from a statement or call of its `from` card. Reconnect the step, or remove the connection"
+            )),
+            _ => None,
+        };
+        if let Some(message) = message {
+            broken = true;
+            items.push(item(
+                page,
+                HealthKind::BrokenLink,
+                &target,
+                Some(step.as_str()),
+                None,
+                message,
+                &remove,
+            ));
         }
+        keys.push(step.as_str());
     }
     if let Some(carries) = &link.carries {
-        let project = link.carries_project.as_ref();
-        if let Some(graph) = graphs.get(project) {
-            if let Some(message) = type_gone(graph, carries.as_str(), "carried type", "connection") {
-                broken = true;
-                items.push(item(
-                    page,
-                    HealthKind::BrokenLink,
-                    &target,
-                    Some((project, carries.as_str())),
-                    None,
-                    message,
-                    &remove,
-                ));
-            }
-            keys.push((project, carries.as_str()));
+        if let Some(message) = type_gone(graph, carries.as_str(), "carried type", "connection") {
+            broken = true;
+            items.push(item(
+                page,
+                HealthKind::BrokenLink,
+                &target,
+                Some(carries.as_str()),
+                None,
+                message,
+                &remove,
+            ));
         }
+        keys.push(carries.as_str());
     }
-    broken |= parts_health(page, graphs, &target, claim, &link.anchors, &keys, items);
-    let current = connection_signed(page, graphs, link);
-    if broken || matches!(current, Signed::NotConnected | Signed::Nothing) {
+    broken |= parts_health(page, graph, &target, claim, &link.anchors, &keys, items);
+    let current = connection_signed(graph, link);
+    if broken || current == Signed::Nothing {
         return;
     }
     let texts = [link.description.as_ref(), link.label.as_ref()];
@@ -553,7 +512,7 @@ fn resource_changed(old: Option<&Resource>, new: &Resource) -> bool {
     old.is_none_or(|old| {
         old.kind != new.kind
             || old.name != new.name
-            || (&old.project, &old.type_key) != (&new.project, &new.type_key)
+            || old.type_key != new.type_key
             || old.columns != new.columns
             || old.anchors != new.anchors
             || old.author != new.author
@@ -569,7 +528,7 @@ fn connection_changed(old: Option<&Link>, new: &Link) -> bool {
             || old.step != new.step
             || (&old.from_column, &old.to_column) != (&new.from_column, &new.to_column)
             || old.channel != new.channel
-            || (&old.carries, &old.carries_project) != (&new.carries, &new.carries_project)
+            || old.carries != new.carries
             || old.cardinality != new.cardinality
             || old.anchors != new.anchors
             || old.author != new.author
@@ -577,8 +536,8 @@ fn connection_changed(old: Option<&Link>, new: &Link) -> bool {
 }
 
 /// Sets the unsigned ones of a claim's `slots` (its signature, its texts' signatures) to
-/// `current`. Nothing to sign, a project that isn't connected, or a missing part (which the save
-/// then refuses) leaves them as they are; a source that changed since the graph was built can't
+/// `current`. Nothing to sign, or a missing part (which the save then refuses), leaves them as
+/// they are; a source that changed since the graph was built can't
 /// be signed (`what` names the claim).
 fn put<'s>(
     current: Signed,
@@ -593,7 +552,7 @@ fn put<'s>(
                     what: what.to_owned(),
                 });
             }
-            Signed::Nothing | Signed::NotConnected | Signed::Missing => {}
+            Signed::Nothing | Signed::Missing => {}
         }
     }
     Ok(())
@@ -604,16 +563,12 @@ fn put<'s>(
 /// their descriptions and labels, and frame descriptions. A resource card or connection whose
 /// parts changed since `previous` is signed again; signed text stays as it is (it goes outdated
 /// when its code changed), except a link label signed over its ends before the link cited code.
-pub(super) fn sign(
-    page: &mut Page,
-    previous: Option<&Page>,
-    graphs: &PageGraphs<'_>,
-) -> Result<(), BoardError> {
+pub(super) fn sign(page: &mut Page, previous: Option<&Page>, graph: &BoardGraph) -> Result<(), BoardError> {
     let channels: Vec<(usize, String)> = page
         .links
         .iter()
         .enumerate()
-        .filter_map(|(index, link)| Some((index, entrance_channel(page, graphs, link)?)))
+        .filter_map(|(index, link)| Some((index, entrance_channel(page, graph, link)?)))
         .collect();
     for (index, channel) in channels {
         page.links[index].channel = Some(channel);
@@ -622,11 +577,8 @@ pub(super) fn sign(
         let resource = &page.resources[index];
         let moved = previous
             .and_then(|old| old.resource(&resource.id))
-            .is_some_and(|old| {
-                (&old.project, &old.type_key, &old.anchors)
-                    != (&resource.project, &resource.type_key, &resource.anchors)
-            });
-        let current = resource_signed(graphs, resource);
+            .is_some_and(|old| (&old.type_key, &old.anchors) != (&resource.type_key, &resource.anchors));
+        let current = resource_signed(graph, resource);
         let resource = &mut page.resources[index];
         if moved {
             resource.signature = None;
@@ -641,14 +593,14 @@ pub(super) fn sign(
     }
     for index in 0..page.links.len() {
         let link = &page.links[index];
-        let old = previous.and_then(|old| Some((old, old.link(&link.id)?)));
-        let moved = old.is_some_and(|(_, old)| {
+        let old = previous.and_then(|old| old.link(&link.id));
+        let moved = old.is_some_and(|old| {
             (&old.from, &old.step, &old.anchors) != (&link.from, &link.step, &link.anchors)
         });
         // A link that cited no code had its label signed over its ends: it is signed over the
         // code it cites now, not reported outdated.
-        let rebased = old.is_some_and(|(old_page, old)| !cites(old_page, old));
-        let current = connection_signed(page, graphs, link);
+        let rebased = old.is_some_and(|old| !cites(old));
+        let current = connection_signed(graph, link);
         if current == Signed::Nothing {
             continue;
         }
@@ -667,7 +619,7 @@ pub(super) fn sign(
         put(current, std::iter::once(&mut link.signature).chain(texts), &what)?;
     }
     for index in 0..page.frames.len() {
-        let current = frame_signed(page, graphs, &page.frames[index]);
+        let current = frame_signed(page, graph, &page.frames[index]);
         let frame = &mut page.frames[index];
         let what = format!("the description of frame `{}`", frame.id);
         let description = frame.description.as_mut().map(|text| &mut text.signature);
@@ -687,13 +639,12 @@ fn refuse(page: &Page, target: Target, message: String) -> BoardError {
 
 /// How a page item reads in a message: a card's qualified name or entrance, a resource card's
 /// kind and name, or a frame's title.
-fn item_name(page: &Page, graphs: &PageGraphs<'_>, id: &str) -> String {
+fn item_name(page: &Page, graph: &BoardGraph, id: &str) -> String {
     if let Some(card) = page.card(id) {
         let key = card.reference.key().as_str();
-        let graph = graphs.get(card.reference.project());
         let name = match &card.reference {
-            CardRef::Block { .. } => graph.and_then(|graph| graph.qualified_name(key)),
-            CardRef::Entrance { .. } => graph.and_then(|graph| graph.entrance(key)).map(entrance_title),
+            CardRef::Block { .. } => graph.qualified_name(key),
+            CardRef::Entrance { .. } => graph.entrance(key).map(entrance_title),
         };
         return name.unwrap_or_else(|| key.to_owned());
     }
@@ -706,12 +657,9 @@ fn item_name(page: &Page, graphs: &PageGraphs<'_>, id: &str) -> String {
 
 /// How a part reads in a message: a block's name and file, an entrance, or an evidence file's
 /// lines.
-fn part_name(graphs: &PageGraphs<'_>, part: Part<'_>) -> String {
+fn part_name(graph: &BoardGraph, part: Part<'_>) -> String {
     match part {
-        Part::Key(project, key) => {
-            let Some(graph) = graphs.get(project) else {
-                return key.to_owned();
-            };
+        Part::Key(key) => {
             if let Some(block) = graph.block(key) {
                 let path = &block.file().file.path;
                 let kind = block.block().kind;
@@ -730,13 +678,13 @@ fn part_name(graphs: &PageGraphs<'_>, part: Part<'_>) -> String {
                 |entrance| format!("the {} entrance", entrance_title(entrance)),
             )
         }
-        Part::Lines(_, file, [first, last]) => format!("{file} lines {first}–{last}"),
+        Part::Lines(file, [first, last]) => format!("{file} lines {first}–{last}"),
     }
 }
 
 /// Parts' names joined for a message: "a, b, and c".
-fn names(graphs: &PageGraphs<'_>, parts: &[Part<'_>]) -> String {
-    let names: Vec<String> = parts.iter().map(|part| part_name(graphs, *part)).collect();
+fn names(graph: &BoardGraph, parts: &[Part<'_>]) -> String {
+    let names: Vec<String> = parts.iter().map(|part| part_name(graph, *part)).collect();
     match names.as_slice() {
         [] => String::new(),
         [one] => one.clone(),
@@ -745,18 +693,12 @@ fn names(graphs: &PageGraphs<'_>, parts: &[Part<'_>]) -> String {
     }
 }
 
-/// The verified bytes of `parts`, or the refusal when a project isn't connected or a part's
-/// source changed (`what` names the claim in the refusal).
-fn cited<'g>(
-    page: &Page,
-    graphs: &PageGraphs<'g>,
-    parts: &[Part<'_>],
-    target: &Target,
-    what: &str,
-) -> Result<Vec<&'g [u8]>, BoardError> {
+/// The verified bytes of `parts`, or the refusal when a part's source changed (`what` names the
+/// claim in the refusal).
+fn cited<'g>(graph: &'g BoardGraph, parts: &[Part<'_>], what: &str) -> Result<Vec<&'g [u8]>, BoardError> {
     let mut bytes = Vec::with_capacity(parts.len());
     for part in parts {
-        match found(graphs, *part) {
+        match found(graph, *part) {
             Found::Bytes(found) => bytes.push(found),
             Found::Missing => {}
             Found::Unverified => {
@@ -764,23 +706,9 @@ fn cited<'g>(
                     what: what.to_owned(),
                 });
             }
-            Found::NotConnected => return Err(not_connected(page, target, what, part.project())),
         }
     }
     Ok(bytes)
-}
-
-/// The refusal of claim `what`, which cites `project`, which is not connected: it can't be
-/// grounded.
-fn not_connected(page: &Page, target: &Target, what: &str, project: Option<&ProjectName>) -> BoardError {
-    let project = project.map_or("", ProjectName::as_str);
-    refuse(
-        page,
-        target.clone(),
-        format!(
-            "Can't check {what}: it cites {project}, which is not connected. Connect that project, or cite code of a connected one"
-        ),
-    )
 }
 
 /// Whether `needle` appears in any of `haystacks`.
@@ -817,32 +745,28 @@ fn listed(fields: &[Box<str>]) -> String {
 /// Checks the claims of `page` that are new or changed since `previous` (see the
 /// [module documentation](self)). Run after the page's references were checked, so what the
 /// claims cite exists.
-pub(super) fn ground(
-    page: &Page,
-    previous: Option<&Page>,
-    graphs: &PageGraphs<'_>,
-) -> Result<(), BoardError> {
+pub(super) fn ground(page: &Page, previous: Option<&Page>, graph: &BoardGraph) -> Result<(), BoardError> {
     for resource in &page.resources {
         if resource_changed(previous.and_then(|old| old.resource(&resource.id)), resource) {
-            ground_resource(page, graphs, resource)?;
+            ground_resource(page, graph, resource)?;
         }
     }
     for link in page.links.iter().filter(|link| link.kind.is_some()) {
         if connection_changed(previous.and_then(|old| old.link(&link.id)), link) {
-            ground_connection(page, graphs, link)?;
+            ground_connection(page, graph, link)?;
         }
     }
     Ok(())
 }
 
-fn ground_resource(page: &Page, graphs: &PageGraphs<'_>, resource: &Resource) -> Result<(), BoardError> {
+fn ground_resource(page: &Page, graph: &BoardGraph, resource: &Resource) -> Result<(), BoardError> {
     let target = Target::Resource(resource.id.clone());
     let what = format!("the {} \"{}\"", resource.kind.as_str(), resource.name);
-    let table = resource.type_key.as_ref().and_then(|key| {
-        let graph = graphs.get(resource.project.as_ref())?;
-        Some((graph, key.as_str(), graph.fields(key.as_str())?))
-    });
-    if let Some((graph, key, fields)) = table
+    let table = resource
+        .type_key
+        .as_ref()
+        .and_then(|key| Some((key.as_str(), graph.fields(key.as_str())?)));
+    if let Some((key, fields)) = table
         && let Some(column) = resource
             .columns
             .iter()
@@ -872,7 +796,7 @@ fn ground_resource(page: &Page, graphs: &PageGraphs<'_>, resource: &Resource) ->
         ));
     }
     let parts = resource_parts(resource);
-    let bytes = cited(page, graphs, &parts, &target, &what)?;
+    let bytes = cited(graph, &parts, &what)?;
     if !parts.is_empty() && !appears(&bytes, &resource.name) {
         return Err(refuse(
             page,
@@ -880,7 +804,7 @@ fn ground_resource(page: &Page, graphs: &PageGraphs<'_>, resource: &Resource) ->
             format!(
                 "Can't add {what}: \"{}\" doesn't appear in its anchors ({}). Use the name the code writes, or anchor it where the name is written",
                 resource.name,
-                names(graphs, &parts)
+                names(graph, &parts)
             ),
         ));
     }
@@ -896,24 +820,24 @@ fn ground_resource(page: &Page, graphs: &PageGraphs<'_>, resource: &Resource) ->
             format!(
                 "Can't add {what}: the column \"{}\" doesn't appear in its anchors ({}). Cite where the column is defined, or leave it out",
                 column.name,
-                names(graphs, &parts)
+                names(graph, &parts)
             ),
         ));
     }
     Ok(())
 }
 
-fn ground_connection(page: &Page, graphs: &PageGraphs<'_>, link: &Link) -> Result<(), BoardError> {
+fn ground_connection(page: &Page, graph: &BoardGraph, link: &Link) -> Result<(), BoardError> {
     let target = Target::Link(link.id.clone());
     let kind = link.kind.unwrap_or(LinkKind::Other);
     let what = format!(
         "{} to {} ({})",
-        item_name(page, graphs, &link.from),
-        item_name(page, graphs, &link.to),
+        item_name(page, graph, &link.from),
+        item_name(page, graph, &link.to),
         kind.as_str()
     );
     if link.relates() {
-        relates_columns(page, graphs, link, &target, &what)?;
+        relates_columns(page, graph, link, &target, &what)?;
     }
     if link
         .author
@@ -932,13 +856,13 @@ fn ground_connection(page: &Page, graphs: &PageGraphs<'_>, link: &Link) -> Resul
             ),
         ));
     }
-    let parts = connection_parts(page, link);
-    let bytes = cited(page, graphs, &parts, &target, &format!("the connection {what}"))?;
+    let parts = connection_parts(link);
+    let bytes = cited(graph, &parts, &format!("the connection {what}"))?;
     if kind == LinkKind::Calls {
-        calls_step(page, graphs, link, &target, &what)?;
+        calls_step(page, graph, link, &target, &what)?;
     }
     if let Some(channel) = &link.channel
-        && entrance_channel(page, graphs, link).is_none()
+        && entrance_channel(page, graph, link).is_none()
         && !appears(&bytes, channel)
     {
         return Err(refuse(
@@ -946,12 +870,12 @@ fn ground_connection(page: &Page, graphs: &PageGraphs<'_>, link: &Link) -> Resul
             target,
             format!(
                 "Can't connect {what}: the channel \"{channel}\" doesn't appear in its step or anchors ({}). Anchor it where the channel is named, or leave the channel out",
-                names(graphs, &parts)
+                names(graph, &parts)
             ),
         ));
     }
     if let Some(carries) = &link.carries {
-        carried(page, graphs, link, carries.as_str(), &target, &what)?;
+        carried(page, graph, link, carries.as_str(), &target, &what)?;
     }
     Ok(())
 }
@@ -959,7 +883,7 @@ fn ground_connection(page: &Page, graphs: &PageGraphs<'_>, link: &Link) -> Resul
 /// Refuses a `relates` connection naming a column its table, backed by a type, doesn't have.
 fn relates_columns(
     page: &Page,
-    graphs: &PageGraphs<'_>,
+    graph: &BoardGraph,
     link: &Link,
     target: &Target,
     what: &str,
@@ -968,11 +892,7 @@ fn relates_columns(
         let (Some(table), Some(column)) = (page.resource(end), column) else {
             continue;
         };
-        let Some((graph, key)) = table
-            .type_key
-            .as_ref()
-            .and_then(|key| Some((graphs.get(table.project.as_ref())?, key.as_str())))
-        else {
+        let Some(key) = table.type_key.as_ref().map(|key| key.as_str()) else {
             continue;
         };
         if let Some(fields) = graph.fields(key)
@@ -996,7 +916,7 @@ fn relates_columns(
 /// Refuses a `calls` connection whose step isn't a call Unfold can't follow.
 fn calls_step(
     page: &Page,
-    graphs: &PageGraphs<'_>,
+    graph: &BoardGraph,
     link: &Link,
     target: &Target,
     what: &str,
@@ -1007,10 +927,7 @@ fn calls_step(
             "Can't connect {what}: it has no step. A calls connection leaves from the call Unfold can't follow; give that call as its step"
         ));
     };
-    let Some(block) = graphs
-        .get(page.step_project(link))
-        .and_then(|graph| graph.block(step.as_str()))
-    else {
+    let Some(block) = graph.block(step.as_str()) else {
         return Ok(());
     };
     let line = block.block().lines.start;
@@ -1022,9 +939,8 @@ fn calls_step(
     match block.occurrence() {
         Some(edge) if edge.resolution == Resolution::Resolved => {
             let callee = edge.target.as_ref().map_or_else(String::new, |key| {
-                graphs
-                    .get(page.step_project(link))
-                    .and_then(|graph| graph.qualified_name(key.as_str()))
+                graph
+                    .qualified_name(key.as_str())
                     .unwrap_or_else(|| key.to_string())
             });
             fail(format!(
@@ -1036,45 +952,30 @@ fn calls_step(
     }
 }
 
-/// Refuses a carried type that neither the step's function nor an anchor's block uses, or that
-/// is in a project that isn't connected.
+/// Refuses a carried type that neither the step's function nor an anchor's block uses.
 fn carried(
     page: &Page,
-    graphs: &PageGraphs<'_>,
+    graph: &BoardGraph,
     link: &Link,
     carries: &str,
     target: &Target,
     what: &str,
 ) -> Result<(), BoardError> {
-    let project = link.carries_project.as_ref();
-    let Some(graph) = graphs.get(project) else {
-        return Err(not_connected(
-            page,
-            target,
-            &format!("the connection {what}"),
-            project,
-        ));
-    };
     let owner = link
         .step
         .as_ref()
-        .filter(|_| page.step_project(link) == project)
         .and_then(|step| graph.block(step.as_str()))
         .and_then(|step| graph.block(step.owner().as_str()));
-    let anchors = link
-        .anchors
-        .iter()
-        .filter(|anchor| anchor.project() == project)
-        .filter_map(|anchor| {
-            let key = anchor.key()?.as_str();
-            match graph.block(key) {
-                Some(block) => Some(block),
-                None => graph
-                    .entrance(key)
-                    .and_then(|entrance| entrance.evidence.block.as_ref())
-                    .and_then(|evidence| graph.block(evidence.as_str())),
-            }
-        });
+    let anchors = link.anchors.iter().filter_map(|anchor| {
+        let key = anchor.key()?.as_str();
+        match graph.block(key) {
+            Some(block) => Some(block),
+            None => graph
+                .entrance(key)
+                .and_then(|entrance| entrance.evidence.block.as_ref())
+                .and_then(|evidence| graph.block(evidence.as_str())),
+        }
+    });
     if owner
         .iter()
         .copied()

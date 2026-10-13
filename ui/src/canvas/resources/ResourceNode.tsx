@@ -22,7 +22,6 @@ import { Icon } from "../../icons";
 import type { ProjectId, Resource } from "../../ipc/generated";
 import { useEngineQuery } from "../../ipc/queries";
 import { describeResource, findPage, findResource, removeItem, select, toggledOpenTypes, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
-import { resolveRefProject, useProjectIndex } from "../../state/workspace";
 import { showInSelected } from "../cards/cardMenu";
 import { CardHandles, DescriptionStrip } from "../cards/parts";
 import { ClaimReviewBanner } from "../cards/ReviewBanner";
@@ -58,7 +57,7 @@ function ColumnHandles({ name, side }: { readonly name: string; readonly side: "
 }
 
 interface ColumnsProps {
-  readonly project: ProjectId | null;
+  readonly project: ProjectId;
   readonly columns: readonly TableColumn[];
   /** The columns with relationship handles. */
   readonly handles: ReadonlySet<string>;
@@ -109,7 +108,7 @@ function Columns({ project, columns, handles }: ColumnsProps) {
               {markText(column)}
               {handles.has(column.name) ? <ColumnHandles name={column.name} side="right" /> : null}
             </span>
-            {opened !== undefined && project !== null ? (
+            {opened !== undefined ? (
               <div className="rcard-opened">
                 <TypeDefinition project={project} typeKey={opened} row={row} depth={1} openTypes={openTypes} onToggle={onToggle} />
               </div>
@@ -140,10 +139,10 @@ function Columns({ project, columns, handles }: ColumnsProps) {
 }
 
 /** A table's columns, from its type's definition (once loaded) or as it lists them, and whether its type is still loading. */
-function useColumns(project: ProjectId | null, resource: Resource | undefined): { readonly columns: TableColumn[]; readonly loading: boolean } {
+function useColumns(project: ProjectId, resource: Resource | undefined): { readonly columns: TableColumn[]; readonly loading: boolean } {
   const typeKey = resource?.kind === "table" ? resource.type : undefined;
-  const wanted = project !== null && typeKey !== undefined;
-  const query = useEngineQuery("type_definition", { project: project ?? "", key: typeKey ?? "" }, { enabled: wanted });
+  const wanted = typeKey !== undefined;
+  const query = useEngineQuery("type_definition", { project, key: typeKey ?? "" }, { enabled: wanted });
   const columns = useMemo(() => (resource ? tableColumns(resource, query.data) : []), [resource, query.data]);
   return { columns, loading: wanted && query.isPending };
 }
@@ -155,8 +154,7 @@ export const ResourceNode = memo(function ResourceNode({ id, data }: NodeProps<R
     return page ? findResource(page, id) : undefined;
   });
   const selected = usePageView(target, (view) => view.selection.kind === "resource" && view.selection.resourceId === id);
-  const index = useProjectIndex();
-  const project = resolveRefProject(index, target.board.project, resource?.project);
+  const { project } = target.board;
   const { columns, loading } = useColumns(project, resource);
   const measure = useMeasure();
   const menu = useContextMenu("Resource card actions", 220);
@@ -175,12 +173,7 @@ export const ResourceNode = memo(function ResourceNode({ id, data }: NodeProps<R
   }
   const writer = authorOf(resource.author);
   const word = RESOURCE_WORDS[resource.kind];
-  let body: ReactNode = <Columns project={project} columns={columns} handles={handles} />;
-  if (resource.type !== undefined && project === null) {
-    body = <p className="rcard-empty">Its type is in {resource.project}, which isn't connected.</p>;
-  } else if (loading) {
-    body = <p className="rcard-empty">Loading…</p>;
-  }
+  const body: ReactNode = loading ? <p className="rcard-empty">Loading…</p> : <Columns project={project} columns={columns} handles={handles} />;
   return (
     <article
       className={`board-card resource-card kind-${resource.kind}${selected ? " selected" : ""}`}
@@ -223,7 +216,7 @@ export const ResourceNode = memo(function ResourceNode({ id, data }: NodeProps<R
         </h3>
         {writer.agent ? <AgentMark name={writer.name} /> : null}
       </header>
-      <ClaimReviewBanner target={target} project={project ?? target.board.project} item={{ resource: id }} />
+      <ClaimReviewBanner target={target} project={project} item={{ resource: id }} />
       <DescriptionStrip
         target={target}
         cardId={id}

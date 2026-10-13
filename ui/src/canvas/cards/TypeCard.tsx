@@ -16,7 +16,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useUpdateNodeInternals } from "@xyflow/react";
 import { useLayoutEffect, useMemo, useState, type ReactNode } from "react";
-import { Monogram } from "../../components";
 import { FromBase, TypeDefinition } from "../../code/TypeDefinition";
 import { TypeText } from "../../code/TypeText";
 import { fieldsOnly, keyTypeWord, memberName, memberValue, typeKindWord } from "../../code/typeKinds";
@@ -25,7 +24,6 @@ import { useEngineQuery } from "../../ipc/queries";
 import { keyDisplayName, toggledOpenTypes, type PageTarget } from "../../state/boards";
 import { fieldPort, fieldRows, type FieldRow } from "../arrows";
 import { cardQuery, isMissing } from "../cardData";
-import { ProjectScope } from "../ProjectScope";
 import { useMeasure } from "../measure";
 import { fieldTexts, listedFields, nodeLocation, typeCardWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";
@@ -140,12 +138,11 @@ export function TypeCard({ target, project, card, ports, selected }: TypeCardPro
   const kind = definition ? typeKindWord(definition.kind) : keyTypeWord(key);
   const name = header?.qualifiedName ?? definition?.name ?? keyDisplayName(key);
   const location = header ? nodeLocation(header.path, header.startLine) : definition ? nodeLocation(definition.path, definition.line) : "";
-  const foreign = card.ref.project;
   // A class expands to its detail; a type declaration has only its fields.
   const expandable = !fieldsOnly(key);
   const width = useMemo(
-    () => typeCardWidth({ mark: kind, name, location, monogram: foreign !== undefined, chevron: expandable }, definition ? fieldTexts(definition) : [], measure),
-    [kind, name, location, foreign, expandable, definition, measure],
+    () => typeCardWidth({ mark: kind, name, location, chevron: expandable }, definition ? fieldTexts(definition) : [], measure),
+    [kind, name, location, expandable, definition, measure],
   );
   const portSet = useMemo(() => new Set(ports), [ports]);
 
@@ -187,7 +184,6 @@ export function TypeCard({ target, project, card, ports, selected }: TypeCardPro
         }}
       >
         {expandable && !folded ? <ExpandToggle target={target} cardId={card.id} expanded={false} name={name} /> : null}
-        {foreign !== undefined ? <Monogram name={foreign} size={20} /> : null}
         <span className="tcard-kind">{kind}</span>
         <h3 className="card-title" title={name}>
           {name}
@@ -202,7 +198,7 @@ export function TypeCard({ target, project, card, ports, selected }: TypeCardPro
         <>
           <DescriptionStrip target={target} cardId={card.id} description={card.description} />
           <div className="card-body nodrag nopan">
-            <ProjectScope.Provider value={project}>{body}</ProjectScope.Provider>
+            {body}
           </div>
         </>
       )}

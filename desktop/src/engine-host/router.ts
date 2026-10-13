@@ -62,11 +62,7 @@ export const MAIN_PROCESS_ONLY: ReadonlySet<string> = new Set([
 export const CLOSING_WRITES: ReadonlySet<string> = new Set([
   "save_board",
   "repair_board",
-  "publish_board",
-  "discard_changes",
-  "unpublish_board",
   "delete_board",
-  "duplicate_board",
   "set_board_folder",
   "create_folder",
   "rename_folder",

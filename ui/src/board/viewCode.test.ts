@@ -59,8 +59,8 @@ const cart: CardView = {
 const MODELS: Readonly<Record<Key, CardView>> = { [CREATE]: createOrder, [PLACE]: place, [ENTRANCE]: entrance, [CART]: cart };
 
 const context: SourceContext = {
-  project: (name) => (name === undefined ? P : null),
-  model: (_project, key) => MODELS[key],
+  project: P,
+  model: (key) => MODELS[key],
 };
 
 const CARDS: readonly Card[] = [
@@ -68,7 +68,6 @@ const CARDS: readonly Card[] = [
   { id: "import", ref: { entrance: ENTRANCE }, at: [0, 400] },
   { id: "cart", ref: { block: CART }, at: [600, 0] },
   { id: "gone", ref: { block: GONE }, at: [600, 400] },
-  { id: "elsewhere", ref: { block: CREATE, project: "shop" }, at: [900, 0] },
 ];
 
 const queueGroup: Group = { id: "queue-it", card: "create-order", title: "Queue it", members: [`${IF}/variable:job`, `${IF}/expression_statement[0]`, `${IF}/return[0]`], collapsed: true };
@@ -158,7 +157,6 @@ describe("View code's source of a selection", () => {
     expect(entranceTargetSource(P, { ...handler, resolution: "unresolved", target: null, path: null, line: null }).target).toBeNull();
     expect(entranceTargetSource(P, { ...handler, resolution: "external", target: null, path: null, line: null }).target).toBeNull();
     expect(source({ kind: "card", cardId: "gone", key: null }).target).toBeNull();
-    expect(source({ kind: "card", cardId: "elsewhere", key: null })).toEqual({ target: null, reason: "Its project isn't connected." });
     expect(source({ kind: "card", cardId: "create-order", key: `${CREATE}/nope` }).target).toBeNull();
     expect(source({ kind: "card", cardId: "create-order", key: `${PLACE}/n9`, owner: GONE }).target).toBeNull();
     expect(source({ kind: "none" }).target).toBeNull();
@@ -181,7 +179,7 @@ describe("View code's source of a selection", () => {
   });
 
   it("opens a combined block only while its function's code verifies", () => {
-    const stale: SourceContext = { ...context, model: (_project, key) => (key === CREATE ? { ...createOrder, code: { ...createOrder.code, source: { state: "changed" } } as never } : MODELS[key]) };
+    const stale: SourceContext = { ...context, model: (key) => (key === CREATE ? { ...createOrder, code: { ...createOrder.code, source: { state: "changed" } } as never } : MODELS[key]) };
     expect(selectionSource(PAGE, { kind: "group", groupId: "queue-it" }, stale).target).toBeNull();
   });
 });

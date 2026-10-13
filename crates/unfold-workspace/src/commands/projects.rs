@@ -45,7 +45,7 @@ pub struct ProjectHealth {
 pub struct ProjectSummary {
     /// The project.
     pub project: ProjectId,
-    /// Its shared name.
+    /// Its folder's name.
     pub name: String,
     /// The canonical path of its folder.
     pub path: String,
@@ -87,7 +87,7 @@ pub fn project_summary(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<Projec
     boards.truncate(MAX_HEALTH_BOARDS);
     Ok(ProjectSummary {
         project: args.project,
-        name: project.name().to_owned(),
+        name: project.name(),
         path: project.root().to_string_lossy().into_owned(),
         state: workspace.project_state(),
         status: workspace.status(),

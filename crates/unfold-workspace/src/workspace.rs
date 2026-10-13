@@ -367,7 +367,7 @@ impl Workspace {
     }
 
     /// Notes that the app is about to write `bytes` to `path` (`None`: delete it), so the
-    /// watcher doesn't report that write as an outside edit (for drafts and published boards).
+    /// watcher doesn't report that write as an outside edit (for board files).
     /// A different change to the file soon after is still reported.
     pub fn note_own_write(&self, path: &Path, bytes: Option<&[u8]>) {
         self.shared.own_writes.note(path.to_path_buf(), bytes);

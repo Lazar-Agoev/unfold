@@ -15,7 +15,6 @@ import { shortPath } from "../../code/text";
 import type { Anchor, Link, Page, ProjectId } from "../../ipc/generated";
 import { cardKey, findCard, findFrame, findNote, findResource, keyDisplayName, select, toggledOpenTypes, type PageTarget } from "../../state/boards";
 import { openPeek } from "../../state/overlays";
-import { resolveRefProject, useProjectIndex } from "../../state/workspace";
 import { anchorSource } from "../viewCode";
 import { RelationRow } from "./Relations";
 
@@ -46,10 +45,10 @@ export function selectItem(target: PageTarget, page: Page, id: string): void {
 }
 
 /** One anchor: a key (its name, and where it is once its card model loads) or an evidence range, opening its source. */
-function AnchorRow({ project, anchor, label }: { readonly project: ProjectId | null; readonly anchor: Anchor; readonly label?: string }) {
+function AnchorRow({ project, anchor, label }: { readonly project: ProjectId; readonly anchor: Anchor; readonly label?: string }) {
   const key = "key" in anchor ? anchor.key : null;
-  const query = useQuery({ ...cardQuery(project ?? "", key ?? ""), enabled: project !== null && key !== null });
-  const open = project !== null ? anchorSource(project, anchor, query.data).target : null;
+  const query = useQuery({ ...cardQuery(project, key ?? ""), enabled: key !== null });
+  const open = anchorSource(project, anchor, query.data).target;
   const name = "key" in anchor ? keyDisplayName(anchor.key) : `${shortPath(anchor.file)}:${anchor.lines[0]}–${anchor.lines[1]}`;
   const where = "key" in anchor && open ? ` · ${shortPath(open.path)}${open.line !== undefined ? `:${open.line}` : ""}` : "";
   return (
@@ -65,14 +64,13 @@ function AnchorRow({ project, anchor, label }: { readonly project: ProjectId | n
         : {})}
     >
       <span className="relation-code">{name}</span>
-      <span className="relation-path">{project === null ? ` · in ${anchor.project ?? "another project"}, not connected` : where}</span>
+      <span className="relation-path">{where}</span>
     </RelationRow>
   );
 }
 
 /** What a claim cites, each opening its source; "nothing" when it cites nothing. */
 export function AnchorRows({ target, anchors }: { readonly target: PageTarget; readonly anchors: readonly Anchor[] }) {
-  const index = useProjectIndex();
   if (anchors.length === 0) {
     return <RelationRow label="Cites">nothing</RelationRow>;
   }
@@ -81,7 +79,7 @@ export function AnchorRows({ target, anchors }: { readonly target: PageTarget; r
       {anchors.map((anchor, position) => (
         <AnchorRow
           key={position}
-          project={resolveRefProject(index, target.board.project, anchor.project)}
+          project={target.board.project}
           anchor={anchor}
           {...(position === 0 ? { label: "Cites" } : {})}
         />
@@ -121,7 +119,7 @@ export function LineRows({ target, page, id }: { readonly target: PageTarget; re
 }
 
 /** A type a claim names (a table's type, a connection's carried type): its name, opening its definition in place. */
-export function TypeRow({ label, project, typeKey }: { readonly label: string; readonly project: ProjectId | null; readonly typeKey: string }) {
+export function TypeRow({ label, project, typeKey }: { readonly label: string; readonly project: ProjectId; readonly typeKey: string }) {
   const [open, setOpen] = useState(false);
   const [openTypes, setOpenTypes] = useState<Readonly<Record<string, number>>>({});
   return (
@@ -129,18 +127,13 @@ export function TypeRow({ label, project, typeKey }: { readonly label: string; r
       <RelationRow
         label={label}
         title={typeKey}
-        {...(project !== null
-          ? {
-              onActivate: () => {
-                setOpen((value) => !value);
-              },
-            }
-          : {})}
+        onActivate={() => {
+          setOpen((value) => !value);
+        }}
       >
         <span className="relation-code">{keyDisplayName(typeKey)}</span>
-        {project === null ? <span className="relation-path"> · its project isn't connected</span> : null}
       </RelationRow>
-      {open && project !== null ? (
+      {open ? (
         <div className="selected-definition">
           <TypeDefinition
             project={project}

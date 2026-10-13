@@ -114,12 +114,12 @@ test.describe("agents", () => {
         await expect(settings).toBeHidden();
       });
 
-      await test.step("create_board traces POST /orders onto a draft in the background; the person stays on Home", async () => {
+      await test.step("create_board traces POST /orders onto a new board file in the background; the person stays on Home", async () => {
         const created = await claude.ok("create_board", { project: "ts-orders", title: "Order placement", trace: POST_ORDERS });
         expect(created).toContain("Traced POST /orders on the first page");
         board = /\(board id ([^)]+)\)/.exec(created)?.[1] ?? "";
         pageId = /\(page id ([^)]+)\)/.exec(created)?.[1] ?? "";
-        expect(board).toMatch(/^\.unfold\/local\/drafts\//);
+        expect(board).toBe(".unfold/boards/order-placement.json");
         await expect(sidebarBoard(page, "Order placement")).toBeVisible();
         await expect(homeMain(page)).toBeVisible();
         for (const [name, key] of Object.entries({ post: POST_ORDERS, requireUser: REQUIRE_USER, validateBody: VALIDATE_BODY, createOrder: CREATE_ORDER })) {
@@ -134,7 +134,7 @@ test.describe("agents", () => {
         // The card's line ends with how it shows: compact or expanded.
         await expect.poll(() => claude.ok("get_current_view")).toContain(`Selected: card ${ids["createOrder"]}: ${CREATE_ORDER} (`);
         const view = await claude.ok("get_current_view");
-        expect(view).toContain("Unfold · ts-orders › Order placement (draft) › Page 1");
+        expect(view).toContain("Unfold · ts-orders › Order placement › Page 1");
         expect(view).toContain(`board ${board}, page ${pageId}`);
       });
 

@@ -27,8 +27,6 @@ const PADDING = 12;
 const GAP = 8;
 /** The `ƒ` glyph. */
 const GLYPH = 8;
-/** A cross-project card's 20px monogram. */
-const MONOGRAM = 20;
 /** The expansion chevron at the start of a header in Diagram: 16px less its -2px margin (cards.css `.card-expand`). */
 const CHEVRON = 14;
 /** A View code `</>` button (28px) and the gap before it (6px). */
@@ -47,7 +45,7 @@ const CODE_ROW = 20;
 /** A header's block padding (each side) and the rule under it. */
 const HEADER_PADDING = 10;
 const RULE = 1;
-/** A header's line: the title's, an entrance's method badge's, or a cross-project card's monogram. */
+/** A header's line: the title's, or an entrance's method badge's. */
 const TITLE_LINE = 16;
 const METHOD_LINE = 18;
 /** An entrance card's body: its top padding, the gap between its parts, and their lines (11px/14px, 12px/16px). */
@@ -86,20 +84,17 @@ export function codeContentWidth(code: CodeText, measure: Measure): number {
 export interface BlockWidthInput {
   readonly name: string;
   readonly location: string;
-  /** Whether the header starts with the project monogram (a card from another project). */
-  readonly monogram: boolean;
   /** Whether the header starts with the expansion chevron (an expanded card in Diagram). */
   readonly chevron?: boolean;
   /** The body's own width need (Code or Flow), or null while loading. */
   readonly body: number | null;
 }
 
-/** The width a block card's header needs: chevron, monogram, `ƒ`, name, and location. */
+/** The width a block card's header needs: chevron, `ƒ`, name, and location. */
 export function headerWidth(input: Omit<BlockWidthInput, "body">, measure: Measure): number {
   const chevron = input.chevron === true ? CHEVRON + GAP : 0;
-  const monogram = input.monogram ? MONOGRAM + GAP : 0;
   const text = measure(input.name, TITLE_FONT) + GAP + measure(input.location, LOCATION_FONT);
-  return Math.ceil(PADDING * 2 + BORDER + chevron + monogram + GLYPH + GAP + text);
+  return Math.ceil(PADDING * 2 + BORDER + chevron + GLYPH + GAP + text);
 }
 
 /** A block card's width: its header and body need, clamped to 280–880. */
@@ -108,13 +103,13 @@ export function blockCardWidth(input: BlockWidthInput, measure: Measure): number
 }
 
 /** A block card's size before it is drawn: its width from its model, its height from its lines. */
-export function estimatedBlockSize(view: CardView | undefined, monogram: boolean, measure: Measure): Size {
+export function estimatedBlockSize(view: CardView | undefined, measure: Measure): Size {
   const code = view?.type === "block" && view.code?.source.state === "current" ? view.code.source : null;
   if (view?.type !== "block" || !code) {
     return fallbackSize(false);
   }
   const width = blockCardWidth(
-    { name: view.header.qualifiedName, location: shortPath(view.header.path), monogram, body: codeContentWidth(code, measure) },
+    { name: view.header.qualifiedName, location: shortPath(view.header.path), body: codeContentWidth(code, measure) },
     measure,
   );
   // The header, the code's padding, and one row per line (long lines wrap, so this is a floor).
@@ -164,8 +159,8 @@ export function entranceCardWidth(input: EntranceWidthInput, measure: Measure): 
  * Where an entrance card `width` wide draws its handler rows: each row's center below the card's top,
  * in order (the header, the wrapped location, "Handlers, in order", then one 16px row per handler).
  */
-export function entranceHandlerRows(input: EntranceWidthInput, monogram: boolean, width: number, measure: Measure): number[] {
-  const header = Math.max(TITLE_LINE, input.method !== null ? METHOD_LINE : 0, monogram ? MONOGRAM : 0);
+export function entranceHandlerRows(input: EntranceWidthInput, width: number, measure: Measure): number[] {
+  const header = input.method !== null ? METHOD_LINE : TITLE_LINE;
   const locationLines = Math.max(1, Math.ceil(measure(input.location, LOCATION_FONT) / (width - BORDER - PADDING * 2)));
   const first =
     BORDER / 2 + HEADER_PADDING * 2 + header + RULE + ENTRANCE_BODY_TOP + locationLines * SMALL_LINE + ENTRANCE_GAP + SMALL_LINE + ENTRANCE_GAP;
@@ -207,20 +202,17 @@ export interface NodeWidthInput {
   readonly mark: string;
   readonly name: string;
   readonly location: string;
-  /** Whether the header starts with the project monogram (a card from another project). */
-  readonly monogram: boolean;
   /** Whether it is code, marked with the `ƒ` glyph (`CardGlyph`); an entrance's mark is its kind's word. */
   readonly code: boolean;
 }
 
 /**
- * A node's or type card's header, its mark `mark` wide: padding, border, chevron (a node's), monogram,
- * mark, name, and location.
+ * A node's or type card's header, its mark `mark` wide: padding, border, chevron (a node's), mark,
+ * name, and location.
  */
 function nodeHeaderWidth(input: Omit<NodeWidthInput, "code">, mark: number, chevron: boolean, measure: Measure): number {
-  const monogram = input.monogram ? MONOGRAM + GAP : 0;
   const text = mark + GAP + measure(input.name, TITLE_FONT) + GAP + measure(input.location, LOCATION_FONT);
-  return PADDING * 2 + BORDER + (chevron ? CHEVRON + GAP : 0) + monogram + text;
+  return PADDING * 2 + BORDER + (chevron ? CHEVRON + GAP : 0) + text;
 }
 
 /** A Diagram node's width: its header, with its chevron, clamped to 240–560. */
@@ -271,7 +263,7 @@ export function typeCardWidth(header: Omit<NodeWidthInput, "code"> & { readonly 
 }
 
 /** How many of a type card's `count` rows it lists before "N more" (all when it has fewer than 12). */
-export function shownFieldCount(count: number, all: boolean): number {
+function shownFieldCount(count: number, all: boolean): number {
   return all || count < FOLD_FIELDS_AT ? count : FIELDS_FOLDED;
 }
 
@@ -315,7 +307,7 @@ export function typeCardHeight(definition: TypeDefinition, description: number):
 }
 
 /** A type card's height without a description: its header, `rows` rows, `headings` bases' headings, and "N more" when it hides some. */
-export function fieldsCardHeight(rows: number, headings: number, hidden: number): number {
+function fieldsCardHeight(rows: number, headings: number, hidden: number): number {
   return BLOCK_HEADER + FIELDS_PADDING + Math.max(1, rows) * FIELD_ROW + headings * FROM_HEADING + (hidden > 0 ? MORE_ROW : 0);
 }
 
@@ -345,8 +337,6 @@ export interface EstimateInput {
   readonly key: Key;
   readonly model: CardView | undefined;
   readonly view: View;
-  /** Whether the card is from another project (its header has the monogram). */
-  readonly monogram: boolean;
   readonly description?: Description;
   /** A type card's definition, once loaded. */
   readonly definition?: TypeDefinition;
@@ -354,7 +344,7 @@ export interface EstimateInput {
 
 /** A card's size before it is drawn, from its model in the view it shows. */
 export function estimatedCardSize(input: EstimateInput, measure: Measure): Size {
-  const { key, view, monogram, description, definition } = input;
+  const { key, view, description, definition } = input;
   const entrance = key.startsWith("entrance:");
   const body = cardBody(key, view);
   // A model of the other kind (an entrance's for a block key) is no model for this card.
@@ -365,8 +355,8 @@ export function estimatedCardSize(input: EstimateInput, measure: Measure): Size 
   if (body === "node") {
     const header =
       model.type === "block"
-        ? { mark: "ƒ", name: model.header.qualifiedName, location: nodeLocation(model.header.path, model.header.startLine), monogram, code: true }
-        : { mark: model.header.kind.toUpperCase(), name: entranceTitle(model), location: nodeLocation(model.evidence.path, model.evidence.startLine), monogram, code: false };
+        ? { mark: "ƒ", name: model.header.qualifiedName, location: nodeLocation(model.header.path, model.header.startLine), code: true }
+        : { mark: model.header.kind.toUpperCase(), name: entranceTitle(model), location: nodeLocation(model.evidence.path, model.evidence.startLine), code: false };
     const width = nodeWidth(header, measure);
     return { width, height: BLOCK_HEADER + descriptionHeight(description, width, measure) };
   }
@@ -378,13 +368,12 @@ export function estimatedCardSize(input: EstimateInput, measure: Measure): Size 
       mark: definition ? typeKindWord(definition.kind) : keyTypeWord(key),
       name: model.header.qualifiedName,
       location: nodeLocation(model.header.path, model.header.startLine),
-      monogram,
       chevron: !fieldsOnly(key),
     };
     const width = typeCardWidth(header, definition ? fieldTexts(definition) : [], measure);
     return { width, height: definition ? typeCardHeight(definition, descriptionHeight(description, null, measure)) : fallbackSize(false, body).height };
   }
-  return estimatedBlockSize(model, monogram, measure);
+  return estimatedBlockSize(model, measure);
 }
 
 // ---------------------------------------------------------------------------------------------

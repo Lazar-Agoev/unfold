@@ -282,7 +282,6 @@ fn text(words: &str) -> Description {
 fn key(key: &str) -> Anchor {
     Anchor::Key {
         key: Key::from_text(key),
-        project: None,
     }
 }
 
@@ -290,15 +289,14 @@ fn lines(first: u32, last: u32) -> Anchor {
     Anchor::File {
         file: RepoPath::new(SCHEMA_FILE).unwrap(),
         lines: [first, last],
-        project: None,
     }
 }
 
 fn card(id: &str, key: &str) -> Card {
     let reference = if key.starts_with("entrance:") {
-        CardRef::entrance(Key::from_text(key), None)
+        CardRef::entrance(Key::from_text(key))
     } else {
-        CardRef::block(Key::from_text(key), None)
+        CardRef::block(Key::from_text(key))
     };
     Card {
         id: id.to_owned(),
@@ -316,7 +314,6 @@ fn resource(id: &str, kind: ResourceKind, name: &str, anchors: Vec<Anchor>) -> R
         id: id.to_owned(),
         kind,
         name: name.to_owned(),
-        project: None,
         type_key: None,
         columns: Vec::new(),
         anchors,
@@ -371,7 +368,7 @@ fn save(
     previous: Option<(&Board, &Health)>,
     graph: &BoardGraph,
 ) -> Result<(Board, Health), BoardError> {
-    prepare_save(board, previous, &PageGraphs::own_only(graph))
+    prepare_save(board, previous, graph)
 }
 
 /// The message a save refuses `board` with.
@@ -449,7 +446,7 @@ fn claims_are_signed_over_the_code_they_cite() {
 
     // A drawn link's label is still signed over its ends' guards.
     let ends = |id: &str| {
-        page.guard(None, page.card(id).unwrap().reference.key().as_str())
+        page.guard(page.card(id).unwrap().reference.key().as_str())
             .unwrap()
             .signature
             .0
@@ -471,9 +468,9 @@ fn claims_are_signed_over_the_code_they_cite() {
 
     // Every cited key is guarded, so it reconnects like a card's.
     for cited in [ORDER, REPOSITORY_CLASS, ADD, QUEUE] {
-        assert!(page.guard(None, cited).is_some(), "{cited} is guarded");
+        assert!(page.guard(cited).is_some(), "{cited} is guarded");
     }
-    let references = saved.references(None);
+    let references = saved.references();
     assert_eq!(references.tables, [ORDER]);
     assert_eq!(references.files, [&RepoPath::new(SCHEMA_FILE).unwrap()]);
 
@@ -509,7 +506,7 @@ fn evidence_anchors_go_outdated_when_their_file_changes() {
     let changed = SCHEMA.replace("customer_id text", "customer_id uuid");
     std::fs::write(dir.path().join(SCHEMA_FILE), &changed).unwrap();
     let stale = BoardGraph::from_graph(&graph, dir.path());
-    let health = board_health(&saved, &PageGraphs::own_only(&stale));
+    let health = board_health(&saved, &stale);
     let outdated = &health.items[0];
     assert_eq!(
         (outdated.kind, &outdated.target, outdated.message.as_str()),
@@ -527,7 +524,7 @@ fn evidence_anchors_go_outdated_when_their_file_changes() {
     let mut page = saved.pages[0].clone();
     apply_repair(
         &mut page,
-        &PageGraphs::own_only(&recompiled),
+        &recompiled,
         &Repair::Resign(Target::Resource("orders".to_owned())),
     )
     .unwrap();
@@ -539,7 +536,6 @@ fn evidence_anchors_go_outdated_when_their_file_changes() {
         Anchor::File {
             file: RepoPath::new("db/other.sql").unwrap(),
             lines: [1, 1],
-            project: None,
         },
     ];
     let health = health_of(&page, &recompiled);
@@ -574,7 +570,7 @@ type Row<'h> = (
 );
 
 fn health_of(page: &Page, graph: &BoardGraph) -> Health {
-    health(page, &PageGraphs::own_only(graph))
+    health(page, graph)
 }
 
 #[test]
@@ -707,25 +703,23 @@ fn reconnecting_a_card_carries_its_connections_steps_along() {
         "orders",
         vec![key("queues.ts#variable:queue")],
     ));
-    let graphs = PageGraphs::own_only(&loaded);
     let mut page = board.pages[0].clone();
     let reconnect = |from: &str, to: &str| Repair::Reconnect {
-        project: None,
         from: from.to_owned(),
         to: to.to_owned(),
     };
     apply_repair(
         &mut page,
-        &graphs,
+        &loaded,
         &reconnect("routes.ts#function:placeOrder", CREATE),
     )
     .unwrap();
     // The step moves to the same statement under the new key, and gets a fresh guard.
     let link = page.link("enqueue").unwrap();
     assert_eq!(link.step.as_ref().map(Key::as_str), Some(ADD));
-    assert!(page.guard(None, ADD).is_some());
+    assert!(page.guard(ADD).is_some());
     // Reconnecting an anchor's key points every claim citing it at the new key.
-    apply_repair(&mut page, &graphs, &reconnect("queues.ts#variable:queue", QUEUE)).unwrap();
+    apply_repair(&mut page, &loaded, &reconnect("queues.ts#variable:queue", QUEUE)).unwrap();
     assert_eq!(page.link("enqueue").unwrap().anchors, [key(QUEUE)]);
     assert_eq!(page.resource("queue").unwrap().anchors, [key(QUEUE)]);
     assert!(health_of(&page, &loaded).is_healthy());
@@ -733,7 +727,7 @@ fn reconnecting_a_card_carries_its_connections_steps_along() {
     assert_eq!(
         apply_repair(
             &mut page,
-            &graphs,
+            &loaded,
             &reconnect(QUEUE, "queues.ts#variable:nowhere")
         )
         .unwrap_err(),
@@ -748,7 +742,6 @@ fn reconnecting_a_card_carries_its_connections_steps_along() {
 #[test]
 fn claims_are_repaired_by_anchor_resigned_or_removed() {
     let (_dir, graph, loaded) = orders(SCHEMA);
-    let graphs = PageGraphs::own_only(&loaded);
     let mut board = board(&graph);
     let page = &mut board.pages[0];
     page.resources.push(resource(
@@ -779,17 +772,17 @@ fn claims_are_repaired_by_anchor_resigned_or_removed() {
         index: 0,
         to,
     };
-    apply_repair(&mut page, &graphs, &anchor(lines(1, 2))).unwrap();
+    apply_repair(&mut page, &loaded, &anchor(lines(1, 2))).unwrap();
     assert_eq!(page.resource("schema").unwrap().anchors, [lines(1, 2)]);
     assert!(matches!(
-        apply_repair(&mut page, &graphs, &anchor(lines(9, 9))),
+        apply_repair(&mut page, &loaded, &anchor(lines(9, 9))),
         Err(BoardError::Problem { .. })
     ));
     // Re-signing signs the claim and its texts over its code now.
     page.links[0].signature = Some(Signature::of(b"old"));
     apply_repair(
         &mut page,
-        &graphs,
+        &loaded,
         &Repair::Resign(Target::Link("enqueue".to_owned())),
     )
     .unwrap();
@@ -808,14 +801,14 @@ fn claims_are_repaired_by_anchor_resigned_or_removed() {
     // A connection's description repair removes its description and label.
     apply_repair(
         &mut page,
-        &graphs,
+        &loaded,
         &Repair::RemoveDescription(Target::Link("enqueue".to_owned())),
     )
     .unwrap();
     let link = page.link("enqueue").unwrap();
     assert!(link.description.is_none() && link.label.is_none());
     // Removing a resource card removes the links to it; its note stays where it was.
-    apply_repair(&mut page, &graphs, &Repair::RemoveResource("schema".to_owned())).unwrap();
+    apply_repair(&mut page, &loaded, &Repair::RemoveResource("schema".to_owned())).unwrap();
     assert!(page.resources.is_empty() && page.links.is_empty());
     let note = page.note("note").unwrap();
     assert_eq!((note.attach.as_deref(), note.at), (None, [400.0, 10.0]));
@@ -1067,53 +1060,6 @@ fn only_new_or_changed_claims_are_grounded() {
 }
 
 #[test]
-fn claims_citing_a_project_that_is_not_connected_are_kept_unchecked() {
-    let (_dir, graph, loaded) = orders(SCHEMA);
-    let web = ProjectName::parse("web").unwrap();
-    let mut board = board(&graph);
-    let mut elsewhere = resource(
-        "queue",
-        ResourceKind::Queue,
-        "orders",
-        vec![Anchor::Key {
-            key: Key::from_text("api.ts#variable:queue"),
-            project: Some(web.clone()),
-        }],
-    );
-    elsewhere.author = person();
-    board.pages[0].resources.push(elsewhere);
-    board.refresh_projects();
-    let (saved, health) = save(board.clone(), None, &loaded).unwrap();
-    assert!(health.is_healthy());
-    assert_eq!(saved.projects, std::slice::from_ref(&web));
-    assert_eq!(
-        saved.pages[0].resources[0].signature, None,
-        "signed once connected"
-    );
-    // An agent's can't be grounded, so it is refused.
-    board.pages[0].resources[0].author = agent();
-    assert_eq!(
-        refusal(board, &loaded),
-        "Can't check the queue \"orders\": it cites web, which is not connected. Connect that project, or cite code of a connected one"
-    );
-    // Nor can a type it says a connection carries.
-    let mut board = self::board(&graph);
-    board.pages[0].links.push(Link {
-        anchors: vec![key(QUEUE)],
-        carries: Some(Key::from_text("api.ts#interface:Job")),
-        carries_project: Some(web),
-        ..connection("enqueue", LinkKind::Queue, "create", "worker")
-    });
-    board.refresh_projects();
-    assert_eq!(
-        refusal(board.clone(), &loaded),
-        "Can't check the connection createOrder to worker orders (queue): it cites web, which is not connected. Connect that project, or cite code of a connected one"
-    );
-    board.pages[0].links[0].author = Some(person());
-    save(board, None, &loaded).unwrap();
-}
-
-#[test]
 fn mermaid_marks_outdated_claims() {
     let (dir, graph, loaded) = orders(SCHEMA);
     let mut board = board(&graph);
@@ -1131,7 +1077,7 @@ fn mermaid_marks_outdated_claims() {
     let (saved, _) = save(board, None, &loaded).unwrap();
     std::fs::write(dir.path().join(SCHEMA_FILE), "drop table orders;\n").unwrap();
     let stale = BoardGraph::from_graph(&graph, dir.path());
-    let output = crate::mermaid::page(&saved, "page-1", &PageGraphs::own_only(&stale)).unwrap();
+    let output = crate::mermaid::page(&saved, "page-1", &stale).unwrap();
     assert!(output.contains("r0[(\"table · orders (outdated)\")]"), "{output}");
     assert!(output.contains("|\"queue (outdated)\"|"), "{output}");
 }

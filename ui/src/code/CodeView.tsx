@@ -10,7 +10,7 @@
  */
 
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import type { CallLink as CallLinkModel, CodeLine, CodeText as CodeTextModel, Group, Language, OutlineItem } from "../ipc/generated";
+import type { CallLink as CallLinkModel, CodeLine, CodeText as CodeTextModel, Group, Language, OutlineItem, ProjectId } from "../ipc/generated";
 import { Icon } from "../icons";
 import { CallLink } from "./CallLink";
 import { CodeText } from "./CodeText";
@@ -24,6 +24,8 @@ interface PendingGroupView {
 }
 
 export interface CodeViewProps {
+  /** The project the code is in (a call's hover asks it about the target). */
+  readonly project: ProjectId;
   readonly code: CodeTextModel;
   readonly language: Language;
   /** The card's name, for the view's accessible label. */
@@ -216,6 +218,7 @@ export function CodeView(props: CodeViewProps) {
     }
     return (
       <CallLink
+        project={props.project}
         link={link}
         opened={ports.has(link.source)}
         {...(props.onFollow ? { onFollow: props.onFollow } : {})}

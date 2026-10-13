@@ -22,7 +22,7 @@ if (!("DOMMatrixReadOnly" in globalThis)) {
 }
 
 const P = "p-orders0000";
-const REF = { project: P, id: ".unfold/local/drafts/b.json" };
+const REF = { project: P, id: ".unfold/boards/b.json" };
 const PAGE = { board: REF, page: "page-1" };
 const ORDERS = "src/routes/orders.ts";
 const CREATE = `${ORDERS}#function:createOrder`;

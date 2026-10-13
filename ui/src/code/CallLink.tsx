@@ -6,16 +6,14 @@
  */
 
 import type { MouseEvent, ReactNode } from "react";
-import { useScopeProject } from "../canvas/ProjectScope";
 import { HoverCard, Tooltip } from "../components";
-import type { CallLink as CallLinkModel, Peek } from "../ipc/generated";
+import type { CallLink as CallLinkModel, Peek, ProjectId } from "../ipc/generated";
 import { useEngineQuery } from "../ipc/queries";
 import { linkNote, shortPath } from "./text";
 
-/** The hover's content: the target's first written line (its signature) and location, in the enclosing card's project. */
-function PeekContent({ targetKey, hint }: { readonly targetKey: string; readonly hint: string }) {
-  const project = useScopeProject();
-  const peek = useEngineQuery("peek", { project: project ?? "", key: targetKey }, { enabled: project !== null });
+/** The hover's content: the target's first written line (its signature) and location. */
+function PeekContent({ project, targetKey, hint }: { readonly project: ProjectId; readonly targetKey: string; readonly hint: string }) {
+  const peek = useEngineQuery("peek", { project, key: targetKey });
   return <PeekBody peek={peek.data} failed={peek.isError} hint={hint} />;
 }
 
@@ -42,6 +40,8 @@ function PeekBody({ peek, failed, hint }: { readonly peek: Peek | undefined; rea
 }
 
 export interface CallLinkProps {
+  /** The project the code is in, which the hover asks about the target. */
+  readonly project: ProjectId;
   readonly link: CallLinkModel;
   /** Whether an arrow already leaves for this occurrence (its target is on the board). */
   readonly opened?: boolean;
@@ -52,7 +52,7 @@ export interface CallLinkProps {
   readonly children: ReactNode;
 }
 
-export function CallLink({ link, opened = false, onFollow, onExpand, hint, children }: CallLinkProps) {
+export function CallLink({ project, link, opened = false, onFollow, onExpand, hint, children }: CallLinkProps) {
   const target = link.resolution === "resolved" ? link.target : undefined;
   if (target !== undefined && onFollow) {
     const onClick = (event: MouseEvent<HTMLButtonElement>) => {
@@ -64,7 +64,7 @@ export function CallLink({ link, opened = false, onFollow, onExpand, hint, child
       }
     };
     return (
-      <HoverCard content={<PeekContent targetKey={target} hint={hint ?? (onExpand ? "Click to open · ⌥-click to expand inline" : "Click to open")} />} side="bottom" align="start">
+      <HoverCard content={<PeekContent project={project} targetKey={target} hint={hint ?? (onExpand ? "Click to open · ⌥-click to expand inline" : "Click to open")} />} side="bottom" align="start">
         <button
           type="button"
           className={`code-link resolved${opened ? " opened" : ""} nodrag nopan`}

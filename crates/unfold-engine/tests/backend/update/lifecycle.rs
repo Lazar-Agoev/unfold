@@ -115,7 +115,7 @@ fn changed_paths_add_remove_and_delete_folders() {
     assert!(touched.summary.is_empty());
     assert!(Arc::ptr_eq(&touched.graph, &touched.previous));
 
-    // Boards and drafts under `.unfold/` never affect the graph or force a full discovery.
+    // Boards under `.unfold/` never affect the graph or force a full discovery.
     folder.write(".unfold/boards/b.json", "{}");
     let board = background(&mut engine, &[".unfold/boards/b.json", ".unfold/boards"]);
     assert!(!board.stats.full_discovery && !board.stats.relinked);

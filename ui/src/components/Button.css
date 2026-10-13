@@ -27,19 +27,9 @@
   padding-left: 10px;
 }
 
-.button-with-trailing {
-  padding-right: 8px;
-}
-
 .button-label {
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* 4px before a trailing chevron. */
-.button-trailing {
-  margin-left: -2px;
-  color: var(--color-muted);
 }
 
 .button-primary {

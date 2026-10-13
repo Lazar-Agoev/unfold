@@ -33,7 +33,7 @@ interface MenuItemBase {
   readonly trailing?: ReactNode;
 }
 
-/** A command, or a row that opens a submenu (Share ›, Move to folder ›). */
+/** A command, or a row that opens a submenu (Move to folder ›). */
 type MenuItem = MenuItemBase &
   ({ readonly onSelect: () => void; readonly submenu?: undefined } | { readonly submenu: readonly MenuEntry[]; readonly onSelect?: undefined });
 
@@ -63,7 +63,7 @@ interface MenuProps {
   readonly onClose: () => void;
   /** Which item takes focus first. */
   readonly initialFocus?: "first" | "last";
-  /** Fixed width in px (board 220, project 264, peek 208, share 196); otherwise it fits its items. */
+  /** Fixed width in px (board 220, project 264, peek 208); otherwise it fits its items. */
   readonly width?: number;
   readonly className?: string;
 }

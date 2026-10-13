@@ -10,7 +10,7 @@
 import { z } from "zod";
 import type { AgentBoardRef } from "../../../shared/agent-api";
 import type { ToolContext } from "../context";
-import type { AnchorSpec, HealthItem, Page, ProjectRow } from "../engine-types";
+import type { HealthItem, Page } from "../engine-types";
 import { anchorArg } from "../edits";
 import { authorText } from "../format";
 import { personWords, repairNames, repairSpec, REPAIRS, targetId, targetText, type RepairName } from "../health";
@@ -38,19 +38,6 @@ const DONE: Readonly<Record<RepairName, string>> = {
 /** Repairs that take their item off the page: nothing is left to outline. */
 const REMOVALS: ReadonlySet<RepairName> = new Set(["remove_card", "remove_label", "ungroup", "remove_link", "remove_resource", "remove_proposal"]);
 
-/** A reconnect's target as `repair_board` takes it: projects by shared name, absent for the board's own. */
-async function reconnectSpec(context: ToolContext, own: ProjectRow, to: z.output<typeof reconnectTo> | undefined): Promise<string | AnchorSpec | undefined> {
-  if (to === undefined || typeof to === "string") {
-    return to;
-  }
-  const { project, ...anchor } = to;
-  if (project === undefined) {
-    return anchor;
-  }
-  const row = await context.project(project);
-  return row.id === own.id ? anchor : { ...anchor, project: row.name };
-}
-
 /** The page items a repair changed, to outline: the item, or a Flow label's card. */
 function outlined(page: Page, item: HealthItem, repair: RepairName): string[] {
   if (REMOVALS.has(repair)) {
@@ -60,7 +47,7 @@ function outlined(page: Page, item: HealthItem, repair: RepairName): string[] {
   if (!("label" in target)) {
     return [targetId(target)];
   }
-  const card = page.cards.find((entry) => entry.ref.project === target.label.project && target.label.key.startsWith(`${cardKey(entry)}/`));
+  const card = page.cards.find((entry) => target.label.startsWith(`${cardKey(entry)}/`));
   return card ? [card.id] : [];
 }
 
@@ -122,13 +109,13 @@ export const repair = defineTool({
         );
       }
     }
-    const spec = repairSpec(read.page, chosen, name, await reconnectSpec(context, target.project, to));
+    const spec = repairSpec(read.page, chosen, name, to);
     const repaired = await context.bridge.repair({ board: target.board, page: target.page, agent: context.agent, repair: spec, items: outlined(read.page, chosen, name) });
     if (!repaired.ok) {
       throw windowRefusal(repaired);
     }
     return textResult(
-      context.header({ project: target.project.name, board: { title: repaired.board.title, draft: repaired.board.place === "draft" }, page: repaired.page.title, revision: repaired.revision }),
+      context.header({ project: target.project.name, board: repaired.board.title, page: repaired.page.title, revision: repaired.revision }),
       `${DONE[name]} ${what}${name === "reconnect" ? ` to ${typeof to === "string" ? to : JSON.stringify(to)}` : ""}.`,
       `Ids: board ${target.board.id}, page ${target.page}. One undo step in Unfold, saved.`,
       "Next: check again to see what's left.",

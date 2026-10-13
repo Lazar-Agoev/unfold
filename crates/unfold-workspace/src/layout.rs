@@ -4,11 +4,10 @@
 //! <folder>/
 //! ├── unfold.toml        shared settings (written only when they differ from the defaults)
 //! └── .unfold/
-//!     ├── boards/        published boards
+//!     ├── boards/        boards, saved as they are edited
 //!     └── local/         this machine only; its .gitignore contains "*"
 //!         ├── .gitignore
 //!         ├── cache/     disposable: graph.sqlite and the lock
-//!         ├── drafts/    unpublished boards
 //!         └── state.json empty board folders
 //! ```
 //!
@@ -31,7 +30,7 @@ use crate::volume::is_network_volume;
 pub const UNFOLD_DIR: &str = ".unfold";
 /// The shared settings file, relative to the folder.
 pub const CONFIG_PATH: &str = "unfold.toml";
-/// The published boards folder, relative to the folder.
+/// The boards folder, relative to the folder.
 pub const BOARDS_PATH: &str = ".unfold/boards";
 /// The machine-local folder, relative to the folder.
 pub const LOCAL_PATH: &str = ".unfold/local";
@@ -55,8 +54,8 @@ impl Layout {
         self.local().is_dir()
     }
 
-    /// Creates `local/` with its `cache/` and `drafts/` folders and the `.gitignore` that hides
-    /// `local/` from Git. Refused with `folder_not_writable` for a folder Unfold can't write
+    /// Creates `local/` with its `cache/` folder and the `.gitignore` that hides `local/` from
+    /// Git. Refused with `folder_not_writable` for a folder Unfold can't write
     /// `.unfold/` into.
     pub fn prepare(&self) -> Result<()> {
         check_writable(&self.root)?;
@@ -75,7 +74,6 @@ impl Layout {
     fn create_local(&self) -> std::io::Result<()> {
         let local = self.local();
         std::fs::create_dir_all(self.cache())?;
-        std::fs::create_dir_all(self.drafts())?;
         // Checked again now that the folders exist, so a link raced in is never written through.
         if has_link(&self.root) {
             return Err(std::io::Error::new(
@@ -139,11 +137,6 @@ impl Layout {
         self.cache().join("lock")
     }
 
-    /// `local/drafts/`.
-    pub fn drafts(&self) -> PathBuf {
-        self.local().join("drafts")
-    }
-
     /// `local/state.json`.
     pub fn state_file(&self) -> PathBuf {
         self.local().join("state.json")
@@ -199,11 +192,10 @@ pub fn check_writable(root: &Path) -> Result<()> {
 }
 
 /// The in-folder paths Unfold creates or writes under `.unfold/local/`.
-const LOCAL_PARTS: [&str; 6] = [
+const LOCAL_PARTS: [&str; 5] = [
     UNFOLD_DIR,
     LOCAL_PATH,
     ".unfold/local/cache",
-    ".unfold/local/drafts",
     ".unfold/local/state.json",
     ".unfold/local/.gitignore",
 ];
@@ -277,7 +269,6 @@ mod tests {
             "*\n"
         );
         assert!(root.join(".unfold/local/cache").is_dir());
-        assert!(root.join(".unfold/local/drafts").is_dir());
         layout.prepare().expect("prepare again");
     }
 

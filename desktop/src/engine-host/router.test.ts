@@ -208,7 +208,7 @@ describe("EngineRouter: sink fan-out", () => {
     router.attach(1, a);
     router.attach(2, b);
     router.attach(3, c);
-    const event = { type: "board_conflict", project: "p-aaaaaaaaaa", board: ".unfold/boards/b.json" };
+    const event = { type: "graph_updated", project: "p-aaaaaaaaaa", everything: false };
     router.handleSinkMessage(JSON.stringify({ kind: "event", windows: [2, 9], event }));
     expect(a.received()).toEqual([]);
     expect(b.received()).toEqual([{ kind: "event", event }]);
@@ -297,11 +297,7 @@ describe("EngineRouter: trusted commands", () => {
       [
         "save_board",
         "repair_board",
-        "publish_board",
-        "discard_changes",
-        "unpublish_board",
         "delete_board",
-        "duplicate_board",
         "set_board_folder",
         "create_folder",
         "rename_folder",
@@ -442,11 +438,11 @@ describe("EngineRouter: detach", () => {
     const { binding, router, logs } = setup();
     const port = new FakePort();
     router.attach(1, port);
-    port.send({ kind: "invoke", id: 1, command: "publish_board", args: { project: "p-aaaaaaaaaa" } });
+    port.send({ kind: "invoke", id: 1, command: "delete_board", args: { project: "p-aaaaaaaaaa" } });
     router.detach(1);
     binding.dispatches.get(1)?.result.reject(new Error('{"code":"io","message":"disk full"}'));
     await flush();
-    expect(logs).toEqual(["publish_board for closed window 1 failed: disk full"]);
+    expect(logs).toEqual(["delete_board for closed window 1 failed: disk full"]);
     expect(port.sent).toEqual([CONNECTED]);
   });
 

@@ -25,15 +25,13 @@ import {
   findPage,
   itemsFor,
   keyDisplayName,
-  labelsFor,
+  labelTexts,
   proposalTitle,
   removeProposal,
   updateProposal,
   useOpenBoard,
-  useResolvedCardProject,
   type PageTarget,
 } from "../../state/boards";
-import { resolveRefProject, useProjectIndex } from "../../state/workspace";
 import { PATH_WORDS, PROPOSAL_TITLE_FIELD } from "../proposeStep";
 import { sourceLines, sourceOf, viewCode } from "../viewCode";
 import { RelationRow } from "./Relations";
@@ -51,12 +49,11 @@ function reword(target: PageTarget, proposalId: string, change: { readonly title
 
 /** Where it would go: after which step (and path), and that step's lines as View placement code. */
 function Where({ target, proposal, card }: { readonly target: PageTarget; readonly proposal: Proposal; readonly card: Card }) {
-  const project = useResolvedCardProject(target.board, card);
-  const query = useQuery({ ...cardQuery(project ?? "", cardKey(card)), enabled: project !== null });
+  const query = useQuery(cardQuery(target.board.project, cardKey(card)));
   const labels = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.labels);
   const model = query.data?.type === "block" ? query.data : undefined;
   const node = model?.flow?.nodes.find((item) => item.key === proposal.after);
-  const label = labelsFor(labels ?? [], card.ref.project)[proposal.after] ?? node?.label;
+  const label = labelTexts(labels ?? [])[proposal.after] ?? node?.label;
   const path = proposal.path !== undefined ? ` · ${PATH_WORDS[proposal.path]}` : "";
   const selection = { kind: "proposal", proposalId: proposal.id } as const;
   // Read through the resolver once the card's model is in (`query.data` keeps this current).
@@ -97,8 +94,7 @@ export function SelectedProposal({ target, proposal }: { readonly target: PageTa
   });
   const health = useOpenBoard(target.board, (board) => board.health);
   const issues = itemsFor(health, target.page, { proposal: proposal.id });
-  const index = useProjectIndex();
-  const project = resolveRefProject(index, target.board.project, card?.ref.project) ?? target.board.project;
+  const { project } = target.board;
   // What's typed shows while typing (a blank title isn't saved); leaving a field shows what is saved.
   const [title, setTitle] = useState<string | null>(null);
   const [reason, setReason] = useState<string | null>(null);

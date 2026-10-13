@@ -100,7 +100,7 @@ fn representative_commands_match_their_goldens() {
     );
     golden(&harness, "problems", "problems", json!({}));
 
-    // Boards: a teammate's published board, listed and then opened.
+    // Boards: a teammate's board, listed and then opened.
     harness.write(
         ".unfold/boards/order-placement.json",
         &std::fs::read_to_string(

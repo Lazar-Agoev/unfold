@@ -42,12 +42,12 @@ const description = (text: string): Description => ({ text, author: "person:laza
 
 describe("Diagram nodes", () => {
   it("size to their header between 240 and 560", () => {
-    const short = nodeWidth({ mark: "ƒ", name: "a", location: "a.ts:1", monogram: false, code: true }, measure);
+    const short = nodeWidth({ mark: "ƒ", name: "a", location: "a.ts:1", code: true }, measure);
     expect(short).toBe(NODE_MIN_WIDTH);
-    const long = nodeWidth({ mark: "ƒ", name: "x".repeat(80), location: "routes/orders.ts:25", monogram: true, code: true }, measure);
+    const long = nodeWidth({ mark: "ƒ", name: "x".repeat(80), location: "routes/orders.ts:25", code: true }, measure);
     expect(long).toBe(NODE_MAX_WIDTH);
     // The chevron, the `ƒ`, a method's qualified name, and its location fit whole (padding, border, and the gaps between them).
-    const method = { mark: "ƒ", name: "StripeProvider.ChargeWithRetries", location: "services/payment.ts:13", monogram: false, code: true };
+    const method = { mark: "ƒ", name: "StripeProvider.ChargeWithRetries", location: "services/payment.ts:13", code: true };
     const parts = 14 + 8 + measure(method.name, TITLE_FONT) + measure(method.location, LOCATION_FONT);
     expect(nodeWidth(method, measure)).toBeGreaterThanOrEqual(Math.ceil(26 + parts + 3 * 8));
     expect(nodeWidth(method, measure)).toBeLessThan(NODE_MAX_WIDTH);
@@ -57,7 +57,7 @@ describe("Diagram nodes", () => {
   });
 
   it("make room for the chevron in an expanded block card's header", () => {
-    const header = { name: "StripeProvider.ChargeWithRetries", location: "services/payment.ts", monogram: false, body: null };
+    const header = { name: "StripeProvider.ChargeWithRetries", location: "services/payment.ts", body: null };
     expect(blockCardWidth({ ...header, chevron: true }, measure) - blockCardWidth(header, measure)).toBe(14 + 8);
   });
 
@@ -72,13 +72,13 @@ describe("Diagram nodes", () => {
 
   it("are estimated before they are drawn: compact, whatever the function's length", () => {
     const model = fixture("card", "card_create_order");
-    const code = estimatedCardSize({ key: KEY, model, view: "code", monogram: false }, measure);
-    expect(code).toEqual(estimatedBlockSize(model, false, measure));
-    const node = estimatedCardSize({ key: KEY, model, view: "diagram", monogram: false }, measure);
+    const code = estimatedCardSize({ key: KEY, model, view: "code" }, measure);
+    expect(code).toEqual(estimatedBlockSize(model, measure));
+    const node = estimatedCardSize({ key: KEY, model, view: "diagram" }, measure);
     expect(node.height).toBe(44);
     expect(node.width).toBeLessThanOrEqual(NODE_MAX_WIDTH);
-    expect(estimatedCardSize({ key: KEY, model, view: "diagram", monogram: false, description: description("Takes an order.") }, measure).height).toBeGreaterThan(44);
-    expect(estimatedCardSize({ key: KEY, model: undefined, view: "diagram", monogram: false }, measure)).toEqual(fallbackSize(false, "node"));
+    expect(estimatedCardSize({ key: KEY, model, view: "diagram", description: description("Takes an order.") }, measure).height).toBeGreaterThan(44);
+    expect(estimatedCardSize({ key: KEY, model: undefined, view: "diagram" }, measure)).toEqual(fallbackSize(false, "node"));
   });
 });
 
@@ -99,12 +99,12 @@ describe("type cards", () => {
   });
 
   it("size to their header and widest field, up to 560", () => {
-    const header = { mark: "interface", name: "Cart", location: "cart.ts:12", monogram: false };
+    const header = { mark: "interface", name: "Cart", location: "cart.ts:12" };
     expect(typeCardWidth(header, fieldTexts(cart), measure)).toBeGreaterThanOrEqual(280);
     expect(typeCardWidth(header, [{ name: "x", type: "Record<string, ".repeat(20) }], measure)).toBe(TYPE_MAX_WIDTH);
     // The whole header fits (padding, border, kind, name, location, and the gaps between them; a type card
     // has no chevron): the kind is measured as it is drawn, in 13px code.
-    const job = { mark: "interface", name: "OrderJobWithAVeryLongName", location: "types/order-jobs.ts:22", monogram: false };
+    const job = { mark: "interface", name: "OrderJobWithAVeryLongName", location: "types/order-jobs.ts:22" };
     const parts = measure("interface", TYPE_KIND_FONT) + measure(job.name, TITLE_FONT) + measure(job.location, LOCATION_FONT);
     expect(typeCardWidth(job, [{ name: "order", type: "OrderDraft" }], measure)).toBe(Math.ceil(26 + parts + 2 * 8));
   });
@@ -146,9 +146,9 @@ describe("type cards", () => {
       code: null,
       flow: null,
     };
-    const size = estimatedCardSize({ key: CART, model, view: "diagram", monogram: false, definition: cart }, measure);
+    const size = estimatedCardSize({ key: CART, model, view: "diagram", definition: cart }, measure);
     expect(size.height).toBe(typeCardHeight(cart, 0));
-    expect(estimatedCardSize({ key: CART, model, view: "flow", monogram: false, definition: cart }, measure)).toEqual(size);
-    expect(estimatedCardSize({ key: CART, model, view: "diagram", monogram: false }, measure).height).toBe(fallbackSize(false, "fields").height);
+    expect(estimatedCardSize({ key: CART, model, view: "flow", definition: cart }, measure)).toEqual(size);
+    expect(estimatedCardSize({ key: CART, model, view: "diagram" }, measure).height).toBe(fallbackSize(false, "fields").height);
   });
 });

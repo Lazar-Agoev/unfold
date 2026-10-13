@@ -1,8 +1,8 @@
 /**
  * Check boards (design §6.5, §7.7): `check` and `get_screenshot`. Both draw the page in the render
- * window, as the board tab draws it (unsaved edits included), and never move the person's view.
- * `check` adds the board's health (`board_health`, which needs the board's session, so a board no
- * window holds is opened in a background tab first) to the page checks, each with the call that fixes
+ * window, as the board view draws it (unsaved edits included), and never move the person's view.
+ * `check` adds the board's health (`board_health`, which needs the board's session, so a board the
+ * window doesn't hold is loaded there first) to the page checks, each with the call that fixes
  * it; `get_screenshot` returns a PNG as MCP image content.
  */
 
@@ -37,7 +37,6 @@ const HEALTH_WORDS: Readonly<Record<HealthKind, string>> = {
   outdated: "outdated",
   brokenGroup: "broken step group",
   review: "held for review",
-  notConnected: "not connected",
   brokenLink: "broken link",
 };
 
@@ -101,7 +100,7 @@ export const check = defineTool({
   name: "check",
   title: "Check",
   description:
-    'Reviews a page, or every page of a board, as data any agent can act on: health problems (missing, outdated, held for review, broken step groups, broken links, not connected), each with the repair calls it allows; and the page checks: overlap, crossings, density (over 30 visible items on a page, 12 in a frame, 12 steps in an expanded card), unlabeled steps of expanded cards (not those a collapsed step group hides), missing words (frames, step groups, and resource cards without a description), evidence (connections and resource cards without anchors), strays (items with no line, connection, or frame), and views (many expanded cards on an overview page), each with the tool that fixes it. page is an id or a link (default: the page in view); a board without a page checks every page of it. Unfold draws the page as the person sees it, unsaved edits included, and opens a board no window holds in a background tab. Call it after each section you build, then get_screenshot, and fix what it finds with targeted edits; don\'t start the page over. Re-signing or accepting what a person wrote is theirs to do: the result says so. Reading changes nothing.',
+    'Reviews a page, or every page of a board, as data any agent can act on: health problems (missing, outdated, held for review, broken step groups, broken links), each with the repair calls it allows; and the page checks: overlap, crossings, density (over 30 visible items on a page, 12 in a frame, 12 steps in an expanded card), unlabeled steps of expanded cards (not those a collapsed step group hides), missing words (frames, step groups, and resource cards without a description), evidence (connections and resource cards without anchors), strays (items with no line, connection, or frame), and views (many expanded cards on an overview page), each with the tool that fixes it. page is an id or a link (default: the page in view); a board without a page checks every page of it. Unfold draws the page as the person sees it, unsaved edits included, and loads a board the window doesn\'t hold without moving the person\'s view. Call it after each section you build, then get_screenshot, and fix what it finds with targeted edits; don\'t start the page over. Re-signing or accepting what a person wrote is theirs to do: the result says so. Reading changes nothing.',
   input: z.object({
     board: z.string().min(1).optional().describe("A board's id or a link; alone, every page of it is checked"),
     page: z.string().min(1).optional().describe("A page's id or a link (default: the page in view)"),
@@ -123,7 +122,7 @@ export const check = defineTool({
       });
       const problems = checked.pages.filter((checks) => !clean(checks)).length;
       return textResult(
-        context.header({ project: target.project.name, board: { title: checked.title, draft: reads[0]?.draft ?? false } }),
+        context.header({ project: target.project.name, board: checked.title }),
         `Board id ${target.board.id}: ${count(checked.pages.length, "page")}, ${problems === 0 ? "nothing to fix" : `${count(problems, "page")} with something to fix`}.`,
         ...sections.flat(),
         problems === 0 ? "Next: get_screenshot of each page, to look at it the way the person will." : "Next: fix with the calls above, then check again and get_screenshot.",
@@ -136,7 +135,7 @@ export const check = defineTool({
     }
     const read = await readPage(context, target.board, pageId);
     return textResult(
-      context.header({ project: target.project.name, board: { title: read.title, draft: read.draft }, page: read.page.title, revision: read.revision }),
+      context.header({ project: target.project.name, board: read.title, page: read.page.title, revision: read.revision }),
       `Ids: board ${target.board.id}, page ${pageId}.`,
       ...(clean(checked) ? ["Nothing to fix: no health problems, and the page checks found nothing."] : checkLines(read.page, target.board, checked, context.agent)),
       clean(checked) ? "Next: get_screenshot, to look at it the way the person will." : "Next: fix with the calls above, then check again and get_screenshot.",
@@ -170,7 +169,7 @@ export const getScreenshot = defineTool({
         {
           type: "text",
           text: [
-            context.header({ project: target.project.name, board: { title: read.title, draft: read.draft }, page: read.page.title, revision: read.revision }),
+            context.header({ project: target.project.name, board: read.title, page: read.page.title, revision: read.revision }),
             `${what}, ${shot.width}×${shot.height} px.${shot.note !== undefined ? ` ${shot.note}` : ""}`,
             "Next: look at it as the person will, give a one-line verdict in the chat, and fix what you see with targeted edits.",
           ].join("\n"),

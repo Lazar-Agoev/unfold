@@ -48,11 +48,8 @@ export interface PeekTarget {
 
 export type DialogRequest =
   | { readonly kind: "settings" }
-  | { readonly kind: "publish"; readonly board: BoardRef }
-  | { readonly kind: "discard"; readonly board: BoardRef }
   | { readonly kind: "deleteBoard"; readonly board: BoardRef }
-  | { readonly kind: "newFolder"; readonly project: ProjectId; readonly parent: string | null }
-  | { readonly kind: "renameFolder"; readonly project: ProjectId; readonly path: string }
+  | { readonly kind: "renameFolder"; readonly project: ProjectId; readonly folder: string }
   /** Make a group from lines, or with `members` (Combine…) the statements of a run already chosen. */
   | { readonly kind: "groupFromLines"; readonly target: PageTarget; readonly cardId: string; readonly members?: readonly string[] };
 

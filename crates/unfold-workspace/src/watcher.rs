@@ -8,9 +8,8 @@
 //!   set (the background update) and a `files_changed` event (the Files view);
 //! - **`unfold.toml`**: `config_changed`, and a pending path so the next update reloads
 //!   the settings;
-//! - **`.unfold/boards/`** and **`local/drafts/`**: `boards_changed` with the board ids, for
-//!   edits made outside the app (writes the app noted itself are not reported). A changes copy
-//!   (`drafts/<name>.changes.json`) is reported under its published board's id;
+//! - **`.unfold/boards/`**: `boards_changed` with the board ids, for edits made outside the app
+//!   (writes the app noted itself are not reported);
 //! - **`local/cache/` disappearing**: a cache check, which recreates it and recompiles.
 //!
 //! `.git/` and everything else under `.unfold/` are dropped on arrival. (Recursive watching
@@ -28,7 +27,7 @@ use notify::{EventKind, RecommendedWatcher, RecursiveMode};
 use notify_debouncer_full::{DebounceEventResult, NoCache, new_debouncer_opt};
 use unfold_core::RepoPath;
 use unfold_engine::discovery::IgnoreRules;
-use unfold_reader::board::files::{BoardFile, Place};
+use unfold_reader::board::files::BoardFile;
 
 use crate::events::{MAX_LISTED, WorkspaceEvent};
 use crate::layout::{BOARDS_PATH, CONFIG_PATH, Layout, UNFOLD_DIR};
@@ -180,15 +179,6 @@ impl Filter {
             .and_then(|name| name.to_str())
             .is_some_and(|name| name.starts_with('.') && name.ends_with(".tmp"));
         let own = || temporary || shared.own_writes.contains(path);
-        let drafts = layout.drafts();
-        if let Ok(rest) = path.strip_prefix(&drafts) {
-            if !own()
-                && let Some(board) = rest.to_str().and_then(|name| board_id(Place::Draft, name))
-            {
-                batch.boards.insert(board);
-            }
-            return;
-        }
         let local = layout.local();
         if path.starts_with(&local) {
             if (path == local || path.starts_with(layout.cache())) && !layout.database().exists() {
@@ -217,7 +207,7 @@ impl Filter {
             .and_then(|rest| rest.strip_prefix('/'))
         {
             if !own()
-                && let Some(board) = board_id(Place::Published, name)
+                && let Some(board) = board_id(name)
             {
                 batch.boards.insert(board);
             }
@@ -245,22 +235,11 @@ impl Filter {
     }
 }
 
-/// The id of the board whose file is `name` (a file name in `place`'s directory): the file's own
-/// id, or for a changes copy its published board's. `None` for anything that isn't a board file.
-fn board_id(place: Place, name: &str) -> Option<String> {
+/// The id of the board whose file is `name` (a file name in `.unfold/boards/`); `None` for
+/// anything that isn't a board file.
+fn board_id(name: &str) -> Option<String> {
     let stem = name.strip_suffix(".json")?;
-    let file = match place {
-        Place::Published => BoardFile::published(stem).ok()?,
-        Place::Draft => match BoardFile::draft(stem) {
-            Ok(draft) => draft,
-            Err(_) => BoardFile {
-                place: Place::Draft,
-                name: stem.to_owned(),
-            }
-            .publishes()?,
-        },
-    };
-    Some(file.relative())
+    Some(BoardFile::new(stem).ok()?.relative())
 }
 
 #[cfg(test)]
@@ -270,21 +249,11 @@ mod tests {
     #[test]
     fn board_files_map_to_board_ids() {
         assert_eq!(
-            board_id(Place::Published, "orders.json").as_deref(),
+            board_id("orders.json").as_deref(),
             Some(".unfold/boards/orders.json")
         );
-        assert_eq!(
-            board_id(Place::Draft, "board-1.json").as_deref(),
-            Some(".unfold/local/drafts/board-1.json")
-        );
-        assert_eq!(
-            board_id(Place::Draft, "orders.changes.json").as_deref(),
-            Some(".unfold/boards/orders.json"),
-            "a changes copy is reported under its published board"
-        );
         for other in ["notes.txt", "sub/x.json", ".x.json.tmp", "../x.json"] {
-            assert_eq!(board_id(Place::Draft, other), None, "{other}");
-            assert_eq!(board_id(Place::Published, other), None, "{other}");
+            assert_eq!(board_id(other), None, "{other}");
         }
     }
 }

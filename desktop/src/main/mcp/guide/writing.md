@@ -1,6 +1,6 @@
 # Writing on boards
 
-Your words are read by the person, then by teammates who open the published board.
+Your words are read by the person, then by teammates who open the board from git.
 They sit beside compiled code, so they say what the code is for and why, in plain
 language, and they stay true: Unfold signs each text against the code it describes,
 and it goes to review when that code changes.

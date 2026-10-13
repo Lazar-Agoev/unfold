@@ -1,25 +1,41 @@
 /**
- * A board's life outside publishing (docs/reader.md#files-drafts-publish-and-unpublished-changes, board folder metadata): renaming in place,
- * the board menu (Duplicate, Share as Mermaid and PNG, Fold all, Delete), folders and Move to folder, and edits
- * made to a board's file outside the app (a clean board reloads; a deleted file shows the banner), and a
- * save that fails (the banner's Retry).
+ * Boards are files (docs/reader.md#boards, board folder metadata): renaming in place, the board menu (Rename…,
+ * Move to folder, Export PNG…, Copy link, Delete…), one-level folders through Move to folder, and the board's
+ * file changed outside the app (the board reloads and its undo history starts over; a deleted file is written
+ * back), and a save that fails ("Not saved · Retry").
  */
 
 import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { boardMenu, boardTitle, boardView, cards, chooseMenuPath, layerRow, menuItem, readBoard, showBoard, shownBoardRef, type BoardFile } from "../src/board";
+import { boardMenu, boardTitle, boardView, card, chooseMenuPath, clickCanvas, layerRow, menuItem, showBoard, shownBoardRef, type BoardFile } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { launchCompiled, traceEntrance } from "../src/flows";
-import { dialog, homeMain, showHome, sidebar, sidebarBoard, sidebarFolder, toast } from "../src/home";
-import { describeSelected, DRAFTS, expectBoardFile, firstDescription } from "../src/lifecycle";
-import { enterText } from "../src/window";
+import { dialog, homeBoardRows, homeMain, showHome, sidebar, sidebarBoard, sidebarFolder, toast } from "../src/home";
+import { BOARDS, describeSelected, expectBoardFile, firstDescription } from "../src/lifecycle";
+import { enterText, eventMark, waitForEvent } from "../src/window";
+
+/** Rewrites a board's file the way another program does, with `change` applied to what it holds. */
+function editOutside(folder: string, id: string, change: Partial<BoardFile>): void {
+  const board = JSON.parse(readFileSync(join(folder, id), "utf8")) as BoardFile & Record<string, unknown>;
+  writeFileSync(join(folder, id), `${JSON.stringify({ ...board, ...change }, null, 2)}\n`);
+}
 
 test.describe("boards", () => {
-  test("the board menu: rename in place, Duplicate, Share as Mermaid, Fold all, and Delete", async ({ sandbox, launch }) => {
+  test("the board menu: rename in place, Export PNG…, Copy link, and Delete…", async ({ sandbox, launch }) => {
     const { app, page, folders } = await launchCompiled(launch, sandbox);
     const folder = folders[0] ?? "";
     await traceEntrance(page, "POST", "/orders");
     const { id } = await shownBoardRef(page);
+
+    await test.step("the board is a file in .unfold/boards, and the menu holds Rename…, Move to folder, Export PNG…, Copy link, Delete…", async () => {
+      expect(id).toMatch(/^\.unfold\/boards\/[^/]+\.json$/);
+      await expectBoardFile(folder, id, (board) => board.title === "POST /orders", "the traced board is saved");
+      await sidebar(page).getByRole("button", { name: "Board menu" }).click();
+      const menu = page.getByRole("menu", { name: "Board menu" });
+      await expect(menu.getByRole("menuitem")).toHaveText(["Rename…", "Move to folder", "Export PNG…", "Copy link", "Delete…"]);
+      await page.keyboard.press("Escape");
+      await expect(menu).toBeHidden();
+    });
 
     await test.step("double-clicking the title in the sidebar header renames the board in place", async () => {
       await boardTitle(page).dblclick();
@@ -40,36 +56,10 @@ test.describe("boards", () => {
       await expectBoardFile(folder, id, (board) => board.title === "Orders", "the new title is saved");
     });
 
-    await test.step("Duplicate makes a draft copy, which opens from the toast", async () => {
-      await boardMenu(page, "Duplicate");
-      const made = toast(page, "Made Orders copy");
-      await made.getByRole("button", { name: "Open" }).click();
-      await expect(boardTitle(page)).toHaveText("Orders copy");
-      const copy = await shownBoardRef(page);
-      expect(copy.id).not.toBe(id);
-      expect(readBoard(folder, copy.id).title).toBe("Orders copy");
-      await showHome(page);
-      await showBoard(page, "Orders");
-    });
-
-    await test.step("Share › Export Mermaid… writes the page through the save dialog", async () => {
-      const file = join(sandbox.root, "orders.mmd");
-      await app.stubSaveDialog(file);
-      await boardMenu(page, "Share", "Export Mermaid…");
-      await expect(toast(page, "Exported Mermaid")).toBeVisible();
-      expect(readFileSync(file, "utf8")).toMatch(/^flowchart /);
-    });
-
-    await test.step("Share › Copy Mermaid puts the same page on the clipboard", async () => {
-      await boardMenu(page, "Share", "Copy Mermaid");
-      await expect(toast(page, "Copied the page as Mermaid")).toBeVisible();
-      expect(await app.clipboardText()).toBe(readFileSync(join(sandbox.root, "orders.mmd"), "utf8"));
-    });
-
-    await test.step("Share › Export PNG… draws the page in the render window and writes it through the save dialog", async () => {
+    await test.step("Export PNG… draws the page in the render window and writes it through the save dialog", async () => {
       const file = join(sandbox.root, "orders.png");
       await app.stubSaveDialog(file);
-      await boardMenu(page, "Share", "Export PNG…");
+      await boardMenu(page, "Export PNG…");
       await expect(toast(page, "Exported PNG")).toBeVisible({ timeout: 30_000 });
       // A PNG's signature, then its header's width and height.
       const png = readFileSync(file);
@@ -78,13 +68,10 @@ test.describe("boards", () => {
       expect(png.readUInt32BE(20)).toBeGreaterThan(100);
     });
 
-    await test.step("Fold all cards and Unfold all cards", async () => {
-      const count = await cards(page).count();
-      await boardMenu(page, /^Fold all cards$/);
-      await expect(boardView(page).locator(".board-card.folded")).toHaveCount(count);
-      await expectBoardFile(folder, id, (board) => board.pages[0]?.cards.every((card) => card.folded === true) ?? false, "the cards are saved folded");
-      await boardMenu(page, /^Unfold all cards$/);
-      await expect(boardView(page).locator(".board-card.folded")).toHaveCount(0);
+    await test.step("Copy link puts the board's link, named by the project's folder, on the clipboard", async () => {
+      await boardMenu(page, "Copy link");
+      await expect(toast(page, "Copied the link")).toBeVisible();
+      await expect.poll(() => app.clipboardText()).toBe(`unfold://ts-orders/${id}`);
     });
 
     await test.step("Delete… asks, then deletes the file and shows Home", async () => {
@@ -94,19 +81,27 @@ test.describe("boards", () => {
       await expect(toast(page, "Deleted Orders")).toBeVisible();
       await expect(homeMain(page)).toBeVisible();
       await expect(sidebarBoard(page, "Orders")).toHaveCount(0);
-      await expect(sidebarBoard(page, "Orders copy")).toBeVisible();
+      await expect(homeBoardRows(page)).toHaveCount(0);
       expect(existsSync(join(folder, id))).toBe(false);
     });
   });
 
-  test("folders: Move to folder, the sidebar tree, and the folder menu", async ({ sandbox, launch }) => {
+  test("folders are one level: Move to folder, the sidebar tree, and the folder menu", async ({ sandbox, launch }) => {
     const { page, folders } = await launchCompiled(launch, sandbox);
     const folder = folders[0] ?? "";
     await traceEntrance(page, "POST", "/orders");
     const { id } = await shownBoardRef(page);
 
-    await test.step("Move to folder › New folder… moves the board into a new folder", async () => {
+    await test.step("Move to folder › New folder… refuses a folder inside a folder", async () => {
       await boardMenu(page, "Move to folder", "New folder…");
+      const prompt = dialog(page, "New folder");
+      await enterText(prompt.getByRole("textbox", { name: "Name" }), "flows/orders");
+      await prompt.getByRole("button", { name: "Move" }).click();
+      await expect(prompt).toContainText("A folder's name can't contain “/”: folders hold boards, not other folders.");
+      await expect(prompt).toBeVisible();
+    });
+
+    await test.step("a folder's name moves the board into the new folder", async () => {
       const prompt = dialog(page, "New folder");
       await enterText(prompt.getByRole("textbox", { name: "Name" }), "flows");
       await prompt.getByRole("button", { name: "Move" }).click();
@@ -115,7 +110,7 @@ test.describe("boards", () => {
       await expectBoardFile(folder, id, (board) => board.folder === "flows", "the folder is saved");
     });
 
-    await test.step("the sidebar tree shows the folder with the board inside", async () => {
+    await test.step("the sidebar tree shows the folder with the board inside, and Home's row names the folder", async () => {
       await showHome(page);
       const flows = sidebarFolder(page, "flows");
       await expect(flows).toBeVisible();
@@ -124,24 +119,13 @@ test.describe("boards", () => {
       }
       await expect(flows).toHaveAttribute("aria-expanded", "true");
       await expect(sidebarBoard(page, "POST /orders")).toHaveAttribute("aria-level", "3");
+      await expect(homeBoardRows(page).locator(".home-board-folder")).toHaveText(["flows"]);
     });
 
-    await test.step("the folder menu's New folder… makes an empty folder inside, which Delete removes", async () => {
-      await sidebarFolder(page, "flows").click({ button: "right" });
-      await chooseMenuPath(page, "Sidebar menu", ["New Folder…"]);
-      const prompt = dialog(page, "New folder");
-      await expect(prompt).toContainText("Inside flows.");
-      await enterText(prompt.getByRole("textbox", { name: "Name" }), "later");
-      await prompt.getByRole("button", { name: "Create" }).click();
-      await expect(sidebarFolder(page, "later")).toBeVisible();
-      await sidebarFolder(page, "later").click({ button: "right" });
-      await chooseMenuPath(page, "Sidebar menu", ["Delete"]);
-      await expect(sidebarFolder(page, "later")).toHaveCount(0);
-    });
-
-    await test.step("a folder that holds a board can't be deleted", async () => {
+    await test.step("the folder menu holds New Board Here, Rename…, and Delete, which a folder holding a board can't use", async () => {
       await sidebarFolder(page, "flows").click({ button: "right" });
       const menu = page.getByRole("menu", { name: "Sidebar menu" });
+      await expect(menu.getByRole("menuitem")).toHaveText(["New Board Here", "Rename…", "Delete"]);
       await expect(menuItem(menu, "Delete")).toHaveAttribute("aria-disabled", "true");
       await page.keyboard.press("Escape");
       await expect(menu).toBeHidden();
@@ -174,49 +158,81 @@ test.describe("boards", () => {
     });
   });
 
-  test("a board's file edited outside the app: a clean board reloads, a deleted file shows the banner; a failed save offers Retry", async ({ sandbox, launch }) => {
-    const { page, folders } = await launchCompiled(launch, sandbox);
+  test("a board's file changed outside the app: the board reloads and its undo starts over, a deleted file is written back, a failed save offers Retry", async ({ sandbox, launch }) => {
+    const { app, page, folders } = await launchCompiled(launch, sandbox);
     const folder = folders[0] ?? "";
     await traceEntrance(page, "POST", "/orders");
     const { id } = await shownBoardRef(page);
-    // Wait for the trace's cards to be saved: an outside edit then meets a board without unsaved changes.
-    await expectBoardFile(folder, id, (board) => board.pages[0]?.cards.length === 4, "the traced cards are saved");
+    const createOrder = card(page, "#function:createOrder");
 
-    await test.step("an outside edit to a board without unsaved changes reloads it", async () => {
-      const board = JSON.parse(readFileSync(join(folder, id), "utf8")) as BoardFile & Record<string, unknown>;
-      writeFileSync(join(folder, id), `${JSON.stringify({ ...board, title: "Edited elsewhere" }, null, 2)}\n`);
+    await test.step("an edit in the app is saved, and is a step to undo", async () => {
+      await layerRow(page, "createOrder").click();
+      await describeSelected(page, "Places the order.");
+      await expect(createOrder.locator(".card-description")).toContainText("Places the order.");
+      await expectBoardFile(folder, id, (board) => firstDescription(board) === "Places the order.", "the description is saved");
+    });
+
+    await test.step("an outside edit reloads the board", async () => {
+      const reloaded = await eventMark(page, "board_reloaded");
+      editOutside(folder, id, { title: "Edited elsewhere" });
+      await waitForEvent(page, "board_reloaded", reloaded);
       await expect(boardTitle(page)).toHaveText("Edited elsewhere");
       await expect(page).toHaveTitle("Edited elsewhere — Unfold");
     });
 
-    await test.step("deleting the open board's file shows the banner at the top of the canvas", async () => {
+    await test.step("Undo has nothing to take back after the reload", async () => {
+      await clickCanvas(page);
+      const undone = await eventMark(page, "menu_command");
+      await app.clickMenu(page, ["Edit", "Undo"]);
+      await waitForEvent(page, "menu_command", undone);
+      await expect(boardTitle(page)).toHaveText("Edited elsewhere");
+      await expect(createOrder.locator(".card-description")).toContainText("Places the order.");
+    });
+
+    await test.step("deleting the board's file keeps the board, and the next edit writes the file back", async () => {
+      const deleted = await eventMark(page, "board_reloaded");
       rmSync(join(folder, id));
-      const banner = boardView(page).getByRole("alert").filter({ hasText: "This board's file was deleted outside Unfold" });
-      await expect(banner).toBeVisible();
-      await expect(banner.getByRole("button", { name: "Close the board" })).toBeVisible();
+      await waitForEvent(page, "board_reloaded", deleted);
+      await expect(boardTitle(page)).toHaveText("Edited elsewhere");
+      await expect(boardView(page).getByRole("alert")).toHaveCount(0);
+      await layerRow(page, "createOrder").click();
+      await describeSelected(page, "Places the order, or queues it.");
+      await expectBoardFile(
+        folder,
+        id,
+        (board) => board.title === "Edited elsewhere" && firstDescription(board) === "Places the order, or queues it.",
+        "the board is written back",
+      );
     });
 
-    await test.step("Keep mine on the banner writes the board again", async () => {
-      const banner = boardView(page).getByRole("alert");
-      await banner.getByRole("button", { name: "Keep mine (write it again)" }).click();
-      await expect(banner).toBeHidden();
-      await expectBoardFile(folder, id, (board) => board.title === "Edited elsewhere", "the board is written again");
-    });
-
-    await test.step("a save that fails shows Not saved with Retry, and Retry saves once it can", async () => {
-      const drafts = join(folder, DRAFTS);
-      chmodSync(drafts, 0o555);
+    await test.step("a save that fails shows Not saved · Retry, and the board doesn't reload while it fails", async () => {
+      const boards = join(folder, BOARDS);
+      const notSaved = boardView(page).getByRole("status").filter({ hasText: "Not saved ·" });
+      chmodSync(boards, 0o555);
       try {
-        await layerRow(page, "POST /orders").click();
         await describeSelected(page, "Checks the user, then places the order.");
-        await expect(boardView(page).getByRole("status").filter({ hasText: /^Not saved:/ })).toBeVisible();
+        await expect(notSaved).toBeVisible();
+        await expect(notSaved.locator(".board-banner-text")).toHaveAttribute("title", /\S/);
+        await expect(notSaved.getByRole("button", { name: "Retry" })).toBeVisible();
+        const changed = await eventMark(page, "board_reloaded");
+        editOutside(folder, id, { title: "Changed while failing" });
+        await waitForEvent(page, "board_reloaded", changed);
+        await expect(boardTitle(page)).toHaveText("Edited elsewhere");
       } finally {
-        chmodSync(drafts, 0o755);
+        chmodSync(boards, 0o755);
       }
-      const banner = boardView(page).getByRole("status").filter({ hasText: /^Not saved:/ });
-      await banner.getByRole("button", { name: "Retry" }).click();
-      await expect(banner).toBeHidden();
-      await expectBoardFile(folder, id, (board) => firstDescription(board) === "Checks the user, then places the order.", "the description is saved");
+    });
+
+    await test.step("Retry writes the person's version over the outside change", async () => {
+      const notSaved = boardView(page).getByRole("status").filter({ hasText: "Not saved ·" });
+      await notSaved.getByRole("button", { name: "Retry" }).click();
+      await expect(notSaved).toBeHidden();
+      await expectBoardFile(
+        folder,
+        id,
+        (board) => board.title === "Edited elsewhere" && firstDescription(board) === "Checks the user, then places the order.",
+        "the person's version is saved",
+      );
     });
   });
 });

@@ -1,5 +1,5 @@
 /**
- * The window in Home mode: the sidebar's projects, Home's header and state line, and How it
+ * The window in Home mode: the sidebar's projects, Home's header and state line, its Boards, and How it
  * starts. Locators use what a person sees (roles and names); waits are on state.
  */
 
@@ -25,7 +25,7 @@ export function workspace(page: Page): Promise<WorkspaceInfo> {
   return invoke<WorkspaceInfo>(page, "workspace");
 }
 
-/** The id of the project named `name` (its shared name). */
+/** The id of the project named `name` (its folder's name). */
 export async function projectId(page: Page, name: string): Promise<string> {
   const row = (await workspace(page)).projects.find((project) => project.name === name);
   if (!row) {
@@ -51,7 +51,7 @@ function projectsTree(page: Page): Locator {
   return sidebar(page).getByRole("tree", { name: "Projects" });
 }
 
-/** A project's row in the sidebar, by its shared name. */
+/** A project's row in the sidebar, by its name (its folder's). */
 export function projectRow(page: Page, name: string): Locator {
   return projectsTree(page).locator(".home-project-row").filter({ has: page.locator(".home-project-title", { hasText: new RegExp(`^${escapeRegExp(name)}$`) }) });
 }
@@ -113,6 +113,11 @@ export function stateLine(page: Page): Locator {
 /** Waits until Home's project reads "Graph current" (after a compile, an update, a reopen). */
 export async function expectGraphCurrent(page: Page, timeout = 60_000): Promise<void> {
   await expect(stateLine(page)).toHaveAttribute("data-state", "current", { timeout });
+}
+
+/** The rows of Home's Boards: the project's boards, most recently edited first. */
+export function homeBoardRows(page: Page): Locator {
+  return homeMain(page).getByRole("group", { name: "Boards" }).locator(".home-board-row");
 }
 
 /** Adds `folder` as a project with Add Project… in the sidebar (the folder picker stubbed). */

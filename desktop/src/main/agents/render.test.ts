@@ -12,11 +12,11 @@ vi.mock("electron", async () => (await import("../fake-electron")).electronModul
 
 const BOARD: AgentBoardRef = { project: "p-orders0000", id: ".unfold/boards/orders.json" };
 const PAGE = { id: "page-1", title: "Placing an order", defaultView: "code", cards: [], groups: [], labels: [], guards: [], links: [] };
-const INFO = { title: "Orders", place: "draft" as const, changes: 0, revision: "r1", unsaved: false };
+const INFO = { title: "Orders", revision: "r1", unsaved: false };
 const OUTDATED: HealthItem = { page: "page-1", kind: "outdated", target: { card: "create-order" }, message: "The code changed.", repairs: ["resign"] };
 const ELSEWHERE: HealthItem = { ...OUTDATED, page: "page-2" };
 const HEALTH: BoardHealthView = {
-  health: { items: [OUTDATED, ELSEWHERE], missing: 0, outdated: 2, brokenGroups: 0, review: 0, notConnected: 0, brokenLinks: 0 },
+  health: { items: [OUTDATED, ELSEWHERE], missing: 0, outdated: 2, brokenGroups: 0, review: 0, brokenLinks: 0 },
   outlines: [
     { page: "page-1", rows: [], unlabeled: [] },
     { page: "page-2", rows: [], unlabeled: [] },

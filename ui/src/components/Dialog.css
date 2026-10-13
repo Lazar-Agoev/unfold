@@ -40,10 +40,6 @@
   width: 470px;
 }
 
-.dialog-520 {
-  width: 520px;
-}
-
 .dialog-header {
   display: flex;
   flex-shrink: 0;
@@ -88,8 +84,8 @@
   padding: 20px 24px;
 }
 
-/* The confirming button is 14px inline in every dialog (Publish's Publish). */
-.dialog-footer :is(.button-primary, .button-danger):not(.button-with-icon, .button-with-trailing) {
+/* The confirming button is 14px inline in every dialog (Delete's Delete). */
+.dialog-footer :is(.button-primary, .button-danger):not(.button-with-icon) {
   padding-inline: 14px;
 }
 

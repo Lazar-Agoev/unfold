@@ -17,10 +17,11 @@ const RECORDED = [
   "graph_updated",
   "files_changed",
   "boards_changed",
-  "board_conflict",
+  "board_reloaded",
   "problems_changed",
   "config_changed",
   "project_added",
+  "menu_command",
 ] as const;
 
 type RecordedType = (typeof RECORDED)[number];

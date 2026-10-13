@@ -21,7 +21,7 @@ interface RenderState {
 
 export const useRenderJob = create<RenderState>(() => ({ job: null, frame: null }));
 
-const NO_HEALTH: Health = { items: [], missing: 0, outdated: 0, brokenGroups: 0, review: 0, notConnected: 0, brokenLinks: 0 };
+const NO_HEALTH: Health = { items: [], missing: 0, outdated: 0, brokenGroups: 0, review: 0, brokenLinks: 0 };
 
 /** The lowest zoom the page is measured at: everything on a large page is drawn, so everything is measured. */
 const MEASURE_MIN_ZOOM = 0.05;
@@ -51,11 +51,9 @@ export function jobState(job: RenderJob): BoardState {
   return {
     project: job.board.project,
     id: job.board.id,
-    place: "draft",
     name: "",
-    document: { format: "unfold-board", version: 1, title: job.title, projects: [], pages: [page] },
+    document: { format: "unfold-board", version: 1, title: job.title, pages: [page] },
     revision: "",
-    published: null,
     health: (job.health as Health | null) ?? NO_HEALTH,
     outlines: [],
     label: null,

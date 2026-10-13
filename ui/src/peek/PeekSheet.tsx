@@ -17,7 +17,6 @@
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type JSX, type ReactNode } from "react";
-import { ProjectScope } from "../canvas/ProjectScope";
 import { CallLink } from "../code/CallLink";
 import { tokenClass } from "../code/CodeText";
 import { newCardView } from "../code/typeKinds";
@@ -55,17 +54,20 @@ const ROW_HEIGHT = 20;
 /** The code area's padding above the first row and below the last. */
 const PADDING = 8;
 
-/** Adds a definition of `project` where Add would: the active page, or a new draft from Home; in `view` when given. */
+/**
+ * Adds a definition of `project` where Add would: the active page when it is of that project (a page
+ * shows one project), else a new board in `project`; in `view` when given.
+ */
 async function addDefinition(target: AddTarget, project: ProjectId, key: Key, view: View | undefined): Promise<void> {
   try {
-    if (target.kind === "page") {
-      addBlock(target.target, project, key, view);
+    if (target.kind === "page" && target.target.board.project === project) {
+      addBlock(target.target, key, view);
       return;
     }
     const board = await newBoard(project, { title: keyDisplayName(key) });
     const page = getOpenBoard(board)?.activePage;
     if (page !== undefined) {
-      addBlock({ board, page }, project, key, view);
+      addBlock({ board, page }, key, view);
     }
   } catch (error) {
     showToast({ title: "Couldn't add it", body: toUnfoldError(error).message, tone: "danger" });
@@ -91,6 +93,7 @@ function modelOf(view: FileView): PageModel {
 }
 
 interface LineProps {
+  readonly project: ProjectId;
   readonly page: PageModel;
   readonly line: CodeLine;
   readonly linked: boolean;
@@ -102,7 +105,7 @@ interface LineProps {
 }
 
 /** One line's colored runs, its call links, its text matches, and a folded definition's pill. */
-function LineText({ page, line, linked, marks, folded, onUnfold, onFollow }: LineProps) {
+function LineText({ project, page, line, linked, marks, folded, onUnfold, onFollow }: LineProps) {
   const { view } = page;
   const lineStart = line.start - view.textStart;
   const fold = folded?.fold;
@@ -123,7 +126,7 @@ function LineText({ page, line, linked, marks, folded, onUnfold, onFollow }: Lin
     const key = group.segments[0]?.start ?? 0;
     const link = group.link === null ? undefined : view.links[group.link];
     return link ? (
-      <CallLink key={`l${key}`} link={link} onFollow={onFollow} hint="Click to add it">
+      <CallLink key={`l${key}`} project={project} link={link} onFollow={onFollow} hint="Click to add it">
         {runs}
       </CallLink>
     ) : (
@@ -194,7 +197,7 @@ function Footer({ pageTitle }: { readonly pageTitle: string | null }) {
     <footer className="peek-footer">
       <Icon name="add-circle" size={14} />
       <span>adds a function to</span>
-      <span className="peek-footer-page">{pageTitle ?? "a new draft"}</span>
+      <span className="peek-footer-page">{pageTitle ?? "a new board"}</span>
       <span>· pin keeps it open</span>
     </footer>
   );
@@ -351,6 +354,7 @@ function Lines({
                 <span className="peek-text">
                   {data ? (
                     <LineText
+                      project={target.project}
                       page={data.page}
                       line={data.line}
                       linked={linked}
@@ -434,15 +438,13 @@ function PeekBody({ target, pinned }: { readonly target: PeekTarget; readonly pi
     body = <EmptyState className="peek-empty" title={view.unshowable === "binary" ? "A binary file" : "Too large to show"} body="Open it in your editor instead." />;
   } else if (view) {
     body = (
-      <ProjectScope.Provider value={target.project}>
-        <Lines
-          target={target}
-          first={view}
-          focus={focus}
-          onPage={onPage}
-          add={(key, view) => void addDefinition(addTarget, target.project, key, view)}
-        />
-      </ProjectScope.Provider>
+      <Lines
+        target={target}
+        first={view}
+        focus={focus}
+        onPage={onPage}
+        add={(key, view) => void addDefinition(addTarget, target.project, key, view)}
+      />
     );
   }
   return (

@@ -11,12 +11,11 @@
 //! | `boards_open` | A board of the project is open (remove) |
 //! | `too_many_projects` | The workspace has 64 projects |
 //! | `folder_not_writable` | `add_project` on a folder Unfold can't write `.unfold/` into: read-only, on a network volume, or with a symbolic link for `.unfold/` |
-//! | `invalid_folder` | A board folder path breaks the folder rules |
+//! | `invalid_folder` | A board folder name breaks the folder rules (one name, no `/`) |
 //! | `folder_exists` / `folder_not_empty` | A board folder rename's target is taken / a deleted board folder has boards |
 //! | `board_invalid` | A board file or document breaks the `unfold-board` format |
 //! | `board_problem` | A save would introduce a missing reference, broken group, or held reference |
-//! | `board_conflict` | The board changed on disk since the revision the edit is based on |
-//! | `name_taken` | A published board's file name is taken |
+//! | `name_taken` | Another board took a new board's file name meanwhile |
 //! | `editor_not_found` | `open_in_editor` can't find the editor command's program (set its full path) |
 //! | `cancelled` | The request was cancelled |
 //! | `internal` | A bug: a panic or a broken invariant |

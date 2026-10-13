@@ -29,7 +29,7 @@ import { INSET_CHROME, expansionState, layoutInsets, planInsets, type Expandable
 import { Icon } from "../../icons";
 import type { Card, CardView, FlowModel, Group, Key, ProjectId } from "../../ipc/generated";
 import { toUnfoldError } from "../../ipc/unfold";
-import { MAX_EXPANSION_DEPTH, editPage, findCardByRef, findPage, toggleCallExpansion, useOpenBoard, type PageTarget } from "../../state/boards";
+import { MAX_EXPANSION_DEPTH, editPage, findCardByKey, findPage, toggleCallExpansion, useOpenBoard, type PageTarget } from "../../state/boards";
 import { insetPortOf } from "../arrows";
 import { cardQuery, isMissing } from "../cardData";
 import { CardNote, renderPorts } from "./parts";
@@ -106,7 +106,7 @@ export function useCallInsets(input: CallInsetsInput): readonly LaidInset[] {
   // The callee's own card on the page (same project) lends its step groups.
   const ownerCards = useOpenBoard(target.board, (board) => {
     const page = findPage(board.document, target.page);
-    return owners.map((owner) => (page ? (findCardByRef(page, owner, card.ref.project)?.id ?? "") : "")).join("\u0000");
+    return owners.map((owner) => (page ? (findCardByKey(page, owner)?.id ?? "") : "")).join("\u0000");
   });
   const wantedKey = wanted.join("\u0000");
   const ownersKey = owners.join("\u0000");

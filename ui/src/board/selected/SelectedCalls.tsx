@@ -17,7 +17,7 @@ export function SelectedCalls({ target, calls }: { readonly target: PageTarget; 
   const boardProject = useProjectRow(target.board.project)?.name ?? "";
   const from = page ? findCard(page, calls.from) : undefined;
   const to = page ? findCard(page, calls.to) : undefined;
-  const model = useQuery({ ...cardQuery(calls.project, from ? cardKey(from) : ""), enabled: from !== undefined });
+  const model = useQuery({ ...cardQuery(target.board.project, from ? cardKey(from) : ""), enabled: from !== undefined });
   const callee = to ? keyDisplayName(cardKey(to)) : "the callee";
   return (
     <>
@@ -37,7 +37,7 @@ export function SelectedCalls({ target, calls }: { readonly target: PageTarget; 
               key={`${call.source}:${call.seq}`}
               {...(index === 0 ? { label: "Calls" } : {})}
               onActivate={() => {
-                select(target, { kind: "line", arrowId: calls.arrowId, project: calls.project, source: call.source, seq: call.seq, from: calls.from, to: calls.to, line: call.line });
+                select(target, { kind: "line", arrowId: calls.arrowId, source: call.source, seq: call.seq, from: calls.from, to: calls.to, line: call.line });
               }}
             >
               <span className="relation-code">{call.seq === 0 ? `${written}(…)` : written}</span>

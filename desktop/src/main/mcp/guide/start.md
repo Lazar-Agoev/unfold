@@ -64,8 +64,8 @@ Before building a new page, post:
   collapsed.
 
 ## Ids, revisions, and results
-- Every result starts with a header: `Unfold · ts-orders › Order placement (draft) ›
-  Placing an order · rev 1a2b3c4d · as Claude`. rev is the page's revision.
+- Every result starts with a header: `Unfold · ts-orders › Order placement › Placing
+  an order · rev 1a2b3c4d · as Claude`. rev is the page's revision.
 - Results give ids (board, page, card, step group, frame, resource card, link,
   note, proposed step) and keys. Pass them to the next tools. Once you start, always pass the board
   and page ids: the person may switch pages while you work.
@@ -105,6 +105,6 @@ images, check is your review: it reports the same problems as data.
 - Change settings, projects, and boards only when asked.
 - Don't move the person's view unless asked. Use show to present finished work.
 - Ids and keys are for tools. Say names and file:line to the person.
-- You can't publish, delete, or discard boards, remove projects, change Unfold's
-  preferences, or edit code. When the person wants one of those, tell them where it
+- You can't delete boards, remove projects, change Unfold's preferences, or edit
+  code. When the person wants one of those, tell them where it
   is in Unfold.

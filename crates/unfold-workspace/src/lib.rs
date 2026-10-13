@@ -32,8 +32,8 @@
 //!    never compiled. A folder compiled before takes its lock (a second copy of Unfold gets
 //!    `open_elsewhere`), opens its store, and is readable at once; the engine thread restores the
 //!    stored graph and checks every file by size and modification time in the background.
-//! 3. **First Compile.** Creates `.unfold/local/` (with its `.gitignore`, `cache/`, and
-//!    `drafts/`); takes the lock; opens the store; compiles; commits; and writes `state.json`.
+//! 3. **First Compile.** Creates `.unfold/local/` (with its `.gitignore` and `cache/`); takes
+//!    the lock; opens the store; compiles; commits; and writes `state.json`.
 //! 4. **Background updates.** The watcher feeds changed paths to the scheduler; an update
 //!    starts about 300 ms after the last change, and newer changes cancel and restart it.
 //!    Without usable file-system events the folder is scanned periodically.
@@ -82,7 +82,7 @@ pub mod workspace;
 pub use compile::{CompileOutcome, CompileProgress, CompileTicket, ProgressFn};
 pub use confine::{ConfinedPath, confine};
 pub use error::{Result, WorkspaceError};
-pub use events::{EventSink, MAX_LISTED, WindowId, WorkingFile, WorkspaceEvent};
+pub use events::{EventSink, MAX_LISTED, WindowId, WorkspaceEvent};
 pub use facts_cache::StoreFactsCache;
 pub use host::{Host, MessageSink, SinkMessage};
 pub use ipc::{CommandError, CommandResult, Request};

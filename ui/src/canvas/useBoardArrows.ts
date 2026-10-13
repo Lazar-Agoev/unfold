@@ -10,7 +10,6 @@ import { drawnFlow, planInsets, type InsetModel, type InsetPlan } from "../flow/
 import type { Card, CardView, Key, ProjectId, TypeDefinition } from "../ipc/generated";
 import { engineQueryOptions } from "../ipc/queries";
 import { MAX_EXPANSION_DEPTH, cardKey, cardRefKey, findPage, shownView, useOpenBoard, usePageView, type PageTarget } from "../state/boards";
-import { resolveRefProject, useProjectIndex } from "../state/workspace";
 import { computeArrows, type Arrow, type ArrowCard, type ArrowInset } from "./arrows";
 import { cardQuery, lastVerifiedCode } from "./cardData";
 
@@ -60,9 +59,9 @@ function useInsets(cards: readonly Card[], arrowCards: readonly ArrowCard[], mod
       arrowCards.flatMap((arrowCard, index) => {
         const card = cards[index];
         const paths = card?.expanded ?? [];
-        const own = arrowCard.project !== null ? models.get(cardRefKey(arrowCard.project, arrowCard.key)) : undefined;
+        const own = models.get(cardRefKey(arrowCard.project, arrowCard.key));
         const flow = own?.type === "block" && own.flow?.source === "current" ? own.flow : null;
-        return arrowCard.body === "flow" && card?.folded !== true && paths.length > 0 && flow && arrowCard.project !== null
+        return arrowCard.body === "flow" && card?.folded !== true && paths.length > 0 && flow
           ? [{ id: arrowCard.id, project: arrowCard.project, key: arrowCard.key, flow, paths }]
           : [];
       }),
@@ -105,9 +104,8 @@ function useInsets(cards: readonly Card[], arrowCards: readonly ArrowCard[], mod
   }, [expanding, wantedKey, loaded]);
 }
 
-/** The arrows of a page; its cards resolve by shared name (shared project names), and each shows its own view. */
+/** The arrows of a page; its cards are of its board's project, and each shows its own view. */
 export function useBoardArrows(target: PageTarget, cards: readonly Card[]): BoardArrows {
-  const index = useProjectIndex();
   const boardProject = target.board.project;
   const defaultView = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.defaultView) ?? "code";
   const lens = usePageView(target, (view) => view.lens);
@@ -118,21 +116,19 @@ export function useBoardArrows(target: PageTarget, cards: readonly Card[]): Boar
         return {
           id: card.id,
           key,
-          project: resolveRefProject(index, boardProject, card.ref.project),
+          project: boardProject,
           entrance: "entrance" in card.ref,
           body: cardBody(key, shownView(lens, card, defaultView)),
         };
       }),
-    [cards, index, boardProject, lens, defaultView],
+    [cards, boardProject, lens, defaultView],
   );
   const wanted = useMemo(() => {
     const byRef = new Map<string, { project: ProjectId; key: string; fields: boolean }>();
     for (const card of arrowCards) {
-      if (card.project !== null) {
-        const ref = cardRefKey(card.project, card.key);
-        const fields = card.body === "fields" || byRef.get(ref)?.fields === true;
-        byRef.set(ref, { project: card.project, key: card.key, fields });
-      }
+      const ref = cardRefKey(card.project, card.key);
+      const fields = card.body === "fields" || byRef.get(ref)?.fields === true;
+      byRef.set(ref, { project: card.project, key: card.key, fields });
     }
     return [...byRef];
   }, [arrowCards]);

@@ -1,12 +1,11 @@
 /**
- * A board's pages: add, rename, duplicate, reorder, delete. Each is one undo step of the board;
+ * A board's pages: add, rename, reorder, delete. Each is one undo step of the board;
  * undoing it shows the page it was about.
  */
 
 import {
   addPage as addPageTo,
   deletePage as deletePageOf,
-  duplicatePage as duplicatePageOf,
   movePage as movePageOf,
   renamePage as renamePageOf,
 } from "./document";
@@ -37,15 +36,6 @@ export function renamePage(target: PageTarget, title: string): void {
     },
     { page: target.page, coalesce: `page-title:${target.page}` },
   );
-}
-
-/** Copies a page right after it and shows the copy. */
-export function duplicatePage(target: PageTarget): PageId | undefined {
-  const id = editBoard(target.board, (document) => duplicatePageOf(document, target.page), { page: target.page });
-  if (id !== undefined) {
-    setActivePage(target.board, id);
-  }
-  return id;
 }
 
 export function movePage(target: PageTarget, delta: -1 | 1): void {

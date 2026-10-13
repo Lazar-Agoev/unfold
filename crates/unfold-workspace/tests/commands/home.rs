@@ -1,21 +1,21 @@
 //! Home: `project_summary` (the state line and the Health line), `entrances` (paged and
-//! filtered per application), and Home's boards (`list_boards`, `board_thumbnails`, the Health
-//! line's boards), live and resting.
+//! filtered per application), and Home's boards (`list_boards`, the Health line's boards), live
+//! and resting.
+
+use std::time::{Duration, SystemTime};
 
 use serde_json::{Value, json};
 
 use crate::common::{Harness, eventually, restless};
 
-/// A published board with a card from a project that isn't connected.
-const WEB_BOARD: &str = r#"{
+/// A board with a card whose code is gone.
+const GONE_BOARD: &str = r#"{
   "format": "unfold-board",
   "version": 1,
-  "title": "From the web",
-  "projects": ["storefront-web"],
+  "title": "Gone code",
   "pages": [{
     "id": "page-1", "title": "Checkout", "defaultView": "code", "groups": [],
-    "cards": [{ "id": "checkout", "at": [0, 0],
-                "ref": { "entrance": "entrance:[\"next.route\",\"http\",\"POST\",\"/api/cart/checkout\"]", "project": "storefront-web" } }]
+    "cards": [{ "id": "gone", "at": [0, 0], "ref": { "block": "src/routes/orders.ts#function:gone" } }]
   }]
 }
 "#;
@@ -28,10 +28,19 @@ fn sample_board() -> String {
     .expect("the sample board")
 }
 
-/// A `ts-orders` copy with two published boards, as a teammate committed them.
+/// A `ts-orders` copy with two boards, as a teammate committed them, the sample edited last.
 fn with_boards(harness: &Harness) {
-    harness.write(".unfold/boards/order-placement.json", &sample_board());
-    harness.write(".unfold/boards/web.json", WEB_BOARD);
+    let edited = |relative: &str, text: &str, seconds: u64| {
+        harness.write(relative, text);
+        std::fs::File::options()
+            .write(true)
+            .open(harness.root.join(relative))
+            .expect("open")
+            .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(seconds))
+            .expect("set the modification time");
+    };
+    edited(".unfold/boards/order-placement.json", &sample_board(), 2_000);
+    edited(".unfold/boards/gone.json", GONE_BOARD, 1_000);
 }
 
 #[test]
@@ -245,15 +254,15 @@ fn entrances_are_paged_filtered_and_ordered_per_application() {
 }
 
 #[test]
-fn home_lists_every_board_with_thumbnails_and_health() {
+fn home_lists_every_board_with_its_health() {
     let harness = Harness::new("ts-orders", false);
     with_boards(&harness);
     harness.ok(1, "select_project", json!({ "project": harness.project }));
     harness.ok(1, "compile", json!({ "project": harness.project }));
     // The health of every board, open or not, reaches Home's Health line.
-    let web = json!([{ "id": ".unfold/boards/web.json", "title": "From the web", "items": 1 }]);
+    let gone = json!([{ "id": ".unfold/boards/gone.json", "title": "Gone code", "items": 1 }]);
     eventually("the boards' health reaches Home", || {
-        harness.ok(1, "project_summary", json!({ "project": harness.project }))["health"]["boards"] == web
+        harness.ok(1, "project_summary", json!({ "project": harness.project }))["health"]["boards"] == gone
     });
     let summary = harness.ok(1, "project_summary", json!({ "project": harness.project }));
     assert_eq!(summary["health"]["boardsNeedingReview"], 1);
@@ -279,39 +288,18 @@ fn home_lists_every_board_with_thumbnails_and_health() {
     let ids: Vec<&Value> = boards.iter().map(|board| &board["id"]).collect();
     assert_eq!(
         ids,
-        [".unfold/boards/order-placement.json", ".unfold/boards/web.json"]
+        [".unfold/boards/order-placement.json", ".unfold/boards/gone.json"],
+        "the last edited first"
     );
     let sample = &boards[0];
-    assert_eq!(sample["place"], "published");
     assert_eq!(sample["title"], "Order placement");
+    assert_eq!(sample["updatedAtMs"], 2_000_000);
     assert_eq!(
         (sample["pages"].clone(), sample["cards"].clone()),
         (json!(1), json!(6))
     );
     assert_eq!(sample["label"], Value::Null, "the sample is healthy");
-    assert_eq!(boards[1]["projects"], json!(["storefront-web"]));
-    assert_eq!(boards[1]["label"], "1 not connected");
-
-    let thumbnails = harness.ok(
-        1,
-        "board_thumbnails",
-        json!({ "project": harness.project, "boards": [ids[0], ids[1]] }),
-    );
-    let sample = &thumbnails["thumbnails"][0];
-    assert_eq!(
-        sample["page"],
-        json!({ "id": "page-1", "title": "Placing an order" })
-    );
-    assert_eq!(sample["cards"].as_array().map(Vec::len), Some(6));
-    assert!(
-        sample["edges"]
-            .as_array()
-            .is_some_and(|edges| edges.contains(&json!(["create-order", "place-order"]))),
-        "{sample}"
-    );
-    let web = &thumbnails["thumbnails"][1]["cards"][0];
-    assert_eq!(web["foreign"], true);
-    assert_eq!(web["lines"], Value::Null);
+    assert_eq!(boards[1]["label"], "1 missing");
 }
 
 #[test]
@@ -331,19 +319,6 @@ fn a_resting_projects_boards_are_read_from_disk() {
             .all(|board| board["label"].is_null() && board["error"].is_null()),
         "no health while resting: {boards:?}"
     );
-    let thumbnails = harness.ok(
-        1,
-        "board_thumbnails",
-        json!({ "project": harness.project, "boards": [".unfold/boards/order-placement.json"] }),
-    );
-    assert!(
-        thumbnails["thumbnails"][0]["cards"]
-            .as_array()
-            .expect("cards")
-            .iter()
-            .any(|card| card["lines"].as_u64().is_some_and(|lines| lines > 1)),
-        "line counts come from the stored graph"
-    );
     let refs = harness.ok(
         1,
         "board_refs",
@@ -351,6 +326,5 @@ fn a_resting_projects_boards_are_read_from_disk() {
     );
     assert_eq!(refs["refs"][0]["board"], ".unfold/boards/order-placement.json");
     assert_eq!(refs["refs"][0]["pageTitle"], "Placing an order");
-    assert_eq!(harness.ok(1, "drafts", json!({}))["drafts"], json!([]));
     assert!(!live(), "none of that woke it");
 }

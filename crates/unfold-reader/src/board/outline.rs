@@ -2,11 +2,11 @@
 //! callees, indented by call depth, and the Flow nodes that still show names from the code
 //! instead of authored labels (not counting the steps a collapsed step group hides).
 //!
-//! A *card link* is an opened call between two cards of one project: an entrance card to the
-//! cards of its resolved targets (in registration order), or a block card to the cards of the
-//! resolved targets of the occurrences its block owns (in source order). The outline follows
-//! card links and then the page's drawn links between two cards (in id order), which join cards
-//! across projects; links to resources and frames aren't followed.
+//! A *card link* is an opened call between two cards: an entrance card to the cards of its
+//! resolved targets (in registration order), or a block card to the cards of the resolved targets
+//! of the occurrences its block owns (in source order). The outline follows card links and then
+//! the page's drawn links between two cards (in id order); links to resources and frames aren't
+//! followed.
 //! Roots are the cards nothing on the page links to, entrance cards first, then left to right
 //! and top to bottom; each is followed depth first. Cards only reachable through a cycle come
 //! last, in the same order.
@@ -16,8 +16,8 @@ use serde::Serialize;
 use unfold_core::Key;
 use unfold_core::vocab::Resolution;
 
-use super::graph::PageGraphs;
-use super::model::{Card, CardRef, Page, ProjectName};
+use super::graph::BoardGraph;
+use super::model::{Card, CardRef, Page};
 use crate::flow::{FlowContext, FlowNodeKind};
 use crate::source::SourceState;
 
@@ -57,36 +57,29 @@ pub struct PageOutline {
     pub unlabeled: Vec<Unlabeled>,
 }
 
-/// One call between two cards of a project.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CardLink {
+/// One link the outline follows from a card to another.
+struct CardLink {
     /// The calling card.
-    pub source: String,
+    source: String,
     /// The card called.
-    pub target: String,
+    target: String,
     /// Its order among the source card's links.
-    pub order: u32,
+    order: u32,
 }
 
-/// The calls between the page's cards of each connected project, by source card in page order.
-pub fn card_links(page: &Page, graphs: &PageGraphs<'_>) -> Vec<CardLink> {
-    // The first card showing each block of each project.
-    let mut by_block: FxHashMap<(Option<&ProjectName>, &str), &Card> = FxHashMap::default();
+/// The calls between the page's cards, by source card in page order.
+fn card_links(page: &Page, graph: &BoardGraph) -> Vec<CardLink> {
+    // The first card showing each block.
+    let mut by_block: FxHashMap<&str, &Card> = FxHashMap::default();
     for card in &page.cards {
         if let Some(key) = card.reference.block_key() {
-            by_block
-                .entry((card.reference.project(), key.as_str()))
-                .or_insert(card);
+            by_block.entry(key.as_str()).or_insert(card);
         }
     }
     let mut links = Vec::new();
     for card in &page.cards {
-        let project = card.reference.project();
-        let Some(graph) = graphs.get(project) else {
-            continue;
-        };
         let targets: Vec<&Key> = match &card.reference {
-            CardRef::Entrance { entrance, .. } => graph
+            CardRef::Entrance { entrance } => graph
                 .entrance(entrance.as_str())
                 .map(|entrance| {
                     entrance
@@ -97,7 +90,7 @@ pub fn card_links(page: &Page, graphs: &PageGraphs<'_>) -> Vec<CardLink> {
                         .collect()
                 })
                 .unwrap_or_default(),
-            CardRef::Block { block, .. } => graph
+            CardRef::Block { block } => graph
                 .owned_edges(block.as_str())
                 .into_iter()
                 .filter(|(_, edge)| edge.resolution == Resolution::Resolved)
@@ -106,7 +99,7 @@ pub fn card_links(page: &Page, graphs: &PageGraphs<'_>) -> Vec<CardLink> {
         };
         let mut order = 0;
         for target in targets {
-            let Some(called) = by_block.get(&(project, target.as_str())) else {
+            let Some(called) = by_block.get(target.as_str()) else {
                 continue;
             };
             if called.id == card.id {
@@ -123,15 +116,12 @@ pub fn card_links(page: &Page, graphs: &PageGraphs<'_>) -> Vec<CardLink> {
     links
 }
 
-/// Labels of one project's blocks on a page, for building Flows.
-struct Labels<'a> {
-    page: &'a Page,
-    project: Option<&'a ProjectName>,
-}
+/// The labels of a page's blocks, for building Flows.
+struct Labels<'a>(&'a Page);
 
 impl FlowContext for Labels<'_> {
     fn label(&self, key: &str) -> Option<&str> {
-        self.page.label(self.project, key)
+        self.0.label(key)
     }
 }
 
@@ -142,8 +132,8 @@ fn within(key: &str, member: &str) -> bool {
 }
 
 /// The outline of `page`.
-pub fn outline(page: &Page, graphs: &PageGraphs<'_>) -> PageOutline {
-    let mut links = card_links(page, graphs);
+pub fn outline(page: &Page, graph: &BoardGraph) -> PageOutline {
+    let mut links = card_links(page, graph);
     let mut drawn: Vec<_> = page
         .links
         .iter()
@@ -221,14 +211,10 @@ pub fn outline(page: &Page, graphs: &PageGraphs<'_>) -> PageOutline {
         let Some(card) = by_id.get(row.card.as_str()) else {
             continue;
         };
-        let (Some(key), project) = (card.reference.block_key(), card.reference.project()) else {
+        let Some(key) = card.reference.block_key() else {
             continue;
         };
-        let Some(graph) = graphs.get(project) else {
-            continue;
-        };
-        let labels = Labels { page, project };
-        let Some(flow) = graph.flow(key.as_str(), &labels) else {
+        let Some(flow) = graph.flow(key.as_str(), &Labels(page)) else {
             continue;
         };
         if flow.source != SourceState::Current {
@@ -239,7 +225,7 @@ pub fn outline(page: &Page, graphs: &PageGraphs<'_>) -> PageOutline {
             if let Some(key) = &node.key
                 && !matches!(node.kind, FlowNodeKind::Start | FlowNodeKind::End)
                 && !hidden.iter().any(|member| within(key.as_str(), member))
-                && page.label(project, key.as_str()).is_none()
+                && page.label(key.as_str()).is_none()
             {
                 unlabeled.push(Unlabeled {
                     card: row.card.clone(),

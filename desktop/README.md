@@ -1,6 +1,6 @@
 # Desktop shell
 
-Electron main owns windows, menus, dialogs, updates, and opt-in agent MCP. The engine host
+Electron main owns the window, menus, dialogs, and the agent MCP server. The engine host
 utility process owns the Node addon/Rust host; the renderer has no filesystem or Node access.
 See [architecture](../docs/architecture.md#processes) and [IPC](../docs/ipc.md).
 
@@ -28,14 +28,13 @@ additions change Rust types/table, not each transport hop.
 Main restarts crashed engine hosts and reconnects windows. Keep renderer board edits and
 sessions available during reconnect. Do not block main with graph work.
 
-Stable window keys and remembered bounds/tabs support restore. Choose usable placement for
-current displays and avoid silently losing unpublished board work. The holding-window rule
-and closing-write wait are owned by Rust host plus renderer sessions, not a second main-process
-board store. See [board lifecycle](../docs/reader.md#files-drafts-publish-and-unpublished-changes).
+The one window comes back with its remembered bounds and the last board shown, placed on a
+current display. The closing-write wait is owned by the Rust host plus renderer sessions, not a
+second main-process board store.
 
 ## Agents
 
-MCP is opt-in, local, and lives in main. The listener checks local/HTTP request constraints;
+The MCP server runs while the app is open, only on `127.0.0.1:29180`, and lives in main. The listener checks local/HTTP request constraints;
 its tests own exact refusals. Rust reads use untrusted command routing. Tool schemas,
 identity, formatting, results, prompts, and guides live under `src/main/mcp/`.
 

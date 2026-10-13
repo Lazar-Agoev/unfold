@@ -3,7 +3,7 @@
 //! Every window shows the whole workspace, so every event is for every window: a project's
 //! workspace hands each event to the [`EventSink`], and the host sends it as
 //! `{"kind":"broadcast","event":{…}}`, which the engine host's router posts to every window it
-//! has. The one exception is `board_conflict`, which only the window that opened the board
+//! has. The one exception is `board_reloaded`, which only the window that opened the board
 //! receives (`{"kind":"event","windows":[w],"event":{…}}`). Project events name their project
 //! ([`WorkspaceEvent::project`]). Events serialize with a snake_case `type` tag and camelCase
 //! fields, the shape the UI's `window.unfold.on(type, …)` receives.
@@ -17,13 +17,14 @@
 //! | `graph_updated` | A commit changed the graph |
 //! | `problems_changed` | The Problems list changed |
 //! | `files_changed` | The watcher saw files appear, change, or disappear |
-//! | `boards_changed` | Board files, folders, or a board's publish state changed |
-//! | `board_conflict` | The file an open board's session reads changed on disk outside the app (only the window that opened it) |
+//! | `boards_changed` | Board files or folders changed |
+//! | `board_reloaded` | An open board's file changed on disk outside the app, and its session was reloaded (only the window that opened it) |
 //! | `config_changed` | `unfold.toml` changed |
 
 use serde::Serialize;
 use ts_rs::TS;
 
+use crate::commands::boards::BoardState;
 use crate::projects::{ProjectId, WorkspaceView};
 use crate::status::ProjectState;
 
@@ -42,20 +43,8 @@ pub trait EventSink: Send + Sync {
 /// says everything changed (`everything` / `truncated`), and windows refresh what they show.
 pub const MAX_LISTED: usize = 2_000;
 
-/// Which file an open board's session reads (unpublished edits).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkingFile {
-    /// A draft.
-    Draft,
-    /// A published board's unpublished-changes copy.
-    Changes,
-    /// A published board without a copy.
-    Published,
-}
-
 /// One event. See the [module documentation](self).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum WorkspaceEvent {
     /// The workspace's rows changed. The UI replaces its `workspace` query data with this view
@@ -123,9 +112,7 @@ pub enum WorkspaceEvent {
         /// More paths changed than are listed.
         truncated: bool,
     },
-    /// Board files, folders, or a board's publish state changed: outside the app (the
-    /// watcher), or by a board command. A changes copy's change is reported under its
-    /// published board's id.
+    /// Board files or folders changed: outside the app (the watcher), or by a board command.
     BoardsChanged {
         /// The project.
         project: ProjectId,
@@ -135,21 +122,19 @@ pub enum WorkspaceEvent {
         /// renamed, or deleted).
         folders: bool,
     },
-    /// The file an open board's session reads changed on disk outside this app (an agent or a
-    /// teammate wrote it, or it was deleted). Sent only to the window that opened the board. A
-    /// window without unsaved edits reloads it (`reload_board`); one with unsaved edits asks
-    /// which version to keep (`save_board` with `force` keeps its own).
-    BoardConflict {
+    /// An open board's file changed on disk outside this app (an agent or another program
+    /// wrote it, or a `git pull` did), and the board's session was reloaded from it. Sent only to
+    /// the window that opened the board, which replaces the board and starts its undo history
+    /// over, unless its save of that board is failing: then it ignores the reload, and its Retry
+    /// writes the person's version over the file (`save_board`).
+    BoardReloaded {
         /// The project.
         project: ProjectId,
         /// The board's id.
         board: String,
-        /// Which file changed.
-        file: WorkingFile,
-        /// The revision the app last loaded or saved.
-        saved_revision: String,
-        /// The revision on disk now, or `None` when the file is gone.
-        disk_revision: Option<String>,
+        /// The board as reloaded, or `None` when its file was deleted (the session keeps the
+        /// version last loaded or saved, which the next save writes back).
+        state: Option<Box<BoardState>>,
     },
     /// `unfold.toml` changed.
     ConfigChanged {
@@ -170,7 +155,7 @@ impl WorkspaceEvent {
             Self::ProblemsChanged { .. } => "problems_changed",
             Self::FilesChanged { .. } => "files_changed",
             Self::BoardsChanged { .. } => "boards_changed",
-            Self::BoardConflict { .. } => "board_conflict",
+            Self::BoardReloaded { .. } => "board_reloaded",
             Self::ConfigChanged { .. } => "config_changed",
         }
     }
@@ -185,7 +170,7 @@ impl WorkspaceEvent {
             | Self::ProblemsChanged { project, .. }
             | Self::FilesChanged { project, .. }
             | Self::BoardsChanged { project, .. }
-            | Self::BoardConflict { project, .. }
+            | Self::BoardReloaded { project, .. }
             | Self::ConfigChanged { project } => Some(project),
             Self::WorkspaceChanged { .. } => None,
         }

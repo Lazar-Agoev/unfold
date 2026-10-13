@@ -62,8 +62,6 @@ function seedAll(): void {
     seed("project_summary", { project });
     seed("problems", { project });
     seed("list_boards", { project });
-    seed("board_thumbnails", { project, boards: [".unfold/boards/a.json"] });
-    seed("board_thumbnails", { project, boards: [".unfold/boards/b.json"] });
     seed("board_refs", { project, key: CREATE });
     seed("line_labels", { project, lines: [{ source: OTHER, seq: 0 }] });
     seed("call_contract", { project, source: OTHER, seq: 0 });
@@ -74,7 +72,6 @@ function seedAll(): void {
   seed("search", { query: "only-p", projects: [P] });
   seed("search", { query: "only-q", projects: [Q] });
   seed("search", { query: "defs", kinds: ["definitions"] });
-  seed("drafts", {});
   seed("get_settings", {});
   seed("app_info", {});
 }
@@ -174,8 +171,6 @@ describe("invalidation by event", () => {
     applyEngineEvent(client, UPDATED);
     expect(stale()).toEqual(
       [
-        `board_thumbnails:${P}:.unfold/boards/a.json`,
-        `board_thumbnails:${P}:.unfold/boards/b.json`,
         `call_contract:${P}:`,
         `callers:${P}:${OTHER}`,
         // The changed key, another block of the changed file, and every entrance card.
@@ -218,7 +213,6 @@ describe("invalidation by event", () => {
     expect(refreshed).toContain(`list_boards:${P}:`);
     expect(refreshed).toContain("workspace::");
     expect(refreshed).toContain("search::all");
-    expect(refreshed).not.toContain("drafts::");
     expect(refreshed).not.toContain("get_settings::");
   });
 
@@ -241,18 +235,9 @@ describe("invalidation by event", () => {
     );
   });
 
-  it("boards_changed refreshes the project's board lists, the listed thumbnails, drafts, and every board_refs", () => {
+  it("boards_changed refreshes the project's board list, summary, and board_refs", () => {
     applyEngineEvent(client, { type: "boards_changed", project: P, boards: [".unfold/boards/a.json"], folders: false });
-    expect(stale()).toEqual(
-      [
-        `board_refs:${P}:${CREATE}`,
-        `board_refs:${Q}:${CREATE}`,
-        `board_thumbnails:${P}:.unfold/boards/a.json`,
-        "drafts::",
-        `list_boards:${P}:`,
-        `project_summary:${P}:`,
-      ].sort(),
-    );
+    expect(stale()).toEqual([`board_refs:${P}:${CREATE}`, `list_boards:${P}:`, `project_summary:${P}:`].sort());
   });
 
   it("problems_changed refreshes the project's problems and summary", () => {
@@ -260,10 +245,10 @@ describe("invalidation by event", () => {
     expect(stale()).toEqual([`problems:${Q}:`, `project_summary:${Q}:`]);
   });
 
-  it("leaves the cache alone for settings changes, compile progress, and board conflicts", () => {
+  it("leaves the cache alone for settings changes, compile progress, and reloaded boards", () => {
     applyEngineEvent(client, { type: "config_changed", project: P });
     applyEngineEvent(client, { type: "compile_progress", project: P, stage: "extract", done: 1, total: 2 });
-    applyEngineEvent(client, { type: "board_conflict", project: P, board: "b", file: "draft", savedRevision: "r1", diskRevision: null });
+    applyEngineEvent(client, { type: "board_reloaded", project: P, board: "b", state: null });
     expect(stale()).toEqual([]);
   });
 });

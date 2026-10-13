@@ -21,7 +21,7 @@ import { PROMPTS, TOOLS } from "./tools";
 vi.mock("electron", async () => (await import("../fake-electron")).electronModule);
 
 const PROJECT = "p-7k2m9q4xab";
-const BOARD = { project: PROJECT, id: ".unfold/local/drafts/orders.json" };
+const BOARD = { project: PROJECT, id: ".unfold/boards/orders.json" };
 const PAGE: AgentPage = {
   id: "page-1",
   title: "Placing an order",
@@ -67,14 +67,11 @@ const BOARDS: BoardList = {
     {
       project: PROJECT,
       id: BOARD.id,
-      place: "draft",
       name: "orders",
       title: "Order placement",
       folder: null,
       pages: 1,
       cards: 1,
-      projects: [],
-      changes: 0,
       updatedAtMs: 0,
       label: null,
       error: null,
@@ -88,11 +85,9 @@ const CREATE_ORDER = "src/routes/orders.ts#function:createOrder";
 const FILE: ReadBoardResult = {
   project: PROJECT,
   id: BOARD.id,
-  place: "draft",
   name: "orders",
-  document: { format: "unfold-board", version: 1, title: "Order placement", projects: [], pages: [PAGE as unknown as Page] },
+  document: { format: "unfold-board", version: 1, title: "Order placement", pages: [PAGE as unknown as Page] },
   revision: "r1",
-  published: null,
 };
 
 /** The board's health: the card is missing. */
@@ -103,7 +98,6 @@ const HEALTH: BoardHealthView = {
     outdated: 0,
     brokenGroups: 0,
     review: 0,
-    notConnected: 0,
     brokenLinks: 0,
   },
   outlines: [{ page: "page-1", rows: [{ card: "create-order", depth: 0 }], unlabeled: [] }],
@@ -189,7 +183,6 @@ const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>,
   line_labels: () => [],
   board_refs: () => ({ refs: [], truncated: false }),
   read_board: () => FILE,
-  drafts: () => ({ drafts: BOARDS.boards }),
   board_health: () => HEALTH,
   export_mermaid_text: () => ({ text: "flowchart LR\n  c0[createOrder]\n" }),
   call_contract: () => ({
@@ -205,13 +198,13 @@ const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>,
   }),
 };
 
-const BOARD_INFO = { title: "Order placement", place: "draft", changes: 0, revision: "r1" } as const;
+const BOARD_INFO = { title: "Order placement", revision: "r1" } as const;
 
 /** What the window answers each agent request with, as the UI does: the window command's kind and result. */
 function windowAnswer(request: AgentShellEvent): ["edit" | "read" | "open" | "create" | "board" | "show" | "repair", unknown] | null {
   switch (request.type) {
     case "agent_edit":
-      return ["edit", { ok: true, page: PAGE, board: BOARD_INFO, items: [{ kind: "card", id: "create-order", status: "kept", key: CREATE_ORDER, project: PROJECT, name: "createOrder" }], warnings: [] }];
+      return ["edit", { ok: true, page: PAGE, board: BOARD_INFO, items: [{ kind: "card", id: "create-order", status: "kept", key: CREATE_ORDER, name: "createOrder" }], warnings: [] }];
     case "agent_repair":
       return ["repair", { ok: true, page: PAGE, board: BOARD_INFO }];
     case "agent_read":
@@ -357,11 +350,11 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
     expect(text(await client.callTool({ name: "get_guide", arguments: { topic: "diagrams" } }))).toContain("# Diagrams: pages that read well");
 
     expect(text(await client.callTool({ name: "get_current_view", arguments: {} }))).toContain("No Unfold window has reported");
-    const report: ViewReport = { board: BOARD, page: "page-1", selection: { kind: "card", id: "create-order" }, lens: "diagram", visible: ["create-order", "checks"], tabs: [BOARD] };
+    const report: ViewReport = { board: BOARD, page: "page-1", selection: { kind: "card", id: "create-order" }, lens: "diagram", visible: ["create-order", "checks"], held: [BOARD] };
     views.report(1, report);
     const view = text(await client.callTool({ name: "get_current_view", arguments: {} })).split("\n");
     expect(view).toEqual([
-      `Unfold · ts-orders › Order placement (draft) › Placing an order · rev ${pageRevision(PAGE)} · as Claude`,
+      `Unfold · ts-orders › Order placement › Placing an order · rev ${pageRevision(PAGE)} · as Claude`,
       `Ids: project ${PROJECT}, board ${BOARD.id}, page page-1.`,
       "Lens: Diagram.",
       "Selected: card create-order: src/orders.ts#function:createOrder (expanded).",
@@ -386,7 +379,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
     expect(project.split("\n")[0]).toBe("Unfold · ts-orders · as Claude");
     expect(project).toContain("1 application, 3 entrances in all:\n- server (id src/server.ts#, no launch defined): 3 entrances");
     expect(project).toContain("evidence files docs/queues.md");
-    expect(project).toContain(`- Order placement (id ${BOARD.id}): draft, 1 page, 1 card`);
+    expect(project).toContain(`- Order placement (id ${BOARD.id}): 1 page, 1 card`);
   });
 
   it("calls each tool that sets up, navigates, and reads code", async () => {
@@ -419,7 +412,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
 
   it("calls each tool that reads, checks, builds, and repairs boards", async () => {
     const { url, views } = await start();
-    views.report(1, { board: BOARD, page: "page-1", selection: { kind: "none" }, lens: "diagram", visible: [], tabs: [BOARD] });
+    views.report(1, { board: BOARD, page: "page-1", selection: { kind: "none" }, lens: "diagram", visible: [], held: [BOARD] });
     const client = await connect(url, era);
     const at = { board: BOARD.id, project: "ts-orders", page: "page-1" };
     const calls: [string, Record<string, unknown>][] = [
@@ -449,7 +442,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
     }
     const shot = await client.callTool({ name: "get_screenshot", arguments: at });
     expect(shot.content).toEqual([
-      { type: "text", text: `Unfold · ts-orders › Order placement (draft) › Placing an order · rev ${pageRevision(PAGE)} · as Claude\nThe page (page id page-1), 1×1 px.\nNext: look at it as the person will, give a one-line verdict in the chat, and fix what you see with targeted edits.` },
+      { type: "text", text: `Unfold · ts-orders › Order placement › Placing an order · rev ${pageRevision(PAGE)} · as Claude\nThe page (page id page-1), 1×1 px.\nNext: look at it as the person will, give a one-line verdict in the chat, and fix what you see with targeted edits.` },
       { type: "image", data: Buffer.from("png").toString("base64"), mimeType: "image/png" },
     ]);
   });
@@ -459,7 +452,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
     const client = await connect(url, era);
     const result = await client.callTool({ name: "organize_boards", arguments: { project: "ts-orders", ops: [{ op: "delete", board: BOARD.id }] } });
     expect(result.isError).toBe(true);
-    expect(text(result)).toContain("Agents can't delete, publish, or discard boards");
+    expect(text(result)).toContain("Agents can't delete boards");
   });
 
   it("refuses with errors that say what to do instead", async () => {

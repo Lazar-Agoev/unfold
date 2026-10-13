@@ -85,14 +85,14 @@ describe("Dialog placement", () => {
     area.getBoundingClientRect = () => DOMRect.fromRect({ x: 264, y: 38, width: 1176, height: 862 });
     document.body.append(area);
     render(
-      <Dialog open width={520} placement="canvas" title="Publish changes to Order lifecycle" onClose={vi.fn()}>
-        <p>2 changes</p>
+      <Dialog open width={400} placement="canvas" title="Delete “Order lifecycle”?" onClose={vi.fn()}>
+        <p>This deletes its file.</p>
       </Dialog>,
     );
     const scrim = screen.getByRole("dialog").parentElement;
     expect(scrim?.classList.contains("dialog-scrim-canvas")).toBe(true);
     expect([scrim?.style.left, scrim?.style.top, scrim?.style.width, scrim?.style.height]).toEqual(["264px", "38px", "1176px", "862px"]);
-    expect(screen.getByRole("dialog").classList.contains("dialog-520")).toBe(true);
+    expect(screen.getByRole("dialog").classList.contains("dialog-400")).toBe(true);
     area.remove();
   });
 
@@ -134,10 +134,10 @@ describe("PromptDialog", () => {
     render(
       <PromptDialog
         open
-        title="Publish board"
+        title="Rename folder"
         label="Name"
         defaultValue="Order placement"
-        confirmLabel="Publish"
+        confirmLabel="Rename"
         placement="window"
         validate={(value) => (value === "Order placement" ? "A board with this name exists." : null)}
         onSubmit={onSubmit}
@@ -146,7 +146,7 @@ describe("PromptDialog", () => {
     );
     const field = screen.getByRole("textbox", { name: "Name" });
     expect(document.activeElement).toBe(field);
-    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
     expect(onSubmit).not.toHaveBeenCalled();
     expect(field.getAttribute("aria-invalid")).toBe("true");
     expect(screen.getByText("A board with this name exists.")).toBeTruthy();

@@ -8,7 +8,7 @@ import { harness, PROJECT } from "./testing";
 vi.mock("electron", async () => (await import("../../fake-electron")).electronModule);
 
 const BOARD = { project: PROJECT, id: ".unfold/boards/orders.json" };
-const BOARD_INFO = { title: "Orders", place: "published", changes: 1, revision: "r1" } as const;
+const BOARD_INFO = { title: "Orders", revision: "r1" } as const;
 const PLACE = "src/services/order-service.ts#class:OrderService/method:place";
 const PAGE: AgentPage = {
   id: "page-1",
@@ -26,7 +26,7 @@ const PAGE: AgentPage = {
 };
 
 function health(...items: HealthItem[]): BoardHealthView {
-  return { health: { items, missing: 0, outdated: 0, brokenGroups: 0, review: 0, notConnected: 0, brokenLinks: 0 }, outlines: [], label: null };
+  return { health: { items, missing: 0, outdated: 0, brokenGroups: 0, review: 0, brokenLinks: 0 }, outlines: [], label: null };
 }
 
 const OUTDATED_PLACE: HealthItem = { page: "page-1", kind: "outdated", target: { card: "place" }, message: "Changed.", repairs: ["resign", "removeDescription"] };
@@ -52,7 +52,7 @@ function app(...items: HealthItem[]) {
       }
     },
   });
-  test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+  test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
   return test;
 }
 

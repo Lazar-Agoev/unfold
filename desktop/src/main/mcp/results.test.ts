@@ -5,10 +5,10 @@ const CLAUDE = { author: "agent:claude", name: "Claude" } as const;
 
 describe("result headers (design §5.6)", () => {
   it("name the project, board, page, and revision, and who is asking", () => {
-    expect(header(CLAUDE, { project: "ts-orders", board: { title: "Order placement", draft: true }, page: "Placing an order", revision: "1a2b3c4d" })).toBe(
-      "Unfold · ts-orders › Order placement (draft) › Placing an order · rev 1a2b3c4d · as Claude",
+    expect(header(CLAUDE, { project: "ts-orders", board: "Order placement", page: "Placing an order", revision: "1a2b3c4d" })).toBe(
+      "Unfold · ts-orders › Order placement › Placing an order · rev 1a2b3c4d · as Claude",
     );
-    expect(header(CLAUDE, { project: "ts-orders", board: { title: "Orders", draft: false } })).toBe("Unfold · ts-orders › Orders · as Claude");
+    expect(header(CLAUDE, { project: "ts-orders", board: "Orders" })).toBe("Unfold · ts-orders › Orders · as Claude");
     expect(header(CLAUDE)).toBe("Unfold · as Claude");
   });
 });

@@ -4,14 +4,11 @@
     {
       "project": "<project>",
       "id": ".unfold/boards/order-placement.json",
-      "place": "published",
       "name": "order-placement",
       "title": "Order placement",
       "folder": null,
       "pages": 1,
       "cards": 6,
-      "projects": [],
-      "changes": 0,
       "updatedAtMs": 0,
       "label": null,
       "error": null

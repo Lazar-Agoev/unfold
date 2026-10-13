@@ -1,4 +1,4 @@
-/** Menus: the board menu and its Share menu, the project menu, and the actions behind them. */
+/** Menus: the board menu, the project menu, and the actions behind them. */
 
-export { BoardMenuButton, boardMenuEntries, shareMenuEntries } from "./boardMenu";
+export { BoardMenuButton, boardMenuEntries } from "./boardMenu";
 export { ProjectMenuButton, projectMenuEntries } from "./projectMenu";

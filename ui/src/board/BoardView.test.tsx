@@ -14,7 +14,7 @@ import { BoardView } from "./BoardView";
 
 const createOrder = fixture("card", "card_create_order");
 const P = "p-orders0000";
-const ID = ".unfold/local/drafts/b.json";
+const ID = ".unfold/boards/b.json";
 const REF = { project: P, id: ID };
 const PAGE = { board: REF, page: "page-1" };
 const KEY = "src/routes/orders.ts#function:createOrder";
@@ -39,6 +39,8 @@ if (typeof globalThis.requestAnimationFrame !== "function") {
 }
 
 let engine: FakeEngine;
+/** Why `save_board` fails, while it does. */
+let saveFailure: string | null = null;
 
 function state(cards: Card[], links: Link[] = []) {
   return boardState(P, ID, boardDocument([page("page-1", cards, { links }), page("page-2")]));
@@ -56,6 +58,7 @@ function renderBoard() {
 }
 
 beforeEach(() => {
+  saveFailure = null;
   store.resetBoards();
   resetWorking();
   queryClient.clear();
@@ -71,7 +74,14 @@ beforeEach(() => {
       },
       list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
       callers: () => fixture("callers", "callers_create_order"),
-      save_board: () => state([]),
+      save_board: () => {
+        if (saveFailure !== null) {
+          // Rejections are plain {code, message} data, as from the real preload.
+          // eslint-disable-next-line @typescript-eslint/only-throw-error
+          throw { code: "io", message: saveFailure };
+        }
+        return state([]);
+      },
     },
   });
 });
@@ -130,15 +140,40 @@ describe("the board view", () => {
     expect(store.getOpenBoard(REF)?.document.title).toBe("Order flow");
   });
 
-  it("shows the page, its publish state, and the dock", async () => {
+  it("shows the page's name in the top bar, with no Share or Publish, and the dock", async () => {
     store.adoptBoardState(state([]));
     renderBoard();
     expect(await screen.findByRole("heading", { name: "Page page-1" })).not.toBeNull();
-    expect(screen.getByText("Draft")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /Share|Publish/ })).toBeNull();
     const dock = screen.getByRole("toolbar", { name: "Board" });
     expect(within(dock).getByRole("button", { name: "Add" })).not.toBeNull();
     expect(within(dock).getByRole("button", { name: "Forward" })).toHaveProperty("disabled", true);
     expect(screen.getByText("Open an entrance or a definition to start this page.")).not.toBeNull();
+  });
+
+  it("says “Not saved · Retry” when a save fails, keeping the work, and Retry writes it", async () => {
+    store.adoptBoardState(state([]));
+    renderBoard();
+    await screen.findByRole("heading", { name: "Page page-1" });
+    saveFailure = "The disk is full.";
+    act(() => {
+      store.editBoard(REF, (document) => {
+        document.title = "Mine";
+      });
+    });
+    await act(async () => {
+      await store.saveBoard(REF);
+    });
+    const banner = screen.getByRole("status");
+    expect(banner.textContent).toBe("Not saved ·Retry");
+    expect(within(banner).getByText("Not saved ·").getAttribute("title")).toBe("The disk is full.");
+    expect(store.getOpenBoard(REF)?.document.title).toBe("Mine");
+    saveFailure = null;
+    fireEvent.click(within(banner).getByRole("button", { name: "Retry" }));
+    await waitFor(() => {
+      expect(screen.queryByText("Not saved ·")).toBeNull();
+    });
+    expect(engine.callsOf("save_board").at(-1)).toMatchObject({ project: P, id: ID, board: { title: "Mine" } });
   });
 
   it("shows an agent at work: the top bar says so, the cards it changed are outlined, and its words carry the mark", async () => {
@@ -169,16 +204,6 @@ describe("the board view", () => {
     const { container } = renderBoard();
     await screen.findByText("This reference is missing from the graph.");
     expect(container.querySelector(".block-card.missing")).not.toBeNull();
-  });
-
-  it("shows a card of a project that isn't connected as a placeholder, with who added it", async () => {
-    const description = { text: "Sends the receipt.", author: "person:maya", signature: "" };
-    store.adoptBoardState(state([{ id: "pay", ref: { block: KEY, project: "payments" }, at: [0, 0], description }]));
-    const { container } = renderBoard();
-    await screen.findByText("From payments · not connected");
-    expect(screen.getByText("Maya added this card. Connect the project to read it.")).not.toBeNull();
-    expect(container.querySelector('.placeholder-card[data-card-id="pay"] .placeholder-connect')?.textContent).toBe("Connect project");
-    expect(engine.callsOf("card")).toHaveLength(0);
   });
 
   it("expands and collapses one card with its chevron as a board edit, and switches the page's lens without one", async () => {
@@ -238,17 +263,19 @@ describe("the board view", () => {
     store.adoptBoardState(
       state([
         { id: "a", ref: { block: KEY }, at: [0, 0] },
-        { id: "b", ref: { block: KEY, project: "payments" }, at: [800, 0] },
+        { id: "b", ref: { block: KEY }, at: [800, 0] },
       ]),
     );
     const { container } = renderBoard();
-    await screen.findByText("From payments · not connected");
+    await waitFor(() => {
+      expect(container.querySelector('.block-card[data-card-id="b"] .code-view')).not.toBeNull();
+    });
     act(() => {
       store.setLinking(PAGE, "a");
     });
     expect(await screen.findByText(/Click the card to link to/)).not.toBeNull();
     act(() => {
-      container.querySelector<HTMLElement>('.placeholder-card[data-card-id="b"]')?.click();
+      container.querySelector<HTMLElement>('.block-card[data-card-id="b"]')?.click();
     });
     const links = store.getOpenBoard(REF)?.document.pages[0]?.links ?? [];
     expect(links).toEqual([{ id: "a-to-b", from: "a", to: "b" }]);

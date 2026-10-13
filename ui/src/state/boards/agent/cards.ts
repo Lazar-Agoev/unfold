@@ -14,12 +14,12 @@ import { FOLLOW_GAP, HEADER_PORT, clearSpot, followPlacement, newCardPlacement, 
 import { measureText } from "../../../canvas/measure";
 import { descriptionHeight, estimatedFieldOffset, estimatedLineOffset } from "../../../canvas/sizing";
 import { cardBody, isTypeKind, keyBlockKind, memberName } from "../../../code/typeKinds";
-import type { Card, CardRef, Key, Page, ProjectId, ProjectName, TypeDefinition, View } from "../../../ipc/generated";
+import type { Card, CardRef, Key, Page, ProjectId, TypeDefinition, View } from "../../../ipc/generated";
 import { framePadding } from "../../../canvas/frames/geometry";
-import { addCard, cardKey, findCard, findCardByRef, keyDisplayName, setCardView } from "../document";
+import { addCard, cardKey, findCard, findCardByKey, keyDisplayName, setCardView } from "../document";
 import { addToFrame, findFrame } from "../frames";
 import { shownView } from "../store";
-import { cardProject, cardResult, cardSize, invalid, pageRects, refProject, type ApplyOp, type OpContext } from "./context";
+import { cardResult, cardSize, invalid, pageRects, type ApplyOp, type OpContext } from "./context";
 import type { AgentData } from "./data";
 import { nearRect, occupiedFor } from "./place";
 
@@ -189,11 +189,9 @@ async function planFollow(data: AgentData, project: ProjectId, root: Key, follow
 export async function prepareAddCards(op: AddCardsOp, ctx: OpContext): Promise<ApplyOp> {
   const plans = new Map<AgentCardSpec, FollowPlan>();
   for (const spec of op.cards) {
-    const project = spec.project ?? ctx.board.project;
-    refProject(ctx, project);
+    const { project } = ctx.board;
     if (!(await ctx.data.loadModel(project, spec.key))) {
-      const name = ctx.index.byId.get(project)?.name ?? project;
-      throw invalid(`${name} has no function, type, class, or entrance with the key “${spec.key}”. Keys come from search, list_entrances, read_code, or get_relations.`);
+      throw invalid(`The board's project has no function, type, class, or entrance with the key “${spec.key}”. Keys come from search, list_entrances, read_code, or get_relations.`);
     }
     if (isTypeKind(keyBlockKind(spec.key) ?? "")) {
       await ctx.data.loadDefinition(project, spec.key);
@@ -205,7 +203,7 @@ export async function prepareAddCards(op: AddCardsOp, ctx: OpContext): Promise<A
 
 /** The offset below a type card's top of its field's row `row`, when it shows its fields on `page`. */
 function fieldOffset(ctx: OpContext, page: Page, card: Card, row: string): number | undefined {
-  const definition = ctx.data.definition(cardProject(ctx, card), cardKey(card));
+  const definition = ctx.data.definition(ctx.board.project, cardKey(card));
   if (!definition || cardBody(cardKey(card), shownView(null, card, page.defaultView)) !== "fields") {
     return undefined;
   }
@@ -217,12 +215,12 @@ function fieldOffset(ctx: OpContext, page: Page, card: Card, row: string): numbe
  * type names `key`; undefined when it does neither.
  */
 function portToward(ctx: OpContext, page: Page, card: Card, key: Key): number | undefined {
-  const project = cardProject(ctx, card);
+  const { project } = ctx.board;
   const model = ctx.data.model(project, cardKey(card));
   if (model?.type === "entrance") {
     return model.targets.some((target) => target.target === key) ? HEADER_PORT : undefined;
   }
-  if (model?.type !== "block" || project === null) {
+  if (model?.type !== "block") {
     return undefined;
   }
   const definition = ctx.data.definition(project, cardKey(card));
@@ -264,19 +262,18 @@ function newCardSpot(ctx: OpContext, page: Page, ref: CardRef, near: string | un
   const rects = pageRects(ctx, page);
   const occupied = occupiedFor(page, rects, frame);
   const key = cardKey({ ref });
-  const sameProject = (card: Card) => card.ref.project === ref.project;
-  const model = ctx.data.model(cardProject(ctx, { ref }), key);
+  const model = ctx.data.model(ctx.board.project, key);
   const calls = (card: Card) => model?.type === "block" && occurrencesOf(model, undefined).some((item) => item.target === cardKey(card));
   const beside = (card: Card) => {
     const rect = rects.get(card.id);
     if (!rect) {
       return undefined;
     }
-    const port = sameProject(card) ? portToward(ctx, page, card, key) : undefined;
+    const port = portToward(ctx, page, card, key);
     if (port !== undefined) {
       return rightOf(rect, port);
     }
-    return sameProject(card) && calls(card) ? leftOf(rect, size) : undefined;
+    return calls(card) ? leftOf(rect, size) : undefined;
   };
   let at: { x: number; y: number } | undefined;
   if (near !== undefined) {
@@ -310,15 +307,14 @@ function followedSpot(ctx: OpContext, page: Page, from: Card, step: FollowStep, 
   const rects = pageRects(ctx, page);
   const rect = rects.get(from.id) ?? { x: from.at[0], y: from.at[1], ...cardSize(ctx, page, from) };
   const code = cardBody(cardKey(from), shownView(null, from, page.defaultView)) === "code";
-  const line = step.line !== undefined && code ? estimatedLineOffset(ctx.data.model(cardProject(ctx, from), cardKey(from)), step.line) : undefined;
+  const line = step.line !== undefined && code ? estimatedLineOffset(ctx.data.model(ctx.board.project, cardKey(from)), step.line) : undefined;
   const field = step.row !== undefined ? fieldOffset(ctx, page, from, step.row) : undefined;
   const at = step.direction === "callers" ? leftOf(rect, size) : rightOf(rect, line ?? field ?? HEADER_PORT);
   return clearSpot(at, size, occupiedFor(page, rects, frame));
 }
 
-function refOf(key: Key, project: ProjectName | undefined): CardRef {
-  const named = project !== undefined ? { project } : {};
-  return key.startsWith("entrance:") ? { entrance: key, ...named } : { block: key, ...named };
+function refOf(key: Key): CardRef {
+  return key.startsWith("entrance:") ? { entrance: key } : { block: key };
 }
 
 /**
@@ -344,8 +340,7 @@ function applyAddCards(page: Page, op: AddCardsOp, plans: ReadonlyMap<AgentCardS
   };
   const sized = (ref: CardRef, view: View | undefined) => cardSize(ctx, page, { id: "", ref, ...(view !== undefined ? { view } : {}) });
   for (const spec of op.cards) {
-    const named = refProject(ctx, spec.project ?? ctx.board.project);
-    const ref = refOf(spec.key, named);
+    const ref = refOf(spec.key);
     const { frame } = spec;
     const view = cardView(spec);
     if (frame !== undefined && !findFrame(page, frame)) {
@@ -353,7 +348,7 @@ function applyAddCards(page: Page, op: AddCardsOp, plans: ReadonlyMap<AgentCardS
     }
     const into = frame !== undefined ? { frame } : {};
     const created: string[] = [];
-    const existing = findCardByRef(page, spec.key, named);
+    const existing = findCardByKey(page, spec.key);
     if (existing) {
       const changed = view !== undefined && existing.view !== view;
       if (changed) {
@@ -368,18 +363,18 @@ function applyAddCards(page: Page, op: AddCardsOp, plans: ReadonlyMap<AgentCardS
     const plan = plans.get(spec);
     ctx.warnings.push(...(plan?.warnings ?? []));
     for (const step of plan?.steps ?? []) {
-      const from = findCardByRef(page, step.from, named);
+      const from = findCardByKey(page, step.from);
       if (!from) {
         continue;
       }
       const via = { from: from.id, direction: step.direction, depth: step.depth };
-      const reached = findCardByRef(page, step.to, named);
+      const reached = findCardByKey(page, step.to);
       if (reached) {
         note(reached, cardResult(ctx, reached, "kept", { via }));
         continue;
       }
       // A type reached from a type's fields shows as the type it was followed from was asked to.
-      const toRef = refOf(step.to, named);
+      const toRef = refOf(step.to);
       const toView = step.direction === "types" ? view : undefined;
       const card = place(toRef, followedSpot(ctx, page, from, step, sized(toRef, toView), frame), toView);
       note(card, cardResult(ctx, card, "created", { at: card.at, via, ...into }));
@@ -389,7 +384,7 @@ function applyAddCards(page: Page, op: AddCardsOp, plans: ReadonlyMap<AgentCardS
       addToFrame(page, frame, created);
     }
     for (const [key, stops] of plan?.stops ?? []) {
-      const card = findCardByRef(page, key, named);
+      const card = findCardByKey(page, key);
       const entry = card ? results.get(card.id) : undefined;
       if (card && entry) {
         results.set(card.id, { ...entry, stops: [...(entry.stops ?? []), ...stops] });

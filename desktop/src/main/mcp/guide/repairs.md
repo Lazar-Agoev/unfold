@@ -21,7 +21,6 @@ them with repair, one at a time, after reading the new code.
 | held for review | A guarded key now names code of another kind or owner, or a position-based key (`if[0]`) whose code changed | accept when it's still the same code; else reconnect, or remove_card, ungroup |
 | broken step group | Its statements no longer make a valid step group | ungroup, then group_steps again if it's still useful |
 | broken link | An end card is missing; a connection's step, carried type, or anchor is gone, or its step left its card | reconnect the step, type, or anchor; or remove_link |
-| not connected | A card's project isn't in the workspace | Tell the person; remove_card only if they ask |
 | proposed step missing or held | The real step a proposed step goes after is gone, or now names code of another kind or owner | reconnect to the step it goes after now, accept when it's still that step, or remove_proposal; propose with its id and a new after (and path) moves it too |
 
 ## Reconnect

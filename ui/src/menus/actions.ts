@@ -6,19 +6,7 @@
 import { showToast } from "../components";
 import { call, toUnfoldError, windowCommand, type ProjectId, type ProjectRow } from "../ipc";
 import { requestFocus } from "../lib/focus-targets";
-import {
-  closeBoardsOfProject,
-  copyPageMermaid,
-  duplicateBoard,
-  exportPageMermaid,
-  exportPagePng,
-  getOpenBoard,
-  openBoard,
-  setBoardFolder,
-  unpublishBoard,
-  type BoardRef,
-  type PageTarget,
-} from "../state/boards";
+import { closeBoardsOfProject, exportPagePng, openBoard, setBoardFolder, type BoardRef, type PageTarget } from "../state/boards";
 import { cancelCompile, startCompile } from "../state/compile";
 import { getProjectIndex } from "../state/workspace";
 
@@ -64,46 +52,6 @@ export async function moveToFolder(ref: BoardRef, folder: string | null): Promis
   }
 }
 
-export async function duplicate(ref: BoardRef): Promise<void> {
-  try {
-    const copy = await duplicateBoard(ref);
-    showToast({
-      title: `Made ${copy.title ?? copy.name}`,
-      body: "A draft, in the same folder.",
-      action: {
-        label: "Open",
-        run: () => void openBoard({ project: copy.project, id: copy.id }),
-      },
-    });
-  } catch (error) {
-    fail("Couldn't duplicate the board", error);
-  }
-}
-
-export async function moveBackToDrafts(ref: BoardRef, title: string): Promise<void> {
-  try {
-    if (getOpenBoard(ref)) {
-      await unpublishBoard(ref);
-    } else {
-      await call("unpublish_board", { project: ref.project, id: ref.id });
-    }
-    showToast({ title: `${title} is a draft again`, body: "Only on this machine. Commit the removed published file to share that." });
-  } catch (error) {
-    fail("Couldn't move the board back to drafts", error);
-  }
-}
-
-export async function exportMermaid(target: PageTarget): Promise<void> {
-  try {
-    const written = await exportPageMermaid(target);
-    if (written) {
-      showToast({ title: "Exported Mermaid", body: written.path });
-    }
-  } catch (error) {
-    fail("Couldn't export Mermaid", error);
-  }
-}
-
 export async function exportPng(target: PageTarget): Promise<void> {
   try {
     const written = await exportPagePng(target);
@@ -112,15 +60,6 @@ export async function exportPng(target: PageTarget): Promise<void> {
     }
   } catch (error) {
     fail("Couldn't export the page as PNG", error);
-  }
-}
-
-export async function copyMermaid(target: PageTarget): Promise<void> {
-  try {
-    await copyPageMermaid(target);
-    showToast({ title: "Copied the page as Mermaid" });
-  } catch (error) {
-    fail("Couldn't copy Mermaid", error);
   }
 }
 

@@ -12,7 +12,7 @@ import { boardDocument, boardState, page, projectRow, workspaceView } from "../.
 import { SelectedSection } from "./SelectedSection";
 
 const P = "p-orders0000";
-const ID = ".unfold/local/drafts/b.json";
+const ID = ".unfold/boards/b.json";
 const REF = { project: P, id: ID };
 const PAGE = { board: REF, page: "page-1" };
 const KEY = "src/routes/orders.ts#function:createOrder";
@@ -85,7 +85,7 @@ describe("Selected", () => {
       { source: `${KEY}/expression_statement[0]/call[0]`, seq: 0, line: 33 },
     ];
     act(() => {
-      store.select(PAGE, { kind: "calls", arrowId: "create-order|node|slack", project: P, from: "create-order", to: "slack", calls });
+      store.select(PAGE, { kind: "calls", arrowId: "create-order|node|slack", from: "create-order", to: "slack", calls });
     });
     renderSelected();
     expect(screen.getByRole("heading", { name: "2 calls" })).not.toBeNull();
@@ -95,7 +95,6 @@ describe("Selected", () => {
     expect(store.getPageView(PAGE).selection).toEqual({
       kind: "line",
       arrowId: "create-order|node|slack",
-      project: P,
       source: `${KEY}/variable:order/call[0]`,
       seq: 0,
       from: "create-order",

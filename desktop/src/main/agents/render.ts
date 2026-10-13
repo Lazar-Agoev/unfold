@@ -1,16 +1,17 @@
 /**
  * Page images and page checks (design §5.1, §6.5, §7.7). A hidden render window draws one page of a
- * board read-only, the way a board tab draws it, from the page the main process hands it; the main
+ * board read-only, the way the board view draws it, from the page the main process hands it; the main
  * process then captures it (`screenshot`, and Share › Export PNG), or takes the layout and content
  * checks the window ran on the drawn page and adds the board's health (`check`, `checkBoard`).
  *
  * - **The page** comes from the window that holds the board (unsaved edits included) or, for an image
- *   of a board no window holds, from the engine (`read_board`, which claims nothing). Health needs the
- *   board's session (`board_health` runs for the holding window), so a check opens a board no window
- *   holds in a background tab first, as an edit does; an image of such a board has no review banners.
+ *   of a board the window doesn't hold, from the engine (`read_board`, which loads no session). Health
+ *   needs the board's session (`board_health` runs for the holding window), so a check loads a board
+ *   the window doesn't hold there first, as an edit does; an image of such a board has no review
+ *   banners.
  * - **The render window** is created on demand with every window's hardening, offscreen (it never
- *   shows) at the image's scale, and attached to the engine for the cards' data. It claims nothing,
- *   and may send only `render_ready`. Requests run one at a time; it closes after a minute without
+ *   shows) at the image's scale, and attached to the engine for the cards' data. It holds no board
+ *   session, and may send only `render_ready`. Requests run one at a time; it closes after a minute without
  *   one, and at once when it stops answering.
  * - **An image** is drawn at zoom 1 when it fits, else smaller, to keep the long side at 4,096 pixels
  *   or less (the note says so): the window measures the page, the main process sizes the window and
@@ -207,7 +208,7 @@ export class PageRenderer {
     return this.serialized(() => this.takeImage(request));
   }
 
-  /** A page's health items and page checks (opening the board in a background tab when no window holds it). */
+  /** A page's health items and page checks (loading the board's session in the window when it doesn't hold it). */
   check(request: { readonly board: AgentBoardRef; readonly page: string }): Promise<PageChecksOutcome> {
     return this.serialized(async () => {
       const source = await this.source(request.board, request.page, true);
@@ -353,8 +354,8 @@ export class PageRenderer {
   }
 
   /**
-   * The page to draw: from the window that holds the board (`open`: opening it in a background tab
-   * when none does), with its health; or, when no window holds it, from the board's file.
+   * The page to draw: from the window that holds the board (`open`: loading its session there when it
+   * doesn't), with its health; or, when the window doesn't hold it, from the board's file.
    */
   private async source(board: AgentBoardRef, page: string, open: boolean): Promise<PageSource | AgentFailure> {
     for (let attempt = 0; ; attempt += 1) {
@@ -370,7 +371,7 @@ export class PageRenderer {
         return this.fromFile(board, page);
       }
       const read = await this.options.bridge.read({ board, page });
-      // A report that still listed a board the window closed (the bridge forgets it): read the file, or open it again, once.
+      // A report that still listed a board the window no longer holds (the bridge forgets it): read the file, or load it again, once.
       if (!read.ok && read.code === "board_not_open" && (!open || attempt === 0)) {
         if (!open) {
           return this.fromFile(board, page);
@@ -388,7 +389,7 @@ export class PageRenderer {
     }
   }
 
-  /** The page as the board's working file has it, without claiming the board. */
+  /** The page as the board's file has it, without loading its session. */
   private async fromFile(board: AgentBoardRef, page: string): Promise<PageSource | AgentFailure> {
     let result: ReadBoardResult;
     try {

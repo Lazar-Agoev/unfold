@@ -20,7 +20,7 @@ export interface EngineBinding {
   cancel(requestId: number): void;
   /**
    * A window closed: waits (at most 15 s) for its closing writes in flight, then releases its board
-   * claims, sessions, and Home selection.
+   * sessions and Home selection.
    */
   detachWindow(windowId: number): Promise<void>;
   /** The app is quitting: closes every live project. Called once. */

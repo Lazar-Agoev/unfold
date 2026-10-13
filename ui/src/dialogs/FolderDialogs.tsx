@@ -1,15 +1,13 @@
 /**
- * Board folder prompts, 400 wide over the content area: New folder…, Rename…, and Move to
- * folder (the board menu's "New folder…", Add's command). Failures are toasts; the sidebar follows by
- * `boards_changed`.
+ * Board folder prompts, 400 wide over the content area: a folder's Rename…, and the board menu's Move
+ * to folder › New folder…. Folders are one level deep, so each names one folder. Failures are toasts;
+ * the sidebar follows by `boards_changed`.
  */
 
 import { PromptDialog, showToast } from "../components";
 import { toUnfoldError, type ProjectId } from "../ipc";
-import { createFolder, renameFolder, setBoardFolder, type BoardRef } from "../state/boards";
-import { setFolderExpanded } from "../state/layout";
-import { useProjectRow } from "../state/workspace";
-import { childPath, folderProblem, splitPath } from "./folders";
+import { renameFolder, setBoardFolder } from "../state/boards";
+import { folderProblem } from "./folders";
 import type { MoveToFolderRequest } from "./moveToFolder";
 
 function fail(title: string, error: unknown): void {
@@ -17,60 +15,24 @@ function fail(title: string, error: unknown): void {
   showToast({ title, body: failure.code === "folder_exists" ? "A folder with that name is already there." : failure.message, tone: "danger" });
 }
 
-/** A folder's name, one segment. */
-function nameProblem(value: string): string | null {
-  return value.includes("/") ? "A folder's name can't contain “/”." : folderProblem(value);
-}
-
-export function NewFolderDialog({ project, parent, onClose }: { readonly project: ProjectId; readonly parent: string | null; readonly onClose: () => void }) {
-  const name = useProjectRow(project)?.name ?? "the project";
-  return (
-    <PromptDialog
-      open
-      title="New folder"
-      description={parent === null ? `At the top level of ${name}'s boards.` : `Inside ${parent}.`}
-      label="Name"
-      confirmLabel="Create"
-      placement="canvas"
-      validate={nameProblem}
-      onCancel={onClose}
-      onSubmit={(value) => {
-        onClose();
-        const path = childPath(parent, value);
-        createFolder(project, path).then(
-          () => {
-            if (parent !== null) {
-              setFolderExpanded(project, parent, true);
-            }
-          },
-          (error: unknown) => {
-            fail("Couldn't create the folder", error);
-          },
-        );
-      }}
-    />
-  );
-}
-
-export function RenameFolderDialog({ project, path, onClose }: { readonly project: ProjectId; readonly path: string; readonly onClose: () => void }) {
-  const { parent, name } = splitPath(path);
+export function RenameFolderDialog({ project, folder, onClose }: { readonly project: ProjectId; readonly folder: string; readonly onClose: () => void }) {
   return (
     <PromptDialog
       open
       title="Rename folder"
-      description="Its boards move with it. Published boards get the move as an unpublished change."
+      description="Its boards move with it."
       label="Name"
-      defaultValue={name}
+      defaultValue={folder}
       confirmLabel="Rename"
       placement="canvas"
-      validate={nameProblem}
+      validate={folderProblem}
       onCancel={onClose}
       onSubmit={(value) => {
         onClose();
-        if (value === name) {
+        if (value === folder) {
           return;
         }
-        renameFolder(project, path, childPath(parent, value)).catch((error: unknown) => {
+        renameFolder(project, folder, value).catch((error: unknown) => {
           fail("Couldn't rename the folder", error);
         });
       }}
@@ -78,33 +40,23 @@ export function RenameFolderDialog({ project, path, onClose }: { readonly projec
   );
 }
 
-/** Moves a board into a folder (an empty path is the top level). */
-async function moveBoard(board: BoardRef, folder: string | null): Promise<void> {
-  try {
-    await setBoardFolder(board, folder);
-  } catch (error) {
-    fail("Couldn't move the board", error);
-  }
-}
-
 export function MoveToFolderDialog({ request, onClose }: { readonly request: MoveToFolderRequest; readonly onClose: () => void }) {
-  const fresh = request.mode === "new";
   return (
     <PromptDialog
       open
-      title={fresh ? "New folder" : "Move to folder"}
-      description={fresh ? "Moves the board into a new folder. Use “/” for a folder inside another." : "Type the folder's path. Leave it empty for the top level."}
-      label={fresh ? "Name" : "Folder"}
-      defaultValue={fresh ? "" : (request.folder ?? "")}
+      title="New folder"
+      description="Moves the board into a new folder."
+      label="Name"
       confirmLabel="Move"
       placement="canvas"
-      validate={(value) => (value.trim() === "" && !fresh ? null : folderProblem(value))}
+      validate={folderProblem}
       onCancel={onClose}
       onSubmit={(value) => {
         onClose();
-        const folder = value.trim() === "" ? null : value;
-        if (folder !== request.folder) {
-          void moveBoard(request.board, folder);
+        if (value !== request.folder) {
+          setBoardFolder(request.board, value).catch((error: unknown) => {
+            fail("Couldn't move the board", error);
+          });
         }
       }}
     />

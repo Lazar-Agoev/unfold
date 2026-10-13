@@ -101,8 +101,6 @@ command_table! {
     "set_project_expanded" => SetProjectExpanded(workspace::SetProjectExpandedArgs) -> () = workspace::set_project_expanded;
     /// The calling window's Home selection (keeps the project live).
     "select_project" => SelectProject(workspace::SelectProjectArgs) -> () = workspace::select_project;
-    /// Every project's drafts and published boards with unpublished changes.
-    "drafts" => Drafts(NoArgs) -> boards::Drafts = boards::drafts;
 
     // Project, Home, settings.
     /// Home's header, state line, and Health line.
@@ -116,7 +114,7 @@ command_table! {
     "compile" => Compile(ProjectArgs) -> CompileOutcome, stream CompileProgress = compiling::compile;
     /// Cancels a project's running and queued Compiles.
     "cancel_compile" => CancelCompile(ProjectArgs) -> compiling::CancelCompileResult = compiling::cancel_compile;
-    /// A project's `unfold.toml` and shared name.
+    /// A project's `unfold.toml`.
     "project_config" => ProjectConfig(ProjectArgs) -> settings::ProjectConfig = settings::project_config;
     /// Applies validated edits to a project's `unfold.toml`.
     "update_project_config" => UpdateProjectConfig(settings::UpdateProjectConfigArgs) -> settings::ProjectConfig = settings::update_project_config;
@@ -143,7 +141,7 @@ command_table! {
     "callers" => Callers(relations::CallersArgs) -> relations::Callers = relations::callers;
     /// Add's preview pane and the map popover.
     "preview" => Preview(ProjectKeyArgs) -> graph::Preview = graph::preview;
-    /// The board pages of every project where a key is a card ("Already on …").
+    /// The pages of a project's boards where a key is a card ("Already on …").
     "board_refs" => BoardRefs(ProjectKeyArgs) -> boards::BoardRefs = boards::board_refs;
 
     // Typed lines.
@@ -163,36 +161,26 @@ command_table! {
     "search_text" => SearchText(text_search::TextSearchArgs) -> text_search::TextSearchSummary, stream text_search::TextSearchFile = text_search::search_text;
 
     // Boards.
-    /// A project's boards and empty folders.
+    /// A project's boards, most recently edited first, and its empty folders.
     "list_boards" => ListBoards(ProjectArgs) -> boards::BoardList = boards::list_boards;
-    /// What the thumbnails of a project's boards draw.
-    "board_thumbnails" => BoardThumbnails(boards::ThumbnailsArgs) -> boards::Thumbnails = boards::board_thumbnails;
-    /// A board as its working file holds it, without opening it.
+    /// A board as its file holds it, without opening it.
     "read_board" => ReadBoard(boards::BoardIdArgs) -> boards::ReadBoardResult = boards::read_board;
     /// Opens a board in the calling window.
     "open_board" => OpenBoard(boards::BoardIdArgs) -> boards::BoardState = boards::open_board;
-    /// Creates an empty draft and opens it in the calling window.
+    /// Creates an empty board file in `.unfold/boards/` and opens it in the calling window.
     "new_board" => NewBoard(boards::NewBoardArgs) -> boards::BoardState = boards::new_board;
-    /// Reads an open board's working file again.
+    /// Reads an open board's file again.
     "reload_board" => ReloadBoard(boards::BoardIdArgs) -> boards::BoardState = boards::reload_board;
     /// Closes an open board.
     "close_board" => CloseBoard(boards::BoardIdArgs) -> () = boards::close_board;
-    /// Validates, signs, and writes an edited board.
+    /// Validates, signs, and writes an edited board over its file.
     "save_board" => SaveBoard(boards::SaveBoardArgs) -> boards::BoardState = boards::save_board;
     /// An open board's health and outlines.
     "board_health" => BoardHealth(boards::BoardIdArgs) -> boards::BoardHealthView = boards::board_health;
     /// Applies one repair to an open board and saves it.
     "repair_board" => RepairBoard(boards::RepairBoardArgs) -> boards::BoardState = boards::repair_board;
-    /// Publishes a draft, or a published board's unpublished changes.
-    "publish_board" => PublishBoard(boards::PublishBoardArgs) -> boards::PublishOutcome = boards::publish_board;
-    /// Drops a published board's unpublished changes.
-    "discard_changes" => DiscardChanges(boards::BoardIdArgs) -> boards::BoardState = boards::discard_changes;
-    /// Moves a published board back to drafts.
-    "unpublish_board" => UnpublishBoard(boards::BoardIdArgs) -> boards::BoardState = boards::unpublish_board;
     /// Deletes a board.
     "delete_board" => DeleteBoard(boards::BoardIdArgs) -> () = boards::delete_board;
-    /// Copies a board into a new draft.
-    "duplicate_board" => DuplicateBoard(boards::BoardIdArgs) -> boards::BoardSummary = boards::duplicate_board;
     /// Moves any board into a folder.
     "set_board_folder" => SetBoardFolder(boards::SetBoardFolderArgs) -> boards::BoardSummary = boards::set_board_folder;
     /// Adds an empty board folder.

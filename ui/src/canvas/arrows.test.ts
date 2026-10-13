@@ -38,7 +38,6 @@ const A = "src/a.ts#function:a";
 const B = "src/b.ts#function:b";
 const C = "src/c.ts#function:c";
 const P = "p-orders0000";
-const Q = "p-payments00";
 /** A model map keyed as the canvas keys it: by project and key. */
 const inP = (entries: readonly (readonly [string, CardView])[]) => new Map(entries.map(([key, view]) => [cardRefKey(P, key), view]));
 
@@ -89,19 +88,6 @@ describe("arrows", () => {
       inP([["entrance:e", entrance]]),
     );
     expect(arrows).toEqual([expect.objectContaining({ source: "e", sourceHandle: "target:0", target: "a", kind: "handler", dashed: false })]);
-  });
-
-  it("joins only cards of the same project, and none to a card that isn't connected", () => {
-    const models = inP([[A, block(A, [link(`${A}/call[0]`, B, "calls", 2)])]]);
-    const cards = [
-      { id: "a", key: A, project: P, entrance: false, body: "code" as const },
-      // The same key in another project, and a card whose project isn't connected.
-      { id: "b-elsewhere", key: B, project: Q, entrance: false, body: "code" as const },
-      { id: "b-gone", key: B, project: null, entrance: false, body: "code" as const },
-    ];
-    expect(computeArrows(cards, models)).toEqual([]);
-    const arrows = computeArrows([...cards, { id: "b", key: B, project: P, entrance: false, body: "code" as const }], models);
-    expect(arrows.map((arrow) => arrow.target)).toEqual(["b"]);
   });
 });
 
@@ -202,8 +188,6 @@ describe("type arrows", () => {
   const typeCards = (body: "fields" | "code") => [
     { id: "cart", key: CART, project: P, entrance: false, body },
     { id: "item", key: ITEM, project: P, entrance: false, body: "fields" as const },
-    // The same type in another project: type links never cross projects.
-    { id: "user-elsewhere", key: USER, project: Q, entrance: false, body: "fields" as const },
   ];
 
   it("leave from each field's row to each card its written type names, labeled with the type, once per field and card", () => {

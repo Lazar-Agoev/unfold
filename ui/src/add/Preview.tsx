@@ -25,7 +25,7 @@ export type PreviewItem = Exclude<ResultItem, { type: "more" }>;
 interface PreviewProps {
   readonly item: PreviewItem | null;
   readonly projectName: (project: string) => string;
-  /** On a board page: Add to this page and New page; on Home: Add to a new draft. */
+  /** On a board page: Add to this page and New page; on Home: Add to a new board. */
   readonly onPage: boolean;
   readonly blocked: string | null;
   readonly onActivate: (newPage: boolean) => void;
@@ -257,7 +257,7 @@ export function Preview({ item, projectName, onPage, blocked, onActivate }: Prev
       {opens ? <FilePreview item={item} projectName={name} /> : <KeyedPreview item={item} projectName={name} />}
       <div className="add-preview-spacer" />
       {blocked !== null && !opens ? <Status>{blocked}</Status> : null}
-      <AddButtons label={opens ? "Open file" : onPage ? "Add to this page" : "Add to a new draft"} newPage={onPage && !opens} disabled={blocked !== null && !opens} onActivate={onActivate} />
+      <AddButtons label={opens ? "Open file" : onPage ? "Add to this page" : "Add to a new board"} newPage={onPage && !opens} disabled={blocked !== null && !opens} onActivate={onActivate} />
     </aside>
   );
 }

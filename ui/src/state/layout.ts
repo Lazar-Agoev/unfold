@@ -1,22 +1,20 @@
 /**
- * The window's layout: the Selected section's collapse, the peek sheet's pin, Home's view and boards
- * filter, and the expanded sidebar folders. It lasts only while the app runs; the board lens is not
- * part of it (it is per page).
+ * The window's layout: the Selected section's collapse, the peek sheet's pin, Home's view, and the
+ * expanded sidebar folders. It lasts only while the app runs; the board lens is not part of it (it is
+ * per page).
  */
 
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { ProjectId } from "../ipc/generated";
 
-export type HomeView = "overview" | "health" | "drafts";
-export type BoardsFilter = "all" | "published" | "drafts";
-export type BoardsSort = "edited" | "title";
+export type HomeView = "overview" | "health";
 
 export interface WindowLayout {
   readonly selectedCollapsed: boolean;
   readonly peek: { readonly pinned: boolean };
-  readonly home: { readonly view: HomeView; readonly boardsFilter: BoardsFilter; readonly boardsSort: BoardsSort };
-  /** Expanded sidebar folders, as `folderKey(project, path)`, oldest first. */
+  readonly home: { readonly view: HomeView };
+  /** Expanded sidebar folders, as `folderKey(project, folder)`, oldest first. */
   readonly folders: readonly string[];
 }
 
@@ -26,15 +24,15 @@ const FOLDERS_LIMIT = 500;
 export const initialLayout: WindowLayout = {
   selectedCollapsed: false,
   peek: { pinned: false },
-  home: { view: "overview", boardsFilter: "all", boardsSort: "edited" },
+  home: { view: "overview" },
   folders: [],
 };
 
 export const useLayout = create<WindowLayout>()(immer(() => initialLayout));
 
 /** The key of a sidebar folder in `WindowLayout.folders`. */
-export function folderKey(project: ProjectId, path: string): string {
-  return `${project}\u0000${path}`;
+export function folderKey(project: ProjectId, folder: string): string {
+  return `${project}\u0000${folder}`;
 }
 
 export function setSelectedCollapsed(collapsed: boolean): void {
@@ -55,20 +53,8 @@ export function setHomeView(view: HomeView): void {
   });
 }
 
-export function setBoardsFilter(filter: BoardsFilter): void {
-  useLayout.setState((state) => {
-    state.home.boardsFilter = filter;
-  });
-}
-
-export function setBoardsSort(sort: BoardsSort): void {
-  useLayout.setState((state) => {
-    state.home.boardsSort = sort;
-  });
-}
-
-export function setFolderExpanded(project: ProjectId, path: string, expanded: boolean): void {
-  const key = folderKey(project, path);
+export function setFolderExpanded(project: ProjectId, folder: string, expanded: boolean): void {
+  const key = folderKey(project, folder);
   useLayout.setState((state) => {
     const folders = state.folders.filter((folder) => folder !== key);
     if (expanded) {

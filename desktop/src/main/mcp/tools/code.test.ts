@@ -5,7 +5,7 @@ import relationsCreateOrder from "../../../../../testdata/workspace/commands/rel
 import type { AgentPage } from "../../../shared/agent-api";
 import type { CardView, FlowNode, Relations, TypeDefinition, TypeUses } from "../engine-types";
 import { getRelations, readCode } from "./code";
-import { harness, PROJECT, projectRow, recorded } from "./testing";
+import { harness, PROJECT, recorded } from "./testing";
 
 vi.mock("electron", async () => (await import("../../fake-electron")).electronModule);
 
@@ -18,7 +18,7 @@ const PAGE: AgentPage = {
   defaultView: "flow",
   cards: [
     { id: "create-order", ref: { block: CREATE_ORDER }, at: [0, 0] },
-    { id: "charge", ref: { block: "src/pay.ts#function:charge", project: "payments" }, at: [400, 0] },
+    { id: "charge", ref: { block: "src/pay.ts#function:charge" }, at: [400, 0] },
   ],
   groups: [{ id: "queue-it", card: "create-order", title: "Queue it", members: [], collapsed: false }],
   proposals: [{ id: "email", card: "charge", after: "src/pay.ts#function:charge/call[0]", title: "Email a receipt", author: "person:maya" }],
@@ -26,7 +26,7 @@ const PAGE: AgentPage = {
   guards: [],
   links: [],
 };
-const BOARD_INFO = { title: "Order placement", place: "published", changes: 0, revision: "r1", unsaved: false };
+const BOARD_INFO = { title: "Order placement", revision: "r1", unsaved: false };
 
 const LABEL = { source: "src/routes/orders.ts#function:createOrder/variable:order/call[0]", seq: 0, label: { inputs: [{ type: { text: "OrderDraft", spans: [] } }], inputsUnknown: false, output: { text: "Promise<Order>", spans: [] } } };
 
@@ -55,7 +55,6 @@ function app(extra: Parameters<typeof harness>[0] = {}) {
       board_refs: () => ({ refs: [{ project: PROJECT, board: BOARD.id, title: "Order placement", page: "page-1", pageTitle: "Placing an order" }], truncated: false }),
       ...extra.engine,
     },
-    ...(extra.projects ? { projects: extra.projects } : {}),
     window: (request) => (request.type === "agent_read" ? { ok: true, page: PAGE, board: BOARD_INFO } : undefined),
   });
 }
@@ -248,35 +247,35 @@ describe("read_code", () => {
     expect(text).toContain("1. src/jobs/import-orders.ts#importOrders → importOrders at src/jobs/import-orders.ts:6 (key src/jobs/import-orders.ts#function:importOrders)");
   });
 
-  it("defaults to the card selected in the person's view, in the project the card reads from", async () => {
-    const tools = app({ projects: [projectRow(PROJECT, "ts-orders"), projectRow("p-payments00", "payments")] });
-    tools.report({ board: BOARD, page: "page-1", selection: { kind: "step", card: "create-order", key: `${CREATE_ORDER}/if[0]` }, visible: [], tabs: [BOARD] });
+  it("defaults to the card selected in the person's view, in the board's project", async () => {
+    const tools = app();
+    tools.report({ board: BOARD, page: "page-1", selection: { kind: "step", card: "create-order", key: `${CREATE_ORDER}/if[0]` }, visible: [], held: [BOARD] });
     const step = await tools.call(readCode, { view: "flow" });
     expect(step.text).toContain(`Selected in the person's view: the step ${CREATE_ORDER}/if[0].`);
     expect(tools.engineCalls.find(([command]) => command === "card")?.[1]).toEqual({ project: PROJECT, key: CREATE_ORDER, lens: "both" });
 
-    tools.report({ board: BOARD, page: "page-1", selection: { kind: "group", id: "queue-it" }, visible: [], tabs: [BOARD] });
+    tools.report({ board: BOARD, page: "page-1", selection: { kind: "group", id: "queue-it" }, visible: [], held: [BOARD] });
     await tools.call(readCode, {});
     expect(tools.engineCalls.filter(([command]) => command === "card").at(-1)?.[1]).toMatchObject({ key: CREATE_ORDER });
 
     await tools.call(readCode, { key: `unfold://ts-orders/${BOARD.id}?page=page-1&item=charge` });
-    expect(tools.engineCalls.filter(([command]) => command === "card").at(-1)?.[1]).toEqual({ project: "p-payments00", key: "src/pay.ts#function:charge", lens: "both" });
+    expect(tools.engineCalls.filter(([command]) => command === "card").at(-1)?.[1]).toEqual({ project: PROJECT, key: "src/pay.ts#function:charge", lens: "both" });
 
     // A proposed step reads its card's code, by selection or by its link: it has none of its own.
-    tools.report({ board: BOARD, page: "page-1", selection: { kind: "proposal", id: "email" }, visible: [], tabs: [BOARD] });
+    tools.report({ board: BOARD, page: "page-1", selection: { kind: "proposal", id: "email" }, visible: [], held: [BOARD] });
     await tools.call(readCode, {});
-    expect(tools.engineCalls.filter(([command]) => command === "card").at(-1)?.[1]).toEqual({ project: "p-payments00", key: "src/pay.ts#function:charge", lens: "both" });
+    expect(tools.engineCalls.filter(([command]) => command === "card").at(-1)?.[1]).toEqual({ project: PROJECT, key: "src/pay.ts#function:charge", lens: "both" });
     await tools.call(readCode, { key: `unfold://ts-orders/${BOARD.id}?page=page-1&item=email` });
     expect(tools.engineCalls.filter(([command]) => command === "card").at(-1)?.[1]).toMatchObject({ key: "src/pay.ts#function:charge" });
 
     // A step shown in a call expanded in place reads the block that owns it.
     const PLACE = "src/services/order-service.ts#class:OrderService/method:place";
-    tools.report({ board: BOARD, page: "page-1", selection: { kind: "step", card: "create-order", key: `${PLACE}/expression_statement[0]`, owner: PLACE }, visible: [], tabs: [BOARD] });
+    tools.report({ board: BOARD, page: "page-1", selection: { kind: "step", card: "create-order", key: `${PLACE}/expression_statement[0]`, owner: PLACE }, visible: [], held: [BOARD] });
     const owned = await tools.call(readCode, { view: "flow" });
     expect(tools.engineCalls.filter(([command]) => command === "card").at(-1)?.[1]).toEqual({ project: PROJECT, key: PLACE, lens: "both" });
     expect(owned.text).toContain(`Selected in the person's view: the step ${PLACE}/expression_statement[0].`);
 
-    tools.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+    tools.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
     expect((await tools.call(readCode, {})).text).toBe(
       "Can't tell which code you mean: no key was given and no card is selected in Unfold. Pass key: from search, list_entrances, read_page, or get_relations.",
     );

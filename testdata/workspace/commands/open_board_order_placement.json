@@ -1,13 +1,11 @@
 {
   "project": "<project>",
   "id": ".unfold/boards/order-placement.json",
-  "place": "published",
   "name": "order-placement",
   "document": {
     "format": "unfold-board",
     "version": 1,
     "title": "Order placement",
-    "projects": [],
     "pages": [
       {
         "id": "page-1",
@@ -520,19 +518,13 @@
       }
     ]
   },
-  "revision": "127100bce7d42fb798c4eb75c6670f0f836f02d8925375d4677026f2151a70ea",
-  "published": {
-    "revision": "127100bce7d42fb798c4eb75c6670f0f836f02d8925375d4677026f2151a70ea",
-    "changes": 0,
-    "baseChanged": false
-  },
+  "revision": "4642988569691ba8be2693f14ead6c61dbcaeaee1dac23aefa9c8403d632b4d9",
   "health": {
     "items": [],
     "missing": 0,
     "outdated": 0,
     "brokenGroups": 0,
     "review": 0,
-    "notConnected": 0,
     "brokenLinks": 0
   },
   "outlines": [

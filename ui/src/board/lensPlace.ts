@@ -1,8 +1,8 @@
 /**
  * Where the top bar's Diagram | Code lens goes: centered over the uncovered canvas while it clears the
- * page title and publish state on its left and Share on its right; otherwise as close to the center
- * as it fits, and on a canvas too narrow for both, at the right of the free space with the title and
- * state shortened to the room left of it.
+ * page title on its left and the bar's end on its right; otherwise as close to the center as it fits,
+ * and on a canvas too narrow for both, at the right of the free space with the title shortened to the
+ * room left of it.
  */
 
 /** The top bar's left padding. */
@@ -16,25 +16,25 @@ export interface LensMetrics {
   /** The width a floating sheet covers on its right. */
   readonly covered: number;
   readonly lensWidth: number;
-  /** Where the title and publish state end at their full width, from the top bar's left edge. */
+  /** Where the title (and "Claude is working…") end at their full width, from the top bar's left edge. */
   readonly leftEnd: number;
-  /** Where Share starts, from the top bar's left edge. */
-  readonly shareLeft: number;
+  /** Where the top bar's content ends on the right (inside its padding), from its left edge. */
+  readonly rightEnd: number;
 }
 
 export interface LensPlace {
   /** The lens's left edge, or null when it stays centered. */
   readonly left: number | null;
-  /** The width the title and state may take, or null for their full width. */
+  /** The width the title may take, or null for its full width. */
   readonly room: number | null;
 }
 
 export const CENTERED: LensPlace = { left: null, room: null };
 
-export function placeLens({ width, covered, lensWidth, leftEnd, shareLeft }: LensMetrics): LensPlace {
+export function placeLens({ width, covered, lensWidth, leftEnd, rightEnd }: LensMetrics): LensPlace {
   const centered = (width - covered - lensWidth) / 2;
   const minLeft = leftEnd + CLEARANCE;
-  const maxLeft = Math.min(shareLeft, width - covered) - CLEARANCE - lensWidth;
+  const maxLeft = Math.min(rightEnd, width - covered) - CLEARANCE - lensWidth;
   if (centered >= minLeft && centered <= maxLeft) {
     return CENTERED;
   }

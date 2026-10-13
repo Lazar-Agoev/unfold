@@ -185,6 +185,7 @@ fn a_byte_order_mark_is_skipped_but_counted_in_spans() {
 fn unknown_keys_are_rejected_with_their_position() {
     assert_error("surprise = true\n", 1, 1, "surprise");
     assert_error("version = 1\n", 1, 1, "version");
+    assert_error("[project]\nname = \"api\"\n", 1, 2, "project");
     assert_error("languages = [\"python\"]\n[scope]\ninclde = []\n", 3, 1, "inclde");
     assert_error("[detectors]\nenabled = []\n", 2, 1, "enabled");
     assert_error(
@@ -852,79 +853,6 @@ fn the_settings_hash_ignores_formatting_but_not_values() {
         Settings::parse("[scope]").unwrap().hash()
     );
     assert_eq!(base.to_string().len(), 64);
-}
-
-#[test]
-fn the_project_name_is_optional_strict_and_validated() {
-    let named = Settings::parse("[project]\nname = \"storefront-api\"\n").unwrap();
-    assert_eq!(named.project_name.as_deref(), Some("storefront-api"));
-    assert_eq!(Settings::parse("[project]\n").unwrap().project_name, None);
-    assert_eq!(Settings::default().project_name, None);
-    let longest = "a".repeat(MAX_PROJECT_NAME);
-    let parsed = Settings::parse(&format!("[project]\nname = \"{longest}\"\n")).unwrap();
-    assert_eq!(parsed.project_name, Some(longest));
-
-    assert_error(
-        "[project]\nname = \"-api\"\n",
-        2,
-        8,
-        "invalid project name \"-api\"",
-    );
-    assert_error("[project]\nname = \"\"\n", 2, 8, "invalid project name");
-    assert_error("[project]\nname = \"my api\"\n", 2, 8, "invalid project name");
-    assert_error("[project]\nname = \"café\"\n", 2, 8, "invalid project name");
-    let too_long = format!("[project]\nname = \"{}\"\n", "a".repeat(MAX_PROJECT_NAME + 1));
-    assert_error(&too_long, 2, 8, "1 to 64");
-    assert_error("[project]\nname = 1\n", 2, 8, "string");
-    assert_error("[project]\ntitle = \"api\"\n", 2, 1, "title");
-    assert_error("project = \"api\"\n", 1, 11, "struct");
-}
-
-#[test]
-fn renaming_the_project_changes_no_hash() {
-    let base = Settings::parse(EXAMPLE).unwrap();
-    let named = Settings::parse(&format!("{EXAMPLE}\n[project]\nname = \"orders\"\n")).unwrap();
-    let renamed = Settings::parse(&format!("{EXAMPLE}\n[project]\nname = \"shop\"\n")).unwrap();
-    assert_ne!(named, renamed);
-    assert_eq!(named.hash(), base.hash());
-    assert_eq!(renamed.hash(), base.hash());
-    let path = RepoPath::new("py-playground/src/app.py").unwrap();
-    assert_eq!(renamed.python_hash(&path), base.python_hash(&path));
-}
-
-#[test]
-fn project_names_and_defaults() {
-    for valid in ["a", "storefront-api", "Shop_2.0", "9lives", &"x".repeat(64)] {
-        assert!(is_project_name(valid), "{valid}");
-        assert_eq!(default_project_name(valid), valid);
-    }
-    for invalid in [
-        "",
-        ".hidden",
-        "-x",
-        "_x",
-        "my repo",
-        "a/b",
-        "café",
-        &"x".repeat(65),
-    ] {
-        assert!(!is_project_name(invalid), "{invalid}");
-        assert!(is_project_name(&default_project_name(invalid)), "{invalid}");
-    }
-    assert_eq!(default_project_name("My Repo"), "my-repo");
-    assert_eq!(default_project_name("Café Crème"), "cafe-creme");
-    assert_eq!(default_project_name(".dotfiles"), "dotfiles");
-    assert_eq!(default_project_name("_build output_"), "build-output");
-    assert_eq!(default_project_name("日本"), "project");
-    assert_eq!(default_project_name(""), "project");
-    assert_eq!(
-        default_project_name(&format!("{} x", "a".repeat(80))),
-        "a".repeat(64)
-    );
-    assert_eq!(
-        default_project_name(&format!("{} x", "a".repeat(63))),
-        "a".repeat(63)
-    );
 }
 
 #[test]

@@ -81,27 +81,26 @@ function list(items: readonly string[]): string {
 }
 
 function settingsText(config: ProjectConfig): string[] {
-  const name = `name ${config.name.value}${config.name.isDefault ? " (the default)" : ""}`;
   if (config.error) {
     const at = config.error.line === null ? "" : ` (line ${config.error.line})`;
-    return [`Settings (unfold.toml): ${name}. The file is invalid${at}: ${config.error.message}`];
+    return [`Settings (unfold.toml): the file is invalid${at}: ${config.error.message}`];
   }
   const settings = config.settings;
   if (!settings) {
-    return [`Settings: ${name}. No unfold.toml yet: everything is the default.`];
+    return ["Settings: no unfold.toml yet: everything is the default."];
   }
   const entrances = settings.entrances.map(
     (entrance) => `- manual entrance ${entrance.id}: ${entrance.label ?? entrance.trigger ?? entrance.kind} → ${entrance.handler.join(", ")} (line ${entrance.line})`,
   );
   return [
-    `Settings (unfold.toml): ${name}; languages ${settings.languages ? languagesText(settings.languages) : "all"}; include ${list(settings.include)}; exclude ${list(settings.exclude)}; detectors off ${list(settings.disabledDetectors)}; Python projects ${list(settings.pythonProjects.map((python) => python.root || "."))}; evidence files ${list(settings.evidence)}; ${count(settings.entrances.length, "manual entrance")}.`,
+    `Settings (unfold.toml): languages ${settings.languages ? languagesText(settings.languages) : "all"}; include ${list(settings.include)}; exclude ${list(settings.exclude)}; detectors off ${list(settings.disabledDetectors)}; Python projects ${list(settings.pythonProjects.map((python) => python.root || "."))}; evidence files ${list(settings.evidence)}; ${count(settings.entrances.length, "manual entrance")}.`,
     ...entrances,
   ];
 }
 
 function boardLine(board: BoardSummary): string {
   const facts = [
-    board.place === "draft" ? "draft" : board.changes > 0 ? `published, ${count(board.changes, "unpublished change")}` : "published",
+    ...(board.folder !== null ? [`in ${board.folder}`] : []),
     count(board.pages, "page"),
     count(board.cards, "card"),
     ...(board.label ? [board.label] : []),

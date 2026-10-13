@@ -174,7 +174,7 @@ test.describe("the board", () => {
     await traceEntrance(page, "POST", "/orders");
     const createOrder = card(page, CREATE_ORDER);
 
-    await test.step("a description written in Selected shows on the card and is saved in the draft", async () => {
+    await test.step("a description written in Selected shows on the card and is saved in the board's file", async () => {
       await clickOnCanvas(page, createOrder.locator(".card-title"));
       await expect(selected(page).getByRole("heading", { name: "createOrder" })).toBeVisible();
       await enterText(selected(page).getByRole("textbox", { name: "Description" }), "Places the order, or queues it.");
@@ -258,43 +258,43 @@ test.describe("the board", () => {
       await expect(card(page, CREATE_ORDER)).toBeVisible();
     });
 
-    await test.step("the page menu duplicates a page and moves it", async () => {
-      await pageRow(page, "Page 1").hover();
-      await pagesList(page).getByRole("button", { name: "Page 1 actions" }).click();
-      await page.getByRole("menu", { name: "Page 1 actions" }).getByRole("menuitem", { name: "Duplicate page" }).click();
-      await expect(pagesList(page).getByRole("option")).toHaveText(["Page 1", "Page 1 copy", "Refunds"]);
+    await test.step("the page menu holds Rename, Copy link, Move up, Move down, and Delete page…, and moves a page", async () => {
       await pageRow(page, "Refunds").hover();
       await pagesList(page).getByRole("button", { name: "Refunds actions" }).click();
-      await page.getByRole("menu", { name: "Refunds actions" }).getByRole("menuitem", { name: "Move up" }).click();
-      await expect(pagesList(page).getByRole("option")).toHaveText(["Page 1", "Refunds", "Page 1 copy"]);
+      const menu = page.getByRole("menu", { name: "Refunds actions" });
+      await expect(menu.getByRole("menuitem")).toHaveText(["Rename", "Copy link", "Move up", "Move down", "Delete page…"]);
+      await menu.getByRole("menuitem", { name: "Move up" }).click();
+      await expect(pagesList(page).getByRole("option")).toHaveText(["Refunds", "Page 1"]);
+      await expectSaved(page, folder, (board) => board.pages.map((item) => item.title).join() === "Refunds,Page 1", "the page order is saved");
     });
 
     await test.step("undo and redo go back to the page an edit changed", async () => {
-      await pageRow(page, "Page 1 copy").click();
-      await expect(pageTitle(page)).toHaveText("Page 1 copy");
+      await pageRow(page, "Page 1").click();
+      await expect(pageTitle(page)).toHaveText("Page 1");
       await expectCardsLoaded(page);
       await chooseOnCard(page, card(page, REQUIRE_USER), "Remove from page");
       await expect(card(page, REQUIRE_USER)).toHaveCount(0);
-      await pageRow(page, "Page 1").click();
-      await expect(card(page, REQUIRE_USER)).toBeVisible();
+      await pageRow(page, "Refunds").click();
+      await expect(pageTitle(page)).toHaveText("Refunds");
       await app.clickMenu(page, ["Edit", "Undo"]);
-      await expect(pageTitle(page)).toHaveText("Page 1 copy");
+      await expect(pageTitle(page)).toHaveText("Page 1");
       await expect(card(page, REQUIRE_USER)).toBeVisible();
-      await pageRow(page, "Page 1").click();
+      await pageRow(page, "Refunds").click();
+      await expect(pageTitle(page)).toHaveText("Refunds");
       await app.clickMenu(page, ["Edit", "Redo"]);
-      await expect(pageTitle(page)).toHaveText("Page 1 copy");
+      await expect(pageTitle(page)).toHaveText("Page 1");
       await expect(card(page, REQUIRE_USER)).toHaveCount(0);
     });
 
     await test.step("Delete page… asks first, then deletes the page", async () => {
-      await pageRow(page, "Page 1 copy").hover();
-      await pagesList(page).getByRole("button", { name: "Page 1 copy actions" }).click();
-      await page.getByRole("menu", { name: "Page 1 copy actions" }).getByRole("menuitem", { name: "Delete page…" }).click();
-      const confirm = dialog(page, "Delete “Page 1 copy”?");
+      await pageRow(page, "Refunds").hover();
+      await pagesList(page).getByRole("button", { name: "Refunds actions" }).click();
+      await page.getByRole("menu", { name: "Refunds actions" }).getByRole("menuitem", { name: "Delete page…" }).click();
+      const confirm = dialog(page, "Delete “Refunds”?");
       await expect(confirm).toBeVisible();
       await confirm.getByRole("button", { name: "Delete page" }).click();
-      await expect(pagesList(page).getByRole("option")).toHaveText(["Page 1", "Refunds"]);
-      await expectSaved(page, folder, (board) => board.pages.map((item) => item.title).join() === "Page 1,Refunds", "the pages are saved");
+      await expect(pagesList(page).getByRole("option")).toHaveText(["Page 1"]);
+      await expectSaved(page, folder, (board) => board.pages.map((item) => item.title).join() === "Page 1", "the pages are saved");
     });
   });
 

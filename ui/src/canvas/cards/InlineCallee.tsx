@@ -39,6 +39,7 @@ export function InlineCallee({
       </div>
       {code && view ? (
         <CodeView
+          project={project}
           code={code}
           language={view.header.language}
           label={view.header.qualifiedName}

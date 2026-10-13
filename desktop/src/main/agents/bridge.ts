@@ -1,10 +1,11 @@
 /**
  * The agent bridge (design §5.1, §5.5): how the main process has the window act for an agent. The
- * window makes an agent's edits the way it makes the person's, on the boards it holds (from its view
- * reports). An edit of a board it doesn't hold opens it first, in the background (opening the window
- * when it is closed); a new board is created there too, so the window holds it. Every request has a
- * timeout; a window that closes before it answers fails its requests with `window_closed`. A window
- * can't be told to drop a request, so a change that times out (`unconfirmed`) may still land.
+ * window makes an agent's edits the way it makes the person's, on the boards whose sessions it holds
+ * (from its view reports). An edit of a board it doesn't hold loads that board's session first,
+ * without changing what the person sees (opening the window when it is closed); a new board's file is
+ * created there too, so the window holds it. Every request has a timeout; a window that closes before
+ * it answers fails its requests with `window_closed`. A window can't be told to drop a request, so a
+ * change that times out (`unconfirmed`) may still land.
  *
  * Page revisions are checked here (D4): an edit that passes `expectRevision` reads the page from the
  * holding window first and is refused when it changed. The bridge also remembers which boards each
@@ -136,9 +137,9 @@ export class AgentBridge {
   }
 
   /**
-   * Applies an agent's operations to a page as one undo step, in the window (opening the board in the
-   * background first). With `expectRevision`, refuses (`revision_mismatch`) when
-   * the page changed since the agent read it.
+   * Applies an agent's operations to a page as one undo step, in the window (loading the board's
+   * session first). With `expectRevision`, refuses (`revision_mismatch`) when the page changed since
+   * the agent read it.
    */
   async edit(input: AgentEditInput): Promise<AgentEditOutcome> {
     const { expectRevision, ...request } = input;
@@ -162,7 +163,7 @@ export class AgentBridge {
         }
       }
       const result = read?.ok === false ? read : ((await this.ask(entry, "edit", { type: "agent_edit", ...request })) as AgentEditSuccess | AgentFailure);
-      // A report that still listed a board the window closed: open it again, once.
+      // A report that still listed a board the window no longer holds: load it again, once.
       if (!result.ok && result.code === "board_not_open" && attempt === 0) {
         this.views.released(entry.id, request.board);
         continue;
@@ -186,15 +187,15 @@ export class AgentBridge {
     }
     const result = (await this.ask(entry, "read", { type: "agent_read", ...target })) as AgentReadSuccess | AgentFailure;
     if (!result.ok && result.code === "board_not_open") {
-      // Its report still listed a board it closed.
+      // Its report still listed a board it no longer holds.
       this.views.released(entry.id, target.board);
     }
     return result.ok ? { ...result, revision: pageRevision(result.page) } : result;
   }
 
   /**
-   * Makes sure the window holds the board: it opens it in the background, on `page` when given, unless
-   * it holds it already. The window opens when it is closed.
+   * Makes sure the window holds the board's session: it loads it, on `page` when given, without
+   * changing what the person sees, unless it holds it already. The window opens when it is closed.
    */
   async open(target: { readonly board: AgentBoardRef; readonly page?: string }): Promise<AgentOpenOutcome> {
     const holder = this.holderOf(target.board);
@@ -211,38 +212,31 @@ export class AgentBridge {
   }
 
   /**
-   * Creates a draft for an agent, which the window then holds in the background: an empty one, or a
-   * copy of `copyOf` (opening that board first).
+   * Creates a board file for an agent, whose session the window then holds without showing it (the
+   * window opens when it is closed).
    */
   async create(request: Omit<AgentCreateRequest, "requestId">): Promise<AgentCreateOutcome> {
-    const event = { type: "agent_create_board", ...request } as const;
-    let answered: Answered;
-    if (request.copyOf === undefined) {
-      const entry = this.windows.open();
-      answered = { result: await this.ask(entry, "create", event), windowId: entry.id };
-    } else {
-      answered = await this.askHolder({ board: { project: request.project, id: request.copyOf } }, "create", event);
+    const entry = this.windows.open();
+    const result = (await this.ask(entry, "create", { type: "agent_create_board", ...request })) as AgentCreateSuccess | AgentFailure;
+    if (!result.ok) {
+      return result;
     }
-    const result = answered.result as AgentCreateSuccess | AgentFailure;
-    if (!result.ok || answered.windowId === null) {
-      return result.ok ? this.closed() : result;
-    }
-    this.views.holds(answered.windowId, result.board);
-    return { ...result, windowId: answered.windowId };
+    this.views.holds(entry.id, result.board);
+    return { ...result, windowId: entry.id };
   }
 
   /**
-   * Changes a board's pages or title as one undo step, in the window (opening the board in the
-   * background first).
+   * Changes a board's pages or title as one undo step, in the window (loading the board's session
+   * first).
    */
   async editBoard(request: Omit<AgentBoardEditRequest, "requestId">): Promise<AgentBoardEditResult> {
-    return (await this.askHolder({ board: request.board }, "board", { type: "agent_edit_board", ...request })).result as AgentBoardEditResult;
+    return (await this.askHolder({ board: request.board }, "board", { type: "agent_edit_board", ...request })) as AgentBoardEditResult;
   }
 
   /**
-   * Shows a board to the person (design §6.3 `show`). In the `background`, the board is opened as for
-   * an edit and nothing moves; otherwise the window switches to it and `page`, selects and centers
-   * `item`, and comes to the front.
+   * Shows a board to the person (design §6.3 `show`). In the `background`, the board's session is
+   * loaded as for an edit and nothing moves; otherwise the window switches to it and `page`, selects
+   * and centers `item`, and comes to the front.
    */
   async show(target: { readonly board: AgentBoardRef; readonly page?: string; readonly item?: string }, background: boolean): Promise<AgentShowOutcome> {
     const opened = await this.open({ board: target.board, ...(target.page !== undefined ? { page: target.page } : {}) });
@@ -262,11 +256,11 @@ export class AgentBridge {
   }
 
   /**
-   * Applies one repair a health item offers (`repair_board`), as one undo step in the window (opening
-   * the board in the background first).
+   * Applies one repair a health item offers (`repair_board`), as one undo step in the window (loading
+   * the board's session first).
    */
   async repair(request: Omit<AgentRepairRequest, "requestId">): Promise<AgentRepairOutcome> {
-    const result = (await this.askHolder({ board: request.board, page: request.page }, "repair", { type: "agent_repair", ...request })).result as AgentRepairResult;
+    const result = (await this.askHolder({ board: request.board, page: request.page }, "repair", { type: "agent_repair", ...request })) as AgentRepairResult;
     if (!result.ok) {
       return result;
     }
@@ -321,26 +315,26 @@ export class AgentBridge {
   }
 
   /**
-   * Asks the window about a board (opening it in the background first, on `page` when given), and
-   * says which window answered (null when none could be asked). A window whose report still listed a
-   * board it closed answers `board_not_open`: the board is opened again, once.
+   * Asks the window about a board (loading its session first, on `page` when given). A window whose
+   * report still listed a board it no longer holds answers `board_not_open`: the board is loaded
+   * again, once.
    */
-  private async askHolder(target: { readonly board: AgentBoardRef; readonly page?: string }, kind: RequestKind, event: DistributiveOmit<AgentShellEvent, "requestId">): Promise<Answered> {
+  private async askHolder(target: { readonly board: AgentBoardRef; readonly page?: string }, kind: RequestKind, event: DistributiveOmit<AgentShellEvent, "requestId">): Promise<unknown> {
     for (let attempt = 0; ; attempt += 1) {
       const opened = await this.open(target);
       if (!opened.ok) {
-        return { result: opened, windowId: null };
+        return opened;
       }
       const entry = this.windows.get(opened.windowId);
       if (!entry) {
-        return { result: this.closed(), windowId: null };
+        return this.closed();
       }
       const result = (await this.ask(entry, kind, event)) as AgentFailure | { readonly ok: true };
       if (!result.ok && result.code === "board_not_open" && attempt === 0) {
         this.views.released(entry.id, target.board);
         continue;
       }
-      return { result, windowId: entry.id };
+      return result;
     }
   }
 
@@ -372,12 +366,6 @@ export class AgentBridge {
       this.windows.deliver(entry, { ...event, requestId } as AgentShellEvent);
     });
   }
-}
-
-/** A window's answer, and which window gave it (null when none could be asked). */
-interface Answered {
-  readonly result: unknown;
-  readonly windowId: number | null;
 }
 
 /** `Omit` over each member of a union. */

@@ -11,7 +11,7 @@ import type { AgentItemResult, AgentStatement, AgentStepGroupSpec, GroupStepsOp 
 import { groupConflict, groupSelection } from "../../../code/outline";
 import type { Card, Key, OutlineItem, Page } from "../../../ipc/generated";
 import { addGroup, cardKey, isFreeId, updateGroup } from "../document";
-import { AgentRefusal, cardName, cardOf, cardProject, guardPeopleText, invalid, type OpContext } from "./context";
+import { AgentRefusal, cardName, cardOf, guardPeopleText, invalid, type OpContext } from "./context";
 
 /** `27–31`, or `27` for one line. */
 function linesText(from: number, to: number): string {
@@ -71,7 +71,7 @@ function chooseStatements(outline: readonly OutlineItem[], spec: AgentStepGroupS
 
 /** A card's statement outline, or a refusal when its code isn't available. */
 function outlineOf(ctx: OpContext, card: Card, name: string): readonly OutlineItem[] {
-  const model = ctx.data.model(cardProject(ctx, card), cardKey(card));
+  const model = ctx.data.model(ctx.board.project, cardKey(card));
   const code = model?.type === "block" && model.code?.source.state === "current" ? model.code.source : null;
   if (!code) {
     throw new AgentRefusal(

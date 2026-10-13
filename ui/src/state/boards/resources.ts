@@ -7,7 +7,7 @@
  * `undefined`, and an empty list is deleted, as the file omits them.
  */
 
-import type { Anchor, Column, Key, Page, ProjectName, Resource, ResourceKind } from "../../ipc/generated";
+import type { Anchor, Column, Key, Page, Resource, ResourceKind } from "../../ipc/generated";
 import { description, uniqueId } from "./document";
 
 /** A page's resource cards, as the queries read them. */
@@ -23,9 +23,8 @@ export function findResource(page: Resourced, resourceId: string): Resource | un
 export interface ResourceClaim {
   readonly kind: ResourceKind;
   readonly name: string;
-  /** A table's type key, in `project` (absent: the board's own). */
+  /** A table's type key. */
   readonly type?: Key;
-  readonly project?: ProjectName;
   readonly columns?: readonly Column[];
   readonly anchors: readonly Anchor[];
 }
@@ -44,16 +43,12 @@ function writeClaim(resource: Resource, claim: ResourceClaim): void {
   resource.name = claim.name;
   resource.anchors = claim.anchors.map((anchor) => ({ ...anchor }));
   delete resource.type;
-  delete resource.project;
   delete resource.columns;
   if (claim.kind !== "table") {
     return;
   }
   if (claim.type !== undefined) {
     resource.type = claim.type;
-    if (claim.project !== undefined) {
-      resource.project = claim.project;
-    }
   }
   if (claim.columns !== undefined && claim.columns.length > 0) {
     resource.columns = claim.columns.map((column) => ({ ...column }));
@@ -74,7 +69,7 @@ export function addResource(page: Page, spec: NewResource): string {
 export function saysClaim(resource: Resource, claim: ResourceClaim): boolean {
   const next: Resource = { ...resource, anchors: [] };
   writeClaim(next, claim);
-  const said = (item: Resource) => JSON.stringify([item.kind, item.name, item.type, item.project, item.columns ?? [], item.anchors]);
+  const said = (item: Resource) => JSON.stringify([item.kind, item.name, item.type, item.columns ?? [], item.anchors]);
   return said(next) === said(resource);
 }
 

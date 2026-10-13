@@ -8,7 +8,7 @@ import type { AgentBoardInfo, AgentCardResult, AgentFailure, AgentIdentity, Agen
 import { computeArrows, type Arrow } from "../../../canvas/arrows";
 import { lastVerifiedCode } from "../../../canvas/cardData";
 import { cardBody } from "../../../code/typeKinds";
-import type { BoardState, Card, Description, Link, Note, Page, ProjectId, ProjectName, Resource } from "../../../ipc/generated";
+import type { BoardState, Card, Description, Link, Note, Page, Resource } from "../../../ipc/generated";
 import { estimatedResourceSize, fallbackItemSize, pageGeometry } from "../../../canvas/frames/geometry";
 import { tableColumns, type TableColumn } from "../../../canvas/resources/columns";
 import { RESOURCE_WORDS } from "../../../canvas/resources/kinds";
@@ -16,7 +16,6 @@ import type { Rect, Size } from "../../../canvas/layout";
 import { measureText } from "../../../canvas/measure";
 import { estimatedCardSize } from "../../../canvas/sizing";
 import { authorName } from "../../../code/text";
-import { refProjectFor, resolveRefProject, type ProjectIndex } from "../../workspace";
 import { entranceTitle } from "../api";
 import { cardKey, findCard, keyDisplayName } from "../document";
 import { findFrame } from "../frames";
@@ -35,9 +34,9 @@ export function failure(code: string, message: string): AgentFailure {
   return { ok: false, code, message };
 }
 
-/** What the agent learns about a board (as held, or as saved): its title, publish state, and file revision. */
-export function boardInfo(board: Pick<BoardState, "document" | "place" | "published" | "revision">): AgentBoardInfo {
-  return { title: board.document.title, place: board.place, changes: board.published?.changes ?? 0, revision: board.revision };
+/** What the agent learns about a board (as held, or as saved): its title and file revision. */
+export function boardInfo(board: Pick<BoardState, "document" | "revision">): AgentBoardInfo {
+  return { title: board.document.title, revision: board.revision };
 }
 
 /** Why an operation can't apply, and what to do instead (design §7.8). Nothing of the edit applies. */
@@ -64,7 +63,6 @@ export interface OpContext {
   readonly board: BoardRef;
   readonly agent: AgentIdentity;
   readonly data: AgentData;
-  readonly index: ProjectIndex;
   /** The page's measured card sizes. */
   readonly measured: Readonly<Record<string, CardSize>>;
   /** Warnings for the result, added as operations apply. */
@@ -161,27 +159,9 @@ export function guardRemoval(ctx: OpContext, page: Page, ids: Iterable<string>, 
   }
 }
 
-/** The name a board file gives `project` (a `ref.project`, a resource's or an anchor's `project`): undefined for the board's own project, or a refusal. */
-export function refProject(ctx: Pick<OpContext, "index" | "board">, project: ProjectId): ProjectName | undefined {
-  const row = ctx.index.byId.get(project);
-  if (!row) {
-    throw invalid(`No project with the id “${project}” is in the workspace. list_projects shows the projects and their ids.`);
-  }
-  const result = refProjectFor(ctx.index, ctx.board.project, project);
-  if (!result.ok) {
-    throw invalid(`${row.name} has the same name as this board's project, so nothing of it can be added. Ask the person to rename one of them in its settings.`);
-  }
-  return result.project;
-}
-
-/** The project a card reads from, or null for a project that isn't connected. */
-export function cardProject(ctx: Pick<OpContext, "index" | "board">, card: Pick<Card, "ref">): ProjectId | null {
-  return resolveRefProject(ctx.index, ctx.board.project, card.ref.project);
-}
-
 /** Unfold's name for a card: `OrderService.place`, `POST /orders`. */
 export function cardName(ctx: OpContext, card: Pick<Card, "ref">): string {
-  const model = ctx.data.model(cardProject(ctx, card), cardKey(card));
+  const model = ctx.data.model(ctx.board.project, cardKey(card));
   if (model?.type === "block") {
     return model.header.qualifiedName;
   }
@@ -195,7 +175,6 @@ export function cardResult(ctx: OpContext, card: Pick<Card, "id" | "ref">, statu
     id: card.id,
     status,
     key: cardKey(card),
-    project: cardProject(ctx, card) ?? ctx.board.project,
     name: cardName(ctx, card),
     ...extra,
   };
@@ -219,7 +198,7 @@ export function cardSize(ctx: OpContext, page: Pick<Page, "defaultView">, card: 
   if (measured) {
     return measured;
   }
-  const project = cardProject(ctx, card);
+  const { project } = ctx.board;
   const key = cardKey(card);
   const definition = ctx.data.definition(project, key);
   return estimatedCardSize(
@@ -227,7 +206,6 @@ export function cardSize(ctx: OpContext, page: Pick<Page, "defaultView">, card: 
       key,
       model: ctx.data.model(project, key),
       view: shownView(null, card, page.defaultView),
-      monogram: card.ref.project !== undefined,
       ...(card.description ? { description: card.description } : {}),
       ...(definition ? { definition } : {}),
     },
@@ -241,7 +219,7 @@ export function pageArrows(ctx: OpContext, page: Page): Arrow[] {
     page.cards.map((card) => ({
       id: card.id,
       key: cardKey(card),
-      project: cardProject(ctx, card),
+      project: ctx.board.project,
       entrance: "entrance" in card.ref,
       body: cardBody(cardKey(card), shownView(null, card, page.defaultView)),
     })),
@@ -251,14 +229,9 @@ export function pageArrows(ctx: OpContext, page: Page): Arrow[] {
   );
 }
 
-/** The project a resource card's type is in (its `project`, else the board's own), or null when it isn't connected. */
-export function resourceProject(ctx: Pick<OpContext, "index" | "board">, resource: Pick<Resource, "project">): ProjectId | null {
-  return resolveRefProject(ctx.index, ctx.board.project, resource.project);
-}
-
 /** A table's columns as its card shows them: its type's fields (loaded for the edit) with its marks, or its own. */
 export function resourceColumns(ctx: OpContext, resource: Resource): TableColumn[] {
-  const definition = resource.type !== undefined ? ctx.data.definition(resourceProject(ctx, resource), resource.type) : undefined;
+  const definition = resource.type !== undefined ? ctx.data.definition(ctx.board.project, resource.type) : undefined;
   return tableColumns(resource, definition);
 }
 

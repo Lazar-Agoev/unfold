@@ -11,7 +11,7 @@ const cards = [
   { id: "charge", ref: { block: CHARGE }, at: [0, 0] as [number, number] },
   { id: "post-orders", ref: { entrance: ROUTE }, at: [0, 0] as [number, number] },
   { id: "create-order", ref: { block: KEY }, at: [0, 0] as [number, number] },
-  { id: "receipt", ref: { block: "src/r.ts#function:sendReceipt", project: "billing" }, at: [0, 0] as [number, number] },
+  { id: "receipt", ref: { block: "src/r.ts#function:sendReceipt" }, at: [0, 0] as [number, number] },
 ];
 const outline: PageOutline = {
   page: "page-1",
@@ -30,8 +30,7 @@ const thePage = page("page-1", cards, {
   ],
 });
 const review: HealthItem = { page: "page-1", kind: "review", target: { card: "charge" }, message: "Changed", repairs: [] };
-const notConnected: HealthItem = { page: "page-1", kind: "notConnected", target: { card: "receipt" }, message: "Not connected", repairs: [] };
-const context = { boardProject: "orders", connected: (project: string | undefined) => project === undefined, items: [review, notConnected] };
+const items = [review];
 
 describe("On this page", () => {
   it("lists the cards in follow order, with cards added since the last save last", () => {
@@ -44,7 +43,7 @@ describe("On this page", () => {
   });
 
   it("nests a card's groups, then its links one level deeper", () => {
-    const { rows } = pageRows(thePage, outline, context);
+    const rows = pageRows(thePage, outline, items);
     expect(rows.map((row) => [row.kind, row.id, row.depth])).toEqual([
       ["card", "post-orders", 0],
       ["card", "create-order", 1],
@@ -57,19 +56,10 @@ describe("On this page", () => {
   });
 
   it("names unlabeled links after their target, and marks rows that need review", () => {
-    const { rows } = pageRows(thePage, outline, context);
+    const rows = pageRows(thePage, outline, items);
     const plain = rows.find((row) => row.id === "plain");
     expect(plain?.kind === "link" ? plain.label : null).toBe("link to POST /orders");
     expect(rows.filter((row) => row.review).map((row) => row.id)).toEqual(["charge"]);
-  });
-
-  it("shows the project column only when the page mixes projects, and which cards aren't connected", () => {
-    const mixed = pageRows(thePage, outline, context);
-    expect(mixed.multiProject).toBe(true);
-    const receipt = mixed.rows.find((row) => row.id === "receipt");
-    expect(receipt?.kind === "card" ? [receipt.project, receipt.connected] : null).toEqual(["billing", false]);
-    const own = pageRows(page("page-1", cards.slice(0, 3)), outline, context);
-    expect(own.multiProject).toBe(false);
   });
 
   it("lists each proposed step under its card, after its groups and before its links, marked when it needs review", () => {
@@ -82,7 +72,7 @@ describe("On this page", () => {
       ],
     });
     const missing: HealthItem = { page: "page-1", kind: "missing", target: { proposal: "retry" }, message: "The step this proposal goes after is missing", repairs: ["reconnect", "removeProposal"] };
-    const { rows } = pageRows(proposed, outline, { ...context, items: [missing] });
+    const rows = pageRows(proposed, outline, [missing]);
     expect(rows.map((row) => [row.kind, row.id, row.depth, row.review])).toEqual([
       ["card", "post-orders", 0, false],
       ["card", "create-order", 1, false],
@@ -105,7 +95,7 @@ describe("On this page", () => {
         { id: "empty", title: "Notes", members: ["a-note"], look: "box", author: "agent:claude" },
       ],
     });
-    const { rows } = pageRows(framed, outline, { ...context, items: [{ page: "page-1", kind: "outdated", target: { frame: "server" }, message: "Changed", repairs: [] }] });
+    const rows = pageRows(framed, outline, [{ page: "page-1", kind: "outdated", target: { frame: "server" }, message: "Changed", repairs: [] }]);
     expect(rows.map((row) => [row.kind, row.id, row.depth, row.review])).toEqual([
       ["frame", "system", 0, false],
       ["frame", "server", 1, true],

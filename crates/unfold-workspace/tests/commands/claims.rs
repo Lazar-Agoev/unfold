@@ -2,7 +2,7 @@
 //! `ts-orders` (the connections of design §4.7 and an `orders` table backed by `interface
 //! Order`), the example board saved to itself with real signatures and exported to Mermaid, and
 //! evidence files: anchors into them are signed, go outdated when the file changes, and are
-//! repaired, also into another project.
+//! repaired.
 
 use serde_json::{Value, json};
 use unfold_core::testkit::{assert_golden, testdata_dir};
@@ -325,71 +325,4 @@ fn evidence_files_anchor_claims_that_go_outdated_when_the_file_changes() {
     );
     let removed = repair(json!({ "page": "page-1", "kind": "remove_resource", "resource": "customers" }));
     assert!(removed["document"]["pages"][0].get("resources").is_none());
-}
-
-/// An anchor reconnected into another project: the save loads that project's graph, so the
-/// claim is grounded and signed there.
-#[test]
-fn an_anchor_reconnects_into_another_project() {
-    let harness = Harness::new("ts-orders", false);
-    let config = harness.read("unfold.toml");
-    let evidence = "\n[evidence]\nfiles = [\"db/*.sql\"]\n";
-    harness.write("unfold.toml", &format!("{config}{evidence}"));
-    harness.write("db/schema.sql", SCHEMA);
-    harness.ok(1, "select_project", json!({ "project": harness.project }));
-    harness.ok(1, "compile", json!({ "project": harness.project }));
-    let (python, python_root) = harness.add("py-orders", "py-orders");
-    let python_config = std::fs::read_to_string(python_root.join("unfold.toml")).expect("config");
-    std::fs::write(
-        python_root.join("unfold.toml"),
-        format!("{python_config}{evidence}"),
-    )
-    .expect("config");
-    std::fs::create_dir_all(python_root.join("db")).expect("mkdir");
-    std::fs::write(python_root.join("db/schema.sql"), SCHEMA).expect("schema");
-    harness.ok(9, "compile", json!({ "project": python }));
-
-    let board = harness.draft(1, "Customers");
-    let id = id_of(&board);
-    let mut edit = edit_of(&board);
-    edit["pages"][0]["resources"] = json!([{
-        "id": "customers", "kind": "table", "name": "customers",
-        "columns": [{ "name": "id" }, { "name": "email" }],
-        "anchors": [{ "file": "db/schema.sql", "lines": [1, 4] }],
-        "at": [0, 0], "author": "agent:claude"
-    }]);
-    harness.save(1, &id, edit);
-    let reconnected = harness.ok(
-        1,
-        "repair_board",
-        json!({ "project": harness.project, "id": id, "repair": {
-            "page": "page-1", "kind": "reconnect_anchor", "item": "customers", "anchor": 0,
-            "to": { "file": "db/schema.sql", "lines": [1, 4], "project": "py-orders" }
-        } }),
-    );
-    let document = &reconnected["document"];
-    assert_eq!(document["projects"], json!(["py-orders"]));
-    let resource = &document["pages"][0]["resources"][0];
-    assert_eq!(
-        resource["anchors"],
-        json!([{ "file": "db/schema.sql", "lines": [1, 4], "project": "py-orders" }])
-    );
-    assert!(
-        resource["signature"].is_string(),
-        "signed over the other project's lines"
-    );
-    assert_eq!(reconnected["health"]["items"], json!([]));
-
-    // The board's own project is named only by omitting it, as in a save.
-    assert_eq!(
-        harness.code(
-            1,
-            "repair_board",
-            json!({ "project": harness.project, "id": id, "repair": {
-                "page": "page-1", "kind": "reconnect_anchor", "item": "customers", "anchor": 0,
-                "to": { "file": "db/schema.sql", "lines": [1, 4], "project": "ts-orders" }
-            } })
-        ),
-        "invalid_args"
-    );
 }

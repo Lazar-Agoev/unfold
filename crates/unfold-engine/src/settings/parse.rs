@@ -13,15 +13,16 @@ use unfold_core::vocab::{DetectorId, EntranceKind, HttpMethod, Language};
 use unfold_core::{ByteRange, RepoPath};
 
 use super::{
-    Application, EntranceOverride, Evidence, FolderPath, MAX_PROJECT_NAME, ManualEntrance, ManualTargets,
-    OverrideMatch, Process, ProcessStart, PythonProject, PythonVersion, SETTINGS_PATH, Scope, Settings,
-    is_project_name,
+    Application, EntranceOverride, Evidence, FolderPath, ManualEntrance, ManualTargets, OverrideMatch,
+    Process, ProcessStart, PythonProject, PythonVersion, SETTINGS_PATH, Scope, Settings,
 };
 use crate::launch::LaunchTarget;
 use crate::locator::Locator;
 
 /// The longest application name, in characters.
 const MAX_NAME: usize = 120;
+/// The longest `id`, in characters (a valid id is ASCII).
+const MAX_ID: usize = 64;
 /// The longest description, in characters.
 const MAX_DESCRIPTION: usize = 2000;
 /// The longest schedule, in characters.
@@ -68,7 +69,6 @@ pub enum SettingsError {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawSettings {
-    project: Option<RawProjectTable>,
     languages: Option<Spanned<Vec<Spanned<String>>>>,
     scope: Option<RawScope>,
     detectors: Option<RawDetectors>,
@@ -84,13 +84,6 @@ struct RawSettings {
 #[serde(deny_unknown_fields)]
 struct RawEvidence {
     files: Option<Vec<Spanned<String>>>,
-}
-
-/// `[project]`.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawProjectTable {
-    name: Option<Spanned<String>>,
 }
 
 #[derive(Deserialize)]
@@ -313,11 +306,6 @@ pub(super) fn parse(text: &str) -> Result<Settings, SettingsError> {
 }
 
 fn validate(raw: RawSettings, source: &Source<'_>) -> Result<Settings, SettingsError> {
-    let project_name = raw
-        .project
-        .and_then(|project| project.name)
-        .map(|name| project_name(name, source))
-        .transpose()?;
     let languages = raw.languages.map(|list| languages(list, source)).transpose()?;
     let scope = match raw.scope {
         Some(scope) => self::scope(scope, source)?,
@@ -350,7 +338,6 @@ fn validate(raw: RawSettings, source: &Source<'_>) -> Result<Settings, SettingsE
         None => Evidence::default(),
     };
     Ok(Settings {
-        project_name,
         languages,
         scope,
         disabled_detectors,
@@ -360,19 +347,6 @@ fn validate(raw: RawSettings, source: &Source<'_>) -> Result<Settings, SettingsE
         overrides,
         evidence,
     })
-}
-
-fn project_name(name: Spanned<String>, source: &Source<'_>) -> Result<String, SettingsError> {
-    if is_project_name(name.get_ref()) {
-        return Ok(name.into_inner());
-    }
-    Err(source.error(
-        name.span(),
-        format!(
-            "invalid project name \"{}\"; use 1 to {MAX_PROJECT_NAME} ASCII letters, digits, `.`, `_`, or `-`, starting with a letter or digit",
-            name.get_ref()
-        ),
-    ))
 }
 
 fn languages(
@@ -524,15 +498,22 @@ fn projects(raw: Vec<Spanned<RawProject>>, source: &Source<'_>) -> Result<Vec<Py
 
 /// An `id`: 1 to 64 ASCII letters, digits, `.`, `_`, or `-`, starting with a letter or digit.
 fn id(id: &Spanned<String>, source: &Source<'_>) -> Result<Box<str>, SettingsError> {
-    // The same rule as a project name.
-    if is_project_name(id.get_ref()) {
-        return Ok(id.get_ref().as_str().into());
+    let text = id.get_ref();
+    let valid = text.len() <= MAX_ID
+        && text
+            .chars()
+            .next()
+            .is_some_and(|first| first.is_ascii_alphanumeric())
+        && text
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-'));
+    if valid {
+        return Ok(text.as_str().into());
     }
     Err(source.error(
         id.span(),
         format!(
-            "invalid id \"{}\"; use 1 to {MAX_PROJECT_NAME} ASCII letters, digits, `.`, `_`, or `-`, starting with a letter or digit",
-            id.get_ref()
+            "invalid id \"{text}\"; use 1 to {MAX_ID} ASCII letters, digits, `.`, `_`, or `-`, starting with a letter or digit"
         ),
     ))
 }

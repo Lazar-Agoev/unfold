@@ -61,7 +61,7 @@ export async function launchCompiled(
 }
 
 /**
- * Traces an entrance from Home's How it starts onto a new draft board, which the window shows, and
+ * Traces an entrance from Home's How it starts onto a new board, which the window shows, and
  * waits for its cards. The new page opens in Diagram, with the entrance and its handlers expanded
  * (their written Flow).
  */

@@ -1,7 +1,6 @@
 /**
  * A compact card in the Diagram lens (design §4.1): one node. Its header shows the chevron that expands
- * it (a function to its Flow, an entrance to its evidence and targets), the project monogram (a card
- * from another project), the kind's mark (`ƒ` for a function, or the entrance's kind: `HTTP`, `WORKER`,
+ * it (a function to its Flow, an entrance to its evidence and targets), the kind's mark (`ƒ` for a function, or the entrance's kind: `HTTP`, `WORKER`,
  * `SCHEDULE`, `COMMAND`), the name, and where it is; the review banner and the whole description (with
  * the agent mark when an agent wrote it) follow, then how many proposed steps it holds ("1 proposal";
  * they show in its Flow). Its arrows leave from its edge, one per card it calls. Folded, it shows only
@@ -11,7 +10,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useUpdateNodeInternals } from "@xyflow/react";
 import { useLayoutEffect, useMemo } from "react";
-import { Monogram } from "../../components";
 import type { Card, CardView, Key, ProjectId } from "../../ipc/generated";
 import { plural } from "../../lib/format";
 import { cardKey, findPage, keyDisplayName, proposalsOf, useOpenBoard, type PageTarget } from "../../state/boards";
@@ -69,10 +67,9 @@ export function DiagramCard({ target, project, card, ports, selected }: DiagramC
     const page = findPage(board.document, target.page);
     return page ? proposalsOf(page, card.id).length : 0;
   }) ?? 0;
-  const foreign = card.ref.project;
   const width = useMemo(
-    () => nodeWidth({ mark: text.mark, name: text.name, location: text.location, monogram: foreign !== undefined, code: !entrance }, measure),
-    [text, foreign, entrance, measure],
+    () => nodeWidth({ mark: text.mark, name: text.name, location: text.location, code: !entrance }, measure),
+    [text, entrance, measure],
   );
 
   const portsKey = ports.join("\u0000");
@@ -102,7 +99,6 @@ export function DiagramCard({ target, project, card, ports, selected }: DiagramC
         }}
       >
         {folded ? null : <ExpandToggle target={target} cardId={card.id} expanded={false} name={text.name} />}
-        {foreign !== undefined ? <Monogram name={foreign} size={20} /> : null}
         {entrance ? <span className="ecard-method node-mark">{text.mark}</span> : <CardGlyph kind={model?.type === "block" ? model.header.kind : null} />}
         <h3 className="card-title" title={text.name}>
           {text.name}

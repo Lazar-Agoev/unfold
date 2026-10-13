@@ -22,7 +22,7 @@ const cart: CardView = {
   flow: null,
 };
 const MODELS: Readonly<Record<Key, CardView>> = { [CREATE]: createOrder, [CART]: cart };
-const context: SourceContext = { project: (name) => (name === undefined ? P : null), model: (_project, key) => MODELS[key] };
+const context: SourceContext = { project: P, model: (key) => MODELS[key] };
 
 const CARDS: readonly Card[] = [
   { id: "create-order", ref: { block: CREATE }, at: [0, 0] },
@@ -55,7 +55,7 @@ describe("where Add proposed step after… is offered", () => {
   });
 
   it("not while the card's Flow isn't current", () => {
-    const stale: SourceContext = { ...context, model: (_project, key) => (key === CREATE ? { ...createOrder, flow: createOrder.flow ? { ...createOrder.flow, source: "changed" } : null } : MODELS[key]) };
+    const stale: SourceContext = { ...context, model: (key) => (key === CREATE ? { ...createOrder, flow: createOrder.flow ? { ...createOrder.flow, source: "changed" } : null } : MODELS[key]) };
     expect(proposalChoice(page("page-1", CARDS), step(ORDER), stale)).toBeNull();
   });
 

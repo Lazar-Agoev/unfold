@@ -64,7 +64,7 @@ fn detaching_a_window_waits_for_its_last_window_state_save() {
     // its last board.
     let harness = Harness::compiled("ts-orders");
     for round in 0..5 {
-        let board = format!(".unfold/local/drafts/board-{round}.json");
+        let board = format!(".unfold/boards/board-{round}.json");
         let shown = state(&harness.project, Some(&board));
         let (sender, receiver) = std::sync::mpsc::channel();
         harness.host.dispatch_async(

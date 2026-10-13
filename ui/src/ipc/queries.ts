@@ -3,7 +3,7 @@
  * to read it, and the invalidation engine events drive (docs/ipc.md).
  *
  * Every project command's arguments carry `project`, so each event touches only the queries of its
- * project (and the cross-project `search`, `drafts`, and `board_refs` that can include it). Nothing is
+ * project (and the cross-project `search` that can include it). Nothing is
  * refetched wholesale except `graph_updated.everything` (that project only) and the engine-restart
  * reset (`resetEngineQueries`), which the window's session code orders.
  */
@@ -144,7 +144,6 @@ export function applyEngineEvent(client: QueryClient, event: WorkspaceEvent): vo
           case "callers":
           case "preview":
           case "project_summary":
-          case "board_thumbnails":
           case "line_labels":
           case "call_contract":
           case "type_definition":
@@ -178,30 +177,15 @@ export function applyEngineEvent(client: QueryClient, event: WorkspaceEvent): vo
       });
       return;
     }
-    case "boards_changed": {
-      const { project } = event;
-      const boards = new Set(event.boards);
-      invalidate(client, (command, args) => {
-        if (command === "drafts" || command === "board_refs") {
-          return true;
-        }
-        if (args["project"] !== project) {
-          return false;
-        }
-        if (command === "board_thumbnails") {
-          const ids = args["boards"];
-          return Array.isArray(ids) && ids.some((id) => typeof id === "string" && boards.has(id));
-        }
-        return command === "list_boards" || command === "project_summary";
-      });
+    case "boards_changed":
+      invalidate(client, (command, args) => args["project"] === event.project && (command === "list_boards" || command === "project_summary" || command === "board_refs"));
       return;
-    }
     case "problems_changed":
       invalidate(client, (command, args) => args["project"] === event.project && (command === "problems" || command === "project_summary"));
       return;
     case "config_changed":
     case "compile_progress":
-    case "board_conflict":
+    case "board_reloaded":
       // Not about the cache: a settings change recompiles (`graph_updated` follows), and the compile and
       // board stores follow the others.
       return;

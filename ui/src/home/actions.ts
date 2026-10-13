@@ -1,5 +1,5 @@
 /**
- * What Home's buttons and rows do with boards: open one, make one, trace an entrance onto a new draft,
+ * What Home's buttons and rows do with boards: open one, make one, trace an entrance onto a new board,
  * and Review a board's health. Each runs from a click, so failures show as a toast rather than
  * throwing (the `flows.ts` pattern).
  */
@@ -28,7 +28,7 @@ export async function newBoardIn(project: ProjectId, options: { readonly folder?
   }
 }
 
-/** Opens the entrance on a new draft board (Trace →). */
+/** Opens the entrance on a new board (Trace →). */
 export async function traceFromHome(project: ProjectId, entrance: Key): Promise<void> {
   try {
     await traceEntrance(project, entrance);

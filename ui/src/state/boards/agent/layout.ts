@@ -35,7 +35,7 @@ import { cardExpanded, shownView } from "../store";
 import { findFrame, frameChain, frameItems, moveFrame, updateFrame } from "../frames";
 import { findNote } from "../notes";
 import { findResource } from "../resources";
-import { AgentRefusal, cardName, cardProject, cardResult, invalid, itemSize, pageArrows, pageRects, type ApplyOp, type OpContext } from "./context";
+import { AgentRefusal, cardName, cardResult, invalid, itemSize, pageArrows, pageRects, type ApplyOp, type OpContext } from "./context";
 import { checkCallPath, type ModelLookup } from "./expansions";
 import { frameResult } from "./frames";
 import { resourceResult } from "./resources";
@@ -43,10 +43,9 @@ import { resourceResult } from "./resources";
 /** The most models one call path's check loads: a model per level, and a callback's per level. */
 const MAX_PATH_LOADS = 2 * MAX_EXPANSION_DEPTH + 1;
 
-/** The models of a card's project, as the edit loaded them. */
-function modelsOf(ctx: OpContext, card: Pick<Card, "ref">): ModelLookup {
-  const project = cardProject(ctx, card);
-  return (key) => (project === null ? null : ctx.data.loaded(project, key));
+/** The models of the board's project, as the edit loaded them. */
+function modelsOf(ctx: OpContext): ModelLookup {
+  return (key) => ctx.data.loaded(ctx.board.project, key);
 }
 
 /**
@@ -56,18 +55,17 @@ function modelsOf(ctx: OpContext, card: Pick<Card, "ref">): ModelLookup {
 export async function prepareSetView(op: SetViewOp, page: Page, ctx: OpContext): Promise<ApplyOp> {
   for (const item of op.items) {
     const card = findCard(page, item.id);
-    const project = card ? cardProject(ctx, card) : null;
-    if (!card || project === null || !("block" in card.ref)) {
+    if (!card || !("block" in card.ref)) {
       continue;
     }
-    const models = modelsOf(ctx, card);
+    const models = modelsOf(ctx);
     for (const path of item.expandCalls ?? []) {
       for (let loads = 0; loads < MAX_PATH_LOADS; loads += 1) {
         const check = checkCallPath(card.ref.block, path, models);
         if (check.ok !== "load") {
           break;
         }
-        await ctx.data.loadModel(project, check.key);
+        await ctx.data.loadModel(ctx.board.project, check.key);
       }
     }
   }
@@ -133,7 +131,7 @@ function setCardShow(ctx: OpContext, page: Page, card: Card, item: AgentViewSpec
   }
   if ("block" in card.ref && (item.expandCalls ?? []).length > 0) {
     const root = card.ref.block;
-    const models = modelsOf(ctx, card);
+    const models = modelsOf(ctx);
     for (const path of item.expandCalls ?? []) {
       const check = checkCallPath(root, path, models);
       if (check.ok === "load") {

@@ -1,7 +1,7 @@
 /**
  * What Enter does with Add's selection: an entrance or a definition goes onto the current page (⌘Enter:
  * onto a new page after it; a type declaration as a Diagram card, its fields); from Home it starts a new
- * draft in the result's own project. A file opens in the peek sheet; a text match opens it at its line.
+ * board in the result's own project. A file opens in the peek sheet; a text match opens it at its line.
  */
 
 import { showToast } from "../components";
@@ -32,14 +32,14 @@ function pageFor(target: PageTarget, newPage: boolean): PageTarget | null {
 
 async function addToPage(choice: Extract<AddChoice, { kind: "entrance" | "definition" }>, page: PageTarget): Promise<void> {
   if (choice.kind === "entrance") {
-    await openEntrance(page, choice.project, choice.key);
+    await openEntrance(page, choice.key);
   } else {
-    addBlock(page, choice.project, choice.key, choice.view);
+    addBlock(page, choice.key, choice.view);
   }
 }
 
-/** Starts a new draft in the result's project with it on the first page. */
-async function addToNewDraft(choice: Extract<AddChoice, { kind: "entrance" | "definition" }>): Promise<void> {
+/** Starts a new board in the result's project with it on the first page. */
+async function addToNewBoard(choice: Extract<AddChoice, { kind: "entrance" | "definition" }>): Promise<void> {
   if (choice.kind === "entrance") {
     await traceEntrance(choice.project, choice.key);
     return;
@@ -47,7 +47,7 @@ async function addToNewDraft(choice: Extract<AddChoice, { kind: "entrance" | "de
   const board = await newBoard(choice.project, { title: choice.name });
   const page = getOpenBoard(board)?.activePage;
   if (page !== undefined) {
-    addBlock({ board, page }, choice.project, choice.key, choice.view);
+    addBlock({ board, page }, choice.key, choice.view);
   }
 }
 
@@ -74,7 +74,7 @@ export async function activateChoice(choice: AddChoice, target: AddTarget, newPa
   }
   try {
     if (target.kind === "home") {
-      await addToNewDraft(choice);
+      await addToNewBoard(choice);
       return;
     }
     const page = pageFor(target.target, newPage);

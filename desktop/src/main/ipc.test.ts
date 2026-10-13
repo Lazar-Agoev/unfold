@@ -156,7 +156,7 @@ describe("confirm_remove_project", () => {
   it("refuses a missing or oversized name", async () => {
     const { open, invoke } = setup();
     const entry = open();
-    for (const args of [{}, { name: "" }, { name: 3 }, { name: "x".repeat(65) }]) {
+    for (const args of [{}, { name: "" }, { name: 3 }, { name: "x".repeat(256) }]) {
       expect(await invoke(entry, "confirm_remove_project", args)).toMatchObject({
         ok: false,
         error: { code: "invalid_command" },
@@ -353,7 +353,7 @@ describe("the agent channel", () => {
   it("report_view keeps the window's view, and refuses a malformed one", async () => {
     const { agents, open, invoke } = setup();
     const entry = open();
-    const report = { board: BOARD, page: "page-1", selection: { kind: "none" }, lens: "code", visible: [], tabs: [BOARD] };
+    const report = { board: BOARD, page: "page-1", selection: { kind: "none" }, lens: "code", visible: [], held: [BOARD] };
     expect(await invoke(entry, "report_view", report)).toEqual({ ok: true, value: null });
     expect(agents.views.get(entry.id)).toEqual(report);
     expect(agents.views.holder(BOARD)).toBe(entry.id);
@@ -366,12 +366,12 @@ describe("the agent channel", () => {
   it("hands a window's answers to the bridge", async () => {
     const { agents, open, invoke } = setup();
     const entry = open();
-    await invoke(entry, "report_view", { selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+    await invoke(entry, "report_view", { selection: { kind: "none" }, visible: [], held: [BOARD] });
     const read = agents.read({ board: BOARD, page: "page-1" });
     const sent = entry.window.sent.at(-1) as { type: string; requestId: number };
     expect(sent.type).toBe("agent_read");
     const page = { id: "page-1", title: "Placing an order" };
-    const board = { title: "Orders", place: "draft", changes: 0, revision: "r1", unsaved: false };
+    const board = { title: "Orders", revision: "r1", unsaved: false };
     expect(await invoke(entry, "agent_read_result", { requestId: sent.requestId, result: { ok: true, page, board } })).toEqual({ ok: true, value: null });
     expect(await read).toMatchObject({ ok: true, page, board });
   });

@@ -1,4 +1,4 @@
-/** Helpers for the reader journeys on the board: the saved draft, line-number drags, and dragging a card. */
+/** Helpers for the reader journeys on the board: the saved board, line-number drags, and dragging a card. */
 
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";

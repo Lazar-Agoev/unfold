@@ -6,14 +6,11 @@ flowchart LR
   c3["OrderService.place · src/services/order-service.ts:13<br/>Validates the draft, charges through the injected payment provider, builds and inserts the order, emits order.placed, and returns it. Static call resolution may stop at injected interfaces."]
   c4(["POST /orders"])
   c5["validateOrder · src/lib/validate.ts:3"]
-  c6["From storefront-web, not connected"]
-  class c6 opaque
   c0 -->|"calls"| c3
   c2 -->|"calls"| c5
   c3 -->|"calls"| c5
   c4 -->|"handler"| c1
   c4 -->|"handler"| c2
   c4 -->|"handler"| c0
-  c6 -.->|"calls POST /orders"| c4
-  %% notConnected: From storefront-web, not connected
+  c3 -.->|"replies with the order"| c4
   classDef opaque fill:#fff4dc,stroke:#a66b10,stroke-dasharray:4 3

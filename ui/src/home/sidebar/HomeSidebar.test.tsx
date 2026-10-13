@@ -15,18 +15,15 @@ import { HomeSidebar } from "./HomeSidebar";
 const API = "p-api0000000";
 const WEB = "p-web0000000";
 
-function board(title: string, folder: string | null, place: BoardSummary["place"] = "published"): BoardSummary {
+function board(title: string, folder: string | null): BoardSummary {
   return {
     project: API,
-    id: place === "draft" ? `.unfold/local/drafts/${title}.json` : `.unfold/boards/${title}.json`,
-    place,
+    id: `.unfold/boards/${title}.json`,
     name: title,
     title,
     folder,
     pages: 3,
     cards: 4,
-    projects: [],
-    changes: 0,
     updatedAtMs: 0,
     label: null,
     error: null,
@@ -45,8 +42,7 @@ beforeEach(() => {
     handlers: {
       workspace: () => workspaceView(rows),
       app_info: () => ({ username: "lazar", engineVersion: "1" }),
-      drafts: () => ({ drafts: [board("Auth", null, "draft")] }),
-      list_boards: ({ project }) => ({ project, boards: [board("Order lifecycle", "Checkout"), board("Auth", null, "draft")], emptyFolders: [] }),
+      list_boards: ({ project }) => ({ project, boards: [board("Order lifecycle", "Checkout"), board("Auth", null)], emptyFolders: [] }),
       select_project: () => null,
       set_project_expanded: () => null,
       open_board: ({ project, id }) => boardState(project, id),
@@ -84,13 +80,10 @@ describe("the Home sidebar", () => {
     expect((await slot("ledger"))?.getAttribute("aria-label")).toBe("Not compiled yet");
   });
 
-  it("shows the workspace, Drafts with the count, and every project with its state", async () => {
+  it("shows the workspace, then the projects list, with every project's state", async () => {
     renderWithClient(<HomeSidebar />);
     expect(await screen.findByText("Lazar's workspace")).toBeTruthy();
-    const drafts = screen.getByRole("button", { name: /Drafts/ });
-    await waitFor(() => {
-      expect(drafts.textContent).toBe("Drafts1");
-    });
+    expect(screen.queryByRole("navigation")).toBeNull();
     const web = await screen.findByText("storefront-web");
     const webRow = web.closest("[data-project-id]");
     expect(webRow?.getAttribute("data-project-id")).toBe(WEB);
@@ -98,7 +91,7 @@ describe("the Home sidebar", () => {
   });
 
   it("selects a project on click and shows its overview; the chevron only expands", async () => {
-    useLayout.setState({ ...initialLayout, home: { ...initialLayout.home, view: "drafts" } });
+    useLayout.setState({ ...initialLayout, home: { ...initialLayout.home, view: "health" } });
     showBoard({ project: API, id: "x" });
     renderWithClient(<HomeSidebar />);
     fireEvent.click(await screen.findByText("storefront-web"));
@@ -115,36 +108,33 @@ describe("the Home sidebar", () => {
     expect(engine.callsOf("select_project")).toHaveLength(1);
   });
 
-  it("lists an expanded project's folders and boards, and opens a board from its row", async () => {
+  it("lists an expanded project's folders, one level deep, then its boards, and opens a board from its row", async () => {
     renderWithClient(<HomeSidebar />);
     const checkout = await screen.findByText("Checkout");
     expect(screen.queryByText("Order lifecycle")).toBeNull();
     fireEvent.click(checkout);
-    expect(await screen.findByText("Order lifecycle")).toBeTruthy();
+    const lifecycle = await screen.findByText("Order lifecycle");
     expect(useLayout.getState().folders).toEqual([`${API}\u0000Checkout`]);
+    const levels = ["Checkout", "Order lifecycle", "Auth"].map((name) => screen.getByText(name).closest("[role=treeitem]")?.getAttribute("aria-level"));
+    expect(levels).toEqual(["2", "3", "2"]);
+    expect(lifecycle.closest("[role=treeitem]")?.textContent).toBe("Order lifecycle");
 
     fireEvent.click(screen.getByText("Auth"));
     await waitFor(() => {
-      expect(engine.callsOf("open_board")).toEqual([{ project: API, id: ".unfold/local/drafts/Auth.json" }]);
+      expect(engine.callsOf("open_board")).toEqual([{ project: API, id: ".unfold/boards/Auth.json" }]);
     });
   });
 
-  it("opens Drafts in Home's main area", async () => {
+  it("offers a folder's boards and Rename…, but no folder inside it", async () => {
     renderWithClient(<HomeSidebar />);
-    fireEvent.click(screen.getByRole("button", { name: /Drafts/ }));
-    expect(useLayout.getState().home.view).toBe("drafts");
-    expect(screen.getByRole("button", { name: /Drafts/ }).getAttribute("aria-current")).toBe("page");
-    expect(screen.queryByRole("button", { name: /Recents/ })).toBeNull();
-    // The project row isn't selected while Drafts shows.
-    const api = (await screen.findByText("storefront-api")).closest("[data-project-id]");
-    expect(api?.getAttribute("aria-selected")).toBe("false");
+    fireEvent.contextMenu(await screen.findByText("Checkout"));
+    const menu = screen.getByRole("menu", { name: "Sidebar menu" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["New Board Here", "Rename…", "Delete"]);
   });
 
   it("says when there are no projects yet", async () => {
     rows = [];
     renderWithClient(<HomeSidebar />);
     expect(await screen.findByText("No projects yet")).toBeTruthy();
-    // Without projects the Drafts row has no count.
-    expect(screen.getByRole("button", { name: "Drafts" }).textContent).toBe("Drafts");
   });
 });

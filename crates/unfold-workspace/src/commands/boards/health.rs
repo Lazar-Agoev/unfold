@@ -1,6 +1,6 @@
 //! Keeping a live project's board health and open sessions in step with the disk and the
-//! graphs: the health refresh after graph updates, and the checks that tell a window when the
-//! working file of a board it opened changed outside the app (`board_conflict`).
+//! graph: the health refresh after graph updates, and the reload of an open board whose file
+//! changed outside the app (`board_reloaded`).
 
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
@@ -8,9 +8,10 @@ use std::time::{Duration, Instant};
 use unfold_reader::board::files::{BoardFile, Change, Revision};
 
 use super::files::{Files, parse_id};
-use super::graphs::Resolver;
+use super::graphs::Source;
 use super::session::{BoardExtras, health_of, publish_problems};
-use crate::events::{WorkingFile, WorkspaceEvent};
+use super::{board_state, load_session};
+use crate::events::WorkspaceEvent;
 use crate::host::HostState;
 use crate::projects::Projects;
 use crate::shared::lock;
@@ -19,14 +20,9 @@ use crate::workspace::Workspace;
 /// Brings the cached health of a live project's boards up to date: of the boards `only` names,
 /// or of every board (then boards that are gone are forgotten). Open sessions take their
 /// board's new health, and the Problems list gets the board items.
-pub(crate) fn refresh(
-    projects: &Projects,
-    workspace: &Workspace,
-    extras: &BoardExtras,
-    only: Option<&[String]>,
-) {
+pub(crate) fn refresh(workspace: &Workspace, extras: &BoardExtras, only: Option<&[String]>) {
     let files = Files::live(workspace);
-    let Ok(mut resolver) = Resolver::live(projects, workspace) else {
+    let Ok(source) = Source::live(workspace) else {
         return;
     };
     let boards: Vec<(String, BoardFile)> = match only {
@@ -41,11 +37,10 @@ pub(crate) fn refresh(
     };
     for (id, file) in &boards {
         // A board that can't be read has no health; its listing says why.
-        let fresh = files.working(file).ok().and_then(|working| {
-            health_of(extras, &mut resolver, id, &working.loaded)
-                .ok()
-                .flatten()
-        });
+        let fresh = files
+            .load(file)
+            .ok()
+            .and_then(|loaded| health_of(extras, &source, id, &loaded).ok().flatten());
         if fresh.is_none() {
             extras.forget(id);
         }
@@ -69,30 +64,45 @@ const SETTLE_PAUSE: Duration = Duration::from_millis(25);
 /// its writer's final version (a writer that left it broken) rather than a write in progress.
 const SETTLE_QUIET: Duration = Duration::from_millis(1000);
 
-/// The longest a check waits for a board file to settle; after it, the bytes then are reported.
+/// The longest a check waits for a board file to settle; after it, the bytes then are taken.
 const SETTLE_LIMIT: Duration = Duration::from_secs(5);
 
-/// Tells the window that opened each open board of a live project that the board's working file
-/// changed on disk outside the app (runs on its own thread after `boards_changed`).
+/// Reloads each open board of a live project whose file changed on disk outside the app, and
+/// tells the window that opened it with `board_reloaded` (runs on its own thread after
+/// `boards_changed`).
+///
+/// - A file that is a valid board replaces the session (its health computed again), and the
+///   event carries the board as the window now shows it.
+/// - A file that is gone is reported once with no board; the session keeps the version last
+///   loaded or saved, which the next save writes back.
+/// - A file that isn't a valid board is left alone: the session keeps its version, and the next
+///   save writes it over the file.
 ///
 /// Writers that don't replace the file atomically (truncate, then write) let a check catch the
-/// file empty or half written, so a changed file is reported only once it is a valid board, or
-/// once its bytes have stopped changing ([`SETTLE_QUIET`]). Checks run one at a time and each
-/// reports the revision it settled on, so the latest `board_conflict` a window gets carries the
-/// file's final revision.
+/// file empty or half written, so a changed file is read only once it is a valid board, or once
+/// its bytes have stopped changing ([`SETTLE_QUIET`]). Checks run one at a time, so a window gets
+/// the reloads in the order the file's versions settled.
 pub(crate) fn check_disk(host: &HostState, projects: &Projects, workspace: &Workspace, extras: &BoardExtras) {
     let _serial = lock(&extras.disk_check);
     let Ok(project) = projects.handle(workspace.project()) else {
         return;
     };
+    let Ok(source) = Source::live(workspace) else {
+        return;
+    };
     let files = Files::live(workspace);
-    let open: Vec<(String, BoardFile, WorkingFile, Revision)> = extras
+    let open: Vec<(String, BoardFile, Revision, Option<Change>)> = extras
         .sessions()
         .iter()
-        .map(|(id, session)| (id.clone(), session.working_file(), session.kind, session.revision))
+        .filter_map(|(id, session)| Some((id.clone(), parse_id(id).ok()?, session.revision, session.skipped)))
         .collect();
-    let mut conflicts = Vec::new();
-    for (id, file, kind, revision) in open {
+    for (id, file, revision, skipped) in open {
+        let Ok(now) = files.dirs.change(&file, revision) else {
+            continue;
+        };
+        if now == Change::Unchanged || Some(now) == skipped {
+            continue;
+        }
         // Settled without the sessions lock: board commands mustn't wait for a slow writer.
         let Some(change) = settled_change(&files, &file, revision) else {
             continue;
@@ -101,34 +111,40 @@ pub(crate) fn check_disk(host: &HostState, projects: &Projects, workspace: &Work
         // A board closed, saved, or reloaded meanwhile is compared again by the next check.
         let Some(session) = sessions
             .get_mut(&id)
-            .filter(|session| session.revision == revision && session.kind == kind)
+            .filter(|session| session.revision == revision)
         else {
             continue;
         };
-        if change == Change::Unchanged || session.reported == Some(change) {
-            continue;
-        }
-        session.reported = Some(change);
-        let Some(window) = project.open_boards().window(&id) else {
-            continue;
-        };
-        let disk_revision = match change {
-            Change::Changed(revision) => Some(revision.0.to_string()),
-            Change::Missing | Change::Unchanged => None,
-        };
-        conflicts.push((
-            window,
-            WorkspaceEvent::BoardConflict {
-                project: workspace.project().clone(),
-                board: id,
-                file: kind,
-                saved_revision: revision.0.to_string(),
-                disk_revision,
+        let state = match change {
+            Change::Unchanged => continue,
+            Change::Missing => {
+                session.skipped = Some(change);
+                None
+            }
+            Change::Changed(_) => match load_session(&files, extras, &source, &id, &file) {
+                Ok((reloaded, graph)) => {
+                    let state = board_state(workspace.project(), &id, &file, &reloaded, &graph);
+                    *session = reloaded;
+                    Some(Box::new(state))
+                }
+                Err(_) => {
+                    session.skipped = Some(change);
+                    continue;
+                }
             },
-        ));
-    }
-    for (window, event) in conflicts {
-        host.deliver(&[window], &event);
+        };
+        // Sent before the sessions lock is released, so a save of the board that waits for it
+        // answers after the window has the reload.
+        if let Some(window) = project.open_boards().window(&id) {
+            host.deliver(
+                &[window],
+                &WorkspaceEvent::BoardReloaded {
+                    project: workspace.project().clone(),
+                    board: id,
+                    state,
+                },
+            );
+        }
     }
 }
 

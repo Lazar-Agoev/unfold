@@ -1,23 +1,17 @@
 /**
- * A board's life on disk (decisions unpublished edits, board folder metadata): its files under `.unfold/`, and the edits that
- * make unpublished changes.
+ * A board's life on disk: its file in `.unfold/boards/`, saved as it is edited, and the edits the
+ * journeys make to it.
  */
 
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { readBoard, selected, type BoardFile } from "./board";
 import { enterText } from "./window";
 
-export const DRAFTS = join(".unfold", "local", "drafts");
-export const PUBLISHED = join(".unfold", "boards");
-
-/** The board files (`*.json`) in a project's folder of drafts or published boards, sorted. */
-export function boardFiles(folder: string, place: string): string[] {
-  const dir = join(folder, place);
-  return existsSync(dir) ? readdirSync(dir).filter((name) => name.endsWith(".json")).sort() : [];
-}
+/** A project's folder of board files. */
+export const BOARDS = join(".unfold", "boards");
 
 /** Waits until the board file `id` exists and `check` holds for it (autosave is debounced). */
 export async function expectBoardFile(folder: string, id: string, check: (board: BoardFile) => boolean, message: string): Promise<BoardFile> {

@@ -13,7 +13,7 @@ import { cant, windowRefusal, type ResultPlace } from "./results";
 
 /** What a tool's arguments may name. Any of them may be a link (`unfold://…`), which names the rest. */
 export interface TargetArgs {
-  /** A project's id or shared name. */
+  /** A project's id or name. */
   readonly project?: string | undefined;
   /** A board's id. */
   readonly board?: string | undefined;
@@ -35,7 +35,6 @@ export interface BoardTarget {
 export interface ReadPage {
   readonly page: Page;
   readonly title: string;
-  readonly draft: boolean;
   readonly revision: string;
   /** The window has edits it hasn't saved yet. */
   readonly unsaved: boolean;
@@ -83,7 +82,7 @@ async function projectOfBoard(context: ToolContext, id: string): Promise<Project
   ).flat();
   const [only, ...others] = holders;
   if (!only) {
-    throw cant("find the board", `no project has a board with id “${id}”`, "list_boards lists each project's boards with their ids; a draft's id changes when it is published.");
+    throw cant("find the board", `no project has a board with id “${id}”`, "list_boards lists each project's boards with their ids.");
   }
   if (others.length > 0) {
     throw cant("tell which board you mean", `${holders.map((row) => row.name).join(" and ")} each have a board with id “${id}”`, "Pass project as well, or a link to the board.");
@@ -153,7 +152,7 @@ function withDefined<T extends Record<string, string | undefined>>(values: T): {
 
 /**
  * Reads a page (`page` absent: the board's first page, as its file has them) from the window that
- * holds its board, unsaved edits included, else from the board's working file.
+ * holds its board, unsaved edits included, else from the board's file.
  */
 export async function readPage(context: ToolContext, board: AgentBoardRef, page: string | undefined): Promise<ReadPage> {
   const listed = page === undefined ? await context.engine("read_board", { project: board.project, id: board.id }) : undefined;
@@ -164,7 +163,6 @@ export async function readPage(context: ToolContext, board: AgentBoardRef, page:
       return {
         page: held.page as unknown as Page,
         title: held.board.title,
-        draft: held.board.place === "draft",
         revision: held.revision,
         unsaved: held.board.unsaved,
         sizes: held.sizes ?? {},
@@ -183,12 +181,12 @@ export async function readPage(context: ToolContext, board: AgentBoardRef, page:
       `Its pages: ${file.document.pages.map((item) => `${item.title} (id ${item.id})`).join(", ")}.`,
     );
   }
-  return { page: found, title: file.document.title, draft: file.place === "draft", revision: context.revision(found), unsaved: false, sizes: {} };
+  return { page: found, title: file.document.title, revision: context.revision(found), unsaved: false, sizes: {} };
 }
 
 /** The header place of a page that was read. */
 export function pagePlace(project: ProjectRow, read: ReadPage): ResultPlace {
-  return { project: project.name, board: { title: read.title, draft: read.draft }, page: read.page.title, revision: read.revision };
+  return { project: project.name, board: read.title, page: read.page.title, revision: read.revision };
 }
 
 /** Compiled code a tool reads: a key in a project, and the step selected in it. */
@@ -199,22 +197,13 @@ export interface CodeTarget {
   readonly step?: string;
 }
 
-/** The key a card on a page shows, in the project it reads from (its `ref.project` names one by shared name). */
-async function cardCode(context: ToolContext, target: BoardTarget, page: Page, id: string): Promise<CodeTarget> {
+/** The key a card on a page of the target's board shows. */
+function cardCode(target: BoardTarget, page: Page, id: string): CodeTarget {
   const card = page.cards.find((item) => item.id === id);
   if (!card) {
     throw cant("read the card", `there is no card with id “${id}” on the page “${page.title}”`, "read_page lists the page's cards with their ids and keys.");
   }
-  const key = "block" in card.ref ? card.ref.block : card.ref.entrance;
-  const named = card.ref.project;
-  if (named === undefined) {
-    return { project: target.project, key };
-  }
-  const project = (await context.projects()).find((row) => row.name === named);
-  if (!project) {
-    throw cant("read the card", `it comes from the project “${named}”, which isn't in the workspace`, "Ask the person to add that project, or read another card.");
-  }
-  return { project, key };
+  return { project: target.project, key: "block" in card.ref ? card.ref.block : card.ref.entrance };
 }
 
 /**
@@ -231,7 +220,7 @@ export async function codeTarget(context: ToolContext, args: { readonly key?: st
     const read = await readPage(context, target.board, target.page);
     // A proposed step's link reads its card's code: the proposal has none of its own.
     const proposal = read.page.proposals?.find((item) => item.id === target.item);
-    return cardCode(context, target, read.page, proposal?.card ?? target.item);
+    return cardCode(target, read.page, proposal?.card ?? target.item);
   }
   if (args.key !== undefined) {
     return { project: await projectOrView(context, args.project), key: args.key };
@@ -250,7 +239,7 @@ export async function codeTarget(context: ToolContext, args: { readonly key?: st
             ? read.page.groups.find((group) => group.id === selection.id)?.card
             : read.page.proposals?.find((proposal) => proposal.id === selection.id)?.card;
     if (cardId !== undefined) {
-      const code = await cardCode(context, target, read.page, cardId);
+      const code = cardCode(target, read.page, cardId);
       if (selection.kind !== "step") {
         return code;
       }

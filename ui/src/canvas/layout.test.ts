@@ -59,40 +59,39 @@ describe("following", () => {
 
 describe("card sizing", () => {
   it("keeps block cards between 280 and 880 px wide, and entrance cards between 200 and 320", () => {
-    expect(blockCardWidth({ name: "f", location: "a.ts", monogram: false, body: 10 }, estimateText)).toBe(CARD_MIN_WIDTH);
-    expect(blockCardWidth({ name: "f", location: "a.ts", monogram: false, body: 5000 }, estimateText)).toBe(CARD_MAX_WIDTH);
+    expect(blockCardWidth({ name: "f", location: "a.ts", body: 10 }, estimateText)).toBe(CARD_MIN_WIDTH);
+    expect(blockCardWidth({ name: "f", location: "a.ts", body: 5000 }, estimateText)).toBe(CARD_MAX_WIDTH);
     const entrance = (handlers: string[]) => entranceCardWidth({ method: "POST", title: "/orders", location: "src/routes/orders.ts:22", handlers }, estimateText);
     expect(entrance([])).toBeGreaterThanOrEqual(ENTRANCE_MIN_WIDTH);
     expect(entrance(["x".repeat(200)])).toBe(ENTRANCE_MAX_WIDTH);
     expect(entranceCardWidth({ method: null, title: "a", location: "", handlers: [] }, estimateText)).toBe(ENTRANCE_MIN_WIDTH);
   });
 
-  it("sizes a Code card to its longest line after a gutter of at least 40 px, and a monogram widens the header", () => {
+  it("sizes a Code card to its longest line after a gutter of at least 40 px, and the chevron widens the header", () => {
     const width = codeContentWidth(code, estimateText);
     const widest = Math.max(...code.lines.map((line) => line.end - line.start));
     expect(width).toBeGreaterThan(widest * estimateText("0", CODE_FONT) + 40);
     expect(gutterWidth(2, estimateText)).toBe(40);
     expect(gutterWidth(5, estimateText)).toBeGreaterThan(40);
-    const plain = headerWidth({ name: "createOrder", location: "orders/create.ts", monogram: false }, estimateText);
-    expect(headerWidth({ name: "createOrder", location: "orders/create.ts", monogram: true }, estimateText)).toBe(plain + 28);
+    const plain = headerWidth({ name: "createOrder", location: "orders/create.ts" }, estimateText);
+    expect(headerWidth({ name: "createOrder", location: "orders/create.ts", chevron: true }, estimateText)).toBe(plain + 22);
   });
 });
 
 describe("estimates before a card is drawn", () => {
   it("sizes a block card from its model: its width, and a row per line under the header", () => {
-    const size = estimatedBlockSize(createOrder, false, estimateText);
-    expect(size.width).toBe(blockCardWidth({ name: createOrder.header.qualifiedName, location: shortPath(createOrder.header.path), monogram: false, body: codeContentWidth(code, estimateText) }, estimateText));
+    const size = estimatedBlockSize(createOrder, estimateText);
+    expect(size.width).toBe(blockCardWidth({ name: createOrder.header.qualifiedName, location: shortPath(createOrder.header.path), body: codeContentWidth(code, estimateText) }, estimateText));
     expect(size.height).toBe(44 + 18 + code.lines.length * 20);
-    expect(estimatedBlockSize(undefined, false, estimateText)).toEqual(fallbackSize(false));
+    expect(estimatedBlockSize(undefined, estimateText)).toEqual(fallbackSize(false));
   });
 
   it("finds an entrance card's handler rows below its header, location, and heading", () => {
     const text = { method: "POST", title: "/orders", location: "src/routes/orders.ts:22", handlers: ["requireUser", "createOrder"] };
     // Border, header (padding, the 18px method badge, rule), body padding, location, gap, heading, gap, half a row.
-    expect(entranceHandlerRows(text, false, 240, estimateText)).toEqual([102, 122]);
-    expect(entranceHandlerRows(text, true, 240, estimateText)).toEqual([104, 124]);
-    expect(entranceHandlerRows({ ...text, method: null }, false, 240, estimateText)).toEqual([100, 120]);
-    expect(entranceHandlerRows({ ...text, location: "x".repeat(60) }, false, 240, estimateText)).toEqual([116, 136]);
+    expect(entranceHandlerRows(text, 240, estimateText)).toEqual([102, 122]);
+    expect(entranceHandlerRows({ ...text, method: null }, 240, estimateText)).toEqual([100, 120]);
+    expect(entranceHandlerRows({ ...text, location: "x".repeat(60) }, 240, estimateText)).toEqual([116, 136]);
   });
 });
 

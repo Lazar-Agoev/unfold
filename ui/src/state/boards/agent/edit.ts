@@ -24,18 +24,15 @@ import type {
 import { produce } from "immer";
 import { isTypeKind, keyBlockKind } from "../../../code/typeKinds";
 import { showToast } from "../../../components/Toast";
-import { queryClient } from "../../../ipc/client";
 import type { Page } from "../../../ipc/generated";
-import { engineQueryOptions } from "../../../ipc/queries";
 import { toUnfoldError } from "../../../ipc/unfold";
-import { projectIndex } from "../../workspace";
 import { cardKey, findPage } from "../document";
 import { openBoard } from "../open";
 import { getOpenBoard, isDirty, saveStep } from "../store";
 import type { BoardRef } from "../types";
 import { prepareAddCards } from "./cards";
 import { applyConnect } from "./connections";
-import { AgentRefusal, boardInfo, cardProject, failure, resourceProject, type ApplyOp, type OpContext } from "./context";
+import { AgentRefusal, boardInfo, failure, type ApplyOp, type OpContext } from "./context";
 import { AgentData } from "./data";
 import { applyFrameCards } from "./frames";
 import { applyGroupSteps } from "./groups";
@@ -138,21 +135,16 @@ export async function applyAgentEdit(request: AgentEditRequest): Promise<AgentEd
       board: ref,
       agent: request.agent,
       data: new AgentData(),
-      index: projectIndex(await queryClient.query(engineQueryOptions("workspace", {}))),
       measured: board.pages[request.page]?.sizes ?? {},
     };
     // Every card's model (its size, its calls, its outline and Flow steps), each type card's definition
     // (its fields and type arrows), and the type of each table backed by one (its columns).
     await Promise.all([
       ...page.cards.map(async (card) => {
-        const project = cardProject(base, card);
         const key = cardKey(card);
-        return project === null ? null : Promise.all([base.data.loadModel(project, key), isTypeKind(keyBlockKind(key) ?? "") ? base.data.loadDefinition(project, key) : null]);
+        return Promise.all([base.data.loadModel(ref.project, key), isTypeKind(keyBlockKind(key) ?? "") ? base.data.loadDefinition(ref.project, key) : null]);
       }),
-      ...(page.resources ?? []).map((resource) => {
-        const project = resourceProject(base, resource);
-        return resource.type !== undefined && project !== null ? base.data.loadDefinition(project, resource.type) : null;
-      }),
+      ...(page.resources ?? []).map((resource) => (resource.type !== undefined ? base.data.loadDefinition(ref.project, resource.type) : null)),
     ]);
     const applies: ApplyOp[] = [];
     for (const op of request.ops) {

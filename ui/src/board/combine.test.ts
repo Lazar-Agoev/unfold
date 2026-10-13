@@ -103,7 +103,7 @@ const fn: BlockView = (() => {
 })();
 
 const MODELS: Readonly<Record<Key, BlockView>> = { [CREATE]: createOrder, [F]: fn };
-const context: SourceContext = { project: () => P, model: (_project, key) => MODELS[key] };
+const context: SourceContext = { project: P, model: (key) => MODELS[key] };
 
 function pageWith(groups: readonly Group[] = []): Page {
   return page(

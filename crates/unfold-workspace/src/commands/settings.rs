@@ -1,6 +1,6 @@
 //! Settings commands (docs/engine.md#shared-config, shared settings): the app settings, a
-//! project's `unfold.toml` with its shared name (read, and changed through validated
-//! edits that keep its comments), and what the UI needs to sign its edits.
+//! project's `unfold.toml` (read, and changed through validated edits that keep its comments),
+//! and what the UI needs to sign its edits.
 
 use std::collections::BTreeMap;
 
@@ -13,7 +13,7 @@ use super::{NoArgs, ProjectArgs};
 use crate::error::WorkspaceError;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
-use crate::projects::{ProjectId, default_name};
+use crate::projects::ProjectId;
 use crate::settings_edit::{ApplicationSpec, LaunchTargetSpec, OverrideSpec, SettingsEdit};
 use crate::state::AppSettings;
 use crate::workspace::{load_settings, settings_text};
@@ -228,16 +228,6 @@ impl From<&Settings> for SettingsView {
     }
 }
 
-/// A project's shared name.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct SharedName {
-    /// The name other projects' boards use for this one.
-    pub value: String,
-    /// Whether it is the default made from the folder (no `[project] name`).
-    pub is_default: bool,
-}
-
 /// A project's `unfold.toml`: its text and the settings it holds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -250,29 +240,9 @@ pub struct ProjectConfig {
     pub settings: Option<SettingsView>,
     /// Why the file is invalid, with its position.
     pub error: Option<SettingsProblem>,
-    /// The project's shared name (the default while the file is invalid).
-    pub name: SharedName,
 }
 
-fn project_config_of(
-    root: &std::path::Path,
-    text: Option<String>,
-    settings: Result<Settings, WorkspaceError>,
-) -> ProjectConfig {
-    let name = match settings
-        .as_ref()
-        .ok()
-        .and_then(|settings| settings.project_name.clone())
-    {
-        Some(value) => SharedName {
-            value,
-            is_default: false,
-        },
-        None => SharedName {
-            value: default_name(root),
-            is_default: true,
-        },
-    };
+fn project_config_of(text: Option<String>, settings: Result<Settings, WorkspaceError>) -> ProjectConfig {
     let (settings, error) = match settings {
         Ok(settings) => (Some(SettingsView::from(&settings)), None),
         Err(WorkspaceError::InvalidSettings {
@@ -301,16 +271,15 @@ fn project_config_of(
         text,
         settings,
         error,
-        name,
     }
 }
 
-/// `project_config`: the settings file's text, its validated settings or why it is invalid,
-/// and the project's shared name. Read from disk; never wakes the project.
+/// `project_config`: the settings file's text, and its validated settings or why it is invalid.
+/// Read from disk; never wakes the project.
 pub fn project_config(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<ProjectConfig> {
     let project = ctx.project(&args.project)?;
     let root = project.root();
-    Ok(project_config_of(root, settings_text(root)?, load_settings(root)))
+    Ok(project_config_of(settings_text(root)?, load_settings(root)))
 }
 
 /// The arguments of `update_project_config`.
@@ -324,16 +293,14 @@ pub struct UpdateProjectConfigArgs {
 }
 
 /// `update_project_config`: applies validated edits (scope, applications, manual entrances,
-/// overrides, Python projects, detector toggles, the shared name, evidence files), keeping
-/// comments and formatting; an edit that would make
-/// the file invalid is refused with `invalid_settings` and nothing is written. Sends
-/// `config_changed`; a new shared name reaches `workspace.json` and every window
-/// (`workspace_changed`) as the host observes it.
+/// overrides, Python projects, detector toggles, evidence files), keeping comments and
+/// formatting; an edit that would make the file invalid is refused with `invalid_settings` and
+/// nothing is written. Sends `config_changed`.
 pub fn update_project_config(ctx: &Ctx<'_>, args: UpdateProjectConfigArgs) -> CommandResult<ProjectConfig> {
     let workspace = ctx.live(&args.project)?;
     let outcome = workspace.edit_settings(&args.edits)?;
     let text = workspace.settings_text()?;
-    Ok(project_config_of(workspace.root(), text, Ok(outcome.settings)))
+    Ok(project_config_of(text, Ok(outcome.settings)))
 }
 
 /// Facts about the app the UI can't get itself (it has no Node APIs).

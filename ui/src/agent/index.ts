@@ -5,5 +5,5 @@
  */
 
 export { AgentMark, Author } from "./AgentMark";
-export { copyLink } from "./links";
+export { copyBoardLink, copyLink } from "./links";
 export { installViewReports } from "./viewReport";

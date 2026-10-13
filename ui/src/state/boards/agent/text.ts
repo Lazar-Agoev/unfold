@@ -13,7 +13,7 @@ import { setLinkDescription } from "../connections";
 import { findFrame, updateFrame } from "../frames";
 import { findNote } from "../notes";
 import { findResource, setResourceDescription } from "../resources";
-import { AgentRefusal, cardName, cardOf, cardProject, cardResult, guardPeopleText, invalid, resourceName, type OpContext } from "./context";
+import { AgentRefusal, cardName, cardOf, cardResult, guardPeopleText, invalid, resourceName, type OpContext } from "./context";
 import { linkResult } from "./connections";
 import { frameResult } from "./frames";
 import { resourceResult } from "./resources";
@@ -103,26 +103,25 @@ export function applyLabelSteps(page: Page, op: LabelStepsOp, ctx: OpContext): A
   if (!("block" in card.ref)) {
     throw invalid(`${name} is an entrance card; Flow labels go on a function's steps.`);
   }
-  const model = ctx.data.model(cardProject(ctx, card), cardKey(card));
+  const model = ctx.data.model(ctx.board.project, cardKey(card));
   const flow = model?.type === "block" ? model.flow : null;
   if (!flow) {
     throw new AgentRefusal(
       "code_unavailable",
-      `${name}'s Flow isn't available right now (its file changed since the last compile, or its project isn't connected). Compile the project, then try again.`,
+      `${name}'s Flow isn't available right now (its file changed since the last compile). Compile the project, then try again.`,
     );
   }
   const steps = new Set(flow.nodes.flatMap((node) => (node.key !== undefined ? [node.key] : [])));
-  const project = card.ref.project;
   return op.labels.map(({ step, text: written }): AgentItemResult => {
     const text = textOf(written, `the step “${step}”`);
     if (!steps.has(step)) {
       throw invalid(`“${step}” isn't a Flow step of ${name}. read_code lists its steps and their keys.`);
     }
-    const before = page.labels.find((label) => label.project === project && label.key === step);
+    const before = page.labels.find((label) => label.key === step);
     if (before && before.text !== text) {
       guardPeopleText(`the Flow label “${before.text}”`, before.author, op.replacePeopleText);
     }
-    setLabel(page, project, step, text, ctx.agent.author);
+    setLabel(page, step, text, ctx.agent.author);
     return { kind: "label", status: statusOf(before?.text, text), card: card.id, step, name: text };
   });
 }

@@ -107,39 +107,3 @@ fn an_invalid_settings_file_is_a_problem_with_a_position() {
         Err(WorkspaceError::InvalidSettings { line: Some(2), .. })
     ));
 }
-
-#[test]
-fn the_shared_name_is_set_and_removed_without_touching_the_rest() {
-    let playground = Playground::new("ts-orders", true);
-    let sink = RecordingSink::new();
-    let workspace = playground.open(&sink, false);
-    let original = workspace.settings_text().expect("read").expect("present");
-    let outcome = workspace
-        .edit_settings(&[SettingsEdit::SetProjectName {
-            name: Some("storefront-api".into()),
-        }])
-        .expect("set the name");
-    assert!(outcome.written);
-    assert_eq!(outcome.settings.project_name.as_deref(), Some("storefront-api"));
-    assert!(
-        outcome.text.contains("[project]\nname = \"storefront-api\""),
-        "{}",
-        outcome.text
-    );
-    assert!(
-        outcome
-            .text
-            .starts_with(&original[..original.find('\n').expect("a first line")])
-    );
-    let refused = workspace
-        .edit_settings(&[SettingsEdit::SetProjectName {
-            name: Some("not a name".into()),
-        }])
-        .expect_err("an invalid name");
-    assert_eq!(refused.code(), "invalid_settings");
-    let removed = workspace
-        .edit_settings(&[SettingsEdit::SetProjectName { name: None }])
-        .expect("remove the name");
-    assert_eq!(removed.settings.project_name, None);
-    assert!(!removed.text.contains("[project]"));
-}

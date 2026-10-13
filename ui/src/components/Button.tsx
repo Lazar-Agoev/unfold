@@ -1,7 +1,6 @@
 /**
- * Buttons: `Button` in four variants, with an optional leading icon, a
- * trailing icon (Share's chevron), and a busy ring; and `TextButton`, a link-like
- * button inside text ("Label them", "+ Open", "Review").
+ * Buttons: `Button` in four variants, with an optional leading icon and a busy ring; and `TextButton`,
+ * a link-like button inside text ("Label them", "+ Open", "Review").
  */
 
 import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
@@ -15,7 +14,6 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   /** `md` is 30px tall, `sm` 28px (list-row actions). Ghost buttons are always 28px. */
   readonly size?: "md" | "sm";
   readonly icon?: IconName;
-  readonly trailingIcon?: IconName;
   /** Shows the progress ring in place of the icon and marks the button busy (it stays focusable). */
   readonly busy?: boolean;
   readonly ref?: Ref<HTMLButtonElement>;
@@ -26,7 +24,6 @@ export function Button({
   variant,
   size = "md",
   icon,
-  trailingIcon,
   busy = false,
   className,
   children,
@@ -38,19 +35,11 @@ export function Button({
     <button
       {...rest}
       type={type}
-      className={cx(
-        "button",
-        `button-${variant}`,
-        `button-${size}`,
-        leading && "button-with-icon",
-        trailingIcon !== undefined && "button-with-trailing",
-        className,
-      )}
+      className={cx("button", `button-${variant}`, `button-${size}`, leading && "button-with-icon", className)}
       aria-busy={busy || undefined}
     >
       {busy ? <ProgressRing size={14} /> : icon === undefined ? null : <Icon name={icon} size={14} />}
       {children === undefined ? null : <span className="button-label">{children}</span>}
-      {trailingIcon === undefined ? null : <Icon name={trailingIcon} size={14} className="button-trailing" />}
     </button>
   );
 }

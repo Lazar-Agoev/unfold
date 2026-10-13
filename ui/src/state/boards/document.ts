@@ -9,7 +9,7 @@
  * what would dangle with it, as the engine does.
  */
 
-import type { BoardDocument, Card, CardRef, Description, Group, Key, LabelEntry, Link, Page, ProjectName, View } from "../../ipc/generated";
+import type { BoardDocument, Card, CardRef, Description, Group, Key, LabelEntry, Link, Page, View } from "../../ipc/generated";
 import type { PageId } from "./types";
 
 /** The structural key a card shows. */
@@ -25,9 +25,9 @@ export function findCard(page: Page, cardId: string): Card | undefined {
   return page.cards.find((card) => card.id === cardId);
 }
 
-/** The first card of the page that shows `key` from the project `ref.project` names (undefined: the board's own). */
-export function findCardByRef(page: Page, key: Key, project: ProjectName | undefined): Card | undefined {
-  return page.cards.find((card) => cardKey(card) === key && card.ref.project === project);
+/** The first card of the page that shows `key`. */
+export function findCardByKey(page: Page, key: Key): Card | undefined {
+  return page.cards.find((card) => cardKey(card) === key);
 }
 
 /** `createOrder` → `create-order`; anything else non-alphanumeric becomes one dash. */
@@ -366,24 +366,14 @@ export function setCardDescription(page: Page, cardId: string, text: string, aut
   }
 }
 
-/** Labels and guards sort by (project, key), as the file writes them. */
-function labelOrder(a: Pick<LabelEntry, "project" | "key">, b: Pick<LabelEntry, "project" | "key">): number {
-  const pa = a.project ?? "";
-  const pb = b.project ?? "";
-  if (pa !== pb) {
-    return pa < pb ? -1 : 1;
-  }
-  return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+/** The label texts of a page, by key. */
+export function labelTexts(labels: readonly LabelEntry[]): Record<Key, string> {
+  return Object.fromEntries(labels.map((label) => [label.key, label.text]));
 }
 
-/** The label texts of a page that apply to cards from `project` (undefined: the board's own), by key. */
-export function labelsFor(labels: readonly LabelEntry[], project: ProjectName | undefined): Record<Key, string> {
-  return Object.fromEntries(labels.filter((label) => label.project === project).map((label) => [label.key, label.text]));
-}
-
-/** Sets or clears (blank text) the Flow label of `key` in the project `project` names. */
-export function setLabel(page: Page, project: ProjectName | undefined, key: Key, text: string, author: string): void {
-  const index = page.labels.findIndex((label) => label.project === project && label.key === key);
+/** Sets or clears (blank text) the Flow label of `key`. Labels sort by key, as the file writes them. */
+export function setLabel(page: Page, key: Key, text: string, author: string): void {
+  const index = page.labels.findIndex((label) => label.key === key);
   if (text.trim().length === 0) {
     if (index >= 0) {
       page.labels.splice(index, 1);
@@ -393,12 +383,12 @@ export function setLabel(page: Page, project: ProjectName | undefined, key: Key,
   if (index >= 0 && page.labels[index]?.text === text) {
     return;
   }
-  const label: LabelEntry = { ...(project !== undefined ? { project } : {}), key, ...description(text, author) };
+  const label: LabelEntry = { key, ...description(text, author) };
   if (index >= 0) {
     page.labels[index] = label;
     return;
   }
-  const at = page.labels.findIndex((existing) => labelOrder(label, existing) < 0);
+  const at = page.labels.findIndex((existing) => key < existing.key);
   page.labels.splice(at < 0 ? page.labels.length : at, 0, label);
 }
 
@@ -541,20 +531,6 @@ export function renamePage(document: BoardDocument, pageId: PageId, title: strin
   if (page && title.trim().length > 0) {
     page.title = title;
   }
-}
-
-/** Copies a page (everything on it) right after it, titled "<title> copy". */
-export function duplicatePage(document: BoardDocument, pageId: PageId): PageId | undefined {
-  const index = document.pages.findIndex((page) => page.id === pageId);
-  const source = document.pages[index];
-  if (!source) {
-    return undefined;
-  }
-  const id = nextPageId(document);
-  // A JSON copy: `source` may be an Immer draft, which structured cloning refuses.
-  const copy = JSON.parse(JSON.stringify(source)) as Page;
-  document.pages.splice(index + 1, 0, { ...copy, id, title: `${source.title} copy` });
-  return id;
 }
 
 /** Moves a page one place up (-1) or down (1); nothing at either end. */

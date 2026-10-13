@@ -49,13 +49,12 @@ steps: when from is an entrance, a resource card, or a frame, leave step out.
 carries is the key of a type declaration or class the code writes for what travels,
 such as `OrderJob` in `ordersQueue: Queue<OrderJob>`. The save checks that the step's
 function or an anchor's code uses that type. It shows in the chip
-(`queue · orders · OrderJob`), and clicking it opens the type's definition. Pass
-carriesProject when the type is in another project.
+(`queue · orders · OrderJob`), and clicking it opens the type's definition.
 
 ## Anchors: what counts as evidence
 An anchor is `{key}` (a block: a function, class, variable, statement, or one call;
 or an entrance's key) or `{file, lines: [from, to]}` (lines of an evidence file; setup
-topic). Add project when it's in another project. Cite the receiving side:
+topic). Cite the receiving side:
 - http: the route's entrance key;
 - queue: the variable where the queue is created, and the worker entrance if it's on
   the page;
@@ -107,7 +106,6 @@ The edit is undone and nothing changes. The message says what to do:
 - "it has no step" / "its step (line N) isn't a call" / "… resolves to …, so Unfold
   already draws it": a calls connection needs the unresolved call itself as its step.
 - "… isn't a column of the table …": use one of the columns listed.
-- "it cites …, which is not connected": cite code of a connected project.
 connect with an existing id updates that connection; the same kind, ends, step, and
 columns again is kept, not duplicated. A person's connection keeps their words: pass
 them as they are.

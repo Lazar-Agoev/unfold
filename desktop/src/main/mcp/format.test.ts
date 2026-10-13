@@ -43,7 +43,6 @@ describe("names", () => {
         id: "place",
         status: "created",
         key: "k",
-        project: "p",
         name: "OrderService.place",
         stops: [
           { reason: "unresolved", call: "this.payments.charge", line: 18, note: "overridden by a subclass" },
@@ -52,7 +51,7 @@ describe("names", () => {
         ],
       }),
     ).toBe("OrderService.place (card id place, created); stopped: this.payments.charge (line 18) is unresolved: overridden by a subclass; 3 more not followed, past the depth asked; Date (createdAt) is built in");
-    expect(cardText({ kind: "card", id: "a", status: "kept", key: "k", project: "p", name: "a", frame: "server" })).toBe("a (card id a, kept, in frame server)");
+    expect(cardText({ kind: "card", id: "a", status: "kept", key: "k", name: "a", frame: "server" })).toBe("a (card id a, kept, in frame server)");
   });
 
   it("name a key's kind, who wrote something, and facts", () => {

@@ -40,7 +40,7 @@ describe("repairing a board for an agent", () => {
     store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", [CARD])])));
     const result = await repairForAgent({ requestId: 1, board: REF, page: "page-1", agent: CLAUDE, repair: REPAIR, items: ["a"] });
     expect(engine.callsOf("repair_board")).toEqual([{ project: P, id: ID, repair: REPAIR }]);
-    expect(result).toMatchObject({ ok: true, page: { id: "page-1", cards: [{ id: "a", ref: { block: "src/a.ts#function:b" } }] }, board: { revision: "r2", place: "draft" } });
+    expect(result).toMatchObject({ ok: true, page: { id: "page-1", cards: [{ id: "a", ref: { block: "src/a.ts#function:b" } }] }, board: { revision: "r2" } });
     expect(store.canUndo(REF)).toBe(true);
     expect(renderHook(() => useWorkingItems({ board: REF, page: "page-1" })).result.current).toEqual(new Set(["a"]));
   });
@@ -60,23 +60,8 @@ describe("repairing a board for an agent", () => {
     expect(store.canUndo(REF)).toBe(false);
   });
 
-  it("refuses while a conflict is open, and keeps a person's edit made while it runs", async () => {
+  it("keeps a person's edit made while it runs", async () => {
     store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", [CARD])])));
-    store.useBoards.setState((draft) => {
-      const open = Object.values(draft.boards)[0];
-      if (open) {
-        open.conflict = { diskRevision: "r9" };
-      }
-    });
-    expect(await repairForAgent({ requestId: 1, board: REF, page: "page-1", agent: CLAUDE, repair: REPAIR, items: ["a"] })).toMatchObject({ ok: false, code: "board_conflict" });
-    expect(engine.callsOf("repair_board")).toEqual([]);
-
-    store.useBoards.setState((draft) => {
-      const open = Object.values(draft.boards)[0];
-      if (open) {
-        open.conflict = null;
-      }
-    });
     let finish: (() => void) | undefined;
     engine.uninstall();
     engine = installFakeEngine({

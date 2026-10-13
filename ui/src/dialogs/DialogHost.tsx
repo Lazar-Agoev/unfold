@@ -7,26 +7,18 @@ import type { JSX } from "react";
 import { GroupFromLinesDialog } from "../board";
 import { SettingsDialog } from "../settings";
 import { closeDialog, useDialog, type DialogRequest } from "../state/overlays";
-import { DeleteBoardDialog, DiscardDialog } from "./BoardDialogs";
-import { MoveToFolderDialog, NewFolderDialog, RenameFolderDialog } from "./FolderDialogs";
+import { DeleteBoardDialog } from "./BoardDialogs";
+import { MoveToFolderDialog, RenameFolderDialog } from "./FolderDialogs";
 import { closeMoveToFolder, useMoveToFolder } from "./moveToFolder";
-import { PublishDialog } from "./PublishDialog";
-import "./dialogs.css";
 
 function DialogFor({ request }: { readonly request: DialogRequest }): JSX.Element | null {
   switch (request.kind) {
     case "settings":
       return <SettingsDialog onClose={closeDialog} />;
-    case "publish":
-      return <PublishDialog board={request.board} onClose={closeDialog} />;
-    case "discard":
-      return <DiscardDialog board={request.board} onClose={closeDialog} />;
     case "deleteBoard":
       return <DeleteBoardDialog board={request.board} onClose={closeDialog} />;
-    case "newFolder":
-      return <NewFolderDialog project={request.project} parent={request.parent} onClose={closeDialog} />;
     case "renameFolder":
-      return <RenameFolderDialog project={request.project} path={request.path} onClose={closeDialog} />;
+      return <RenameFolderDialog project={request.project} folder={request.folder} onClose={closeDialog} />;
     case "groupFromLines":
       return <GroupFromLinesDialog request={request} onClose={closeDialog} />;
   }

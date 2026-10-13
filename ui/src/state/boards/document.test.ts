@@ -9,11 +9,10 @@ import {
   addPage,
   callExpansions,
   deletePage,
-  duplicatePage,
   isCallExpanded,
   isFreeId,
   keyDisplayName,
-  labelsFor,
+  labelTexts,
   movePage,
   nextPageId,
   removeCard,
@@ -54,7 +53,7 @@ describe("card, group, and link ids", () => {
   it("are unique together within the page, slugged, and at most 100 characters", () => {
     const result = onPage((draft) => {
       addCard(draft, { ref: { block: "src/a.ts#function:createOrder" }, at: [0.4, 9.6] });
-      addCard(draft, { ref: { block: "src/a.ts#function:createOrder", project: "payments" }, at: [0, 0] });
+      addCard(draft, { ref: { block: "src/a.ts#function:createOrder" }, at: [0, 0] });
       draft.groups.push({ id: "create-order-3", card: "create-order", title: "x", members: [], collapsed: false });
       addCard(draft, { ref: { block: "src/b.ts#function:createOrder" }, at: [0, 0] });
     });
@@ -116,7 +115,7 @@ describe("an agent's words", () => {
     const edited = onPage((draft) => {
       setCardDescription(draft, "a", "New.", "person:maya");
       setLinkLabel(draft, "l", "posts", "person:maya");
-      setLabel(draft, undefined, "k", "Checked?", "person:maya");
+      setLabel(draft, "k", "Checked?", "person:maya");
     }, start);
     expect(edited.cards[0]?.description).toEqual({ text: "New.", author: "person:maya", signature: "" });
     expect(edited.links[0]?.label).toEqual({ text: "posts", author: "person:maya", signature: "" });
@@ -149,21 +148,16 @@ describe("links", () => {
 });
 
 describe("labels", () => {
-  it("are per project and key, sorted as the file writes them, cleared by blank text", () => {
+  it("are one per key, sorted as the file writes them, replaced by new text, cleared by blank text", () => {
     const labeled = onPage((draft) => {
-      setLabel(draft, "payments", "src/k.ts#function:k/if[0]", "Paid?", "person:me");
-      setLabel(draft, undefined, "src/k.ts#function:k/if[0]", "Valid?", "person:me");
-      setLabel(draft, undefined, "src/a.ts#function:a/if[0]", "First?", "person:me");
+      setLabel(draft, "src/k.ts#function:k/if[0]", "Paid?", "person:me");
+      setLabel(draft, "src/a.ts#function:a/if[0]", "First?", "person:me");
+      setLabel(draft, "src/k.ts#function:k/if[0]", "Valid?", "person:me");
     });
-    expect(labeled.labels.map((label) => [label.project ?? "", label.key])).toEqual([
-      ["", "src/a.ts#function:a/if[0]"],
-      ["", "src/k.ts#function:k/if[0]"],
-      ["payments", "src/k.ts#function:k/if[0]"],
-    ]);
-    expect(labelsFor(labeled.labels, "payments")).toEqual({ "src/k.ts#function:k/if[0]": "Paid?" });
-    expect(labelsFor(labeled.labels, undefined)["src/k.ts#function:k/if[0]"]).toBe("Valid?");
-    const cleared = onPage((draft) => { setLabel(draft, "payments", "src/k.ts#function:k/if[0]", "", "person:me"); }, labeled);
-    expect(cleared.labels).toHaveLength(2);
+    expect(labeled.labels.map((label) => label.key)).toEqual(["src/a.ts#function:a/if[0]", "src/k.ts#function:k/if[0]"]);
+    expect(labelTexts(labeled.labels)).toEqual({ "src/a.ts#function:a/if[0]": "First?", "src/k.ts#function:k/if[0]": "Valid?" });
+    const cleared = onPage((draft) => { setLabel(draft, "src/k.ts#function:k/if[0]", "", "person:me"); }, labeled);
+    expect(cleared.labels).toHaveLength(1);
   });
 });
 
@@ -183,15 +177,14 @@ describe("pages", () => {
     ]);
   });
 
-  it("duplicate with their content, move up and down, and never delete the only page", () => {
-    const start = boardDocument([page("page-1", [{ id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }]), page("page-2")]);
+  it("move up and down, and never delete the only page", () => {
+    const start = boardDocument([page("page-1"), page("page-2"), page("page-3")]);
     const result = onBoard((draft) => {
-      expect(duplicatePage(draft, "page-1")).toBe("page-3");
-      movePage(draft, "page-2", -1);
-      movePage(draft, "page-2", -1);
+      movePage(draft, "page-3", -1);
+      movePage(draft, "page-3", -1);
+      movePage(draft, "page-3", -1);
     }, start);
-    expect(result.pages.map((item) => item.id)).toEqual(["page-2", "page-1", "page-3"]);
-    expect(result.pages[2]).toMatchObject({ title: "Page page-1 copy", cards: [{ id: "a" }] });
+    expect(result.pages.map((item) => item.id)).toEqual(["page-3", "page-1", "page-2"]);
     const one = onBoard((draft) => {
       deletePage(draft, "page-1");
     });

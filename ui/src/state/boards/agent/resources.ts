@@ -16,7 +16,7 @@ import { estimatedResourceSize } from "../../../canvas/frames/geometry";
 import { isFreeId, isItemId, moveItems } from "../document";
 import { addToFrame, findFrame, frameOf } from "../frames";
 import { addResource, findResource, saysClaim, setResourceClaim, setResourceDescription, type ResourceClaim } from "../resources";
-import { guardPeopleText, invalid, itemSize, refProject, resourceColumns, resourceName, type ApplyOp, type OpContext } from "./context";
+import { guardPeopleText, invalid, itemSize, resourceColumns, resourceName, type ApplyOp, type OpContext } from "./context";
 import { resourceSpot } from "./place";
 
 /** A table's columns as a result lists them. */
@@ -49,18 +49,16 @@ export function resourceResult(ctx: OpContext, page: Page, resource: Resource, s
   };
 }
 
-/** An anchor as the board file writes it: its project's name (absent for the board's own), lines checked. */
-export function fileAnchor(ctx: OpContext, anchor: AgentAnchor, what: string): Anchor {
-  const named = anchor.project !== undefined ? refProject(ctx, anchor.project) : undefined;
-  const project = named !== undefined ? { project: named } : {};
+/** An anchor as the board file writes it, lines checked. */
+export function fileAnchor(anchor: AgentAnchor, what: string): Anchor {
   if ("key" in anchor) {
-    return { key: anchor.key, ...project };
+    return { key: anchor.key };
   }
   const [first, last] = anchor.lines;
   if (!Number.isInteger(first) || !Number.isInteger(last) || first < 1 || last < first) {
     throw invalid(`An anchor of ${what} cites lines ${first}–${last} of ${anchor.file}: lines are whole numbers from 1, the last not before the first.`);
   }
-  return { file: anchor.file, lines: [first, last], ...project };
+  return { file: anchor.file, lines: [first, last] };
 }
 
 /** The columns a table writes, checked: distinct names, marks only on a table backed by a type, `references` only on a foreign key. */
@@ -90,24 +88,21 @@ function fileColumns(spec: AgentResourceSpec, what: string): Column[] {
 }
 
 /** What a spec says, over what an existing card says: `type` and `columns` go together, absent anchors are kept. */
-function claimOf(ctx: OpContext, spec: AgentResourceSpec, name: string, existing: Resource | undefined): ResourceClaim {
+function claimOf(spec: AgentResourceSpec, name: string, existing: Resource | undefined): ResourceClaim {
   const what = resourceName({ kind: spec.kind, name });
   if (spec.kind !== "table" && (spec.type !== undefined || spec.columns !== undefined)) {
     throw invalid(`Only a table has a type or columns; ${what} is a ${RESOURCE_WORDS[spec.kind]}. Leave type and columns out.`);
   }
   const shaped = spec.type !== undefined || spec.columns !== undefined;
-  const typeProject = spec.type !== undefined && spec.project !== undefined ? refProject(ctx, spec.project) : undefined;
-  const anchors = spec.anchors ? spec.anchors.map((anchor) => fileAnchor(ctx, anchor, what)) : (existing?.anchors ?? []);
+  const anchors = spec.anchors ? spec.anchors.map((anchor) => fileAnchor(anchor, what)) : (existing?.anchors ?? []);
   const kept = !shaped && existing?.kind === "table" && spec.kind === "table" ? existing : undefined;
   const type = shaped ? spec.type : kept?.type;
-  const project = shaped ? typeProject : kept?.project;
   const columns = shaped ? fileColumns(spec, what) : kept?.columns;
   return {
     kind: spec.kind,
     name,
     anchors,
     ...(type !== undefined ? { type } : {}),
-    ...(project !== undefined ? { project } : {}),
     ...(columns !== undefined ? { columns } : {}),
   };
 }
@@ -155,7 +150,7 @@ function applyResourceSpec(ctx: OpContext, page: Page, spec: AgentResourceSpec, 
   if (existing && spec.frame !== undefined) {
     checkFrameMove(page, existing, spec.frame);
   }
-  const claim = claimOf(ctx, spec, name, existing);
+  const claim = claimOf(spec, name, existing);
   const author = ctx.agent.author;
   const text = spec.description?.trim();
   const before = existing ? JSON.stringify([existing, frameOf(page, existing.id)?.id]) : null;
@@ -200,12 +195,9 @@ export async function prepareAddResources(op: AddResourcesOp, ctx: OpContext): P
     if (spec.type === undefined || spec.kind !== "table") {
       continue;
     }
-    const project = spec.project ?? ctx.board.project;
-    refProject(ctx, project);
-    if (!(await ctx.data.loadDefinition(project, spec.type))) {
-      const name = ctx.index.byId.get(project)?.name ?? project;
+    if (!(await ctx.data.loadDefinition(ctx.board.project, spec.type))) {
       throw invalid(
-        `${name} has no type declaration or class with the key “${spec.type}” to back the table “${spec.name}”. Keys come from search (kinds: types) or read_code; or list the table's own columns instead.`,
+        `The board's project has no type declaration or class with the key “${spec.type}” to back the table “${spec.name}”. Keys come from search (kinds: types) or read_code; or list the table's own columns instead.`,
       );
     }
   }

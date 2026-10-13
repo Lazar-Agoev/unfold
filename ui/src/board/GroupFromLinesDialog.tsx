@@ -18,7 +18,6 @@ import type { CodeText, FlowModel, Group } from "../ipc/generated";
 import { addGroup, cardKey, editPage, findCard, findPage, getPageView, select, setPendingGroup, useOpenBoard } from "../state/boards";
 import { useAuthor } from "../state/author";
 import type { DialogRequest } from "../state/overlays";
-import { resolveRefProject, useProjectIndex } from "../state/workspace";
 import { combinedSteps } from "./combine";
 import { parseLines } from "./groupFromLines";
 
@@ -70,10 +69,8 @@ export function GroupFromLinesDialog({ request, onClose }: GroupFromLinesDialogP
     return page ? findCard(page, cardId) : undefined;
   });
   const groups = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.groups);
-  const index = useProjectIndex();
-  const project = card ? resolveRefProject(index, target.board.project, card.ref.project) : null;
   const key = card ? cardKey(card) : "";
-  const query = useQuery({ ...cardQuery(project ?? "", key), enabled: project !== null && key.length > 0 });
+  const query = useQuery({ ...cardQuery(target.board.project, key), enabled: key.length > 0 });
   const model = query.data?.type === "block" ? query.data : undefined;
   const code = model?.code?.source.state === "current" ? model.code.source : null;
   const run = members ? chosenRun(code, model?.flow ?? null, members) : null;

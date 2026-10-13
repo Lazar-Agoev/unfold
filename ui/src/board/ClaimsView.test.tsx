@@ -14,7 +14,7 @@ import { BoardSidebar } from "./BoardSidebar";
 import { BoardView } from "./BoardView";
 
 const P = "p-orders0000";
-const ID = ".unfold/local/drafts/b.json";
+const ID = ".unfold/boards/b.json";
 const REF = { project: P, id: ID };
 const PAGE = { board: REF, page: "page-1" };
 const CREATE = "src/routes/orders.ts#function:createOrder";

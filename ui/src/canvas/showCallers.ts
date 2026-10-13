@@ -5,14 +5,13 @@
  */
 
 import { queryClient } from "../ipc/client";
-import type { ProjectId } from "../ipc/generated";
 import { toUnfoldError } from "../ipc/unfold";
 import { showToast } from "../components";
 import {
   addCard,
   displayedRects,
   findCard,
-  findCardByRef,
+  findCardByKey,
   findPage,
   getOpenBoard,
   getPageView,
@@ -24,7 +23,6 @@ import {
   type PageTarget,
 } from "../state/boards";
 import { call } from "../state/boards/engine";
-import { getProjectIndex, resolveRefProject } from "../state/workspace";
 import { cardQuery } from "./cardData";
 import { callerPlacement } from "./layout";
 import { measureText } from "./measure";
@@ -40,10 +38,7 @@ export async function showCallers(target: PageTarget, cardId: string): Promise<v
   if (!card || !("block" in card.ref)) {
     return;
   }
-  const project: ProjectId | null = resolveRefProject(getProjectIndex(), target.board.project, card.ref.project);
-  if (project === null) {
-    return;
-  }
+  const { project } = target.board;
   const name = keyDisplayName(card.ref.block);
   let total: number;
   let keys: string[];
@@ -68,12 +63,11 @@ export async function showCallers(target: PageTarget, cardId: string): Promise<v
   if (!board || !page || !rect) {
     return;
   }
-  const refProject = card.ref.project;
-  const present = keys.flatMap((key) => findCardByRef(page, key, refProject)?.id ?? []);
+  const present = keys.flatMap((key) => findCardByKey(page, key)?.id ?? []);
   // New cards have no view of their own: they show what the page's lens gives them.
   const shown = shownView(getPageView(target).lens, {}, page.defaultView);
-  const size = (key: string, index: number) => estimatedCardSize({ key, model: models[index], view: shown, monogram: refProject !== undefined }, measureText);
-  const missing = keys.flatMap((key, index) => (findCardByRef(page, key, refProject) ? [] : [{ key, size: size(key, index) }]));
+  const size = (key: string, index: number) => estimatedCardSize({ key, model: models[index], view: shown }, measureText);
+  const missing = keys.flatMap((key, index) => (findCardByKey(page, key) ? [] : [{ key, size: size(key, index) }]));
   const positions = callerPlacement(
     rect,
     missing.map((item) => item.size),
@@ -82,7 +76,7 @@ export async function showCallers(target: PageTarget, cardId: string): Promise<v
     missing.length > 0
       ? (editPage(target, (draft) =>
           missing.map(({ key }, index) =>
-            addCard(draft, { ref: refProject !== undefined ? { block: key, project: refProject } : { block: key }, at: positions[index] ?? [rect.x, rect.y] }),
+            addCard(draft, { ref: { block: key }, at: positions[index] ?? [rect.x, rect.y] }),
           ),
         ) ?? [])
       : [];

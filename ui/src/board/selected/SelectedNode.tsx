@@ -1,14 +1,14 @@
 /**
- * Selected for a Flow node: its label (the page's, for the card's project), the name from the code it
+ * Selected for a Flow node: its label (the page's), the name from the code it
  * replaces, its type and lines (a link that opens them, as View code does), the block it belongs to,
  * and where its paths go (each selects that node). A step shown in a call expanded in place belongs to
  * that callee (`owner`), never to the card showing it.
  */
 
 import { nodeTypeName } from "../../flow/layout";
-import type { Card, FlowModel, FlowNode, Key, ProjectId, RouteKind } from "../../ipc/generated";
+import type { Card, FlowModel, FlowNode, Key, RouteKind } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
-import { cardKey, findPage, itemsFor, keyDisplayName, labelNode, labelsFor, select, useOpenBoard, type PageTarget } from "../../state/boards";
+import { cardKey, findPage, itemsFor, keyDisplayName, labelNode, labelTexts, select, useOpenBoard, type PageTarget } from "../../state/boards";
 import { NODE_LABEL_FIELD } from "../unlabeled";
 import { viewCode } from "../viewCode";
 import { AuthoredField } from "./AuthoredField";
@@ -32,7 +32,6 @@ export function flowNodeFor(model: FlowModel | null | undefined, key: string): F
 export interface SelectedNodeProps {
   readonly target: PageTarget;
   readonly card: Card;
-  readonly project: ProjectId;
   readonly node: FlowNode;
   /** The Flow model showing it (the card's, or the owner's), without the page's labels: its fallback names. */
   readonly model: FlowModel;
@@ -40,14 +39,14 @@ export interface SelectedNodeProps {
   readonly owner?: { readonly key: Key; readonly name: string };
 }
 
-export function SelectedNode({ target, card, project, node, model, owner }: SelectedNodeProps) {
+export function SelectedNode({ target, card, node, model, owner }: SelectedNodeProps) {
   const key = node.key ?? "";
   const author = useAuthor();
   const allLabels = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.labels);
   const health = useOpenBoard(target.board, (board) => board.health);
-  const labels = labelsFor(allLabels ?? [], card.ref.project);
-  const label = (allLabels ?? []).find((entry) => entry.project === card.ref.project && entry.key === key);
-  const issues = itemsFor(health, target.page, { label: { key, ...(card.ref.project !== undefined ? { project: card.ref.project } : {}) } });
+  const labels = labelTexts(allLabels ?? []);
+  const label = (allLabels ?? []).find((entry) => entry.key === key);
+  const issues = itemsFor(health, target.page, { label: key });
   const held = issues.some((item) => item.kind === "review");
   const shownLabel = (other: FlowNode) => (other.key !== undefined ? (labels[other.key] ?? other.label) : other.label);
   const lines =
@@ -128,7 +127,7 @@ export function SelectedNode({ target, card, project, node, model, owner }: Sele
         }
         onChange={(text) => {
           if (author !== null && key.length > 0) {
-            labelNode(target, project, key, text, author);
+            labelNode(target, key, text, author);
           }
         }}
       />

@@ -14,7 +14,6 @@ import { Icon } from "../../icons";
 import type { Resource } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
 import { describeResource, findPage, itemsFor, removeItem, useOpenBoard, type PageTarget } from "../../state/boards";
-import { resolveRefProject, useProjectIndex } from "../../state/workspace";
 import { AuthoredField } from "./AuthoredField";
 import { AnchorRows, LineRows, TypeRow } from "./ClaimRows";
 
@@ -22,12 +21,11 @@ export function SelectedResource({ target, resource }: { readonly target: PageTa
   const author = useAuthor();
   const page = useOpenBoard(target.board, (board) => findPage(board.document, target.page));
   const health = useOpenBoard(target.board, (board) => board.health);
-  const index = useProjectIndex();
   if (!page) {
     return null;
   }
   const issues = itemsFor(health, target.page, { resource: resource.id });
-  const project = resolveRefProject(index, target.board.project, resource.project);
+  const { project } = target.board;
   return (
     <>
       <div className="selected-identity">
@@ -48,7 +46,7 @@ export function SelectedResource({ target, resource }: { readonly target: PageTa
         status={
           issues.length > 0 ? (
             <span className="authored-note">
-              {issues.map((item) => item.message).join(" ")} <ReviewButton target={target} project={project ?? target.board.project} items={issues} />
+              {issues.map((item) => item.message).join(" ")} <ReviewButton target={target} project={project} items={issues} />
             </span>
           ) : null
         }

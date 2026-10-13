@@ -2,44 +2,24 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://unfold.dev/schemas/unfold-board-1.schema.json",
   "title": "unfold-board version 1",
-  "description": "An Unfold board: titled pages of cards that reference blocks and entrances by structural key (in the board's own project, or in another project named by its shared name), their positions, views, and calls expanded in place, groups of consecutive sibling statements, attributed descriptions and Flow labels, guards that keep references from reattaching to different code, links drawn between items (connections, when they have a kind), frames around items, resource cards, notes, and proposed steps. A changes copy of a published board (`.unfold/local/drafts/<name>.changes.json`) also names the board it publishes and the revision it started from. Unknown fields are rejected.",
+  "description": "An Unfold board: titled pages of cards that reference blocks and entrances of the board's project by structural key, their positions, views, and calls expanded in place, groups of consecutive sibling statements, attributed descriptions and Flow labels, guards that keep references from reattaching to different code, links drawn between items (connections, when they have a kind), frames around items, resource cards, notes, and proposed steps. Unknown fields are rejected.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["format", "pages", "projects", "title", "version"],
-  "dependentRequired": {
-    "publishes": ["baseRevision"],
-    "baseRevision": ["publishes"]
-  },
+  "required": ["format", "pages", "title", "version"],
   "properties": {
     "format": { "const": "unfold-board" },
     "version": { "const": 1 },
     "title": { "$ref": "#/$defs/text", "description": "The board's title." },
     "folder": {
       "type": "string",
-      "description": "The board folder: 1 to 8 names joined by `/`, each 1 to 64 characters without leading or trailing whitespace, control characters, or `\\`, and not `.` or `..`. Absent at the top level.",
-      "pattern": "^(?!\\.\\.?(/|$))[^\\s/\\\\\\p{Cc}](?:[^/\\\\\\p{Cc}]{0,62}[^\\s/\\\\\\p{Cc}])?(?:/(?!\\.\\.?(/|$))[^\\s/\\\\\\p{Cc}](?:[^/\\\\\\p{Cc}]{0,62}[^\\s/\\\\\\p{Cc}])?){0,7}$"
-    },
-    "projects": {
-      "type": "array",
-      "description": "The shared names of the other projects the board's items name: exactly the set of the cards' `ref.project`, the resources' `project`, the anchors' `project`, and the links' `carriesProject` values, sorted.",
-      "uniqueItems": true,
-      "items": { "$ref": "#/$defs/projectName" }
+      "description": "The board folder: one name of 1 to 64 characters without `/`, `\\`, control characters, or leading or trailing whitespace, and not `.` or `..`. Folders are one level deep. Absent at the top level.",
+      "pattern": "^(?!\\.\\.?$)[^\\s/\\\\\\p{Cc}](?:[^/\\\\\\p{Cc}]{0,62}[^\\s/\\\\\\p{Cc}])?$"
     },
     "pages": {
       "type": "array",
       "description": "The pages, in order. Page ids are unique in the board.",
       "minItems": 1,
       "items": { "$ref": "#/$defs/page" }
-    },
-    "publishes": {
-      "type": "string",
-      "description": "Only in a changes copy: `boards/<name>.json`, the published board it holds changes for (matching its file name).",
-      "pattern": "^boards/[A-Za-z0-9][A-Za-z0-9._-]*\\.json$"
-    },
-    "baseRevision": {
-      "type": "string",
-      "description": "Only in a changes copy: the SHA-256 of the published file it started from.",
-      "pattern": "^[0-9a-f]{64}$"
     }
   },
   "$defs": {
@@ -51,15 +31,6 @@
       "type": "string",
       "description": "A page or item id. Card, group, frame, resource, link, note, and proposal ids are unique together within their page.",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
-    },
-    "projectName": {
-      "type": "string",
-      "description": "A project's shared name (`[project] name` in its `unfold.toml`, or its default).",
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
-    },
-    "project": {
-      "$ref": "#/$defs/projectName",
-      "description": "The project the key is in; absent for the board's own project."
     },
     "view": {
       "enum": ["code", "flow", "diagram"]
@@ -122,12 +93,12 @@
         },
         "labels": {
           "type": "array",
-          "description": "Flow-node labels, one per (project, key), sorted by project (the board's own first) and key.",
+          "description": "Flow-node labels, one per key, sorted by key.",
           "items": { "$ref": "#/$defs/label" }
         },
         "guards": {
           "type": "array",
-          "description": "What each reference was when it was saved, one per (project, key), sorted like labels.",
+          "description": "What each reference was when it was saved, one per key, sorted by key.",
           "items": { "$ref": "#/$defs/guard" }
         },
         "links": {
@@ -165,15 +136,14 @@
       "properties": {
         "id": { "$ref": "#/$defs/id" },
         "ref": {
-          "description": "Exactly one block or entrance, and its project when it is not the board's own.",
+          "description": "Exactly one block or entrance.",
           "oneOf": [
             {
               "type": "object",
               "additionalProperties": false,
               "required": ["block"],
               "properties": {
-                "block": { "$ref": "#/$defs/blockKey" },
-                "project": { "$ref": "#/$defs/project" }
+                "block": { "$ref": "#/$defs/blockKey" }
               }
             },
             {
@@ -181,8 +151,7 @@
               "additionalProperties": false,
               "required": ["entrance"],
               "properties": {
-                "entrance": { "$ref": "#/$defs/entranceKey" },
-                "project": { "$ref": "#/$defs/project" }
+                "entrance": { "$ref": "#/$defs/entranceKey" }
               }
             }
           ]
@@ -217,7 +186,7 @@
         "title": { "$ref": "#/$defs/text" },
         "members": {
           "type": "array",
-          "description": "The keys (in the card's project) of consecutive sibling statements with one parent and one body role.",
+          "description": "The keys of consecutive sibling statements with one parent and one body role.",
           "minItems": 1,
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/blockKey" }
@@ -233,7 +202,6 @@
       "required": ["author", "key", "text"],
       "properties": {
         "key": { "$ref": "#/$defs/blockKey" },
-        "project": { "$ref": "#/$defs/project" },
         "text": { "$ref": "#/$defs/text" },
         "author": { "$ref": "#/$defs/author" },
         "signature": { "$ref": "#/$defs/textSignature" }
@@ -245,7 +213,6 @@
       "required": ["key", "kind", "owner", "signature"],
       "properties": {
         "key": { "$ref": "#/$defs/text", "description": "A block or entrance key." },
-        "project": { "$ref": "#/$defs/project" },
         "kind": {
           "type": "string",
           "description": "The block kind, or `entrance:` and the entrance kind.",
@@ -256,7 +223,7 @@
       }
     },
     "anchor": {
-      "description": "What a resource card or a connection cites: a block or entrance key, or lines of an evidence file, with the project when it is not the board's own.",
+      "description": "What a resource card or a connection cites: a block or entrance key, or lines of an evidence file.",
       "oneOf": [
         {
           "type": "object",
@@ -267,8 +234,7 @@
               "type": "string",
               "description": "A block key or an entrance key.",
               "pattern": "^entrance:|^[^#]+#"
-            },
-            "project": { "$ref": "#/$defs/project" }
+            }
           }
         },
         {
@@ -278,7 +244,7 @@
           "properties": {
             "file": {
               "type": "string",
-              "description": "An evidence file, relative to its project's folder, `/`-separated, without `.` or `..` parts.",
+              "description": "An evidence file, relative to the project's folder, `/`-separated, without `.` or `..` parts.",
               "pattern": "^(?![A-Za-z]:)(?!\\.\\.?(?:/|$))[^/\\\\\\u0000]+(?:/(?!\\.\\.?(?:/|$))[^/\\\\\\u0000]+)*$"
             },
             "lines": {
@@ -290,8 +256,7 @@
               ],
               "minItems": 2,
               "maxItems": 2
-            },
-            "project": { "$ref": "#/$defs/project" }
+            }
           }
         }
       ]
@@ -301,8 +266,7 @@
       "additionalProperties": false,
       "required": ["from", "id", "to"],
       "dependentRequired": {
-        "kind": ["author"],
-        "carriesProject": ["carries"]
+        "kind": ["author"]
       },
       "properties": {
         "id": { "$ref": "#/$defs/id" },
@@ -321,7 +285,6 @@
         "toColumn": { "$ref": "#/$defs/text", "description": "For `relates`: the column of the `to` table." },
         "channel": { "$ref": "#/$defs/text", "description": "What travels: the route, the queue, or the event." },
         "carries": { "$ref": "#/$defs/blockKey", "description": "The type it carries: a type declaration or class key." },
-        "carriesProject": { "$ref": "#/$defs/project", "description": "The project of `carries`; absent for the board's own." },
         "cardinality": {
           "enum": ["one-to-one", "one-to-many", "many-to-one", "many-to-many"],
           "description": "For `relates`: how many rows of each table it joins."
@@ -402,14 +365,10 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["anchors", "at", "author", "id", "kind", "name"],
-      "dependentRequired": {
-        "project": ["type"]
-      },
       "properties": {
         "id": { "$ref": "#/$defs/id" },
         "kind": { "enum": ["table", "queue", "cache", "storage", "external", "actor"] },
         "name": { "$ref": "#/$defs/text", "description": "The technical name, such as `orders`." },
-        "project": { "$ref": "#/$defs/project", "description": "The project of `type`; absent for the board's own." },
         "type": { "$ref": "#/$defs/blockKey", "description": "For a table: the type declaration or class that declares its shape." },
         "columns": {
           "type": "array",
@@ -461,7 +420,7 @@
       "properties": {
         "id": { "$ref": "#/$defs/id" },
         "card": { "$ref": "#/$defs/id", "description": "The id of the block card of this page it belongs to." },
-        "after": { "$ref": "#/$defs/blockKey", "description": "The real step it goes after: a key inside the card's block (under `<card's block key>/`), in the card's project." },
+        "after": { "$ref": "#/$defs/blockKey", "description": "The real step it goes after: a key inside the card's block (under `<card's block key>/`)." },
         "path": {
           "enum": ["yes", "no", "each", "done"],
           "description": "For a step with several outgoing paths (a condition or a loop): which one."

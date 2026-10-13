@@ -522,7 +522,7 @@ pub(crate) struct Context<'a> {
     pub(crate) reader: &'a Reader,
     /// The live project's reader index; `None` while it rests.
     pub(crate) index: Option<&'a ReaderIndex>,
-    /// The project's shared name, for its folder.
+    /// The project's name (its folder's name), for its folder.
     pub(crate) project: &'a str,
     /// The project's folder, settings, and discovery options, for why code isn't indexed.
     pub(crate) root: &'a Path,
@@ -810,10 +810,11 @@ pub fn entrances(ctx: &Ctx<'_>, args: EntrancesArgs) -> CommandResult<EntrancesV
     });
     let reader = pool.get()?;
     let catalog = Catalog::read(&reader)?;
+    let name = project.name();
     let context = Context {
         reader: &reader,
         index: index.as_deref(),
-        project: project.name(),
+        project: &name,
         root: project.root(),
         settings: &settings,
         discover: &discover,

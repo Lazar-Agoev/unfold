@@ -14,7 +14,7 @@ import { applyAgentEdit } from "./edit";
 import { resetWorking } from "./working";
 
 const P = "p-orders0000";
-const ID = ".unfold/local/drafts/b.json";
+const ID = ".unfold/boards/b.json";
 const REF = { project: P, id: ID };
 const CREATE = "src/routes/orders.ts#function:createOrder";
 const IF = `${CREATE}/if[0]`;
@@ -261,7 +261,7 @@ describe("set_view: calls expanded in place", () => {
     worker();
     const result = await edit([{ op: "set_view", items: [{ id: "handler", expandCalls: [[CALLBACK, LOG_CALL]] }] }]);
     expect(result.items).toEqual([
-      { kind: "card", id: "handler", status: "updated", key: HANDLER, project: P, name: keyDisplayName(HANDLER), expanded: true, expandedCalls: [[CALLBACK], [CALLBACK, LOG_CALL]] },
+      { kind: "card", id: "handler", status: "updated", key: HANDLER, name: keyDisplayName(HANDLER), expanded: true, expandedCalls: [[CALLBACK], [CALLBACK, LOG_CALL]] },
     ]);
     expect(onPage().cards[1]?.expanded).toEqual([[CALLBACK], [CALLBACK, LOG_CALL]]);
     // A callback that makes more than one call leads to itself: its own steps are the next level.

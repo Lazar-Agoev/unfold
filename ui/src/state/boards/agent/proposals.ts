@@ -16,7 +16,7 @@ import { isTypeKind, keyBlockKind } from "../../../code/typeKinds";
 import type { FlowModel, FlowNode, Key, Page, Proposal, ProposalPath } from "../../../ipc/generated";
 import { cardKey, isFreeId } from "../document";
 import { addProposal, findProposal, placementProblem, proposalReason, proposalsOf, proposalTitle, PROPOSAL_REASON_MAX, PROPOSAL_TITLE_MAX, updateProposal, type ProposalChange } from "../proposals";
-import { AgentRefusal, cardName, cardOf, cardProject, guardPeopleText, invalid, type OpContext } from "./context";
+import { AgentRefusal, cardName, cardOf, guardPeopleText, invalid, type OpContext } from "./context";
 
 /** `“Place the order” (line 32)`: a step as a refusal names it. */
 function stepText(node: FlowNode, label: string): string {
@@ -79,10 +79,9 @@ export function applyPropose(page: Page, op: ProposeOp, ctx: OpContext): AgentPr
   if (!("block" in card.ref) || isTypeKind(keyBlockKind(key) ?? "")) {
     throw invalid(`${name} is ${"block" in card.ref ? "a type card" : "an entrance card"}: a proposed step goes after a real step of a function's card. add_cards the function it would change, then propose there.`);
   }
-  const model = ctx.data.model(cardProject(ctx, card), key);
+  const model = ctx.data.model(ctx.board.project, key);
   const flow = model?.type === "block" && model.flow?.source === "current" ? model.flow : null;
-  const project = card.ref.project;
-  const label = (step: Key, node: FlowNode) => page.labels.find((entry) => entry.project === project && entry.key === step)?.text ?? node.label;
+  const label = (step: Key, node: FlowNode) => page.labels.find((entry) => entry.key === step)?.text ?? node.label;
 
   /** The placement after `after` on `path`, checked against the card's Flow. */
   const placement = (after: Key, path: ProposalPath | undefined): { after: Key; path: ProposalPath | undefined } => {

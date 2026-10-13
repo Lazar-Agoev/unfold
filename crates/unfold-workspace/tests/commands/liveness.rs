@@ -1,17 +1,11 @@
 //! Live and resting projects (project liveness): what wakes a project, when it rests, what
 //! keeps it live, and how a resting project answers reads from its stored graph.
 
-use std::collections::BTreeSet;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use unfold_workspace::ProjectId;
 
 use crate::common::{Harness, eventually, restless};
-
-fn id(text: &str) -> ProjectId {
-    serde_json::from_value(json!(text)).expect("a project id")
-}
 
 fn live(harness: &Harness, project: &str) -> bool {
     harness.row(project)["live"] == true
@@ -163,34 +157,6 @@ fn every_open_board_keeps_its_project_live_until_its_window_closes() {
 }
 
 #[test]
-fn an_open_board_keeps_the_projects_its_cards_use_live() {
-    let harness = Harness::with("ts-orders", restless());
-    let (python, _) = harness.add("py-orders", "py-orders");
-    harness.ok(1, "select_project", json!({ "project": harness.project }));
-    harness.ok(1, "select_project", json!({ "project": python }));
-    harness.ok(1, "select_project", json!({ "project": harness.project }));
-    let projects = harness.host.projects().expect("initialized");
-    let board = ".unfold/local/drafts/board-1.json";
-    let own = projects.handle(&id(&harness.project)).expect("project");
-    own.open_boards().open(board, 1);
-    own.open_boards()
-        .set_references(board, BTreeSet::from([id(&python)]));
-    std::thread::sleep(Duration::from_millis(400));
-    assert!(live(&harness, &python), "a board with its cards keeps it live");
-    own.open_boards().close(board);
-    eventually("it rests once the board closed", || !live(&harness, &python));
-    assert!(
-        live(&harness, &harness.project),
-        "the selected project stays live"
-    );
-    // An open board gaining cards from a resting project wakes it.
-    own.open_boards().open(board, 1);
-    own.open_boards()
-        .set_references(board, BTreeSet::from([id(&python)]));
-    eventually("the referenced project wakes", || live(&harness, &python));
-}
-
-#[test]
 fn a_resting_project_answers_reads_from_its_stored_graph() {
     let harness = Harness::with("ts-orders", restless());
     compile_unselected(&harness, &harness.project);
@@ -219,7 +185,8 @@ fn a_resting_project_answers_reads_from_its_stored_graph() {
     let text = harness.ok(1, "search_text", json!({ "query": "orderService" }));
     assert!(text["matches"].as_u64().is_some_and(|matches| matches > 0));
     let config = harness.ok(1, "project_config", json!({ "project": harness.project }));
-    assert_eq!(config["name"], json!({"value": "ts-orders", "isDefault": true}));
+    assert_eq!(config["exists"], true);
+    assert!(config["settings"].is_object(), "{config}");
     assert_eq!(
         harness.ok(1, "cancel_compile", json!({ "project": harness.project })),
         json!({ "cancelled": false })

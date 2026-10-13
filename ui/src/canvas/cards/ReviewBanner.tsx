@@ -23,7 +23,7 @@ import {
   findProposal,
   itemsFor,
   kindWord,
-  labelsFor,
+  labelTexts,
   placesAfter,
   repairBoard,
   repairEffect,
@@ -33,7 +33,6 @@ import {
   useOpenBoard,
   type PageTarget,
 } from "../../state/boards";
-import { resolveRefProject, useProjectIndex } from "../../state/workspace";
 import { cardQuery } from "../cardData";
 
 /** What the banner says about a card's first problem. */
@@ -42,7 +41,6 @@ const BANNER_TEXT: Readonly<Record<HealthKind, string>> = {
   outdated: "Changed since it was described",
   missing: "Missing from the graph",
   brokenGroup: "A group no longer matches the code",
-  notConnected: "From a project that isn't connected",
   brokenLink: "A link lost its other end",
 };
 
@@ -52,7 +50,6 @@ const CLAIM_TEXT: Readonly<Record<HealthKind, string>> = {
   outdated: "Changed since it was drawn",
   missing: "Cites code that is gone",
   brokenGroup: "A group no longer matches the code",
-  notConnected: "Cites a project that isn't connected",
   brokenLink: "Lost an end or what it cites",
 };
 
@@ -62,7 +59,6 @@ const PROPOSAL_TEXT: Readonly<Record<HealthKind, string>> = {
   outdated: "Where a proposed step goes needs review",
   missing: "A proposed step lost the step it goes after",
   brokenGroup: "A group no longer matches the code",
-  notConnected: "From a project that isn't connected",
   brokenLink: "A link lost its other end",
 };
 
@@ -153,10 +149,9 @@ interface StepPlace {
 function StepPicker({ target, item, page, value, onChange }: { readonly target: PageTarget; readonly item: HealthItem; readonly page: Page; readonly value: StepPlace | null; readonly onChange: (place: StepPlace) => void }) {
   const proposal = "proposal" in item.target ? findProposal(page, item.target.proposal) : undefined;
   const card = proposal ? findCard(page, proposal.card) : undefined;
-  const project = resolveRefProject(useProjectIndex(), target.board.project, card?.ref.project);
-  const query = useQuery({ ...cardQuery(project ?? "", card ? cardKey(card) : ""), enabled: project !== null && card !== undefined });
+  const query = useQuery({ ...cardQuery(target.board.project, card ? cardKey(card) : ""), enabled: card !== undefined });
   const flow = query.data?.type === "block" && query.data.flow?.source === "current" ? query.data.flow : null;
-  const labels = labelsFor(page.labels, card?.ref.project);
+  const labels = labelTexts(page.labels);
   const places = (flow?.nodes ?? []).flatMap((node): StepPlace[] => {
     if (node.key === undefined || node.key === proposal?.after) {
       return [];
@@ -244,10 +239,7 @@ function RepairRow({
 }) {
   const [to, setTo] = useState("");
   const [busy, setBusy] = useState(false);
-  const index = useProjectIndex();
   const spec = repairSpec(kind, item, page, to);
-  // What a claim cites may be in another project: Reconnect searches there.
-  const searchProject = item.project !== undefined ? (resolveRefProject(index, target.board.project, item.project) ?? project) : project;
   const apply = async () => {
     if (!spec) {
       return;
@@ -269,7 +261,7 @@ function RepairRow({
         <strong>{repairLabel(kind).replace(/…$/, "")}</strong>
         <span>{repairEffect(kind, item, page)}</span>
       </div>
-      {kind === "reconnect" ? <ReconnectPicker project={searchProject} entrance={entrance} value={to} onChange={setTo} /> : null}
+      {kind === "reconnect" ? <ReconnectPicker project={project} entrance={entrance} value={to} onChange={setTo} /> : null}
       <Button variant="secondary" size="sm" busy={busy} disabled={!spec} onClick={() => void apply()}>
         Apply
       </Button>

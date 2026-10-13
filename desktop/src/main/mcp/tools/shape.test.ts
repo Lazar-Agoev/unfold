@@ -2,23 +2,22 @@ import { describe as group, expect, it, vi } from "vitest";
 import type { AgentEditRequest, AgentFailure, AgentItemResult, AgentPage, AgentShellEvent } from "../../../shared/agent-api";
 import { pageRevision } from "../../agents/revision";
 import { addNotes, addResources, connect, describe, frameCards, groupSteps, labelSteps, propose } from "./shape";
-import { harness, PROJECT, projectRow } from "./testing";
+import { harness, PROJECT } from "./testing";
 
 vi.mock("electron", async () => (await import("../../fake-electron")).electronModule);
 
-const BOARD = { project: PROJECT, id: ".unfold/local/drafts/order-placement.json" };
-const BOARD_INFO = { title: "Order placement", place: "draft", changes: 0, revision: "r1" } as const;
+const BOARD = { project: PROJECT, id: ".unfold/boards/order-placement.json" };
+const BOARD_INFO = { title: "Order placement", revision: "r1" } as const;
 const CREATE_ORDER = "src/routes/orders.ts#function:createOrder";
 const PAGE: AgentPage = { id: "page-1", title: "Placing an order", defaultView: "diagram", cards: [], groups: [], labels: [], guards: [], links: [] };
 
 /** A window that holds the board and answers an edit with `answer`. */
 function app(answer: { readonly items: readonly AgentItemResult[]; readonly warnings?: readonly string[] } | AgentFailure) {
   const test = harness({
-    projects: [projectRow(PROJECT, "ts-orders"), projectRow("p-pay", "payments")],
     window: (request: AgentShellEvent) =>
       request.type === "agent_edit" ? ("ok" in answer ? answer : { ok: true, page: PAGE, board: BOARD_INFO, items: answer.items, warnings: answer.warnings ?? [] }) : undefined,
   });
-  test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], tabs: [BOARD] });
+  test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
   return test;
 }
 
@@ -26,7 +25,7 @@ function sentOps(test: ReturnType<typeof harness>): AgentEditRequest["ops"] | un
   return test.requests.find((request): request is AgentShellEvent & AgentEditRequest => request.type === "agent_edit")?.ops;
 }
 
-const HEADER = `Unfold · ts-orders › Order placement (draft) › Placing an order · rev ${pageRevision(PAGE)} · as Claude`;
+const HEADER = `Unfold · ts-orders › Order placement › Placing an order · rev ${pageRevision(PAGE)} · as Claude`;
 const IDS = `Ids: board ${BOARD.id}, page page-1. One undo step in Unfold, saved.`;
 
 group("group_steps", () => {
@@ -108,7 +107,7 @@ group("frame_cards", () => {
 });
 
 group("add_resources", () => {
-  it("passes projects by id (the board's own left out), and the save's grounding refusal as it is", async () => {
+  it("passes resource cards and their anchors as given, and the save's grounding refusal as it is", async () => {
     const test = app({ items: [{ kind: "resource", id: "orders", status: "created", resource: "table", name: "orders", type: "src/types.ts#interface:Order", columns: [{ name: "id", key: "primary" }] }] });
     const { text } = await test.call(addResources, {
       resources: [
@@ -116,9 +115,8 @@ group("add_resources", () => {
           kind: "table",
           name: "orders",
           type: "src/types.ts#interface:Order",
-          project: "ts-orders",
           columns: [{ name: "id", key: "primary" }],
-          anchors: [{ key: "src/db/repository.ts#class:OrderRepository" }, { file: "db/schema.sql", lines: [3, 9], project: "payments" }],
+          anchors: [{ key: "src/db/repository.ts#class:OrderRepository" }, { file: "db/schema.sql", lines: [3, 9] }],
         },
       ],
     });
@@ -131,7 +129,7 @@ group("add_resources", () => {
             name: "orders",
             type: "src/types.ts#interface:Order",
             columns: [{ name: "id", key: "primary" }],
-            anchors: [{ key: "src/db/repository.ts#class:OrderRepository" }, { file: "db/schema.sql", lines: [3, 9], project: "p-pay" }],
+            anchors: [{ key: "src/db/repository.ts#class:OrderRepository" }, { file: "db/schema.sql", lines: [3, 9] }],
           },
         ],
       },
@@ -183,7 +181,7 @@ group("add_notes, describe, and label_steps", () => {
   });
 
   it("describe items by id or link, replacing people's words only when asked", async () => {
-    const test = app({ items: [{ kind: "card", id: "create-order", status: "updated", key: CREATE_ORDER, project: PROJECT, name: "createOrder" }] });
+    const test = app({ items: [{ kind: "card", id: "create-order", status: "updated", key: CREATE_ORDER, name: "createOrder" }] });
     const { text } = await test.call(describe, { items: [{ id: `unfold://ts-orders/${BOARD.id}?page=page-1&item=create-order`, text: "Places the order now." }], replacePeopleText: true });
     expect(sentOps(test)).toEqual([{ op: "describe", items: [{ id: "create-order", text: "Places the order now." }], replacePeopleText: true }]);
     expect(text.split("\n").slice(1, 3)).toEqual(["Described (1 updated):", "- createOrder (card id create-order, updated)"]);

@@ -8,9 +8,8 @@
  */
 
 import { z } from "zod";
-import type { AgentCardSpec, AgentItemResult, AgentMove } from "../../../shared/agent-api";
-import type { ToolContext } from "../context";
-import { applyEdit, defined, editResult, editTarget, expectRevision, itemLine, itemsHeading, localIds, otherProject, pageArgs, type EditTarget } from "../edits";
+import type { AgentItemResult, AgentMove } from "../../../shared/agent-api";
+import { applyEdit, defined, editResult, editTarget, expectRevision, itemLine, itemsHeading, localIds, pageArgs } from "../edits";
 import { ToolError } from "../results";
 import { isLink } from "../target";
 import { defineTool } from "../tool";
@@ -36,7 +35,6 @@ const callPath = z
 
 const cardSpec = z.object({
   key: z.string().min(1).describe("A function's, method's, class's, type's, or entrance's key"),
-  project: z.string().min(1).optional().describe("The project the code is in, by name or id (default: the board's own)"),
   expanded: z.boolean().optional().describe("Shows its detail in Diagram: a function's written flow, an entrance's evidence and targets (default: the page's default)"),
   view: VIEW.optional().describe('Older input: "diagram" is compact, "flow" or "code" expanded (Code is a page-wide lens)'),
   frame: z.string().min(1).optional().describe("A frame's id: the cards this adds go into it"),
@@ -51,13 +49,6 @@ const cardSpec = z.object({
     .describe("Levels of calls, callers, and fields' types to add with it"),
 });
 
-/** A card spec with its project as the window takes it: by id, absent for the board's own project. */
-async function resolvedCard(context: ToolContext, target: EditTarget, spec: z.output<typeof cardSpec>): Promise<AgentCardSpec> {
-  const { project, ...rest } = defined(spec);
-  const id = await otherProject(context, target, project);
-  return id === undefined ? rest : { ...rest, project: id };
-}
-
 export const addCards = defineTool({
   name: "add_cards",
   title: "Add cards",
@@ -71,8 +62,7 @@ export const addCards = defineTool({
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
   async run({ board, page, project, cards, expectRevision: revision }, context) {
     const target = await editTarget(context, { board, page, project });
-    const specs = await Promise.all(cards.map((card) => resolvedCard(context, target, card)));
-    const edit = await applyEdit(context, target, { title: "Add cards", op: { op: "add_cards", cards: specs }, expectRevision: revision });
+    const edit = await applyEdit(context, target, { title: "Add cards", op: { op: "add_cards", cards: defined(cards) }, expectRevision: revision });
     return editResult(
       context,
       target,

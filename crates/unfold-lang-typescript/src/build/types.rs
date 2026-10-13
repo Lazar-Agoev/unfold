@@ -3,7 +3,7 @@
 //!
 //! An interface's members, and those of an object type literal that is a type alias's whole
 //! aliased type, are type syntax: they never become nodes, only [`MemberDraft`]s beside the tree.
-//! An enum's members are nodes (their initializers can hold calls) and drafts.
+//! An enum's members are nodes (their initializers can hold calls) and [`MemberDraft`]s too.
 
 use oxc_allocator::UnstableAddress;
 use oxc_ast::ast::{

@@ -1,21 +1,20 @@
-//! Board folders (board folder metadata).
+//! Board folders (board folder metadata): one level deep, each a single name.
 //!
-//! A board sits in a folder through its `folder` field; the sidebar builds the tree from the
-//! boards. A folder with no board in or under it is kept in `state.json`'s `emptyFolders` until a
-//! board goes into it, and a folder a board leaves stays there, empty, until it is deleted. A
-//! folder is metadata Rust owns: these commands work on any board, open or not, and a published
-//! board's move is an unpublished change (its changes copy). An open board's session follows the
-//! move, so the window's next save doesn't conflict with it.
+//! A board sits in a folder through its `folder` field; the sidebar groups the boards by it. A
+//! folder with no board in it is kept in `state.json`'s `emptyFolders` until a board goes into
+//! it, and a folder a board leaves stays there, empty, until it is deleted. A folder is metadata
+//! Rust owns: these commands work on any board, open or not, and an open board's session
+//! follows the move, so the window's next save keeps it.
 
 use std::collections::BTreeMap;
 
-use unfold_reader::board::files::BoardFile;
-use unfold_reader::board::is_folder_path;
+use unfold_reader::board::files::{BoardFile, Loaded};
+use unfold_reader::board::is_folder_name;
 
-use super::files::{Files, Working};
-use super::graphs::Resolver;
-use super::lists::summary;
-use super::session::{BoardExtras, Session, health_of};
+use super::files::Files;
+use super::graphs::Source;
+use super::lists::{label_of, summary};
+use super::session::{BoardExtras, Session};
 use super::types::{BoardSummary, RenameFolderArgs, RenamedFolder, SetBoardFolderArgs};
 use super::{announce, parse_id};
 use crate::commands::{ProjectPathArgs, count};
@@ -23,46 +22,39 @@ use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::workspace::Workspace;
 
-/// A folder path a command names, checked (`invalid_folder`).
-pub(super) fn folder_arg(path: String) -> CommandResult<String> {
-    if is_folder_path(&path) {
-        Ok(path)
+/// A folder name a command names, checked (`invalid_folder`).
+pub(super) fn folder_arg(name: String) -> CommandResult<String> {
+    if is_folder_name(&name) {
+        Ok(name)
     } else {
         Err(CommandError::new(
             "invalid_folder",
             format!(
-                "`{path}` is not a folder path: 1 to 8 names joined by `/`, each 1 to 64 characters, \
-                 not `.` or `..`, without `\\`, control characters, or surrounding spaces"
+                "`{name}` is not a folder name: 1 to 64 characters, without `/`, `\\`, control \
+                 characters, or surrounding spaces, and not `.` or `..` (folders are one level deep)"
             ),
         ))
     }
 }
 
-/// Whether `folder` is folder `path` or inside it.
-fn under(folder: &str, path: &str) -> bool {
-    folder
-        .strip_prefix(path)
-        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
-}
-
-/// A board went into `folder`: it and the folders it is in are no longer empty.
+/// A board went into `folder`: it is no longer empty.
 pub(super) fn folder_used(workspace: &Workspace, folder: &str) {
     if workspace
         .local_state()
         .empty_folders
         .iter()
-        .any(|empty| under(folder, empty))
+        .any(|empty| empty == folder)
     {
         // Remembered state is a convenience: a failed write loses only an empty folder.
         let _ = workspace.update_local_state(|state| {
-            state.empty_folders.retain(|empty| !under(folder, empty));
+            state.empty_folders.retain(|empty| empty != folder);
         });
     }
 }
 
-/// A board left `folder`: it stays, empty, when nothing else is in or under it.
+/// A board left `folder`: it stays, empty, when no other board is in it.
 pub(super) fn folder_left(files: &Files<'_>, workspace: &Workspace, folder: &str) {
-    let boards = working_versions(files);
+    let boards = boards(files);
     if !exists(&boards, &workspace.local_state().empty_folders, folder) {
         let _ = workspace.update_local_state(|state| {
             state.empty_folders.push(folder.to_owned());
@@ -72,57 +64,51 @@ pub(super) fn folder_left(files: &Files<'_>, workspace: &Workspace, folder: &str
     }
 }
 
-/// The working version of every board of the project that reads, by board id.
-fn working_versions(files: &Files<'_>) -> BTreeMap<String, (BoardFile, Working)> {
+/// Every board of the project that reads, by board id.
+fn boards(files: &Files<'_>) -> BTreeMap<String, (BoardFile, Loaded)> {
     files
         .boards()
         .unwrap_or_default()
         .into_iter()
         .filter_map(|file| {
-            let working = files.working(&file).ok()?;
-            Some((file.relative(), (file, working)))
+            let loaded = files.load(&file).ok()?;
+            Some((file.relative(), (file, loaded)))
         })
         .collect()
 }
 
-/// Whether folder `path` exists: a board or an empty folder is in or under it.
-fn exists(boards: &BTreeMap<String, (BoardFile, Working)>, empty: &[String], path: &str) -> bool {
-    boards.values().any(|(_, working)| {
-        working
-            .loaded
-            .board
-            .folder
-            .as_deref()
-            .is_some_and(|folder| under(folder, path))
-    }) || empty.iter().any(|folder| under(folder, path))
+/// Whether folder `name` exists: a board or an empty folder is in it.
+fn exists(boards: &BTreeMap<String, (BoardFile, Loaded)>, empty: &[String], name: &str) -> bool {
+    boards
+        .values()
+        .any(|(_, loaded)| loaded.board.folder.as_deref() == Some(name))
+        || empty.iter().any(|folder| folder == name)
 }
 
-/// Moves board `id` (whose working version is `working`) into `folder`, writing its working
-/// version; an open session on the same version follows. Whether it moved.
+/// Moves board `id` (read as `loaded`) into `folder`, writing its file; an open session on the
+/// same version follows. Whether it moved.
 fn move_board(
     files: &Files<'_>,
     extras: &BoardExtras,
     sessions: &mut BTreeMap<String, Session>,
     id: &str,
     file: &BoardFile,
-    working: Working,
+    loaded: Loaded,
     folder: Option<String>,
 ) -> CommandResult<bool> {
-    if working.loaded.board.folder == folder {
+    if loaded.board.folder == folder {
         return Ok(false);
     }
-    let mut board = working.loaded.board.clone();
+    let mut board = loaded.board;
     board.folder = folder;
-    let written = files.write(file, board, working.base())?;
-    if written.kind == working.kind {
-        extras.rekey(id, working.loaded.revision, written.revision);
-    }
+    let revision = files.save(file, &board)?;
+    extras.rekey(id, loaded.revision, revision);
     if let Some(session) = sessions
         .get_mut(id)
-        .filter(|session| session.revision == working.loaded.revision && session.kind == working.kind)
+        .filter(|session| session.revision == loaded.revision)
     {
-        let health = session.health.clone();
-        session.wrote(written, health);
+        session.board.folder = board.folder;
+        session.revision = revision;
     }
     Ok(true)
 }
@@ -136,21 +122,21 @@ pub fn set_board_folder(ctx: &Ctx<'_>, args: SetBoardFolderArgs) -> CommandResul
     let workspace = project.wake()?;
     let extras = project.extras();
     let files = Files::live(&workspace);
-    let mut resolver = Resolver::live(ctx.projects(), &workspace)?;
-    let (left, working) = {
+    let source = Source::live(&workspace)?;
+    let left = {
         let mut sessions = extras.boards.sessions();
-        let working = files.working(&file)?;
-        let previous = working.loaded.board.folder.clone();
+        let loaded = files.load(&file)?;
+        let previous = loaded.board.folder.clone();
         let moved = move_board(
             &files,
             &extras.boards,
             &mut sessions,
             &args.id,
             &file,
-            working,
+            loaded,
             folder.clone(),
         )?;
-        (moved.then_some(previous).flatten(), files.working(&file))
+        moved.then_some(previous).flatten()
     };
     if let Some(folder) = &folder {
         folder_used(&workspace, folder);
@@ -158,38 +144,37 @@ pub fn set_board_folder(ctx: &Ctx<'_>, args: SetBoardFolderArgs) -> CommandResul
     if let Some(left) = &left {
         folder_left(&files, &workspace, left);
     }
-    let label = match &working {
-        Ok(working) => health_of(&extras.boards, &mut resolver, &args.id, &working.loaded)?
-            .and_then(|health| health.label()),
-        Err(_) => None,
-    };
+    let loaded = files.load(&file);
+    let label = label_of(Some(&(extras, source)), &args.id, &loaded);
     announce(&workspace, &mut vec![args.id.clone()], true);
-    Ok(summary(project.id(), &files, &file, working, label))
+    Ok(summary(
+        project.id(),
+        &file,
+        files.modified_ms(&file),
+        loaded,
+        label,
+    ))
 }
 
 /// `create_folder`: adds an empty folder (nothing when the folder exists).
 pub fn create_folder(ctx: &Ctx<'_>, args: ProjectPathArgs) -> CommandResult<()> {
     let project = ctx.project(&args.project)?;
-    let path = folder_arg(args.path)?;
+    let name = folder_arg(args.path)?;
     let workspace = project.wake()?;
     let files = Files::live(&workspace);
-    if exists(
-        &working_versions(&files),
-        &workspace.local_state().empty_folders,
-        &path,
-    ) {
+    if exists(&boards(&files), &workspace.local_state().empty_folders, &name) {
         return Ok(());
     }
     workspace.update_local_state(|state| {
-        state.empty_folders.push(path);
+        state.empty_folders.push(name);
         state.empty_folders.sort();
     })?;
     announce(&workspace, &mut Vec::new(), true);
     Ok(())
 }
 
-/// `rename_folder`: moves every board at or under folder `from` to the same place under `to`
-/// (published boards as unpublished changes), and the empty folders with them.
+/// `rename_folder`: moves every board in folder `from` to folder `to`, and renames it when it
+/// is empty.
 pub fn rename_folder(ctx: &Ctx<'_>, args: RenameFolderArgs) -> CommandResult<RenamedFolder> {
     let project = ctx.project(&args.project)?;
     let from = folder_arg(args.from)?;
@@ -197,7 +182,7 @@ pub fn rename_folder(ctx: &Ctx<'_>, args: RenameFolderArgs) -> CommandResult<Ren
     let workspace = project.wake()?;
     let extras = project.extras();
     let files = Files::live(&workspace);
-    let boards = working_versions(&files);
+    let boards = boards(&files);
     let empty = workspace.local_state().empty_folders;
     if !exists(&boards, &empty, &from) {
         return Err(CommandError::not_found(format!("there is no folder `{from}`")));
@@ -208,46 +193,29 @@ pub fn rename_folder(ctx: &Ctx<'_>, args: RenameFolderArgs) -> CommandResult<Ren
             format!("a folder `{to}` already exists"),
         ));
     }
-    let renamed = |folder: &str| format!("{to}{}", &folder[from.len()..]);
-    // A rename that would nest a folder too deep moves nothing.
-    for folder in boards
-        .values()
-        .filter_map(|(_, working)| working.loaded.board.folder.as_deref())
-        .chain(empty.iter().map(String::as_str))
-        .filter(|folder| under(folder, &from))
-    {
-        folder_arg(renamed(folder))?;
-    }
     let mut moved = Vec::new();
     {
         let mut sessions = extras.boards.sessions();
-        for (id, (file, working)) in boards {
-            let Some(folder) = working
-                .loaded
-                .board
-                .folder
-                .as_deref()
-                .filter(|folder| under(folder, &from))
-                .map(renamed)
-            else {
+        for (id, (file, loaded)) in boards {
+            if loaded.board.folder.as_deref() != Some(from.as_str()) {
                 continue;
-            };
+            }
             move_board(
                 &files,
                 &extras.boards,
                 &mut sessions,
                 &id,
                 &file,
-                working,
-                Some(folder),
+                loaded,
+                Some(to.clone()),
             )?;
             moved.push(id);
         }
     }
     workspace.update_local_state(|state| {
         for folder in &mut state.empty_folders {
-            if under(folder, &from) {
-                *folder = renamed(folder);
+            if *folder == from {
+                folder.clone_from(&to);
             }
         }
         state.empty_folders.sort();
@@ -258,23 +226,22 @@ pub fn rename_folder(ctx: &Ctx<'_>, args: RenameFolderArgs) -> CommandResult<Ren
     Ok(RenamedFolder { boards })
 }
 
-/// `delete_folder`: removes an empty folder and the empty folders under it
-/// (`folder_not_empty` while a board is in or under it).
+/// `delete_folder`: removes an empty folder (`folder_not_empty` while a board is in it).
 pub fn delete_folder(ctx: &Ctx<'_>, args: ProjectPathArgs) -> CommandResult<()> {
     let project = ctx.project(&args.project)?;
-    let path = folder_arg(args.path)?;
+    let name = folder_arg(args.path)?;
     let workspace = project.wake()?;
     let files = Files::live(&workspace);
-    if exists(&working_versions(&files), &[], &path) {
+    if exists(&boards(&files), &[], &name) {
         return Err(CommandError::new(
             "folder_not_empty",
-            format!("folder `{path}` has boards in it"),
+            format!("folder `{name}` has boards in it"),
         ));
     }
-    if !exists(&BTreeMap::new(), &workspace.local_state().empty_folders, &path) {
-        return Err(CommandError::not_found(format!("there is no folder `{path}`")));
+    if !exists(&BTreeMap::new(), &workspace.local_state().empty_folders, &name) {
+        return Err(CommandError::not_found(format!("there is no folder `{name}`")));
     }
-    workspace.update_local_state(|state| state.empty_folders.retain(|folder| !under(folder, &path)))?;
+    workspace.update_local_state(|state| state.empty_folders.retain(|folder| *folder != name))?;
     announce(&workspace, &mut Vec::new(), true);
     Ok(())
 }
@@ -284,16 +251,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn folders_contain_their_subfolders_only() {
-        assert!(under("Checkout", "Checkout"));
-        assert!(under("Checkout/Refunds", "Checkout"));
-        assert!(!under("Checkouts", "Checkout"));
-        assert!(!under("Checkout", "Checkout/Refunds"));
-        assert_eq!(
-            folder_arg("Checkout/Refunds".into()).expect("valid"),
-            "Checkout/Refunds"
-        );
-        for bad in ["", "/x", "x/", "a/../b", " x", "a\\b"] {
+    fn folders_are_one_name() {
+        assert_eq!(folder_arg("Checkout".into()).expect("valid"), "Checkout");
+        for bad in ["", "Checkout/Refunds", "/x", "x/", "..", " x", "a\\b"] {
             assert_eq!(
                 folder_arg(bad.into()).expect_err(bad).code,
                 "invalid_folder",
