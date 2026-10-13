@@ -2,10 +2,9 @@
 //! is in, reading it, and writing it.
 //!
 //! A board's **id** is its public file's folder-relative path: `.unfold/local/drafts/<name>.json`
-//! for a draft (the same id when `local/` is in the fallback location) and
-//! `.unfold/boards/<name>.json` for a published board, with or without unpublished changes. A
-//! published board's **working file** is its changes copy (`drafts/<name>.changes.json`) when one
-//! exists, else the published file itself.
+//! for a draft and `.unfold/boards/<name>.json` for a published board, with or without
+//! unpublished changes. A published board's **working file** is its changes copy
+//! (`drafts/<name>.changes.json`) when one exists, else the published file itself.
 //!
 //! Every write goes through a live project's [`Workspace`], which notes it so the watcher doesn't
 //! report the app's own writes as outside edits; commands report them with `boards_changed`

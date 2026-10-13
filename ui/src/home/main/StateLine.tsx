@@ -1,25 +1,21 @@
 /**
  * Home's state line: the state's glyph and words, the muted detail, its action link,
- * and an info icon whose tooltip carries the quiet notes (fallback location, watching by scanning).
+ * and an info icon whose tooltip carries the quiet note (watching by scanning).
  */
 
 import { StateIndicator, TextButton, Tooltip, showToast } from "../../components";
 import { Icon } from "../../icons";
 import { toUnfoldError, useEngineQuery, type ProjectId, type ProjectState, type ProjectSummary } from "../../ipc";
-import { cancelCompile, setBackgroundUpdates, useCompileProgress } from "../../state/compile";
+import { cancelCompile, useCompileProgress } from "../../state/compile";
 import { setHomeView, useLayout } from "../../state/layout";
 import { stateLine, type StateAction } from "../stateLine";
 
 function run(action: StateAction, project: ProjectId): void {
-  const fail = (title: string) => (error: unknown) => {
-    showToast({ title, body: toUnfoldError(error).message, tone: "danger" });
-  };
   switch (action) {
     case "cancel":
-      cancelCompile(project).catch(fail("Couldn't cancel the compile"));
-      return;
-    case "resume":
-      setBackgroundUpdates(project, true).catch(fail("Couldn't resume background updates"));
+      cancelCompile(project).catch((error: unknown) => {
+        showToast({ title: "Couldn't cancel the compile", body: toUnfoldError(error).message, tone: "danger" });
+      });
       return;
     case "health":
       setHomeView("health");
@@ -31,32 +27,23 @@ export interface StateLineProps {
   readonly project: ProjectId;
   readonly state: ProjectState;
   readonly summary: ProjectSummary | undefined;
-  readonly branch: string | null;
 }
 
-export function StateLine({ project, state, summary, branch }: StateLineProps) {
+export function StateLine({ project, state, summary }: StateLineProps) {
   const progress = useCompileProgress(project);
   const onHealth = useLayout((layout) => layout.home.view === "health");
   // Whether the files that don't parse still show on the graph decides the problems wording.
   const problems = useEngineQuery("problems", { project }, { enabled: state.kind === "problems" });
   const parse = problems.data?.filter((item) => item.category === "doesnt_parse" || item.category === "cant_read");
   const lastGood = parse === undefined ? undefined : parse.every((item) => item.fileState === "last_good");
-  const line = stateLine({ state, summary, progress, branch, ...(lastGood === undefined ? {} : { lastGood }) });
+  const line = stateLine({ state, summary, progress, ...(lastGood === undefined ? {} : { lastGood }) });
   // On the Health view, "See Health" would lead where the person already is.
   const action = line.action && !(line.action.kind === "health" && onHealth) ? line.action : null;
   return (
     <div className="home-state-line" data-state={state.kind}>
       <StateIndicator state={state} variant="line" />
       <span className="home-state-headline">{line.headline}</span>
-      {line.detail.length > 0 ? (
-        <span className="home-state-detail">
-          {line.detail.map((part, index) => (
-            <span key={index} className={part.mono ? "home-state-run home-mono" : "home-state-run"}>
-              {part.text}
-            </span>
-          ))}
-        </span>
-      ) : null}
+      {line.detail === "" ? null : <span className="home-state-detail">{line.detail}</span>}
       {action ? (
         <span className={action.joined ? "home-state-action home-state-action-joined" : "home-state-action"}>
           <TextButton

@@ -1,18 +1,20 @@
 /**
- * Home of a compiled project (docs/ui-shell.md#screens): the header with the branch and worktree switcher, How it
- * starts (applications by category, an expanded application, Not reached) and Trace, the Boards section, the sidebar's tree, Recents and Drafts; then Health and
- * activity for a project with a file that doesn't parse; and the engine host restarting (§11.11)
- * without losing an edit.
+ * Home of a compiled project (docs/ui-shell.md#screens): the header and its state line, How it starts
+ * (applications by category, an expanded application, Not reached) and Trace, the Boards section, the
+ * Health line, the sidebar's tree, and Drafts; then Health for a project with a file that doesn't
+ * parse; the engine host restarting (§11.11) without losing an edit; and the app's Settings (the
+ * editor command, and the commands that connect an agent).
  */
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { AGENT_ADDRESS } from "../src/agents";
 import { boardTitle, boardView, card, readBoard, selected, showBoard, shownBoardRef } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { launchCompiled, launchWithProject, openPlace, PLACE, traceEntrance } from "../src/flows";
 import {
   applicationRow,
-  compileButton,
+  dialog,
   entranceRow,
   expectGraphCurrent,
   homeMain,
@@ -29,32 +31,26 @@ import {
 import { writeFile } from "../src/sandbox";
 import { enterText, expectConnection, invoke } from "../src/window";
 
+interface AppSettings {
+  readonly editorCommand?: string;
+}
+
 test.describe("Home", () => {
-  test("a compiled project's Home: header, How it starts, Trace, Boards, the sidebar tree, Recents and Drafts", async ({ sandbox, launch }) => {
+  test("a compiled project's Home: header, How it starts, Trace, Boards, Health, the sidebar tree, and Drafts", async ({ sandbox, launch }) => {
     const folder = sandbox.playground("ts-orders");
-    // A repository on a feature branch: Unfold reads Git's files (it never runs Git).
-    writeFile(join(folder, ".git", "HEAD"), "ref: refs/heads/feature-x\n");
     // A command entrance no launch reaches, for "Not reached from a launch".
     const config = join(folder, "unfold.toml");
     writeFile(config, `${readFileSync(config, "utf8")}\n[[entrance]]\nid = "metrics"\nkind = "command"\ntrigger = "metrics"\nhandler = "src/jobs/report.ts#reportMetrics"\n`);
     const { page } = await launchWithProject(launch, folder);
-    await compileButton(page).click();
     await expectGraphCurrent(page);
 
-    await test.step("the header shows the path, the name, the branch, and the graph's state in words", async () => {
-      await expect(homeMain(page).locator(".home-path")).toContainText("ts-orders");
-      await expect(stateLine(page)).toContainText(/Graph current\s*· 34 files · TypeScript · updated/);
-      await expect(projectRow(page, "ts-orders").locator(".home-project-branch")).toHaveText("feature-x");
+    await test.step("the header shows the path, the name, the project menu, New board, and the graph's state in words", async () => {
+      const header = homeMain(page).locator(".home-header");
+      await expect(header.locator(".home-path")).toContainText("ts-orders");
+      await expect(header.getByRole("button", { name: "Project menu" })).toBeVisible();
+      await expect(header.getByRole("button", { name: "New board" })).toBeVisible();
+      await expect(stateLine(page)).toContainText(/Graph current\s*· 34 files · TypeScript · updated just now/);
       await expect(rowState(page, "ts-orders")).toHaveAttribute("data-state", "current");
-    });
-
-    await test.step("the worktree switcher lists the worktrees and says what is per worktree", async () => {
-      await homeMain(page).getByRole("button", { name: "Branch feature-x. Switch worktree" }).click();
-      const worktrees = page.getByRole("menu", { name: "Worktrees" });
-      await expect(worktrees.getByRole("menuitemradio", { checked: true })).toContainText("feature-x");
-      await expect(page.getByText("Drafts and the graph are per worktree.")).toBeVisible();
-      await page.keyboard.press("Escape");
-      await expect(worktrees).toBeHidden();
     });
 
     await test.step("How it starts lists the applications by category, each launch as folder $ command", async () => {
@@ -91,6 +87,20 @@ test.describe("Home", () => {
       await unreached.click();
       await expect(unreached).toHaveAttribute("aria-expanded", "true");
       await expect(entranceRow(page, "COMMAND", "metrics")).toBeVisible();
+    });
+
+    await test.step("an entrance's menu holds only Trace on a New Board", async () => {
+      await entranceRow(page, "COMMAND", "metrics").click({ button: "right" });
+      const menu = page.getByRole("menu", { name: "Entrance menu" });
+      await expect(menu.getByRole("menuitem")).toHaveText(["Trace on a New Board"]);
+      await page.keyboard.press("Escape");
+      await expect(menu).toBeHidden();
+    });
+
+    await test.step("the Health line says every file parses", async () => {
+      const health = homeMain(page).getByRole("region", { name: "Health", exact: true });
+      await expect(health.locator(".home-health-item")).toHaveText(["All files parse"]);
+      await expect(health.getByRole("button")).toHaveCount(0);
     });
 
     await test.step("Trace opens an entrance on a new page of a new draft board", async () => {
@@ -139,13 +149,6 @@ test.describe("Home", () => {
       await showHome(page);
     });
 
-    await test.step("Recents lists the boards opened lately, across projects", async () => {
-      await sidebar(page).getByRole("button", { name: "Recents" }).click();
-      await expect(homeMain(page).getByRole("heading", { name: "Recents", level: 1 })).toBeVisible();
-      const recents = homeMain(page).getByRole("group", { name: "Recent boards" });
-      await expect(recents.getByRole("button", { name: "POST /orders" })).toContainText(/ts-orders ·.*1 page · Draft · opened/);
-    });
-
     await test.step("Drafts lists every project's drafts, and a card opens its board", async () => {
       await sidebar(page).getByRole("button", { name: "Drafts" }).click();
       await expect(homeMain(page).getByRole("heading", { name: "Drafts", level: 1 })).toBeVisible();
@@ -162,44 +165,33 @@ test.describe("Home", () => {
     });
   });
 
-  test("Health and activity: a file that doesn't parse, the Health list, and the Activity log", async ({ sandbox, launch }) => {
+  test("Health: a file that doesn't parse, the Health line, and the Health view", async ({ sandbox, launch }) => {
     const folder = sandbox.playground("ts-orders");
     writeFile(join(folder, "src", "broken.ts"), "export function broken( {\n  return 1;\n");
     const { page } = await launchWithProject(launch, folder);
-    await compileButton(page).click();
 
     await test.step("the project row and the state line say a file doesn't parse", async () => {
       await expect(rowState(page, "ts-orders")).toHaveAttribute("data-state", "problems", { timeout: 60_000 });
       await expect(stateLine(page)).toContainText("1 file doesn't parse");
     });
 
-    const health = homeMain(page).getByRole("region", { name: "Health", exact: true });
-
-    await test.step("the Health line sums the problems up, each with its action", async () => {
-      await expect(health).toContainText("1 file doesn't parse");
-      await expect(health).toContainText("1 launch into code that isn't indexed");
-      await expect(health.getByRole("button", { name: "See Health" })).toBeVisible();
+    await test.step("the Health line shows it in amber, as a button to the Health view", async () => {
+      const health = homeMain(page).getByRole("region", { name: "Health", exact: true });
+      await expect(health.locator(".home-health-item")).toHaveText(["1 file doesn't parse"]);
+      await health.getByRole("button", { name: "1 file doesn't parse" }).click();
     });
 
-    const section = homeMain(page).getByRole("region", { name: "Health and activity" });
-    const show = section.getByRole("radiogroup", { name: "Show" });
+    const view = homeMain(page).locator(".home-health");
 
-    await test.step("Health and activity lists the file that doesn't parse, with Open", async () => {
-      await health.getByRole("button", { name: "Health and activity" }).click();
-      await expect(show.getByRole("radio", { name: /^Health/ })).toHaveAttribute("aria-checked", "true");
-      const row = section.locator(".home-health-row").filter({ hasText: "src/broken.ts" });
+    await test.step("Health lists the file that doesn't parse, with Open", async () => {
+      await expect(view.getByRole("heading", { name: "Health" })).toBeVisible();
+      const row = view.locator(".home-health-row").filter({ hasText: "src/broken.ts" });
       await expect(row).toBeVisible();
       await expect(row.getByRole("button", { name: "Open" })).toBeVisible();
     });
 
-    await test.step("Activity shows the index log with the Compile", async () => {
-      await show.getByRole("radio", { name: "Activity" }).click();
-      const log = section.getByRole("table", { name: "Activity" });
-      await expect(log.getByRole("cell", { name: "Compile", exact: true })).toBeVisible();
-    });
-
     await test.step("Back to overview returns to How it starts", async () => {
-      await section.getByRole("button", { name: "Back to overview" }).click();
+      await view.getByRole("button", { name: "Back to overview" }).click();
       await expect(howItStarts(page)).toBeVisible();
     });
   });
@@ -232,6 +224,43 @@ test.describe("Home", () => {
       await expect.poll(async () => (await invoke<{ boards: { id: string }[] }>(page, "list_boards", { project })).boards.map((board) => board.id)).toContain(id);
       await showHome(page);
       await expectGraphCurrent(page);
+    });
+  });
+});
+
+test.describe("app settings", () => {
+  test("the sidebar's gear opens Settings: the editor command is saved, and an agent's command is copied", async ({ sandbox, launch }) => {
+    const { app, page } = await launchCompiled(launch, sandbox);
+    const settings = dialog(page, "Settings");
+    const editor = settings.getByRole("textbox", { name: "Editor command" });
+
+    await test.step("the editor command is saved on Enter", async () => {
+      await sidebar(page).getByRole("button", { name: "Settings", exact: true }).click();
+      await expect(settings).toBeVisible();
+      await expect(editor).toHaveValue("");
+      await enterText(editor, "code -g {path}:{line}");
+      await editor.press("Enter");
+      await expect.poll(async () => (await invoke<AppSettings>(page, "get_settings")).editorCommand).toBe("code -g {path}:{line}");
+    });
+
+    await test.step("the Codex command is copied with the app's address", async () => {
+      await settings.getByRole("button", { name: "Copy the Codex command", exact: true }).click();
+      await expect(toast(page, "Copied the Codex command")).toBeVisible();
+      await expect.poll(() => app.clipboardText()).toBe(`codex mcp add unfold --url ${AGENT_ADDRESS}`);
+    });
+
+    await test.step("Escape closes Settings, and it opens again with the saved command", async () => {
+      await page.keyboard.press("Escape");
+      await expect(settings).toBeHidden();
+      await sidebar(page).getByRole("button", { name: "Settings", exact: true }).click();
+      await expect(editor).toHaveValue("code -g {path}:{line}");
+    });
+
+    await test.step("an emptied command is saved as none when Settings closes", async () => {
+      await enterText(editor, "");
+      await page.keyboard.press("Escape");
+      await expect(settings).toBeHidden();
+      await expect.poll(async () => (await invoke<AppSettings>(page, "get_settings")).editorCommand).toBeUndefined();
     });
   });
 });

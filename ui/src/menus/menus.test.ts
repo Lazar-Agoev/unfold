@@ -1,9 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type * as Components from "../components";
 import type { MenuEntry } from "../components";
+import type * as Commands from "../ipc/commands";
 import type { BoardList, BoardSummary, ProjectState } from "../ipc";
 import { projectRow } from "../test/workspace";
 import { boardMenuFor, projectFolders, type BoardFacts } from "./boardMenu";
 import { projectMenuEntries } from "./projectMenu";
+
+const { call, showToast } = vi.hoisted(() => ({ call: vi.fn(), showToast: vi.fn() }));
+vi.mock("../ipc/commands", async (original) => ({ ...(await original<typeof Commands>()), call }));
+vi.mock("../components", async (original) => ({ ...(await original<typeof Components>()), showToast }));
 
 type Item = Exclude<MenuEntry, { readonly kind: "separator" } | { readonly kind: "heading" }>;
 
@@ -98,46 +104,34 @@ describe("the board menu", () => {
 });
 
 function projectMenu(state: ProjectState): string[] {
-  return enabled(projectMenuEntries(projectRow("p-1", "storefront-api", { state })));
+  return enabled(projectMenuEntries(projectRow("p-1", "shop", { state })));
 }
 
 describe("the project menu", () => {
-  it("has every item in every state", () => {
-    const all = labels(projectMenuEntries(projectRow("p-1", "storefront-api")));
-    expect(all).toEqual([
-      "Compile again",
-      "Rebuild from scratch",
-      "Cancel",
-      "Pause background updates",
-      "—",
-      "Settings…",
-      "Add entrance…",
-      "Health and activity",
-      "—",
-      "Reveal in Finder",
-      "—",
-      "Remove from workspace…",
-    ]);
+  it("is the drawn menu: Compile again, Cancel, Open unfold.toml, Remove from workspace…", () => {
+    const entries = projectMenuEntries(projectRow("p-1", "shop"));
+    expect(labels(entries)).toEqual(["Compile again", "Cancel", "—", "Open unfold.toml", "—", "Remove from workspace…"]);
+    expect(items(entries).find((entry) => entry.label === "Remove from workspace…")?.danger).toBe(true);
   });
 
-  it("disables what doesn't apply in each state", () => {
-    expect(projectMenu({ kind: "current" })).not.toContain("Cancel");
-    expect(projectMenu({ kind: "compiling", done: 1, total: 2 })).toEqual([
-      "Cancel",
-      "Pause background updates",
-      "Settings…",
-      "Add entrance…",
-      "Health and activity",
-      "Reveal in Finder",
-      "Remove from workspace…",
-    ]);
-    expect(projectMenu({ kind: "not_compiled" })).toEqual(["Compile", "Settings…", "Add entrance…", "Reveal in Finder", "Remove from workspace…"]);
+  it("enables Cancel only while compiling", () => {
+    expect(projectMenu({ kind: "current" })).toEqual(["Compile again", "Open unfold.toml", "Remove from workspace…"]);
+    expect(projectMenu({ kind: "compiling", done: 1, total: 2 })).toEqual(["Cancel", "Open unfold.toml", "Remove from workspace…"]);
+    expect(projectMenu({ kind: "resting", last: { kind: "current" }, atMs: 0 })).toEqual(["Compile again", "Open unfold.toml", "Remove from workspace…"]);
     expect(projectMenu({ kind: "unavailable", reason: "gone" })).toEqual(["Remove from workspace…"]);
   });
 
-  it("offers Resume for a paused project, also while it rests", () => {
-    expect(projectMenu({ kind: "paused", changed: 3 })).toContain("Resume background updates");
-    expect(projectMenu({ kind: "resting", last: { kind: "paused", changed: 0 }, atMs: 0 })).toContain("Resume background updates");
-    expect(projectMenu({ kind: "resting", last: { kind: "current" }, atMs: 0 })).toContain("Pause background updates");
+  it("opens unfold.toml in the editor, and shows why when it can't", async () => {
+    const open = items(projectMenuEntries(projectRow("p-1", "shop"))).find((entry) => entry.label === "Open unfold.toml");
+    call.mockResolvedValueOnce(null);
+    open?.onSelect?.();
+    await vi.waitFor(() => {
+      expect(call).toHaveBeenCalledWith("open_in_editor", { project: "p-1", path: "unfold.toml" });
+    });
+    call.mockRejectedValueOnce({ code: "editor_not_found", message: "The editor command `zed` wasn't found." });
+    open?.onSelect?.();
+    await vi.waitFor(() => {
+      expect(showToast).toHaveBeenCalledWith({ title: "Couldn't open the file", body: "The editor command `zed` wasn't found.", tone: "danger" });
+    });
   });
 });

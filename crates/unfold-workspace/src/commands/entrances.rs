@@ -517,38 +517,6 @@ impl Catalog {
     }
 }
 
-/// The counts Home's header and Health line show.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct Counts {
-    pub(crate) applications: u32,
-    pub(crate) entrances: u32,
-    pub(crate) unreached: u32,
-    pub(crate) unindexed_launches: u32,
-}
-
-impl Counts {
-    /// The counts of the stored catalog: applications, unique entrances other than launches,
-    /// unreached ones, and launches into code that isn't indexed.
-    pub(crate) fn of(reader: &Reader) -> CommandResult<Self> {
-        let catalog = Catalog::read(reader)?;
-        let others = (0..catalog.entrances.len())
-            .filter(|&position| catalog.entrances[position].kind != EntranceKind::Process);
-        let unindexed = (0..catalog.entrances.len())
-            .filter(|&position| {
-                catalog.entrances[position].kind == EntranceKind::Process
-                    && launch_state(&catalog.entrances[position], catalog.record(position))
-                        == LaunchState::NotIndexed
-            })
-            .count();
-        Ok(Self {
-            applications: count(catalog.applications.len()),
-            entrances: catalog.unique(others),
-            unreached: catalog.unique(catalog.unreached()),
-            unindexed_launches: count(unindexed),
-        })
-    }
-}
-
 /// What rows and launch rows read besides the catalog.
 pub(crate) struct Context<'a> {
     pub(crate) reader: &'a Reader,

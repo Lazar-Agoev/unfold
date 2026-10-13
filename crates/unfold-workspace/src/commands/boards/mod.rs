@@ -27,7 +27,7 @@
 //! | `delete_board` | Deletes the draft | Deletes the published file | Deletes both |
 //!
 //! When a board's id changes (first Publish, Move back to drafts), its open entry, session,
-//! health, and recent-board entry follow it. Every board's health is cached per board
+//! and health follow it. Every board's health is cached per board
 //! ([`session::BoardExtras`]) and feeds the Problems list and Home's Health line; it is
 //! refreshed after the graphs of the project or of a project its cards come from change.
 
@@ -273,12 +273,10 @@ impl Opened<'_> {
         announce(&self.workspace, &mut boards, folders);
     }
 
-    /// The board's id became `to` (first Publish, Move back to drafts): its open entry and
-    /// recent-board entry follow it.
-    fn moved(&self, ctx: &Ctx<'_>, to: &str) {
+    /// The board's id became `to` (first Publish, Move back to drafts): its open entry follows
+    /// it.
+    fn moved(&self, to: &str) {
         self.project.open_boards().rename(&self.id, to);
-        // Recents are a convenience: a failed write never undoes the move.
-        let _ = ctx.projects().move_recent_board(self.project.id(), &self.id, to);
     }
 }
 
@@ -305,7 +303,7 @@ fn nonblank(text: Option<String>, fallback: &str) -> String {
 }
 
 /// `open_board`: opens the board in the calling window (keeping its session when it is open
-/// already) and returns it. Records it as a recent board.
+/// already) and returns it.
 pub fn open_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardState> {
     let project = ctx.project(&args.project)?;
     let file = parse_id(&args.id)?;
@@ -337,15 +335,11 @@ pub fn open_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardState>
             return Err(error);
         }
     };
-    // Recents are a convenience: a failed write never fails the open.
-    let _ = ctx
-        .projects()
-        .record_recent_board(opened.project.id(), &opened.id, &board.document.board.title);
     Ok(board)
 }
 
-/// `new_board`: creates an empty draft with one page, opens it in the calling window, records it
-/// as a recent board, and returns it. `not_compiled` before the project's first Compile (drafts
+/// `new_board`: creates an empty draft with one page, opens it in the calling window, and
+/// returns it. `not_compiled` before the project's first Compile (drafts
 /// live in `local/`).
 pub fn new_board(ctx: &Ctx<'_>, args: NewBoardArgs) -> CommandResult<BoardState> {
     let project = ctx.project(&args.project)?;
@@ -378,10 +372,6 @@ pub fn new_board(ctx: &Ctx<'_>, args: NewBoardArgs) -> CommandResult<BoardState>
     if let Some(folder) = &folder {
         folder_used(&workspace, folder);
     }
-    // Recents are a convenience: a failed write never fails the new board.
-    let _ = ctx
-        .projects()
-        .record_recent_board(opened.project.id(), &opened.id, &state.document.board.title);
     opened.announce(vec![opened.id.clone()], folder.is_some());
     Ok(state)
 }
@@ -544,7 +534,7 @@ pub fn publish_board(ctx: &Ctx<'_>, args: PublishBoardArgs) -> CommandResult<Pub
             };
             files.remove(&opened.file)?;
             let id = file.relative();
-            opened.moved(ctx, &id);
+            opened.moved(&id);
             let mut session = sessions
                 .remove(&opened.id)
                 .ok_or_else(|| CommandError::internal("the published draft lost its session"))?;
@@ -649,7 +639,7 @@ pub fn unpublish_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardS
         files.remove(&opened.file)?;
         files.remove(&copy)?;
         let id = draft.relative();
-        opened.moved(ctx, &id);
+        opened.moved(&id);
         let mut session = sessions
             .remove(&opened.id)
             .ok_or_else(|| CommandError::internal("the unpublished board lost its session"))?;
@@ -675,8 +665,8 @@ pub fn unpublish_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardS
     Ok(state)
 }
 
-/// `delete_board`: deletes the board's files (the UI asks first), closes it, and forgets its
-/// recent-board entry. Its folder stays, empty, when no other board is in it.
+/// `delete_board`: deletes the board's files (the UI asks first) and closes it. Its folder
+/// stays, empty, when no other board is in it.
 pub fn delete_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<()> {
     let opened = opened(ctx, &args.project, &args.id)?;
     let files = opened.files();
@@ -698,9 +688,6 @@ pub fn delete_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<()> {
         opened.boards().forget(&opened.id);
         folder
     };
-    let _ = ctx
-        .projects()
-        .forget_recent_board(opened.project.id(), &opened.id);
     if let Some(folder) = &folder {
         folder_left(&files, &opened.workspace, folder);
     }

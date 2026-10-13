@@ -59,11 +59,6 @@ export function pointBelow(element: Element): Point {
   return { x: rect.left + Math.min(24, rect.width / 2), y: rect.bottom };
 }
 
-/** Whether a key opens a context menu from the keyboard. */
-export function isContextMenuKey(event: Pick<KeyboardEvent, "key" | "shiftKey">): boolean {
-  return event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
-}
-
 /** Sets a React ref of either kind (used when a component needs the element too). */
 export function assignRef<T>(ref: Ref<T> | undefined, value: T | null): void {
   if (typeof ref === "function") {

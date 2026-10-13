@@ -70,7 +70,7 @@ export type ShellEvent =
   | { readonly type: "menu_command"; readonly command: MenuCommand }
   /** File > Add Project… added a project: select it. */
   | { readonly type: "project_added"; readonly project: string }
-  /** File > Add Project… couldn't add the folder (the workspace is full, …): say why. */
+  /** File > Add Project… couldn't add the folder (the workspace is full, Unfold can't write `.unfold/` there, …): say why. */
   | { readonly type: "project_add_failed"; readonly path: string; readonly message: string }
   /** An agent's edit, read, background open, or finish (`agent-api.ts`). */
   | AgentShellEvent
@@ -101,7 +101,7 @@ export interface ExportedFile {
   readonly bytes: number;
 }
 
-/** A project added to the workspace (`exists`: the folder, or its repository, already was one). */
+/** A project added to the workspace (`exists`: the folder already was one). */
 export interface AddedProject {
   readonly status: "added" | "exists";
   /** The project's `ProjectId`. */
@@ -113,7 +113,7 @@ export interface WindowCommands extends AgentWindowCommands, RenderWindowCommand
   /**
    * Show the folder picker and add the chosen folder to the workspace as a project. Resolves with
    * null when the picker is cancelled; rejects with the engine's error (`not_a_folder`,
-   * `too_many_projects`).
+   * `too_many_projects`, a folder Unfold can't write `.unfold/` into).
    */
   add_project: { args: Record<string, never>; result: AddedProject | null };
   /**

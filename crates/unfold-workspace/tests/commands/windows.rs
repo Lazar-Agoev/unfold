@@ -34,7 +34,7 @@ fn the_window_comes_back_with_its_bounds_and_last_board() {
     let text = std::fs::read_to_string(harness.base.join("app/window.json")).expect("window.json");
     assert_eq!(serde_json::from_str::<Value>(&text).expect("json"), home);
     // Nothing about the window is written in a project folder.
-    assert!(!harness.root.join(".unfold/local").exists());
+    assert!(!harness.root.join(".unfold/local/window.json").exists());
 }
 
 #[test]

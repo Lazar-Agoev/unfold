@@ -15,10 +15,7 @@ fn normalize(value: &mut Value, root: &str, project: &str) {
         Value::Array(items) => items.iter_mut().for_each(|item| normalize(item, root, project)),
         Value::Object(map) => {
             for (key, item) in map.iter_mut() {
-                if matches!(
-                    key.as_str(),
-                    "tookMs" | "durationMs" | "atMs" | "updateMs" | "commitMs" | "updatedAtMs"
-                ) && !item.is_null()
+                if matches!(key.as_str(), "tookMs" | "durationMs" | "atMs" | "updatedAtMs") && !item.is_null()
                 {
                     *item = json!(0);
                 } else {
@@ -51,9 +48,7 @@ fn golden(harness: &Harness, name: &str, command: &str, mut args: Value) -> Valu
 #[test]
 fn representative_commands_match_their_goldens() {
     let harness = Harness::compiled("ts-orders");
-    golden(&harness, "compile_preview", "compile_preview", json!({}));
     golden(&harness, "project_summary", "project_summary", json!({}));
-    golden(&harness, "scope_dir_root", "scope_dir", json!({ "path": "" }));
     golden(
         &harness,
         "file_view_orders_page",

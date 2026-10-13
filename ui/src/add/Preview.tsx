@@ -211,7 +211,7 @@ function FilePreview({ item, projectName }: { readonly item: Extract<PreviewItem
 }
 
 /** The preview's buttons: the Enter action, and New page (⌘Enter) on a board page. */
-export function AddButtons({ label, newPage, disabled, onActivate }: { readonly label: string; readonly newPage: boolean; readonly disabled: boolean; readonly onActivate: (newPage: boolean) => void }) {
+function AddButtons({ label, newPage, disabled, onActivate }: { readonly label: string; readonly newPage: boolean; readonly disabled: boolean; readonly onActivate: (newPage: boolean) => void }) {
   return (
     <div className="add-preview-buttons">
       <Button

@@ -96,12 +96,11 @@ describe("Dialog placement", () => {
     area.remove();
   });
 
-  it("covers the window for window dialogs, and gives the large dialog a close button", () => {
+  it("covers the window for window dialogs, and gives Settings a close button", () => {
     const onClose = vi.fn();
-    render(<Dialog open width={880} height={700} placement="window" title="storefront-api settings" onClose={onClose} />);
-    const dialog = screen.getByRole("dialog", { name: "storefront-api settings" });
+    render(<Dialog open width={470} placement="window" title="Settings" onClose={onClose} />);
+    const dialog = screen.getByRole("dialog", { name: "Settings" });
     expect(dialog.parentElement?.classList.contains("dialog-scrim-window")).toBe(true);
-    expect(dialog.style.height).toBe("700px");
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });

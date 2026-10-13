@@ -24,7 +24,7 @@ use unfold_core::{
 };
 
 use super::TargetCandidate;
-use crate::language::{LanguageProblem, Linked, ProjectInput, ProjectInputs};
+use crate::language::{LanguageProblem, Linked, ProjectInput};
 use crate::launch::{
     LaunchDraft, LaunchPlan, LaunchTarget, PackageScripts, PythonContext, ScriptLookup, plan_launch,
 };
@@ -128,17 +128,6 @@ pub fn plans(
             Some(plan_launch(&draft(process, &env), &packages, root))
         })
         .collect()
-}
-
-/// Plans a draft launch against what an update read (its `package.json` inputs and folder), as
-/// the launch editor previews it.
-pub fn plan_draft(draft: &LaunchDraft<'_>, project: &ProjectInputs) -> LaunchPlan {
-    let root = project
-        .root
-        .as_deref()
-        .map(|root| root.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_default();
-    plan_launch(draft, &Packages::new(&project.inputs), &root)
 }
 
 /// The Python import contexts of the plans, in settings order.

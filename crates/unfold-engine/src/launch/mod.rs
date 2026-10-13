@@ -27,8 +27,7 @@ use std::fmt;
 use launcher::{LAUNCHERS, Step, launcher};
 pub use path::{LAUNCH_EXTENSIONS, launch_file};
 pub use plan::{
-    CommandPart, ImportPath, ImportPathOrigin, LaunchDraft, LaunchPlan, LaunchProblem, Suggestion,
-    plan_launch,
+    CommandPart, ImportPath, ImportPathOrigin, LaunchDraft, LaunchPlan, LaunchProblem, plan_launch,
 };
 use shell::{Word, is_assignment, steps};
 pub use target::{LaunchTarget, PythonContext, PythonEntry};

@@ -20,10 +20,8 @@ ignore = { workspace = true }
 notify = { workspace = true }
 notify-debouncer-full = { workspace = true }
 nucleo-matcher = { workspace = true }
-opener = { workspace = true }
 rayon = { workspace = true }
 rustc-hash = { workspace = true }
-saphyr = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

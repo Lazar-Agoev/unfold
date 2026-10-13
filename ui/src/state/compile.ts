@@ -1,17 +1,17 @@
 /**
- * Compile per project: the Compiles (or Rebuilds from scratch) this window started,
+ * Compile per project: the Compiles this window started,
  * with their streamed progress, and the progress of compiles and background updates started anywhere
  * (`compile_progress` events), until the project's state leaves compiling or updating.
  */
 
 import { create } from "zustand";
 import { call, callStream, onEngineEvent } from "../ipc/commands";
-import type { CompileMode, CompileProgress, ProjectId } from "../ipc/generated";
+import type { CompileProgress, ProjectId } from "../ipc/generated";
 import { toUnfoldError } from "../ipc/unfold";
 
 interface CompileState {
   /** The Compile this window started, per project, while it runs. */
-  readonly running: Readonly<Record<ProjectId, { readonly mode: CompileMode; readonly cancel: () => void }>>;
+  readonly running: Readonly<Record<ProjectId, { readonly cancel: () => void }>>;
   /** The latest progress per project (from this window's stream or any `compile_progress` event). */
   readonly progress: Readonly<Record<ProjectId, CompileProgress>>;
 }
@@ -27,17 +27,16 @@ function setProgress(project: ProjectId, progress: CompileProgress | null): void
 }
 
 /**
- * Compiles a project (`check`) or rebuilds it from scratch. Does nothing while one this window started
- * for the project runs. Resolves when it ends; a cancelled compile is not an error.
+ * Compiles a project. Does nothing while one this window started for the project runs. Resolves when it ends; a cancelled compile is not an error.
  */
-export async function startCompile(project: ProjectId, mode: CompileMode = "check"): Promise<void> {
+export async function startCompile(project: ProjectId): Promise<void> {
   if (useCompileState.getState().running[project]) {
     return;
   }
-  const handle = callStream("compile", { project, mode }, ({ stage, done, total }) => {
+  const handle = callStream("compile", { project }, ({ stage, done, total }) => {
     setProgress(project, { stage, done, total });
   });
-  useCompileState.setState((state) => ({ running: { ...state.running, [project]: { mode, cancel: handle.cancel } } }));
+  useCompileState.setState((state) => ({ running: { ...state.running, [project]: { cancel: handle.cancel } } }));
   try {
     await handle.result;
   } catch (raw) {
@@ -56,19 +55,9 @@ export async function cancelCompile(project: ProjectId): Promise<void> {
   await call("cancel_compile", { project });
 }
 
-/** Turns a project's background updates on or off (the project's state follows by event). */
-export async function setBackgroundUpdates(project: ProjectId, on: boolean): Promise<void> {
-  await call("set_background_updates", { project, on });
-}
-
 /** The project's compile or update progress, kept current; null when none is reported. */
 export function useCompileProgress(project: ProjectId): CompileProgress | null {
   return useCompileState((state) => state.progress[project] ?? null);
-}
-
-/** Whether a Compile this window started for the project is running (only this window says "compiled"). */
-export function useCompileStartedHere(project: ProjectId): boolean {
-  return useCompileState((state) => state.running[project] !== undefined);
 }
 
 /** Follows progress reported by any window, and forgets it once the project settles. Returns the uninstall function. */

@@ -286,7 +286,7 @@ fn a_module_runs_from_the_working_folder() {
 }
 
 #[test]
-fn sh_c_is_unreadable_but_suggests_its_quoted_command() {
+fn sh_c_is_unreadable() {
     let command = "sh -c \"uvicorn dashboard_builder.app:app --host 0.0.0.0 --port ${PORT:-8010}\"";
     let plan = read("data-pipelines", command);
     assert_eq!(
@@ -306,20 +306,8 @@ fn sh_c_is_unreadable_but_suggests_its_quoted_command() {
             false
         )]
     );
-    let suggestion = plan.suggestion.as_ref().expect("a suggestion");
-    assert_eq!(&*suggestion.quoted, "uvicorn dashboard_builder.app:app");
-    assert_eq!(suggestion.plan.problem, None);
-    assert_eq!(suggestion.plan.target, Some(asgi("dashboard_builder.app", "app")));
-    assert_eq!(
-        paths(&suggestion.plan),
-        [("data-pipelines", "the working folder")]
-    );
-    assert_eq!(
-        parts(&suggestion.plan)[2],
-        ("--host 0.0.0.0 --port ${PORT:-8010}", SERVER_OPTIONS, true)
-    );
 
-    // After the editor fills the target and import path in, the launch is set by hand.
+    // With the target and import path set by hand, the launch is set by hand.
     let plan = Draft::new("data-pipelines", command)
         .target(asgi("dashboard_builder.app", "app"))
         .python_paths(&["data-pipelines"])
@@ -328,25 +316,10 @@ fn sh_c_is_unreadable_but_suggests_its_quoted_command() {
     assert!(plan.target_set_by_hand);
     assert_eq!(plan.target, Some(asgi("dashboard_builder.app", "app")));
     assert_eq!(paths(&plan), [("data-pipelines", "set by hand")]);
-    assert!(plan.suggestion.is_some());
 
     let plan = read(".", "bash -c 'python3 -m jobs.nightly'");
     assert_eq!(problem(&plan).0, "Can't read bash -c");
-    let suggestion = plan.suggestion.unwrap();
-    assert_eq!(&*suggestion.quoted, "python3 -m jobs.nightly");
-    assert_eq!(suggestion.plan.target, Some(module("jobs.nightly")));
-
-    // Only a lone `sh -c` with a readable quoted command suggests one.
-    for command in [
-        "cd api && sh -c 'uvicorn app:app'",
-        "PORT=1 sh -c 'uvicorn app:app'",
-        "sh -c 'uvicorn app:app' name",
-        "sh -c 'uv run app.py'",
-    ] {
-        let plan = read(".", command);
-        assert_eq!(problem(&plan).0, "Can't read sh -c", "{command}");
-        assert_eq!(plan.suggestion, None, "{command}");
-    }
+    assert_eq!(plan.target, None);
 }
 
 #[test]
@@ -559,7 +532,6 @@ fn commands_that_start_nothing_or_something_unknown() {
                 "Write the command that starts this process, or set its target by hand."
             )
         );
-        assert_eq!(plan.suggestion, None);
     }
 }
 

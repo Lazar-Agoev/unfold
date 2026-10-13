@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use unfold_core::RepoPath;
 use unfold_core::vocab::{InputRole, Language};
 use unfold_engine::discovery::{
-    DiscoverOptions, Discovery, DiscoveryError, IgnoreRules, SkipReason, Unindexed, discover, exists_in_root,
+    DiscoverOptions, Discovery, DiscoveryError, IgnoreRules, Unindexed, discover, exists_in_root,
 };
 use unfold_engine::settings::{ScopeStatus, Settings};
 
@@ -50,19 +50,6 @@ fn playgrounds_know_their_unindexed_files() {
     let legacy = RepoPath::new("legacy/orders_legacy/export.py").unwrap();
     assert_eq!(py.unindexed_reason(&legacy), Some(Unindexed::Excluded));
     assert!(py.is_source(&RepoPath::new("src/orders_playground/server.py").unwrap()));
-    let report: Vec<(String, SkipReason, u32)> = py
-        .skipped
-        .iter()
-        .map(|line| (line.folder.to_string(), line.reason, line.files))
-        .collect();
-    assert_eq!(
-        report,
-        [
-            ("legacy".into(), SkipReason::Excluded, 2),
-            ("scripts".into(), SkipReason::Excluded, 1),
-            ("tests".into(), SkipReason::Excluded, 3),
-        ]
-    );
 }
 
 #[test]
@@ -107,25 +94,6 @@ fn default_exclusions_are_never_walked() {
         "a nested unfold.toml or .unfold/ is never read: {:?}",
         discovery.inputs
     );
-    let pruned: Vec<String> = discovery
-        .skipped
-        .iter()
-        .filter(|line| line.reason == SkipReason::Default && line.whole_folder)
-        .map(|line| line.folder.to_string())
-        .collect();
-    assert_eq!(
-        pruned,
-        [
-            ".mypy_cache",
-            ".pytest_cache",
-            ".ruff_cache",
-            ".venv",
-            "node_modules",
-            "pkg/__pycache__",
-            "venv",
-            "web/node_modules"
-        ]
-    );
 }
 
 #[test]
@@ -157,30 +125,6 @@ fn ignore_files_apply_at_every_level() {
     assert_eq!(
         sources(&discovery),
         ["other/local.py", "pkg/kept.py", "src/a.ts", "src/keep.gen.ts"]
-    );
-    let report: Vec<(String, SkipReason, bool, u32)> = discovery
-        .skipped
-        .iter()
-        .map(|line| {
-            (
-                line.folder.to_string(),
-                line.reason,
-                line.whole_folder,
-                line.files,
-            )
-        })
-        .collect();
-    assert_eq!(
-        report,
-        [
-            (".".into(), SkipReason::Ignored, false, 1),
-            ("dist".into(), SkipReason::Ignored, true, 0),
-            ("node_modules".into(), SkipReason::Default, true, 0),
-            ("pkg".into(), SkipReason::Ignored, false, 1),
-            ("pkg/generated".into(), SkipReason::Ignored, true, 0),
-            ("scratch".into(), SkipReason::Ignored, true, 0),
-            ("src".into(), SkipReason::Ignored, false, 1),
-        ]
     );
 
     let mut rules = IgnoreRules::new(dir.path(), &options());
@@ -245,19 +189,6 @@ fn scope_and_languages_decide_what_is_indexed() {
             ("unfold.toml", InputRole::UnfoldConfig, ScopeStatus::InScope),
         ]
     );
-    let report: Vec<(String, SkipReason, u32)> = discovery
-        .skipped
-        .iter()
-        .map(|line| (line.folder.to_string(), line.reason, line.files))
-        .collect();
-    assert_eq!(
-        report,
-        [
-            ("app".into(), SkipReason::LanguageOff, 1),
-            ("app/legacy".into(), SkipReason::Excluded, 2),
-            ("tools".into(), SkipReason::NotIncluded, 1),
-        ]
-    );
 }
 
 #[test]
@@ -316,27 +247,6 @@ fn symlinks_never_lead_out_of_the_folder() {
         discovery.sources[0].stamp.size, 16,
         "a symlinked file's stamp is its target's"
     );
-    let report: Vec<(String, SkipReason, bool, u32)> = discovery
-        .skipped
-        .iter()
-        .map(|line| {
-            (
-                line.folder.to_string(),
-                line.reason,
-                line.whole_folder,
-                line.files,
-            )
-        })
-        .collect();
-    assert_eq!(
-        report,
-        [
-            (".".into(), SkipReason::Symlink, false, 2),
-            ("alias".into(), SkipReason::Symlink, true, 0),
-            ("escape-dir".into(), SkipReason::Symlink, true, 0),
-            ("real/loop".into(), SkipReason::Symlink, true, 0),
-        ]
-    );
     assert!(exists_in_root(root, &RepoPath::new("linked.ts").unwrap()));
     assert!(exists_in_root(root, &RepoPath::new("real").unwrap()));
     assert!(!exists_in_root(root, &RepoPath::new("escape.ts").unwrap()));
@@ -346,12 +256,11 @@ fn symlinks_never_lead_out_of_the_folder() {
 
 #[cfg(unix)]
 #[test]
-fn names_that_cannot_be_paths_are_reported() {
+fn names_that_cannot_be_paths_are_left_out() {
     let dir = folder(&[("ok.ts", ""), ("bad\\name.ts", "")]);
     let discovery = run(dir.path());
     assert_eq!(sources(&discovery), ["ok.ts"]);
-    assert_eq!(discovery.skipped.len(), 1);
-    assert_eq!(discovery.skipped[0].reason, SkipReason::InvalidPath);
+    assert!(discovery.unindexed.is_empty());
 }
 
 #[test]

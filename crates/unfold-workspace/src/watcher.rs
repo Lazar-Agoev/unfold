@@ -16,8 +16,8 @@
 //! `.git/` and everything else under `.unfold/` are dropped on arrival. (Recursive watching
 //! can't exclude subtrees on every platform, so "never watched" means their events are never
 //! acted on.) An event that says the back end dropped events asks for a full rescan. Errors
-//! that mean events can't be trusted (inotify's watch limit, an unsupported file system) and
-//! network volumes switch the folder to a periodic scan, which the status reports.
+//! that mean events can't be trusted (inotify's watch limit, an unsupported file system)
+//! switch the folder to a periodic scan, which the status reports.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -34,7 +34,6 @@ use crate::events::{MAX_LISTED, WorkspaceEvent};
 use crate::layout::{BOARDS_PATH, CONFIG_PATH, Layout, UNFOLD_DIR};
 use crate::shared::{Job, Shared, lock};
 use crate::status::WatchMode;
-use crate::volume::is_network_volume;
 
 /// How long the debouncer waits for a path to go quiet before reporting it. The scheduler's own
 /// quiet period (about 300 ms) follows.
@@ -44,9 +43,6 @@ const SETTLE: Duration = Duration::from_millis(50);
 pub(crate) fn start(shared: &Arc<Shared>) -> WatchMode {
     if !shared.options.watch {
         return WatchMode::Off;
-    }
-    if is_network_volume(&shared.root) {
-        return WatchMode::Scanning;
     }
     let mut filter = Filter::new(shared);
     let weak: Weak<Shared> = Arc::downgrade(shared);
@@ -68,22 +64,8 @@ pub(crate) fn start(shared: &Arc<Shared>) -> WatchMode {
     if debouncer.watch(&shared.root, RecursiveMode::Recursive).is_err() {
         return WatchMode::Scanning;
     }
-    let drafts = lock(&shared.layout).drafts();
-    if !drafts.starts_with(&shared.root) && drafts.is_dir() {
-        // Drafts in the fallback location live outside the folder.
-        let _ = debouncer.watch(&drafts, RecursiveMode::Recursive);
-    }
     *lock(&shared.watcher) = Some(debouncer);
     WatchMode::Events
-}
-
-/// Also watches `dir`, outside the folder (drafts in the fallback location).
-pub(crate) fn watch_outside(shared: &Shared, dir: &Path) {
-    if let Some(debouncer) = lock(&shared.watcher).as_mut()
-        && dir.is_dir()
-    {
-        let _ = debouncer.watch(dir, RecursiveMode::Recursive);
-    }
 }
 
 /// Stops the watcher and waits for its thread.
@@ -149,7 +131,7 @@ impl Filter {
                 return;
             }
         };
-        let layout = lock(&shared.layout).clone();
+        let layout = &shared.layout;
         let mut batch = Batch::default();
         for event in &events {
             if event.need_rescan() {
@@ -159,7 +141,7 @@ impl Filter {
                 continue;
             }
             for path in &event.paths {
-                self.classify(shared, path, &layout, &mut batch);
+                self.classify(shared, path, layout, &mut batch);
             }
         }
         if batch.ignore_changed {

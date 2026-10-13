@@ -1,23 +1,79 @@
-/* The box that shows Rust's refusal of a settings change. */
+/* Settings: ruled sections of caps labels, notes, and commands to copy. */
 
-.settings-problem {
-  display: flex;
-  flex-shrink: 0;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 14px;
-  border-radius: var(--radius-tab);
-  background: var(--color-warn-fill);
-  color: var(--color-warn);
-  font-size: var(--text-13);
-  line-height: var(--leading-20);
+.app-settings-section {
+  display: grid;
+  gap: 12px;
+  padding: 16px 20px 18px;
+}
+
+.app-settings-section + .app-settings-section {
+  border-top: 1px solid var(--color-card-rule-soft);
+}
+
+.app-settings-caps {
+  font-size: var(--text-11);
+  line-height: var(--leading-14);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.app-settings-editor .text-field-label {
+  font-weight: 400;
+  color: var(--color-muted);
+}
+
+.app-settings-editor .text-field-input {
+  font-family: var(--font-code);
+  font-size: var(--text-12);
+}
+
+.app-settings-editor .text-field-hint {
+  margin-top: 2px;
+}
+
+.app-settings-note,
+.app-settings-status {
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+.app-settings-command {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+.app-settings-command code {
+  overflow: hidden;
+  padding: 4px 7px;
+  border-radius: var(--radius-chip);
+  background: var(--color-step);
+  font-family: var(--font-code);
+  font-size: var(--text-11);
+  line-height: var(--leading-16);
+  color: var(--color-text);
+  white-space: nowrap;
+  text-overflow: ellipsis;
   user-select: text;
 }
 
-.settings-problem strong {
-  font-weight: 600;
+.app-settings-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.settings-problem-where {
-  color: var(--color-muted);
+.app-settings-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-success);
 }

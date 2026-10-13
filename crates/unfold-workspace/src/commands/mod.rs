@@ -16,14 +16,12 @@
 pub mod board_hooks;
 pub mod boards;
 pub mod compiling;
-pub mod deploy_import;
 pub mod entrances;
 pub mod export;
 pub mod file_view;
 pub mod files;
 mod fileset;
 pub mod graph;
-pub mod launches;
 pub mod projects;
 pub mod relations;
 pub mod search;
@@ -92,7 +90,7 @@ pub struct LineRange {
 }
 
 /// The command-side state of one live project. See the [module documentation](self). A new one
-/// replaces it whenever the project wakes or switches worktree.
+/// replaces it whenever the project wakes.
 #[derive(Debug, Default)]
 pub struct ProjectExtras {
     /// Bumped whenever files may have appeared, changed, or disappeared, and after every graph

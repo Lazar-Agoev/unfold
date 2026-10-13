@@ -13,10 +13,6 @@
   stroke: currentColor;
 }
 
-.state-glyph-paused {
-  fill: var(--color-muted);
-}
-
 .state-glyph-not-compiled {
   stroke: var(--color-muted);
 }

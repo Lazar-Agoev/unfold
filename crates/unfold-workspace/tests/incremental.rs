@@ -20,7 +20,7 @@ use proptest::test_runner::{Config, TestCaseError, TestRunner};
 use unfold_core::RepoPath;
 use unfold_engine::{Engine, MemoryFactsCache, UpdateRequest};
 use unfold_workspace::{
-    CompileMode, EventSink, OpenContext, Workspace, WorkspaceEvent, WorkspaceOptions, default_languages,
+    EventSink, OpenContext, Workspace, WorkspaceEvent, WorkspaceOptions, default_languages,
 };
 
 /// The longest a step may take to settle; it ends as soon as the workspace is idle.
@@ -179,7 +179,6 @@ struct Source {
 struct Folder {
     _dir: tempfile::TempDir,
     root: PathBuf,
-    fallback: PathBuf,
     lang: Lang,
     sources: Vec<Source>,
     counter: u32,
@@ -212,7 +211,6 @@ impl Folder {
         Self {
             _dir: dir,
             root,
-            fallback: base.join("fallback"),
             lang,
             sources,
             counter: 0,
@@ -406,7 +404,6 @@ impl Folder {
         options.engine.compile_threads = 2;
         OpenContext {
             project: serde_json::from_value(serde_json::json!("p-incrementl")).expect("a project id"),
-            fallback_cache_dir: self.fallback.clone(),
             options,
             sink: Arc::new(Quiet),
             languages: default_languages(),
@@ -518,10 +515,7 @@ fn first_difference(left: &str, right: &str) -> String {
 fn check(playground: &str, lang: Lang, steps: &[Step]) -> Result<(), TestCaseError> {
     let mut folder = Folder::new(playground, lang);
     let workspace = Workspace::open(&folder.root, folder.context()).expect("open the workspace");
-    workspace
-        .compile(CompileMode::Check, None)
-        .wait()
-        .expect("first compile");
+    workspace.compile(None).wait().expect("first compile");
     for step in steps {
         let mut paths = Vec::new();
         for edit in &step.edits {

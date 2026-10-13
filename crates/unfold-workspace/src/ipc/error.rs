@@ -6,11 +6,11 @@
 //! | `invalid_command` | The command JSON is malformed or names no command |
 //! | `invalid_args` | The arguments don't fit the command |
 //! | `untrusted` | The command needs the main process (a path chosen in a dialog, the window state) |
-//! | `not_found` | The key, path, board, or removed folder doesn't exist |
+//! | `not_found` | The key, path, or board doesn't exist |
 //! | `unknown_project` | No project with that id is in the workspace |
-//! | `boards_open` | A board of the project is open (remove, switch worktree) |
-//! | `not_a_worktree` | `switch_worktree` to a path that isn't an available worktree of the project |
+//! | `boards_open` | A board of the project is open (remove) |
 //! | `too_many_projects` | The workspace has 64 projects |
+//! | `folder_not_writable` | `add_project` on a folder Unfold can't write `.unfold/` into: read-only, on a network volume, or with a symbolic link for `.unfold/` |
 //! | `invalid_folder` | A board folder path breaks the folder rules |
 //! | `folder_exists` / `folder_not_empty` | A board folder rename's target is taken / a deleted board folder has boards |
 //! | `board_invalid` | A board file or document breaks the `unfold-board` format |

@@ -25,7 +25,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Compile a folder headlessly and print what the Index log would show.
+    /// Compile a folder headlessly and print the update's statistics and problems.
     Compile(compile::CompileArgs),
     /// Compile a folder headlessly and write its canonical export.
     Export(compile::ExportArgs),

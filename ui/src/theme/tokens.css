@@ -49,7 +49,6 @@
   --color-accent: #5862c0;
   --color-accent-text: #5862c0;
   --color-on-accent: #ffffff;
-  --color-on-accent-chip: rgb(255 255 255 / 0.18);
   --color-accent-ring: rgb(88 98 192 / 0.12);
   --color-accent-soft: #a0a8e0;
   --color-match-current: rgb(88 98 192 / 0.22);
@@ -60,12 +59,6 @@
   --color-review: #d97706;
   --color-warn: #8a5a00;
   --color-warn-fill: #fff3d6;
-  /* The launch editor's warning card and its outcome box */
-  --color-warn-line: #f3e6c4;
-  --color-success-fill: #eef7f0;
-  --color-success-line: #d3ebd9;
-  --color-success-text: #14622f;
-  --color-success-body: #2f5b3c;
   --color-success: #16a34a;
   /* Proposed steps: dashed green on a light tint, built on the success color */
   --color-proposed: #16a34a;

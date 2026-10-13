@@ -4,7 +4,7 @@
  */
 
 import { showToast } from "../components";
-import { call, toUnfoldError, windowCommand, type CompileMode, type ProjectId, type ProjectRow } from "../ipc";
+import { call, toUnfoldError, windowCommand, type ProjectId, type ProjectRow } from "../ipc";
 import { requestFocus } from "../lib/focus-targets";
 import {
   closeBoardsOfProject,
@@ -19,11 +19,8 @@ import {
   type BoardRef,
   type PageTarget,
 } from "../state/boards";
-import { cancelCompile, setBackgroundUpdates, startCompile } from "../state/compile";
-import { setHomeView } from "../state/layout";
-import { openDialog, type ProjectSettingsSection } from "../state/overlays";
-import { showHome } from "../state/shownBoard";
-import { getProjectIndex, selectProject } from "../state/workspace";
+import { cancelCompile, startCompile } from "../state/compile";
+import { getProjectIndex } from "../state/workspace";
 
 /**
  * The focus target of the board header's title (the header registers it on its rename field): Rename… asks
@@ -129,9 +126,9 @@ export async function copyMermaid(target: PageTarget): Promise<void> {
 
 // Projects
 
-export async function compile(project: ProjectId, mode: CompileMode): Promise<void> {
+export async function compile(project: ProjectId): Promise<void> {
   try {
-    await startCompile(project, mode);
+    await startCompile(project);
   } catch (error) {
     fail(`Couldn't compile ${projectName(project)}`, error);
   }
@@ -143,29 +140,6 @@ export async function cancel(project: ProjectId): Promise<void> {
   } catch (error) {
     fail("Couldn't cancel the compile", error);
   }
-}
-
-export async function backgroundUpdates(project: ProjectId, on: boolean): Promise<void> {
-  try {
-    await setBackgroundUpdates(project, on);
-  } catch (error) {
-    fail(on ? "Couldn't resume background updates" : "Couldn't pause background updates", error);
-  }
-}
-
-export function openSettings(project: ProjectId, section?: ProjectSettingsSection): void {
-  openDialog(section === undefined ? { kind: "projectSettings", project } : { kind: "projectSettings", project, section });
-}
-
-export function addEntrance(project: ProjectId): void {
-  openDialog({ kind: "launchEditor", project, mode: "add" });
-}
-
-/** Health and activity: the project's Home on its Health view. */
-export async function showHealth(project: ProjectId): Promise<void> {
-  setHomeView("health");
-  showHome();
-  await selectProject(project);
 }
 
 /**
@@ -182,16 +156,5 @@ export async function removeProject(row: Pick<ProjectRow, "id" | "name">): Promi
     await call("remove_project", { project: row.id });
   } catch (error) {
     fail(`Couldn't remove ${row.name}`, error);
-  }
-}
-
-/** Switches the project to another worktree's folder (worktree metadata); its open boards close first. */
-export async function switchWorktree(row: Pick<ProjectRow, "id" | "name">, path: string, branch: string): Promise<void> {
-  try {
-    await closeBoardsOfProject(row.id);
-    await call("switch_worktree", { project: row.id, path });
-    showToast({ title: `Switched ${row.name} to ${branch}`, body: "Drafts and the graph are per worktree." });
-  } catch (error) {
-    fail(`Couldn't switch ${row.name}`, error);
   }
 }

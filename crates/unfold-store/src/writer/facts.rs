@@ -102,22 +102,6 @@ fn decode(row: &Row<'_>) -> Result<CachedFacts> {
 }
 
 impl Writer {
-    /// Deletes every cached entry for `paths`, current and last good, leaving the graph as it
-    /// is: after Rebuild from scratch, the files that don't parse lose their last-good facts
-    /// (docs/engine.md#updates).
-    pub fn forget_facts(&mut self, paths: &[&RepoPath]) -> Result<()> {
-        self.recover()?;
-        let tx = self.conn.unchecked_transaction()?;
-        {
-            let mut delete = tx.prepare_cached("DELETE FROM file_facts WHERE path = ?1")?;
-            for path in paths {
-                delete.execute([path.as_str()])?;
-            }
-        }
-        tx.commit()?;
-        Ok(())
-    }
-
     /// Puts `entries` in one transaction, pruning each path to its current and last good
     /// entries. Facts are independent of the graph, so they may be put before the graph that
     /// uses them commits (or even if that commit fails).

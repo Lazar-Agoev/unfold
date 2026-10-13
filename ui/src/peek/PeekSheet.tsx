@@ -3,7 +3,7 @@
  * the content narrows instead. Virtualized by line and fetched in `file_view` pages of 200 lines.
  * Syntax colors, folds on definitions, calls as links (hover peeks, click adds the callee), a `⊕`
  * beside each definition to add it to the page (`●` when it's there), the text matches it was opened
- * with (ticks beside the scrollbar), and Open in editor / Reveal in Finder. One sheet per window, kept
+ * with (ticks beside the scrollbar), and Open in editor. One sheet per window, kept
  * when the window shows another board; Escape closes it, unless a field, a menu, a dialog, or the
  * canvas (a line's contract) had it first.
  *
@@ -25,7 +25,7 @@ import { groupByLink, linkRanges, segmentRange, spanRanges, type LinkRange, type
 import { EmptyState, IconButton, MenuButton, Monogram, Sheet, showToast, type MenuEntry } from "../components";
 import { Icon } from "../icons";
 import { engineQueryOptions, toUnfoldError, useEngineQuery, type CallLink as CallLinkModel, type CodeLine, type FileView, type Key, type OutlineItem, type ProjectId, type TextMatch, type View } from "../ipc";
-import { openInEditor, revealInFinder } from "../lib/files";
+import { openInEditor } from "../lib/files";
 import { isTyping } from "../lib/typing";
 import { languageList, plural } from "../lib/format";
 import { addBlock, cardRefKey, findPage, getOpenBoard, keyDisplayName, newBoard, useOpenBoard, usePageKeys, type BoardRef, type PageTarget } from "../state/boards";
@@ -163,7 +163,6 @@ const FOCUS_WITHHELD: Readonly<Record<FileView["graph"], string>> = {
 function Header({ target, view, pinned, projectName }: { readonly target: PeekTarget; readonly view: FileView | undefined; readonly pinned: boolean; readonly projectName: string }) {
   const entries: MenuEntry[] = [
     { id: "editor", label: "Open in editor", icon: "external-link", onSelect: () => void openInEditor(target.project, target.path, target.line) },
-    { id: "reveal", label: "Reveal in Finder", icon: "reveal", onSelect: () => void revealInFinder(target.project, target.path) },
   ];
   const meta = view && !view.unshowable ? `${plural(view.lineCount, "line")}${view.language ? ` · ${languageList([view.language])}` : ""}${GRAPH_NOTES[view.graph]}` : "";
   return (

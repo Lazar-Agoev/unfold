@@ -3,14 +3,12 @@ import "../../test/dom";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EntrancesArgs, EntrancesView, ProjectSummary } from "../../ipc";
-import type * as Overlays from "../../state/overlays";
-import { DEPLOY, INVOICE_SCOPE, INVOICE_START, NO_LAUNCHES, OVERVIEW, SUGGESTIONS, UNREACHED_SCOPE } from "../../test/entrances";
+import { INVOICE_SCOPE, INVOICE_START, NO_LAUNCHES, OVERVIEW, UNREACHED_SCOPE } from "../../test/entrances";
 import { fixture, installFakeEngine, type EngineHandlers, type FakeEngine } from "../../test/engine";
 import { renderWithClient } from "../../test/render";
 import { HowItStarts } from "./HowItStarts";
 
-const { openDialog, traceFromHome } = vi.hoisted(() => ({ openDialog: vi.fn(), traceFromHome: vi.fn(() => Promise.resolve()) }));
-vi.mock("../../state/overlays", async (original) => ({ ...(await original<typeof Overlays>()), openDialog }));
+const { traceFromHome } = vi.hoisted(() => ({ traceFromHome: vi.fn(() => Promise.resolve()) }));
 vi.mock("../actions", () => ({ traceFromHome }));
 
 const P = "p-orders0000";
@@ -43,7 +41,6 @@ function section() {
 }
 
 beforeEach(() => {
-  openDialog.mockClear();
   traceFromHome.mockClear();
 });
 
@@ -80,26 +77,15 @@ describe("How it starts with launches", () => {
     expect(within(evaluation).getByText("evals/ is in .gitignore, so this code isn't indexed")).toBeTruthy();
   });
 
-  it("opens the editor from Fix…, Add launch, and a launch's menu", async () => {
+  it("is read-only: a launch's menu only traces it, and nothing adds or edits launches", async () => {
     start({ entrances: catalog(OVERVIEW) });
-    fireEvent.click(await screen.findByRole("button", { name: "Fix…" }));
-    expect(openDialog).toHaveBeenLastCalledWith({ kind: "launchEditor", project: P, mode: "edit", id: "dashboard-web" });
-
-    fireEvent.click(within(section()).getByRole("button", { name: "Add launch" }));
-    expect(openDialog).toHaveBeenLastCalledWith({ kind: "launchEditor", project: P, mode: "add" });
-
-    fireEvent.contextMenu(screen.getByText("uvicorn api.main:app --host 0.0.0.0 --port 8000"));
+    fireEvent.contextMenu(await screen.findByText("uvicorn api.main:app --host 0.0.0.0 --port 8000"));
     const menu = screen.getByRole("menu", { name: "Entrance menu" });
-    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Trace on a New Board", "Edit…", "Remove…"]);
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Remove…" }));
-    expect(openDialog).toHaveBeenLastCalledWith({ kind: "removeEntrance", project: P, id: "invoice-start", name: "Start API" });
-
-    // A detected launch: Edit… opens an override of it, and there is nothing to remove.
-    fireEvent.contextMenu(screen.getByText("npm run worker"));
-    const detected = screen.getByRole("menu", { name: "Entrance menu" });
-    expect(within(detected).queryByRole("menuitem", { name: "Remove…" })).toBeNull();
-    fireEvent.click(within(detected).getByRole("menuitem", { name: "Edit…" }));
-    expect(openDialog).toHaveBeenLastCalledWith({ kind: "launchEditor", project: P, mode: "override", key: 'entrance:["package.script","process","","worker","src/worker.ts"]' });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Trace on a New Board"]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Trace on a New Board" }));
+    expect(traceFromHome).toHaveBeenLastCalledWith(P, INVOICE_START.key);
+    expect(within(section()).queryByRole("button", { name: "Add launch" })).toBeNull();
+    expect(within(section()).queryByRole("button", { name: "Fix…" })).toBeNull();
   });
 
   it("expands an application to its launch, routes by path, and a router other applications mount", async () => {
@@ -124,9 +110,6 @@ describe("How it starts with launches", () => {
     fireEvent.click(shared);
     expect(within(invoice).getByRole("button", { name: /^GET \/model\/\{model\}/ })).toBeTruthy();
 
-    // A detected route has no menu.
-    fireEvent.contextMenu(within(invoice).getByRole("button", { name: /^POST \/runs/ }));
-    expect(screen.queryByRole("menu")).toBeNull();
     fireEvent.click(within(invoice).getByRole("button", { name: /^POST \/runs/ }));
     expect(traceFromHome).toHaveBeenCalledWith(P, "entrance:post-runs");
     fireEvent.keyDown(within(invoice).getByRole("button", { name: /^LAUNCH Start API/ }), { key: "Enter" });
@@ -153,68 +136,17 @@ describe("How it starts with launches", () => {
     expect(fake.callsOf("entrances")).toContainEqual({ project: P, unreached: true, limit: 100 });
     expect(screen.getByText("Commands")).toBeTruthy();
 
-    // A configured handler entrance keeps Edit… and Remove….
-    fireEvent.contextMenu(screen.getByRole("button", { name: /^COMMAND import/ }));
-    const menu = screen.getByRole("menu", { name: "Entrance menu" });
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Edit…" }));
-    expect(openDialog).toHaveBeenLastCalledWith({ kind: "launchEditor", project: P, mode: "edit", id: "import" });
     fireEvent.contextMenu(screen.getByRole("button", { name: /^COMMAND report/ }));
-    fireEvent.click(within(screen.getByRole("menu", { name: "Entrance menu" })).getByRole("menuitem", { name: "Remove…" }));
-    expect(openDialog).toHaveBeenLastCalledWith({ kind: "removeEntrance", project: P, id: "report", name: "report" });
+    fireEvent.click(within(screen.getByRole("menu", { name: "Entrance menu" })).getByRole("menuitem", { name: "Trace on a New Board" }));
+    expect(traceFromHome).toHaveBeenLastCalledWith(P, "entrance:configured:report");
   });
 });
 
 describe("How it starts before any launch", () => {
-  it("explains what Unfold can't tell and offers launches from the deploy files and the code", async () => {
-    start({ entrances: catalog(NO_LAUNCHES), launch_suggestions: () => SUGGESTIONS, import_deploy_files: () => DEPLOY });
+  it("says why routes without launches belong to no service, and lists them as unreached", async () => {
+    start({ entrances: catalog(NO_LAUNCHES) });
     expect(await screen.findByText("31 routes, but no launches yet, so Unfold can't tell which service serves them.")).toBeTruthy();
-    const card = screen.getByRole("region", { name: "Tell Unfold how pathway-agents starts" });
-    expect(
-      await within(card).findByText(
-        "There are no package scripts or pyproject entry points here, so routes belong to no application, and imports like shared, api, and utils read as packages: 249 of 7,239 imports resolve. Give Unfold the commands you deploy with. It reads them and never runs them.",
-      ),
-    ).toBeTruthy();
-
-    const deploy = await within(card).findByRole("region", { name: "From your deploy files" });
-    expect(within(deploy).getByText("6 start commands")).toBeTruthy();
-    expect(within(deploy).getByText("2 web services, 1 worker, and 3 cron jobs in render.yaml and data-pipelines/render.yaml")).toBeTruthy();
-    expect(within(deploy).getAllByRole("listitem").map((item) => item.textContent)).toEqual([
-      "WEBinvoice-hitl-api",
-      "WEBrecipe-cost-api",
-      "WORKERreview-worker",
-      "CRONtoken-refresh-daily30 7 * * *",
-      "and 2 more",
-    ]);
-    fireEvent.click(within(deploy).getByRole("button", { name: "Review 6 launches…" }));
-    expect(openDialog).toHaveBeenLastCalledWith({ kind: "launchEditor", project: P, mode: "review", launches: DEPLOY.launches });
-
-    const code = within(card).getByRole("region", { name: "From your code" });
-    expect(within(code).getByText("2 FastAPI apps that no launch reaches. Each suggestion opens prefilled; check it against how you deploy.")).toBeTruthy();
-    expect(within(code).getByText("data-pipelines $ uvicorn api.main:app")).toBeTruthy();
-    // The project's own folder reads as its name.
-    expect(within(code).getByText("pathway-agents $ uvicorn server:app")).toBeTruthy();
-    expect(within(code).getByText("12 routes")).toBeTruthy();
-    fireEvent.click(within(code).getByRole("button", { name: "Add launch for server.py" }));
-    expect(openDialog).toHaveBeenLastCalledWith({ kind: "launchEditor", project: P, mode: "add", prefill: { command: "uvicorn server:app", cwd: "." } });
-
-    fireEvent.click(within(card).getByRole("button", { name: "Add a launch by hand" }));
-    expect(openDialog).toHaveBeenLastCalledWith({ kind: "launchEditor", project: P, mode: "add" });
-    expect(within(card).getByText("Launches are saved to unfold.toml, so your team gets them too")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Not reached from a launch · 31" })).toBeTruthy();
-  });
-
-  it("shows only the panels that have something to offer", async () => {
-    start({
-      entrances: catalog({ ...NO_LAUNCHES, counts: { applications: 0, launches: 0, routes: 0, entrances: 0 }, unreached: 0 }),
-      launch_suggestions: () => ({ routes: 0, imports: { resolved: 0, total: 0 }, localLooking: [], apps: [] }),
-      import_deploy_files: () => ({ files: [], launches: [] }),
-    });
-    expect(await screen.findByText("No launches or routes yet.")).toBeTruthy();
-    const card = screen.getByRole("region", { name: "Tell Unfold how pathway-agents starts" });
-    expect(await within(card).findByText(/^There are no package scripts or pyproject entry points here\. Give Unfold/)).toBeTruthy();
-    expect(within(card).queryByRole("region", { name: "From your deploy files" })).toBeNull();
-    expect(within(card).queryByRole("region", { name: "From your code" })).toBeNull();
-    expect(within(card).getByRole("button", { name: "Add a launch by hand" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Not reached from a launch/ })).toBeNull();
+    expect(within(section()).queryByRole("heading", { level: 3 })).toBeNull();
   });
 });

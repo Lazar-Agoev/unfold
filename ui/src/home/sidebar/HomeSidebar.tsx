@@ -1,5 +1,5 @@
 /**
- * The Home-mode sidebar: the workspace row with search, Recents and Drafts, the projects list with
+ * The Home-mode sidebar: the workspace row with search, Drafts, the projects list with
  * each project's state and its folder and board tree, and the footer with Add project and Settings.
  */
 
@@ -71,7 +71,6 @@ export function HomeSidebar(): JSX.Element {
         />
       </div>
       <nav className="home-nav" aria-label="Boards across projects">
-        <NavRow icon="clock" label="Recents" view="recents" />
         <NavRow icon="drafts" label="Drafts" view="drafts" {...(draftCount === undefined ? {} : { count: draftCount })} />
       </nav>
       <div className="home-projects-header">

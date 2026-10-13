@@ -1,8 +1,7 @@
 //! Board files of a project (docs/architecture.md#storage; unpublished edits): published boards
 //! in `.unfold/boards/`, drafts and the changes copies of published boards in the drafts
-//! directory (`.unfold/local/drafts/`, or its fallback location outside the folder), written
-//! atomically, never overwriting a published file by accident, with change detection for edits
-//! made outside the app.
+//! directory (`.unfold/local/drafts/`), written atomically, never overwriting a published file by
+//! accident, with change detection for edits made outside the app.
 //!
 //! | File | Path | Holds |
 //! | --- | --- | --- |

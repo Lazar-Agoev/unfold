@@ -6,7 +6,7 @@ import { expect } from "@playwright/test";
 import type { UnfoldApp } from "./app";
 import { boardView, card, chooseLens, expectCardsLoaded, follow } from "./board";
 import type { Fixtures } from "./fixtures";
-import { addProjectFromSidebar, entranceRow, firstCompile, homeTitle, projectRow, showEntrances } from "./home";
+import { addProjectFromSidebar, entranceRow, expectGraphCurrent, homeTitle, projectRow, showEntrances } from "./home";
 import type { PlaygroundName, Sandbox } from "./sandbox";
 
 export const CREATE_ORDER = "#function:createOrder";
@@ -24,7 +24,10 @@ interface Compiled extends Launched {
   readonly folders: readonly string[];
 }
 
-/** Launches the app on an empty workspace and adds `folder` with Add Project…; Home shows it, not compiled. */
+/**
+ * Launches the app on an empty workspace and adds `folder` with Add Project…; Home shows it while its
+ * first compile runs.
+ */
 export async function launchWithProject(launch: Fixtures["launch"], folder: string): Promise<Launched> {
   const app = await launch();
   const page = await app.firstWindow();
@@ -52,7 +55,7 @@ export async function launchCompiled(
     await addProjectFromSidebar(app, page, folder);
     await expect(projectRow(page, name)).toBeVisible();
     await expect(homeTitle(page)).toHaveText(name);
-    await firstCompile(page);
+    await expectGraphCurrent(page);
   }
   return { app, page, folders };
 }

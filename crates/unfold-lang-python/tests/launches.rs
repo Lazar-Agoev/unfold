@@ -380,22 +380,6 @@ fn asgi_targets_resolve_to_the_bindings_their_routes_record() {
 }
 
 #[test]
-fn a_draft_context_previews_what_it_would_resolve() {
-    let inputs = inputs(Vec::new());
-    linked("shared-utils", &inputs, |_, linked| {
-        let preview = linked
-            .context_preview(&script("api/main.py", &["api", "."]))
-            .expect("Python previews it");
-        let reached: Vec<&str> = preview.reached.iter().map(RepoPath::as_str).collect();
-        assert_eq!(reached, ["api/main.py", "api/utils.py", "shared/task.py"]);
-        // `shared.task` (the module `from shared import task` imports) resolves either way;
-        // `import utils` only with the launch's path.
-        assert_eq!((preview.resolved, preview.resolved_now), (2, 1));
-        assert_eq!(preview.newly_resolved, ["utils".into()] as [Box<str>; 1]);
-    });
-}
-
-#[test]
 fn equal_contexts_reach_and_resolve_the_same() {
     let api = script("api/main.py", &["api", "."]);
     let once = compile_case("shared-utils", vec![api.clone()]);
@@ -403,53 +387,5 @@ fn equal_contexts_reach_and_resolve_the_same() {
     assert_eq!(
         unfold_core::canonical::to_string(&once.graph),
         unfold_core::canonical::to_string(&twice.graph)
-    );
-}
-
-#[test]
-fn from_imports_reach_the_submodules_they_name() {
-    let files: Vec<ProgramFile> = [
-        (
-            "app/main.py",
-            "from pkg import sub\nfrom pkg.inner import thing\n",
-        ),
-        ("app/pkg/__init__.py", ""),
-        ("app/pkg/sub.py", ""),
-        ("app/pkg/inner/__init__.py", "from . import deep\n"),
-        ("app/pkg/inner/deep.py", ""),
-        ("app/pkg/inner/thing.py", ""),
-        ("app/pkg/unused.py", ""),
-    ]
-    .into_iter()
-    .map(|(path, text)| {
-        let path = RepoPath::new(path).expect("a path");
-        let snapshot = Snapshot::from_text(path.clone(), text).expect("a snapshot");
-        let facts = Python
-            .extract(&snapshot, &Settings::default())
-            .expect("the file extracts");
-        ProgramFile {
-            path,
-            language: LanguageId::Python,
-            facts: Some(Arc::new(facts)),
-        }
-    })
-    .collect();
-    let program = FactsSet::new(files).expect("distinct paths");
-    let inputs = inputs(Vec::new());
-    let linked = Python.link(&program, &inputs);
-    let preview = linked
-        .context_preview(&script("app/main.py", &["app"]))
-        .expect("Python previews it");
-    let reached: Vec<&str> = preview.reached.iter().map(RepoPath::as_str).collect();
-    assert_eq!(
-        reached,
-        [
-            "app/main.py",
-            "app/pkg/__init__.py",
-            "app/pkg/inner/__init__.py",
-            "app/pkg/inner/deep.py",
-            "app/pkg/inner/thing.py",
-            "app/pkg/sub.py",
-        ]
     );
 }

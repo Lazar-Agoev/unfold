@@ -1,13 +1,12 @@
 /**
- * The project-state glyphs of 07 (verbatim paths): the progress ring, the pause bars, the hollow
- * circle of a project that isn't compiled, the failed triangle, and the resting moon. Each comes in
- * the sidebar row's size and the Home state line's size. The state dots are plain boxes, drawn by
- * `StateIndicator` itself.
+ * The project-state glyphs of 07 (verbatim paths): the progress ring, the hollow circle of a project
+ * that isn't compiled, the failed triangle, and the resting moon. Each comes in the sidebar row's size
+ * and the Home state line's size. The state dots are plain boxes, drawn by `StateIndicator` itself.
  */
 
 import "./icons.css";
 
-type StateGlyphName = "ring" | "paused" | "not-compiled" | "failed" | "resting";
+type StateGlyphName = "ring" | "not-compiled" | "failed" | "resting";
 
 export interface StateGlyphProps {
   readonly glyph: StateGlyphName;
@@ -37,13 +36,6 @@ export function StateGlyph({ glyph, variant, strokeWidth, className }: StateGlyp
         </svg>
       );
     }
-    case "paused":
-      return (
-        <svg {...common} width={12} height={12} viewBox="0 0 12 12">
-          <rect x={2.75} y={2} width={2.25} height={8} rx={0.75} />
-          <rect x={7} y={2} width={2.25} height={8} rx={0.75} />
-        </svg>
-      );
     case "not-compiled":
       return (
         <svg {...common} width={12} height={12} viewBox="0 0 12 12" fill="none" strokeWidth={1.5}>

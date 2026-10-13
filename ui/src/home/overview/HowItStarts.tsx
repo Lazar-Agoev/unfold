@@ -1,7 +1,6 @@
 /**
  * How it starts: the project's applications and their launches from the entrance catalog, as a
- * table by category; or, before any launch, how to tell Unfold how the project starts. Then the
- * entrances no launch reaches, collapsed.
+ * table by category, read-only. Then the entrances no launch reaches, collapsed.
  */
 
 import { useState, type MouseEvent, type ReactNode } from "react";
@@ -9,10 +8,8 @@ import { TextButton, useContextMenu, type MenuEntry } from "../../components";
 import { Icon } from "../../icons";
 import { useEngineQuery, type EntranceOverview, type ProjectId, type ProjectSummary } from "../../ipc";
 import { formatCount } from "../../lib/format";
-import { openDialog } from "../../state/overlays";
 import { LaunchTable } from "./LaunchTable";
 import { ScopeRows, useScope, type OnMenu } from "./ScopeRows";
-import { SetUpLaunches } from "./SetUpLaunches";
 import { summaryLine } from "./words";
 import "./starts.css";
 
@@ -73,29 +70,14 @@ export function HowItStarts({ project, summary }: { readonly project: ProjectId;
     menu.open(event, entries);
   };
   const compiling = summary?.state.kind === "compiling";
-  const empty = overview?.counts.launches === 0 && overview.counts.routes === 0;
 
   return (
     <section className="home-starts" aria-label="How it starts">
       <div className="home-starts-header">
         <h2 className="home-section-title">How it starts</h2>
         <p className="home-starts-summary">{catalog.error ? catalog.error.message : overview ? summaryLine(overview.counts, compiling) : ""}</p>
-        <button
-          type="button"
-          className="home-add-launch"
-          onClick={() => {
-            openDialog({ kind: "launchEditor", project, mode: "add" });
-          }}
-        >
-          <Icon name="plus" size={14} />
-          Add launch
-        </button>
       </div>
-      {overview === undefined ? null : overview.counts.launches > 0 ? (
-        <LaunchTable project={project} categories={overview.categories} onMenu={onMenu} />
-      ) : empty && compiling ? null : (
-        <SetUpLaunches project={project} name={summary?.name ?? "this project"} />
-      )}
+      {overview && overview.counts.launches > 0 ? <LaunchTable project={project} categories={overview.categories} onMenu={onMenu} /> : null}
       {overview ? (
         <Collapsed label="Not reached from a launch" count={overview.unreached}>
           {() => <Unreached project={project} onMenu={onMenu} />}

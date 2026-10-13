@@ -1,5 +1,5 @@
 //! The state one project's threads share: the scheduler queue, the status model, problems, the
-//! Index log, the reader pool, remembered state, and the event sink.
+//! reader pool, remembered state, and the event sink.
 //!
 //! # Scheduling (docs/engine.md#updates)
 //!
@@ -16,9 +16,6 @@
 //!   starts again after the next quiet period. An update that already returned commits: the
 //!   engine swapped its state, so the store must follow, and the new paths simply make the next
 //!   update.
-//! - While background updates are **paused**, paths keep accumulating and their count is the
-//!   "N files changed since the last compile" on Home's state line. A Compile covers everything and
-//!   clears them.
 //! - In **scanning** mode (no usable file-system events) the engine thread checks the whole
 //!   folder every `scan_interval` instead.
 
@@ -30,7 +27,7 @@ use std::time::{Duration, Instant};
 use notify::RecommendedWatcher;
 use notify_debouncer_full::{Debouncer, NoCache};
 use unfold_core::{ContentHash, RepoPath};
-use unfold_engine::{CancelToken, Engine, FactsSet, ProjectInputs};
+use unfold_engine::CancelToken;
 use unfold_reader::ReaderCache;
 use unfold_store::ReadPool;
 
@@ -38,7 +35,7 @@ use crate::compile::CompileJob;
 use crate::events::{EventSink, WorkspaceEvent};
 use crate::layout::Layout;
 use crate::options::WorkspaceOptions;
-use crate::problems::{IndexLog, ProblemItem, Problems, project_problem_count};
+use crate::problems::{ProblemItem, Problems, project_problem_count};
 use crate::projects::ProjectId;
 use crate::state::LocalState;
 use crate::status::{GraphStatus, ProjectState, StatusModel, WatchMode};
@@ -51,7 +48,7 @@ pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 /// One unit of queued engine-thread work.
 pub(crate) enum Job {
-    /// An explicit Compile or Rebuild.
+    /// An explicit Compile.
     Compile(CompileJob),
     /// Restore from the store, then check every file by size and modification time.
     Reopen,
@@ -76,7 +73,6 @@ pub(crate) struct Sched {
     /// Check the whole folder (an event overflow, a scan tick).
     pub(crate) rescan: bool,
     pub(crate) running: Option<Running>,
-    pub(crate) paused: bool,
     /// Whether the folder has a graph, so background updates may run.
     pub(crate) compiled: bool,
     pub(crate) watch: WatchMode,
@@ -89,14 +85,7 @@ pub(crate) struct Sched {
 impl Sched {
     /// Whether no work is running, queued, or due.
     pub(crate) fn is_idle(&self) -> bool {
-        !self.busy
-            && self.jobs.is_empty()
-            && (self.paused || !self.compiled || (self.pending.is_empty() && !self.rescan))
-    }
-
-    /// The changed-file count Home's state line shows while paused.
-    pub(crate) fn changed(&self) -> u32 {
-        u32::try_from(self.pending.len()).unwrap_or(u32::MAX)
+        !self.busy && self.jobs.is_empty() && (!self.compiled || (self.pending.is_empty() && !self.rescan))
     }
 }
 
@@ -146,12 +135,11 @@ pub(crate) struct Shared {
     pub(crate) root: PathBuf,
     pub(crate) options: WorkspaceOptions,
     pub(crate) sink: Arc<dyn EventSink>,
-    pub(crate) layout: Mutex<Layout>,
+    pub(crate) layout: Layout,
     pub(crate) sched: Mutex<Sched>,
     pub(crate) wake: Condvar,
     pub(crate) status: Mutex<StatusCell>,
     pub(crate) problems: Mutex<Problems>,
-    pub(crate) index_log: Mutex<IndexLog>,
     pub(crate) readers: RwLock<Option<ReadPool>>,
     pub(crate) reader_cache: ReaderCache,
     pub(crate) local_state: Mutex<LocalState>,
@@ -160,23 +148,6 @@ pub(crate) struct Shared {
     pub(crate) settings_edit: Mutex<()>,
     pub(crate) own_writes: OwnWrites,
     pub(crate) watcher: Mutex<Option<Debouncer<RecommendedWatcher, NoCache>>>,
-    /// What the engine's current graph was linked from, published by the engine thread.
-    pub(crate) linked_from: Mutex<Option<Arc<LinkInputs>>>,
-}
-
-/// The program and project inputs an engine's graph was linked from, so a command can link a
-/// language again on demand (a launch preview) without the engine thread.
-pub(crate) struct LinkInputs {
-    pub(crate) program: FactsSet,
-    pub(crate) project: Arc<ProjectInputs>,
-}
-
-impl LinkInputs {
-    /// What `engine`'s current graph was linked from.
-    pub(crate) fn of(engine: &Engine) -> Self {
-        let (program, project) = engine.link_inputs();
-        Self { program, project }
-    }
 }
 
 impl Shared {
@@ -191,24 +162,20 @@ impl Shared {
     ) -> Self {
         // Not watched until the workspace starts its watcher.
         let watch = WatchMode::Off;
-        let paused = !local_state.background_updates;
         let mut model = StatusModel::new(watch);
         model.compiled = compiled;
-        model.paused = paused;
-        model.fallback = fallback_of(&layout);
         Self {
             project,
             root,
             options,
             sink,
-            layout: Mutex::new(layout),
+            layout,
             sched: Mutex::new(Sched {
                 jobs: VecDeque::new(),
                 pending: BTreeSet::new(),
                 last_change: None,
                 rescan: false,
                 running: None,
-                paused,
                 compiled,
                 watch,
                 next_scan: None,
@@ -218,14 +185,12 @@ impl Shared {
             wake: Condvar::new(),
             status: Mutex::new(StatusCell { model, sent: None }),
             problems: Mutex::new(Problems::default()),
-            index_log: Mutex::new(IndexLog::default()),
             readers: RwLock::new(None),
             reader_cache: ReaderCache::new(),
             local_state: Mutex::new(local_state),
             settings_edit: Mutex::new(()),
             own_writes: OwnWrites::default(),
             watcher: Mutex::new(None),
-            linked_from: Mutex::new(None),
         }
     }
 
@@ -315,12 +280,8 @@ impl Shared {
         if let Some(running) = sched.running.as_ref().filter(|running| running.background) {
             running.cancel.cancel();
         }
-        let (paused, changed) = (sched.paused, sched.changed());
         drop(sched);
         self.wake.notify_all();
-        if paused {
-            self.update_status(|model| model.changed = changed);
-        }
     }
 
     /// Asks for a check of the whole folder (an event overflow or a scan tick).
@@ -388,14 +349,6 @@ impl Shared {
     }
 }
 
-/// The fallback reason a layout shows in the status.
-pub(crate) fn fallback_of(layout: &Layout) -> Option<crate::layout::FallbackReason> {
-    match layout.location() {
-        crate::layout::Location::InFolder => None,
-        crate::layout::Location::Fallback(reason) => Some(reason),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -426,7 +379,7 @@ mod tests {
     fn shared(compiled: bool) -> (tempfile::TempDir, Shared) {
         let dir = tempfile::tempdir().expect("temp dir");
         let root = std::fs::canonicalize(dir.path()).expect("canonical");
-        let layout = Layout::discover(&root, &root.join("fallback"));
+        let layout = Layout::new(&root);
         let shared = Shared::new(
             ProjectId::new_unchecked("p-aaaaaaaaaa"),
             root,
@@ -477,7 +430,6 @@ mod tests {
         });
         let (reply, _result) = std::sync::mpsc::channel();
         shared.push_job(Job::Compile(CompileJob {
-            mode: crate::compile::CompileMode::Check,
             cancel: CancelToken::new(),
             progress: None,
             reply,
@@ -487,7 +439,7 @@ mod tests {
     }
 
     #[test]
-    fn idleness_waits_for_due_work_but_not_for_paused_work() {
+    fn idleness_waits_for_due_work() {
         let (_dir, shared) = shared(true);
         assert!(shared.wait_idle(Duration::from_millis(10)));
         assert!(shared.is_idle());
@@ -495,9 +447,6 @@ mod tests {
         assert!(!shared.is_idle());
         // Nobody runs the queue here, so pending work keeps the folder busy.
         assert!(!shared.wait_idle(Duration::from_millis(20)));
-        lock(&shared.sched).paused = true;
-        assert!(shared.wait_idle(Duration::from_millis(10)));
-        assert_eq!(lock(&shared.sched).changed(), 1);
         let (_dir, uncompiled) = self::shared(false);
         uncompiled.add_changes([path("b.ts")]);
         assert!(uncompiled.wait_idle(Duration::from_millis(10)));

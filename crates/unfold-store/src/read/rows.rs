@@ -131,7 +131,7 @@ pub struct Page<T> {
     pub next: Option<Cursor>,
 }
 
-/// Counts for the Index log.
+/// Row counts and the database size.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct IndexStats {
     /// Files whose facts come from the bytes on disk.

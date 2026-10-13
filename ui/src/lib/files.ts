@@ -1,7 +1,4 @@
-/**
- * Opening a project's file in the person's editor and showing it in the file manager. Failures
- * become toasts; neither ever throws.
- */
+/** Opening a project's file in the person's editor. A failure becomes a toast; it never throws. */
 
 import { showToast } from "../components";
 import { call } from "../ipc/commands";
@@ -18,15 +15,5 @@ export async function openInEditor(project: string, path: string, line?: number 
     await call("open_in_editor", args);
   } catch (error) {
     fail("Couldn't open the file", error);
-  }
-}
-
-/** Shows `path` (relative to the project's folder; `""` is the folder itself) in Finder. */
-export async function revealInFinder(project: string, path: string): Promise<void> {
-  const args = { project, path };
-  try {
-    await call("reveal_in_finder", args);
-  } catch (error) {
-    fail("Couldn't show the file", error);
   }
 }

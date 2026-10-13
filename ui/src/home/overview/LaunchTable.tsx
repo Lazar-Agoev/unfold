@@ -9,7 +9,7 @@ import { SearchField, TextButton } from "../../components";
 import { Icon } from "../../icons";
 import type { AppRow, Category, CategoryGroup, LaunchRow, ProjectId } from "../../ipc";
 import { formatCount, plural } from "../../lib/format";
-import { editEntrance, entranceMenu, launchTarget, ScopeRows, useScope, type OnMenu } from "./ScopeRows";
+import { entranceMenu, ScopeRows, useScope, type OnMenu } from "./ScopeRows";
 import { moreWords } from "./words";
 
 /** Rows an expanded application shows before "N more · Filter", and per page after it. */
@@ -52,13 +52,13 @@ function handles(launch: LaunchRow): string {
 }
 
 function LaunchLine({ project, launch, onMenu }: { readonly project: ProjectId; readonly launch: LaunchRow; readonly onMenu: OnMenu }) {
-  // An unreadable launch says why in its status cell ("Can't read sh -c"); the editor has the rest.
+  // An unreadable launch says why in its status cell ("Can't read sh -c").
   const note = launch.status === "unreadable" ? null : (launch.note ?? (launch.targetSetByHand ? "Target set by hand" : null));
   return (
     <div
       className="home-launch"
       onContextMenu={(event) => {
-        onMenu(event, entranceMenu(project, launchTarget(launch)));
+        onMenu(event, entranceMenu(project, launch.key));
       }}
     >
       <div className="home-launch-how">
@@ -71,14 +71,6 @@ function LaunchLine({ project, launch, onMenu }: { readonly project: ProjectId; 
       {launch.status === "unreadable" ? (
         <div className="home-launch-problem">
           <span className="home-launch-problem-text">{launch.problem}</span>
-          <TextButton
-            onClick={(event) => {
-              event.stopPropagation();
-              editEntrance(project, launch);
-            }}
-          >
-            Fix…
-          </TextButton>
         </div>
       ) : (
         <>

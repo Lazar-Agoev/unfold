@@ -28,7 +28,7 @@ pub struct Ctx<'a> {
 }
 
 impl Ctx<'_> {
-    /// The workspace's projects, app data, and recent boards.
+    /// The workspace's projects and app data.
     pub fn projects(&self) -> &Projects {
         self.projects
     }

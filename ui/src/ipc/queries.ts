@@ -20,22 +20,16 @@ export function engineKey<C extends CommandName>(command: C, args: CommandArgs<C
   return ["engine", command, args];
 }
 
-/** Queries that keep their default `staleTime: Infinity` except these (fetched when opened). */
-const ALWAYS_STALE: ReadonlySet<CommandName> = new Set<CommandName>(["git_info"]);
-
 /** Query options for one command call, for `useQueries`, `fetchQuery`, and `ensureQueryData`. */
 export function engineQueryOptions<C extends CommandName>(command: C, args: CommandArgs<C>) {
   return {
     queryKey: engineKey(command, args),
     queryFn: () => call(command, args),
-    ...(ALWAYS_STALE.has(command) ? { staleTime: 0 } : {}),
   };
 }
 
 export interface EngineQueryOptions {
   readonly enabled?: boolean;
-  /** Ask again whenever the window gains focus (only `workspace` does, worktree metadata). */
-  readonly refetchOnWindowFocus?: boolean;
 }
 
 /** Reads one command's result, cached under its key and refreshed by engine events. */
@@ -47,8 +41,6 @@ export function useEngineQuery<C extends CommandName>(
   return useQuery<CommandResult<C>, UnfoldError, CommandResult<C>, EngineKey<C>>({
     ...engineQueryOptions(command, args),
     enabled: options.enabled ?? true,
-    // "always": engine data never goes stale by time, so a plain `true` would never refetch.
-    ...(options.refetchOnWindowFocus === true ? { refetchOnWindowFocus: "always" as const } : {}),
   });
 }
 
@@ -152,7 +144,6 @@ export function applyEngineEvent(client: QueryClient, event: WorkspaceEvent): vo
           case "callers":
           case "preview":
           case "project_summary":
-          case "index_log":
           case "board_thumbnails":
           case "line_labels":
           case "call_contract":
@@ -209,15 +200,10 @@ export function applyEngineEvent(client: QueryClient, event: WorkspaceEvent): vo
       invalidate(client, (command, args) => args["project"] === event.project && (command === "problems" || command === "project_summary"));
       return;
     case "config_changed":
-      invalidate(
-        client,
-        (command, args) =>
-          args["project"] === event.project && (command === "project_config" || command === "compile_preview" || command === "scope_dir"),
-      );
-      return;
     case "compile_progress":
     case "board_conflict":
-      // Not about the cache: the compile and board stores follow these.
+      // Not about the cache: a settings change recompiles (`graph_updated` follows), and the compile and
+      // board stores follow the others.
       return;
   }
 }
@@ -231,7 +217,6 @@ const CACHE_EVENTS: readonly EventType[] = [
   "files_changed",
   "boards_changed",
   "problems_changed",
-  "config_changed",
 ];
 
 /**

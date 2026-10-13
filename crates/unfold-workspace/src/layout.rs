@@ -1,5 +1,4 @@
-//! The `.unfold/` layout of one folder (docs/architecture.md#storage–8.2, project storage) and its fallback
-//! location.
+//! The `.unfold/` layout of one folder (docs/architecture.md#storage–8.2, project storage).
 //!
 //! ```text
 //! <folder>/
@@ -10,26 +9,20 @@
 //!         ├── .gitignore
 //!         ├── cache/     disposable: graph.sqlite and the lock
 //!         ├── drafts/    unpublished boards
-//!         └── state.json background updates, empty board folders, board view state
+//!         └── state.json empty board folders
 //! ```
 //!
-//! [`Layout::discover`] decides where `local/` is **without writing anything**: opening and
-//! browsing a folder never creates `.unfold/`. [`Layout::prepare`] creates `local/` on the first
-//! Compile (and again if `local/cache/` was deleted while the folder is open).
+//! Opening and browsing a folder never creates `.unfold/`: [`Layout::prepare`] creates `local/`
+//! on the first Compile (and again if `local/cache/` was deleted while the folder is open).
 //!
-//! When the folder is read-only (detected by attempting the write), or sits on a network volume
-//! where SQLite's write-ahead log is unsafe, `local/` moves to
-//! `<fallbackCacheDir>/<hash of the canonical path>/`, and Home's state line and Project settings say so. Shared files
-//! (`unfold.toml`, `boards/`) stay in the folder either way.
+//! Unfold needs to write `.unfold/` in the folder. [`check_writable`] refuses a folder that is
+//! read-only, sits on a network volume (where SQLite's write-ahead log is unsafe), or whose
+//! `.unfold/` goes through a symbolic link (writing through it could land outside the folder):
+//! adding such a folder as a project is refused, and so is preparing it.
 
-use std::fmt::Write as _;
 use std::fs::OpenOptions;
 use std::io::{ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
-
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use ts_rs::TS;
 
 use crate::error::{Result, WorkspaceError};
 use crate::volume::is_network_volume;
@@ -40,77 +33,20 @@ pub const UNFOLD_DIR: &str = ".unfold";
 pub const CONFIG_PATH: &str = "unfold.toml";
 /// The published boards folder, relative to the folder.
 pub const BOARDS_PATH: &str = ".unfold/boards";
-/// The machine-local folder, relative to the folder (when not in the fallback location).
+/// The machine-local folder, relative to the folder.
 pub const LOCAL_PATH: &str = ".unfold/local";
-
-/// Why `local/` lives in the fallback location.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "snake_case")]
-pub enum FallbackReason {
-    /// The folder can't be written, or `.unfold/` or `local/` in it is a symbolic link, which
-    /// Unfold never writes through (it could lead outside the folder).
-    ReadOnly,
-    /// The folder is on a network volume.
-    NetworkVolume,
-    /// SQLite refused write-ahead logging in the folder.
-    WalUnavailable,
-}
-
-/// Where `local/` lives.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Location {
-    /// `<folder>/.unfold/local/`.
-    InFolder,
-    /// `<fallbackCacheDir>/<hash>/`.
-    Fallback(FallbackReason),
-}
-
-/// What the fallback location records about the folder it belongs to.
-#[derive(Debug, Serialize, Deserialize)]
-struct Origin {
-    path: String,
-    reason: FallbackReason,
-}
-
-const ORIGIN_FILE: &str = "origin.json";
 
 /// The paths of one folder's `.unfold/` layout. See the [module documentation](self).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Layout {
     root: PathBuf,
-    fallback_local: PathBuf,
-    location: Location,
 }
 
 impl Layout {
-    /// Decides where `local/` is for the folder at canonical `root`, without writing.
-    pub fn discover(root: &Path, fallback_cache_dir: &Path) -> Self {
-        Self::discover_with(root, fallback_cache_dir, is_network_volume(root))
-    }
-
-    pub(crate) fn discover_with(root: &Path, fallback_cache_dir: &Path, network: bool) -> Self {
-        let fallback_local = fallback_cache_dir.join(folder_hash(root));
-        let in_folder = root.join(LOCAL_PATH);
-        let linked = has_link(root);
-        let location = if in_folder.is_dir() && !network && !linked {
-            Location::InFolder
-        } else if fallback_local.is_dir() {
-            Location::Fallback(read_origin(&fallback_local).unwrap_or(if network {
-                FallbackReason::NetworkVolume
-            } else {
-                FallbackReason::ReadOnly
-            }))
-        } else if network {
-            Location::Fallback(FallbackReason::NetworkVolume)
-        } else if linked {
-            Location::Fallback(FallbackReason::ReadOnly)
-        } else {
-            Location::InFolder
-        };
+    /// The layout of the folder at canonical `root`. Writes nothing.
+    pub fn new(root: &Path) -> Self {
         Self {
             root: root.to_path_buf(),
-            fallback_local,
-            location,
         }
     }
 
@@ -119,67 +55,34 @@ impl Layout {
         self.local().is_dir()
     }
 
-    /// The layout as [`Layout::prepare`] would leave it, decided without writing: `local/` moves
-    /// to the fallback location when it doesn't exist yet and the folder (or its `.unfold/`)
-    /// can't be written, which is what `prepare`'s write would find.
-    pub fn as_prepared(&self) -> Self {
-        let mut prepared = self.clone();
-        if self.location == Location::InFolder && !self.is_compiled() {
-            let unfold_dir = self.unfold_dir();
-            let nearest = if unfold_dir.is_dir() {
-                unfold_dir
-            } else {
-                self.root.clone()
-            };
-            if !is_writable(&nearest) {
-                prepared.location = Location::Fallback(FallbackReason::ReadOnly);
-            }
-        }
-        prepared
-    }
-
-    /// Creates `local/` with its `cache/` and `drafts/` folders (and, in the folder, the
-    /// `.gitignore` that hides `local/` from Git). A folder that refuses the write moves
-    /// `local/` to the fallback location.
-    pub fn prepare(&mut self) -> Result<()> {
-        if self.location == Location::InFolder {
-            match self.create_in_folder() {
-                Ok(()) => return Ok(()),
-                Err(error) if is_read_only(&error) => {
-                    self.location = Location::Fallback(FallbackReason::ReadOnly);
+    /// Creates `local/` with its `cache/` and `drafts/` folders and the `.gitignore` that hides
+    /// `local/` from Git. Refused with `folder_not_writable` for a folder Unfold can't write
+    /// `.unfold/` into.
+    pub fn prepare(&self) -> Result<()> {
+        check_writable(&self.root)?;
+        self.create_local().map_err(|error| {
+            if is_read_only(&error) {
+                WorkspaceError::FolderNotWritable {
+                    path: self.root.clone(),
+                    reason: Unwritable::ReadOnly,
                 }
-                Err(error) => return Err(WorkspaceError::io(self.local(), error)),
-            }
-        }
-        let Location::Fallback(reason) = self.location else {
-            return Ok(());
-        };
-        self.create_fallback(reason)
-    }
-
-    /// Moves `local/` to the fallback location for `reason` and creates it there.
-    pub fn use_fallback(&mut self, reason: FallbackReason) -> Result<()> {
-        self.location = Location::Fallback(reason);
-        self.create_fallback(reason)
-    }
-
-    fn create_in_folder(&self) -> std::io::Result<()> {
-        let refuse_links = || {
-            if has_link(&self.root) {
-                Err(std::io::Error::new(
-                    ErrorKind::PermissionDenied,
-                    "`.unfold/local` goes through a symbolic link",
-                ))
             } else {
-                Ok(())
+                WorkspaceError::io(self.local(), error)
             }
-        };
-        refuse_links()?;
+        })
+    }
+
+    fn create_local(&self) -> std::io::Result<()> {
         let local = self.local();
         std::fs::create_dir_all(self.cache())?;
         std::fs::create_dir_all(self.drafts())?;
         // Checked again now that the folders exist, so a link raced in is never written through.
-        refuse_links()?;
+        if has_link(&self.root) {
+            return Err(std::io::Error::new(
+                ErrorKind::PermissionDenied,
+                "`.unfold/local` goes through a symbolic link",
+            ));
+        }
         // `create_new` refuses an existing file and never follows a (dangling) link.
         match OpenOptions::new()
             .write(true)
@@ -196,31 +99,9 @@ impl Layout {
         std::fs::remove_file(&probe)
     }
 
-    fn create_fallback(&self, reason: FallbackReason) -> Result<()> {
-        let local = self.local();
-        for dir in [self.cache(), self.drafts()] {
-            std::fs::create_dir_all(&dir).map_err(|error| WorkspaceError::io(&dir, error))?;
-        }
-        let origin = Origin {
-            path: self.root.to_string_lossy().into_owned(),
-            reason,
-        };
-        let text = serde_json::to_string_pretty(&origin).map_err(|error| WorkspaceError::Encode {
-            what: "origin.json",
-            message: error.to_string(),
-        })?;
-        let path = local.join(ORIGIN_FILE);
-        std::fs::write(&path, text).map_err(|error| WorkspaceError::io(path, error))
-    }
-
     /// The folder's canonical root.
     pub fn root(&self) -> &Path {
         &self.root
-    }
-
-    /// Where `local/` lives.
-    pub fn location(&self) -> Location {
-        self.location
     }
 
     /// `<folder>/.unfold/`.
@@ -238,12 +119,9 @@ impl Layout {
         self.root.join(BOARDS_PATH)
     }
 
-    /// `local/`, in the folder or in the fallback location.
+    /// `<folder>/.unfold/local/`.
     pub fn local(&self) -> PathBuf {
-        match self.location {
-            Location::InFolder => self.root.join(LOCAL_PATH),
-            Location::Fallback(_) => self.fallback_local.clone(),
-        }
+        self.root.join(LOCAL_PATH)
     }
 
     /// `local/cache/`.
@@ -272,6 +150,54 @@ impl Layout {
     }
 }
 
+/// Why Unfold can't write `.unfold/` in a folder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unwritable {
+    /// The folder, or its `.unfold/`, can't be written.
+    ReadOnly,
+    /// The folder is on a network volume.
+    NetworkVolume,
+    /// `.unfold/`, `local/`, or something Unfold writes in `local/` is a symbolic link.
+    Linked,
+}
+
+impl std::fmt::Display for Unwritable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::ReadOnly => "the folder is read-only",
+            Self::NetworkVolume => "the folder is on a network volume",
+            Self::Linked => "its `.unfold/` goes through a symbolic link",
+        })
+    }
+}
+
+/// Checks that Unfold can write `.unfold/` in the canonical folder `root`, without writing:
+/// refused with `folder_not_writable` when the folder is on a network volume, when `.unfold/`
+/// or `local/` in it is a symbolic link, or when the deepest of `local/`, `.unfold/`, and the
+/// folder that exists can't be written.
+pub fn check_writable(root: &Path) -> Result<()> {
+    let refuse = |reason| {
+        Err(WorkspaceError::FolderNotWritable {
+            path: root.to_path_buf(),
+            reason,
+        })
+    };
+    if is_network_volume(root) {
+        return refuse(Unwritable::NetworkVolume);
+    }
+    if has_link(root) {
+        return refuse(Unwritable::Linked);
+    }
+    let nearest = [root.join(LOCAL_PATH), root.join(UNFOLD_DIR)]
+        .into_iter()
+        .find(|dir| dir.is_dir())
+        .unwrap_or_else(|| root.to_path_buf());
+    if !is_writable(&nearest) {
+        return refuse(Unwritable::ReadOnly);
+    }
+    Ok(())
+}
+
 /// The in-folder paths Unfold creates or writes under `.unfold/local/`.
 const LOCAL_PARTS: [&str; 6] = [
     UNFOLD_DIR,
@@ -283,8 +209,7 @@ const LOCAL_PARTS: [&str; 6] = [
 ];
 
 /// Whether `.unfold/`, `local/`, or anything Unfold writes directly in `local/` is a symbolic
-/// link. A repository can commit such a link; writing through it could land outside the folder,
-/// so the folder then keeps `local/` in the fallback location instead.
+/// link. A repository can commit such a link; writing through it could land outside the folder.
 fn has_link(root: &Path) -> bool {
     LOCAL_PARTS.iter().any(|part| {
         std::fs::symlink_metadata(root.join(part)).is_ok_and(|metadata| metadata.file_type().is_symlink())
@@ -313,53 +238,38 @@ fn is_read_only(error: &std::io::Error) -> bool {
     )
 }
 
-fn read_origin(local: &Path) -> Option<FallbackReason> {
-    let text = std::fs::read_to_string(local.join(ORIGIN_FILE)).ok()?;
-    serde_json::from_str::<Origin>(&text)
-        .ok()
-        .map(|origin| origin.reason)
-}
-
-/// The fallback folder name for `root`: 32 hex digits of the SHA-256 of its canonical path.
-fn folder_hash(root: &Path) -> String {
-    let digest = Sha256::digest(root.to_string_lossy().as_bytes());
-    digest
-        .iter()
-        .take(16)
-        .fold(String::with_capacity(32), |mut text, byte| {
-            // Writing to a String can't fail.
-            let _ = write!(text, "{byte:02x}");
-            text
-        })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn dirs() -> (tempfile::TempDir, PathBuf, PathBuf) {
+    fn dirs() -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().expect("temp dir");
         let base = std::fs::canonicalize(dir.path()).expect("canonical");
         let root = base.join("repo");
-        let fallback = base.join("fallback");
         std::fs::create_dir_all(&root).expect("mkdir");
-        (dir, root, fallback)
+        (dir, root)
+    }
+
+    fn reason(root: &Path) -> Option<Unwritable> {
+        match check_writable(root) {
+            Ok(()) => None,
+            Err(WorkspaceError::FolderNotWritable { reason, .. }) => Some(reason),
+            Err(other) => panic!("unexpected error: {other}"),
+        }
     }
 
     #[test]
-    fn discovering_writes_nothing() {
-        let (_dir, root, fallback) = dirs();
-        let layout = Layout::discover(&root, &fallback);
-        assert_eq!(layout.location(), Location::InFolder);
+    fn a_new_layout_writes_nothing() {
+        let (_dir, root) = dirs();
+        let layout = Layout::new(&root);
         assert!(!layout.is_compiled());
         assert!(!root.join(UNFOLD_DIR).exists());
-        assert!(!fallback.exists());
     }
 
     #[test]
     fn prepare_creates_the_local_folder() {
-        let (_dir, root, fallback) = dirs();
-        let mut layout = Layout::discover(&root, &fallback);
+        let (_dir, root) = dirs();
+        let layout = Layout::new(&root);
         layout.prepare().expect("prepare");
         assert!(layout.is_compiled());
         assert_eq!(
@@ -368,63 +278,40 @@ mod tests {
         );
         assert!(root.join(".unfold/local/cache").is_dir());
         assert!(root.join(".unfold/local/drafts").is_dir());
-        assert_eq!(Layout::discover(&root, &fallback), layout);
+        layout.prepare().expect("prepare again");
     }
 
     #[cfg(unix)]
     #[test]
-    fn a_read_only_folder_is_known_to_fall_back_before_anything_is_written() {
+    fn a_read_only_folder_is_refused_before_anything_is_written() {
         use std::os::unix::fs::PermissionsExt;
 
-        let (_dir, root, fallback) = dirs();
-        let layout = Layout::discover(&root, &fallback);
-        assert_eq!(
-            layout.as_prepared(),
-            layout,
-            "a writable folder keeps local/ in it"
-        );
+        let (_dir, root) = dirs();
+        assert_eq!(reason(&root), None, "a writable folder");
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o555)).expect("chmod");
-        let prepared = layout.as_prepared();
-        let mut written = layout;
-        let outcome = written.prepare();
+        let checked = reason(&root);
+        let prepared = Layout::new(&root).prepare();
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).expect("chmod back");
-        assert_eq!(prepared.location(), Location::Fallback(FallbackReason::ReadOnly));
-        assert!(prepared.local().starts_with(&fallback));
-        outcome.expect("prepare");
-        assert_eq!(written, prepared, "prepare puts local/ where the preview said");
-    }
-
-    #[test]
-    fn network_volumes_use_the_fallback() {
-        let (_dir, root, fallback) = dirs();
-        let mut layout = Layout::discover_with(&root, &fallback, true);
-        assert_eq!(
-            layout.location(),
-            Location::Fallback(FallbackReason::NetworkVolume)
+        assert_eq!(checked, Some(Unwritable::ReadOnly));
+        let error = prepared.expect_err("read-only");
+        assert_eq!(error.code(), "folder_not_writable");
+        assert!(
+            error.to_string().contains("Unfold needs to write `.unfold/`"),
+            "{error}"
         );
-        layout.prepare().expect("prepare");
-        assert!(layout.local().starts_with(&fallback));
         assert!(!root.join(UNFOLD_DIR).exists());
-        let again = Layout::discover_with(&root, &fallback, false);
-        assert_eq!(
-            again.location(),
-            Location::Fallback(FallbackReason::NetworkVolume)
-        );
-        assert!(again.is_compiled());
     }
 
     #[cfg(unix)]
     #[test]
-    fn links_in_the_local_folder_move_it_to_the_fallback() {
-        let (_dir, root, fallback) = dirs();
+    fn links_in_the_local_folder_are_refused() {
+        let (_dir, root) = dirs();
         let outside = root.parent().expect("parent").join("outside");
         std::fs::create_dir_all(&outside).expect("mkdir");
         std::fs::create_dir_all(root.join(UNFOLD_DIR)).expect("mkdir");
         std::os::unix::fs::symlink(&outside, root.join(LOCAL_PATH)).expect("link");
-        let mut layout = Layout::discover(&root, &fallback);
-        assert_eq!(layout.location(), Location::Fallback(FallbackReason::ReadOnly));
-        layout.prepare().expect("prepare");
-        assert!(layout.local().starts_with(&fallback));
+        assert_eq!(reason(&root), Some(Unwritable::Linked));
+        assert!(Layout::new(&root).prepare().is_err());
         assert_eq!(
             std::fs::read_dir(&outside).expect("read").count(),
             0,
@@ -435,19 +322,11 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_dangling_gitignore_link_is_never_followed() {
-        let (_dir, root, fallback) = dirs();
+        let (_dir, root) = dirs();
         let target = root.parent().expect("parent").join("target-file");
         std::fs::create_dir_all(root.join(LOCAL_PATH)).expect("mkdir");
         std::os::unix::fs::symlink(&target, root.join(".unfold/local/.gitignore")).expect("link");
-        let mut layout = Layout::discover(&root, &fallback);
-        layout.prepare().expect("prepare");
+        assert!(Layout::new(&root).prepare().is_err());
         assert!(!target.exists(), "the link's target was created");
-        assert!(layout.local().starts_with(&fallback));
-    }
-
-    #[test]
-    fn hashes_differ_by_path() {
-        assert_ne!(folder_hash(Path::new("/a")), folder_hash(Path::new("/b")));
-        assert_eq!(folder_hash(Path::new("/a")).len(), 32);
     }
 }

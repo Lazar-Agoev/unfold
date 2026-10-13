@@ -19,8 +19,7 @@ pub enum StoreError {
         source: std::io::Error,
     },
     /// The database's file system refused write-ahead logging (for example a network volume),
-    /// so readers could not see a consistent graph during writes. The caller moves the cache to
-    /// the fallback location.
+    /// so readers could not see a consistent graph during writes.
     #[error("write-ahead logging is unavailable for {path} (journal mode is `{mode}`)")]
     WalUnavailable {
         /// The database file.

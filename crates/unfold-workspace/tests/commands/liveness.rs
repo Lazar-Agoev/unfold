@@ -23,15 +23,12 @@ fn compile_unselected(harness: &Harness, project: &str) {
 }
 
 #[test]
-fn an_unused_project_rests_and_remembers_its_state() {
+fn an_added_project_compiles_then_rests_and_remembers_its_state() {
     let harness = Harness::with("ts-orders", restless());
-    assert!(!live(&harness, &harness.project), "projects start resting");
-    let mark = harness.sink.mark();
-    compile_unselected(&harness, &harness.project);
     let resting_event = || {
         harness
             .sink
-            .events(mark, "project_state")
+            .events(0, "project_state")
             .into_iter()
             .find(|event| event["state"]["kind"] == "resting")
     };
@@ -224,10 +221,6 @@ fn a_resting_project_answers_reads_from_its_stored_graph() {
     let config = harness.ok(1, "project_config", json!({ "project": harness.project }));
     assert_eq!(config["name"], json!({"value": "ts-orders", "isDefault": true}));
     assert_eq!(
-        harness.ok(1, "git_info", json!({ "project": harness.project })),
-        Value::Null
-    );
-    assert_eq!(
         harness.ok(1, "cancel_compile", json!({ "project": harness.project })),
         json!({ "cancelled": false })
     );
@@ -237,6 +230,7 @@ fn a_resting_project_answers_reads_from_its_stored_graph() {
 #[test]
 fn a_project_whose_folder_is_gone_is_unavailable() {
     let harness = Harness::with("ts-orders", restless());
+    eventually("the project rests", || !live(&harness, &harness.project));
     std::fs::remove_dir_all(&harness.root).expect("delete the folder");
     let row = harness.row(&harness.project);
     assert_eq!(row["state"]["kind"], "unavailable");

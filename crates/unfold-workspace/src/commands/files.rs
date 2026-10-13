@@ -1,15 +1,18 @@
-//! File commands: opening a project's file in the person's editor or file
-//! manager. The source a peek sheet shows is `file_view`.
+//! File commands: opening a project's file in the person's editor. The source a peek sheet
+//! shows is `file_view`.
 
-use std::path::Path;
+use std::fs::OpenOptions;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use serde::Deserialize;
 use ts_rs::TS;
 
-use super::ProjectPathArgs;
+use crate::error::WorkspaceError;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
+use crate::layout::CONFIG_PATH;
 use crate::projects::ProjectId;
 use crate::state::AppSettings;
 use crate::workspace::Workspace;
@@ -29,13 +32,17 @@ pub struct OpenInEditorArgs {
 }
 
 /// `open_in_editor`: runs the settings' editor command (without a shell), or opens the file in
-/// TextEdit when none is set.
+/// TextEdit when none is set. Asked for the project's `unfold.toml` (the project menu's Open
+/// `unfold.toml`), it first creates an empty one when the project has none.
 ///
 /// TextEdit opens any file as text: handing the file to its default app could run it (a `.py`
 /// file's default app can be a launcher, and `.command` files run when "opened"), while Unfold
 /// never runs the code it indexes (docs/architecture.md#security).
 pub fn open_in_editor(ctx: &Ctx<'_>, args: OpenInEditorArgs) -> CommandResult<()> {
     let workspace = ctx.live(&args.project)?;
+    if args.path == CONFIG_PATH {
+        create_config(&workspace)?;
+    }
     let path = existing(&workspace, &args.path)?;
     if !path.is_file() {
         return Err(CommandError::invalid_args(format!(
@@ -61,16 +68,23 @@ fn open_argv(settings: &AppSettings, path: &str, line: Option<u32>) -> CommandRe
     }
 }
 
-/// `reveal_in_finder`: shows the file or folder in the system's file manager (`""` for the
-/// project's folder).
-pub fn reveal_in_finder(ctx: &Ctx<'_>, args: ProjectPathArgs) -> CommandResult<()> {
-    let workspace = ctx.live(&args.project)?;
-    let path = existing(&workspace, &args.path)?;
-    opener::reveal(&path).map_err(|error| CommandError::new("io", error.to_string()))
+/// Creates an empty `unfold.toml` in the project's folder unless it has one. `create_new`
+/// never follows a link, and confinement refuses one that leaves the folder.
+fn create_config(workspace: &Workspace) -> CommandResult<()> {
+    let config = workspace.confine(CONFIG_PATH)?;
+    match OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(config.absolute())
+    {
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => Ok(()),
+        Err(error) => Err(WorkspaceError::io(config.absolute(), error).into()),
+    }
 }
 
 /// The absolute path of an existing file or folder inside the project's folder.
-fn existing(workspace: &Workspace, path: &str) -> CommandResult<std::path::PathBuf> {
+fn existing(workspace: &Workspace, path: &str) -> CommandResult<PathBuf> {
     let confined = workspace.confine(path)?;
     if !confined.absolute().exists() {
         return Err(CommandError::not_found(format!("`{path}` does not exist")));
@@ -195,7 +209,7 @@ fn spawn_detached(argv: &[String]) -> CommandResult<()> {
 /// Why `program` didn't start. A program not found asks for its full path: an app started from
 /// the Dock gets a short `PATH`, without what a shell profile adds.
 fn spawn_error(program: &str, error: &std::io::Error) -> CommandError {
-    if error.kind() == std::io::ErrorKind::NotFound {
+    if error.kind() == ErrorKind::NotFound {
         CommandError::new(
             "editor_not_found",
             format!(
@@ -268,10 +282,7 @@ mod tests {
         let missing = spawn_detached(&["unfold-no-such-editor".to_owned()]).expect_err("missing");
         assert_eq!(missing.code, "editor_not_found");
         assert!(missing.message.contains("full path"), "{}", missing.message);
-        let denied = spawn_error(
-            "code",
-            &std::io::Error::from(std::io::ErrorKind::PermissionDenied),
-        );
+        let denied = spawn_error("code", &std::io::Error::from(ErrorKind::PermissionDenied));
         assert_eq!(denied.code, "io");
     }
 }

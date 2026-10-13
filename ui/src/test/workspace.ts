@@ -7,12 +7,12 @@ import type { BoardDocument, BoardState, Card, Health, Page, ProjectId, ProjectR
 
 /** A connected, current project row. */
 export function projectRow(id: ProjectId, name: string, overrides: Partial<ProjectRow> = {}): ProjectRow {
-  return { id, name, path: `/work/${name}`, expanded: false, live: true, state: { kind: "current" }, git: null, ...overrides };
+  return { id, name, path: `/work/${name}`, expanded: false, live: true, state: { kind: "current" }, ...overrides };
 }
 
 /** A workspace of these rows, in this order, with the first selected. */
 export function workspaceView(rows: readonly ProjectRow[], overrides: Partial<WorkspaceView> = {}): WorkspaceView {
-  return { projects: [...rows], selected: rows[0]?.id ?? null, recentBoards: [], removed: [], ...overrides };
+  return { projects: [...rows], selected: rows[0]?.id ?? null, ...overrides };
 }
 
 /** A page with these cards (and whatever else is given). */

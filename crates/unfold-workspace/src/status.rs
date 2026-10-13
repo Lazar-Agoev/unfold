@@ -5,22 +5,18 @@
 //! ◌ Compiling · 12 of 84 files                              compiling
 //! ◌ Updating · 2 files changed                              updating
 //! ● 1 file doesn't parse · showing its last version …       doesnt_parse
-//! ● Background updates paused · 3 files changed …           paused
 //! ▲ Compile failed · see Problems                           failed
 //! ```
 //!
-//! Besides the state, the status says whether `local/` is in the fallback location and how the
-//! folder is watched (events, or a periodic scan). The workspace keeps a status model of the
-//! facts behind it (with the problem count) and derives two views from them: the
-//! [`GraphStatus`] Home's state line and Project settings show, and the [`ProjectState`] the
-//! project's row shows. A `project_state` event goes out when the derived row state changes,
+//! Besides the state, the status says how the folder is watched (events, or a periodic scan).
+//! The workspace keeps a status model of the facts behind it (with the problem count) and
+//! derives two views from them: the [`GraphStatus`] Home's state line shows, and the
+//! [`ProjectState`] the project's row shows. A `project_state` event goes out when the derived row state changes,
 //! ignoring progress counts (those travel in `compile_progress`).
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unfold_core::vocab::Language;
-
-use crate::layout::FallbackReason;
 
 /// The status-bar state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -57,11 +53,6 @@ pub enum GraphState {
         /// The languages graphed, sorted.
         languages: Vec<Language>,
     },
-    /// Background updates are paused.
-    Paused {
-        /// Paths changed since the last compile or update.
-        changed: u32,
-    },
     /// The last compile or update failed; the previous graph is kept.
     Failed {
         /// Why.
@@ -72,14 +63,14 @@ pub enum GraphState {
 /// A project's state, as its row shows it: one indicator per row.
 ///
 /// A live project's state is derived from its [`GraphStatus`] and its problem count (the Problems
-/// list less board health), first match wins: `failed` > `compiling` > `updating` > `paused` >
+/// list less board health), first match wins: `failed` > `compiling` > `updating` >
 /// `not_compiled` > `problems` (a nonzero count) > `current`. A resting project shows the last state it had while live.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum ProjectState {
     /// The graph matches the folder and nothing is wrong.
     Current,
-    /// A Compile or Rebuild is running.
+    /// A Compile is running.
     Compiling {
         /// Files finished.
         done: u32,
@@ -98,11 +89,6 @@ pub enum ProjectState {
         /// and cache problems, and a failed compile.
         count: u32,
     },
-    /// Background updates are paused.
-    Paused {
-        /// Paths changed since the last compile or update.
-        changed: u32,
-    },
     /// The project has never been compiled on this machine.
     NotCompiled,
     /// The last compile or update failed.
@@ -112,7 +98,7 @@ pub enum ProjectState {
     },
     /// The project rests: no engine, no watcher. It shows the last state it had while live.
     Resting {
-        /// `current`, `problems`, `paused`, `not_compiled`, or `failed`.
+        /// `current`, `problems`, `not_compiled`, or `failed`.
         last: Box<ProjectState>,
         /// When that state was last seen, in milliseconds since the Unix epoch.
         at_ms: i64,
@@ -153,12 +139,8 @@ pub enum WatchMode {
 pub struct GraphStatus {
     /// The status-bar state.
     pub state: GraphState,
-    /// Why `local/` is in the fallback location, if it is ("using fallback location").
-    pub fallback: Option<FallbackReason>,
     /// How the folder is watched ("watching by scanning").
     pub watching: WatchMode,
-    /// Whether background updates are on.
-    pub background_updates: bool,
     /// Whether every discovered file is indexed.
     pub complete: bool,
 }
@@ -169,7 +151,7 @@ pub(crate) enum Activity {
     /// Nothing.
     #[default]
     Idle,
-    /// A compile, rebuild, or full recompile.
+    /// A compile, or a full recompile.
     Compiling { done: u32, total: u32 },
     /// A background update: `None` files while checking the whole folder.
     Updating { files: Option<u32> },
@@ -191,11 +173,8 @@ pub(crate) struct StatusModel {
     pub(crate) problems: u32,
     pub(crate) activity: Activity,
     pub(crate) failure: Option<String>,
-    pub(crate) paused: bool,
-    pub(crate) changed: u32,
     pub(crate) counts: GraphCounts,
     pub(crate) complete: bool,
-    pub(crate) fallback: Option<FallbackReason>,
     pub(crate) watching: WatchMode,
 }
 
@@ -206,11 +185,8 @@ impl StatusModel {
             problems: 0,
             activity: Activity::Idle,
             failure: None,
-            paused: false,
-            changed: 0,
             counts: GraphCounts::default(),
             complete: false,
-            fallback: None,
             watching,
         }
     }
@@ -224,9 +200,7 @@ impl StatusModel {
         };
         GraphStatus {
             state,
-            fallback: self.fallback,
             watching: self.watching,
-            background_updates: !self.paused,
             complete: self.complete,
         }
     }
@@ -251,7 +225,6 @@ impl StatusModel {
         match self.idle_state() {
             GraphState::Failed { message } => ProjectState::Failed { message },
             GraphState::NotCompiled => ProjectState::NotCompiled,
-            GraphState::Paused { changed } => ProjectState::Paused { changed },
             _ if self.problems > 0 => ProjectState::Problems { count: self.problems },
             _ => ProjectState::Current,
         }
@@ -265,11 +238,6 @@ impl StatusModel {
         }
         if !self.compiled {
             return GraphState::NotCompiled;
-        }
-        if self.paused {
-            return GraphState::Paused {
-                changed: self.changed,
-            };
         }
         if self.counts.not_current > 0 {
             return GraphState::DoesntParse {
@@ -306,16 +274,11 @@ mod tests {
             model.status().state,
             GraphState::DoesntParse { files: 1, .. }
         ));
-        model.paused = true;
-        model.changed = 2;
-        assert_eq!(model.status().state, GraphState::Paused { changed: 2 });
-        assert!(!model.status().background_updates);
         model.failure = Some("boom".into());
         assert!(matches!(model.status().state, GraphState::Failed { .. }));
         let json = serde_json::to_value(model.status()).expect("json");
         assert_eq!(json["state"]["kind"], "failed");
         assert_eq!(json["watching"], "events");
-        assert_eq!(json["backgroundUpdates"], false);
     }
 
     #[test]
@@ -327,12 +290,9 @@ mod tests {
         model.counts.not_current = 1;
         model.problems = 2;
         assert_eq!(model.project_state(), ProjectState::Problems { count: 2 });
-        model.paused = true;
-        model.changed = 3;
-        assert_eq!(model.project_state(), ProjectState::Paused { changed: 3 });
         model.activity = Activity::Updating { files: Some(1) };
         assert_eq!(model.project_state(), ProjectState::Updating { files: Some(1) });
-        assert_eq!(model.settled_state(), ProjectState::Paused { changed: 3 });
+        assert_eq!(model.settled_state(), ProjectState::Problems { count: 2 });
         model.activity = Activity::Compiling { done: 1, total: 9 };
         assert_eq!(
             model.project_state(),

@@ -2,7 +2,6 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import cardCreateOrder from "../../../../testdata/workspace/commands/card_create_order.json";
-import compilePreview from "../../../../testdata/workspace/commands/compile_preview.json";
 import fileViewPage from "../../../../testdata/workspace/commands/file_view_orders_page.json";
 import relationsCreateOrder from "../../../../testdata/workspace/commands/relations_create_order.json";
 import searchPlace from "../../../../testdata/workspace/commands/search_place.json";
@@ -36,7 +35,7 @@ const PAGE: AgentPage = {
 
 const WORKSPACE: WorkspaceView = {
   projects: [
-    { id: PROJECT, name: "ts-orders", path: "/code/ts-orders", expanded: true, live: true, state: { kind: "current" }, git: { branch: "main", detached: null, worktrees: 1 } },
+    { id: PROJECT, name: "ts-orders", path: "/code/ts-orders", expanded: true, live: true, state: { kind: "current" } },
     {
       id: "p-resting000",
       name: "py-orders",
@@ -44,12 +43,9 @@ const WORKSPACE: WorkspaceView = {
       expanded: false,
       live: false,
       state: { kind: "resting", last: { kind: "current" }, atMs: 0 },
-      git: null,
     },
   ],
   selected: PROJECT,
-  recentBoards: [],
-  removed: [],
 };
 
 const SUMMARY: ProjectSummary = {
@@ -57,14 +53,11 @@ const SUMMARY: ProjectSummary = {
   name: "ts-orders",
   path: "/code/ts-orders",
   state: { kind: "current" },
-  status: { state: { kind: "current", files: 12, languages: ["typescript"] }, fallback: null, watching: "events", backgroundUpdates: true, complete: true },
+  status: { state: { kind: "current", files: 12, languages: ["typescript"] }, watching: "events", complete: true },
   updatedAtMs: 0,
   files: 12,
   languages: ["typescript"],
-  applications: 1,
-  entrances: 3,
-  health: { problems: 0, doesntParse: 0, settingsError: null, unreachedEntrances: 0, unindexedLaunches: 0, boardsNeedingReview: 0, boards: [] },
-  git: { branch: "main", detached: null, worktrees: [] },
+  health: { doesntParse: 0, boardsNeedingReview: 0, boards: [] },
 };
 
 const BOARDS: BoardList = {
@@ -182,9 +175,8 @@ const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>,
     categories: [{ category: "services", applications: [{ id: "src/server.ts#", name: "server", description: null, origin: "inferred", entrances: 3, routes: 2, alsoIn: [], launches: [] }] }],
     unreached: 0,
   }),
-  compile_preview: () => compilePreview,
   compile: () => ({ files: 12, changedFiles: 12, removedFiles: 0, changedEntrances: 3, complete: true, problems: 0, durationMs: 900 }),
-  update_project_config: () => ({ exists: true, text: '[detectors]\ndisabled = ["node-cron.schedule"]\n', settings: null, error: null, name: { value: "ts-orders", isDefault: true } }),
+  update_project_config: () => ({ exists: true, text: '[scope]\nexclude = ["scripts"]\n', settings: null, error: null, name: { value: "ts-orders", isDefault: true } }),
   peek: () => ({ key: "entrance:x" }),
   search: () => ({ ...searchPlace, projects: [] }),
   search_text: (_args, stream) => {
@@ -383,7 +375,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
     expect(projects).toEqual([
       "Unfold · as Claude",
       "2 projects:",
-      `- ts-orders (id ${PROJECT}): current · TypeScript · branch main · 1 board`,
+      `- ts-orders (id ${PROJECT}): current · TypeScript · 1 board`,
       "- py-orders (id p-resting000): resting (last: current) · 0 boards",
       "Next: get_project for one project's applications, settings, and boards.",
     ]);
@@ -406,7 +398,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
     const calls: [string, Record<string, unknown>][] = [
       ["add_project", { path: "/code/ts-orders" }],
       ["compile_project", { project: "ts-orders" }],
-      ["update_project_settings", { project: "ts-orders", edits: [{ op: "set_detector", detector: "node-cron.schedule", enabled: false }] }],
+      ["update_project_settings", { project: "ts-orders", edits: [{ op: "exclude_from_graph", path: "scripts" }] }],
       ["create_board", { project: "ts-orders", title: "Order placement", pages: ["Placing an order"] }],
       ["organize_boards", { project: "ts-orders", ops: [{ op: "rename", board: BOARD.id, title: "Orders" }] }],
       ["edit_pages", { board: BOARD.id, project: "ts-orders", ops: [{ op: "add", title: "More" }] }],

@@ -5,27 +5,18 @@ use std::path::{Component, Path};
 use std::sync::mpsc;
 
 use ignore::{DirEntry, IncrementalIgnore, WalkBuilder, WalkState};
-use rustc_hash::FxHashSet;
 use unfold_core::RepoPath;
 use unfold_core::vocab::InputRole;
 
-use super::classify::{
-    FileClass, Unindexed, classify, is_default_excluded, is_default_excluded_name, is_source_like,
-};
-use super::report::{SkipEvent, SkipReason, aggregate};
+use super::classify::{FileClass, classify, is_default_excluded, is_default_excluded_name};
 use super::{
     ContextFile, DiscoverOptions, Discovery, FileStamp, InputFile, Problem, SourceFile, UnindexedFile,
 };
-use crate::settings::{FolderPath, SETTINGS_PATH, ScopeStatus, Settings};
+use crate::settings::{SETTINGS_PATH, ScopeStatus, Settings};
 
 /// What one walker thread reports.
 enum Found {
     File(RepoPath, FileClass, FileStamp),
-    Skip(SkipEvent),
-    /// A walked folder's subfolders and source-like files, to find what ignore rules hid.
-    Folder(String, Vec<(String, bool)>),
-    /// A yielded entry that a [`Found::Folder`] may list.
-    Seen(String),
     Problem(Problem),
 }
 
@@ -69,53 +60,25 @@ pub(super) fn walk(root: &Path, settings: &Settings, options: &DiscoverOptions) 
 
 fn visit(root: &Path, settings: &Settings, entry: &DirEntry, send: &mut impl FnMut(Found)) -> WalkState {
     if entry.depth() == 0 {
-        send(Found::Folder(String::new(), children(entry.path())));
         return WalkState::Continue;
     }
-    let Some(relative) = relative(root, entry.path()) else {
-        let parent = entry.path().parent().and_then(|parent| relative(root, parent));
-        send(Found::Skip(SkipEvent {
-            folder: folder_of(parent.as_deref()),
-            reason: SkipReason::InvalidPath,
-            whole_folder: false,
-        }));
-        return WalkState::Skip;
-    };
-    let name = entry.file_name().to_string_lossy();
-    let is_dir = entry.file_type().is_some_and(|kind| kind.is_dir());
-    if is_dir || is_source_like(&name) || entry.path_is_symlink() {
-        send(Found::Seen(relative.clone()));
-    }
-    let Ok(path) = RepoPath::new(&relative) else {
-        send(Found::Skip(SkipEvent {
-            folder: folder_of(parent_of(&relative)),
-            reason: SkipReason::InvalidPath,
-            whole_folder: is_dir,
-        }));
+    let Some(path) = relative(root, entry.path()).and_then(|relative| RepoPath::new(&relative).ok()) else {
         return WalkState::Skip;
     };
     if entry.path_is_symlink() {
         symlink(root, settings, entry.path(), path, send);
         return WalkState::Continue;
     }
-    if is_dir {
-        if is_default_excluded_name(&name) {
-            if !is_unlisted_default(&name) {
-                send(Found::Skip(SkipEvent {
-                    folder: FolderPath::parse(&relative).unwrap_or_default(),
-                    reason: SkipReason::Default,
-                    whole_folder: true,
-                }));
-            }
+    if entry.file_type().is_some_and(|kind| kind.is_dir()) {
+        if is_default_excluded_name(&entry.file_name().to_string_lossy()) {
             return WalkState::Skip;
         }
-        send(Found::Folder(relative, children(entry.path())));
         return WalkState::Continue;
     }
     let class = classify(&path, settings);
     if class != FileClass::Other {
         match entry.metadata() {
-            Ok(metadata) => file(path, class, FileStamp::of(&metadata), send),
+            Ok(metadata) => send(Found::File(path, class, FileStamp::of(&metadata))),
             Err(error) => send(Found::Problem(problem(root, &error))),
         }
     }
@@ -125,84 +88,20 @@ fn visit(root: &Path, settings: &Settings, entry: &DirEntry, send: &mut impl FnM
 /// A symlink entry: a folder is never followed; a file counts only when its target is a file
 /// inside the folder.
 fn symlink(root: &Path, settings: &Settings, full: &Path, path: RepoPath, send: &mut impl FnMut(Found)) {
-    let skip = |whole_folder: bool, path: &RepoPath| {
-        let folder = if whole_folder {
-            FolderPath::parse(path.as_str()).unwrap_or_default()
-        } else {
-            folder_of(path.parent())
-        };
-        Found::Skip(SkipEvent {
-            folder,
-            reason: SkipReason::Symlink,
-            whole_folder,
-        })
-    };
     let class = classify(&path, settings);
-    let target = std::fs::metadata(full);
-    match target {
-        Ok(metadata) if metadata.is_dir() => send(skip(true, &path)),
-        Ok(metadata) if metadata.is_file() => {
-            let inside = std::fs::canonicalize(full).is_ok_and(|target| target.starts_with(root));
-            if !inside {
-                if class != FileClass::Other {
-                    send(skip(false, &path));
-                }
-            } else if class != FileClass::Other {
-                file(path, class, FileStamp::of(&metadata), send);
-            }
-        }
-        // Dangling, or something other than a file or folder.
-        _ => {
-            if class != FileClass::Other {
-                send(skip(false, &path));
-            }
-        }
+    if class == FileClass::Other {
+        return;
     }
-}
-
-fn file(path: RepoPath, class: FileClass, stamp: FileStamp, send: &mut impl FnMut(Found)) {
-    if let FileClass::Unindexed(reason) = class {
-        let reason = match reason {
-            Unindexed::Excluded => SkipReason::Excluded,
-            Unindexed::NotIncluded => SkipReason::NotIncluded,
-            Unindexed::LanguageOff => SkipReason::LanguageOff,
-            Unindexed::JavaScript => SkipReason::JavaScript,
-        };
-        send(Found::Skip(SkipEvent {
-            folder: folder_of(path.parent()),
-            reason,
-            whole_folder: false,
-        }));
+    if let Ok(metadata) = std::fs::metadata(full)
+        && metadata.is_file()
+        && std::fs::canonicalize(full).is_ok_and(|target| target.starts_with(root))
+    {
+        send(Found::File(path, class, FileStamp::of(&metadata)));
     }
-    send(Found::File(path, class, stamp));
-}
-
-/// Git's and Unfold's own folders are always there; listing them in the report is noise.
-fn is_unlisted_default(name: &str) -> bool {
-    name == ".git" || name == ".unfold"
-}
-
-/// A folder's subfolders and source-like files: `(name, is_folder)`. Entries whose names
-/// aren't UTF-8 are left out; the walk reports those itself.
-fn children(folder: &Path) -> Vec<(String, bool)> {
-    let Ok(entries) = std::fs::read_dir(folder) else {
-        return Vec::new();
-    };
-    entries
-        .filter_map(Result::ok)
-        .filter_map(|entry| {
-            let name = entry.file_name().into_string().ok()?;
-            let is_dir = entry.file_type().is_ok_and(|kind| kind.is_dir());
-            (is_dir || is_source_like(&name)).then_some((name, is_dir))
-        })
-        .collect()
 }
 
 fn collect(root: &Path, found: impl Iterator<Item = Found>) -> Discovery {
     let mut discovery = Discovery::default();
-    let mut skips = Vec::new();
-    let mut folders = Vec::new();
-    let mut seen = FxHashSet::default();
     for item in found {
         match item {
             Found::File(path, class, stamp) => match class {
@@ -230,46 +129,7 @@ fn collect(root: &Path, found: impl Iterator<Item = Found>) -> Discovery {
                 }),
                 FileClass::Other => {}
             },
-            Found::Skip(event) => skips.push(event),
-            Found::Folder(path, children) => folders.push((path, children)),
-            Found::Seen(path) => {
-                seen.insert(path);
-            }
             Found::Problem(problem) => discovery.problems.push(problem),
-        }
-    }
-    // Children a walked folder holds that the walker never yielded were hidden by ignore rules.
-    for (folder, children) in folders {
-        for (name, is_dir) in children {
-            let path = if folder.is_empty() {
-                name.clone()
-            } else {
-                format!("{folder}/{name}")
-            };
-            if seen.contains(&path) {
-                continue;
-            }
-            // An ignored `node_modules` is reported as the default exclusion it also is.
-            let reason = if is_default_excluded_name(&name) {
-                SkipReason::Default
-            } else {
-                SkipReason::Ignored
-            };
-            if (reason == SkipReason::Default && (!is_dir || is_unlisted_default(&name)))
-                || is_default_excluded(&folder)
-            {
-                continue;
-            }
-            let at = if is_dir {
-                Some(path.as_str())
-            } else {
-                parent_of(&path)
-            };
-            skips.push(SkipEvent {
-                folder: folder_of(at),
-                reason,
-                whole_folder: is_dir,
-            });
         }
     }
     // The walk finds the settings file too unless an ignore file lists it; it counts either way.
@@ -284,36 +144,7 @@ fn collect(root: &Path, found: impl Iterator<Item = Found>) -> Discovery {
     discovery.unindexed.sort_by(|a, b| a.path.cmp(&b.path));
     discovery.inputs.sort_by(|a, b| a.path.cmp(&b.path));
     discovery.problems.sort();
-    lift(&mut skips, &discovery.sources);
-    discovery.skipped = aggregate(skips);
     discovery
-}
-
-/// Moves each skipped-file event up to the highest folder below the root that holds no indexed
-/// source, so the report names `legacy` rather than `legacy/orders_legacy/sub`.
-fn lift(skips: &mut [SkipEvent], sources: &[SourceFile]) {
-    let mut holds_sources: FxHashSet<&str> = FxHashSet::default();
-    for source in sources {
-        let mut folder = source.path.parent();
-        while let Some(path) = folder {
-            if !holds_sources.insert(path) {
-                break;
-            }
-            folder = parent_of(path);
-        }
-    }
-    for event in skips.iter_mut().filter(|event| !event.whole_folder) {
-        let Some(mut folder) = event.folder.as_repo_path().map(RepoPath::as_str) else {
-            continue;
-        };
-        if holds_sources.contains(folder) {
-            continue;
-        }
-        while let Some(parent) = parent_of(folder).filter(|parent| !holds_sources.contains(parent)) {
-            folder = parent;
-        }
-        event.folder = folder_of(Some(folder));
-    }
 }
 
 /// `unfold.toml`, whether or not an ignore file lists it.
@@ -342,16 +173,6 @@ fn relative(root: &Path, full: &Path) -> Option<String> {
         text.push_str(part.to_str()?);
     }
     Some(text)
-}
-
-fn parent_of(path: &str) -> Option<&str> {
-    path.rsplit_once('/').map(|(parent, _)| parent)
-}
-
-fn folder_of(folder: Option<&str>) -> FolderPath {
-    folder
-        .and_then(|folder| FolderPath::parse(folder).ok())
-        .unwrap_or_default()
 }
 
 fn problem(root: &Path, error: &ignore::Error) -> Problem {

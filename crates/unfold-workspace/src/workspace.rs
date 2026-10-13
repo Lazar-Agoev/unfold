@@ -17,17 +17,17 @@ use unfold_engine::{CancelToken, Language};
 use unfold_reader::ReaderIndex;
 use unfold_store::{Opened, ReadPool};
 
-use crate::compile::{CompileJob, CompileMode, CompileTicket, ProgressFn};
+use crate::compile::{CompileJob, CompileTicket, ProgressFn};
 use crate::confine::{ConfinedPath, confine};
 use crate::engine_thread::EngineThread;
 use crate::error::{Result, WorkspaceError};
 use crate::events::{EventSink, WorkspaceEvent};
 use crate::layout::Layout;
 use crate::options::{WorkspaceOptions, store_version};
-use crate::problems::{IndexLogEntry, ProblemItem};
+use crate::problems::ProblemItem;
 use crate::projects::ProjectId;
 use crate::settings_edit::{SettingsEdit, apply_edits};
-use crate::shared::{Job, LinkInputs, Shared, lock};
+use crate::shared::{Job, Shared, lock};
 use crate::state::{LocalState, read_json, write_atomically, write_json};
 use crate::status::{Activity, GraphCounts, GraphStatus, ProjectState};
 use crate::storage::open_store;
@@ -38,8 +38,6 @@ use crate::watcher;
 pub struct OpenContext {
     /// The project the folder is opened for: its events name it.
     pub project: ProjectId,
-    /// The parent of fallback `local/` folders.
-    pub fallback_cache_dir: PathBuf,
     /// Timings and engine settings.
     pub options: WorkspaceOptions,
     /// Where events go.
@@ -100,19 +98,18 @@ impl Workspace {
         let root = canonical_folder(root)?;
         let OpenContext {
             project,
-            fallback_cache_dir,
             options,
             sink,
             languages,
         } = context;
-        let mut layout = Layout::discover(&root, &fallback_cache_dir);
+        let layout = Layout::new(&root);
         let version = store_version(&languages);
         let compiled = layout.is_compiled();
         let mut store = None;
         let mut first_job = None;
         let mut counts = None;
         if compiled {
-            let (opened, folder_lock) = open_store(&mut layout, &version)?;
+            let (opened, folder_lock) = open_store(&layout, &version)?;
             let reader = opened.readers.get()?;
             if opened.opened == Opened::Reused && reader.meta()?.graph.is_some() {
                 counts = Some(graph_counts(&reader)?);
@@ -171,9 +168,9 @@ impl Workspace {
         &self.shared.root
     }
 
-    /// The folder's `.unfold/` layout (where `local/` is right now).
-    pub fn layout(&self) -> Layout {
-        lock(&self.shared.layout).clone()
+    /// The folder's `.unfold/` layout.
+    pub fn layout(&self) -> &Layout {
+        &self.shared.layout
     }
 
     /// Whether the folder has a graph or one is being built.
@@ -181,7 +178,7 @@ impl Workspace {
         lock(&self.shared.sched).compiled
     }
 
-    /// The graph's status (Home's state line, Project settings).
+    /// The graph's status (Home's state line).
     pub fn status(&self) -> GraphStatus {
         self.shared.status()
     }
@@ -204,16 +201,15 @@ impl Workspace {
         (counts.files, counts.not_current, counts.languages)
     }
 
-    /// Queues a Compile. The first Compile creates `.unfold/` (or the fallback location).
-    /// `progress` receives every progress report, for a streamed command.
-    pub fn compile(&self, mode: CompileMode, progress: Option<ProgressFn>) -> CompileTicket {
+    /// Queues a Compile. The first Compile creates `.unfold/`. `progress` receives every
+    /// progress report, for a streamed command.
+    pub fn compile(&self, progress: Option<ProgressFn>) -> CompileTicket {
         let (reply, result) = mpsc::channel();
         let cancel = CancelToken::new();
         if lock(&self.shared.sched).shutdown {
             let _ = reply.send(Err(WorkspaceError::Closed));
         } else {
             self.shared.push_job(Job::Compile(CompileJob {
-                mode,
                 cancel: cancel.clone(),
                 progress,
                 reply,
@@ -239,40 +235,10 @@ impl Workspace {
         found
     }
 
-    /// Turns background updates on or off for this project, and remembers it in `state.json`.
-    pub fn set_background_updates(&self, on: bool) -> Result<()> {
-        self.apply_paused(!on);
-        self.update_local_state(|state| state.background_updates = on)
-            .map(|_| ())
-    }
-
-    /// Whether background updates are on.
-    pub fn background_updates(&self) -> bool {
-        !lock(&self.shared.sched).paused
-    }
-
     /// The timings and engine settings the folder was opened with (discovery's ignore options
     /// among them, which the Files view and text search share).
     pub fn options(&self) -> &WorkspaceOptions {
         &self.shared.options
-    }
-
-    fn apply_paused(&self, paused: bool) {
-        let mut sched = lock(&self.shared.sched);
-        if sched.paused == paused {
-            return;
-        }
-        sched.paused = paused;
-        if paused && let Some(running) = sched.running.as_ref().filter(|running| running.background) {
-            running.cancel.cancel();
-        }
-        let changed = sched.changed();
-        drop(sched);
-        self.shared.wake.notify_all();
-        self.shared.update_status(|model| {
-            model.paused = paused;
-            model.changed = changed;
-        });
     }
 
     /// Reports changed folder-relative paths, as the watcher does. Useful where the watcher is
@@ -308,11 +274,6 @@ impl Workspace {
         Ok(self.shared.reader_cache.get(&pool)?)
     }
 
-    /// What the engine's current graph was linked from, once it has a graph.
-    pub(crate) fn linked_from(&self) -> Option<Arc<LinkInputs>> {
-        lock(&self.shared.linked_from).clone()
-    }
-
     /// The Problems list.
     pub fn problems(&self) -> Vec<ProblemItem> {
         self.shared.problems()
@@ -322,11 +283,6 @@ impl Workspace {
     /// Problems list includes them; the row's state doesn't count them.
     pub fn set_board_problems(&self, problems: Vec<ProblemItem>) {
         self.shared.update_problems(|all| all.boards = problems);
-    }
-
-    /// The Index log, oldest first.
-    pub fn index_log(&self) -> Vec<IndexLogEntry> {
-        lock(&self.shared.index_log).entries()
     }
 
     /// The text of `unfold.toml`, or `None` when it doesn't exist.
@@ -351,7 +307,7 @@ impl Workspace {
         if !unchanged {
             // An `unfold.toml` link that leaves the folder must never be written through.
             confine(&self.shared.root, crate::layout::CONFIG_PATH)?;
-            let path = lock(&self.shared.layout).config();
+            let path = self.shared.layout.config();
             self.shared
                 .own_writes
                 .note(path.clone(), Some(edited.text.as_bytes()));
@@ -383,7 +339,7 @@ impl Workspace {
         let (state, written) = {
             let mut state = lock(&self.shared.local_state);
             change(&mut state);
-            let layout = lock(&self.shared.layout).clone();
+            let layout = &self.shared.layout;
             let written = if layout.is_compiled() {
                 write_json(&layout.state_file(), &*state, "state.json")
             } else {
@@ -391,7 +347,6 @@ impl Workspace {
             };
             (state.clone(), written)
         };
-        self.apply_paused(!state.background_updates);
         written?;
         Ok(state)
     }

@@ -4,7 +4,7 @@
 //!
 //! | Hook | Called by | When |
 //! | --- | --- | --- |
-//! | [`BoardExtras`] | [`super::ProjectExtras::boards`] | A live project's open board sessions, its boards' health cache, and the lock that orders disk checks; dropped when the project rests or switches worktree |
+//! | [`BoardExtras`] | [`super::ProjectExtras::boards`] | A live project's open board sessions, its boards' health cache, and the lock that orders disk checks; dropped when the project rests |
 //! | [`released`] | `Host::detach_window` | A closing window's boards of a project were closed: forget their sessions |
 //! | [`refresh_health`] | The coalesced health refresh (one thread per project) | After the project woke, after `graph_updated` of the project, and after `graph_updated` of a project its boards reference ([`dependents`]) |
 //! | [`dependents`] | The host, on `graph_updated` of a project | Which other live projects' boards have cards from it |
@@ -12,8 +12,7 @@
 //! | [`health_rows`] | `project_summary` | Home's Health line: the boards that need review |
 //!
 //! The core keeps the open boards (with each one's cross-project references, which keep those
-//! projects live: [`crate::open_boards::OpenBoards::set_references`]) and the recent boards
-//! ([`crate::projects::Projects::record_recent_board`] and its siblings); the board commands keep
+//! projects live: [`crate::open_boards::OpenBoards::set_references`]); the board commands keep
 //! them current. Board health items reach the Problems list (not the row's problem count) through
 //! [`crate::Workspace::set_board_problems`], which [`refresh_health`] calls.
 

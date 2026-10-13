@@ -26,7 +26,7 @@ export declare function detachWindow(windowId: number): Promise<void>
 export declare function dispatch(windowId: number, requestId: number, command: string): Promise<string>
 
 /**
- * Sets the app folders from the JSON `{"appDataDir","logsDir","fallbackCacheDir"}` the main
+ * Sets the app folders from the JSON `{"appDataDir","logsDir"}` the main
  * process chose. Call once, before anything else; throws on bad options or a second call.
  */
 export declare function init(options: string): void

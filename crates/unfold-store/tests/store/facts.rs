@@ -167,22 +167,3 @@ fn removing_a_file_prunes_its_facts() {
     assert!(cached(&store, &helper, "h1", "s").is_some());
     assert_eq!(store.readers.get().unwrap().stats().unwrap().facts_entries, 1);
 }
-
-#[test]
-fn forgetting_a_path_drops_its_current_and_last_good_entries() {
-    let (_dir, mut store) = temp_store();
-    let (broken, other) = (
-        RepoPath::new("src/broken.ts").expect("path"),
-        RepoPath::new("src/other.ts").expect("path"),
-    );
-    put(&mut store, &broken, "good", "s", FactsStatus::Parsed);
-    put(&mut store, &broken, "bad", "s", FactsStatus::Failed);
-    put(&mut store, &other, "good", "s", FactsStatus::Parsed);
-    store.writer.forget_facts(&[&broken]).expect("forget");
-    assert_eq!(cached(&store, &broken, "good", "s"), None);
-    assert_eq!(cached(&store, &broken, "bad", "s"), None);
-    assert_eq!(
-        cached(&store, &other, "good", "s"),
-        Some((FactsStatus::Parsed, "good".to_owned()))
-    );
-}

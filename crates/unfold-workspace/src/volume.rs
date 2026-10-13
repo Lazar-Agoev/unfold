@@ -1,11 +1,10 @@
-//! Detecting network volumes, where SQLite's write-ahead log is unsafe (docs/architecture.md#storage) and
-//! file-system events are unreliable (§7.5).
+//! Detecting network volumes, where SQLite's write-ahead log is unsafe (docs/architecture.md#storage):
+//! Unfold refuses to add a folder on one.
 //!
 //! The check reads the file-system type with `statfs` (through `nix`, so this crate stays free
 //! of `unsafe`). Where the platform has no such call here (Windows, some Unix systems), the
 //! folder counts as local; SQLite then still refuses write-ahead logging on file systems that
-//! can't support it, which the store reports and the workspace answers with the fallback
-//! location.
+//! can't support it, which the store reports when the folder is first compiled.
 
 use std::path::Path;
 

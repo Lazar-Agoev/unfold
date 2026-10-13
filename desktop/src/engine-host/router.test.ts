@@ -321,16 +321,12 @@ describe("EngineRouter: trusted commands", () => {
     }
     port.send({ kind: "invoke", id: ++id, command: "workspace", args: {}, trusted: true });
     port.send({ kind: "invoke", id: ++id, command: "workspace", args: { trusted: true } });
-    // Untrusted siblings of trusted commands go through: they name no outside path.
-    port.send({ kind: "invoke", id: ++id, command: "export_mermaid_text", args: { project: "p-aaaaaaaaaa" } });
-    port.send({ kind: "invoke", id: id + 1, command: "readd_project", args: { path: "/removed" } });
+    // An untrusted sibling of a trusted command goes through: it names no outside path.
+    port.send({ kind: "invoke", id: id + 1, command: "export_mermaid_text", args: { project: "p-aaaaaaaaaa" } });
 
     const refused = port.received().flatMap((m) => (m.kind === "result" && !m.ok ? [m.error.code] : []));
     expect(refused).toEqual(Array<string>(MAIN_PROCESS_ONLY.size + 2).fill("untrusted"));
-    expect(binding.commands()).toEqual([
-      { command: "export_mermaid_text", args: { project: "p-aaaaaaaaaa" } },
-      { command: "readd_project", args: { path: "/removed" } },
-    ]);
+    expect(binding.commands()).toEqual([{ command: "export_mermaid_text", args: { project: "p-aaaaaaaaaa" } }]);
   });
 
   it("dispatches the main process's requests with trusted, for any window id", async () => {

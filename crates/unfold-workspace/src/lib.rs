@@ -1,8 +1,8 @@
 //! The workspace end to end: the projects a person connected and which of them are live
-//! ([`projects`]), and for each live project its `.unfold/` layout and fallback location, the
-//! folder lock, the engine thread that compiles and commits, the watcher and the update
-//! scheduler, cancellation, events, problems and the Index log, settings edits, remembered
-//! state, and path confinement (docs/ipc.md#the-addons-surface).
+//! ([`projects`]), and for each live project its `.unfold/` layout, the folder lock, the engine
+//! thread that compiles and commits, the watcher and the update scheduler, cancellation, events,
+//! problems, settings edits, remembered state, and path confinement
+//! (docs/ipc.md#the-addons-surface).
 //!
 //! # Shape
 //!
@@ -25,20 +25,18 @@
 //!
 //! # Lifecycle of a project
 //!
-//! 1. **Added.** `add_project` records a folder in `workspace.json`, resting. Nothing is written
-//!    in the folder.
+//! 1. **Added.** `add_project` records a folder in `workspace.json` and compiles it at once. A
+//!    folder Unfold can't write `.unfold/` into (read-only, or on a network volume) is refused.
 //! 2. **Woken.** A command that uses the project's engine, a window selecting it on Home, or a
 //!    board of it opening opens its [`Workspace`]. Opening writes nothing into a folder that was
 //!    never compiled. A folder compiled before takes its lock (a second copy of Unfold gets
 //!    `open_elsewhere`), opens its store, and is readable at once; the engine thread restores the
 //!    stored graph and checks every file by size and modification time in the background.
 //! 3. **First Compile.** Creates `.unfold/local/` (with its `.gitignore`, `cache/`, and
-//!    `drafts/`), or the fallback location for a read-only folder or a network volume; takes
-//!    the lock; opens the store; compiles; commits; and writes `state.json`.
+//!    `drafts/`); takes the lock; opens the store; compiles; commits; and writes `state.json`.
 //! 4. **Background updates.** The watcher feeds changed paths to the scheduler; an update
-//!    starts about 300 ms after the last change, newer changes cancel and restart it, and a
-//!    pause switch per project holds them (counting what changed). Without usable file-system
-//!    events the folder is scanned periodically.
+//!    starts about 300 ms after the last change, and newer changes cancel and restart it.
+//!    Without usable file-system events the folder is scanned periodically.
 //! 5. **Every commit** writes only what changed in one transaction, installs a new
 //!    `ReaderIndex`, and sends `graph_updated`, `problems_changed`, and `project_state`.
 //! 6. **Rest.** Once nothing keeps it live and its lease ran out, the project remembers its state
@@ -63,7 +61,6 @@ mod engine_thread;
 pub mod error;
 pub mod events;
 pub mod facts_cache;
-pub mod git;
 pub mod host;
 pub mod ipc;
 pub mod layout;
@@ -82,18 +79,18 @@ mod volume;
 mod watcher;
 pub mod workspace;
 
-pub use compile::{CompileMode, CompileOutcome, CompileProgress, CompileTicket, ProgressFn};
+pub use compile::{CompileOutcome, CompileProgress, CompileTicket, ProgressFn};
 pub use confine::{ConfinedPath, confine};
 pub use error::{Result, WorkspaceError};
 pub use events::{EventSink, MAX_LISTED, WindowId, WorkingFile, WorkspaceEvent};
 pub use facts_cache::StoreFactsCache;
 pub use host::{Host, MessageSink, SinkMessage};
 pub use ipc::{CommandError, CommandResult, Request};
-pub use layout::{BOARDS_PATH, CONFIG_PATH, FallbackReason, LOCAL_PATH, Layout, Location, UNFOLD_DIR};
+pub use layout::{BOARDS_PATH, CONFIG_PATH, LOCAL_PATH, Layout, UNFOLD_DIR, Unwritable};
 pub use lock::FolderLock;
 pub use open_boards::OpenBoards;
 pub use options::{AppConfig, WorkspaceOptions, default_languages, store_version};
-pub use problems::{IndexLogEntry, ProblemCategory, ProblemItem};
+pub use problems::{ProblemCategory, ProblemItem};
 pub use projects::{ProjectHandle, ProjectId, ProjectRow, Projects, WorkspaceView};
 pub use settings_edit::{
     EditedSettings, EntranceSpec, PythonProjectSpec, ScopeList, SettingsEdit, apply_edits,

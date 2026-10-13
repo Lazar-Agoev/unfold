@@ -11,7 +11,6 @@ const STATES: readonly [State, string | null, string][] = [
   [{ kind: "compiling", done: 412, total: 1058 }, "Compiling", "progress-ring"],
   [{ kind: "updating", files: 3 }, "Updating", "progress-ring"],
   [{ kind: "problems", count: 2 }, "2 problems", "state-dot-problems"],
-  [{ kind: "paused", changed: 12 }, "Background updates paused", "state-glyph-paused"],
   [{ kind: "not_compiled" }, "Not compiled yet", "state-glyph-not-compiled"],
   [{ kind: "failed", message: "disk full" }, "Compile failed", "state-glyph-failed"],
   [{ kind: "resting", last: { kind: "current" }, atMs: 0 }, "Resting", "state-glyph-resting"],

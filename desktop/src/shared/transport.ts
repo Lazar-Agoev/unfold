@@ -37,8 +37,6 @@ export type HostToRenderer =
 export interface AppFolders {
   readonly appDataDir: string;
   readonly logsDir: string;
-  /** Parent of the per-folder fallback caches (`<fallbackCacheDir>/<hash of the path>/`). */
-  readonly fallbackCacheDir: string;
 }
 
 /** Messages from the main process to the engine host: lifecycle, and its own trusted requests. */

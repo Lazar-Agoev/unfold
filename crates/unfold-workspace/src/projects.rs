@@ -7,7 +7,7 @@
 //!   entries: ProjectId -> ProjectEntry {
 //!       live:      Option<Arc<Workspace>>   the open engine, watcher, store writer, and lock
 //!       resting:   Option<RestingReader>    a read-only pool on the stored graph, opened lazily
-//!       extras:    Arc<ProjectExtras>       command-side state, dropped on rest and switch
+//!       extras:    Arc<ProjectExtras>       command-side state, dropped on rest
 //!       open:      OpenBoards               board id -> window (and the projects its cards use)
 //!       interest:  compile pins, lease_until
 //!   }
@@ -40,8 +40,8 @@
 //!
 //! # Locks
 //!
-//! Each entry has a `life` lock, held across a wake, a rest, a switch, or a removal (the slow
-//! parts: opening and closing a `Workspace`). The order is `life` → `inner` → an entry's `state`
+//! Each entry has a `life` lock, held across a wake, a rest, or a removal (the slow parts:
+//! opening and closing a `Workspace`). The order is `life` → `inner` → an entry's `state`
 //! → its open boards; nothing calls into a `Workspace` while holding `inner`, and events are emitted
 //! with `inner` released, so a workspace's event (which may reach back into the registry) never
 //! waits on it.
@@ -57,6 +57,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use ts_rs::TS;
+use unfold_engine::settings::default_project_name;
 use unfold_store::ReadPool;
 
 use crate::commands::ProjectExtras;
@@ -64,8 +65,7 @@ use crate::commit::now_ms;
 use crate::confine::{ConfinedPath, confine};
 use crate::error::{Result, WorkspaceError};
 use crate::events::{EventSink, WindowId, WorkspaceEvent};
-use crate::git::{self, GitSummary, RepositoryId};
-use crate::layout::Layout;
+use crate::layout::{Layout, check_writable};
 use crate::open_boards::OpenBoards;
 use crate::options::{AppConfig, WorkspaceOptions, default_languages, store_version};
 use crate::shared::lock;
@@ -75,17 +75,13 @@ use crate::workspace::{OpenContext, Workspace, canonical_folder, load_settings};
 
 /// The most projects a workspace holds.
 pub const MAX_PROJECTS: usize = 64;
-/// The most recent boards `workspace.json` keeps.
-pub const MAX_RECENT_BOARDS: usize = 20;
-/// The most removed folders "Opened before" keeps.
-pub const MAX_REMOVED: usize = 5;
 /// How long a resting project's read pool stays open unused.
 const RESTING_POOL_IDLE: Duration = Duration::from_secs(60);
 /// Why a row whose folder is missing is unavailable.
 const FOLDER_GONE: &str = "The folder is gone or can't be read.";
 
 /// A project's id: `p-` and 10 characters of `[a-z2-7]`, random, assigned when the project is
-/// added (shared project names). It survives restarts and worktree switches.
+/// added (shared project names). It survives restarts.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, TS)]
 #[serde(transparent)]
 pub struct ProjectId(String);
@@ -138,32 +134,6 @@ impl std::fmt::Display for ProjectId {
     }
 }
 
-/// A board opened recently, in any project (`workspace.json` `recentBoards`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct RecentBoard {
-    /// The board's project.
-    pub project: ProjectId,
-    /// The board's id.
-    pub board: String,
-    /// Its title when it was opened.
-    pub title: String,
-    /// When it was opened, in milliseconds since the Unix epoch.
-    pub opened_at_ms: i64,
-}
-
-/// A folder removed from the workspace, which "Opened before" offers to add back.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct RemovedProject {
-    /// The folder's canonical path (what `readd_project` takes).
-    pub path: String,
-    /// Its shared name when it was removed.
-    pub name: String,
-    /// When it was removed, in milliseconds since the Unix epoch.
-    pub removed_at_ms: i64,
-}
-
 /// One project row of the sidebar.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -172,7 +142,7 @@ pub struct ProjectRow {
     pub id: ProjectId,
     /// Its shared name.
     pub name: String,
-    /// The canonical path of the worktree folder it points at.
+    /// The canonical path of its folder.
     pub path: String,
     /// Whether the row is expanded in the sidebar.
     pub expanded: bool,
@@ -180,8 +150,6 @@ pub struct ProjectRow {
     pub live: bool,
     /// Its state.
     pub state: ProjectState,
-    /// Its repository's branch and worktree count, or `None` outside a repository.
-    pub git: Option<GitSummary>,
 }
 
 /// The whole workspace, as every window shows it.
@@ -192,10 +160,6 @@ pub struct WorkspaceView {
     pub projects: Vec<ProjectRow>,
     /// The project last selected in any window: the default for a new window.
     pub selected: Option<ProjectId>,
-    /// Recent boards, most recent first.
-    pub recent_boards: Vec<RecentBoard>,
-    /// Folders removed from the workspace, most recent first ("Opened before").
-    pub removed: Vec<RemovedProject>,
 }
 
 /// Whether `add_project` added a row or found the folder's row.
@@ -204,11 +168,11 @@ pub struct WorkspaceView {
 pub enum AddStatus {
     /// A new row.
     Added,
-    /// The folder, or another worktree of its repository, already has a row.
+    /// The folder already has a row.
     Exists,
 }
 
-/// What `add_project` and `readd_project` return.
+/// What `add_project` returns.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct AddedProject {
@@ -225,8 +189,6 @@ struct WorkspaceFile {
     version: u32,
     projects: Vec<ProjectRecord>,
     selected: Option<ProjectId>,
-    recent_boards: Vec<RecentBoard>,
-    removed: Vec<RemovedRecord>,
 }
 
 impl Default for WorkspaceFile {
@@ -235,15 +197,13 @@ impl Default for WorkspaceFile {
             version: 1,
             projects: Vec::new(),
             selected: None,
-            recent_boards: Vec::new(),
-            removed: Vec::new(),
         }
     }
 }
 
 impl WorkspaceFile {
-    /// Drops what the file can't hold: duplicate ids, rows past the limit, and references to
-    /// projects that aren't in it.
+    /// Drops what the file can't hold: duplicate ids, rows past the limit, and a selection of a
+    /// project that isn't in it.
     fn sanitize(&mut self) {
         let mut seen = std::collections::BTreeSet::new();
         self.projects.retain(|record| seen.insert(record.id.clone()));
@@ -252,13 +212,6 @@ impl WorkspaceFile {
         if self.selected.as_ref().is_some_and(|id| !known(id)) {
             self.selected = None;
         }
-        let recents: Vec<RecentBoard> = std::mem::take(&mut self.recent_boards)
-            .into_iter()
-            .filter(|recent| known(&recent.project))
-            .take(MAX_RECENT_BOARDS)
-            .collect();
-        self.recent_boards = recents;
-        self.removed.truncate(MAX_REMOVED);
     }
 
     fn record(&self, id: &ProjectId) -> Option<&ProjectRecord> {
@@ -278,7 +231,6 @@ struct ProjectRecord {
     path: String,
     name: String,
     expanded: bool,
-    repository: Option<RepositoryId>,
     added_at_ms: i64,
     last_known: Option<LastKnown>,
 }
@@ -291,19 +243,10 @@ struct LastKnown {
     at_ms: i64,
 }
 
-/// One removed folder.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RemovedRecord {
-    path: String,
-    name: String,
-    removed_at_ms: i64,
-}
-
 /// One project. See the [module documentation](self).
 pub(crate) struct ProjectEntry {
     id: ProjectId,
-    /// Held across a wake, a rest, a switch, or a removal.
+    /// Held across a wake, a rest, or a removal.
     life: Mutex<()>,
     state: Mutex<EntryState>,
     open: OpenBoards,
@@ -405,7 +348,16 @@ pub(crate) fn shared_name(root: &Path) -> String {
     load_settings(root)
         .ok()
         .and_then(|settings| settings.project_name)
-        .unwrap_or_else(|| git::default_name(root))
+        .unwrap_or_else(|| default_name(root))
+}
+
+/// The default shared name of the canonical folder `root`: its name, as a valid project name.
+pub(crate) fn default_name(root: &Path) -> String {
+    let basename = root
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    default_project_name(&basename)
 }
 
 impl Projects {
@@ -517,9 +469,9 @@ impl Projects {
             .map(|record| record.id.clone())
     }
 
-    /// The workspace as every window shows it. Reads every repository's `HEAD`.
+    /// The workspace as every window shows it.
     pub fn view(&self) -> WorkspaceView {
-        let (rows, selected, recent_boards, removed) = {
+        let (rows, selected) = {
             let inner = lock(&self.inner);
             let rows: Vec<(ProjectRecord, Arc<ProjectEntry>)> = inner
                 .file
@@ -532,22 +484,7 @@ impl Projects {
                         .map(|entry| (record.clone(), Arc::clone(entry)))
                 })
                 .collect();
-            let removed = inner
-                .file
-                .removed
-                .iter()
-                .map(|removed| RemovedProject {
-                    path: removed.path.clone(),
-                    name: removed.name.clone(),
-                    removed_at_ms: removed.removed_at_ms,
-                })
-                .collect();
-            (
-                rows,
-                inner.file.selected.clone(),
-                inner.file.recent_boards.clone(),
-                removed,
-            )
+            (rows, inner.file.selected.clone())
         };
         WorkspaceView {
             projects: rows
@@ -555,15 +492,12 @@ impl Projects {
                 .map(|(record, entry)| self.row(record, entry))
                 .collect(),
             selected,
-            recent_boards,
-            removed,
         }
     }
 
-    /// One row. Reads the repository's `HEAD`.
+    /// One row.
     fn row(&self, record: &ProjectRecord, entry: &ProjectEntry) -> ProjectRow {
         let (live, state) = self.row_state(record, entry);
-        let root = lock(&entry.state).root.clone();
         ProjectRow {
             id: record.id.clone(),
             name: record.name.clone(),
@@ -571,7 +505,6 @@ impl Projects {
             expanded: record.expanded,
             live,
             state,
-            git: git::info(&root).map(|info| info.summary()),
         }
     }
 
@@ -598,9 +531,7 @@ impl Projects {
         let (last, at_ms) = match &record.last_known {
             Some(known) => (known.state.clone(), known.at_ms),
             None => {
-                let compiled = Layout::discover(&root, &self.config.fallback_cache_dir)
-                    .cache()
-                    .is_dir();
+                let compiled = Layout::new(&root).cache().is_dir();
                 let last = if compiled {
                     ProjectState::Current
                 } else {
@@ -637,64 +568,55 @@ impl Projects {
         Ok(self.row(&record, &entry))
     }
 
-    /// Adds the folder at absolute `path` as a resting, expanded row at the end, or finds the
-    /// row that already has it (the same folder, or another worktree of its repository). Writes
-    /// nothing in the folder.
+    /// Adds the folder at absolute `path` as an expanded row at the end and compiles it at once,
+    /// or finds the row that already has the folder. A folder Unfold can't write `.unfold/` into
+    /// is refused with `folder_not_writable`.
     pub fn add(&self, path: &Path) -> Result<AddedProject> {
         let root = canonical_folder(path)?;
         let text = root.to_string_lossy().into_owned();
-        let repository = git::find(&root).map(|repository| repository.id());
+        let writable = check_writable(&root);
         let name = shared_name(&root);
-        let (status, id) = {
+        let entry = {
             let mut inner = lock(&self.inner);
-            let existing = inner.file.projects.iter().find(|record| {
-                record.path == text || (repository.is_some() && record.repository == repository)
-            });
-            if let Some(existing) = existing {
-                (AddStatus::Exists, existing.id.clone())
-            } else {
-                if inner.file.projects.len() >= MAX_PROJECTS {
-                    return Err(WorkspaceError::TooManyProjects(MAX_PROJECTS));
-                }
-                let id = ProjectId::generate(|id| inner.entries.contains_key(id));
-                inner.file.projects.push(ProjectRecord {
-                    id: id.clone(),
-                    path: text.clone(),
-                    name,
-                    expanded: true,
-                    repository,
-                    added_at_ms: now_ms(),
-                    last_known: None,
+            if let Some(existing) = inner.file.projects.iter().find(|record| record.path == text) {
+                let id = existing.id.clone();
+                drop(inner);
+                return Ok(AddedProject {
+                    status: AddStatus::Exists,
+                    project: self.row_of(&id)?,
                 });
-                inner.file.removed.retain(|removed| removed.path != text);
-                inner
-                    .entries
-                    .insert(id.clone(), ProjectEntry::new(id.clone(), root));
-                self.save(&inner)?;
-                (AddStatus::Added, id)
             }
+            writable?;
+            if inner.file.projects.len() >= MAX_PROJECTS {
+                return Err(WorkspaceError::TooManyProjects(MAX_PROJECTS));
+            }
+            let id = ProjectId::generate(|id| inner.entries.contains_key(id));
+            inner.file.projects.push(ProjectRecord {
+                id: id.clone(),
+                path: text,
+                name,
+                expanded: true,
+                added_at_ms: now_ms(),
+                last_known: None,
+            });
+            let entry = ProjectEntry::new(id.clone(), root);
+            inner.entries.insert(id, Arc::clone(&entry));
+            self.save(&inner)?;
+            entry
         };
-        if status == AddStatus::Added {
-            self.announce();
+        self.announce();
+        // A folder that can't be opened leaves the row unavailable, which the row says.
+        if let Ok(workspace) = self.wake(&entry) {
+            workspace.compile(None);
         }
         Ok(AddedProject {
-            status,
-            project: self.row_of(&id)?,
+            status: AddStatus::Added,
+            project: self.row_of(&entry.id)?,
         })
     }
 
-    /// Whether `path` is one of the removed folders "Opened before" lists.
-    pub fn was_removed(&self, path: &str) -> bool {
-        lock(&self.inner)
-            .file
-            .removed
-            .iter()
-            .any(|removed| removed.path == path)
-    }
-
-    /// Removes project `id` from the workspace: closes it if live, forgets its recent boards and
-    /// selections, and lists its folder under "Opened before". Never touches its `.unfold/`.
-    /// Refused with `boards_open` while one of its boards is open.
+    /// Removes project `id` from the workspace: closes it if live and forgets its selections.
+    /// Never touches its `.unfold/`. Refused with `boards_open` while one of its boards is open.
     pub fn remove(&self, id: &ProjectId) -> Result<()> {
         let entry = self.handle(id)?.entry;
         let _life = life(&entry);
@@ -709,23 +631,12 @@ impl Projects {
                 .iter()
                 .position(|record| record.id == *id)
                 .ok_or_else(|| WorkspaceError::UnknownProject(id.clone()))?;
-            let record = inner.file.projects.remove(index);
+            inner.file.projects.remove(index);
             inner.entries.remove(id);
             inner.selection.retain(|_, selected| selected != id);
             if inner.file.selected.as_ref() == Some(id) {
                 inner.file.selected = None;
             }
-            inner.file.recent_boards.retain(|recent| recent.project != *id);
-            inner.file.removed.retain(|removed| removed.path != record.path);
-            inner.file.removed.insert(
-                0,
-                RemovedRecord {
-                    path: record.path,
-                    name: record.name,
-                    removed_at_ms: now_ms(),
-                },
-            );
-            inner.file.removed.truncate(MAX_REMOVED);
             let mut state = lock(&entry.state);
             state.removed = true;
             state.resting = None;
@@ -821,70 +732,6 @@ impl Projects {
         Ok(())
     }
 
-    /// Re-points project `id` at another worktree of its repository: `path` must be one of the
-    /// available worktree paths `git_info` lists. Refused with `boards_open` while one of its
-    /// boards is open. The project's graph, boards, drafts, and `state.json` become the new
-    /// folder's; it reopens there when it has interest.
-    pub fn switch_worktree(&self, id: &ProjectId, path: &str) -> Result<ProjectRow> {
-        let handle = self.handle(id)?;
-        let available = git::info(&handle.root).is_some_and(|info| {
-            info.worktrees
-                .iter()
-                .any(|worktree| worktree.available && worktree.path == path)
-        });
-        if !available {
-            return Err(WorkspaceError::NotAWorktree(path.to_owned()));
-        }
-        let root = canonical_folder(Path::new(path))?;
-        let entry = handle.entry;
-        let _life = life(&entry);
-        if !entry.open.is_empty() {
-            return Err(WorkspaceError::BoardsOpen);
-        }
-        if lock(&entry.state).root == root {
-            return self.row_of(id);
-        }
-        let name = shared_name(&root);
-        let repository = git::find(&root).map(|repository| repository.id());
-        let (closing, interested) = {
-            let mut inner = lock(&self.inner);
-            let record = inner
-                .file
-                .record_mut(id)
-                .ok_or_else(|| WorkspaceError::UnknownProject(id.clone()))?;
-            record.path = root.to_string_lossy().into_owned();
-            record.name = name;
-            record.repository = repository;
-            record.last_known = None;
-            let mut state = lock(&entry.state);
-            let closing = state.live.take();
-            state.root = root;
-            state.resting = None;
-            state.unavailable = None;
-            state.extras = Arc::default();
-            let interested = self.interested(&inner, &entry, &state);
-            drop(state);
-            self.save(&inner)?;
-            (closing, interested)
-        };
-        if let Some(workspace) = closing {
-            workspace.close();
-        }
-        // A failed reopen leaves the row unavailable, which the row says; the switch stands.
-        if interested {
-            let _ = self.open_locked(&entry);
-        }
-        self.sink
-            .emit(&WorkspaceEvent::ProjectReset { project: id.clone() });
-        self.announce();
-        let row = self.row_of(id)?;
-        self.sink.emit(&WorkspaceEvent::ProjectState {
-            project: id.clone(),
-            state: row.state.clone(),
-        });
-        Ok(row)
-    }
-
     /// Reads project `id`'s shared name from its folder again; when it changed, saves it and
     /// sends `workspace_changed`.
     pub(crate) fn refresh_name(&self, id: &ProjectId) {
@@ -907,60 +754,6 @@ impl Projects {
         if changed {
             self.announce();
         }
-    }
-
-    /// Changes the recent boards; saves and announces them when `change` says they changed.
-    fn update_recents(&self, change: impl FnOnce(&mut Vec<RecentBoard>) -> bool) -> Result<()> {
-        {
-            let mut inner = lock(&self.inner);
-            if !change(&mut inner.file.recent_boards) {
-                return Ok(());
-            }
-            inner.file.recent_boards.truncate(MAX_RECENT_BOARDS);
-            self.save(&inner)?;
-        }
-        self.announce();
-        Ok(())
-    }
-
-    /// Records that board `board` of project `project`, titled `title`, was opened or created
-    /// (most recent first; at most 20 are kept).
-    pub fn record_recent_board(&self, project: &ProjectId, board: &str, title: &str) -> Result<()> {
-        let recent = RecentBoard {
-            project: project.clone(),
-            board: board.to_owned(),
-            title: title.to_owned(),
-            opened_at_ms: now_ms(),
-        };
-        self.update_recents(|recents| {
-            recents.retain(|existing| !(existing.project == *project && existing.board == board));
-            recents.insert(0, recent);
-            true
-        })
-    }
-
-    /// Board `from` of `project` has the id `to` now: its recent entry follows.
-    pub fn move_recent_board(&self, project: &ProjectId, from: &str, to: &str) -> Result<()> {
-        let is = |recent: &RecentBoard, board: &str| recent.project == *project && recent.board == board;
-        self.update_recents(|recents| {
-            if from == to || !recents.iter().any(|recent| is(recent, from)) {
-                return false;
-            }
-            recents.retain(|recent| !is(recent, to));
-            for recent in recents.iter_mut().filter(|recent| is(recent, from)) {
-                to.clone_into(&mut recent.board);
-            }
-            true
-        })
-    }
-
-    /// Board `board` of `project` is gone: it leaves the recent boards.
-    pub fn forget_recent_board(&self, project: &ProjectId, board: &str) -> Result<()> {
-        self.update_recents(|recents| {
-            let before = recents.len();
-            recents.retain(|recent| !(recent.project == *project && recent.board == board));
-            recents.len() != before
-        })
     }
 
     /// Whether anything keeps project `entry` live. Call with `inner` and its `state` locked.
@@ -1041,7 +834,6 @@ impl Projects {
     fn context(&self, project: ProjectId) -> OpenContext {
         OpenContext {
             project,
-            fallback_cache_dir: self.config.fallback_cache_dir.clone(),
             options: self.options.clone(),
             sink: Arc::clone(&self.sink),
             languages: default_languages(),
@@ -1253,12 +1045,9 @@ impl ProjectHandle<'_> {
         Ok(pool)
     }
 
-    /// The project's `.unfold/` layout (where `local/` is), without writing anything.
+    /// The project's `.unfold/` layout, without writing anything.
     pub fn layout(&self) -> Layout {
-        match self.live() {
-            Some(workspace) => workspace.layout(),
-            None => Layout::discover(&self.root, &self.projects.config.fallback_cache_dir),
-        }
+        Layout::new(&self.root)
     }
 
     /// Checks a path a command named against the project's folder (docs/architecture.md#security).
@@ -1271,7 +1060,7 @@ impl ProjectHandle<'_> {
         &self.entry.open
     }
 
-    /// The project's command-side state (dropped when it rests or switches worktree).
+    /// The project's command-side state (dropped when it rests).
     pub fn extras(&self) -> Arc<ProjectExtras> {
         Arc::clone(&lock(&self.entry.state).extras)
     }
@@ -1327,7 +1116,6 @@ mod tests {
         let config = AppConfig {
             app_data_dir: dir.join("app"),
             logs_dir: dir.join("logs"),
-            fallback_cache_dir: dir.join("fallback"),
         };
         Projects::new(
             config,
@@ -1349,44 +1137,6 @@ mod tests {
         );
         let second = ProjectId::generate(|id| *id == first);
         assert_ne!(first, second);
-    }
-
-    #[test]
-    fn recent_boards_follow_their_boards() {
-        let dir = tempfile::tempdir().expect("temp dir");
-        let base = std::fs::canonicalize(dir.path()).expect("canonical");
-        std::fs::create_dir_all(base.join("repo")).expect("mkdir");
-        let projects = projects(&base);
-        let added = projects.add(&base.join("repo")).expect("add");
-        let id = added.project.id;
-        projects
-            .record_recent_board(&id, ".unfold/local/drafts/b.json", "B")
-            .expect("record");
-        projects
-            .record_recent_board(&id, ".unfold/boards/a.json", "A")
-            .expect("record");
-        projects
-            .move_recent_board(&id, ".unfold/local/drafts/b.json", ".unfold/boards/b.json")
-            .expect("move");
-        let boards: Vec<String> = projects
-            .view()
-            .recent_boards
-            .into_iter()
-            .map(|recent| recent.board)
-            .collect();
-        assert_eq!(boards, [".unfold/boards/a.json", ".unfold/boards/b.json"]);
-        projects
-            .forget_recent_board(&id, ".unfold/boards/a.json")
-            .expect("forget");
-        assert_eq!(projects.view().recent_boards.len(), 1);
-        for index in 0..MAX_RECENT_BOARDS + 4 {
-            projects
-                .record_recent_board(&id, &format!(".unfold/boards/{index}.json"), "x")
-                .expect("record");
-        }
-        assert_eq!(projects.view().recent_boards.len(), MAX_RECENT_BOARDS);
-        assert_eq!(projects.resolve_name("repo"), Some(id));
-        assert_eq!(projects.resolve_name("nope"), None);
     }
 
     #[test]

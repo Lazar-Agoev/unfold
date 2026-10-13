@@ -8,11 +8,9 @@
 //! file counts only when its target is a file inside the folder. `[scope]` and `languages` from
 //! the settings then decide what is indexed; see [`classify`].
 //!
-//! The result is deterministic: every list is sorted by path, and the skipped-files report is
-//! aggregated by folder for the first-Compile screen.
+//! The result is deterministic: every list is sorted by path.
 
 mod classify;
-mod report;
 mod walk;
 
 use std::path::{Path, PathBuf};
@@ -24,7 +22,6 @@ use unfold_core::vocab::{InputRole, Language};
 pub use classify::{
     DEFAULT_EXCLUDED, FileClass, Unindexed, classify, is_default_excluded, is_default_excluded_name,
 };
-pub use report::{SkipReason, Skipped};
 pub use walk::IgnoreRules;
 
 use crate::settings::{ScopeStatus, Settings};
@@ -139,8 +136,6 @@ pub struct Discovery {
     /// Configuration inputs: `unfold.toml`, `tsconfig*.json`, `package.json`, and
     /// `pyproject.toml`.
     pub inputs: Vec<InputFile>,
-    /// What was skipped and why, aggregated by folder.
-    pub skipped: Vec<Skipped>,
     /// What couldn't be read.
     pub problems: Vec<Problem>,
 }

@@ -30,8 +30,8 @@ pub use cancel::{CancelToken, Cancelled};
 pub use error::BackendError;
 pub use facts::{ENGINE_VERSION, FileFacts, GraphFacts, Invocation};
 pub use language::{
-    ContextPreview, EmitSource, ExtractionOptions, InputProblem, Language, LanguageId, LanguageProblem,
-    LaunchResolution, Linked, Producer, ProjectInput, ProjectInputs, SourceFailure,
+    EmitSource, ExtractionOptions, InputProblem, Language, LanguageId, LanguageProblem, LaunchResolution,
+    Linked, Producer, ProjectInput, ProjectInputs, SourceFailure,
 };
 pub use program::{BlockRef, CallRef, DeclRef, FactsSet, FileId, ProgramFile, TypeRef, ValueRef};
 pub use resolve::{Outcome, Resolver};

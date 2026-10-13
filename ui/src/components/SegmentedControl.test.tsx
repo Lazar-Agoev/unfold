@@ -17,7 +17,6 @@ function Lens({ onChange }: { onChange: (value: "code" | "flow") => void }) {
       options={LENS}
       value={value}
       label="Lens"
-      variant="lens"
       onChange={(next) => {
         setValue(next);
         onChange(next);
@@ -41,25 +40,5 @@ describe("SegmentedControl", () => {
     expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Flow" }));
     fireEvent.keyDown(group, { key: "ArrowRight" });
     expect(onChange).toHaveBeenLastCalledWith("code");
-  });
-
-  it("draws the mini and switch variants, with a count on a switch segment", () => {
-    const { container } = render(
-      <>
-        <SegmentedControl options={LENS} value="flow" label="Card lens" variant="mini" onChange={vi.fn()} />
-        <SegmentedControl
-          options={[
-            { value: "health", label: "Health", count: 2 },
-            { value: "activity", label: "Activity" },
-          ]}
-          value="health"
-          label="Health and activity"
-          variant="switch"
-          onChange={vi.fn()}
-        />
-      </>,
-    );
-    expect(container.querySelector(".segmented-mini")).not.toBeNull();
-    expect(screen.getByRole("radio", { name: "Health 2" }).querySelector(".segmented-count")?.textContent).toBe("2");
   });
 });

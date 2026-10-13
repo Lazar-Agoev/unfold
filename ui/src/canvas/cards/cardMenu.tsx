@@ -1,8 +1,7 @@
 /**
- * Context menus on the canvas: a card's (Open source, Show callers, Draw link…, Add as entrance…, Copy
- * link, Fold or Unfold card, Remove from page), a Flow step's (View code, Combine…, Add proposed step
- * after…), and a group's (View code, Collapse, Describe, Copy link, Ungroup). Open source and View code
- * open the peek sheet through the one View code resolver, highlighted; Combine… is enabled only for a
+ * Context menus on the canvas: a card's (Open source, Show callers, Draw link…, Copy link, Fold or
+ * Unfold card, Remove from page), a Flow step's (View code, Combine…, Add proposed step after…), and a
+ * group's (View code, Collapse, Describe, Copy link, Ungroup). Open source and View code open the peek sheet through the one View code resolver, highlighted; Combine… is enabled only for a
  * run of steps that can be combined, and says why otherwise; Add proposed step after… shows only on a
  * step a proposed step can follow, as a submenu of its actual paths for a decision. Each page choice is
  * one board edit, so ⌘Z undoes it.
@@ -13,13 +12,12 @@ import { copyLink } from "../../agent";
 import { PATH_WORDS, PROPOSAL_TITLE_FIELD, proposalChoiceOf, proposeStep, type ProposalChoice } from "../../board/proposeStep";
 import { combineOf, sourceOf, viewCode } from "../../board/viewCode";
 import { useContextMenu, type MenuEntry } from "../../components";
-import type { ProjectId, ProposalPath } from "../../ipc/generated";
+import type { ProposalPath } from "../../ipc/generated";
 import { requestFocus } from "../../lib/focus-targets";
-import { canBeHandler } from "../../launches";
 import { useAuthor } from "../../state/author";
 import { editGroup, editPage, findPage, getOpenBoard, getPageView, removeCard, select, setCardsFolded, setLinking, ungroup, type PageTarget, type Selection } from "../../state/boards";
 import { setSelectedCollapsed } from "../../state/layout";
-import { openDialog, type DefinitionRef } from "../../state/overlays";
+import { openDialog } from "../../state/overlays";
 import { showCallers } from "../showCallers";
 
 function stop(event: MouseEvent): void {
@@ -30,14 +28,6 @@ function stop(event: MouseEvent): void {
 export function showInSelected(field: string): void {
   setSelectedCollapsed(false);
   requestFocus(field);
-}
-
-/** Where a card's source is: a block's definition, or an entrance's declaration. */
-interface CardSource {
-  readonly path: string;
-  readonly line: number | null;
-  /** A block's definition, which may become an entrance's handler. */
-  readonly definition?: DefinitionRef;
 }
 
 interface CardMenu {
@@ -112,20 +102,8 @@ function stepEntries(target: PageTarget, selection: Selection, functionName: str
   ];
 }
 
-/**
- * The context menus of one card. `project` is null for a card of a project that isn't connected;
- * `source` (once the card's model loaded) offers Open source and Add as entrance; `block` offers Show
- * callers; `name` names the function in a run's heading.
- */
-export function useCardMenu(
-  target: PageTarget,
-  project: ProjectId | null,
-  cardId: string,
-  folded: boolean,
-  block: boolean,
-  source: CardSource | null,
-  name = "",
-): CardMenu {
+/** The context menus of one card. `block` offers Show callers; `name` names the function in a run's heading. */
+export function useCardMenu(target: PageTarget, cardId: string, folded: boolean, block: boolean, name = ""): CardMenu {
   const menu = useContextMenu("Card actions", 220);
   const author = useAuthor();
   const own: Selection = { kind: "card", cardId, key: null };
@@ -156,20 +134,6 @@ export function useCardMenu(
         setLinking(target, cardId);
       },
     },
-    ...(project !== null && source?.definition && canBeHandler(source.definition.kind)
-      ? [
-          {
-            id: "add-entrance",
-            label: "Add as entrance…",
-            icon: "entrance",
-            onSelect: () => {
-              if (source.definition) {
-                openDialog({ kind: "launchEditor", project, mode: "add", intent: "handler", handler: source.definition });
-              }
-            },
-          } satisfies MenuEntry,
-        ]
-      : []),
     { id: "copy-link", label: "Copy link", onSelect: () => void copyLink(target, cardId) },
     { kind: "separator", id: "s1" },
     {

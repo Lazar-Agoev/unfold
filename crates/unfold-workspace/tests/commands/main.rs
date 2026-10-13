@@ -4,11 +4,8 @@
 mod boards;
 mod claims;
 mod common;
-mod deploy_import;
-mod git;
 mod goldens;
 mod home;
-mod launches;
 mod liveness;
 mod search;
 mod security;

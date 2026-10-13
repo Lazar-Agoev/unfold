@@ -53,8 +53,6 @@ pub struct LaunchPlan {
     pub parts: Vec<CommandPart>,
     /// Why the launch can't be read, or doesn't add up.
     pub problem: Option<LaunchProblem>,
-    /// For `sh -c "…"`: the plan of the quoted command, which the editor can fill in.
-    pub suggestion: Option<Box<Suggestion>>,
 }
 
 /// One folder on a launch's import path.
@@ -117,15 +115,6 @@ pub struct LaunchProblem {
     pub message: Box<str>,
 }
 
-/// The plan of the command quoted in `sh -c "…"`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Suggestion {
-    /// The quoted command's meaningful words, such as `uvicorn dashboard_builder.app:app`.
-    pub quoted: Box<str>,
-    /// The quoted command's plan, with its target and import path inferred.
-    pub plan: LaunchPlan,
-}
-
 impl LaunchPlan {
     /// The import context of a Python launch: its entry and import path.
     pub fn python_context(&self) -> Option<PythonContext> {
@@ -181,50 +170,7 @@ pub fn plan_launch(draft: &LaunchDraft<'_>, packages: &dyn PackageScripts, root:
         import_paths,
         parts,
         problem,
-        suggestion: command.and_then(|command| suggest(command, draft, packages, root)),
     }
-}
-
-/// For a command that is only `sh -c "<command>"` (or `bash -c`), the plan of the quoted
-/// command, when it can be read.
-fn suggest(
-    command: &str,
-    draft: &LaunchDraft<'_>,
-    packages: &dyn PackageScripts,
-    root: &str,
-) -> Option<Box<Suggestion>> {
-    let steps = steps(command).ok()?;
-    let [step] = steps.as_slice() else {
-        return None;
-    };
-    let found = super::command(step).ok()??;
-    let [flag, quoted] = found.args else {
-        return None;
-    };
-    if !found.prefix.is_empty() || !is_shell(found.name) || flag.text != "-c" {
-        return None;
-    }
-    let inner = LaunchDraft {
-        command: Some(&quoted.text),
-        target: None,
-        python_paths: None,
-        ..*draft
-    };
-    let plan = plan_launch(&inner, packages, root);
-    if plan.problem.is_some() || plan.target.is_none() {
-        return None;
-    }
-    let quoted = plan
-        .parts
-        .iter()
-        .filter(|part| !part.irrelevant)
-        .map(|part| &*part.text)
-        .collect::<Vec<_>>()
-        .join(" ");
-    Some(Box::new(Suggestion {
-        quoted: quoted.into(),
-        plan,
-    }))
 }
 
 /// What a readable command starts.

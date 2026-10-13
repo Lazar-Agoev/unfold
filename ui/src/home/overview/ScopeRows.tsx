@@ -9,48 +9,17 @@ import { useQueries } from "@tanstack/react-query";
 import { useState, type CSSProperties, type MouseEvent } from "react";
 import type { MenuEntry } from "../../components";
 import { Icon } from "../../icons";
-import { engineQueryOptions, type CatalogRow, type Editable, type EntranceScope, type EntranceSection, type LaunchRow, type ProjectId } from "../../ipc";
+import { engineQueryOptions, type CatalogRow, type EntranceScope, type EntranceSection, type LaunchRow, type ProjectId } from "../../ipc";
 import { methodColumn } from "../../lib/entrances";
 import { formatCount, plural } from "../../lib/format";
-import { openDialog } from "../../state/overlays";
 import { traceFromHome } from "../actions";
 import { useWindowed } from "../windowed";
 
 export type OnMenu = (event: MouseEvent, entries: MenuEntry[]) => void;
 
-/** What a row's menu acts on: the entrance, its `[[entrance]]` ID when configured, how it is edited, and its name. */
-interface MenuTarget {
-  readonly key: string;
-  readonly id: string | null;
-  readonly editable: Editable;
-  readonly name: string;
-}
-
-/** A launch as its menu names it: by its label, else its command. */
-export function launchTarget(launch: Pick<LaunchRow, "key" | "id" | "editable" | "label" | "command">): MenuTarget {
-  return { key: launch.key, id: launch.id, editable: launch.editable, name: launch.label ?? launch.command ?? launch.key };
-}
-
-/** The editor on an entrance declared in `unfold.toml`, or on an override of a detected launch (Fix…, Edit…). */
-export function editEntrance(project: ProjectId, target: Pick<MenuTarget, "key" | "id" | "editable">): void {
-  if (target.editable === "configured" && target.id !== null) {
-    openDialog({ kind: "launchEditor", project, mode: "edit", id: target.id });
-  } else {
-    openDialog({ kind: "launchEditor", project, mode: "override", key: target.key });
-  }
-}
-
-/** An entrance's menu: Trace and Edit…, and Remove… for one declared in `unfold.toml`. */
-export function entranceMenu(project: ProjectId, target: MenuTarget): MenuEntry[] {
-  const id = target.editable === "configured" ? target.id : null;
-  return [
-    { id: "trace", label: "Trace on a New Board", icon: "board-draft", onSelect: () => void traceFromHome(project, target.key) },
-    { kind: "separator", id: "s1" },
-    { id: "edit", label: "Edit…", icon: "edit", onSelect: () => { editEntrance(project, target); } },
-    ...(id === null
-      ? []
-      : [{ id: "remove", label: "Remove…", danger: true, onSelect: () => { openDialog({ kind: "removeEntrance", project, id, name: target.name }); } }]),
-  ];
+/** An entrance's menu: Trace on a New Board. */
+export function entranceMenu(project: ProjectId, key: string): MenuEntry[] {
+  return [{ id: "trace", label: "Trace on a New Board", icon: "board-draft", onSelect: () => void traceFromHome(project, key) }];
 }
 
 export type ScopeArgs = { readonly application: string } | { readonly unreached: true };
@@ -136,8 +105,6 @@ function ScopeRow({ project, row, launch, onMenu, style }: {
   const launchRow = row.kind === "process";
   const kind = launchRow ? "LAUNCH" : methodColumn(row);
   const name = launchRow ? (launch?.label ?? launch?.command ?? row.title) : (row.trigger ?? row.title);
-  // A launch's menu, or a configured handler entrance's; detected handlers have none.
-  const target = launch ? launchTarget(launch) : row.id === null ? null : { key: row.key, id: row.id, editable: "configured" as const, name };
   return (
     <div
       role="button"
@@ -153,13 +120,9 @@ function ScopeRow({ project, row, launch, onMenu, style }: {
           trace();
         }
       }}
-      onContextMenu={
-        target
-          ? (event) => {
-              onMenu(event, entranceMenu(project, target));
-            }
-          : undefined
-      }
+      onContextMenu={(event) => {
+        onMenu(event, entranceMenu(project, row.key));
+      }}
     >
       <span className={row.method === "DELETE" ? "home-scope-kind home-scope-kind-danger" : "home-scope-kind"}>{kind}</span>
       <span className={launchRow ? "home-scope-name home-scope-label" : "home-scope-name"}>{name}</span>
@@ -234,7 +197,7 @@ function ItemView({ item, project, launches, open, onToggle, onMenu, style }: {
 export function ScopeRows({ project, scope, launches, onMenu, scroller }: {
   readonly project: ProjectId;
   readonly scope: Pick<Scope, "sections" | "rows">;
-  /** The application's launches, for the launch rows' names and menus. */
+  /** The application's launches, for the launch rows' names. */
   readonly launches: readonly LaunchRow[];
   readonly onMenu: OnMenu;
   readonly scroller?: HTMLElement | null;

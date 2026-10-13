@@ -148,9 +148,6 @@ fn an_open_board_keeps_its_session_until_it_closes() {
     assert_eq!(board["project"], project.as_str());
     assert_eq!(board["place"], "draft");
     assert_eq!(board["published"], Value::Null);
-    let recent = harness.ok(1, "workspace", json!({}))["recentBoards"][0].clone();
-    assert_eq!(recent["board"], id.as_str(), "a new board is a recent board");
-    assert_eq!(recent["title"], "Order placement");
     let document = &board["document"];
     assert_eq!(document["format"], "unfold-board");
     assert_eq!(document["version"], 1);
@@ -194,10 +191,6 @@ fn an_open_board_keeps_its_session_until_it_closes() {
     assert_eq!(reopened["revision"], saved["revision"]);
     assert_eq!(reopened["document"]["title"], "Order placement");
     assert_eq!(reopened["document"]["pages"][0]["cards"][0]["id"], "create");
-    let recent = harness.ok(1, "workspace", json!({}))["recentBoards"][0].clone();
-    assert_eq!(recent["board"], id.as_str());
-    assert_eq!(recent["project"], project.as_str());
-    assert_eq!(recent["title"], "Order placement");
 
     // Closing the window closes it; opening it then reads the file.
     harness.host.detach_window(1).expect("detach");
@@ -223,7 +216,13 @@ fn an_open_board_keeps_its_session_until_it_closes() {
 
 #[test]
 fn a_project_without_a_graph_has_no_drafts_and_no_board_health() {
-    let harness = Harness::new("ts-orders", false);
+    // Adding compiles at once; a project whose `.unfold/local` went away while it rested has
+    // no graph until its next Compile.
+    let harness = Harness::with("ts-orders", restless());
+    eventually("the project rests", || {
+        harness.row(&harness.project)["live"] == false
+    });
+    std::fs::remove_dir_all(harness.root.join(".unfold/local")).expect("remove local");
     let sample = std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/boards/order-placement.json"),
     )
@@ -661,7 +660,7 @@ fn published_boards_keep_unpublished_changes_until_publish() {
     let draft = harness.draft(1, "Order placement");
     let draft_id = id_of(&draft);
 
-    // The first Publish moves the board, its open entry, and its recent entry.
+    // The first Publish moves the board and its open entry.
     let published = harness.on(1, "publish_board", &draft_id);
     assert_eq!(published["status"], "done");
     let state = &published["board"];
@@ -677,8 +676,6 @@ fn published_boards_keep_unpublished_changes_until_publish() {
     assert!(!harness.path(&draft_id).exists(), "the draft is gone");
     assert_eq!(harness.on_code(1, "board_health", &draft_id), "board_not_open");
     assert_eq!(harness.on(1, "board_health", &id)["label"], Value::Null);
-    let recent = harness.ok(1, "workspace", json!({}))["recentBoards"][0].clone();
-    assert_eq!(recent["board"], id.as_str());
 
     // A second board with that title is offered a free name; only a draft takes a name.
     let second = harness.draft(1, "Order placement");
@@ -839,8 +836,6 @@ fn moving_back_to_drafts_and_deleting() {
     assert!(harness.path(&draft_id).is_file());
     assert_eq!(harness.on_code(1, "board_health", &id), "board_not_open");
     harness.on(1, "board_health", &draft_id);
-    let recents = harness.ok(1, "workspace", json!({}))["recentBoards"].clone();
-    assert_eq!(recents[0]["board"], draft_id.as_str());
     let ids: Vec<Value> = harness.boards()["boards"]
         .as_array()
         .expect("boards")
@@ -855,7 +850,6 @@ fn moving_back_to_drafts_and_deleting() {
     assert!(!harness.path(&draft_id).exists());
     assert_eq!(harness.on_code(1, "board_health", &draft_id), "board_not_open");
     assert_eq!(harness.boards()["boards"], json!([]));
-    assert_eq!(harness.ok(1, "workspace", json!({}))["recentBoards"], json!([]));
     let changed = harness.sink.events(mark, "boards_changed");
     assert_eq!(changed[0]["boards"], json!([draft_id]));
 

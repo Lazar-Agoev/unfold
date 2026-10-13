@@ -53,7 +53,7 @@ fn compile_streams_progress_and_resolves_with_its_outcome() {
     let (request, result) = start(
         &harness,
         1,
-        json!({ "command": "compile", "args": { "project": harness.project, "mode": "check" } }),
+        json!({ "command": "compile", "args": { "project": harness.project } }),
     );
     let outcome: Value =
         serde_json::from_str(&result.recv_timeout(PATIENCE).expect("done").expect("compile")).expect("json");

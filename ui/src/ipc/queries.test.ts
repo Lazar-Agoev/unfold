@@ -60,11 +60,7 @@ function seedAll(): void {
     seed("preview", { project, key: OTHER });
     seed("entrances", { project });
     seed("project_summary", { project });
-    seed("index_log", { project });
     seed("problems", { project });
-    seed("project_config", { project });
-    seed("compile_preview", { project });
-    seed("scope_dir", { project, path: "" });
     seed("list_boards", { project });
     seed("board_thumbnails", { project, boards: [".unfold/boards/a.json"] });
     seed("board_thumbnails", { project, boards: [".unfold/boards/b.json"] });
@@ -101,9 +97,8 @@ beforeEach(() => {
 });
 
 describe("engine keys", () => {
-  it("key every call by command and arguments, and leave git_info always stale", () => {
+  it("key every call by command and arguments", () => {
     expect(engineKey("card", { project: P, key: CREATE })).toEqual(["engine", "card", { project: P, key: CREATE }]);
-    expect(engineQueryOptions("git_info", { project: P })).toMatchObject({ staleTime: 0 });
     expect(engineQueryOptions("list_boards", { project: P })).not.toHaveProperty("staleTime");
     expect(keyFile(CREATE)).toBe(ORDERS);
     expect(keyFile(ENTRANCE)).toBe(ENTRANCE);
@@ -149,7 +144,7 @@ describe("invalidation by event", () => {
           })
         : Promise.resolve(fresh);
     };
-    // The window has the workspace and is reading it again (a reconnect or focus refetch).
+    // The window has the workspace and is reading it again (a reconnect).
     client.setQueryData(key, old);
     const observer = new QueryObserver(client, { queryKey: key, queryFn });
     const unsubscribe = observer.subscribe(() => undefined);
@@ -188,7 +183,6 @@ describe("invalidation by event", () => {
         `card:${P}:${ENTRANCE}`,
         `card:${P}:${LIST}`,
         `file_view:${P}:${ORDERS}`,
-        `index_log:${P}:`,
         // Typed lines read other files than the caller's: every one of the project.
         `line_labels:${P}:`,
         `peek:${P}:${LIST}`,
@@ -266,12 +260,8 @@ describe("invalidation by event", () => {
     expect(stale()).toEqual([`problems:${Q}:`, `project_summary:${Q}:`]);
   });
 
-  it("config_changed refreshes the project's settings, compile preview, and scope tree", () => {
+  it("leaves the cache alone for settings changes, compile progress, and board conflicts", () => {
     applyEngineEvent(client, { type: "config_changed", project: P });
-    expect(stale()).toEqual([`compile_preview:${P}:`, `project_config:${P}:`, `scope_dir:${P}:`]);
-  });
-
-  it("leaves the cache alone for compile progress and board conflicts", () => {
     applyEngineEvent(client, { type: "compile_progress", project: P, stage: "extract", done: 1, total: 2 });
     applyEngineEvent(client, { type: "board_conflict", project: P, board: "b", file: "draft", savedRevision: "r1", diskRevision: null });
     expect(stale()).toEqual([]);

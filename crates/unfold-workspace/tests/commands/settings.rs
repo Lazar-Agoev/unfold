@@ -1,4 +1,5 @@
-//! The app settings (`settings.json`): the editor command only.
+//! The app settings (`settings.json`): the editor command only, and opening a project's
+//! `unfold.toml` with it.
 
 use serde_json::{Value, json};
 
@@ -36,4 +37,37 @@ fn rejected_settings_are_not_saved() {
         );
     }
     assert!(!harness.base.join("app/settings.json").exists());
+}
+
+#[test]
+fn opening_unfold_toml_creates_an_empty_one_first() {
+    let harness = Harness::new("ts-orders", false);
+    // An editor command that does nothing, so the test opens no app.
+    harness.ok(
+        1,
+        "set_settings",
+        json!({ "settings": { "editorCommand": "/usr/bin/true" } }),
+    );
+    let config = harness.root.join("unfold.toml");
+    std::fs::remove_file(&config).expect("remove unfold.toml");
+    let open = json!({ "project": harness.project, "path": "unfold.toml" });
+    assert_eq!(harness.ok(1, "open_in_editor", open.clone()), Value::Null);
+    assert_eq!(std::fs::read_to_string(&config).expect("created"), "");
+    // An existing file is opened as it is.
+    std::fs::write(&config, "languages = [\"typescript\"]\n").expect("write");
+    harness.ok(1, "open_in_editor", open);
+    assert_eq!(
+        std::fs::read_to_string(&config).expect("read"),
+        "languages = [\"typescript\"]\n"
+    );
+    // Any other missing file is not created.
+    assert_eq!(
+        harness.code(
+            1,
+            "open_in_editor",
+            json!({ "project": harness.project, "path": "src/missing.ts" })
+        ),
+        "not_found"
+    );
+    assert!(!harness.root.join("src/missing.ts").exists());
 }

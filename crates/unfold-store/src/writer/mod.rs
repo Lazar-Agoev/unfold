@@ -39,7 +39,7 @@ use crate::error::{Result, StoreError};
 use crate::schema::meta_key;
 use crate::update::Update;
 
-/// What a commit wrote: for the Index log.
+/// What a commit wrote.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CommitStats {
     /// File rows inserted or updated.
@@ -297,7 +297,8 @@ impl Writer {
     }
 
     /// Deletes the graph, the facts cache, and the search index, keeping the schema and
-    /// versions: Rebuild from scratch (docs/engine.md#updates). Key IDs start again from 1.
+    /// versions, so everything is compiled again into an empty store (docs/engine.md#updates).
+    /// Key IDs start again from 1.
     /// Readers keep working and see an empty graph once this commits.
     pub fn clear(&mut self) -> Result<()> {
         self.recover()?;

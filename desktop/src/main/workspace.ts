@@ -90,7 +90,9 @@ export class Workspace {
 
   /**
    * Adds `path` (absolute, from the folder picker) to the workspace on behalf of window `windowId`
-   * (`0` for none). Rejects with an {@link EngineRequestError} (`not_a_folder`, `too_many_projects`, …).
+   * (`0` for none); the engine compiles it at once. Rejects with an {@link EngineRequestError} whose
+   * message the person sees (`not_a_folder`, `too_many_projects`, a folder Unfold can't write
+   * `.unfold/` into, …).
    */
   async add(windowId: number, path: string): Promise<AddedProject> {
     return addedProject(await this.engine.request(windowId, "add_project", { path }));

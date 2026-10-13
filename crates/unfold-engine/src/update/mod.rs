@@ -10,7 +10,6 @@
 //! | Compile | [`UpdateRequest::compile`] | Every file is re-read and re-hashed; only changed bytes are extracted |
 //! | Background update | [`UpdateRequest::background`] | The watcher's paths, checked by size and modification time first |
 //! | Reopen check | [`UpdateRequest::reopen`] after [`Engine::restore`] | Every file, by size and modification time; the graph is linked again only if something it was linked from changed ([`LinkBasis`]) |
-//! | Rebuild from scratch | [`UpdateRequest::rebuild`] | Everything, without the cache or last-good facts |
 //!
 //! Each update runs the stages of [`Stage`] in order: discover (or apply the changed paths),
 //! snapshot the changed files (read and hash once), extract their facts in parallel through the
@@ -55,9 +54,8 @@ pub use summary::ChangeSummary;
 use crate::cancel::{CancelToken, Cancelled};
 use crate::discovery::{DiscoverOptions, DiscoveryError};
 use crate::error::BackendError;
-use crate::language::{Language, Producer, ProjectInputs};
+use crate::language::{Language, Producer};
 use crate::program::ProgramError;
-use crate::program::{FactsSet, ProgramFile};
 use crate::settings::Settings;
 use state::State;
 
@@ -69,8 +67,6 @@ pub enum UpdateKind {
     Compile,
     /// A background update or reopen check: the small background pool.
     Background,
-    /// Rebuild from scratch: no cache, no last-good facts.
-    Rebuild,
 }
 
 impl fmt::Display for UpdateKind {
@@ -78,7 +74,6 @@ impl fmt::Display for UpdateKind {
         f.write_str(match self {
             Self::Compile => "Compile",
             Self::Background => "Background update",
-            Self::Rebuild => "Rebuild from scratch",
         })
     }
 }
@@ -155,12 +150,6 @@ impl<'a> UpdateRequest<'a> {
     /// modification time differs from the restored state.
     pub fn reopen() -> Self {
         Self::new(UpdateKind::Background, Changes::All, Verify::Stamps)
-    }
-
-    /// Rebuild from scratch: every file is read and extracted again, without consulting the
-    /// cache, and last-good facts are dropped.
-    pub fn rebuild() -> Self {
-        Self::new(UpdateKind::Rebuild, Changes::All, Verify::Contents)
     }
 
     /// Uses `cancel` as the cancellation token.
@@ -263,7 +252,7 @@ pub struct UpdateOutcome {
     pub launches: Arc<Launches>,
     /// What changed, for `graph_updated`.
     pub summary: ChangeSummary,
-    /// What the update did, for the Index log.
+    /// What the update did.
     pub stats: UpdateStats,
     /// Settings, discovery, input, and cache problems.
     pub problems: Vec<Problem>,
@@ -305,7 +294,7 @@ impl PreparedUpdate {
 pub struct EngineOptions {
     /// How discovery walks the folder.
     pub discover: DiscoverOptions,
-    /// Threads for an explicit Compile or Rebuild; `0` means every core but one.
+    /// Threads for an explicit Compile; `0` means every core but one.
     pub compile_threads: usize,
     /// Threads for background updates.
     pub background_threads: usize,
@@ -444,19 +433,6 @@ impl Engine {
         &self.state.launches
     }
 
-    /// The program and the project inputs the current graph was linked from (or, after a
-    /// restore, would be linked from), for linking again on demand, as a launch preview does.
-    pub fn link_inputs(&self) -> (FactsSet, Arc<ProjectInputs>) {
-        let files = self.state.files.iter().map(|(path, entry)| ProgramFile {
-            path: path.clone(),
-            language: entry.language,
-            facts: entry.facts.program(),
-        });
-        // The state's files have distinct paths and fit a program.
-        let program = FactsSet::new(files).unwrap_or_default();
-        (program, Arc::clone(&self.state.project))
-    }
-
     /// The effective settings.
     pub fn settings(&self) -> &Settings {
         &self.state.settings.settings
@@ -498,7 +474,7 @@ impl Engine {
 
     fn pool(&mut self, kind: UpdateKind) -> Result<Arc<ThreadPool>, UpdateError> {
         let (slot, threads, name) = match kind {
-            UpdateKind::Compile | UpdateKind::Rebuild => (
+            UpdateKind::Compile => (
                 &mut self.compile_pool,
                 compile_threads(self.options.compile_threads),
                 "unfold-compile",

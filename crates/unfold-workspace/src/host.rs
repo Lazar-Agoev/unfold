@@ -3,7 +3,7 @@
 //!
 //! | Addon function | Host |
 //! | --- | --- |
-//! | `init(options)` | [`Host::init`] with the JSON `{"appDataDir","logsDir","fallbackCacheDir"}`: loads `workspace.json` (every project resting) and starts the liveness reaper |
+//! | `init(options)` | [`Host::init`] with the JSON `{"appDataDir","logsDir"}`: loads `workspace.json` (every project resting) and starts the liveness reaper |
 //! | `subscribe(sink)` | [`Host::subscribe`]: every event and stream message, as one JSON string each |
 //! | `dispatch(windowId, requestId, command)` | [`Host::dispatch_async`] (or [`Host::dispatch`]) |
 //! | `cancel(requestId)` | [`Host::cancel`] |

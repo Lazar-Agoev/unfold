@@ -47,7 +47,7 @@ type Resolver<T> = Box<dyn FnOnce(Env) -> Result<T>>;
 /// Called once, from any thread, with a request's outcome.
 type Done<T> = Box<dyn FnOnce(CommandResult<T>) + Send>;
 
-/// Sets the app folders from the JSON `{"appDataDir","logsDir","fallbackCacheDir"}` the main
+/// Sets the app folders from the JSON `{"appDataDir","logsDir"}` the main
 /// process chose. Call once, before anything else; throws on bad options or a second call.
 #[napi(catch_unwind)]
 pub fn init(options: String) -> Result<()> {

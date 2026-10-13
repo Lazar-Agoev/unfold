@@ -4,7 +4,7 @@
  * py-orders' shared name changes, its card becomes a placeholder until the name matches again.
  */
 
-import type { Page } from "@playwright/test";
+import { join } from "node:path";
 import { addBox, addInput, openAdd, result, selectResult } from "../src/add";
 import {
   shownBoardRef,
@@ -22,26 +22,26 @@ import {
 } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { CREATE_ORDER, launchCompiled, traceEntrance } from "../src/flows";
-import { dialog, projectMenu, projectRow, selectProject, showHome } from "../src/home";
+import { projectRow, selectProject, showHome } from "../src/home";
+import { editFile, readFile, writeFile } from "../src/sandbox";
 import { enterText } from "../src/window";
 
 const PY_PLACE = "src/orders_playground/services/order_service.py#class:OrderService/method:place";
 
-/** Renames a project's shared name in Project settings → General (empty: the folder's name). */
-async function renameProject(page: Page, from: string, to: string): Promise<void> {
-  await showHome(page);
-  await projectMenu(page, from, "Settings…");
-  const settings = dialog(page, `${from} settings`);
-  await expect(settings).toBeVisible();
-  await enterText(settings.getByRole("textbox", { name: "Name" }), to);
-  await settings.getByRole("button", { name: "Save" }).click();
-  await expect(settings).toBeHidden();
+/**
+ * Changes a project's shared name the way a person does: by editing `[project] name` in its
+ * `unfold.toml` (the project menu's Open unfold.toml), which Unfold watches.
+ */
+function renameProject(folder: string, from: string, to: string): void {
+  editFile(join(folder, "unfold.toml"), `[project]\nname = "${from}"\n`, `[project]\nname = "${to}"\n`);
 }
 
 test.describe("boards across projects", () => {
   test("a card from another project, a drawn link, and a placeholder after a rename", async ({ sandbox, launch }) => {
     const { app, page, folders } = await launchCompiled(launch, sandbox, ["ts-orders", "py-orders"]);
-    const [orders = ""] = folders;
+    const [orders = "", python = ""] = folders;
+    // py-orders names itself, so a rename is one edit of that line.
+    writeFile(join(python, "unfold.toml"), `[project]\nname = "py-orders"\n\n${readFile(join(python, "unfold.toml"))}`);
     await selectProject(page, "ts-orders");
     await traceEntrance(page, "POST", "/orders");
     const board = await shownBoardRef(page);
@@ -97,7 +97,8 @@ test.describe("boards across projects", () => {
     });
 
     await test.step("renaming the other project's shared name leaves a placeholder", async () => {
-      await renameProject(page, "py-orders", "py-renamed");
+      await showHome(page);
+      renameProject(python, "py-orders", "py-renamed");
       await expect(projectRow(page, "py-renamed")).toBeVisible();
       await showBoard(page, "POST /orders");
       const placeholder = boardView(page).locator(`.placeholder-card[data-key='${PY_PLACE}']`);
@@ -111,7 +112,8 @@ test.describe("boards across projects", () => {
     });
 
     await test.step("renaming it back reads the card again", async () => {
-      await renameProject(page, "py-renamed", "py-orders");
+      await showHome(page);
+      renameProject(python, "py-renamed", "py-orders");
       await expect(projectRow(page, "py-orders")).toBeVisible();
       await showBoard(page, "POST /orders");
       await expect(card(page, PY_PLACE).locator(".code-view")).toBeVisible();

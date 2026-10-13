@@ -22,7 +22,6 @@ testdata/
 │   ├── python-launches/          # Python launch contexts, launch targets, application bindings (written for Unfold)
 │   ├── python-ranges/            # Unicode/CRLF range corpus (see corpora.lock.toml)
 │   ├── typed-lines/              # typed records: a TypeScript and a Python orders flow (written for Unfold)
-│   ├── deploy-files/             # render.yaml files and Dockerfiles for import_deploy_files (written for Unfold)
 │   ├── typescript-evidence/      # TypeScript binding and evidence cases with expected edges (its README.md)
 │   └── typescript-typed/         # TypeScript typed-record cases with expected `.typed` records (written for Unfold)
 ├── detectors/<detector>/<case>/   # detector cases: sources, unfold.toml, expected-entrances.txt

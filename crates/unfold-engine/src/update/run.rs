@@ -70,31 +70,27 @@ impl<'e, 'r> Run<'e, 'r> {
         let request = self.request;
         let cancel = &request.cancel;
         let old = &engine.state;
-        let rebuild = request.kind == UpdateKind::Rebuild;
-        let empty = State::default();
-        // What this update builds on: nothing for a rebuild, which drops last-good facts.
-        let base = if rebuild { &empty } else { old };
 
         let stage = Instant::now();
-        let changes = if base.built {
+        let changes = if old.built {
             &request.changes
         } else {
             &Changes::All
         };
-        let settings = scan::load_settings(&engine.root, &base.settings, changes, request.verify);
-        let settings_changed = settings.settings != base.settings.settings;
-        let scan = scan::scan(engine, base, &settings.settings, settings_changed, changes)?;
+        let settings = scan::load_settings(&engine.root, &old.settings, changes, request.verify);
+        let settings_changed = settings.settings != old.settings.settings;
+        let scan = scan::scan(engine, old, &settings.settings, settings_changed, changes)?;
         self.stats.full_discovery = scan.full;
         self.stats.stages.insert(Stage::Discover, stage.elapsed());
         cancel.check()?;
 
         let stage = Instant::now();
         // Inputs first: extraction options (and so settings hashes) can depend on them.
-        let (project, inputs) = self.read_inputs(base, &settings, &scan)?;
+        let (project, inputs) = self.read_inputs(old, &settings, &scan)?;
         let input_problems = input_problems(engine, &project);
-        let project_changed = settings_changed || inputs_differ(&base.inputs, &inputs);
+        let project_changed = settings_changed || inputs_differ(&old.inputs, &inputs);
         cancel.check()?;
-        let pending = pending(engine, base, &scan, &project, project_changed);
+        let pending = pending(engine, old, &scan, &project, project_changed);
         let (sources_to_read, kept) = self.split_reads(&pending, &scan);
         let paths: Vec<&RepoPath> = sources_to_read.iter().map(|pending| pending.path).collect();
         let counter = Counter::start(Stage::Snapshot, paths.len(), request.progress);
@@ -142,7 +138,7 @@ impl<'e, 'r> Run<'e, 'r> {
                 }
             }
         }
-        self.extract(&mut files, &jobs, &settings, &project, rebuild)?;
+        self.extract(&mut files, &jobs, &settings, &project)?;
         self.stats.stages.insert(Stage::Extract, stage.elapsed());
         cancel.check()?;
 
@@ -152,9 +148,9 @@ impl<'e, 'r> Run<'e, 'r> {
             inputs,
             unindexed: scan.unindexed,
             context: scan.context,
-            discovery_problems: scan.problems.unwrap_or_else(|| base.discovery_problems.clone()),
+            discovery_problems: scan.problems.unwrap_or_else(|| old.discovery_problems.clone()),
             input_problems,
-            link_problems: base.link_problems.clone(),
+            link_problems: old.link_problems.clone(),
             discovered: true,
             built: true,
             // Relinked below unless the old graph was linked from what this update sees.
@@ -473,7 +469,6 @@ impl<'e, 'r> Run<'e, 'r> {
         jobs: &[(&Pending<'_>, Snapshot)],
         settings: &SettingsState,
         project: &ProjectInputs,
-        rebuild: bool,
     ) -> Result<(), UpdateError> {
         let request = self.request;
         let options = job_options(jobs, project);
@@ -488,7 +483,7 @@ impl<'e, 'r> Run<'e, 'r> {
                 options,
             })
             .collect();
-        let cached = if rebuild || work.is_empty() {
+        let cached = if work.is_empty() {
             vec![None; work.len()]
         } else {
             self.cached(&work)
@@ -569,24 +564,22 @@ impl<'e, 'r> Run<'e, 'r> {
                 failure,
             };
         }
-        if self.request.kind != UpdateKind::Rebuild {
-            match self
-                .engine
-                .cache
-                .last_good(pending.path, ENGINE_VERSION, pending.settings)
-            {
-                Ok(Some((hash, bytes))) => {
-                    if let Ok(facts) = decode_facts(&bytes) {
-                        return Facts::LastGood {
-                            hash,
-                            facts: Arc::new(facts),
-                            failure,
-                        };
-                    }
+        match self
+            .engine
+            .cache
+            .last_good(pending.path, ENGINE_VERSION, pending.settings)
+        {
+            Ok(Some((hash, bytes))) => {
+                if let Ok(facts) = decode_facts(&bytes) {
+                    return Facts::LastGood {
+                        hash,
+                        facts: Arc::new(facts),
+                        failure,
+                    };
                 }
-                Ok(None) => {}
-                Err(error) => self.cache_problem(error.to_string()),
             }
+            Ok(None) => {}
+            Err(error) => self.cache_problem(error.to_string()),
         }
         Facts::Failed { failure }
     }

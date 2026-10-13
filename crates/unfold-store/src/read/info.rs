@@ -1,4 +1,4 @@
-//! Inputs, metadata, statistics for the Index log, and import counts.
+//! Inputs, metadata, statistics, and import counts.
 
 use unfold_core::InputRecord;
 use unfold_core::vocab::Language;
@@ -99,7 +99,7 @@ impl Reader {
     }
 
     /// Row counts and the database size, from one snapshot. Counting scans the tables, so this
-    /// is for the Index log, not for every frame.
+    /// isn't for every frame.
     pub fn stats(&self) -> Result<IndexStats> {
         self.snapshot(|reader| {
             let mut statement = reader.conn().prepare_cached(

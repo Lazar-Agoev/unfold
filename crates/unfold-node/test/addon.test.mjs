@@ -75,7 +75,6 @@ describe("unfold-node addon", { skip: built ? false : "the addon is not built: r
       JSON.stringify({
         appDataDir: join(scratch, "app-data"),
         logsDir: join(scratch, "logs"),
-        fallbackCacheDir: join(scratch, "caches"),
       }),
     );
     addon.subscribe((text) => {
@@ -101,7 +100,7 @@ describe("unfold-node addon", { skip: built ? false : "the addon is not built: r
   });
 
   it("throws the error JSON when initialized twice", () => {
-    const options = JSON.stringify({ appDataDir: scratch, logsDir: scratch, fallbackCacheDir: scratch });
+    const options = JSON.stringify({ appDataDir: scratch, logsDir: scratch });
     assert.throws(() => addon.init(options), (error) => JSON.parse(error.message).code === "already_initialized");
   });
 
@@ -125,10 +124,10 @@ describe("unfold-node addon", { skip: built ? false : "the addon is not built: r
     assert.equal(await trusted("window_state"), null);
   });
 
-  it("wakes a selected project, and its events reach the sink from Rust threads", async () => {
+  it("compiles an added project at once, and its events reach the sink from Rust threads", async () => {
+    await sinkMessage((m) => broadcast(m, "project_state") && m.event.state.kind === "compiling");
+    await sinkMessage((m) => broadcast(m, "graph_updated"));
     assert.equal(await dispatch(1, "select_project", { project }), null);
-    const state = await sinkMessage((m) => broadcast(m, "project_state"));
-    assert.equal(state.event.state.kind, "not_compiled");
     const workspace = await dispatch(2, "workspace");
     assert.equal(workspace.projects[0].live, true);
   });
@@ -185,7 +184,7 @@ describe("unfold-node addon", { skip: built ? false : "the addon is not built: r
     const running = addon.dispatch(
       1,
       requestId,
-      JSON.stringify({ command: "compile", args: { project, mode: "from_scratch" } }),
+      JSON.stringify({ command: "compile", args: { project } }),
     );
     addon.cancel(requestId);
     assert.equal((await rejection(running)).code, "cancelled");

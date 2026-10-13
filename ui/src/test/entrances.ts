@@ -1,6 +1,6 @@
 /** Entrance catalog responses for tests: a project with launches by category, and one without. */
 
-import type { AppRow, DeployImport, EntranceOverview, EntranceScope, ImportedLaunch, LaunchRow, LaunchSuggestions } from "../ipc";
+import type { AppRow, EntranceOverview, EntranceScope, LaunchRow } from "../ipc";
 
 type Overview = { readonly view: "overview" } & EntranceOverview;
 type Scope = { readonly view: "scope" } & EntranceScope;
@@ -50,7 +50,7 @@ export const INVOICE_START = launchRow({
   routes: 14,
 });
 
-export const REVIEW_WORKER = launchRow({
+const REVIEW_WORKER = launchRow({
   key: 'entrance:["package.script","process","","worker","src/worker.ts"]',
   folder: "pathway-agents",
   command: "npm run worker",
@@ -169,44 +169,4 @@ export const NO_LAUNCHES: Overview = {
   counts: { applications: 0, launches: 0, routes: 31, entrances: 31 },
   categories: [],
   unreached: 31,
-};
-
-export const SUGGESTIONS: LaunchSuggestions = {
-  routes: 31,
-  imports: { resolved: 249, total: 7239 },
-  localLooking: ["shared", "api", "utils"],
-  apps: [
-    { path: "data-pipelines/api/main.py", attribute: "app", folder: "data-pipelines", command: "uvicorn api.main:app", routes: 12 },
-    { path: "server.py", attribute: "app", folder: ".", command: "uvicorn server:app", routes: 2 },
-  ],
-};
-
-function imported(service: string, serviceType: ImportedLaunch["serviceType"], schedule: string | null = null): ImportedLaunch {
-  return {
-    service,
-    serviceType,
-    application: { id: service, name: service, description: null },
-    id: service,
-    label: serviceType === "web" ? "Web" : serviceType === "worker" ? "Worker" : "Cron",
-    command: `python3 -m ${service.replaceAll("-", "_")}`,
-    cwd: "data-pipelines",
-    schedule,
-    description: null,
-    env: {},
-    copiedFrom: "render.yaml, startCommand",
-    note: null,
-    renderFile: "render.yaml",
-  };
-}
-
-export const DEPLOY: DeployImport = {
-  files: ["render.yaml", "data-pipelines/render.yaml"],
-  launches: [
-    imported("invoice-hitl-api", "web"),
-    imported("recipe-cost-api", "web"),
-    imported("review-worker", "worker"),
-    imported("token-refresh-daily", "cron", "30 7 * * *"),
-    imported("bill-com-poller", "cron", "0 5,11,17,23 * * *"),
-    imported("ramp-purchases", "cron", "0 10 * * *"),
-  ],
 };

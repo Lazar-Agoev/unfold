@@ -1,7 +1,7 @@
 /**
  * Opening and closing boards: `open_board` and `new_board` open a board's session, which stays for as
- * long as the app runs, with its edits and undo history. Closing (when the board's project is removed
- * or switched to another worktree, or its file is gone) saves first, then closes it in the engine.
+ * long as the app runs, with its edits and undo history. Closing (when the board's project is removed,
+ * or its file is gone) saves first, then closes it in the engine.
  */
 
 import { toUnfoldError } from "../../ipc/unfold";
@@ -73,7 +73,7 @@ export async function closeBoard(ref: BoardRef): Promise<void> {
   hideBoard(ref);
 }
 
-/** Closes the open boards of a project (before it is removed or switched to another worktree). */
+/** Closes the open boards of a project (before it is removed). */
 export async function closeBoardsOfProject(project: ProjectId): Promise<void> {
   const refs = openBoards()
     .map((board) => board.ref)

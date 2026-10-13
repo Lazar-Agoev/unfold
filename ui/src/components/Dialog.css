@@ -44,14 +44,6 @@
   width: 520px;
 }
 
-.dialog-880 {
-  width: 880px;
-}
-
-.dialog-1000 {
-  width: 1000px;
-}
-
 .dialog-header {
   display: flex;
   flex-shrink: 0;
@@ -96,7 +88,7 @@
   padding: 20px 24px;
 }
 
-/* The confirming button is 14px inline in every dialog (Project settings' Save, Publish's Publish). */
+/* The confirming button is 14px inline in every dialog (Publish's Publish). */
 .dialog-footer :is(.button-primary, .button-danger):not(.button-with-icon, .button-with-trailing) {
   padding-inline: 14px;
 }
@@ -115,30 +107,4 @@
 
 .dialog-470 .dialog-body {
   padding: 0;
-}
-
-/* Project settings and the launch editor: ruled header and footer, and a body that lays itself out. */
-:is(.dialog-880, .dialog-1000) .dialog-header {
-  padding: 20px 20px 18px 24px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-:is(.dialog-880, .dialog-1000) .dialog-body {
-  display: flex;
-  padding: 0;
-}
-
-:is(.dialog-880, .dialog-1000) .dialog-footer {
-  padding: 14px 20px 14px 24px;
-  border-top: 1px solid var(--color-border);
-}
-
-/* The launch editor's header: the title, then its kind switch and the close button. */
-.dialog-1000 .dialog-header {
-  padding: 18px 20px 16px 24px;
-}
-
-.dialog-1000 .dialog-heading {
-  flex: 1;
-  gap: 4px;
 }

@@ -2,10 +2,19 @@
 //! workspace options tuned for tests (short quiet period, no global Git excludes).
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use tempfile::TempDir;
+use unfold_core::highlight::Highlighter;
+use unfold_core::vocab::InputRole;
+use unfold_core::{RepoPath, Snapshot};
+use unfold_engine::settings::{Settings, SettingsHash};
+use unfold_engine::{
+    ExtractionOptions, FactsSet, FileFacts, InputProblem, Language, LanguageId, Linked, Producer,
+    ProjectInputs, SourceFailure,
+};
 use unfold_workspace::{
     EventSink, OpenContext, ProjectId, Workspace, WorkspaceEvent, WorkspaceOptions, default_languages,
 };
@@ -14,12 +23,11 @@ use unfold_workspace::{
 /// soon as the condition holds, so this only bounds a failing test.
 pub const PATIENCE: Duration = Duration::from_secs(30);
 
-/// A copy of `testdata/playgrounds/<name>` in a temporary folder, plus a fallback cache folder
-/// beside it. `keep_unfold` keeps the playground's `unfold.toml`.
+/// A copy of `testdata/playgrounds/<name>` in a temporary folder. `keep_unfold` keeps the
+/// playground's `unfold.toml`.
 pub struct Playground {
     _dir: TempDir,
     pub root: PathBuf,
-    pub fallback: PathBuf,
 }
 
 impl Playground {
@@ -34,11 +42,7 @@ impl Playground {
         if !keep_unfold {
             std::fs::remove_file(root.join("unfold.toml")).expect("remove unfold.toml");
         }
-        Self {
-            _dir: dir,
-            root,
-            fallback: base.join("fallback"),
-        }
+        Self { _dir: dir, root }
     }
 
     pub fn path(&self, relative: &str) -> PathBuf {
@@ -56,7 +60,6 @@ impl Playground {
     pub fn context(&self, sink: Arc<RecordingSink>, watch: bool) -> OpenContext {
         OpenContext {
             project: project(),
-            fallback_cache_dir: self.fallback.clone(),
             options: options(watch),
             sink,
             languages: default_languages(),
@@ -66,6 +69,87 @@ impl Playground {
     /// Opens the playground with watching on or off.
     pub fn open(&self, sink: &Arc<RecordingSink>, watch: bool) -> Arc<Workspace> {
         Workspace::open(&self.root, self.context(Arc::clone(sink), watch)).expect("open")
+    }
+
+    /// Opens the playground unwatched, with languages that add every file they extract to
+    /// `extracted`.
+    pub fn open_counted(&self, sink: &Arc<RecordingSink>, extracted: &Arc<AtomicUsize>) -> Arc<Workspace> {
+        let mut context = self.context(Arc::clone(sink), false);
+        context.languages = context
+            .languages
+            .into_iter()
+            .map(|inner| {
+                Arc::new(Counted {
+                    inner,
+                    extracted: Arc::clone(extracted),
+                }) as Arc<dyn Language>
+            })
+            .collect();
+        Workspace::open(&self.root, context).expect("open")
+    }
+}
+
+/// A language that counts the files it extracts: the ones the facts cache didn't answer.
+struct Counted {
+    inner: Arc<dyn Language>,
+    extracted: Arc<AtomicUsize>,
+}
+
+impl Language for Counted {
+    fn id(&self) -> LanguageId {
+        self.inner.id()
+    }
+
+    fn producer(&self) -> Producer {
+        self.inner.producer()
+    }
+
+    fn owns(&self, path: &RepoPath, settings: &Settings) -> bool {
+        self.inner.owns(path, settings)
+    }
+
+    fn settings_hash(&self, path: &RepoPath, settings: &Settings) -> SettingsHash {
+        self.inner.settings_hash(path, settings)
+    }
+
+    fn extract(&self, file: &Snapshot, settings: &Settings) -> Result<FileFacts, SourceFailure> {
+        self.extracted.fetch_add(1, Ordering::Relaxed);
+        self.inner.extract(file, settings)
+    }
+
+    fn extraction_options(
+        &self,
+        paths: &[&RepoPath],
+        settings: &Settings,
+        inputs: &ProjectInputs,
+    ) -> Vec<ExtractionOptions> {
+        self.inner.extraction_options(paths, settings, inputs)
+    }
+
+    fn extract_with(
+        &self,
+        file: &Snapshot,
+        settings: &Settings,
+        options: &ExtractionOptions,
+    ) -> Result<FileFacts, SourceFailure> {
+        self.extracted.fetch_add(1, Ordering::Relaxed);
+        self.inner.extract_with(file, settings, options)
+    }
+
+    fn input_problems(&self, inputs: &ProjectInputs) -> Vec<InputProblem> {
+        self.inner.input_problems(inputs)
+    }
+
+    fn requested_inputs(&self, inputs: &ProjectInputs) -> Vec<(RepoPath, InputRole)> {
+        self.inner.requested_inputs(inputs)
+    }
+
+    fn link<'a>(&'a self, files: &'a FactsSet, inputs: &'a ProjectInputs) -> Box<dyn Linked + 'a> {
+        self.inner.link(files, inputs)
+    }
+
+    fn highlighter(&self) -> &dyn Highlighter {
+        self.inner.highlighter()
     }
 }
 
@@ -163,10 +247,7 @@ pub fn updates(event: &WorkspaceEvent, path: &str) -> bool {
 
 /// Compiles and waits for the result.
 pub fn compile(workspace: &Workspace) -> unfold_workspace::CompileOutcome {
-    workspace
-        .compile(unfold_workspace::CompileMode::Check, None)
-        .wait()
-        .expect("compile")
+    workspace.compile(None).wait().expect("compile")
 }
 
 /// Waits for the workspace to go idle, failing the test if it doesn't.

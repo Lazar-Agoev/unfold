@@ -25,11 +25,6 @@ export function sortBoards(boards: readonly BoardSummary[], sort: BoardsSort): B
   });
 }
 
-/** A board id under `.unfold/local/drafts/` is a draft. */
-export function isDraftId(id: string): boolean {
-  return id.startsWith(".unfold/local/drafts/");
-}
-
 /** The subline's words before any "with <project>": "3 pages · Published · edited 2 hours ago". */
 export function boardSubline(board: Pick<BoardSummary, "pages" | "place" | "changes" | "updatedAtMs" | "projects">, nowMs?: number): string {
   const parts = [plural(board.pages, "page"), board.place === "draft" ? "Draft" : "Published"];

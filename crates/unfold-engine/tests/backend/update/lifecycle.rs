@@ -49,18 +49,6 @@ fn a_file_that_stops_parsing_keeps_its_last_good_facts() {
     let fixed = background(&mut engine, &["lib/util.ts"]);
     assert_eq!(file(&fixed, "lib/util.ts").file.state, FileState::Current);
     assert_eq!(fixed.graph, first.graph);
-
-    // Rebuild from scratch drops last-good facts.
-    folder.write("lib/util.ts", "(fn");
-    let rebuilt = engine.update(UpdateRequest::rebuild()).expect("rebuild");
-    let util = file(&rebuilt, "lib/util.ts");
-    assert_eq!(util.file.state, FileState::Failed);
-    assert!(util.blocks.is_empty());
-    assert!(!rebuilt.complete);
-    assert_eq!(
-        helper_edge(&rebuilt),
-        (Resolution::Unresolved, Some(Reason::NotIndexed))
-    );
 }
 
 #[test]

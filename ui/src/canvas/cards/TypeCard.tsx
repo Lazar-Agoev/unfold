@@ -135,14 +135,7 @@ export function TypeCard({ target, project, card, ports, selected }: TypeCardPro
   const [openTypes, setOpenTypes] = useState<Readonly<Record<string, number>>>({});
   const [all, setAll] = useState(false);
   const header = model?.header;
-  const source = useMemo(
-    () =>
-      header
-        ? { path: header.path, line: header.startLine, definition: { path: header.path, kind: header.kind, name: header.name, qualifiedName: header.qualifiedName, line: header.startLine } }
-        : null,
-    [header],
-  );
-  const menu = useCardMenu(target, project, card.id, folded, true, source);
+  const menu = useCardMenu(target, card.id, folded, true);
   const definition = typeQuery.data;
   const kind = definition ? typeKindWord(definition.kind) : keyTypeWord(key);
   const name = header?.qualifiedName ?? definition?.name ?? keyDisplayName(key);

@@ -1,5 +1,5 @@
-//! Background updates: the watcher, batching, cancel-and-restart, files that break and are
-//! fixed, and pausing.
+//! Background updates: the watcher, batching, cancel-and-restart, and files that break and are
+//! fixed.
 
 use unfold_core::RepoPath;
 use unfold_core::vocab::FileState;
@@ -41,15 +41,15 @@ fn changes_in_quick_succession_become_one_update() {
     let sink = RecordingSink::new();
     let workspace = playground.open(&sink, false);
     compile(&workspace);
+    let mark = sink.mark();
     for index in 0..5 {
         let name = format!("src/batch/file{index}.ts");
         playground.write(&name, &format!("export function batched{index}() {{}}\n"));
         workspace.notify_changes([path(&name)]);
     }
     settle(&workspace);
-    let log = workspace.index_log();
-    assert_eq!(log.len(), 2, "{log:#?}");
-    assert_eq!(log[1].action, "Background update");
+    let updated = sink.of_kind(mark, "graph_updated");
+    assert_eq!(updated.len(), 1, "{updated:#?}");
     for index in 0..5 {
         assert!(has_block(
             &workspace,
@@ -118,68 +118,6 @@ fn a_file_that_breaks_keeps_its_last_good_facts_until_fixed() {
         workspace.status()
     );
     assert!(workspace.problems().is_empty());
-}
-
-/// Rebuild from scratch drops last-good facts (docs/engine.md#updates): a broken file becomes
-/// failed, and a later edit that is still broken doesn't bring the last good version back from
-/// the facts cache.
-#[test]
-fn rebuild_from_scratch_drops_last_good_facts_for_good() {
-    let playground = Playground::new("ts-orders", true);
-    let sink = RecordingSink::new();
-    let workspace = playground.open(&sink, false);
-    compile(&workspace);
-    let target = "src/services/order-service.ts";
-    let original = std::fs::read_to_string(playground.path(target)).expect("read");
-    playground.write(target, &format!("{original}\nexport function broken( {{\n"));
-    workspace.notify_changes([path(target)]);
-    settle(&workspace);
-    assert!(has_block(&workspace, target, "place"), "last good facts at first");
-
-    workspace
-        .compile(unfold_workspace::CompileMode::FromScratch, None)
-        .wait()
-        .expect("rebuild");
-    let state = |workspace: &unfold_workspace::Workspace| {
-        let reader = workspace.readers().expect("readers").get().expect("reader");
-        let file = reader.file_graph(target).expect("file graph").expect("the file");
-        file.file.state
-    };
-    assert_eq!(state(&workspace), FileState::Failed);
-
-    playground.write(target, &format!("{original}\nexport function still_broken( {{\n"));
-    workspace.notify_changes([path(target)]);
-    settle(&workspace);
-    assert_eq!(
-        state(&workspace),
-        FileState::Failed,
-        "no last good version came back"
-    );
-    assert!(!has_block(&workspace, target, "place"));
-}
-
-#[test]
-fn paused_folders_count_changes_and_catch_up_when_resumed() {
-    let playground = Playground::new("ts-orders", true);
-    let sink = RecordingSink::new();
-    let workspace = playground.open(&sink, false);
-    compile(&workspace);
-    workspace.set_background_updates(false).expect("pause");
-    let state = std::fs::read_to_string(playground.path(".unfold/local/state.json")).expect("state");
-    assert!(state.contains("\"backgroundUpdates\": false"), "{state}");
-
-    playground.write("src/paused/a.ts", "export function whilePausedA() {}\n");
-    playground.write("src/paused/b.ts", "export function whilePausedB() {}\n");
-    workspace.notify_changes([path("src/paused/a.ts"), path("src/paused/b.ts")]);
-    settle(&workspace);
-    assert_eq!(workspace.status().state, GraphState::Paused { changed: 2 });
-    assert_eq!(workspace.index_log().len(), 1);
-
-    workspace.set_background_updates(true).expect("resume");
-    settle(&workspace);
-    assert!(has_block(&workspace, "src/paused/a.ts", "whilePausedA"));
-    assert_eq!(workspace.index_log().len(), 2);
-    assert!(workspace.background_updates());
 }
 
 #[test]

@@ -3,7 +3,9 @@
  * call them directly.
  */
 
+import { showToast } from "../components";
 import type { ProjectId } from "../ipc/generated";
+import { toUnfoldError } from "../ipc/unfold";
 import { setHomeView } from "./layout";
 import { openDialog } from "./overlays";
 import { showHome } from "./shownBoard";
@@ -16,11 +18,15 @@ export async function showProject(project: ProjectId): Promise<void> {
   await selectProject(project);
 }
 
-/** Add Project…: the folder picker; the added project shows on Home. */
+/** Add Project…: the folder picker; the added project shows on Home, or a toast says why it can't be added. */
 export async function addProject(): Promise<void> {
-  if ((await addProjectFromPicker()) !== null) {
-    setHomeView("overview");
-    showHome();
+  try {
+    if ((await addProjectFromPicker()) !== null) {
+      setHomeView("overview");
+      showHome();
+    }
+  } catch (error) {
+    showToast({ title: "Couldn't add the folder", body: toUnfoldError(error).message, tone: "danger" });
   }
 }
 

@@ -7,7 +7,6 @@ describe("appFolders", () => {
     expect(appFolders({ userData: "/Users/me/Library/Application Support/Unfold", home: "/Users/me" })).toEqual({
       appDataDir: "/Users/me/Library/Application Support/Unfold",
       logsDir: join("/Users/me", "Library", "Logs", "Unfold"),
-      fallbackCacheDir: join("/Users/me", "Library", "Caches", "Unfold", "folders"),
     });
   });
 });

@@ -103,8 +103,7 @@ export function EntranceCard({ target, project, card, expandable, ports, selecte
   const measure = useMeasure();
   const updateNodeInternals = useUpdateNodeInternals();
   const folded = card.folded === true;
-  const source = useMemo(() => (model ? { path: model.evidence.path, line: model.evidence.startLine } : null), [model]);
-  const menu = useCardMenu(target, project, card.id, folded, false, source);
+  const menu = useCardMenu(target, card.id, folded, false);
   const title = model ? entranceTitle(model) : keyDisplayName(key);
   const text = useMemo(() => (model ? entranceCardText(model) : { method: null, title, location: "", handlers: [] }), [model, title]);
   const portSet = useMemo(() => new Set(ports), [ports]);

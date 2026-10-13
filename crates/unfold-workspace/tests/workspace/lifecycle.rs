@@ -1,14 +1,11 @@
-//! Opening, the first Compile, reopening, the lock, the fallback location, losing the cache,
-//! Rebuild from scratch, confinement, and remembered state.
+//! Opening, the first Compile, reopening, the lock, read-only folders, losing the cache,
+//! cancellation, confinement, and remembered state.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use unfold_core::vocab::Language;
-use unfold_workspace::{
-    CompileMode, FallbackReason, GraphState, LocalState, ProjectState, Workspace, WorkspaceError,
-    WorkspaceEvent,
-};
+use unfold_workspace::{GraphState, LocalState, ProjectState, Workspace, WorkspaceError, WorkspaceEvent};
 
 use crate::common::{Playground, RecordingSink, compile, has_block, project, settle, updates};
 
@@ -83,7 +80,6 @@ fn opening_writes_nothing_and_the_first_compile_creates_local() {
         .expect("indexed");
     let index = workspace.reader_index().expect("index");
     assert!(file.blocks.iter().all(|block| index.contains(block.key.as_str())));
-    assert_eq!(workspace.index_log().len(), 1);
 }
 
 #[test]
@@ -157,7 +153,7 @@ fn a_second_copy_sees_the_folder_open_elsewhere() {
 
 #[cfg(unix)]
 #[test]
-fn a_read_only_folder_uses_the_fallback_location() {
+fn a_read_only_folder_is_refused_at_the_first_compile() {
     use std::os::unix::fs::PermissionsExt;
 
     let playground = Playground::new("ts-orders", false);
@@ -165,24 +161,12 @@ fn a_read_only_folder_uses_the_fallback_location() {
     std::fs::set_permissions(&playground.root, read_only).expect("chmod");
     let sink = RecordingSink::new();
     let workspace = playground.open(&sink, false);
-    let outcome = workspace.compile(CompileMode::Check, None).wait();
+    let outcome = workspace.compile(None).wait();
     std::fs::set_permissions(&playground.root, std::fs::Permissions::from_mode(0o755)).expect("chmod back");
-    let outcome = outcome.expect("compile");
-    assert!(outcome.files > 20);
+    let error = outcome.expect_err("read-only");
+    assert_eq!(error.code(), "folder_not_writable");
     assert!(!playground.path(".unfold").exists());
-    let status = workspace.status();
-    assert_eq!(status.fallback, Some(FallbackReason::ReadOnly));
-    let layout = workspace.layout();
-    assert!(layout.local().starts_with(&playground.fallback));
-    assert!(layout.database().exists());
-    assert!(has_block(&workspace, "src/services/order-service.ts", "place"));
-    workspace.close();
-    drop(workspace);
-    // Reopening finds the graph in the fallback location.
-    let workspace = playground.open(&sink, false);
-    assert_eq!(workspace.status().fallback, Some(FallbackReason::ReadOnly));
-    assert!(workspace.readers().is_ok());
-    settle(&workspace);
+    assert_eq!(workspace.status().state, GraphState::NotCompiled);
 }
 
 #[test]
@@ -218,11 +202,11 @@ fn deleting_the_cache_is_noticed_by_the_watcher() {
 }
 
 #[test]
-fn rebuild_from_scratch_and_cancellation() {
+fn cancellation_and_progress() {
     let playground = Playground::new("py-orders", true);
     let sink = RecordingSink::new();
     let workspace = playground.open(&sink, false);
-    let ticket = workspace.compile(CompileMode::Check, None);
+    let ticket = workspace.compile(None);
     ticket.cancel();
     assert!(matches!(ticket.wait(), Err(WorkspaceError::Cancelled)));
     assert!(matches!(
@@ -233,16 +217,13 @@ fn rebuild_from_scratch_and_cancellation() {
     assert!(first.files > 10);
     let progress = Arc::new(AtomicUsize::new(0));
     let counter = Arc::clone(&progress);
-    let rebuilt = workspace
-        .compile(
-            CompileMode::FromScratch,
-            Some(Box::new(move |_| {
-                counter.fetch_add(1, Ordering::Relaxed);
-            })),
-        )
+    let again = workspace
+        .compile(Some(Box::new(move |_| {
+            counter.fetch_add(1, Ordering::Relaxed);
+        })))
         .wait()
-        .expect("rebuild");
-    assert_eq!(rebuilt.files, first.files);
+        .expect("compile again");
+    assert_eq!(again.files, first.files);
     assert!(progress.load(Ordering::Relaxed) > 0);
     assert!(matches!(
         workspace.status().state,
@@ -251,23 +232,27 @@ fn rebuild_from_scratch_and_cancellation() {
     ));
 }
 
-/// Cancelling Rebuild from scratch at any point (reading, extracting, linking, committing) is
-/// acknowledged promptly and leaves the previous graph readable: the store is only replaced
-/// when the rebuilt graph commits.
+/// Cancelling a Compile at any point (reading, extracting, linking, committing) is acknowledged
+/// promptly and leaves the previous graph readable: the store only changes when the compiled
+/// graph commits.
 #[test]
-fn a_cancelled_rebuild_keeps_the_previous_graph() {
+fn a_cancelled_compile_keeps_the_previous_graph() {
     let playground = Playground::new("ts-orders", true);
     let sink = RecordingSink::new();
     let workspace = playground.open(&sink, false);
-    let first = compile(&workspace);
+    compile(&workspace);
     let stored = || {
         let reader = workspace.readers().expect("readers").get().expect("reader");
         reader.graph().expect("graph")
     };
-    let before = stored();
     let mut cancelled = 0;
     for delay in [0, 1, 2, 5, 10, 20, 40, 80, 160] {
-        let ticket = workspace.compile(CompileMode::FromScratch, None);
+        let before = stored();
+        playground.write(
+            "src/changing.ts",
+            &format!("export function changed{delay}() {{\n  return {delay};\n}}\n"),
+        );
+        let ticket = workspace.compile(None);
         std::thread::sleep(std::time::Duration::from_millis(delay));
         let asked = std::time::Instant::now();
         ticket.cancel();
@@ -284,18 +269,22 @@ fn a_cancelled_rebuild_keeps_the_previous_graph() {
                 assert_eq!(
                     stored(),
                     before,
-                    "a rebuild cancelled after {delay} ms kept the graph"
+                    "a compile cancelled after {delay} ms kept the graph"
                 );
             }
-            Ok(rebuilt) => assert_eq!(rebuilt.files, first.files),
+            Ok(_) => assert!(has_block(
+                &workspace,
+                "src/changing.ts",
+                &format!("changed{delay}")
+            )),
             Err(error) => panic!("{delay} ms: {error}"),
         }
         settle(&workspace);
         assert!(has_block(&workspace, "src/services/order-service.ts", "place"));
     }
-    assert!(cancelled > 0, "some rebuilds were cancelled");
-    let again = compile(&workspace);
-    assert_eq!(again.files, first.files);
+    assert!(cancelled > 0, "some compiles were cancelled");
+    compile(&workspace);
+    assert!(has_block(&workspace, "src/changing.ts", "changed160"));
 }
 
 #[test]
@@ -310,7 +299,8 @@ fn paths_are_confined_to_the_folder() {
     }
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink(&playground.fallback, playground.path("outside")).expect("link");
+        let outside = tempfile::tempdir().expect("temp dir");
+        std::os::unix::fs::symlink(outside.path(), playground.path("outside")).expect("link");
         assert!(workspace.confine("outside/anything").is_err());
     }
 }

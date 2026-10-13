@@ -6,7 +6,7 @@
 import { createRequire } from "node:module";
 
 export interface EngineBinding {
-  /** Once, at engine-host start. JSON `{"appDataDir","logsDir","fallbackCacheDir"}`. */
+  /** Once, at engine-host start. JSON `{"appDataDir","logsDir"}`. */
   init(options: string): void;
   /** Register the single sink; Rust calls it from any thread with one JSON message string. */
   subscribe(sink: (message: string) => void): void;

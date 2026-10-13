@@ -1,4 +1,4 @@
-/* Health and activity, and Health rows wherever they show (the not-compiled Home's preview problems). */
+/* Home's Health view: every problem with its action, and the boards that need review. */
 
 .home-health {
   display: flex;
@@ -140,86 +140,4 @@
 
 .home-health-quiet .icon {
   color: var(--color-faint);
-}
-
-/* Activity */
-.home-activity {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.home-activity-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: var(--text-13);
-  line-height: var(--leading-16);
-}
-
-.home-activity-note {
-  color: var(--color-muted);
-  font-size: var(--text-12);
-}
-
-.home-log {
-  display: flex;
-  flex-direction: column;
-  overflow: clip;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-tab);
-}
-
-.home-log-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  height: 32px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--color-border);
-  font-size: var(--text-13);
-  line-height: var(--leading-16);
-  white-space: nowrap;
-}
-
-.home-log-row:last-child {
-  border-bottom: none;
-}
-
-.home-log .home-log-head {
-  height: 30px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-sidebar);
-  color: var(--color-muted);
-  font-size: var(--text-12);
-  font-weight: 500;
-}
-
-.home-log-time,
-.home-log-what {
-  flex-shrink: 0;
-  width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.home-log-files {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
-.home-log-duration {
-  flex-shrink: 0;
-  width: 80px;
-  text-align: right;
-}
-
-.home-log-row:not(.home-log-head) .home-log-files,
-.home-log-row:not(.home-log-head) .home-log-duration {
-  font-family: var(--font-code);
-  font-size: var(--text-12);
-}
-
-.home-log-row:not(.home-log-head) .home-log-duration {
-  color: var(--color-muted);
 }

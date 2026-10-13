@@ -11,19 +11,16 @@
 use serde::Deserialize;
 
 use crate::commands::{
-    NoArgs, ProjectArgs, ProjectKeyArgs, ProjectPathArgs, boards, compiling, deploy_import, entrances,
-    export, file_view, files, graph, launches, projects, relations, search, settings, text_search, types,
-    windows, workspace,
+    NoArgs, ProjectArgs, ProjectKeyArgs, ProjectPathArgs, boards, compiling, entrances, export, file_view,
+    files, graph, projects, relations, search, settings, text_search, types, windows, workspace,
 };
 use crate::compile::{CompileOutcome, CompileProgress};
-use crate::git::GitInfo;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::CommandResult;
 use crate::ipc::typescript::{Collector, CommandSpec, ts_name};
 use crate::problems::ProblemItem;
-use crate::projects::{AddedProject, ProjectRow, WorkspaceView};
+use crate::projects::{AddedProject, WorkspaceView};
 use crate::state::{AppSettings, WindowState};
-use crate::status::GraphStatus;
 
 macro_rules! stream_name {
     () => {
@@ -92,12 +89,10 @@ macro_rules! command_table {
 
 command_table! {
     // Workspace.
-    /// Every project row, the default selection, recent boards, and the folders "Opened before".
+    /// Every project row and the default selection.
     "workspace" => Workspace(NoArgs) -> WorkspaceView = workspace::workspace;
-    /// Adds a folder as a project, or finds its row (main process only).
+    /// Adds a folder as a project and compiles it at once, or finds its row (main process only).
     "add_project" => AddProject(workspace::AddProjectArgs) -> AddedProject = workspace::add_project;
-    /// Adds back a folder "Opened before" lists.
-    "readd_project" => ReaddProject(workspace::AddProjectArgs) -> AddedProject = workspace::readd_project;
     /// Removes a project from the workspace (its `.unfold/` stays).
     "remove_project" => RemoveProject(ProjectArgs) -> () = workspace::remove_project;
     /// Puts the project rows in a new order.
@@ -106,41 +101,21 @@ command_table! {
     "set_project_expanded" => SetProjectExpanded(workspace::SetProjectExpandedArgs) -> () = workspace::set_project_expanded;
     /// The calling window's Home selection (keeps the project live).
     "select_project" => SelectProject(workspace::SelectProjectArgs) -> () = workspace::select_project;
-    /// The branch and worktrees of a project's repository.
-    "git_info" => GitInfo(ProjectArgs) -> Option<GitInfo> = workspace::git_info;
-    /// Points a project at another worktree of its repository.
-    "switch_worktree" => SwitchWorktree(workspace::SwitchWorktreeArgs) -> ProjectRow = workspace::switch_worktree;
     /// Every project's drafts and published boards with unpublished changes.
     "drafts" => Drafts(NoArgs) -> boards::Drafts = boards::drafts;
 
     // Project, Home, settings.
-    /// Home's header and Health line.
+    /// Home's header, state line, and Health line.
     "project_summary" => ProjectSummary(ProjectArgs) -> projects::ProjectSummary = projects::project_summary;
-    /// What a Compile would graph and skip. Writes nothing.
-    "compile_preview" => CompilePreview(ProjectArgs) -> projects::CompilePreview = projects::compile_preview;
-    /// One level of the scope tree: folders only.
-    "scope_dir" => ScopeDir(ProjectPathArgs) -> projects::ScopeDir = projects::scope_dir;
     /// The entrance catalog: applications by category with their launches, or one
     /// application's (or the unreached) entrance rows, filtered and paged.
     "entrances" => Entrances(entrances::EntrancesArgs) -> entrances::EntrancesView = entrances::entrances;
-    /// What Unfold reads from a draft launch: its parts, target, import path, and what it would
-    /// reach. Runs and writes nothing.
-    "check_launch" => CheckLaunch(launches::CheckLaunchArgs) -> launches::LaunchCheck = launches::check_launch;
-    /// Route and import counts, and the FastAPI applications no launch serves, for setting up
-    /// launches.
-    "launch_suggestions" => LaunchSuggestions(ProjectArgs) -> launches::LaunchSuggestions = launches::launch_suggestions;
-    /// The project's `render.yaml` services as draft launches, for review. Runs and writes nothing.
-    "import_deploy_files" => ImportDeployFiles(ProjectArgs) -> deploy_import::DeployImport = deploy_import::import_deploy_files;
     /// The Problems list, with the health of every board.
     "problems" => Problems(ProjectArgs) -> Vec<ProblemItem> = compiling::problems;
-    /// The Index log and the graph's counts.
-    "index_log" => IndexLog(ProjectArgs) -> compiling::IndexLog = compiling::index_log;
-    /// Compile (`check`) or Rebuild from scratch (`from_scratch`); streams progress.
-    "compile" => Compile(compiling::CompileArgs) -> CompileOutcome, stream CompileProgress = compiling::compile;
+    /// Compiles the project; streams progress.
+    "compile" => Compile(ProjectArgs) -> CompileOutcome, stream CompileProgress = compiling::compile;
     /// Cancels a project's running and queued Compiles.
     "cancel_compile" => CancelCompile(ProjectArgs) -> compiling::CancelCompileResult = compiling::cancel_compile;
-    /// Turns background updates on or off for a project.
-    "set_background_updates" => SetBackgroundUpdates(compiling::SetBackgroundUpdatesArgs) -> GraphStatus = compiling::set_background_updates;
     /// A project's `unfold.toml` and shared name.
     "project_config" => ProjectConfig(ProjectArgs) -> settings::ProjectConfig = settings::project_config;
     /// Applies validated edits to a project's `unfold.toml`.
@@ -155,10 +130,9 @@ command_table! {
     // Files and graph.
     /// The peek sheet's render model of a file, or one page of lines.
     "file_view" => FileView(file_view::FileViewArgs) -> file_view::FileView = file_view::file_view;
-    /// Opens a file with the editor command, or in TextEdit.
+    /// Opens a file with the editor command, or in TextEdit. The project's `unfold.toml` is
+    /// created empty first when it has none.
     "open_in_editor" => OpenInEditor(files::OpenInEditorArgs) -> () = files::open_in_editor;
-    /// Shows a file or folder in the system's file manager.
-    "reveal_in_finder" => RevealInFinder(ProjectPathArgs) -> () = files::reveal_in_finder;
     /// An entrance card or a block card (Code and Flow).
     "card" => Card(graph::CardArgs) -> graph::CardView = graph::card;
     /// The hover over a call link: signature line and location.
@@ -262,14 +236,21 @@ mod tests {
 
     #[test]
     fn requests_deserialize_by_name() {
-        let request: Request =
-            serde_json::from_str(r#"{"command":"scope_dir","args":{"project":"p-aaaaaaaaaa","path":"src"}}"#)
-                .expect("parse");
-        assert_eq!(request.name(), "scope_dir");
         let request: Request = serde_json::from_str(
-            r#"{"command":"compile","args":{"project":"p-aaaaaaaaaa","mode":"from_scratch"}}"#,
+            r#"{"command":"create_folder","args":{"project":"p-aaaaaaaaaa","path":"src"}}"#,
         )
         .expect("parse");
+        assert_eq!(request.name(), "create_folder");
+        let request: Request =
+            serde_json::from_str(r#"{"command":"compile","args":{"project":"p-aaaaaaaaaa"}}"#)
+                .expect("parse");
         assert!(matches!(request, Request::Compile(_)));
+        assert!(
+            serde_json::from_str::<Request>(
+                r#"{"command":"compile","args":{"project":"p-aaaaaaaaaa","mode":"check"}}"#
+            )
+            .is_err(),
+            "a compile has no mode"
+        );
     }
 }

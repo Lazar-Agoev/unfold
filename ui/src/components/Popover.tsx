@@ -1,5 +1,5 @@
 /**
- * A non-modal floating panel anchored to an element (the worktree switcher, a repair list). It takes
+ * A non-modal floating panel anchored to an element (where a type is used, a repair list). It takes
  * focus when it opens, closes on Escape or a press outside, and returns focus to where it was.
  */
 

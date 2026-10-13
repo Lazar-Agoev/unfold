@@ -3,11 +3,11 @@
 //!
 //! - **Per app** (the app-data folder the desktop shell passes at init): `settings.json`
 //!   ([`AppSettings`]: the editor command), `window.json` (the window that comes back at launch:
-//!   [`WindowState`]), and `workspace.json` (the projects and recent boards, owned by
+//!   [`WindowState`]), and `workspace.json` (the projects, owned by
 //!   [`crate::projects::Projects`]).
-//! - **Per project:** `.unfold/local/state.json` ([`LocalState`]): whether background updates
-//!   are on, and the empty board folders. Before the first Compile nothing may be written into
-//!   the folder, so changes are kept in memory and written when `local/` is created.
+//! - **Per project:** `.unfold/local/state.json` ([`LocalState`]): the empty board folders.
+//!   Before the first Compile nothing may be written into the folder, so changes are kept in
+//!   memory and written when `local/` is created.
 //!
 //! Every file is written atomically (a synced temporary file renamed over it), pretty-printed
 //! with a final newline, and writes to one file are serialized. A file that is missing,
@@ -69,8 +69,6 @@ pub struct WindowState {
 pub struct LocalState {
     /// The format version, `1`.
     pub version: u32,
-    /// Whether background updates are on for the project.
-    pub background_updates: bool,
     /// Board folders with no board in them, sorted (board folder metadata).
     pub empty_folders: Vec<String>,
 }
@@ -79,7 +77,6 @@ impl Default for LocalState {
     fn default() -> Self {
         Self {
             version: 1,
-            background_updates: true,
             empty_folders: Vec::new(),
         }
     }
@@ -192,13 +189,12 @@ mod tests {
         let path = dir.path().join("local/state.json");
         assert_eq!(read_json::<LocalState>(&path), LocalState::default());
         let state = LocalState {
-            background_updates: false,
             empty_folders: vec!["Checkout/Refunds".into()],
             ..LocalState::default()
         };
         write_json(&path, &state, "state.json").expect("write");
         let text = std::fs::read_to_string(&path).expect("read");
-        assert!(text.contains("\"backgroundUpdates\": false"));
+        assert!(text.contains("\"emptyFolders\""));
         assert!(text.ends_with("}\n"));
         assert_eq!(read_json::<LocalState>(&path), state);
         std::fs::write(&path, "{ not json").expect("write");

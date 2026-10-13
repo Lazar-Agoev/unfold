@@ -89,7 +89,7 @@ describe("Toast", () => {
       return this.classList.contains("dialog-footer") ? new DOMRect(600, footerTop, 400, 44) : new DOMRect();
     });
     const toaster = () => document.querySelector<HTMLElement>(".toaster");
-    const dialog = (open: boolean) => <Dialog open={open} onClose={() => undefined} title="orders settings" width={880} placement="window" footer={<button type="button">Save</button>} />;
+    const dialog = (open: boolean) => <Dialog open={open} onClose={() => undefined} title="Settings" width={470} placement="window" footer={<button type="button">Save</button>} />;
     const { rerender } = render(
       <>
         <Toaster />
@@ -97,7 +97,7 @@ describe("Toast", () => {
       </>,
     );
     act(() => {
-      showToast({ title: "Copied diagnostics" });
+      showToast({ title: "Copied link" });
     });
     expect(toaster()?.style.bottom).toBe(`${768 - 700 + 10}px`);
 

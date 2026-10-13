@@ -39,8 +39,8 @@ use unfold_engine::evidence::{
 use unfold_engine::facts::CallContext;
 use unfold_engine::launch::{LaunchTarget, PythonContext};
 use unfold_engine::{
-    BlockRef, CallRef, ContextPreview, DeclRef, FactsSet, FileId, Invocation, LanguageId, LanguageProblem,
-    LaunchResolution, Linked, ProjectInputs, TypeRef, ValueRef,
+    BlockRef, CallRef, DeclRef, FactsSet, FileId, Invocation, LanguageId, LanguageProblem, LaunchResolution,
+    Linked, ProjectInputs, TypeRef, ValueRef,
 };
 
 pub use census::PythonCensus;
@@ -380,10 +380,6 @@ impl Linked for PythonLinked<'_> {
 
     fn launch_target(&self, target: &LaunchTarget, context: &PythonContext) -> Option<LaunchResolution> {
         Some(self.launch(target, context))
-    }
-
-    fn context_preview(&self, context: &PythonContext) -> Option<ContextPreview> {
-        Some(self.preview(context))
     }
 
     fn detectors(&self) -> Vec<Box<dyn EntranceDetector + '_>> {

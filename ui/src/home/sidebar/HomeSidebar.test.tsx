@@ -38,8 +38,8 @@ let rows: ProjectRow[];
 
 beforeEach(() => {
   rows = [
-    projectRow(API, "storefront-api", { expanded: true, git: { branch: "main", detached: null, worktrees: 2 } }),
-    projectRow(WEB, "storefront-web", { state: { kind: "compiling", done: 1, total: 9 }, git: { branch: "feat/cart-v2", detached: null, worktrees: 1 } }),
+    projectRow(API, "storefront-api", { expanded: true }),
+    projectRow(WEB, "storefront-web", { state: { kind: "compiling", done: 1, total: 9 } }),
   ];
   engine = installFakeEngine({
     handlers: {
@@ -68,7 +68,6 @@ describe("the Home sidebar", () => {
       projectRow(API, "storefront-api", { state: { kind: "failed", message: "disk full" } }),
       projectRow(WEB, "storefront-web", { state: { kind: "resting", last: { kind: "current" }, atMs: 0 } }),
       projectRow("p-billing000", "billing-worker", { state: { kind: "unavailable", reason: "The folder is gone." } }),
-      projectRow("p-payments00", "payments-service", { state: { kind: "paused", changed: 2 } }),
       projectRow("p-ledger0000", "ledger", { state: { kind: "not_compiled" } }),
     ];
     renderWithClient(<HomeSidebar />);
@@ -82,11 +81,10 @@ describe("the Home sidebar", () => {
     expect(resting?.getAttribute("aria-label")).toBe("Resting");
     expect(resting?.querySelector("svg")?.getAttribute("width")).toBe("14");
     expect((await slot("billing-worker"))?.getAttribute("aria-label")).toBe("The folder is gone.");
-    expect((await slot("payments-service"))?.getAttribute("aria-label")).toBe("Background updates paused");
     expect((await slot("ledger"))?.getAttribute("aria-label")).toBe("Not compiled yet");
   });
 
-  it("shows the workspace, Recents and Drafts with the count, and every project with its state", async () => {
+  it("shows the workspace, Drafts with the count, and every project with its state", async () => {
     renderWithClient(<HomeSidebar />);
     expect(await screen.findByText("Lazar's workspace")).toBeTruthy();
     const drafts = screen.getByRole("button", { name: /Drafts/ });
@@ -96,9 +94,6 @@ describe("the Home sidebar", () => {
     const web = await screen.findByText("storefront-web");
     const webRow = web.closest("[data-project-id]");
     expect(webRow?.getAttribute("data-project-id")).toBe(WEB);
-    // A feature branch shows after the name; main doesn't.
-    expect(within(webRow as HTMLElement).getByText("feat/cart-v2")).toBeTruthy();
-    expect(screen.queryByText("main")).toBeNull();
     expect(within(webRow as HTMLElement).getByRole("img", { name: "Compiling" })).toBeTruthy();
   });
 
@@ -134,12 +129,13 @@ describe("the Home sidebar", () => {
     });
   });
 
-  it("opens Recents and Drafts in Home's main area", async () => {
+  it("opens Drafts in Home's main area", async () => {
     renderWithClient(<HomeSidebar />);
-    fireEvent.click(screen.getByRole("button", { name: /Recents/ }));
-    expect(useLayout.getState().home.view).toBe("recents");
-    expect(screen.getByRole("button", { name: /Recents/ }).getAttribute("aria-current")).toBe("page");
-    // The project row isn't selected while Recents shows.
+    fireEvent.click(screen.getByRole("button", { name: /Drafts/ }));
+    expect(useLayout.getState().home.view).toBe("drafts");
+    expect(screen.getByRole("button", { name: /Drafts/ }).getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("button", { name: /Recents/ })).toBeNull();
+    // The project row isn't selected while Drafts shows.
     const api = (await screen.findByText("storefront-api")).closest("[data-project-id]");
     expect(api?.getAttribute("aria-selected")).toBe("false");
   });

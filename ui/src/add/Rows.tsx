@@ -45,7 +45,7 @@ interface ResultRowProps {
 function Meta({ item, projectName }: { readonly item: ResultRowProps["item"]; readonly projectName: string }) {
   switch (item.type) {
     case "entrance":
-      // Its application, as the entrance browser names them; the declaring file when it has none.
+      // Its application; the declaring file when it has none.
       return <span className="add-row-meta">{`${projectName} · ${item.hit.application ?? baseName(item.hit.path)}`}</span>;
     case "function":
       return <span className="add-row-meta add-code">{item.hit.path}</span>;

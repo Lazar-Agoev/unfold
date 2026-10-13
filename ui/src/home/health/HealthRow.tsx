@@ -4,14 +4,15 @@ import type { CSSProperties } from "react";
 import { Button } from "../../components";
 import { Icon, type IconName } from "../../icons";
 import type { ProjectId } from "../../ipc";
-import { openDialog, openPeek } from "../../state/overlays";
+import { openInEditor } from "../../lib/files";
+import { openPeek } from "../../state/overlays";
 import type { HealthAction, HealthRow } from "./problems";
 
 export function runHealthAction(project: ProjectId, action: HealthAction): void {
   if (action.kind === "open") {
     openPeek({ project, path: action.path, ...(action.line === null ? {} : { line: action.line }) });
   } else {
-    openDialog({ kind: "projectSettings", project, section: action.section });
+    void openInEditor(project, action.path);
   }
 }
 
@@ -48,5 +49,5 @@ export function HealthRowView({ row, icon = "warning-circle", inline = false, ac
 
 /** The label of a row's action. */
 export function actionLabel(action: HealthAction): string {
-  return action.kind === "open" ? "Open" : "Settings";
+  return action.kind === "open" ? "Open" : "Open in editor";
 }

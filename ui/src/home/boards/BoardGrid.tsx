@@ -19,8 +19,8 @@ export interface BoardCardModel {
   readonly id: string;
   readonly title: string;
   readonly draft: boolean;
-  /** "3 pages · Published · edited 2 hours ago" (or a function of the thumbnail, for recents). */
-  readonly subline: string | ((thumbnail: Thumbnail | undefined) => string);
+  /** "3 pages · Published · edited 2 hours ago". */
+  readonly subline: string;
   /** Other projects its cards come from: "· [W] with storefront-web". */
   readonly with: readonly string[];
   /** The board's own project's name, shown first on cross-project lists. */
@@ -59,7 +59,6 @@ function ThumbnailDrawing({ thumbnail }: { readonly thumbnail: Thumbnail }) {
 
 function BoardCard({ board, thumbnail, onMenu }: { readonly board: BoardCardModel; readonly thumbnail: Thumbnail | undefined; readonly onMenu: (event: MouseEvent) => void }) {
   const ref = { project: board.project, id: board.id };
-  const subline = typeof board.subline === "function" ? board.subline(thumbnail) : board.subline;
   return (
     <div
       role="button"
@@ -86,7 +85,7 @@ function BoardCard({ board, thumbnail, onMenu }: { readonly board: BoardCardMode
               <span>{board.projectName} ·</span>
             </>
           )}
-          <span className="home-board-words">{subline}</span>
+          <span className="home-board-words">{board.subline}</span>
           {board.with.length > 0 ? (
             <>
               <span>·</span>

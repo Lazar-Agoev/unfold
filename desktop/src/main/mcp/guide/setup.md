@@ -5,26 +5,26 @@ through the repository. Change them only when the person asks, and tell them the
 changed: it shows in their git diff.
 
 ## Projects
-- list_projects: every project's name, id, state, languages, branch, and boards. A
+- list_projects: every project's name, id, state, languages, and boards. A
   resting project isn't open right now; get_project opens it and reports everything:
   applications, health, settings, boards.
 - add_project({path}): an absolute path, or one starting with `~/`. Call it only for a
   folder the person named. Unfold asks them in a dialog ("Claude wants to add
   ~/repos/payments to your workspace."). If they cancel, nothing was added; don't ask
-  again unless they bring it up. A folder that already is a project (or another
-  worktree of its repository) answers with that project. The result says what a first
-  Compile would read and skip.
+  again unless they bring it up. A folder that already is a project answers with that
+  project. Unfold needs to write `.unfold/` in the folder: a read-only folder, or one on
+  a network volume, is refused, and the error says so.
+- The project compiles as it is added. The result waits up to 50 seconds for that
+  compile, as compile_project does.
 - You can't remove a project: the person does (File › Remove Project).
 
 ## Compile
 - compile_project reads the project's TypeScript and Python without running anything,
-  writes only inside its `.unfold/` folder (the first Compile creates it), and keeps
-  the graph current in the background afterwards. mode "compile" (the default) updates
-  what changed; "rebuild" starts from scratch: only when the person asks, or the graph
-  looks wrong.
+  writes only inside its `.unfold/` folder, brings the graph up to date with what
+  changed, and keeps it current in the background afterwards.
 - It waits up to 50 seconds. A longer compile goes on in Unfold: call get_project to
   keep waiting until its state reads current.
-- States: current, compiling, updating, paused, not compiled, problems (files that
+- States: current, compiling, updating, not compiled, problems (files that
   don't parse; Unfold keeps their last version that parsed), resting, unavailable,
   and failed (the previous graph stays).
 - When a file changed since the last compile, read_code and read_file say so and show
@@ -43,12 +43,6 @@ compile_project or background update.
   removes one pattern exactly as get_project lists it.
 - Ignore files and folders such as node_modules and .venv are always left out.
 - Excluded code still exists: calls into it are unresolved ("not indexed"), not gone.
-
-### Detectors
-`{op: "set_detector", detector, enabled}` turns one detector on or off: package.script,
-package.bin, express.route, bullmq.worker, node-cron.schedule, pyproject.script,
-fastapi.route, celery.task, apscheduler.job. Declared entrances (manual) can't be
-turned off; remove them instead.
 
 ### Python projects
 set_python_project with its root, sourceRoots (import roots relative to root), and
@@ -81,26 +75,19 @@ read_file shows them as text with line numbers, and resource cards and connectio
 anchor to their lines as `{file, lines: [from, to]}`. A file that is already a source,
 a TypeScript declaration file, or a configuration input keeps that role.
 
-### Background updates
-set_background_updates turns updating the graph as files change on or off. It's kept
-in Unfold, not in the file.
-
 ### Example
-"Add ~/repos/ts-orders to Unfold and compile it. Turn off the cron detector; we don't
-use those schedules anymore."
-- add_project({path: "~/repos/ts-orders"}); the person clicks Add. The result: a first
-  Compile would read 34 TypeScript files and skip 2 JavaScript files.
-- update_project_settings({project: "ts-orders", edits: [{op: "set_detector",
-  detector: "node-cron.schedule", enabled: false}]}). The result shows the change:
+"Add ~/repos/ts-orders to Unfold. Leave the scripts folder out; it's one-off tooling."
+- add_project({path: "~/repos/ts-orders"}); the person clicks Add. The project
+  compiles, and the result names its applications.
+- update_project_settings({project: "ts-orders", edits: [{op: "exclude_from_graph",
+  path: "scripts"}]}). The result shows the change:
   ```diff
-  +[detectors]
-  +disabled = ["node-cron.schedule"]
+  +[scope]
+  +exclude = ["scripts"]
   ```
-- compile_project({project: "ts-orders"}): the graph is current, and the result names
-  its applications.
-- In chat: "ts-orders is compiled. I turned off the node-cron detector, so its two
-  schedules don't show. That setting is in unfold.toml, which is shared, so
-  it will show in your git diff."
+- compile_project({project: "ts-orders"}): the graph is current without scripts.
+- In chat: "ts-orders is compiled, without the scripts folder. That setting is in
+  unfold.toml, which is shared, so it will show in your git diff."
 
 ## Boards
 - create_board makes a draft, with named pages, optionally in a folder and traced from

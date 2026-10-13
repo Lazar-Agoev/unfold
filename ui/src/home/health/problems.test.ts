@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProblemItem } from "../../ipc";
-import { boardHealthRows, healthRows, problemLocation, reviewWords, settingsSection } from "./problems";
+import { boardHealthRows, healthRows, problemLocation, reviewWords } from "./problems";
 
 function problem(category: ProblemItem["category"], path: string, message: string, overrides: Partial<ProblemItem> = {}): ProblemItem {
   return { category, path, line: null, column: null, message, fileState: null, ...overrides };
@@ -28,7 +28,7 @@ describe("Health rows", () => {
         title: '[tool.unfold] python = "3.11" isn\'t supported',
         explanation: "Unfold uses the defaults until the settings file is fixed.",
         location: "pyproject.toml",
-        action: { kind: "settings", section: "python" },
+        action: { kind: "edit", path: "pyproject.toml" },
       },
       {
         id: "3",
@@ -40,10 +40,10 @@ describe("Health rows", () => {
     ]);
   });
 
-  it("opens Settings on the section a problem is about", () => {
-    expect(settingsSection("python = 3.11 isn't supported")).toBe("python");
-    expect(settingsSection("[scope] exclude has a bad pattern")).toBe("scope");
-    expect(settingsSection("expected a table at line 3")).toBe("general");
+  it("opens the settings file in the editor, and unfold.toml for a folder that can't be read", () => {
+    const [settings, discovery] = healthRows([problem("settings", "", "expected a table at line 3"), problem("discovery", "vendor", "permission denied")]);
+    expect(settings?.action).toEqual({ kind: "edit", path: "unfold.toml" });
+    expect(discovery?.action).toEqual({ kind: "edit", path: "unfold.toml" });
   });
 
   it("explains each board that needs review by its first item", () => {

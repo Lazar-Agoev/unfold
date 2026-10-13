@@ -1,6 +1,3 @@
-/**
- * Project settings in the UI: the Project settings dialog. Every change goes through Rust's validated
- * `update_project_config`, which keeps `unfold.toml`'s comments and formatting.
- */
+/** Settings (app-wide): the editor command, and the commands that connect an agent. */
 
-export { ProjectSettingsDialog } from "./ProjectSettingsDialog";
+export { SettingsDialog } from "./SettingsDialog";

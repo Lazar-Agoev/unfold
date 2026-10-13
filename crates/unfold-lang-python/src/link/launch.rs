@@ -1,4 +1,4 @@
-//! Launch targets in an import context, after linking, and the preview of a draft context.
+//! Launch targets in an import context, after linking.
 //!
 //! A target resolves with the context's ordered import path ([`super::modules`]): a file is its
 //! root block; a module is its file, and a package its `__main__.py`; a callable or ASGI target
@@ -7,20 +7,16 @@
 //! application compare by key. A module outside the repository, or an attribute the module
 //! doesn't bind, is `not_found`; a file that exists but isn't indexed is `not_indexed`.
 
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use unfold_core::vocab::Reason;
-use unfold_engine::evidence::{ModuleTarget, Refusal};
+use unfold_engine::evidence::Refusal;
 use unfold_engine::launch::{LaunchTarget, PythonContext};
-use unfold_engine::{BlockRef, ContextPreview, FileId, LaunchResolution, Outcome};
+use unfold_engine::{BlockRef, FileId, LaunchResolution, Outcome};
 
 use super::PythonLinked;
 use super::binder::{Ctx, Seen};
 use super::modules::ModuleValue;
-
-/// How many newly resolving modules a preview lists.
-const PREVIEW_MODULES: usize = 5;
 
 impl PythonLinked<'_> {
     /// Resolves `target` with `context`'s import path.
@@ -147,41 +143,6 @@ impl PythonLinked<'_> {
             .modules
             .indexed(path)
             .map(|file| BlockRef { file, local: 0 })
-    }
-
-    /// What `context` reaches and how it resolves the imports there, against the linked
-    /// answers.
-    pub(crate) fn preview(&self, context: &PythonContext) -> ContextPreview {
-        let modules = &self.binder.modules;
-        let program = self.binder.program.facts;
-        let mut preview = ContextPreview::default();
-        let mut newly: BTreeSet<&str> = BTreeSet::new();
-        for (file, script) in modules.reached(program, context) {
-            let Some(entry) = program.file(file) else {
-                continue;
-            };
-            let Some(facts) = entry.facts.as_deref() else {
-                continue;
-            };
-            preview.reached.push(entry.path.clone());
-            let linked = self.dependencies.get(file.index()).map_or(&[][..], Vec::as_slice);
-            for (index, import) in facts.graph.imports().iter().enumerate() {
-                let Some(specifier) = import.specifier.as_deref() else {
-                    continue;
-                };
-                let under = modules.launch_lookup(context, script, entry.path.as_str(), specifier);
-                let resolves = matches!(under.paths.as_slice(), [path] if modules.indexed(path).is_some());
-                let now = matches!(linked.get(index), Some(ModuleTarget::Indexed(_)));
-                preview.resolved += u32::from(resolves);
-                preview.resolved_now += u32::from(now);
-                if resolves && !now {
-                    newly.insert(specifier);
-                }
-            }
-        }
-        preview.reached.sort();
-        preview.newly_resolved = newly.into_iter().take(PREVIEW_MODULES).map(Into::into).collect();
-        preview
     }
 }
 

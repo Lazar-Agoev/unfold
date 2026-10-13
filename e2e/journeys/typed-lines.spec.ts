@@ -10,7 +10,7 @@ import { addInput, openAdd, result, selectResult } from "../src/add";
 import { boardView, cameraSettled, card, chooseLens, dock, expectCardsLoaded, follow, panUntilHittable } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { launchWithProject } from "../src/flows";
-import { firstCompile } from "../src/home";
+import { expectGraphCurrent } from "../src/home";
 import { enterText } from "../src/window";
 
 const CREATE_ORDER = "src/orders/create.ts#function:createOrder";
@@ -56,7 +56,7 @@ test.describe("typed lines", () => {
   test("a line's label, its contract, a type's definition and uses, and Escape", async ({ sandbox, launch }) => {
     const folder = sandbox.fixture("typed-lines/ts", "typed-lines");
     const { page } = await launchWithProject(launch, folder);
-    await firstCompile(page);
+    await expectGraphCurrent(page);
 
     await test.step("createOrder and the two functions it calls go on a new board", async () => {
       await openAdd(page);

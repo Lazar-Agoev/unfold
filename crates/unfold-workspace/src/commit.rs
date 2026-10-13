@@ -29,8 +29,8 @@ use unfold_engine::update::DiskState;
 use unfold_engine::{CancelToken, Engine, LinkBasis, PreparedUpdate, UpdateOutcome};
 use unfold_reader::{Projections, project};
 use unfold_store::{
-    Application, CommitStats, Definition, DiskStamp, EntranceChanges, FileChange, GraphMeta, Membership,
-    Reader, StoreError, Update, Writer,
+    Application, Definition, DiskStamp, EntranceChanges, FileChange, GraphMeta, Membership, Reader,
+    StoreError, Update, Writer,
 };
 
 use crate::error::{Result, WorkspaceError};
@@ -151,7 +151,7 @@ pub(crate) fn commit(
     prepared: &PreparedUpdate,
     committed: Option<&Committed>,
     cancel: Option<&CancelToken>,
-) -> Result<(CommitStats, Committed)> {
+) -> Result<Committed> {
     let cancelled = || cancel.is_some_and(CancelToken::is_cancelled);
     let outcome = prepared.outcome();
     let graph = &outcome.graph;
@@ -165,18 +165,15 @@ pub(crate) fn commit(
         .map(|file| disk_stamp(prepared.disk_state(&file.file.path)))
         .collect();
     let meta = graph_meta(engine, prepared);
-    let stats = {
-        let update = build(outcome, &projections, &stamps, committed, meta.clone());
-        let written = match committed {
-            Some(_) => writer.commit_unless(&update, &cancelled),
-            None => writer.replace_unless(&update, &cancelled),
-        };
-        match written {
-            Ok(stats) => stats,
-            Err(StoreError::Cancelled) => return Err(WorkspaceError::Cancelled),
-            Err(error) => return Err(error.into()),
-        }
+    let update = build(outcome, &projections, &stamps, committed, meta.clone());
+    let written = match committed {
+        Some(_) => writer.commit_unless(&update, &cancelled),
+        None => writer.replace_unless(&update, &cancelled),
     };
+    written.map_err(|error| match error {
+        StoreError::Cancelled => WorkspaceError::Cancelled,
+        other => other.into(),
+    })?;
     let Projections {
         definitions,
         applications,
@@ -194,7 +191,7 @@ pub(crate) fn commit(
         next.stamps.insert(file.file.path.clone(), stamp);
         next.definitions.insert(file.file.path.clone(), definitions);
     }
-    Ok((stats, next))
+    Ok(next)
 }
 
 fn build<'a>(

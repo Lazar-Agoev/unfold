@@ -65,7 +65,7 @@ pub(crate) fn compile_with(
         .with_context(|| format!("compiling {} failed", folder.display()))
 }
 
-/// Runs `compile`: prints the Index log entry and any problems.
+/// Runs `compile`: prints the update's statistics and any problems.
 pub(crate) fn run_compile(args: &CompileArgs) -> anyhow::Result<()> {
     let outcome = compile_folder(&args.folder, args.threads)?;
     print!("{}", outcome.stats);

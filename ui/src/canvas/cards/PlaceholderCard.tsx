@@ -29,7 +29,7 @@ export function PlaceholderCard({ target, card, projectName, selected }: Placeho
   const name = keyDisplayName(key);
   const block = "block" in card.ref;
   // No project to read from: the menu offers what needs none (draw a link, remove).
-  const menu = useCardMenu(target, null, card.id, card.folded === true, false, null);
+  const menu = useCardMenu(target, card.id, card.folded === true, false);
   const author = card.description?.author;
   return (
     <article

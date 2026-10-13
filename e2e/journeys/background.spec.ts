@@ -1,26 +1,25 @@
 /**
  * Background updates (docs/engine.md#project-lifecycle, background updates): a saved file updates the graph and the open card; a
- * described card whose code changed asks for review on the card, its row, and its page; a file that
- * breaks shows its last version until it is fixed; a branch switch across 500 files is one update that
- * ends equal to a fresh compile; files edited while the app is closed are picked up on reopen; a
- * read-only folder keeps its graph in the fallback location; deleting the cache recovers; and a file
- * renamed by changing only the case of its name.
+ * described card whose code changed asks for review on the card, its row, its page, and Home's Health
+ * line; a file that breaks shows its last version until it is fixed; a branch switch across 500 files
+ * is one update that ends equal to a fresh compile; files edited while the app is closed are picked up
+ * on reopen; deleting the cache recovers; and a file renamed by changing only the case of its name.
  */
 
 import { cpSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { boardView, card, expectCardsLoaded, onThisPage, pagesList, readBoard, selected, showBoard, shownBoardRef } from "../src/board";
+import { boardTitle, boardView, card, expectCardsLoaded, onThisPage, pagesList, readBoard, selected, showBoard, shownBoardRef } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { launchCompiled, launchWithProject, openPlace, PLACE, traceEntrance } from "../src/flows";
-import { addProjectFromSidebar, expectGraphCurrent, firstCompile, homeMain, homeTitle, projectId, showHome, stateLine } from "../src/home";
+import { addProjectFromSidebar, expectGraphCurrent, homeMain, homeTitle, projectId, showHome, stateLine } from "../src/home";
 import { editFile, writeFile } from "../src/sandbox";
 import { writeSyntheticRepo } from "../src/synthetic";
 import { enterText, eventMark, events, invoke, waitForEvent, whenTextShows } from "../src/window";
 
-interface IndexLog {
-  readonly entries: readonly { readonly action: string }[];
-  readonly stats: Record<string, number> | null;
+interface Summary {
+  readonly files: number;
+  readonly languages: readonly string[];
 }
 
 interface SearchResults {
@@ -40,11 +39,14 @@ async function filesLike(page: Page, project: string, text: string): Promise<str
   return found.files.hits.map((hit) => hit.path).filter((path) => path.includes(text));
 }
 
-/** The committed graph's counts (its records, not the database's size on disk). */
-async function graphCounts(page: Page, project: string): Promise<Record<string, number>> {
-  const { stats } = await invoke<IndexLog>(page, "index_log", { project });
-  const { databaseBytes: _bytes, ...counts } = stats ?? {};
-  return counts;
+/** What a project's graph holds, as Home and search read it: its files, languages, and some definition counts. */
+async function graphShape(page: Page, project: string): Promise<Record<string, unknown>> {
+  const { files, languages } = await invoke<Summary>(page, "project_summary", { project });
+  const shape: Record<string, unknown> = { files, languages };
+  for (const query of ["run", "twice", "f1"]) {
+    shape[query] = (await invoke<{ definitions: { total: number } }>(page, "search", { query, kinds: ["definitions"], projects: [project] })).definitions.total;
+  }
+  return shape;
 }
 
 /** The keys of the definitions that call `key`. */
@@ -89,6 +91,13 @@ test.describe("background updates", () => {
       await expect(place.locator(".card-review")).toContainText("Changed since it was described", { timeout: 30_000 });
       await expect(onThisPage(page).locator(".board-review-dot")).toHaveCount(1);
       await expect(pagesList(page).locator(".board-review-dot")).toHaveCount(1);
+    });
+
+    await test.step("Home's Health line says the board needs review, and the item opens it", async () => {
+      await showHome(page);
+      await homeMain(page).getByRole("region", { name: "Health", exact: true }).getByRole("button", { name: "1 board needs review" }).click();
+      await expect(boardTitle(page)).toHaveText("POST /orders");
+      await expect(place.locator(".card-review")).toContainText("Changed since it was described");
     });
 
     await test.step("Review explains the problem and a repair clears it", async () => {
@@ -138,22 +147,18 @@ test.describe("background updates", () => {
     const folder = sandbox.folder("synthetic");
     writeSyntheticRepo(folder, count, "main");
     const { app, page } = await launchWithProject(launch, folder);
-    await firstCompile(page);
+    await expectGraphCurrent(page);
     await expect(stateLine(page)).toContainText(/Graph current\s*· 520 files · TypeScript/);
     const project = await projectId(page, "synthetic");
-    const before = await invoke<IndexLog>(page, "index_log", { project });
     const mark = await eventMark(page, "graph_updated");
 
     await test.step("every file changes at once, and one background update follows", async () => {
       writeSyntheticRepo(folder, count, "feature");
       await waitForEvent(page, "graph_updated", mark, (event) => event["project"] === project);
       await expectGraphCurrent(page);
-      await expect.poll(async () => (await invoke<IndexLog>(page, "index_log", { project })).entries.length).toBeGreaterThan(before.entries.length);
-      const after = (await invoke<IndexLog>(page, "index_log", { project })).entries.slice(before.entries.length);
-      expect(after.map((entry) => entry.action), "the branch switch is one background update").toEqual(["Background update"]);
-      expect((await events(page, "graph_updated")).slice(mark).filter((entry) => entry.event["project"] === project)).toHaveLength(1);
       const twice = await invoke<{ definitions: { total: number } }>(page, "search", { query: "twice", kinds: ["definitions"], projects: [project] });
       expect(twice.definitions.total, "every file holds the feature branch's method").toBe(count);
+      expect((await events(page, "graph_updated")).slice(mark).filter((entry) => entry.event["project"] === project), "the branch switch is one background update").toHaveLength(1);
     });
 
     await test.step("the updated graph equals a fresh compile of the same files", async () => {
@@ -161,11 +166,11 @@ test.describe("background updates", () => {
       cpSync(folder, copy, { recursive: true, filter: (source) => !source.startsWith(join(folder, ".unfold")) });
       await addProjectFromSidebar(app, page, copy);
       await expect(homeTitle(page)).toHaveText("synthetic-copy");
-      await firstCompile(page);
+      await expectGraphCurrent(page);
       const copyProject = await projectId(page, "synthetic-copy");
-      const fresh = await graphCounts(page, copyProject);
-      expect(fresh["definitions"]).toBeGreaterThan(0);
-      expect(await graphCounts(page, project), "the updated graph's counts equal the fresh compile's").toEqual(fresh);
+      const fresh = await graphShape(page, copyProject);
+      expect(fresh["files"]).toBe(count);
+      expect(await graphShape(page, project), "the updated graph holds what the fresh compile holds").toEqual(fresh);
       // And its calls: who calls a sample of functions, after the switch rewired every import.
       for (const index of [0, 7, 99, 260, 519]) {
         const key = `src/m${String(Math.floor(index / 25)).padStart(3, "0")}/f${String(index).padStart(4, "0")}.ts#function:f${index}`;
@@ -197,25 +202,6 @@ test.describe("background updates", () => {
       await expect.poll(() => definitionsNamed(page, project, "addedWhileClosed")).toEqual(["src/lib/retry.ts"]);
       await expect.poll(() => definitionsNamed(page, project, "createdWhileClosed")).toEqual(["src/lib/created-while-closed.ts"]);
       await expect.poll(() => filesLike(page, project, "calendar")).toEqual([]);
-    });
-  });
-
-  test("a read-only folder keeps its graph in the fallback location and everything works", async ({ sandbox, launch }) => {
-    const folder = sandbox.playground("ts-orders");
-    sandbox.setReadOnly(folder, true);
-    const { page } = await launchWithProject(launch, folder);
-
-    await test.step("the Compile works and Home's state line says it uses the fallback location", async () => {
-      await firstCompile(page);
-      await expect(stateLine(page)).toContainText("using fallback location");
-    });
-
-    await test.step("tracing and following make a draft, and nothing is written into the folder", async () => {
-      await openPlace(page);
-      const project = await projectId(page, "ts-orders");
-      await expect.poll(async () => (await invoke<{ boards: { place: string }[] }>(page, "list_boards", { project })).boards.filter((board) => board.place === "draft").length).toBe(1);
-      expect(existsSync(join(folder, ".unfold/local")), "nothing is written into the folder").toBe(false);
-      expect(await definitionsNamed(page, project, "validateOrder")).not.toEqual([]);
     });
   });
 

@@ -107,13 +107,7 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
   const updateNodeInternals = useUpdateNodeInternals();
   const folded = card.folded === true;
   const header = model?.header;
-  const definition = useMemo(
-    () =>
-      header ? { path: header.path, kind: header.kind, name: header.name, qualifiedName: header.qualifiedName, line: header.startLine } : null,
-    [header],
-  );
-  const source = useMemo(() => (definition ? { path: definition.path, line: definition.line, definition } : null), [definition]);
-  const menu = useCardMenu(target, project, card.id, folded, true, source, header?.qualifiedName ?? keyDisplayName(key));
+  const menu = useCardMenu(target, card.id, folded, true, header?.qualifiedName ?? keyDisplayName(key));
 
   const codeFolds = usePageView(target, (pageView) => pageView.codeFolds[card.id]);
   const expandedKeys = usePageView(target, (pageView) => pageView.expanded[card.id] ?? NO_KEYS);

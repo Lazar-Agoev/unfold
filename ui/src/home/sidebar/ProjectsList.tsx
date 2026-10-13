@@ -24,18 +24,6 @@ import { rowHeight, sidebarRows, type ProjectTree, type SidebarRow } from "./tre
 /** Past this many rows the list renders only the rows in view. */
 const WINDOW_THRESHOLD = 120;
 
-/** The branch a project row shows: nothing on the usual default branches. */
-function branchOf(row: ProjectRow): string | null {
-  const git = row.git;
-  if (!git) {
-    return null;
-  }
-  if (git.detached !== null) {
-    return git.detached;
-  }
-  return git.branch === null || git.branch === "main" || git.branch === "master" ? null : git.branch;
-}
-
 function toggleProject(row: ProjectRow): void {
   setProjectExpanded(row.id, !row.expanded).catch((error: unknown) => {
     showToast({ title: "Couldn't expand the project", body: toUnfoldError(error).message, tone: "danger" });
@@ -78,7 +66,6 @@ function Disclosure({ expanded, label, onToggle }: { readonly expanded: boolean;
 }
 
 function ProjectRowView({ row, selected, onContextMenu }: { readonly row: ProjectRow; readonly selected: boolean; readonly onContextMenu: (event: MouseEvent) => void }) {
-  const branch = branchOf(row);
   return (
     <div
       role="treeitem"
@@ -113,7 +100,6 @@ function ProjectRowView({ row, selected, onContextMenu }: { readonly row: Projec
       <Monogram name={row.name} size={20} />
       <span className="home-project-name">
         <span className="home-project-title">{row.name}</span>
-        {branch === null ? null : <span className="home-project-branch">{branch}</span>}
       </span>
       <StateIndicator state={row.state} variant="row" />
       {/* The menu button is its own control: pressing it never selects the row. */}
@@ -263,8 +249,8 @@ export function ProjectsList({ projects }: { readonly projects: readonly Project
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const { attach, rows: windowRows, height: windowHeight, offsets } = useWindowed({ count: rows.length, size: (index) => rowHeight(rows[index] ?? { kind: "gap", key: "", height: 28 }), threshold: WINDOW_THRESHOLD, scroller });
 
-  // Home's project views select the project row; Recents and Drafts select their own row instead.
-  const projectSelected = view === "overview" || view === "health" || view === "activity";
+  // Home's project views select the project row; Drafts selects its own row instead.
+  const projectSelected = view !== "drafts";
   const render = (row: SidebarRow) =>
     row.kind === "project" ? (
       <ProjectRowView

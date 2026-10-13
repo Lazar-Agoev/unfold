@@ -17,15 +17,7 @@
   padding: 36px 48px 40px 56px;
 }
 
-.home-mono {
-  font-family: var(--font-code);
-  font-size: var(--text-12);
-  font-feature-settings:
-    "calt" 0,
-    "liga" 0;
-}
-
-/* Section headings shared by Home's sections ("How it starts", "Boards", "Health and activity"). */
+/* Section headings shared by Home's sections ("How it starts", "Boards", "Health"). */
 .home-section-title {
   font-size: var(--text-15);
   line-height: var(--leading-20);
@@ -33,7 +25,7 @@
   white-space: nowrap;
 }
 
-/* Caps labels ("Skipped", "Boards", "Activity", "Opened before"). */
+/* Caps labels ("Boards" on the Health view). */
 .home-caps {
   color: var(--color-muted);
   font-size: var(--text-11);
@@ -83,18 +75,6 @@
   gap: 8px;
 }
 
-.home-meta {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  min-height: 34px;
-  padding-top: 6px;
-}
-
-.home-header-compact .home-state-line {
-  padding-top: 6px;
-}
-
 /* State line */
 .home-state-line {
   display: flex;
@@ -106,20 +86,10 @@
   white-space: nowrap;
 }
 
-/* The detail's runs are flex items 6px apart, each 16px tall ("· branch" and the mono "main"
-   that way), so a mono run doesn't grow the line. */
 .home-state-detail {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   min-width: 0;
   overflow: hidden;
   color: var(--color-muted);
-}
-
-.home-state-run {
-  min-width: 0;
-  overflow: hidden;
   text-overflow: ellipsis;
 }
 

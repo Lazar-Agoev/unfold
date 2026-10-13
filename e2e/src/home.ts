@@ -1,6 +1,6 @@
 /**
- * The window in Home mode: the sidebar's projects, Home's header and state line, the not-compiled
- * setup, and How it starts. Locators use what a person sees (roles and names); waits are on state.
+ * The window in Home mode: the sidebar's projects, Home's header and state line, and How it
+ * starts. Locators use what a person sees (roles and names); waits are on state.
  */
 
 import type { Locator, Page } from "@playwright/test";
@@ -14,12 +14,11 @@ interface ProjectRowInfo {
   readonly name: string;
   readonly path: string;
   readonly live: boolean;
-  readonly state: { readonly kind: string; readonly last?: { readonly kind: string } };
+  readonly state: { readonly kind: string };
 }
 
 interface WorkspaceInfo {
   readonly projects: readonly ProjectRowInfo[];
-  readonly removed: readonly { readonly path: string; readonly name: string }[];
 }
 
 export function workspace(page: Page): Promise<WorkspaceInfo> {
@@ -57,7 +56,7 @@ export function projectRow(page: Page, name: string): Locator {
   return projectsTree(page).locator(".home-project-row").filter({ has: page.locator(".home-project-title", { hasText: new RegExp(`^${escapeRegExp(name)}$`) }) });
 }
 
-/** The state a project row's indicator shows (`current`, `compiling`, `paused`, …). */
+/** The state a project row's indicator shows (`current`, `compiling`, `problems`, …). */
 export function rowState(page: Page, name: string): Locator {
   return projectRow(page, name).locator(".state-indicator");
 }
@@ -121,17 +120,6 @@ export async function addProjectFromSidebar(app: UnfoldApp, page: Page, folder: 
   await app.stubFolderDialog(folder);
   await expectConnection(page, "connected");
   await sidebar(page).getByRole("button", { name: "Add Project…" }).click();
-}
-
-/** The not-compiled Home's Compile button. */
-export function compileButton(page: Page): Locator {
-  return homeMain(page).getByRole("button", { name: /^Compile/ });
-}
-
-/** Compiles the project Home shows for the first time and waits until its graph is current. */
-export async function firstCompile(page: Page): Promise<void> {
-  await compileButton(page).click();
-  await expectGraphCurrent(page);
 }
 
 /** Home's How it starts section. */

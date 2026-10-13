@@ -5,7 +5,7 @@ const showToast = vi.fn();
 vi.mock("../ipc/commands", () => ({ call }));
 vi.mock("../components", () => ({ showToast }));
 
-const { openInEditor, revealInFinder } = await import("./files");
+const { openInEditor } = await import("./files");
 
 beforeEach(() => {
   call.mockReset();
@@ -28,16 +28,5 @@ describe("openInEditor", () => {
     call.mockRejectedValue({ code: "not_found", message: "src/gone.ts doesn't exist." });
     await openInEditor("p-abcdefghij", "src/gone.ts");
     expect(showToast).toHaveBeenCalledWith({ title: "Couldn't open the file", body: "src/gone.ts doesn't exist.", tone: "danger" });
-  });
-});
-
-describe("revealInFinder", () => {
-  it("reveals a path in the project, or the project folder itself", async () => {
-    call.mockResolvedValue(null);
-    await revealInFinder("p-abcdefghij", "");
-    expect(call).toHaveBeenCalledWith("reveal_in_finder", { project: "p-abcdefghij", path: "" });
-    call.mockRejectedValue(new Error("boom"));
-    await revealInFinder("p-abcdefghij", "src");
-    expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Couldn't show the file", tone: "danger" }));
   });
 });

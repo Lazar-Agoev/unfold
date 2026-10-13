@@ -1,0 +1,37 @@
+/* An empty workspace: a 600px column, vertically centered in Home's main area (the right padding
+   leaves room for the reserved scrollbar, main.css). */
+
+.home-empty {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100%;
+  padding: 36px 88px 80px 96px;
+}
+
+.home-empty-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 600px;
+  max-width: 100%;
+}
+
+.home-empty-headline {
+  font-size: var(--text-32);
+  line-height: var(--leading-40);
+  font-weight: 700;
+  letter-spacing: var(--tracking-display);
+}
+
+.home-empty-body {
+  max-width: 520px;
+  color: var(--color-muted);
+  font-size: var(--text-13);
+  line-height: var(--leading-20);
+}
+
+.home-empty-actions {
+  display: flex;
+  padding-top: 18px;
+}

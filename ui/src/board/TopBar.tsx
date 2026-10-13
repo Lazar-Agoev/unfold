@@ -96,7 +96,6 @@ export function TopBar({ target }: { readonly target: PageTarget }) {
             setPageLens(target, next);
           }}
           label="Lens"
-          variant="lens"
         />
       </div>
       <Button

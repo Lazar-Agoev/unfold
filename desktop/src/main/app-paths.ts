@@ -16,14 +16,12 @@ export interface BasePaths {
 /**
  * The app folders Rust receives in `addon.init` (docs/architecture.md#storage):
  * - app data (settings, the workspace, the window's state) is Electron's user-data folder;
- * - logs are `~/Library/Logs/Unfold`;
- * - fallback caches for folders Unfold can't write to sit under `~/Library/Caches/Unfold`.
+ * - logs are `~/Library/Logs/Unfold`.
  */
 export function appFolders(base: BasePaths): AppFolders {
   return {
     appDataDir: base.userData,
     logsDir: join(base.home, "Library", "Logs", "Unfold"),
-    fallbackCacheDir: join(base.home, "Library", "Caches", "Unfold", "folders"),
   };
 }
 

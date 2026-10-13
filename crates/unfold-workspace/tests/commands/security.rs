@@ -20,7 +20,7 @@ fn every_path_a_window_names_stays_inside_its_project() {
     let harness = Harness::compiled("ts-orders");
     let project = &harness.project;
     for bad in BAD_PATHS {
-        for command in ["file_view", "reveal_in_finder", "open_in_editor", "scope_dir"] {
+        for command in ["file_view", "open_in_editor"] {
             assert_eq!(
                 harness.code(1, command, json!({ "project": project, "path": bad })),
                 "invalid_path",
@@ -37,7 +37,7 @@ fn every_path_a_window_names_stays_inside_its_project() {
         )
         .expect("write");
         std::os::unix::fs::symlink(outside.path(), harness.root.join("escape")).expect("link");
-        for command in ["file_view", "scope_dir"] {
+        for command in ["file_view", "open_in_editor"] {
             assert_eq!(
                 harness.code(
                     1,
@@ -94,11 +94,6 @@ fn absolute_paths_and_the_window_state_need_the_main_process() {
         assert_eq!(harness.code(1, command, args.clone()), "untrusted", "{command}");
         assert!(harness.trusted(command, args).is_ok(), "{command}");
     }
-    // A window can add back only a folder the workspace removed, never any path.
-    assert_eq!(
-        harness.code(1, "readd_project", json!({ "path": "/etc" })),
-        "not_found"
-    );
 }
 
 #[test]
@@ -144,7 +139,7 @@ fn malformed_commands_are_rejected_with_codes() {
         (r#"{"command":"card","args":{"key":1}}"#, "invalid_args"),
         (r#"{"command":"card","args":{"key":"x"}}"#, "invalid_args"),
         (
-            r#"{"command":"scope_dir","args":{"project":"p-x","path":"","extra":true}}"#,
+            r#"{"command":"create_folder","args":{"project":"p-x","path":"","extra":true}}"#,
             "invalid_args",
         ),
     ] {

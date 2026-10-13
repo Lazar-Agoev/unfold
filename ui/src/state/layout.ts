@@ -8,7 +8,7 @@ import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { ProjectId } from "../ipc/generated";
 
-export type HomeView = "overview" | "health" | "activity" | "recents" | "drafts";
+export type HomeView = "overview" | "health" | "drafts";
 export type BoardsFilter = "all" | "published" | "drafts";
 export type BoardsSort = "edited" | "title";
 

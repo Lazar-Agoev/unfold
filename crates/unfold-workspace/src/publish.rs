@@ -4,24 +4,21 @@ use unfold_core::vocab::FileState;
 use unfold_core::{Key, RepoPath};
 use unfold_engine::UpdateOutcome;
 use unfold_reader::ReaderIndex;
-use unfold_store::CommitStats;
 
-use crate::commit;
 use crate::compile::CompileOutcome;
 use crate::error::WorkspaceError;
 use crate::events::{MAX_LISTED, WorkspaceEvent};
-use crate::problems::{IndexLogEntry, ProblemCategory, ProblemItem, graph_problems, project_problem_count};
+use crate::problems::{ProblemCategory, ProblemItem, graph_problems, project_problem_count};
 use crate::shared::{Shared, lock};
 use crate::status::{Activity, GraphCounts, WatchMode};
 use crate::watcher;
 
 /// Installs the new reader index and tells the windows what changed: `graph_updated` (with
-/// everything changed after a full commit), `problems_changed`, `project_state`, the Index log,
-/// and, for a periodic scan, `files_changed`.
+/// everything changed after a full commit), `problems_changed`, `project_state`, and, for a
+/// periodic scan, `files_changed`.
 pub(crate) fn committed(
     shared: &Shared,
     outcome: &UpdateOutcome,
-    stats: &CommitStats,
     first: bool,
     rescanned: bool,
 ) -> CompileOutcome {
@@ -54,8 +51,6 @@ pub(crate) fn committed(
         all.graph = problems;
         all.compile = None;
     });
-    let at_ms = commit::now_ms();
-    lock(&shared.index_log).push(IndexLogEntry::new(at_ms, &outcome.stats, stats));
     let summary = &outcome.summary;
     if first || !summary.is_empty() {
         let strings = |paths: &[RepoPath]| {

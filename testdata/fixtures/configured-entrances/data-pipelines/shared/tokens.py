@@ -1,2 +1,0 @@
-def current():
-    return "token"

@@ -9,20 +9,18 @@
 //! | Work | Request | Pool |
 //! | --- | --- | --- |
 //! | Compile (first or later) | `compile()` | every core but one |
-//! | Rebuild from scratch | facts cache cleared, `rebuild()`, the stored graph replaced | every core but one |
 //! | Background update | `background(paths)` | background pool |
 //! | Scan tick or event overflow | `reopen()`: every file by size and time | background pool |
 //! | Reopen | store graph → `restore` → `reopen()` | background pool |
 //! | Recompile (engine version changed, cache recreated) | fresh engine, `reopen()` | background pool |
 //!
-//! **The first Compile** creates `.unfold/` (or the fallback location), takes the folder lock,
-//! and opens the store, and only then. **If `local/cache/` disappears** while the folder is
-//! open, the next piece of work notices, recreates it, and compiles everything again with a
-//! fresh engine. **The reopen check** restores the stored graph and checks every file by size and
+//! **The first Compile** creates `.unfold/`, takes the folder lock, and opens the store, and
+//! only then. **If `local/cache/` disappears** while the folder is open, the next piece of work
+//! notices, recreates it, and compiles everything again with a fresh engine. **The reopen check** restores the stored graph and checks every file by size and
 //! time; when nothing the graph was built from changed while the folder was closed, it neither
 //! links again nor commits. **A failed or cancelled commit** rolls back and the engine doesn't adopt the
-//! update, so the engine, the store, and readers all keep the previous graph. A Compile or
-//! Rebuild the user cancels stops even while committing; background work commits once started.
+//! update, so the engine, the store, and readers all keep the previous graph. A Compile the user
+//! cancels stops even while committing; background work commits once started.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Mutex};
@@ -30,23 +28,21 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 
 use unfold_core::RepoPath;
-use unfold_core::vocab::FileState;
 use unfold_engine::update::Progress;
 use unfold_engine::{CancelToken, Engine, Language, UpdateError, UpdateRequest};
-use unfold_store::{CommitStats, Store, Writer};
+use unfold_store::{Store, Writer};
 
 use crate::commit::{self, Committed};
-use crate::compile::{CompileJob, CompileMode, CompileOutcome, CompileProgress, ProgressFn};
+use crate::compile::{CompileJob, CompileOutcome, CompileProgress, ProgressFn};
 use crate::error::{Result, WorkspaceError};
 use crate::events::WorkspaceEvent;
 use crate::facts_cache::StoreFactsCache;
 use crate::lock::FolderLock;
 use crate::publish;
-use crate::shared::{Job, LinkInputs, Running, Shared, fallback_of, lock};
+use crate::shared::{Job, Running, Shared, lock};
 use crate::state::write_json;
 use crate::status::{Activity, WatchMode};
 use crate::storage::open_store;
-use crate::watcher;
 
 /// What the engine thread does next.
 enum Work {
@@ -61,7 +57,6 @@ enum Work {
 /// Which update to run.
 enum RunKind {
     Compile,
-    Rebuild,
     Background(Vec<RepoPath>),
     Rescan,
     Reopen,
@@ -71,7 +66,7 @@ enum RunKind {
 impl RunKind {
     fn activity(&self) -> Activity {
         match self {
-            Self::Compile | Self::Rebuild | Self::Recompile => Activity::Compiling { done: 0, total: 0 },
+            Self::Compile | Self::Recompile => Activity::Compiling { done: 0, total: 0 },
             Self::Background(paths) => Activity::Updating {
                 files: Some(u32::try_from(paths.len()).unwrap_or(u32::MAX)),
             },
@@ -82,7 +77,6 @@ impl RunKind {
     fn request<'a>(&self) -> UpdateRequest<'a> {
         match self {
             Self::Compile => UpdateRequest::compile(),
-            Self::Rebuild => UpdateRequest::rebuild(),
             Self::Background(paths) => UpdateRequest::background(paths.clone()),
             Self::Rescan | Self::Reopen | Self::Recompile => UpdateRequest::reopen(),
         }
@@ -184,7 +178,7 @@ impl EngineThread {
             }
             let now = Instant::now();
             let mut deadline: Option<Instant> = None;
-            if sched.compiled && !sched.paused {
+            if sched.compiled {
                 if sched.watch == WatchMode::Scanning {
                     let next = *sched.next_scan.get_or_insert(now + options.scan_interval);
                     if now >= next {
@@ -254,7 +248,7 @@ impl EngineThread {
 
     /// Whether the store's database disappeared (someone deleted `local/cache/`).
     fn cache_missing(&self) -> bool {
-        self.writer.is_some() && !lock(&self.shared.layout).database().exists()
+        self.writer.is_some() && !self.shared.layout.database().exists()
     }
 
     /// Recreates `local/cache/` and an empty store, with a fresh engine.
@@ -270,15 +264,7 @@ impl EngineThread {
 
     /// Creates `local/` if needed and opens the store there (the first Compile, or recovery).
     fn open_store(&mut self) -> Result<()> {
-        let mut layout = lock(&self.shared.layout).clone();
-        let (store, folder_lock) = open_store(&mut layout, &self.version)?;
-        let fallback = fallback_of(&layout);
-        let drafts = layout.drafts();
-        *lock(&self.shared.layout) = layout;
-        self.shared.update_status(|model| model.fallback = fallback);
-        if fallback.is_some() {
-            watcher::watch_outside(&self.shared, &drafts);
-        }
+        let (store, folder_lock) = open_store(&self.shared.layout, &self.version)?;
         self.install(store, folder_lock)
     }
 
@@ -296,7 +282,7 @@ impl EngineThread {
         // Under the state lock, like `Workspace::update_local_state`, so this first write can't
         // overwrite a newer state saved meanwhile.
         let state = lock(&self.shared.local_state);
-        let state_file = lock(&self.shared.layout).state_file();
+        let state_file = self.shared.layout.state_file();
         if !state_file.exists() {
             write_json(&state_file, &*state, "state.json")?;
         }
@@ -315,7 +301,6 @@ impl EngineThread {
 
     fn compile(&mut self, job: CompileJob) {
         let CompileJob {
-            mode,
             cancel,
             progress,
             reply,
@@ -329,18 +314,15 @@ impl EngineThread {
                 std::mem::take(&mut sched.rescan),
             )
         };
-        let result = self.compile_inner(mode, cancel, progress.as_ref());
+        let result = self.compile_inner(cancel, progress.as_ref());
         if result.is_err() {
             self.restore_pending(paths.into_iter().collect(), all);
-        } else {
-            self.shared.update_status(|model| model.changed = 0);
         }
         let _ = reply.send(result);
     }
 
     fn compile_inner(
         &mut self,
-        mode: CompileMode,
         cancel: CancelToken,
         progress: Option<&ProgressFn>,
     ) -> Result<CompileOutcome> {
@@ -354,14 +336,7 @@ impl EngineThread {
                 return Err(error);
             }
         }
-        let kind = match mode {
-            CompileMode::Check => RunKind::Compile,
-            // The rebuild reads no cached facts. The stored graph stays until the rebuilt one
-            // replaces it, and the cache gains only fresh entries, so a cancelled or failed
-            // rebuild leaves the previous graph with its facts.
-            CompileMode::FromScratch => RunKind::Rebuild,
-        };
-        self.run(kind, cancel, progress)
+        self.run(RunKind::Compile, cancel, progress)
     }
 
     fn background(&mut self, paths: Vec<RepoPath>, all: bool, cancel: CancelToken) {
@@ -384,12 +359,8 @@ impl EngineThread {
         sched.pending.extend(paths);
         sched.rescan |= all;
         sched.last_change.get_or_insert_with(Instant::now);
-        let (paused, changed) = (sched.paused, sched.changed());
         drop(sched);
         self.shared.wake.notify_all();
-        if paused {
-            self.shared.update_status(|model| model.changed = changed);
-        }
     }
 
     fn reopen(&mut self, cancel: CancelToken) {
@@ -406,7 +377,6 @@ impl EngineThread {
             engine
                 .restore(loaded.graph, loaded.launches, loaded.disks, loaded.basis)
                 .map_err(|error| WorkspaceError::Update(error.to_string()))?;
-            *lock(&self.shared.linked_from) = Some(Arc::new(LinkInputs::of(engine)));
             Ok(loaded.committed)
         });
         match restored {
@@ -506,15 +476,11 @@ impl EngineThread {
         // A Compile the user cancels stops even while committing, so the cancel is acknowledged
         // promptly; background work that newer changes cancel always commits once it has started
         // committing (§7.5), so a stream of edits can't starve it.
-        let commit_cancel = matches!(kind, RunKind::Compile | RunKind::Rebuild).then(|| cancel.clone());
+        let commit_cancel = matches!(kind, RunKind::Compile).then(|| cancel.clone());
         let request = kind.request().with_cancel(cancel).with_progress(&on_progress);
         let prepared = engine.prepare(request).map_err(update_error)?;
         let writer = self.writer.as_ref().ok_or(WorkspaceError::NotCompiled)?;
-        // A rebuild rewrites the whole stored graph, as when the store's contents are unknown.
-        let base = self
-            .committed
-            .as_ref()
-            .filter(|_| !matches!(kind, RunKind::Rebuild));
+        let base = self.committed.as_ref();
         let first = base.is_none();
         // The engine adopts the update only once the store holds it: a failed or cancelled
         // commit rolls back and leaves the engine, the store, and readers on the previous graph.
@@ -530,37 +496,10 @@ impl EngineThread {
             )?),
         };
         let outcome = engine.adopt(prepared).map_err(update_error)?;
-        *lock(&shared.linked_from) = Some(Arc::new(LinkInputs::of(engine)));
-        let stats = match next {
-            Some((stats, next)) => {
-                self.committed = Some(next);
-                stats
-            }
-            None => CommitStats::default(),
-        };
-        if matches!(kind, RunKind::Rebuild) {
-            // Rebuild drops last-good facts (§7.1): a file that doesn't parse now is failed,
-            // and the cache must not bring its last good version back later. Fresh entries
-            // replaced every other file's. The cache is an accelerator: if this fails, the
-            // worst case is a last-good version returning for a file that is still broken.
-            let failed: Vec<&RepoPath> = outcome
-                .graph
-                .files
-                .iter()
-                .filter(|file| file.file.state == FileState::Failed)
-                .map(|file| &file.file.path)
-                .collect();
-            if !failed.is_empty() {
-                let _ = lock(writer).forget_facts(&failed);
-            }
+        if let Some(next) = next {
+            self.committed = Some(next);
         }
         let rescanned = matches!(kind, RunKind::Rescan);
-        Ok(publish::committed(
-            &self.shared,
-            &outcome,
-            &stats,
-            first,
-            rescanned,
-        ))
+        Ok(publish::committed(&self.shared, &outcome, first, rescanned))
     }
 }

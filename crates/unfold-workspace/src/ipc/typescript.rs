@@ -197,7 +197,7 @@ mod tests {
         assert!(text.contains("export type WorkspaceEvent ="));
         assert!(text.contains("\"board_conflict\""));
         assert!(
-            text.contains("compile: { args: CompileArgs; result: CompileOutcome; stream: CompileProgress }")
+            text.contains("compile: { args: ProjectArgs; result: CompileOutcome; stream: CompileProgress }")
         );
         assert!(!text.contains("bigint"));
         assert_eq!(text, generate().expect("again"), "generation is deterministic");

@@ -66,11 +66,11 @@ test.describe("the peek sheet", () => {
       await expect(card(page, "src/lib/validate.ts#function:validateOrder")).toBeVisible();
     });
 
-    await test.step("the sheet's menu offers Open in editor and Reveal in Finder", async () => {
+    await test.step("the sheet's menu offers only Open in editor", async () => {
       await peek.getByRole("button", { name: "More" }).click();
       const menu = page.getByRole("menu", { name: "File actions" });
+      await expect(menu.getByRole("menuitem")).toHaveCount(1);
       await expect(menu.getByRole("menuitem", { name: /^Open in editor/ })).toBeVisible();
-      await expect(menu.getByRole("menuitem", { name: "Reveal in Finder" })).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(menu).toBeHidden();
       await expect(peek).toBeVisible();

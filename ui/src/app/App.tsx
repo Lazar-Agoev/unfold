@@ -6,7 +6,6 @@
 import { AddBox } from "../add";
 import { Toaster } from "../components";
 import { DialogHost } from "../dialogs";
-import { CompiledToasts } from "../home";
 import { Content } from "./Content";
 import { Sidebar } from "./Sidebar";
 import { useWindowWiring } from "./wiring";
@@ -21,7 +20,6 @@ export function App() {
       <AddBox />
       <DialogHost />
       <Toaster />
-      <CompiledToasts />
     </div>
   );
 }

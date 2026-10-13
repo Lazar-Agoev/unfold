@@ -18,34 +18,24 @@ const PLANNED = [
   "group",
   "link",
   "search",
-  "clock",
   "drafts",
   "folder",
   "board",
   "board-draft",
-  "branch",
   "check",
   "gear",
   "arrange",
   "external-link",
-  "reveal",
   "pin",
   "close",
   "add-circle",
   "warning-circle",
   "warning-triangle",
-  "check-circle",
   "info",
-  "shield",
   "publish",
-  "move-back",
   "copy",
-  "activity",
   "edit",
-  "layers",
   "minus",
-  "back",
-  "forward",
   "agent",
   "frame",
   "frame-api",
@@ -93,13 +83,12 @@ describe("Icon", () => {
 
 describe("StateGlyph", () => {
   it("draws the sidebar row's sizes and the state line's smaller ones", () => {
-    const size = (glyph: "ring" | "failed" | "resting" | "paused", variant: "row" | "line") =>
+    const size = (glyph: "ring" | "failed" | "resting", variant: "row" | "line") =>
       render(<StateGlyph glyph={glyph} variant={variant} />).container.querySelector("svg")?.getAttribute("width");
     expect(size("ring", "row")).toBe("14");
     expect(size("ring", "line")).toBe("12");
     expect(size("failed", "row")).toBe("14");
     expect(size("resting", "line")).toBe("12");
-    expect(size("paused", "row")).toBe("12");
   });
 
   it("thickens the ring on the state line, as 07 draws it", () => {

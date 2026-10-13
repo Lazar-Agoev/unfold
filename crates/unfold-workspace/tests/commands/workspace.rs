@@ -1,13 +1,13 @@
-//! The workspace's rows: adding (by path and by repository), removing and adding back, order,
-//! expansion, selection, recent boards, `workspace.json` across restarts, and unknown projects.
+//! The workspace's rows: adding (and compiling at once), folders Unfold can't write into,
+//! removing, order, expansion, selection, `workspace.json` across restarts, and unknown
+//! projects.
 
 use std::collections::BTreeSet;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 use unfold_workspace::{Host, ProjectId};
 
-use crate::common::{Harness, is_event, options};
+use crate::common::{Harness, copy_dir, eventually, is_event, options, playground};
 
 fn id(text: &str) -> ProjectId {
     serde_json::from_value(json!(text)).expect("a project id")
@@ -22,20 +22,23 @@ fn ids(workspace: &Value) -> Vec<String> {
         .collect()
 }
 
+/// Waits until project `project`'s row says its graph is current.
+fn wait_current(harness: &Harness, project: &str) {
+    eventually("the project is compiled", || {
+        harness.row(project)["state"] == json!({"kind": "current"})
+    });
+}
+
 #[test]
-fn adding_finds_existing_rows_and_never_writes_in_the_folder() {
+fn adding_compiles_at_once_and_finds_existing_rows() {
     let harness = Harness::new("ts-orders", false);
     let row = harness.row(&harness.project);
     assert_eq!(row["name"], "ts-orders");
     assert_eq!(row["expanded"], true);
-    assert_eq!(row["live"], false);
-    assert_eq!(row["git"], Value::Null);
-    assert_eq!(
-        row["state"],
-        json!({"kind": "resting", "last": {"kind": "not_compiled"}, "atMs": row["state"]["atMs"]})
-    );
+    assert_eq!(row["live"], true, "adding wakes the project to compile it");
     assert!(harness.project.starts_with("p-") && harness.project.len() == 12);
-    assert!(!harness.root.join(".unfold/local").exists());
+    wait_current(&harness, &harness.project);
+    assert!(harness.root.join(".unfold/local/cache/graph.sqlite").exists());
 
     // The same folder, spelled another way, is the same row.
     let again = harness
@@ -64,6 +67,52 @@ fn adding_finds_existing_rows_and_never_writes_in_the_folder() {
         )
         .expect_err("a file");
     assert_eq!(file.code, "not_a_folder");
+}
+
+#[test]
+fn every_folder_is_a_project_of_its_own() {
+    let harness = Harness::empty(options(false));
+    // Two checkouts of one repository, and a subfolder of one of them.
+    for checkout in ["repo", "copy"] {
+        std::fs::create_dir_all(harness.base.join(checkout).join(".git")).expect("mkdir");
+        copy_dir(&playground("ts-orders"), &harness.base.join(checkout).join("app"));
+    }
+    let mut ids = BTreeSet::new();
+    for (folder, name) in [("repo", "repo"), ("copy", "copy"), ("repo/app", "app")] {
+        let added = harness
+            .trusted("add_project", json!({ "path": harness.base.join(folder) }))
+            .expect("add");
+        assert_eq!(added["status"], "added", "{folder}");
+        assert_eq!(added["project"]["name"], name, "{folder}");
+        ids.insert(added["project"]["id"].as_str().expect("id").to_owned());
+    }
+    assert_eq!(ids.len(), 3, "every folder is its own row");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_folder_unfold_cant_write_into_is_refused() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let harness = Harness::new("ts-orders", false);
+    let folder = harness.base.join("read-only");
+    copy_dir(&playground("py-orders"), &folder);
+    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o555)).expect("chmod");
+    let refused = harness.trusted("add_project", json!({ "path": folder }));
+    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o755)).expect("chmod back");
+    let error = refused.expect_err("read-only");
+    assert_eq!(error.code, "folder_not_writable");
+    assert!(
+        error.message.contains("Unfold needs to write `.unfold/`"),
+        "{}",
+        error.message
+    );
+    assert_eq!(
+        ids(&harness.ok(1, "workspace", json!({}))),
+        std::slice::from_ref(&harness.project),
+        "no row was added"
+    );
+    assert!(!folder.join(".unfold").exists());
 }
 
 #[test]
@@ -110,22 +159,13 @@ fn rows_reorder_expand_and_announce_themselves() {
 }
 
 #[test]
-fn selecting_wakes_the_project_and_becomes_the_default() {
+fn selecting_keeps_the_project_live_and_becomes_the_default() {
     let harness = Harness::new("ts-orders", false);
-    let mark = harness.sink.mark();
     assert_eq!(
         harness.ok(1, "select_project", json!({ "project": harness.project })),
         Value::Null
     );
-    // Live when select returns; the state change is announced.
-    let row = harness.row(&harness.project);
-    assert_eq!(row["live"], true);
-    assert_eq!(row["state"], json!({"kind": "not_compiled"}));
-    assert!(harness.sink.all().iter().skip(mark).any(|message| is_event(
-        message,
-        "project_state",
-        &harness.project
-    )));
+    assert_eq!(harness.row(&harness.project)["live"], true);
     assert_eq!(harness.ok(1, "workspace", json!({}))["selected"], harness.project);
     assert_eq!(
         harness.ok(1, "select_project", json!({ "project": null })),
@@ -139,7 +179,7 @@ fn selecting_wakes_the_project_and_becomes_the_default() {
 }
 
 #[test]
-fn removed_folders_can_be_added_back_and_nothing_else() {
+fn removing_keeps_the_folder_and_adding_it_again_makes_a_new_row() {
     let harness = Harness::new("ts-orders", false);
     let (python, python_root) = harness.add("py-orders", "py-orders");
     harness.ok(1, "select_project", json!({ "project": python }));
@@ -159,12 +199,10 @@ fn removed_folders_can_be_added_back_and_nothing_else() {
     harness.host.detach_window(2).expect("detach");
 
     let mark = harness.sink.mark();
-    let before = now_ms();
     assert_eq!(
         harness.ok(1, "remove_project", json!({ "project": python })),
         Value::Null
     );
-    let after = now_ms();
     assert!(
         harness
             .sink
@@ -175,17 +213,12 @@ fn removed_folders_can_be_added_back_and_nothing_else() {
     );
     let workspace = harness.ok(1, "workspace", json!({}));
     assert_eq!(ids(&workspace), std::slice::from_ref(&harness.project));
-    let path = python_root.to_str().expect("utf-8");
-    let removed_at = workspace["removed"][0]["removedAtMs"]
-        .as_i64()
-        .expect("removedAtMs");
-    assert!(
-        (before..=after).contains(&removed_at),
-        "it records when it was removed"
-    );
     assert_eq!(
-        workspace["removed"],
-        json!([{ "path": path, "name": "py-orders", "removedAtMs": removed_at }])
+        workspace
+            .as_object()
+            .map(|fields| fields.keys().cloned().collect::<Vec<_>>()),
+        Some(vec!["projects".to_owned(), "selected".to_owned()]),
+        "project rows only"
     );
     assert_eq!(
         workspace["selected"],
@@ -196,7 +229,7 @@ fn removed_folders_can_be_added_back_and_nothing_else() {
         python_root.join(".unfold/local/cache").exists(),
         "its .unfold stays"
     );
-    for command in ["project_summary", "git_info", "problems"] {
+    for command in ["project_summary", "problems"] {
         assert_eq!(
             harness.code(1, command, json!({ "project": python })),
             "unknown_project",
@@ -204,39 +237,11 @@ fn removed_folders_can_be_added_back_and_nothing_else() {
         );
     }
 
-    // Only a path "Opened before" lists can come back from a window.
-    assert_eq!(
-        harness.code(1, "readd_project", json!({ "path": harness.root })),
-        "not_found"
-    );
-    let back = harness.ok(1, "readd_project", json!({ "path": path }));
+    let back = harness
+        .trusted("add_project", json!({ "path": python_root }))
+        .expect("add again");
     assert_eq!(back["status"], "added");
     assert_ne!(back["project"]["id"], python, "a new row gets a new id");
-    assert_eq!(
-        back["project"]["state"]["last"]["kind"], "current",
-        "its graph is still there"
-    );
-    assert_eq!(harness.ok(1, "workspace", json!({}))["removed"], json!([]));
-}
-
-#[test]
-fn recent_boards_follow_their_projects() {
-    let harness = Harness::new("ts-orders", false);
-    let (python, _) = harness.add("py-orders", "py-orders");
-    let projects = harness.host.projects().expect("initialized");
-    projects
-        .record_recent_board(&id(&harness.project), ".unfold/boards/a.json", "A")
-        .expect("record");
-    projects
-        .record_recent_board(&id(&python), ".unfold/boards/b.json", "B")
-        .expect("record");
-    let recents = harness.ok(1, "workspace", json!({}))["recentBoards"].clone();
-    assert_eq!(recents[0]["project"], python);
-    assert_eq!(recents[1]["board"], ".unfold/boards/a.json");
-    assert_eq!(recents[1]["title"], "A");
-    harness.ok(1, "remove_project", json!({ "project": python }));
-    let recents = harness.ok(1, "workspace", json!({}))["recentBoards"].clone();
-    assert_eq!(recents.as_array().map(Vec::len), Some(1));
 }
 
 #[test]
@@ -263,7 +268,6 @@ fn the_workspace_comes_back_after_a_restart_resting() {
         &json!({
             "appDataDir": harness.base.join("app"),
             "logsDir": harness.base.join("logs"),
-            "fallbackCacheDir": harness.base.join("fallback"),
         })
         .to_string(),
     )
@@ -295,12 +299,9 @@ fn unknown_projects_are_refused_everywhere() {
     let unknown = json!({ "project": "p-nonenonen" });
     for command in [
         "project_summary",
-        "compile_preview",
         "problems",
-        "index_log",
         "compile",
         "project_config",
-        "git_info",
         "remove_project",
     ] {
         assert_eq!(
@@ -365,12 +366,4 @@ fn a_new_shared_name_reaches_every_window() {
         ),
         "invalid_settings"
     );
-}
-
-/// Now, in milliseconds since the Unix epoch.
-fn now_ms() -> i64 {
-    let elapsed = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("after the epoch");
-    i64::try_from(elapsed.as_millis()).expect("fits")
 }

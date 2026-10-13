@@ -16,9 +16,9 @@ import { useWindowStore } from "./window";
 
 const WORKSPACE_KEY = engineKey("workspace", {});
 
-/** The workspace, kept current (refetched when the window gains focus: branches change outside, worktree metadata). */
+/** The workspace, kept current. */
 export function useWorkspace(): WorkspaceView | undefined {
-  return useEngineQuery("workspace", {}, { refetchOnWindowFocus: true }).data;
+  return useEngineQuery("workspace", {}).data;
 }
 
 /** The workspace from the cache, outside React. */
@@ -123,13 +123,6 @@ export async function addProjectFromPicker(): Promise<ProjectId | null> {
   }
   await selectProject(added.project);
   return added.project;
-}
-
-/** Adds back a folder "Opened before" lists (app-data state), then selects it. */
-export async function readdProject(path: string): Promise<ProjectId> {
-  const added = await call("readd_project", { path });
-  await selectProject(added.project.id);
-  return added.project.id;
 }
 
 /** Expands or collapses a project's sidebar row (`workspace_changed` brings the new rows). */

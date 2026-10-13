@@ -16,8 +16,6 @@ pub struct AppConfig {
     pub app_data_dir: PathBuf,
     /// Logs.
     pub logs_dir: PathBuf,
-    /// The parent of each project folder's fallback `local/` (`<fallbackCacheDir>/<hash>/`).
-    pub fallback_cache_dir: PathBuf,
 }
 
 /// Timings and engine settings for projects and their workspaces.
@@ -91,9 +89,8 @@ mod tests {
 
     #[test]
     fn app_config_reads_the_init_json() {
-        let config: AppConfig =
-            serde_json::from_str(r#"{"appDataDir":"/a","logsDir":"/l","fallbackCacheDir":"/c"}"#)
-                .expect("parse");
-        assert_eq!(config.fallback_cache_dir, PathBuf::from("/c"));
+        let config: AppConfig = serde_json::from_str(r#"{"appDataDir":"/a","logsDir":"/l"}"#).expect("parse");
+        assert_eq!(config.app_data_dir, PathBuf::from("/a"));
+        assert_eq!(config.logs_dir, PathBuf::from("/l"));
     }
 }

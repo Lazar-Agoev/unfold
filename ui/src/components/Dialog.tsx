@@ -2,7 +2,7 @@
  * Modal dialogs: `Dialog` (the frame), `ConfirmDialog` (Discard changes, Delete), and `PromptDialog`
  * (a name, e.g. New folder).
  *
- * A dialog is placed on the window (Settings, Project settings) or on the canvas area
+ * A dialog is placed on the window (Settings) or on the canvas area
  * (`#content-area`: Publish, Discard, Delete, Rename), with its scrim over just that area.
  * While open, it traps Tab inside itself, makes the app behind it inert, closes on Escape, and
  * returns focus to where it was when it closes.
@@ -26,19 +26,12 @@ export interface DialogProps {
   readonly title: string;
   /** Under the title; it becomes the dialog's accessible description. */
   readonly description?: ReactNode;
-  /**
-   * 400 for confirmations, 470 for Settings, 520 for Publish, 880 for Project settings and 1000 for the
-   * launch editor (all but 400 and 520 with a close button and a ruled header).
-   */
-  readonly width: 400 | 470 | 520 | 880 | 1000;
-  /** A fixed height in px (Project settings: 700); otherwise it fits its content. */
-  readonly height?: number;
+  /** 400 for confirmations, 470 for Settings (with a close button and a ruled header), 520 for Publish. */
+  readonly width: 400 | 470 | 520;
   /** `window`: centered on the window, scrim over everything. `canvas`: centered on the canvas area, scrim over it alone. */
   readonly placement: "window" | "canvas";
   /** Buttons, right-aligned at the bottom. */
   readonly footer?: ReactNode;
-  /** A control in the header, before the close button (the launch editor's kind switch). */
-  readonly headerAction?: ReactNode;
   /** What takes focus when the dialog opens; defaults to the first focusable element. */
   readonly initialFocus?: RefObject<HTMLElement | null>;
   /** `alertdialog` for confirmations that interrupt. */
@@ -76,10 +69,8 @@ export function Dialog({
   title,
   description,
   width,
-  height,
   placement,
   footer,
-  headerAction,
   initialFocus,
   role = "dialog",
   className,
@@ -103,7 +94,7 @@ export function Dialog({
   if (!open) {
     return null;
   }
-  const closable = width === 470 || width === 880 || width === 1000;
+  const closable = width === 470;
   return (
     <Portal>
       <div
@@ -124,7 +115,6 @@ export function Dialog({
           aria-describedby={description === undefined ? undefined : `${id}-description`}
           tabIndex={-1}
           className={cx("dialog", `dialog-${width}`, className)}
-          style={height === undefined ? undefined : { height }}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.preventDefault();
@@ -146,7 +136,6 @@ export function Dialog({
                 </div>
               )}
             </div>
-            {headerAction}
             {closable ? <IconButton icon="close" label="Close" onClick={onClose} /> : null}
           </div>
           {children === undefined ? null : <div className="dialog-body">{children}</div>}

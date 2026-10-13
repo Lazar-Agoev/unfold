@@ -1,14 +1,13 @@
 /**
  * Health rows: each problem as a title, an explanation, a location, and the one action that
- * deals with it (Open the file, or Settings on the right section); and boards with health items.
+ * deals with it (show the file, or open the settings file in the editor); and boards with health items.
  * Unresolved calls are facts about the code, never problems, so they never appear here.
  */
 
 import type { BoardHealthCount, ProblemCategory, ProblemItem } from "../../ipc";
-import type { ProjectSettingsSection } from "../../state/overlays";
 import { plural } from "../../lib/format";
 
-export type HealthAction = { readonly kind: "open"; readonly path: string; readonly line: number | null } | { readonly kind: "settings"; readonly section: ProjectSettingsSection };
+export type HealthAction = { readonly kind: "open"; readonly path: string; readonly line: number | null } | { readonly kind: "edit"; readonly path: string };
 
 export interface HealthRow {
   readonly id: string;
@@ -56,20 +55,12 @@ function explanation(item: ProblemItem): string {
   }
 }
 
-/** The Project settings section a settings problem is about. */
-export function settingsSection(message: string): ProjectSettingsSection {
-  if (/python/i.test(message)) {
-    return "python";
-  }
-  return /scope|include|exclude/i.test(message) ? "scope" : "general";
-}
-
 function action(item: ProblemItem): HealthAction | null {
   switch (item.category) {
     case "settings":
-      return { kind: "settings", section: settingsSection(item.message) };
+      return { kind: "edit", path: item.path === "" ? "unfold.toml" : item.path };
     case "discovery":
-      return { kind: "settings", section: "scope" };
+      return { kind: "edit", path: "unfold.toml" };
     case "doesnt_parse":
     case "cant_read":
     case "input":

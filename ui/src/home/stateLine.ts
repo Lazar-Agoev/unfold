@@ -1,24 +1,18 @@
 /**
  * Home's state line under the project's name: the state in words, a muted detail, one action link, and the
- * quiet notes (fallback location, watching by scanning) that the trailing info icon explains. Plain data,
- * so every state's wording is testable.
+ * quiet note (watching by scanning) that the trailing info icon explains. Plain data, so every state's
+ * wording is testable.
  */
 
-import type { CompileProgress, FallbackReason, ProjectState, ProjectSummary } from "../ipc";
+import type { CompileProgress, ProjectState, ProjectSummary } from "../ipc";
 import { formatCount, languageList, plural, relativeTime } from "../lib/format";
 
-/** A run of the detail: mono for branch names. Runs sit 6px apart ("· branch" and "main"). */
-interface DetailPart {
-  readonly text: string;
-  readonly mono?: boolean;
-}
-
-export type StateAction = "cancel" | "health" | "resume";
+export type StateAction = "cancel" | "health";
 
 export interface StateLineModel {
   readonly headline: string;
   /** Starts with "· "; empty when the state needs no detail. */
-  readonly detail: readonly DetailPart[];
+  readonly detail: string;
   /** The accent link after the detail. `joined` follows the detail with no gap. */
   readonly action: { readonly kind: StateAction; readonly label: string; readonly joined: boolean } | null;
   /** Sentences for the info icon's tooltip; no icon when empty. */
@@ -30,8 +24,6 @@ export interface StateLineInput {
   /** The selected project's summary, once it has answered. */
   readonly summary: ProjectSummary | undefined;
   readonly progress: CompileProgress | null;
-  /** The branch (or detached commit) for the not-compiled line. */
-  readonly branch: string | null;
   /** Whether every file that doesn't parse shows its last version that parsed (from `problems`); unknown until read. */
   readonly lastGood?: boolean;
   readonly nowMs?: number;
@@ -46,17 +38,6 @@ const STAGE_WORDS: Readonly<Record<string, string>> = {
   detect: "finding entrances",
   validate: "checking the graph",
 };
-
-const FALLBACK_REASONS: Readonly<Record<FallbackReason, string>> = {
-  read_only: "The folder is read-only, so the graph and drafts are kept in Unfold's app data.",
-  network_volume: "The folder is on a network volume, so the graph and drafts are kept in Unfold's app data.",
-  wal_unavailable: "The folder's disk can't hold the graph database safely, so it is kept in Unfold's app data.",
-};
-
-/** Why the graph lives in app data, in a sentence. */
-export function fallbackReasonText(reason: FallbackReason): string {
-  return FALLBACK_REASONS[reason];
-}
 
 const SCANNING_NOTE = "File events aren't available for this folder, so Unfold checks it for changes every few seconds.";
 
@@ -91,65 +72,41 @@ function graphDetail(summary: ProjectSummary | undefined, nowMs: number | undefi
   return parts.join(" · ");
 }
 
-function dot(text: string): DetailPart[] {
-  return text === "" ? [] : [{ text: `· ${text}` }];
+function dot(text: string): string {
+  return text === "" ? "" : `· ${text}`;
 }
 
 function notesOf(summary: ProjectSummary | undefined): string[] {
-  const notes: string[] = [];
-  if (summary?.status.fallback) {
-    notes.push(fallbackReasonText(summary.status.fallback));
-  }
-  if (summary?.status.watching === "scanning") {
-    notes.push(SCANNING_NOTE);
-  }
-  return notes;
+  return summary?.status.watching === "scanning" ? [SCANNING_NOTE] : [];
 }
 
-export function stateLine({ state, summary, progress, branch, lastGood, nowMs }: StateLineInput): StateLineModel {
+export function stateLine({ state, summary, progress, lastGood, nowMs }: StateLineInput): StateLineModel {
   const notes = notesOf(summary);
-  const fallback = summary?.status.fallback ? " · using fallback location" : "";
-  const line = (headline: string, detail: DetailPart[], action: StateLineModel["action"] = null): StateLineModel => ({
-    headline,
-    detail,
-    action,
-    notes,
-  });
+  const line = (headline: string, detail: string, action: StateLineModel["action"] = null): StateLineModel => ({ headline, detail, action, notes });
   switch (state.kind) {
     case "not_compiled":
-      return line("Not compiled yet", branch === null ? [] : [{ text: "· branch" }, { text: branch, mono: true }]);
+      return line("Not compiled yet", "");
     case "compiling":
       return line("Compiling", dot(compilingDetail(state, progress)), { kind: "cancel", label: "Cancel", joined: false });
     case "updating":
       return line("Updating", dot(state.files === null ? "checking the folder" : `${plural(state.files, "file")} changed`));
     case "current":
-      return line("Graph current", dot(graphDetail(summary, nowMs) + fallback));
+      return line("Graph current", dot(graphDetail(summary, nowMs)));
     case "problems": {
       const health = { kind: "health" as const, label: "See Health", joined: false };
       if (summary?.health.doesntParse === state.count) {
         const one = state.count === 1;
         const headline = one ? "1 file doesn't parse" : `${plural(state.count, "file")} don't parse`;
         const shown = one ? "showing its last version that parsed" : "showing their last versions that parsed";
-        return line(headline, dot(lastGood === true ? shown : graphDetail(summary, nowMs) + fallback), health);
+        return line(headline, dot(lastGood === true ? shown : graphDetail(summary, nowMs)), health);
       }
-      return line(plural(state.count, "problem"), dot(graphDetail(summary, nowMs) + fallback), health);
+      return line(plural(state.count, "problem"), dot(graphDetail(summary, nowMs)), health);
     }
-    case "paused":
-      return line("Paused", dot(state.changed > 0 ? `${plural(state.changed, "file")} changed since` : "background updates are off"), {
-        kind: "resume",
-        label: "Resume",
-        joined: false,
-      });
     case "failed":
-      return line("Compile failed", [{ text: "· the previous graph stays ·" }], { kind: "health", label: "See Health", joined: true });
+      return line("Compile failed", "· the previous graph stays ·", { kind: "health", label: "See Health", joined: true });
     case "resting":
       return line("Resting", dot(`last checked ${relativeTime(state.atMs, nowMs)}`));
     case "unavailable":
       return line("Unavailable", dot(state.reason));
   }
-}
-
-/** The state a project shows its Home by: a resting project's last state. */
-export function homeStateKind(state: ProjectState): ProjectState["kind"] {
-  return state.kind === "resting" ? state.last.kind : state.kind;
 }

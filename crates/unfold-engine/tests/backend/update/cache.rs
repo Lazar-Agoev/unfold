@@ -66,10 +66,6 @@ fn unchanged_files_come_from_the_cache() {
         broken.graph.file("lib/util.ts").map(|file| file.file.state),
         Some(FileState::LastGood)
     );
-
-    // Rebuild from scratch ignores the cache.
-    engine.update(UpdateRequest::rebuild()).expect("rebuild");
-    assert_eq!(language.count(), 6);
 }
 
 #[test]

@@ -1,8 +1,7 @@
 /**
- * A test's private corner of the disk: a user-data folder, a home folder (so logs and fallback
- * caches stay out of the real ones), and copies of the playgrounds. Everything lives under one
- * temporary folder outside the repository (inside it, the repository's `.gitignore` would apply to
- * the copies).
+ * A test's private corner of the disk: a user-data folder, a home folder (so logs stay out of the
+ * real ones), and copies of the playgrounds. Everything lives under one temporary folder outside
+ * the repository (inside it, the repository's `.gitignore` would apply to the copies).
  */
 
 import { chmodSync, cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -52,7 +51,7 @@ export class Sandbox {
     return folder;
   }
 
-  /** Makes a folder tree read-only (or writable again), so Unfold must use its fallback location. */
+  /** Makes a folder tree read-only (or writable again), so Unfold can't write `.unfold/` into it. */
   setReadOnly(folder: string, readOnly: boolean): void {
     const walk = (path: string): void => {
       const stat = statSync(path);

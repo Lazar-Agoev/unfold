@@ -1,6 +1,6 @@
-//! Home and Project settings: `project_summary`, `entrances` (paged and filtered per
-//! application), `scope_dir`, `compile_preview`, and Home's boards (`list_boards`,
-//! `board_thumbnails`, the Health line's boards), live and resting.
+//! Home: `project_summary` (the state line and the Health line), `entrances` (paged and
+//! filtered per application), and Home's boards (`list_boards`, `board_thumbnails`, the Health
+//! line's boards), live and resting.
 
 use serde_json::{Value, json};
 
@@ -46,28 +46,40 @@ fn the_summary_counts_the_graph_and_its_health() {
     assert!(summary["updatedAtMs"].as_i64().is_some_and(|at| at > 0));
     assert!(summary["files"].as_u64().is_some_and(|files| files > 20));
     assert_eq!(summary["languages"], json!(["typescript"]));
-    assert!(summary["applications"].as_u64().is_some_and(|count| count > 0));
-    assert!(summary["entrances"].as_u64().is_some_and(|count| count > 0));
+    let keys: Vec<&str> = summary
+        .as_object()
+        .expect("an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "project",
+            "name",
+            "path",
+            "state",
+            "status",
+            "updatedAtMs",
+            "files",
+            "languages",
+            "health"
+        ]
+    );
     let health = &summary["health"];
-    assert_eq!(health["problems"], 0);
-    assert_eq!(health["doesntParse"], 0);
-    assert_eq!(health["settingsError"], Value::Null);
-    assert_eq!(health["boardsNeedingReview"], 0);
-    assert_eq!(health["boards"], json!([]));
-    assert_eq!(summary["git"], Value::Null);
+    assert_eq!(
+        *health,
+        json!({ "doesntParse": 0, "boardsNeedingReview": 0, "boards": [] })
+    );
 
     // A file that stops parsing shows in the row's state and the Health line.
     harness.write("src/broken.ts", "export function broken( {\n");
     harness.ok(1, "compile", json!({ "project": harness.project }));
     let summary = harness.ok(1, "project_summary", json!({ "project": harness.project }));
     assert_eq!(summary["health"]["doesntParse"], 1);
-    assert_eq!(summary["state"]["kind"], "problems");
-    assert_eq!(summary["state"]["count"], summary["health"]["problems"]);
+    assert_eq!(summary["state"], json!({"kind": "problems", "count": 1}));
     let problems = harness.ok(1, "problems", json!({ "project": harness.project }));
-    assert_eq!(
-        problems.as_array().map(Vec::len),
-        summary["health"]["problems"].as_u64().map(|count| count as usize)
-    );
+    assert_eq!(problems.as_array().map(Vec::len), Some(1));
 }
 
 #[test]
@@ -233,101 +245,6 @@ fn entrances_are_paged_filtered_and_ordered_per_application() {
 }
 
 #[test]
-fn the_scope_tree_lists_folders_with_their_sources() {
-    let harness = Harness::compiled("ts-orders");
-    harness.write("node_modules/x/index.ts", "export const x = 1;\n");
-    harness.write("vendor/lib.ts", "export const v = 1;\n");
-    harness.ok(
-        1,
-        "update_project_config",
-        json!({ "project": harness.project, "edits": [{ "op": "exclude_from_graph", "path": "vendor" }] }),
-    );
-    let root = harness.ok(1, "scope_dir", json!({ "project": harness.project, "path": "" }));
-    assert_eq!(root["path"], "");
-    assert_eq!(root["truncated"], false);
-    let folders = root["folders"].as_array().expect("folders");
-    let names: Vec<&str> = folders
-        .iter()
-        .filter_map(|folder| folder["name"].as_str())
-        .collect();
-    let mut sorted = names.clone();
-    sorted.sort_unstable();
-    assert_eq!(names, sorted, "by name");
-    let folder = |name: &str| {
-        folders
-            .iter()
-            .find(|folder| folder["name"] == name)
-            .cloned()
-            .unwrap_or_else(|| panic!("no {name} in {root}"))
-    };
-    let src = folder("src");
-    assert_eq!(src["path"], "src");
-    assert_eq!(src["skipped"], Value::Null);
-    assert!(src["sources"].as_u64().is_some_and(|count| count > 20));
-    assert_eq!(folder("node_modules")["skipped"], "default");
-    assert_eq!(folder(".unfold")["skipped"], "default");
-    let vendor = folder("vendor");
-    assert_eq!(vendor["skipped"], "excluded");
-    assert_eq!(vendor["sources"], 1, "sources count ignoring [scope]");
-    assert!(
-        folders.iter().all(|folder| folder["name"] != "package.json"),
-        "folders only"
-    );
-    let routes = harness.ok(
-        1,
-        "scope_dir",
-        json!({ "project": harness.project, "path": "src" }),
-    );
-    assert!(
-        routes["folders"]
-            .as_array()
-            .expect("folders")
-            .iter()
-            .any(|folder| folder["path"] == "src/routes")
-    );
-    assert_eq!(
-        harness.code(
-            1,
-            "scope_dir",
-            json!({ "project": harness.project, "path": "nope" })
-        ),
-        "not_found"
-    );
-}
-
-#[test]
-fn the_compile_preview_writes_nothing() {
-    let harness = Harness::new("ts-orders", false);
-    let preview = harness.ok(1, "compile_preview", json!({ "project": harness.project }));
-    assert!(preview["files"].as_u64().is_some_and(|files| files > 20));
-    assert_eq!(preview["languages"][0]["language"], "typescript");
-    assert_eq!(preview["localPath"], ".unfold/local");
-    assert_eq!(preview["configExists"], true);
-    assert!(!harness.root.join(".unfold/local").exists());
-}
-
-#[cfg(unix)]
-#[test]
-fn the_compile_preview_names_the_fallback_location_of_a_read_only_folder() {
-    use std::os::unix::fs::PermissionsExt;
-
-    let harness = Harness::new("ts-orders", false);
-    let chmod = |mode: u32| {
-        std::fs::set_permissions(&harness.root, std::fs::Permissions::from_mode(mode)).expect("chmod");
-    };
-    chmod(0o555);
-    let preview = harness.call(1, "compile_preview", json!({ "project": harness.project }));
-    chmod(0o755);
-    let preview = preview.expect("compile_preview");
-    assert_eq!(preview["fallback"], "read_only");
-    let fallback = harness.base.join("fallback");
-    let local = preview["localPath"].as_str().expect("the local path");
-    assert!(std::path::Path::new(local).starts_with(&fallback), "{local}");
-    assert!(!fallback.exists(), "the preview writes nothing");
-    assert!(!harness.root.join(".unfold/local").exists());
-}
-
-#[test]
 fn home_lists_every_board_with_thumbnails_and_health() {
     let harness = Harness::new("ts-orders", false);
     with_boards(&harness);
@@ -352,7 +269,6 @@ fn home_lists_every_board_with_thumbnails_and_health() {
     });
     let summary = harness.ok(1, "project_summary", json!({ "project": harness.project }));
     assert_eq!(summary["state"], json!({"kind": "current"}));
-    assert_eq!(summary["health"]["problems"], 0);
     let workspace = harness.ok(1, "workspace", json!({}));
     assert_eq!(workspace["projects"][0]["state"], json!({"kind": "current"}));
 

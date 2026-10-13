@@ -22,7 +22,7 @@ pub struct FolderLock {
 
 /// Why the lock couldn't be taken.
 #[derive(Debug)]
-pub(crate) enum LockFailure {
+enum LockFailure {
     /// Another process holds it.
     Held,
     /// The lock file couldn't be created or locked.
@@ -31,7 +31,7 @@ pub(crate) enum LockFailure {
 
 impl FolderLock {
     /// Takes the lock at `path` without waiting. The folder containing it must exist.
-    pub(crate) fn try_acquire(path: &Path) -> Result<Self, LockFailure> {
+    fn try_acquire(path: &Path) -> Result<Self, LockFailure> {
         let mut file = OpenOptions::new()
             .read(true)
             .write(true)

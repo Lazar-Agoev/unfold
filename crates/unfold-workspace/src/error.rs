@@ -3,6 +3,7 @@
 
 use std::path::PathBuf;
 
+use crate::layout::Unwritable;
 use crate::projects::ProjectId;
 
 /// Why a workspace operation failed.
@@ -11,12 +12,9 @@ pub enum WorkspaceError {
     /// No project with that id is in the workspace.
     #[error("no project `{0}` in the workspace")]
     UnknownProject(ProjectId),
-    /// A board of the project is open, so it can't be removed or switched.
+    /// A board of the project is open, so it can't be removed.
     #[error("a board of this project is open")]
     BoardsOpen,
-    /// `switch_worktree` named a path that isn't an available worktree of the project.
-    #[error("`{0}` is not an available worktree of this project")]
-    NotAWorktree(String),
     /// The workspace has as many projects as it can hold.
     #[error("the workspace already has {0} projects")]
     TooManyProjects(usize),
@@ -27,6 +25,14 @@ pub enum WorkspaceError {
         path: PathBuf,
         /// What went wrong.
         reason: String,
+    },
+    /// Unfold can't write `.unfold/` in the folder.
+    #[error("Unfold needs to write `.unfold/` in {}, but {reason}", path.display())]
+    FolderNotWritable {
+        /// The folder.
+        path: PathBuf,
+        /// Why it can't be written.
+        reason: Unwritable,
     },
     /// Another copy of Unfold holds the folder's lock.
     #[error("{} is open in another copy of Unfold", path.display())]
@@ -103,9 +109,9 @@ impl WorkspaceError {
         match self {
             Self::UnknownProject(_) => "unknown_project",
             Self::BoardsOpen => "boards_open",
-            Self::NotAWorktree(_) => "not_a_worktree",
             Self::TooManyProjects(_) => "too_many_projects",
             Self::NotAFolder { .. } => "not_a_folder",
+            Self::FolderNotWritable { .. } => "folder_not_writable",
             Self::OpenElsewhere { .. } => "open_elsewhere",
             Self::Io { .. } => "io",
             Self::Store(_) => "store",
@@ -146,7 +152,10 @@ mod tests {
             WorkspaceError::BoardNotOpen("b".into()),
             WorkspaceError::UnknownProject(ProjectId::new_unchecked("p-aaaaaaaaaa")),
             WorkspaceError::BoardsOpen,
-            WorkspaceError::NotAWorktree("/x".into()),
+            WorkspaceError::FolderNotWritable {
+                path: "/x".into(),
+                reason: Unwritable::ReadOnly,
+            },
             WorkspaceError::TooManyProjects(64),
         ];
         for error in errors {

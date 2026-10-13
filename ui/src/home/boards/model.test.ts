@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BoardSummary } from "../../ipc";
-import { boardSubline, filterBoards, isDraftId, sortBoards } from "./model";
+import { boardSubline, filterBoards, sortBoards } from "./model";
 import { thumbnailChunks } from "./useThumbnails";
 
 const NOW = Date.UTC(2026, 9, 9, 12);
@@ -50,11 +50,6 @@ describe("Home's Boards", () => {
     expect(boardSubline(board("c", "x", "published", NOW - 60_000, { changes: 2 }), NOW)).toBe("1 page · Published · 2 unpublished changes · edited a minute ago");
     // A cross-project board says who it's with instead of when it was edited.
     expect(boardSubline(board("e", "Cart → API trace", "draft", NOW, { pages: 2, projects: ["storefront-web"] }), NOW)).toBe("2 pages · Draft");
-  });
-
-  it("tells drafts by their id", () => {
-    expect(isDraftId(".unfold/local/drafts/x.json")).toBe(true);
-    expect(isDraftId(".unfold/boards/x.json")).toBe(false);
   });
 });
 

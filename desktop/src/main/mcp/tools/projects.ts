@@ -16,13 +16,6 @@ const MAX_BOARDS = 40;
 
 const LANGUAGES: Readonly<Record<Language, string>> = { typescript: "TypeScript", python: "Python" };
 
-function branchText(git: { readonly branch: string | null; readonly detached: string | null } | null): string | null {
-  if (git?.branch) {
-    return `branch ${git.branch}`;
-  }
-  return git?.detached ? `detached at ${git.detached}` : null;
-}
-
 function languagesText(languages: readonly Language[]): string {
   return languages.length > 0 ? languages.map((language) => LANGUAGES[language]).join(", ") : "no source files";
 }
@@ -41,7 +34,7 @@ async function projectLine(context: ToolContext, row: ProjectRow): Promise<strin
         )
       : Promise.resolve(null),
   ]);
-  const facts = [stateText(row.state), summary, branchText(row.git), boards].filter((fact) => fact !== null);
+  const facts = [stateText(row.state), summary, boards].filter((fact) => fact !== null);
   return `- ${row.name} (id ${row.id}): ${facts.join(" · ")}`;
 }
 
@@ -49,7 +42,7 @@ export const listProjects = defineTool({
   name: "list_projects",
   title: "List projects",
   description:
-    "Every project in the Unfold workspace: its name, id, state (current, compiling, not compiled, resting, problems, unavailable), languages, branch, and number of boards. Other tools take a project's id or name. A resting project isn't open right now and its languages aren't listed: get_project opens it and tells you everything else.",
+    "Every project in the Unfold workspace: its name, id, state (current, compiling, not compiled, resting, problems, unavailable), languages, and number of boards. Other tools take a project's id or name. A resting project isn't open right now and its languages aren't listed: get_project opens it and tells you everything else.",
   input: z.object({}),
   annotations: { readOnlyHint: true },
   async run(_args, context) {
@@ -64,12 +57,7 @@ export const listProjects = defineTool({
 
 function graphText(status: GraphStatus): string {
   const watching = { events: "watching for changes", scanning: "watching by scanning", off: "not watching" }[status.watching];
-  return [
-    status.complete ? "complete" : "incomplete (files that don't parse)",
-    watching,
-    `background updates ${status.backgroundUpdates ? "on" : "off"}`,
-    ...(status.fallback ? [`cache in the fallback location (${status.fallback.replaceAll("_", " ")})`] : []),
-  ].join(", ");
+  return `${status.complete ? "complete" : "incomplete (files that don't parse)"}, ${watching}`;
 }
 
 function applicationLine(application: AppRow): string {
@@ -80,11 +68,8 @@ function applicationLine(application: AppRow): string {
 
 function healthText(health: ProjectSummary["health"]): string[] {
   const facts = [
-    count(health.problems, "problem"),
-    ...(health.doesntParse > 0 ? [`${count(health.doesntParse, "file")} that don't parse`] : []),
-    ...(health.settingsError ? [`settings error: ${health.settingsError}`] : []),
-    ...(health.unreachedEntrances > 0 ? [`${count(health.unreachedEntrances, "entrance")} no launch reaches`] : []),
-    ...(health.unindexedLaunches > 0 ? [`${count(health.unindexedLaunches, "launch")} into code that isn't indexed`] : []),
+    health.doesntParse > 0 ? `${count(health.doesntParse, "file")} that don't parse` : "all files parse",
+    health.boardsNeedingReview > 0 ? `${count(health.boardsNeedingReview, "board")} that need review` : "no board needs review",
   ];
   const boards = health.boards.map((board) => `- ${board.title} (id ${board.id}): ${count(board.items, "item")} to look at`);
   return [`Health: ${facts.join(" · ")}.`, ...(boards.length > 0 ? [`Boards that need review (${health.boardsNeedingReview}):`, ...boards] : [])];
@@ -149,14 +134,14 @@ export const getProject = defineTool({
     const shown = boards.boards.slice(0, MAX_BOARDS);
     return textResult(
       context.header({ project: summary.name }),
-      `${summary.name} (id ${row.id}): ${[stateText(summary.state), branchText(summary.git)].filter((fact) => fact !== null).join(" · ")}`,
+      `${summary.name} (id ${row.id}): ${stateText(summary.state)}`,
       `Folder: ${summary.path}`,
       compiled
         ? `Files: ${summary.files} (${languagesText(summary.languages)}). Graph: ${graphText(summary.status)}. Last committed ${summary.updatedAtMs === null ? "never" : new Date(summary.updatedAtMs).toISOString()}.`
         : "Not compiled yet: compile_project builds its graph (ask the person first, unless they asked you to set things up).",
       applications === null
         ? null
-        : `${count(applications.length, "application")}, ${count(summary.entrances, "entrance")} in all:`,
+        : `${count(applications.length, "application")}, ${count(applications.reduce((sum, application) => sum + application.entrances, 0), "entrance")} in all:`,
       ...(applications ?? []).map(applicationLine),
       ...healthText(summary.health),
       ...settingsText(config),

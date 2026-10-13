@@ -140,11 +140,6 @@ fn source_kind(name: &str) -> Option<SourceKind> {
     }
 }
 
-/// Whether a file name has any source-like extension (indexable, declaration, or JavaScript).
-pub(super) fn is_source_like(name: &str) -> bool {
-    source_kind(name).is_some()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -17,7 +17,8 @@ nothing is pushed. The untracked design docs this build didn't write stay uncomm
 | Before step 1 | done |
 | 1. Tooling, tests, and docs | done, committed |
 | 2. One window | done, committed |
-| 3. Projects, Home, and entrance screens | in progress |
+| 3. Projects, Home, and entrance screens | done, committed |
+| 4. Boards are files | in progress |
 
 ## Working setup
 
@@ -185,3 +186,57 @@ rewritten); step 8 writes the clone's tables as the plan describes.
 | `just e2e` | 38 journeys pass |
 | Residue `rg` | nothing |
 | Screenshots (Home, Settings, a board) vs core-scope.html | Settings matches the frame; the window has no title bar |
+
+## Step 3 — Projects, Home, and entrance screens
+
+**Done.** Rust and desktop agents in parallel, then the UI, then the journeys; small cleanups by the orchestrator.
+
+**What was done**
+
+- **Engine:** deleted worktrees (`git.rs`, `git_info`, `switch_worktree`, `NotAWorktree`, `ProjectRow.git`, and the
+  de-duplication by repository: a folder now matches a row only by its own path), `compile_preview`, `scope_dir`,
+  `discovery/report.rs` and `Discovery.skipped`, `readd_project` and the removed-project records, recent boards
+  (nothing read them once the `workspace` result dropped them), pause/resume and the `Paused` states, Rebuild from
+  scratch (`CompileMode` is gone: `compile` takes `{ project }`; `Writer::clear` stays), the fallback location and
+  the watcher's network-volume scanning (`volume.rs` stays), the activity log, Reveal in Finder and `opener`, the
+  launch commands with `LinkInputs`/`linked_from`/`Engine::link_inputs`, `deploy_import` and `saphyr`, and their
+  fixtures. Engine pieces left without callers went too: `plan_draft`, the launch editor's `Suggestion`,
+  `context_preview`.
+- **`add_project` compiles at once.** An unwritable folder (read-only, on a network volume, or with `.unfold/`
+  through a link) is refused with `folder_not_writable` and a message that Unfold needs to write `.unfold/` there.
+- **`project_summary`** = state, status, `updatedAtMs`, files, languages, and Health (`doesntParse`,
+  `boardsNeedingReview`, `boards`).
+- **Open `unfold.toml`:** `open_in_editor` on the path `unfold.toml` creates an empty file first when the project has
+  none (`create_new`, never through a link, after confinement); no new command.
+- **Desktop:** the fallback folder and transport field; the MCP setup tools lost `compile_preview`, `rebuild`,
+  `set_detector`, `set_background_updates`, and the git fields; `add_project` reports the compile like
+  `compile_project`; the setup guide lost its Detectors and Background updates sections.
+- **UI:** deleted the project settings dialog (and moved the app Settings dialog to `ui/src/settings/`), the worktree
+  button, the first-Compile screen and first launch, "Opened before", pause/resume, the Activity view, the
+  "compiled" toast, Reveal in Finder, `ui/src/launches/`, Add's entrance browser, Add launch/Add entrance…, the
+  card menu's "Add as entrance…" (it opened the deleted launch editor; step 13 builds the new popover), Recents, and
+  components left without users (`Badge`, `Checkbox`, `Switch`, `TreeView`). Built the project menu (Compile again,
+  Cancel, Open `unfold.toml`, Remove from workspace…), the state line, the Health line, and the empty workspace.
+- **Journeys:** `settings.spec.ts` deleted (its app-Settings test moved into `home.spec.ts`); first-launch, home,
+  project-menu, and background trimmed; a read-only folder is refused; Open `unfold.toml` runs a stub editor.
+
+**Choices**
+
+- Home's amber Health items are buttons (a board needing review opens it; the rest open the Health view, which stays
+  without its Activity half).
+- `add_project` (MCP) waits by queuing a second compile behind the one adding starts; that compile finds nothing to do.
+- The store's `Reader::stats` stays: store tests use it to count rows (it was described as the Index log's; reworded).
+- A project's default name is its folder's name.
+
+**Deviations:** none.
+
+**Gate** (2026-10-13)
+
+| Check | Result |
+| --- | --- |
+| fmt, clippy, `cargo test --workspace` (all pass), gen-ipc, notices, deny, machete | pass |
+| `oracles check` | pass, unchanged from step 1 |
+| typecheck, lint, unit tests, knip, addon test | pass (ui 923 tests, desktop 322) |
+| `just e2e` | 33 journeys pass |
+| Residue `rg` | nothing |
+| Screenshots: Home and the project menu vs core-scope.html | match the Home and Menus frames |

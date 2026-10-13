@@ -3,12 +3,11 @@
 /* eslint-disable */
 
 /**
- * The arguments of `add_project` and `readd_project`.
+ * The arguments of `add_project`.
  */
 export type AddProjectArgs = { 
 /**
- * The folder's absolute path (from a dialog, a drop, or the command line; for
- * `readd_project`, a path "Opened before" lists).
+ * The folder's absolute path, from the Add Project dialog.
  */
 path: string, };
 
@@ -18,7 +17,7 @@ path: string, };
 export type AddStatus = "added" | "exists";
 
 /**
- * What `add_project` and `readd_project` return.
+ * What `add_project` returns.
  */
 export type AddedProject = { 
 /**
@@ -924,19 +923,6 @@ applications: Array<AppRow>, };
 export type ChainOutcome = "throw" | "return" | "mixed";
 
 /**
- * The arguments of `check_launch`.
- */
-export type CheckLaunchArgs = { 
-/**
- * The project.
- */
-project: ProjectId, 
-/**
- * The launch as the editor holds it.
- */
-draft: LaunchDraftSpec, };
-
-/**
  * One line of the shown text.
  */
 export type CodeLine = { 
@@ -1076,41 +1062,6 @@ code: string,
 message: string, };
 
 /**
- * A run of command words and what they mean.
- */
-export type CommandPartView = { 
-/**
- * The words as written.
- */
-text: string, 
-/**
- * What they mean.
- */
-meaning: string, 
-/**
- * They don't change what code runs.
- */
-irrelevant: boolean, };
-
-/**
- * The arguments of `compile`.
- */
-export type CompileArgs = { 
-/**
- * The project.
- */
-project: ProjectId, 
-/**
- * `check` (Compile) or `from_scratch` (Rebuild from scratch).
- */
-mode?: CompileMode, };
-
-/**
- * Which Compile to run.
- */
-export type CompileMode = "check" | "from_scratch";
-
-/**
  * What a finished compile did.
  */
 export type CompileOutcome = { 
@@ -1143,48 +1094,6 @@ problems: number,
  * The update's wall time, in milliseconds.
  */
 durationMs: number, };
-
-/**
- * What a new project's Home shows before anything is written (docs/ui-shell.md#screens).
- */
-export type CompilePreview = { 
-/**
- * Files that would be graphed, by language.
- */
-languages: Array<LanguageCount>, 
-/**
- * Every file that would be graphed.
- */
-files: number, 
-/**
- * Source-like files that exist but wouldn't be graphed.
- */
-unindexed: number, 
-/**
- * What was skipped, aggregated by folder.
- */
-skipped: Array<SkippedFolder>, 
-/**
- * Why `local/` would live in the fallback location, if it would.
- */
-fallback: FallbackReason | null, 
-/**
- * Where the graph and drafts would be kept: `.unfold/local` in the folder, or the absolute
- * fallback location.
- */
-localPath: string, 
-/**
- * Whether `unfold.toml` exists.
- */
-configExists: boolean, 
-/**
- * Why the settings can't be used (the preview then uses the defaults).
- */
-settingsError: string | null, 
-/**
- * Parts of the folder discovery couldn't read.
- */
-problems: Array<string>, };
 
 /**
  * A progress report while compiling: `done` of `total` items of `stage`.
@@ -1312,20 +1221,6 @@ path: string,
 line: number | null, };
 
 /**
- * What the deploy files say, as draft launches.
- */
-export type DeployImport = { 
-/**
- * The `render.yaml` files read, by path.
- */
-files: Array<string>, 
-/**
- * One draft per web, worker, and cron service, in file order (the root `render.yaml` first, then by depth),
- * then document order.
- */
-launches: Array<ImportedLaunch>, };
-
-/**
  * A description (of a card, group, frame, resource, or connection), a Flow label's text, or a
  * drawn link's label.
  */
@@ -1348,23 +1243,6 @@ signature: string, };
  * An entrance detector.
  */
 export type DetectorId = "manual" | "package.script" | "package.bin" | "express.route" | "bullmq.worker" | "node-cron.schedule" | "pyproject.script" | "fastapi.route" | "celery.task" | "apscheduler.job";
-
-/**
- * The draft application a launch joins.
- */
-export type DraftApplication = { 
-/**
- * The owning service's name.
- */
-id: string, 
-/**
- * The owning service's name in words (`invoice-hitl-api` → `Invoice hitl API`).
- */
-name: string, 
-/**
- * The owning service's description.
- */
-description: string | null, };
 
 /**
  * Every project's drafts and published boards with unpublished changes.
@@ -1701,11 +1579,6 @@ path: string,
  * Its size in bytes.
  */
 bytes: number, };
-
-/**
- * Why `local/` lives in the fallback location.
- */
-export type FallbackReason = "read_only" | "network_volume" | "wal_unavailable";
 
 /**
  * A file result.
@@ -2244,40 +2117,6 @@ export type FrameIcon = "api" | "worker" | "schedule" | "cli" | "web" | "library
 export type FrameLook = "box" | "zone";
 
 /**
- * The branch and worktrees of a project's repository (`git_info`).
- */
-export type GitInfo = { 
-/**
- * The branch checked out in the project's worktree.
- */
-branch: string | null, 
-/**
- * The first 7 hex digits of a detached HEAD's commit.
- */
-detached: string | null, 
-/**
- * The repository's worktrees: the main one first, then by path (at most 64).
- */
-worktrees: Array<Worktree>, };
-
-/**
- * A project row's Git summary.
- */
-export type GitSummary = { 
-/**
- * The branch checked out in the project's worktree.
- */
-branch: string | null, 
-/**
- * The first 7 hex digits of a detached HEAD's commit.
- */
-detached: string | null, 
-/**
- * How many worktrees the repository has.
- */
-worktrees: number, };
-
-/**
  * How the shown text relates to the graph. See the [module documentation](self).
  */
 export type GraphMatch = "current" | "not_compiled" | "evidence" | "not_indexed";
@@ -2317,68 +2156,11 @@ total: number,
 /**
  * The languages graphed, sorted.
  */
-languages: Array<Language>, } | { "kind": "paused", 
-/**
- * Paths changed since the last compile or update.
- */
-changed: number, } | { "kind": "failed", 
+languages: Array<Language>, } | { "kind": "failed", 
 /**
  * Why.
  */
 message: string, };
-
-/**
- * Counts of the committed graph, for the Index log.
- */
-export type GraphStats = { 
-/**
- * Files whose facts come from the bytes on disk.
- */
-filesCurrent: number, 
-/**
- * Files showing their last version that parsed.
- */
-filesLastGood: number, 
-/**
- * Files that never parsed.
- */
-filesFailed: number, 
-/**
- * Fingerprinted configuration inputs.
- */
-inputs: number, 
-/**
- * Blocks.
- */
-blocks: number, 
-/**
- * Resolved edges.
- */
-edgesResolved: number, 
-/**
- * External edges.
- */
-edgesExternal: number, 
-/**
- * Unresolved edges (facts about the code, not problems).
- */
-edgesUnresolved: number, 
-/**
- * Entrances.
- */
-entrances: number, 
-/**
- * Definitions.
- */
-definitions: number, 
-/**
- * Applications.
- */
-applications: number, 
-/**
- * The graph database's size in bytes.
- */
-databaseBytes: number, };
 
 /**
  * The status of one folder's graph.
@@ -2389,17 +2171,9 @@ export type GraphStatus = {
  */
 state: GraphState, 
 /**
- * Why `local/` is in the fallback location, if it is ("using fallback location").
- */
-fallback: FallbackReason | null, 
-/**
  * How the folder is watched ("watching by scanning").
  */
 watching: WatchMode, 
-/**
- * Whether background updates are on.
- */
-backgroundUpdates: boolean, 
 /**
  * Whether every discovered file is indexed.
  */
@@ -2553,19 +2327,6 @@ export type Heritage = "extends" | "implements";
 export type HttpMethod = "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "ALL";
 
 /**
- * Imports a draft's import path would newly resolve.
- */
-export type ImportGain = { 
-/**
- * How many ("18 more imports resolve to code in this repository").
- */
-count: number, 
-/**
- * The first few modules.
- */
-examples: Array<string>, };
-
-/**
  * One folder on a launch's import path.
  */
 export type ImportPathRow = { 
@@ -2577,132 +2338,6 @@ path: string,
  * Why it is there (`from --app-dir`, `the working folder`, `set by hand`).
  */
 origin: string, };
-
-/**
- * Import resolution counts.
- */
-export type ImportStats = { 
-/**
- * Imports that resolve to code in this repository.
- */
-resolved: number, 
-/**
- * Every import.
- */
-total: number, };
-
-/**
- * One service as a draft launch.
- */
-export type ImportedLaunch = { 
-/**
- * The service's name.
- */
-service: string, 
-/**
- * The service's type.
- */
-serviceType: ServiceType, 
-/**
- * The application it joins.
- */
-application: DraftApplication, 
-/**
- * The launch's ID: the service's name.
- */
-id: string, 
-/**
- * The launch's name: the service type (`Web`, `Worker`, `Cron`).
- */
-label: string, 
-/**
- * The command as deployed; `None` when the deploy files don't say (see `note`).
- */
-command: string | null, 
-/**
- * The working folder, project-relative (`.` for the project's folder).
- */
-cwd: string, 
-/**
- * The cron schedule as written.
- */
-schedule: string | null, 
-/**
- * The comment block above the service (its first paragraph), when the service joins another
- * service's application; the owning service's comment describes the application instead.
- */
-description: string | null, 
-/**
- * Environment the command needs to find its code (`PYTHONPATH`).
- */
-env: { [key in string]: string }, 
-/**
- * Where the command came from (`data-pipelines/Dockerfile.workers, CMD`,
- * `render.yaml, dockerCommand`).
- */
-copiedFrom: string | null, 
-/**
- * What the import couldn't find (`No Dockerfile found at Dockerfile`).
- */
-note: string | null, 
-/**
- * The `render.yaml` that declares the service.
- */
-renderFile: string, };
-
-/**
- * The Index log panel.
- */
-export type IndexLog = { 
-/**
- * One entry per committed update, oldest first.
- */
-entries: Array<IndexLogEntry>, 
-/**
- * Counts of the committed graph, once the project is compiled.
- */
-stats: GraphStats | null, };
-
-/**
- * One committed update in the Index log.
- */
-export type IndexLogEntry = { 
-/**
- * When the commit finished, in milliseconds since the Unix epoch.
- */
-atMs: number, 
-/**
- * Which action ran ("Compile", "Background update", "Rebuild from scratch").
- */
-action: string, 
-/**
- * Indexed files after the update.
- */
-files: number, 
-/**
- * The update's wall time, in milliseconds.
- */
-updateMs: number, 
-/**
- * The commit's wall time, in milliseconds.
- */
-commitMs: number, 
-/**
- * File rows the commit wrote.
- */
-filesWritten: number, 
-/**
- * Files the commit removed.
- */
-filesRemoved: number, 
-/**
- * Edges the commit wrote.
- */
-edgesWritten: number, 
-/**
- * The engine's statistics, one fact per line.
- */
-text: string, };
 
 /**
  * The members a type inherits from one of its bases.
@@ -2804,120 +2439,6 @@ label: LineLabel | null, };
  * A source language Unfold indexes.
  */
 export type Language = "typescript" | "python";
-
-/**
- * How many files of one language would be graphed.
- */
-export type LanguageCount = { 
-/**
- * The language.
- */
-language: Language, 
-/**
- * Its indexed files.
- */
-files: number, };
-
-/**
- * What Unfold reads from a draft launch.
- */
-export type LaunchCheck = { 
-/**
- * The command's parts with their meanings ("What Unfold reads").
- */
-parts: Array<CommandPartView>, 
-/**
- * Why the launch can't be read, or doesn't add up.
- */
-problem: LaunchProblemView | null, 
-/**
- * For `sh -c "…"`: what the quoted command would fill in.
- */
-suggestion: LaunchFill | null, 
-/**
- * Whether the target is set by hand.
- */
-targetSetByHand: boolean, 
-/**
- * The Python import path, in search order.
- */
-importPaths: Array<ImportPathRow>, 
-/**
- * What the launch starts.
- */
-starts: StartPreview | null, 
-/**
- * Imports that would newly resolve to code in this repository.
- */
-imports: ImportGain | null, 
-/**
- * The routes that would join the launch's application.
- */
-routes: RoutePreview | null, 
-/**
- * Whether the preview links the draft with the current graph's program; `false` when there
- * is no compiled program yet, so only the plan is shown and a compile gives the rest.
- */
-fromCurrentGraph: boolean, };
-
-/**
- * A process launch being edited.
- */
-export type LaunchDraftSpec = { 
-/**
- * The `[[entrance]]` ID, when editing a saved launch.
- */
-id?: string, 
-/**
- * The command line.
- */
-command?: string, 
-/**
- * The working folder, project-relative (`.` when empty).
- */
-cwd: string, 
-/**
- * The target set by hand.
- */
-target?: LaunchTargetSpec, 
-/**
- * The import path set by hand, in order.
- */
-pythonPaths?: Array<string>, 
-/**
- * Declared environment variables.
- */
-env: { [key in string]: string }, };
-
-/**
- * What the quoted command of `sh -c "…"` fills in.
- */
-export type LaunchFill = { 
-/**
- * The quoted command's meaningful words (`uvicorn dashboard_builder.app:app`).
- */
-quoted: string, 
-/**
- * The target it starts.
- */
-target: LaunchTargetSpec | null, 
-/**
- * The import path it gives, in order.
- */
-pythonPaths: Array<string>, };
-
-/**
- * Why a launch can't be read.
- */
-export type LaunchProblemView = { 
-/**
- * A short status (`Can't read sh -c`).
- */
-label: string, 
-/**
- * The full explanation.
- */
-message: string, };
 
 /**
  * One launch (a process entrance).
@@ -3022,27 +2543,6 @@ kind: string, };
  * Whether Unfold can follow a launch into the code.
  */
 export type LaunchStatus = "ok" | "unreadable" | "not_indexed" | "not_found";
-
-/**
- * What Add suggests for setting up launches.
- */
-export type LaunchSuggestions = { 
-/**
- * Unique route declarations.
- */
-routes: number, 
-/**
- * Python imports that resolve to code in this repository, of all Python imports.
- */
-imports: ImportStats, 
-/**
- * Unresolved imports that look like folders of this repository (`shared`, `api`, `utils`).
- */
-localLooking: Array<string>, 
-/**
- * FastAPI applications no launch serves.
- */
-apps: Array<SuggestedApp>, };
 
 /**
  * A process's `target` table.
@@ -3877,7 +3377,7 @@ export type ProjectArgs = {
 project: ProjectId, };
 
 /**
- * `unfold.toml` as Project settings sees it.
+ * A project's `unfold.toml`: its text and the settings it holds.
  */
 export type ProjectConfig = { 
 /**
@@ -3906,28 +3406,9 @@ name: SharedName, };
  */
 export type ProjectHealth = { 
 /**
- * The problems that make the row's state, equal to its `problems` count: files that don't
- * parse or can't be read, settings errors, discovery, input, and cache problems, and a failed
- * compile. Board health isn't counted (boards that need review are counted apart); the
- * `problems` command lists both.
- */
-problems: number, 
-/**
  * Files that don't parse or can't be read.
  */
 doesntParse: number, 
-/**
- * Why the settings file can't be used, if it can't.
- */
-settingsError: string | null, 
-/**
- * Entrances no launch reaches.
- */
-unreachedEntrances: number, 
-/**
- * Launches into code that isn't indexed.
- */
-unindexedLaunches: number, 
 /**
  * Boards whose health has items.
  */
@@ -3939,7 +3420,7 @@ boards: Array<BoardHealthCount>, };
 
 /**
  * A project's id: `p-` and 10 characters of `[a-z2-7]`, random, assigned when the project is
- * added (shared project names). It survives restarts and worktree switches.
+ * added (shared project names). It survives restarts.
  */
 export type ProjectId = string;
 
@@ -4023,7 +3504,7 @@ id: ProjectId,
  */
 name: string, 
 /**
- * The canonical path of the worktree folder it points at.
+ * The canonical path of its folder.
  */
 path: string, 
 /**
@@ -4037,17 +3518,13 @@ live: boolean,
 /**
  * Its state.
  */
-state: ProjectState, 
-/**
- * Its repository's branch and worktree count, or `None` outside a repository.
- */
-git: GitSummary | null, };
+state: ProjectState, };
 
 /**
  * A project's state, as its row shows it: one indicator per row.
  *
  * A live project's state is derived from its [`GraphStatus`] and its problem count (the Problems
- * list less board health), first match wins: `failed` > `compiling` > `updating` > `paused` >
+ * list less board health), first match wins: `failed` > `compiling` > `updating` >
  * `not_compiled` > `problems` (a nonzero count) > `current`. A resting project shows the last state it had while live.
  */
 export type ProjectState = { "kind": "current" } | { "kind": "compiling", 
@@ -4067,17 +3544,13 @@ files: number | null, } | { "kind": "problems",
  * How many: files that don't parse or can't be read, settings errors, discovery, input,
  * and cache problems, and a failed compile.
  */
-count: number, } | { "kind": "paused", 
-/**
- * Paths changed since the last compile or update.
- */
-changed: number, } | { "kind": "not_compiled" } | { "kind": "failed", 
+count: number, } | { "kind": "not_compiled" } | { "kind": "failed", 
 /**
  * Why.
  */
 message: string, } | { "kind": "resting", 
 /**
- * `current`, `problems`, `paused`, `not_compiled`, or `failed`.
+ * `current`, `problems`, `not_compiled`, or `failed`.
  */
 last: ProjectState, 
 /**
@@ -4090,7 +3563,7 @@ atMs: number, } | { "kind": "unavailable",
 reason: string, };
 
 /**
- * Home's header and Health line for one project.
+ * Home's header, state line, and Health line for one project.
  */
 export type ProjectSummary = { 
 /**
@@ -4110,7 +3583,7 @@ path: string,
  */
 state: ProjectState, 
 /**
- * Its graph's status (fallback location, watching, background updates, …).
+ * Its graph's status: the state line's state, and how the folder is watched.
  */
 status: GraphStatus, 
 /**
@@ -4126,21 +3599,9 @@ files: number,
  */
 languages: Array<Language>, 
 /**
- * Applications (distinct startups).
- */
-applications: number, 
-/**
- * Entrances other than launches.
- */
-entrances: number, 
-/**
  * The Health line.
  */
-health: ProjectHealth, 
-/**
- * The repository's branch and worktrees, or `None` outside a repository.
- */
-git: GitInfo | null, };
+health: ProjectHealth, };
 
 /**
  * What a finished text search found in one project.
@@ -4332,27 +3793,6 @@ published: PublishedState | null, };
 export type Reason = "unknown_name" | "unknown_receiver" | "parameter" | "mutable_binding" | "not_concrete" | "accessor" | "ambiguous" | "overridden" | "unbound_this" | "not_indexed" | "not_found" | "dynamic" | "wrapper" | "unsupported";
 
 /**
- * A board opened recently, in any project (`workspace.json` `recentBoards`).
- */
-export type RecentBoard = { 
-/**
- * The board's project.
- */
-project: ProjectId, 
-/**
- * The board's id.
- */
-board: string, 
-/**
- * Its title when it was opened.
- */
-title: string, 
-/**
- * When it was opened, in milliseconds since the Unix epoch.
- */
-openedAtMs: number, };
-
-/**
  * A definition's relations.
  */
 export type Relations = { 
@@ -4411,23 +3851,6 @@ callersOffset?: number,
  * How many callers to return (at most 500; 100 when absent).
  */
 callersLimit?: number, };
-
-/**
- * A folder removed from the workspace, which "Opened before" offers to add back.
- */
-export type RemovedProject = { 
-/**
- * The folder's canonical path (what `readd_project` takes).
- */
-path: string, 
-/**
- * Its shared name when it was removed.
- */
-name: string, 
-/**
- * When it was removed, in milliseconds since the Unix epoch.
- */
-removedAtMs: number, };
 
 /**
  * The arguments of `rename_folder`.
@@ -4655,23 +4078,6 @@ export type Role = "body" | "parameter" | "condition" | "then" | "else" | "initi
 export type RouteKind = "sequence" | "yes" | "no" | "elseIf" | "each" | "again" | "next" | "test" | "continue" | "done" | "break" | "return" | "error";
 
 /**
- * The routes a draft's application would serve.
- */
-export type RoutePreview = { 
-/**
- * Unique route declarations.
- */
-count: number, 
-/**
- * The application that already serves them, by name.
- */
-application: string | null, 
-/**
- * The router files other applications also mount.
- */
-shared: Array<SharedRouter>, };
-
-/**
  * The arguments of `save_board`.
  */
 export type SaveBoardArgs = { 
@@ -4700,44 +4106,6 @@ export type SaveWindowStateArgs = {
  * The window's position and size, and the board it shows.
  */
 state: WindowState, };
-
-/**
- * One level of the scope tree.
- */
-export type ScopeDir = { 
-/**
- * The listed folder (`""` for the project's folder).
- */
-path: string, 
-/**
- * Its folders, by name.
- */
-folders: Array<ScopeFolder>, 
-/**
- * It has more than [`MAX_SCOPE_FOLDERS`] folders; the rest are left out.
- */
-truncated: boolean, };
-
-/**
- * One folder of the scope tree.
- */
-export type ScopeFolder = { 
-/**
- * The folder's name.
- */
-name: string, 
-/**
- * Its path relative to the project's folder.
- */
-path: string, 
-/**
- * Why discovery skips it or `[scope]` leaves it out, if it does.
- */
-skipped: SkipKind | null, 
-/**
- * Source files discovery finds under it, ignoring `[scope]`.
- */
-sources: number, };
 
 /**
  * One of the `[scope]` pattern lists.
@@ -4903,24 +4271,6 @@ expand?: Expansion,
  * A Python keyword argument's keyword.
  */
 keyword?: string, };
-
-/**
- * A Render service type the import reads.
- */
-export type ServiceType = "web" | "worker" | "cron";
-
-/**
- * The arguments of `set_background_updates`.
- */
-export type SetBackgroundUpdatesArgs = { 
-/**
- * The project.
- */
-project: ProjectId, 
-/**
- * Whether the graph updates itself as files change.
- */
-on: boolean, };
 
 /**
  * The arguments of `set_board_folder`.
@@ -5105,7 +4455,7 @@ overrides: Array<OverrideSpec>,
 evidence: Array<string>, };
 
 /**
- * A project's shared name, as Project settings shows it.
+ * A project's shared name.
  */
 export type SharedName = { 
 /**
@@ -5116,23 +4466,6 @@ value: string,
  * Whether it is the default made from the folder (no `[project] name`).
  */
 isDefault: boolean, };
-
-/**
- * A router file several applications mount.
- */
-export type SharedRouter = { 
-/**
- * The router file.
- */
-path: string, 
-/**
- * How many of the routes come from it.
- */
-routes: number, 
-/**
- * The other applications that mount it, by name.
- */
-alsoIn: Array<string>, };
 
 /**
  * The board the window shows, by project id and board id.
@@ -5182,36 +4515,6 @@ requestId: number,
 message: JsonValue, };
 
 /**
- * Why discovery skipped something (the engine's `SkipReason`).
- */
-export type SkipKind = "default" | "ignored" | "excluded" | "not_included" | "language_off" | "javascript" | "symlink" | "invalid_path";
-
-/**
- * One line of the skipped-files report ("Skipped: node_modules, .venv, dist").
- */
-export type SkippedFolder = { 
-/**
- * The folder, relative to the project's folder (`""` is the folder itself).
- */
-folder: string, 
-/**
- * Why.
- */
-reason: SkipKind, 
-/**
- * The reason in words.
- */
-reasonText: string, 
-/**
- * The folder wasn't walked at all, so its files weren't counted.
- */
-wholeFolder: boolean, 
-/**
- * Skipped source-like files counted in it.
- */
-files: number, };
-
-/**
  * Where a node's own source is: its condition, its main call expression, or else its statement,
  * from recorded ranges. Lines are one-based; columns are UTF-16 code units from the line's start;
  * the end is exclusive.
@@ -5238,69 +4541,6 @@ endColumn: number, };
  * The freshness of a file's source, as the UI shows it.
  */
 export type SourceState = "current" | "changed" | "missing";
-
-/**
- * What a draft starts.
- */
-export type StartPreview = { 
-/**
- * The file.
- */
-path: string, 
-/**
- * The binding or callable it names (`app`), if any.
- */
-name: string | null, 
-/**
- * What it is (`A FastAPI application with 2 routes`).
- */
-description: string, 
-/**
- * Whether Unfold can follow it into the code.
- */
-status: LaunchStatus, 
-/**
- * Why not, when it can't.
- */
-reason: string | null, };
-
-/**
- * A FastAPI application no launch serves, with a launch that would.
- */
-export type SuggestedApp = { 
-/**
- * Its file.
- */
-path: string, 
-/**
- * The binding (`app`).
- */
-attribute: string, 
-/**
- * The suggested working folder (`.` for the project's folder).
- */
-folder: string, 
-/**
- * The suggested command (`uvicorn dashboard_builder.app:app`).
- */
-command: string, 
-/**
- * Its unique route declarations.
- */
-routes: number, };
-
-/**
- * The arguments of `switch_worktree`.
- */
-export type SwitchWorktreeArgs = { 
-/**
- * The project.
- */
-project: ProjectId, 
-/**
- * An available worktree's `path`, exactly as `git_info` lists it.
- */
-path: string, };
 
 /**
  * What a health item or repair is about, on one page.
@@ -6015,64 +5255,18 @@ projects: Array<ProjectRow>,
 /**
  * The project last selected in any window: the default for a new window.
  */
-selected: ProjectId | null, 
-/**
- * Recent boards, most recent first.
- */
-recentBoards: Array<RecentBoard>, 
-/**
- * Folders removed from the workspace, most recent first ("Opened before").
- */
-removed: Array<RemovedProject>, };
-
-/**
- * One worktree of a repository.
- */
-export type Worktree = { 
-/**
- * The worktree's root folder.
- */
-root: string, 
-/**
- * The project's folder in this worktree (`root` joined with the project's subpath): what
- * `switch_worktree` takes.
- */
-path: string, 
-/**
- * The branch checked out there.
- */
-branch: string | null, 
-/**
- * The first 7 hex digits of a detached HEAD's commit.
- */
-detached: string | null, 
-/**
- * Whether it is the repository's main worktree.
- */
-main: boolean, 
-/**
- * Whether the project's row points at it now.
- */
-current: boolean, 
-/**
- * Whether the project's folder exists in it.
- */
-available: boolean, };
+selected: ProjectId | null, };
 
 /** Every engine command: its arguments, its result, and, for a streamed command, its stream messages. */
 export interface Commands {
   /**
-   * Every project row, the default selection, recent boards, and the folders "Opened before".
+   * Every project row and the default selection.
    */
   workspace: { args: NoArgs; result: WorkspaceView };
   /**
-   * Adds a folder as a project, or finds its row (main process only).
+   * Adds a folder as a project and compiles it at once, or finds its row (main process only).
    */
   add_project: { args: AddProjectArgs; result: AddedProject };
-  /**
-   * Adds back a folder "Opened before" lists.
-   */
-  readd_project: { args: AddProjectArgs; result: AddedProject };
   /**
    * Removes a project from the workspace (its `.unfold/` stays).
    */
@@ -6090,68 +5284,30 @@ export interface Commands {
    */
   select_project: { args: SelectProjectArgs; result: null };
   /**
-   * The branch and worktrees of a project's repository.
-   */
-  git_info: { args: ProjectArgs; result: GitInfo | null };
-  /**
-   * Points a project at another worktree of its repository.
-   */
-  switch_worktree: { args: SwitchWorktreeArgs; result: ProjectRow };
-  /**
    * Every project's drafts and published boards with unpublished changes.
    */
   drafts: { args: NoArgs; result: Drafts };
   /**
-   * Home's header and Health line.
+   * Home's header, state line, and Health line.
    */
   project_summary: { args: ProjectArgs; result: ProjectSummary };
-  /**
-   * What a Compile would graph and skip. Writes nothing.
-   */
-  compile_preview: { args: ProjectArgs; result: CompilePreview };
-  /**
-   * One level of the scope tree: folders only.
-   */
-  scope_dir: { args: ProjectPathArgs; result: ScopeDir };
   /**
    * The entrance catalog: applications by category with their launches, or one
    * application's (or the unreached) entrance rows, filtered and paged.
    */
   entrances: { args: EntrancesArgs; result: EntrancesView };
   /**
-   * What Unfold reads from a draft launch: its parts, target, import path, and what it would
-   * reach. Runs and writes nothing.
-   */
-  check_launch: { args: CheckLaunchArgs; result: LaunchCheck };
-  /**
-   * Route and import counts, and the FastAPI applications no launch serves, for setting up
-   * launches.
-   */
-  launch_suggestions: { args: ProjectArgs; result: LaunchSuggestions };
-  /**
-   * The project's `render.yaml` services as draft launches, for review. Runs and writes nothing.
-   */
-  import_deploy_files: { args: ProjectArgs; result: DeployImport };
-  /**
    * The Problems list, with the health of every board.
    */
   problems: { args: ProjectArgs; result: Array<ProblemItem> };
   /**
-   * The Index log and the graph's counts.
+   * Compiles the project; streams progress.
    */
-  index_log: { args: ProjectArgs; result: IndexLog };
-  /**
-   * Compile (`check`) or Rebuild from scratch (`from_scratch`); streams progress.
-   */
-  compile: { args: CompileArgs; result: CompileOutcome; stream: CompileProgress };
+  compile: { args: ProjectArgs; result: CompileOutcome; stream: CompileProgress };
   /**
    * Cancels a project's running and queued Compiles.
    */
   cancel_compile: { args: ProjectArgs; result: CancelCompileResult };
-  /**
-   * Turns background updates on or off for a project.
-   */
-  set_background_updates: { args: SetBackgroundUpdatesArgs; result: GraphStatus };
   /**
    * A project's `unfold.toml` and shared name.
    */
@@ -6177,13 +5333,10 @@ export interface Commands {
    */
   file_view: { args: FileViewArgs; result: FileView };
   /**
-   * Opens a file with the editor command, or in TextEdit.
+   * Opens a file with the editor command, or in TextEdit. The project's `unfold.toml` is
+   * created empty first when it has none.
    */
   open_in_editor: { args: OpenInEditorArgs; result: null };
-  /**
-   * Shows a file or folder in the system's file manager.
-   */
-  reveal_in_finder: { args: ProjectPathArgs; result: null };
   /**
    * An entrance card or a block card (Code and Flow).
    */
@@ -6353,26 +5506,16 @@ export type Events = { [E in WorkspaceEvent as E["type"]]: E };
 export const COMMAND_NAMES = [
   "workspace",
   "add_project",
-  "readd_project",
   "remove_project",
   "reorder_projects",
   "set_project_expanded",
   "select_project",
-  "git_info",
-  "switch_worktree",
   "drafts",
   "project_summary",
-  "compile_preview",
-  "scope_dir",
   "entrances",
-  "check_launch",
-  "launch_suggestions",
-  "import_deploy_files",
   "problems",
-  "index_log",
   "compile",
   "cancel_compile",
-  "set_background_updates",
   "project_config",
   "update_project_config",
   "get_settings",
@@ -6380,7 +5523,6 @@ export const COMMAND_NAMES = [
   "app_info",
   "file_view",
   "open_in_editor",
-  "reveal_in_finder",
   "card",
   "peek",
   "relations",

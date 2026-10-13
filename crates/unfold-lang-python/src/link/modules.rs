@@ -757,4 +757,63 @@ mod tests {
         );
         assert_eq!(ordered(&files, &roots, "a/pkg/run.py", ".", true), "missing");
     }
+
+    #[test]
+    fn from_imports_reach_the_submodules_they_name() {
+        use unfold_core::Snapshot;
+        use unfold_engine::Language as _;
+        use unfold_engine::settings::{FolderPath, Settings};
+
+        let files: Vec<unfold_engine::ProgramFile> = [
+            (
+                "app/main.py",
+                "from pkg import sub\nfrom pkg.inner import thing\n",
+            ),
+            ("app/pkg/__init__.py", ""),
+            ("app/pkg/sub.py", ""),
+            ("app/pkg/inner/__init__.py", "from . import deep\n"),
+            ("app/pkg/inner/deep.py", ""),
+            ("app/pkg/inner/thing.py", ""),
+            ("app/pkg/unused.py", ""),
+        ]
+        .into_iter()
+        .map(|(path, text)| {
+            let path = RepoPath::new(path).expect("a path");
+            let snapshot = Snapshot::from_text(path.clone(), text).expect("a snapshot");
+            let facts = crate::Python
+                .extract(&snapshot, &Settings::default())
+                .expect("the file extracts");
+            unfold_engine::ProgramFile {
+                path,
+                language: Language::Python,
+                facts: Some(Arc::new(facts)),
+            }
+        })
+        .collect();
+        let program = FactsSet::new(files).expect("distinct paths");
+        let inputs = ProjectInputs::default();
+        let modules = Modules::new(&program, &inputs);
+        let context = PythonContext {
+            entry: PythonEntry::Script(RepoPath::new("app/main.py").expect("a path")),
+            roots: vec![FolderPath::parse("app").expect("a folder")],
+        };
+        let mut reached: Vec<&str> = modules
+            .reached(&program, &context)
+            .into_iter()
+            .filter_map(|(file, _)| program.file(file))
+            .map(|entry| entry.path.as_str())
+            .collect();
+        reached.sort_unstable();
+        assert_eq!(
+            reached,
+            [
+                "app/main.py",
+                "app/pkg/__init__.py",
+                "app/pkg/inner/__init__.py",
+                "app/pkg/inner/deep.py",
+                "app/pkg/inner/thing.py",
+                "app/pkg/sub.py",
+            ]
+        );
+    }
 }

@@ -1,6 +1,5 @@
-//! Workspace commands: the project rows every window shows, adding (from the
-//! main process only, or a folder "Opened before"), removing, ordering, expanding, and selecting
-//! projects, and the branch and worktree switcher (worktree metadata).
+//! Workspace commands: the project rows every window shows, adding (from the main process
+//! only), removing, ordering, expanding, and selecting projects.
 
 use std::path::Path;
 
@@ -8,29 +7,27 @@ use serde::Deserialize;
 use ts_rs::TS;
 
 use super::{NoArgs, ProjectArgs};
-use crate::git::{self, GitInfo};
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
-use crate::projects::{AddedProject, ProjectId, ProjectRow, WorkspaceView};
+use crate::projects::{AddedProject, ProjectId, WorkspaceView};
 
-/// `workspace`: every project row (reading each repository's `HEAD`), the default selection,
-/// recent boards, and the folders "Opened before".
+/// `workspace`: every project row and the default selection.
 pub fn workspace(ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<WorkspaceView> {
     Ok(ctx.projects().view())
 }
 
-/// The arguments of `add_project` and `readd_project`.
+/// The arguments of `add_project`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 pub struct AddProjectArgs {
-    /// The folder's absolute path (from a dialog, a drop, or the command line; for
-    /// `readd_project`, a path "Opened before" lists).
+    /// The folder's absolute path, from the Add Project dialog.
     pub path: String,
 }
 
-/// `add_project` (main process only): adds the folder as a resting, expanded row at the end, or
-/// answers `exists` with the row that has it (the same folder, or another worktree of its
-/// repository). Writes nothing in the folder.
+/// `add_project` (main process only): adds the folder as an expanded row at the end and
+/// compiles it at once, or answers `exists` with the row that already has the folder. A folder
+/// Unfold can't write `.unfold/` into (read-only, or on a network volume) is refused with
+/// `folder_not_writable`.
 pub fn add_project(ctx: &Ctx<'_>, args: AddProjectArgs) -> CommandResult<AddedProject> {
     ctx.require_trusted("add_project")?;
     let path = Path::new(&args.path);
@@ -38,18 +35,6 @@ pub fn add_project(ctx: &Ctx<'_>, args: AddProjectArgs) -> CommandResult<AddedPr
         return Err(CommandError::invalid_args("add_project takes an absolute path"));
     }
     Ok(ctx.projects().add(path)?)
-}
-
-/// `readd_project`: adds back a folder "Opened before" lists (and only such a folder: a window
-/// can't name other paths outside its projects), exactly like `add_project`.
-pub fn readd_project(ctx: &Ctx<'_>, args: AddProjectArgs) -> CommandResult<AddedProject> {
-    if !ctx.projects().was_removed(&args.path) {
-        return Err(CommandError::not_found(format!(
-            "`{}` is not a folder removed from the workspace",
-            args.path
-        )));
-    }
-    Ok(ctx.projects().add(Path::new(&args.path))?)
 }
 
 /// `remove_project`: removes the project from the workspace (never touching its `.unfold/`).
@@ -101,28 +86,4 @@ pub struct SelectProjectArgs {
 /// new windows.
 pub fn select_project(ctx: &Ctx<'_>, args: SelectProjectArgs) -> CommandResult<()> {
     Ok(ctx.projects().select(ctx.window, args.project.as_ref())?)
-}
-
-/// `git_info`: the branch and worktrees of the project's repository, read from Git's files, or
-/// `None` outside a repository. Never wakes the project.
-pub fn git_info(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<Option<GitInfo>> {
-    Ok(git::info(ctx.project(&args.project)?.root()))
-}
-
-/// The arguments of `switch_worktree`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
-#[serde(deny_unknown_fields)]
-pub struct SwitchWorktreeArgs {
-    /// The project.
-    pub project: ProjectId,
-    /// An available worktree's `path`, exactly as `git_info` lists it.
-    pub path: String,
-}
-
-/// `switch_worktree`: points the project at another worktree of its repository (its graph,
-/// boards, drafts, and `state.json` become that folder's). Refused with `not_a_worktree` for a
-/// path `git_info` doesn't list as available, and with `boards_open` while one of its boards is
-/// open.
-pub fn switch_worktree(ctx: &Ctx<'_>, args: SwitchWorktreeArgs) -> CommandResult<ProjectRow> {
-    Ok(ctx.projects().switch_worktree(&args.project, &args.path)?)
 }

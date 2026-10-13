@@ -11,10 +11,9 @@ use unfold_engine::settings::{ManualTargets, ProcessStart, Settings};
 
 use super::{NoArgs, ProjectArgs};
 use crate::error::WorkspaceError;
-use crate::git;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
-use crate::projects::ProjectId;
+use crate::projects::{ProjectId, default_name};
 use crate::settings_edit::{ApplicationSpec, LaunchTargetSpec, OverrideSpec, SettingsEdit};
 use crate::state::AppSettings;
 use crate::workspace::{load_settings, settings_text};
@@ -229,7 +228,7 @@ impl From<&Settings> for SettingsView {
     }
 }
 
-/// A project's shared name, as Project settings shows it.
+/// A project's shared name.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct SharedName {
@@ -239,7 +238,7 @@ pub struct SharedName {
     pub is_default: bool,
 }
 
-/// `unfold.toml` as Project settings sees it.
+/// A project's `unfold.toml`: its text and the settings it holds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectConfig {
@@ -270,7 +269,7 @@ fn project_config_of(
             is_default: false,
         },
         None => SharedName {
-            value: git::default_name(root),
+            value: default_name(root),
             is_default: true,
         },
     };

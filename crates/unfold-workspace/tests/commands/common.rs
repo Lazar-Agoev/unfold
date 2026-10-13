@@ -114,7 +114,6 @@ impl Harness {
         let init = json!({
             "appDataDir": base.join("app"),
             "logsDir": base.join("logs"),
-            "fallbackCacheDir": base.join("fallback"),
         });
         host.init(&init.to_string()).expect("init");
         let sink = Arc::new(Recorder::default());
@@ -132,7 +131,7 @@ impl Harness {
     }
 
     /// A host over a copy of `testdata/playgrounds/<name>` (with its `unfold.toml`),
-    /// added as a project (resting, not compiled).
+    /// added as a project (which compiles it at once).
     pub fn new(name: &str, watch: bool) -> Self {
         Self::with(name, options(watch))
     }

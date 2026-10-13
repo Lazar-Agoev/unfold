@@ -34,7 +34,7 @@ export interface DiagramCardProps {
   readonly selected: boolean;
 }
 
-/** What a node's header says: its mark, name, and where it is; and where its source is, for Open source. */
+/** What a node's header says: its mark, name, and where it is. */
 function nodeText(model: CardView | undefined, key: Key) {
   if (model?.type === "block") {
     const { header } = model;
@@ -42,7 +42,6 @@ function nodeText(model: CardView | undefined, key: Key) {
       mark: "ƒ",
       name: header.qualifiedName,
       location: nodeLocation(header.path, header.startLine),
-      source: { path: header.path, line: header.startLine, definition: { path: header.path, kind: header.kind, name: header.name, qualifiedName: header.qualifiedName, line: header.startLine } },
     };
   }
   if (model?.type === "entrance") {
@@ -51,10 +50,9 @@ function nodeText(model: CardView | undefined, key: Key) {
       mark: model.header.kind.toUpperCase(),
       name: entranceTitle(model),
       location: nodeLocation(evidence.path, evidence.startLine),
-      source: { path: evidence.path, line: evidence.startLine },
     };
   }
-  return { mark: key.startsWith("entrance:") ? "" : "ƒ", name: keyDisplayName(key), location: "", source: null };
+  return { mark: key.startsWith("entrance:") ? "" : "ƒ", name: keyDisplayName(key), location: "" };
 }
 
 export function DiagramCard({ target, project, card, ports, selected }: DiagramCardProps) {
@@ -66,7 +64,7 @@ export function DiagramCard({ target, project, card, ports, selected }: DiagramC
   const updateNodeInternals = useUpdateNodeInternals();
   const folded = card.folded === true;
   const text = useMemo(() => nodeText(model, key), [model, key]);
-  const menu = useCardMenu(target, project, card.id, folded, !entrance, text.source);
+  const menu = useCardMenu(target, card.id, folded, !entrance);
   const proposals = useOpenBoard(target.board, (board) => {
     const page = findPage(board.document, target.page);
     return page ? proposalsOf(page, card.id).length : 0;

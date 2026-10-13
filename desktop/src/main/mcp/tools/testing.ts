@@ -24,7 +24,7 @@ export const PROJECT = "<project>";
 
 /** A project row of the fake workspace. */
 export function projectRow(id: string, name: string, overrides: Partial<ProjectRow> = {}): ProjectRow {
-  return { id, name, path: `/code/${name}`, expanded: true, live: true, state: { kind: "current" }, git: null, ...overrides };
+  return { id, name, path: `/code/${name}`, expanded: true, live: true, state: { kind: "current" }, ...overrides };
 }
 
 /** A recorded answer, as a fresh copy of the type the command returns. */
@@ -49,9 +49,9 @@ export interface HarnessOptions {
   readonly window?: (request: AgentShellEvent) => unknown;
   /** The render window's answers (default: every request fails as `render_failed`). */
   readonly renderer?: Partial<PageImages>;
-  /** Whether the person agrees to add a folder, and what adding it gives. */
+  /** Whether the person agrees to add a folder, and what adding it gives (an error: the engine refuses it). */
   readonly confirm?: boolean;
-  readonly added?: AddedProject;
+  readonly added?: AddedProject | EngineRequestError;
   readonly agent?: AgentIdentity;
 }
 
@@ -84,7 +84,7 @@ export const NO_RENDERER: PageImages = {
 /** A fake app for tools: engine, window, views, and the requests each received. */
 export function harness(options: HarnessOptions = {}) {
   const projects = options.projects ?? [projectRow(PROJECT, "ts-orders")];
-  const workspace: WorkspaceView = { projects: [...projects], selected: projects[0]?.id ?? null, recentBoards: [], removed: [] };
+  const workspace: WorkspaceView = { projects: [...projects], selected: projects[0]?.id ?? null };
   const engineCalls: [string, Readonly<Record<string, unknown>>][] = [];
   /** Engine requests sent as a window: its id, the command, and the arguments. */
   const windowCalls: [number, string, Readonly<Record<string, unknown>>][] = [];
@@ -148,7 +148,8 @@ export function harness(options: HarnessOptions = {}) {
           confirmations.push(path);
           return Promise.resolve(options.confirm ?? false);
         },
-        addProject: () => Promise.resolve(options.added ?? { status: "added", project: PROJECT }),
+        addProject: () =>
+          options.added instanceof EngineRequestError ? Promise.reject(options.added) : Promise.resolve(options.added ?? { status: "added", project: PROJECT }),
       },
       agent,
       new AbortController().signal,

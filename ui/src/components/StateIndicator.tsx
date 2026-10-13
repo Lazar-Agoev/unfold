@@ -18,7 +18,6 @@ type ProjectState =
   | { readonly kind: "compiling"; readonly done: number; readonly total: number }
   | { readonly kind: "updating"; readonly files: number | null }
   | { readonly kind: "problems"; readonly count: number }
-  | { readonly kind: "paused"; readonly changed: number }
   | { readonly kind: "not_compiled" }
   | { readonly kind: "failed"; readonly message: string }
   | { readonly kind: "resting"; readonly last: ProjectState; readonly atMs: number }
@@ -41,8 +40,6 @@ function stateWords(state: ProjectState): string {
       return "Updating";
     case "problems":
       return plural(state.count, "problem");
-    case "paused":
-      return "Background updates paused";
     case "not_compiled":
       return "Not compiled yet";
     case "failed":
@@ -63,8 +60,6 @@ function glyphFor(state: ProjectState, variant: "row" | "line"): ReactNode {
       return <ProgressRing size={variant === "row" ? 14 : 12} />;
     case "problems":
       return <span className="state-dot state-dot-problems" />;
-    case "paused":
-      return <StateGlyph glyph="paused" variant={variant} />;
     case "not_compiled":
       return <StateGlyph glyph="not-compiled" variant={variant} />;
     case "failed":

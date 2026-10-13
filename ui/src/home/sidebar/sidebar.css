@@ -29,7 +29,7 @@
   white-space: nowrap;
 }
 
-/* 2. Recents, Drafts */
+/* 2. Drafts */
 .home-nav {
   display: flex;
   flex-shrink: 0;
@@ -183,7 +183,6 @@
   display: flex;
   flex: 1;
   align-items: baseline;
-  gap: 5px;
   min-width: 0;
   overflow: hidden;
 }
@@ -195,17 +194,6 @@
   font-weight: 500;
   letter-spacing: var(--tracking-title);
   text-overflow: ellipsis;
-}
-
-.home-project-branch {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--color-muted);
-  font-family: var(--font-code);
-  font-size: var(--text-11);
-  line-height: var(--leading-14);
-  letter-spacing: var(--tracking-display);
-  text-overflow: clip;
 }
 
 /* `⋯` after the state slot, on hover, focus, selection, and while its menu is open. */

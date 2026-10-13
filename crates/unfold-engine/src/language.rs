@@ -197,21 +197,6 @@ pub struct LaunchResolution {
     pub seeds: Vec<BlockRef>,
 }
 
-/// What a Python import context reaches and resolves, against the linked answers
-/// ([`Linked::context_preview`]).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ContextPreview {
-    /// The indexed files the context reaches, sorted.
-    pub reached: Vec<RepoPath>,
-    /// How many imports in those files resolve to an indexed file under the context.
-    pub resolved: u32,
-    /// How many of the same imports resolve to an indexed file in the linked graph.
-    pub resolved_now: u32,
-    /// The modules of imports that resolve under the context but not in the linked graph:
-    /// the first few, sorted.
-    pub newly_resolved: Vec<Box<str>>,
-}
-
 /// Where an emitted output path comes from, through a language's emit map (TypeScript's
 /// `outDir`/`rootDir` mapping: `dist/server.js` comes from `src/server.ts`).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -468,13 +453,6 @@ pub trait Linked: Send + Sync {
     /// A launch target resolved with a Python import context, which need not be one of
     /// [`ProjectInputs::python_contexts`]. `None` when the language doesn't run Python launches.
     fn launch_target(&self, _target: &LaunchTarget, _context: &PythonContext) -> Option<LaunchResolution> {
-        None
-    }
-
-    /// What a Python import context (such as a launch being edited) would reach, and how it
-    /// would resolve the imports there compared with the linked answers. `None` when the
-    /// language doesn't run Python launches.
-    fn context_preview(&self, _context: &PythonContext) -> Option<ContextPreview> {
         None
     }
 

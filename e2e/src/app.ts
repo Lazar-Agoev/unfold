@@ -18,7 +18,7 @@ function appEnv(sandbox: Sandbox): Record<string, string> {
       env[key] = value;
     }
   }
-  // A throwaway home keeps logs (~/Library/Logs/Unfold) and fallback caches out of the real ones.
+  // A throwaway home keeps logs (~/Library/Logs/Unfold) out of the real ones.
   env["HOME"] = sandbox.home;
   return env;
 }

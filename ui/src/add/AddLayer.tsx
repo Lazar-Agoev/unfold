@@ -1,8 +1,7 @@
 /**
- * The Add box: one box over the window. Empty, it browses entrances (LOOK IN, the scope's list, and a
- * preview); typing searches every connected project. Focus stays in its input: ↑ ↓ move the selection,
- * ← → move between LOOK IN and the list, Enter adds to the current page, ⌘Enter on a new page, Tab
- * switches the kind, Escape closes.
+ * The Add box: one box over the window. Typing searches every connected project. Focus stays in its
+ * input: ↑ ↓ move the selection, Enter adds to the current page, ⌘Enter on a new page, Tab switches the
+ * kind, Escape closes.
  */
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -11,28 +10,12 @@ import { createPortal } from "react-dom";
 import { newCardView } from "../code/typeKinds";
 import { Tooltip } from "../components";
 import { Icon } from "../icons";
-import { engineQueryOptions, type AppRow, type EntranceScope, type ProjectId, type ProjectRow } from "../ipc";
+import { engineQueryOptions, type ProjectId, type ProjectRow } from "../ipc";
 import { plural } from "../lib/format";
-import { findPage, useOpenBoard, usePageKeys, type BoardRef } from "../state/boards";
-import { closeAdd, openDialog, useAddTarget, type AddTarget, type DialogRequest } from "../state/overlays";
+import { findPage, useOpenBoard, type BoardRef } from "../state/boards";
+import { closeAdd, useAddTarget, type AddTarget } from "../state/overlays";
 import { refProjectFor, useProjectIndex, useWorkspace } from "../state/workspace";
 import { activateChoice, type AddChoice } from "./activate";
-import {
-  applicationSections,
-  entranceSections,
-  findApplication,
-  navItems,
-  scopeId,
-  scopeProject,
-  selectableNav,
-  UNREACHED_NAME,
-  type ListItem,
-  type NavItem,
-  type Overview,
-  type Scope,
-} from "./browse";
-import { BrowsePreview } from "./BrowsePreview";
-import { EntranceList, LookIn, navOptionId, type ListHeader } from "./Browser";
 import { Preview, type PreviewItem } from "./Preview";
 import { optionId, ResultList } from "./ResultList";
 import { MoreRow, ResultRow, resultHeight, resultText } from "./Rows";
@@ -50,7 +33,6 @@ import {
   type ResultItem,
 } from "./search";
 import { useTextSearch } from "./textSearch";
-import { useOverviews, useScopeRows, type ScopeRows } from "./useBrowse";
 import "./add.css";
 
 /** Debounces: the query and the preview. */
@@ -61,40 +43,10 @@ const BOX_HEIGHT = 660;
 
 const BLOCKED = "Rename one of the projects in its settings";
 
-type Mode = "browse" | "search";
+type Mode = "empty" | "search";
 
-/** Where the browser's keyboard is: LOOK IN or the list. */
-type Pane = "nav" | "list";
-
-/** What the browser shows; kept between openings of Add (a return from the launch editor restores it). */
-interface Browse {
-  readonly scope: Scope;
-  readonly expanded: ReadonlySet<ProjectId>;
-  readonly openCategories: ReadonlySet<string>;
-  /** The selected row's id (the first row when it isn't listed). */
-  readonly row: string | null;
-  readonly pane: Pane;
-  /** The keyboard's row in LOOK IN. */
-  readonly cursor: string | null;
-}
-
-let lastBrowse: Browse | null = null;
-
-/**
- * The browser as Add opens: on a board page, its project expanded, with the last selection when it is
- * in that project, else the project; from Home, the last selection or All projects.
- */
-function initialBrowse(pageProject: ProjectId | null): Browse {
-  const last = lastBrowse === null ? null : { ...lastBrowse, pane: "list" as const, cursor: null };
-  if (pageProject === null) {
-    return last ?? { scope: { kind: "all" }, expanded: new Set(), openCategories: new Set(), row: null, pane: "list", cursor: null };
-  }
-  const expanded = new Set([...(last?.expanded ?? []), pageProject]);
-  if (last !== null && scopeProject(last.scope) === pageProject) {
-    return { ...last, expanded };
-  }
-  return { scope: { kind: "project", project: pageProject }, expanded, openCategories: last?.openCategories ?? new Set(), row: null, pane: "list", cursor: null };
-}
+/** The tabs, in Tab order. */
+const TABS: readonly AddTab[] = ["all", ...KINDS];
 
 interface TextOptions {
   readonly caseSensitive: boolean;
@@ -140,7 +92,7 @@ function useModalLayer(): void {
 }
 
 function modeOf(query: string): Mode {
-  return query.trim().length === 0 ? "browse" : "search";
+  return query.trim().length === 0 ? "empty" : "search";
 }
 
 /** The choice a result stands for (null for a "more" row). */
@@ -172,11 +124,6 @@ function itemProject(item: ResultItem): ProjectId | null {
     case "more":
       return null;
   }
-}
-
-/** The tabs of a mode, in Tab order: browsing has no All. */
-function tabsOf(mode: Mode): readonly AddTab[] {
-  return mode === "browse" ? KINDS : ["all", ...KINDS];
 }
 
 function OptionToggle({ label, glyph, pressed, onToggle }: { readonly label: string; readonly glyph: string; readonly pressed: boolean; readonly onToggle: () => void }) {
@@ -239,13 +186,11 @@ function usePageTitle(target: AddTarget): string | null {
 export function AddLayer() {
   useModalLayer();
   const listId = useId();
-  const navId = useId();
   const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const target = useAddTarget();
   const page = target.kind === "page" ? target.target : null;
   const pageTitle = usePageTitle(target);
-  const onPageKeys = usePageKeys(page);
   const index = useProjectIndex();
   const workspace = useWorkspace();
   const rows = useMemo<readonly ProjectRow[]>(() => (workspace?.projects ?? []).filter((row) => row.state.kind !== "unavailable"), [workspace]);
@@ -254,15 +199,9 @@ export function AddLayer() {
   const [chosenTab, setChosenTab] = useState<AddTab | null>(null);
   const [options, setOptions] = useState<TextOptions>({ caseSensitive: false, wholeWord: false, regex: false });
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [browse, setBrowse] = useState<Browse>(() => initialBrowse(page?.board.project ?? null));
-  useEffect(() => {
-    lastBrowse = browse;
-  }, [browse]);
 
   const mode = modeOf(query);
-  const browseTab: AddTab = chosenTab === null || chosenTab === "all" ? "entrances" : chosenTab;
-  const searchTab: AddTab = chosenTab ?? "all";
-  const tab = mode === "browse" ? browseTab : searchTab;
+  const tab: AddTab = chosenTab ?? "all";
 
   useEffect(() => {
     input.current?.focus();
@@ -273,29 +212,11 @@ export function AddLayer() {
     page !== null && project !== null && !refProjectFor(index, page.board.project, project).ok ? BLOCKED : null;
   const projectName = (project: string) => index.byId.get(project)?.name ?? "?";
 
-  // ---- Browse ----
-  const overviews = useOverviews(rows);
-  // A scope in a project that is no longer connected falls back to All projects.
-  const scope = useMemo<Scope>(
-    () => (browse.scope.kind === "all" || rows.some((row) => row.id === scopeProject(browse.scope)) ? browse.scope : { kind: "all" }),
-    [browse.scope, rows],
-  );
-  const nav = useMemo(() => navItems(overviews, browse.expanded, browse.openCategories, scope), [overviews, browse.expanded, browse.openCategories, scope]);
-  const scopeRows = useScopeRows(scope);
-  const app = findApplication(overviews, scope);
-  const sections = useMemo(() => browseSections(overviews, scope, scopeRows.pages, app), [overviews, scope, scopeRows.pages, app]);
-  const browseItems = useMemo(() => sections.flatMap((section) => section.items), [sections]);
-  const browseIndex = Math.max(0, browseItems.findIndex((item) => item.id === browse.row));
-  const browseItem = browseItems[browseIndex] ?? null;
-  const browsePreview = useDebounced(browseItem, PREVIEW_DELAY);
-  const browsing = mode === "browse" && browseTab === "entrances";
-
-  // ---- Search ----
   const settled = useDebounced(query, QUERY_DELAY);
   const searching = mode === "search" && modeOf(settled) === "search";
   const nameQuery = settled.trim();
   const allNames = useQuery({ ...engineQueryOptions("search", allSearchArgs(nameQuery)), enabled: searching, placeholderData: keepPreviousData });
-  const kindArgs = kindSearchArgs(nameQuery, searchTab);
+  const kindArgs = kindSearchArgs(nameQuery, tab);
   const kindNames = useQuery({
     ...engineQueryOptions("search", kindArgs ?? allSearchArgs(nameQuery)),
     enabled: searching && kindArgs !== null,
@@ -306,8 +227,8 @@ export function AddLayer() {
   const names = searching ? allNames.data : undefined;
   const kindData = kindArgs ? kindNames.data : undefined;
   const groups = useMemo(
-    () => (mode === "search" ? resultGroups(searchTab, names, kindData, textResults) : []),
-    [mode, searchTab, names, kindData, textResults],
+    () => (mode === "search" ? resultGroups(tab, names, kindData, textResults) : []),
+    [mode, tab, names, kindData, textResults],
   );
   const items = useMemo(() => flatItems(groups), [groups]);
   const counts = mode === "search" ? kindCounts(names, textResults) : null;
@@ -358,90 +279,9 @@ export function AddLayer() {
     choose(choiceOf(item), newPage);
   };
 
-  const update = (change: Partial<Browse>) => {
-    setBrowse((current) => ({ ...current, ...change }));
-  };
-
-  /** Selects a scope (its project unfolds); the list starts at its first row. */
-  const selectScope = (next: Scope, pane: Pane = browse.pane) => {
-    const project = scopeProject(next);
-    const expanded = project === null || browse.expanded.has(project) ? browse.expanded : new Set([...browse.expanded, project]);
-    update({ scope: next, expanded, row: null, pane, cursor: scopeId(next) });
-  };
-
-  const toggleProject = (project: ProjectId) => {
-    const expanded = new Set(browse.expanded);
-    if (!expanded.delete(project)) {
-      expanded.add(project);
-    }
-    update({ expanded });
-  };
-
-  const chooseNav = (item: NavItem, pane: Pane = browse.pane) => {
-    if (item.type === "more") {
-      update({ openCategories: new Set([...browse.openCategories, item.category]), cursor: null });
-    } else if (item.type !== "label" && item.type !== "note") {
-      selectScope(item.scope, pane);
-    }
-  };
-
-  const activateBrowse = (item: ListItem, newPage: boolean) => {
-    switch (item.type) {
-      case "entrance":
-        choose({ kind: "entrance", project: item.project, key: item.row.key }, newPage);
-        return;
-      case "application":
-      case "unreached":
-        selectScope(item.scope, "list");
-        return;
-      case "more":
-        scopeRows.fetchMore();
-        return;
-    }
-  };
-
-  const edit = (request: DialogRequest) => {
-    closeThen(() => {
-      openDialog(request);
-    });
-  };
-
-  const moveNav = (delta: number) => {
-    const items = selectableNav(nav);
-    const at = items.findIndex((item) => item.id === (browse.cursor ?? scopeId(scope)));
-    const next = items[Math.max(0, Math.min(items.length - 1, (at < 0 ? 0 : at) + delta))];
-    if (next === undefined) {
-      return;
-    }
-    if (next.type === "more") {
-      update({ cursor: next.id });
-    } else {
-      chooseNav(next, "nav");
-    }
-  };
-
-  /** ← and → in the browser: between LOOK IN and the list; in LOOK IN they fold and unfold a project. */
-  const sideways = (right: boolean) => {
-    if (browse.pane === "list") {
-      if (!right) {
-        update({ pane: "nav", cursor: scopeId(scope) });
-      }
-      return;
-    }
-    const cursor = nav.find((item) => item.id === (browse.cursor ?? scopeId(scope)));
-    if (cursor?.type === "project" && cursor.expanded !== right) {
-      toggleProject(cursor.row.id);
-    } else if (cursor?.type === "more" && right) {
-      chooseNav(cursor);
-    } else if (right) {
-      update({ pane: "list" });
-    }
-  };
-
   const switchTab = (delta: number) => {
-    const tabs = tabsOf(mode);
-    const at = tabs.indexOf(tab);
-    const next = tabs[(at + delta + tabs.length) % tabs.length];
+    const at = TABS.indexOf(tab);
+    const next = TABS[(at + delta + TABS.length) % TABS.length];
     if (next !== undefined) {
       setChosenTab(next);
       setSelectedId(null);
@@ -449,20 +289,6 @@ export function AddLayer() {
   };
 
   const moveSelection = (delta: number) => {
-    if (mode === "browse") {
-      if (!browsing) {
-        return;
-      }
-      if (browse.pane === "nav") {
-        moveNav(delta);
-        return;
-      }
-      const next = browseItems[Math.max(0, Math.min(browseItems.length - 1, browseIndex + delta))];
-      if (next) {
-        update({ row: next.id });
-      }
-      return;
-    }
     if (listIds.length === 0) {
       return;
     }
@@ -488,36 +314,12 @@ export function AddLayer() {
       case "ArrowUp":
         moveSelection(-1);
         break;
-      case "ArrowRight":
-      case "ArrowLeft":
-        if (!browsing) {
-          return;
-        }
-        sideways(event.key === "ArrowRight");
-        break;
       case "PageDown":
       case "PageUp":
-        if (mode === "browse" && (!browsing || browse.pane === "nav")) {
-          return;
-        }
         moveSelection(event.key === "PageDown" ? 10 : -10);
         break;
       case "Enter":
-        if (mode === "browse") {
-          if (!browsing) {
-            break;
-          }
-          if (browse.pane === "nav") {
-            const cursor = nav.find((item) => item.id === browse.cursor);
-            if (cursor?.type === "more") {
-              chooseNav(cursor);
-            } else {
-              update({ pane: "list" });
-            }
-          } else if (browseItem) {
-            activateBrowse(browseItem, newPage);
-          }
-        } else if (selectedItem) {
+        if (selectedItem) {
           activateResult(selectedItem, newPage);
         }
         break;
@@ -538,55 +340,10 @@ export function AddLayer() {
         : "Adds to a new draft";
 
   let body: ReactNode;
-  if (mode === "browse") {
-    body = !browsing ? (
+  if (mode === "empty") {
+    body = (
       <div className="add-body">
-        <p className="add-empty">{`Type to find ${tab === "text" ? "text" : KIND_LABELS[browseTab].toLowerCase()} in ${plural(rows.length, "project")}.`}</p>
-      </div>
-    ) : rows.length === 0 ? (
-      <div className="add-body">
-        <p className="add-empty">No projects are connected. Add one from Home.</p>
-      </div>
-    ) : (
-      <div className="add-body">
-        <LookIn
-          id={navId}
-          items={nav}
-          selected={scopeId(scope)}
-          cursor={browse.pane === "nav" ? (browse.cursor ?? scopeId(scope)) : null}
-          onChoose={(item) => {
-            chooseNav(item);
-          }}
-          onToggle={toggleProject}
-        />
-        <EntranceList
-          id={listId}
-          header={listHeader(scope, overviews, app, scopeRows)}
-          sections={sections}
-          message={listMessage(scope, overviews, scopeRows, sections.length)}
-          selected={browseItem?.id ?? null}
-          onPage={onPageKeys}
-          blocked={blocked}
-          loadingMore={scopeRows.fetchingMore}
-          onActivate={(item, newPage) => {
-            update({ row: item.id, pane: "list" });
-            activateBrowse(item, newPage);
-          }}
-          onEnd={scopeRows.fetchMore}
-        />
-        <BrowsePreview
-          item={browsePreview}
-          app={app}
-          projectName={projectName}
-          onPage={page !== null}
-          blocked={browsePreview?.type === "entrance" ? blocked(browsePreview.project) : null}
-          onActivate={(newPage) => {
-            if (browsePreview) {
-              activateBrowse(browsePreview, newPage);
-            }
-          }}
-          onEdit={edit}
-        />
+        <p className="add-empty">{workspace && rows.length === 0 ? "No projects are connected. Add one from Home." : emptyText(tab, rows.length)}</p>
       </div>
     );
   } else {
@@ -618,7 +375,7 @@ export function AddLayer() {
     );
   }
 
-  const activeDescendant = browsing ? browseDescendant(browse, scope, nav, navId, listId, browseItem === null ? -1 : browseIndex) : selectedIndex >= 0 ? optionId(listId, selectedIndex) : undefined;
+  const activeDescendant = selectedIndex >= 0 ? optionId(listId, selectedIndex) : undefined;
 
   return createPortal(
     <div
@@ -674,7 +431,7 @@ export function AddLayer() {
         </div>
         <div className="add-kinds">
           <Tabs
-            tabs={tabsOf(mode)}
+            tabs={TABS}
             active={tab}
             counts={counts}
             onChange={(next) => {
@@ -692,82 +449,10 @@ export function AddLayer() {
   );
 }
 
-/** The list of a scope: an application's (or the unreached) rows, or the applications of a project or of all. */
-function browseSections(overviews: readonly Overview[], scope: Scope, pages: readonly EntranceScope[], app: AppRow | null) {
-  switch (scope.kind) {
-    case "application":
-    case "unreached":
-      return entranceSections(scope.project, pages, app);
-    case "project":
-      return applicationSections(
-        overviews.filter((overview) => overview.row.id === scope.project),
-        false,
-      );
-    case "all":
-      return applicationSections(overviews, true);
-  }
-}
-
-/** The list's header: the application with its launches and routes, the unreached, a project, or all. */
-function listHeader(scope: Scope, overviews: readonly Overview[], app: AppRow | null, rows: ScopeRows): ListHeader | null {
-  switch (scope.kind) {
-    case "application": {
-      if (app === null) {
-        return null;
-      }
-      const launches = app.launches.length === 0 ? "No launch defined" : plural(app.launches.length, "launch", "launches");
-      return { title: app.name, meta: app.routes > 0 ? `${launches} · ${plural(app.routes, "route")}` : launches, description: app.description };
-    }
-    case "unreached": {
-      const total = rows.pages.at(-1)?.total;
-      return { title: UNREACHED_NAME, meta: total === undefined ? null : plural(total, "entrance"), description: null };
-    }
-    case "project": {
-      const overview = overviews.find((entry) => entry.row.id === scope.project);
-      if (!overview) {
-        return null;
-      }
-      const counts = overview.status === "ready" ? overview.overview.counts : null;
-      const meta = counts ? [plural(counts.applications, "application"), plural(counts.launches, "launch", "launches"), plural(counts.routes, "route")].join(" · ") : null;
-      return { title: overview.row.name, meta, description: null };
-    }
-    case "all": {
-      const ready = overviews.flatMap((overview) => (overview.status === "ready" ? [overview.overview.counts.applications] : []));
-      return {
-        title: "All projects",
-        meta: `${plural(overviews.length, "project")} · ${plural(
-          ready.reduce((sum, count) => sum + count, 0),
-          "application",
-        )}`,
-        description: null,
-      };
-    }
-  }
-}
-
-/** What the list says instead of rows: loading, an error, or nothing to show. */
-function listMessage(scope: Scope, overviews: readonly Overview[], rows: ScopeRows, sections: number): string | null {
-  if (sections > 0) {
-    return null;
-  }
-  if (scope.kind === "application" || scope.kind === "unreached") {
-    return rows.error ?? (rows.loading ? "Loading entrances…" : "No entrances found.");
-  }
-  const shown = scope.kind === "all" ? overviews : overviews.filter((overview) => overview.row.id === scope.project);
-  if (shown.some((overview) => overview.status === "loading")) {
-    return "Loading entrances…";
-  }
-  const failed = shown.find((overview) => overview.status === "error");
-  return failed?.status === "error" ? failed.message : "No entrances found.";
-}
-
-/** The row the input points at: LOOK IN's keyboard row, or the list's selection. */
-function browseDescendant(browse: Browse, scope: Scope, nav: readonly NavItem[], navId: string, listId: string, index: number): string | undefined {
-  if (browse.pane === "nav") {
-    const at = nav.findIndex((item) => item.id === (browse.cursor ?? scopeId(scope)));
-    return at < 0 ? undefined : navOptionId(navId, at);
-  }
-  return index < 0 ? undefined : optionId(listId, index);
+/** What the box says before anything is typed. */
+function emptyText(tab: AddTab, projects: number): string {
+  const what = tab === "all" ? "entrances, functions, files and text" : KIND_LABELS[tab].toLowerCase();
+  return `Type to find ${what} in ${plural(projects, "project")}.`;
 }
 
 type SearchStatus = { readonly kind: "ok" } | { readonly kind: "message"; readonly text: string };

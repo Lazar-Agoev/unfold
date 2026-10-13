@@ -10,9 +10,9 @@
 //!
 //! | Event | When |
 //! | --- | --- |
-//! | `workspace_changed` | A project row was added, removed, reordered, expanded or collapsed, renamed, or switched; recent boards changed |
+//! | `workspace_changed` | A project row was added, removed, reordered, expanded or collapsed, or renamed |
 //! | `project_state` | A project's row state changed (live ↔ resting included; not on every progress tick) |
-//! | `project_reset` | A project's folder changed (worktree switch) or it was removed: everything cached for it is stale |
+//! | `project_reset` | A project was removed: everything cached for it is stale |
 //! | `compile_progress` | A compile or update advanced (throttled) |
 //! | `graph_updated` | A commit changed the graph |
 //! | `problems_changed` | The Problems list changed |
@@ -58,8 +58,8 @@ pub enum WorkingFile {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum WorkspaceEvent {
-    /// The workspace's rows or recent boards changed. The UI replaces its `workspace` query
-    /// data with this view (no refetch).
+    /// The workspace's rows changed. The UI replaces its `workspace` query data with this view
+    /// (no refetch).
     WorkspaceChanged {
         /// The workspace now.
         workspace: WorkspaceView,
@@ -71,8 +71,7 @@ pub enum WorkspaceEvent {
         /// Its state now.
         state: ProjectState,
     },
-    /// The project's folder changed (a worktree switch) or the project was removed: everything
-    /// cached for it is stale.
+    /// The project was removed: everything cached for it is stale.
     ProjectReset {
         /// The project.
         project: ProjectId,

@@ -1,4 +1,4 @@
-//! The Problems list and the Index log (problem reporting, docs/engine.md#project-lifecycle).
+//! The Problems list (problem reporting, docs/engine.md#project-lifecycle).
 //!
 //! Problems lists only real problems:
 //!
@@ -13,14 +13,10 @@
 //! state line count the other problems only ([`project_problem_count`]); boards that need review
 //! show in Home's Health line.
 //!
-//! Unresolved calls are facts about the code, not problems; the Index log counts them. Language
-//! problems the linker reports (`Linked::problems`, such as Python modules that two source roots
-//! both provide) arrive as input problems among the engine's standing problems.
-//!
-//! The Index log keeps one entry per committed update: the engine's [`UpdateStats`] text plus
-//! what the commit wrote.
+//! Unresolved calls are facts about the code, not problems. Language problems the linker
+//! reports (`Linked::problems`, such as Python modules that two source roots both provide)
+//! arrive as input problems among the engine's standing problems.
 
-use std::collections::VecDeque;
 use std::path::Path;
 
 use serde::Serialize;
@@ -28,8 +24,7 @@ use ts_rs::TS;
 use unfold_core::vocab::FileState;
 use unfold_core::{Graph, LineIndex};
 use unfold_engine::settings::{Settings, SettingsError};
-use unfold_engine::{Problem, ProblemKind, UpdateStats};
-use unfold_store::CommitStats;
+use unfold_engine::{Problem, ProblemKind};
 
 /// What kind of problem a [`ProblemItem`] is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, TS)]
@@ -211,69 +206,6 @@ fn engine_problem(root: &Path, problem: &Problem) -> ProblemItem {
     item
 }
 
-/// One committed update in the Index log.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct IndexLogEntry {
-    /// When the commit finished, in milliseconds since the Unix epoch.
-    pub at_ms: i64,
-    /// Which action ran ("Compile", "Background update", "Rebuild from scratch").
-    pub action: String,
-    /// Indexed files after the update.
-    pub files: u32,
-    /// The update's wall time, in milliseconds.
-    pub update_ms: u64,
-    /// The commit's wall time, in milliseconds.
-    pub commit_ms: u64,
-    /// File rows the commit wrote.
-    pub files_written: u64,
-    /// Files the commit removed.
-    pub files_removed: u64,
-    /// Edges the commit wrote.
-    pub edges_written: u64,
-    /// The engine's statistics, one fact per line.
-    pub text: String,
-}
-
-impl IndexLogEntry {
-    pub(crate) fn new(at_ms: i64, stats: &UpdateStats, commit: &CommitStats) -> Self {
-        let millis = |duration: std::time::Duration| u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
-        Self {
-            at_ms,
-            action: stats.kind.to_string(),
-            files: u32::try_from(stats.files.values().sum::<usize>()).unwrap_or(u32::MAX),
-            update_ms: millis(stats.total),
-            commit_ms: millis(commit.elapsed),
-            files_written: commit.files_written,
-            files_removed: commit.files_removed,
-            edges_written: commit.edges_written,
-            text: stats.to_string(),
-        }
-    }
-}
-
-/// The most recent Index log entries.
-#[derive(Debug, Default)]
-pub(crate) struct IndexLog {
-    entries: VecDeque<IndexLogEntry>,
-}
-
-impl IndexLog {
-    const CAPACITY: usize = 100;
-
-    pub(crate) fn push(&mut self, entry: IndexLogEntry) {
-        if self.entries.len() == Self::CAPACITY {
-            self.entries.pop_front();
-        }
-        self.entries.push_back(entry);
-    }
-
-    /// Oldest first.
-    pub(crate) fn entries(&self) -> Vec<IndexLogEntry> {
-        self.entries.iter().cloned().collect()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -352,20 +284,5 @@ mod tests {
             ..Problems::default()
         };
         assert_eq!(project_problem_count(&boards_only.all()), 0);
-    }
-
-    #[test]
-    fn the_log_keeps_the_latest_entries() {
-        let mut log = IndexLog::default();
-        for at in 0..150 {
-            log.push(IndexLogEntry::new(
-                at,
-                &UpdateStats::default(),
-                &CommitStats::default(),
-            ));
-        }
-        let entries = log.entries();
-        assert_eq!(entries.len(), IndexLog::CAPACITY);
-        assert_eq!(entries[0].at_ms, 50);
     }
 }

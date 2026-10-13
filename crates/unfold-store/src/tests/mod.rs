@@ -344,7 +344,7 @@ fn a_panic_mid_commit_does_not_wedge_the_writer() {
     store.writer.hook = None;
     assert_eq!(state(&reader), original);
 
-    // The facts cache and Rebuild work again at once, and so does the next commit.
+    // The facts cache and clearing work again at once, and so does the next commit.
     store
         .writer
         .put_facts(&[crate::NewFacts {

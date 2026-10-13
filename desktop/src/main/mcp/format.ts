@@ -23,8 +23,6 @@ export function stateText(state: ProjectState): string {
       return state.files === null ? "updating" : `updating (${state.files} files)`;
     case "problems":
       return `problems (${state.count})`;
-    case "paused":
-      return `paused (${state.changed} files changed)`;
     case "not_compiled":
       return "not compiled";
     case "failed":

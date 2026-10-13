@@ -1,4 +1,4 @@
-//! What an update did, for the Index log, and progress reports for streaming.
+//! What an update did, and progress reports for streaming.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -40,7 +40,7 @@ impl Stage {
         Self::Validate,
     ];
 
-    /// The stage's name in the Index log.
+    /// The stage's name in progress reports.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Discover => "discover",
@@ -164,7 +164,7 @@ fn counts<K: fmt::Display>(map: &BTreeMap<K, usize>) -> String {
 }
 
 impl fmt::Display for UpdateStats {
-    /// The Index log entry, one fact per line.
+    /// The update, one fact per line.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let files: usize = self.files.values().sum();
         writeln!(

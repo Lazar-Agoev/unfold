@@ -1,26 +1,14 @@
-//! The Compile action as callers see it: a mode, a progress callback, and a ticket that
-//! resolves when the compile commits, fails, or is cancelled (docs/engine.md#updates `compile`).
+//! The Compile action as callers see it: a progress callback, and a ticket that resolves when
+//! the compile commits, fails, or is cancelled (docs/engine.md#updates `compile`).
 
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use ts_rs::TS;
 use unfold_engine::CancelToken;
 
 use crate::error::{Result, WorkspaceError};
-
-/// Which Compile to run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
-#[serde(rename_all = "snake_case")]
-pub enum CompileMode {
-    /// Check every file against the graph and bring everything up to date.
-    #[default]
-    Check,
-    /// Rebuild from scratch: drop the cache (graph, facts, last-good facts) and compile
-    /// everything again.
-    FromScratch,
-}
 
 /// A progress report while compiling: `done` of `total` items of `stage`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
@@ -60,7 +48,6 @@ pub struct CompileOutcome {
 
 /// A queued Compile on the engine thread.
 pub(crate) struct CompileJob {
-    pub(crate) mode: CompileMode,
     pub(crate) cancel: CancelToken,
     pub(crate) progress: Option<ProgressFn>,
     pub(crate) reply: Sender<Result<CompileOutcome>>,
