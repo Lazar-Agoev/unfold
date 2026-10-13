@@ -17,10 +17,6 @@ const OUTDATED: HealthItem = { page: "page-1", kind: "outdated", target: { card:
 const ELSEWHERE: HealthItem = { ...OUTDATED, page: "page-2" };
 const HEALTH: BoardHealthView = {
   health: { items: [OUTDATED, ELSEWHERE], missing: 0, outdated: 2, brokenGroups: 0, review: 0, brokenLinks: 0 },
-  outlines: [
-    { page: "page-1", rows: [], unlabeled: [] },
-    { page: "page-2", rows: [], unlabeled: [] },
-  ],
   label: "2 outdated",
 };
 const STRAYS = { kind: "strays", items: ["a"], message: "a has no line.", suggestion: "connect it." } as const;
@@ -30,7 +26,10 @@ class FakeEngine {
   readonly attached: number[] = [];
   readonly detached: number[] = [];
   readonly calls: [number, string, Readonly<Record<string, unknown>>][] = [];
-  readonly answers = new Map<string, () => unknown>([["board_health", () => HEALTH]]);
+  readonly answers = new Map<string, () => unknown>([
+    ["board_health", () => HEALTH],
+    ["read_board", () => ({ document: { title: "Orders", pages: [PAGE, { ...PAGE, id: "page-2" }] } })],
+  ]);
 
   attach(entry: WindowEntry): void {
     this.attached.push(entry.id);
@@ -176,6 +175,7 @@ describe("screenshot", () => {
 
   it("says when the board or the page isn't there", async () => {
     const { engine, renderer } = setup();
+    engine.answers.delete("read_board");
     expect(await renderer.screenshot({ board: BOARD, page: "page-1" })).toEqual({ ok: false, code: "board_not_found", message: `The project has no board \`${BOARD.id}\`.` });
     engine.answers.set("read_board", () => ({ document: { title: "Orders", pages: [PAGE] } }));
     expect(await renderer.screenshot({ board: BOARD, page: "page-9" })).toEqual({
@@ -356,7 +356,7 @@ describe("check", () => {
     renderer.settle((await request(window, 1)).requestId, { ok: true, checks: [] });
     renderer.settle((await request(window, 2)).requestId, { ok: true, checks: [] });
     expect(await checked).toMatchObject({ ok: true, pages: [{ page: "page-1" }, { page: "page-2" }] });
-    expect(engine.calls.map(([windowId]) => windowId)).toEqual([3, 7]);
+    expect(engine.calls.filter(([, command]) => command === "board_health").map(([windowId]) => windowId)).toEqual([3, 7]);
     expect(bridge.views.holder(BOARD)).toBe(7);
   });
 

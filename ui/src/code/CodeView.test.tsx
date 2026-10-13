@@ -12,7 +12,7 @@ import { defaultFolds, foldHiding, groupConflict, groupSelection, stepPort } fro
 import { linkRanges, segmentRange, spanRanges } from "./segments";
 import { linkNote } from "./text";
 
-/** The members of the group a gutter selection makes, or none when it can't be a group. */
+/** The members of the group a run of lines makes, or none when it can't be a group. */
 function groupForLines(outline: readonly OutlineItem[], fromLine: number, toLine: number): string[] {
   const selection = groupSelection(outline, fromLine, toLine);
   return "members" in selection ? selection.members : [];
@@ -63,7 +63,7 @@ describe("segments", () => {
 });
 
 describe("outline", () => {
-  it("makes a group of consecutive sibling statements from a gutter selection", () => {
+  it("makes a group of consecutive sibling statements from a run of lines", () => {
     expect(groupForLines(code.outline, 32, 34)).toEqual([
       "src/routes/orders.ts#function:createOrder/variable:order",
       "src/routes/orders.ts#function:createOrder/expression_statement[0]",

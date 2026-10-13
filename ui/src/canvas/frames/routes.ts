@@ -1,8 +1,8 @@
 /**
  * Arrows and drawn links at collapsed frames (design §4.4): an end inside a collapsed frame attaches
  * to the frame instead, an arrow or link with both ends inside one isn't drawn, and the ones that would
- * then draw on top of each other merge into one that counts them, as a Diagram node's calls to one
- * card merge. A line that only moved an end keeps its id, label, and contract. Pure.
+ * then draw on top of each other merge into one (a merged link counts them), as a Diagram node's calls
+ * to one card merge. A line that only moved an end keeps its id and contract. Pure.
  */
 
 import type { Link, LinkKind } from "../../ipc/generated";
@@ -38,16 +38,14 @@ export function routeArrows(arrows: readonly Arrow[], shownAs: ReadonlyMap<strin
     if (!first || group.length === 1) {
       return group;
     }
-    const fields = group.filter((arrow) => arrow.kind === "type").length;
-    const calls = group.reduce((count, arrow) => count + (arrow.kind === "type" ? 0 : (arrow.calls?.length ?? 1)), 0);
-    const { calls: _calls, type: _type, cards: _cards, ...rest } = first;
+    const { calls: _calls, cards: _cards, ...rest } = first;
     return [
       {
         ...rest,
         id: `${first.source}|${first.sourceHandle}|${first.target}`,
         dashed: group.every((arrow) => arrow.dashed),
         line: null,
-        merged: { calls, fields },
+        merged: true,
       },
     ];
   });

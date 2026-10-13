@@ -1,6 +1,5 @@
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import cardCreateOrder from "../../../../testdata/workspace/commands/card_create_order.json";
 import fileViewPage from "../../../../testdata/workspace/commands/file_view_orders_page.json";
 import relationsCreateOrder from "../../../../testdata/workspace/commands/relations_create_order.json";
@@ -14,9 +13,8 @@ import type { WindowEntry } from "../windows";
 import type { McpServices, PageImages } from "./context";
 import type { BoardHealthView, BoardList, Page, ProjectSummary, ReadBoardResult, WorkspaceView } from "./engine-types";
 import { INSTRUCTIONS } from "./instructions";
-import { definePrompt } from "./prompt";
 import { McpService } from "./service";
-import { PROMPTS, TOOLS } from "./tools";
+import { TOOLS } from "./tools";
 
 vi.mock("electron", async () => (await import("../fake-electron")).electronModule);
 
@@ -100,7 +98,6 @@ const HEALTH: BoardHealthView = {
     review: 0,
     brokenLinks: 0,
   },
-  outlines: [{ page: "page-1", rows: [{ card: "create-order", depth: 0 }], unlabeled: [] }],
   label: "1 missing",
 };
 
@@ -150,8 +147,8 @@ const RENDERER: PageImages = {
   checkBoard: () => Promise.resolve({ ok: true, title: "Order placement", pages: [{ page: "page-1", pageTitle: "Placing an order", health: [], checks: [] }] }),
 };
 
-/** The engine's answers by command, as untrusted requests reach it (a streamed command's messages go to `stream`). */
-const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>, stream: (message: unknown) => void) => unknown>> = {
+/** The engine's answers by command, as untrusted requests reach it. */
+const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>) => unknown>> = {
   workspace: () => WORKSPACE,
   list_boards: (args) => (args["project"] === PROJECT ? BOARDS : { ...BOARDS, boards: [] }),
   project_summary: () => SUMMARY,
@@ -173,18 +170,12 @@ const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>,
   update_project_config: () => ({ exists: true, text: '[scope]\nexclude = ["scripts"]\n', settings: null, error: null, name: { value: "ts-orders", isDefault: true } }),
   peek: () => ({ key: "entrance:x" }),
   search: () => ({ ...searchPlace, projects: [] }),
-  search_text: (_args, stream) => {
-    stream({ project: PROJECT, path: "src/routes/orders.ts", matches: [{ line: 12, text: "res.json(await repo.list());", column: 0, ranges: [[0, 3]] }] });
-    return { files: 1, matches: 1, searched: 12, truncated: false, filesTruncated: false, projects: [] };
-  },
   file_view: () => fileViewPage,
   card: () => cardCreateOrder,
   relations: () => relationsCreateOrder,
-  line_labels: () => [],
   board_refs: () => ({ refs: [], truncated: false }),
   read_board: () => FILE,
   board_health: () => HEALTH,
-  export_mermaid_text: () => ({ text: "flowchart LR\n  c0[createOrder]\n" }),
   call_contract: () => ({
     source: `${CREATE_ORDER}/variable:order/call[0]`,
     seq: 0,
@@ -271,17 +262,17 @@ async function start(overrides: Partial<McpServices> = {}, options: Partial<Cons
     services: {
       bridge,
       renderer: RENDERER,
-      engine: (command, args, onStream) => {
+      engine: (command, args) => {
         calls.push([command, args]);
         const answer = ANSWERS[command];
         return answer
-          ? Promise.resolve(answer(args, (message) => onStream?.(message)))
+          ? Promise.resolve(answer(args))
           : Promise.reject(new EngineRequestError({ code: "not_found", message: `no fake for ${command}` }));
       },
       engineAs: (_windowId, command, args) => {
         calls.push([command, args]);
         const answer = ANSWERS[command];
-        return answer ? Promise.resolve(answer(args, () => undefined)) : Promise.reject(new EngineRequestError({ code: "not_found", message: `no fake for ${command}` }));
+        return answer ? Promise.resolve(answer(args)) : Promise.reject(new EngineRequestError({ code: "not_found", message: `no fake for ${command}` }));
       },
       confirmAddProject: () => Promise.resolve(false),
       addProject: () => Promise.reject(new Error("no tool adds projects yet")),
@@ -310,15 +301,15 @@ function text(result: Awaited<ReturnType<Client["callTool"]>>): string {
 }
 
 describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era) => {
-  it("offers its tools, prompts, and instructions", async () => {
+  it("offers its tools and instructions", async () => {
     const { url } = await start();
     const client = await connect(url, era);
     expect(client.getProtocolEra()).toBe(era === "current" ? "modern" : "legacy");
     expect(client.getNegotiatedProtocolVersion()).toBe(era === "current" ? "2026-07-28" : "2025-11-25");
     expect(client.getServerVersion()).toMatchObject({ name: "unfold", version: "1.2.3" });
     expect(client.getInstructions()).toBe(INSTRUCTIONS);
-    expect(client.getServerCapabilities()).toMatchObject({ tools: {}, prompts: {} });
-    for (const left of ["resources", "logging", "completions"]) {
+    expect(client.getServerCapabilities()).toMatchObject({ tools: {} });
+    for (const left of ["prompts", "resources", "logging", "completions"]) {
       expect(client.getServerCapabilities()).not.toHaveProperty(left);
     }
 
@@ -328,16 +319,6 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
       expect(tool.annotations, tool.name).toMatchObject(TOOLS.find((defined) => defined.name === tool.name)?.annotations ?? {});
       expect(tool._meta?.["anthropic/alwaysLoad"]).toBe(["get_guide", "get_current_view"].includes(tool.name) ? true : undefined);
     }
-    const { prompts } = await client.listPrompts();
-    expect(prompts.map((prompt) => prompt.name)).toEqual(PROMPTS.map((prompt) => prompt.name));
-    expect(prompts.find((prompt) => prompt.name === "explain-entrance")?.arguments).toEqual([
-      { name: "entrance", description: expect.stringContaining("a route's method") as string, required: false },
-      { name: "path", description: expect.stringContaining("POST /orders") as string, required: false },
-    ]);
-    const explain = await client.getPrompt({ name: "explain-entrance", arguments: { entrance: "POST", path: "/orders" } });
-    expect(explain.messages).toEqual([{ role: "user", content: { type: "text", text: expect.stringContaining("Explain the entrance “POST /orders” end to end") as string } }]);
-    const simplify = await client.getPrompt({ name: "simplify-function", arguments: {} });
-    expect(simplify.messages[0]?.content).toMatchObject({ type: "text", text: expect.stringContaining("the function whose card is selected in Unfold") as string });
   });
 
   it("calls each tool, as the agent the client names", async () => {
@@ -396,7 +377,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
       ["organize_boards", { project: "ts-orders", ops: [{ op: "rename", board: BOARD.id, title: "Orders" }] }],
       ["edit_pages", { board: BOARD.id, project: "ts-orders", ops: [{ op: "add", title: "More" }] }],
       ["show", { board: BOARD.id, project: "ts-orders", page: "page-1" }],
-      ["search", { query: "place", kinds: ["functions", "text"] }],
+      ["search", { query: "place", kinds: ["functions", "files"] }],
       ["list_entrances", { project: "ts-orders" }],
       ["read_code", { key: CREATE_ORDER, project: "ts-orders" }],
       ["read_call", { source: `${CREATE_ORDER}/variable:order/call[0]`, project: "ts-orders" }],
@@ -418,13 +399,12 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
     const calls: [string, Record<string, unknown>][] = [
       ["list_boards", { project: "ts-orders" }],
       ["read_page", at],
-      ["read_page", { ...at, format: "mermaid" }],
       ["check", at],
       ["add_cards", { ...at, cards: [{ key: CREATE_ORDER }] }],
       ["set_view", { ...at, items: [{ id: "create-order", expanded: true, expandCalls: [[`${CREATE_ORDER}/variable:order/call[0]`]] }] }],
       ["arrange_page", at],
       ["remove_items", { ...at, ids: ["create-order"] }],
-      ["group_steps", { ...at, card: "create-order", groups: [{ title: "Read the draft", lines: [26, 26] }] }],
+      ["group_steps", { ...at, card: "create-order", groups: [{ title: "Read the draft", steps: [`${CREATE_ORDER}/variable:draft`] }] }],
       ["frame_cards", { ...at, frames: [{ title: "server", members: ["create-order"] }] }],
       ["add_resources", { ...at, resources: [{ kind: "table", name: "orders", anchors: [{ key: "src/db/repository.ts#class:OrderRepository" }] }] }],
       ["connect", { ...at, connections: [{ kind: "writes", from: "create-order", to: "orders", description: "It inserts the order." }] }],
@@ -522,21 +502,6 @@ describe("who an agent is", () => {
 });
 
 describe("the server's framework", () => {
-  it("serves the prompts it is given", async () => {
-    const prompt = definePrompt({
-      name: "tour",
-      title: "Tour",
-      description: "An onboarding board for a project.",
-      args: z.object({ project: z.string() }),
-      text: ({ project }) => `Make a tour of ${project}.`,
-    });
-    const { url } = await start({}, { prompts: [prompt] });
-    const client = await connect(url, "current");
-    expect((await client.listPrompts()).prompts.map((listed) => listed.name)).toEqual(["tour"]);
-    const got = await client.getPrompt({ name: "tour", arguments: { project: "ts-orders" } });
-    expect(got.messages).toEqual([{ role: "user", content: { type: "text", text: "Make a tour of ts-orders." } }]);
-  });
-
   it("teaches from the engine's errors", async () => {
     const { url } = await start({
       engine: (command) =>

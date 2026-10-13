@@ -62,12 +62,6 @@
 .chip-code { font-family: var(--font-code); font-feature-settings: "calt" 0, "liga" 0; }
 .chip-sep { color: var(--color-muted); }
 
-/* The carried type's name opens its definition, as a written type does on a typed line. */
-.chip-carries {
-  text-decoration: underline 1px dotted;
-  text-underline-position: from-font;
-}
-
 .connection-chip .agent-mark { margin-left: 4px; }
 
 .chip-review {
@@ -86,4 +80,3 @@
   box-shadow: 0 0 0 3px var(--color-accent-ring);
 }
 
-.connection-carries { padding: 8px 12px; }

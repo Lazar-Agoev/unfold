@@ -265,7 +265,7 @@ describe("density", () => {
     const { cards, boxes, lines } = quiet(["alpha", "beta", "gamma", "delta"]);
     const views = [{ view: "flow" }, { view: "flow" }, { view: "code" }, { view: "diagram" }] as const;
     const shown = cards.map((item, index) => ({ ...item, ...views[index] }));
-    const flows = { alpha: { steps: 13, unlabeled: 0 }, beta: { steps: 12, unlabeled: 0 }, gamma: { steps: 14, unlabeled: 0 }, delta: { steps: 20, unlabeled: 0 } };
+    const flows = { alpha: { steps: 13 }, beta: { steps: 12 }, gamma: { steps: 14 }, delta: { steps: 20 } };
     const suggestion = "Combine with group_steps: 3 to 7 combined steps, collapsed: true for the ones the page isn't about; or set_view expanded: false.";
     expect(pageChecks(page(shown), drawn(boxes, lines, flows))).toEqual([
       { kind: "density", items: ["alpha"], message: "alpha shows 13 steps expanded; about 12 is the most an expanded card reads well with.", suggestion },
@@ -277,22 +277,6 @@ describe("density", () => {
 });
 
 describe("words", () => {
-  it("finds expanded function cards whose steps still show names from the code", () => {
-    const { cards, boxes, lines } = quiet(["alpha", "beta", "gamma"]);
-    const flows = { alpha: { steps: 6, unlabeled: 4 }, beta: { steps: 3, unlabeled: 0 }, gamma: { steps: 3, unlabeled: 3 } };
-    // A page whose default (a legacy Flow) expands its cards; gamma is compact.
-    const shown = cards.map((item) => (item.id === "gamma" ? { ...item, view: "diagram" as const } : item));
-    const checks = pageChecks(page(shown, { defaultView: "flow" }), drawn(boxes, lines, flows));
-    expect(checks).toEqual([
-      {
-        kind: "unlabeled",
-        items: ["alpha"],
-        message: "alpha has 4 expanded steps that still show names from the code.",
-        suggestion: "label_steps on alpha: 2 to 8 words each, never code (read_page lists the unlabeled steps with their keys).",
-      },
-    ]);
-  });
-
   it("finds frames, step groups, and resource cards without descriptions, in page order", () => {
     const { cards, boxes, lines } = quiet(["alpha", "beta"]);
     const extra: Partial<Page> = {
@@ -363,39 +347,13 @@ describe("strays", () => {
   });
 });
 
-describe("views", () => {
-  it("finds many expanded function cards on an overview page, a legacy Code card among them, but no type card", () => {
-    const ids = ["a", "b", "c", "d", "e"];
-    const { cards, boxes, lines } = quiet(ids);
-    const typed: Card = { id: "cart", ref: { block: "src/cart.ts#interface:Cart" }, at: [0, 0], view: "flow" };
-    const frames = [frame("api", ids)];
-    const shown = cards.map((item, index) => (index === 0 ? { ...item, view: "diagram" as const } : index === 1 ? { ...item, view: "code" as const } : { ...item, view: "flow" as const }));
-    const checks = pageChecks(page([...shown, typed], { frames }), drawn({ ...boxes, cart: box(0, 600) }, [...lines, line("t", "a", "cart")]));
-    expect(checks).toEqual([
-      {
-        kind: "views",
-        items: ["b", "c", "d", "e"],
-        message: "4 cards show their steps expanded on an overview page: b, c, d, and e.",
-        suggestion: "set_view expanded: false for the cards that give context; keep the one or two the page is about expanded.",
-      },
-    ]);
-    // A page in the Code lens shows source, with nothing expanded to count.
-    expect(pageChecks(page([...shown, typed], { frames, defaultView: "code" }), drawn({ ...boxes, cart: box(0, 600) }, [...lines, line("t", "a", "cart")]))).toEqual([]);
-  });
-
-  it("leaves a page about a few functions alone", () => {
-    const { cards, boxes, lines } = quiet(["a", "b", "c", "d", "e"]);
-    expect(pageChecks(page(cards, { defaultView: "flow" }), drawn(boxes, lines))).toEqual([]);
-  });
-});
-
 describe("pageChecks", () => {
   it("is deterministic and lists findings in the checklist's order", () => {
     const cards = [card("alpha", { view: "flow" }), card("beta"), card("gamma")];
     const resources = [resource("orders", { anchors: [] })];
-    const geometry = drawn({ alpha: box(0, 0), beta: box(100, 0), gamma: box(800, 0), orders: box(0, 400) }, [line("l", "alpha", "beta")], { alpha: { steps: 14, unlabeled: 2 } });
+    const geometry = drawn({ alpha: box(0, 0), beta: box(100, 0), gamma: box(800, 0), orders: box(0, 400) }, [line("l", "alpha", "beta")], { alpha: { steps: 14 } });
     const first = pageChecks(page(cards, { resources }), geometry);
-    expect(kinds(first)).toEqual(["overlap", "density", "unlabeled", "evidence", "strays"]);
+    expect(kinds(first)).toEqual(["overlap", "density", "evidence", "strays"]);
     expect(pageChecks(page(cards, { resources }), geometry)).toEqual(first);
   });
 });

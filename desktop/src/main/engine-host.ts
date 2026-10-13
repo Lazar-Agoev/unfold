@@ -6,7 +6,7 @@
  *
  * The main process also sends the engine a few requests of its own ({@link EngineHost.request}),
  * which the engine host dispatches with `"trusted": true`: adding a project from the folder picker,
- * exporting to a path from a save dialog, and the window's state. The MCP server's requests for
+ * and the window's state. The MCP server's requests for
  * agents go without it ({@link EngineHost.untrusted}), as a window's do.
  */
 
@@ -27,8 +27,6 @@ export class EngineRequestError extends Error {
 interface PendingRequest {
   readonly resolve: (value: unknown) => void;
   readonly reject: (error: EngineRequestError) => void;
-  /** Receives a streamed command's messages, before it settles. */
-  readonly onStream?: ((message: unknown) => void) | undefined;
 }
 
 export interface EngineHostOptions {
@@ -134,25 +132,13 @@ export class EngineHost {
   /**
    * Runs one engine command for an agent, on behalf of window `windowId` (`0` for none), without
    * `trusted`: the engine host refuses a main-process-only command with `untrusted`, as from a window.
-   * A streamed command (`search_text`) hands each message to `onStream` before it settles. Rejects as
-   * {@link EngineHost.request} does.
+   * Rejects as {@link EngineHost.request} does.
    */
-  untrusted(
-    windowId: number,
-    command: string,
-    args: Readonly<Record<string, unknown>>,
-    onStream?: (message: unknown) => void,
-  ): Promise<unknown> {
-    return this.send(windowId, command, args, false, onStream);
+  untrusted(windowId: number, command: string, args: Readonly<Record<string, unknown>>): Promise<unknown> {
+    return this.send(windowId, command, args, false);
   }
 
-  private send(
-    windowId: number,
-    command: string,
-    args: Readonly<Record<string, unknown>>,
-    trusted: boolean,
-    onStream?: (message: unknown) => void,
-  ): Promise<unknown> {
+  private send(windowId: number, command: string, args: Readonly<Record<string, unknown>>, trusted: boolean): Promise<unknown> {
     const child = this.child;
     if (!child) {
       const code = this.gaveUp ? "engine_unavailable" : "disconnected";
@@ -160,8 +146,8 @@ export class EngineHost {
     }
     const id = this.nextRequestId++;
     return new Promise((resolve, reject) => {
-      this.requests.set(id, { resolve, reject, onStream });
-      child.postMessage({ type: "request", id, windowId, command, args, trusted, ...(onStream ? { stream: true } : {}) } satisfies MainToHost);
+      this.requests.set(id, { resolve, reject });
+      child.postMessage({ type: "request", id, windowId, command, args, trusted } satisfies MainToHost);
     });
   }
 
@@ -170,10 +156,6 @@ export class EngineHost {
   }
 
   private onHostMessage(message: HostToMain): void {
-    if (message.type === "stream") {
-      this.requests.get(message.id)?.onStream?.(message.message);
-      return;
-    }
     const request = this.requests.get(message.id);
     this.requests.delete(message.id);
     if (message.ok) {

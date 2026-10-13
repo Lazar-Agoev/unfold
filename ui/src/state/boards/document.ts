@@ -1,8 +1,8 @@
 /**
  * Pure edits of an `unfold-board` document. Each function is an Immer recipe over a
  * draft document or page, so the store can record one undo step per edit. Optional fields are deleted
- * rather than set to `undefined`, matching what the file holds (`folded` only when true, `description`
- * and `label` only when there is text).
+ * rather than set to `undefined`, matching what the file holds (`description` and `label` only when
+ * there is text).
  *
  * Cards, groups, links, frames, resource cards, notes, and proposed steps share one id space per page; page ids are
  * unique within the board. Both match `/^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/`. Removing an item takes
@@ -330,21 +330,6 @@ export function toggleCallExpansion(page: Page, cardId: string, path: readonly K
     card.expanded = next;
   } else {
     delete card.expanded;
-  }
-}
-
-/** Folds or unfolds cards to their title; `folded` is written only when true. */
-export function setCardsFolded(page: Page, cardIds: readonly string[], folded: boolean): void {
-  const wanted = new Set(cardIds);
-  for (const card of page.cards) {
-    if (!wanted.has(card.id)) {
-      continue;
-    }
-    if (folded) {
-      card.folded = true;
-    } else {
-      delete card.folded;
-    }
   }
 }
 

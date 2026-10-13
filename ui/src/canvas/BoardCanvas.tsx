@@ -1,11 +1,11 @@
 /**
  * A page's canvas (React Flow): cards as custom nodes at their reflowed positions, frames as nodes
  * behind what they hold (`pageGeometry`), resource cards and notes as nodes of their own, one memoized
- * arrow per opened call occurrence with its closed label, the page's drawn links and connections, and a
- * camera that pans and zooms without changing what any card shows. No minimap. Large pages render only
- * the cards in view. While a link is being drawn, the next card, resource card, or frame clicked ends
- * it; Escape or a click on the canvas cancels. A selected line shows its contract; Escape or a click on
- * the canvas closes it. A card in Diagram view sends one arrow to each card it calls; a type card, one
+ * arrow per opened call occurrence, the page's drawn links and connections, and a camera that pans and
+ * zooms without changing what any card shows. No minimap. Large pages render only the cards in view.
+ * While a link is being drawn, the next card, resource card, or frame clicked ends it; Escape or a
+ * click on the canvas cancels. A selected arrow shows its call in Selected; Escape or a click on the
+ * canvas clears it. A card in Diagram view sends one arrow to each card it calls; a type card, one
  * from each field to each type it names on the page. A connection leaves from its step's line in Code
  * and Flow (`lineHandles`), a relationship from a table's column. A collapsed frame is one node: what
  * it holds isn't drawn, and their arrows and links attach to it, merged (`routeArrows`, `routeLinks`).
@@ -35,7 +35,6 @@ import {
   findNote,
   findPage,
   findResource,
-  foldAll,
   getOpenBoard,
   getPageView,
   itemsFor,
@@ -68,7 +67,6 @@ import { attachPoint, collapsedPlaces, fallbackItemSize, pageGeometry, type Drag
 import { routeArrows, routeLinks, type RoutedLink } from "./frames/routes";
 import { boundsOf, type Rect } from "./layout";
 import { LabelLayout, LabelLayoutContext } from "./lines/labelLayout";
-import { useLineLabels } from "./lines/useLineLabels";
 import { LinkEdge, type LinkEdgeType } from "./LinkEdge";
 import { NoteNode, type NoteNodeType } from "./notes/NoteNode";
 import { ResourceNode, type ResourceNodeType } from "./resources/ResourceNode";
@@ -94,8 +92,7 @@ const VISIBLE_ONLY_ABOVE = 40;
 /** Everything about an arrow its edge draws, as one string. */
 function arrowSignature(arrow: Arrow): string {
   const calls = arrow.calls?.map((call) => `${call.source}\u0001${call.seq}\u0001${call.line}`).join("\u0002") ?? "";
-  const merged = arrow.merged ? `${arrow.merged.calls}/${arrow.merged.fields}` : "";
-  return [arrow.source, arrow.sourceHandle, arrow.target, arrow.project, arrow.occurrence, arrow.seq, arrow.line ?? "", arrow.kind, arrow.dashed, calls, arrow.type?.text ?? "", merged].join("\u0000");
+  return [arrow.source, arrow.sourceHandle, arrow.target, arrow.project, arrow.occurrence, arrow.seq, arrow.line ?? "", arrow.kind, arrow.dashed, calls, arrow.merged === true].join("\u0000");
 }
 
 /** React Flow error 008 (an edge whose port isn't measured yet) is expected while cards load. */
@@ -141,7 +138,6 @@ function connectionData(routed: RoutedLink, kind: LinkKind, context: ConnectionC
     problem: issue ? claimProblem(issue) : null,
     ...(link ? { linkId: link.id } : {}),
     ...(link?.cardinality !== undefined ? { cardinality: link.cardinality } : {}),
-    ...(link?.carries !== undefined ? { carries: { project: target.board.project, key: link.carries } } : {}),
   };
 }
 
@@ -168,8 +164,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
   const focus = usePageView(target, (view) => view.focus);
   const linking = usePageView(target, (view) => view.linking !== null);
   const selectedLink = usePageView(target, ({ selection }) => (selection.kind === "link" ? selection.linkId : null));
-  const selectedLine = usePageView(target, ({ selection }) => (selection.kind === "line" ? selection : null));
-  const listedCalls = usePageView(target, ({ selection }) => (selection.kind === "calls" ? selection.arrowId : null));
+  const selectedArrow = usePageView(target, ({ selection }) => (selection.kind === "line" || selection.kind === "calls" ? selection.arrowId : null));
   const working = useWorkingItems(target);
   const health = useOpenBoard(target.board, (board) => board.health);
   const author = useAuthor();
@@ -190,7 +185,6 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
     return merged;
   }, [arrows, links, shownAs, bodies]);
   const columns = useMemo(() => relatedColumns(links, shownAs), [links, shownAs]);
-  const labels = useLineLabels(arrows);
   const paneMenu = useContextMenu("Board actions");
 
   // Positions: saved positions reflowed by measured sizes, frames around what they hold; a dragged
@@ -319,23 +313,16 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
     const live = new Set<string>();
     const list = arrows.map((arrow) => {
       const handler = arrow.kind === "handler";
-      const label = handler || arrow.kind === "type" || arrow.calls || arrow.merged ? undefined : labels.get(arrow.id);
-      const selected = arrow.id === selectedLine?.arrowId;
-      const listed = arrow.id === listedCalls;
-      // What the edge draws, so an unchanged arrow keeps its edge (and its label doesn't render again).
-      const signature = [
-        arrowSignature(arrow),
-        selected ? `${selectedLine.source}\u0001${selectedLine.seq}` : "",
-        String(listed),
-      ].join("\u0000");
+      const selected = arrow.id === selectedArrow;
+      // What the edge draws, so an unchanged arrow keeps its edge.
+      const signature = [arrowSignature(arrow), String(selected)].join("\u0000");
       const cached = edgeCache.get(arrow.id);
-      const kept = cached?.edge.data;
-      if (cached?.signature === signature && kept !== undefined && kept.label === label && kept.page === target) {
+      if (cached?.signature === signature && cached.edge.data?.page === target) {
         live.add(arrow.id);
         return cached.edge;
       }
       const ends = arrow.cards ?? { from: arrow.source, to: arrow.target };
-      const line = { arrowId: arrow.id, source: arrow.occurrence, seq: arrow.seq, from: ends.from, to: ends.to, line: arrow.line };
+      const selects = !(handler || arrow.kind === "type" || arrow.merged);
       const edge: ArrowEdgeType = {
         id: arrow.id,
         type: "arrow",
@@ -346,30 +333,25 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
         className: "board-arrow-edge",
         focusable: false,
         selectable: false,
-        // A line without room for its label is itself a button (ArrowEdge), which an `img` would hide.
-        ...(handler || arrow.kind === "type" || arrow.merged ? {} : { ariaRole: "group" as const }),
+        // A call's arrow is itself a button (ArrowEdge), which an `img` would hide.
+        ...(selects ? { ariaRole: "group" as const } : {}),
         data: {
           dashed: arrow.dashed,
           handler,
           selected,
           page: target,
-          ...(label !== undefined ? { label } : {}),
-          ...(arrow.type ? { type: arrow.type } : {}),
-          ...(arrow.merged ? { merged: arrow.merged } : {}),
-          ...(arrow.calls
-            ? {
-                calls: {
-                  arrowId: arrow.id,
-                  from: ends.from,
-                  to: ends.to,
-                  calls: arrow.calls.map(({ source, seq, line: at }) => ({ source, seq, line: at })),
-                },
-                listed,
-                ...(selected ? { line: selectedLine } : {}),
-              }
-            : handler || arrow.kind === "type" || arrow.merged
-              ? {}
-              : { line }),
+          ...(!selects
+            ? {}
+            : arrow.calls
+              ? {
+                  calls: {
+                    arrowId: arrow.id,
+                    from: ends.from,
+                    to: ends.to,
+                    calls: arrow.calls.map(({ source, seq, line }) => ({ source, seq, line })),
+                  },
+                }
+              : { line: { arrowId: arrow.id, source: arrow.occurrence, seq: arrow.seq, from: ends.from, to: ends.to, line: arrow.line } }),
         },
       };
       edgeCache.set(arrow.id, { signature, edge });
@@ -382,7 +364,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       }
     }
     return list;
-  }, [arrows, edgeCache, labels, selectedLine, listedCalls, target]);
+  }, [arrows, edgeCache, selectedArrow, target]);
 
   // Drawn links leave and enter by the sides facing each other, so they follow the cards as they move;
   // a connection leaves from its step or column (`lineHandles`). Lines that join at a collapsed frame
@@ -417,7 +399,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       } else {
         const data = connectionData(routed, kind, { target, page: framed, health, selectedLink, working });
         made = {
-          signature: JSON.stringify([ends, kind, data.full, data.forms.map(chipText), data.agent, data.selected, data.working, data.problem, data.cardinality, data.carries]),
+          signature: JSON.stringify([ends, kind, data.full, data.forms.map(chipText), data.agent, data.selected, data.working, data.problem, data.cardinality]),
           make: () => ({ ...ends, type: "connection", className: "board-connection-edge", data }),
         };
       }
@@ -463,11 +445,11 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
     };
   }, [linking, target]);
 
-  // Escape closes a selected line's contract, or lets go of an arrow's calls, unless a field, a menu, or
-  // a dialog had it first. It listens on the document, so it goes before the peek sheet's (on the window).
-  const lineSelected = usePageView(target, (view) => view.selection.kind === "line" || view.selection.kind === "calls");
+  // Escape lets go of a selected arrow, unless a field, a menu, or a dialog had it first. It listens on
+  // the document, so it goes before the peek sheet's (on the window).
+  const arrowSelected = selectedArrow !== null;
   useEffect(() => {
-    if (!lineSelected) {
+    if (!arrowSelected) {
       return undefined;
     }
     const onKey = (event: KeyboardEvent) => {
@@ -480,7 +462,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
     return () => {
       document.removeEventListener("keydown", onKey);
     };
-  }, [lineSelected, target]);
+  }, [arrowSelected, target]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<CanvasNode>[]) => {
@@ -623,12 +605,8 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
         }}
         onPaneContextMenu={(event) => {
           event.preventDefault();
-          const hasCards = cards.length > 0;
           paneMenu.open({ x: event.clientX, y: event.clientY }, [
-            { id: "fit", label: "Fit", disabled: !hasCards && resources.length === 0, onSelect: () => { requestCardFocus(target, [], "fit"); } },
-            { kind: "separator", id: "s1" },
-            { id: "fold", label: "Fold all cards", disabled: !hasCards, onSelect: () => { foldAll(target, true); } },
-            { id: "unfold", label: "Unfold all cards", disabled: !hasCards, onSelect: () => { foldAll(target, false); } },
+            { id: "fit", label: "Fit", disabled: cards.length === 0 && resources.length === 0, onSelect: () => { requestCardFocus(target, [], "fit"); } },
           ]);
         }}
         onError={onFlowError}

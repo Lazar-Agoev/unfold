@@ -122,8 +122,8 @@ pub(crate) fn check_disk(host: &HostState, projects: &Projects, workspace: &Work
                 None
             }
             Change::Changed(_) => match load_session(&files, extras, &source, &id, &file) {
-                Ok((reloaded, graph)) => {
-                    let state = board_state(workspace.project(), &id, &file, &reloaded, &graph);
+                Ok(reloaded) => {
+                    let state = board_state(workspace.project(), &id, &file, &reloaded);
                     *session = reloaded;
                     Some(Box::new(state))
                 }

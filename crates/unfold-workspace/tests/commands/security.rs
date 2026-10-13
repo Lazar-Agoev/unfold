@@ -48,9 +48,13 @@ fn every_path_a_window_names_stays_inside_its_project() {
                 "{command}"
             );
         }
-        // Text search never reads through it either.
-        let found = harness.ok(1, "search_text", json!({ "query": "secretValue42" }));
-        assert_eq!(found["matches"], 0);
+        // Search never lists files through it either.
+        let found = harness.ok(1, "search", json!({ "query": "secret", "kinds": ["files"] }));
+        let hits = found["files"]["hits"].as_array().expect("hits");
+        assert!(
+            hits.iter().all(|hit| hit["path"] != "escape/secret.ts"),
+            "{hits:?}"
+        );
     }
 }
 
@@ -94,39 +98,6 @@ fn absolute_paths_and_the_window_state_need_the_main_process() {
         assert_eq!(harness.code(1, command, args.clone()), "untrusted", "{command}");
         assert!(harness.trusted(command, args).is_ok(), "{command}");
     }
-}
-
-#[test]
-fn only_the_main_process_exports_to_a_file() {
-    let harness = Harness::compiled("ts-orders");
-    let board = harness.ok(
-        1,
-        "new_board",
-        json!({ "project": harness.project, "title": "Export" }),
-    );
-    let target = harness.base.join("export.mmd");
-    let export = json!({
-        "project": harness.project,
-        "board": { "id": board["id"], "page": "page-1" },
-        "path": target,
-    });
-    let trusted = |window: u32, args: &serde_json::Value| {
-        harness.call_with(
-            window,
-            json!({ "command": "export_mermaid", "args": args, "trusted": true }),
-        )
-    };
-    assert_eq!(harness.code(1, "export_mermaid", export.clone()), "untrusted");
-    assert!(!target.exists(), "a window never writes outside its projects");
-    // The main process exports an open board to the path its dialog chose.
-    let written = trusted(1, &export).expect("export");
-    assert_eq!(written["path"], target.to_str().expect("utf-8"));
-    let text = std::fs::read_to_string(&target).expect("the export");
-    assert!(text.starts_with("flowchart LR"), "{text}");
-    assert_eq!(written["bytes"], text.len());
-    let mut relative = export;
-    relative["path"] = json!("export.mmd");
-    assert_eq!(trusted(1, &relative).expect_err("relative").code, "invalid_args");
 }
 
 #[test]

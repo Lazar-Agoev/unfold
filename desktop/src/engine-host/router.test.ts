@@ -161,7 +161,7 @@ describe("EngineRouter: attach and dispatch", () => {
     const { binding, router } = setup();
     const port = new FakePort();
     router.attach(1, port);
-    port.send({ kind: "invoke", id: 7, command: "search_text", args: { query: "x" } });
+    port.send({ kind: "invoke", id: 7, command: "compile", args: { project: "p-aaaaaaaaaa" } });
     port.send({ kind: "cancel", id: 7 });
     port.send({ kind: "cancel", id: 8 });
     expect(binding.cancelled).toEqual([1]);
@@ -255,18 +255,18 @@ describe("EngineRouter: sink fan-out", () => {
     const { binding, router } = setup();
     const port = new FakePort();
     router.attach(1, port);
-    port.send({ kind: "invoke", id: 4, command: "search_text", args: { query: "retry" } });
+    port.send({ kind: "invoke", id: 4, command: "compile", args: { project: "p-aaaaaaaaaa" } });
 
-    for (const path of ["a.ts", "b.ts"]) {
-      router.handleSinkMessage(JSON.stringify({ kind: "stream", windowId: 1, requestId: 1, message: { path } }));
+    for (const done of [1, 2]) {
+      router.handleSinkMessage(JSON.stringify({ kind: "stream", windowId: 1, requestId: 1, message: { done } }));
     }
     const result = binding.dispatches.get(1)?.result;
     result?.resolve("{}");
     await result?.promise;
 
     expect(port.received()).toEqual([
-      { kind: "stream", id: 4, message: { path: "a.ts" } },
-      { kind: "stream", id: 4, message: { path: "b.ts" } },
+      { kind: "stream", id: 4, message: { done: 1 } },
+      { kind: "stream", id: 4, message: { done: 2 } },
       { kind: "result", id: 4, ok: true, value: {} },
     ]);
   });
@@ -291,7 +291,7 @@ describe("EngineRouter: sink fan-out", () => {
 describe("EngineRouter: trusted commands", () => {
   it("lists exactly the main-process-only commands and closing writes", () => {
     expect([...MAIN_PROCESS_ONLY].sort()).toEqual(
-      ["add_project", "export_mermaid", "save_window_state", "window_state"].sort(),
+      ["add_project", "save_window_state", "window_state"].sort(),
     );
     expect([...CLOSING_WRITES].sort()).toEqual(
       [
@@ -318,11 +318,11 @@ describe("EngineRouter: trusted commands", () => {
     port.send({ kind: "invoke", id: ++id, command: "workspace", args: {}, trusted: true });
     port.send({ kind: "invoke", id: ++id, command: "workspace", args: { trusted: true } });
     // An untrusted sibling of a trusted command goes through: it names no outside path.
-    port.send({ kind: "invoke", id: id + 1, command: "export_mermaid_text", args: { project: "p-aaaaaaaaaa" } });
+    port.send({ kind: "invoke", id: id + 1, command: "remove_project", args: { project: "p-aaaaaaaaaa" } });
 
     const refused = port.received().flatMap((m) => (m.kind === "result" && !m.ok ? [m.error.code] : []));
     expect(refused).toEqual(Array<string>(MAIN_PROCESS_ONLY.size + 2).fill("untrusted"));
-    expect(binding.commands()).toEqual([{ command: "export_mermaid_text", args: { project: "p-aaaaaaaaaa" } }]);
+    expect(binding.commands()).toEqual([{ command: "remove_project", args: { project: "p-aaaaaaaaaa" } }]);
   });
 
   it("dispatches the main process's requests with trusted, for any window id", async () => {
@@ -360,19 +360,6 @@ describe("EngineRouter: trusted commands", () => {
     expect(binding.dispatches.size).toBe(1);
   });
 
-  it("hands an agent's streamed command its stream messages, before its result", async () => {
-    const { binding, router } = setup();
-    const heard: unknown[] = [];
-    const found = router.untrusted(0, "search_text", { query: "orders" }, (message) => heard.push(message));
-    const [[requestId, dispatched]] = [...binding.dispatches.entries()] as [[number, Dispatch]];
-    router.handleSinkMessage(JSON.stringify({ kind: "stream", windowId: 0, requestId, message: { path: "src/a.ts" } }));
-    router.handleSinkMessage(JSON.stringify({ kind: "stream", windowId: 3, requestId, message: { path: "another window's" } }));
-    dispatched.result.resolve('{"files":1}');
-    expect(await found).toEqual({ ok: true, value: { files: 1 } });
-    router.handleSinkMessage(JSON.stringify({ kind: "stream", windowId: 0, requestId, message: { path: "too late" } }));
-    expect(heard).toEqual([{ path: "src/a.ts" }]);
-  });
-
   it("answers trusted requests with engine_unavailable when the addon is missing", async () => {
     const router = new EngineRouter({ unavailable: UNAVAILABLE }, () => undefined);
     expect(await router.trusted(0, "window_state", {})).toEqual({ ok: false, error: UNAVAILABLE });
@@ -404,14 +391,14 @@ describe("EngineRouter: detach", () => {
     windowWrites.forEach((command, i) => {
       port.send({ kind: "invoke", id: i + 1, command, args: { project: "p-aaaaaaaaaa" } });
     });
-    port.send({ kind: "invoke", id: 100, command: "search_text", args: {} });
-    const search = binding.dispatches.size;
+    port.send({ kind: "invoke", id: 100, command: "compile", args: {} });
+    const compile = binding.dispatches.size;
     router.detach(1);
     await flush();
 
-    expect(search).toBe(windowWrites.length + 1);
-    expect(binding.cancelled).toEqual([search]);
-    expect(binding.order.slice(-3)).toEqual([`dispatch ${search}`, "detach 1", "detached 1"]);
+    expect(compile).toBe(windowWrites.length + 1);
+    expect(binding.cancelled).toEqual([compile]);
+    expect(binding.order.slice(-3)).toEqual([`dispatch ${compile}`, "detach 1", "detached 1"]);
     for (const dispatched of binding.dispatches.values()) {
       dispatched.result.resolve("null");
     }

@@ -1,7 +1,7 @@
 /**
  * The engine host: an Electron utility process that loads the Rust addon and routes each window's
  * port to it (docs/architecture.md#processes, process hardening). The main process sends lifecycle messages, plus its own
- * trusted requests (adding a project, export to a dialog path, the window's state) and the MCP
+ * trusted requests (adding a project, the window's state) and the MCP
  * server's untrusted ones, answered over the parent port.
  */
 
@@ -94,13 +94,7 @@ function handleLifecycle(message: MainToHost, ports: MessagePortMain[]): void {
         return;
       }
       const { windowId, command, args } = message;
-      const onStream =
-        message.stream === true
-          ? (streamed: unknown) => {
-              postToMain({ type: "stream", id, message: streamed });
-            }
-          : undefined;
-      void (message.trusted ? router.trusted(windowId, command, args) : router.untrusted(windowId, command, args, onStream)).then(
+      void (message.trusted ? router.trusted(windowId, command, args) : router.untrusted(windowId, command, args)).then(
         (result) => {
           postToMain({ type: "result", id, ...result });
         },

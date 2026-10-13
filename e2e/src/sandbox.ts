@@ -7,7 +7,7 @@
 import { chmodSync, cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fixturesDir, playgroundsDir } from "./paths";
+import { playgroundsDir } from "./paths";
 
 export type PlaygroundName = "ts-orders" | "py-orders";
 
@@ -34,13 +34,6 @@ export class Sandbox {
     const folder = join(this.root, name);
     cpSync(join(playgroundsDir, source), folder, { recursive: true });
     rmSync(join(folder, ".unfold", "local"), { recursive: true, force: true });
-    return folder;
-  }
-
-  /** A fresh copy of a compiler fixture's project (`typed-lines/ts`), as `name`. */
-  fixture(source: string, name: string): string {
-    const folder = join(this.root, name);
-    cpSync(join(fixturesDir, source), folder, { recursive: true });
     return folder;
   }
 

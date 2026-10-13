@@ -69,7 +69,7 @@ function setup() {
   const agents = new AgentBridge({ windows: appWindow, views: new ViewTracker() });
   const mcp = { status: () => SERVER_STATUS };
   const workspace = new Workspace(appWindow, engine);
-  registerWindowCommands({ window: appWindow, workspace, engine, ui: UI, agents, mcp, renderer });
+  registerWindowCommands({ window: appWindow, workspace, ui: UI, agents, mcp, renderer });
   const handler = ipcHandlers.get(IPC.windowCommand);
   if (!handler) {
     throw new Error("window commands not registered");
@@ -163,80 +163,6 @@ describe("confirm_remove_project", () => {
       });
     }
     expect(dialogs.shown).toEqual([]);
-  });
-});
-
-describe("export_mermaid", () => {
-  it("exports a board page to the chosen path with the trusted export_mermaid", async () => {
-    const { engine, open, invoke } = setup();
-    const entry = open();
-    engine.answers.set("export_mermaid", () => Promise.resolve({ path: "/out/Orders.mmd", bytes: 120 }));
-    dialogs.savePath = "/out/Orders.mmd";
-
-    const reply = await invoke(entry, "export_mermaid", {
-      project: PROJECT,
-      board: ".unfold/boards/orders.json",
-      page: "page-1",
-      title: "Orders: lifecycle",
-    });
-    expect(reply).toEqual({ ok: true, value: { path: "/out/Orders.mmd", bytes: 120 } });
-    expect(dialogs.shown[0]?.options["defaultPath"]).toBe("/Users/me/Documents/Orders- lifecycle.mmd");
-    expect(engine.commands()).toEqual([
-      [
-        entry.id,
-        "export_mermaid",
-        { project: PROJECT, board: { id: ".unfold/boards/orders.json", page: "page-1" }, path: "/out/Orders.mmd" },
-      ],
-    ]);
-  });
-
-  it("exports an entrance, named after the board id or entrance when there is no title", async () => {
-    const { engine, open, invoke } = setup();
-    const entry = open();
-    dialogs.savePath = "/out/e.mmd";
-    await invoke(entry, "export_mermaid", { project: PROJECT, entrance: "entrance:http:GET:/orders" });
-    expect(engine.commands()).toEqual([
-      [entry.id, "export_mermaid", { project: PROJECT, entrance: "entrance:http:GET:/orders", path: "/out/e.mmd" }],
-    ]);
-    await invoke(entry, "export_mermaid", { project: PROJECT, board: ".unfold/boards/orders.json", page: "page-1" });
-    expect(dialogs.shown.map((d) => d.options["defaultPath"])).toEqual([
-      "/Users/me/Documents/entrance-http-GET-orders.mmd",
-      "/Users/me/Documents/orders.mmd",
-    ]);
-  });
-
-  it("resolves with null when the dialog is cancelled, and passes on the engine's error", async () => {
-    const { engine, open, invoke } = setup();
-    const entry = open();
-    const args = { project: PROJECT, board: ".unfold/boards/orders.json", page: "page-1" };
-    expect(await invoke(entry, "export_mermaid", args)).toEqual({ ok: true, value: null });
-    expect(engine.commands()).toEqual([]);
-
-    dialogs.savePath = "/out/o.mmd";
-    engine.answers.set("export_mermaid", () =>
-      Promise.reject(new EngineRequestError({ code: "board_not_open", message: "Open it first." })),
-    );
-    expect(await invoke(entry, "export_mermaid", args)).toEqual({
-      ok: false,
-      error: { code: "board_not_open", message: "Open it first." },
-    });
-  });
-
-  it("refuses anything but exactly one source with a project", async () => {
-    const { engine, open, invoke } = setup();
-    const entry = open();
-    for (const args of [
-      { board: "b", page: "p" },
-      { project: PROJECT, board: "b" },
-      { project: PROJECT, board: "b", page: "p", entrance: "e" },
-      { project: PROJECT, entrance: "e", page: "p" },
-      { project: PROJECT, entrance: "e", title: 3 },
-      { project: PROJECT, boardId: "b" },
-    ]) {
-      expect(await invoke(entry, "export_mermaid", args)).toMatchObject({ ok: false, error: { code: "invalid_command" } });
-    }
-    expect(dialogs.shown).toEqual([]);
-    expect(engine.commands()).toEqual([]);
   });
 });
 

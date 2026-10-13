@@ -1,10 +1,10 @@
 /**
- * `group_steps`: gathers consecutive statements of one card into step groups, by line range or by
- * step keys, or updates groups by id, or (without one) the card's group of the same statements, so
- * the same call twice changes nothing. The reader's rule decides what a range holds (`groupSelection`,
- * as the gutter and Make a group from lines use it): whole statements of one branch, never the card's
- * header or a nested definition, never overlapping another group. The result names the statements
- * each group took; a refusal says why a range breaks the rule and what is there.
+ * `group_steps`: gathers consecutive statements of one card into step groups by their keys, or updates
+ * groups by id, or (without one) the card's group of the same statements, so the same call twice
+ * changes nothing. The reader's rule decides what a group may hold (`groupSelection`, as Combine… uses
+ * it): whole statements of one branch, never the card's header or a nested definition, never
+ * overlapping another group. The result names the statements each group took; a refusal says why the
+ * steps break the rule and what is there.
  */
 
 import type { AgentItemResult, AgentStatement, AgentStepGroupSpec, GroupStepsOp } from "@unfold/desktop/agent-api";
@@ -33,35 +33,28 @@ function sameSteps(a: readonly Key[], b: readonly Key[]): boolean {
   return [...a].sort().join("\u0000") === [...b].sort().join("\u0000");
 }
 
-/** The statements a group spec takes, or a refusal that says why the range breaks the rule. */
+/** The statements a group spec takes, or a refusal that says why its steps break the rule. */
 function chooseStatements(outline: readonly OutlineItem[], spec: AgentStepGroupSpec, name: string): OutlineItem[] {
   const byKey = new Map(outline.map((item) => [item.key, item]));
-  if ((spec.lines === undefined) === (spec.steps === undefined)) {
-    throw invalid(`Give the step group “${spec.title}” either lines or steps.`);
+  if (spec.steps.length === 0) {
+    throw invalid(`Give the step group “${spec.title}” its steps.`);
   }
-  let from: number;
-  let to: number;
-  if (spec.lines) {
-    from = Math.min(spec.lines[0], spec.lines[1]);
-    to = Math.max(spec.lines[0], spec.lines[1]);
-  } else {
-    const items = (spec.steps ?? []).map((key) => {
-      const item = byKey.get(key);
-      if (!item) {
-        throw invalid(`“${key}” isn't a statement of ${name}. read_code lists its statements and their keys.`);
-      }
-      return item;
-    });
-    from = Math.min(...items.map((item) => item.startLine));
-    to = Math.max(...items.map((item) => item.endLine));
-  }
+  const items = spec.steps.map((key) => {
+    const item = byKey.get(key);
+    if (!item) {
+      throw invalid(`“${key}” isn't a statement of ${name}. read_code lists its statements and their keys.`);
+    }
+    return item;
+  });
+  const from = Math.min(...items.map((item) => item.startLine));
+  const to = Math.max(...items.map((item) => item.endLine));
   const selection = groupSelection(outline, from, to);
   if ("error" in selection) {
     throw invalid(
       `Can't make the step group “${spec.title}” from ${linesText(from, to)} of ${name}: ${selection.error} A step group is consecutive statements in one branch. ${statementsThere(outline, from, to)}`,
     );
   }
-  if (spec.steps && !sameSteps(selection.members, spec.steps)) {
+  if (!sameSteps(selection.members, spec.steps)) {
     throw invalid(
       `The steps for “${spec.title}” aren't consecutive statements of one branch of ${name}: ${linesText(from, to)} hold ${selection.members.length} statements. ${statementsThere(outline, from, to)}`,
     );
@@ -137,9 +130,6 @@ export function applyGroupSteps(page: Page, op: GroupStepsOp, ctx: OpContext): A
     }
     const from = Math.min(...items.map((item) => item.startLine));
     const to = Math.max(...items.map((item) => item.endLine));
-    if (spec.lines && (Math.min(...spec.lines) !== from || Math.max(...spec.lines) !== to)) {
-      ctx.warnings.push(`“${title}” took whole statements: ${linesText(from, to)} of ${name}, not ${linesText(Math.min(...spec.lines), Math.max(...spec.lines))}.`);
-    }
     return { kind: "group", id, status, card: card.id, name: title, lines: [from, to], statements: items.map(statement) };
   });
 }

@@ -1,11 +1,10 @@
 /**
- * How results name things (design §6.1): Unfold's names with `file:line`, counts in words, written
- * types with the declarations they link to, and line labels as the board draws them. Shared by the
- * tools so every result reads the same.
+ * How results name things (design §6.1): Unfold's names with `file:line`, counts in words, and written
+ * types with the declarations they link to. Shared by the tools so every result reads the same.
  */
 
 import type { AgentCardResult, AgentIdentity } from "../../shared/agent-api";
-import type { LineLabel, ProjectState, TypeText } from "./engine-types";
+import type { ProjectState, TypeText } from "./engine-types";
 
 /** `1 board`, `3 boards`; `plural` when adding an `s` isn't it. */
 export function count(n: number, noun: string, plural = `${noun}s`): string {
@@ -131,24 +130,6 @@ export function typeText(type: TypeText): string {
     }
   });
   return links.length > 0 ? `${type.text} (${links.join("; ")})` : type.text;
-}
-
-/**
- * A line's label in full, as the board draws it unfolded: `(Cart, User) → Promise<Charge>`; a type the
- * code doesn't write is the parameter's name, else `…`; a missing output is `?`.
- */
-export function labelText(label: LineLabel): string {
-  const inputs = label.inputsUnknown
-    ? "…"
-    : label.inputs
-        .map((input) => {
-          if (input.type !== undefined) {
-            return input.keyword !== undefined ? `${input.keyword}=${input.type.text}` : input.type.text;
-          }
-          return input.keyword ?? input.name ?? "…";
-        })
-        .join(", ");
-  return `(${inputs}) → ${label.output?.text ?? "?"}`;
 }
 
 /** Where following stopped at a card, in words. */

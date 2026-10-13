@@ -76,7 +76,7 @@ describe("Toast", () => {
   it("closes from its × button", () => {
     render(<Toaster />);
     act(() => {
-      showToast({ title: "Copied Mermaid", duration: null });
+      showToast({ title: "Copied the link", duration: null });
     });
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(titles()).toEqual([]);

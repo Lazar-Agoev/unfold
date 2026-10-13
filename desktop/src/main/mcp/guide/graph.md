@@ -19,7 +19,7 @@ those terms. Never fill a gap with what the code probably does.
 ## Where a call goes
 | Resolution | Means | On a board |
 | --- | --- | --- |
-| resolved | One proven target in the graph | An arrow to the target's card, with a typed label |
+| resolved | One proven target in the graph | An arrow to the target's card |
 | external | A proven origin outside the graph: a library, named by its module | Dashed, with the module |
 | unresolved | No target Unfold can prove, with a reason | Dashed, with the reason |
 
@@ -69,15 +69,13 @@ goes at runtime, with its evidence (connections topic).
   switch, a try with finally, and Python's with, match, and try draw as one opaque step.
 
 ## Types: written, never inferred
-- **A call's label** reads `(Cart, User) → Promise<Charge>`: each argument's parameter
-  type as written, then the return type. `…` is an argument that fills no proven
-  parameter, `?` a return type the code doesn't write. Only resolved calls and
-  constructions have labels and contracts.
-- **A contract** (read_call) says what the call sends (each argument beside the
+- **A contract** (read_call, and Selected when the person selects an arrow) says what the call sends (each argument beside the
   parameter it fills, or why it fills none: a spread argument, an unknown receiver
   binding, a class without a constructor), what comes back and where it lands (a
   variable, the caller's return, another call's argument, nowhere), whether it's
-  awaited, what the callee throws directly, and whether the caller catches it.
+  awaited, what the callee throws directly, and whether the caller catches it. Types
+  are as written: a missing annotation shows as missing. Only resolved calls and
+  constructions have contracts.
 - **Direct throws** are the callee's own `throw new X(…)` (Python: `raise X(…)`) that
   its own try doesn't catch. Not a re-throw, not `throw error`, and not what the
   callee's callees throw. Say "can throw", and name only what the contract lists.

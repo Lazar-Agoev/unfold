@@ -14,7 +14,7 @@ import type { PageRenderer } from "../agents/render";
 import { pageRevision } from "../agents/revision";
 import type { ViewTracker } from "../agents/views";
 import { EngineRequestError } from "../engine-host";
-import type { CommandArgs, CommandName, CommandResult, ProjectRow, StreamCommandName, StreamMessage } from "./engine-types";
+import type { CommandArgs, CommandName, CommandResult, ProjectRow } from "./engine-types";
 import { cant, header, ToolError, windowRefusal, type ResultPlace } from "./results";
 
 /** What tools ask of the render window: page images and page checks. */
@@ -26,11 +26,8 @@ export interface McpServices {
   readonly bridge: AgentBridge;
   /** Draws pages for images and runs the page checks. */
   readonly renderer: PageImages;
-  /**
-   * Runs one engine command for an agent: untrusted, for no window. A streamed command's messages go
-   * to `onStream`, each before it settles. Rejects with an `EngineRequestError`.
-   */
-  readonly engine: (command: string, args: Readonly<Record<string, unknown>>, onStream?: (message: unknown) => void) => Promise<unknown>;
+  /** Runs one engine command for an agent: untrusted, for no window. Rejects with an `EngineRequestError`. */
+  readonly engine: (command: string, args: Readonly<Record<string, unknown>>) => Promise<unknown>;
   /**
    * Runs one engine command for an agent as window `windowId` (untrusted, as that window's would be):
    * a command on a board that window holds. Rejects with an `EngineRequestError`.
@@ -57,12 +54,10 @@ export interface ToolContext {
   /** Runs an engine command, untrusted. A failure is a {@link ToolError} that says what to do. */
   engine<C extends CommandName>(command: C, args: CommandArgs<C>): Promise<CommandResult<C>>;
   /**
-   * Runs an engine command that needs the board's session (`board_health`, `export_mermaid_text`) as
-   * the window that holds the board, loading its session there first.
+   * Runs an engine command that needs the board's session (`board_health`) as the window that holds
+   * the board, loading its session there first.
    */
   held<C extends CommandName>(board: AgentBoardRef, command: C, args: CommandArgs<C>): Promise<CommandResult<C>>;
-  /** Runs a streamed engine command (`search_text`), handing each message to `onMessage` before it settles. */
-  stream<C extends StreamCommandName>(command: C, args: CommandArgs<C>, onMessage: (message: StreamMessage<C>) => void): Promise<CommandResult<C>>;
   /** The workspace's projects, in its order (read once per call). */
   projects(): Promise<readonly ProjectRow[]>;
   /** A project by id, by name, or by a link to one of its boards. */
@@ -123,15 +118,6 @@ export function toolContext(services: McpServices, agent: AgentIdentity, signal:
       }
       try {
         return (await services.engineAs(opened.windowId, command, args)) as CommandResult<typeof command>;
-      } catch (error) {
-        throw engineError(error);
-      }
-    },
-    async stream(command, args, onMessage) {
-      try {
-        return (await services.engine(command, args, (message) => {
-          onMessage(message as StreamMessage<typeof command>);
-        })) as CommandResult<typeof command>;
       } catch (error) {
         throw engineError(error);
       }

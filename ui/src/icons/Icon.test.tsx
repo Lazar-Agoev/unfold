@@ -5,7 +5,6 @@ import { ICON_NAMES, Icon, StateGlyph } from ".";
 
 /** The set the UI plan (§6) promises the screens. */
 const PLANNED = [
-  "home",
   "chevron-left",
   "chevron-right",
   "chevron-down",
@@ -14,8 +13,6 @@ const PLANNED = [
   "dots",
   "plus",
   "page",
-  "entrance",
-  "group",
   "link",
   "search",
   "folder",
@@ -49,7 +46,6 @@ const PLANNED = [
   "resource-storage",
   "resource-external",
   "resource-actor",
-  "note",
 ];
 
 describe("Icon", () => {

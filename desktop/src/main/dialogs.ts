@@ -16,20 +16,13 @@ export async function chooseFolder(parent: BrowserWindow | null): Promise<string
   return result.canceled ? null : (result.filePaths[0] ?? null);
 }
 
-/** What an export writes: its file type's name and extension. */
-const EXPORT_FORMATS = {
-  mermaid: { name: "Mermaid", extension: "mmd" },
-  png: { name: "PNG image", extension: "png" },
-} as const;
-
-/** Shows the export save dialog for a Mermaid or PNG file. Resolves with the chosen path, or null if cancelled. */
-export async function chooseExportPath(parent: BrowserWindow, defaultName: string, format: keyof typeof EXPORT_FORMATS = "mermaid"): Promise<string | null> {
-  const { name, extension } = EXPORT_FORMATS[format];
+/** Shows the export save dialog for a PNG image. Resolves with the chosen path, or null if cancelled. */
+export async function chooseExportPath(parent: BrowserWindow, defaultName: string): Promise<string | null> {
   const options: SaveDialogOptions = {
     title: "Export",
     // Only a file name is accepted from the window; the folder is the person's Documents.
-    defaultPath: join(app.getPath("documents"), basename(defaultName) || `board.${extension}`),
-    filters: [{ name, extensions: [extension] }],
+    defaultPath: join(app.getPath("documents"), basename(defaultName) || "board.png"),
+    filters: [{ name: "PNG image", extensions: ["png"] }],
     properties: ["createDirectory", "showOverwriteConfirmation"],
   };
   const result = await dialog.showSaveDialog(parent, options);

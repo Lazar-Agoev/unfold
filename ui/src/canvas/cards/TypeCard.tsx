@@ -6,28 +6,26 @@
  * Each field is its name as written (`readonly` drawn apart, `?`), its written type, and its default
  * (` = …`) or an enum member's value;
  * a type alias that isn't an object shows its aliased type; the fields it inherits follow under
- * "from <Type>" for each base. A declared type opens its definition in place, as in a line's contract.
- * A card of 12 fields or more lists the first 8 and "N more".
+ * "from <Type>" for each base. A card of 12 fields or more lists the first 8 and "N more".
  *
  * Each field with a type arrow has its port at its row's right edge (a field behind "N more" at that
- * row); calls from a class leave from the header's edge. Folded, it shows only its header.
+ * row); calls from a class leave from the header's edge.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { useUpdateNodeInternals } from "@xyflow/react";
 import { useLayoutEffect, useMemo, useState, type ReactNode } from "react";
-import { FromBase, TypeDefinition } from "../../code/TypeDefinition";
 import { TypeText } from "../../code/TypeText";
 import { fieldsOnly, keyTypeWord, memberName, memberValue, typeKindWord } from "../../code/typeKinds";
-import type { Card, ProjectId, TypeDefinition as TypeDefinitionModel } from "../../ipc/generated";
+import type { Card, InheritedGroup, ProjectId, TypeDefinition } from "../../ipc/generated";
 import { useEngineQuery } from "../../ipc/queries";
-import { keyDisplayName, toggledOpenTypes, type PageTarget } from "../../state/boards";
+import { keyDisplayName, type PageTarget } from "../../state/boards";
 import { fieldPort, fieldRows, type FieldRow } from "../arrows";
 import { cardQuery, isMissing } from "../cardData";
 import { useMeasure } from "../measure";
 import { fieldTexts, listedFields, nodeLocation, typeCardWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";
-import { CardHandles, CardNote, DescriptionStrip, ExpandToggle, HeaderPorts, nodeHeaderPorts, renderPorts, toggleCardFolded } from "./parts";
+import { CardHandles, CardNote, DescriptionStrip, ExpandToggle, HeaderPorts, nodeHeaderPorts, renderPorts } from "./parts";
 import { ReviewBanner } from "./ReviewBanner";
 import { clickCard } from "./select";
 
@@ -41,22 +39,40 @@ export interface TypeCardProps {
 }
 
 interface FieldsProps {
-  readonly project: ProjectId;
-  readonly definition: TypeDefinitionModel;
+  readonly definition: TypeDefinition;
   readonly ports: ReadonlySet<string>;
-  readonly openTypes: Readonly<Record<string, number>>;
-  readonly onToggle: (row: string, span: number) => void;
   /** Whether every field is listed (after "N more"). */
   readonly all: boolean;
   readonly onShowAll: () => void;
 }
 
-/** One field: its name, its written type (a declared name opens its definition under the row), its value, and its port. */
-function FieldRowView({ project, field, ports, openTypes, onToggle }: Omit<FieldsProps, "definition" | "all" | "onShowAll"> & { readonly field: FieldRow }) {
+/** Where an inherited group's base comes from (an external one's module) or why it has no declaration. */
+function baseNote(group: InheritedGroup): string | undefined {
+  const span = group.from.spans[0];
+  switch (span?.style) {
+    case "external":
+      return span.module ?? span.note;
+    case "unresolved":
+      return span.note;
+    default:
+      return undefined;
+  }
+}
+
+/** The sub-heading over the members inherited from one base: `from OrderDraft`. */
+function FromBase({ group }: { readonly group: InheritedGroup }) {
+  const note = baseNote(group);
+  return (
+    <div className="type-def-from">
+      from <TypeText type={group.from} />
+      {note !== undefined ? <span className="type-def-from-note">{` · ${note}`}</span> : null}
+    </div>
+  );
+}
+
+/** One field: its name, its written type, its value, and its port. */
+function FieldRowView({ field, ports }: { readonly field: FieldRow; readonly ports: ReadonlySet<string> }) {
   const { row, member, type } = field;
-  const open = openTypes[row];
-  const span = open !== undefined ? type?.spans[open] : undefined;
-  const opened = span?.style === "declared" ? span.target : undefined;
   const port = fieldPort(row);
   const value = member ? memberValue(member) : null;
   return (
@@ -66,28 +82,15 @@ function FieldRowView({ project, field, ports, openTypes, onToggle }: Omit<Field
         {member ? memberName(member) : "="}
       </span>
       <span className="tcard-type">
-        {type ? (
-          <TypeText
-            type={type}
-            open={open ?? null}
-            onToggle={(index) => {
-              onToggle(row, index);
-            }}
-          />
-        ) : null}
+        {type ? <TypeText type={type} /> : null}
         {value !== null ? <span className="type-def-value">{value}</span> : null}
         {ports.has(port) ? renderPorts([port]) : null}
       </span>
-      {opened !== undefined ? (
-        <div className="tcard-opened">
-          <TypeDefinition project={project} typeKey={opened} row={row} depth={1} openTypes={openTypes} onToggle={onToggle} />
-        </div>
-      ) : null}
     </>
   );
 }
 
-function Fields({ project, definition, ports, openTypes, onToggle, all, onShowAll }: FieldsProps) {
+function Fields({ definition, ports, all, onShowAll }: FieldsProps) {
   const rows = fieldRows(definition);
   const { entries, hidden } = listedFields(definition, all);
   if (entries.length === 0) {
@@ -103,7 +106,7 @@ function Fields({ project, definition, ports, openTypes, onToggle, all, onShowAl
           return group ? <FromBase key={`from${entry.base}`} group={group} /> : null;
         }
         const field = rows[entry.index];
-        return field ? <FieldRowView key={field.row} project={project} field={field} ports={ports} openTypes={openTypes} onToggle={onToggle} /> : null;
+        return field ? <FieldRowView key={field.row} field={field} ports={ports} /> : null;
       })}
       {hidden > 0 ? (
         <button
@@ -129,11 +132,9 @@ export function TypeCard({ target, project, card, ports, selected }: TypeCardPro
   const typeQuery = useEngineQuery("type_definition", { project, key });
   const measure = useMeasure();
   const updateNodeInternals = useUpdateNodeInternals();
-  const folded = card.folded === true;
-  const [openTypes, setOpenTypes] = useState<Readonly<Record<string, number>>>({});
   const [all, setAll] = useState(false);
   const header = model?.header;
-  const menu = useCardMenu(target, card.id, folded, true);
+  const menu = useCardMenu(target, card.id, true);
   const definition = typeQuery.data;
   const kind = definition ? typeKindWord(definition.kind) : keyTypeWord(key);
   const name = header?.qualifiedName ?? definition?.name ?? keyDisplayName(key);
@@ -149,15 +150,12 @@ export function TypeCard({ target, project, card, ports, selected }: TypeCardPro
   const portsKey = ports.join("\u0000");
   useLayoutEffect(() => {
     updateNodeInternals(card.id);
-  }, [updateNodeInternals, card.id, portsKey, folded, width, definition, openTypes, all]);
+  }, [updateNodeInternals, card.id, portsKey, width, definition, all]);
 
-  const onToggle = (row: string, span: number) => {
-    setOpenTypes((current) => toggledOpenTypes(current, row, span));
-  };
   const missing = (query.isError && isMissing(query.error)) || (typeQuery.isError && isMissing(typeQuery.error));
   let body: ReactNode;
   if (definition) {
-    body = <Fields project={project} definition={definition} ports={portSet} openTypes={openTypes} onToggle={onToggle} all={all} onShowAll={() => { setAll(true); }} />;
+    body = <Fields definition={definition} ports={portSet} all={all} onShowAll={() => { setAll(true); }} />;
   } else if (typeQuery.isError || query.isError) {
     body = <CardNote warn>{missing ? "This type is missing from the graph." : (typeQuery.error ?? query.error)?.message}</CardNote>;
   } else {
@@ -165,7 +163,7 @@ export function TypeCard({ target, project, card, ports, selected }: TypeCardPro
   }
   return (
     <article
-      className={`board-card type-card${selected ? " selected" : ""}${folded ? " folded" : ""}${missing ? " missing" : ""}`}
+      className={`board-card type-card${selected ? " selected" : ""}${missing ? " missing" : ""}`}
       data-card-id={card.id}
       data-key={key}
       data-loading={typeQuery.isPending ? "true" : undefined}
@@ -177,13 +175,8 @@ export function TypeCard({ target, project, card, ports, selected }: TypeCardPro
       onContextMenu={menu.onContextMenu}
     >
       <CardHandles />
-      <header
-        className="card-header card-drag"
-        onDoubleClick={() => {
-          toggleCardFolded(target, card.id, folded);
-        }}
-      >
-        {expandable && !folded ? <ExpandToggle target={target} cardId={card.id} expanded={false} name={name} /> : null}
+      <header className="card-header card-drag">
+        {expandable ? <ExpandToggle target={target} cardId={card.id} expanded={false} name={name} /> : null}
         <span className="tcard-kind">{kind}</span>
         <h3 className="card-title" title={name}>
           {name}
@@ -191,17 +184,11 @@ export function TypeCard({ target, project, card, ports, selected }: TypeCardPro
         <span className="card-location" title={location}>
           {location}
         </span>
-        <HeaderPorts ids={nodeHeaderPorts(ports, folded)} />
+        <HeaderPorts ids={nodeHeaderPorts(ports)} />
       </header>
       <ReviewBanner target={target} project={project} cardId={card.id} />
-      {folded ? null : (
-        <>
-          <DescriptionStrip target={target} cardId={card.id} description={card.description} />
-          <div className="card-body nodrag nopan">
-            {body}
-          </div>
-        </>
-      )}
+      <DescriptionStrip target={target} cardId={card.id} description={card.description} />
+      <div className="card-body nodrag nopan">{body}</div>
       {menu.element}
     </article>
   );

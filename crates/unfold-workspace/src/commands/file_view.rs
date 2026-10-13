@@ -183,7 +183,7 @@ pub fn file_view(ctx: &Ctx<'_>, args: FileViewArgs) -> CommandResult<FileView> {
 
 /// The render model of the live project's file at `path` (relative to its folder), or of a
 /// range of its lines.
-pub(crate) fn render_page(
+fn render_page(
     workspace: &Workspace,
     extras: &ProjectExtras,
     path: &str,

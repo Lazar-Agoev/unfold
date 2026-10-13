@@ -58,7 +58,7 @@ export interface RenderFrame {
 }
 
 /** A layout or content problem the page checks found (design §7.7). */
-export type PageCheckKind = "overlap" | "crossings" | "density" | "unlabeled" | "missingWords" | "evidence" | "strays" | "views";
+export type PageCheckKind = "overlap" | "crossings" | "density" | "missingWords" | "evidence" | "strays";
 
 /** One finding of the page checks: what it is about, in words, and what fixes it. */
 export interface PageCheck {

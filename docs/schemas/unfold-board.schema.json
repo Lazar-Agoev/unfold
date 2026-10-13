@@ -158,7 +158,6 @@
         },
         "at": { "$ref": "#/$defs/position" },
         "view": { "$ref": "#/$defs/view" },
-        "folded": { "type": "boolean", "description": "Written only when true." },
         "description": { "$ref": "#/$defs/description" },
         "expanded": {
           "type": "array",

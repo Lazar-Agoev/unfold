@@ -1,11 +1,10 @@
 /**
  * What the compiler says about a page's cards (design §6.5, `read_page`): each card's model (its name,
  * location, Code, and Flow) and each type card's definition, and from them what the board draws
- * between cards: one arrow per call occurrence whose target has a card on the page (with its typed
- * label), an entrance's arrows to its handlers, and type arrows from a type card's field to the card
- * of each type its written type names; and the steps of expanded cards still showing names from the
- * code. The rules are copies of the canvas's (`ui/src/canvas/arrows.ts`, `cardBody`, the store's
- * `shownView`, and the outline's count of unlabeled steps), so change both together: a page opens in
+ * between cards: one arrow per call occurrence whose target has a card on the page, an entrance's
+ * arrows to its handlers, and type arrows from a type card's field to the card of each type its
+ * written type names. The rules are copies of the canvas's (`ui/src/canvas/arrows.ts`, `cardBody`,
+ * and the store's `shownView`), so change both together: a page opens in
  * Diagram or Code, a card is compact or expanded in Diagram, a type declaration's card keeps its
  * fields in every view while a class's shows them compact (its Flow expanded, its Code in Code), and
  * arrows reach the first card of a key. Two differences are deliberate: calls are listed one by one
@@ -14,14 +13,12 @@
  */
 
 import type { ToolContext } from "./context";
-import type { Card, CardView, EdgeKind, LineLabel, Page, ProjectRow, TypeDefinition, TypeMember, TypeText, View } from "./engine-types";
+import type { Card, CardView, EdgeKind, Page, ProjectRow, TypeDefinition, TypeMember, TypeText, View } from "./engine-types";
 import { keyKind } from "./format";
 import { ToolError } from "./results";
 
 /** Block kinds of type declarations, whose cards show only their fields. */
 const DECLARATION_KINDS: ReadonlySet<string> = new Set(["interface", "type_alias", "enum"]);
-/** The most lines one `line_labels` request labels. */
-const MAX_LABELED = 500;
 
 /** One card with what the engine says of it. */
 export interface CardCode {
@@ -46,7 +43,6 @@ interface CallArrow {
   /** The occurrence and edge `read_call` takes (none for a handler). */
   readonly source?: string;
   readonly seq?: number;
-  readonly label?: LineLabel;
 }
 
 /** A type arrow: from a field of a type card to the card of a type its written type names. */
@@ -58,22 +54,11 @@ interface TypeArrow {
   readonly type: TypeText;
 }
 
-/** A Flow step still showing its name from the code. */
-interface UnlabeledStep {
-  readonly card: string;
-  readonly key: string;
-  readonly kind: string;
-  /** Its fallback name. */
-  readonly name: string;
-  readonly line?: number;
-}
-
 /** A page's cards with their code, and what the board draws from it. */
 export interface PageCode {
   readonly cards: ReadonlyMap<string, CardCode>;
   readonly arrows: readonly CallArrow[];
   readonly typeArrows: readonly TypeArrow[];
-  readonly unlabeled: readonly UnlabeledStep[];
 }
 
 /** The key a card shows. */
@@ -205,30 +190,6 @@ function cardTypeArrows(code: CardCode, cardOf: (key: string) => string | undefi
   });
 }
 
-/** Whether `key` is `member` or lies under it (`<member>/…`). */
-function within(key: string, member: string): boolean {
-  return key.startsWith(member) && (key.length === member.length || key[member.length] === "/");
-}
-
-/**
- * The keyed Flow steps of expanded cards that have no label on the page, as the page's outline counts
- * them: start and end aside, the steps a collapsed step group of the card hides aside, and none while
- * the source changed or the page opens in Code.
- */
-function unlabeledSteps(page: Page, code: CardCode): UnlabeledStep[] {
-  const flow = code.model?.type === "block" ? code.model.flow : null;
-  if (flow?.source !== "current" || shownView(page, code.card) !== "flow") {
-    return [];
-  }
-  const labeled = new Set(page.labels.map((label) => label.key));
-  const hidden = page.groups.filter((group) => group.collapsed && group.card === code.card.id).flatMap((group) => group.members);
-  return flow.nodes.flatMap(({ key, kind, label, startLine }) =>
-    key === undefined || kind === "start" || kind === "end" || labeled.has(key) || hidden.some((member) => within(key, member))
-      ? []
-      : [{ card: code.card.id, key, kind, name: label, ...(startLine !== undefined ? { line: startLine } : {}) }],
-  );
-}
-
 /** Reads the cards' code of a page of `project` and works out what the board draws between them. */
 export async function pageCode(context: ToolContext, project: ProjectRow, page: Page): Promise<PageCode> {
   const loaded = await Promise.all(page.cards.map((card) => loadCard(context, project, page, card)));
@@ -241,33 +202,9 @@ export async function pageCode(context: ToolContext, project: ProjectRow, page: 
     }
   }
   const cardOf = (key: string) => byKey.get(key);
-  const calls = loaded.flatMap((code) => cardArrows(code, cardOf));
-  const arrows = await labeled(context, project, calls);
   return {
     cards,
-    arrows,
+    arrows: loaded.flatMap((code) => cardArrows(code, cardOf)),
     typeArrows: loaded.flatMap((code) => cardTypeArrows(code, cardOf)),
-    unlabeled: loaded.flatMap((code) => unlabeledSteps(page, code)),
   };
-}
-
-/** The arrows with the typed labels of their calls (`line_labels`); imports have none. */
-async function labeled(context: ToolContext, project: ProjectRow, arrows: readonly CallArrow[]): Promise<CallArrow[]> {
-  const lines = arrows.filter((arrow) => arrow.source !== undefined && arrow.kind !== "imports").map((arrow) => ({ source: arrow.source ?? "", seq: arrow.seq ?? 0 }));
-  const requests = Array.from({ length: Math.ceil(lines.length / MAX_LABELED) }, (_, chunk) => ({
-    project: project.id,
-    lines: lines.slice(chunk * MAX_LABELED, (chunk + 1) * MAX_LABELED),
-  }));
-  // Labels are what a line sends and returns; a page reads without them when they can't be read.
-  const answers = await Promise.all(requests.map((request) => context.engine("line_labels", request).catch(() => [])));
-  const labels = new Map<string, LineLabel>();
-  for (const line of answers.flat()) {
-    if (line.label) {
-      labels.set(`${line.source}\u0000${line.seq}`, line.label);
-    }
-  }
-  return arrows.map((arrow) => {
-    const label = labels.get(`${arrow.source ?? ""}\u0000${arrow.seq ?? 0}`);
-    return label ? { ...arrow, label } : arrow;
-  });
 }

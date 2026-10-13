@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { BoardCanvas, arrangeBoard, useBoardArrows } from "../canvas";
 import { showToast } from "../components";
 import { onShellEvent } from "../ipc";
-import { boardKey, canUndo, findPage, redo, requestCardFocus, travel, undo, useOpenBoard, usePageView, type BoardRef, type PageTarget } from "../state/boards";
+import { boardKey, canUndo, findPage, redo, requestCardFocus, undo, useOpenBoard, usePageView, type BoardRef, type PageTarget } from "../state/boards";
 import { useLayout } from "../state/layout";
 import { usePeekTarget } from "../state/overlays";
 import { BoardBanner } from "./BoardBanner";
@@ -49,15 +49,6 @@ function PageStage({ target }: { readonly target: PageTarget }) {
     }
   }, [hasCamera, hasItems, target]);
 
-  const onTravel = useCallback(
-    (direction: "back" | "forward") => {
-      const move = travel(target, direction);
-      if (move?.camera) {
-        void flow.setViewport(move.camera, { duration: 240 });
-      }
-    },
-    [target, flow],
-  );
   const onFit = useCallback(() => {
     requestCardFocus(target, [], "fit");
   }, [target]);
@@ -97,7 +88,7 @@ function PageStage({ target }: { readonly target: PageTarget }) {
         ) : null}
       </div>
       {cards.length === 0 && resources === undefined && notes === undefined ? <p className="board-empty">Open an entrance or a definition to start this page.</p> : null}
-      <Dock target={target} hasItems={hasItems} onTravel={onTravel} onZoomIn={onZoomIn} onZoomOut={onZoomOut} onFit={onFit} onArrange={onArrange} />
+      <Dock hasItems={hasItems} onZoomIn={onZoomIn} onZoomOut={onZoomOut} onFit={onFit} onArrange={onArrange} />
     </>
   );
 }

@@ -17,14 +17,14 @@ import { reasonText, shortPath } from "../../code/text";
 import { entranceTargetSource, viewCode, viewEntranceTarget } from "../../board/viewCode";
 import { ViewCodeButton } from "../../flow/ViewCodeButton";
 import type { Card, ProjectId, TargetView } from "../../ipc/generated";
-import { editPage, entranceCardText, entranceTitle, followCall, keyDisplayName, lineOffsetIn, select, setCardsFolded, type PageTarget } from "../../state/boards";
+import { entranceCardText, entranceTitle, followCall, keyDisplayName, lineOffsetIn, select, type PageTarget } from "../../state/boards";
 import { targetHandle } from "../arrows";
 import { cardQuery, isMissing } from "../cardData";
 import { useMeasure } from "../measure";
 import { targetsHeading } from "../entranceText";
 import { entranceCardWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";
-import { CardHandles, CardNote, DescriptionStrip, ExpandToggle, HeaderPorts } from "./parts";
+import { CardHandles, CardNote, DescriptionStrip, ExpandToggle } from "./parts";
 import { ReviewBanner } from "./ReviewBanner";
 import { clickCard } from "./select";
 
@@ -101,8 +101,7 @@ export function EntranceCard({ target, project, card, expandable, ports, selecte
   const model = query.data?.type === "entrance" ? query.data : undefined;
   const measure = useMeasure();
   const updateNodeInternals = useUpdateNodeInternals();
-  const folded = card.folded === true;
-  const menu = useCardMenu(target, card.id, folded, false);
+  const menu = useCardMenu(target, card.id, false);
   const title = model ? entranceTitle(model) : keyDisplayName(key);
   const text = useMemo(() => (model ? entranceCardText(model) : { method: null, title, location: "", handlers: [] }), [model, title]);
   const portSet = useMemo(() => new Set(ports), [ports]);
@@ -112,28 +111,21 @@ export function EntranceCard({ target, project, card, expandable, ports, selecte
   const portsKey = ports.join("\u0000");
   useLayoutEffect(() => {
     updateNodeInternals(card.id);
-  }, [updateNodeInternals, card.id, portsKey, folded, width, model]);
+  }, [updateNodeInternals, card.id, portsKey, width, model]);
 
-  const toggleFolded = () => {
-    editPage(target, (page) => {
-      setCardsFolded(page, [card.id], !folded);
-    });
-  };
   const follow = (handler: string, anchor: HTMLElement) => {
     const offset = lineOffsetIn(anchor);
     followCall({
       target,
       fromCardId: card.id,
-      fromLabel: title,
       targetKey: handler,
-      targetLabel: keyDisplayName(handler),
       ...(offset !== undefined ? { lineOffset: offset } : {}),
     });
   };
   const missing = query.isError && isMissing(query.error);
   return (
     <article
-      className={`board-card entrance-card${selected ? " selected" : ""}${folded ? " folded" : ""}${missing ? " missing" : ""}`}
+      className={`board-card entrance-card${selected ? " selected" : ""}${missing ? " missing" : ""}`}
       data-card-id={card.id}
       data-key={key}
       data-loading={query.isPending ? "true" : undefined}
@@ -145,51 +137,46 @@ export function EntranceCard({ target, project, card, expandable, ports, selecte
       onContextMenu={menu.onContextMenu}
     >
       <CardHandles />
-      <header className="card-header card-drag" onDoubleClick={toggleFolded}>
-        {expandable && !folded ? <ExpandToggle target={target} cardId={card.id} expanded name={title} /> : null}
+      <header className="card-header card-drag">
+        {expandable ? <ExpandToggle target={target} cardId={card.id} expanded name={title} /> : null}
         {text.method !== null ? <span className="ecard-method">{text.method}</span> : null}
         <h3 className="card-title" title={title}>
           {text.title}
         </h3>
-        <HeaderPorts ids={folded ? ports : []} />
       </header>
       <ReviewBanner target={target} project={project} cardId={card.id} />
-      {folded ? null : (
-        <>
-          <DescriptionStrip target={target} cardId={card.id} description={card.description} />
-          <div className="card-body ecard-body nodrag nopan">
-              {query.isPending ? <CardNote>Loading…</CardNote> : null}
-              {query.isError ? <CardNote warn>{missing ? "This entrance is missing from the graph." : query.error.message}</CardNote> : null}
-              {model ? (
-                <>
-                  <div className="ecard-location-row">
-                    <span className="ecard-location">{text.location}</span>
-                    <ViewCodeButton
-                      onView={() => {
-                        const own = { kind: "card", cardId: card.id, key: null } as const;
-                        select(target, own);
-                        viewCode(target, own);
-                      }}
-                    />
-                  </div>
-                  <h4 className="ecard-heading">{targetsHeading(model.targets)}</h4>
-                  {model.targets.length === 0 ? <p className="ecard-empty">No handlers resolved.</p> : null}
-                  <ul className="ecard-handlers">
-                    {model.targets.map((handler) => {
-                      const handle = targetHandle(handler.position);
-                      const onView = entranceTargetSource(project, handler).target
-                        ? () => {
-                            viewEntranceTarget(target, key, handler.position);
-                          }
-                        : null;
-                      return <HandlerRow key={handle} handler={handler} port={portSet.has(handle) ? handle : null} onFollow={follow} onView={onView} />;
-                    })}
-                  </ul>
-                </>
-              ) : null}
-          </div>
-        </>
-      )}
+      <DescriptionStrip target={target} cardId={card.id} description={card.description} />
+      <div className="card-body ecard-body nodrag nopan">
+        {query.isPending ? <CardNote>Loading…</CardNote> : null}
+        {query.isError ? <CardNote warn>{missing ? "This entrance is missing from the graph." : query.error.message}</CardNote> : null}
+        {model ? (
+          <>
+            <div className="ecard-location-row">
+              <span className="ecard-location">{text.location}</span>
+              <ViewCodeButton
+                onView={() => {
+                  const own = { kind: "card", cardId: card.id, key: null } as const;
+                  select(target, own);
+                  viewCode(target, own);
+                }}
+              />
+            </div>
+            <h4 className="ecard-heading">{targetsHeading(model.targets)}</h4>
+            {model.targets.length === 0 ? <p className="ecard-empty">No handlers resolved.</p> : null}
+            <ul className="ecard-handlers">
+              {model.targets.map((handler) => {
+                const handle = targetHandle(handler.position);
+                const onView = entranceTargetSource(project, handler).target
+                  ? () => {
+                      viewEntranceTarget(target, key, handler.position);
+                    }
+                  : null;
+                return <HandlerRow key={handle} handler={handler} port={portSet.has(handle) ? handle : null} onFollow={follow} onView={onView} />;
+              })}
+            </ul>
+          </>
+        ) : null}
+      </div>
       {menu.element}
     </article>
   );

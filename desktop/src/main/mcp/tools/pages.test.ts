@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import cardCreateOrder from "../../../../../testdata/workspace/commands/card_create_order.json";
 import type { AgentPage, AgentShellEvent } from "../../../shared/agent-api";
 import { pageRevision } from "../../agents/revision";
-import type { BoardSummary, CardView, LabeledLine, LineLabel, Page, ReadBoardResult, TypeDefinition } from "../engine-types";
+import type { BoardSummary, CardView, Page, ReadBoardResult, TypeDefinition } from "../engine-types";
 import { listBoards, readPage } from "./pages";
 import { harness, PROJECT, projectRow, recorded } from "./testing";
 
@@ -24,7 +24,7 @@ const PAGE: AgentPage = {
   cards: [
     { id: "post-orders", ref: { entrance: ENTRANCE }, at: [0, 0] },
     { id: "create-order", ref: { block: CREATE_ORDER }, at: [320, 0], view: "flow", description: { text: "Places the order now, or queues it.", author: "agent:claude", signature: "s" } },
-    { id: "place", ref: { block: PLACE }, at: [800, 0], folded: true },
+    { id: "place", ref: { block: PLACE }, at: [800, 0] },
     { id: "cart", ref: { block: CART }, at: [0, 400] },
     { id: "cart-item", ref: { block: CART_ITEM }, at: [400, 400] },
   ],
@@ -100,10 +100,6 @@ const DEFINITIONS: Readonly<Record<string, TypeDefinition>> = {
   [BASKET]: { ...CART_DEFINITION, key: BASKET, kind: "class", name: "Basket", line: 20, members: CART_DEFINITION.members.slice(0, 1) },
 };
 
-const ORDER_LABEL: LineLabel = { inputs: [{ type: { text: "OrderDraft", spans: [] } }], inputsUnknown: false, output: { text: "Promise<Order>", spans: [] } };
-
-const LABEL: LabeledLine = { source: `${CREATE_ORDER}/variable:order/call[0]`, seq: 0, label: ORDER_LABEL };
-
 const CARDS: Readonly<Record<string, () => CardView>> = {
   [CREATE_ORDER]: () => recorded<CardView>(cardCreateOrder),
   [ENTRANCE]: () => ENTRANCE_CARD,
@@ -134,9 +130,7 @@ function app(window?: (request: AgentShellEvent) => unknown) {
         return answer();
       },
       type_definition: (args) => DEFINITIONS[String(args["key"])],
-      line_labels: () => [LABEL],
       read_board: () => file(),
-      export_mermaid_text: () => ({ text: "flowchart LR\n  c0[createOrder]\n" }),
     },
     ...(window ? { window } : {}),
   });
@@ -161,7 +155,7 @@ describe("read_page", () => {
     expect(lines).toContain(
       `- createOrder (card id create-order): function at src/routes/orders.ts:25; key ${CREATE_ORDER}; expanded; at [320, 0], 520×310; in frame server; description by you: “Places the order now, or queues it.”`,
     );
-    expect(lines).toContain(`- OrderService.place (card id place): method at src/services/order-service.ts:13; key ${PLACE}; compact (the page's default); folded; at [800, 0]; in frame checks`);
+    expect(lines).toContain(`- OrderService.place (card id place): method at src/services/order-service.ts:13; key ${PLACE}; compact (the page's default); at [800, 0]; in frame checks`);
     expect(lines).toContain(`- Cart (card id cart): interface at src/cart.ts:12; key ${CART}; fields; at [0, 400]`);
     expect(lines).toContain("- “Queue it for a worker” (step group id queue-it) in card create-order: 2 statements, lines 28–30; collapsed; titled by you");
     expect(lines).toContain("Frames (2), nested as they are:");
@@ -177,41 +171,10 @@ describe("read_page", () => {
     expect(lines).toContain("- note note-1, attached to createOrder (create-order) at offset [0, -40], by you: “The client gets a job id, not the order.”");
     expect(lines).toContain("- POST /orders (post-orders) → createOrder (create-order): handler createOrder");
     expect(lines).toContain(
-      `- createOrder (create-order) → OrderService.place (place): calls orderService.place at line 32: (OrderDraft) → Promise<Order>; source ${CREATE_ORDER}/variable:order/call[0], seq 0`,
+      `- createOrder (create-order) → OrderService.place (place): calls orderService.place at line 32; source ${CREATE_ORDER}/variable:order/call[0], seq 0`,
     );
     expect(lines).toContain(`- Cart (cart) → CartItem (cart-item): field items: CartItem[] (CartItem: ${CART_ITEM})`);
-    expect(lines).toContain("Flow steps still unlabeled, in expanded cards (label_steps labels them) (5):");
-    expect(lines).toContain(`- createOrder (create-order): line 27 condition “req.header?” (key ${CREATE_ORDER}/if[0])`);
-    expect(lines.some((line) => line.includes("/variable:draft)"))).toBe(false);
-    // The collapsed step group hides its steps.
-    expect(lines.some((line) => line.includes("/variable:job)") || line.includes("/return[0])"))).toBe(false);
     expect(test.commands()).not.toContain("read_board");
-  });
-
-  it("counts unlabeled steps as the outline does: not Start or End, nor the steps a collapsed step group of the card hides", async () => {
-    const steps = async (groups: AgentPage["groups"]) => {
-      const page: AgentPage = { ...PAGE, groups };
-      const test = app((request) => (request.type === "agent_read" ? { ok: true, page, board: BOARD_INFO, sizes: {} } : undefined));
-      test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
-      const { text } = await test.call(readPage);
-      return text
-        .split("\n")
-        .flatMap((line) => (line.startsWith("- createOrder (create-order): ") ? [line.slice(line.indexOf("(key ") + 5 + CREATE_ORDER.length, -1)] : []));
-    };
-    const group = (id: string, card: string, members: string[], collapsed: boolean) => ({ id, card, title: id, members: members.map((member) => `${CREATE_ORDER}/${member}`), collapsed });
-    // A collapsed group hides its members and the steps under them; the Return outside it still counts.
-    expect(await steps([group("queue", "create-order", ["if[0]/variable:job", "if[0]/expression_statement[0]"], true)])).toEqual([
-      "/if[0]",
-      "/if[0]/return[0]",
-      "/variable:order",
-      "/expression_statement[0]",
-      "/expression_statement[1]",
-    ]);
-    expect(await steps([group("branch", "create-order", ["if[0]"], true)])).toEqual(["/variable:order", "/expression_statement[0]", "/expression_statement[1]"]);
-    // An expanded group, another card's collapsed group, and a key that only shares a prefix hide nothing.
-    expect(
-      await steps([group("open", "create-order", ["if[0]"], false), group("elsewhere", "place", ["variable:order"], true), group("prefix", "create-order", ["expression_statement"], true)]),
-    ).toHaveLength(7);
   });
 
   it("draws type arrows only from type cards showing their fields, and to the first card of a key, as the canvas does", async () => {
@@ -227,7 +190,7 @@ describe("read_page", () => {
     };
     const typeLines = async (cards: AgentPage["cards"]) => {
       const page: AgentPage = { ...PAGE, cards, groups: [], links: [], frames: [], resources: [], notes: [] };
-      const test = harness({ engine: { card: (args) => CARDS[String(args["key"])]?.() ?? null, type_definition: (args) => (args["key"] === CART ? withBase : DEFINITIONS[String(args["key"])]), line_labels: () => [], read_board: () => file(page) } });
+      const test = harness({ engine: { card: (args) => CARDS[String(args["key"])]?.() ?? null, type_definition: (args) => (args["key"] === CART ? withBase : DEFINITIONS[String(args["key"])]), read_board: () => file(page) } });
       const { text } = await test.call(readPage, { board: BOARD.id, project: "ts-orders" });
       return { lines: text.split("\n").filter((line) => line.includes(": field ")), definitions: test.commands().filter((command) => command === "type_definition").length };
     };
@@ -274,10 +237,8 @@ describe("read_page", () => {
     const test = harness({
       engine: {
         card: (args) => CARDS[String(args["key"])]?.() ?? null,
-        line_labels: () => [],
         board_health: () => ({
           health: { items: [{ page: "page-1", kind: "review", target: { proposal: "audit" }, message: review, repairs: ["accept", "reconnect", "removeProposal"] }], missing: 0, outdated: 0, brokenGroups: 0, review: 1, brokenLinks: 0 },
-          outlines: [],
           label: null,
         }),
       },
@@ -297,8 +258,6 @@ describe("read_page", () => {
       "- OrderService.place (place):",
       `  - “Audit the order” (proposal id audit): after the step ${PLACE}/call[0]; by you; anchor held for review: ${review} (propose with its id and a new after moves it; remove_items takes it off)`,
     ]);
-    // In the Code lens nothing is expanded, so no step counts as unlabeled.
-    expect(lines.some((line) => line.startsWith("Flow steps still unlabeled"))).toBe(false);
     expect(test.windowCalls).toEqual([[1, "board_health", { project: PROJECT, id: BOARD.id }]]);
   });
 
@@ -311,7 +270,7 @@ describe("read_page", () => {
     expect(second.text.split("\n")[0]).toContain("› Async path ·");
 
     const many: AgentPage = { ...PAGE, cards: Array.from({ length: 130 }, (_, index) => ({ id: `c${index}`, ref: { block: CART_ITEM }, at: [index, 0] })), groups: [], links: [], frames: [], resources: [], notes: [] };
-    const paged = harness({ engine: { card: CARDS[CART_ITEM] ?? (() => null), type_definition: () => DEFINITIONS[CART_ITEM], line_labels: () => [], read_board: () => file(many) } });
+    const paged = harness({ engine: { card: CARDS[CART_ITEM] ?? (() => null), type_definition: () => DEFINITIONS[CART_ITEM], read_board: () => file(many) } });
     const first = await paged.call(readPage, { board: BOARD.id, project: "ts-orders" });
     expect(first.text).toContain('Showing 120 of 131. Next page: read_page with cursor "120".');
     expect(first.text).not.toContain("Next: check");
@@ -325,7 +284,7 @@ describe("read_page", () => {
     const description = { text: "d".repeat(300), author: "agent:claude", signature: "s" };
     const ids = Array.from({ length: 130 }, (_, index) => `c${index}`);
     const many: AgentPage = { ...PAGE, cards: ids.map((id, index) => ({ id, ref: { block: CART_ITEM }, at: [index, 0], description })), groups: [], links: [], frames: [], resources: [], notes: [] };
-    const paged = harness({ engine: { card: CARDS[CART_ITEM] ?? (() => null), type_definition: () => DEFINITIONS[CART_ITEM], line_labels: () => [], read_board: () => file(many) } });
+    const paged = harness({ engine: { card: CARDS[CART_ITEM] ?? (() => null), type_definition: () => DEFINITIONS[CART_ITEM], read_board: () => file(many) } });
     const seen: string[] = [];
     let cursor: string | undefined;
     do {
@@ -335,20 +294,6 @@ describe("read_page", () => {
       cursor = /Next page: read_page with cursor "(\d+)"/.exec(text)?.[1];
     } while (cursor !== undefined);
     expect(seen).toEqual(ids);
-  });
-
-  it("gives the page as Mermaid, exported by the window that holds the board", async () => {
-    const test = app(held);
-    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
-    const { text } = await test.call(readPage, { format: "mermaid" });
-    expect(text.split("\n").slice(1)).toEqual([
-      "The page as Mermaid, as last saved (the window's unsaved edits aren't in it):",
-      "```mermaid",
-      "flowchart LR",
-      "  c0[createOrder]",
-      "```",
-    ]);
-    expect(test.windowCalls).toEqual([[1, "export_mermaid_text", { project: PROJECT, board: { id: BOARD.id, page: "page-1" } }]]);
   });
 
   it("says which board it means when none is in view", async () => {

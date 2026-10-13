@@ -63,11 +63,8 @@ unicode-id-start = "1.5.0"
 unicode-normalization = "0.1.25"
 # The command table's TypeScript types (`cargo xtask gen-ipc`).
 ts-rs = { version = "12.0.1", default-features = false, features = ["serde-compat", "no-serde-warnings", "serde-json-impl"] }
-# Search ranking (fuzzy scores over FTS5 candidates) and text search (ripgrep's libraries).
+# Search ranking (fuzzy scores over FTS5 candidates).
 nucleo-matcher = "0.3.1"
-grep-matcher = "0.1.9"
-grep-regex = "0.1.14"
-grep-searcher = "0.1.17"
 # The Node-API addon (`unfold-node`) the Electron engine host loads.
 napi = "3.14.2"
 napi-derive = "3.6.12"

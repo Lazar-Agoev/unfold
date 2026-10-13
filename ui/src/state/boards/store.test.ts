@@ -11,7 +11,7 @@ const engine = vi.hoisted(() => ({
 }));
 vi.mock("./engine", () => engine);
 
-const { addCard, moveItems, setCardsFolded, setTitle } = await import("./document");
+const { addCard, moveItems, setCardExpanded, setTitle } = await import("./document");
 const store = await import("./store");
 const { closeBoard, closeBoardsOfProject, openBoard, reopenBoards } = await import("./open");
 const { addPage } = await import("./pages");
@@ -161,7 +161,6 @@ describe("editing and autosave", () => {
     expect(after?.document.pages[0]?.cards[0]).toBe(before?.document.pages[0]?.cards[0]);
     expect(after?.document.pages[0]?.cards[1]?.description?.text).toBe("Signed");
     expect(after?.health).toBe(before?.health);
-    expect(after?.outlines).toBe(before?.outlines);
   });
 
   it("keeps a failed save's edit and why it failed until a save succeeds; a disconnected one isn't a failure", async () => {
@@ -306,7 +305,7 @@ describe("a step saved at once (an agent's edit)", () => {
           };
         }),
     );
-    const foldA = (document: BoardDocument) => {
+    const expandA = (document: BoardDocument) => {
       if (!document.pages[0]?.cards.some((card) => card.id === "a")) {
         throw new Error("the card is gone");
       }
@@ -314,13 +313,13 @@ describe("a step saved at once (an agent's edit)", () => {
         document: produce(document, (draft) => {
           const target = draft.pages[0];
           if (target) {
-            setCardsFolded(target, ["a"], true);
+            setCardExpanded(target, "a", true);
           }
         }),
-        value: "folded",
+        value: "expanded",
       };
     };
-    const outcome = store.saveStep(REF, "page-1", "Claude · Fold", foldA);
+    const outcome = store.saveStep(REF, "page-1", "Claude · Expand", expandA);
     await vi.advanceTimersByTimeAsync(0);
     edit((draft) => {
       draft.cards = [];
@@ -361,10 +360,10 @@ describe("undo and redo", () => {
     const id = edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] })) ?? "";
     store.editPage(PAGE, (draft) => { moveItems(draft, { [id]: [10, 0] }); }, { coalesce: "drag" });
     store.editPage(PAGE, (draft) => { moveItems(draft, { [id]: [20, 0] }); }, { coalesce: "drag" });
-    edit((draft) => { setCardsFolded(draft, [id], true); });
+    edit((draft) => { setCardExpanded(draft, id, true); });
     expect(store.getOpenBoard(REF)?.history.past).toHaveLength(3);
     store.undo(REF);
-    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.folded).toBeUndefined();
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.view).toBeUndefined();
     store.undo(REF);
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.at).toEqual([0, 0]);
     store.redo(REF);

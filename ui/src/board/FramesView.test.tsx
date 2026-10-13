@@ -91,7 +91,6 @@ beforeEach(() => {
   engine = installFakeEngine({
     handlers: {
       card: ({ key }) => model(key),
-      line_labels: () => [],
       list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
       save_board: () => boardState(P, ID),
     },
@@ -189,25 +188,6 @@ describe("frames on the canvas", () => {
 });
 
 describe("frames in the sidebar", () => {
-  it("On this page lists frames as headings with what they hold under them, nested", () => {
-    open({ frames: [frame("system", ["server"], { look: "zone" }), frame("server", ["create-order", "place"], { icon: "api", collapsed: true })] });
-    withClient(<BoardSidebar board={REF} />);
-    const list = screen.getByRole("listbox", { name: "Cards on this page" });
-    const rows = within(list).getAllByRole("option");
-    expect(rows.map((row) => [row.textContent, row.querySelector<HTMLElement>(".layer-glyph")?.style.marginLeft ?? ""])).toEqual([
-      ["system", ""],
-      ["servercollapsed", "16px"],
-      ["ƒcreateOrder", "32px"],
-      ["ƒOrderService.place", "32px"],
-      ["ƒslack.post", ""],
-    ]);
-    expect(rows[1]?.querySelector('[data-icon="frame-api"]')).not.toBeNull();
-    act(() => {
-      rows[1]?.click();
-    });
-    expect(store.getPageView(PAGE).selection).toEqual({ kind: "frame", frameId: "server" });
-  });
-
   it("merges drawn links at a collapsed frame into one line whose label counts them and selects nothing", async () => {
     open({
       frames: [frame("server", ["create-order", "place"], { collapsed: true })],

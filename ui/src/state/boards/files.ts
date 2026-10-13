@@ -4,7 +4,8 @@
  * version last saved.
  */
 
-import type { BoardSummary, ExportedFile, ProjectId, RenamedFolder, RepairSpec } from "../../ipc/generated";
+import type { ExportedFile } from "@unfold/desktop/unfold-api";
+import type { BoardSummary, ProjectId, RenamedFolder, RepairSpec } from "../../ipc/generated";
 import { hideBoard } from "../shownBoard";
 import { findPage, setTitle } from "./document";
 import { call, windowCommand } from "./engine";

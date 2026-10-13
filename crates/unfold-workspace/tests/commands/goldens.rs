@@ -58,15 +58,13 @@ fn representative_commands_match_their_goldens() {
     let map = golden(&harness, "entrances", "entrances", json!({}));
     let create_order = json!({ "key": "src/routes/orders.ts#function:createOrder" });
     golden(&harness, "card_create_order", "card", create_order.clone());
-    golden(&harness, "peek_create_order", "peek", create_order.clone());
     golden(
         &harness,
         "relations_create_order",
         "relations",
         json!({ "key": "src/routes/orders.ts#function:createOrder", "onPage": [] }),
     );
-    golden(&harness, "callers_create_order", "callers", create_order.clone());
-    golden(&harness, "preview_create_order", "preview", create_order);
+    golden(&harness, "callers_create_order", "callers", create_order);
     let application = &map["categories"][0]["applications"][0];
     golden(
         &harness,
@@ -83,12 +81,6 @@ fn representative_commands_match_their_goldens() {
         &harness,
         "card_first_entrance",
         "card",
-        json!({ "key": entrance["key"] }),
-    );
-    golden(
-        &harness,
-        "preview_first_entrance",
-        "preview",
         json!({ "key": entrance["key"] }),
     );
     golden(&harness, "search_place", "search", json!({ "query": "place" }));

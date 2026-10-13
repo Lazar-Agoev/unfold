@@ -1,4 +1,4 @@
-/* The Add box: one box over the window, and search results with a preview. */
+/* The Add box: one box over the board, and one list of names. */
 
 .add-scrim {
   position: fixed;
@@ -16,9 +16,9 @@
 .add-box {
   display: flex;
   flex-direction: column;
-  width: 1040px;
+  width: 600px;
   max-width: 100%;
-  max-height: 100%;
+  max-height: min(660px, 100%);
   overflow: clip;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-dialog);
@@ -38,6 +38,8 @@
   padding: 0 16px 0 20px;
   border-bottom: 1px solid var(--color-border);
 }
+
+.add-input-row:last-child { border-bottom: 0; }
 
 .add-input-icon {
   flex-shrink: 0;
@@ -69,147 +71,29 @@
   outline: none;
 }
 
-/* Text search options: Match case, Whole word, Regex, on the Text tab. */
-.add-options {
-  display: flex;
-  gap: 2px;
-}
-
-.add-option {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-control);
-  font-family: var(--font-code);
-  font-size: var(--text-11);
-  line-height: var(--leading-16);
-  color: var(--color-muted);
-}
-
-.add-option:hover {
-  background: var(--color-hover);
-}
-
-.add-option[aria-pressed="true"] {
-  background: var(--color-selection);
-  color: var(--color-accent-text);
-}
-
-/* Kinds row */
-
-.add-kinds {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  height: 44px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.add-tabs {
-  display: flex;
-  gap: 4px;
-}
-
-.add-tab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: var(--radius-control);
-  font-size: var(--text-13);
-  line-height: var(--leading-20);
-  font-weight: 500;
-  color: var(--color-muted);
-}
-
-.add-tab:hover {
-  background: var(--color-hover);
-}
-
-.add-tab[aria-selected="true"] {
-  background: var(--color-selection);
-  color: var(--color-accent-text);
-}
-
-.add-tab-count {
-  font-size: var(--text-12);
-  line-height: var(--leading-16);
-  font-weight: 400;
-  color: var(--color-muted);
-}
-
-.add-kinds-spacer,
-.add-preview-spacer {
-  flex: 1;
-}
-
-.add-kinds-text {
-  font-size: var(--text-12);
-  line-height: var(--leading-16);
-  color: var(--color-muted);
-}
-
-/* Body */
-
-.add-body {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  overflow: clip;
-}
-
 .add-empty {
   padding: 20px 24px;
   color: var(--color-muted);
 }
 
-.add-code {
-  font-family: var(--font-code);
-  font-feature-settings:
-    "calt" 0,
-    "liga" 0;
-}
-
-/* Lists: results */
+/* The list */
 
 .add-results {
   position: relative;
-  min-width: 0;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-}
-
-.add-results {
-  flex: 1;
 }
 
 .add-list-spacer {
   position: relative;
 }
 
-.add-list-header,
 .add-list-row {
   position: absolute;
   top: 0;
   left: 8px;
   width: calc(100% - 16px);
-}
-
-.add-list-header {
-  display: flex;
-  align-items: flex-end;
-  padding: 0 12px 4px;
-  font-size: var(--text-11);
-  line-height: var(--leading-16);
-  font-weight: 600;
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--color-muted);
-}
-
-.add-list-row {
   border-radius: var(--radius-control);
 }
 
@@ -229,10 +113,11 @@
   padding: 0 12px;
 }
 
+/* The result's kind, in small gray text. */
 .add-row-kind {
   flex-shrink: 0;
   width: 56px;
-  overflow: hidden;
+  white-space: nowrap;
   font-family: var(--font-code);
   font-size: var(--text-11);
   line-height: var(--leading-16);
@@ -251,32 +136,12 @@
     "liga" 0;
 }
 
+.add-row-name.ui {
+  font-family: var(--font-ui);
+}
+
 .add-list-row.selected .add-row-name {
   font-weight: 600;
-}
-
-.add-row-name.snippet {
-  font-size: var(--text-12);
-}
-
-/* A type declaration's kind before its name (`interface Cart`), quiet as in its definition. */
-.add-row-type-kind {
-  font-weight: 400;
-  color: var(--color-contour);
-}
-
-/* A selected snippet stays regular so its bold match run still reads. */
-.add-list-row.selected .add-row-name.snippet {
-  font-weight: 400;
-}
-
-.add-text-match {
-  /* A block run, so the tint fills the 20px line as drawn. */
-  display: inline-block;
-  border-radius: 3px;
-  background: var(--color-match);
-  font-weight: 600;
-  color: inherit;
 }
 
 .add-row-meta {
@@ -290,197 +155,10 @@
   color: var(--color-muted);
 }
 
-.add-row-meta.add-code {
-  font-size: var(--text-11);
-}
-
-.add-row.blocked .add-row-name {
-  color: var(--color-muted);
-}
-
-/* The "N more" link lines up with the name column: 12 + 20 + 12 + 56 + 12. */
-.add-more {
-  display: flex;
-  align-items: center;
-  height: 100%;
-  padding: 0 12px 0 112px;
-  font-size: var(--text-12);
-  line-height: var(--leading-16);
-  font-weight: 500;
-  color: var(--color-accent-text);
-}
-
-/* Preview */
-
-.add-preview {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  gap: 12px;
-  width: 392px;
-  min-height: 0;
-  padding: 16px 20px;
-  overflow: hidden;
-  border-left: 1px solid var(--color-border);
-}
-
-.add-preview-location {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 8px;
-  height: 20px;
-  min-width: 0;
-  font-size: var(--text-12);
-  line-height: var(--leading-16);
-  color: var(--color-muted);
-  white-space: nowrap;
-}
-
-.add-preview-location .add-code {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: var(--text-11);
-}
-
-.add-preview-title {
-  display: flex;
-  flex-shrink: 0;
-  align-items: baseline;
-  gap: 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-code);
-  font-size: var(--text-17);
-  line-height: var(--leading-24);
-  font-weight: 600;
-}
-
-.add-preview-kind {
-  flex-shrink: 0;
+.add-row-meta.code {
   font-family: var(--font-code);
   font-size: var(--text-11);
-  line-height: var(--leading-16);
-  font-weight: 400;
-  color: var(--color-muted);
-}
-
-.add-preview-code {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: clip;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-canvas);
-}
-
-.add-preview-lines {
-  padding: 10px 12px 4px;
-  overflow: hidden;
-  font-family: var(--font-code);
-  font-size: var(--text-12);
-  line-height: var(--leading-20);
   font-feature-settings:
     "calt" 0,
     "liga" 0;
-  color: var(--color-syntax-plain);
-}
-
-.add-preview-lines:last-child {
-  padding-bottom: 10px;
-}
-
-.add-preview-line {
-  display: flex;
-  gap: 12px;
-}
-
-.add-preview-line.current {
-  margin: 0 -12px;
-  padding: 0 12px;
-  background: var(--color-selection);
-}
-
-.add-preview-number {
-  flex-shrink: 0;
-  min-width: 2ch;
-  text-align: right;
-  color: var(--color-muted);
-}
-
-.add-preview-text {
-  min-width: 0;
-  overflow: hidden;
-  white-space: pre;
-}
-
-.add-preview-more {
-  padding: 0 12px 10px 40px;
-  font-size: var(--text-12);
-  line-height: var(--leading-16);
-  color: var(--color-muted);
-}
-
-.add-preview-relations {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  padding-top: 4px;
-}
-
-.add-preview-relation {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 28px;
-}
-
-.add-preview-label {
-  flex-shrink: 0;
-  width: 96px;
-  font-size: var(--text-12);
-  line-height: var(--leading-16);
-  color: var(--color-muted);
-}
-
-.add-preview-value {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  font-size: var(--text-12);
-  line-height: var(--leading-16);
-}
-
-.add-preview-prose {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: var(--text-13);
-  line-height: var(--leading-20);
-}
-
-.add-preview-status {
-  font-size: var(--text-12);
-  line-height: var(--leading-16);
-  color: var(--color-muted);
-}
-
-.add-preview-buttons {
-  display: flex;
-  flex-shrink: 0;
-  gap: 8px;
-}
-
-.add-preview-primary {
-  flex: 1;
-}
-
-/* As drawn: 12px each side. */
-.add-preview-buttons .button {
-  padding: 0 12px;
 }

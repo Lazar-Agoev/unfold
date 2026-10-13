@@ -4,7 +4,7 @@ import { z } from "zod";
 import { GUIDE_TOPICS, guideText, type GuideTopic } from "./guide";
 import { INSTRUCTIONS } from "./instructions";
 import { MAX_RESULT_CHARS } from "./results";
-import { PROMPTS, TOOLS } from "./tools";
+import { TOOLS } from "./tools";
 
 /** Claude Code cuts the instructions and each tool's description here (design §5.3). */
 const CLAUDE_CODE_LIMIT = 2_048;
@@ -26,30 +26,18 @@ const CALL = /\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\(/g;
 /** A guide topic named in text: `get_guide({topic: "diagrams"})`, `get_guide("diagrams")`, `(diagrams topic)`. */
 const TOPIC_NAMED = /get_guide\(\{\s*topic:\s*"([^"]+)"\s*\}\)|get_guide\("([^"]+)"\)|\(([a-z-]+) topic\)/g;
 
-interface PromptMessages {
-  readonly messages: readonly { readonly content: { readonly type: string; readonly text?: string } }[];
-}
-type PromptCallback = (args: Readonly<Record<string, string>>) => PromptMessages;
-
-/** What the tools and prompts register with the SDK, from a stand-in for its server. */
-function registered(): { readonly inputs: ReadonlyMap<string, z.ZodType>; readonly prompts: ReadonlyMap<string, PromptCallback> } {
+/** Each tool's input schema, as the tools register them with the SDK, from a stand-in for its server. */
+function registered(): ReadonlyMap<string, z.ZodType> {
   const inputs = new Map<string, z.ZodType>();
-  const prompts = new Map<string, PromptCallback>();
   const server = {
     registerTool(name: string, config: { readonly inputSchema: z.ZodType }) {
       inputs.set(name, config.inputSchema);
-    },
-    registerPrompt(name: string, _config: unknown, callback: PromptCallback) {
-      prompts.set(name, callback);
     },
   } as unknown as McpServer;
   for (const tool of TOOLS) {
     tool.register(server, () => Promise.resolve({ content: [] }));
   }
-  for (const prompt of PROMPTS) {
-    prompt.register(server);
-  }
-  return { inputs, prompts };
+  return inputs;
 }
 
 /** Every string a JSON Schema takes as a value (`enum`, `const`), at any depth. */
@@ -72,10 +60,9 @@ function schemaValues(schema: unknown, into: Set<string>): Set<string> {
   return into;
 }
 
-const REGISTERED = registered();
 const TOOL_NAMES: ReadonlySet<string> = new Set(TOOLS.map((tool) => tool.name));
 /** The tools' names and every value their arguments take (op names, repair names, kinds). */
-const VOCABULARY: ReadonlySet<string> = new Set([...TOOL_NAMES, ...[...REGISTERED.inputs.values()].flatMap((input) => [...schemaValues(z.toJSONSchema(input), new Set())])]);
+const VOCABULARY: ReadonlySet<string> = new Set([...TOOL_NAMES, ...[...registered().values()].flatMap((input) => [...schemaValues(z.toJSONSchema(input), new Set())])]);
 
 /** The words in `text` written like tool names that aren't a tool's or one of its arguments' values. */
 function unknownWords(text: string, known: ReadonlySet<string>): string[] {
@@ -90,17 +77,6 @@ function unknownCalls(text: string): string[] {
 /** The guide topics `text` names that don't exist. */
 function unknownTopics(text: string): string[] {
   return [...text.matchAll(TOPIC_NAMED)].map((match) => match[1] ?? match[2] ?? match[3] ?? "").filter((topic) => !(GUIDE_TOPICS as readonly string[]).includes(topic));
-}
-
-/** A prompt's request, as the agent receives it. */
-function promptText(name: string, args: Readonly<Record<string, string>>): string {
-  const callback = REGISTERED.prompts.get(name);
-  if (!callback) {
-    throw new Error(`no prompt ${name}`);
-  }
-  return callback(args)
-    .messages.map((message) => message.content.text ?? "")
-    .join("\n");
 }
 
 describe("the instructions (design §7.2)", () => {
@@ -172,55 +148,6 @@ describe("the guide (design §7.3)", () => {
     expect(TOOLS.map((tool) => tool.name).filter((name) => !words.has(name))).toEqual([]);
     for (const topic of GUIDE_TOPICS.filter((name) => name !== "start")) {
       expect(guideText("start"), topic).toContain(`- ${topic}: `);
-    }
-  });
-});
-
-describe("the prompts (design §6.9)", () => {
-  /** Each prompt with every argument given, as a person types them after the command. */
-  const FULL: Readonly<Record<string, Readonly<Record<string, string>>>> = {
-    "explain-entrance": { entrance: "POST", path: "/orders" },
-    "simplify-function": { function: "createOrder" },
-    "service-map": { project: "ts-orders" },
-    "data-model": { project: "ts-orders" },
-    tour: { project: "ts-orders" },
-    "fix-boards": { project: "ts-orders" },
-  };
-
-  it("are the six recipes, in order", () => {
-    expect(PROMPTS.map((prompt) => prompt.name)).toEqual(Object.keys(FULL));
-  });
-
-  it("render with their arguments, and without them for what the person is looking at", () => {
-    expect(promptText("explain-entrance", FULL["explain-entrance"] ?? {})).toContain("Explain the entrance “POST /orders” end to end");
-    expect(promptText("explain-entrance", {})).toContain("Explain the entrance selected in Unfold end to end");
-    expect(promptText("simplify-function", FULL["simplify-function"] ?? {})).toContain("Simplify the function “createOrder”");
-    for (const name of ["service-map", "data-model", "tour", "fix-boards"]) {
-      expect(promptText(name, FULL[name] ?? {}), name).toContain("the project “ts-orders”");
-      expect(promptText(name, {}), name).toContain("the project I'm viewing in Unfold");
-    }
-  });
-
-  it("ask for the guide topic, a brief, a review, and finish_work, naming only tools that exist", () => {
-    for (const [name, args] of Object.entries(FULL)) {
-      for (const text of [promptText(name, args), promptText(name, {})]) {
-        expect(text, name).toMatch(/get_guide\(\{topic: "[a-z-]+"\}\)/);
-        expect(text, name).toMatch(/brief/);
-        expect(text, name).toContain("check");
-        expect(text, name).toContain("get_screenshot");
-        expect(text, name).toContain("finish_work");
-        expect(unknownWords(text, TOOL_NAMES), name).toEqual([]);
-        expect(unknownTopics(text), name).toEqual([]);
-      }
-    }
-  });
-
-  it("name only recipes the diagrams topic has", () => {
-    const recipes = new Set([...guideText("diagrams").matchAll(/^### (.+)$/gm)].map((match) => match[1]));
-    for (const [name, args] of Object.entries(FULL)) {
-      for (const [, recipe] of promptText(name, args).matchAll(/recipe "([^"]+)"/g)) {
-        expect(recipes.has(recipe), `${name}: ${recipe ?? ""}`).toBe(true);
-      }
     }
   });
 });

@@ -12,7 +12,7 @@ import { authorOf } from "../../code/text";
 import { Icon } from "../../icons";
 import type { BlockKind, Description } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
-import { describeCard, editPage, setCardExpanded, setCardsFolded, type PageTarget } from "../../state/boards";
+import { describeCard, editPage, setCardExpanded, type PageTarget } from "../../state/boards";
 import { NODE_PORT } from "../arrows";
 import { LINK_SIDES } from "../linkSides";
 
@@ -24,14 +24,14 @@ export function renderPorts(ids: readonly string[]): ReactNode {
   return ids.map((id) => <Handle key={id} id={id} type="source" position={Position.Right} isConnectable={false} className="card-port" />);
 }
 
-/** Ports drawn at the header: every port of a folded card, and any the body can't place. */
+/** Ports drawn at the header: any the body can't place. */
 export function HeaderPorts({ ids }: { readonly ids: readonly string[] }) {
   return ids.length > 0 ? <span className="card-header-ports">{renderPorts(ids)}</span> : null;
 }
 
-/** The ports a Diagram node or a type card draws at its header: its node port, and every port while folded. */
-export function nodeHeaderPorts(ports: readonly string[], folded: boolean): string[] {
-  return ports.filter((id) => folded || id === NODE_PORT);
+/** The ports a Diagram node or a type card draws at its header: its node port. */
+export function nodeHeaderPorts(ports: readonly string[]): string[] {
+  return ports.filter((id) => id === NODE_PORT);
 }
 
 /**
@@ -52,21 +52,10 @@ export function ExpandToggle({ target, cardId, expanded, name }: { readonly targ
           setCardExpanded(page, cardId, !expanded);
         });
       }}
-      onDoubleClick={(event) => {
-        // The header's double-click folds the card; the chevron's own clicks never do.
-        event.stopPropagation();
-      }}
     >
       <Icon name={expanded ? "chevron-down-small" : "chevron-right-small"} size={10} />
     </button>
   );
-}
-
-/** Folds a card to its title, or unfolds it (a double-click on its header). */
-export function toggleCardFolded(target: PageTarget, cardId: string, folded: boolean): void {
-  editPage(target, (page) => {
-    setCardsFolded(page, [cardId], !folded);
-  });
 }
 
 const SIDE_POSITIONS = { left: Position.Left, right: Position.Right, top: Position.Top, bottom: Position.Bottom } as const;

@@ -16,20 +16,90 @@
 //!   verified source; none when it changed) and each listed throw's line.
 
 use std::collections::BTreeSet;
+use std::rc::Rc;
 
 use unfold_core::text::short_label;
-use unfold_core::vocab::{BlockKind, EdgeKind, PairingReason, ResultBinding, Role, SlotName};
-use unfold_core::{Pairing, Parameter};
+use unfold_core::vocab::{BlockKind, EdgeKind, PairingReason, Resolution, ResultBinding, Role, SlotName};
+use unfold_core::{Edge, Key, Pairing, Parameter};
 
 use super::facts::{Facts, FileFacts};
-use super::label::{Callee, class_name, class_of};
 use super::text::{outcome_span, whole_text};
 use super::{
-    CallContract, ContractParameter, ContractReturn, ContractSend, ContractThrow, SentArgument,
+    CallContract, ContractParameter, ContractReturn, ContractSend, ContractThrow, SentArgument, TypeText,
     UnpairedArgument,
 };
 use crate::error::Result;
 use crate::notes::pairing_text;
+
+/// A resolved edge's callee, located in its file.
+struct Callee {
+    file: Rc<FileFacts>,
+    local: u32,
+    key: Key,
+}
+
+impl Callee {
+    /// The callee of `edge`, when it resolved to a block that exists.
+    fn of(facts: &mut Facts<'_>, edge: &Edge) -> Result<Option<Self>> {
+        let Some(key) = edge
+            .target
+            .as_ref()
+            .filter(|_| edge.resolution == Resolution::Resolved)
+        else {
+            return Ok(None);
+        };
+        Ok(facts.locate(key.as_str())?.map(|(file, local)| Self {
+            file,
+            local,
+            key: key.clone(),
+        }))
+    }
+
+    /// The class an edge of `kind` to this callee constructs: a class target itself, or the
+    /// class of a constructor (or of the method a Python construction reaches, `__init__`).
+    fn constructed_class(&self, kind: EdgeKind) -> Option<u32> {
+        class_of(&self.file, self.local, kind)
+    }
+
+    /// What a call of kind `kind` gives back: the constructed class's name, else the written
+    /// return type.
+    fn output(&self, kind: EdgeKind) -> Option<TypeText> {
+        match self.constructed_class(kind) {
+            Some(class) => Some(class_name(&self.file, class)),
+            None => self
+                .file
+                .signature(self.local)
+                .and_then(|signature| signature.returns.as_ref())
+                .map(|returns| self.file.type_text(returns)),
+        }
+    }
+}
+
+/// The class block `local` of `file` stands for when reached by an edge of `kind`: itself for a
+/// class, its parent class for a constructor, or for a method reached by a construction.
+fn class_of(file: &FileFacts, local: u32, kind: EdgeKind) -> Option<u32> {
+    let block = file.block(local)?;
+    let parent_class = || {
+        file.parent(local).filter(|&parent| {
+            file.block(parent)
+                .is_some_and(|parent| parent.kind == BlockKind::Class)
+        })
+    };
+    match block.kind {
+        BlockKind::Class => Some(local),
+        BlockKind::Constructor => parent_class(),
+        BlockKind::Method if kind == EdgeKind::Constructs => parent_class(),
+        _ => None,
+    }
+}
+
+/// The name of class `class` as a `declared` type.
+fn class_name(file: &FileFacts, class: u32) -> TypeText {
+    let key = file.block(class).map(|block| block.key.clone());
+    whole_text(&file.label(class), |end| {
+        outcome_span(0, end, Resolution::Resolved, key.as_ref(), None, None)
+    })
+}
 
 /// Whether block `local` of `file` sits in the `body` of a `try` that has a `catch` handler,
 /// below `scope` (an ancestor: the function whose throws or calls are asked about).

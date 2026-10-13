@@ -1,13 +1,12 @@
 //! Boards (docs/reader.md#boards; decisions board format, board references): the `unfold-board`
 //! version 1 format with pages, its JSON Schema, strict parsing, deterministic serialization,
 //! signatures, guards, groups, drawn links and connections, frames, resource cards, notes,
-//! proposed steps, the claims' signatures and grounding, health with repairs per page, page
-//! outlines, and the board files of a project.
+//! proposed steps, the claims' signatures and grounding, health with repairs per page, and the
+//! board files of a project.
 //!
 //! ```text
 //! text ─parse─► Board ─health(Page, BoardGraph)─► Health, repairs
 //!   edit ─parse_edit─┘ └─prepare_save(previous, BoardGraph)─► signed Board ─serialize─► text ─BoardDirs─► disk
-//!                      └─outline(Page, BoardGraph), mermaid::page
 //! ```
 //!
 //! A board shows one project: its references are read through that project's [`BoardGraph`]
@@ -21,7 +20,6 @@ mod graph;
 mod items;
 mod json;
 mod model;
-mod outline;
 mod parse;
 mod save;
 
@@ -38,7 +36,6 @@ pub use model::{
     MAX_PROPOSAL_TITLE, MAX_PROPOSALS, Note, Page, Proposal, ProposalPath, References, Resource,
     ResourceKind, SCHEMA, Signature, VERSION, View, is_folder_name,
 };
-pub use outline::{OutlineRow, PageOutline, Unlabeled, outline};
 pub use parse::{parse, parse_edit};
 pub use save::prepare_save;
 

@@ -133,7 +133,7 @@ export function SelectedConnection({ target, link }: { readonly target: PageTarg
             <span className="relation-code">{link.channel}</span>
           </RelationRow>
         ) : null}
-        {link.carries !== undefined ? <TypeRow label="Carries" project={target.board.project} typeKey={link.carries} /> : null}
+        {link.carries !== undefined ? <TypeRow label="Carries" typeKey={link.carries} /> : null}
         <AnchorRows target={target} anchors={link.anchors ?? []} />
       </div>
       <AuthoredField

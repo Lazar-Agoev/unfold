@@ -56,7 +56,6 @@ beforeEach(() => {
         throw { code: "not_found", message: "no such key" };
       },
       relations: () => fixture("relations", "relations_create_order"),
-      line_labels: () => [],
       list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
       save_board: () => boardState(P, REF.id, store.getOpenBoard(REF)?.document, { health: store.getOpenBoard(REF)?.health ?? HEALTHY }),
       repair_board: (args: RepairBoardArgs) => boardState(args.project, args.id, store.getOpenBoard(REF)?.document, { revision: "r2" }),
@@ -117,7 +116,6 @@ describe("Add proposed step after…", () => {
     });
     const box = await drawn(container, '.block-card [data-proposal="proposal"]');
     expect(box.classList.contains("selected")).toBe(true);
-    expect(within(screen.getByRole("listbox", { name: "Cards on this page" })).getByText("Proposed step")).toBeTruthy();
 
     act(() => {
       store.undo(REF);
@@ -206,17 +204,6 @@ describe("Selected for a proposed step", () => {
     });
     expect(proposalsNow()).toEqual([email]);
     expect(engine.callsOf("repair_board")).toEqual([]);
-  });
-
-  it("is listed under its card in On this page, and selecting the row selects it", async () => {
-    open({ proposals: [email] });
-    const list = within(screen.getByRole("listbox", { name: "Cards on this page" }));
-    const row = (await list.findByText("Email a confirmation")).closest<HTMLElement>(".layer-row");
-    expect(row?.classList.contains("proposal")).toBe(true);
-    expect(row?.querySelector(".layer-note")?.textContent).toBe("proposed");
-    fireEvent.click(row ?? document.body);
-    expect(selection()).toEqual({ kind: "proposal", proposalId: "email" });
-    expect(row?.getAttribute("aria-selected")).toBe("true");
   });
 });
 

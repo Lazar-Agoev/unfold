@@ -7,11 +7,12 @@
 
 import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { boardMenu, boardTitle, boardView, card, chooseMenuPath, clickCanvas, layerRow, menuItem, showBoard, shownBoardRef, type BoardFile } from "../src/board";
+import { boardMenu, boardTitle, boardView, card, chooseMenuPath, clickCanvas, menuItem, showBoard, shownBoardRef, type BoardFile } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { launchCompiled, traceEntrance } from "../src/flows";
 import { dialog, homeBoardRows, homeMain, showHome, sidebar, sidebarBoard, sidebarFolder, toast } from "../src/home";
 import { BOARDS, describeSelected, expectBoardFile, firstDescription } from "../src/lifecycle";
+import { clickOnCanvas } from "../src/reader";
 import { enterText, eventMark, waitForEvent } from "../src/window";
 
 /** Rewrites a board's file the way another program does, with `change` applied to what it holds. */
@@ -166,7 +167,7 @@ test.describe("boards", () => {
     const createOrder = card(page, "#function:createOrder");
 
     await test.step("an edit in the app is saved, and is a step to undo", async () => {
-      await layerRow(page, "createOrder").click();
+      await clickOnCanvas(page, createOrder.locator(".card-title"));
       await describeSelected(page, "Places the order.");
       await expect(createOrder.locator(".card-description")).toContainText("Places the order.");
       await expectBoardFile(folder, id, (board) => firstDescription(board) === "Places the order.", "the description is saved");
@@ -195,7 +196,7 @@ test.describe("boards", () => {
       await waitForEvent(page, "board_reloaded", deleted);
       await expect(boardTitle(page)).toHaveText("Edited elsewhere");
       await expect(boardView(page).getByRole("alert")).toHaveCount(0);
-      await layerRow(page, "createOrder").click();
+      await clickOnCanvas(page, createOrder.locator(".card-title"));
       await describeSelected(page, "Places the order, or queues it.");
       await expectBoardFile(
         folder,

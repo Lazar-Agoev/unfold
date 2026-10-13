@@ -67,9 +67,6 @@
   white-space: nowrap;
 }
 
-/* A type opened in place spans the grid. */
-.rcard-opened { grid-column: 1 / -1; padding: 2px 0 6px; }
-
 .rcard-more {
   position: relative;
   grid-column: 1 / -1;

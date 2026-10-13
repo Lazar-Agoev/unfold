@@ -343,10 +343,7 @@ fn detail(
 
 /// The projects to look in, in workspace order: every project, or those `only` names (each must
 /// exist).
-pub(crate) fn look_in<'a>(
-    ctx: &'a Ctx<'_>,
-    only: Option<&[ProjectId]>,
-) -> CommandResult<Vec<ProjectHandle<'a>>> {
+fn look_in<'a>(ctx: &'a Ctx<'_>, only: Option<&[ProjectId]>) -> CommandResult<Vec<ProjectHandle<'a>>> {
     if let Some(only) = only {
         for id in only {
             ctx.project(id)?;
@@ -434,12 +431,9 @@ fn search_project(
     Ok(found)
 }
 
-/// The files search and text search look at: a live project's files under discovery's ignore
+/// The files search looks at: a live project's files under discovery's ignore
 /// rules, or a resting project's indexed files from its stored graph (none without a graph).
-pub(crate) fn file_list(
-    project: &ProjectHandle<'_>,
-    readers: Option<&ReadPool>,
-) -> CommandResult<Arc<FileSet>> {
+fn file_list(project: &ProjectHandle<'_>, readers: Option<&ReadPool>) -> CommandResult<Arc<FileSet>> {
     if let Some(workspace) = project.live() {
         return project
             .extras()

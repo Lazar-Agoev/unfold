@@ -4,7 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { queryClient } from "../../ipc/client";
-import type { Card, CardView, Page, TypeDefinition } from "../../ipc/generated";
+import type { CallContract, Card, CardView, Page, TypeDefinition } from "../../ipc/generated";
 import { engineKey } from "../../ipc/queries";
 import * as store from "../../state/boards/store";
 import { installFakeEngine, fixture, type FakeEngine } from "../../test/engine";
@@ -24,6 +24,22 @@ const cartModel: CardView = {
   header: { key: CART, kind: "interface", name: "Cart", qualifiedName: "Cart", path: "src/cart.ts", startLine: 12, endLine: 18, language: "typescript", fileState: "current", source: "current", owner: "src/cart.ts#" },
   code: null,
   flow: null,
+};
+
+/** `charge_card(order["card"], total)` at line 19, its value landing in `receipt`; it throws `PaymentDeclined`, caught. */
+const CHARGE: CallContract = {
+  source: `${KEY}/variable:receipt/call[0]`,
+  seq: 0,
+  target: "src/lib/payments.ts#function:charge_card",
+  callerLine: 19,
+  sends: [
+    { argument: { index: 0, text: 'order["card"]' }, parameter: { index: 0, name: "card", kind: "positional", optional: false, default: false } },
+    { argument: { index: 1, text: "total" }, parameter: { index: 1, name: "amount", kind: "positional", optional: false, default: false } },
+  ],
+  returns: { binding: "variable", text: "receipt", awaited: false, type: { text: "Receipt", spans: [] } },
+  throws: [{ type: { text: "PaymentDeclined", spans: [] }, line: 30 }],
+  caught: true,
+  calleeLines: [12],
 };
 
 const cart: TypeDefinition = { key: CART, kind: "interface", name: "Cart", path: "src/cart.ts", line: 12, language: "typescript", members: [], inherited: [], uses: 6 };
@@ -64,6 +80,7 @@ beforeEach(() => {
     handlers: {
       card: ({ key }) => (key === CART ? cartModel : fixture("card", "card_create_order")),
       type_definition: () => cart,
+      call_contract: () => CHARGE,
       type_uses: () => ({ places: [{ owner: KEY, label: "createOrder", path: "src/routes/orders.ts", line: 25 }], total: 1 }),
       relations: () => {
         throw new Error("a type declaration lists no calls");
@@ -78,8 +95,66 @@ afterEach(() => {
   engine.uninstall();
 });
 
+/** The text of each relation row: its label, then its value. */
+function relationRows(): string[][] {
+  return [...document.querySelectorAll(".relation-row")].map((row) => [row.querySelector(".relation-label")?.textContent ?? "", row.querySelector(".relation-value")?.textContent ?? ""]);
+}
+
+describe("Selected · an arrow", () => {
+  const LINE = { kind: "line", arrowId: "create-order|call|slack", source: CHARGE.source, seq: 0, from: "create-order", to: "slack", line: 19 } as const;
+
+  it("shows the call as written, then what it sends, returns, and throws, and whether that is caught", async () => {
+    act(() => {
+      store.select(PAGE, LINE);
+    });
+    renderSelected();
+    expect(await screen.findByRole("heading", { name: 'charge_card(order["card"], total)' })).not.toBeNull();
+    expect(screen.getByText("Call · line 19")).not.toBeNull();
+    expect(relationRows()).toEqual([
+      ["Sends", 'order["card"]→card'],
+      ["", "total→amount"],
+      ["Returns", "Receipt→receipt"],
+      ["Throws", "PaymentDeclinedcaught"],
+    ]);
+    expect(engine.callsOf("call_contract")).toEqual([{ project: P, source: CHARGE.source, seq: 0 }]);
+  });
+
+  it("says when the call sends nothing, where nothing lands, and that a throw isn't caught", async () => {
+    engine.uninstall();
+    engine = installFakeEngine({
+      handlers: {
+        card: () => fixture("card", "card_create_order"),
+        call_contract: () => ({ ...CHARGE, sends: [], returns: { binding: "discard", awaited: false }, caught: false }),
+      },
+    });
+    act(() => {
+      store.select(PAGE, LINE);
+    });
+    renderSelected();
+    expect(await screen.findByRole("heading", { name: "charge_card()" })).not.toBeNull();
+    expect(relationRows()).toEqual([
+      ["Sends", "nothing"],
+      ["Returns", "?→—"],
+      ["Throws", "PaymentDeclined"],
+    ]);
+  });
+
+  it("shows nothing selected again once the arrow is let go", async () => {
+    act(() => {
+      store.select(PAGE, LINE);
+    });
+    renderSelected();
+    await screen.findByRole("heading", { name: 'charge_card(order["card"], total)' });
+    act(() => {
+      store.select(PAGE, { kind: "none" });
+    });
+    expect(screen.queryByText("Sends")).toBeNull();
+    expect(screen.getByText(/Select a card/)).not.toBeNull();
+  });
+});
+
 describe("Selected", () => {
-  it("lists the calls an arrow from a Diagram node stands for, each opening its contract on that arrow", async () => {
+  it("lists the calls an arrow from a Diagram node stands for, each selecting its call", async () => {
     const calls = [
       { source: `${KEY}/variable:order/call[0]`, seq: 0, line: 32 },
       { source: `${KEY}/expression_statement[0]/call[0]`, seq: 0, line: 33 },

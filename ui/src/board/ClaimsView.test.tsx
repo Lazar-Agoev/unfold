@@ -171,7 +171,6 @@ beforeEach(() => {
         return found;
       },
       type_uses: () => ({ key: JOB, places: [], total: 0 }),
-      line_labels: () => [],
       list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
       save_board: (args) => boardState(P, ID, boardDocument(structuredClone(args.board.pages) as Page[])),
       repair_board: (args) => {
@@ -283,7 +282,7 @@ describe("connections", () => {
     expect(chipOf(container, "drawn")).toBeNull();
   });
 
-  it("place their chips in the typed lines' label layout, with drawn links' labels: never over a card or each other", async () => {
+  it("place their chips in the page's label layout, with drawn links' labels: never over a card or each other", async () => {
     open({
       links: [
         { id: "first", from: "create-order", to: "worker", kind: "event", channel: "order.placed", author: "agent:claude" },
@@ -338,13 +337,11 @@ describe("connections", () => {
     expect(container.querySelector(`[data-card-id="create-order"] [data-handleid="${port}"]`)).toBeNull();
   });
 
-  it("open the type they carry from the chip, as a typed line does", async () => {
+  it("are selected from the chip, its carried type's name included", async () => {
     open({ links: [queue] });
     const { container } = renderBoard();
     const chip = await waitFor(() => present(chipOf(container, "enqueue")));
-    fireEvent.click(present(chip.querySelector("[data-carries]")));
-    expect(await screen.findByRole("group", { name: "interface OrderJob" })).not.toBeNull();
-    expect(store.getPageView(PAGE).selection).toEqual({ kind: "none" });
+    expect(chip.textContent).toContain("OrderJob");
     fireEvent.click(chip);
     expect(store.getPageView(PAGE).selection).toEqual({ kind: "link", linkId: "enqueue" });
   });
@@ -395,7 +392,7 @@ describe("Selected", () => {
     expect(current().links[0]).toMatchObject({ kind: "event", author: "person:maya" });
   });
 
-  it("shows a resource card: its kind, who drew it, its type opening in place, and the lines in and out", async () => {
+  it("shows a resource card: its kind, who drew it, its type, and the lines in and out", async () => {
     open({ resources: [table("orders", ORDER, [0, 600])], links: [{ id: "writes", from: "create-order", to: "orders", kind: "writes", author: "agent:claude" }] });
     renderBoard(true);
     act(() => {
@@ -405,7 +402,6 @@ describe("Selected", () => {
     expect(within(selected).getByText(/^table · drawn by/).textContent).toBe("table · drawn by Claude · agent");
     expect(within(selected).getByText("OrderRepository")).not.toBeNull();
     expect(within(selected).getByText("← createOrder")).not.toBeNull();
-    fireEvent.click(within(selected).getByRole("button", { name: "Order" }));
-    expect(await within(selected).findByRole("group", { name: "interface Order" })).not.toBeNull();
+    expect(within(selected).getByTitle(ORDER).textContent).toBe("Order");
   });
 });

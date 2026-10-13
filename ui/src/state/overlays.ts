@@ -4,16 +4,13 @@
  * `DialogHost`) render them. None of this is saved with the window.
  */
 
+import { useMemo } from "react";
 import { create } from "zustand";
-import type { ProjectId, TextMatch } from "../ipc/generated";
+import type { ProjectId } from "../ipc/generated";
 import { boardKey } from "./boards/keys";
 import { useBoards } from "./boards/store";
 import type { BoardRef, PageTarget } from "./boards/types";
 import { useShownBoard } from "./shownBoard";
-import { useWindowStore } from "./window";
-
-/** Where Add puts what it adds: the shown board's active page, or Home with the selected project. */
-export type AddTarget = { readonly kind: "page"; readonly target: PageTarget } | { readonly kind: "home"; readonly project: ProjectId | null };
 
 /**
  * The source View code highlights: one-based lines `startLine`–`endLine`, and with columns (UTF-16
@@ -27,14 +24,11 @@ export interface PeekFocus {
   readonly endColumn?: number;
 }
 
-/** A file shown in the peek sheet, optionally at a line, with text matches to step through. */
+/** A file shown in the peek sheet, optionally at a line. */
 export interface PeekTarget {
   readonly project: ProjectId;
   readonly path: string;
   readonly line?: number;
-  readonly matches?: readonly TextMatch[];
-  /** The index of the current match in `matches`. */
-  readonly current?: number;
   /** What View code highlights (only on source that verified against the graph). */
   readonly focus?: PeekFocus;
   /** The page whose selection the sheet follows, when View code opened it from that page. */
@@ -50,8 +44,8 @@ export type DialogRequest =
   | { readonly kind: "settings" }
   | { readonly kind: "deleteBoard"; readonly board: BoardRef }
   | { readonly kind: "renameFolder"; readonly project: ProjectId; readonly folder: string }
-  /** Make a group from lines, or with `members` (Combine…) the statements of a run already chosen. */
-  | { readonly kind: "groupFromLines"; readonly target: PageTarget; readonly cardId: string; readonly members?: readonly string[] };
+  /** Combine…: the title of a combined block made from the statements of a run already chosen. */
+  | { readonly kind: "combine"; readonly target: PageTarget; readonly cardId: string; readonly members: readonly string[] };
 
 interface OverlaysState {
   readonly add: boolean;
@@ -73,15 +67,11 @@ export function useAddOpen(): boolean {
   return useOverlays((state) => state.add);
 }
 
-/** Where Add adds, kept current: the shown board's active page, else Home and its selected project. */
-export function useAddTarget(): AddTarget {
+/** The page Add adds to, kept current: the shown board's active page (null on Home). */
+export function useAddPage(): PageTarget | null {
   const board = useShownBoard();
   const page = useBoards((state) => (board ? state.boards[boardKey(board)]?.activePage : undefined));
-  const project = useWindowStore((state) => state.selectedProject);
-  if (board && page !== undefined) {
-    return { kind: "page", target: { board, page } };
-  }
-  return { kind: "home", project };
+  return useMemo(() => (board && page !== undefined ? { board, page } : null), [board, page]);
 }
 
 /** Shows a file in the peek sheet (one per window, kept when the window shows another board). */

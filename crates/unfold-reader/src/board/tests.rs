@@ -158,7 +158,6 @@ fn card(id: &str, reference: CardRef) -> Card {
         reference,
         at: [10.0, 20.0],
         view: None,
-        folded: false,
         description: None,
         expanded: Vec::new(),
     }
@@ -987,7 +986,6 @@ fn full_board() -> Board {
     first.cards.push(Card {
         at: [-0.5, 1e21],
         view: Some(View::Code),
-        folded: true,
         description: Some(unsigned("Quote \" and\nnewline")),
         ..card(
             "z-last",
@@ -1051,7 +1049,6 @@ fn serialization_is_canonical_and_round_trips() {
             "signature": "",
             "text": "Quote \" and\nnewline"
           }},
-          "folded": true,
           "id": "z-last",
           "ref": {{
             "entrance": "entrance:[\"manual\",\"worker\",\"\",\"\",\"x\"]"
@@ -1128,13 +1125,6 @@ fn serialization_is_canonical_and_round_trips() {
     let reparsed = parse(&text).unwrap();
     assert_eq!(serialize(&reparsed), text);
     assert_eq!(reparsed.pages[0].card("z-last"), board.pages[0].card("z-last"));
-    // A false fold is the default and is never written.
-    let mut unfolded = reparsed;
-    unfolded.pages[0]
-        .cards
-        .iter_mut()
-        .for_each(|card| card.folded = false);
-    assert!(!serialize(&unfolded).contains("folded"));
     // The schema is the documented one and is valid JSON.
     let schema: serde_json::Value = serde_json::from_str(SCHEMA).unwrap();
     assert_eq!(schema["properties"]["format"]["const"], FORMAT);
@@ -1282,10 +1272,6 @@ fn an_ordinal_reference_whose_code_changed_is_held_for_review() {
     let mut described = saved.clone();
     described.pages[0].groups[0].description = Some(unsigned("New text"));
     assert!(save(described, Some((&saved, &report)), &updated).is_err());
-    // Mermaid never applies the held group or label to the new code.
-    let output = crate::mermaid::page(&saved, "page-1", &updated).unwrap();
-    assert!(output.contains("Group needs review: Steps"));
-    assert!(!output.contains("Log when set"));
     // Saving with the problem carried over unchanged is allowed; accepting clears it.
     let mut moved = saved.clone();
     moved.pages[0].cards[0].at = [99.0, 99.0];
@@ -1410,7 +1396,8 @@ fn missing_references_are_placeholders_with_repairs() {
     assert!(page.guard("main.ts#function:start").is_some());
     assert!(page.guard(RUN).is_none());
     assert_eq!(
-        page.label("main.ts#function:start/return[0]"),
+        page.label_entry("main.ts#function:start/return[0]")
+            .map(|entry| entry.label.text.as_str()),
         Some("Hand back first")
     );
     assert!(
@@ -1446,7 +1433,12 @@ fn reconnecting_onto_a_member_never_repeats_it() {
     .unwrap();
     assert_eq!(board.pages[0].groups[0].members, [Key::from_text(IF0)]);
     assert_eq!(board.pages[0].labels.len(), 1, "labels stay unique per key");
-    assert_eq!(board.pages[0].label(IF0), Some("From"));
+    assert_eq!(
+        board.pages[0]
+            .label_entry(IF0)
+            .map(|entry| entry.label.text.as_str()),
+        Some("From")
+    );
     assert_eq!(
         parse(&serialize(&board)).unwrap(),
         board,
@@ -1636,19 +1628,6 @@ fn drawn_links_are_signed_over_their_ends_and_break_with_them() {
         "an end without a guard leaves the label unsigned"
     );
 
-    // Mermaid draws drawn links as dashed arrows with their label.
-    let output = crate::mermaid::page(&saved, "page-1", &graph).unwrap();
-    assert!(output.contains("  c1 -.->|\"calls over HTTP\"| c0\n"), "{output}");
-    assert!(output.contains("  c0 -.-> c1\n"), "{output}");
-
-    // The outline follows drawn links between cards.
-    let rows: Vec<(String, u32)> = outline(page, &graph)
-        .rows
-        .into_iter()
-        .map(|row| (row.card, row.depth))
-        .collect();
-    assert_eq!(rows, [("run".to_owned(), 0), ("again".to_owned(), 1)]);
-
     // A code change never outdates a link label; a missing end breaks the link.
     let renamed = recompiled(dir.path(), &SOURCE.replace("function run", "function start"));
     let report = health(page, &renamed);
@@ -1693,50 +1672,6 @@ fn drawn_links_are_signed_over_their_ends_and_break_with_them() {
     let target = Target::Link(resigned.links[0].id.clone());
     apply_repair(&mut resigned, &graph, &Repair::Resign(target)).unwrap();
     assert_eq!(resigned, saved.pages[0]);
-}
-
-#[test]
-fn the_outline_follows_calls_and_counts_unlabeled_nodes() {
-    let (_dir, graph) = folder(SOURCE);
-    let mut board = sample_board();
-    let empty = outline(&board.pages[0], &graph);
-    assert_eq!(empty.page, "page-1");
-    assert_eq!(
-        empty.rows,
-        [OutlineRow {
-            card: "run".to_owned(),
-            depth: 0
-        }]
-    );
-    let unlabeled = empty.unlabeled.len();
-    assert_eq!(unlabeled, 5, "first, if, its then statement, the log, the return");
-    board.pages[0].labels.push(label(FIRST, "Start with one"));
-    assert_eq!(outline(&board.pages[0], &graph).unlabeled.len(), unlabeled - 1);
-}
-
-#[test]
-fn steps_a_collapsed_group_hides_are_not_unlabeled() {
-    let (_dir, graph) = folder(SOURCE);
-    let mut board = sample_board();
-    let keys = |board: &Board| -> Vec<String> {
-        let outline = outline(&board.pages[0], &graph);
-        outline
-            .unlabeled
-            .iter()
-            .map(|item| item.key.as_str().to_owned())
-            .collect()
-    };
-    let all = keys(&board);
-    // Expanded, a group hides nothing.
-    board.pages[0].groups.push(group(&[IF0, LOG0]));
-    assert_eq!(keys(&board), all);
-    // Collapsed, it hides its members and the steps under them (the if's then statement); the
-    // return still counts.
-    board.pages[0].groups[0].collapsed = true;
-    assert_eq!(keys(&board), [FIRST, RETURN0]);
-    // A group of another card hides nothing on this one.
-    board.pages[0].groups[0].card = "other".to_owned();
-    assert_eq!(keys(&board), all);
 }
 
 #[test]
@@ -2517,17 +2452,4 @@ fn reconnecting_a_card_carries_its_proposals_and_removing_it_removes_them() {
     let mut removed = repaired;
     repair(&mut removed, &updated, &Repair::RemoveCard("run".to_owned())).unwrap();
     assert!(removed.pages[0].cards.is_empty() && removed.pages[0].proposals.is_empty());
-}
-
-#[test]
-fn expansions_and_proposals_stay_out_of_mermaid() {
-    let (_dir, graph) = folder(SOURCE);
-    let (saved, _) = save(sample_board(), None, &graph).unwrap();
-    let mut edited = saved.clone();
-    edited.pages[0].cards[0].expanded = vec![vec![Key::from_text(LOG_CALL)]];
-    edited.pages[0].proposals.push(proposal("email", IF0));
-    assert_eq!(
-        crate::mermaid::page(&edited, "page-1", &graph),
-        crate::mermaid::page(&saved, "page-1", &graph)
-    );
 }

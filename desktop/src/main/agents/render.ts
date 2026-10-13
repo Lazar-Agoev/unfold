@@ -41,7 +41,7 @@ const FRAME_TIMEOUT_MS = 15_000;
 /** How long the render window stays open without a request. */
 const IDLE_MS = 60_000;
 
-const CHECK_KINDS: ReadonlySet<string> = new Set<PageCheckKind>(["overlap", "crossings", "density", "unlabeled", "missingWords", "evidence", "strays", "views"]);
+const CHECK_KINDS: ReadonlySet<string> = new Set<PageCheckKind>(["overlap", "crossings", "density", "missingWords", "evidence", "strays"]);
 
 /** An image's scale: CSS pixels to image pixels. */
 export type ImageScale = 1 | 2;
@@ -228,9 +228,15 @@ export class PageRenderer {
       if (!health.ok) {
         return health;
       }
+      let file: ReadBoardResult;
+      try {
+        file = (await this.options.engine.untrusted(0, "read_board", { project: board.project, id: board.id })) as ReadBoardResult;
+      } catch (error) {
+        return engineFailure(error, board);
+      }
       const pages: PageChecks[] = [];
       let title = "";
-      for (const { page } of health.view.outlines) {
+      for (const { id: page } of file.document.pages) {
         const read = await this.options.bridge.read({ board, page });
         if (!read.ok) {
           return read;

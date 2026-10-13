@@ -1,4 +1,4 @@
-/** Helpers for the reader journeys on the board: the saved board, line-number drags, and dragging a card. */
+/** Helpers for the reader journeys on the board: the saved board, dragging a card, and clicks on the canvas. */
 
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
@@ -25,26 +25,6 @@ export async function expectSaved(page: Page, folder: string, check: (board: Boa
     throw new Error(message);
   }
   return saved;
-}
-
-/** A line number in a card's code gutter. */
-function lineNumber(card: Locator, line: number): Locator {
-  return card.locator(".code-number", { hasText: new RegExp(`^${line}$`) });
-}
-
-/** Drags down a card's line numbers from `from` to `to`, which proposes a group of those lines. */
-export async function dragLines(page: Page, card: Locator, from: number, to: number): Promise<void> {
-  await cameraSettled(page);
-  await panUntilHittable(page, lineNumber(card, to));
-  const start = await lineNumber(card, from).boundingBox();
-  const end = await lineNumber(card, to).boundingBox();
-  if (!start || !end) {
-    throw new Error("the line numbers aren't on screen");
-  }
-  await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(end.x + end.width / 2, end.y + end.height / 2, { steps: 5 });
-  await page.mouse.up();
 }
 
 /** Drags a card by its header by `dx`, `dy` screen pixels. */

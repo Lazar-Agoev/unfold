@@ -5,7 +5,6 @@
 //!
 //! | Request | What it is |
 //! | --- | --- |
-//! | [`line_label`] | The at-rest label of one arrow `(source, seq)`: an input per argument (a call) or per parameter (a passed callable), and the output |
 //! | [`call_contract`] | The selected line's contract: what each argument fills, unfilled parameters, where the result lands, the callee's direct throws, and the lines the contract read |
 //! | [`type_definition`] | A type declaration or class: its written members, the members it inherits from each base, a type alias's aliased type, and how many places use it |
 //! | [`type_uses`] | One page of the places a declaration's type links come from |
@@ -20,7 +19,6 @@
 mod call;
 mod definition;
 mod facts;
-mod label;
 mod text;
 
 #[cfg(test)]
@@ -35,7 +33,6 @@ use unfold_core::{Key, ModuleLabel, RepoPath};
 pub use call::call_contract;
 pub use definition::{MAX_INHERITED_DEPTH, type_definition, type_uses};
 pub use facts::{FactSource, Facts, UseSite};
-pub use label::line_label;
 
 /// How one type name inside a written type reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
@@ -87,45 +84,6 @@ pub struct TypeText {
     /// One span per type name inside the text, in order and never overlapping. Names the cut
     /// text no longer holds whole are left out.
     pub spans: Vec<TypeSpan>,
-}
-
-/// One input of a line label.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[serde(rename_all = "camelCase")]
-pub struct LabelInput {
-    /// A Python keyword argument's keyword (`currency` in `currency="eur"`).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub keyword: Option<String>,
-    /// The parameter's name, when it has no written type.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub name: Option<String>,
-    /// The parameter's written type. With neither a type nor a name, the input is unknown (`…`):
-    /// an argument that fills no proven parameter, or a parameter written as a pattern.
-    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub ty: Option<TypeText>,
-}
-
-/// The at-rest label of one arrow: what goes in and what comes back.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[serde(rename_all = "camelCase")]
-pub struct LineLabel {
-    /// A call or construction: one per argument, in written order. A passed callable: one per
-    /// parameter that takes an argument, after the ones the passed value binds itself.
-    pub inputs: Vec<LabelInput>,
-    /// A passed callable whose bound parameters aren't proven (a Python method passed without a
-    /// proven receiver): `inputs` is empty because what it takes is unknown, not because it
-    /// takes nothing. The UI shows `(…)`.
-    pub inputs_unknown: bool,
-    /// The callee's written return type, or a constructed class's name; absent when nothing is
-    /// written.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub output: Option<TypeText>,
 }
 
 /// An argument as the caller wrote it.

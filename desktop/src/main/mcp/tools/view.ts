@@ -27,7 +27,6 @@ function describeItem(page: Page, id: string): string {
     const facts = [
       fieldsOnlyKey(key) ? null : cardExpanded(page, card) ? "expanded" : "compact",
       calls > 0 ? `${calls} ${calls === 1 ? "call" : "calls"} expanded in place` : null,
-      card.folded ? "folded" : null,
     ];
     return `card ${id}: ${key}${facts.some(Boolean) ? ` (${facts.filter(Boolean).join(", ")})` : ""}`;
   }

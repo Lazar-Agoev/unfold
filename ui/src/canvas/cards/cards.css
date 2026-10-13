@@ -40,8 +40,6 @@
   cursor: grab;
 }
 
-.board-card.folded .card-header { border-bottom-color: transparent; }
-
 /*
  * Code, Diagram-node, and type headers keep one height (43px with the rule, 44 with the card's border:
  * sizing.ts BLOCK_HEADER), with or without the chevron.
@@ -94,7 +92,7 @@
   text-overflow: ellipsis;
 }
 
-/* Ports drawn at the header (a folded card's, or ones the body can't place) share its right edge. */
+/* Ports drawn at the header (ones the body can't place) share its right edge. */
 .card-header-ports {
   position: absolute;
   inset: 0 0 0 auto;
@@ -337,9 +335,6 @@ button.ecard-handler-name:hover { text-decoration: underline 1px; text-underline
 /* A field's type arrow leaves its row at the card's edge; "N more" holds the ports of the fields it hides. */
 .tcard-type > .react-flow__handle.card-port,
 .tcard-more > .react-flow__handle.card-port { top: 10px; right: -12px; }
-
-/* A type opened in place spans both columns. */
-.tcard-opened { grid-column: 1 / -1; padding: 2px 0 6px; }
 
 .tcard-more {
   position: relative;

@@ -94,9 +94,6 @@ fn card(value: &Card) -> Out {
             .map(|path| Out::Array(path.iter().map(|key| text(key.as_str())).collect()));
         fields.push(("expanded", Out::Array(paths.collect())));
     }
-    if value.folded {
-        fields.push(("folded", Out::Bool(true)));
-    }
     fields.push(("id", text(&value.id)));
     fields.push(("ref", Out::Object(reference)));
     if let Some(view) = value.view {

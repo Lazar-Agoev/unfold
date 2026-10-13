@@ -13,13 +13,11 @@ describe("ListRow", () => {
     expect(container.querySelector(".list-row-trailing")?.classList.contains("list-row-trailing-filled")).toBe(false);
   });
 
-  it("indents by depth and runs onClick from Enter", () => {
+  it("runs onClick from Enter", () => {
     const onClick = vi.fn();
-    render(<ListRow role="treeitem" tabIndex={0} label="reserveInventory" depth={3} trailing="not connected" muted onClick={onClick} />);
+    render(<ListRow role="treeitem" tabIndex={0} label="reserveInventory" trailing="3 calls" onClick={onClick} />);
     const row = screen.getByRole("treeitem");
-    expect(row.style.paddingLeft).toBe("calc(var(--list-row-inline, 8px) + 48px)");
-    expect(row.querySelector(".list-row-trailing-filled")?.textContent).toBe("not connected");
-    expect(row.classList.contains("list-row-muted")).toBe(true);
+    expect(row.querySelector(".list-row-trailing-filled")?.textContent).toBe("3 calls");
     fireEvent.keyDown(row, { key: "Enter" });
     fireEvent.click(row);
     expect(onClick).toHaveBeenCalledTimes(2);
@@ -27,7 +25,7 @@ describe("ListRow", () => {
 
   it("holds a menu button after the trailing slot", () => {
     const onContextMenu = vi.fn();
-    render(<ListRow label="storefront-api" menu={<button type="button">More</button>} indent={18} depth={1} onContextMenu={onContextMenu} />);
+    render(<ListRow label="storefront-api" menu={<button type="button">More</button>} onContextMenu={onContextMenu} />);
     const more = screen.getByRole("button", { name: "More" });
     expect(more.parentElement?.className).toBe("list-row-menu");
     fireEvent.contextMenu(more);

@@ -23,7 +23,7 @@ export const pageArgs = {
 };
 
 /** Lines `[from, to]`, 1-based and inclusive. */
-export const lineRange = z
+const lineRange = z
   .tuple([z.number().int().min(1), z.number().int().min(1)])
   .refine(([from, to]) => from <= to, "lines is [from, to] with from ≤ to");
 

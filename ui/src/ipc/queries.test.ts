@@ -57,13 +57,11 @@ function seedAll(): void {
     seed("peek", { project, key: LIST });
     seed("relations", { project, key: OTHER });
     seed("callers", { project, key: OTHER });
-    seed("preview", { project, key: OTHER });
     seed("entrances", { project });
     seed("project_summary", { project });
     seed("problems", { project });
     seed("list_boards", { project });
     seed("board_refs", { project, key: CREATE });
-    seed("line_labels", { project, lines: [{ source: OTHER, seq: 0 }] });
     seed("call_contract", { project, source: OTHER, seq: 0 });
     seed("type_definition", { project, key: OTHER });
     seed("type_uses", { project, key: OTHER });
@@ -178,10 +176,7 @@ describe("invalidation by event", () => {
         `card:${P}:${ENTRANCE}`,
         `card:${P}:${LIST}`,
         `file_view:${P}:${ORDERS}`,
-        // Typed lines read other files than the caller's: every one of the project.
-        `line_labels:${P}:`,
         `peek:${P}:${LIST}`,
-        `preview:${P}:${OTHER}`,
         `project_summary:${P}:`,
         `relations:${P}:${OTHER}`,
         `type_definition:${P}:${OTHER}`,

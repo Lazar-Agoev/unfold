@@ -5,8 +5,7 @@
  * - host -> renderer, over the same port: {@link HostToRenderer}
  * - main <-> host, over the utility process's parent port: {@link MainToHost} and
  *   {@link HostToMain} (lifecycle, the main process's own trusted requests: adding a project from
- *   the folder picker, export to a path from a save dialog, and the window's state; and the MCP
- *   server's untrusted requests for agents)
+ *   the folder picker, and the window's state; and the MCP server's untrusted requests for agents)
  * - main <-> preload, over Electron IPC: the {@link IPC} channels
  */
 
@@ -53,10 +52,9 @@ export type MainToHost =
   /**
    * A command the main process itself originates, run on behalf of window `windowId` (`0` for
    * none). With `trusted`, it carries `"trusted": true`: the only way the main-process-only commands
-   * (`add_project`, `export_mermaid`, `window_state`, `save_window_state`) reach Rust. Without it (the MCP server's requests for agents), it is refused or dispatched exactly as
-   * a window's would be. Answered with a {@link HostToMain} `result` carrying the same `id`; with
-   * `stream` (an untrusted streamed command, such as `search_text`), each stream message first comes
-   * as a `stream` message with that `id`.
+   * (`add_project`, `window_state`, `save_window_state`) reach Rust. Without it (the MCP server's
+   * requests for agents), it is refused or dispatched exactly as a window's would be. Answered with a
+   * {@link HostToMain} `result` carrying the same `id`.
    */
   | {
       readonly type: "request";
@@ -65,20 +63,17 @@ export type MainToHost =
       readonly command: string;
       readonly args: Readonly<Record<string, unknown>>;
       readonly trusted: boolean;
-      readonly stream?: true;
     }
   /** The app is quitting: detach every window, close every live project, then exit. */
   | { readonly type: "shutdown" };
 
 /**
  * Messages from the engine host to the main process, over the utility process's parent port: the
- * outcome of a main-process {@link MainToHost} `request`, after its stream messages when it asked for
- * them.
+ * outcome of a main-process {@link MainToHost} `request`.
  */
 export type HostToMain =
   | { readonly type: "result"; readonly id: number; readonly ok: true; readonly value: unknown }
-  | { readonly type: "result"; readonly id: number; readonly ok: false; readonly error: TransportError }
-  | { readonly type: "stream"; readonly id: number; readonly message: unknown };
+  | { readonly type: "result"; readonly id: number; readonly ok: false; readonly error: TransportError };
 
 /** Electron IPC channels between the main process and the preload script. */
 export const IPC = {

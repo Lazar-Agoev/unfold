@@ -29,7 +29,7 @@ export type TransportErrorCode =
   | "invalid_message"
   /** A window command the main process does not know, or one it refused. */
   | "invalid_command"
-  /** A window sent a command only the main process may send (`add_project`, `export_mermaid`, …). */
+  /** A window sent a command only the main process may send (`add_project`, `window_state`, …). */
   | "untrusted"
   /** Rust rejected without a well-formed `{code, message}` payload. */
   | "internal";
@@ -95,7 +95,7 @@ export interface WindowInfo {
   readonly board: ShownBoard | null;
 }
 
-/** What `export_mermaid` or `export_png` wrote. */
+/** What `export_png` wrote. */
 export interface ExportedFile {
   readonly path: string;
   readonly bytes: number;
@@ -122,18 +122,6 @@ export interface WindowCommands extends AgentWindowCommands, RenderWindowCommand
    */
   confirm_remove_project: { args: { name: string }; result: { confirmed: boolean } };
   /**
-   * Export a page of an open board (its last saved version) or an entrance as Mermaid:
-   * the main process shows the save dialog (default name from `title`, `.mmd`) and has the engine
-   * write the file. Resolves with null when the dialog is cancelled; rejects with the engine's error
-   * (`board_not_open`, `io`, …).
-   */
-  export_mermaid: {
-    args:
-      | { project: string; board: string; page: string; title?: string }
-      | { project: string; entrance: string; title?: string };
-    result: ExportedFile | null;
-  };
-  /**
    * Export a page of a board this window holds as a PNG image: the main process shows the save dialog
    * (default name from `title`, `.png`), draws the page in the render window (unsaved edits included)
    * at twice the size, and writes the file. Resolves with null when the dialog is cancelled; rejects
@@ -141,8 +129,9 @@ export interface WindowCommands extends AgentWindowCommands, RenderWindowCommand
    */
   export_png: { args: { project: string; board: string; page: string; title?: string }; result: ExportedFile | null };
   /**
-   * Put text on the clipboard (Copy Mermaid, copy a path). The main process writes it: windows have
-   * no clipboard permission (`navigator.clipboard.writeText` is denied, like every permission).
+   * Put text on the clipboard (copy a link, copy a setup command). The main process writes it:
+   * windows have no clipboard permission (`navigator.clipboard.writeText` is denied, like every
+   * permission).
    */
   copy_to_clipboard: { args: { text: string }; result: null };
   /** Describe the window, and the board it shows at launch. */

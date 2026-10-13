@@ -29,7 +29,7 @@ const HEADER = `Unfold · ts-orders › Order placement › Placing an order · 
 const IDS = `Ids: board ${BOARD.id}, page page-1. One undo step in Unfold, saved.`;
 
 group("group_steps", () => {
-  it("groups a card's steps by lines or keys, and names the statements each group took", async () => {
+  it("groups a card's steps by their keys, and names the statements each group took", async () => {
     const test = app({
       items: [
         {
@@ -45,19 +45,17 @@ group("group_steps", () => {
           ],
         },
       ],
-      warnings: ["“Queue it for a worker, reply 202” took whole statements: lines 28–30 of createOrder, not lines 28–29."],
     });
-    const { text } = await test.call(groupSteps, { card: `unfold://ts-orders/${BOARD.id}?page=page-1&item=create-order`, groups: [{ title: "Queue it for a worker, reply 202", lines: [28, 29], collapsed: true }] });
-    expect(sentOps(test)).toEqual([{ op: "group_steps", card: "create-order", groups: [{ title: "Queue it for a worker, reply 202", lines: [28, 29], collapsed: true }] }]);
+    const steps = [`${CREATE_ORDER}/if[0]/variable:job`, `${CREATE_ORDER}/if[0]/return[0]`];
+    const { text } = await test.call(groupSteps, { card: `unfold://ts-orders/${BOARD.id}?page=page-1&item=create-order`, groups: [{ title: "Queue it for a worker, reply 202", steps, collapsed: true }] });
+    expect(sentOps(test)).toEqual([{ op: "group_steps", card: "create-order", groups: [{ title: "Queue it for a worker, reply 202", steps, collapsed: true }] }]);
     expect(text.split("\n")).toEqual([
       HEADER,
       "Step groups (1 created):",
       "- “Queue it for a worker, reply 202” (step group id queue-it; created) in card create-order, lines 28–30: variable (line 28), return (line 30)",
-      "“Queue it for a worker, reply 202” took whole statements: lines 28–30 of createOrder, not lines 28–29.",
       IDS,
       "Next: label_steps for its steps (those inside the groups too), set_view to collapse groups if the card is still long, then check.",
     ]);
-    expect((await test.call(groupSteps, { card: "create-order", groups: [{ title: "Both", lines: [1, 2], steps: ["x"] }] })).text).toBe("Each group takes lines or steps, not both.");
   });
 
   it("doesn't tell the agent to pass replacePeopleText, which it doesn't take", async () => {
@@ -66,7 +64,7 @@ group("group_steps", () => {
       code: "people_text",
       message: "Can't change the step group “Checks”: Lazar wrote it. People's words are safe; pass replacePeopleText only when the person asked for that change.",
     });
-    expect((await test.call(groupSteps, { card: "create-order", groups: [{ id: "checks", title: "Validate", lines: [26, 26] }] })).text).toBe(
+    expect((await test.call(groupSteps, { card: "create-order", groups: [{ id: "checks", title: "Validate", steps: [`${CREATE_ORDER}/variable:draft`] }] })).text).toBe(
       "Can't change the step group “Checks”: Lazar wrote it. People's words are safe; group_steps keeps them: pass a step group's title and description as they are, or ask the person to change them.",
     );
   });

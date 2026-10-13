@@ -4,21 +4,20 @@
  * thin with crow's-foot ends for a relationship; dashed for other), with a filled head where the data
  * goes (into the table for `writes`, back into the code for `reads`), and a chip that says its kind and
  * what travels, with the agent mark when an agent drew it and a review dot while something about it
- * needs review. The chip joins the typed lines' label layout, so it never covers a card, a typed
- * label, or another chip; where it fits nowhere it isn't drawn at rest and the line takes the click.
+ * needs review. The chip joins the page's label layout, so it never covers a card, a link's label, or
+ * another chip; where it fits nowhere it isn't drawn at rest and the line takes the click.
  *
- * A click on the chip selects the connection; on the carried type's name it opens the type's
- * definition, as on a typed line; a double-click edits its label; its menu is the link menu. Memoized.
+ * A click on the chip selects the connection; a double-click edits its label; its menu is the link
+ * menu. Memoized.
  */
 
 import { EdgeLabelRenderer, getBezierPath, type Edge, type EdgeProps } from "@xyflow/react";
-import { memo, useLayoutEffect, useMemo, useState, type MouseEvent } from "react";
+import { memo, useLayoutEffect, useMemo } from "react";
 import { AgentMark } from "../../agent";
-import { TypeDefinition } from "../../code/TypeDefinition";
-import { Popover, useContextMenu } from "../../components";
-import type { Cardinality, LinkKind, ProjectId } from "../../ipc/generated";
+import { useContextMenu } from "../../components";
+import type { Cardinality, LinkKind } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
-import { select, toggledOpenTypes, type PageTarget } from "../../state/boards";
+import { select, type PageTarget } from "../../state/boards";
 import { showInSelected } from "../cards/cardMenu";
 import { LINK_LABEL_FIELD } from "../cards/select";
 import { CHIP_CODE_FONT, CHIP_TEXT_FONT, CHIP_WORD_FONT, useMeasure } from "../measure";
@@ -48,8 +47,6 @@ export interface ConnectionData extends Record<string, unknown> {
   readonly problem: string | null;
   /** A relationship's cardinality: its ends' marks. */
   readonly cardinality?: Cardinality;
-  /** The type it carries, which the chip's name of it opens. */
-  readonly carries?: { readonly project: ProjectId; readonly key: string };
 }
 
 export type ConnectionEdgeType = Edge<ConnectionData, "connection">;
@@ -83,16 +80,13 @@ interface ChipProps {
   readonly data: ConnectionData;
 }
 
-/** The chip, where the page's label layout puts it, and the carried type's definition when it is opened. */
+/** The chip, where the page's label layout puts it. */
 function ConnectionChip({ id, curve, data }: ChipProps) {
   const layout = useLabelLayout();
   const measure = useMeasure();
   const author = useAuthor();
   const menu = useContextMenu("Connection actions", 220);
-  // The chip, while the carried type's definition is open under it.
-  const [opened, setOpened] = useState<HTMLElement | null>(null);
-  const [openTypes, setOpenTypes] = useState<Readonly<Record<string, number>>>({});
-  const { target, linkId, forms, full, agent, problem, selected, carries } = data;
+  const { target, linkId, forms, full, agent, problem, selected } = data;
   const widths = useMemo(() => forms.map((form) => chipWidth(form, agent !== null, problem !== null, measure)), [forms, agent, problem, measure]);
   useLayoutEffect(() => {
     layout.report(id, { curve, widths, height: CHIP_HEIGHT });
@@ -108,17 +102,6 @@ function ConnectionChip({ id, curve, data }: ChipProps) {
   if (!placement || !parts) {
     return null;
   }
-  const onClick = (event: MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    if (carries && event.target instanceof Element && event.target.closest("[data-carries]")) {
-      const button = event.currentTarget;
-      setOpened((open) => (open ? null : button));
-      return;
-    }
-    if (linkId !== undefined) {
-      select(target, { kind: "link", linkId });
-    }
-  };
   return (
     <>
       <button
@@ -128,7 +111,12 @@ function ConnectionChip({ id, curve, data }: ChipProps) {
         aria-label={`Connection ${full}`}
         title={full}
         data-link={id}
-        onClick={onClick}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (linkId !== undefined) {
+            select(target, { kind: "link", linkId });
+          }
+        }}
         onDoubleClick={(event) => {
           event.stopPropagation();
           if (linkId !== undefined) {
@@ -145,35 +133,13 @@ function ConnectionChip({ id, curve, data }: ChipProps) {
         }}
       >
         {parts.map((part, index) => (
-          <span key={index} className={`chip-${part.tone}${part.carries ? " chip-carries" : ""}`} {...(part.carries ? { "data-carries": "" } : {})}>
+          <span key={index} className={`chip-${part.tone}`}>
             {part.text}
           </span>
         ))}
         {agent !== null ? <AgentMark name={agent} /> : null}
         {problem !== null ? <span className="chip-review" title={problem} aria-label={problem} /> : null}
       </button>
-      {opened && carries ? (
-        <Popover
-          open
-          anchor={opened}
-          label="The type it carries"
-          onClose={() => {
-            setOpened(null);
-          }}
-          className="connection-carries"
-        >
-          <TypeDefinition
-            project={carries.project}
-            typeKey={carries.key}
-            row="carries"
-            depth={1}
-            openTypes={openTypes}
-            onToggle={(row, span) => {
-              setOpenTypes((current) => toggledOpenTypes(current, row, span));
-            }}
-          />
-        </Popover>
-      ) : null}
       {menu.element}
     </>
   );

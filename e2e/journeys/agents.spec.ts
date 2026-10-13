@@ -1,7 +1,7 @@
 /**
  * Agents (docs/ipc.md) on a compiled `ts-orders`: Settings copies the command that connects Claude
  * Code to the local MCP server, which runs while the app does; the server refuses web pages and other
- * hosts; a real MCP client, connected as Claude Code, lists the tools and prompts and builds the page
+ * hosts; a real MCP client, connected as Claude Code, lists the tools and builds the page
  * of design §1.3 the way an agent would, while the window shows each piece as it lands: cards, frames,
  * step groups, a table, connections with their chips, a note, and the agent marks. A table the code
  * doesn't back is refused and leaves no undo step, so one Edit › Undo undoes the agent's last edit; a
@@ -101,12 +101,11 @@ test.describe("agents", () => {
       const claude = await AgentClient.connect(AGENT_ADDRESS);
       clients.push(claude);
 
-      await test.step("an agent connects as Claude: the 35 tools, the six prompts, the start guide, and Settings says so", async () => {
+      await test.step("an agent connects as Claude: the 35 tools, the start guide, and Settings says so", async () => {
         const tools = await claude.tools();
         expect(tools).toHaveLength(35);
         expect(tools.slice(0, 2)).toEqual(["get_guide", "get_current_view"]);
         expect(tools.at(-1)).toBe("finish_work");
-        expect(await claude.prompts()).toEqual(["explain-entrance", "simplify-function", "service-map", "data-model", "tour", "fix-boards"]);
         expect(await claude.ok("get_guide", { topic: "start" })).toContain("# Working in Unfold");
         const settings = await openSettings(page);
         await expect(settings.getByRole("status")).toHaveText("Claude Code connected");
@@ -195,8 +194,16 @@ test.describe("agents", () => {
           page: pageId,
           card: ids["createOrder"],
           groups: [
-            { title: "Queue it for a worker, reply 202", lines: [28, 30], collapsed: true },
-            { title: "Place it now and reply 201", lines: [32, 34], collapsed: true },
+            {
+              title: "Queue it for a worker, reply 202",
+              steps: [`${CREATE_ORDER}/if[0]/variable:job`, `${CREATE_ORDER}/if[0]/expression_statement[0]`, `${CREATE_ORDER}/if[0]/return[0]`],
+              collapsed: true,
+            },
+            {
+              title: "Place it now and reply 201",
+              steps: [`${CREATE_ORDER}/variable:order`, `${CREATE_ORDER}/expression_statement[0]`, `${CREATE_ORDER}/expression_statement[1]`],
+              collapsed: true,
+            },
           ],
         });
         expect(grouped).toContain("lines 28–30: variable (line 28), expression_statement (line 29), return (line 30)");

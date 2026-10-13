@@ -2,8 +2,8 @@
  * A drawn link between two items: a dashed, signed curve. Selected, it is the accent at 1.75px with a
  * hollow dot where it starts; otherwise the gray contour; while an agent that changed it is working, a
  * soft authored band. Its label is a chip with the author's name (and the agent mark for an agent) in
- * the typed lines' label layout, as a connection's chip is, so it never covers a card, a typed label,
- * or a chip; where it fits nowhere it isn't drawn at rest and the line takes the click (Selected shows
+ * the page's label layout, as a connection's chip is, so it never covers a card, another label, or a
+ * chip; where it fits nowhere it isn't drawn at rest and the line takes the click (Selected shows
  * the label). A click selects the link, a double-click edits its label in the sidebar, and its menu
  * (`linkMenuEntries`) offers Kind ▸ (which makes it a connection), Edit label, Copy link, and Remove
  * link. Memoized.

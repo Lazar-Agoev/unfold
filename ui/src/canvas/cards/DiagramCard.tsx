@@ -3,8 +3,7 @@
  * it (a function to its Flow, an entrance to its evidence and targets), the kind's mark (`ƒ` for a function, or the entrance's kind: `HTTP`, `WORKER`,
  * `SCHEDULE`, `COMMAND`), the name, and where it is; the review banner and the whole description (with
  * the agent mark when an agent wrote it) follow, then how many proposed steps it holds ("1 proposal";
- * they show in its Flow). Its arrows leave from its edge, one per card it calls. Folded, it shows only
- * its header (and no chevron).
+ * they show in its Flow). Its arrows leave from its edge, one per card it calls.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -18,7 +17,7 @@ import { entranceTitle } from "../entranceText";
 import { useMeasure } from "../measure";
 import { nodeLocation, nodeWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";
-import { CardGlyph, CardHandles, CardNote, DescriptionStrip, ExpandToggle, HeaderPorts, toggleCardFolded } from "./parts";
+import { CardGlyph, CardHandles, CardNote, DescriptionStrip, ExpandToggle, HeaderPorts } from "./parts";
 import { ReviewBanner } from "./ReviewBanner";
 import { clickCard } from "./select";
 
@@ -27,7 +26,7 @@ export interface DiagramCardProps {
   /** The project the card resolves to. */
   readonly project: ProjectId;
   readonly card: Card;
-  /** Its ports: the node's, or every port of a folded card. */
+  /** Its ports: the node's. */
   readonly ports: readonly string[];
   readonly selected: boolean;
 }
@@ -60,9 +59,8 @@ export function DiagramCard({ target, project, card, ports, selected }: DiagramC
   const model = query.data;
   const measure = useMeasure();
   const updateNodeInternals = useUpdateNodeInternals();
-  const folded = card.folded === true;
   const text = useMemo(() => nodeText(model, key), [model, key]);
-  const menu = useCardMenu(target, card.id, folded, !entrance);
+  const menu = useCardMenu(target, card.id, !entrance);
   const proposals = useOpenBoard(target.board, (board) => {
     const page = findPage(board.document, target.page);
     return page ? proposalsOf(page, card.id).length : 0;
@@ -75,12 +73,12 @@ export function DiagramCard({ target, project, card, ports, selected }: DiagramC
   const portsKey = ports.join("\u0000");
   useLayoutEffect(() => {
     updateNodeInternals(card.id);
-  }, [updateNodeInternals, card.id, portsKey, folded, width, model]);
+  }, [updateNodeInternals, card.id, portsKey, width, model]);
 
   const missing = query.isError && isMissing(query.error);
   return (
     <article
-      className={`board-card diagram-card${selected ? " selected" : ""}${folded ? " folded" : ""}${missing ? " missing" : ""}`}
+      className={`board-card diagram-card${selected ? " selected" : ""}${missing ? " missing" : ""}`}
       data-card-id={card.id}
       data-key={key}
       data-loading={query.isPending ? "true" : undefined}
@@ -92,13 +90,8 @@ export function DiagramCard({ target, project, card, ports, selected }: DiagramC
       onContextMenu={menu.onContextMenu}
     >
       <CardHandles />
-      <header
-        className="card-header card-drag"
-        onDoubleClick={() => {
-          toggleCardFolded(target, card.id, folded);
-        }}
-      >
-        {folded ? null : <ExpandToggle target={target} cardId={card.id} expanded={false} name={text.name} />}
+      <header className="card-header card-drag">
+        <ExpandToggle target={target} cardId={card.id} expanded={false} name={text.name} />
         {entrance ? <span className="ecard-method node-mark">{text.mark}</span> : <CardGlyph kind={model?.type === "block" ? model.header.kind : null} />}
         <h3 className="card-title" title={text.name}>
           {text.name}
@@ -109,20 +102,16 @@ export function DiagramCard({ target, project, card, ports, selected }: DiagramC
         <HeaderPorts ids={ports} />
       </header>
       <ReviewBanner target={target} project={project} cardId={card.id} />
-      {folded ? null : (
-        <>
-          <DescriptionStrip target={target} cardId={card.id} description={card.description} wrap />
-          {query.isError ? (
-            <CardNote warn>{missing ? `This ${entrance ? "entrance" : "reference"} is missing from the graph.` : query.error.message}</CardNote>
-          ) : null}
-          {proposals > 0 ? (
-            <p className="card-proposals">
-              <span className="proposal-glyph" aria-hidden="true" />
-              {plural(proposals, "proposal")}
-            </p>
-          ) : null}
-        </>
-      )}
+      <DescriptionStrip target={target} cardId={card.id} description={card.description} wrap />
+      {query.isError ? (
+        <CardNote warn>{missing ? `This ${entrance ? "entrance" : "reference"} is missing from the graph.` : query.error.message}</CardNote>
+      ) : null}
+      {proposals > 0 ? (
+        <p className="card-proposals">
+          <span className="proposal-glyph" aria-hidden="true" />
+          {plural(proposals, "proposal")}
+        </p>
+      ) : null}
       {menu.element}
     </article>
   );

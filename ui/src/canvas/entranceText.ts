@@ -3,7 +3,7 @@
 import type { CardView, TargetView } from "../ipc/generated";
 import type { EntranceWidthInput } from "./sizing";
 
-/** The entrance's title as the trail and a new board show it: its label, or `POST /orders`. */
+/** The entrance's title as a card and a new board show it: its label, or `POST /orders`. */
 export function entranceTitle(card: Extract<CardView, { type: "entrance" }>): string {
   const { header } = card;
   if (header.label !== null && header.label.length > 0) {

@@ -1,6 +1,6 @@
 # The teaching task suite
 
-The instructions, the guide, the prompts, the tool descriptions, and the results' wording are what teach an
+The instructions, the guide, the tool descriptions, and the results' wording are what teach an
 agent to use Unfold (design §7). They're tuned like code: run these tasks with Claude Code and with Codex, score
 each run with the rubric below, change the teaching, and run them again. This file is for the person running the
 suite; agents never see it.
@@ -9,14 +9,13 @@ suite; agents never see it.
 
 1. **A fresh copy.** Copy the task's folder out of `testdata/` to a temporary folder (never compile in
    `testdata/`). For ts-orders: `cp -R testdata/playgrounds/ts-orders /tmp/suite/ts-orders`.
-2. **Unfold.** Start the app (`just dev`, or a built app), turn on Preferences › Agents › Let agents connect, and
-   save. Add the copy as a project and compile it, unless the task starts from setup.
+2. **Unfold.** Start the app (`just dev`, or a built app); its agent server runs while it is open. Add the copy as a
+   project (it compiles at once), unless the task starts from setup.
 3. **The agent, with nothing else.** A new session with only Unfold's server installed:
    - Claude Code: `claude mcp add --transport http --scope user unfold http://127.0.0.1:29180/mcp`, then start
-     `claude` in an empty folder. Start the task with its prompt (`/unfold:<name> …`) or its request.
-   - Codex: `codex mcp add unfold --url http://127.0.0.1:29180/mcp`. Codex doesn't offer MCP prompts, so type the
-     task's request.
-4. **Record** the transcript (tool calls, refusals, the chat), the board (Share › Export PNG of each page, and the
+     `claude` in an empty folder, and type the task's request.
+   - Codex: `codex mcp add unfold --url http://127.0.0.1:29180/mcp`, and type the task's request.
+4. **Record** the transcript (tool calls, refusals, the chat), the board (the board menu's Export PNG… for each page, and the
    board file from `.unfold/boards/`), and the session's token use.
 5. **Score** it on the sheet below, then reset: delete the copy's `.unfold/boards/` or the whole copy.
 
@@ -39,7 +38,6 @@ suite; agents never see it.
 
 ### 1. Explain POST /orders (ts-orders)
 
-- **Prompt:** `/unfold:explain-entrance POST /orders`
 - **Request:** "Show me how an order is placed through POST /orders, including the async path. Make it readable for
   someone new."
 - **A correct result:**
@@ -66,7 +64,6 @@ suite; agents never see it.
 ### 2. Simplify createOrder (ts-orders)
 
 - **Setup:** a board with createOrder on a page (task 1's board, or one card added by hand), selected.
-- **Prompt:** `/unfold:simplify-function createOrder`
 - **Request:** "createOrder has too many steps. Group them."
 - **A correct result:**
   - Two or three step groups on the card, each whole statements of one branch: lines 28–30 and 32–34, or an
@@ -79,7 +76,6 @@ suite; agents never see it.
 
 ### 3. Map the services (ts-orders)
 
-- **Prompt:** `/unfold:service-map ts-orders`
 - **Request:** "Give me a map of ts-orders: its services and how they talk."
 - **A correct result:**
   - A zone around boxes for the applications server, worker, scheduler, and cli (icons api, worker, schedule, cli),
@@ -107,7 +103,6 @@ suite; agents never see it.
 
 ### 5. Draw the data model (ts-orders)
 
-- **Prompt:** `/unfold:data-model ts-orders`
 - **Request:** "Which data does the order flow keep, and where?"
 - **A correct result:**
   - The chat says orders are kept in memory, in a Map in OrderRepository (src/db/repository.ts), not a database.
@@ -147,7 +142,7 @@ suite; agents never see it.
 ### 8. Explain POST /orders (py-orders)
 
 - **Folder:** `testdata/playgrounds/py-orders`.
-- **Prompt:** `/unfold:explain-entrance POST /orders`
+- **Request:** "Show me how an order is placed through POST /orders. Make it readable for someone new."
 - **A correct result:**
   - The FastAPI entrance POST /orders and its handlers require_user, validate_body, and create_order
     (src/orders_playground/routes/orders.py:24).
@@ -161,7 +156,7 @@ suite; agents never see it.
 ### 9. Map the services of the mixed playground
 
 - **Folder:** `testdata/playgrounds` (one project holding both playgrounds).
-- **Prompt:** `/unfold:service-map`
+- **Request:** "Give me a map of the playgrounds: their services and how they talk."
 - **A correct result:**
   - A frame per application of each half (the TypeScript applications and the Python console scripts), grouped by
     language or by playground in zones.
@@ -175,7 +170,6 @@ suite; agents never see it.
   a description of your own on the card OrderService.place. Then rename `place` to `placeOrder` in
   src/services/order-service.ts and at its callers (src/routes/orders.ts, src/jobs/process-order.ts,
   src/jobs/import-orders.ts), and let the graph update.
-- **Prompt:** `/unfold:fix-boards ts-orders`
 - **Request:** "I renamed OrderService.place to placeOrder. Fix my boards."
 - **A correct result:**
   - The card reconnected to `src/services/order-service.ts#class:OrderService/method:placeOrder`; the calls and
@@ -216,7 +210,7 @@ suite; agents never see it.
 
 - **Where the teaching lives:** `instructions.ts` (what every session starts with), `guide/*.md` (the topics),
   `tools/*.ts` (each tool's description, and its results' and refusals' wording), `results.ts` and `format.ts`
-  (shared wording), and `tools/prompts.ts` (the prompts).
+  (shared wording).
 - **Change one thing at a time,** run `pnpm --filter @unfold/desktop test` (`teaching.test.ts` checks the lengths,
   that texts name only tools, arguments, and topics that exist, and that every tool is taught), rebuild the app,
   and run the same tasks with both agents again.

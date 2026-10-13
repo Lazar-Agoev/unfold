@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import entrances from "../../../../../testdata/workspace/commands/entrances.json";
-import fileViewPage from "../../../../../testdata/workspace/commands/file_view_orders_page.json";
 import searchPlace from "../../../../../testdata/workspace/commands/search_place.json";
 import searchWorker from "../../../../../testdata/workspace/commands/search_worker.json";
-import type { CatalogRow, EntranceScope, EntrancesView, FileView, SearchResults, TextSearchFile } from "../engine-types";
+import type { CatalogRow, EntranceScope, EntrancesView, SearchResults } from "../engine-types";
 import { listEntrances, search } from "./search";
 import { harness, PROJECT, projectRow, recorded } from "./testing";
 
@@ -66,45 +65,14 @@ describe("search", () => {
     );
   });
 
-  it("finds text, naming the function each line is in", async () => {
-    const files: TextSearchFile[] = [
-      { project: PROJECT, path: "src/routes/orders.ts", matches: [{ line: 12, text: "  res.json(await repo.list());", column: 0, ranges: [[6, 10]] }] },
-      { project: PROJECT, path: "src/changed.ts", matches: [{ line: 3, text: "repo.list()", column: 0, ranges: [[0, 4]] }] },
-      { project: PROJECT, path: "README.md", matches: [{ line: 9, text: "Call repo.list for orders.", column: 0, ranges: [[5, 9]] }] },
-    ];
-    const app = harness({
-      engine: {
-        search_text: (_args, stream) => {
-          files.forEach(stream);
-          return { files: 3, matches: 3, searched: 40, truncated: false, filesTruncated: false, projects: [] };
-        },
-        file_view: (args) => {
-          const view = recorded<FileView>(fileViewPage);
-          return args["path"] === "src/routes/orders.ts" ? view : { ...view, graph: args["path"] === "src/changed.ts" ? "not_compiled" : "not_indexed", outline: [] };
-        },
-      },
-    });
-    const { text } = await app.call(search, { query: "repo.list", kinds: ["text"], caseSensitive: true });
-    expect(text.split("\n").slice(1)).toEqual([
-      "Text in 3 files (3):",
-      "- src/routes/orders.ts:12 in function listOrders (key src/routes/orders.ts#function:listOrders): res.json(await repo.list());",
-      "- src/changed.ts:3 (the file changed since the last compile: compile to name its function): repo.list()",
-      "- README.md:9: Call repo.list for orders.",
-      "Next: read_code or get_relations with a key; add_cards puts it on a page.",
-    ]);
-    expect(app.engineCalls.find(([command]) => command === "search_text")?.[1]).toEqual({ query: "repo.list", projects: [PROJECT], caseSensitive: true });
-    expect(app.engineCalls.find(([command]) => command === "file_view")?.[1]).toEqual({ project: PROJECT, path: "src/routes/orders.ts", range: { startLine: 12, endLine: 12 } });
-  });
-
-  it("narrows to projects by name, says when nothing matches, and keeps text options for text", async () => {
+  it("narrows to projects by name, and says when nothing matches", async () => {
     const app = harness({
       projects: [projectRow(PROJECT, "ts-orders"), projectRow("p-python0000", "py-orders")],
       engine: { search: (args) => ({ ...names(args), definitions: NONE, entrances: NONE, files: NONE }) },
     });
     const nothing = await app.call(search, { query: "zzz", projects: ["py-orders"] });
-    expect(nothing.text).toBe('Unfold · py-orders · as Claude\nNothing matches “zzz”. Try fewer or shorter words, or kinds ["text"].');
+    expect(nothing.text).toBe("Unfold · py-orders · as Claude\nNothing matches “zzz”. Try fewer or shorter words.");
     expect(app.engineCalls.at(-1)?.[1]).toMatchObject({ projects: ["p-python0000"] });
-    expect((await app.call(search, { query: "x", regex: true })).text).toBe('Can\'t search: regex, caseSensitive, and wholeWord apply to text only. Add "text" to kinds, or leave them out.');
   });
 
   it("fits the largest page under the size guard, keeping its cursor, and reaches every hit across pages", async () => {

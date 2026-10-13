@@ -1,8 +1,7 @@
 //! Claims on boards (docs/reader.md › Boards): resource cards and connections grounded in
 //! `ts-orders` (the connections of design §4.7 and an `orders` table backed by `interface
-//! Order`), the example board saved to itself with real signatures and exported to Mermaid, and
-//! evidence files: anchors into them are signed, go outdated when the file changes, and are
-//! repaired.
+//! Order`), the example board saved to itself with real signatures, and evidence files: anchors
+//! into them are signed, go outdated when the file changes, and are repaired.
 
 use serde_json::{Value, json};
 use unfold_core::testkit::{assert_golden, testdata_dir};
@@ -69,7 +68,7 @@ impl Harness {
 }
 
 #[test]
-fn the_example_board_saves_to_itself_and_exports_to_mermaid() {
+fn the_example_board_saves_to_itself() {
     let harness = Harness::compiled("ts-orders");
     let example =
         std::fs::read_to_string(testdata_dir().join("boards/order-system.json")).expect("read the example");
@@ -87,65 +86,6 @@ fn the_example_board_saves_to_itself_and_exports_to_mermaid() {
     );
     // Saving signs every claim from verified source: the example holds its real signatures.
     assert_golden("boards/order-system.json", &harness.read(&id));
-
-    // The outline follows calls, then links between two cards (the runtime call to
-    // `StripeProvider.charge` included); links to resources and frames aren't followed.
-    let rows: Vec<(String, u64)> = saved["outlines"][0]["rows"]
-        .as_array()
-        .expect("rows")
-        .iter()
-        .map(|row| {
-            (
-                row["card"].as_str().expect("card").to_owned(),
-                row["depth"].as_u64().expect("depth"),
-            )
-        })
-        .collect();
-    let expected = [
-        ("post-orders", 0),
-        ("create-order", 1),
-        ("place-order", 2),
-        ("stripe-charge", 3),
-        ("orders-worker", 0),
-        ("process-order", 1),
-    ];
-    assert_eq!(rows, expected.map(|(card, depth)| (card.to_owned(), depth)));
-
-    let text = harness.ok(
-        1,
-        "export_mermaid_text",
-        json!({ "project": harness.project, "board": { "id": id, "page": "page-1" } }),
-    )["text"]
-        .as_str()
-        .expect("text")
-        .to_owned();
-    for expected in [
-        // Frames are nested subgraphs with their direction, around their members.
-        "  subgraph f1[\"ts-orders\"]\n    direction LR\n    subgraph f0[\"server<br/>",
-        "    subgraph f2[\"worker\"]\n      c1([\"worker orders\"])\n",
-        // A Diagram-view card is a box, like a Code-view card.
-        "      c2[\"OrderService.place · src/services/order-service.ts:13\"]\n",
-        // Resource cards take their kind's shape.
-        "  r0(((\"actor · Customer\")))\n",
-        "  r1[(\"table · customers<br/>customerId: string · PK<br/>email: string · unique<br/>items: OrderItem#91;#93; · optional\")]\n",
-        "    r2[/\"queue · orders\"/]\n",
-        "  r4[\\\"cache · Redis\"\\]\n",
-        "  r5[/\"storage · Orders report\"\\]\n",
-        "  r6{{\"external · slack\"}}\n",
-        // Connections take their kind's line and words; `reads` points back at the code.
-        "  r0 -->|\"HTTP · POST /orders\"| c3\n",
-        "  r2 ==>|\"queue · orders\"| f2\n",
-        "  c2 -->|\"writes\"| r3\n",
-        "  r3 -->|\"reads\"| c4\n",
-        "  r3 ---|\"relates · many to one · customerId → customerId\"| r1\n",
-        "  c2 -.->|\"runtime call\"| c5\n",
-        // Notes are comments where they sit.
-        "      %% Note on create-order: Queued orders are placed by the worker.",
-        "  %% Note: Read left to right: the request, then the worker.\n",
-    ] {
-        assert!(text.contains(expected), "{expected}\n{text}");
-    }
-    assert_golden("boards/order-system.mmd", &text);
 }
 
 #[test]

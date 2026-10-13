@@ -4,7 +4,7 @@
  */
 
 import type { JSX } from "react";
-import { GroupFromLinesDialog } from "../board";
+import { CombineDialog } from "../board";
 import { SettingsDialog } from "../settings";
 import { closeDialog, useDialog, type DialogRequest } from "../state/overlays";
 import { DeleteBoardDialog } from "./BoardDialogs";
@@ -19,8 +19,8 @@ function DialogFor({ request }: { readonly request: DialogRequest }): JSX.Elemen
       return <DeleteBoardDialog board={request.board} onClose={closeDialog} />;
     case "renameFolder":
       return <RenameFolderDialog project={request.project} folder={request.folder} onClose={closeDialog} />;
-    case "groupFromLines":
-      return <GroupFromLinesDialog request={request} onClose={closeDialog} />;
+    case "combine":
+      return <CombineDialog request={request} onClose={closeDialog} />;
   }
 }
 

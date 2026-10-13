@@ -7,14 +7,14 @@
  * of its cards, so it can say what the board draws between them, how each card shows (compact or
  * expanded, and the calls it expands in place), and where each proposed step goes, with a note when
  * its anchor is missing or held (from the board's health while a window holds the board, else from
- * the card's Flow); or the page as Mermaid (`export_mermaid_text`, as last saved).
+ * the card's Flow).
  */
 
 import { z } from "zod";
 import type { AgentBoardRef, AgentIdentity } from "../../../shared/agent-api";
 import type { ToolContext } from "../context";
-import type { Anchor, BoardHealthView, BoardSummary, Frame, Link, Page, ProjectRow, Proposal, Resource } from "../engine-types";
-import { authorText, callPathText, clip, count, joined, keyFile, keyName, labelText, place, typeText } from "../format";
+import type { Anchor, BoardHealthView, BoardSummary, Frame, Link, Page, Proposal, Resource } from "../engine-types";
+import { authorText, callPathText, clip, count, joined, keyFile, keyName, place, typeText } from "../format";
 import { cardExpanded, fieldsOnlyKey, pageCode, type CardCode, type PageCode } from "../page-code";
 import { nextLine, paged, pagedLines, textResult } from "../results";
 import { currentView, readPage as loadPage, pagePlace, projectOrView, resolveBoard, type ReadPage } from "../target";
@@ -153,7 +153,6 @@ function cardLine(page: Page, read: ReadPage, code: CardCode, frames: ReadonlyMa
     cardWhere(code),
     `key ${code.key}`,
     expansionText(page, code),
-    card.folded === true ? "folded" : null,
     `at [${card.at.join(", ")}]${size ? `, ${Math.round(size.width)}×${Math.round(size.height)}` : ""}`,
     frame !== undefined ? `in frame ${frame}` : null,
     code.problem !== undefined ? `code unavailable: ${code.problem}` : null,
@@ -330,13 +329,10 @@ function pageLines(page: Page, read: ReadPage, code: PageCode, health: ProposalH
     const call =
       arrow.kind === "handler"
         ? `handler ${arrow.text}`
-        : `${arrow.kind} ${arrow.text}${arrow.line !== null ? ` at line ${arrow.line}` : ""}${arrow.label ? `: ${labelText(arrow.label)}` : ""}; source ${arrow.source ?? ""}, seq ${arrow.seq ?? 0}`;
+        : `${arrow.kind} ${arrow.text}${arrow.line !== null ? ` at line ${arrow.line}` : ""}; source ${arrow.source ?? ""}, seq ${arrow.seq ?? 0}`;
     return `- ${named(page, code, arrow.from)} → ${named(page, code, arrow.to)}: ${call}`;
   });
   const typeArrows = code.typeArrows.map((arrow) => `- ${named(page, code, arrow.from)} → ${named(page, code, arrow.to)}: field ${arrow.field}: ${typeText(arrow.type)}`);
-  const unlabeled = code.unlabeled.map(
-    (step) => `- ${named(page, code, step.card)}: ${step.line !== undefined ? `line ${step.line} ` : ""}${step.kind} “${step.name}” (key ${step.key})`,
-  );
   return [
     ...section("Cards", cards),
     ...section("Step groups", groups),
@@ -347,42 +343,24 @@ function pageLines(page: Page, read: ReadPage, code: PageCode, health: ProposalH
     ...((page.proposals ?? []).length > 0 ? [`Proposed steps (${(page.proposals ?? []).length}), by card: intentions, not code:`, ...proposalLines(page, code, health, agent)] : []),
     ...section("Arrows Unfold draws for calls and handlers", arrows),
     ...section("Type arrows", typeArrows),
-    ...section("Flow steps still unlabeled, in expanded cards (label_steps labels them)", unlabeled),
   ];
-}
-
-/** The page as Mermaid, as last saved (the window that holds the board exports it). */
-async function mermaid(context: ToolContext, project: ProjectRow, read: ReadPage, board: AgentBoardRef) {
-  const opened = context.views.holder(board) === undefined;
-  const { text } = await context.held(board, "export_mermaid_text", { project: board.project, board: { id: board.id, page: read.page.id } });
-  return textResult(
-    context.header(pagePlace(project, read)),
-    `The page as Mermaid, as last saved${read.unsaved ? " (the window's unsaved edits aren't in it)" : ""}${opened ? "; Unfold loaded the board to export it" : ""}:`,
-    "```mermaid",
-    text.trimEnd(),
-    "```",
-  );
 }
 
 export const readPage = defineTool({
   name: "read_page",
   title: "Read page",
   description:
-    'Everything on a page, with ids: the lens it opens in (Diagram or Code), cards (name, file:line, key, compact or expanded and the calls each expands in place, folded, frame, position and measured size, description and who wrote it), step groups, frames as a tree, resource cards (kind, name, type, columns, anchors), connections and drawn links (kind, ends, the step they leave from at file:line, channel, carried type, anchors, label), notes, proposed steps under their cards (title, reason, who proposed it, the step and path they go after, and a note when that anchor is missing or held), the arrows Unfold draws for calls (each with its typed label, and the source and seq read_call takes) and handlers, type arrows from a field to a type, and the steps of expanded cards still unlabeled (with the keys label_steps takes). It reads the page as the window holding the board has it, unsaved edits included, else as its file has it. format "mermaid" gives the page as a Mermaid flowchart instead, as last saved. page is an id or a link (default: the page in view); a board without a page reads its first page. Long pages come in pages: pass cursor. The result\'s rev is the page\'s revision: pass it as expectRevision to the next edit. Reading changes nothing.',
+    'Everything on a page, with ids: the lens it opens in (Diagram or Code), cards (name, file:line, key, compact or expanded and the calls each expands in place, frame, position and measured size, description and who wrote it), step groups, frames as a tree, resource cards (kind, name, type, columns, anchors), connections and drawn links (kind, ends, the step they leave from at file:line, channel, carried type, anchors, label), notes, proposed steps under their cards (title, reason, who proposed it, the step and path they go after, and a note when that anchor is missing or held), the arrows Unfold draws for calls (each with the source and seq read_call takes) and handlers, and type arrows from a field to a type. It reads the page as the window holding the board has it, unsaved edits included, else as its file has it. page is an id or a link (default: the page in view); a board without a page reads its first page. Long pages come in pages: pass cursor. The result\'s rev is the page\'s revision: pass it as expectRevision to the next edit. Reading changes nothing.',
   input: z.object({
     board: z.string().min(1).optional().describe("A board's id or a link (default: the board in view)"),
     page: z.string().min(1).optional().describe("A page's id or a link (default: the page in view)"),
     project: z.string().min(1).optional().describe("The board's project, when the board's id isn't enough"),
-    format: z.enum(["items", "mermaid"]).default("items"),
     cursor: cursorArg,
   }),
   annotations: { readOnlyHint: true },
-  async run({ board, page, project, format, cursor }, context) {
+  async run({ board, page, project, cursor }, context) {
     const target = await resolveBoard(context, { board, page, project });
     const read = await loadPage(context, target.board, target.page);
-    if (format === "mermaid") {
-      return mermaid(context, target.project, read, target.board);
-    }
     const [code, health] = await Promise.all([pageCode(context, target.project, read.page), proposalHealth(context, target.board, read.page)]);
     const lines = pageLines(read.page, read, code, health, context.agent);
     const shown = pagedLines(lines, cursor, LINES_PER_PAGE);

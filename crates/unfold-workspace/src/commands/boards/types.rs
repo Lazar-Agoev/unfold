@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unfold_core::{Key, RepoPath};
-use unfold_reader::board::{Anchor, Board, Health, PageOutline, Repair, Target};
+use unfold_reader::board::{Anchor, Board, Health, Repair, Target};
 
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::ProjectId;
@@ -59,8 +59,6 @@ pub struct BoardState {
     pub revision: String,
     /// Its health against the project's graph.
     pub health: Health,
-    /// Each page's outline, in page order.
-    pub outlines: Vec<PageOutline>,
     /// The board list's label when something is wrong ("2 outdated").
     pub label: Option<String>,
 }
@@ -81,14 +79,12 @@ pub struct ReadBoardResult {
     pub revision: String,
 }
 
-/// A board's health and outlines.
+/// A board's health.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct BoardHealthView {
     /// The health.
     pub health: Health,
-    /// Each page's outline, in page order.
-    pub outlines: Vec<PageOutline>,
     /// The board list's label when something is wrong.
     pub label: Option<String>,
 }

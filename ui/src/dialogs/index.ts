@@ -1,5 +1,5 @@
 /**
- * One host for every dialog: Settings, Delete, the board folder prompts, and the board's Make a group.
+ * One host for every dialog: Settings, Delete, the board folder prompts, and the board's Combine….
  * `openMoveToFolder` asks for the new folder a board moves to (the board menu's "New folder…").
  */
 

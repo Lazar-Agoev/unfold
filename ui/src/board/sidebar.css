@@ -20,13 +20,6 @@
 
 .board-section { display: flex; flex-direction: column; flex-shrink: 0; }
 
-.board-section-hint {
-  padding: 4px 8px;
-  font-size: var(--text-12);
-  line-height: var(--leading-16);
-  color: var(--color-muted);
-}
-
 /* Header */
 .board-header { display: flex; flex-direction: column; flex-shrink: 0; }
 
@@ -101,79 +94,6 @@
   background: var(--color-review);
 }
 
-/* On this page */
-.layer-list { position: relative; }
-.layer-slot { position: absolute; top: 0; right: 0; left: 0; }
-
-.layer-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: var(--row);
-  padding: 0 8px;
-  border-radius: var(--radius-control);
-  white-space: nowrap;
-  cursor: default;
-}
-
-.layer-row:hover { background: var(--color-hover); }
-.layer-row.selected,
-.layer-row.selected:hover { background: var(--color-selection); }
-
-.layer-row:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 1.5px var(--color-focus-ring);
-}
-
-.layer-glyph { display: flex; flex-shrink: 0; }
-
-.layer-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font: 12px/16px var(--font-code);
-  color: var(--color-text);
-}
-
-.layer-row.group .layer-label,
-.layer-row.proposal .layer-label,
-.layer-row.link .layer-label { font: 13px/20px var(--font-ui); }
-/* A proposed step: its dashed green mark in the glyph column, and "proposed" in green. */
-.layer-proposal-glyph { display: grid; place-items: center; width: 16px; height: 16px; }
-.layer-row.proposal .layer-note { color: var(--color-proposed-ink); }
-/* A frame is a heading: its title in the UI face, in the authored color (it is authored). */
-.layer-row.frame .layer-label { font: 600 13px/20px var(--font-ui); color: var(--color-authored); }
-.layer-row.selected .layer-label { font-weight: 600; }
-.layer-row.link.selected .layer-label { font-weight: 500; }
-
-.layer-trailing {
-  display: grid;
-  flex-shrink: 0;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-}
-
-.layer-note {
-  flex-shrink: 0;
-  font-size: var(--text-12);
-  line-height: var(--leading-16);
-  color: var(--color-muted);
-}
-
-.board-unlabeled {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: var(--row);
-  padding: 0 8px;
-  font-size: var(--text-12);
-  line-height: var(--leading-16);
-  color: var(--color-muted);
-  white-space: nowrap;
-}
-
 /* Selected: at most half the sidebar, scrolling on its own. */
 .board-selected {
   display: flex;
@@ -222,6 +142,8 @@
   color: var(--color-muted);
 }
 
+.selected-location.ui { font-family: var(--font-ui); }
+
 .selected-link {
   font: inherit;
   color: var(--color-accent-text);
@@ -232,9 +154,6 @@
 /* A resource card's kind: its glyph and word, in the authored color, before its byline. */
 .selected-kind { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-family: var(--font-ui); }
 .selected-kind > .icon { color: var(--color-authored); }
-
-/* A type opened in place under its row (a table's type, a connection's carried type). */
-.selected-definition { padding: 0 8px 4px; }
 
 .selected-link-identity {
   display: flex;
@@ -337,7 +256,7 @@
 
 .authored-note code { font-family: var(--font-code); }
 
-/* Relations: an 88px label column (72px for a link), then the value and an optional action. */
+/* Relations: an 88px label column (72px for a link, 64px for a call), then the value. */
 .selected-relations { display: flex; flex-direction: column; }
 .selected-relations.link { padding: 0 8px; }
 
@@ -360,6 +279,7 @@
 }
 
 .selected-relations.link .relation-label { width: 72px; }
+.selected-relations.call .relation-label { width: 64px; }
 
 .relation-value {
   flex: 1;
@@ -379,9 +299,13 @@ button.relation-value:hover { color: var(--color-accent-text); }
 .relation-more { font-family: var(--font-ui); }
 .relation-more { color: var(--color-muted); }
 .relation-path { font-family: var(--font-ui); color: var(--color-muted); }
-.relation-action { flex-shrink: 0; font-size: var(--text-12); line-height: var(--leading-16); }
 .relation-card { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .relation-code { overflow: hidden; text-overflow: ellipsis; }
+
+/* A call's contract: the arrow between its sides, a side with no written value, and a quiet note ("caught"). */
+.relation-arrow { padding: 0 6px; color: var(--color-faint); }
+.relation-dim { color: var(--color-contour); }
+.relation-note { margin-left: 8px; font: 11px/16px var(--font-ui); color: var(--color-muted); }
 
 .relation-input {
   flex: 1;

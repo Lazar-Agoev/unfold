@@ -61,7 +61,7 @@ function useInsets(cards: readonly Card[], arrowCards: readonly ArrowCard[], mod
         const paths = card?.expanded ?? [];
         const own = models.get(cardRefKey(arrowCard.project, arrowCard.key));
         const flow = own?.type === "block" && own.flow?.source === "current" ? own.flow : null;
-        return arrowCard.body === "flow" && card?.folded !== true && paths.length > 0 && flow
+        return arrowCard.body === "flow" && paths.length > 0 && flow
           ? [{ id: arrowCard.id, project: arrowCard.project, key: arrowCard.key, flow, paths }]
           : [];
       }),

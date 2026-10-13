@@ -1,9 +1,8 @@
 /**
- * Every tool and prompt the server offers (design §6), in the order agents see them. A new tool is a
- * `defineTool` in this folder, listed here; a new prompt, a `definePrompt`, listed in `PROMPTS`.
+ * Every tool the server offers (design §6), in the order agents see them. A new tool is a
+ * `defineTool` in this folder, listed here.
  */
 
-import type { Prompt } from "../prompt";
 import type { Tool } from "../tool";
 import { createBoard, editPages, organizeBoards, show } from "./boards";
 import { addCards, arrangePage, removeItems, setView } from "./build";
@@ -13,7 +12,6 @@ import { readFile } from "./files";
 import { finishWork, repair } from "./finish";
 import { getGuide } from "./guide";
 import { listBoards, readPage } from "./pages";
-import { dataModel, explainEntrance, fixBoards, serviceMap, simplifyFunction, tour } from "./prompts";
 import { getProject, listProjects } from "./projects";
 import { check, getScreenshot } from "./review";
 import { listEntrances, search } from "./search";
@@ -58,5 +56,3 @@ export const TOOLS: readonly Tool[] = [
   repair,
   finishWork,
 ];
-
-export const PROMPTS: readonly Prompt[] = [explainEntrance, simplifyFunction, serviceMap, dataModel, tour, fixBoards];

@@ -56,7 +56,7 @@ export interface Arrow {
    */
   readonly sourceHandle: string;
   readonly target: string;
-  /** The project both cards resolve to: the line's labels and contract are asked of it. */
+  /** The project both cards resolve to: the call's contract is asked of it. */
   readonly project: ProjectId;
   /** The occurrence it draws (with `seq`, the graph edge); a handler's or a type arrow's port. */
   readonly occurrence: string;
@@ -70,13 +70,8 @@ export interface Arrow {
   readonly line: number | null;
   /** Every call it stands for, in source order, when it leaves a node and joins several calls to one card. */
   readonly calls?: readonly ArrowCall[];
-  /** A type arrow's label: the field's written type. */
-  readonly type?: TypeText;
-  /**
-   * When it joins several arrows at a collapsed frame (`routeArrows`): how many calls (handlers
-   * included) and how many fields' type links it stands for.
-   */
-  readonly merged?: { readonly calls: number; readonly fields: number };
+  /** When it joins several arrows at a collapsed frame (`routeArrows`). */
+  readonly merged?: true;
   /** The cards it joins, when an end attaches to a collapsed frame instead (`routeArrows`). */
   readonly cards?: { readonly from: string; readonly to: string };
 }
@@ -271,7 +266,6 @@ function typeArrows(card: ArrowCard, project: ProjectId, definition: TypeDefinit
         dashed: false,
         order,
         line: null,
-        type,
       });
     }
   });

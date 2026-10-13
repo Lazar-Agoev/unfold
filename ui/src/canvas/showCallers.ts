@@ -1,7 +1,7 @@
 /**
  * Show callers (V1's References, now on the card menu): asks the engine for the distinct definitions
  * that call a card's block (`callers`), and adds the ones not on the page yet as cards in a column to
- * its left, sized from their models so each one's right edge lines up. One undo step; Back returns.
+ * its left, sized from their models so each one's right edge lines up. One undo step.
  */
 
 import { queryClient } from "../ipc/client";
@@ -17,7 +17,6 @@ import {
   getPageView,
   editPage,
   keyDisplayName,
-  pushFocusMove,
   requestCardFocus,
   shownView,
   type PageTarget,
@@ -80,7 +79,6 @@ export async function showCallers(target: PageTarget, cardId: string): Promise<v
           ),
         ) ?? [])
       : [];
-  pushFocusMove(target);
   requestCardFocus(target, [cardId, ...present, ...added], "fit");
   if (total > keys.length) {
     showToast({ title: `Showing the first ${keys.length} of ${total} callers of ${name}.` });

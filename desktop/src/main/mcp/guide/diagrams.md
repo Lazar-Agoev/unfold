@@ -22,8 +22,8 @@ A page opens in one of two lenses: Diagram (⌘1, the default for new pages) or 
 (⌘2, every card's verified source). set_view's defaultView sets which; the person's
 lens changes what they see, never the page. In Diagram:
 - **Compact**: a function card is one node with its name, file:line, and description.
-  All the calls from a compact card to another card merge into one arrow ("3 calls");
-  one call keeps its typed label. Use it for context and overviews.
+  All the calls from a compact card to another card merge into one arrow ("3 calls").
+  Use it for context and overviews.
 - **Expanded** (set_view expanded: true): the function's written flow, "paths from
   written structure": its steps, branch labels, decisions, Start and End, and combined
   steps. Arrows leave from the actual call step. Expand the one or two functions the
@@ -32,7 +32,7 @@ lens changes what they see, never the page. In Diagram:
   EVENT, PROCESS); expanded, its declaration evidence and its startup and handler
   targets in registration order.
 - **Type and table cards** keep their fields and columns in every lens; they take no
-  expansion. folded folds any card to its title.
+  expansion.
 - add_cards takes expanded too; an older view still works ("diagram" is compact,
   "flow" or "code" expanded). Expansion changes sizes: arrange_page afterwards.
 
@@ -77,12 +77,11 @@ shows the original steps, which keep their source.
   branch (a function body, an if's then or else, a loop body, a try, catch, or
   finally). Not the card's whole block, never nested, never overlapping, never across
   functions.
-- **Lines or steps**: read_code with view "flow" lists each step's lines and key.
-  Pass lines [from, to] (Unfold takes the whole statements they cover, and warns when
-  that's more than you asked) or steps (the statements' keys).
-- **A refusal teaches**: a range that starts at an if and ends inside it is refused,
-  and the message lists the statements there; take the branch's lines, or the whole
-  if.
+- **Steps**: read_code with view "flow" lists each step's lines and key. Pass steps
+  (the statements' keys).
+- **A refusal teaches**: steps that start at an if and go on inside it are refused,
+  and the message lists the statements there; take the branch's statements, or the
+  whole if.
 - **A concise summary**: pass collapsed: true with a new group. Aim for an expanded
   card that reads in fewer than about 8 steps: 3 to 7 groups for a long function,
   fewer for a short one. Then label every step, those inside the groups too (writing
@@ -92,11 +91,13 @@ In ts-orders, createOrder (src/routes/orders.ts:25–35) draws eight steps betwe
 and End. Two groups make it read in four:
 ```
 group_steps({board, page, card: "create-order", groups: [
-  {title: "Queue it for a worker, reply 202", lines: [28, 30], collapsed: true},
-  {title: "Place it now and reply 201", lines: [32, 34], collapsed: true}]})
+  {title: "Queue it for a worker, reply 202", collapsed: true,
+   steps: ["<fn>/if[0]/variable:job", "<fn>/if[0]/expression_statement[0]", "<fn>/if[0]/return[0]"]},
+  {title: "Place it now and reply 201", collapsed: true,
+   steps: ["<fn>/variable:order", "<fn>/expression_statement[0]", "<fn>/expression_statement[1]"]}]})
 ```
-Lines 28–30 are the if's then branch (job, the 202 reply, the return); 32–34 are the
-three statements after the if.
+`<fn>` is createOrder's key. The first group is the if's then branch (lines 28–30: job,
+the 202 reply, the return); the second is the three statements after the if (32–34).
 
 ## View code
 The person opens a step's, a combined step's, or a card's actual source beside the
@@ -204,8 +205,7 @@ compact.
 - Brief: the groups and what each achieves.
 - group_steps with collapsed: true, then label_steps (writing topic), then set_view to
   expand the card.
-- check (unlabeled steps leave out those a collapsed group hides, which still show
-  when the person expands it), get_screenshot({item: <the card's id>}).
+- check, get_screenshot({item: <the card's id>}).
 
 ### Service map
 "Show me the services." A zone, and a box per application with its entrances, all
@@ -214,8 +214,9 @@ external cards for services in other repositories.
 - list_entrances for the project.
 - add_cards for each application's entrances, frame_cards a box per application (icon
   api, worker, schedule, or cli) inside a zone.
-- search text for where services talk (`.add(`, `new Queue(`, `fetch(`, `.delay(`),
-  read each hit before drawing anything.
+- read_code on each entrance's handler: its calls list where services talk (external
+  calls such as `ordersQueue.add` into bullmq, or `fetch`); read each one before
+  drawing anything.
 - add_resources for the queues and stores; connect producers and consumers
   (connections topic).
 - A box with more than about 12 entrances: nest the minor ones (admin, health) in a
@@ -224,8 +225,9 @@ external cards for services in other repositories.
 ### Async pipeline
 "What happens after we enqueue?" Producers on the left, a queue card, workers on the
 right; a page per queue when there are many.
-- search({query: ".add(", kinds: ["text"]}) and `new Queue(` find producers and
-  queues; get_relations and list_entrances find the workers.
+- search({query: "queues", kinds: ["files"]}) and read_file find where the queues are
+  created; read_code on the handlers lists the producers' calls (`ordersQueue.add`,
+  external, bullmq); get_relations and list_entrances find the workers.
 - add_cards for the producers and the worker entrances (follow callees 1 brings the
   handler), add_resources a queue card anchored where the queue is created, connect
   producer → queue and queue → worker.
@@ -233,7 +235,7 @@ right; a page per queue when there are many.
   worker runs processOrder, which adds to `emails` (src/jobs/process-order.ts:10). The
   email worker's handler expands its withRetry callback in place to show sendEmail.
   sendEmail's `outbox.add` (src/jobs/send-email.ts:8) is a Set, not a queue: reading
-  the hit tells you.
+  the code tells you.
 
 ### Explain a call
 "What does this call send?" Nothing changes on the page: answer in chat from the
@@ -257,9 +259,10 @@ sends and receives them.
 ### Across repositories
 "From the web app to the API." On the web app's page, the API is an external resource
 card, and an http connection goes from the client's call to it.
-- search the web app for the call, add_cards its function, add_resources an external
-  card for the API anchored to the client code, then connect kind http from the
-  calling card (step: the call) to that card.
+- search the web app by name for the client function, read_code to find the call,
+  add_cards the function, add_resources an external card for the API anchored to the
+  client code, then connect kind http from the calling card (step: the call) to that
+  card.
 
 ## Reviewing a page
 check returns the page's health (repairs topic) and these page checks, each with its
@@ -269,11 +272,9 @@ items and the call that fixes it:
 | overlap | Items that overlap | arrange_page, or moves |
 | crossings | More than 3 line crossings, or a line through a frame that holds neither end | arrange_page; a frame's direction; moves |
 | density | Over the limits above | expanded: false, Combine, collapse, split |
-| unlabeled steps | Expanded cards whose steps still show names from the code | label_steps |
 | missing words | Frames, step groups, and resource cards without a description | describe |
 | evidence | Resource cards (not actors) and connections that cite nothing | add_resources or connect again, with anchors |
 | strays | Cards and resource cards with no line, connection, or frame | connect, frame, or remove_items |
-| views | More than 3 expanded cards on an overview page | set_view expanded: false |
 
 get_screenshot draws the page as the person sees it, offscreen. A large page is drawn
 smaller, and the result says so: take a frame's or a card's image (item) to read it,

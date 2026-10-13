@@ -80,10 +80,7 @@ export interface AddCardsOp {
   readonly cards: readonly AgentCardSpec[];
 }
 
-/**
- * How one item shows: a card's expansion, the calls it expands in place, and its fold, or whether a
- * step group or a frame is collapsed.
- */
+/** How one item shows: a card's expansion and the calls it expands in place, or whether a step group or a frame is collapsed. */
 export interface AgentViewSpec {
   /** A card's, a step group's, or a frame's id. */
   readonly id: string;
@@ -95,8 +92,6 @@ export interface AgentViewSpec {
   readonly expandCalls?: readonly AgentCallPath[];
   /** A function's card: calls to collapse, with every expansion inside them. */
   readonly collapseCalls?: readonly AgentCallPath[];
-  /** Whether a card is folded to its title. */
-  readonly folded?: boolean;
   /** Whether a step group or a frame is collapsed. */
   readonly collapsed?: boolean;
 }
@@ -185,16 +180,14 @@ export interface FrameCardsOp {
   readonly replacePeopleText?: boolean;
 }
 
-/** One step group: consecutive statements of one branch of a card, by line range or by step keys. */
+/** One step group: consecutive statements of one branch of a card, by their keys. */
 export interface AgentStepGroupSpec {
   /** An existing group's id updates it; a new id names the new group; absent: one from the title. */
   readonly id?: string;
   readonly title: string;
   readonly description?: string;
-  /** Lines `[from, to]`, 1-based and inclusive; the group takes the whole statements they cover. */
-  readonly lines?: readonly [number, number];
   /** The statements' keys (from read_code), consecutive in one branch. */
-  readonly steps?: readonly string[];
+  readonly steps: readonly string[];
   readonly collapsed?: boolean;
 }
 

@@ -1,9 +1,7 @@
 // @vitest-environment jsdom
 import type { ReactFlowState } from "@xyflow/react";
 import { describe, expect, it } from "vitest";
-import type { CardView, FlowNode } from "../ipc/generated";
-import { page } from "../test/workspace";
-import { drawnGeometry, drawnNodeIds, unlabeledSteps } from "./geometry";
+import { drawnGeometry, drawnNodeIds } from "./geometry";
 
 type State = Pick<ReactFlowState, "nodeLookup" | "edges">;
 
@@ -38,13 +36,12 @@ describe("drawnGeometry", () => {
     const geometry = drawnGeometry(
       container,
       state([node("flow", 10, 20, { width: 300, height: 200 }), node("code", 400, 0, { width: 200, height: 100 }), node("folded", 0, 0, { width: 100, height: 40 }, true), node("pending", 0, 0, {})], []),
-      (id) => (id === "flow" ? 5 : 0),
     );
     expect([...geometry.boxes]).toEqual([
       ["flow", { x: 10, y: 20, width: 300, height: 200 }],
       ["code", { x: 400, y: 0, width: 200, height: 100 }],
     ]);
-    expect([...geometry.flows]).toEqual([["flow", { steps: 3, unlabeled: 5 }]]);
+    expect([...geometry.flows]).toEqual([["flow", { steps: 3 }]]);
     expect(drawnNodeIds(container)).toEqual(new Set(["flow", "code"]));
   });
 
@@ -58,55 +55,10 @@ describe("drawnGeometry", () => {
         { id: "arrow", source: "a", target: "b" },
         { id: "link", source: "b", target: "c" },
       ]),
-      () => 0,
     );
     expect(geometry.lines).toEqual([
       { id: "arrow", from: "a", to: "b", points: [{ x: 0, y: 0 }, { x: 12, y: 0 }, { x: 24, y: 0 }] },
       { id: "link", from: "b", to: "c", points: [] },
     ]);
-  });
-});
-
-describe("unlabeledSteps", () => {
-  const KEY = "src/a.ts#function:alpha";
-  const step = (id: number, kind: FlowNode["kind"], key?: string): FlowNode => ({ id, kind, label: "x", fallback: true, lane: 0, ...(key !== undefined ? { key } : {}) });
-  const model = (source: "current" | "changed"): CardView => ({
-    type: "block",
-    header: { key: KEY, kind: "function", name: "alpha", qualifiedName: "alpha", path: "src/a.ts", startLine: 1, endLine: 9, language: "typescript", fileState: "current", source: "current", owner: "src/a.ts#" },
-    code: null,
-    flow: {
-      key: KEY,
-      path: "src/a.ts",
-      language: "typescript",
-      kind: "function",
-      source,
-      nodes: [step(0, "start", KEY), step(1, "statement", `${KEY}/call[0]`), step(2, "condition", `${KEY}/if[0]`), step(3, "statement"), step(4, "end", KEY)],
-      routes: [],
-      tree: [],
-      start: 0,
-      lanes: 1,
-      warnings: [],
-    },
-  });
-
-  it("counts the keyed steps the page doesn't label, as the page's outline does", () => {
-    const card = { id: "alpha", ref: { block: KEY }, at: [0, 0] as [number, number] };
-    const labeled = page("p", [card], { labels: [{ key: `${KEY}/if[0]`, text: "Is it paid?", author: "person:ana", signature: "" }] });
-    expect(unlabeledSteps(page("p", [card]), card, model("current"))).toBe(2);
-    expect(unlabeledSteps(labeled, card, model("current"))).toBe(1);
-    expect(unlabeledSteps(labeled, card, model("changed"))).toBe(0);
-    expect(unlabeledSteps(labeled, card, undefined)).toBe(0);
-  });
-
-  it("leaves out the steps a collapsed step group of the card hides, and counts a return", () => {
-    const card = { id: "alpha", ref: { block: KEY }, at: [0, 0] as [number, number] };
-    const flow = model("current");
-    if (flow.type === "block" && flow.flow) {
-      flow.flow.nodes.push(step(5, "statement", `${KEY}/if[0]/call[0]`), step(6, "return", `${KEY}/return[0]`));
-    }
-    const group = (collapsed: boolean, owner = "alpha") => ({ id: "g", card: owner, title: "Check it", members: [`${KEY}/if[0]`], collapsed });
-    expect(unlabeledSteps(page("p", [card], { groups: [group(false)] }), card, flow)).toBe(4);
-    expect(unlabeledSteps(page("p", [card], { groups: [group(true)] }), card, flow)).toBe(2);
-    expect(unlabeledSteps(page("p", [card], { groups: [group(true, "other")] }), card, flow)).toBe(4);
   });
 });

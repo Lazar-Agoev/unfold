@@ -5,9 +5,8 @@
 mod common;
 
 use common::{load, playground_root};
-use unfold_core::testkit::{assert_golden, testdata_dir};
-use unfold_reader::board::{self, Board, BoardGraph, OutlineRow};
-use unfold_reader::mermaid;
+use unfold_core::testkit::testdata_dir;
+use unfold_reader::board::{self, Board, BoardGraph};
 
 const PAGE: &str = "page-1";
 
@@ -97,58 +96,12 @@ fn the_sample_board_loads_healthy_with_every_description_and_label_attached() {
     let (fresh, fresh_health) = board::prepare_save(parsed.clone(), None, &graph).expect("the board saves");
     assert!(fresh_health.is_healthy());
     assert_eq!(board::serialize(&fresh), sample());
-
-    // The outline follows the calls from the entrance.
-    let outline = board::outline(page, &graph);
-    let rows: Vec<(&str, u32)> = outline
-        .rows
-        .iter()
-        .map(|OutlineRow { card, depth }| (card.as_str(), *depth))
-        .collect();
-    assert_eq!(
-        rows,
-        [
-            ("post-orders", 0),
-            ("middleware-0", 1),
-            ("middleware-1", 1),
-            ("validate-order", 2),
-            ("create-order", 1),
-            ("place-order", 2),
-        ]
-    );
-    let labeled = outline
-        .unlabeled
-        .iter()
-        .filter(|node| page.label_entry(node.key.as_str()).is_some())
-        .count();
-    assert_eq!(labeled, 0, "labeled nodes never count as unlabeled");
 }
 
 #[test]
-fn the_sample_board_exports_to_mermaid() {
-    let (parsed, graph) = loaded();
-    let output = mermaid::page(&parsed, PAGE, &graph).expect("the page exists");
-    assert_eq!(
-        mermaid::page(&parsed, PAGE, &graph),
-        Some(output.clone()),
-        "deterministic"
-    );
-    assert_golden("boards/order-placement.mmd", &output);
-
-    // With Flow cards, the page's labels replace the fallback names.
-    let mut flowing = parsed;
-    for card in &mut flowing.pages[0].cards {
-        card.view = Some(board::View::Flow);
-    }
-    let output = mermaid::page(&flowing, PAGE, &graph).expect("the page exists");
-    assert!(output.contains("Is the input not an object?"));
-    assert!(output.contains("subgraph c0_g0[\"Queue async placement"));
-    assert_golden("boards/order-placement-flow.mmd", &output);
-}
-
-#[test]
-fn a_page_exports_its_drawn_links() {
-    let (mut parsed, graph) = loaded();
+fn a_page_round_trips_its_drawn_links() {
+    let text = sample();
+    let mut parsed = board::parse(&text).expect("the sample board parses");
     parsed.pages[0].links.push(board::Link {
         label: Some(board::Description {
             text: "replies with the order".to_owned(),
@@ -157,11 +110,6 @@ fn a_page_exports_its_drawn_links() {
         }),
         ..board::Link::new("place-replies", "place-order", "post-orders")
     });
-    let output = mermaid::page(&parsed, PAGE, &graph).expect("the page exists");
-    assert!(output.contains("-.->|\"replies with the order\"|"), "{output}");
-    assert_golden("boards/order-placement-links.mmd", &output);
-
-    // The page still round-trips with its link.
     let text = board::serialize(&parsed);
     assert_eq!(board::serialize(&board::parse(&text).expect("it parses")), text);
 }

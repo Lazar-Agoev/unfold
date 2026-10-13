@@ -8,12 +8,10 @@
  * - **Crossings**: lines crossing each other more than a few times, crossing a frame they neither
  *   start nor end in, or passing under a card they neither start nor end at;
  * - **Density**: too many visible items on the page or in a frame, or steps in an expanded function card;
- * - **Unlabeled steps**: expanded function cards whose steps still show names from the code;
  * - **Missing words**: frames, step groups, and resource cards without a description;
  * - **Evidence**: resource cards and connections that cite no code (an agent's are refused at save, a
  *   person's may lack them);
- * - **Strays**: cards and resource cards with no line, connection, or frame;
- * - **Views**: many expanded function cards on an overview page.
+ * - **Strays**: cards and resource cards with no line, connection, or frame.
  *
  * A function card counts as expanded detail when the page presents it so (`shownView` with no lens
  * picked is Flow: expanded in Diagram, a legacy Code card included); the Code lens and compact cards
@@ -51,7 +49,7 @@ export function pageChecks(page: Page, geometry: PageGeometry): PageCheck[] {
   const items = [...page.cards, ...(page.frames ?? []), ...(page.resources ?? []), ...(page.notes ?? [])].map((item) => item.id);
   const order = new Map([...items, ...page.links.map((link) => link.id), ...page.groups.map((group) => group.id)].map((id, index) => [id, index]));
   const context: Context = { page, geometry, tree, order, visible: items.filter((id) => tree.hiddenBy(id) === undefined) };
-  return [overlap, crossings, density, unlabeled, missingWords, evidence, strays, views].flatMap((check) => check(context));
+  return [overlap, crossings, density, missingWords, evidence, strays].flatMap((check) => check(context));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -327,24 +325,6 @@ function density(context: Context): PageCheck[] {
   return findings;
 }
 
-function unlabeled(context: Context): PageCheck[] {
-  return context.visible.flatMap((card): PageCheck[] => {
-    const flow = drawnFlow(context, card);
-    if (!flow || flow.unlabeled === 0) {
-      return [];
-    }
-    const name = nameOf(context.page, card);
-    return [
-      {
-        kind: "unlabeled",
-        items: [card],
-        message: `${opening(name)} has ${plural(flow.unlabeled, "expanded step")} that still ${flow.unlabeled === 1 ? "shows a name" : "show names"} from the code.`,
-        suggestion: `label_steps on ${name}: 2 to 8 words each, never code (read_page lists the unlabeled steps with their keys).`,
-      },
-    ];
-  });
-}
-
 function missingWords(context: Context): PageCheck[] {
   const { page } = context;
   const bare = [
@@ -408,24 +388,6 @@ function strays(context: Context): PageCheck[] {
       items: alone,
       message: `${opening(listed(alone.map((id) => nameOf(page, id))))} ${alone.length === 1 ? "has" : "have"} no line, connection, or frame to the rest of the page.`,
       suggestion: "connect them, put them in a frame (frame_cards), or take them off the page (remove_items).",
-    },
-  ];
-}
-
-function views(context: Context): PageCheck[] {
-  const { page } = context;
-  const cards = page.cards.filter((card) => context.visible.includes(card.id));
-  const overview = (page.frames ?? []).length > 0 || cards.length >= THRESHOLDS.overviewCards;
-  const detailed = cards.filter((card) => expandedFunction(page, card.id));
-  if (!overview || detailed.length <= THRESHOLDS.overviewDetailed) {
-    return [];
-  }
-  return [
-    {
-      kind: "views",
-      items: detailed.map((card) => card.id),
-      message: `${plural(detailed.length, "card")} show their steps expanded on an overview page: ${listed(detailed.map((card) => nameOf(page, card.id)))}.`,
-      suggestion: "set_view expanded: false for the cards that give context; keep the one or two the page is about expanded.",
     },
   ];
 }

@@ -1,14 +1,13 @@
 /**
  * Following calls on a page: a followed target opens `FOLLOW_GAP` to the right of the calling card with
- * its header level with the calling line, or the existing card is focused (and unfolded). Every follow
- * is a focus move for Back and Forward and extends the breadcrumb trail.
+ * its header level with the calling line, or the existing card is focused.
  */
 
 import { HEADER_PORT, followPlacement } from "../../canvas/layout";
 import { displayedRects, focusCard } from "./api";
 import { addCard, findCard, findCardByKey, findPage } from "./document";
-import { editPage, getOpenBoard, getPageView, pushFocusMove, requestCardFocus, select } from "./store";
-import type { PageTarget, TrailItem } from "./types";
+import { editPage, getOpenBoard, requestCardFocus, select } from "./store";
+import type { PageTarget } from "./types";
 
 /**
  * The calling line's vertical center below the top of its card, in canvas units, from the clicked
@@ -28,33 +27,14 @@ export function lineOffsetIn(anchor: HTMLElement | null): number | undefined {
   return (rowBox.top - cardBox.top + firstLine) / scale;
 }
 
-/**
- * The trail after following from `from` (at `line`) to `to`: everything after the source drops. A
- * source not on the trail (a handler an entrance opened) joins it at the end, so the trail reads
- * "POST /orders › createOrder › OrderService.place".
- */
-export function extendTrail(trail: readonly TrailItem[], from: TrailItem, line: number | undefined, to: TrailItem): TrailItem[] {
-  const index = trail.findIndex((item) => item.cardId === from.cardId);
-  const base = index >= 0 ? trail.slice(0, index + 1) : [...trail.filter((item) => item.cardId !== to.cardId), from];
-  const last = base[base.length - 1];
-  if (last) {
-    base[base.length - 1] = line !== undefined ? { ...last, line } : { cardId: last.cardId, label: last.label };
-  }
-  return [...base, to];
-}
-
 export interface FollowRequest {
   readonly target: PageTarget;
   /** The card the call is written in. */
   readonly fromCardId: string;
-  readonly fromLabel: string;
   /** The block to open. */
   readonly targetKey: string;
-  readonly targetLabel: string;
   /** The calling line's center below the source card's top (defaults to its header). */
   readonly lineOffset?: number;
-  /** The calling line's number, for the trail. */
-  readonly line?: number;
 }
 
 /** Follows a call: opens the target beside the calling line, or focuses it. Returns the target card's id. */
@@ -66,11 +46,8 @@ export function followCall(request: FollowRequest): string | undefined {
   if (!board || !page || !source) {
     return undefined;
   }
-  const from: TrailItem = { cardId: request.fromCardId, label: request.fromLabel };
-  const trail = getPageView(target).trail;
   const existing = findCardByKey(page, request.targetKey);
   if (existing) {
-    pushFocusMove(target, extendTrail(trail, from, request.line, { cardId: existing.id, label: request.targetLabel }));
     focusCard(target, existing.id);
     return existing.id;
   }
@@ -80,7 +57,6 @@ export function followCall(request: FollowRequest): string | undefined {
   if (cardId === undefined) {
     return undefined;
   }
-  pushFocusMove(target, extendTrail(trail, from, request.line, { cardId, label: request.targetLabel }));
   select(target, { kind: "card", cardId, key: null });
   requestCardFocus(target, [cardId], "center");
   return cardId;

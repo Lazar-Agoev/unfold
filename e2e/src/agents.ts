@@ -72,10 +72,6 @@ export class AgentClient {
     return (await this.client.listTools()).tools.map((tool) => tool.name);
   }
 
-  async prompts(): Promise<string[]> {
-    return (await this.client.listPrompts()).prompts.map((prompt) => prompt.name);
-  }
-
   async call(tool: string, args: Readonly<Record<string, unknown>> = {}): Promise<ToolAnswer> {
     const result = await this.client.callTool({ name: tool, arguments: { ...args } });
     const text: string[] = [];

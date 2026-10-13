@@ -1,16 +1,12 @@
 /**
  * The page as the canvas drew it, for the page checks and the image's bounds: each drawn node's box
  * (React Flow's measured size at its absolute position), each line's path sampled from the SVG the
- * canvas drew (an edge's first path is its line), and each card drawn in Flow with its visible steps
- * and the steps that still show a name from the code (counted as the page's outline counts them, so
- * they are the steps `label_steps` can label). Lines read nothing where the browser can't measure paths.
+ * canvas drew (an edge's first path is its line), and each card drawn in Flow with its visible steps.
+ * Lines read nothing where the browser can't measure paths.
  */
 
 import type { ReactFlowState } from "@xyflow/react";
 import type { Box, DrawnFlow, DrawnLine, PageGeometry, Point } from "../board/checks";
-import { isWithin } from "../code/outline";
-import type { Card, CardView, FlowNodeKind, Page } from "../ipc/generated";
-import { labelTexts } from "../state/boards";
 
 /** One sample of a line's path per this many canvas units. */
 const SAMPLE_EVERY = 12;
@@ -43,27 +39,8 @@ function sample(path: SVGPathElement | null): Point[] {
   });
 }
 
-/**
- * How many of a card's Flow steps have no label on the page: the steps of its Flow model with a key
- * (start and end aside, and those hidden in a collapsed step group of the card: a member's key or a key
- * under it), as the page's outline counts them; none while its source isn't current.
- */
-export function unlabeledSteps(page: Page, card: Card, model: CardView | undefined): number {
-  if (model?.type !== "block" || model.flow?.source !== "current") {
-    return 0;
-  }
-  const labels = labelTexts(page.labels);
-  const hidden = page.groups.filter((group) => group.card === card.id && group.collapsed).flatMap((group) => group.members);
-  const counts = (key: string | undefined, kind: FlowNodeKind) =>
-    key !== undefined && kind !== "start" && kind !== "end" && labels[key] === undefined && !hidden.some((member) => isWithin(key, member));
-  return model.flow.nodes.filter((node) => counts(node.key, node.kind)).length;
-}
-
-/**
- * The page as drawn under `container`, from the canvas's state; `unlabeledOf` counts a Flow card's
- * steps without a label.
- */
-export function drawnGeometry(container: ParentNode, state: Pick<ReactFlowState, "nodeLookup" | "edges">, unlabeledOf: (card: string) => number): PageGeometry {
+/** The page as drawn under `container`, from the canvas's state. */
+export function drawnGeometry(container: ParentNode, state: Pick<ReactFlowState, "nodeLookup" | "edges">): PageGeometry {
   const nodes = byDataId(container, ".react-flow__node");
   const edges = byDataId(container, ".react-flow__edge");
   const boxes = new Map<string, Box>();
@@ -79,7 +56,7 @@ export function drawnGeometry(container: ParentNode, state: Pick<ReactFlowState,
     const element = nodes.get(node.id);
     if (element?.querySelector(".flow-view")) {
       const steps = [...element.querySelectorAll("[data-flow-node]:not(.flow-pill)")].filter((step) => step.closest(".flow-inset") === null).length;
-      flows.set(node.id, { steps, unlabeled: unlabeledOf(node.id) });
+      flows.set(node.id, { steps });
     }
   }
   const lines: DrawnLine[] = state.edges

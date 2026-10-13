@@ -7,7 +7,6 @@ export { Button, TextButton } from "./Button";
 export { ConfirmDialog, Dialog, PromptDialog } from "./Dialog";
 export { EmptyState } from "./EmptyState";
 export { IconButton } from "./IconButton";
-export { KindGlyph } from "./KindGlyph";
 export { ListRow } from "./ListRow";
 export { MenuButton, useContextMenu, type MenuEntry } from "./Menu";
 export { Monogram } from "./Monogram";

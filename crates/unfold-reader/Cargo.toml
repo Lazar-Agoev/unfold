@@ -1,6 +1,6 @@
 [package]
 name = "unfold-reader"
-description = "Unfold's derived views, the Code and Flow render models, Mermaid export, and boards"
+description = "Unfold's derived views, the Code and Flow render models, and boards"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

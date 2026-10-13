@@ -38,7 +38,7 @@ export function refusal(code: string, message: string): EngineRequestError {
   return new EngineRequestError({ code, message });
 }
 
-type Answer = (args: Readonly<Record<string, unknown>>, stream: (message: unknown) => void) => unknown;
+type Answer = (args: Readonly<Record<string, unknown>>) => unknown;
 
 export interface HarnessOptions {
   /** The engine's answers by command (`workspace` defaults to {@link projects}); a thrown error rejects. */
@@ -118,13 +118,13 @@ export function harness(options: HarnessOptions = {}) {
 
   const renderer: PageImages = { ...NO_RENDERER, ...options.renderer };
 
-  function answer(command: string, commandArgs: Readonly<Record<string, unknown>>, onStream?: (message: unknown) => void): Promise<unknown> {
+  function answer(command: string, commandArgs: Readonly<Record<string, unknown>>): Promise<unknown> {
     const answered = answers[command];
     if (!answered) {
       return Promise.reject(refusal("not_found", `no fake answer for ${command}`));
     }
     try {
-      return Promise.resolve(answered(commandArgs, (message) => onStream?.(message)));
+      return Promise.resolve(answered(commandArgs));
     } catch (error) {
       return Promise.reject(error instanceof Error ? error : new Error(String(error)));
     }
@@ -136,9 +136,9 @@ export function harness(options: HarnessOptions = {}) {
       {
         bridge,
         renderer,
-        engine: (command, commandArgs, onStream) => {
+        engine: (command, commandArgs) => {
           engineCalls.push([command, commandArgs]);
-          return answer(command, commandArgs, onStream);
+          return answer(command, commandArgs);
         },
         engineAs: (windowId, command, commandArgs) => {
           windowCalls.push([windowId, command, commandArgs]);

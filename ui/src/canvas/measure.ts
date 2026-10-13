@@ -117,8 +117,6 @@ export const METHOD_FONT = '500 11px "JetBrains Mono Variable", ui-monospace, mo
 export const TYPE_KIND_FONT = '13px "JetBrains Mono Variable", ui-monospace, monospace';
 /** A description's text (cards.css). */
 export const DESCRIPTION_FONT = '12px "Inter Variable", system-ui, sans-serif';
-/** A line's closed label (lines.css). */
-export const LINE_LABEL_FONT = '11px "JetBrains Mono Variable", ui-monospace, monospace';
 /** A collapsed frame's title, and the agent mark's word beside it (frames.css). */
 export const FRAME_TITLE_FONT = '600 13px "Inter Variable", system-ui, sans-serif';
 export const MARK_FONT = '11px "Inter Variable", system-ui, sans-serif';

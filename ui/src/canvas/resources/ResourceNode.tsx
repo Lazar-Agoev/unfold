@@ -3,7 +3,7 @@
  * in the authored style and the same in every view. Its header shows its kind's glyph and word, its
  * name, and the agent mark when an agent drew it; the review banner and its whole description follow.
  * A table lists its columns: each name (`?` when optional), its written type (a type-backed table's
- * types are the fields' own, whose declared names open their definitions in place), and its marks
+ * types are the fields' own), and its marks
  * (`PK`, `FK → customers.id`, `unique`); up to 12, then "N more". A relationship (`relates`) leaves
  * and enters at a column's row; other lines at the card's edges.
  *
@@ -14,14 +14,13 @@
 import { Handle, Position, useUpdateNodeInternals, type Node, type NodeProps } from "@xyflow/react";
 import { Fragment, memo, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 import { AgentMark, copyLink } from "../../agent";
-import { TypeDefinition } from "../../code/TypeDefinition";
 import { TypeText } from "../../code/TypeText";
 import { authorOf } from "../../code/text";
 import { useContextMenu } from "../../components";
 import { Icon } from "../../icons";
 import type { ProjectId, Resource } from "../../ipc/generated";
 import { useEngineQuery } from "../../ipc/queries";
-import { describeResource, findPage, findResource, removeItem, select, toggledOpenTypes, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
+import { describeResource, findPage, findResource, removeItem, select, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
 import { showInSelected } from "../cards/cardMenu";
 import { CardHandles, DescriptionStrip } from "../cards/parts";
 import { ClaimReviewBanner } from "../cards/ReviewBanner";
@@ -57,45 +56,23 @@ function ColumnHandles({ name, side }: { readonly name: string; readonly side: "
 }
 
 interface ColumnsProps {
-  readonly project: ProjectId;
   readonly columns: readonly TableColumn[];
   /** The columns with relationship handles. */
   readonly handles: ReadonlySet<string>;
 }
 
 /** A table's columns: name, written type, and marks; up to 12, then "N more" (which holds the handles of what it hides). */
-function Columns({ project, columns, handles }: ColumnsProps) {
+function Columns({ columns, handles }: ColumnsProps) {
   const [all, setAll] = useState(false);
-  const [openTypes, setOpenTypes] = useState<Readonly<Record<string, number>>>({});
   const { shown, hidden } = listedColumns(columns, all);
   if (columns.length === 0) {
     return <p className="rcard-empty">No columns listed.</p>;
   }
-  const onToggle = (row: string, span: number) => {
-    setOpenTypes((current) => toggledOpenTypes(current, row, span));
-  };
   const hiddenHandles = columns.slice(shown.length).filter((column) => handles.has(column.name));
   return (
     <div className="rcard-columns">
-      {shown.map((column, index) => {
-        const row = String(index);
-        const open = openTypes[row];
-        const span = typeof column.type === "object" && open !== undefined ? column.type.spans[open] : undefined;
-        const opened = span?.style === "declared" ? span.target : undefined;
-        let type: ReactNode = null;
-        if (typeof column.type === "string") {
-          type = column.type;
-        } else if (column.type) {
-          type = (
-            <TypeText
-              type={column.type}
-              open={open ?? null}
-              onToggle={(spanIndex) => {
-                onToggle(row, spanIndex);
-              }}
-            />
-          );
-        }
+      {shown.map((column) => {
+        const type = typeof column.type === "string" ? column.type : column.type ? <TypeText type={column.type} /> : null;
         return (
           <Fragment key={column.name}>
             <span className="rcard-name" title={column.from !== undefined ? `From ${column.from}` : undefined}>
@@ -108,11 +85,6 @@ function Columns({ project, columns, handles }: ColumnsProps) {
               {markText(column)}
               {handles.has(column.name) ? <ColumnHandles name={column.name} side="right" /> : null}
             </span>
-            {opened !== undefined ? (
-              <div className="rcard-opened">
-                <TypeDefinition project={project} typeKey={opened} row={row} depth={1} openTypes={openTypes} onToggle={onToggle} />
-              </div>
-            ) : null}
           </Fragment>
         );
       })}
@@ -173,7 +145,7 @@ export const ResourceNode = memo(function ResourceNode({ id, data }: NodeProps<R
   }
   const writer = authorOf(resource.author);
   const word = RESOURCE_WORDS[resource.kind];
-  const body: ReactNode = loading ? <p className="rcard-empty">Loading…</p> : <Columns project={project} columns={columns} handles={handles} />;
+  const body: ReactNode = loading ? <p className="rcard-empty">Loading…</p> : <Columns columns={columns} handles={handles} />;
   return (
     <article
       className={`board-card resource-card kind-${resource.kind}${selected ? " selected" : ""}`}

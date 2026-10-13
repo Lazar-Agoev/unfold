@@ -71,13 +71,6 @@ export function sidebarFolder(page: Page, name: string): Locator {
   return projectsTree(page).locator(".home-tree-row:not([data-board-key])").filter({ has: page.locator(".home-tree-label", { hasText: new RegExp(`^${escapeRegExp(name)}$`) }) });
 }
 
-/** Shows a project on Home (a click on its row). */
-export async function selectProject(page: Page, name: string): Promise<void> {
-  await projectRow(page, name).locator(".home-project-title").click();
-  await expect(projectRow(page, name)).toHaveAttribute("aria-selected", "true");
-  await expect(homeTitle(page)).toHaveText(name);
-}
-
 /** Opens the project menu (`⋯` on the project's sidebar row) and chooses `item`. */
 export async function projectMenu(page: Page, name: string, item: string | RegExp): Promise<void> {
   const row = projectRow(page, name);

@@ -1,5 +1,5 @@
 /**
- * The Home-mode sidebar: the workspace row with search, the projects list with each project's state
+ * The Home-mode sidebar: the workspace row, the projects list with each project's state
  * and its folder and board tree, and the footer with Add project and Settings.
  */
 
@@ -8,7 +8,6 @@ import { IconButton, Monogram } from "../../components";
 import { Icon } from "../../icons";
 import { addProject, openSettings } from "../../state/actions";
 import { useAuthor, authorName } from "../../state/author";
-import { openAdd } from "../../state/overlays";
 import { useWorkspace } from "../../state/workspace";
 import { ProjectsList } from "./ProjectsList";
 import "./sidebar.css";
@@ -31,13 +30,6 @@ export function HomeSidebar(): JSX.Element {
       <div className="home-workspace-row">
         <Monogram name={name} size={20} tone="workspace" />
         <span className="home-workspace-name">{name}</span>
-        <IconButton
-          icon="search"
-          label="Add…"
-          onClick={() => {
-            openAdd();
-          }}
-        />
       </div>
       <div className="home-projects-header">
         <h2 className="home-projects-label">Projects</h2>

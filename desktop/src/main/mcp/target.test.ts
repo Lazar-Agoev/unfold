@@ -90,7 +90,7 @@ describe("a page link the person copied and pasted", () => {
   function app() {
     const tools = harness({
       projects: [projectRow(PROJECT, "ts-orders"), projectRow(OTHER, "py-orders")],
-      engine: { read_board: file, line_labels: () => [] },
+      engine: { read_board: file },
       window: (request: AgentShellEvent) => {
         if (request.type === "agent_read") {
           const page = request.board.id === PASTED.id ? pasted : PAGE;

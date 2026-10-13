@@ -1,6 +1,6 @@
 /**
  * Background updates (docs/engine.md#project-lifecycle, background updates): a saved file updates the graph and the open card; a
- * described card whose code changed asks for review on the card, its row, its page, and Home's Health
+ * described card whose code changed asks for review on the card, its page, and Home's Health
  * line; a file that breaks shows its last version until it is fixed; a branch switch across 500 files
  * is one update that ends equal to a fresh compile; files edited while the app is closed are picked up
  * on reopen; deleting the cache recovers; and a file renamed by changing only the case of its name.
@@ -9,7 +9,7 @@
 import { cpSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { boardTitle, boardView, card, expectCardsLoaded, onThisPage, pagesList, readBoard, selected, showBoard, shownBoardRef } from "../src/board";
+import { boardTitle, boardView, card, expectCardsLoaded, pagesList, readBoard, selected, showBoard, shownBoardRef } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { launchCompiled, launchWithProject, openPlace, PLACE, traceEntrance } from "../src/flows";
 import { addProjectFromSidebar, expectGraphCurrent, homeMain, homeTitle, projectId, showHome, stateLine } from "../src/home";
@@ -86,10 +86,9 @@ test.describe("background updates", () => {
         .toBe("Charges the order and saves it.");
     });
 
-    await test.step("its code changing shows the review banner, the row's mark, and the page's mark", async () => {
+    await test.step("its code changing shows the review banner and the page's mark", async () => {
       editFile(file, "this.payments.charge(draft); // saved in the editor", "this.payments.charge(draft); // changed after it was described");
       await expect(place.locator(".card-review")).toContainText("Changed since it was described", { timeout: 30_000 });
-      await expect(onThisPage(page).locator(".board-review-dot")).toHaveCount(1);
       await expect(pagesList(page).locator(".board-review-dot")).toHaveCount(1);
     });
 
@@ -107,7 +106,6 @@ test.describe("background updates", () => {
       const repair = popover.locator(".repair-option").filter({ hasText: /Accept the current code|Keep the text/ }).first();
       await repair.getByRole("button", { name: "Apply" }).click();
       await expect(place.locator(".card-review")).toHaveCount(0);
-      await expect(onThisPage(page).locator(".board-review-dot")).toHaveCount(0);
       await expect(pagesList(page).locator(".board-review-dot")).toHaveCount(0);
     });
   });

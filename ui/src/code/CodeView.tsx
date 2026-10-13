@@ -9,7 +9,7 @@
  * Ports are drawn by the caller (`renderPorts`), so the renderer stays independent of the canvas.
  */
 
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import type { CallLink as CallLinkModel, CodeLine, CodeText as CodeTextModel, Group, Language, OutlineItem, ProjectId } from "../ipc/generated";
 import { Icon } from "../icons";
 import { CallLink } from "./CallLink";
@@ -17,11 +17,6 @@ import { CodeText } from "./CodeText";
 import { foldHiding, innermostItem, lineAt, outlineChildren, portStep } from "./outline";
 import { linkRanges, spanRanges } from "./segments";
 import "./code.css";
-
-interface PendingGroupView {
-  readonly members: readonly string[];
-  readonly error?: string;
-}
 
 export interface CodeViewProps {
   /** The project the code is in (a call's hover asks it about the target). */
@@ -48,9 +43,6 @@ export interface CodeViewProps {
   readonly onExpand?: (link: CallLinkModel) => void;
   /** Callees expanded inline, by occurrence key, drawn under the calling line. */
   readonly expanded?: ReadonlyMap<string, ReactNode>;
-  readonly onGutterSelect?: (fromLine: number, toLine: number) => void;
-  readonly pendingGroup?: PendingGroupView | null;
-  readonly onNamePendingGroup?: (title: string | null) => void;
   /** The last verified render of source that changed: shown dimmed, never re-sliced. */
   readonly dimmed?: boolean;
   /** Lines marked with the step fill: the callee lines a selected line's contract reads. */
@@ -60,7 +52,6 @@ export interface CodeViewProps {
 }
 
 const EMPTY_SET: ReadonlySet<string> = new Set();
-const PENDING = "\u0000pending";
 
 interface RowInfo {
   readonly line: CodeLine;
@@ -153,7 +144,7 @@ export function CodeView(props: CodeViewProps) {
     return byLine;
   }, [expanded, code.links]);
 
-  // Groups: the board's, plus the pending gutter selection while it waits for its title.
+  // The board's groups, by member.
   const groupOf = useMemo(() => {
     const map = new Map<string, Group>();
     for (const group of groups) {
@@ -161,55 +152,11 @@ export function CodeView(props: CodeViewProps) {
         map.set(key, group);
       }
     }
-    const pending = props.pendingGroup;
-    if (pending && pending.members.length > 0 && !pending.members.some((key) => map.has(key))) {
-      const group: Group = { id: PENDING, card: "", title: "", members: [...pending.members], collapsed: false };
-      for (const key of pending.members) {
-        map.set(key, group);
-      }
-    }
     return map;
-  }, [groups, props.pendingGroup]);
+  }, [groups]);
 
   // The group whose title is being renamed on its rail.
   const [renaming, setRenaming] = useState<string | null>(null);
-
-  // Gutter drag: down the line numbers to make a group.
-  const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
-  // The drag as of the last event, so mouseup reports it without a side effect inside a state update.
-  const dragRef = useRef(drag);
-  useLayoutEffect(() => {
-    dragRef.current = drag;
-  });
-  const view = useRef<HTMLDivElement>(null);
-  const dragging = drag !== null;
-  const { onGutterSelect } = props;
-  useEffect(() => {
-    if (!dragging) {
-      return undefined;
-    }
-    const move = (event: globalThis.MouseEvent) => {
-      const row = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-line]");
-      if (row && view.current?.contains(row)) {
-        const line = Number(row.dataset["line"]);
-        setDrag((value) => (value && Number.isFinite(line) ? { ...value, to: line } : value));
-      }
-    };
-    const up = () => {
-      const value = dragRef.current;
-      setDrag(null);
-      if (value) {
-        onGutterSelect?.(value.from, value.to);
-      }
-    };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up, { once: true });
-    return () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
-    };
-  }, [dragging, onGutterSelect]);
-  const inDrag = (line: number) => drag !== null && line >= Math.min(drag.from, drag.to) && line <= Math.max(drag.from, drag.to);
 
   const renderLink = (index: number, content: ReactNode): ReactNode => {
     const link = code.links[index];
@@ -247,23 +194,7 @@ export function CodeView(props: CodeViewProps) {
   // The line number, right-aligned in the gutter; a fold's chevron sits in the space after it.
   const gutter = (number: number, chevron: { key: string; open: boolean } | undefined) => (
     <span className="code-gutter">
-      <span
-        className="code-number nodrag"
-        onMouseDown={
-          props.onGutterSelect
-            ? (event) => {
-                if (event.button !== 0) {
-                  return;
-                }
-                event.preventDefault();
-                event.stopPropagation();
-                setDrag({ from: number, to: number });
-              }
-            : undefined
-        }
-      >
-        {number}
-      </span>
+      <span className="code-number nodrag">{number}</span>
       {chevron && props.onToggleFold ? (
         <button
           type="button"
@@ -293,7 +224,6 @@ export function CodeView(props: CodeViewProps) {
     const classes = ["code-row"];
     if (anchors.has(anchor)) classes.push("has-port");
     if (props.marked?.has(number)) classes.push("marked");
-    if (inDrag(number)) classes.push("gutter-selected");
     if (isSelectedLine(number) || props.callerLine === number) classes.push("selected");
     return (
       <Fragment key={`r${number}`}>
@@ -325,7 +255,6 @@ export function CodeView(props: CodeViewProps) {
     const anchor = `fold:${item.key}`;
     const classes = ["code-row", "folded"];
     if (anchors.has(anchor)) classes.push("has-port");
-    if (inDrag(item.startLine)) classes.push("gutter-selected");
     if (isSelectedLine(item.startLine)) classes.push("selected");
     const badge = fold.braces ? `{ ⋯ ${fold.summary} }` : `⋯ ${fold.summary}`;
     return (
@@ -371,41 +300,6 @@ export function CodeView(props: CodeViewProps) {
     }
     const first = rows.get(firstMember.startLine);
     const indent = first ? Math.max(0, first.line.indent - first.skip) : 0;
-    if (group.id === PENDING) {
-      return (
-        <div key="g-pending" className="code-group pending" data-group="pending">
-          <div className="code-group-heading nodrag nopan" onClick={(event) => { event.stopPropagation(); }}>
-            <input
-              // The rail appears where the person just dragged, so the title field takes focus.
-              autoFocus
-              className="code-group-input"
-              style={{ marginLeft: `${indent}ch` }}
-              aria-label="Group title"
-              placeholder="Name this group, then press Enter"
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  props.onNamePendingGroup?.(event.currentTarget.value);
-                } else if (event.key === "Escape") {
-                  props.onNamePendingGroup?.(null);
-                }
-                event.stopPropagation();
-              }}
-              onBlur={(event) => {
-                if (event.currentTarget.value.trim().length === 0) {
-                  props.onNamePendingGroup?.(null);
-                }
-              }}
-            />
-            {props.pendingGroup?.error ? (
-              <span className="code-group-error" role="alert">
-                {props.pendingGroup.error}
-              </span>
-            ) : null}
-          </div>
-          {range(firstMember.startLine, lastLine, memberIndexes, true, [])}
-        </div>
-      );
-    }
     const anchor = `group:${group.id}`;
     const finishRename = (value: string | null) => {
       setRenaming(null);
@@ -559,8 +453,7 @@ export function CodeView(props: CodeViewProps) {
   const lastLine = code.lines.at(-1)?.number ?? firstLine;
   return (
     <div
-      ref={view}
-      className={`code-view${drag ? " gutter-dragging" : ""}${props.dimmed ? " dimmed" : ""}`}
+      className={`code-view${props.dimmed ? " dimmed" : ""}`}
       role="group"
       aria-label={`Source of ${props.label}`}
       style={{ ["--code-digits" as string]: `${digits}ch` }}

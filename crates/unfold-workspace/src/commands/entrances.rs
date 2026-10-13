@@ -27,8 +27,8 @@ use unfold_core::{Entrance, Key, Launch, LaunchMode, Launches, RepoPath};
 use unfold_engine::discovery::{DiscoverOptions, IgnoreRules, is_default_excluded};
 use unfold_engine::settings::{ScopeStatus, Settings};
 use unfold_reader::ReaderIndex;
+use unfold_reader::catalog::entrance_title;
 use unfold_reader::launches::{LaunchState, folder_label, launch_state, schedule_gloss, start_kind};
-use unfold_reader::mermaid::entrance_title;
 use unfold_reader::notes::reason_text;
 use unfold_store::{Application, Basis, Membership, Reader};
 

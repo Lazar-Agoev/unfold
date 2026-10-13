@@ -31,11 +31,6 @@ describe("a connection's chip", () => {
     expect(chipForms({ kind: "other", label: "nightly export" })[0]?.[0]?.tone).toBe("text");
   });
 
-  it("marks the carried type's name as what opens its definition", () => {
-    const [full] = chipForms({ kind: "queue", channel: "orders", carries: "OrderJob" });
-    expect(full?.filter((part) => part.carries).map((part) => part.text)).toEqual(["OrderJob"]);
-  });
-
   it("counts the connections of one kind merged at a collapsed frame", () => {
     expect(forms({ kind: "queue", count: 3 })).toEqual(["queue · 3 connections", "queue"]);
   });

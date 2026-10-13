@@ -28,10 +28,9 @@ export interface DrawnLine {
   readonly points: readonly Point[];
 }
 
-/** A card drawn in Flow: its visible steps, and how many of its steps still show a name from the code. */
+/** A card drawn in Flow: its visible steps. */
 export interface DrawnFlow {
   readonly steps: number;
-  readonly unlabeled: number;
 }
 
 /** The page as the canvas laid it out. */

@@ -1,6 +1,6 @@
 /**
- * The window in board mode: the shown board's view (top bar, canvas, cards, dock) and its sidebar
- * (header, Pages, On this page, Selected), and the board files on disk. Only the shown board is
+ * The window in board mode: the shown board's view (top bar, canvas, cards, arrows, dock) and its
+ * sidebar (header, Pages, Selected), and the board files on disk. Only the shown board is
  * mounted, so every locator here is the shown board's.
  */
 
@@ -54,6 +54,16 @@ export function flowStep(from: Locator, label: string): Locator {
   return from.locator(".flow-node").filter({ has: from.page().locator(".flow-label", { hasText: new RegExp(`^${escapeRegExp(label)}$`) }) });
 }
 
+/**
+ * The arrow from card `from` to card `to` (a call or a passed function; its accessible name is "Call"
+ * or "Passed function"), the stroke that takes its click.
+ */
+export async function arrow(from: Locator, to: Locator): Promise<Locator> {
+  const source = (await from.getAttribute("data-card-id")) ?? "";
+  const target = (await to.getAttribute("data-card-id")) ?? "";
+  return boardView(from.page()).locator(`.board-arrow-hit[data-arrow^='${source}|'][data-arrow$='|${target}']`);
+}
+
 /** The page's name in the canvas top bar. */
 export function pageTitle(page: Page): Locator {
   return boardView(page).locator(".board-topbar-title");
@@ -74,7 +84,7 @@ export async function chooseLens(page: Page, name: "Diagram" | "Code"): Promise<
   await expect(radio).toHaveAttribute("aria-checked", "true");
 }
 
-/** The floating dock (Add, Back, Forward, the trail, Arrange, the zoom). */
+/** The floating dock (Add, Arrange, the zoom). */
 export function dock(page: Page): Locator {
   return boardView(page).getByRole("toolbar", { name: "Board" });
 }
@@ -83,11 +93,6 @@ export function dock(page: Page): Locator {
 export async function zoomPercent(page: Page): Promise<number> {
   const text = (await dock(page).locator(".board-dock-zoom").textContent()) ?? "";
   return Number.parseInt(text, 10);
-}
-
-/** The trail of focus moves in the dock, as its labels. */
-export function trail(page: Page): Locator {
-  return dock(page).getByRole("navigation", { name: "Trail" }).getByRole("button");
 }
 
 /** The canvas's camera transform (`translate(…) scale(…)`). */
@@ -156,6 +161,34 @@ export async function panUntilHittable(page: Page, target: Locator): Promise<voi
       { message: "pan the canvas until the target is on screen" },
     )
     .toBe(true);
+}
+
+/**
+ * Selects an arrow (from `arrow`) with a click at the middle of its curve, once the camera holds still.
+ * A level arrow's box has no height, so this clicks the point rather than the element.
+ */
+export async function clickArrow(page: Page, line: Locator): Promise<void> {
+  await expect(async () => {
+    await cameraSettled(page);
+    await panUntilHittable(page, line);
+    const point = await line.evaluate((element) => {
+      if (!(element instanceof SVGPathElement)) {
+        return null;
+      }
+      const middle = element.getPointAtLength(element.getTotalLength() / 2);
+      const screen = element.getScreenCTM();
+      if (!screen) {
+        return null;
+      }
+      const { x, y } = new DOMPoint(middle.x, middle.y).matrixTransform(screen);
+      return { x, y };
+    });
+    if (!point) {
+      throw new Error("the arrow isn't drawn");
+    }
+    await page.mouse.click(point.x, point.y);
+    await expect(line).toHaveAttribute("aria-pressed", "true", { timeout: 2_000 });
+  }).toPass();
 }
 
 /** Follows a resolved call link inside a card (pans it into reach first). */
@@ -231,16 +264,6 @@ export function pageRow(page: Page, title: string): Locator {
   return pagesList(page).getByRole("option").filter({ has: page.locator(".list-row-label", { hasText: new RegExp(`^${escapeRegExp(title)}$`) }) });
 }
 
-/** On this page: the active page's cards, groups, and links in follow order. */
-export function onThisPage(page: Page): Locator {
-  return sidebar(page).getByRole("listbox", { name: "Cards on this page" });
-}
-
-/** A row of On this page, by its label. */
-export function layerRow(page: Page, label: string): Locator {
-  return onThisPage(page).getByRole("option", { name: label, exact: true });
-}
-
 /** The Selected section at the bottom of the board's sidebar. */
 export function selected(page: Page): Locator {
   return sidebar(page).getByRole("region", { name: "Selected" });
@@ -259,7 +282,6 @@ export interface BoardFile {
       readonly id: string;
       readonly ref: { readonly block?: string; readonly entrance?: string };
       readonly at: readonly [number, number];
-      readonly folded?: boolean;
       readonly view?: string;
       readonly description?: { readonly text: string };
     }[];

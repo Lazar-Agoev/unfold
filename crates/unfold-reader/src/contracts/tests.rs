@@ -1,5 +1,5 @@
-//! Typed lines on hand-written graphs: labels, contracts, direct throws, type definitions and
-//! uses, and type text spans.
+//! Typed lines on hand-written graphs: contracts, direct throws, type definitions and uses, and
+//! type text spans.
 
 use std::path::Path;
 
@@ -16,10 +16,7 @@ use unfold_core::{
 };
 
 use super::text::type_text;
-use super::{
-    Facts, LabelInput, LineLabel, TypeKind, TypeSpan, TypeStyle, TypeText, call_contract, line_label,
-    type_definition, type_uses,
-};
+use super::{Facts, TypeKind, TypeSpan, TypeStyle, TypeText, call_contract, type_definition, type_uses};
 use crate::code::{FoldPolicy, render};
 use crate::flow::{FlowNodeKind, NoContext, build_flow};
 use crate::source::SourceState;
@@ -101,13 +98,6 @@ fn plain(text: &str) -> TypeText {
     TypeText {
         text: text.to_owned(),
         spans: Vec::new(),
-    }
-}
-
-fn typed_input(ty: TypeText) -> LabelInput {
-    LabelInput {
-        ty: Some(ty),
-        ..LabelInput::default()
     }
 }
 
@@ -471,78 +461,12 @@ fn resume(class: &Key) -> TypeText {
 }
 
 #[test]
-fn a_call_is_labeled_with_the_types_its_arguments_fill() {
-    let graph = typed().build();
-    let dir = tempfile::tempdir().unwrap();
-    let mut facts = Facts::new(&graph, dir.path());
-    let interface = Key::from_text("src/cart.ts#interface:Cart");
-    let label = line_label(&mut facts, "src/charge.ts#function:charge/return[0]/call[0]", 0)
-        .unwrap()
-        .expect("a resolved call has a label");
-    assert_eq!(
-        label,
-        LineLabel {
-            inputs_unknown: false,
-            inputs: vec![typed_input(TypeText {
-                text: "Cart".to_owned(),
-                spans: vec![declared(0, 4, &interface)],
-            })],
-            output: None,
-        }
-    );
-    // The keyword argument keeps its keyword; a parameter without a type shows its name.
-    let settle = "jobs/settle.py#expression_statement[0]/call[0]";
-    let label = line_label(&mut facts, settle, 0).unwrap().expect("label");
-    assert_eq!(
-        serde_json::to_value(&label).unwrap(),
-        json!({"inputs": [
-            {"type": {"text": "int", "spans": [{"start": 0, "end": 3, "style": "builtin", "module": "python:builtins"}]}},
-            {"keyword": "currency", "name": "currency"}
-        ], "inputsUnknown": false})
-    );
-    // Imports, unknown occurrences, and missing edges have no label.
-    assert_eq!(
-        line_label(&mut facts, "src/charge.ts#import[0]", 0).unwrap(),
-        None
-    );
-    assert_eq!(line_label(&mut facts, "src/nowhere.ts#call[0]", 0).unwrap(), None);
-    assert_eq!(line_label(&mut facts, settle, 3).unwrap(), None);
-}
-
-#[test]
-fn constructions_and_references_are_labeled_from_the_callee() {
+fn references_and_unresolved_calls_have_no_contract() {
     let risky = risky();
     let graph = risky.builder.build();
     let dir = tempfile::tempdir().unwrap();
     let mut facts = Facts::new(&graph, dir.path());
-    let label = line_label(&mut facts, risky.construction.as_str(), 0)
-        .unwrap()
-        .unwrap();
-    assert_eq!(
-        label,
-        LineLabel {
-            inputs_unknown: false,
-            inputs: vec![typed_input(plain("string"))],
-            output: Some(TypeText {
-                text: "Declined".to_owned(),
-                spans: vec![declared(0, 8, &risky.class)],
-            }),
-        }
-    );
-    // A passed callable shows its own signature; its return type keeps UTF-16 offsets.
-    let label = line_label(&mut facts, risky.map_call.as_str(), 1)
-        .unwrap()
-        .unwrap();
-    assert_eq!(
-        label,
-        LineLabel {
-            inputs_unknown: false,
-            inputs: vec![typed_input(plain("number")), typed_input(plain("string"))],
-            output: Some(resume(&risky.class)),
-        }
-    );
-    // The unresolved call itself has no label, and a reference is no call.
-    assert_eq!(line_label(&mut facts, risky.map_call.as_str(), 0).unwrap(), None);
+    // A reference is no call, and the unresolved call has no callee.
     assert_eq!(
         call_contract(&mut facts, risky.map_call.as_str(), 1).unwrap(),
         None
@@ -788,14 +712,6 @@ fn python_contracts_leave_out_the_bound_receiver_and_unknown_fills() {
     let mut facts = Facts::new(&graph, dir.path());
 
     // Through an instance: `self` is bound, every other parameter is filled.
-    let label = line_label(&mut facts, keys[0].as_str(), 0).unwrap().unwrap();
-    let label = serde_json::to_value(&label).unwrap();
-    assert_eq!(label["inputs"][0]["type"]["text"], "Cart");
-    assert_eq!(
-        label["inputs"][1],
-        json!({"keyword": "currency", "type": {"text": "str", "spans": [{"start": 0, "end": 3, "style": "builtin", "module": "python:builtins"}]}})
-    );
-    assert_eq!(label["output"]["spans"][0]["style"], "unresolved");
     let contract = call_contract(&mut facts, keys[0].as_str(), 0).unwrap().unwrap();
     assert_eq!(contract.sends.len(), 2);
     assert_eq!(contract.callee_lines, vec![2]);
@@ -817,8 +733,6 @@ fn python_contracts_leave_out_the_bound_receiver_and_unknown_fills() {
         json!([{"argument": {"index": 0, "text": "*carts", "expand": "spread"},
                 "unpaired": {"reason": "spread", "note": "spread argument"}}])
     );
-    let label = line_label(&mut facts, keys[2].as_str(), 0).unwrap().unwrap();
-    assert_eq!(label.inputs, vec![LabelInput::default()]);
 }
 
 #[test]
@@ -1290,24 +1204,13 @@ fn type_declarations_are_passed_through_catalogued_and_outlined() {
 
 #[test]
 fn a_graph_without_typed_records_reads_as_unknown() {
-    // A version 1 graph (no typed records): labels exist but say nothing.
+    // A version 1 graph (no typed records): contracts and definitions exist but say nothing.
     let mut graph: Graph = typed().build();
     for file in &mut graph.files {
         file.types = FileTypes::default();
     }
     let dir = tempfile::tempdir().unwrap();
     let mut facts = Facts::new(&graph, dir.path());
-    let label = line_label(&mut facts, "src/charge.ts#function:charge/return[0]/call[0]", 0)
-        .unwrap()
-        .unwrap();
-    assert_eq!(
-        label,
-        LineLabel {
-            inputs_unknown: false,
-            inputs: Vec::new(),
-            output: None
-        }
-    );
     let contract = call_contract(&mut facts, "src/charge.ts#function:charge/return[0]/call[0]", 0)
         .unwrap()
         .unwrap();
@@ -1320,12 +1223,11 @@ fn a_graph_without_typed_records_reads_as_unknown() {
 }
 
 /// A contract lists unfilled parameters only after the ones the call binds, and only when
-/// linking proved how many it binds; a passed callable's label drops what it binds, or says
-/// its inputs are unknown when that isn't proven.
+/// linking proved how many it binds.
 #[test]
-fn bound_counts_shape_contracts_and_passed_callable_labels() {
+fn bound_counts_shape_contracts() {
     let mut g = GraphBuilder::new();
-    let text = "class G:\n    def ping(self, timeout):\n        return timeout\n\ng.ping()\nrun(g.ping)\n";
+    let text = "class G:\n    def ping(self, timeout):\n        return timeout\n\ng.ping()\n";
     let f = g.file("app.py", Language::Python, text);
     let class = g.block(
         f,
@@ -1379,48 +1281,12 @@ fn bound_counts_shape_contracts_and_passed_callable_labels() {
         g.find(f, "g.ping()"),
     );
     g.slot(call, S::Callee, None, g.find(f, "g.ping"));
-    let passing = g.block(
-        f,
-        K::ExpressionStatement,
-        Some(Role::Body),
-        None,
-        g.find(f, "run(g.ping)"),
-    );
-    g.slot(passing, S::Expression, None, g.find(f, "run(g.ping)"));
-    let run = g.block(
-        passing,
-        K::Call,
-        Some(Role::Expression),
-        None,
-        g.find(f, "run(g.ping)"),
-    );
-    g.slot(run, S::Callee, None, g.find(f, "run"));
-    g.slot(
-        run,
-        S::Argument,
-        Some(0),
-        g.find_from(f, "g.ping", g.find(f, "run(").start),
-    );
     g.edge(
         call,
         EdgeKind::Calls,
         Outcome::Resolved(g.key(ping)),
         "g.ping",
         None,
-    );
-    g.edge(
-        run,
-        EdgeKind::Calls,
-        Outcome::Unresolved(Reason::UnknownName),
-        "run",
-        None,
-    );
-    g.edge(
-        run,
-        EdgeKind::References,
-        Outcome::Resolved(g.key(ping)),
-        "g.ping",
-        Some(0),
     );
     let parameters = vec![
         positional(ping, 0, "self", None),
@@ -1432,18 +1298,11 @@ fn bound_counts_shape_contracts_and_passed_callable_labels() {
         returns: None,
     });
     types.parameters.extend(parameters);
-    types.arguments.push(Argument {
+    types.results.push(CallResult {
         bound: Some(1),
-        ..argument(run, 0, None)
+        ..result(call, ResultBinding::Discard, None)
     });
-    types.results.extend([
-        CallResult {
-            bound: Some(1),
-            ..result(call, ResultBinding::Discard, None)
-        },
-        result(run, ResultBinding::Discard, None),
-    ]);
-    let (call_key, run_key) = (g.key(call), g.key(run));
+    let call_key = g.key(call);
     let mut graph = g.build();
     let dir = tempfile::tempdir().unwrap();
     write_sources(dir.path(), &g);
@@ -1463,25 +1322,14 @@ fn bound_counts_shape_contracts_and_passed_callable_labels() {
     // `g.ping()` binds `self`: only `timeout` is unfilled.
     let contract = call_contract(&mut facts, call_key.as_str(), 0).unwrap().unwrap();
     assert_eq!(names(&contract), [Some("timeout".to_owned())]);
-    // `run(g.ping)`: the passed method's label drops `self`.
-    let label = line_label(&mut facts, run_key.as_str(), 1).unwrap().unwrap();
-    assert!(!label.inputs_unknown);
-    assert_eq!(label.inputs.len(), 1);
-    assert_eq!(label.inputs[0].name.as_deref(), Some("timeout"));
 
-    // Without proven counts: no unfilled parameter is claimed, and the label's inputs are unknown.
+    // Without proven counts: no unfilled parameter is claimed.
     for file in &mut graph.files {
         for result in &mut file.types.results {
             result.bound = None;
-        }
-        for argument in &mut file.types.arguments {
-            argument.bound = None;
         }
     }
     let mut facts = Facts::new(&graph, dir.path());
     let contract = call_contract(&mut facts, call_key.as_str(), 0).unwrap().unwrap();
     assert!(names(&contract).is_empty());
-    let label = line_label(&mut facts, run_key.as_str(), 1).unwrap().unwrap();
-    assert!(label.inputs_unknown);
-    assert!(label.inputs.is_empty());
 }

@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Link, LinkKind } from "../../ipc/generated";
 import { NODE_PORT, type Arrow } from "../arrows";
-import { mergedText } from "../lines/labelText";
-import { hasLineLabel } from "../lines/useLineLabels";
 import { routeArrows, routeLinks } from "./routes";
 
 function arrow(source: string, port: string, target: string, extra: Partial<Arrow> = {}): Arrow {
@@ -22,16 +20,15 @@ describe("arrows at collapsed frames", () => {
     expect(routeArrows(arrows, new Map())).toBe(arrows);
   });
 
-  it("attach to the collapsed frame, keeping one call's id, label, and cards", () => {
+  it("attach to the collapsed frame, keeping one call's id and cards", () => {
     const routed = routeArrows([arrow("x", "s1", "a"), arrow("c", "s2", "y")], SHOWN);
     expect(routed).toEqual([
       { ...arrow("x", "s1", "a"), target: "checks", cards: { from: "x", to: "a" } },
       { ...arrow("c", "s2", "y"), source: "api", sourceHandle: NODE_PORT, cards: { from: "c", to: "y" } },
     ]);
-    expect(routed.every(hasLineLabel)).toBe(true);
   });
 
-  it("aren't drawn inside one collapsed frame, and merge where they would overlap, counting what they stand for", () => {
+  it("aren't drawn inside one collapsed frame, and merge where they would overlap", () => {
     const routed = routeArrows(
       [
         arrow("a", "s1", "b"),
@@ -42,11 +39,8 @@ describe("arrows at collapsed frames", () => {
       SHOWN,
     );
     expect(routed).toHaveLength(1);
-    expect(routed[0]).toMatchObject({ id: `checks|${NODE_PORT}|api`, source: "checks", target: "api", line: null, merged: { calls: 3, fields: 1 } });
+    expect(routed[0]).toMatchObject({ id: `checks|${NODE_PORT}|api`, source: "checks", target: "api", line: null, merged: true });
     expect(routed[0]?.calls).toBeUndefined();
-    expect(routed.some(hasLineLabel)).toBe(false);
-    expect(mergedText(3, 1)).toBe("3 calls · 1 field");
-    expect(mergedText(1, 0)).toBe("1 call");
   });
 });
 

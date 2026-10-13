@@ -1,9 +1,8 @@
 /**
  * Read the code (design §6.4): `read_code` and `get_relations`.
  *
- * `read_code` reads a card's models (`card`), a type's definition (`type_definition`), a function's
- * owned edges (`relations`, whose targets come named) and their labels (`line_labels`), as the board
- * draws them: each Flow step with its focus (the exact expression or statement View code highlights)
+ * `read_code` reads a card's models (`card`), a type's definition (`type_definition`), and a
+ * function's owned edges (`relations`, whose targets come named), as the board draws them: each Flow step with its focus (the exact expression or statement View code highlights)
  * and whether its call or callbacks expand in place. Source is shown only when the bytes on disk are
  * the ones Unfold compiled, as a card does. `get_relations` pages callers (`relations`) or a type's uses (`type_uses`), and lists the
  * board pages that show it (`board_refs`).
@@ -18,7 +17,6 @@ import type {
   CodeView,
   FlowModel,
   FlowNode,
-  LabeledLine,
   OutgoingCall,
   ProjectRow,
   Relations,
@@ -26,7 +24,7 @@ import type {
   TypeDefinition,
   TypeMember,
 } from "../engine-types";
-import { clip, count, keyName, labelText, place, typeText } from "../format";
+import { clip, count, keyName, place, typeText } from "../format";
 import { cant, cursorOffset, fittingLines, textResult } from "../results";
 import { codeTarget } from "../target";
 import { defineTool } from "../tool";
@@ -138,28 +136,23 @@ function flowSteps(flow: FlowModel, [from, to]: readonly [number, number], lines
 
 const RELATION: Readonly<Record<OutgoingCall["kind"], string>> = { calls: "calls", constructs: "constructs", imports: "imports", references: "passes" };
 
-/** One owned edge: where it goes, its typed label, and how to name it for read_call. */
-function callLine(call: OutgoingCall, names: Relations["targetNames"], labels: ReadonlyMap<string, LabeledLine>): string {
+/** One owned edge: where it goes, and how to name it for read_call. */
+function callLine(call: OutgoingCall, names: Relations["targetNames"]): string {
   const where =
     call.resolution === "resolved" && call.target !== undefined
       ? `${names[call.target] ?? keyName(call.target)} (key ${call.target})`
       : call.resolution === "external"
         ? `external, ${call.note ?? call.module ?? "a library"}`
         : `unresolved: ${call.note ?? call.reason ?? "unknown"}`;
-  const label = labels.get(`${call.source}\u0000${call.seq}`)?.label;
-  const typed = label ? `, ${labelText(label)}` : "";
-  return `- line ${call.line}: ${RELATION[call.kind]} ${call.text} → ${where}${typed}; source ${call.source}, seq ${call.seq}`;
+  return `- line ${call.line}: ${RELATION[call.kind]} ${call.text} → ${where}; source ${call.source}, seq ${call.seq}`;
 }
 
-/** The owned edges within the lines shown, in source order, each with its label. */
-async function callLines(context: ToolContext, project: ProjectRow, relations: Relations, [from, to]: readonly [number, number]): Promise<string[]> {
-  const calls = [...relations.outgoing.onBoard, ...relations.outgoing.openable, ...relations.outgoing.externalOrUnresolved]
+/** The owned edges within the lines shown, in source order. */
+function callLines(relations: Relations, [from, to]: readonly [number, number]): string[] {
+  return [...relations.outgoing.onBoard, ...relations.outgoing.openable, ...relations.outgoing.externalOrUnresolved]
     .filter((call) => call.line >= from && call.line <= to)
-    .sort((a, b) => a.line - b.line || a.source.localeCompare(b.source) || a.seq - b.seq);
-  const resolved = calls.filter((call) => call.resolution === "resolved" && call.kind !== "imports").map((call) => ({ source: call.source, seq: call.seq }));
-  const labeled = resolved.length > 0 ? await context.engine("line_labels", { project: project.id, lines: resolved }) : [];
-  const labels = new Map(labeled.map((line) => [`${line.source}\u0000${line.seq}`, line]));
-  return calls.map((call) => callLine(call, relations.targetNames, labels));
+    .sort((a, b) => a.line - b.line || a.source.localeCompare(b.source) || a.seq - b.seq)
+    .map((call) => callLine(call, relations.targetNames));
 }
 
 function memberLine(member: TypeMember): string {
@@ -237,7 +230,7 @@ export const readCode = defineTool({
   name: "read_code",
   title: "Read code",
   description:
-    'Reads a function, method, class, type, or entrance as Unfold compiled it, by key (from search, list_entrances, read_page, or get_relations) or a link to a card; without key, the card selected in the person\'s view. A function: its verified source with line numbers, its signature as written, its Flow steps (each with lines, kind, fallback name, key, and focus: the exact source View code highlights; the keys and lines group_steps, label_steps, and propose take; which calls and callbacks expandCalls can expand in place, and why an external or unresolved call can\'t), its direct throws, and each call it makes: resolved (the target\'s name and key, and its typed label such as (Cart, User) → Promise<Charge>), external (the library), or unresolved (the reason), with the source and seq read_call takes. view "code", "flow", or "both" (the default) picks source or steps. A type or class: its members with written types and what each type name links to, inherited members by base, and how many places use it. An entrance: where it\'s declared and its startup and handlers, in order. Unfold shows source only when the file is the one it compiled; otherwise it says the file changed: compile_project, then read again. Long functions come in pages of at most 150 lines (fewer when lines are long): pass lines [from, to]. Reading changes nothing.',
+    'Reads a function, method, class, type, or entrance as Unfold compiled it, by key (from search, list_entrances, read_page, or get_relations) or a link to a card; without key, the card selected in the person\'s view. A function: its verified source with line numbers, its signature as written, its Flow steps (each with lines, kind, fallback name, key, and focus: the exact source View code highlights; the keys group_steps, label_steps, and propose take; which calls and callbacks expandCalls can expand in place, and why an external or unresolved call can\'t), its direct throws, and each call it makes: resolved (the target\'s name and key), external (the library), or unresolved (the reason), with the source and seq read_call takes. view "code", "flow", or "both" (the default) picks source or steps. A type or class: its members with written types and what each type name links to, inherited members by base, and how many places use it. An entrance: where it\'s declared and its startup and handlers, in order. Unfold shows source only when the file is the one it compiled; otherwise it says the file changed: compile_project, then read again. Long functions come in pages of at most 150 lines (fewer when lines are long): pass lines [from, to]. Reading changes nothing.',
   input: z.object({
     key: z.string().min(1).optional().describe("The code's key, or a link to a card (default: the selected card)"),
     project: z.string().min(1).optional().describe("The project's name or id (default: the project of the board in view)"),
@@ -273,7 +266,7 @@ export const readCode = defineTool({
     const shown = source && showCode ? fittingLines(numbered(text, asked), MAX_SOURCE_CHARS).length : 0;
     const range: [number, number] = shown > 0 ? [asked[0], asked[0] + shown - 1] : asked;
     const showFlow = view !== "code" && !isType;
-    const calls = relations && showCode ? await callLines(context, code.project, relations, range) : [];
+    const calls = relations && showCode ? callLines(relations, range) : [];
     const throws = source && !isType ? directThrows(source, text) : [];
     const flow = showFlow && header.source === "current" ? card.flow : null;
     // Only a focus on the first line needs the file's whole line, to quote its expression.
@@ -350,7 +343,7 @@ export const getRelations = defineTool({
       `${keyName(code.key)}: key ${code.key}.`,
       entrance ? "An entrance: read_code lists its handlers; list_entrances, what else starts the project." : null,
       ...callers,
-      calls.length > 0 && offset === 0 ? [`Calls (${calls.length}):`, ...calls.map((call) => callLine(call, relations?.targetNames ?? {}, new Map()))].join("\n") : null,
+      calls.length > 0 && offset === 0 ? [`Calls (${calls.length}):`, ...calls.map((call) => callLine(call, relations?.targetNames ?? {}))].join("\n") : null,
       relations && offset === 0 ? (relations.reachedFrom.length > 0 ? `Reached at least from: ${relations.reachedFrom.map((from) => `${from.title} (key ${from.key})`).join(", ")}.` : "No entrance reaches it in the graph.") : null,
       ...usesLines,
       boards.refs.length > 0

@@ -140,14 +140,13 @@ describe("the board view", () => {
     expect(store.getOpenBoard(REF)?.document.title).toBe("Order flow");
   });
 
-  it("shows the page's name in the top bar, with no Share or Publish, and the dock", async () => {
+  it("shows the page's name in the top bar, with no Share or Publish, and the dock: Add, Arrange, and the camera", async () => {
     store.adoptBoardState(state([]));
     renderBoard();
     expect(await screen.findByRole("heading", { name: "Page page-1" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: /Share|Publish/ })).toBeNull();
     const dock = screen.getByRole("toolbar", { name: "Board" });
-    expect(within(dock).getByRole("button", { name: "Add" })).not.toBeNull();
-    expect(within(dock).getByRole("button", { name: "Forward" })).toHaveProperty("disabled", true);
+    expect(within(dock).getAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent)).toEqual(["Add", "Arrange", "Zoom out", "Zoom in", "Fit"]);
     expect(screen.getByText("Open an entrance or a definition to start this page.")).not.toBeNull();
   });
 

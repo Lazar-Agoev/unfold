@@ -257,17 +257,13 @@ title: string,
 items: number, };
 
 /**
- * A board's health and outlines.
+ * A board's health.
  */
 export type BoardHealthView = { 
 /**
  * The health.
  */
 health: Health, 
-/**
- * Each page's outline, in page order.
- */
-outlines: Array<PageOutline>, 
 /**
  * The board list's label when something is wrong.
  */
@@ -302,19 +298,6 @@ boards: Array<BoardSummary>,
  * Its folders with no board in them, sorted.
  */
 emptyFolders: Array<string>, };
-
-/**
- * A page of an open board.
- */
-export type BoardPage = { 
-/**
- * The board's id.
- */
-id: string, 
-/**
- * The page's id.
- */
-page: string, };
 
 /**
  * One page of a board where a key is a card.
@@ -382,10 +365,6 @@ revision: string,
  * Its health against the project's graph.
  */
 health: Health, 
-/**
- * Each page's outline, in page order.
- */
-outlines: Array<PageOutline>, 
 /**
  * The board list's label when something is wrong ("2 outdated").
  */
@@ -676,10 +655,6 @@ at: [number, number],
  * The card's own view; the page's default when absent.
  */
 view?: View, 
-/**
- * Folded to its title (written only when true).
- */
-folded?: boolean, 
 /**
  * The card's description.
  */
@@ -1136,19 +1111,6 @@ type: TypeText,
 line: number, };
 
 /**
- * Where an entrance is declared.
- */
-export type Declared = { 
-/**
- * The source file or configuration input.
- */
-path: string, 
-/**
- * The declaration's first line, when known.
- */
-line: number | null, };
-
-/**
  * Where a launch is declared.
  */
 export type DeclaredIn = { 
@@ -1477,40 +1439,6 @@ text: string | null, };
  * How an argument is expanded.
  */
 export type Expansion = "spread" | "keywords";
-
-/**
- * The arguments of `export_mermaid`: exactly one of `board` and `entrance`.
- */
-export type ExportMermaidArgs = { 
-/**
- * The project.
- */
-project: ProjectId, 
-/**
- * A page of a board the window the main process names holds.
- */
-board?: BoardPage, 
-/**
- * An entrance key.
- */
-entrance?: string, 
-/**
- * The absolute path the person chose in the save dialog.
- */
-path: string, };
-
-/**
- * A written export.
- */
-export type ExportedFile = { 
-/**
- * Where it was written.
- */
-path: string, 
-/**
- * Its size in bytes.
- */
-bytes: number, };
 
 /**
  * A file result.
@@ -2302,41 +2230,6 @@ author: Author,
 signature: string, };
 
 /**
- * One input of a line label.
- */
-export type LabelInput = { 
-/**
- * A Python keyword argument's keyword (`currency` in `currency="eur"`).
- */
-keyword?: string, 
-/**
- * The parameter's name, when it has no written type.
- */
-name?: string, 
-/**
- * The parameter's written type. With neither a type nor a name, the input is unknown (`…`):
- * an argument that fills no proven parameter, or a parameter written as a pattern.
- */
-type?: TypeText, };
-
-/**
- * One arrow's at-rest label.
- */
-export type LabeledLine = { 
-/**
- * The occurrence block's key, as asked.
- */
-source: string, 
-/**
- * The edge's sequence, as asked.
- */
-seq: number, 
-/**
- * The label; `null` for an external or unresolved edge, an import, or an unknown arrow.
- */
-label: LineLabel | null, };
-
-/**
  * A source language Unfold indexes.
  */
 export type Language = "typescript" | "python";
@@ -2479,40 +2372,6 @@ attribute: string,
 factory: boolean, };
 
 /**
- * The at-rest label of one arrow: what goes in and what comes back.
- */
-export type LineLabel = { 
-/**
- * A call or construction: one per argument, in written order. A passed callable: one per
- * parameter that takes an argument, after the ones the passed value binds itself.
- */
-inputs: Array<LabelInput>, 
-/**
- * A passed callable whose bound parameters aren't proven (a Python method passed without a
- * proven receiver): `inputs` is empty because what it takes is unknown, not because it
- * takes nothing. The UI shows `(…)`.
- */
-inputsUnknown: boolean, 
-/**
- * The callee's written return type, or a constructed class's name; absent when nothing is
- * written.
- */
-output?: TypeText, };
-
-/**
- * The arguments of `line_labels`.
- */
-export type LineLabelsArgs = { 
-/**
- * The project of every line.
- */
-project: ProjectId, 
-/**
- * The arrows to label (at most 500).
- */
-lines: Array<LineRef>, };
-
-/**
  * A one-based, inclusive range of lines.
  */
 export type LineRange = { 
@@ -2524,20 +2383,6 @@ startLine: number,
  * The last line.
  */
 endLine: number, };
-
-/**
- * One arrow: an occurrence and one of its edges.
- */
-export type LineRef = { 
-/**
- * The occurrence block's key.
- */
-source: string, 
-/**
- * The edge's sequence: 0 for the call, construction, or import itself; then passed
- * references in argument order.
- */
-seq: number, };
 
 /**
  * A link drawn between two items of a page, where the graph draws no arrow. A link with a
@@ -2610,19 +2455,6 @@ signature?: Signature, };
  * How the two ends of a connection talk.
  */
 export type LinkKind = "http" | "rpc" | "queue" | "event" | "writes" | "reads" | "calls" | "relates" | "other";
-
-/**
- * A count and the first few items.
- */
-export type Listed<T> = { 
-/**
- * How many there are.
- */
-total: number, 
-/**
- * The first few.
- */
-items: Array<T>, };
 
 /**
  * One `[[entrance]]` table.
@@ -2714,32 +2546,6 @@ pointer: string, };
  * What a member of a type declaration or class is.
  */
 export type MemberKind = "property" | "method" | "index" | "call" | "construct" | "value";
-
-/**
- * Mermaid text.
- */
-export type MermaidText = { 
-/**
- * The flowchart.
- */
-text: string, };
-
-/**
- * The arguments of `export_mermaid_text`: exactly one of `board` and `entrance`.
- */
-export type MermaidTextArgs = { 
-/**
- * The project.
- */
-project: ProjectId, 
-/**
- * A page of an open board (its last saved version).
- */
-board?: BoardPage, 
-/**
- * An entrance key: the entrance and a Flow card for each handler.
- */
-entrance?: string, };
 
 /**
  * An external origin: one plain label (`express`, `node:fs`, `global`, `python:builtins`, a
@@ -2932,19 +2738,6 @@ groupable: boolean,
 fold?: Fold, };
 
 /**
- * One outline row.
- */
-export type OutlineRow = { 
-/**
- * The card.
- */
-card: string, 
-/**
- * Its call depth (0 for a root).
- */
-depth: number, };
-
-/**
  * An `[[entrance_override]]` table, as the editor submits it and the settings view lists it.
  */
 export type OverrideSpec = { 
@@ -3023,24 +2816,6 @@ notes?: Array<Note>,
 proposals?: Array<Proposal>, };
 
 /**
- * A page's outline.
- */
-export type PageOutline = { 
-/**
- * The page.
- */
-page: string, 
-/**
- * Every card once, in follow order.
- */
-rows: Array<OutlineRow>, 
-/**
- * The Flow nodes without authored labels, in outline order ("N Flow steps unlabeled"); Start,
- * End, and the steps inside a collapsed step group of their card don't count.
- */
-unlabeled: Array<Unlabeled>, };
-
-/**
  * Why an argument fills no proven parameter.
  */
 export type PairingReason = "spread" | "no_parameter" | "receiver" | "no_signature";
@@ -3086,143 +2861,6 @@ line: number | null,
  * The file's language.
  */
 language: Language | null, };
-
-/**
- * What Add's preview pane and the map popover show for one result.
- */
-export type Preview = { "kind": "block", 
-/**
- * Its project.
- */
-project: ProjectId, 
-/**
- * Its card header.
- */
-header: BlockHeader, 
-/**
- * Its first lines (at most 5).
- */
-code: PreviewCode, 
-/**
- * The entrances it is reached from (at most 5 listed).
- */
-reachedFrom: Listed<EntranceRef>, 
-/**
- * The calls it makes, in source order (at most 8 listed).
- */
-calls: Listed<PreviewCall>, 
-/**
- * The definitions that call it, by path and line (at most 5 listed).
- */
-calledBy: Listed<PreviewCaller>, } | { "kind": "entrance", 
-/**
- * Its project.
- */
-project: ProjectId, 
-/**
- * Its card header.
- */
-header: EntranceHeader, 
-/**
- * The handlers it runs, in registration order (at most 8).
- */
-handlers: Array<PreviewHandler>, 
-/**
- * Where it is declared.
- */
-declared: Declared, 
-/**
- * The definitions in its activation closure.
- */
-reaches: number, 
-/**
- * The external modules its closure calls, most called first (at most 5).
- */
-externalModules: Array<string>, };
-
-/**
- * One call a block makes.
- */
-export type PreviewCall = { 
-/**
- * The written callee.
- */
-name: string, 
-/**
- * The target's key, when the call resolved.
- */
-key: string | null, 
-/**
- * The module of an external target.
- */
-module: string | null, };
-
-/**
- * One definition that calls a block.
- */
-export type PreviewCaller = { 
-/**
- * The calling definition's key.
- */
-key: string, 
-/**
- * Its qualified name (its file's path for a file-level call).
- */
-name: string, 
-/**
- * Its file.
- */
-path: string, 
-/**
- * Its first line.
- */
-line: number, };
-
-/**
- * The first lines of a block, as the peek sheet's page model.
- */
-export type PreviewCode = { 
-/**
- * The first line shown.
- */
-startLine: number, 
-/**
- * Where `text` begins in the file, in UTF-16 code units.
- */
-textStart: number, 
-/**
- * The text of the lines shown, terminators included.
- */
-text: string, 
-/**
- * The lines shown.
- */
-lines: Array<CodeLine>, 
-/**
- * Syntax colors overlapping them.
- */
-spans: Array<CodeSpan>, };
-
-/**
- * One handler an entrance runs.
- */
-export type PreviewHandler = { 
-/**
- * Its qualified name, or the handler as written when it didn't resolve.
- */
-name: string, 
-/**
- * Its key, when it resolved.
- */
-key: string | null, 
-/**
- * Its file, when it resolved.
- */
-path: string | null, 
-/**
- * Its first line, when it resolved.
- */
-line: number | null, };
 
 /**
  * What kind of problem a [`ProblemItem`] is.
@@ -3469,23 +3107,6 @@ languages: Array<Language>,
  * The Health line.
  */
 health: ProjectHealth, };
-
-/**
- * What a finished text search found in one project.
- */
-export type ProjectTextMatches = { 
-/**
- * The project.
- */
-project: ProjectId, 
-/**
- * Its files with matches.
- */
-files: number, 
-/**
- * Its matching lines streamed.
- */
-matches: number, };
 
 /**
  * A proposed step: an intended addition after a real step of a block card, clearly not a compiler
@@ -4365,98 +3986,6 @@ reason: Reason | null,
 module: ModuleLabel | null, };
 
 /**
- * One matching line.
- */
-export type TextMatch = { 
-/**
- * The one-based line number.
- */
-line: number, 
-/**
- * The line's text (without its terminator), or a window of it for a very long line.
- */
-text: string, 
-/**
- * Where `text` starts in the line, in UTF-16 code units (0 unless it is a window).
- */
-column: number, 
-/**
- * The matches in `text`, as UTF-16 `[start, end)` offsets into `text`.
- */
-ranges: Array<[number, number]>, };
-
-/**
- * The arguments of `search_text`.
- */
-export type TextSearchArgs = { 
-/**
- * The text, or a regular expression when `regex` is set.
- */
-query: string, 
-/**
- * Treat `query` as a regular expression (Rust `regex` syntax).
- */
-regex?: boolean, 
-/**
- * Match case exactly.
- */
-caseSensitive?: boolean, 
-/**
- * Match whole words only.
- */
-wholeWord?: boolean, 
-/**
- * The projects to look in (every project when absent).
- */
-projects?: Array<ProjectId>, };
-
-/**
- * One stream message: a file's matching lines.
- */
-export type TextSearchFile = { 
-/**
- * The file's project.
- */
-project: ProjectId, 
-/**
- * The file, relative to the project's folder.
- */
-path: string, 
-/**
- * Its matching lines, in order.
- */
-matches: Array<TextMatch>, };
-
-/**
- * What a finished text search found.
- */
-export type TextSearchSummary = { 
-/**
- * Files with matches.
- */
-files: number, 
-/**
- * Matching lines streamed.
- */
-matches: number, 
-/**
- * Files searched.
- */
-searched: number, 
-/**
- * The search stopped at the match limit; there are more.
- */
-truncated: boolean, 
-/**
- * A project has more files than its file list holds; some weren't searched.
- */
-filesTruncated: boolean, 
-/**
- * Each searched project's counts, in workspace order.
- */
-projects: Array<ProjectTextMatches>, };
-
-/**
  * What a highlighted span is. Each class serializes as its snake-case name, which the UI maps
  * to a theme color.
  */
@@ -4659,19 +4188,6 @@ offset?: number,
  * How many places to list (at most 200; 50 when absent).
  */
 limit?: number, };
-
-/**
- * A Flow node still showing a fallback name.
- */
-export type Unlabeled = { 
-/**
- * The card whose Flow shows it.
- */
-card: string, 
-/**
- * The node's block.
- */
-key: Key, };
 
 /**
  * Why an argument fills no proven parameter.
@@ -4984,17 +4500,9 @@ export interface Commands {
    */
   callers: { args: CallersArgs; result: Callers };
   /**
-   * Add's preview pane and the map popover.
-   */
-  preview: { args: ProjectKeyArgs; result: Preview };
-  /**
    * The pages of a project's boards where a key is a card ("Already on …").
    */
   board_refs: { args: ProjectKeyArgs; result: BoardRefs };
-  /**
-   * The at-rest labels of a page's arrows: what goes in and what comes back.
-   */
-  line_labels: { args: LineLabelsArgs; result: Array<LabeledLine> };
   /**
    * The contract of one selected line: sends, returns, throws, and the lines it read.
    */
@@ -5011,10 +4519,6 @@ export interface Commands {
    * Definitions, entrances, and files by name, across the projects.
    */
   search: { args: SearchArgs; result: SearchResults };
-  /**
-   * Text matches across the projects; streams one message per file.
-   */
-  search_text: { args: TextSearchArgs; result: TextSearchSummary; stream: TextSearchFile };
   /**
    * A project's boards, most recently edited first, and its empty folders.
    */
@@ -5044,7 +4548,7 @@ export interface Commands {
    */
   save_board: { args: SaveBoardArgs; result: BoardState };
   /**
-   * An open board's health and outlines.
+   * An open board's health.
    */
   board_health: { args: BoardIdArgs; result: BoardHealthView };
   /**
@@ -5071,14 +4575,6 @@ export interface Commands {
    * Deletes an empty board folder.
    */
   delete_folder: { args: ProjectPathArgs; result: null };
-  /**
-   * Writes a board page or an entrance as Mermaid to a chosen file (main process only).
-   */
-  export_mermaid: { args: ExportMermaidArgs; result: ExportedFile };
-  /**
-   * A board page or an entrance as Mermaid text.
-   */
-  export_mermaid_text: { args: MermaidTextArgs; result: MermaidText };
   /**
    * The remembered window: bounds and the last board shown (main process only).
    */
@@ -5136,14 +4632,11 @@ export const COMMAND_NAMES = [
   "peek",
   "relations",
   "callers",
-  "preview",
   "board_refs",
-  "line_labels",
   "call_contract",
   "type_definition",
   "type_uses",
   "search",
-  "search_text",
   "list_boards",
   "read_board",
   "open_board",
@@ -5158,8 +4651,6 @@ export const COMMAND_NAMES = [
   "create_folder",
   "rename_folder",
   "delete_folder",
-  "export_mermaid",
-  "export_mermaid_text",
   "window_state",
   "save_window_state",
 ] as const satisfies readonly CommandName[];
@@ -5167,5 +4658,4 @@ export const COMMAND_NAMES = [
 /** The commands that stream messages. */
 export const STREAM_COMMANDS = [
   "compile",
-  "search_text",
 ] as const satisfies readonly StreamCommandName[];

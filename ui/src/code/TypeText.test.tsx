@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "../test/dom";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 import type { TypeText as TypeTextModel } from "../ipc/generated";
 import { TypeText, typeSegments } from "./TypeText";
 
@@ -46,33 +46,20 @@ describe("typeSegments", () => {
 });
 
 describe("TypeText", () => {
-  it("makes a declared name a button that toggles its definition, and marks the open one", () => {
-    const onToggle = vi.fn();
-    const { rerender } = render(<TypeText type={promise} onToggle={onToggle} />);
-    const charge = screen.getByRole("button", { name: "Charge" });
-    expect(charge.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(charge);
-    expect(onToggle).toHaveBeenCalledWith(1, CHARGE);
-    rerender(<TypeText type={promise} open={1} onToggle={onToggle} />);
-    expect(screen.getByRole("button", { name: "Charge" }).className).toContain("open");
-    // The built-in reads like punctuation and never opens.
-    expect(screen.getByText("Promise").className).toBe("type-builtin");
-  });
-
-  it("reads declared names as plain names without a toggle", () => {
+  it("reads declared names as plain names, and a built-in like punctuation", () => {
     render(<TypeText type={promise} />);
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getByText("Charge").className).toBe("type-name");
+    expect(screen.getByText("Promise").className).toBe("type-builtin");
   });
 
-  it("never opens an external or unresolved name", () => {
+  it("marks an external and an unresolved name apart", () => {
     render(
       <>
-        <TypeText type={external} onToggle={vi.fn()} />
-        <TypeText type={{ text: "Ghost", spans: [{ start: 0, end: 5, style: "unresolved", note: "not imported" }] }} onToggle={vi.fn()} />
+        <TypeText type={external} />
+        <TypeText type={{ text: "Ghost", spans: [{ start: 0, end: 5, style: "unresolved", note: "not imported" }] }} />
       </>,
     );
-    expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getByText("Stripe.PaymentIntent").className).toBe("type-external");
     expect(screen.getByText("Ghost").className).toBe("type-unresolved");
     expect(screen.getByText("null").className).toBe("type-word");

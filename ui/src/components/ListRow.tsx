@@ -1,7 +1,7 @@
 /**
  * A 28px row: a 16px leading slot, a label, a trailing slot that stays 16px wide unless it holds
- * more, and an optional menu button that shows on hover, focus, and selection. Depth indents the
- * row. Hover is one step lighter than selection.
+ * more, and an optional menu button that shows on hover, focus, and selection. Hover is one step
+ * lighter than selection.
  *
  * The row is a plain element: give it the role its list needs (`option`, `treeitem`, `menuitem`) and
  * a `tabIndex` when it takes focus; Enter on a focused row calls `onClick`.
@@ -15,13 +15,7 @@ export interface ListRowProps extends Omit<HTMLAttributes<HTMLDivElement>, "onCl
   readonly leading?: ReactNode;
   readonly label: ReactNode;
   readonly trailing?: ReactNode;
-  /** Nesting level; each level adds `indent` px to the left padding. */
-  readonly depth?: number;
-  /** Px per depth level. Default 16 (On this page); the Home tree uses 18. */
-  readonly indent?: number;
   readonly selected?: boolean;
-  /** Drawn in the muted color (a card from a project that isn't connected). */
-  readonly muted?: boolean;
   readonly onClick?: (event: MouseEvent<HTMLDivElement> | KeyboardEvent<HTMLDivElement>) => void;
   readonly onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void;
   readonly onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
@@ -33,24 +27,19 @@ export function ListRow({
   leading,
   label,
   trailing,
-  depth = 0,
-  indent = 16,
   selected = false,
-  muted = false,
   onClick,
   onDoubleClick,
   onContextMenu,
   menu,
   className,
-  style,
   onKeyDown,
   ...rest
 }: ListRowProps) {
   return (
     <div
       {...rest}
-      className={cx("list-row", selected && "list-row-selected", muted && "list-row-muted", className)}
-      style={depth === 0 ? style : { ...style, paddingLeft: `calc(var(--list-row-inline, 8px) + ${depth * indent}px)` }}
+      className={cx("list-row", selected && "list-row-selected", className)}
       data-selected={selected || undefined}
       onClick={onClick}
       onDoubleClick={onDoubleClick}

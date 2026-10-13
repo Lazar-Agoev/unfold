@@ -23,13 +23,11 @@ import {
   findCard,
   findCardByKey,
   findPage,
-  keyDisplayName,
   removeCard as removeCardFrom,
   removeGroup,
   removeItems,
   removeLink as removeLinkFrom,
   setCardDescription,
-  setCardsFolded,
   setLabel,
   setLinkLabel as setLinkLabelOf,
   updateGroup,
@@ -41,7 +39,7 @@ import { findNote, setNoteText } from "./notes";
 import { findResource, setResourceDescription } from "./resources";
 import { cardRefKey, boardKey } from "./keys";
 import { newBoard } from "./open";
-import { editPage, getOpenBoard, getPageView, pushFocusMove, requestCardFocus, select, setActivePage, shownView, useBoards } from "./store";
+import { editPage, getOpenBoard, getPageView, requestCardFocus, select, setActivePage, shownView, useBoards } from "./store";
 import type { BoardRef, OpenBoard, PageId, PageTarget } from "./types";
 
 /** A card ref for `key`. */
@@ -65,10 +63,7 @@ function showPage(target: PageTarget): void {
   setActivePage(target.board, target.page);
 }
 
-/**
- * Brings an existing card into view and selects it, unfolding it if it was folded to its title and
- * expanding the collapsed frames around it.
- */
+/** Brings an existing card into view and selects it, expanding the collapsed frames around it. */
 export function focusCard(target: PageTarget, cardId: string): void {
   const board = getOpenBoard(target.board);
   const page = board ? findPage(board.document, target.page) : undefined;
@@ -77,10 +72,8 @@ export function focusCard(target: PageTarget, cardId: string): void {
     return;
   }
   const around = frameChain(page, cardId).filter((frame) => frame.collapsed === true);
-  if (card.folded === true || around.length > 0) {
-    // Following into a folded card opens it; the reader never folds anything by itself.
+  if (around.length > 0) {
     editPage(target, (draft) => {
-      setCardsFolded(draft, [cardId], false);
       for (const frame of around) {
         updateFrame(draft, frame.id, { collapsed: false });
       }
@@ -102,10 +95,8 @@ export function addBlock(target: PageTarget, key: Key, view?: View): string | un
     return undefined;
   }
   showPage(target);
-  const label = keyDisplayName(key);
   const existing = findCardByKey(page, key);
   if (existing) {
-    pushFocusMove(target, [{ cardId: existing.id, label }]);
     focusCard(target, existing.id);
     return existing.id;
   }
@@ -114,7 +105,6 @@ export function addBlock(target: PageTarget, key: Key, view?: View): string | un
   if (cardId === undefined) {
     return undefined;
   }
-  pushFocusMove(target, [{ cardId, label }]);
   select(target, { kind: "card", cardId, key: null });
   requestCardFocus(target, [cardId], "center");
   return cardId;
@@ -150,10 +140,8 @@ export async function openEntrance(target: PageTarget, entranceKey: Key): Promis
     return;
   }
   showPage(target);
-  const title = entranceTitle(view);
   const existing = page.cards.find((card) => "entrance" in card.ref && card.ref.entrance === entranceKey);
   if (existing) {
-    pushFocusMove(target, [{ cardId: existing.id, label: title }]);
     focusCard(target, existing.id);
     return;
   }
@@ -178,7 +166,6 @@ export async function openEntrance(target: PageTarget, entranceKey: Key): Promis
   if (!opened || entranceId === undefined) {
     return;
   }
-  pushFocusMove(target, [{ cardId: entranceId, label: title }]);
   select(target, { kind: "card", cardId: entranceId, key: null });
   requestCardFocus(target, opened, "fit");
 }
@@ -297,17 +284,6 @@ export function editFrame(target: PageTarget, frameId: string, change: FrameChan
 export function removeFrame(target: PageTarget, frameId: string): void {
   editPage(target, (page) => {
     removeFrameFrom(page, frameId);
-  });
-}
-
-/** Folds (or unfolds) every card of the page to its title: Fold all and Unfold all. */
-export function foldAll(target: PageTarget, folded: boolean): void {
-  editPage(target, (page) => {
-    setCardsFolded(
-      page,
-      page.cards.map((card) => card.id),
-      folded,
-    );
   });
 }
 

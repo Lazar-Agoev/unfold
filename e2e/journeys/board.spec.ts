@@ -1,12 +1,12 @@
 /**
- * Reading a board (docs/reader.md#boards): following calls and ⌥-click inline, On this page, Selected, the trail
- * with Back and Forward, the Diagram | Code lens and a card's expansion; pages, descriptions, groups, Flow labels, and
- * undo and redo across pages; Show callers, a drawn link, Arrange, the zoom and Fit, and the canvas and
- * card menus.
+ * Reading a board (docs/reader.md#boards): following calls and ⌥-click inline, Selected, the Diagram | Code lens
+ * and a card's expansion; pages, descriptions, Flow labels, and undo and redo across pages; an arrow's call in
+ * Selected, Show callers, a drawn link, Arrange, the zoom and Fit, and the canvas and card menus.
  */
 
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import {
+  arrow,
   boardView,
   callLink,
   camera,
@@ -14,26 +14,26 @@ import {
   card,
   cards,
   chooseLens,
+  clickArrow,
+  clickCanvas,
   dock,
   expectCardsLoaded,
   follow,
-  layerRow,
-  onThisPage,
   pageRow,
   pageTitle,
   pagesList,
   selected,
-  trail,
   zoomPercent,
 } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { CREATE_ORDER, launchCompiled, openPlace, PLACE, POST_ORDERS, traceEntrance } from "../src/flows";
 import { dialog, sidebar, toast } from "../src/home";
-import { chooseOnCard, clickOnCanvas, dragCard, dragLines, expectSaved } from "../src/reader";
+import { chooseOnCard, clickOnCanvas, dragCard, expectSaved } from "../src/reader";
 import { enterText } from "../src/window";
 
 const REQUIRE_USER = "#function:requireUser";
 const VALIDATE_BODY = "#function:validateBody";
+const VALIDATE_ORDER = "#function:validateOrder";
 
 /** Every block card on the active page shows `view` (`code-view` or `flow-view`). */
 async function expectEveryBlockCardShows(page: Page, view: "code-view" | "flow-view"): Promise<void> {
@@ -43,8 +43,13 @@ async function expectEveryBlockCardShows(page: Page, view: "code-view" | "flow-v
   await expect(boardView(page).locator(`.block-card .${view}`)).toHaveCount(count);
 }
 
+/** Selected's label and value rows, as their two columns' text. */
+async function relationRows(region: Locator): Promise<(string | null)[][]> {
+  return region.locator(".relation-row").evaluateAll((rows) => rows.map((row) => [...row.children].map((cell) => cell.textContent)));
+}
+
 test.describe("the board", () => {
-  test("follow a call, On this page, Selected, the trail with Back and Forward, the lens, and ⌥-click inline", async ({ sandbox, launch }) => {
+  test("follow a call, Selected, the lens, and ⌥-click inline", async ({ sandbox, launch }) => {
     const { page } = await launchCompiled(launch, sandbox);
     await traceEntrance(page, "POST", "/orders");
 
@@ -71,12 +76,8 @@ test.describe("the board", () => {
       expect(Math.abs((geometry?.rise ?? Number.NaN) + 22)).toBeLessThan(2);
     });
 
-    await test.step("On this page lists the traced cards in follow order", async () => {
-      await expect(onThisPage(page).locator(".layer-label")).toHaveText(["POST /orders", "requireUser", "validateBody", "createOrder"]);
+    await test.step("following a call adds its card with an arrow", async () => {
       await expect(card(page, POST_ORDERS)).toHaveClass(/entrance-card/);
-    });
-
-    await test.step("following a call adds its card with an arrow, and the trail grows", async () => {
       const arrows = await boardView(page).locator(".react-flow__edge").count();
       // The traced createOrder shows its Flow: its `→ OrderService.place` follows the call.
       await follow(card(page, CREATE_ORDER), "OrderService.place");
@@ -85,11 +86,9 @@ test.describe("the board", () => {
       await expectCardsLoaded(page);
       await expect(card(page, PLACE).locator(".card-location")).toHaveText("services/order-service.ts:13");
       await expect(boardView(page).locator(".react-flow__edge")).toHaveCount(arrows + 1);
-      await expect(trail(page).last()).toHaveText("OrderService.place");
-      await expect(onThisPage(page).locator(".layer-label")).toHaveText(["POST /orders", "requireUser", "validateBody", "createOrder", "OrderService.place"]);
     });
 
-    await test.step("Selected shows the card's name, location, Called by, Reached from, and calls not opened", async () => {
+    await test.step("Selected shows the card's name, location, Called by, and Reached from", async () => {
       await clickOnCanvas(page, card(page, PLACE).locator(".card-title"));
       const region = selected(page);
       await expect(region.getByRole("heading", { name: "OrderService.place" })).toBeVisible();
@@ -97,32 +96,6 @@ test.describe("the board", () => {
       await expect(region.locator(".relation-label", { hasText: "Called by" })).toBeVisible();
       await expect(region.locator(".relation-label", { hasText: "Reached from" })).toBeVisible();
       await expect(region.getByRole("button", { name: "POST /orders", exact: true })).toBeVisible();
-      await expect(region.locator(".relation-label", { hasText: "Not opened" })).toBeVisible();
-    });
-
-    await test.step("+ Open in Selected opens a call that isn't on the page", async () => {
-      const before = await cards(page).count();
-      await selected(page).getByRole("button", { name: "Open validateOrder on the page" }).click();
-      await expect(cards(page)).toHaveCount(before + 1);
-      await expect(card(page, "#function:validateOrder")).toBeVisible();
-      await expectCardsLoaded(page);
-    });
-
-    await test.step("a row of On this page brings its card into view and adds to the trail", async () => {
-      await layerRow(page, "requireUser").click();
-      await expect(layerRow(page, "requireUser")).toHaveAttribute("aria-selected", "true");
-      await expect(card(page, REQUIRE_USER)).toHaveClass(/selected/);
-      await expect(trail(page).last()).toHaveText("requireUser");
-    });
-
-    await test.step("Back and Forward in the dock move along the trail", async () => {
-      const back = dock(page).getByRole("button", { name: "Back" });
-      const forward = dock(page).getByRole("button", { name: "Forward" });
-      await expect(forward).toBeDisabled();
-      await back.click();
-      await expect(forward).toBeEnabled();
-      await forward.click();
-      await expect(forward).toBeDisabled();
     });
 
     await test.step("the lens in the top bar switches the page between Diagram and Code", async () => {
@@ -168,7 +141,7 @@ test.describe("the board", () => {
     });
   });
 
-  test("pages, descriptions, groups, Flow labels, and undo and redo across pages", async ({ sandbox, launch }) => {
+  test("pages, descriptions, Flow labels, and undo and redo across pages", async ({ sandbox, launch }) => {
     const { app, page, folders } = await launchCompiled(launch, sandbox);
     const folder = folders[0] ?? "";
     await traceEntrance(page, "POST", "/orders");
@@ -196,48 +169,12 @@ test.describe("the board", () => {
       await expect(selected(page).getByRole("textbox", { name: "Description" })).toHaveValue("Places the order.");
     });
 
-    await test.step("dragging down line numbers makes a group, named on its rail", async () => {
-      // The line numbers are Code's gutter: read the page in Code.
-      await chooseLens(page, "Code");
-      await dragLines(page, createOrder, 28, 30);
-      const title = createOrder.getByRole("textbox", { name: "Group title" });
-      await expect(title).toBeFocused();
-      await title.pressSequentially("Queue the order");
-      await title.press("Enter");
-      await expect(createOrder.locator(".code-group-title")).toHaveText("Queue the order");
-      await expect(layerRow(page, "Queue the order")).toBeVisible();
-      await expectSaved(page, folder, (board) => board.pages[0]?.groups.some((group) => group.title === "Queue the order") ?? false, "the group is saved");
-    });
-
-    await test.step("a group collapses to its title and expands again", async () => {
-      await createOrder.getByRole("button", { name: "Collapse Queue the order" }).click();
-      await expect(createOrder.locator(".code-group.collapsed .code-fold-badge")).toHaveText("3 lines");
-      await createOrder.getByRole("button", { name: "Expand Queue the order" }).click();
-      await expect(createOrder.locator(".code-group.collapsed")).toHaveCount(0);
-    });
-
-    await test.step("a group selected from On this page shows in Selected, where Ungroup removes it", async () => {
-      await layerRow(page, "Queue the order").click();
-      await expect(selected(page).getByRole("textbox", { name: "Group title" })).toHaveValue("Queue the order");
-      await selected(page).getByRole("button", { name: "Ungroup" }).click();
-      await expect(createOrder.locator(".code-group-title")).toHaveCount(0);
-      await expect(layerRow(page, "Queue the order")).toHaveCount(0);
-    });
-
-    await test.step("Label them steps to an unlabeled Flow node and focuses its label in Selected", async () => {
-      const line = sidebar(page).locator(".board-unlabeled");
-      const count = Number.parseInt((await line.textContent()) ?? "", 10);
-      expect(count).toBeGreaterThan(0);
-      await line.getByRole("button", { name: "Label them" }).click();
-      const field = selected(page).getByRole("textbox", { name: "Flow label" });
-      await expect(field).toBeFocused();
-      await field.pressSequentially("Check who is asking");
-      await expect(line).toContainText(`${count - 1} Flow step`);
-      // In Diagram the traced cards are expanded: their Flow shows the label.
-      await chooseLens(page, "Diagram");
-      await expect(boardView(page).locator(".flow-label", { hasText: "Check who is asking" })).toBeVisible();
-      await expectSaved(page, folder, (board) => board.pages[0]?.labels.some((label) => label.text === "Check who is asking") ?? false, "the label is saved");
-      await chooseLens(page, "Code");
+    await test.step("a Flow step's label written in Selected shows in its Flow and is saved", async () => {
+      // The traced cards are expanded: createOrder shows its Flow.
+      await clickOnCanvas(page, createOrder.locator(".flow-node.kind-condition .flow-label"));
+      await enterText(selected(page).getByRole("textbox", { name: "Flow label" }), "Did the client ask for an async reply?");
+      await expect(createOrder.locator(".flow-node.kind-condition .flow-label")).toHaveText("Did the client ask for an async reply?");
+      await expectSaved(page, folder, (board) => board.pages[0]?.labels.some((label) => label.text === "Did the client ask for an async reply?") ?? false, "the label is saved");
     });
 
     await test.step("+ New page adds an empty page, and a double-click renames it", async () => {
@@ -298,11 +235,46 @@ test.describe("the board", () => {
     });
   });
 
-  test("Show callers, a drawn link, Arrange, the zoom and Fit, and the canvas and card menus", async ({ sandbox, launch }) => {
+  test("an arrow's call in Selected, Show callers, a drawn link, Arrange, the zoom and Fit, and the canvas and card menus", async ({ sandbox, launch }) => {
     const { page, folders } = await launchCompiled(launch, sandbox);
     const folder = folders[0] ?? "";
     await openPlace(page);
     await expectCardsLoaded(page);
+
+    await test.step("clicking an arrow shows its call in Selected: what it sends, what comes back, and what it throws", async () => {
+      // OrderService.place reads in Code: following its call adds validateOrder with an arrow.
+      await follow(card(page, PLACE), "validateOrder");
+      await expect(card(page, VALIDATE_ORDER)).toBeVisible();
+      await expectCardsLoaded(page);
+      const line = await arrow(card(page, PLACE), card(page, VALIDATE_ORDER));
+      await expect(line).toHaveAccessibleName("Call");
+      await clickArrow(page, line);
+      const region = selected(page);
+      await expect(region.getByRole("heading", { name: "validateOrder(input)" })).toBeVisible();
+      await expect(region.getByText("Call · line 14")).toBeVisible();
+      // validateOrder's own throws (not those of the callback it passes to map), none caught here.
+      await expect
+        .poll(() => relationRows(region))
+        .toEqual([
+          ["Sends", "input→input"],
+          ["Returns", "OrderDraft→draft"],
+          ["Throws", "Error"],
+          ["", "Error"],
+          ["", "Error"],
+          ["", "Error"],
+        ]);
+    });
+
+    await test.step("Escape lets go of the arrow, and so does a click on the canvas", async () => {
+      const line = await arrow(card(page, PLACE), card(page, VALIDATE_ORDER));
+      await page.keyboard.press("Escape");
+      await expect(line).toHaveAttribute("aria-pressed", "false");
+      await expect(selected(page).getByText(/^Select a card/)).toBeVisible();
+      await clickArrow(page, line);
+      await clickCanvas(page);
+      await expect(line).toHaveAttribute("aria-pressed", "false");
+      await expect(selected(page).getByText(/^Select a card/)).toBeVisible();
+    });
 
     await test.step("Show callers on a card adds the cards that call it", async () => {
       await chooseOnCard(page, card(page, PLACE), "Show callers");
@@ -321,7 +293,6 @@ test.describe("the board", () => {
       await expect(label).toBeFocused();
       await label.pressSequentially("then checks the body");
       await expect(boardView(page).locator(".board-link-label")).toContainText("then checks the body");
-      await expect(layerRow(page, "then checks the body")).toBeVisible();
       await expectSaved(page, folder, (board) => board.pages[0]?.links?.some((link) => link.label?.text === "then checks the body") ?? false, "the link is saved");
     });
 
@@ -339,45 +310,38 @@ test.describe("the board", () => {
       await expect(arranged).toHaveCount(0);
     });
 
-    await test.step("the dock's zoom buttons change the zoom, and Fit returns to the whole page", async () => {
+    await test.step("the dock's zoom buttons change the zoom, and Fit in the dock or the canvas menu returns to the whole page", async () => {
       // A button moves the camera with an animation that starts on the next render: wait for it to
       // start (the transform changes) where it must, then for it to end.
-      const press = async (name: string, moves: boolean) => {
+      const moved = async (act: () => Promise<void>) => {
         const before = await camera(page);
-        await dock(page).getByRole("button", { name, exact: true }).click();
-        if (moves) {
-          await expect.poll(() => camera(page)).not.toBe(before);
-        }
+        await act();
+        await expect.poll(() => camera(page)).not.toBe(before);
         await cameraSettled(page);
         return zoomPercent(page);
       };
-      await press("Zoom in", true);
-      const fitted = await press("Fit", true);
-      const zoomed = await press("Zoom in", true);
+      const press = (name: string) =>
+        moved(async () => {
+          await dock(page).getByRole("button", { name, exact: true }).click();
+        });
+      await press("Zoom in");
+      const fitted = await press("Fit");
+      const zoomed = await press("Zoom in");
       expect(zoomed).toBeGreaterThan(fitted);
-      expect(await press("Zoom out", true)).toBeLessThan(zoomed);
-      await press("Zoom in", true);
-      expect(await press("Fit", true)).toBe(fitted);
+      expect(await press("Zoom out")).toBeLessThan(zoomed);
+      await press("Zoom in");
+      expect(await press("Fit")).toBe(fitted);
+      await press("Zoom in");
+      const fit = await moved(async () => {
+        await boardView(page).locator(".react-flow__pane").click({ button: "right", position: { x: 12, y: 12 } });
+        await page.getByRole("menu", { name: "Board actions" }).getByRole("menuitem", { name: "Fit", exact: true }).click();
+      });
+      expect(fit).toBe(fitted);
     });
 
-    await test.step("the canvas menu folds and unfolds every card", async () => {
-      await boardView(page).locator(".react-flow__pane").click({ button: "right", position: { x: 12, y: 12 } });
-      await page.getByRole("menu", { name: "Board actions" }).getByRole("menuitem", { name: "Fold all cards", exact: true }).click();
-      const total = await cards(page).count();
-      await expect(boardView(page).locator(".board-card.folded")).toHaveCount(total);
-      await boardView(page).locator(".react-flow__pane").click({ button: "right", position: { x: 12, y: 12 } });
-      await page.getByRole("menu", { name: "Board actions" }).getByRole("menuitem", { name: "Unfold all cards", exact: true }).click();
-      await expect(boardView(page).locator(".board-card.folded")).toHaveCount(0);
-    });
-
-    await test.step("the card menu folds a card and removes it from the page", async () => {
-      await chooseOnCard(page, card(page, PLACE), /^Fold card$/);
-      await expect(card(page, PLACE)).toHaveClass(/folded/);
-      await chooseOnCard(page, card(page, PLACE), /^Unfold card$/);
-      await expect(card(page, PLACE)).not.toHaveClass(/folded/);
+    await test.step("the card menu removes a card from the page", async () => {
       await chooseOnCard(page, card(page, VALIDATE_BODY), "Remove from page");
       await expect(card(page, VALIDATE_BODY)).toHaveCount(0);
-      await expect(layerRow(page, "validateBody")).toHaveCount(0);
     });
   });
 });

@@ -185,22 +185,6 @@ describe("the peek sheet", () => {
     expect(evidence.querySelector(".peek-add-button")).toBeNull();
   });
 
-  it("opens at a text match: the current match and its line are marked, other matches tick the scrollbar", async () => {
-    renderWithClient(<PeekSheet />);
-    const matches = [
-      { line: 9, text: "export const ordersRouter = Router();", column: 0, ranges: [[13, 25]] as [number, number][] },
-      { line: 2, text: "import { asyncHandler }", column: 0, ranges: [[9, 21]] as [number, number][] },
-    ];
-    act(() => {
-      openPeek({ project: ORDERS, path: PATH, line: 9, matches, current: 0 });
-    });
-    await screen.findByText("50 lines · TypeScript");
-    expect(row(9)?.classList.contains("current")).toBe(true);
-    expect(row(9)?.querySelector(".peek-match.current")?.textContent).toBe("ordersRouter");
-    expect(row(2)?.querySelector(".peek-match.other")?.textContent).toBe("asyncHandler");
-    expect(sheet().querySelectorAll(".peek-tick")).toHaveLength(2);
-  });
-
   it("pins, opens in the editor, and closes on Escape", async () => {
     renderWithClient(<PeekSheet />);
     act(() => {

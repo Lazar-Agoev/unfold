@@ -3,7 +3,7 @@
  * goes into the file and lasts only while the app runs.
  */
 
-import type { BoardDocument, Health, Key, PageOutline, ProjectId, View } from "../../ipc/generated";
+import type { BoardDocument, Health, Key, ProjectId, View } from "../../ipc/generated";
 
 /** A board's id: the folder-relative path of its file. */
 export type BoardId = string;
@@ -51,14 +51,14 @@ export type Selection =
   | { readonly kind: "note"; readonly noteId: string }
   /** A proposed step. */
   | { readonly kind: "proposal"; readonly proposalId: string }
-  /** A line between cards (its label opened into the call's contract). */
+  /** A call's arrow between cards (Selected shows the call's contract). */
   | ({ readonly kind: "line" } & SelectedLine)
   /** An arrow from a Diagram node that stands for several calls: Selected lists them. */
   | ({ readonly kind: "calls" } & SelectedCalls);
 
 /**
  * A selected line: its arrow, the graph edge it draws (`source` occurrence, `seq`), and its two cards.
- * A call of an arrow that stands for several opens its contract on that arrow.
+ * A call chosen from an arrow that stands for several keeps that arrow.
  */
 export interface SelectedLine {
   readonly arrowId: string;
@@ -89,34 +89,12 @@ export interface SelectedCalls {
   readonly calls: readonly SelectedCall[];
 }
 
-/** One step of the breadcrumb trail ("POST /orders › createOrder"). */
-export interface TrailItem {
-  readonly cardId: string;
-  readonly label: string;
-  /** The calling line in this card that led to the next step. */
-  readonly line?: number;
-}
-
-/** Where the person was before a focus move, for Back and Forward. */
-export interface FocusMove {
-  readonly camera: Camera | null;
-  readonly selection: Selection;
-  readonly trail: readonly TrailItem[];
-}
-
 /** A request for the canvas to bring cards into view once they are measured. */
 export interface FocusRequest {
   readonly seq: number;
   readonly cardIds: readonly string[];
   /** `center` puts one card in view at a readable zoom; `fit` shows all of `cardIds` (all cards when empty). */
   readonly mode: "center" | "fit";
-}
-
-/** A gutter selection waiting for its group title (the magenta rail). */
-export interface PendingGroup {
-  readonly cardId: string;
-  readonly members: readonly string[];
-  readonly error?: string;
 }
 
 /** View state of one page (created when the page is first shown). Survives unmounting. */
@@ -134,21 +112,11 @@ export interface PageView {
   expanded: Record<string, string[]>;
   /** "▸ N checks" chains opened per card, by the chain head's key. */
   flowChains: Record<string, string[]>;
-  trail: TrailItem[];
-  back: FocusMove[];
-  forward: FocusMove[];
   /** Measured card sizes, in canvas units. */
   sizes: Record<string, CardSize>;
   focus: FocusRequest | null;
-  pendingGroup: PendingGroup | null;
   /** Link drawing mode: the next card clicked becomes the link's other end. */
   linking: { readonly from: string } | null;
-  /**
-   * The written types opened in the selected line's contract: each row (`send:0`, `returns`,
-   * `send:0/2` for a member of the type opened under `send:0`) → the index of its opened span.
-   * Cleared when the selection moves off the line.
-   */
-  openTypes: Record<string, number>;
 }
 
 /** One undo step: the whole document before it, and the page it changed (undo shows that page). */
@@ -175,7 +143,6 @@ export interface OpenBoard {
   /** The revision of the file last loaded or saved. */
   revision: string;
   health: Health;
-  outlines: Record<PageId, PageOutline>;
   label: string | null;
   /** Edits made in this window; `savedEdits` is the count the last finished save covered. */
   edits: number;

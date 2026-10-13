@@ -42,7 +42,7 @@ use super::graph::{BoardGraph, Lines};
 use super::model::{
     Anchor, AuthorKind, Card, CardRef, Frame, Link, LinkKind, Page, Resource, ResourceKind, Signature,
 };
-use crate::mermaid::entrance_title;
+use crate::catalog::entrance_title;
 
 /// The connection kinds that need an anchor for their receiving side when an agent draws them.
 const ANCHORED: &[LinkKind] = &[

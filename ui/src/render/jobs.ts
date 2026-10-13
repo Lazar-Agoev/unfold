@@ -55,7 +55,6 @@ export function jobState(job: RenderJob): BoardState {
     document: { format: "unfold-board", version: 1, title: job.title, pages: [page] },
     revision: "",
     health: (job.health as Health | null) ?? NO_HEALTH,
-    outlines: [],
     label: null,
   };
 }

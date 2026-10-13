@@ -2,28 +2,23 @@
  * Find code (design §6.4): `search` and `list_entrances`.
  *
  * `search` asks the engine's name search for entrances, functions, types (each a definition search
- * narrowed to their block kinds, so each has its own total), and files, and its streamed text search
- * for text. A text hit names the function or type it's in: the innermost definition of the file's
- * outline at that line (`file_view` of that one line), so it's ready to place. A cursor is an offset
- * into every list at once.
+ * narrowed to their block kinds, so each has its own total), and files. A cursor is an offset into
+ * every list at once.
  */
 
 import { z } from "zod";
-import type { ToolContext } from "../context";
-import type { AppRow, BlockKind, CatalogRow, EntranceScope, LaunchRow, ProjectRow, SearchHit, TextMatch } from "../engine-types";
-import { clip, count, keyName, place } from "../format";
+import type { AppRow, BlockKind, CatalogRow, EntranceScope, LaunchRow, ProjectRow, SearchHit } from "../engine-types";
+import { count, place } from "../format";
 import { cant, cursorOffset, MAX_RESULT_CHARS, RESULT_ROOM, textResult } from "../results";
 import { projectOrView } from "../target";
 import { defineTool } from "../tool";
 
 const FUNCTION_KINDS: BlockKind[] = ["function", "method", "constructor", "getter", "setter"];
 const TYPE_KINDS: BlockKind[] = ["interface", "type_alias", "enum", "class"];
-/** What a text hit can be inside of: a function or a type. */
-const DEFINITION_KINDS: ReadonlySet<string> = new Set<string>([...FUNCTION_KINDS, ...TYPE_KINDS]);
 /** The engine's most hits per kind, and most entrances per application. */
 const MAX_ENGINE_LIMIT = 500;
 
-const KINDS = ["entrances", "functions", "types", "files", "text"] as const;
+const KINDS = ["entrances", "functions", "types", "files"] as const;
 type Kind = (typeof KINDS)[number];
 
 /** One page of one list: its heading with what is shown of the total, its lines, and whether there's more. */
@@ -34,17 +29,12 @@ interface Section {
 
 /** The page of `hits` from `offset` (at most `limit` of them), under `title`; nothing when the list is empty. */
 function section<T>(title: string, hits: readonly T[], total: number, offset: number, limit: number, line: (hit: T) => string): Section {
-  const shown = hits.slice(offset, offset + limit);
-  return pageSection(title, shown.map(line), total, offset, limit);
-}
-
-/** A page already made (`shown` lines from `offset`), under `title`; nothing when the list is empty. */
-function pageSection(title: string, shown: readonly string[], total: number, offset: number, limit: number): Section {
   if (total === 0) {
     return { lines: [], more: false };
   }
+  const shown = hits.slice(offset, offset + limit);
   const range = shown.length === 0 ? `none past ${offset} of ${total}` : shown.length < total ? `${offset + 1}–${offset + shown.length} of ${total}` : `${total}`;
-  return { lines: [`${title} (${range}):`, ...shown], more: offset + limit < Math.min(total, MAX_ENGINE_LIMIT) };
+  return { lines: [`${title} (${range}):`, ...shown.map(line)], more: offset + limit < Math.min(total, MAX_ENGINE_LIMIT) };
 }
 
 /** The line that says how to get the next page, when any list has more. */
@@ -68,40 +58,6 @@ function fitting(limit: number, room: number, build: (limit: number) => readonly
   return { sections: build(1), limit: 1 };
 }
 
-/** One text match, with the file it's in. */
-interface TextHit {
-  readonly project: string;
-  readonly path: string;
-  readonly match: TextMatch;
-}
-
-/** The innermost function or type around a text hit's line; `changed` when the file changed since the compile. */
-async function ownerAt(context: ToolContext, hit: TextHit): Promise<{ readonly key: string; readonly kind: string } | "changed" | null> {
-  const line = hit.match.line;
-  const view = await context.engine("file_view", { project: hit.project, path: hit.path, range: { startLine: line, endLine: line } }).catch(() => null);
-  if (view?.graph === "not_compiled") {
-    return "changed";
-  }
-  const around = (view?.outline ?? []).filter((item) => DEFINITION_KINDS.has(item.kind) && item.startLine <= line && line <= item.endLine);
-  const innermost = around.reduce<(typeof around)[number] | undefined>((best, item) => (best === undefined || item.start >= best.start ? item : best), undefined);
-  return innermost ? { key: innermost.key, kind: innermost.kind } : null;
-}
-
-/** The text hits shown, each with the function it's in. */
-async function textLines(context: ToolContext, hits: readonly TextHit[], tag: (project: string) => string): Promise<string[]> {
-  const owners = await Promise.all(hits.map((hit) => ownerAt(context, hit)));
-  return hits.map((hit, index) => {
-    const owner = owners[index];
-    const inside =
-      owner === "changed"
-        ? " (the file changed since the last compile: compile to name its function)"
-        : owner
-          ? ` in ${owner.kind} ${keyName(owner.key)} (key ${owner.key})`
-          : "";
-    return `- ${place(hit.path, hit.match.line)}${tag(hit.project)}${inside}: ${clip(hit.match.text.trim())}`;
-  });
-}
-
 function hitLine(hit: SearchHit, tag: string): string {
   const where = place(hit.path, hit.line);
   if (hit.key.startsWith("entrance:")) {
@@ -114,50 +70,32 @@ export const search = defineTool({
   name: "search",
   title: "Search",
   description:
-    "Finds code by name or by text, in one project or all of them. kinds (default: all but text): entrances (routes, workers, schedules, commands; by title, trigger, or path), functions (functions, methods, constructors, accessors), types (interfaces, type aliases, enums, classes), files (by path), and text (lines of any file, as written; with regex, caseSensitive, and wholeWord). Names match fuzzily: every word of query must appear in a name, qualified name, or path. Each hit has Unfold's name, file:line, and its key: pass the key to read_code, get_relations, or add_cards. A text hit names the function it's in with that function's key, ready to place, and says when the file changed since the last compile. limit is per kind (default 10, at most 50); pass the next cursor for more (a page of long lines shows fewer). projects narrows the search (names or ids). Searching never wakes a resting project; reading a hit does.",
+    "Finds code by name, in one project or all of them. kinds (default: all): entrances (routes, workers, schedules, commands; by title, trigger, or path), functions (functions, methods, constructors, accessors), types (interfaces, type aliases, enums, classes), and files (by path). Names match fuzzily: every word of query must appear in a name, qualified name, or path. Each hit has Unfold's name, file:line, and its key: pass the key to read_code, get_relations, or add_cards. limit is per kind (default 10, at most 50); pass the next cursor for more (a page of long lines shows fewer). projects narrows the search (names or ids). Searching never wakes a resting project; reading a hit does.",
   input: z.object({
-    query: z.string().min(1).describe("Words of a name, or the text to find (a regular expression with regex)"),
+    query: z.string().min(1).describe("Words of a name"),
     kinds: z.array(z.enum(KINDS)).min(1).optional().describe("What to find (default: entrances, functions, types, files)"),
     projects: z.array(z.string().min(1)).min(1).optional().describe("Projects to look in, by name or id (default: all)"),
-    regex: z.boolean().optional().describe("text only: query is a regular expression"),
-    caseSensitive: z.boolean().optional().describe("text only: match case exactly"),
-    wholeWord: z.boolean().optional().describe("text only: match whole words only"),
     limit: z.number().int().min(1).max(50).default(10).describe("Hits per kind"),
     cursor: z.string().optional().describe("The cursor an earlier page gave"),
   }),
   annotations: { readOnlyHint: true },
-  async run({ query, kinds, projects, regex, caseSensitive, wholeWord, limit, cursor }, context) {
-    const wanted = new Set<Kind>(kinds ?? ["entrances", "functions", "types", "files"]);
-    if ((regex !== undefined || caseSensitive !== undefined || wholeWord !== undefined) && !wanted.has("text")) {
-      throw cant("search", "regex, caseSensitive, and wholeWord apply to text only", 'Add "text" to kinds, or leave them out.');
-    }
+  async run({ query, kinds, projects, limit, cursor }, context) {
+    const wanted = new Set<Kind>(kinds ?? KINDS);
     const offset = cursorOffset(cursor);
     const rows: readonly ProjectRow[] = projects === undefined ? await context.projects() : await Promise.all(projects.map((name) => context.project(name)));
     const ids = rows.map((row) => row.id);
     const engineLimit = Math.min(MAX_ENGINE_LIMIT, offset + limit);
     const names = (definitionKinds: BlockKind[]) => context.engine("search", { query, kinds: ["definitions"], definitionKinds, limit: engineLimit, projects: ids });
     const others = [...(wanted.has("entrances") ? (["entrances"] as const) : []), ...(wanted.has("files") ? (["files"] as const) : [])];
-    const texts: TextHit[] = [];
-    const [functions, types, rest, text] = await Promise.all([
+    const [functions, types, rest] = await Promise.all([
       wanted.has("functions") ? names(FUNCTION_KINDS) : null,
       wanted.has("types") ? names(TYPE_KINDS) : null,
       others.length > 0 ? context.engine("search", { query, kinds: [...others], limit: engineLimit, projects: ids }) : null,
-      wanted.has("text")
-        ? context.stream(
-            "search_text",
-            { query, projects: ids, ...(regex !== undefined ? { regex } : {}), ...(caseSensitive !== undefined ? { caseSensitive } : {}), ...(wholeWord !== undefined ? { wholeWord } : {}) },
-            (file) => {
-              texts.push(...file.matches.map((match) => ({ project: file.project, path: file.path, match })));
-            },
-          )
-        : null,
     ]);
     const projectNames = new Map(rows.map((row) => [row.id, row.name]));
     const tag = (project: string) => (rows.length > 1 ? ` in ${projectNames.get(project) ?? project}` : "");
     const hits = (title: string, group: { readonly hits: readonly SearchHit[]; readonly total: number } | undefined, size: number) =>
       group ? section(title, group.hits, group.total, offset, size, (hit) => hitLine(hit, tag(hit.project))) : null;
-    const textTitle = text ? `Text in ${count(text.files, "file")}${text.truncated ? ", stopped at 2,000 matches (narrow the query)" : ""}` : "";
-    const shownTexts = text ? await textLines(context, texts.slice(offset, offset + limit), tag) : [];
     const page = fitting(limit, 0, (size) =>
       [
         wanted.has("entrances") ? hits("Entrances", rest?.entrances, size) : null,
@@ -166,13 +104,12 @@ export const search = defineTool({
         wanted.has("files") && rest
           ? section("Files", rest.files.hits, rest.files.total, offset, size, (hit) => `- ${hit.path}${tag(hit.project)}${hit.definitions === null ? " (not compiled)" : `: ${count(hit.definitions, "definition")}`}`)
           : null,
-        text ? pageSection(textTitle, shownTexts.slice(0, size), texts.length, offset, size) : null,
       ].filter((item): item is Section => item !== null),
     );
     const lines = page.sections.flatMap((item) => item.lines);
     return textResult(
       context.header(rows.length === 1 && rows[0] ? { project: rows[0].name } : {}),
-      lines.length > 0 ? lines.join("\n") : `Nothing matches “${query}”${rows.length > 1 ? " in any project" : ""}. Try fewer or shorter words${wanted.has("text") ? "" : ', or kinds ["text"]'}.`,
+      lines.length > 0 ? lines.join("\n") : `Nothing matches “${query}”${rows.length > 1 ? " in any project" : ""}. Try fewer or shorter words.`,
       moreLine(page.sections, "search", offset + page.limit),
       lines.length > 0 ? "Next: read_code or get_relations with a key; add_cards puts it on a page." : null,
     );

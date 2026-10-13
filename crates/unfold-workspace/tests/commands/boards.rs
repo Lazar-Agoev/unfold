@@ -189,8 +189,6 @@ fn an_open_board_keeps_its_session_until_it_closes() {
     assert_eq!(row["label"], Value::Null);
     assert!(row["updatedAtMs"].as_i64().is_some_and(|at| at > 0));
     let health = harness.on(1, "board_health", &id);
-    assert_eq!(health["outlines"][0]["page"], "page-1");
-    assert_eq!(health["outlines"][0]["rows"][0]["card"], "create");
     assert_eq!(health["label"], Value::Null);
 
     // Opening it again keeps its session: without a watcher, an outside change goes unseen.
@@ -586,7 +584,7 @@ fn an_outside_edit_reloads_the_open_board() {
     let state = &event["state"];
     assert_eq!(state["id"], id.as_str());
     assert_eq!(state["document"]["title"], "Rewritten by an agent");
-    assert_eq!(state["outlines"][0]["rows"][0]["card"], "create");
+    assert_eq!(state["document"]["pages"][0]["cards"][0]["id"], "create");
     assert_eq!(state["health"]["items"], json!([]));
 
     // The next open shows the new content.
@@ -749,13 +747,6 @@ fn pages_cards_and_drawn_links_are_checked_and_signed() {
         "a link label is signed over both ends: {link}"
     );
     assert_eq!(saved["health"]["items"], json!([]));
-    let outlines = saved["outlines"].as_array().expect("outlines");
-    assert_eq!(outlines.len(), 2, "one outline per page");
-    assert_eq!(
-        outlines[0]["rows"],
-        json!([{ "card": "create", "depth": 0 }, { "card": "place", "depth": 1 }])
-    );
-    assert_eq!(outlines[1]["rows"][0]["card"], "route");
 
     // What a save refuses.
     let mut elsewhere = edit.clone();
@@ -808,50 +799,6 @@ fn pages_cards_and_drawn_links_are_checked_and_signed() {
     let repaired =
         repair(json!({ "page": "page-2", "kind": "remove_card", "card": "route" })).expect("repair");
     assert_eq!(repaired["document"]["pages"][1]["cards"], json!([]));
-
-    // Export: one page at a time.
-    let mermaid = harness.ok(
-        1,
-        "export_mermaid_text",
-        json!({ "project": harness.project, "board": { "id": id, "page": "page-1" } }),
-    );
-    let text = mermaid["text"].as_str().expect("text");
-    assert!(text.starts_with("flowchart LR"), "{text}");
-    assert!(text.contains("createOrder"), "{text}");
-    assert_eq!(
-        harness.code(
-            1,
-            "export_mermaid_text",
-            json!({ "project": harness.project, "board": { "id": id, "page": "page-9" } })
-        ),
-        "not_found"
-    );
-    assert_eq!(
-        harness.code(
-            1,
-            "export_mermaid_text",
-            json!({ "project": harness.project, "board": { "id": ".unfold/boards/nope.json", "page": "page-1" } })
-        ),
-        "board_not_open"
-    );
-    assert_eq!(
-        harness.code(
-            1,
-            "export_mermaid_text",
-            json!({ "project": harness.project, "board": { "id": id, "page": "page-1" }, "entrance": POST_ORDERS })
-        ),
-        "invalid_args"
-    );
-    let entrance = harness.ok(
-        1,
-        "export_mermaid_text",
-        json!({ "project": harness.project, "entrance": POST_ORDERS }),
-    );
-    assert!(
-        entrance["text"]
-            .as_str()
-            .is_some_and(|text| text.contains("POST /orders"))
-    );
 }
 
 #[test]
@@ -885,26 +832,6 @@ fn closing_a_window_waits_for_its_last_board_save() {
         // After the detach, the window's boards are closed.
         assert_eq!(harness.on_code(1, "board_health", &id), "board_not_open");
     }
-}
-
-#[test]
-fn a_type_declaration_in_flow_view_exports_as_a_box() {
-    let harness = Harness::compiled("ts-orders");
-    let board = harness.draft(1, "Types");
-    let id = id_of(&board);
-    let mut edit = edit_of(&board);
-    edit["pages"][0]["cards"] = json!([card("draft", "src/types.ts#interface:OrderDraft")]);
-    edit["pages"][0]["cards"][0]["view"] = json!("flow");
-    harness.save(1, &id, edit);
-    let mermaid = harness.ok(
-        1,
-        "export_mermaid_text",
-        json!({ "project": harness.project, "board": { "id": id, "page": "page-1" } }),
-    );
-    let text = mermaid["text"].as_str().expect("text");
-    // It has no paths: the app shows its fields, and the export its box, not an empty Flow.
-    assert!(!text.contains("subgraph"), "{text}");
-    assert!(text.contains("c0[\"OrderDraft · src/types.ts:10\"]"), "{text}");
 }
 
 #[test]

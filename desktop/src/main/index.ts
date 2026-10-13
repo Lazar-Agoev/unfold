@@ -89,7 +89,7 @@ if (!app.requestSingleInstanceLock()) {
       services: {
         bridge: agents,
         renderer,
-        engine: (command, args, onStream) => engine.untrusted(0, command, args, onStream),
+        engine: (command, args) => engine.untrusted(0, command, args),
         engineAs: (windowId, command, args) => engine.untrusted(windowId, command, args),
         confirmAddProject: (agent, path) => confirmAgentAddProject(appWindow.current()?.window ?? null, agent.name, path),
         addProject: (path) => workspace.add(0, path),
@@ -105,7 +105,7 @@ if (!app.requestSingleInstanceLock()) {
     engine.start();
     void mcp.start();
 
-    registerWindowCommands({ window: appWindow, workspace, engine, ui, agents, mcp, renderer });
+    registerWindowCommands({ window: appWindow, workspace, ui, agents, mcp, renderer });
     Menu.setApplicationMenu(
       buildMenu(
         {

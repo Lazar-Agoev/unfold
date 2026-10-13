@@ -57,7 +57,7 @@ export function SelectedResource({ target, resource }: { readonly target: PageTa
         }}
       />
       <div className="selected-relations">
-        {resource.type !== undefined ? <TypeRow label="Type" project={project} typeKey={resource.type} /> : null}
+        {resource.type !== undefined ? <TypeRow label="Type" typeKey={resource.type} /> : null}
         <AnchorRows target={target} anchors={resource.anchors} />
         <LineRows target={target} page={page} id={resource.id} />
       </div>

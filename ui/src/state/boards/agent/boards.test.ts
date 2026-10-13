@@ -158,7 +158,6 @@ describe("showing a board for an agent", () => {
     expect(store.getOpenBoard(REF)?.activePage).toBe("page-2");
     expect(store.getPageView(target).selection).toEqual({ kind: "card", cardId: "a", key: null });
     expect(store.getPageView(target).focus).toMatchObject({ cardIds: ["a"], mode: "center" });
-    expect(store.getPageView(target).back).toHaveLength(1);
 
     showForAgent({ requestId: 2, board: REF, page: "page-2", item: "g" });
     expect(store.getPageView(target).selection).toEqual({ kind: "group", groupId: "g" });

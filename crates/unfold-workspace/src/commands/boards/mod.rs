@@ -33,10 +33,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use unfold_reader::board::files::{BoardFile, Loaded};
-use unfold_reader::board::{
-    Anchor, Board, BoardGraph, Health, Repair, apply_repair, outline, parse_edit, prepare_save,
-};
-use unfold_reader::mermaid;
+use unfold_reader::board::{Anchor, Board, Health, Repair, apply_repair, parse_edit, prepare_save};
 
 pub use self::folders::{create_folder, delete_folder, rename_folder, set_board_folder};
 pub(crate) use self::health::{check_disk, refresh};
@@ -90,42 +87,29 @@ fn session_mut<'s>(sessions: &'s mut BTreeMap<String, Session>, id: &str) -> Com
         .ok_or_else(|| CommandError::internal(format!("board `{id}` has no session")))
 }
 
-/// Reads board `file` into a new session, with its health (cached) and the graph it was checked
-/// against.
+/// Reads board `file` into a new session, with its health (cached).
 fn load_session(
     files: &Files<'_>,
     extras: &BoardExtras,
     source: &Source,
     id: &str,
     file: &BoardFile,
-) -> CommandResult<(Session, BoardGraph)> {
+) -> CommandResult<Session> {
     let loaded = files.load(file)?;
     let graph = source.board(&loaded.board)?;
     let health = unfold_reader::board::board_health(&loaded.board, &graph);
     extras.cache(source, id, &loaded.board, loaded.revision, &health);
-    Ok((Session::new(loaded, health), graph))
+    Ok(Session::new(loaded, health))
 }
 
 /// Board `id` of `project` (its file `file`) as the window shows it.
-fn board_state(
-    project: &ProjectId,
-    id: &str,
-    file: &BoardFile,
-    session: &Session,
-    graph: &BoardGraph,
-) -> BoardState {
+fn board_state(project: &ProjectId, id: &str, file: &BoardFile, session: &Session) -> BoardState {
     BoardState {
         project: project.clone(),
         id: id.to_owned(),
         name: file.name().to_owned(),
         document: BoardDocument::new(session.board.clone()),
         revision: session.revision.0.to_string(),
-        outlines: session
-            .board
-            .pages
-            .iter()
-            .map(|page| outline(page, graph))
-            .collect(),
         label: session.health.label(),
         health: session.health.clone(),
     }
@@ -144,24 +128,22 @@ impl Opened<'_> {
         Source::live(&self.workspace)
     }
 
-    /// The board's session, read from disk when it has none (with the graph it was read with).
+    /// The board's session, read from disk when it has none.
     fn session<'s>(
         &self,
         sessions: &'s mut BTreeMap<String, Session>,
         source: &Source,
-    ) -> CommandResult<(&'s mut Session, Option<BoardGraph>)> {
-        let mut graph = None;
+    ) -> CommandResult<&'s mut Session> {
         if !sessions.contains_key(&self.id) {
-            let (session, read) = load_session(&self.files(), self.boards(), source, &self.id, &self.file)?;
+            let session = load_session(&self.files(), self.boards(), source, &self.id, &self.file)?;
             sessions.insert(self.id.clone(), session);
-            graph = Some(read);
         }
-        Ok((session_mut(sessions, &self.id)?, graph))
+        session_mut(sessions, &self.id)
     }
 
     /// The board as the window shows it.
-    fn state(&self, session: &Session, graph: &BoardGraph) -> BoardState {
-        board_state(self.project.id(), &self.id, &self.file, session, graph)
+    fn state(&self, session: &Session) -> BoardState {
+        board_state(self.project.id(), &self.id, &self.file, session)
     }
 
     /// Validates, signs, and writes `board` over the board's file, whatever the file holds now,
@@ -178,19 +160,15 @@ impl Opened<'_> {
             },
             health,
         );
-        Ok(self.state(session, &graph))
+        Ok(self.state(session))
     }
 
     /// Opens the board in its session (read from disk when it has none) and returns it.
     fn open(&self) -> CommandResult<BoardState> {
         let source = self.source()?;
         let mut sessions = self.boards().sessions();
-        let (session, graph) = self.session(&mut sessions, &source)?;
-        let graph = match graph {
-            Some(graph) => graph,
-            None => source.board(&session.board)?,
-        };
-        Ok(self.state(session, &graph))
+        let session = self.session(&mut sessions, &source)?;
+        Ok(self.state(session))
     }
 
     /// Tells every window that boards of the project changed (the watcher doesn't report the
@@ -269,7 +247,7 @@ pub fn new_board(ctx: &Ctx<'_>, args: NewBoardArgs) -> CommandResult<BoardState>
         .boards
         .cache(&source, &id, &board, revision, &Health::default());
     let session = Session::new(Loaded { board, revision }, Health::default());
-    let state = board_state(project.id(), &id, &file, &session, &BoardGraph::new());
+    let state = board_state(project.id(), &id, &file, &session);
     extras.boards.sessions().insert(id.clone(), session);
     if let Some(folder) = &folder {
         folder_used(&workspace, folder);
@@ -284,14 +262,14 @@ pub fn reload_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardStat
     let source = opened.source()?;
     let state = {
         let mut sessions = opened.boards().sessions();
-        let (session, graph) = load_session(
+        let session = load_session(
             &opened.files(),
             opened.boards(),
             &source,
             &opened.id,
             &opened.file,
         )?;
-        let state = opened.state(&session, &graph);
+        let state = opened.state(&session);
         sessions.insert(opened.id.clone(), session);
         state
     };
@@ -316,7 +294,7 @@ pub fn save_board(ctx: &Ctx<'_>, args: SaveBoardArgs) -> CommandResult<BoardStat
     let source = opened.source()?;
     let state = {
         let mut sessions = opened.boards().sessions();
-        let (session, _) = opened.session(&mut sessions, &source)?;
+        let session = opened.session(&mut sessions, &source)?;
         let board = parse_edit(&args.board.0.to_string(), session.board.folder.clone())?;
         opened.save(session, &source, board)?
     };
@@ -325,13 +303,13 @@ pub fn save_board(ctx: &Ctx<'_>, args: SaveBoardArgs) -> CommandResult<BoardStat
     Ok(state)
 }
 
-/// `board_health`: the board's health and outlines against the graph now.
+/// `board_health`: the board's health against the graph now.
 pub fn board_health(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardHealthView> {
     let opened = opened(ctx, &args.project, &args.id)?;
     let source = opened.source()?;
     let view = {
         let mut sessions = opened.boards().sessions();
-        let (session, _) = opened.session(&mut sessions, &source)?;
+        let session = opened.session(&mut sessions, &source)?;
         let graph = source.board(&session.board)?;
         session.health = unfold_reader::board::board_health(&session.board, &graph);
         opened.boards().cache(
@@ -342,12 +320,6 @@ pub fn board_health(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardHeal
             &session.health,
         );
         BoardHealthView {
-            outlines: session
-                .board
-                .pages
-                .iter()
-                .map(|page| outline(page, &graph))
-                .collect(),
             label: session.health.label(),
             health: session.health.clone(),
         }
@@ -364,7 +336,7 @@ pub fn repair_board(ctx: &Ctx<'_>, args: RepairBoardArgs) -> CommandResult<Board
     let source = opened.source()?;
     let state = {
         let mut sessions = opened.boards().sessions();
-        let (session, _) = opened.session(&mut sessions, &source)?;
+        let session = opened.session(&mut sessions, &source)?;
         let mut board = session.board.clone();
         // Reconnecting reads the new key, or the new anchor, from the graph too.
         let graph = {
@@ -420,23 +392,4 @@ pub fn delete_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<()> {
     publish_problems(&opened.workspace, opened.boards());
     opened.announce(vec![opened.id.clone()], folder.is_some());
     Ok(())
-}
-
-/// The Mermaid text of page `page` of open board `id` (its last saved version).
-pub(crate) fn page_mermaid(
-    ctx: &Ctx<'_>,
-    project: &ProjectId,
-    id: &str,
-    page: &str,
-) -> CommandResult<String> {
-    let opened = opened(ctx, project, id)?;
-    let source = opened.source()?;
-    let mut sessions = opened.boards().sessions();
-    let (session, graph) = opened.session(&mut sessions, &source)?;
-    let graph = match graph {
-        Some(graph) => graph,
-        None => source.board(&session.board)?,
-    };
-    mermaid::page(&session.board, page, &graph)
-        .ok_or_else(|| CommandError::not_found(format!("board `{id}` has no page `{page}`")))
 }

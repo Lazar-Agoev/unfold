@@ -1,10 +1,11 @@
 /**
- * The Add box (the dock's Add on a board, the sidebar's search on Home): search across projects with
- * kind tabs and a preview. Focus never leaves its input, so keys go to it.
+ * The Add box (the dock's Add on a board): one list of names in the board's project. Focus never
+ * leaves its input, so keys go to it.
  */
 
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
+import { dock } from "./board";
 
 export function addBox(page: Page): Locator {
   return page.getByRole("dialog", { name: "Add" });
@@ -15,28 +16,14 @@ export function addInput(page: Page): Locator {
   return addBox(page).getByRole("combobox", { name: "Find" });
 }
 
-/** Add's kind tabs (All, Entrances, Functions, Files, Text). */
-export function addTab(page: Page, kind: string): Locator {
-  return addBox(page).getByRole("tablist", { name: "Kinds" }).getByRole("tab", { name: new RegExp(`^${kind}( |$)`) });
-}
-
 /** The results Add lists while searching. */
-export function addResults(page: Page): Locator {
+function addResults(page: Page): Locator {
   return addBox(page).getByRole("listbox");
 }
 
-/** The preview of the selected result. */
-export function addPreview(page: Page): Locator {
-  return addBox(page).getByRole("complementary", { name: "Preview" });
-}
-
-/** Opens Add with its button (the dock's on a board, the sidebar's search on Home). */
+/** Opens Add with the dock's button. */
 export async function openAdd(page: Page): Promise<void> {
-  if ((await page.locator(".board-view").count()) > 0) {
-    await page.locator(".board-view").getByRole("toolbar", { name: "Board" }).getByRole("button", { name: "Add", exact: true }).click();
-  } else {
-    await page.getByRole("complementary", { name: "Sidebar" }).getByRole("button", { name: "Add…" }).click();
-  }
+  await dock(page).getByRole("button", { name: "Add", exact: true }).click();
   await expect(addInput(page)).toBeFocused();
 }
 

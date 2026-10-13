@@ -26,7 +26,7 @@ import { toUnfoldError } from "../../../ipc/unfold";
 import { showBoard } from "../../shownBoard";
 import { addPage, deletePage, findCard, findPage, renamePage, setTitle } from "../document";
 import { call } from "../engine";
-import { adoptBoardState, getOpenBoard, pushFocusMove, requestCardFocus, saveStep, select, setActivePage } from "../store";
+import { adoptBoardState, getOpenBoard, requestCardFocus, saveStep, select, setActivePage } from "../store";
 import type { BoardRef, PageTarget, Selection } from "../types";
 import { AgentRefusal, boardInfo, failure, guardPeopleText, invalid, itemWords, type Words } from "./context";
 
@@ -265,7 +265,6 @@ export function showForAgent(request: AgentShowRequest): AgentShowResult {
   showBoard(ref);
   setActivePage(ref, page.id);
   if (focus) {
-    pushFocusMove(target);
     select(target, focus.selection);
     if (focus.cards.length > 0) {
       requestCardFocus(target, focus.cards, focus.cards.length === 1 ? "center" : "fit");

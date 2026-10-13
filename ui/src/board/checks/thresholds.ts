@@ -16,10 +16,6 @@ export const THRESHOLDS = {
   overlap: 2,
   /** Lines that cross this close to either line's ends (where they leave and enter cards) don't count. */
   endSlack: 12,
-  /** A page with frames, or with at least this many visible cards, is an overview page. */
-  overviewCards: 8,
-  /** Expanded function cards an overview page holds before it asks for compact ones. */
-  overviewDetailed: 3,
   /** Names a finding lists before "and N more". */
   listedNames: 6,
 } as const;

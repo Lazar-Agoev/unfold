@@ -1,111 +1,52 @@
 /**
- * The rows of Add's lists: a result of any kind (project monogram, kind column, name, trailing meta:
- * an entrance's `project · application`, a file's definition count), and the "N more <kind>" link. A
- * type declaration reads with its kind before its name, as its definition does (`interface Cart`).
+ * A row of Add's list: the result's kind in small gray text, its name, and where it is: a
+ * definition's `file:line`, an entrance's application and trigger. A file's path is its name.
  */
 
-import { declarationWord } from "../code/typeKinds";
-import { Monogram } from "../components";
-import { plural } from "../lib/format";
-import { highlightRanges } from "./highlight";
-import { baseName, definitionColumn, definitionText, entranceColumn, trimmedMatch, type ResultItem } from "./search";
+import { kindText, type ResultItem } from "./search";
 
-/** Row heights: results 32, the "more" link 28. */
-const ROW_HEIGHT = 32;
-const MORE_HEIGHT = 28;
-
-export function resultHeight(item: ResultItem): number {
-  return item.type === "more" ? MORE_HEIGHT : ROW_HEIGHT;
-}
-
-/** A result's accessible name. */
+/** A result's accessible name: `function OrderService.place, src/orders/service.ts`. */
 export function resultText(item: ResultItem): string {
   switch (item.type) {
     case "entrance":
-      return `Entrance ${entranceColumn(item.hit)} ${item.hit.name}`;
-    case "function":
-      return definitionText(item.hit);
+      return `entrance ${item.hit.name}`;
+    case "definition":
+      return `${kindText(item)} ${item.hit.qualifiedName}, ${item.hit.path}`;
     case "file":
-      return `File ${item.hit.path}`;
-    case "text":
-      return `${item.hit.file.path} line ${item.hit.match.line}: ${item.hit.match.text.trim()}`;
-    case "more":
-      return item.label;
+      return `file ${item.hit.path}`;
   }
 }
 
-interface ResultRowProps {
-  readonly item: Exclude<ResultItem, { type: "more" }>;
-  readonly selected: boolean;
-  readonly projectName: string;
-  /** Why it can't be added here (a same-name project), if it can't. */
-  readonly blocked: string | null;
-}
-
-function Meta({ item, projectName }: { readonly item: ResultRowProps["item"]; readonly projectName: string }) {
+function Name({ item }: { readonly item: ResultItem }) {
   switch (item.type) {
     case "entrance":
-      // Its application; the declaring file when it has none.
-      return <span className="add-row-meta">{`${projectName} · ${item.hit.application ?? baseName(item.hit.path)}`}</span>;
-    case "function":
-      return <span className="add-row-meta add-code">{item.hit.path}</span>;
-    case "file":
-      return item.hit.definitions === null ? null : <span className="add-row-meta">{plural(item.hit.definitions, "definition")}</span>;
-    case "text":
-      return <span className="add-row-meta add-code">{`${item.hit.file.path}:${item.hit.match.line}`}</span>;
-  }
-}
-
-function Name({ item }: { readonly item: ResultRowProps["item"] }) {
-  switch (item.type) {
-    case "entrance":
-      return <span className="add-row-name">{item.hit.name}</span>;
-    case "function": {
-      const word = declarationWord(item.hit.kind);
-      return (
-        <span className="add-row-name">
-          {word === undefined ? null : <span className="add-row-type-kind">{`${word} `}</span>}
-          {item.hit.qualifiedName}
-        </span>
-      );
-    }
+      return <span className="add-row-name ui">{item.hit.name}</span>;
+    case "definition":
+      return <span className="add-row-name">{item.hit.qualifiedName}</span>;
     case "file":
       return <span className="add-row-name">{item.hit.path}</span>;
-    case "text": {
-      const { text, ranges } = trimmedMatch(item.hit.match);
-      return (
-        <span className="add-row-name snippet">
-          {highlightRanges(text, ranges, "add-text-match")}
-        </span>
-      );
-    }
   }
 }
 
-function kindColumn(item: ResultRowProps["item"]): string {
+function Meta({ item }: { readonly item: ResultItem }) {
   switch (item.type) {
-    case "entrance":
-      return entranceColumn(item.hit);
-    case "function":
-      return definitionColumn(item.hit.kind);
+    case "entrance": {
+      const text = [item.hit.application, item.hit.qualifiedName].filter((part) => part !== null && part !== "").join(" · ");
+      return text === "" ? null : <span className="add-row-meta">{text}</span>;
+    }
+    case "definition":
+      return <span className="add-row-meta code">{item.hit.line === null ? item.hit.path : `${item.hit.path}:${item.hit.line}`}</span>;
     case "file":
-      return "FILE";
-    case "text":
-      return "TEXT";
+      return null;
   }
 }
 
-export function ResultRow({ item, selected, projectName, blocked }: ResultRowProps) {
+export function ResultRow({ item }: { readonly item: ResultItem }) {
   return (
-    <div className={blocked === null ? "add-row" : "add-row blocked"} title={blocked ?? undefined}>
-      <Monogram name={projectName} size={20} tone={selected ? "selected" : "default"} />
-      <span className="add-row-kind">{kindColumn(item)}</span>
+    <div className="add-row">
+      <span className="add-row-kind">{kindText(item)}</span>
       <Name item={item} />
-      {blocked === null ? <Meta item={item} projectName={projectName} /> : <span className="add-row-meta">{blocked}</span>}
+      <Meta item={item} />
     </div>
   );
-}
-
-export function MoreRow({ label }: { readonly label: string }) {
-  return <div className="add-more">{label}</div>;
 }

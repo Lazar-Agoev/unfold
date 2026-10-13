@@ -443,10 +443,6 @@ pub struct Card {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub view: Option<View>,
-    /// Folded to its title (written only when true).
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    #[cfg_attr(feature = "ts", ts(optional = nullable))]
-    pub folded: bool,
     /// The card's description.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
@@ -903,21 +899,9 @@ impl Page {
         self.proposals.iter().find(|proposal| proposal.id == id)
     }
 
-    /// A card's effective view.
-    pub fn view_of(&self, card: &Card) -> View {
-        card.view.unwrap_or(self.default_view)
-    }
-
     /// The label of block `key`.
     pub fn label_entry(&self, key: &str) -> Option<&LabelEntry> {
         self.labels.iter().find(|entry| entry.key.as_str() == key)
-    }
-
-    /// The authored label text of block `key`, when it has text.
-    pub fn label(&self, key: &str) -> Option<&str> {
-        self.label_entry(key)
-            .map(|entry| entry.label.text.trim())
-            .filter(|text| !text.is_empty())
     }
 
     /// The guard of `key`.

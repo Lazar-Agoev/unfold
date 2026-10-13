@@ -11,8 +11,8 @@
 use serde::Deserialize;
 
 use crate::commands::{
-    NoArgs, ProjectArgs, ProjectKeyArgs, ProjectPathArgs, boards, compiling, entrances, export, file_view,
-    files, graph, projects, relations, search, settings, text_search, types, windows, workspace,
+    NoArgs, ProjectArgs, ProjectKeyArgs, ProjectPathArgs, boards, compiling, entrances, file_view, files,
+    graph, projects, relations, search, settings, types, windows, workspace,
 };
 use crate::compile::{CompileOutcome, CompileProgress};
 use crate::ipc::context::Ctx;
@@ -139,14 +139,10 @@ command_table! {
     "relations" => Relations(relations::RelationsArgs) -> relations::Relations = relations::relations;
     /// Show callers: the distinct definitions that call a block.
     "callers" => Callers(relations::CallersArgs) -> relations::Callers = relations::callers;
-    /// Add's preview pane and the map popover.
-    "preview" => Preview(ProjectKeyArgs) -> graph::Preview = graph::preview;
     /// The pages of a project's boards where a key is a card ("Already on …").
     "board_refs" => BoardRefs(ProjectKeyArgs) -> boards::BoardRefs = boards::board_refs;
 
     // Typed lines.
-    /// The at-rest labels of a page's arrows: what goes in and what comes back.
-    "line_labels" => LineLabels(types::LineLabelsArgs) -> Vec<types::LabeledLine> = types::line_labels;
     /// The contract of one selected line: sends, returns, throws, and the lines it read.
     "call_contract" => CallContract(types::CallContractArgs) -> unfold_reader::contracts::CallContract = types::call_contract;
     /// A type declaration or class: its members, aliased type, and use count.
@@ -157,8 +153,6 @@ command_table! {
     // Search.
     /// Definitions, entrances, and files by name, across the projects.
     "search" => Search(search::SearchArgs) -> search::SearchResults = search::search;
-    /// Text matches across the projects; streams one message per file.
-    "search_text" => SearchText(text_search::TextSearchArgs) -> text_search::TextSearchSummary, stream text_search::TextSearchFile = text_search::search_text;
 
     // Boards.
     /// A project's boards, most recently edited first, and its empty folders.
@@ -175,7 +169,7 @@ command_table! {
     "close_board" => CloseBoard(boards::BoardIdArgs) -> () = boards::close_board;
     /// Validates, signs, and writes an edited board over its file.
     "save_board" => SaveBoard(boards::SaveBoardArgs) -> boards::BoardState = boards::save_board;
-    /// An open board's health and outlines.
+    /// An open board's health.
     "board_health" => BoardHealth(boards::BoardIdArgs) -> boards::BoardHealthView = boards::board_health;
     /// Applies one repair to an open board and saves it.
     "repair_board" => RepairBoard(boards::RepairBoardArgs) -> boards::BoardState = boards::repair_board;
@@ -189,12 +183,6 @@ command_table! {
     "rename_folder" => RenameFolder(boards::RenameFolderArgs) -> boards::RenamedFolder = boards::rename_folder;
     /// Deletes an empty board folder.
     "delete_folder" => DeleteFolder(ProjectPathArgs) -> () = boards::delete_folder;
-
-    // Export.
-    /// Writes a board page or an entrance as Mermaid to a chosen file (main process only).
-    "export_mermaid" => ExportMermaid(export::ExportMermaidArgs) -> export::ExportedFile = export::export_mermaid;
-    /// A board page or an entrance as Mermaid text.
-    "export_mermaid_text" => ExportMermaidText(export::MermaidTextArgs) -> export::MermaidText = export::export_mermaid_text;
 
     // The window.
     /// The remembered window: bounds and the last board shown (main process only).

@@ -19,7 +19,8 @@ nothing is pushed. The untracked design docs this build didn't write stay uncomm
 | 2. One window | done, committed |
 | 3. Projects, Home, and entrance screens | done, committed |
 | 4. Boards are files | done, committed |
-| 5. Reading, Add, and sharing | in progress |
+| 5. Reading, Add, and sharing | done, committed |
+| Phase 1 review | in progress |
 
 ## Working setup
 
@@ -302,3 +303,50 @@ rewritten); step 8 writes the clone's tables as the plan describes.
 
 A journey flake seen once: the engine-restart test in `home.spec.ts` typed an extra "s" (macOS inline prediction in a
 focused field); it passed in every other run.
+
+## Step 5 — Reading, Add, and sharing
+
+**Done** (end of Phase 1). Rust and desktop agents in parallel, then the UI, then the journeys; small cleanups by the
+orchestrator.
+
+**What was done**
+
+- **Engine:** deleted `search_text` and the `grep-*` dependencies (streaming stays: `compile` streams progress), the
+  `preview` command and its types, Mermaid (`mermaid.rs`, `export_mermaid`, `export_mermaid_text`, `page_mermaid`,
+  `testdata/boards/*.mmd`, `tools/oracles/check-mermaid.mjs` with `mermaid` and `jsdom`), typed arrow labels
+  (`contracts/label.rs` but `Callee`/`class_of`/`class_name`, moved into `contracts/call.rs`; `line_labels`), `folded`,
+  all of `board/outline.rs` (On this page and unlabeled steps were its only users), `BoardState.outlines`, and the
+  `peek_*`/`preview_*`/Mermaid goldens. `entrance_title` moved to `unfold_reader::catalog`.
+- **Desktop:** the agents' stream path, `export_mermaid`, typed labels in `page-code.ts`, `read_code`, and
+  `get_relations`, `folded`, `unlabeledSteps` and the `unlabeled`/`views` checks, line-range groups in `group_steps`,
+  and the six prompts (the server no longer advertises prompts). `search` finds names only; `read_page` has no
+  `format`. The board check reads page ids from `read_board` now that `outlines` is gone.
+- **UI:** deleted text search, Add's preview, kind tabs, ⌘Enter, Add on Home (and the sidebar's search button),
+  other projects' results, `canvas/lines/` but the two label-layout files drawn links use, `TypeDefinition`,
+  `openTypes`, folding, On this page, Back/Forward and the trail, "+ Open", unlabeled steps, the `views` check,
+  line-range groups (`CombineDialog` replaces the dialog Combine borrowed), `KindGlyph`, and unused glyphs, tokens,
+  and `ListRow` props. Built Selected · an arrow (Sends, Returns, Throws with "caught"; the arrow itself is the click
+  target) and Add as one list of names in the board's project with each row's kind.
+- **Journeys:** `add.spec.ts` and `typed-lines.spec.ts` deleted; `board.spec.ts` checks an arrow's contract in
+  Selected; agents use statement keys in `group_steps`.
+
+**Choices**
+
+- Add ranks entrances and definitions together by the engine's score (entrance first on a tie), files after.
+- With all arrow labels gone, a multi-call arrow still selects its calls, and Selected lists each call's contract.
+- `deny.toml` lost its `BSD-3-Clause` allowance (nothing uses it since `grep-*` went).
+
+**Deviations**
+
+- `board/outline.rs` went entirely in this step; step 9's "what is left of `board/outline.rs`" has nothing left.
+- No journey adds a definition from Add with Enter now (Vitest covers it); step 13's trace journey adds one.
+
+**Gate** (2026-10-13)
+
+| Check | Result |
+| --- | --- |
+| fmt, clippy, `cargo test --workspace`, gen-ipc, notices, deny, machete, oracles | pass |
+| typecheck, lint, unit tests (ui 832, desktop 306), knip, addon test | pass |
+| `just e2e` | 25 journeys pass |
+| Residue `rg`; board schema has no `folded` | nothing; none |
+| Screenshot: Add | matches core-scope.html's Add frame; the dock matches "What goes" |

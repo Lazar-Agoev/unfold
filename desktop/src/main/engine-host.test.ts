@@ -37,17 +37,4 @@ describe("the main process's engine requests", () => {
     expect(await added).toEqual({ status: "added" });
     await expect(summary).rejects.toEqual(new EngineRequestError({ code: "untrusted", message: "no" }));
   });
-
-  it("hand a streamed command's messages to the agent's request before it settles", async () => {
-    const { host, child } = started();
-    const heard: unknown[] = [];
-    const found = host.untrusted(0, "search_text", { query: "orders" }, (message) => heard.push(message));
-    expect(child.posted.at(-1)).toEqual({ type: "request", id: 1, windowId: 0, command: "search_text", args: { query: "orders" }, trusted: false, stream: true });
-    child.emit("message", { type: "stream", id: 1, message: { path: "src/a.ts" } });
-    child.emit("message", { type: "stream", id: 7, message: { path: "elsewhere" } });
-    child.emit("message", { type: "result", id: 1, ok: true, value: { files: 1 } });
-    child.emit("message", { type: "stream", id: 1, message: { path: "too late" } });
-    expect(await found).toEqual({ files: 1 });
-    expect(heard).toEqual([{ path: "src/a.ts" }]);
-  });
 });

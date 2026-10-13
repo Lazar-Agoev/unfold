@@ -347,7 +347,7 @@ fn card(value: &Value, path: &Path) -> Parsed<Card> {
     let map = object(
         value,
         path,
-        &["at", "description", "expanded", "folded", "id", "ref", "view"],
+        &["at", "description", "expanded", "id", "ref", "view"],
         &["at", "id", "ref"],
     )?;
     let card = Card {
@@ -355,7 +355,6 @@ fn card(value: &Value, path: &Path) -> Parsed<Card> {
         reference: reference(field(map, "ref"), &path.join("ref"))?,
         at: position(field(map, "at"), &path.join("at"))?,
         view: optional(map, "view", path, view)?,
-        folded: optional(map, "folded", path, boolean)?.unwrap_or(false),
         description: optional(map, "description", path, description)?,
         expanded: optional(map, "expanded", path, expanded)?.unwrap_or_default(),
     };

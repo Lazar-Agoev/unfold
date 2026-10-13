@@ -105,7 +105,7 @@ pub struct Outgoing {
 
 /// The edges owned by block `definition` of `file`, in source order. Empty when the block does
 /// not exist.
-pub fn owned_edges(file: &FileGraph, definition: u32) -> Vec<&Edge> {
+fn owned_edges(file: &FileGraph, definition: u32) -> Vec<&Edge> {
     if definition as usize >= file.blocks.len() {
         return Vec::new();
     }

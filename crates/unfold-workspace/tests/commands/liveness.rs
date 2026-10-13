@@ -182,8 +182,6 @@ fn a_resting_project_answers_reads_from_its_stored_graph() {
         rows.iter().all(|row| row["reaches"] == Value::Null),
         "reach needs the live index"
     );
-    let text = harness.ok(1, "search_text", json!({ "query": "orderService" }));
-    assert!(text["matches"].as_u64().is_some_and(|matches| matches > 0));
     let config = harness.ok(1, "project_config", json!({ "project": harness.project }));
     assert_eq!(config["exists"], true);
     assert!(config["settings"].is_object(), "{config}");

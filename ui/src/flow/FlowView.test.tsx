@@ -490,7 +490,6 @@ describe("calls expanded in place on a card", () => {
           }
           return model;
         },
-        line_labels: () => [],
         list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
         save_board: () => boardState(P, REF.id, store.getOpenBoard(REF)?.document),
       },
@@ -624,7 +623,6 @@ describe("calls expanded in place on a card", () => {
     engine = installFakeEngine({
       handlers: {
         card: ({ key }) => (key === PLACE ? outlined : (MODELS[key] ?? createOrder)),
-        line_labels: () => [],
         list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
         save_board: () => boardState(P, REF.id, store.getOpenBoard(REF)?.document),
       },
@@ -718,7 +716,6 @@ describe("calls expanded in place on a card", () => {
     engine = installFakeEngine({
       handlers: {
         card: ({ key }) => (key === ONE ? two : (MODELS[key] ?? createOrder)),
-        line_labels: () => [],
         list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
         save_board: () => boardState(P, REF.id, store.getOpenBoard(REF)?.document),
       },

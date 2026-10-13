@@ -17,15 +17,12 @@
   --color-surface: #ffffff;
   --color-control: #ffffff;
   --color-track: #ecedf0;
-  --color-track-soft: #f3f4f6;
   --color-pressed: #eef0f3;
 
   /* Rows: hover is one step lighter than selection */
   --color-hover: #f3f5fd;
   --color-selection: #edf0fc;
-  --color-selection-strong: #dce1f5;
   --color-selection-line: #d5d9f2;
-  --color-match: #dde1f7;
 
   /* Text and icons */
   --color-text: #202126;
@@ -38,9 +35,8 @@
   --color-border-shell: #e0e2e7;
   --color-card-rule: #e0e2e7;
   --color-card-rule-soft: #f0f1f4;
-  /* Typed lines: the rules inside a line's contract, and the underline of a written type that opens */
+  /* Soft rules between rows */
   --color-rule-soft: #eef0f3;
-  --color-type-underline: #c9cdd6;
   --color-placeholder: #f1f2f5;
   --color-placeholder-line: #b6bcc8;
 
@@ -120,7 +116,6 @@
   --text-13: 13px;
   --text-15: 15px;
   --text-16: 16px;
-  --text-17: 17px;
   --text-32: 32px;
   --leading-14: 14px;
   --leading-16: 16px;

@@ -123,18 +123,6 @@ describe("the board sidebar", () => {
     expect(within(menu).getByRole("menuitem", { name: "Move down" }).getAttribute("aria-disabled")).toBe("true");
   });
 
-  it("lists the cards and drawn links", () => {
-    open();
-    renderSidebar();
-    const list = screen.getByRole("listbox", { name: "Cards on this page" });
-    const rows = within(list).getAllByRole("option");
-    expect(rows.map((row) => row.textContent)).toEqual(["ƒcreateOrder", "link to pay", "ƒpay"]);
-    act(() => {
-      rows[1]?.click();
-    });
-    expect(store.getPageView(PAGE).selection).toEqual({ kind: "link", linkId: "a-to-pay" });
-  });
-
   it("shows the selected link in Selected, edits its label, and removes it", () => {
     open();
     renderSidebar();

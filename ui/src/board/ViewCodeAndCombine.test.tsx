@@ -79,7 +79,6 @@ beforeEach(() => {
       },
       relations: () => fixture("relations", "relations_create_order"),
       file_view: () => fixture("file_view", "file_view_orders_page"),
-      line_labels: () => [],
       list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
       save_board: () => boardState(P, REF.id, store.getOpenBoard(REF)?.document),
     },

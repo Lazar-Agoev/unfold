@@ -1,7 +1,7 @@
 //! The slice of one project's graph a board needs: the files its references live in (with
 //! their bytes verified against the facts' hash), the entrances it shows, and the qualified
-//! names of the targets its cards call. Board checks, signatures, guards, health, Mermaid export,
-//! and the outline all read through it, so they are pure functions of the graph.
+//! names of the targets its cards call. Board checks, signatures, guards, and health all read
+//! through it, so they are pure functions of the graph.
 //!
 //! Build a [`BoardGraph`] with [`BoardGraph::load`] from a store snapshot (only the files and
 //! inputs a page's references touch), with [`BoardGraph::from_graph`] from a whole in-memory
@@ -440,20 +440,6 @@ impl BoardGraph {
             other => (None, other.state()),
         };
         build_flow(block.file(), block.local(), text, state, context).ok()
-    }
-
-    /// The edges owned by block `key`, in source order, as (occurrence key, edge).
-    pub fn owned_edges(&self, key: &str) -> Vec<(&Key, &Edge)> {
-        let Some(block) = self.block(key) else {
-            return Vec::new();
-        };
-        let file = block.file;
-        file.graph
-            .edges
-            .iter()
-            .filter(|edge| file.owners.get(edge.source as usize) == Some(&block.local))
-            .map(|edge| (&file.graph.blocks[edge.source as usize].key, edge))
-            .collect()
     }
 
     /// Whether a group's member role is one a group may have.

@@ -1,6 +1,6 @@
 /**
- * How a page shows and where its items are: `set_view` (each card's expansion in Diagram, the calls it
- * expands in place, and its fold; whether a step group or a frame is collapsed; the page's default
+ * How a page shows and where its items are: `set_view` (each card's expansion in Diagram and the calls
+ * it expands in place; whether a step group or a frame is collapsed; the page's default
  * view) and `arrange` (Arrange from the inside out, `arrangePage`: each frame by call depth and
  * connections in its direction, type cards after the types that link to them; then the agent's moves
  * of cards and frames). Arrange reads the arrows from the cards' models and type definitions, and
@@ -26,7 +26,6 @@ import {
   moveItems,
   setCardExpanded,
   setCardView,
-  setCardsFolded,
   setDefaultView,
   toggleCallExpansion,
   updateGroup,
@@ -96,30 +95,27 @@ function expandCall(card: Card, path: AgentCallPath, name: string): void {
   card.expanded = paths;
 }
 
-/** Applies a card's part of `set_view`: its expansion (or legacy view), its fold, and the calls it expands or collapses in place. */
+/** Applies a card's part of `set_view`: its expansion (or legacy view) and the calls it expands or collapses in place. */
 function setCardShow(ctx: OpContext, page: Page, card: Card, item: AgentViewSpec): AgentCardResult {
   const name = cardName(ctx, card);
   if (item.collapsed !== undefined) {
-    throw invalid(`“${item.id}” is a card: it takes expanded, expandCalls, collapseCalls, and folded; collapsed is for step groups and frames.`);
+    throw invalid(`“${item.id}” is a card: it takes expanded, expandCalls, and collapseCalls; collapsed is for step groups and frames.`);
   }
   // A type declaration's card keeps its fields in every view; a class's expands to its detail like a function's.
   const typeCard = fieldsOnly(cardKey(card));
   const calls = item.expandCalls !== undefined || item.collapseCalls !== undefined;
   if (typeCard && (item.expanded !== undefined || (item.view !== undefined && item.view !== "diagram") || calls)) {
-    throw invalid(`${name} is a type card: it keeps its fields in every view, so it takes folded, not expanded or calls to expand. Expand a function's, a class's, or an entrance's card.`);
+    throw invalid(`${name} is a type card: it keeps its fields in every view, so it takes no expanded or calls to expand. Expand a function's, a class's, or an entrance's card.`);
   }
   if (!("block" in card.ref) && calls) {
     throw invalid(`${name} is an entrance card: its targets aren't calls to expand in place. expanded: true shows its evidence and targets; follow a handler to its card (add_cards with follow: {callees: 1}) and expand calls there.`);
   }
-  const before = JSON.stringify([card.view, card.folded, card.expanded]);
+  const before = JSON.stringify([card.view, card.expanded]);
   const expanded = item.expanded ?? (item.view === undefined ? undefined : item.view !== "diagram");
   if (typeCard && item.view === "diagram") {
     setCardView(page, card.id, "diagram");
   } else if (expanded !== undefined) {
     setCardExpanded(page, card.id, expanded);
-  }
-  if (item.folded !== undefined) {
-    setCardsFolded(page, [card.id], item.folded);
   }
   for (const path of item.collapseCalls ?? []) {
     if (path.length === 0 || path.length > MAX_EXPANSION_DEPTH) {
@@ -146,7 +142,7 @@ function setCardShow(ctx: OpContext, page: Page, card: Card, item: AgentViewSpec
       ctx.warnings.push(`${name} is compact: the calls it expands in place show once it's expanded (expanded: true).`);
     }
   }
-  const status = JSON.stringify([card.view, card.folded, card.expanded]) === before ? "kept" : "updated";
+  const status = JSON.stringify([card.view, card.expanded]) === before ? "kept" : "updated";
   return cardResult(ctx, card, status, typeCard ? {} : { expanded: cardExpanded(card, page.defaultView), expandedCalls: callExpansions(card).map((path) => [...path]) });
 }
 
@@ -156,11 +152,11 @@ function applySetView(page: Page, op: SetViewOp, ctx: OpContext): AgentItemResul
     setDefaultView(page, op.defaultView);
   }
   return op.items.map((item): AgentItemResult => {
-    const takesCards = item.view !== undefined || item.folded !== undefined || item.expanded !== undefined || item.expandCalls !== undefined || item.collapseCalls !== undefined;
+    const takesCards = item.view !== undefined || item.expanded !== undefined || item.expandCalls !== undefined || item.collapseCalls !== undefined;
     const group = page.groups.find((entry) => entry.id === item.id);
     if (group) {
       if (takesCards) {
-        throw invalid(`“${item.id}” is a step group: it takes collapsed, not expanded, calls, view, or folded.`);
+        throw invalid(`“${item.id}” is a step group: it takes collapsed, not expanded, calls, or view.`);
       }
       const changed = item.collapsed !== undefined && item.collapsed !== group.collapsed;
       if (item.collapsed !== undefined) {
@@ -171,7 +167,7 @@ function applySetView(page: Page, op: SetViewOp, ctx: OpContext): AgentItemResul
     const frame = findFrame(page, item.id);
     if (frame) {
       if (takesCards) {
-        throw invalid(`“${item.id}” is a frame: it takes collapsed, not expanded, calls, view, or folded.`);
+        throw invalid(`“${item.id}” is a frame: it takes collapsed, not expanded, calls, or view.`);
       }
       const changed = item.collapsed !== undefined && item.collapsed !== (frame.collapsed === true);
       if (item.collapsed !== undefined) {

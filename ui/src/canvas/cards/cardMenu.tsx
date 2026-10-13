@@ -1,6 +1,6 @@
 /**
- * Context menus on the canvas: a card's (Open source, Show callers, Draw link…, Copy link, Fold or
- * Unfold card, Remove from page), a Flow step's (View code, Combine…, Add proposed step after…), and a
+ * Context menus on the canvas: a card's (Open source, Show callers, Draw link…, Copy link, Remove from
+ * page), a Flow step's (View code, Combine…, Add proposed step after…), and a
  * group's (View code, Collapse, Describe, Copy link, Ungroup). Open source and View code open the peek sheet through the one View code resolver, highlighted; Combine… is enabled only for a
  * run of steps that can be combined, and says why otherwise; Add proposed step after… shows only on a
  * step a proposed step can follow, as a submenu of its actual paths for a decision. Each page choice is
@@ -15,7 +15,7 @@ import { useContextMenu, type MenuEntry } from "../../components";
 import type { ProposalPath } from "../../ipc/generated";
 import { requestFocus } from "../../lib/focus-targets";
 import { useAuthor } from "../../state/author";
-import { editGroup, editPage, findPage, getOpenBoard, getPageView, removeCard, select, setCardsFolded, setLinking, ungroup, type PageTarget, type Selection } from "../../state/boards";
+import { editGroup, findPage, getOpenBoard, getPageView, removeCard, select, setLinking, ungroup, type PageTarget, type Selection } from "../../state/boards";
 import { setSelectedCollapsed } from "../../state/layout";
 import { openDialog } from "../../state/overlays";
 import { showCallers } from "../showCallers";
@@ -94,7 +94,7 @@ function stepEntries(target: PageTarget, selection: Selection, functionName: str
       ...("reason" in choice ? { hint: choice.reason } : {}),
       onSelect: () => {
         if ("members" in choice) {
-          openDialog({ kind: "groupFromLines", target, cardId: choice.cardId, members: choice.members });
+          openDialog({ kind: "combine", target, cardId: choice.cardId, members: choice.members });
         }
       },
     },
@@ -103,7 +103,7 @@ function stepEntries(target: PageTarget, selection: Selection, functionName: str
 }
 
 /** The context menus of one card. `block` offers Show callers; `name` names the function in a run's heading. */
-export function useCardMenu(target: PageTarget, cardId: string, folded: boolean, block: boolean, name = ""): CardMenu {
+export function useCardMenu(target: PageTarget, cardId: string, block: boolean, name = ""): CardMenu {
   const menu = useContextMenu("Card actions", 220);
   const author = useAuthor();
   const own: Selection = { kind: "card", cardId, key: null };
@@ -136,16 +136,6 @@ export function useCardMenu(target: PageTarget, cardId: string, folded: boolean,
     },
     { id: "copy-link", label: "Copy link", onSelect: () => void copyLink(target, cardId) },
     { kind: "separator", id: "s1" },
-    {
-      id: "fold",
-      label: folded ? "Unfold card" : "Fold card",
-      onSelect: () => {
-        editPage(target, (page) => {
-          setCardsFolded(page, [cardId], !folded);
-        });
-      },
-    },
-    { kind: "separator", id: "s2" },
     {
       id: "remove",
       label: "Remove from page",
@@ -206,7 +196,7 @@ export function useCardMenu(target: PageTarget, cardId: string, folded: boolean,
       menu.open(at, stepEntries(target, getPageView(target).selection, name, author));
     },
     // The menu renders in a portal, but its events still bubble through the card: a choice never
-    // also clicks (selects) or double-clicks (folds) the card it was opened on.
+    // also clicks (selects) or double-clicks the card it was opened on.
     element: menu.element ? (
       <span className="card-menu-layer" onClick={stop} onDoubleClick={stop} onContextMenu={stop}>
         {menu.element}

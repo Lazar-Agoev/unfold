@@ -1,6 +1,6 @@
 /**
  * Buttons: `Button` in four variants, with an optional leading icon and a busy ring; and `TextButton`,
- * a link-like button inside text ("Label them", "+ Open", "Review").
+ * a link-like button inside text ("Show callers", "Review").
  */
 
 import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
@@ -46,7 +46,7 @@ export function Button({
 
 export interface TextButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   readonly children: ReactNode;
-  /** 500 for actions ("Review", "+ Open"), 400 for quiet links. Default 500. */
+  /** 500 for actions ("Review", "Show callers"), 400 for quiet links. Default 500. */
   readonly weight?: 400 | 500;
   readonly tone?: "accent" | "muted";
   readonly ref?: Ref<HTMLButtonElement>;

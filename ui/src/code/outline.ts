@@ -1,7 +1,7 @@
 /**
  * Helpers over the Code model's statement outline (reader.md "Outline, folds, and groups"): the
- * item tree, default folds, which fold hides an offset, and the gutter rule that turns a selection
- * of lines into a group of consecutive sibling statements.
+ * item tree, default folds, which fold hides an offset, and the rule that turns a run of lines into a
+ * group of consecutive sibling statements.
  */
 
 import type { CodeLine, OutlineItem } from "../ipc/generated";
@@ -63,12 +63,12 @@ export function lineAt(lines: readonly CodeLine[], offset: number): CodeLine | u
 /** The roles a group member keeps (reader.md: body, then, else, catch, finally). */
 const BODY_ROLES = new Set(["body", "then", "else", "catch", "finally"]);
 
-/** What a gutter selection makes: the members of a group, or why it can't be one. */
+/** What a run of lines makes: the members of a group, or why it can't be one. */
 export type GroupSelection = { readonly members: string[] } | { readonly error: string };
 
 /**
- * The group a gutter selection of lines `from`–`to` makes (reader.md "Groups"): the consecutive
- * siblings it covers, descending into a compound item only when the selection lies inside its body
+ * The group lines `from`–`to` make (reader.md "Groups"): the consecutive siblings they cover,
+ * descending into a compound item only when the lines lie inside its body
  * (below its first line). A group holds statements of one body (`body`, `then`, `else`, `catch`,
  * `finally`) and never the card's block itself, a nested definition, or statements of two bodies.
  * Saving validates again in Rust.

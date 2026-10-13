@@ -333,23 +333,23 @@ describe("add_cards", () => {
 describe("set_view", () => {
   const group: Group = { id: "checks", card: "create-order", title: "Checks", members: [IF], collapsed: false };
 
-  it("sets cards' views and folds, step groups' collapse, and the page's default view", async () => {
+  it("sets cards' views, step groups' collapse, and the page's default view", async () => {
     open({ groups: [group] });
     const result = await edit([
-      { op: "set_view", items: [{ id: "create-order", view: "flow", folded: true }, { id: "checks", collapsed: true }], defaultView: "diagram" },
+      { op: "set_view", items: [{ id: "create-order", view: "flow" }, { id: "checks", collapsed: true }], defaultView: "diagram" },
     ]);
     expect(result.items).toMatchObject([
       { kind: "card", id: "create-order", status: "updated" },
       { kind: "group", id: "checks", status: "updated" },
     ]);
-    expect(onPage()).toMatchObject({ defaultView: "diagram", cards: [{ view: "flow", folded: true }], groups: [{ collapsed: true }] });
+    expect(onPage()).toMatchObject({ defaultView: "diagram", cards: [{ view: "flow" }], groups: [{ collapsed: true }] });
   });
 
   it("refuses what an item doesn't take, and ids that aren't on the page", async () => {
     open({ groups: [group] });
     expect((await refusal([{ op: "set_view", items: [{ id: "checks", view: "flow" }] }])).message).toContain("is a step group");
     expect((await refusal([{ op: "set_view", items: [{ id: "create-order", collapsed: true }] }])).message).toContain("is a card");
-    expect((await refusal([{ op: "set_view", items: [{ id: "nope", folded: true }] }])).code).toBe("invalid_op");
+    expect((await refusal([{ op: "set_view", items: [{ id: "nope", expanded: true }] }])).code).toBe("invalid_op");
   });
 });
 
@@ -438,7 +438,7 @@ describe("group_steps", () => {
 
   it("keeps the card's group of the same statements when the call comes again, and retitles it", async () => {
     open();
-    const queue: AgentOp = { op: "group_steps", card: "create-order", groups: [{ title: "Queue it", lines: [28, 29] }] };
+    const queue: AgentOp = { op: "group_steps", card: "create-order", groups: [{ title: "Queue it", steps: [job, json] }] };
     await edit([queue]);
     expect((await edit([queue])).items).toMatchObject([{ kind: "group", id: "queue-it", status: "kept" }]);
     const retitled = await edit([{ op: "group_steps", card: "create-order", groups: [{ title: "Hand off", steps: [job, json] }] }]);
@@ -446,9 +446,9 @@ describe("group_steps", () => {
     expect(onPage().groups).toMatchObject([{ id: "queue-it", title: "Hand off", members: [job, json] }]);
   });
 
-  it("groups lines into whole statements of one branch, and names the statements it took", async () => {
+  it("groups steps into whole statements of one branch, and names the statements it took", async () => {
     open();
-    const result = await edit([{ op: "group_steps", card: "create-order", groups: [{ title: "Queue it", lines: [28, 29], description: "Hands it to a worker." }] }]);
+    const result = await edit([{ op: "group_steps", card: "create-order", groups: [{ title: "Queue it", steps: [job, json], description: "Hands it to a worker." }] }]);
     expect(result.items).toEqual([
       {
         kind: "group",
@@ -469,15 +469,11 @@ describe("group_steps", () => {
     ]);
   });
 
-  it("says when a range took more lines than asked, and why a range breaks the rule", async () => {
+  it("refuses steps that overlap another group", async () => {
     open();
-    const widened = await edit([{ op: "group_steps", card: "create-order", groups: [{ title: "Guard", lines: [27, 30] }] }]);
-    expect(widened.items).toMatchObject([{ lines: [27, 31], statements: [{ key: IF, kind: "if" }] }]);
-    expect(widened.warnings).toEqual(["“Guard” took whole statements: lines 27–31 of createOrder, not lines 27–30."]);
-    const header = await refusal([{ op: "group_steps", card: "create-order", groups: [{ title: "Header", lines: [25, 25] }] }]);
-    expect(header.message).toContain("Can't make the step group “Header” from line 25 of createOrder");
-    expect(header.message).toContain("A step group is consecutive statements in one branch.");
-    const overlapping = await refusal([{ op: "group_steps", card: "create-order", groups: [{ title: "Again", lines: [28, 28] }] }]);
+    const guard = await edit([{ op: "group_steps", card: "create-order", groups: [{ title: "Guard", steps: [IF] }] }]);
+    expect(guard.items).toMatchObject([{ lines: [27, 31], statements: [{ key: IF, kind: "if" }] }]);
+    const overlapping = await refusal([{ op: "group_steps", card: "create-order", groups: [{ title: "Again", steps: [job] }] }]);
     expect(overlapping.message).toContain("overlap the group \"Guard\"");
   });
 
@@ -491,23 +487,23 @@ describe("group_steps", () => {
     expect(gap.message).toContain("aren't consecutive statements of one branch");
     expect(gap.message).toContain("The statements there:");
     expect((await refusal([{ op: "group_steps", card: "create-order", groups: [{ title: "X", steps: ["nope"] }] }])).message).toContain("isn't a statement of createOrder");
-    expect((await refusal([{ op: "group_steps", card: "create-order", groups: [{ title: "X" }] }])).message).toContain("either lines or steps");
+    expect((await refusal([{ op: "group_steps", card: "create-order", groups: [{ title: "X", steps: [] }] }])).message).toContain("its steps");
   });
 
   it("updates a group by id, but not a person's title unless asked", async () => {
     open({ groups: [{ id: "checks", card: "create-order", title: "Checks", members: [IF], collapsed: false, author: "person:maya" }] });
-    expect((await refusal([{ op: "group_steps", card: "create-order", groups: [{ id: "checks", title: "Guard", lines: [27, 31] }] }])).code).toBe("people_text");
-    const kept = await edit([{ op: "group_steps", card: "create-order", groups: [{ id: "checks", title: "Checks", lines: [27, 31], collapsed: true }] }]);
+    expect((await refusal([{ op: "group_steps", card: "create-order", groups: [{ id: "checks", title: "Guard", steps: [IF] }] }])).code).toBe("people_text");
+    const kept = await edit([{ op: "group_steps", card: "create-order", groups: [{ id: "checks", title: "Checks", steps: [IF], collapsed: true }] }]);
     expect(kept.items).toMatchObject([{ id: "checks", status: "updated" }]);
     expect(onPage().groups[0]).toMatchObject({ title: "Checks", author: "person:maya", collapsed: true });
-    await edit([{ op: "group_steps", card: "create-order", groups: [{ id: "checks", title: "Guard", lines: [27, 31] }], replacePeopleText: true }]);
+    await edit([{ op: "group_steps", card: "create-order", groups: [{ id: "checks", title: "Guard", steps: [IF] }], replacePeopleText: true }]);
     expect(onPage().groups[0]).toMatchObject({ title: "Guard", author: "agent:claude" });
   });
 
   it("refuses a card whose code isn't available", async () => {
     open();
     queryClient.setQueryData(engineKey("card", { project: P, key: CREATE }), { ...model(CREATE), code: null });
-    expect(await refusal([{ op: "group_steps", card: "create-order", groups: [{ title: "X", lines: [28, 29] }] }])).toMatchObject({ code: "code_unavailable" });
+    expect(await refusal([{ op: "group_steps", card: "create-order", groups: [{ title: "X", steps: [job, json] }] }])).toMatchObject({ code: "code_unavailable" });
   });
 });
 

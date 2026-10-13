@@ -197,7 +197,7 @@ impl Harness {
     }
 
     /// Runs a raw command JSON for `window`.
-    pub fn call_with(&self, window: u32, command: Value) -> Result<Value, CommandError> {
+    fn call_with(&self, window: u32, command: Value) -> Result<Value, CommandError> {
         let text = self.host.dispatch(window, self.request(), &command.to_string())?;
         Ok(serde_json::from_str(&text).expect("results are JSON"))
     }

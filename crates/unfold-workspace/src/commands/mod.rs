@@ -10,14 +10,13 @@
 //! folder.
 //!
 //! [`ProjectExtras`] is the command-side state of one live project, shared by every window: the
-//! cached file list that search and text search walk, rendered source files, and the board
+//! cached file list that search walks, rendered source files, and the board
 //! commands' state ([`board_hooks`]).
 
 pub mod board_hooks;
 pub mod boards;
 pub mod compiling;
 pub mod entrances;
-pub mod export;
 pub mod file_view;
 pub mod files;
 mod fileset;
@@ -26,7 +25,6 @@ pub mod projects;
 pub mod relations;
 pub mod search;
 pub mod settings;
-pub mod text_search;
 pub mod types;
 pub mod windows;
 pub mod workspace;

@@ -181,23 +181,8 @@
   pointer-events: auto;
 }
 
-@container dock-lane (width < 720px) {
-  .board-trail li:not(:last-child),
-  .board-trail-separator { display: none; }
-}
-
-@container dock-lane (width < 560px) {
-  .board-trail,
-  .board-dock-divider.before-trail { display: none; }
-}
-
 @container dock-lane (width < 440px) {
   .board-dock-arrange .button-label { display: none; }
-}
-
-@container dock-lane (width < 350px) {
-  .board-dock-history,
-  .board-dock-divider.before-history { display: none; }
 }
 
 @container dock-lane (width < 290px) {
@@ -226,38 +211,10 @@
   text-align: center;
 }
 
-.board-trail { min-width: 0; }
+/* Combine…: the run, as chosen on the canvas (read-only), and its title. */
+.combine-form { display: flex; flex-direction: column; gap: 12px; }
 
-.board-trail ol {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 28px;
-  margin: 0;
-  padding: 0 8px;
-  overflow: hidden;
-  list-style: none;
-}
-
-.board-trail li { display: flex; flex-shrink: 0; align-items: center; gap: 4px; white-space: nowrap; }
-.board-trail li:last-child { flex-shrink: 1; min-width: 0; }
-.board-trail-separator { color: var(--color-faint); stroke-width: 2; }
-
-.board-trail button {
-  overflow: hidden;
-  font: 12px/16px var(--font-code);
-  color: var(--color-muted);
-  text-overflow: ellipsis;
-}
-
-.board-trail button:hover { color: var(--color-accent-text); }
-.board-trail li.current button { font-weight: 600; color: var(--color-text); }
-
-/* Make a group from lines */
-.group-form { display: flex; flex-direction: column; gap: 12px; }
-
-/* Combine…'s run, as chosen on the canvas: read-only. */
-.group-form-steps .text-field-input {
+.combine-form-steps .text-field-input {
   background: var(--color-step);
   font-family: var(--font-code);
   color: var(--color-muted);

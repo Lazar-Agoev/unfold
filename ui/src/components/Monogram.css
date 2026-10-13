@@ -24,10 +24,6 @@
   line-height: var(--leading-14);
 }
 
-.monogram-selected {
-  background: var(--color-selection-strong);
-}
-
 .monogram-workspace {
   background: var(--color-workspace-mark);
   color: var(--color-workspace-mark-ink);

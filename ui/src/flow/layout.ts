@@ -1,6 +1,6 @@
 /**
  * Geometry for the Flow view (docs/reader.md#flow-view: Rust computes structure, TypeScript lays it
- * out). A small structured layout of the reader's lane tree, top to bottom like a Mermaid flowchart:
+ * out). A small structured layout of the reader's lane tree, top to bottom like a flowchart:
  * conditions put `no` in their own lane and `yes` to the right, loops and try/catch get regions,
  * folded "▸ N checks" chains collapse into one summary, and step groups get a titled region or,
  * collapsed, one step. A call expanded in place keeps room below its node (`insets`): what follows

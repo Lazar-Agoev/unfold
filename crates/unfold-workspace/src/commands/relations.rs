@@ -10,7 +10,7 @@ use ts_rs::TS;
 use unfold_core::vocab::{EdgeKind, EntranceKind, HttpMethod};
 use unfold_core::{Entrance, Key};
 use unfold_reader::ReaderIndex;
-use unfold_reader::mermaid::entrance_title;
+use unfold_reader::catalog::entrance_title;
 use unfold_reader::relations::{Outgoing, outgoing};
 use unfold_store::Reader;
 
@@ -192,7 +192,7 @@ fn owner_name(reader: &Reader, owner: &str, path: &str) -> CommandResult<String>
 }
 
 /// An entrance as "reached from" lists it.
-pub(crate) fn entrance_ref(entrance: &Entrance) -> EntranceRef {
+fn entrance_ref(entrance: &Entrance) -> EntranceRef {
     EntranceRef {
         key: entrance.key.as_str().to_owned(),
         title: entrance_title(entrance),
@@ -223,7 +223,7 @@ pub struct CallingDefinition {
 
 /// The distinct definitions that call block `key`, by path and position, with their call sites
 /// counted: how many there are, and the first `limit` (only those are looked up in the store).
-pub(crate) fn distinct_callers(
+fn distinct_callers(
     reader: &Reader,
     index: &ReaderIndex,
     key: &str,

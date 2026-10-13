@@ -190,12 +190,12 @@ describe("type arrows", () => {
     { id: "item", key: ITEM, project: P, entrance: false, body: "fields" as const },
   ];
 
-  it("leave from each field's row to each card its written type names, labeled with the type, once per field and card", () => {
+  it("leave from each field's row to each card its written type names, once per field and card", () => {
     const arrows = computeArrows(typeCards("fields"), models, undefined, definitions);
-    expect(arrows.map((arrow) => [arrow.sourceHandle, arrow.target, arrow.kind, arrow.type?.text])).toEqual([
-      [fieldPort("1"), "item", "type", "CartItem[]"],
-      [fieldPort("2"), "item", "type", "Map<CartItem, CartItem>"],
-      [fieldPort("from0/0"), "item", "type", "CartItem[]"],
+    expect(arrows.map((arrow) => [arrow.sourceHandle, arrow.target, arrow.kind])).toEqual([
+      [fieldPort("1"), "item", "type"],
+      [fieldPort("2"), "item", "type"],
+      [fieldPort("from0/0"), "item", "type"],
     ]);
     expect(arrows.every((arrow) => !arrow.dashed)).toBe(true);
   });

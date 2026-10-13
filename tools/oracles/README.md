@@ -5,17 +5,13 @@ ships, and Unfold's tests never run these tools.
 
 ## Checks
 
-Two scripts check Unfold's own outputs with independent tools. Install their dependencies once
-with `pnpm install --filter @unfold/oracles` (Mermaid, jsdom, and Ajv, pinned in `package.json`).
+One script checks Unfold's own output with an independent tool. Install its dependency once with
+`pnpm install --filter @unfold/oracles` (Ajv, pinned in `package.json`).
 
 ```sh
-node tools/oracles/check-mermaid.mjs        # or: pnpm --filter @unfold/oracles check-mermaid
 node tools/oracles/check-board-schema.mjs   # or: pnpm --filter @unfold/oracles check-board-schema
 ```
 
-- **`check-mermaid.mjs`** parses every Mermaid snapshot Unfold's tests write
-  (`testdata/boards/*.mmd`) with the real Mermaid parser (`mermaid.parse` over jsdom) and fails if
-  any does not parse. Pass files to check others.
 - **`check-board-schema.mjs`** validates `testdata/boards/*.json` (or the files passed) against
   `crates/unfold-reader/schema/unfold-board.schema.json` with Ajv (draft 2020-12, strict mode), and
   checks that `docs/schemas/unfold-board.schema.json` is an identical copy.

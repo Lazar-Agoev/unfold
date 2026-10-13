@@ -12,7 +12,7 @@ const engine = vi.hoisted(() => ({
 vi.mock("./engine", () => engine);
 
 const store = await import("./store");
-const { followCall, extendTrail } = await import("./navigation");
+const { followCall } = await import("./navigation");
 const { addBlock, addLink, entranceCardText, focusFrame, labelNode, openEntrance, removeCard, traceEntrance } = await import("./api");
 const { arrangeBoard } = await import("../../canvas/arrangeBoard");
 const { FOLLOW_GAP, HEADER_PORT, STACK_GAP, fallbackSize } = await import("../../canvas/layout");
@@ -65,68 +65,24 @@ describe("following a call", () => {
     const id = followCall({
       target: PAGE,
       fromCardId: "create-order",
-      fromLabel: "createOrder",
       targetKey: "src/services/order-service.ts#class:OrderService/method:place",
-      targetLabel: "OrderService.place",
       lineOffset,
-      line: 32,
     });
     const card = cards().find((item) => item.id === id);
     expect(card?.at).toEqual([100 + 520 + FOLLOW_GAP, 50 + lineOffset - HEADER_PORT]);
     expect(card?.ref).toEqual({ block: "src/services/order-service.ts#class:OrderService/method:place" });
-    const view = store.getPageView(PAGE);
-    expect(view.trail).toEqual([
-      { cardId: "create-order", label: "createOrder", line: 32 },
-      { cardId: id, label: "OrderService.place" },
-    ]);
-    expect(view.selection).toEqual({ kind: "card", cardId: id, key: null });
-    expect(view.back).toHaveLength(1);
+    expect(store.getPageView(PAGE).selection).toEqual({ kind: "card", cardId: id, key: null });
   });
 
-  it("focuses and unfolds a target that is already on the page instead of adding it", () => {
+  it("focuses a target that is already on the page instead of adding it", () => {
     open([
       { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] },
-      { id: "b", ref: { block: "src/b.ts#function:b" }, at: [700, 0], folded: true },
+      { id: "b", ref: { block: "src/b.ts#function:b" }, at: [700, 0] },
     ]);
-    const id = followCall({ target: PAGE, fromCardId: "a", fromLabel: "a", targetKey: "src/b.ts#function:b", targetLabel: "b" });
+    const id = followCall({ target: PAGE, fromCardId: "a", targetKey: "src/b.ts#function:b" });
     expect(id).toBe("b");
     expect(cards()).toHaveLength(2);
-    expect(cards()[1]?.folded).toBeUndefined();
     expect(store.getPageView(PAGE).focus?.cardIds).toEqual(["b"]);
-  });
-
-  it("Back and Forward walk the focus moves", () => {
-    open([{ id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }]);
-    store.updatePageView(PAGE, (view) => {
-      view.trail = [{ cardId: "a", label: "a" }];
-    });
-    followCall({ target: PAGE, fromCardId: "a", fromLabel: "a", targetKey: "src/b.ts#function:b", targetLabel: "b" });
-    const b = store.getPageView(PAGE).trail[1]?.cardId ?? "";
-    followCall({ target: PAGE, fromCardId: b, fromLabel: "b", targetKey: "src/c.ts#function:c", targetLabel: "c" });
-    expect(store.getPageView(PAGE).trail.map((item) => item.label)).toEqual(["a", "b", "c"]);
-    store.travel(PAGE, "back");
-    store.travel(PAGE, "back");
-    expect(store.getPageView(PAGE).trail.map((item) => item.label)).toEqual(["a"]);
-    store.travel(PAGE, "forward");
-    expect(store.getPageView(PAGE).trail.map((item) => item.label)).toEqual(["a", "b"]);
-  });
-
-  it("extends the trail after its source, adding a source that isn't on it", () => {
-    expect(extendTrail([{ cardId: "e", label: "POST /orders" }], { cardId: "c", label: "createOrder" }, 32, { cardId: "p", label: "OrderService.place" }).map((item) => item.label)).toEqual([
-      "POST /orders",
-      "createOrder",
-      "OrderService.place",
-    ]);
-    const trail = [
-      { cardId: "e", label: "POST /orders" },
-      { cardId: "c", label: "createOrder", line: 32 },
-      { cardId: "p", label: "OrderService.place" },
-    ];
-    expect(extendTrail(trail, { cardId: "c", label: "createOrder" }, 33, { cardId: "s", label: "slack.post" }).map((item) => item.label)).toEqual([
-      "POST /orders",
-      "createOrder",
-      "slack.post",
-    ]);
   });
 });
 
@@ -166,7 +122,7 @@ describe("adding cards of the board's project", () => {
     await openEntrance(PAGE, "entrance:x");
     expect(engine.call).toHaveBeenCalledWith("card", { project: P, key: "entrance:x" });
     expect(cards().map((card) => card.ref)).toEqual([{ entrance: "entrance:x" }, { block: "src/m.ts#function:requireUser" }, { block: "src/o.ts#function:createOrder" }]);
-    expect(store.getPageView(PAGE).trail).toEqual([{ cardId: cards()[0]?.id, label: "POST /orders" }]);
+    expect(store.getPageView(PAGE).selection).toEqual({ kind: "card", cardId: cards()[0]?.id, key: null });
   });
 
   it("places the handlers beside the entrance, level with their rows, in the step that opens them", async () => {

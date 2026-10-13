@@ -27,8 +27,7 @@ testdata/
 ├── detectors/<detector>/<case>/   # detector cases: sources, unfold.toml, expected-entrances.txt
 ├── boards/
 │   ├── order-placement.json      # sample board, unfold-board v1
-│   ├── order-placement*.mmd      # its Mermaid export (snapshots: as saved, and with every card in Flow)
-│   └── order-system.json, .mmd   # example board with frames, resource cards, connections, and notes; its export
+│   └── order-system.json         # example board with frames, resource cards, connections, and notes
 ├── workspace/commands/           # golden JSON of representative commands on ts-orders (unfold-workspace tests)
 ├── goldens/<playground>.jsonl    # canonical exports of ts-orders and py-orders (`cargo xtask export`), read by the reader's tests
 ├── reference/oracles/            # cached precision oracle answers; see reference/README.md
@@ -188,17 +187,15 @@ the files involved are ASCII, so UTF-16 and byte ranges coincide. Serialized wit
 indentation, and a final newline.
 
 `crates/unfold-reader/tests/sample_board.rs` loads it against the `ts-orders` golden graph with every description
-and label attached and healthy, checks that it round-trips byte for byte, and snapshots its Mermaid export
-(`order-placement.mmd`, and `order-placement-flow.mmd`, every card switched to Flow). `UNFOLD_BLESS=1` rewrites the snapshots; `tools/oracles/check-mermaid.mjs` parses them with the real
-Mermaid parser.
+and label attached and healthy, and checks that it round-trips byte for byte.
 
 ## Example board (`boards/order-system.json`)
 
 Written for Unfold on `testdata/playgrounds/ts-orders`: Diagram views, an attributed step group, nested frames of
 both looks, every kind of resource card (a table backed by `interface Order`), connections of every line style, and
 notes, free and attached. `crates/unfold-workspace/tests/commands/claims.rs` saves it on a compiled copy of
-`ts-orders`, whose typed records ground its claims, and snapshots it (its golden is itself, with real signatures)
-and its Mermaid export (`order-system.mmd`); `UNFOLD_BLESS=1` rewrites both. `crates/unfold-reader/tests/board_items.rs`
+`ts-orders`, whose typed records ground its claims, and snapshots it (its golden is itself, with real signatures);
+`UNFOLD_BLESS=1` rewrites it. `crates/unfold-reader/tests/board_items.rs`
 checks that it round-trips, counts its changes, and repairs without leaving anything dangling.
 
 ## Oracles and corpora

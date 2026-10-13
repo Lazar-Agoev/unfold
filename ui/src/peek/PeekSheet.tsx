@@ -2,10 +2,9 @@
  * The source peek sheet: one whole file, read-only, sliding in from the right over the content; pinned,
  * the content narrows instead. Virtualized by line and fetched in `file_view` pages of 200 lines.
  * Syntax colors, folds on definitions, calls as links (hover peeks, click adds the callee), a `⊕`
- * beside each definition to add it to the page (`●` when it's there), the text matches it was opened
- * with (ticks beside the scrollbar), and Open in editor. One sheet per window, kept
- * when the window shows another board; Escape closes it, unless a field, a menu, a dialog, or the
- * canvas (a line's contract) had it first.
+ * beside each definition to add it to the page (`●` when it's there), and Open in editor. One sheet
+ * per window, kept when the window shows another board; Escape closes it, unless a field, a menu, a
+ * dialog, or the canvas (a selected arrow) had it first.
  *
  * Opened by View code, it highlights its focus: the rows tinted with an accent edge, and the exact
  * expression marked when the focus has columns. Only verified source shows it (`showsFocus`); a file
@@ -23,23 +22,22 @@ import { newCardView } from "../code/typeKinds";
 import { groupByLink, linkRanges, segmentRange, spanRanges, type LinkRange, type SpanRange } from "../code/segments";
 import { EmptyState, IconButton, MenuButton, Monogram, Sheet, showToast, type MenuEntry } from "../components";
 import { Icon } from "../icons";
-import { engineQueryOptions, toUnfoldError, useEngineQuery, type CallLink as CallLinkModel, type CodeLine, type FileView, type Key, type OutlineItem, type ProjectId, type TextMatch, type View } from "../ipc";
+import { engineQueryOptions, toUnfoldError, useEngineQuery, type CallLink as CallLinkModel, type CodeLine, type FileView, type Key, type OutlineItem, type ProjectId, type View } from "../ipc";
 import { openInEditor } from "../lib/files";
 import { isTyping } from "../lib/typing";
 import { languageList, plural } from "../lib/format";
 import { addBlock, cardRefKey, findPage, getOpenBoard, keyDisplayName, newBoard, useOpenBoard, usePageKeys, type BoardRef, type PageTarget } from "../state/boards";
 import { setPeekPinned, useLayout } from "../state/layout";
-import { closePeek, openPeek, useAddTarget, usePeekTarget, type AddTarget, type PeekFocus, type PeekTarget } from "../state/overlays";
+import { closePeek, openPeek, useAddPage, usePeekTarget, type PeekFocus, type PeekTarget } from "../state/overlays";
 import { useProjectRow } from "../state/workspace";
 import {
   PAGE_LINES,
   canFold,
   definitionAt,
   focusAnchor,
+  focusMarkOn,
   inFocus,
-  lineMarks,
   markRuns,
-  matchTicks,
   pageOf,
   pageRange,
   showsFocus,
@@ -51,17 +49,18 @@ import "../code/code.css";
 import "./peek.css";
 
 const ROW_HEIGHT = 20;
+const NO_MARKS: readonly LineMark[] = [];
 /** The code area's padding above the first row and below the last. */
 const PADDING = 8;
 
 /**
- * Adds a definition of `project` where Add would: the active page when it is of that project (a page
- * shows one project), else a new board in `project`; in `view` when given.
+ * Adds a definition of `project` to the shown board's active page when it is of that project (a page
+ * shows one project), else to a new board in `project`; in `view` when given.
  */
-async function addDefinition(target: AddTarget, project: ProjectId, key: Key, view: View | undefined): Promise<void> {
+async function addDefinition(target: PageTarget | null, project: ProjectId, key: Key, view: View | undefined): Promise<void> {
   try {
-    if (target.kind === "page" && target.target.board.project === project) {
-      addBlock(target.target, key, view);
+    if (target?.board.project === project) {
+      addBlock(target, key, view);
       return;
     }
     const board = await newBoard(project, { title: keyDisplayName(key) });
@@ -104,7 +103,7 @@ interface LineProps {
   readonly onFollow: (link: CallLinkModel) => void;
 }
 
-/** One line's colored runs, its call links, its text matches, and a folded definition's pill. */
+/** One line's colored runs, its call links, View code's expression, and a folded definition's pill. */
 function LineText({ project, page, line, linked, marks, folded, onUnfold, onFollow }: LineProps) {
   const { view } = page;
   const lineStart = line.start - view.textStart;
@@ -117,7 +116,7 @@ function LineText({ project, page, line, linked, marks, folded, onUnfold, onFoll
       markRuns(segment.start, segment.end, shifted).map((run) => (
         <span
           key={run.start}
-          className={[tokenClass(segment.token), run.mark === null ? undefined : run.mark === "focus" ? "peek-focus" : `peek-match ${run.mark}`].filter(Boolean).join(" ") || undefined}
+          className={[tokenClass(segment.token), run.marked ? "peek-focus" : undefined].filter(Boolean).join(" ") || undefined}
         >
           {view.text.slice(run.start, run.end)}
         </span>
@@ -203,14 +202,12 @@ function Footer({ pageTitle }: { readonly pageTitle: string | null }) {
   );
 }
 
-/** Stands in for the board while the sheet adds to Home (hooks can't be skipped). */
+/** Stands in for the board while no board is shown (hooks can't be skipped). */
 const NO_BOARD: BoardRef = { project: "", id: "" };
 
 function usePageTitle(page: PageTarget | null): string | null {
   return useOpenBoard(page?.board ?? NO_BOARD, (board) => (page ? findPage(board.document, page.page)?.title : undefined)) ?? null;
 }
-
-const NO_MATCHES: readonly TextMatch[] = [];
 
 function Lines({
   target,
@@ -231,7 +228,6 @@ function Lines({
   const [folded, setFolded] = useState<ReadonlyMap<string, FoldedRange>>(new Map());
   const lineCount = first.lineCount;
   const linked = first.graph === "current";
-  const matches = target.matches ?? NO_MATCHES;
   const rows = useMemo(() => visibleLines(lineCount, [...folded.values()]), [lineCount, folded]);
 
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual returns fresh functions by design.
@@ -291,8 +287,6 @@ function Lines({
     });
   };
 
-  const ticks = matchTicks(rows, matches, target.current);
-
   return (
     <div className="peek-code-area">
       <div ref={scroller} className="peek-scroller" role="document" aria-label={`${path}, read-only`} tabIndex={0}>
@@ -308,14 +302,13 @@ function Lines({
             const def = data && linked ? definitionAt(data.page.view.outline, number) : undefined;
             const foldable = def !== undefined && canFold(def);
             const isFolded = foldable && folded.has(def.key);
-            const marks = lineMarks(number, data ? data.line.end - data.line.start : 0, matches, target.current, focus);
-            const current = marks.some((mark) => mark.current && mark.focus !== true);
+            const mark = focus ? focusMarkOn(number, focus, data ? data.line.end - data.line.start : 0) : null;
             const focused = focus !== undefined && inFocus(number, focus);
             const there = def !== undefined && onPage.has(cardRefKey(project, def.key));
             return (
               <div
                 key={item.key}
-                className={["peek-row", current ? "current" : null, focused ? "focus" : null].filter(Boolean).join(" ")}
+                className={focused ? "peek-row focus" : "peek-row"}
                 data-line={number}
                 style={{ height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
               >
@@ -358,7 +351,7 @@ function Lines({
                       page={data.page}
                       line={data.line}
                       linked={linked}
-                      marks={marks}
+                      marks={mark ? [mark] : NO_MARKS}
                       folded={isFolded ? def : null}
                       onUnfold={() => {
                         if (def) {
@@ -378,13 +371,6 @@ function Lines({
           })}
         </div>
       </div>
-      {ticks.length > 0 ? (
-        <div className="peek-ticks" aria-hidden="true">
-          {ticks.map((tick) => (
-            <span key={tick.line} className={tick.current ? "peek-tick current" : "peek-tick"} style={{ top: `${tick.at * 100}%` }} />
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -418,8 +404,7 @@ function useFocusCurrent(target: PeekTarget): boolean {
 }
 
 function PeekBody({ target, pinned }: { readonly target: PeekTarget; readonly pinned: boolean }) {
-  const addTarget = useAddTarget();
-  const page = addTarget.kind === "page" ? addTarget.target : null;
+  const page = useAddPage();
   const pageTitle = usePageTitle(page);
   const onPage = usePageKeys(page);
   const projectName = useProjectRow(target.project)?.name ?? "";
@@ -443,7 +428,7 @@ function PeekBody({ target, pinned }: { readonly target: PeekTarget; readonly pi
         first={view}
         focus={focus}
         onPage={onPage}
-        add={(key, view) => void addDefinition(addTarget, target.project, key, view)}
+        add={(key, view) => void addDefinition(page, target.project, key, view)}
       />
     );
   }
@@ -462,11 +447,11 @@ function PeekBody({ target, pinned }: { readonly target: PeekTarget; readonly pi
   );
 }
 
-/** The sheet's own key, so each target (file, line, match, focus) opens fresh. */
+/** The sheet's own key, so each target (file, line, focus) opens fresh. */
 function targetKey(target: PeekTarget): string {
   const { focus } = target;
   const range = focus ? [focus.startLine, focus.startColumn ?? "", focus.endLine, focus.endColumn ?? ""].join(":") : "";
-  return [target.project, target.path, target.line ?? "", target.current ?? "", range].join("\u0000");
+  return [target.project, target.path, target.line ?? "", range].join("\u0000");
 }
 
 /** While the sheet is open, Escape closes it wherever focus is, unless something before it took the key. */

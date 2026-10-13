@@ -13,9 +13,6 @@ unfold-lang-typescript = { workspace = true }
 unfold-lang-python = { workspace = true }
 unfold-store = { workspace = true }
 unfold-reader = { workspace = true, features = ["ts"] }
-grep-matcher = { workspace = true }
-grep-regex = { workspace = true }
-grep-searcher = { workspace = true }
 ignore = { workspace = true }
 notify = { workspace = true }
 notify-debouncer-full = { workspace = true }

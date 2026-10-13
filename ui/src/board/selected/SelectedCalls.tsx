@@ -1,12 +1,12 @@
 /**
  * Selected for an arrow from a Diagram node that stands for several calls to one card: its two cards,
- * then each call as written in the caller, with its line, in source order. Each opens its contract on
- * the arrow.
+ * then each call as written in the caller, with its line, in source order. Choosing one shows its
+ * contract here.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { cardQuery } from "../../canvas";
-import { countText } from "../../canvas/lines/labelText";
+import { plural } from "../../lib/format";
 import { cardKey, findCard, findPage, keyDisplayName, select, useOpenBoard, type PageTarget, type SelectedCalls as Calls } from "../../state/boards";
 import { useProjectRow } from "../../state/workspace";
 import { RelationRow } from "./Relations";
@@ -22,7 +22,7 @@ export function SelectedCalls({ target, calls }: { readonly target: PageTarget; 
   return (
     <>
       <div className="selected-identity">
-        <h3 className="selected-name">{countText(calls.calls.length)}</h3>
+        <h3 className="selected-name">{plural(calls.calls.length, "call")}</h3>
         <span className="selected-location">To {callee}</span>
       </div>
       <div className="selected-relations link">
@@ -46,7 +46,6 @@ export function SelectedCalls({ target, calls }: { readonly target: PageTarget; 
           );
         })}
       </div>
-      <p className="selected-note">Choose a call to open what it sends, returns, and throws on the line.</p>
     </>
   );
 }

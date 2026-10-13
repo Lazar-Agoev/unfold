@@ -47,7 +47,7 @@ export function projectIndex(workspace: WorkspaceView | undefined): ProjectIndex
 }
 
 /** The project index, kept current. */
-export function useProjectIndex(): ProjectIndex {
+function useProjectIndex(): ProjectIndex {
   return projectIndex(useWorkspace());
 }
 

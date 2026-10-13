@@ -6,9 +6,9 @@
 //! no route. Opaque regions are terminal on purpose: an unknown cleanup or transfer rule must
 //! never produce a confident route that skips `finally` or guesses a jump target.
 //!
-//! Node numbers follow creation order, which the proof of concept's Mermaid output also
-//! follows: a sequence renders all of its statements before it connects them, a condition
-//! precedes its branches, and a loop header follows its body.
+//! Node numbers follow creation order, as the proof of concept's numbers do: a sequence renders
+//! all of its statements before it connects them, a condition precedes its branches, and a loop
+//! header follows its body.
 
 use rustc_hash::FxHashMap;
 use unfold_core::vocab::{BlockKind, Language, Resolution, Role, SlotName};

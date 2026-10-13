@@ -9,9 +9,11 @@
 //!   variable whose initializer contains the definition (`OrderService.place`,
 //!   `handlers.onCreate`), joined with `.`. Type declarations are in the catalog but name
 //!   nothing written inside them (a callback in an enum member's initializer).
+//!
+//! An entrance's **title** is its label, or its method (or kind) and trigger.
 
 use unfold_core::vocab::{BlockKind, EdgeKind, Role};
-use unfold_core::{Block, FileGraph, Graph};
+use unfold_core::{Block, Entrance, FileGraph, Graph};
 use unfold_store::Definition;
 
 use crate::index::{BlockId, GraphIndex, to_u32};
@@ -120,6 +122,20 @@ pub fn qualified_name(file: &FileGraph, local: u32) -> Option<String> {
 /// The display label of block `local` in `file`.
 pub fn label(file: &FileGraph, local: u32) -> Option<String> {
     ((local as usize) < file.blocks.len()).then(|| FileView { file }.label(local))
+}
+
+/// An entrance's title: its label, or its method (or kind) and trigger.
+pub fn entrance_title(entrance: &Entrance) -> String {
+    if let Some(label) = entrance.label.as_deref().filter(|label| !label.is_empty()) {
+        return label.to_owned();
+    }
+    let head = entrance
+        .method
+        .map_or(entrance.kind.as_str(), |method| method.as_str());
+    format!(
+        "{head} {}",
+        entrance.trigger.as_deref().unwrap_or("unknown trigger")
+    )
 }
 
 /// The catalog of every file, aligned with `graph.files`. `index` must be built from `graph`.

@@ -2,18 +2,16 @@
  * Rows Selected shows for authored claims (resource cards and connections): what an item of the page
  * is called, what a claim cites (each anchor opening its source in the peek sheet as View code
  * resolves it: a key at its block's first line, an evidence range highlighting its lines), the
- * connections in and out of an item, and a type that opens its definition in place.
+ * connections in and out of an item, and a type it names.
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
 import { cardQuery } from "../../canvas";
 import { RESOURCE_WORDS } from "../../canvas/resources/kinds";
 import { KIND_WORDS } from "../../canvas/connections/chip";
-import { TypeDefinition } from "../../code/TypeDefinition";
 import { shortPath } from "../../code/text";
 import type { Anchor, Link, Page, ProjectId } from "../../ipc/generated";
-import { cardKey, findCard, findFrame, findNote, findResource, keyDisplayName, select, toggledOpenTypes, type PageTarget } from "../../state/boards";
+import { cardKey, findCard, findFrame, findNote, findResource, keyDisplayName, select, type PageTarget } from "../../state/boards";
 import { openPeek } from "../../state/overlays";
 import { anchorSource } from "../viewCode";
 import { RelationRow } from "./Relations";
@@ -118,35 +116,11 @@ export function LineRows({ target, page, id }: { readonly target: PageTarget; re
   );
 }
 
-/** A type a claim names (a table's type, a connection's carried type): its name, opening its definition in place. */
-export function TypeRow({ label, project, typeKey }: { readonly label: string; readonly project: ProjectId; readonly typeKey: string }) {
-  const [open, setOpen] = useState(false);
-  const [openTypes, setOpenTypes] = useState<Readonly<Record<string, number>>>({});
+/** A type a claim names (a table's type, a connection's carried type). */
+export function TypeRow({ label, typeKey }: { readonly label: string; readonly typeKey: string }) {
   return (
-    <>
-      <RelationRow
-        label={label}
-        title={typeKey}
-        onActivate={() => {
-          setOpen((value) => !value);
-        }}
-      >
-        <span className="relation-code">{keyDisplayName(typeKey)}</span>
-      </RelationRow>
-      {open ? (
-        <div className="selected-definition">
-          <TypeDefinition
-            project={project}
-            typeKey={typeKey}
-            row={label}
-            depth={1}
-            openTypes={openTypes}
-            onToggle={(row, span) => {
-              setOpenTypes((current) => toggledOpenTypes(current, row, span));
-            }}
-          />
-        </div>
-      ) : null}
-    </>
+    <RelationRow label={label} title={typeKey}>
+      <span className="relation-code">{keyDisplayName(typeKey)}</span>
+    </RelationRow>
   );
 }

@@ -141,7 +141,6 @@ beforeEach(() => {
         }
         return found;
       },
-      line_labels: () => [],
       list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
       save_board: () => boardState(P, ID),
     },
@@ -249,14 +248,8 @@ describe("the lens", () => {
     });
   });
 
-  it("shows an entrance as a node with its kind, and folds a node to its header", async () => {
-    open(
-      [
-        { id: "import", ref: { entrance: ENTRANCE }, at: [0, 0] },
-        { id: "create-order", ref: { block: KEY }, at: [600, 0], folded: true },
-      ],
-      "diagram",
-    );
+  it("shows an entrance as a node with its kind", async () => {
+    open([{ id: "import", ref: { entrance: ENTRANCE }, at: [0, 0] }], "diagram");
     const { container } = renderBoard();
     const node = await waitFor(() => {
       const found = cardElement(container, "import");
@@ -267,9 +260,6 @@ describe("the lens", () => {
     expect(node.querySelector(".card-location")?.textContent).toBe("unfold.toml:5");
     // The chevron leads the header.
     expect(node.querySelector(".card-header")?.firstElementChild?.getAttribute("aria-label")).toBe("Expand import");
-    const folded = cardElement(container, "create-order");
-    expect(folded?.classList.contains("folded")).toBe(true);
-    expect(folded?.querySelector(".card-description, .card-expand")).toBeNull();
   });
 
   it("expands an entrance to its declaration evidence and ordered targets, under a heading from their roles", async () => {
@@ -312,7 +302,6 @@ describe("the lens", () => {
           }
           return { ...fixture("card", "card_create_order"), header: { ...typeModel(place, "interface", "place", 3).header, kind: "method" } } as CardView;
         },
-        line_labels: () => [],
         save_board: () => boardState(P, ID),
       },
     });
@@ -346,11 +335,9 @@ describe("type cards", () => {
     expect(card.querySelector(".card-location")?.textContent).toBe("src/cart.ts:12");
     const cells = [...(card.querySelector(".tcard-fields")?.children ?? [])].map((cell) => cell.textContent);
     expect(cells).toEqual(["owner?", "User", "items", "CartItem[]", "readonly createdAt", "Date", "coupon", "string = …", "from Draft", "lines", "CartItem[]"]);
-    // A declared type opens its definition in place. React Flow keeps a node hidden until it has
-    // measured it, so its buttons are only accessible (and clickable) once it shows.
-    const [declared] = await within(card).findAllByRole("button", { name: "CartItem" });
-    fireEvent.click(present(declared));
-    expect(await within(card).findByRole("group", { name: "interface CartItem" })).not.toBeNull();
+    // A declared type reads as a name; nothing opens in place.
+    expect(card.querySelector(".type-name")?.textContent).toBe("CartItem");
+    expect(within(card).queryByRole("button", { name: "CartItem" })).toBeNull();
   });
 
   it("show an alias's type and an enum's values; a type declaration shows its fields in Flow too", async () => {

@@ -1,5 +1,5 @@
 //! Derived views over a stored graph: owners, the catalog, activation closures, applications,
-//! relations, the Flow model, the code render model, typed lines, and Mermaid export; and boards (the
+//! relations, the Flow model, the code render model, and typed lines; and boards (the
 //! `unfold-board` format with pages, its JSON Schema, validation, signatures, guards, drawn
 //! links, health, and board files). It never parses source; highlighting arrives through a `Highlighter` trait.
 //!
@@ -11,7 +11,7 @@
 //! after each update (workspace):   project(&graph, &launches) ─► Projections ─► store commit
 //! per request:                     ReaderCache::get(pool) ─► ReaderIndex ─► callers, reached-from, closures
 //!                                  Reader::file_graph(path) ─► outgoing(), code_view()
-//!                                  contracts::Facts(reader) ─► line_label(), call_contract(), type_definition()
+//!                                  contracts::Facts(reader) ─► call_contract(), type_definition()
 //! ```
 //!
 //! - [`project`] computes the rows the store keeps (definitions, applications, memberships)
@@ -21,11 +21,10 @@
 //! - [`code::code_view`] builds what a Code card or source tab renders, in UTF-16 offsets, from
 //!   one file's stored facts and bytes verified against the facts' hash ([`source`]).
 //! - [`flow::flow_view`] builds a card's Flow (paths from written structure) from the same facts.
-//! - [`contracts`] builds typed lines (an arrow's label, a call's contract, a type's definition
-//!   and uses) from one or two files' typed records, per request.
+//! - [`contracts`] builds typed lines (a call's contract, a type's definition and uses) from one
+//!   or two files' typed records, per request.
 //! - [`board`] reads, checks, signs, and writes `unfold-board` files against a
-//!   [`board::BoardGraph`] of the files a board touches; [`mermaid`] exports a board page, an
-//!   entrance, or a Flow.
+//!   [`board::BoardGraph`] of the files a board touches.
 
 #![forbid(unsafe_code)]
 
@@ -39,7 +38,6 @@ mod error;
 pub mod flow;
 mod index;
 pub mod launches;
-pub mod mermaid;
 pub mod notes;
 mod project;
 mod reader_index;

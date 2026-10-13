@@ -1,6 +1,6 @@
 /**
  * One page drawn for the main process: the page's canvas exactly as the board view draws it (the same
- * canvas, cards, arrows, and labels), with nothing around it and nothing to edit. Once every drawn card
+ * canvas, cards, arrows, and link labels), with nothing around it and nothing to edit. Once every drawn card
  * is measured, every query has loaded, the fonts are in, and nothing has moved for a moment, it
  * answers: the bounds an image captures, or the page checks. For an image, it then takes the camera the
  * main process framed it with, in the window sized for it, and says when that is drawn.
@@ -14,8 +14,8 @@ import { pageChecks } from "../board/checks";
 import { BoardCanvas, useBoardArrows } from "../canvas";
 import { collapsedPlaces } from "../canvas/frames/geometry";
 import type { Card, Page } from "../ipc/generated";
-import { cardKey, cardRefKey, findPage, useOpenBoard } from "../state/boards";
-import { drawnGeometry, drawnNodeIds, unlabeledSteps } from "./geometry";
+import { findPage, useOpenBoard } from "../state/boards";
+import { drawnGeometry, drawnNodeIds } from "./geometry";
 import { answer, useRenderJob } from "./jobs";
 import { whenQuiet } from "./quiet";
 import { imageBounds } from "./target";
@@ -57,10 +57,8 @@ export function RenderPage({ job }: { readonly job: RenderJob }) {
 
   // Read once the page is drawn, by functions that must stay the same while it loads.
   const settled = useRef(boardArrows.settled);
-  const models = useRef(boardArrows.models);
   useLayoutEffect(() => {
     settled.current = boardArrows.settled;
-    models.current = boardArrows.models;
   });
 
   // The cards drawn as themselves: a collapsed frame draws the ones it holds as its own node.
@@ -110,11 +108,7 @@ export function RenderPage({ job }: { readonly job: RenderJob }) {
         return;
       }
       const page = job.page as unknown as Page;
-      const unlabeledOf = (id: string) => {
-        const card = page.cards.find((item) => item.id === id);
-        return card ? unlabeledSteps(page, card, models.current.get(cardRefKey(job.board.project, cardKey(card)))) : 0;
-      };
-      const geometry = drawnGeometry(element, store.getState(), unlabeledOf);
+      const geometry = drawnGeometry(element, store.getState());
       answer(job.requestId, job.purpose === "check" ? { ok: true, checks: pageChecks(page, geometry) } : imageBounds(page, geometry, job.item));
     });
     return () => {

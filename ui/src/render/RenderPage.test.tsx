@@ -70,7 +70,6 @@ beforeEach(() => {
         // eslint-disable-next-line @typescript-eslint/only-throw-error
         throw { code: "not_found", message: "no such key" };
       },
-      line_labels: () => [],
     },
   });
   uninstallJobs = installRenderJobs();

@@ -13,8 +13,6 @@ import { manyEnds } from "./ends";
 export interface ChipPart {
   readonly text: string;
   readonly tone: "word" | "code" | "text" | "sep";
-  /** The carried type's name: a click opens its definition. */
-  readonly carries?: true;
 }
 
 /** Each kind's word on its chip and where the page and Selected list connections (menus use `MENU_WORDS`). */
@@ -76,7 +74,7 @@ export function chipForms(input: ChipInput): ChipPart[][] {
   }
   const through = input.channel ?? (input.kind === "reads" || input.kind === "writes" ? input.subject : undefined);
   const channel: ChipPart | null = through !== undefined ? { text: through, tone: "code" } : null;
-  const carries: ChipPart | null = input.carries !== undefined ? { text: input.carries, tone: "code", carries: true } : null;
+  const carries: ChipPart | null = input.carries !== undefined ? { text: input.carries, tone: "code" } : null;
   const label: ChipPart | null = input.label !== undefined && input.kind !== "other" ? { text: input.label, tone: "text" } : null;
   const forms = [joined([word, channel, carries, label]), joined([word, channel, carries]), joined([word, channel]), [word]];
   return forms.filter((form, index) => forms.findIndex((other) => chipText(other) === chipText(form)) === index);

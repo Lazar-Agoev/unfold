@@ -8,7 +8,7 @@
  */
 
 import { z } from "zod";
-import { anchorArg, applyEdit, defined, editResult, lineRange, editTarget, expectRevision, itemLine, itemsHeading, localIds, pageArgs } from "../edits";
+import { anchorArg, applyEdit, defined, editResult, editTarget, expectRevision, itemLine, itemsHeading, localIds, pageArgs } from "../edits";
 import { isLink } from "../target";
 import { defineTool } from "../tool";
 
@@ -24,22 +24,19 @@ export const groupSteps = defineTool({
   name: "group_steps",
   title: "Group steps",
   description:
-    'Combine: gathers consecutive steps of one function\'s card into step groups, the same operation as the person\'s Combine, so a long expanded card reads in a few named steps. card is the card\'s id (or a link to it); to Combine inside a call expanded in place, use the callee\'s own card. Each group takes lines [from, to] (1-based, as read_code numbers them) or steps (the statements\' keys from read_code), a concise title that says what the steps achieve in 2 to 6 words ("Queue it for a worker, reply 202"), and an optional one-sentence description. A step group is whole, consecutive statements of one branch: Unfold takes the whole statements the lines cover (and warns when that is more than asked), and refuses a range that crosses into another branch or overlaps another group, listing the statements there so you can choose again. Groups don\'t nest. Passing an existing id updates that group. collapsed: true shows it as one combined step (a new concise summary can pass it at once); collapse when the person asked, when your brief said, or when check finds the card too long. The original steps and their source stay. The result names the statements each group took. Read get_guide("diagrams") first. One undo step for the whole call.',
+    'Combine: gathers consecutive steps of one function\'s card into step groups, the same operation as the person\'s Combine, so a long expanded card reads in a few named steps. card is the card\'s id (or a link to it); to Combine inside a call expanded in place, use the callee\'s own card. Each group takes steps (the statements\' keys from read_code), a concise title that says what the steps achieve in 2 to 6 words ("Queue it for a worker, reply 202"), and an optional one-sentence description. A step group is whole, consecutive statements of one branch: Unfold refuses steps that cross into another branch or overlap another group, listing the statements there so you can choose again. Groups don\'t nest. Passing an existing id updates that group. collapsed: true shows it as one combined step (a new concise summary can pass it at once); collapse when the person asked, when your brief said, or when check finds the card too long. The original steps and their source stay. The result names the statements each group took. Read get_guide("diagrams") first. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
     card: z.string().min(1).describe("The card's id, or a link to it"),
     groups: z
       .array(
-        z
-          .object({
-            id: z.string().min(1).optional().describe("An existing group's id updates it; absent: a new group with an id from its title"),
-            title: z.string().trim().min(1).max(120),
-            description: z.string().trim().min(1).max(400).optional(),
-            lines: lineRange.optional().describe("The lines the group takes"),
-            steps: z.array(z.string().min(1)).min(1).optional().describe("The statements' keys"),
-            collapsed: z.boolean().optional(),
-          })
-          .refine((group) => (group.lines === undefined) !== (group.steps === undefined), "Each group takes lines or steps, not both."),
+        z.object({
+          id: z.string().min(1).optional().describe("An existing group's id updates it; absent: a new group with an id from its title"),
+          title: z.string().trim().min(1).max(120),
+          description: z.string().trim().min(1).max(400).optional(),
+          steps: z.array(z.string().min(1)).min(1).describe("The statements' keys"),
+          collapsed: z.boolean().optional(),
+        }),
       )
       .min(1),
     expectRevision,
@@ -279,7 +276,7 @@ export const labelSteps = defineTool({
   name: "label_steps",
   title: "Label steps",
   description:
-    'Writes Flow labels for a card\'s steps, in place of the names from the code: 2 to 8 words, a verb ("Queue the order"), or a question for a condition ("Did the client ask for an async reply?"); never raw code, never step numbers. card is the card\'s id (or a link); step is a Flow step\'s key, from read_code (view "flow") or read_page\'s list of steps still unlabeled; label every step of a card you expanded, those inside collapsed step groups too (they show when the person expands the group, though check doesn\'t count them). Unfold signs each label against its step\'s code, so it goes to review when that code changes. Replacing a person\'s label is refused unless replacePeopleText is true: set it only when the person asked for that change. Read get_guide("writing") first. One undo step for the whole call.',
+    'Writes Flow labels for a card\'s steps, in place of the names from the code: 2 to 8 words, a verb ("Queue the order"), or a question for a condition ("Did the client ask for an async reply?"); never raw code, never step numbers. card is the card\'s id (or a link); step is a Flow step\'s key, from read_code (view "flow"); label every step of a card you expanded, those inside collapsed step groups too (they show when the person expands the group). Unfold signs each label against its step\'s code, so it goes to review when that code changes. Replacing a person\'s label is refused unless replacePeopleText is true: set it only when the person asked for that change. Read get_guide("writing") first. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
     card: z.string().min(1).describe("The card's id, or a link to it"),
@@ -308,7 +305,7 @@ export const labelSteps = defineTool({
       target,
       edit,
       [itemsHeading("Flow labels", edit.items), ...edit.items.map(itemLine)],
-      "check (read_page lists the steps still unlabeled), then get_screenshot of the card.",
+      "check, then get_screenshot of the card.",
     );
   },
 });

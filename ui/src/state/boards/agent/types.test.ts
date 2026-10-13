@@ -186,8 +186,8 @@ describe("set_view on type cards", () => {
       const result = await applyAgentEdit({ requestId: 2, board: REF, page: "page-1", agent: { author: "agent:claude", name: "Claude" }, title: "Set view", ops: [{ op: "set_view", items: [item] }] });
       expect(result.ok ? "applied" : result.message).toContain("is a type card: it keeps its fields in every view");
     }
-    const kept = await edit([{ op: "set_view", items: [{ id: "cart", view: "diagram", folded: true }] }]);
+    const kept = await edit([{ op: "set_view", items: [{ id: "cart", view: "diagram" }] }]);
     expect(kept.items[0]).not.toHaveProperty("expanded");
-    expect(onPage().cards[1]).toMatchObject({ view: "diagram", folded: true });
+    expect(onPage().cards[1]).toMatchObject({ view: "diagram" });
   });
 });

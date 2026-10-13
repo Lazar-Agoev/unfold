@@ -102,8 +102,8 @@ describe("Submenus", () => {
       id: "share",
       label: "Share",
       submenu: [
-        { id: "export", label: "Export Mermaid…", onSelect: onExport },
-        { id: "copy", label: "Copy Mermaid", onSelect: vi.fn() },
+        { id: "export", label: "Export PNG…", onSelect: onExport },
+        { id: "copy", label: "Copy link", onSelect: vi.fn() },
       ],
     },
     { kind: "separator", id: "s1" },
@@ -126,7 +126,7 @@ describe("Submenus", () => {
     fireEvent.keyDown(share, { key: "ArrowRight" });
     expect(share.getAttribute("aria-expanded")).toBe("true");
     const submenu = screen.getByRole("menu", { name: "Share" });
-    expect(document.activeElement?.textContent).toBe("Export Mermaid…");
+    expect(document.activeElement?.textContent).toBe("Export PNG…");
     fireEvent.keyDown(submenu, { key: "ArrowLeft" });
     expect(screen.queryByRole("menu", { name: "Share" })).toBeNull();
     expect(document.activeElement).toBe(share);
@@ -138,7 +138,7 @@ describe("Submenus", () => {
     expect(screen.getByRole("menu", { name: "Board menu" })).toBeTruthy();
 
     fireEvent.click(share);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Export Mermaid…" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Export PNG…" }));
     expect(onExport).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("menu")).toBeNull();
     expect(document.activeElement).toBe(button);
@@ -151,7 +151,7 @@ describe("Submenus", () => {
     const share = screen.getByRole("menuitem", { name: "Share" });
     fireEvent.pointerMove(share);
     expect(document.activeElement).toBe(share);
-    const copy = screen.getByRole("menuitem", { name: "Copy Mermaid" });
+    const copy = screen.getByRole("menuitem", { name: "Copy link" });
     act(() => {
       copy.dispatchEvent(new Event("pointerdown", { bubbles: true }));
     });

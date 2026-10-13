@@ -236,7 +236,7 @@ impl Workspace {
     }
 
     /// The timings and engine settings the folder was opened with (discovery's ignore options
-    /// among them, which the Files view and text search share).
+    /// among them, which the Files view and search share).
     pub fn options(&self) -> &WorkspaceOptions {
         &self.shared.options
     }

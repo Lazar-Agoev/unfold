@@ -154,13 +154,9 @@ describe("Combine and MCP group_steps", () => {
     }
   });
 
-  /** group_steps over the lines a run from `first` to `last` covers: the statements it took, or its refusal. */
-  function groupSteps(groups: readonly Group[], cardId: string, first: Key, last: Key): { members: Key[] } | { refusal: string } {
-    const model = MODELS[cardId === "f" ? F : CREATE];
-    const nodes = [first, last].map((key) => model?.flow?.nodes.find((node) => node.key === key));
-    const from = Math.min(...nodes.map((node) => node?.startLine ?? 0));
-    const to = Math.max(...nodes.map((node) => node?.endLine ?? node?.startLine ?? 0));
-    const op: GroupStepsOp = { op: "group_steps", card: cardId, groups: [{ title: "Combined", lines: [from, to] }] };
+  /** group_steps over `steps`: the statements it took, or its refusal. */
+  function groupSteps(groups: readonly Group[], cardId: string, steps: readonly Key[]): { members: Key[] } | { refusal: string } {
+    const op: GroupStepsOp = { op: "group_steps", card: cardId, groups: [{ title: "Combined", steps }] };
     const ctx = { board: { project: P, id: "b.json" }, agent: { author: "agent:claude", name: "Claude" } as const, data, index, measured: {}, warnings: [] };
     try {
       const [result] = applyGroupSteps(structuredClone(pageWith(groups)), op, ctx);
@@ -182,7 +178,8 @@ describe("Combine and MCP group_steps", () => {
 
   it.each(CASES)("decide alike: $name", ({ card, first, last, groups = [] }) => {
     const choice = combineChoice(pageWith(groups), { kind: "card", cardId: card, key: first, last }, context);
-    const agent = groupSteps(groups, card, first, last);
+    // An agent names the statements Combine chose, or the run's two ends where Combine refuses.
+    const agent = groupSteps(groups, card, "members" in choice ? choice.members : [first, last]);
     if ("members" in choice) {
       expect(agent).toEqual({ members: choice.members });
     } else {
@@ -192,7 +189,7 @@ describe("Combine and MCP group_steps", () => {
     }
   });
 
-  it("refuses what the gutter refuses, with its reason", () => {
+  it("refuses what the outline rule refuses, with its reason", () => {
     const reasons = CASES.map(({ card, first, last, groups = [] }) => {
       const choice = combineChoice(pageWith(groups), { kind: "card", cardId: card, key: first, last }, context);
       return "reason" in choice ? choice.reason : "ok";

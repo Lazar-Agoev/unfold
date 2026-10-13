@@ -7,10 +7,10 @@ describe("SectionLabel", () => {
   it("is a heading with an optional trailing note", () => {
     render(
       <SectionLabel as="h3" trailing="follow order">
-        On this page
+        Pages
       </SectionLabel>,
     );
-    expect(screen.getByRole("heading", { level: 3, name: "On this page" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 3, name: "Pages" })).toBeTruthy();
     expect(screen.getByText("follow order").className).toBe("section-label-trailing");
   });
 

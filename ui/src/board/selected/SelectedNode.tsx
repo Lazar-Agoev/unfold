@@ -9,10 +9,12 @@ import { nodeTypeName } from "../../flow/layout";
 import type { Card, FlowModel, FlowNode, Key, RouteKind } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
 import { cardKey, findPage, itemsFor, keyDisplayName, labelNode, labelTexts, select, useOpenBoard, type PageTarget } from "../../state/boards";
-import { NODE_LABEL_FIELD } from "../unlabeled";
 import { viewCode } from "../viewCode";
 import { AuthoredField } from "./AuthoredField";
 import { RelationRow } from "./Relations";
+
+/** The focus target of the selected node's label field. */
+const LABEL_FIELD = "selected.label";
 
 const PATH_WORDS: Partial<Record<RouteKind, string>> = {
   yes: "Yes",
@@ -109,7 +111,7 @@ export function SelectedNode({ target, card, node, model, owner }: SelectedNodeP
         label="Flow label"
         value={label}
         placeholder={fallback ?? "A plain-language label…"}
-        focusKey={NODE_LABEL_FIELD}
+        focusKey={LABEL_FIELD}
         disabledReason={held ? "Held for review: accept or reconnect it on the card first." : author === null ? "Loading who you are…" : null}
         status={
           <>

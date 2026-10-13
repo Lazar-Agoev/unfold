@@ -527,58 +527,5 @@
     "review": 0,
     "brokenLinks": 0
   },
-  "outlines": [
-    {
-      "page": "page-1",
-      "rows": [
-        {
-          "card": "post-orders",
-          "depth": 0
-        },
-        {
-          "card": "middleware-0",
-          "depth": 1
-        },
-        {
-          "card": "middleware-1",
-          "depth": 1
-        },
-        {
-          "card": "validate-order",
-          "depth": 2
-        },
-        {
-          "card": "create-order",
-          "depth": 1
-        },
-        {
-          "card": "place-order",
-          "depth": 2
-        }
-      ],
-      "unlabeled": [
-        {
-          "card": "validate-order",
-          "key": "src/lib/validate.ts#function:validateOrder/if[1]/throw[0]"
-        },
-        {
-          "card": "validate-order",
-          "key": "src/lib/validate.ts#function:validateOrder/if[1]/if[0]"
-        },
-        {
-          "card": "validate-order",
-          "key": "src/lib/validate.ts#function:validateOrder/if[1]/if[0]/throw[0]"
-        },
-        {
-          "card": "validate-order",
-          "key": "src/lib/validate.ts#function:validateOrder/if[1]/if[0]/if[0]"
-        },
-        {
-          "card": "validate-order",
-          "key": "src/lib/validate.ts#function:validateOrder/if[1]/if[0]/if[0]/throw[0]"
-        }
-      ]
-    }
-  ],
   "label": null
 }

@@ -28,8 +28,6 @@ const PAGE: AgentPage = {
 };
 const BOARD_INFO = { title: "Order placement", revision: "r1", unsaved: false };
 
-const LABEL = { source: "src/routes/orders.ts#function:createOrder/variable:order/call[0]", seq: 0, label: { inputs: [{ type: { text: "OrderDraft", spans: [] } }], inputsUnknown: false, output: { text: "Promise<Order>", spans: [] } } };
-
 const CART_DEFINITION: TypeDefinition = {
   key: CART,
   kind: "interface",
@@ -50,7 +48,6 @@ function app(extra: Parameters<typeof harness>[0] = {}) {
     engine: {
       card: (args) => recorded<CardView>(String(args["key"]).startsWith("entrance:") ? cardFirstEntrance : cardCreateOrder),
       relations: () => recorded<Relations>(relationsCreateOrder),
-      line_labels: () => [LABEL],
       type_definition: () => CART_DEFINITION,
       board_refs: () => ({ refs: [{ project: PROJECT, board: BOARD.id, title: "Order placement", page: "page-1", pageTitle: "Placing an order" }], truncated: false }),
       ...extra.engine,
@@ -60,7 +57,7 @@ function app(extra: Parameters<typeof harness>[0] = {}) {
 }
 
 describe("read_code", () => {
-  it("reads a function: verified source, signature, Flow steps with keys, throws, and each call with its label", async () => {
+  it("reads a function: verified source, signature, Flow steps with keys, throws, and each call", async () => {
     const tools = app();
     const { text } = await tools.call(readCode, { key: CREATE_ORDER, project: "ts-orders" });
     const lines = text.split("\n");
@@ -85,18 +82,11 @@ describe("read_code", () => {
     );
     expect(lines).toContain("Throws nothing directly.");
     expect(lines).toContain(
-      `- line 32: calls orderService.place → OrderService.place (key src/services/order-service.ts#class:OrderService/method:place), (OrderDraft) → Promise<Order>; source ${CREATE_ORDER}/variable:order/call[0], seq 0`,
+      `- line 32: calls orderService.place → OrderService.place (key src/services/order-service.ts#class:OrderService/method:place); source ${CREATE_ORDER}/variable:order/call[0], seq 0`,
     );
     expect(lines).toContain(`- line 28: calls ordersQueue.add → external, bullmq; source ${CREATE_ORDER}/if[0]/variable:job/call[0], seq 0`);
     expect(lines).toContain(`- line 29: calls res.status().json → unresolved: receiver type unknown; source ${CREATE_ORDER}/if[0]/expression_statement[0]/call[0], seq 0`);
     expect(lines).toContain("Called from 1 place.");
-    expect(tools.engineCalls.find(([command]) => command === "line_labels")?.[1]).toEqual({
-      project: PROJECT,
-      lines: [
-        { source: `${CREATE_ORDER}/variable:order/call[0]`, seq: 0 },
-        { source: `${CREATE_ORDER}/expression_statement[0]/call[0]`, seq: 0 },
-      ],
-    });
   });
 
   it("pages long functions by lines, and leaves out what the view doesn't ask for", async () => {

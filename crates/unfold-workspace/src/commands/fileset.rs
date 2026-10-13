@@ -1,4 +1,4 @@
-//! The folder's files as search and text search see them: every regular file the walk reaches
+//! The folder's files as search sees them: every regular file the walk reaches
 //! under discovery's ignore rules (`.gitignore`, `.ignore`, `.git/info/exclude`, the global
 //! excludes when the workspace uses them, and the always-excluded folders, `.unfold/` among
 //! them). Symlinks are never followed and never listed. The list is sorted by path, so results
@@ -13,8 +13,8 @@ use unfold_engine::discovery::{DiscoverOptions, is_default_excluded_name};
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::shared::lock;
 
-/// The most files one folder's list holds; past it, search and text search see the first ones
-/// in walk order and say the list was cut.
+/// The most files one folder's list holds; past it, search sees the first ones in walk
+/// order and says the list was cut.
 pub const MAX_FILES: usize = 200_000;
 
 /// The folder's files. See the [module documentation](self).

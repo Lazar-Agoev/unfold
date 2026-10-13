@@ -303,7 +303,6 @@ fn card(id: &str, key: &str) -> Card {
         reference,
         at: [0.0, 0.0],
         view: None,
-        folded: false,
         description: None,
         expanded: Vec::new(),
     }
@@ -1057,27 +1056,4 @@ fn only_new_or_changed_claims_are_grounded() {
     moved.pages[0].resources[0].at = [0.0, 0.0];
     moved.pages[0].resources[0].description = Some(text("Payments"));
     save(moved, Some((&agents, &health)), &loaded).unwrap();
-}
-
-#[test]
-fn mermaid_marks_outdated_claims() {
-    let (dir, graph, loaded) = orders(SCHEMA);
-    let mut board = board(&graph);
-    let page = &mut board.pages[0];
-    page.resources.push(resource(
-        "schema",
-        ResourceKind::Table,
-        "orders",
-        vec![lines(1, 1)],
-    ));
-    page.links.push(Link {
-        anchors: vec![lines(1, 1)],
-        ..connection("enqueue", LinkKind::Queue, "create", "schema")
-    });
-    let (saved, _) = save(board, None, &loaded).unwrap();
-    std::fs::write(dir.path().join(SCHEMA_FILE), "drop table orders;\n").unwrap();
-    let stale = BoardGraph::from_graph(&graph, dir.path());
-    let output = crate::mermaid::page(&saved, "page-1", &stale).unwrap();
-    assert!(output.contains("r0[(\"table · orders (outdated)\")]"), "{output}");
-    assert!(output.contains("|\"queue (outdated)\"|"), "{output}");
 }

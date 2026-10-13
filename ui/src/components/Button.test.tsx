@@ -43,13 +43,13 @@ describe("TextButton", () => {
     const onClick = vi.fn();
     render(
       <>
-        <TextButton onClick={onClick}>Label them</TextButton>
+        <TextButton onClick={onClick}>Show callers</TextButton>
         <TextButton weight={400} tone="muted">
           Copy diagnostics
         </TextButton>
       </>,
     );
-    const label = screen.getByRole("button", { name: "Label them" });
+    const label = screen.getByRole("button", { name: "Show callers" });
     expect(label.className).toBe("text-button text-button-accent");
     fireEvent.click(label);
     expect(onClick).toHaveBeenCalledTimes(1);

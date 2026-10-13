@@ -8,10 +8,10 @@ import "./Monogram.css";
 
 export interface MonogramProps {
   readonly name: string;
-  /** 14 in tabs and On this page rows, 20 in project rows, card headers, toasts, and Add. */
+  /** 14 in the board's header and Selected's rows, 20 in project rows and the peek sheet's header. */
   readonly size: 14 | 20;
-  /** `selected` on a selected Add result row; `workspace` for the workspace row. */
-  readonly tone?: "default" | "selected" | "workspace";
+  /** `workspace` for the workspace row. */
+  readonly tone?: "default" | "workspace";
   readonly className?: string;
 }
 

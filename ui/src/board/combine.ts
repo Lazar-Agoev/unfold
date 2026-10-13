@@ -1,7 +1,7 @@
 /**
  * Combine: a run of steps Shift-selected in one function
  * card's own Flow, and whether it can become a combined block (an existing step group). The run's
- * statements come from the same outline rule the gutter and MCP `group_steps` use: `groupSelection`
+ * statements come from the same outline rule MCP `group_steps` uses: `groupSelection`
  * over the lines from its first step to its last, then `groupConflict` against the card's groups, so
  * gaps, overlaps, nested groups, the function's header, nested definitions, and statements of two
  * bodies are refused with the same reason. Steps shown inside a call expanded in place belong to

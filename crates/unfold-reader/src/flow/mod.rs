@@ -18,9 +18,9 @@
 //! | Nested callback or class | A separate definition, listed on its statement's node |
 //! | TypeScript `switch` and `try`/`finally`; Python `with`, `match`, loops with `else`, and every `try` | An opaque node with a warning and no outgoing route |
 //!
-//! The model has two faces: `nodes` and `routes` are the semantic graph that Mermaid export and
-//! tests read; `tree` is the lane structure the UI lays out top to bottom (a main lane and at most
-//! one side lane per condition or catch). Rust computes structure; the UI computes geometry.
+//! The model has two faces: `nodes` and `routes` are the semantic graph that tests read; `tree`
+//! is the lane structure the UI lays out top to bottom (a main lane and at most one side lane per
+//! condition or catch). Rust computes structure; the UI computes geometry.
 
 mod build;
 pub(crate) mod names;

@@ -1,10 +1,10 @@
 /**
- * Where the closed labels of a page's lines sit (docs/reader.md). A label never
+ * Where the labels of a page's lines sit: drawn links' labels and connections' chips. A label never
  * covers a card or another label: it tries points along its own curve (the midpoint, then 0.4 and
  * 0.6, 0.3 and 0.7, …), then small steps above and below them into free canvas, then hanging beside
  * those points (to the right, then the left, level or a step above or below), and takes the first
- * spot that meets nothing. When none fits, it tries its shorter forms (`(+2) → Gateway`, then
- * `→ Gateway`) the same way; when even those don't fit, it isn't drawn at rest. Pure: the same
+ * spot that meets nothing. When none fits, it tries its shorter forms (a chip without its label, then
+ * without what it carries) the same way; when even those don't fit, it isn't drawn at rest. Pure: the same
  * labels and cards always give the same placements, whatever order they come in.
  */
 
@@ -86,7 +86,7 @@ export interface Placement {
 }
 
 /** Points tried along a curve, in order. */
-export const CURVE_STEPS: readonly number[] = [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8];
+const CURVE_STEPS: readonly number[] = [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8];
 /** Vertical steps tried above, then below, each of those points. */
 const NUDGES: readonly number[] = [12, 24, 36];
 /** Space kept between a label and a card or another label. */

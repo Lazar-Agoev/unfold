@@ -53,10 +53,6 @@
   font-weight: 500;
 }
 
-.list-row-muted .list-row-label {
-  color: var(--color-muted);
-}
-
 .list-row-trailing-filled {
   width: auto;
   min-width: 16px;

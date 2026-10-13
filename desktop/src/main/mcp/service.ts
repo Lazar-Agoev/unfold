@@ -9,7 +9,6 @@ import type { AgentServerStatus } from "../../shared/agent-api";
 import type { McpServices } from "./context";
 import { AgentDirectory } from "./identity";
 import { McpListener } from "./listener";
-import type { Prompt } from "./prompt";
 import { mcpHandler } from "./server";
 import type { Tool } from "./tool";
 
@@ -24,9 +23,8 @@ export interface McpServiceOptions {
   readonly version: string;
   /** Hears the status whenever it changes. */
   readonly onStatus: (status: AgentServerStatus) => void;
-  /** The tools and prompts, when not the app's own (tests). */
+  /** The tools, when not the app's own (tests). */
   readonly tools?: readonly Tool[];
-  readonly prompts?: readonly Prompt[];
   /** The port, when not the agents' port (tests: 0 picks a free one). */
   readonly port?: number;
 }
@@ -47,7 +45,6 @@ export class McpService {
       directory: this.directory,
       version: options.version,
       ...(options.tools ? { tools: options.tools } : {}),
-      ...(options.prompts ? { prompts: options.prompts } : {}),
     });
     this.listener = new McpListener({
       port: options.port ?? AGENT_PORT,

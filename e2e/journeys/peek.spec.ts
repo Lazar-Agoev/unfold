@@ -5,7 +5,7 @@
  */
 
 import type { Locator, Page } from "@playwright/test";
-import { addBox, addInput, addTab, openAdd, result, selectResult } from "../src/add";
+import { addBox, addInput, openAdd, result, selectResult } from "../src/add";
 import { boardView, card, cardMenu, clickCanvas } from "../src/board";
 import { expect, test } from "../src/fixtures";
 import { CREATE_ORDER, launchCompiled, PLACE, traceEntrance } from "../src/flows";
@@ -15,6 +15,17 @@ const SERVICE = "src/services/order-service.ts";
 
 function sheet(page: Page, path: string): Locator {
   return page.getByRole("complementary", { name: `Source of ${path}`, exact: true });
+}
+
+/** Finds `path` in Add by typing `query`, and chooses it: a file opens in the peek sheet. */
+async function openFile(page: Page, query: string, path: string): Promise<void> {
+  await openAdd(page);
+  await enterText(addInput(page), query);
+  const file = result(page, `file ${path}`);
+  await expect(file).toBeVisible();
+  await selectResult(page, file);
+  await addInput(page).press("Enter");
+  await expect(addBox(page)).toBeHidden();
 }
 
 async function canvasWidth(page: Page): Promise<number> {
@@ -29,14 +40,7 @@ test.describe("the peek sheet", () => {
     const peek = sheet(page, SERVICE);
 
     await test.step("a file chosen in Add opens in the sheet, whole and read-only", async () => {
-      await openAdd(page);
-      await addTab(page, "Files").click();
-      await enterText(addInput(page), "order-service");
-      const file = result(page, `File ${SERVICE}`);
-      await expect(file).toBeVisible();
-      await selectResult(page, file);
-      await addInput(page).press("Enter");
-      await expect(addBox(page)).toBeHidden();
+      await openFile(page, "order-service", SERVICE);
       await expect(peek).toBeVisible();
       await expect(peek.getByText("48 lines · TypeScript")).toBeVisible();
       await expect(peek.getByRole("document", { name: `${SERVICE}, read-only` })).toBeVisible();
@@ -83,11 +87,7 @@ test.describe("the peek sheet", () => {
     });
 
     await test.step("pinned, the sheet narrows the canvas instead of covering it, and Escape still closes it", async () => {
-      await openAdd(page);
-      await addTab(page, "Files").click();
-      await enterText(addInput(page), "order-service");
-      await expect(result(page, `File ${SERVICE}`)).toBeVisible();
-      await addInput(page).press("Enter");
+      await openFile(page, "order-service", SERVICE);
       await expect(peek).toBeVisible();
       await peek.getByRole("button", { name: "Pin" }).click();
       await expect(peek.getByRole("button", { name: "Unpin" })).toHaveAttribute("aria-pressed", "true");
@@ -100,30 +100,12 @@ test.describe("the peek sheet", () => {
     });
   });
 
-  test("a text match opens the sheet at its line; Open source on a card opens its file", async ({ sandbox, launch }) => {
+  test("Open source on a card opens its file", async ({ sandbox, launch }) => {
     const { page } = await launchCompiled(launch, sandbox);
     await traceEntrance(page, "POST", "/orders");
-
-    await test.step("a text match opens the sheet at its line", async () => {
-      await openAdd(page);
-      await enterText(addInput(page), "withRetry");
-      await addTab(page, "Text").click();
-      const match = result(page, /^src\/lib\/retry\.ts line 3: /);
-      await expect(match).toBeVisible();
-      await selectResult(page, match);
-      await addInput(page).press("Enter");
-      const peek = sheet(page, "src/lib/retry.ts");
-      await expect(peek).toBeVisible();
-      await expect(peek.locator(".peek-row.current")).toHaveAttribute("data-line", "3");
-      await page.keyboard.press("Escape");
-      await expect(peek).toBeHidden();
-    });
-
-    await test.step("Open source in a card's menu opens its file in the sheet", async () => {
-      await cardMenu(card(page, CREATE_ORDER), "Open source");
-      await expect(sheet(page, "src/routes/orders.ts")).toBeVisible();
-      await page.keyboard.press("Escape");
-      await expect(sheet(page, "src/routes/orders.ts")).toBeHidden();
-    });
+    await cardMenu(card(page, CREATE_ORDER), "Open source");
+    await expect(sheet(page, "src/routes/orders.ts")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(sheet(page, "src/routes/orders.ts")).toBeHidden();
   });
 });

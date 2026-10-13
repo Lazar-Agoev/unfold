@@ -1,9 +1,8 @@
 //! The example board with every item the format has besides cards, groups, and labels
 //! (`testdata/boards/order-system.json`: Diagram views, an attributed step group, nested frames,
 //! every kind of resource card, connections of every line style, and notes): it round-trips and
-//! repairs without leaving anything dangling. Saving it to itself, its
-//! health, and its Mermaid export need a live compile: `unfold-workspace`'s
-//! `tests/commands/claims.rs` checks them on `ts-orders`.
+//! repairs without leaving anything dangling. Saving it to itself and its health need a live
+//! compile: `unfold-workspace`'s `tests/commands/claims.rs` checks them on `ts-orders`.
 
 mod common;
 

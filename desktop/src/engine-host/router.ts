@@ -43,15 +43,10 @@ export type MainResult =
 
 /**
  * Commands Rust accepts only with `"trusted": true`, which only the main process may send: they take
- * absolute paths from dialogs, or read and save the window's state. Mirrors the trusted commands of
+ * an absolute path from a dialog, or read and save the window's state. Mirrors the trusted commands of
  * `crates/unfold-workspace/src/host.rs`.
  */
-export const MAIN_PROCESS_ONLY: ReadonlySet<string> = new Set([
-  "export_mermaid",
-  "add_project",
-  "window_state",
-  "save_window_state",
-]);
+export const MAIN_PROCESS_ONLY: ReadonlySet<string> = new Set(["add_project", "window_state", "save_window_state"]);
 
 /**
  * Commands a closing window must not lose: board and folder writes, and the window's state (its
@@ -89,8 +84,6 @@ const COMMAND_NAME = /^[a-z][a-z0-9_]*$/;
 export class EngineRouter {
   private readonly connections = new Map<number, Connection>();
   private readonly requests = new Map<number, Request>();
-  /** The main process's streamed requests in flight: host request id -> where their stream messages go. */
-  private readonly mainStreams = new Map<number, { readonly windowId: number; readonly onStream: (message: unknown) => void }>();
   /** Each window's latest detach, until it settles. */
   private readonly detaches = new Map<number, Promise<void>>();
   private nextRequestId = 1;
@@ -173,19 +166,14 @@ export class EngineRouter {
 
   /**
    * Runs a command the main process sent for an agent, without `trusted`: a {@link MAIN_PROCESS_ONLY}
-   * command, or one carrying `trusted`, is refused with `untrusted`, as a window's would be. A
-   * streamed command's messages go to `onStream`, each before the result. Never rejects.
+   * command, or one carrying `trusted`, is refused with `untrusted`, as a window's would be. Never
+   * rejects.
    */
-  untrusted(
-    windowId: number,
-    command: string,
-    args: Readonly<Record<string, unknown>>,
-    onStream?: (message: unknown) => void,
-  ): Promise<MainResult> {
+  untrusted(windowId: number, command: string, args: Readonly<Record<string, unknown>>): Promise<MainResult> {
     if (MAIN_PROCESS_ONLY.has(command) || Object.hasOwn(args, "trusted")) {
       return Promise.resolve({ ok: false, error: transportError("untrusted", `${command} is not available to agents.`) });
     }
-    return this.fromMain(windowId, command, args, false, onStream);
+    return this.fromMain(windowId, command, args, false);
   }
 
   private async fromMain(
@@ -193,7 +181,6 @@ export class EngineRouter {
     command: string,
     args: Readonly<Record<string, unknown>>,
     trusted: boolean,
-    onStream?: (message: unknown) => void,
   ): Promise<MainResult> {
     if (!("binding" in this.engine)) {
       return { ok: false, error: this.engine.unavailable };
@@ -201,21 +188,15 @@ export class EngineRouter {
     if (!COMMAND_NAME.test(command)) {
       return { ok: false, error: transportError("invalid_message", `Malformed command name: ${command}.`) };
     }
-    const requestId = this.nextRequestId++;
-    if (onStream) {
-      this.mainStreams.set(requestId, { windowId, onStream });
-    }
     let json: string;
     try {
       json = await this.engine.binding.dispatch(
         windowId,
-        requestId,
+        this.nextRequestId++,
         JSON.stringify(trusted ? { command, args, trusted } : { command, args }),
       );
     } catch (error) {
       return { ok: false, error: errorFromRejection(error) };
-    } finally {
-      this.mainStreams.delete(requestId);
     }
     try {
       return { ok: true, value: JSON.parse(json) as unknown };
@@ -264,11 +245,6 @@ export class EngineRouter {
     }
     if (message["kind"] === "stream") {
       const requestId = message["requestId"];
-      const fromMain = typeof requestId === "number" ? this.mainStreams.get(requestId) : undefined;
-      if (fromMain && fromMain.windowId === message["windowId"]) {
-        fromMain.onStream(message["message"]);
-        return;
-      }
       const request = typeof requestId === "number" ? this.requests.get(requestId) : undefined;
       if (!request || request.connection.windowId !== message["windowId"]) {
         return; // The request finished or its window went away; late stream messages are expected.

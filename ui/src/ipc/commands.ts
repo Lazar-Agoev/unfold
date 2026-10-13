@@ -28,7 +28,7 @@ export interface TypedStream<C extends StreamCommandName> {
   readonly cancel: () => void;
 }
 
-/** Runs a streamed engine command (`compile`, `search_text`); `onMessage` gets each message. */
+/** Runs a streamed engine command (`compile`); `onMessage` gets each message. */
 export function callStream<C extends StreamCommandName>(
   command: C,
   args: CommandArgs<C>,

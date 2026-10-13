@@ -26,7 +26,7 @@ const PAGE: AgentPage = {
 };
 
 function health(...items: HealthItem[]): BoardHealthView {
-  return { health: { items, missing: 0, outdated: 0, brokenGroups: 0, review: 0, brokenLinks: 0 }, outlines: [], label: null };
+  return { health: { items, missing: 0, outdated: 0, brokenGroups: 0, review: 0, brokenLinks: 0 }, label: null };
 }
 
 const OUTDATED_PLACE: HealthItem = { page: "page-1", kind: "outdated", target: { card: "place" }, message: "Changed.", repairs: ["resign", "removeDescription"] };

@@ -1,9 +1,8 @@
 /**
  * A block card: one definition (or another indexed block) of a project in Code (the Code lens) or Flow
  * (expanded in the Diagram lens, where its header starts with the chevron that makes it compact again).
- * The header shows `ƒ`, the name, and the file; a
- * review banner and the description follow. A folded card (double-click its header) shows only the
- * header, and its arrows attach there. The body never scrolls: the card sizes itself to its content.
+ * The header shows `ƒ`, the name, and the file; a review banner and the description follow. The body
+ * never scrolls: the card sizes itself to its content.
  * Flow shows the page's labels and the card's groups as step groups (a group's
  * one `collapsed` field folds it in both views), and the calls the card expands in place
  * (`CallInsets`): an inset under the call, while the call's own arrow keeps leaving from its step and
@@ -19,9 +18,8 @@ import { useUpdateNodeInternals } from "@xyflow/react";
 import { useLayoutEffect, useMemo, type ReactNode } from "react";
 import { stepRun } from "../../board/combine";
 import { viewCode } from "../../board/viewCode";
-import { showToast } from "../../components";
 import { CodeView, portSpot } from "../../code/CodeView";
-import { defaultFolds, groupConflict, groupSelection } from "../../code/outline";
+import { defaultFolds } from "../../code/outline";
 import { shortPath } from "../../code/text";
 import { FlowView, type FlowProposals, type ProposalMark } from "../../flow/FlowView";
 import { stepGroups } from "../../flow/groups";
@@ -30,7 +28,6 @@ import { insetRoom } from "../../flow/insets";
 import { layoutFlow, type ProposalSpec } from "../../flow/layout";
 import type { CallLink, Card, CodeText, CodeView as CodeViewModel, HealthItem, Key, ProjectId, Proposal, View } from "../../ipc/generated";
 import {
-  addGroup,
   editGroup,
   editPage,
   findPage,
@@ -40,7 +37,6 @@ import {
   labelTexts,
   lineOffsetIn,
   select,
-  setPendingGroup,
   updateGroup,
   updatePageView,
   useOpenBoard,
@@ -55,7 +51,7 @@ import { blockCardWidth, codeContentWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";
 import { flowExpansion, placeFlowPorts, useCallInsets, type InsetContext } from "./CallInsets";
 import { InlineCallee } from "./InlineCallee";
-import { CardGlyph, CardHandles, CardNote, DescriptionStrip, ExpandToggle, HeaderPorts, renderPorts, toggleCardFolded } from "./parts";
+import { CardGlyph, CardHandles, CardNote, DescriptionStrip, ExpandToggle, HeaderPorts, renderPorts } from "./parts";
 import { ReviewBanner } from "./ReviewBanner";
 import { clickCard } from "./select";
 
@@ -104,9 +100,8 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
   const model = query.data?.type === "block" ? query.data : undefined;
   const measure = useMeasure();
   const updateNodeInternals = useUpdateNodeInternals();
-  const folded = card.folded === true;
   const header = model?.header;
-  const menu = useCardMenu(target, card.id, folded, true, header?.qualifiedName ?? keyDisplayName(key));
+  const menu = useCardMenu(target, card.id, true, header?.qualifiedName ?? keyDisplayName(key));
 
   const codeFolds = usePageView(target, (pageView) => pageView.codeFolds[card.id]);
   const expandedKeys = usePageView(target, (pageView) => pageView.expanded[card.id] ?? NO_KEYS);
@@ -135,7 +130,6 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
   const calleeLines = calleeOf !== null ? contract.data?.calleeLines : undefined;
   const marked = useMemo(() => (calleeLines ? new Set(calleeLines) : undefined), [calleeLines]);
   const callerLine = line !== null && line.from === card.id ? line.line : null;
-  const pending = usePageView(target, ({ pendingGroup }) => (pendingGroup?.cardId === card.id ? pendingGroup : null));
   const allGroups = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.groups);
   const labels = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.labels);
   const health = useOpenBoard(target.board, (board) => board.health);
@@ -196,7 +190,7 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
     target,
     project,
     card,
-    flow: !folded && flowModel?.source === "current" ? flowModel : null,
+    flow: flowModel?.source === "current" ? flowModel : null,
     labels: labelText,
     openChains: chainSet,
     groups: allGroups,
@@ -234,35 +228,30 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
 
   const name = model?.header.qualifiedName ?? keyDisplayName(key);
   const location = model ? shortPath(model.header.path) : "";
-  const bodyWidth = folded ? null : view === "flow" && flowLayout ? flowLayout.width + 2 : shown ? codeContentWidth(shown, measure) : null;
+  const bodyWidth = view === "flow" && flowLayout ? flowLayout.width + 2 : shown ? codeContentWidth(shown, measure) : null;
   // A call expanded in place may need more than a card's usual widest; the card grows rather than clip it.
-  const insetWidth = !folded && flowLayout && flowLayout.insets.length > 0 ? flowLayout.width + 2 : 0;
+  const insetWidth = flowLayout && flowLayout.insets.length > 0 ? flowLayout.width + 2 : 0;
   // `measure` changes when the bundled fonts load, so widths come from the real fonts.
   const width = useMemo(
     () => Math.max(insetWidth, blockCardWidth({ name, location, chevron: view === "flow", body: bodyWidth }, measure)),
     [name, location, view, bodyWidth, insetWidth, measure],
   );
 
-  // Which ports the body places (its own Flow's steps, or an inset's); the rest (and all of a folded card's) sit on the header.
+  // Which ports the body places (its own Flow's steps, or an inset's); the rest sit on the header.
   const flowPorts = useMemo(() => {
     if (view !== "flow" || !flowLayout) {
       return null;
     }
     return placeFlowPorts(key, flowLayout, insets, ports, (id) => shown?.links.find((link) => link.source === id)?.owner ?? "");
   }, [view, flowLayout, insets, ports, shown, key]);
-  const headerPorts = folded
-    ? ports
-    : view === "flow" && flowPorts
-      ? flowPorts.unplaced
-      : shown
-        ? ports.filter((id) => portSpot(shown, id) === undefined)
-        : ports;
+  const headerPorts =
+    view === "flow" && flowPorts ? flowPorts.unplaced : shown ? ports.filter((id) => portSpot(shown, id) === undefined) : ports;
 
   const portsKey = ports.join("\u0000");
   const foldsKey = [...folds].join("\u0000");
   useLayoutEffect(() => {
     updateNodeInternals(card.id);
-  }, [updateNodeInternals, card.id, portsKey, foldsKey, folded, view, width, model, expandedKeys, openChains, groups, pending, flowLayout]);
+  }, [updateNodeInternals, card.id, portsKey, foldsKey, view, width, model, expandedKeys, openChains, groups, flowLayout]);
 
   const selectKey = (blockKey: string) => {
     clickCard(target, card.id, blockKey);
@@ -290,21 +279,18 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
       select(target, { kind: "group", groupId });
     }
   };
-  const follow = (targetKey: string, anchor: HTMLElement, line?: number) => {
+  const follow = (targetKey: string, anchor: HTMLElement) => {
     const offset = lineOffsetIn(anchor);
     followCall({
       target,
       fromCardId: card.id,
-      fromLabel: name,
       targetKey,
-      targetLabel: keyDisplayName(targetKey),
       ...(offset !== undefined ? { lineOffset: offset } : {}),
-      ...(line !== undefined ? { line } : {}),
     });
   };
   const onFollowLink = (link: CallLink, anchor: HTMLElement) => {
     if (link.target !== undefined) {
-      follow(link.target, anchor, link.line);
+      follow(link.target, anchor);
     }
   };
   const onExpand = (link: CallLink) => {
@@ -334,31 +320,6 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
     return map;
   }, [expandedKeys, shown, target, project, card.id]);
 
-  const onGutterSelect = (from: number, to: number) => {
-    if (!shown) {
-      return;
-    }
-    const selection = groupSelection(shown.outline, from, to);
-    if ("error" in selection) {
-      setPendingGroup(target, null);
-      showToast({ title: selection.error });
-      return;
-    }
-    const conflict = groupConflict(shown.outline, selection.members, groups);
-    setPendingGroup(target, { cardId: card.id, members: selection.members, ...(conflict !== null ? { error: conflict } : {}) });
-  };
-  const onNamePendingGroup = (title: string | null) => {
-    if (title === null || title.trim().length === 0 || !pending || pending.error !== undefined) {
-      setPendingGroup(target, null);
-      return;
-    }
-    editPage(target, (page) => addGroup(page, card.id, pending.members, title.trim()));
-    setPendingGroup(target, null);
-  };
-
-  const toggleFolded = () => {
-    toggleCardFolded(target, card.id, folded);
-  };
   const toggleChain = (chainKey: string) => {
     updatePageView(target, (draft) => {
       draft.flowChains[card.id] = toggled(draft.flowChains[card.id] ?? [], chainKey);
@@ -473,9 +434,6 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
           onFollow={onFollowLink}
           onExpand={onExpand}
           expanded={expanded}
-          onGutterSelect={onGutterSelect}
-          pendingGroup={pending}
-          onNamePendingGroup={onNamePendingGroup}
           dimmed={stale !== undefined}
           {...(marked ? { marked } : {})}
           callerLine={callerLine}
@@ -491,7 +449,7 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
   const missing = query.isError && isMissing(query.error);
   return (
     <article
-      className={`board-card block-card${selected ? " selected" : ""}${folded ? " folded" : ""}${missing ? " missing" : ""}`}
+      className={`board-card block-card${selected ? " selected" : ""}${missing ? " missing" : ""}`}
       data-card-id={card.id}
       data-key={key}
       data-loading={query.isPending ? "true" : undefined}
@@ -503,8 +461,8 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
       onContextMenu={menu.onContextMenu}
     >
       <CardHandles />
-      <header className="card-header card-drag" onDoubleClick={toggleFolded}>
-        {view === "flow" && !folded ? <ExpandToggle target={target} cardId={card.id} expanded name={name} /> : null}
+      <header className="card-header card-drag">
+        {view === "flow" ? <ExpandToggle target={target} cardId={card.id} expanded name={name} /> : null}
         <CardGlyph kind={model?.header.kind ?? null} />
         <h3 className="card-title" title={model?.header.qualifiedName ?? key}>
           {name}
@@ -515,14 +473,8 @@ export function BlockCard({ target, project, card, view, ports, selected }: Bloc
         <HeaderPorts ids={headerPorts} />
       </header>
       <ReviewBanner target={target} project={project} cardId={card.id} />
-      {folded ? null : (
-        <>
-          <DescriptionStrip target={target} cardId={card.id} description={card.description} />
-          <div className="card-body nodrag nopan">
-            {body}
-          </div>
-        </>
-      )}
+      <DescriptionStrip target={target} cardId={card.id} description={card.description} />
+      <div className="card-body nodrag nopan">{body}</div>
       {menu.element}
     </article>
   );

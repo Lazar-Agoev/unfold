@@ -44,11 +44,9 @@ const CHECK_WORDS: Readonly<Record<PageCheckKind, string>> = {
   overlap: "overlap",
   crossings: "crossings",
   density: "density",
-  unlabeled: "unlabeled steps",
   missingWords: "missing words",
   evidence: "evidence",
   strays: "strays",
-  views: "views",
 };
 
 /** The `repair` call for one of an item's repairs, or why it is the person's to do (D6). */
@@ -100,7 +98,7 @@ export const check = defineTool({
   name: "check",
   title: "Check",
   description:
-    'Reviews a page, or every page of a board, as data any agent can act on: health problems (missing, outdated, held for review, broken step groups, broken links), each with the repair calls it allows; and the page checks: overlap, crossings, density (over 30 visible items on a page, 12 in a frame, 12 steps in an expanded card), unlabeled steps of expanded cards (not those a collapsed step group hides), missing words (frames, step groups, and resource cards without a description), evidence (connections and resource cards without anchors), strays (items with no line, connection, or frame), and views (many expanded cards on an overview page), each with the tool that fixes it. page is an id or a link (default: the page in view); a board without a page checks every page of it. Unfold draws the page as the person sees it, unsaved edits included, and loads a board the window doesn\'t hold without moving the person\'s view. Call it after each section you build, then get_screenshot, and fix what it finds with targeted edits; don\'t start the page over. Re-signing or accepting what a person wrote is theirs to do: the result says so. Reading changes nothing.',
+    'Reviews a page, or every page of a board, as data any agent can act on: health problems (missing, outdated, held for review, broken step groups, broken links), each with the repair calls it allows; and the page checks: overlap, crossings, density (over 30 visible items on a page, 12 in a frame, 12 steps in an expanded card), missing words (frames, step groups, and resource cards without a description), evidence (connections and resource cards without anchors), and strays (items with no line, connection, or frame), each with the tool that fixes it. page is an id or a link (default: the page in view); a board without a page checks every page of it. Unfold draws the page as the person sees it, unsaved edits included, and loads a board the window doesn\'t hold without moving the person\'s view. Call it after each section you build, then get_screenshot, and fix what it finds with targeted edits; don\'t start the page over. Re-signing or accepting what a person wrote is theirs to do: the result says so. Reading changes nothing.',
   input: z.object({
     board: z.string().min(1).optional().describe("A board's id or a link; alone, every page of it is checked"),
     page: z.string().min(1).optional().describe("A page's id or a link (default: the page in view)"),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authorText, cardText, joined, keyFile, keyKind, keyName, labelText, place, typeText } from "./format";
+import { authorText, cardText, joined, keyFile, keyKind, keyName, place, typeText } from "./format";
 
 describe("names", () => {
   it("name keys as boards do", () => {
@@ -18,7 +18,7 @@ describe("names", () => {
     expect(place("package.json", null)).toBe("package.json");
   });
 
-  it("write types with what their names link to, and labels unfolded", () => {
+  it("write types with what their names link to", () => {
     expect(
       typeText({
         text: "Map<string, Money>",
@@ -30,10 +30,6 @@ describe("names", () => {
       }),
     ).toBe("Map<string, Money> (Money: unresolved, a variable, not a type)");
     expect(typeText({ text: "Queue<OrderJob>", spans: [{ start: 0, end: 5, style: "external", module: "bullmq", note: "bullmq" }] })).toBe("Queue<OrderJob> (Queue: from bullmq)");
-    expect(labelText({ inputs: [{ type: { text: "Cart", spans: [] } }, { name: "user" }, { keyword: "currency", type: { text: "str", spans: [] } }, {}], inputsUnknown: false, output: { text: "Receipt", spans: [] } })).toBe(
-      "(Cart, user, currency=str, …) → Receipt",
-    );
-    expect(labelText({ inputs: [], inputsUnknown: true })).toBe("(…) → ?");
   });
 
   it("say where following stopped at a card", () => {

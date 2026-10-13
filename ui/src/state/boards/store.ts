@@ -20,7 +20,7 @@ import { replaceEqualDeep } from "@tanstack/react-query";
 import { produce, type Draft } from "immer";
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import type { BoardDocument, BoardState, Card, Page, PageOutline, View } from "../../ipc/generated";
+import type { BoardDocument, BoardState, Card, Page, View } from "../../ipc/generated";
 import { UnfoldError, toUnfoldError } from "../../ipc/unfold";
 import { findPage } from "./document";
 import { call } from "./engine";
@@ -28,15 +28,12 @@ import { boardKey } from "./keys";
 import type {
   BoardRef,
   Camera,
-  FocusMove,
   HistoryEntry,
   OpenBoard,
   PageId,
   PageTarget,
   PageView,
-  PendingGroup,
   Selection,
-  TrailItem,
 } from "./types";
 
 /** How long after the last edit a board saves itself. */
@@ -45,8 +42,6 @@ export const AUTOSAVE_MS = 600;
 const COALESCE_MS = 1200;
 /** Undo steps kept per board. */
 export const HISTORY_LIMIT = 200;
-/** Focus moves kept for Back, per page. */
-const TRAIL_LIMIT = 100;
 
 export interface EditOptions {
   /** Merges consecutive edits with this key (a drag, typing a title) into one undo step. */
@@ -113,14 +108,9 @@ function pageView(): PageView {
     codeFolds: {},
     expanded: {},
     flowChains: {},
-    trail: [],
-    back: [],
-    forward: [],
     sizes: {},
     focus: null,
-    pendingGroup: null,
     linking: null,
-    openTypes: {},
   };
 }
 
@@ -216,34 +206,8 @@ export function shownView(lens: View | null, card: Pick<Card, "view">, defaultVi
 
 export function select(target: PageTarget, selection: Selection): void {
   updatePageView(target, (view) => {
-    const was = view.selection;
-    const sameLine = selection.kind === "line" && was.kind === "line" && was.arrowId === selection.arrowId && was.source === selection.source && was.seq === selection.seq;
-    if (!sameLine && Object.keys(view.openTypes).length > 0) {
-      view.openTypes = {};
-    }
     view.selection = selection as Draft<Selection>;
   });
-}
-
-/**
- * Opens span `span` of row `row` in the selected line's contract, or closes it when it is the one
- * open; a row shows one opened type at a time. Closing or changing a row closes what was opened
- * inside it. View state: never saved, never an undo step.
- */
-export function toggleOpenType(target: PageTarget, row: string, span: number): void {
-  updatePageView(target, (view) => {
-    view.openTypes = toggledOpenTypes(view.openTypes, row, span);
-  });
-}
-
-/**
- * `openTypes` with span `span` of row `row` opened, or closed when it is the one open; closing or
- * changing a row closes what was opened inside it (`<row>/…`).
- */
-export function toggledOpenTypes(openTypes: Readonly<Record<string, number>>, row: string, span: number): Record<string, number> {
-  const closing = openTypes[row] === span;
-  const kept = Object.entries(openTypes).filter(([key]) => key !== row && !key.startsWith(`${row}/`));
-  return Object.fromEntries(closing ? kept : [...kept, [row, span]]);
 }
 
 let focusSeq = 0;
@@ -257,47 +221,6 @@ export function requestCardFocus(target: PageTarget, cardIds: readonly string[],
   });
 }
 
-/** Records the current place for Back (a focus move is about to happen); clears Forward. */
-export function pushFocusMove(target: PageTarget, trail?: readonly TrailItem[]): void {
-  updatePageView(target, (view) => {
-    const move: FocusMove = { camera: view.camera, selection: view.selection, trail: [...view.trail] };
-    view.back.push(move as Draft<FocusMove>);
-    if (view.back.length > TRAIL_LIMIT) {
-      view.back.splice(0, view.back.length - TRAIL_LIMIT);
-    }
-    view.forward = [];
-    if (trail) {
-      view.trail = [...trail];
-    }
-  });
-}
-
-/** Back or Forward: restores the selection, trail, and camera of that move, and returns it. */
-export function travel(target: PageTarget, direction: "back" | "forward"): FocusMove | null {
-  const view = getPageView(target);
-  const move = view[direction].at(-1);
-  if (!move) {
-    return null;
-  }
-  const here: FocusMove = { camera: view.camera, selection: view.selection, trail: view.trail };
-  updatePageView(target, (draft) => {
-    draft[direction].pop();
-    draft[direction === "back" ? "forward" : "back"].push(here as Draft<FocusMove>);
-    draft.selection = move.selection as Draft<Selection>;
-    draft.trail = [...move.trail];
-    if (move.camera) {
-      draft.camera = move.camera;
-    }
-  });
-  return move;
-}
-
-export function setPendingGroup(target: PageTarget, pending: PendingGroup | null): void {
-  updatePageView(target, (view) => {
-    view.pendingGroup = pending as Draft<PendingGroup> | null;
-  });
-}
-
 /** Starts (from a card) or ends (null) link drawing mode on a page. */
 export function setLinking(target: PageTarget, from: string | null): void {
   updatePageView(target, (view) => {
@@ -308,10 +231,6 @@ export function setLinking(target: PageTarget, from: string | null): void {
 // ---------------------------------------------------------------------------------------------
 // Opening and forgetting
 
-function outlinesOf(outlines: readonly PageOutline[]): Record<PageId, PageOutline> {
-  return Object.fromEntries(outlines.map((outline) => [outline.page, outline]));
-}
-
 function freshBoard(state: BoardState, page: PageId | null, readOnly: boolean): OpenBoard {
   const activePage = existingPage(state.document, page);
   return {
@@ -320,7 +239,6 @@ function freshBoard(state: BoardState, page: PageId | null, readOnly: boolean): 
     document: state.document,
     revision: state.revision,
     health: state.health,
-    outlines: outlinesOf(state.outlines),
     label: state.label,
     edits: 0,
     savedEdits: 0,
@@ -503,11 +421,9 @@ function applySaved(ref: BoardRef, saved: BoardState, coveredEdits: number): voi
   // The saved document carries the signatures; adopt it only if nothing changed meanwhile.
   const document = board.edits === coveredEdits ? shared(board.document, saved.document) : board.document;
   const health = shared(board.health, saved.health);
-  const outlines = shared(board.outlines, outlinesOf(saved.outlines));
   update(ref, (open) => {
     open.revision = saved.revision;
     open.health = health;
-    open.outlines = outlines;
     open.label = saved.label;
     open.name = saved.name;
     open.savedEdits = Math.max(open.savedEdits, coveredEdits);
@@ -689,7 +605,6 @@ function commitStep(
   update(ref, (open) => {
     open.revision = saved.revision;
     open.health = shared(board.health, saved.health);
-    open.outlines = shared(board.outlines, outlinesOf(saved.outlines));
     open.label = saved.label;
     open.name = saved.name;
     open.saveError = null;
@@ -786,7 +701,6 @@ export async function adoptOutsideChange(state: BoardState): Promise<void> {
     open.document = state.document;
     open.revision = state.revision;
     open.health = state.health;
-    open.outlines = outlinesOf(state.outlines);
     open.label = state.label;
     open.name = state.name;
     open.edits += 1;
@@ -796,7 +710,7 @@ export async function adoptOutsideChange(state: BoardState): Promise<void> {
   });
 }
 
-/** Refreshes an open board's health, outlines, and label (after a graph update). */
+/** Refreshes an open board's health and label (after a graph update). */
 export async function refreshHealth(ref: BoardRef): Promise<void> {
   try {
     const view = await call("board_health", { project: ref.project, id: ref.id });
@@ -805,13 +719,11 @@ export async function refreshHealth(ref: BoardRef): Promise<void> {
       return;
     }
     const health = shared(board.health, view.health);
-    const outlines = shared(board.outlines, outlinesOf(view.outlines));
-    if (health === board.health && outlines === board.outlines && view.label === board.label) {
+    if (health === board.health && view.label === board.label) {
       return;
     }
     update(ref, (open) => {
       open.health = health;
-      open.outlines = outlines;
       open.label = view.label;
     });
   } catch {
@@ -828,7 +740,6 @@ function savedState(board: OpenBoard): BoardState {
     document: board.document,
     revision: board.revision,
     health: board.health,
-    outlines: Object.values(board.outlines),
     label: board.label,
   };
 }

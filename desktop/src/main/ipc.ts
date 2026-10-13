@@ -1,8 +1,8 @@
 /**
  * Window and dialog commands, the only IPC the main process answers (docs/ipc.md#how-a-command-travels). Engine
- * commands never come here: they travel over the window's port to the engine host. A few window
- * commands end in an engine request the main process sends itself, with `"trusted": true`
- * (`add_project`, `export_mermaid`), because they involve a path only the main process may choose.
+ * commands never come here: they travel over the window's port to the engine host. `add_project`
+ * ends in an engine request the main process sends itself, with `"trusted": true`, because it takes a
+ * path only the main process may choose.
  * `window_info` and `report_shown_board` hand the window's shown board to and from the workspace,
  * which saves it with the window's bounds. The agent channel's commands (`report_view` and the
  * answers to agent requests) go to the agent bridge; `agent_server_status` reads the MCP server's
@@ -12,14 +12,13 @@
 
 import { writeFile } from "node:fs/promises";
 import { clipboard, ipcMain } from "electron";
-import type { ExportedFile, TransportError, WindowCommand, WindowCommands, WindowInfo } from "../shared/unfold-api";
+import type { TransportError, WindowCommand, WindowCommands, WindowInfo } from "../shared/unfold-api";
 import { IPC, transportError, type WindowReply } from "../shared/transport";
 import type { AgentBridge } from "./agents/bridge";
 import type { PageRenderer } from "./agents/render";
 import { parseViewReport } from "./agents/views";
 import type { UiSource } from "./app-url";
 import { chooseExportPath, chooseFolder, confirmRemoveProject } from "./dialogs";
-import type { EngineHost } from "./engine-host";
 import { EngineRequestError } from "./engine-host";
 import { exportFileName } from "./export-name";
 import { trustedSender } from "./security";
@@ -33,7 +32,7 @@ type Handler<C extends WindowCommand> = (
   args: Readonly<Record<string, unknown>>,
 ) => Promise<WindowCommands[C]["result"]> | WindowCommands[C]["result"];
 
-/** The most text `copy_to_clipboard` accepts (a large board's Mermaid is well under this). */
+/** The most text `copy_to_clipboard` accepts (a link or a setup command is far under this). */
 const MAX_CLIPBOARD_CHARS = 8_000_000;
 /** The longest project name `confirm_remove_project` shows (a project is named by its folder, and a macOS file name is at most 255 characters). */
 const MAX_PROJECT_NAME = 255;
@@ -51,14 +50,13 @@ function invalid(message: string): CommandError {
 export interface WindowCommandServices {
   readonly window: Pick<AppWindow, "forWebContents">;
   readonly workspace: Pick<Workspace, "add" | "shownBoard" | "showBoard">;
-  readonly engine: Pick<EngineHost, "request">;
   readonly ui: UiSource;
   readonly agents: Pick<AgentBridge, "views" | "settle">;
   readonly mcp: Pick<McpService, "status">;
   readonly renderer: Pick<PageRenderer, "owns" | "settle" | "screenshot">;
 }
 
-export function registerWindowCommands({ window, workspace, engine, ui, agents, mcp, renderer }: WindowCommandServices): void {
+export function registerWindowCommands({ window, workspace, ui, agents, mcp, renderer }: WindowCommandServices): void {
   const handlers: { [C in WindowCommand]: Handler<C> } = {
     add_project: async (entry) => {
       const path = await chooseFolder(entry.window);
@@ -71,25 +69,12 @@ export function registerWindowCommands({ window, workspace, engine, ui, agents, 
       }
       return { confirmed: await confirmRemoveProject(entry.window, name) };
     },
-    export_mermaid: async (entry, args) => {
-      const source = exportSource(args);
-      if (!source) {
-        throw invalid(
-          "export_mermaid: pass {project, board, page} or {project, entrance} (strings), and an optional title.",
-        );
-      }
-      const path = await chooseExportPath(entry.window, exportFileName(source.title));
-      if (path === null) {
-        return null;
-      }
-      return (await engineRequest(entry.id, "export_mermaid", { ...source.args, path })) as ExportedFile;
-    },
     export_png: async (entry, args) => {
       const { project, board, page, title } = args;
       if (typeof project !== "string" || typeof board !== "string" || typeof page !== "string" || (title !== undefined && typeof title !== "string")) {
         throw invalid("export_png: pass {project, board, page} (strings), and an optional title.");
       }
-      const path = await chooseExportPath(entry.window, exportFileName(title ?? board, "png"), "png");
+      const path = await chooseExportPath(entry.window, exportFileName(title ?? board));
       if (path === null) {
         return null;
       }
@@ -169,14 +154,6 @@ export function registerWindowCommands({ window, workspace, engine, ui, agents, 
     }
   }
 
-  async function engineRequest(windowId: number, command: string, args: Readonly<Record<string, unknown>>) {
-    try {
-      return await engine.request(windowId, command, args);
-    } catch (error) {
-      throw error instanceof EngineRequestError ? new CommandError(error.error) : error;
-    }
-  }
-
   ipcMain.handle(IPC.windowCommand, async (event, command: unknown, args: unknown): Promise<WindowReply> => {
     const sender = trustedSender(ui, event);
     if (sender && renderer.owns(sender)) {
@@ -212,26 +189,6 @@ export function registerWindowCommands({ window, workspace, engine, ui, agents, 
       return { ok: false, error: transportError("internal", `${String(command)} failed.`) };
     }
   });
-}
-
-/**
- * `export_mermaid`'s source as the engine takes it (`{project, board: {id, page}}` or `{project,
- * entrance}`), and the title the default file name comes from; null when malformed.
- */
-function exportSource(
-  args: Readonly<Record<string, unknown>>,
-): { args: Readonly<Record<string, unknown>>; title: string } | null {
-  const { project, board, page, entrance, title } = args;
-  if (typeof project !== "string" || (title !== undefined && typeof title !== "string")) {
-    return null;
-  }
-  if (typeof board === "string" && typeof page === "string" && entrance === undefined) {
-    return { args: { project, board: { id: board, page } }, title: title ?? board };
-  }
-  if (typeof entrance === "string" && board === undefined && page === undefined) {
-    return { args: { project, entrance }, title: title ?? entrance };
-  }
-  return null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,12 +1,12 @@
-//! Typed lines (`docs/reader.md`, "Typed lines"): `line_labels` (the at-rest labels of a page's
-//! arrows), `call_contract` (one selected line), `type_definition` (a type opened under a
-//! contract row), and `type_uses` (where a type is written). Each wakes its project and reads
+//! Typed lines (`docs/reader.md`, "Typed lines"): `call_contract` (one selected line),
+//! `type_definition` (a type opened under a contract row), and `type_uses` (where a type is
+//! written). Each wakes its project and reads
 //! the committed graph in one store snapshot; the reader's contracts module computes the
 //! payloads.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use ts_rs::TS;
-use unfold_reader::contracts::{self, CallContract, Facts, LineLabel, TypeDefinition, TypeUses};
+use unfold_reader::contracts::{self, CallContract, Facts, TypeDefinition, TypeUses};
 use unfold_store::Reader;
 
 use super::key_arg;
@@ -15,45 +15,10 @@ use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::ProjectId;
 use crate::workspace::Workspace;
 
-/// The most lines one `line_labels` request labels.
-pub const MAX_LINES: usize = 500;
 /// The most places one `type_uses` page lists.
 pub const MAX_USES: u32 = 200;
 /// Places per `type_uses` page when the request doesn't say.
 const DEFAULT_USES: u32 = 50;
-
-/// One arrow: an occurrence and one of its edges.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LineRef {
-    /// The occurrence block's key.
-    pub source: String,
-    /// The edge's sequence: 0 for the call, construction, or import itself; then passed
-    /// references in argument order.
-    pub seq: u32,
-}
-
-/// The arguments of `line_labels`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LineLabelsArgs {
-    /// The project of every line.
-    pub project: ProjectId,
-    /// The arrows to label (at most 500).
-    pub lines: Vec<LineRef>,
-}
-
-/// One arrow's at-rest label.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct LabeledLine {
-    /// The occurrence block's key, as asked.
-    pub source: String,
-    /// The edge's sequence, as asked.
-    pub seq: u32,
-    /// The label; `null` for an external or unresolved edge, an import, or an unknown arrow.
-    pub label: Option<LineLabel>,
-}
 
 /// The arguments of `call_contract`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
@@ -95,32 +60,6 @@ fn with_facts<T>(
     let root = workspace.root();
     let computed = reader.snapshot(|reader| Ok(compute(&mut Facts::new(reader, root))))?;
     Ok(computed?)
-}
-
-/// `line_labels`: the at-rest label of every arrow asked for, in the order asked.
-pub fn line_labels(ctx: &Ctx<'_>, args: LineLabelsArgs) -> CommandResult<Vec<LabeledLine>> {
-    if args.lines.len() > MAX_LINES {
-        return Err(CommandError::invalid_args(format!(
-            "lines lists at most {MAX_LINES} arrows"
-        )));
-    }
-    let workspace = ctx.live(&args.project)?;
-    let labels = with_facts(&workspace, |facts| {
-        let mut labels = Vec::with_capacity(args.lines.len());
-        for line in &args.lines {
-            if ctx.cancel.is_cancelled() {
-                break;
-            }
-            labels.push(LabeledLine {
-                label: contracts::line_label(facts, &line.source, line.seq)?,
-                source: line.source.clone(),
-                seq: line.seq,
-            });
-        }
-        Ok(labels)
-    })?;
-    ctx.check_cancelled()?;
-    Ok(labels)
 }
 
 /// `call_contract`: the contract of one resolved call or construction.

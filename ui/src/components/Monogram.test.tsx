@@ -8,14 +8,14 @@ describe("Monogram", () => {
     const { container } = render(
       <>
         <Monogram name="storefront-api" size={14} />
-        <Monogram name="ödeme" size={20} tone="selected" />
+        <Monogram name="ödeme" size={20} />
         <Monogram name="Lazar's workspace" size={20} tone="workspace" />
       </>,
     );
     const marks = [...container.querySelectorAll(".monogram")];
     expect(marks.map((mark) => mark.textContent)).toEqual(["S", "Ö", "L"]);
     expect(marks[0]?.className).toBe("monogram monogram-14 monogram-default");
-    expect(marks[1]?.classList.contains("monogram-selected")).toBe(true);
+    expect(marks[1]?.className).toBe("monogram monogram-20 monogram-default");
     expect(marks[2]?.classList.contains("monogram-workspace")).toBe(true);
     expect(marks[0]?.getAttribute("aria-hidden")).toBe("true");
   });

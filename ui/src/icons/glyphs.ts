@@ -19,7 +19,6 @@ export interface Glyph {
 }
 
 export const ICON_NAMES = [
-  "home",
   "chevron-left",
   "chevron-right",
   "chevron-down",
@@ -28,8 +27,6 @@ export const ICON_NAMES = [
   "dots",
   "plus",
   "page",
-  "entrance",
-  "group",
   "link",
   "search",
   "folder",
@@ -63,7 +60,6 @@ export const ICON_NAMES = [
   "resource-storage",
   "resource-external",
   "resource-actor",
-  "note",
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];
@@ -71,8 +67,6 @@ export type IconName = (typeof ICON_NAMES)[number];
 const FOLDER = "M2 4.5C2 3.67 2.67 3 3.5 3H6.5L8 4.5H12.5C13.33 4.5 14 5.17 14 6V11.5C14 12.33 13.33 13 12.5 13H3.5C2.67 13 2 12.33 2 11.5V4.5Z";
 
 export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
-  // Window tabs.
-  home: { box: 16, stroke: 1.4, shapes: [{ d: "M2.5 7L8 2.5L13.5 7V13.5H9.5V10H6.5V13.5H2.5V7Z" }] },
   // Board breadcrumb, dock, menus.
   "chevron-left": { box: 24, shapes: [{ d: "M15 18l-6-6 6-6" }] },
   "chevron-right": { box: 24, shapes: [{ d: "M9 18l6-6-6-6" }] },
@@ -91,13 +85,8 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   },
   plus: { box: 16, shapes: [{ d: "M8 3.5V12.5M3.5 8H12.5" }] },
   minus: { box: 16, shapes: [{ d: "M3.5 8H12.5" }] },
-  // Pages and On this page.
+  // Pages and drawn links.
   page: { box: 24, shapes: [{ d: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" }, { d: "M14 3v5h5" }] },
-  entrance: {
-    box: 24,
-    shapes: [{ d: "M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" }, { d: "M10 17l5-5-5-5" }, { d: "M15 12H3" }],
-  },
-  group: { box: 24, shapes: [{ d: "M13 4H9v16h4" }] },
   link: { box: 16, shapes: [{ d: "M2 8h9", dash: "2.5 2" }, { d: "M10 5l3 3-3 3" }] },
   // Home sidebar.
   search: { box: 16, shapes: [{ circle: [7, 7, 4.5] }, { d: "M10.5 10.5L13.5 13.5" }] },
@@ -191,6 +180,4 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   "resource-storage": { box: 16, shapes: [{ d: "M2.5 4.5H13.5M3.5 4.5L4.5 13.5H11.5L12.5 4.5" }, { d: "M6 7.5H10" }] },
   "resource-external": { box: 16, shapes: [{ d: "M4.5 12.5H11.5A2.5 2.5 0 0 0 11.8 7.5A3.5 3.5 0 0 0 5 7A2.75 2.75 0 0 0 4.5 12.5Z" }] },
   "resource-actor": { box: 16, shapes: [{ circle: [8, 5, 2.5] }, { d: "M3 13.5C3 10.75 5.25 9 8 9C10.75 9 13 10.75 13 13.5" }] },
-  // A note: a sheet with its corner turned and two lines of text.
-  note: { box: 16, shapes: [{ d: "M3 2.5H13V10L10 13.5H3V2.5Z" }, { d: "M13 10H10V13.5" }, { d: "M5.5 6H10.5M5.5 8.5H9" }] },
 };

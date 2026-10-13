@@ -1,5 +1,5 @@
-//! The peek sheet (`file_view`), cards (`card`, `peek`, `relations`, `callers`), and Add's
-//! previews (`preview`), each naming its project: paging, freshness, and shapes.
+//! The peek sheet (`file_view`) and cards (`card`, `peek`, `relations`, `callers`), each naming
+//! its project: paging, freshness, and shapes.
 
 use serde_json::{Value, json};
 
@@ -143,7 +143,7 @@ fn evidence_files_show_as_text_with_line_numbers() {
 }
 
 #[test]
-fn cards_peeks_relations_callers_and_previews_name_their_project() {
+fn cards_peeks_relations_and_callers_name_their_project() {
     let harness = Harness::compiled("ts-orders");
     harness.write("src/generated.ts", &generated(6));
     harness.ok(1, "compile", json!({ "project": harness.project }));
@@ -211,53 +211,5 @@ fn cards_peeks_relations_callers_and_previews_name_their_project() {
             json!({ "project": harness.project, "key": "src/generated.ts#function:nope" })
         ),
         "not_found"
-    );
-
-    let preview = at("preview", json!({}));
-    assert_eq!(preview["kind"], "block");
-    assert_eq!(preview["project"], harness.project);
-    assert_eq!(preview["header"]["name"], "step1");
-    let code = &preview["code"];
-    assert_eq!(code["startLine"], 9);
-    let lines = code["lines"].as_array().expect("lines");
-    assert!(!lines.is_empty() && lines.len() <= 5);
-    assert!(
-        code["text"]
-            .as_str()
-            .is_some_and(|text| text.starts_with("export function step1"))
-    );
-    assert_eq!(
-        preview["calls"]["items"],
-        json!([{ "name": "step2", "key": "src/generated.ts#function:step2", "module": null }])
-    );
-    assert_eq!(preview["calledBy"]["total"], 1);
-    assert_eq!(
-        preview["calledBy"]["items"][0]["key"],
-        "src/generated.ts#function:step0"
-    );
-
-    let entrance = harness
-        .entrance_rows(None)
-        .into_iter()
-        .find(|row| row["kind"] != "process")
-        .expect("an entrance")["key"]
-        .clone();
-    let preview = harness.ok(
-        1,
-        "preview",
-        json!({ "project": harness.project, "key": entrance }),
-    );
-    assert_eq!(preview["kind"], "entrance");
-    assert!(
-        preview["handlers"]
-            .as_array()
-            .is_some_and(|handlers| handlers.len() <= 8)
-    );
-    assert!(preview["declared"]["path"].is_string());
-    assert!(preview["reaches"].is_u64());
-    assert!(
-        preview["externalModules"]
-            .as_array()
-            .is_some_and(|modules| modules.len() <= 5)
     );
 }
