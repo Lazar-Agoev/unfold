@@ -39,7 +39,7 @@ describe("repairing a board for an agent", () => {
   it("applies the repair as one undo step, answers with the page as saved, and marks what it changed", async () => {
     store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", [CARD])])));
     const result = await repairForAgent({ requestId: 1, board: REF, page: "page-1", agent: CLAUDE, repair: REPAIR, items: ["a"] });
-    expect(engine.callsOf("repair_board")).toEqual([{ project: P, id: ID, repair: REPAIR }]);
+    expect(engine.callsOf("repair_board")).toEqual([{ project: P, id: ID, base: "r1", repair: REPAIR }]);
     expect(result).toMatchObject({ ok: true, page: { id: "page-1", cards: [{ id: "a", ref: { block: "src/a.ts#function:b" } }] }, board: { revision: "r2" } });
     expect(store.canUndo(REF)).toBe(true);
     expect(renderHook(() => useWorkingItems({ board: REF, page: "page-1" })).result.current).toEqual(new Set(["a"]));

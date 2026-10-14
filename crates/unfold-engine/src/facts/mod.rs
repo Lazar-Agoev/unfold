@@ -241,6 +241,10 @@ pub enum FactsError {
     /// The cached bytes could not be decoded.
     #[error("cannot decode file facts: {0}")]
     Decode(String),
+    /// The owning language can't read the cached payload
+    /// ([`Language::reads_payload`](crate::Language::reads_payload)).
+    #[error("the language cannot read the cached payload")]
+    Payload,
     /// The facts could not be encoded.
     #[error("cannot encode file facts: {0}")]
     Encode(String),

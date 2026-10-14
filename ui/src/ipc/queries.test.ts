@@ -254,7 +254,7 @@ describe("invalidation by event", () => {
   it("leaves the cache alone for settings changes, compile progress, and reloaded boards", () => {
     applyEngineEvent(client, { type: "config_changed", project: P });
     applyEngineEvent(client, { type: "compile_progress", project: P, stage: "extract", done: 1, total: 2 });
-    applyEngineEvent(client, { type: "board_reloaded", project: P, board: "b", state: null });
+    applyEngineEvent(client, { type: "board_reloaded", project: P, board: "b", file: { kind: "deleted" } });
     expect(stale()).toEqual([]);
   });
 });

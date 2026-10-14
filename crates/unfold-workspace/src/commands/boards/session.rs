@@ -3,9 +3,11 @@
 //!
 //! A **session** is the version of an open board last loaded or saved, which the window edits on
 //! top of: the board, its file's revision, and its health. A save writes the window's version
-//! over the file, whatever it holds; an outside change to the file reloads the session
-//! ([`super::health::check_disk`]), keeping the version it replaced until the next save: a window
-//! whose save is failing ignores the reload and still edits on that version.
+//! over the file only while the window's version builds on the session's and the file still
+//! holds it (or is gone); otherwise the person chooses. An outside change to the file reloads the
+//! session ([`super::health::check_disk`]), keeping the version it replaced until the next save:
+//! a window with edits of its own doesn't take the reload, and the person may keep the version
+//! they edited on.
 //!
 //! The **health cache** holds the health of every board of the project (Home's Health line and
 //! the Problems list), each under the [`HealthKey`] it was computed for: a cached health is
@@ -38,9 +40,13 @@ pub(super) struct Session {
     /// valid board), so it is handled once.
     pub(super) skipped: Option<Change>,
     /// The versions (with their health) that outside changes replaced since the board was last
-    /// saved or loaded by a command, oldest first. A window whose save was failing ignored those
-    /// reloads, so its Retry is checked against them too.
+    /// saved or loaded by a command, oldest first. A window with edits of its own didn't take
+    /// those reloads, so keeping the person's version is checked against them too.
     pub(super) replaced: Vec<(Board, Health)>,
+    /// The revisions the app's own folder moves replaced since the board was last saved or
+    /// loaded: the folder is Rust's, never the window's, so a window's version built on one of
+    /// them builds on the session's.
+    pub(super) moved: Vec<Revision>,
 }
 
 impl Session {
@@ -52,7 +58,13 @@ impl Session {
             health,
             skipped: None,
             replaced: Vec::new(),
+            moved: Vec::new(),
         }
+    }
+
+    /// Whether a window's version built on the file at `base` builds on this session's version.
+    pub(super) fn builds_on(&self, base: Revision) -> bool {
+        self.revision == base || self.moved.contains(&base)
     }
 
     /// Takes `reloaded`, an outside change's version, keeping the version it replaces.

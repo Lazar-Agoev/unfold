@@ -197,8 +197,13 @@ test("the code panel shows each block's lines, follows the canvas, and keeps up 
     await addInput(page).press("Enter");
     const entrance = card(page, "Server · Place an order");
     await expect(entrance).toBeVisible();
-    await entrance.hover();
-    await entrance.getByRole("button", { name: "View code" }).click();
+    // View code shows while the card is hovered; hover again if the page moved under the pointer.
+    const viewCode = entrance.getByRole("button", { name: "View code" });
+    await expect(async () => {
+      await entrance.hover();
+      await expect(viewCode).toBeVisible({ timeout: 1000 });
+    }).toPass();
+    await viewCode.click();
     const declared = lineOf(readFile(join(folder, "unfold.toml")), 'name = "Place an order"');
     await expectShownLines(page, declared, declared);
     await expectPath(page, ["unfold.toml", "Server", "Place an order"], "Place an order");

@@ -10,8 +10,8 @@ use unfold_reader::board::files::{BoardFile, Change, Revision};
 use super::files::{Files, parse_id};
 use super::graphs::Source;
 use super::session::{BoardExtras, health_of, publish_problems};
-use super::{board_state, load_session};
-use crate::events::WorkspaceEvent;
+use super::{board_state, new_session};
+use crate::events::{ReloadedFile, WorkspaceEvent};
 use crate::host::HostState;
 use crate::projects::Projects;
 use crate::shared::lock;
@@ -74,10 +74,11 @@ const SETTLE_LIMIT: Duration = Duration::from_secs(5);
 /// - A file that is a valid board replaces the session (its health computed again; see
 ///   [`super::session::Session::reload`]), and the event carries the board as the window now
 ///   shows it.
-/// - A file that is gone is reported once with no board; the session keeps the version last
-///   loaded or saved, which the next save writes back.
-/// - A file that isn't a valid board is left alone: the session keeps its version, and the next
-///   save writes it over the file.
+/// - A file that is gone is reported once; the session keeps the version last loaded or saved,
+///   which the next save writes back.
+/// - A file that isn't a valid board is reported once, with why; the session keeps its version,
+///   and saves are refused (`board_changed`) until the person keeps theirs or the file is a
+///   valid board again (the session's own version included, which the event then carries).
 ///
 /// Writers that don't replace the file atomically (truncate, then write) let a check catch the
 /// file empty or half written, so a changed file is read only once it is a valid board, or once
@@ -101,7 +102,8 @@ pub(crate) fn check_disk(host: &HostState, projects: &Projects, workspace: &Work
         let Ok(now) = files.dirs.change(&file, revision) else {
             continue;
         };
-        if now == Change::Unchanged || Some(now) == skipped {
+        // Nothing new: the session's version, or the change last skipped.
+        if (now == Change::Unchanged && skipped.is_none()) || Some(now) == skipped {
             continue;
         }
         // Settled without the sessions lock: board commands mustn't wait for a slow writer.
@@ -116,21 +118,35 @@ pub(crate) fn check_disk(host: &HostState, projects: &Projects, workspace: &Work
         else {
             continue;
         };
-        let state = match change {
-            Change::Unchanged => continue,
+        let reloaded = match change {
+            // The session's version again: a file that wasn't a valid board is one again.
+            Change::Unchanged => match session.skipped.take() {
+                Some(Change::Changed(_)) => ReloadedFile::Board {
+                    state: Box::new(board_state(workspace.project(), &id, &file, session)),
+                },
+                _ => continue,
+            },
             Change::Missing => {
                 session.skipped = Some(change);
-                None
+                ReloadedFile::Deleted
             }
-            Change::Changed(_) => match load_session(&files, extras, &source, &id, &file) {
-                Ok(reloaded) => {
+            Change::Changed(_) => match files.load(&file) {
+                Ok(loaded) => {
+                    // The next check tries again when the graph can't be read now.
+                    let Ok(reloaded) = new_session(extras, &source, &id, loaded) else {
+                        continue;
+                    };
                     let state = board_state(workspace.project(), &id, &file, &reloaded);
                     session.reload(reloaded);
-                    Some(Box::new(state))
+                    ReloadedFile::Board {
+                        state: Box::new(state),
+                    }
                 }
-                Err(_) => {
+                Err(error) => {
                     session.skipped = Some(change);
-                    continue;
+                    ReloadedFile::Invalid {
+                        message: error.message,
+                    }
                 }
             },
         };
@@ -142,7 +158,7 @@ pub(crate) fn check_disk(host: &HostState, projects: &Projects, workspace: &Work
                 &WorkspaceEvent::BoardReloaded {
                     project: workspace.project().clone(),
                     board: id,
-                    state,
+                    file: reloaded,
                 },
             );
         }

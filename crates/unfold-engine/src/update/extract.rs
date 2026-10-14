@@ -76,10 +76,11 @@ pub(crate) fn extract_all(
 }
 
 fn extract_one(job: &Job<'_>, cached: Option<CacheEntry>, settings: &Settings) -> JobResult {
-    // An entry that doesn't decode (written by a broken build, or corrupted) is a miss.
+    // An entry that doesn't decode, or whose payload the language can't read (written by
+    // another build, or corrupted), is a miss.
     if let Some(entry) = cached {
         let extracted = match entry.status {
-            CacheStatus::Parsed => decode_facts(&entry.bytes)
+            CacheStatus::Parsed => decode_facts(&entry.bytes, job.language)
                 .ok()
                 .map(|facts| Extracted::Facts(Arc::new(facts))),
             CacheStatus::Failed => decode_failure(&entry.bytes).ok().map(Extracted::Failure),

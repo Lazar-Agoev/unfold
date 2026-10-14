@@ -558,7 +558,7 @@ impl<'e, 'r> Run<'e, 'r> {
             .last_good(pending.path, ENGINE_VERSION, pending.settings)
         {
             Ok(Some((hash, bytes))) => {
-                if let Ok(facts) = decode_facts(&bytes) {
+                if let Ok(facts) = decode_facts(&bytes, pending.language) {
                     return Facts::LastGood {
                         hash,
                         facts: Arc::new(facts),

@@ -40,6 +40,8 @@ if (typeof globalThis.requestAnimationFrame !== "function") {
 let engine: FakeEngine;
 /** Why `save_board` fails, while it does. */
 let saveFailure: string | null = null;
+/** The board as its file holds it (`reload_board`). */
+let onDisk = boardState(P, ID);
 
 function state(cards: Card[], links: Connection[] = []) {
   return boardState(P, ID, boardDocument([page("page-1", cards, { links }), page("page-2")]));
@@ -58,6 +60,7 @@ function renderBoard() {
 
 beforeEach(() => {
   saveFailure = null;
+  onDisk = boardState(P, ID);
   store.resetBoards();
   resetWorking();
   queryClient.clear();
@@ -72,6 +75,7 @@ beforeEach(() => {
         throw { code: "not_found", message: "no such key" };
       },
       list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
+      reload_board: () => onDisk,
       callers: () => fixture("callers", "callers_place"),
       save_board: () => {
         if (saveFailure !== null) {
@@ -174,5 +178,53 @@ describe("the board view", () => {
       expect(screen.queryByText("Not saved ·")).toBeNull();
     });
     expect(engine.callsOf("save_board").at(-1)).toMatchObject({ project: P, id: ID, board: { title: "Mine" } });
+  });
+
+  it("says saving stopped while the file on disk isn't a valid board, and Save my version writes the board over it", async () => {
+    store.adoptBoardState(state([]));
+    renderBoard();
+    await screen.findByRole("heading", { name: "Page page-1" });
+    act(() => {
+      store.fileChanged(REF, { kind: "invalid", message: "board file is not valid JSON at line 1, column 1" });
+    });
+    const banner = screen.getByRole("status");
+    expect(banner.textContent).toBe("The board's file on disk isn't a valid board, so saving stopped.Save my version");
+    expect(within(banner).getByText(/isn't a valid board/).getAttribute("title")).toBe("board file is not valid JSON at line 1, column 1");
+    fireEvent.click(within(banner).getByRole("button", { name: "Save my version" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("status")).toBeNull();
+    });
+    expect(engine.callsOf("save_board").at(-1)).toMatchObject({ project: P, id: ID, base: "r1", overwrite: true });
+  });
+
+  it("asks when the file changed while the board had edits: Keep my edits writes them, Load the file takes the file's version", async () => {
+    store.adoptBoardState(state([]));
+    renderBoard();
+    await screen.findByRole("heading", { name: "Page page-1" });
+    const theirs = boardState(P, ID, boardDocument([page("page-1"), page("page-2")], { title: "Theirs" }), { revision: "r9" });
+    onDisk = theirs;
+    const ask = () => {
+      act(() => {
+        store.editBoard(REF, (document) => {
+          document.title = "Mine";
+        });
+        store.fileChanged(REF, { kind: "board", state: theirs });
+      });
+      const banner = screen.getByRole("status");
+      expect(banner.textContent).toBe("The board's file changed on disk.Keep my edits·Load the file");
+      return banner;
+    };
+    fireEvent.click(within(ask()).getByRole("button", { name: "Keep my edits" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("status")).toBeNull();
+    });
+    expect(engine.callsOf("save_board").at(-1)).toMatchObject({ project: P, id: ID, overwrite: true, board: { title: "Mine" } });
+
+    fireEvent.click(within(ask()).getByRole("button", { name: "Load the file" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("status")).toBeNull();
+    });
+    expect(engine.callsOf("reload_board")).toEqual([{ project: P, id: ID }]);
+    expect(store.getOpenBoard(REF)?.document.title).toBe("Theirs");
   });
 });

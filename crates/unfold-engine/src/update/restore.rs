@@ -76,7 +76,7 @@ impl Engine {
         let hashes = settings_hashes(&records, &project);
         let mut wanted = Vec::new();
         let mut files = BTreeMap::new();
-        for ((record, _), settings) in records.iter().zip(hashes) {
+        for ((record, language), settings) in records.iter().zip(hashes) {
             let entry = FileEntry {
                 language: record.language,
                 settings,
@@ -89,13 +89,13 @@ impl Engine {
                 (FileState::Failed, _) => {
                     files.insert(record.path.clone(), entry);
                 }
-                (state, Some(hash)) => wanted.push((*record, state, hash, entry)),
+                (state, Some(hash)) => wanted.push((*record, *language, state, hash, entry)),
                 (_, None) => {}
             }
         }
         let keys: Vec<FactsKey<'_>> = wanted
             .iter()
-            .map(|(record, _, hash, entry)| FactsKey {
+            .map(|(record, _, _, hash, entry)| FactsKey {
                 path: &record.path,
                 hash: *hash,
                 engine: ENGINE_VERSION,
@@ -106,12 +106,13 @@ impl Engine {
         let cached = self.cache.get(&keys).unwrap_or_default();
         let decoded: Vec<_> = cached
             .into_par_iter()
-            .map(|entry| {
+            .zip(&wanted)
+            .map(|(entry, (_, language, ..))| {
                 let entry = entry.filter(|entry| entry.status == CacheStatus::Parsed)?;
-                decode_facts(&entry.bytes).ok().map(Arc::new)
+                decode_facts(&entry.bytes, *language).ok().map(Arc::new)
             })
             .collect();
-        for ((record, state, hash, mut entry), facts) in wanted.into_iter().zip(decoded) {
+        for ((record, _, state, hash, mut entry), facts) in wanted.into_iter().zip(decoded) {
             let Some(facts) = facts else {
                 continue;
             };

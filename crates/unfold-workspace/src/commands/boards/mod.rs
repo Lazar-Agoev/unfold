@@ -13,12 +13,14 @@
 //! saved. A window autosaves its edits (`save_board`, a [`BoardEdit`]): Rust checks them against
 //! the project's graph ([`graphs`]: no new missing reference, broken combined step, held
 //! reference, or broken link, and the overlay rules), signs new descriptions, names, and
-//! combined steps, and writes the board over its
-//! file, whatever the file holds now. When the file changes outside the app (another program, a
-//! `git pull`), the session is reloaded from it and the window that opened the board gets
-//! `board_reloaded` ([`health::check_disk`]); while the window's save is failing, it ignores the
-//! reload, and its Retry writes the person's version over the file, checked against the version
-//! the window was editing on (the session keeps it: [`session`]).
+//! combined steps, and writes the board over its file. Nothing writes over what the window
+//! hasn't seen: a save or repair names the revision its version builds on, and is refused
+//! (`board_changed`) when the file changed since, or isn't a valid board, unless the person
+//! chose to keep their version (`overwrite`). A deleted file is written again. When the file
+//! changes outside the app (another program, a `git pull`), the window that opened the board
+//! gets `board_reloaded` ([`health::check_disk`]): a valid board reloads the session, keeping
+//! the version it replaced (the person may keep the version they edited on: [`session`]); a
+//! file that isn't a valid board leaves the session as it was.
 //!
 //! Every board's health is cached per board ([`session::BoardExtras`]) and feeds the Problems
 //! list and Home's Health line; it is refreshed after the project's graph changes.
@@ -34,7 +36,7 @@ mod types;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use unfold_reader::board::files::{BoardFile, Loaded};
+use unfold_reader::board::files::{BoardFile, Change, Loaded, Revision};
 use unfold_reader::board::{Anchor, Board, Health, Repair, apply_repair, parse_edit, prepare_save};
 
 pub use self::folders::{create_folder, delete_folder, rename_folder, set_board_folder};
@@ -97,7 +99,11 @@ fn load_session(
     id: &str,
     file: &BoardFile,
 ) -> CommandResult<Session> {
-    let loaded = files.load(file)?;
+    new_session(extras, source, id, files.load(file)?)
+}
+
+/// A new session on board `id` as read from disk (`loaded`), with its health (cached).
+fn new_session(extras: &BoardExtras, source: &Source, id: &str, loaded: Loaded) -> CommandResult<Session> {
     let graph = source.board(&loaded.board)?;
     let health = unfold_reader::board::board_health(&loaded.board, &graph);
     extras.cache(source, id, &loaded.board, loaded.revision, &health);
@@ -148,13 +154,36 @@ impl Opened<'_> {
         board_state(self.project.id(), &self.id, &self.file, session)
     }
 
-    /// Validates, signs, and writes `board` over the board's file, whatever the file holds now,
-    /// as the session's new version.
+    /// Refuses (`board_changed`) a write of a version that builds on the file at `base` when
+    /// that isn't what the file holds: the window's version must build on the session's, and
+    /// the file must still hold the session's version. A deleted file is written again.
+    fn check_base(&self, session: &Session, base: Revision) -> CommandResult<()> {
+        let current = match self.files().dirs.change(&self.file, session.revision) {
+            Ok(Change::Missing) => true,
+            Ok(Change::Unchanged) => session.builds_on(base),
+            // Changed, or unreadable (larger than a board file can be): not what the window saw.
+            Ok(Change::Changed(_)) | Err(_) => false,
+        };
+        if current {
+            Ok(())
+        } else {
+            Err(CommandError::new(
+                "board_changed",
+                format!(
+                    "`{}` changed on disk since this version of the board was loaded or saved, or isn't a \
+                     valid board: the person chooses which version to keep",
+                    self.id
+                ),
+            ))
+        }
+    }
+
+    /// Validates, signs, and writes `board` over the board's file as the session's new version.
     ///
     /// `board` is checked against the session's version, and when that refuses it, against each
-    /// version an outside change replaced since the last save, newest first: a window whose save
-    /// was failing ignored those reloads, so its Retry builds on one of them, and a problem that
-    /// version already had isn't new. The first check that passes wins.
+    /// version an outside change replaced since the last save, newest first: a window with edits
+    /// of its own didn't take those reloads, so the version the person keeps may build on one of
+    /// them, and a problem that version already had isn't new. The first check that passes wins.
     fn save(&self, session: &mut Session, source: &Source, board: Board) -> CommandResult<BoardState> {
         let graph = source.board(&board)?;
         let check = |previous: (&Board, &Health)| prepare_save(board.clone(), Some(previous), &graph);
@@ -241,7 +270,8 @@ pub fn open_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardState>
 
 /// `new_board`: creates an empty board with one page as a new file in `.unfold/boards/` (named
 /// from its title, never overwriting another board), opens it in the calling window, and
-/// returns it. A window that closed meanwhile gets `window_closed`, and the board stays closed.
+/// returns it. A window that closed meanwhile gets `window_closed`, and the file is deleted
+/// again: nobody holds the board, and a retry would make a second one.
 pub fn new_board(ctx: &Ctx<'_>, args: NewBoardArgs) -> CommandResult<BoardState> {
     let project = ctx.project(&args.project)?;
     let folder = args.folder.map(folder_arg).transpose()?;
@@ -255,23 +285,23 @@ pub fn new_board(ctx: &Ctx<'_>, args: NewBoardArgs) -> CommandResult<BoardState>
     let source = Source::live(&workspace)?;
     let (file, revision) = files.create(&board)?;
     let id = file.relative();
-    // An empty board is healthy.
     let extras = project.extras();
-    extras
-        .boards
-        .cache(&source, &id, &board, revision, &Health::default());
+    // An empty board is healthy.
     let session = Session::new(Loaded { board, revision }, Health::default());
     let state = board_state(project.id(), &id, &file, &session);
     extras.boards.sessions().insert(id.clone(), session);
-    let opened = project.open_board(&id, ctx.window);
-    if opened.is_err() {
+    if let Err(error) = project.open_board(&id, ctx.window) {
         extras.boards.forget_sessions(std::slice::from_ref(&id));
+        files.remove(&file)?;
+        return Err(error.into());
     }
+    extras
+        .boards
+        .cache(&source, &id, &state.document.board, revision, &Health::default());
     if let Some(folder) = &folder {
         folder_used(&workspace, folder);
     }
     announce(&workspace, &mut vec![id], folder.is_some());
-    opened?;
     Ok(state)
 }
 
@@ -306,14 +336,18 @@ pub fn close_board(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<()> {
     Ok(())
 }
 
-/// `save_board`: validates, signs, and writes the edited board over its file (with no check of
-/// what the file holds now: the window's version wins), and returns it as saved.
+/// `save_board`: validates, signs, and writes the edited board over its file, and returns it as
+/// saved. Refused (`board_changed`) when the file changed since the version it builds on, or
+/// isn't a valid board, unless the person chose their version (`overwrite`).
 pub fn save_board(ctx: &Ctx<'_>, args: SaveBoardArgs) -> CommandResult<BoardState> {
     let opened = opened(ctx, &args.project, &args.id)?;
     let source = opened.source()?;
     let state = {
         let mut sessions = opened.boards().sessions();
         let session = opened.session(&mut sessions, &source)?;
+        if args.overwrite != Some(true) {
+            opened.check_base(session, args.base)?;
+        }
         let board = parse_edit(&args.board.0.to_string(), session.board.folder.clone())?;
         opened.save(session, &source, board)?
     };
@@ -348,6 +382,7 @@ pub fn board_health(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardHeal
 }
 
 /// `repair_board`: applies one repair a health item offers, on its page, and saves the board.
+/// Refused (`board_changed`) as `save_board` is.
 pub fn repair_board(ctx: &Ctx<'_>, args: RepairBoardArgs) -> CommandResult<BoardState> {
     let opened = opened(ctx, &args.project, &args.id)?;
     let page_id = args.repair.page;
@@ -356,6 +391,7 @@ pub fn repair_board(ctx: &Ctx<'_>, args: RepairBoardArgs) -> CommandResult<Board
     let state = {
         let mut sessions = opened.boards().sessions();
         let session = opened.session(&mut sessions, &source)?;
+        opened.check_base(session, args.base)?;
         let mut board = session.board.clone();
         // Reconnecting reads the new key, or the new anchor, from the graph too.
         let graph = {

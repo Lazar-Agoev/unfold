@@ -27,9 +27,9 @@ use unfold_engine::evidence::{
 use unfold_engine::settings::{Settings, SettingsHash};
 use unfold_engine::update::{MemoryFactsCache, UpdateOutcome};
 use unfold_engine::{
-    CallRef, CancelToken, DeclRef, Engine, EngineOptions, FactsSet, FileFacts, FileId, ImportRef, Language,
-    LanguageId, LanguageProblem, Linked, NodeRef, Producer, ProjectInputs, SourceFailure, Stage, TypeRef,
-    UpdateRequest, ValueRef,
+    CallRef, CancelToken, DeclRef, Engine, EngineOptions, FactsCache, FactsSet, FileFacts, FileId, ImportRef,
+    Language, LanguageId, LanguageProblem, Linked, NodeRef, Producer, ProjectInputs, SourceFailure, Stage,
+    TypeRef, UpdateRequest, ValueRef,
 };
 
 use crate::alien::Alien;
@@ -136,6 +136,10 @@ impl Language for Counting {
             std::thread::sleep(self.delay);
         }
         Alien.extract(file, settings)
+    }
+
+    fn reads_payload(&self, payload: &[u8]) -> bool {
+        Alien.reads_payload(payload)
     }
 
     fn link<'a>(&'a self, files: &'a FactsSet, inputs: &'a ProjectInputs) -> Box<dyn Linked + 'a> {
@@ -316,7 +320,7 @@ pub fn options(threads: usize) -> EngineOptions {
 pub fn engine_with(
     folder: &Folder,
     language: Arc<Counting>,
-    cache: Arc<MemoryFactsCache>,
+    cache: Arc<impl FactsCache + 'static>,
     threads: usize,
 ) -> Engine {
     Engine::new(

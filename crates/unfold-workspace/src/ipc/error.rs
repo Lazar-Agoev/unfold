@@ -16,6 +16,8 @@
 //! | `folder_exists` / `folder_not_empty` | A board folder rename's target is taken / a deleted board folder has boards |
 //! | `board_invalid` | A board file or document breaks the `unfold-board` format |
 //! | `board_problem` | A save would introduce a missing reference, broken combined step, or held reference, or break the overlay rules |
+//! | `board_changed` | A save or repair of an open board whose file changed on disk since the version it builds on was loaded or saved, or isn't a valid board: the person chooses which version to keep |
+//! | `board_too_large` | A save or new board whose file would be larger than a board file can be (16 MiB) |
 //! | `name_taken` | Another board took a new board's file name meanwhile |
 //! | `editor_not_found` | `open_in_editor` can't find the editor command's program (set its full path) |
 //! | `cancelled` | The request was cancelled |
@@ -108,6 +110,7 @@ impl From<BoardError> for CommandError {
             BoardError::Problem { .. } | BoardError::Unverified { .. } => "board_problem",
             BoardError::InvalidName { .. } => "invalid_args",
             BoardError::NameTaken { .. } => "name_taken",
+            BoardError::TooLarge { .. } => "board_too_large",
             BoardError::Io { .. } => "io",
         };
         Self::new(code, error.to_string())

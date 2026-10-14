@@ -19,7 +19,7 @@
 //! | `problems_changed` | The Problems list changed |
 //! | `files_changed` | The watcher saw files appear, change, or disappear |
 //! | `boards_changed` | Board files or folders changed |
-//! | `board_reloaded` | An open board's file changed on disk outside the app, and its session was reloaded (only the window that opened it) |
+//! | `board_reloaded` | An open board's file changed on disk outside the app: reloaded, deleted, or no longer a valid board (only the window that opened it) |
 //! | `config_changed` | `unfold.toml` changed |
 
 use serde::Serialize;
@@ -121,30 +121,50 @@ pub enum WorkspaceEvent {
     BoardsChanged {
         /// The project.
         project: ProjectId,
-        /// The boards whose files changed, sorted.
+        /// The boards whose files changed, sorted, as `list_boards` lists them (a file whose name
+        /// a board file can't have included).
         boards: Vec<String>,
         /// Whether the project's folders may have changed too (boards moved, folders created,
         /// renamed, or deleted).
         folders: bool,
     },
     /// An open board's file changed on disk outside this app (an agent or another program
-    /// wrote it, or a `git pull` did), and the board's session was reloaded from it. Sent only to
-    /// the window that opened the board, which replaces the board and starts its undo history
-    /// over, unless its save of that board is failing: then it ignores the reload, and its Retry
-    /// writes the person's version over the file (`save_board`).
+    /// wrote it, or a `git pull` did). Sent only to the window that opened the board, which
+    /// takes a valid board's version when nothing of its own is unsaved, and otherwise stops
+    /// saving and asks the person which version to keep (docs/ui-shell.md#state-and-engine-data).
     BoardReloaded {
         /// The project.
         project: ProjectId,
         /// The board's id.
         board: String,
-        /// The board as reloaded, or `None` when its file was deleted (the session keeps the
-        /// version last loaded or saved, which the next save writes back).
-        state: Option<Box<BoardState>>,
+        /// What the file holds now.
+        file: ReloadedFile,
     },
     /// `unfold.toml` changed.
     ConfigChanged {
         /// The project.
         project: ProjectId,
+    },
+}
+
+/// What an open board's file holds after an outside change (`board_reloaded`).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ReloadedFile {
+    /// A valid board, which the board's session took: the board as the window now shows it.
+    Board {
+        /// The board as reloaded.
+        state: Box<BoardState>,
+    },
+    /// Nothing: the file was deleted. The session keeps the version last loaded or saved,
+    /// which the next save writes back.
+    Deleted,
+    /// Something that isn't a valid board (a merge conflict, a broken edit). The session keeps
+    /// its version, and saves are refused (`board_changed`) until the person keeps theirs or
+    /// the file is a valid board again.
+    Invalid {
+        /// Why it isn't a valid board.
+        message: String,
     },
 }
 
@@ -214,6 +234,21 @@ mod tests {
         assert_eq!(
             config,
             serde_json::json!({"type": "config_changed", "project": "p-abcdefghij"})
+        );
+        let invalid = serde_json::to_value(WorkspaceEvent::BoardReloaded {
+            project: project.clone(),
+            board: ".unfold/boards/a.json".into(),
+            file: ReloadedFile::Invalid {
+                message: "not valid JSON".into(),
+            },
+        })
+        .expect("serialize");
+        assert_eq!(
+            invalid,
+            serde_json::json!({
+                "type": "board_reloaded", "project": "p-abcdefghij", "board": ".unfold/boards/a.json",
+                "file": { "kind": "invalid", "message": "not valid JSON" }
+            })
         );
         let state = serde_json::to_value(WorkspaceEvent::ProjectState {
             project,

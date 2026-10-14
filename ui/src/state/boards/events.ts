@@ -7,7 +7,7 @@
 
 import { onEngineEvent } from "./engine";
 import { boardKey } from "./keys";
-import { adoptOutsideChange, openBoards, refreshHealth, saveAllNow } from "./store";
+import { fileChanged, openBoards, refreshHealth, saveAllNow } from "./store";
 
 /** Graph updates arrive in bursts while files are saved; a board's health is refreshed once they settle. */
 export const HEALTH_DELAY_MS = 250;
@@ -17,10 +17,7 @@ export function installBoardEvents(): () => void {
   const healthTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const unsubscribers = [
     onEngineEvent("board_reloaded", (event) => {
-      // A file deleted outside keeps the person's version, which the next save writes back.
-      if (event.state) {
-        adoptOutsideChange(event.state);
-      }
+      fileChanged({ project: event.project, id: event.board }, event.file);
     }),
     onEngineEvent("graph_updated", (event) => {
       for (const board of openBoards()) {

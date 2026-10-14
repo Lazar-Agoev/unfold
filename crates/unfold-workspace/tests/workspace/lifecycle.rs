@@ -200,6 +200,55 @@ fn deleting_the_cache_is_noticed_by_the_watcher() {
     assert!(playground.path(".unfold/local/cache/graph.sqlite").exists());
 }
 
+/// Compiling everything again into a recreated cache keeps the settings in effect: while
+/// `unfold.toml` doesn't parse, the last good scope and apps stay, whether the next piece of work
+/// is a background update or a Compile.
+#[test]
+fn a_recreated_cache_keeps_the_last_good_settings() {
+    let playground = Playground::new("ts-orders", false);
+    playground.write("vendor/huge.ts", "export function vendored() {}\n");
+    playground.write(
+        "unfold.toml",
+        "[scope]\nexclude = [\"vendor/**\"]\n\n[[app]]\nname = \"Server\"\ncode = \"src/server.ts#\"\n",
+    );
+    let sink = RecordingSink::new();
+    let workspace = playground.open(&sink, false);
+    compile(&workspace);
+    playground.write("unfold.toml", "[scope]\nexclude = [\"vendor/**\"\n");
+    workspace.rescan();
+    settle(&workspace);
+    let last_good = |workspace: &Workspace| {
+        assert!(has_block(workspace, "src/server.ts", "healthCheck"));
+        assert!(
+            !has_block(workspace, "vendor/huge.ts", "vendored"),
+            "the last good scope stays"
+        );
+        let reader = workspace.readers().expect("readers").get().expect("reader");
+        let apps = reader.apps().expect("apps");
+        let keys: Vec<&str> = apps.iter().map(|app| app.key.as_str()).collect();
+        assert_eq!(keys, ["entrance:server"], "the last good apps stay");
+        drop(reader);
+        let problems = workspace.problems();
+        assert!(
+            problems.iter().any(|problem| problem.path == "unfold.toml"),
+            "{problems:?}"
+        );
+    };
+    last_good(&workspace);
+
+    std::fs::remove_dir_all(playground.path(".unfold/local/cache")).expect("delete cache");
+    let mark = sink.mark();
+    workspace.rescan();
+    sink.wait_for(mark, |event| event.kind() == "graph_updated")
+        .expect("recompiled");
+    settle(&workspace);
+    last_good(&workspace);
+
+    std::fs::remove_dir_all(playground.path(".unfold/local/cache")).expect("delete cache");
+    compile(&workspace);
+    last_good(&workspace);
+}
+
 #[test]
 fn cancellation_and_progress() {
     let playground = Playground::new("py-orders", true);

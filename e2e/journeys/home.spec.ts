@@ -111,9 +111,14 @@ test("a playground compiles; Home shows how it starts, fixes a key, and survives
   await test.step("a missing key shows its dot; Fix rewrites its one line, and the dot goes", async () => {
     await expect(admin.getByRole("img", { name: "Needs a look" })).toBeVisible();
     await expect(startRow(page, "Place an order").getByRole("img", { name: "Needs a look" })).toHaveCount(0);
-    await admin.hover();
+    // Fix shows while the row is hovered; hover again if the list moved under the pointer.
+    const fix = admin.getByRole("button", { name: "Fix", exact: true });
+    await expect(async () => {
+      await admin.hover();
+      await expect(fix).toBeVisible({ timeout: 1000 });
+    }).toPass();
     await expect(admin.locator(".home-start-why")).toHaveText("Moved to src/routes/admin.ts");
-    await admin.getByRole("button", { name: "Fix", exact: true }).click();
+    await fix.click();
     await expect(admin.getByRole("img", { name: "Needs a look" })).toHaveCount(0);
     await expect(notFound(2)).toBeVisible();
 

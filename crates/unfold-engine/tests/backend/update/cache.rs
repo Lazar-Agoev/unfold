@@ -1,12 +1,16 @@
-//! The facts cache and settings changes: unchanged bytes are never extracted again, and a
-//! settings edit re-extracts exactly the files whose settings hash changed.
+//! The facts cache and settings changes: unchanged bytes are never extracted again, a settings
+//! edit re-extracts exactly the files whose settings hash changed, and an entry whose payload the
+//! language can't read is a miss.
 
 use std::sync::Arc;
 
-use unfold_core::Graph;
 use unfold_core::vocab::FileState;
-use unfold_engine::update::{DiskState, MemoryFactsCache};
-use unfold_engine::{Engine, LinkBasis, UpdateOutcome, UpdateRequest};
+use unfold_core::{ContentHash, Graph, RepoPath};
+use unfold_engine::settings::SettingsHash;
+use unfold_engine::update::{
+    CacheEntry, CacheError, CacheStatus, DiskState, FactsKey, MemoryFactsCache, NewCacheEntry,
+};
+use unfold_engine::{Engine, FactsCache, FileFacts, LinkBasis, UpdateOutcome, UpdateRequest};
 
 use super::{Counting, Folder, background, canonical, compile, engine_with, template};
 
@@ -118,7 +122,7 @@ fn reopening_restores_facts_and_checks_stamps() {
     let first = compile(&mut engine);
     language.count();
     let graph: Graph = (*first.graph).clone();
-    let disks: Vec<(unfold_core::RepoPath, DiskState)> = graph
+    let disks: Vec<(RepoPath, DiskState)> = graph
         .files
         .iter()
         .filter_map(|file| Some((file.file.path.clone(), engine.disk_state(&file.file.path)?)))
@@ -150,7 +154,7 @@ fn restored(
     basis: Option<LinkBasis>,
 ) -> Engine {
     let graph: Graph = (*outcome.graph).clone();
-    let disks: Vec<(unfold_core::RepoPath, DiskState)> = graph
+    let disks: Vec<(RepoPath, DiskState)> = graph
         .files
         .iter()
         .filter_map(|file| Some((file.file.path.clone(), engine.disk_state(&file.file.path)?)))
@@ -225,4 +229,86 @@ fn a_restored_graph_is_linked_again_when_what_it_was_linked_from_changed() {
     assert!(outcome.stats.relinked);
     let mut fresh = engine_with(&folder, Counting::new(), Arc::new(MemoryFactsCache::new()), 2);
     assert_eq!(canonical(&outcome), canonical(&compile(&mut fresh)));
+}
+
+/// Serves the entries of a cache with payloads no language reads, as an entry written by another
+/// build, or a damaged one, may hold.
+struct Unreadable(Arc<MemoryFactsCache>);
+
+impl Unreadable {
+    fn damage(bytes: &[u8]) -> Vec<u8> {
+        let mut facts = FileFacts::from_bytes(bytes).expect("cached facts decode");
+        facts.payload = Box::new([]);
+        facts.to_bytes().expect("facts encode")
+    }
+}
+
+impl FactsCache for Unreadable {
+    fn get(&self, keys: &[FactsKey<'_>]) -> Result<Vec<Option<CacheEntry>>, CacheError> {
+        let mut found = self.0.get(keys)?;
+        for entry in found.iter_mut().flatten() {
+            if entry.status == CacheStatus::Parsed {
+                entry.bytes = Self::damage(&entry.bytes);
+            }
+        }
+        Ok(found)
+    }
+
+    fn last_good(
+        &self,
+        path: &RepoPath,
+        engine: &'static str,
+        settings: SettingsHash,
+    ) -> Result<Option<(ContentHash, Vec<u8>)>, CacheError> {
+        Ok(self
+            .0
+            .last_good(path, engine, settings)?
+            .map(|(hash, bytes)| (hash, Self::damage(&bytes))))
+    }
+
+    fn put(&self, entries: &[NewCacheEntry<'_>]) -> Result<(), CacheError> {
+        self.0.put(entries)
+    }
+}
+
+/// A cached entry whose payload the language can't read is a miss: an update extracts the file
+/// again, a restore leaves it for the next update, and a file that stops parsing has no last good
+/// facts in it.
+#[test]
+fn a_payload_the_language_cannot_read_is_a_miss() {
+    let folder = Folder::new();
+    project(&folder);
+    let cache = Arc::new(MemoryFactsCache::new());
+    let language = Counting::new();
+    let mut engine = engine_with(&folder, Arc::clone(&language), Arc::clone(&cache), 2);
+    let first = compile(&mut engine);
+    language.count();
+    let unreadable = Arc::new(Unreadable(Arc::clone(&cache)));
+
+    let mut second = engine_with(&folder, Arc::clone(&language), Arc::clone(&unreadable), 2);
+    let again = compile(&mut second);
+    assert_eq!(language.count(), 6);
+    assert_eq!(
+        (again.stats.files_from_cache, again.stats.files_extracted),
+        (0, 6)
+    );
+    assert_eq!(canonical(&again), canonical(&first));
+
+    let graph: Graph = (*first.graph).clone();
+    let disks: Vec<(RepoPath, DiskState)> = graph
+        .files
+        .iter()
+        .filter_map(|file| Some((file.file.path.clone(), engine.disk_state(&file.file.path)?)))
+        .collect();
+    let mut reopened = engine_with(&folder, Arc::clone(&language), Arc::clone(&unreadable), 2);
+    let restored = reopened.restore(graph, disks, None).expect("restore");
+    assert_eq!((restored.files, restored.restored, restored.missing), (6, 0, 6));
+
+    folder.write("lib/util.ts", "(fn");
+    let mut broken = engine_with(&folder, Arc::clone(&language), unreadable, 2);
+    let outcome = compile(&mut broken);
+    assert_eq!(
+        outcome.graph.file("lib/util.ts").map(|file| file.file.state),
+        Some(FileState::Failed)
+    );
 }

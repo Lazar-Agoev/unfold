@@ -4,15 +4,17 @@
 //! every runtime import (aligned with the file's
 //! [`ImportFact`](unfold_engine::facts::ImportFact)s), which import resolution reads, and the
 //! binder's facts ([`BindFacts`]), whose `values` and `types` tables give each value and each
-//! written type name its expression. [`PAYLOAD_VERSION`] is part of the facts-cache key through
-//! the producer version.
+//! written type name its expression. Any change to this format, or to anything else that shapes
+//! this crate's extracted facts, must bump [`PAYLOAD_VERSION`], which is part of the settings
+//! hash and so of the facts-cache key. A cached payload linking can't [`read`](Payload::read) is
+//! a cache miss too.
 
 use serde::{Deserialize, Serialize};
 use unfold_core::text::ByteRange;
 
 use crate::bind::ir::{BindFacts, NodeId};
 
-/// The payload's format version.
+/// The version of Python extraction: the payload format and every rule that shapes facts.
 pub const PAYLOAD_VERSION: u32 = 12;
 
 /// Why a payload cannot be read.
@@ -76,6 +78,15 @@ impl Payload {
     /// The compact encoding.
     pub fn to_bytes(&self) -> Result<Vec<u8>, PayloadError> {
         postcard::to_allocvec(self).map_err(|error| PayloadError::Encode(error.to_string()))
+    }
+
+    /// Decodes a payload linking can read: of this version, with consistent binder facts
+    /// ([`BindFacts::is_consistent`]). Facts come back from the on-disk cache, where a damaged
+    /// entry may still decode.
+    pub fn read(bytes: &[u8]) -> Option<Self> {
+        Self::from_bytes(bytes)
+            .ok()
+            .filter(|payload| payload.bind.is_consistent())
     }
 
     /// Decodes a payload, rejecting other versions.

@@ -78,11 +78,22 @@ pub enum BoardError {
     },
     /// A board file name is not a plain stem.
     #[error(
-        "board name `{name}` must use letters, digits, `.`, `_`, or `-`, starting with a letter or digit"
+        "board name `{name}` must be 1 to {} ASCII letters, digits, `.`, `_`, or `-`, starting with a letter or digit",
+        files::MAX_NAME
     )]
     InvalidName {
         /// The refused name.
         name: String,
+    },
+    /// A board too large to write: its file would be bigger than a board file can be
+    /// ([`files::MAX_BOARD_BYTES`]), so it could never be opened again.
+    #[error(
+        "the board is too large to save: its file would be {bytes} bytes, more than the {} MiB a board file holds",
+        files::MAX_BOARD_BYTES / (1024 * 1024)
+    )]
+    TooLarge {
+        /// The size of the board's file, in bytes.
+        bytes: u64,
     },
     /// A file with that name exists; a new board never overwrites one.
     #[error("{path} already exists; choose another name (for example {suggestion})")]

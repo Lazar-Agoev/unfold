@@ -1,6 +1,7 @@
 //! Board files of a project (docs/architecture.md#storage): one file per board in
 //! `.unfold/boards/`, written atomically as it is edited, created without ever overwriting
-//! another board, with change detection for edits made outside the app.
+//! another board, never larger than a board file can be, with change detection for edits made
+//! outside the app.
 //!
 //! These are the only functions here that touch the disk; parsing, checking, and serializing
 //! are pure ([`super::parse`], [`super::health`], [`super::serialize`]).
@@ -10,7 +11,7 @@ use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use unfold_core::ContentHash;
 use unicode_normalization::UnicodeNormalization as _;
 use unicode_normalization::char::is_combining_mark;
@@ -26,7 +27,7 @@ pub const EXTENSION: &str = "json";
 /// not a board, and reading it whole would only waste memory.
 pub const MAX_BOARD_BYTES: u64 = 16 * 1024 * 1024;
 /// The longest file stem.
-const MAX_NAME: usize = 100;
+pub(super) const MAX_NAME: usize = 100;
 
 /// A board file, by its name (the file stem in [`BOARDS_DIR`]).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -107,7 +108,7 @@ pub fn slug(title: &str) -> String {
 }
 
 /// What a file's bytes were when the app last loaded or saved it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(type = "string"))]
 #[serde(transparent)]
 pub struct Revision(pub ContentHash);
@@ -253,14 +254,18 @@ impl BoardDirs {
     }
 
     /// Writes `text` (a serialized board) to board `file`, replacing whatever the file holds
-    /// atomically (creating it when it is gone), and returns the new revision.
+    /// atomically (creating it when it is gone), and returns the new revision. A board too large
+    /// to read again is refused ([`BoardError::TooLarge`]).
     pub fn save(&self, file: &BoardFile, text: &str) -> Result<Revision, BoardError> {
+        fits(text)?;
         replace(&self.prepare()?.join(file.file_name()), text)
     }
 
     /// Creates board `file` with `text`, never overwriting: if a file has that name, fails with
-    /// [`BoardError::NameTaken`] carrying the path and a free alternative.
+    /// [`BoardError::NameTaken`] carrying the path and a free alternative. A board too large to
+    /// read again is refused ([`BoardError::TooLarge`]).
     pub fn create(&self, file: &BoardFile, text: &str) -> Result<Revision, BoardError> {
+        fits(text)?;
         let path = self.prepare()?.join(file.file_name());
         if create_atomic(&path, text.as_bytes())? {
             Ok(Revision::of(text.as_bytes()))
@@ -285,8 +290,9 @@ impl BoardDirs {
         }
     }
 
-    /// The board files with valid names, sorted by name. A missing directory lists nothing.
-    pub fn list(&self) -> Result<Vec<BoardFile>, BoardError> {
+    /// The stems of the files the boards directory lists ([`listed_stem`]), sorted. A missing
+    /// directory lists nothing.
+    fn stems(&self) -> Result<Vec<String>, BoardError> {
         let Some(directory) = self.directory()? else {
             return Ok(Vec::new());
         };
@@ -295,20 +301,34 @@ impl BoardDirs {
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => return Err(io_error(&directory, &error)),
         };
-        let mut files = Vec::new();
+        let mut stems = Vec::new();
         for entry in entries {
             let entry = entry.map_err(|error| io_error(&directory, &error))?;
-            if let Some(file) = entry
-                .file_name()
-                .to_str()
-                .and_then(|name| name.strip_suffix(".json"))
-                .and_then(|stem| BoardFile::new(stem).ok())
-            {
-                files.push(file);
+            if let Some(stem) = entry.file_name().to_str().and_then(listed_stem) {
+                stems.push(stem.to_owned());
             }
         }
-        files.sort_by(|a, b| a.name.cmp(&b.name));
-        Ok(files)
+        stems.sort();
+        Ok(stems)
+    }
+
+    /// The board files with valid names, sorted by name. A missing directory lists nothing.
+    pub fn list(&self) -> Result<Vec<BoardFile>, BoardError> {
+        Ok(self
+            .stems()?
+            .iter()
+            .filter_map(|stem| BoardFile::new(stem).ok())
+            .collect())
+    }
+
+    /// The listed files whose names a board file can't have (a Finder copy, `Order flow
+    /// copy.json`), sorted: each one's stem and why ([`BoardError::InvalidName`]).
+    pub fn misnamed(&self) -> Result<Vec<(String, BoardError)>, BoardError> {
+        Ok(self
+            .stems()?
+            .into_iter()
+            .filter_map(|stem| BoardFile::new(&stem).err().map(|error| (stem, error)))
+            .collect())
     }
 
     /// The first name from `name`, `name-2`, `name-3`, … that no file has; the base is shortened
@@ -325,6 +345,24 @@ impl BoardDirs {
             .map(|number| suffixed(name, number))
             .find(|candidate| free(candidate))
             .unwrap_or_else(|| name.to_owned())
+    }
+}
+
+/// The stem of `name`, a file name in the boards directory, when lists show the file: a `.json`
+/// file that isn't hidden (a temporary file being written, or macOS's `._` files). Its stem may
+/// still be a name a board file can't have ([`BoardDirs::misnamed`]).
+pub fn listed_stem(name: &str) -> Option<&str> {
+    name.strip_suffix(".json")
+        .filter(|stem| !stem.is_empty() && !stem.starts_with('.') && !stem.contains('/'))
+}
+
+/// Refuses a serialized board larger than a board file can be: it couldn't be read again.
+fn fits(text: &str) -> Result<(), BoardError> {
+    let bytes = text.len() as u64;
+    if bytes > MAX_BOARD_BYTES {
+        Err(BoardError::TooLarge { bytes })
+    } else {
+        Ok(())
     }
 }
 
@@ -430,24 +468,27 @@ pub fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), BoardError> {
     Ok(())
 }
 
-/// Creates `target` with `bytes` atomically, never replacing an existing file: the synced
-/// temporary file is hard-linked to the target, which fails if the target exists.
+/// Creates `target` with `bytes`, never replacing an existing file; whether it did (`false`:
+/// something has that name). The name is claimed by creating the target empty and exclusively,
+/// which fails if anything is there (a dangling link included), and then the synced temporary
+/// file is renamed over it. Never a hard link: FSEvents doesn't report the deletion of a file
+/// that began as one, so a board deleted before its first save would go unnoticed.
 fn create_atomic(target: &Path, bytes: &[u8]) -> Result<bool, BoardError> {
     let temporary = write_temporary(target, bytes)?;
-    let linked = fs::hard_link(&temporary, target);
-    let result = match linked {
-        Ok(()) => Ok(true),
+    let claimed = OpenOptions::new().write(true).create_new(true).open(target);
+    let result = match claimed {
+        Ok(_) => fs::rename(&temporary, target).map(|()| true).map_err(|error| {
+            // The empty claim is the app's own: it goes with the create that failed.
+            let _ = fs::remove_file(target);
+            io_error(target, &error)
+        }),
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => Ok(false),
-        // A file system without hard links: fall back to a checked rename. The check looks at
-        // the target itself, so a dangling link there also counts as taken.
-        Err(_) if fs::symlink_metadata(target).is_err() => fs::rename(&temporary, target)
-            .map(|()| true)
-            .map_err(|error| io_error(target, &error)),
-        Err(_) => Ok(false),
+        Err(error) => Err(io_error(target, &error)),
     };
-    let _ = fs::remove_file(&temporary);
     if result.as_ref().is_ok_and(|created| *created) {
         sync_directory(target);
+    } else {
+        let _ = fs::remove_file(&temporary);
     }
     result
 }

@@ -193,8 +193,8 @@ fn a_closed_window_opens_no_board_and_selects_no_project() {
         "window_closed"
     );
     eventually("the project rests", || !live(&harness, &harness.project));
-    // The late board was made, closed; the project leaves the workspace.
-    assert!(harness.root.join(".unfold/boards/late.json").is_file());
+    // The late board left no file; the project leaves the workspace.
+    assert!(!harness.root.join(".unfold/boards/late.json").exists());
     harness.ok(2, "remove_project", json!({ "project": harness.project }));
 }
 

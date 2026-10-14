@@ -43,8 +43,8 @@ pub use highlight::PythonHighlighter;
 /// The front end's name, stored with the graph.
 pub const PRODUCER_NAME: &str = "unfold-lang-python";
 
-/// The front end's version: the crate, the pinned Ruff parser, and the payload format.
-pub const PRODUCER_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+ruff.0.16.10+payload.11");
+/// The front end's version: the crate and the pinned Ruff parser.
+pub const PRODUCER_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+ruff.0.16.10");
 
 /// The Python language.
 #[derive(Debug, Default, Clone, Copy)]
@@ -75,17 +75,21 @@ impl Language for Python {
     }
 
     /// Extraction reads only the grammar version of the file's Python project, which the
-    /// project hash covers. The producer version is mixed in because the facts cache is keyed by
-    /// the engine version, not the payload format this crate writes.
+    /// project hash covers. The payload version is mixed in, so facts from another version of
+    /// extraction miss the facts cache.
     fn settings_hash(&self, path: &RepoPath, settings: &Settings) -> SettingsHash {
-        SettingsHasher::new(PRODUCER_NAME)
-            .add(PRODUCER_VERSION)
+        SettingsHasher::new("python.extract")
+            .add(&payload::PAYLOAD_VERSION)
             .add_bytes(settings.python_hash(path).as_bytes())
             .finish()
     }
 
     fn extract(&self, file: &Snapshot, settings: &Settings) -> Result<FileFacts, SourceFailure> {
         extract(file, settings.python_version_for(file.path()))
+    }
+
+    fn reads_payload(&self, payload: &[u8]) -> bool {
+        payload::Payload::read(payload).is_some()
     }
 
     fn link<'a>(&'a self, files: &'a FactsSet, inputs: &'a ProjectInputs) -> Box<dyn Linked + 'a> {

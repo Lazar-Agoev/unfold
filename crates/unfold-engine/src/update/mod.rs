@@ -429,6 +429,19 @@ impl Engine {
         Ok(prepared.outcome)
     }
 
+    /// Starts over with `cache`, as when the store that held the facts cache is recreated: the
+    /// graph and every file's facts go, so the next update compiles everything again, but the
+    /// settings and apps in effect stay. While `unfold.toml` doesn't parse, that update keeps the
+    /// last good ones, as after [`Engine::restore`], instead of the defaults.
+    pub fn reset(&mut self, cache: Arc<dyn FactsCache>) {
+        self.cache = cache;
+        let settings = std::mem::take(&mut self.state.settings);
+        self.set_state(State {
+            settings,
+            ..State::default()
+        });
+    }
+
     /// Replaces the state, invalidating updates prepared against the old one.
     fn set_state(&mut self, state: State) {
         self.state = state;

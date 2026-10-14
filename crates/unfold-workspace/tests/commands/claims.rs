@@ -48,7 +48,7 @@ impl Harness {
         self.call(
             1,
             "save_board",
-            json!({ "project": self.project, "id": id, "board": edit }),
+            json!({ "project": self.project, "id": id, "base": self.base(1, id), "board": edit }),
         )
         .map_err(|error| {
             assert_eq!(error.code, "board_problem", "{}", error.message);
@@ -177,7 +177,7 @@ fn evidence_files_anchor_claims_that_go_outdated_when_the_file_changes() {
         harness.code(
             1,
             "save_board",
-            json!({ "project": harness.project, "id": id, "board": edit })
+            json!({ "project": harness.project, "id": id, "base": board["revision"], "board": edit })
         ),
         "board_problem",
         "`customer_id` isn't in the cited lines"
@@ -208,7 +208,7 @@ fn evidence_files_anchor_claims_that_go_outdated_when_the_file_changes() {
         harness.ok(
             1,
             "repair_board",
-            json!({ "project": harness.project, "id": id, "repair": repair }),
+            json!({ "project": harness.project, "id": id, "base": harness.base(1, &id), "repair": repair }),
         )
     };
     let resigned =

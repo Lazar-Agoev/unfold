@@ -95,8 +95,13 @@ tests. Exact arguments, results, defaults, and caps live in code.
 A board is addressed as `{project, id}`, its id being its file's path under `.unfold/boards/`. `open_board` and
 `new_board` open it in the calling window, and the project keeps a session for it while the app runs. Every other
 board command except `read_board` and the folder commands needs the board open (`board_not_open`). `save_board`
-checks, signs, and writes the window's version over the file; an outside change sends `board_reloaded`. Folders are
-one name (`invalid_folder` for a `/`). The rules are in [reader › Boards](reader.md#boards).
+checks, signs, and writes the window's version over the file. It names the revision that version builds on (`base`),
+and nothing writes over what the window hasn't seen: a save or `repair_board` whose file changed since, or isn't a
+valid board, is refused (`board_changed`) unless the person chose their version (`overwrite`), and a deleted file is
+written again. A board whose file would be larger than 16 MiB is never written (`board_too_large`). An outside change
+sends `board_reloaded`. `list_boards` lists a file whose name a board file can't have with an error that says which
+names are allowed. Folders are one name (`invalid_folder` for a `/`). The rules are in
+[reader › Boards](reader.md#boards).
 
 ## Events
 
@@ -114,7 +119,7 @@ and camelCase fields; every project event names its project.
 | `problems_changed` | The Problems list changed |
 | `files_changed` | The watcher saw files appear, change, or disappear |
 | `boards_changed` | Board files or folders changed |
-| `board_reloaded` | An open board's file changed outside the app and its session reloaded; only the window that opened it gets it |
+| `board_reloaded` | An open board's file changed outside the app: a valid board (its session reloaded), deleted, or not a valid board (with why); only the window that opened it gets it |
 | `config_changed` | `unfold.toml` changed |
 
 Invalidation touches only the named project's queries (and a cross-project `search` that includes it). Only
@@ -178,6 +183,8 @@ actions use, as one undo step named after the agent, saved at once through the n
 - An edit of a board the window doesn't hold loads its session in the background first; the person's view doesn't
   move. `show` is for presenting.
 - Page revisions: an edit that passes `expectRevision` is refused (`revision_mismatch`) when the page changed since.
+- A board whose saving stopped (its file changed on disk while the person had edits, or isn't a valid board) refuses
+  edits and repairs (`board_changed`) until the person chooses which version to keep.
 - Requests time out after 30 s. A write that times out answers `unconfirmed`, because it may still land: re-read
   before retrying. A window that closes fails its requests with `window_closed`.
 - Links are `unfold://<project folder name>/<board id>?page=<page>&item=<item>`. Only the main process parses them;

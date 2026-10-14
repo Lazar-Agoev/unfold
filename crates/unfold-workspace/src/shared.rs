@@ -54,7 +54,8 @@ pub(crate) enum Job {
     Compile(CompileJob),
     /// Restore from the store, then check every file by size and modification time.
     Reopen,
-    /// Compile everything in the background with a fresh engine (a recreated or missing cache).
+    /// Compile everything again in the background into an empty store (a recreated or missing
+    /// cache), keeping the settings in effect.
     Recompile,
     /// Recreate `local/cache/` if it disappeared, and recompile.
     CheckCache,

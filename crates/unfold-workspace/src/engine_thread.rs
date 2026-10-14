@@ -12,12 +12,13 @@
 //! | Background update | `background(paths)` | background pool |
 //! | Scan tick or event overflow | `reopen()`: every file by size and time | background pool |
 //! | Reopen | store graph → `restore` → `reopen()` | background pool |
-//! | Recompile (engine version changed, cache recreated) | fresh engine, `reopen()` | background pool |
+//! | Recompile (engine version changed, cache recreated) | the engine starts over, `reopen()` | background pool |
 //! | Entrance edit (only the `[[app]]` tables of `unfold.toml` changed) | `Engine::resolve_entrances`: no update | none |
 //!
 //! **The first Compile** creates `local/` (unless remembered state already did), takes the
 //! folder lock, and opens the store. **If `local/cache/` disappears** while the folder is open, the next piece of work
-//! notices, recreates it, and compiles everything again with a fresh engine. **The reopen check** restores the stored graph and checks every file by size and
+//! notices, recreates it, and compiles everything again; the engine starts over but keeps the
+//! settings in effect, so a settings file that doesn't parse keeps the last good ones. **The reopen check** restores the stored graph and checks every file by size and
 //! time; when nothing the graph was built from changed while the folder was closed, it neither
 //! links again nor commits. **A failed or cancelled commit** rolls back and the engine doesn't adopt the
 //! update, so the engine, the store, and readers all keep the previous graph. A Compile the user
@@ -265,15 +266,18 @@ impl EngineThread {
         self.writer.is_some() && !self.shared.layout.database().exists()
     }
 
-    /// Recreates `local/cache/` and an empty store, with a fresh engine.
+    /// Recreates `local/cache/` and an empty store, which the engine starts over with.
     fn recover(&mut self) -> Result<()> {
         self.shared.set_readers(None);
         self.shared.reader_cache.invalidate();
-        self.engine = None;
         self.writer = None;
         self.committed = None;
         self.lock = None;
-        self.open_store()
+        let opened = self.open_store();
+        if opened.is_err() {
+            self.engine = None;
+        }
+        opened
     }
 
     /// Creates `local/` if needed and opens the store there (the first Compile, or recovery).
@@ -283,11 +287,16 @@ impl EngineThread {
     }
 
     /// Takes over an open store: the writer for commits and the facts cache, the readers for
-    /// everyone else, and a fresh engine over them.
+    /// everyone else, and an engine over them with no graph. An engine the folder already has
+    /// (its store was recreated) starts over and keeps the settings in effect.
     fn install(&mut self, store: Store, folder_lock: FolderLock) -> Result<()> {
         let Store { writer, readers, .. } = store;
         let writer = Arc::new(Mutex::new(writer));
-        self.engine = Some(self.new_engine(&writer)?);
+        let cache = Arc::new(StoreFactsCache::new(Arc::clone(&writer)));
+        match self.engine.as_mut() {
+            Some(engine) => engine.reset(cache),
+            None => self.engine = Some(self.new_engine(cache)?),
+        }
         self.writer = Some(writer);
         self.committed = None;
         self.lock = Some(folder_lock);
@@ -296,11 +305,11 @@ impl EngineThread {
         Ok(())
     }
 
-    fn new_engine(&self, writer: &Arc<Mutex<Writer>>) -> Result<Engine> {
+    fn new_engine(&self, cache: Arc<StoreFactsCache>) -> Result<Engine> {
         Engine::new(
             &self.shared.root,
             self.languages.clone(),
-            Arc::new(StoreFactsCache::new(Arc::clone(writer))),
+            cache,
             self.shared.options.engine.clone(),
         )
         .map_err(|error| WorkspaceError::Update(error.to_string()))
@@ -401,24 +410,21 @@ impl EngineThread {
         }
     }
 
-    /// Compiles everything in the background with a fresh engine into an empty store.
+    /// Compiles everything again in the background into an empty store. The engine starts over
+    /// and keeps the settings in effect, so a settings file that doesn't parse keeps the last
+    /// good ones.
     fn recompile(&mut self, cancel: CancelToken) {
-        let Some(writer) = self.writer.clone() else {
+        let (Some(writer), Some(engine)) = (self.writer.as_ref(), self.engine.as_mut()) else {
             return;
         };
-        let fresh = lock(&writer)
-            .clear()
-            .map_err(WorkspaceError::from)
-            .and_then(|()| self.new_engine(&writer));
-        match fresh {
-            Ok(engine) => {
-                self.engine = Some(engine);
-                self.committed = None;
-                self.shared.reader_cache.invalidate();
-                let _ = self.run(RunKind::Recompile, cancel, None);
-            }
-            Err(error) => announce::failed(&self.shared, &error),
+        if let Err(error) = lock(writer).clear() {
+            announce::failed(&self.shared, &error.into());
+            return;
         }
+        engine.reset(Arc::new(StoreFactsCache::new(Arc::clone(writer))));
+        self.committed = None;
+        self.shared.reader_cache.invalidate();
+        let _ = self.run(RunKind::Recompile, cancel, None);
     }
 
     /// Resolves the `[[app]]` tables of `unfold.toml` again against the current graph, without

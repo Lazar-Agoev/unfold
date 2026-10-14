@@ -3,9 +3,10 @@
 //! serve resting projects without waking them; only a live project's boards carry a health
 //! label (health needs a current graph).
 
-use unfold_reader::board::files::{BoardFile, Loaded};
+use unfold_reader::board::BoardError;
+use unfold_reader::board::files::{BOARDS_DIR, BoardFile, EXTENSION, Loaded};
 
-use super::files::{Files, parse_id};
+use super::files::{Files, modified_ms, parse_id};
 use super::graphs::Source;
 use super::session::health_of;
 use super::types::{
@@ -72,9 +73,31 @@ pub(super) fn label_of(
         .and_then(|health| health.label())
 }
 
+/// The id a listed file named `name` has, whether or not a board file can have that name.
+fn listed_id(name: &str) -> String {
+    format!("{BOARDS_DIR}/{name}.{EXTENSION}")
+}
+
+/// A listed file whose name a board file can't have, as lists show it: why, and which names
+/// are allowed.
+fn misnamed(project: &ProjectId, name: String, updated_at_ms: i64, error: &BoardError) -> BoardSummary {
+    BoardSummary {
+        project: project.clone(),
+        id: listed_id(&name),
+        name,
+        title: None,
+        folder: None,
+        pages: 0,
+        cards: 0,
+        updated_at_ms,
+        label: None,
+        error: Some(error.to_string()),
+    }
+}
+
 /// `list_boards`: a project's boards, most recently edited first (then by id), and its empty
 /// folders, for the sidebar and Home's Boards. A board's last edit is its file's modification
-/// time.
+/// time. A file whose name a board file can't have is listed with why.
 pub fn list_boards(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<BoardList> {
     let project = ctx.project(&args.project)?;
     let files = Files::reading(project.root());
@@ -88,19 +111,28 @@ pub fn list_boards(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<BoardList>
             None,
         ),
     };
-    let mut edited: Vec<(i64, BoardFile)> = files
+    let mut edited: Vec<(i64, String, Result<BoardFile, BoardError>)> = files
         .boards()?
         .into_iter()
-        .map(|file| (files.modified_ms(&file), file))
+        .map(|file| (files.modified_ms(&file), file.name().to_owned(), Ok(file)))
+        .chain(files.dirs.misnamed()?.into_iter().map(|(name, error)| {
+            let updated_at_ms = modified_ms(&project.root().join(listed_id(&name)));
+            (updated_at_ms, name, Err(error))
+        }))
         .collect();
-    edited.sort_by(|(a_ms, a), (b_ms, b)| b_ms.cmp(a_ms).then_with(|| a.name().cmp(b.name())));
+    edited.sort_by(|(a_ms, a, _), (b_ms, b, _)| b_ms.cmp(a_ms).then_with(|| a.cmp(b)));
     edited.truncate(MAX_BOARDS);
     let mut boards = Vec::with_capacity(edited.len());
-    for (updated_at_ms, file) in &edited {
+    for (updated_at_ms, name, file) in edited {
         ctx.check_cancelled()?;
-        let loaded = files.load(file);
-        let label = label_of(health.as_ref(), &file.relative(), &loaded);
-        boards.push(summary(project.id(), file, *updated_at_ms, loaded, label));
+        boards.push(match file {
+            Ok(file) => {
+                let loaded = files.load(&file);
+                let label = label_of(health.as_ref(), &file.relative(), &loaded);
+                summary(project.id(), &file, updated_at_ms, loaded, label)
+            }
+            Err(error) => misnamed(project.id(), name, updated_at_ms, &error),
+        });
     }
     Ok(BoardList {
         project: args.project,

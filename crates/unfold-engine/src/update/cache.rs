@@ -9,7 +9,8 @@
 //! rules, so the workspace can back this trait with it.
 //!
 //! The engine treats a cache as an accelerator: a read error or an entry that doesn't decode is
-//! a miss, and a failed put is reported as a problem, never as a failed update.
+//! a miss, and so is one whose payload its language can't read ([`decode_facts`]). A failed put
+//! is reported as a problem, never as a failed update.
 
 use std::sync::Mutex;
 
@@ -17,7 +18,7 @@ use rustc_hash::FxHashMap;
 use unfold_core::{ContentHash, RepoPath};
 
 use crate::facts::{FactsError, FileFacts};
-use crate::language::SourceFailure;
+use crate::language::{Language, SourceFailure};
 use crate::settings::SettingsHash;
 
 /// The key of one cache entry.
@@ -105,9 +106,14 @@ pub fn decode_failure(bytes: &[u8]) -> Result<SourceFailure, FactsError> {
     })
 }
 
-/// Decodes a [`CacheStatus::Parsed`] entry, re-checking its invariants.
-pub fn decode_facts(bytes: &[u8]) -> Result<FileFacts, FactsError> {
-    FileFacts::from_bytes(bytes)
+/// Decodes a [`CacheStatus::Parsed`] entry of `language`, re-checking its invariants and that the
+/// language reads its payload ([`Language::reads_payload`]).
+pub fn decode_facts(bytes: &[u8], language: &dyn Language) -> Result<FileFacts, FactsError> {
+    let facts = FileFacts::from_bytes(bytes)?;
+    if !language.reads_payload(&facts.payload) {
+        return Err(FactsError::Payload);
+    }
+    Ok(facts)
 }
 
 #[derive(Debug, Clone)]

@@ -55,14 +55,14 @@ and **validate** (the core validator and each language's census). After a succes
 ## Facts cache and failures
 
 Facts are cached per file by path, content hash, `ENGINE_VERSION`, and the file's settings hash (only the settings
-that affect that file, such as its Python project). Language payload versions are part of the producer version and
-so of the key. Version constants live in code; never copy their values into docs.
+that affect that file, such as its Python project). Each language hashes its payload version into its settings hash,
+so a new payload format misses the cache. Version constants live in code; never copy their values into docs.
 
 Each path keeps at most a current and a last good entry. A file that stops parsing keeps its last good facts and
 is `last_good`; a file with no usable facts is `failed`, and the graph is incomplete. Last-good facts refer to their
 own hash, and displayed source must still verify against it. A failed update never advances the committed graph.
-The cache is an accelerator: a read error or an entry that doesn't decode is a miss, and a failed write is a
-problem, never a failed update.
+The cache is an accelerator: a read error, an entry that doesn't decode, or one whose payload its language can't read
+(`Language::reads_payload`) is a miss, and a failed write is a problem, never a failed update.
 
 The store is a cache too ([schema.rs](../crates/unfold-store/src/schema.rs)): a database with another schema or
 engine version, or a damaged one, is discarded and rebuilt on open. There are no migrations. Deltas commit in one
@@ -109,7 +109,8 @@ entrances = [
 
 The compile settings (`languages`, `[scope]`, `[[python.project]]`, `[evidence]`) must all be valid, or the file is
 invalid. **A file that doesn't parse keeps the last good settings and apps** in effect, shows the error, and marks
-the graph incomplete; the text of the last good file is stored with the graph, so reopening keeps it too.
+the graph incomplete. The text of the last good file is stored with the graph, so reopening keeps it too, and an
+engine that starts over in a recreated `local/cache/` keeps the settings it had.
 
 `[[python.project]]` picks the grammar and source roots; the deepest project containing a file owns it. Source roots
 join onto `root`, and one may lie outside `[scope]`: its modules then resolve as `not_indexed`. Defaults are in

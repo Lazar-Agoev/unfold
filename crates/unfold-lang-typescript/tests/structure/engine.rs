@@ -1,17 +1,23 @@
 //! End to end through the engine: a `tsconfig.json` change re-extracts exactly the files whose
-//! options changed and is a graph input, and an incremental update after edits, deletions, and
-//! additions gives the graph a full compile of the same folder gives.
+//! options changed and is a graph input, an incremental update after edits, deletions, and
+//! additions gives the graph a full compile of the same folder gives, and a cached payload that
+//! doesn't decode is a cache miss.
 
 use std::sync::Arc;
 
 use unfold_core::vocab::LinkKind;
-use unfold_core::{Graph, RepoPath, canonical};
+use unfold_core::{ContentHash, Graph, RepoPath, canonical};
 use unfold_engine::discovery::DiscoverOptions;
-use unfold_engine::update::MemoryFactsCache;
-use unfold_engine::{Engine, EngineOptions, Language, UpdateRequest};
+use unfold_engine::settings::SettingsHash;
+use unfold_engine::update::{CacheEntry, CacheError, CacheStatus, FactsKey, MemoryFactsCache, NewCacheEntry};
+use unfold_engine::{Engine, EngineOptions, FactsCache, FileFacts, Language, UpdateRequest};
 use unfold_lang_typescript::TypeScript;
 
 fn engine(root: &std::path::Path) -> Engine {
+    engine_with(root, Arc::new(MemoryFactsCache::new()))
+}
+
+fn engine_with(root: &std::path::Path, cache: Arc<dyn FactsCache>) -> Engine {
     let options = EngineOptions {
         discover: DiscoverOptions {
             threads: 1,
@@ -20,7 +26,7 @@ fn engine(root: &std::path::Path) -> Engine {
         ..EngineOptions::default()
     };
     let language: Arc<dyn Language> = Arc::new(TypeScript::new());
-    Engine::new(root, vec![language], Arc::new(MemoryFactsCache::new()), options).expect("engine")
+    Engine::new(root, vec![language], cache, options).expect("engine")
 }
 
 fn write(root: &std::path::Path, path: &str, text: &str) {
@@ -145,4 +151,69 @@ fn an_incremental_update_equals_a_full_compile() {
     assert_eq!(export(&updated.graph), expected);
     assert!(expected.contains("\"path\":\"src/cli.ts\""));
     assert!(!expected.contains("src/old.ts"));
+}
+
+/// Serves the entries of a cache with payloads that don't decode, as a damaged entry may hold.
+struct Damaged(Arc<MemoryFactsCache>);
+
+impl Damaged {
+    fn damage(bytes: &[u8]) -> Vec<u8> {
+        let mut facts = FileFacts::from_bytes(bytes).expect("cached facts decode");
+        facts.payload = Box::new([]);
+        facts.to_bytes().expect("facts encode")
+    }
+}
+
+impl FactsCache for Damaged {
+    fn get(&self, keys: &[FactsKey<'_>]) -> Result<Vec<Option<CacheEntry>>, CacheError> {
+        let mut found = self.0.get(keys)?;
+        for entry in found.iter_mut().flatten() {
+            if entry.status == CacheStatus::Parsed {
+                entry.bytes = Self::damage(&entry.bytes);
+            }
+        }
+        Ok(found)
+    }
+
+    fn last_good(
+        &self,
+        path: &RepoPath,
+        engine: &'static str,
+        settings: SettingsHash,
+    ) -> Result<Option<(ContentHash, Vec<u8>)>, CacheError> {
+        Ok(self
+            .0
+            .last_good(path, engine, settings)?
+            .map(|(hash, bytes)| (hash, Self::damage(&bytes))))
+    }
+
+    fn put(&self, entries: &[NewCacheEntry<'_>]) -> Result<(), CacheError> {
+        self.0.put(entries)
+    }
+}
+
+/// A cached entry whose payload doesn't decode is a miss: the file is extracted again, and the
+/// update succeeds with the graph a fresh compile gives.
+#[test]
+fn a_payload_that_does_not_decode_is_a_cache_miss() {
+    let folder = tempfile::tempdir().expect("temporary folder");
+    let root = folder.path();
+    write(root, "src/service.ts", SERVICE);
+    write(root, "src/store.ts", STORE);
+    write(root, "src/routes.ts", ROUTES);
+    let cache = Arc::new(MemoryFactsCache::new());
+    let first = engine_with(root, Arc::clone(&cache) as Arc<dyn FactsCache>)
+        .update(UpdateRequest::compile())
+        .expect("compile");
+    let again = engine_with(root, Arc::new(Damaged(cache)))
+        .update(UpdateRequest::compile())
+        .expect("a compile over damaged payloads");
+    assert_eq!(
+        (again.stats.files_from_cache, again.stats.files_extracted),
+        (0, 3)
+    );
+    assert_eq!(
+        canonical::to_string(&again.graph),
+        canonical::to_string(&first.graph)
+    );
 }

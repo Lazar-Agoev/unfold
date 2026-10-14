@@ -1988,6 +1988,77 @@ fn oversized_board_files_are_refused_before_reading() {
     assert!(matches!(dirs.load(&file), Err(BoardError::Io { .. })));
 }
 
+/// A board whose file would be too large to read again is never written: not saved over its
+/// file, and not created.
+#[test]
+fn boards_too_large_to_read_again_are_never_written() {
+    let dir = tempfile::tempdir().unwrap();
+    let dirs = BoardDirs::new(dir.path());
+    let file = BoardFile::new("big").unwrap();
+    let small = serialize(&parse(MINIMAL).unwrap());
+    dirs.save(&file, &small).unwrap();
+    let mut board = parse(MINIMAL).unwrap();
+    board.title = "x".repeat(usize::try_from(MAX_BOARD_BYTES).unwrap());
+    let large = serialize(&board);
+    let size = u64::try_from(large.len()).unwrap();
+    assert!(matches!(dirs.save(&file, &large), Err(BoardError::TooLarge { bytes }) if bytes == size));
+    assert_eq!(std::fs::read_to_string(dirs.path(&file)).unwrap(), small);
+    let error = dirs
+        .create(&BoardFile::new("other").unwrap(), &large)
+        .unwrap_err();
+    assert!(
+        error.to_string().starts_with("the board is too large to save"),
+        "{error}"
+    );
+    assert_eq!(dirs.list().unwrap(), [file]);
+}
+
+/// Files in the boards folder whose names a board file can't have are listed apart, with
+/// which names are allowed; hidden and temporary files and other files aren't listed at all.
+#[test]
+fn misnamed_board_files_are_listed_with_the_names_allowed() {
+    let dir = tempfile::tempdir().unwrap();
+    let dirs = BoardDirs::new(dir.path());
+    let text = serialize(&parse(MINIMAL).unwrap());
+    let file = BoardFile::new("orders").unwrap();
+    dirs.create(&file, &text).unwrap();
+    let folder = dir.path().join(".unfold/boards");
+    for name in [
+        "Order flow copy.json",
+        "._orders.json",
+        ".hidden.json",
+        ".orders.json.1-2-3.tmp",
+        "notes.txt",
+    ] {
+        std::fs::write(folder.join(name), &text).unwrap();
+    }
+    assert_eq!(dirs.list().unwrap(), std::slice::from_ref(&file));
+    let misnamed = dirs.misnamed().unwrap();
+    assert_eq!(
+        misnamed
+            .iter()
+            .map(|(name, error)| (name.as_str(), error.to_string()))
+            .collect::<Vec<_>>(),
+        [(
+            "Order flow copy",
+            "board name `Order flow copy` must be 1 to 100 ASCII letters, digits, `.`, `_`, or `-`, \
+             starting with a letter or digit"
+                .to_owned()
+        )]
+    );
+    assert_eq!(files::listed_stem("orders.json"), Some("orders"));
+    for unlisted in [".json", "._orders.json", "sub/orders.json", "orders.json.tmp"] {
+        assert_eq!(files::listed_stem(unlisted), None, "{unlisted}");
+    }
+    // Creating leaves nothing else behind: no temporary file and no claim.
+    let names: Vec<String> = std::fs::read_dir(&folder)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .filter(|name| name.ends_with(".tmp") && name != ".orders.json.1-2-3.tmp")
+        .collect();
+    assert!(names.is_empty(), "{names:?}");
+}
+
 /// A decorated definition is signed over its decorators too: changing `@router.get` to
 /// `@router.post` makes what was signed over it outdated.
 #[test]

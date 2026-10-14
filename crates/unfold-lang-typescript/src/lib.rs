@@ -158,6 +158,10 @@ impl Language for TypeScript {
         extract(file, self.options)
     }
 
+    fn reads_payload(&self, payload: &[u8]) -> bool {
+        payload::Payload::from_bytes(payload).is_ok()
+    }
+
     /// Each file's `verbatimModuleSyntax` and target-dependent binding semantics come from its
     /// nearest `tsconfig.json`; they are the only configuration that shapes extracted facts
     /// (module detection and JSX mode apply when linking), so a configuration change re-extracts

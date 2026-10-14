@@ -29,7 +29,7 @@ use notify::{EventKind, RecommendedWatcher, RecursiveMode};
 use notify_debouncer_full::{DebounceEventResult, NoCache, new_debouncer_opt};
 use unfold_core::RepoPath;
 use unfold_engine::discovery::IgnoreRules;
-use unfold_reader::board::files::BoardFile;
+use unfold_reader::board::files::listed_stem;
 
 use crate::events::{MAX_LISTED, WorkspaceEvent};
 use crate::layout::{BOARDS_PATH, CONFIG_PATH, Layout, UNFOLD_DIR};
@@ -240,11 +240,10 @@ impl Filter {
     }
 }
 
-/// The id of the board whose file is `name` (a file name in `.unfold/boards/`); `None` for
-/// anything that isn't a board file.
+/// The id `list_boards` lists the file `name` (a file name in `.unfold/boards/`) under, a name
+/// a board file can't have included; `None` for anything it doesn't list.
 fn board_id(name: &str) -> Option<String> {
-    let stem = name.strip_suffix(".json")?;
-    Some(BoardFile::new(stem).ok()?.relative())
+    listed_stem(name).map(|_| format!("{BOARDS_PATH}/{name}"))
 }
 
 #[cfg(test)]
@@ -257,7 +256,12 @@ mod tests {
             board_id("orders.json").as_deref(),
             Some(".unfold/boards/orders.json")
         );
-        for other in ["notes.txt", "sub/x.json", ".x.json.tmp", "../x.json"] {
+        assert_eq!(
+            board_id("Order flow copy.json").as_deref(),
+            Some(".unfold/boards/Order flow copy.json"),
+            "listed with why its name can't be a board's"
+        );
+        for other in ["notes.txt", "sub/x.json", ".x.json.tmp", "../x.json", "._x.json"] {
             assert_eq!(board_id(other), None, "{other}");
         }
     }

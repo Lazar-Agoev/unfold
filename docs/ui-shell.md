@@ -57,11 +57,17 @@ Document edits are pure functions applied with Immer. Every edit is one undo ste
 across its pages; undo shows the page a step changed. Optional fields are deleted, never set to `undefined`. Removing
 an item takes what would dangle with it.
 
-**Autosave** (`state/boards/store.ts`): edits save a moment later through `save_board`, written over the file; saves
-never overlap. A failed save keeps the edits and shows "Not saved · Retry". An outside change (`board_reloaded`)
-replaces the board and starts its undo history over, except while it has unsaved edits, a save or agent step in
-flight, or a failing save: then the person's version is written over the file. Remove from workspace and Rename stop
-when a board can't be saved (`unsaved_edits`).
+**Autosave** (`state/boards/store.ts`): edits save a moment later through `save_board`, built on the file's revision
+last loaded or saved; saves never overlap. A failed save keeps the edits and shows "Not saved · Retry". An outside
+change (`board_reloaded`) replaces the board and starts its undo history over when nothing is unsaved. When it arrives
+while edits wait for the autosave, or while a save is failing or in flight, saving stops and the bar on the board asks
+the person: "The board's file changed on disk." with *Keep my edits* (written over the file) or *Load the file* (its
+version, with the undo history starting over). A save the engine refuses because the file changed (`board_changed`)
+asks the same. A file that isn't a valid board, such as a merge conflict, stops saving too: "The board's file on disk
+isn't a valid board, so saving stopped." with *Save my version*; once the file is a valid board again, the board takes
+it by itself, or asks when the person has edited meanwhile. A deleted file is written back by the next save. While
+saving is stopped, agents' edits and repairs on the board are refused (`board_changed`). Remove from workspace and
+Rename stop when a board can't be saved (`unsaved_edits`).
 
 ## Home
 

@@ -192,12 +192,20 @@ pub trait Language: Send + Sync {
     fn owns(&self, path: &RepoPath, settings: &Settings) -> bool;
 
     /// The fingerprint of the settings that shape `path`'s facts. It is part of the facts-cache
-    /// key, so it must cover everything [`Language::extract`] reads from `settings`.
+    /// key, so it must cover everything [`Language::extract`] reads from `settings`, and the
+    /// version of the payload format it writes.
     fn settings_hash(&self, path: &RepoPath, settings: &Settings) -> SettingsHash;
 
     /// Parses one file and lowers it to its facts ([`crate::facts::GraphFacts::new`] and the
     /// binder payload). It must never panic, whatever the bytes.
     fn extract(&self, file: &Snapshot, settings: &Settings) -> Result<FileFacts, SourceFailure>;
+
+    /// Whether linking can read `payload`, the binder payload of facts that come back from the
+    /// facts cache: it decodes as the format this build writes, and is consistent. The engine
+    /// treats a cached entry this refuses as a miss and extracts the file again, so an entry
+    /// written by another build, or a damaged one, never fails an update. It must never panic,
+    /// whatever the bytes.
+    fn reads_payload(&self, payload: &[u8]) -> bool;
 
     /// The extraction options of `paths` (all owned by this language), in the same order, from
     /// the settings and the project inputs. The engine calls it once per update for the files

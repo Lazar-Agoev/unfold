@@ -5,12 +5,16 @@
  * - Every edit is one undo step (bursts with a `coalesce` key merge); a step remembers the page it
  *   changed, and undo or redo shows that page. One history per board, across its pages.
  * - Edits autosave a moment later through `save_board` as a `BoardEdit` (title and pages only; the
- *   folder is Rust's), written over the board's file; saves never overlap, and edits made during one are
- *   saved right after. A failed save keeps the edits, and the next edit or Retry writes them.
- * - An outside change to the file arrives as `board_reloaded`: the board takes the file's version and
- *   its undo history starts over, dropping edits waiting for the autosave, except while its save is
- *   failing or in flight (the person's version is written over the file then). A file deleted outside
- *   is written back by the next save.
+ *   folder is Rust's), built on the revision last loaded or saved; saves never overlap, and edits made
+ *   during one are saved right after. A failed save keeps the edits, and the next edit or Retry writes them.
+ * - An outside change to the file arrives as `board_reloaded`. A valid board's version replaces the
+ *   board's and its undo history starts over, unless the board has edits waiting for the autosave, a save
+ *   on its way, or a failing save: then saving stops (`paused`) and the person chooses, Keep my edits
+ *   (`keepMine`) or Load the file (`loadFile`). A file that isn't a valid board stops saving too, until the
+ *   person saves their version or the file is a valid board again (taken by itself when nothing of the
+ *   person's is unsaved). A save the engine refuses because the file changed (`board_changed`) stops it
+ *   the same way. A file deleted outside is written back by the next save. Neither side is ever dropped
+ *   without the person choosing.
  * - View state (each page's camera and selection, and the active page) lasts only while the app runs;
  *   view changes are never undo steps.
  * - An agent's edit is saved at once (`saveStep`), and a repair is written by the engine itself
@@ -21,7 +25,7 @@ import { replaceEqualDeep } from "@tanstack/react-query";
 import { produce, type Draft } from "immer";
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import type { BoardDocument, BoardState, Page } from "../../ipc/generated";
+import type { BoardDocument, BoardState, Page, ReloadedFile } from "../../ipc/generated";
 import { UnfoldError, toUnfoldError } from "../../ipc/unfold";
 import { findPage } from "./document";
 import { call } from "./engine";
@@ -34,6 +38,7 @@ import type {
   PageId,
   PageTarget,
   PageView,
+  Pause,
   Selection,
 } from "./types";
 
@@ -188,6 +193,7 @@ function freshBoard(state: BoardState, page: PageId | null, readOnly: boolean): 
     savedEdits: 0,
     saving: false,
     saveError: null,
+    paused: null,
     history: { past: [], future: [], coalesce: null },
     activePage,
     pages: { [activePage]: pageView() },
@@ -378,12 +384,31 @@ function applySaved(ref: BoardRef, saved: BoardState, coveredEdits: number): voi
   });
 }
 
+/** Runs `work`, holding the board's save slot until it ends (no other save of the board starts meanwhile). */
+async function holding(key: string, work: Promise<void>): Promise<void> {
+  inflight.set(key, work);
+  try {
+    await work;
+  } finally {
+    inflight.delete(key);
+  }
+}
+
+/** Stops the board's saving until the person chooses, saying why. */
+function pause(ref: BoardRef, why: Pause): void {
+  cancelSaveTimer(ref);
+  update(ref, (open) => {
+    open.paused = why;
+  });
+}
+
 /**
- * Writes the board's unsaved edits over its file now. Saves of one board never overlap: a save
- * requested during another waits for it and then writes whatever is still unsaved. A failed save keeps
- * the edits and records why (`saveError`) until a save succeeds.
+ * Writes the board's edits over its file: its unsaved edits (`overwrite` false, never while paused), or,
+ * when the person chose their version, the whole board whatever the file holds now (`overwrite`, only
+ * while paused). A refusal because the file changed pauses the board; another failure keeps the edits and
+ * records why (`saveError`), and a failed overwrite leaves the board paused as it was.
  */
-export async function saveBoard(ref: BoardRef): Promise<void> {
+async function writeBoard(ref: BoardRef, overwrite: boolean): Promise<void> {
   const key = boardKey(ref);
   // Several callers may be waiting on the same save; the first to resume starts the next one and the
   // others wait for that too, so two saves of one board never run at once.
@@ -391,39 +416,84 @@ export async function saveBoard(ref: BoardRef): Promise<void> {
     await running;
   }
   const board = getOpenBoard(ref);
-  if (!board || !isDirty(board)) {
+  if (!board || (overwrite ? board.paused === null : board.paused !== null || !isDirty(board))) {
     return;
   }
   cancelSaveTimer(ref);
   const covered = board.edits;
-  const edit = boardEdit(board.document);
+  const paused = board.paused;
+  const args = { project: ref.project, id: ref.id, base: board.revision, board: boardEdit(board.document), ...(overwrite ? { overwrite } : {}) };
   update(ref, (open) => {
     open.saving = true;
+    open.paused = null;
   });
-  const work = (async () => {
-    try {
-      const saved = await call("save_board", { project: ref.project, id: ref.id, board: edit });
-      applySaved(ref, saved, covered);
-    } catch (cause) {
-      const error = toUnfoldError(cause);
-      // A disconnected save stays unsaved and is written once the engine is back.
-      if (error.code !== "disconnected" && error.code !== "engine_unavailable") {
+  await holding(
+    key,
+    (async () => {
+      try {
+        applySaved(ref, await call("save_board", args), covered);
+      } catch (cause) {
+        const error = toUnfoldError(cause);
         update(ref, (open) => {
-          open.saveError = error.message;
+          if (error.code === "board_changed") {
+            open.paused ??= { kind: "changed" };
+          } else if (error.code !== "disconnected" && error.code !== "engine_unavailable") {
+            // A disconnected save stays unsaved and is written once the engine is back.
+            open.saveError = error.message;
+          }
+          open.paused ??= paused;
+        });
+      } finally {
+        update(ref, (open) => {
+          open.saving = false;
         });
       }
-    } finally {
-      update(ref, (open) => {
-        open.saving = false;
-      });
-    }
-  })();
-  inflight.set(key, work);
-  try {
-    await work;
-  } finally {
-    inflight.delete(key);
+    })(),
+  );
+}
+
+/**
+ * Writes the board's unsaved edits over its file now. Saves of one board never overlap: a save
+ * requested during another waits for it and then writes whatever is still unsaved. A failed save keeps
+ * the edits and records why (`saveError`) until a save succeeds. Nothing saves while the board is paused.
+ */
+export async function saveBoard(ref: BoardRef): Promise<void> {
+  await writeBoard(ref, false);
+}
+
+/**
+ * The person keeps their version (Save my version, Keep my edits): the board as this window has it is
+ * written over its file whatever the file holds, and saving resumes.
+ */
+export async function keepMine(ref: BoardRef): Promise<void> {
+  await writeBoard(ref, true);
+}
+
+/**
+ * The person takes the file's version (Load the file): the board reads its file again, its undo history
+ * starts over, and saving resumes. A file that isn't a valid board pauses the board again, saying why.
+ */
+export async function loadFile(ref: BoardRef): Promise<void> {
+  const key = boardKey(ref);
+  for (let running = inflight.get(key); running; running = inflight.get(key)) {
+    await running;
   }
+  if (!getOpenBoard(ref)?.paused) {
+    return;
+  }
+  await holding(
+    key,
+    (async () => {
+      try {
+        adoptFile(await call("reload_board", { project: ref.project, id: ref.id }));
+      } catch (cause) {
+        const error = toUnfoldError(cause);
+        if (error.code === "board_invalid" || error.code === "io") {
+          pause(ref, { kind: "invalid", message: error.message });
+        }
+      }
+    })(),
+  );
 }
 
 /** What a change `saveStep` makes: the next document, and what the change reports. */
@@ -445,15 +515,24 @@ function notSaved(code: string, message: string): NotSaved {
   return { ok: false, error: new UnfoldError({ code, message }) };
 }
 
-/** Why a board's edits are still unsaved after a save: the save's failure, or edits made meanwhile. */
+/** What a paused board says to whoever wants to change it. */
+function pausedMessage(paused: Pause): string {
+  return paused.kind === "invalid"
+    ? "The board's file on disk isn't a valid board, so saving stopped until the person saves their version or the file is fixed."
+    : "The board's file changed on disk, so saving stopped until the person keeps their edits or loads the file.";
+}
+
+/** Why a board's edits are still unsaved after a save: the save's failure, a pause, or edits made meanwhile. */
 function unsavedEdits(board: OpenBoard): UnfoldError {
-  return new UnfoldError({ code: "unsaved_edits", message: board.saveError ?? "The board has edits Unfold couldn't save yet. Try again in a moment." });
+  const message = board.saveError ?? (board.paused ? pausedMessage(board.paused) : "The board has edits Unfold couldn't save yet. Try again in a moment.");
+  return new UnfoldError({ code: "unsaved_edits", message });
 }
 
 /**
  * Runs `step` once the board's unsaved edits are saved, holding the board's save slot meanwhile (no
  * other save of it starts), so a step's refusal is about the step alone. Refuses while the board's
- * edits can't be saved.
+ * edits can't be saved, and while it is paused (`board_changed`): the step would be lost with whichever
+ * version the person doesn't keep.
  */
 async function withSaveSlot<T>(ref: BoardRef, step: (board: OpenBoard) => Promise<StepOutcome<T>>): Promise<StepOutcome<T>> {
   const key = boardKey(ref);
@@ -464,6 +543,9 @@ async function withSaveSlot<T>(ref: BoardRef, step: (board: OpenBoard) => Promis
   const board = getOpenBoard(ref);
   if (!board) {
     return notSaved("board_not_open", "This window no longer holds the board.");
+  }
+  if (board.paused) {
+    return notSaved("board_changed", pausedMessage(board.paused));
   }
   if (isDirty(board)) {
     return { ok: false, error: unsavedEdits(board) };
@@ -483,7 +565,10 @@ async function withSaveSlot<T>(ref: BoardRef, step: (board: OpenBoard) => Promis
   }
 }
 
-/** Has the engine write the board (a save, a repair), showing the board as saving meanwhile; a refusal is returned. */
+/**
+ * Has the engine write the board (a save, a repair), showing the board as saving meanwhile; a refusal is
+ * returned, and one because the file changed (`board_changed`) pauses the board.
+ */
 async function engineWrite(ref: BoardRef, write: () => Promise<BoardState>): Promise<BoardState | NotSaved> {
   update(ref, (open) => {
     open.saving = true;
@@ -491,7 +576,14 @@ async function engineWrite(ref: BoardRef, write: () => Promise<BoardState>): Pro
   try {
     return await write();
   } catch (cause) {
-    return { ok: false, error: toUnfoldError(cause) };
+    const error = toUnfoldError(cause);
+    if (error.code === "board_changed") {
+      cancelSaveTimer(ref);
+      update(ref, (open) => {
+        open.paused ??= { kind: "changed" };
+      });
+    }
+    return { ok: false, error };
   } finally {
     update(ref, (open) => {
       open.saving = false;
@@ -515,9 +607,9 @@ export async function saveStep<T>(ref: BoardRef, page: PageId, name: string, cha
     if (next.document === base) {
       return { ok: true, state: savedState(board), value: next.value };
     }
-    for (;;) {
-      const edit = boardEdit(next.document);
-      const saved = await engineWrite(ref, () => call("save_board", { project: ref.project, id: ref.id, board: edit }));
+    for (let revision = board.revision; ; ) {
+      const args = { project: ref.project, id: ref.id, base: revision, board: boardEdit(next.document) };
+      const saved = await engineWrite(ref, () => call("save_board", args));
       if ("error" in saved) {
         return saved;
       }
@@ -526,7 +618,12 @@ export async function saveStep<T>(ref: BoardRef, page: PageId, name: string, cha
         commitStep(ref, { page, name, base, document: next.document, saved });
         return { ok: true, state: saved, value: next.value };
       }
-      // The person edited while it saved: the change applies again over their edits, and that is saved.
+      // The person edited while it saved: the change applies again over their edits, and that is saved
+      // over the file as it now is (what the person's edits are saved over too, should the change fail).
+      revision = saved.revision;
+      update(ref, (open) => {
+        open.revision = revision;
+      });
       base = now.document;
       try {
         next = change(base);
@@ -573,13 +670,13 @@ function commitStep(
 /**
  * Has the engine change the board itself from this window's saved version (a repair), as `saveStep`
  * saves a change: the board's unsaved edits are saved first (refused as there), nothing else saves
- * while `write` runs, and the state it writes becomes one undo step of `page`, so ⌘Z takes back exactly
- * the repair (and saves that). Edits made meanwhile are kept, and saved next over the engine's change,
- * which then isn't kept (`page_changed`).
+ * while `write` runs (given the revision the version builds on), and the state it writes becomes one
+ * undo step of `page`, so ⌘Z takes back exactly the repair (and saves that). Edits made meanwhile are
+ * kept, and saved next over the engine's change, which then isn't kept (`page_changed`).
  */
-export async function engineStep(ref: BoardRef, page: PageId, write: () => Promise<BoardState>): Promise<StepOutcome<null>> {
+export async function engineStep(ref: BoardRef, page: PageId, write: (base: string) => Promise<BoardState>): Promise<StepOutcome<null>> {
   return withSaveSlot(ref, async (board) => {
-    const state = await engineWrite(ref, write);
+    const state = await engineWrite(ref, () => write(board.revision));
     if ("error" in state) {
       return state;
     }
@@ -603,7 +700,8 @@ export async function engineStep(ref: BoardRef, page: PageId, write: () => Promi
 
 /**
  * Saves now whatever is waiting for the autosave (before closing, renaming, exporting, or deleting a
- * board). Throws `unsaved_edits` when the board still has edits that aren't saved.
+ * board). Throws `unsaved_edits` when the board still has edits that aren't saved (a paused board's
+ * included).
  */
 export async function flushBoard(ref: BoardRef): Promise<void> {
   cancelSaveTimer(ref);
@@ -620,15 +718,15 @@ export async function flushAllBoards(): Promise<void> {
 }
 
 /**
- * The page is going away: sends every unsaved board now. Nothing runs after the page hides, so this
- * can't wait for a save in flight; the newer document simply follows it.
+ * The page is going away: sends every unsaved board that isn't paused now. Nothing runs after the page
+ * hides, so this can't wait for a save in flight; the newer document simply follows it.
  */
 export function saveAllNow(): void {
   for (const board of openBoards()) {
     cancelSaveTimer(board.ref);
     const { project, id } = board.ref;
-    if (isDirty(board)) {
-      call("save_board", { project, id, board: boardEdit(board.document) }).catch(() => undefined);
+    if (isDirty(board) && board.paused === null) {
+      call("save_board", { project, id, base: board.revision, board: boardEdit(board.document) }).catch(() => undefined);
     }
   }
 }
@@ -637,18 +735,11 @@ export function saveAllNow(): void {
 // Outside edits and health
 
 /**
- * Handles `board_reloaded` with the board as its file now holds it: the session takes that version,
- * and its undo history starts over. Edits waiting for the autosave go with it. Ignored while the
- * board's save is failing: Retry writes the person's version over the file. Ignored too while a save
- * is in flight: the engine sends the event while holding the board's session, so that save is written
- * after the outside change, and the file holds the person's version.
+ * The board takes its file's version (`state`): its undo history starts over, anything unsaved goes, and
+ * saving resumes.
  */
-export function adoptOutsideChange(state: BoardState): void {
+function adoptFile(state: BoardState): void {
   const ref = { project: state.project, id: state.id };
-  const board = getOpenBoard(ref);
-  if (!board || board.readOnly || inflight.has(boardKey(ref)) || board.saveError !== null) {
-    return;
-  }
   cancelSaveTimer(ref);
   update(ref, (open) => {
     open.history = { past: [], future: [], coalesce: null };
@@ -659,9 +750,57 @@ export function adoptOutsideChange(state: BoardState): void {
     open.name = state.name;
     open.edits += 1;
     open.savedEdits = open.edits;
+    open.saveError = null;
+    open.paused = null;
     open.activePage = existingPage(state.document, open.activePage);
     viewOf(open, open.activePage);
   });
+}
+
+/**
+ * Handles `board_reloaded`, what an open board's file holds after an outside change:
+ *
+ * - A valid board is taken by itself while nothing of the person's is unsaved; with edits waiting for
+ *   the autosave, a save on its way, or a failing save, saving stops and the person chooses (`changed`).
+ *   A file back to the version the board builds on lets saving go on.
+ * - A file that isn't a valid board stops saving, saying why (`invalid`).
+ * - A deleted file lets saving go on: the next save writes the person's version back.
+ */
+export function fileChanged(ref: BoardRef, file: ReloadedFile): void {
+  const board = getOpenBoard(ref);
+  if (!board || board.readOnly) {
+    return;
+  }
+  switch (file.kind) {
+    case "board":
+      if (file.state.revision === board.revision) {
+        resume(ref);
+      } else if (isDirty(board) || inflight.has(boardKey(ref)) || board.saveError !== null) {
+        pause(ref, { kind: "changed" });
+      } else {
+        adoptFile(file.state);
+      }
+      return;
+    case "invalid":
+      pause(ref, { kind: "invalid", message: file.message });
+      return;
+    case "deleted":
+      resume(ref);
+      return;
+  }
+}
+
+/** Lets a paused board save again, and saves what is waiting. */
+function resume(ref: BoardRef): void {
+  const board = getOpenBoard(ref);
+  if (board?.paused) {
+    update(ref, (open) => {
+      open.paused = null;
+    });
+    if (isDirty(board)) {
+      scheduleSave(ref);
+    }
+  }
 }
 
 /** Refreshes an open board's health and label (after a graph update). */

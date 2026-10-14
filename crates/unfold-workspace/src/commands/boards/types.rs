@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unfold_core::RepoPath;
+use unfold_reader::board::files::Revision;
 use unfold_reader::board::{Anchor, Board, Health, Repair, Target};
 
 use crate::commands::key_of;
@@ -114,7 +115,8 @@ pub struct BoardSummary {
     /// A label when something is wrong ("1 missing · 2 outdated"); `None` when healthy or while
     /// the project rests.
     pub label: Option<String>,
-    /// Why the file can't be read, if it can't.
+    /// Why the file can't be read, if it can't: not a valid board, or a name a board file
+    /// can't have (it says which names are allowed).
     pub error: Option<String>,
 }
 
@@ -202,7 +204,16 @@ pub struct SaveBoardArgs {
     pub project: ProjectId,
     /// The board's id.
     pub id: String,
-    /// The edited board, written over the board's file whatever it holds.
+    /// The revision of the board's file the edited board builds on: the one last loaded or
+    /// saved. A file that changed since, or isn't a valid board, refuses the save
+    /// (`board_changed`); a deleted file is written again.
+    pub base: Revision,
+    /// Writes the edited board over the file whatever it holds now: the person chose their
+    /// version (Save my version, Keep my edits).
+    #[serde(default)]
+    #[ts(optional)]
+    pub overwrite: Option<bool>,
+    /// The edited board.
     pub board: BoardEdit,
 }
 
@@ -398,6 +409,9 @@ pub struct RepairBoardArgs {
     pub project: ProjectId,
     /// The board's id.
     pub id: String,
+    /// The revision of the board's file the window's version builds on, as for `save_board`
+    /// (`board_changed` when the file changed since).
+    pub base: Revision,
     /// The repair.
     pub repair: RepairSpec,
 }

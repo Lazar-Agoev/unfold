@@ -115,6 +115,12 @@ interface BoardHistory {
   coalesce: { readonly key: string; readonly at: number } | null;
 }
 
+/**
+ * Why a board stopped saving: its file on disk isn't a valid board (`invalid`, with why), or it changed
+ * while the board had edits of its own, a save on its way, or a failing save (`changed`).
+ */
+export type Pause = { readonly kind: "invalid"; readonly message: string } | { readonly kind: "changed" };
+
 export interface OpenBoard {
   readonly ref: BoardRef;
   name: string;
@@ -128,8 +134,10 @@ export interface OpenBoard {
   edits: number;
   savedEdits: number;
   saving: boolean;
-  /** Why the last save failed, until one succeeds; while set, outside changes don't reload the board. */
+  /** Why the last save failed, until one succeeds; while set, an outside change asks the person rather than reloading. */
   saveError: string | null;
+  /** Why saving stopped until the person chooses which version to keep, while it has. */
+  paused: Pause | null;
   history: BoardHistory;
   activePage: PageId;
   pages: Record<PageId, PageView>;

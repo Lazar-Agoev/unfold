@@ -93,6 +93,10 @@ impl Language for Alien {
         extract::extract(file)
     }
 
+    fn reads_payload(&self, payload: &[u8]) -> bool {
+        postcard::from_bytes::<payload::Payload>(payload).is_ok()
+    }
+
     fn link<'a>(&'a self, files: &'a FactsSet, inputs: &'a ProjectInputs) -> Box<dyn Linked + 'a> {
         Box::new(link::AlienLinked::new(files, &inputs.unindexed))
     }

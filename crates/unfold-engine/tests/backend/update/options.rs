@@ -84,6 +84,10 @@ impl Language for Configured {
         self.inner.extract(file, settings)
     }
 
+    fn reads_payload(&self, payload: &[u8]) -> bool {
+        self.inner.reads_payload(payload)
+    }
+
     fn extraction_options(
         &self,
         paths: &[&RepoPath],

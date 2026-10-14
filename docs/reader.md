@@ -231,13 +231,20 @@ format fail to parse like any invalid file.
 [board commands](../crates/unfold-workspace/src/commands/boards/mod.rs) own the files:
 
 - Every board is `.unfold/boards/<name>.json`, its id the path in the project. A new board's name is its title's slug
-  (`Order placement` → `order-placement`), with `-2`, `-3` when taken; a new board never overwrites a file.
-- Files are written atomically as the board is edited, and shared through git.
+  (`Order placement` → `order-placement`), with `-2`, `-3` when taken; a new board never overwrites a file. A file
+  whose name a board file can't have (1 to 100 ASCII letters, digits, `.`, `_`, or `-`) is listed with an error that
+  says so.
+- Files are written atomically as the board is edited, and shared through git. A new board's file is claimed
+  exclusively and then replaced atomically, never hard-linked: FSEvents doesn't report the deletion of a file that
+  began as a hard link. A board file is at most 16 MiB: a larger one isn't read, and no board that large is written.
 - An open board has a **session**: the version last loaded or saved. A save validates the window's version against
-  the graph, signs what is new, and writes it over the file, whatever the file holds.
-- An outside change to an open board's file (an agent, an editor, a `git pull`) reloads its session and sends
-  `board_reloaded` to the window. While the window's save is failing, it ignores the reload, and its Retry writes the
-  person's version, checked against every version it could be built on.
+  the graph, signs what is new, and writes it over the file. It is refused (`board_changed`) when the file no longer
+  holds the version the window's edits build on (changed, or not a valid board), unless the person chose their version;
+  a deleted file is written again. Repairs and folder moves never write over a file that isn't a valid board either.
+- An outside change to an open board's file (an agent, an editor, a `git pull`) sends `board_reloaded` to the window:
+  a valid board reloads the session; a deleted file, or one that isn't a valid board (with why), leaves it. A window
+  with edits of its own asks the person which version to keep; the person's is checked against every version it could
+  be built on.
 - A board's folder is metadata the folder commands change; a window's save never changes it. Empty folders live in
   `.unfold/local/state.json`.
 

@@ -66,7 +66,7 @@ async function newBoardFile(request: AgentCreateRequest): Promise<BoardRef> {
 async function savePages(state: BoardState, document: BoardDocument): Promise<BoardState> {
   const { project } = state;
   try {
-    return await call("save_board", { project, id: state.id, board: edited(document) });
+    return await call("save_board", { project, id: state.id, base: state.revision, board: edited(document) });
   } catch (error) {
     // No session holds the half-made board: let it go, and say what happened.
     await call("close_board", { project, id: state.id }).catch(() => undefined);

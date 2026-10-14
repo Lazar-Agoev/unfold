@@ -25,6 +25,16 @@ pub(super) fn parse_id(id: &str) -> CommandResult<BoardFile> {
     Ok(BoardFile::new(name)?)
 }
 
+/// When the file at `path` was last edited: its modification time, in milliseconds since the
+/// Unix epoch (0 when unknown).
+pub(super) fn modified_ms(path: &Path) -> i64 {
+    std::fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .map_or(0, |since| i64::try_from(since.as_millis()).unwrap_or(i64::MAX))
+}
+
 /// One project's board files.
 pub(super) struct Files<'a> {
     /// Reads, for every project.
@@ -82,18 +92,13 @@ impl<'a> Files<'a> {
         Ok(self.dirs.list()?)
     }
 
-    /// When `file` was last edited: its modification time, in milliseconds since the Unix epoch
-    /// (0 when unknown).
+    /// When `file` was last edited ([`modified_ms`]).
     pub(super) fn modified_ms(&self, file: &BoardFile) -> i64 {
-        std::fs::metadata(self.dirs.path(file))
-            .and_then(|metadata| metadata.modified())
-            .ok()
-            .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
-            .map_or(0, |since| i64::try_from(since.as_millis()).unwrap_or(i64::MAX))
+        modified_ms(&self.dirs.path(file))
     }
 
-    /// Writes `board` over board `file`, whatever the file holds now, and returns the new
-    /// revision.
+    /// Writes `board` over board `file` and returns the new revision. What the file holds now
+    /// is the caller's to check: nothing may write over what a window hasn't seen.
     pub(super) fn save(&self, file: &BoardFile, board: &Board) -> CommandResult<Revision> {
         let text = serialize(board);
         self.note(file, Some(&text))?;

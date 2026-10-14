@@ -3,8 +3,9 @@
 //! A board sits in a folder through its `folder` field; the sidebar groups the boards by it. A
 //! folder with no board in it is kept in `state.json`'s `emptyFolders` until a board goes into
 //! it, and a folder a board leaves stays there, empty, until it is deleted. A folder is metadata
-//! Rust owns: these commands work on any board, open or not, and an open board's session
-//! follows the move, so the window's next save keeps it.
+//! Rust owns: these commands work on any board, open or not, moving the file as it is now, and
+//! an open board's session follows the move, so the window's next save keeps it. A file that
+//! isn't a valid board is never moved: that would write over it.
 
 use std::collections::BTreeMap;
 
@@ -108,6 +109,7 @@ fn move_board(
         .filter(|session| session.revision == loaded.revision)
     {
         session.board.folder = board.folder;
+        session.moved.push(session.revision);
         session.revision = revision;
         session.skipped = None;
     }
@@ -115,8 +117,8 @@ fn move_board(
 }
 
 /// `set_board_folder`: moves a board into a folder (or to the top level), whether or not it is
-/// open. An open board whose file is gone or isn't a valid board moves its session's version,
-/// which is what the window's next save would write.
+/// open. An open board whose file is gone moves its session's version, which is what the
+/// window's next save would write back; a file that isn't a valid board is refused.
 pub fn set_board_folder(ctx: &Ctx<'_>, args: SetBoardFolderArgs) -> CommandResult<BoardSummary> {
     let project = ctx.project(&args.project)?;
     let file = parse_id(&args.id)?;
@@ -129,11 +131,11 @@ pub fn set_board_folder(ctx: &Ctx<'_>, args: SetBoardFolderArgs) -> CommandResul
         let mut sessions = extras.boards.sessions();
         let loaded = match (files.load(&file), sessions.get(&args.id)) {
             (Ok(loaded), _) => loaded,
-            (Err(_), Some(session)) => Loaded {
+            (Err(error), Some(session)) if error.code == "not_found" => Loaded {
                 board: session.board.clone(),
                 revision: session.revision,
             },
-            (Err(error), None) => return Err(error),
+            (Err(error), _) => return Err(error),
         };
         let previous = loaded.board.folder.clone();
         let moved = move_board(

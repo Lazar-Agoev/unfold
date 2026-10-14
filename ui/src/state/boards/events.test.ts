@@ -65,7 +65,7 @@ describe("board events", () => {
     });
     await vi.advanceTimersByTimeAsync(store.AUTOSAVE_MS);
     expect(store.canUndo(REF)).toBe(true);
-    engine.emit({ type: "board_reloaded", project: P, board: REF.id, state: boardState(P, REF.id, boardDocument([page("page-1")], { title: "From git" }), { revision: "r9" }) });
+    engine.emit({ type: "board_reloaded", project: P, board: REF.id, file: { kind: "board", state: boardState(P, REF.id, boardDocument([page("page-1")], { title: "From git" }), { revision: "r9" }) } });
     await vi.advanceTimersByTimeAsync(0);
     const board = store.getOpenBoard(REF);
     expect(board?.document.title).toBe("From git");
@@ -75,7 +75,7 @@ describe("board events", () => {
   });
 
   it("keeps the person's version when the file was deleted outside, and the next save writes it back", async () => {
-    engine.emit({ type: "board_reloaded", project: P, board: REF.id, state: null });
+    engine.emit({ type: "board_reloaded", project: P, board: REF.id, file: { kind: "deleted" } });
     await vi.advanceTimersByTimeAsync(0);
     expect(store.getOpenBoard(REF)?.document.title).toBe("Order placement");
     store.editBoard(REF, (document) => {
@@ -85,21 +85,33 @@ describe("board events", () => {
     expect(engine.callsOf("save_board")).toMatchObject([{ project: P, id: REF.id, board: { title: "Renamed" } }]);
   });
 
-  it("doesn't reload while the board's save is failing, and Retry writes the person's version", async () => {
+  it("asks while the board's save is failing, and Keep my edits writes the person's version", async () => {
     saveFailure = "The disk is full.";
     store.editBoard(REF, (document) => {
       document.title = "Mine";
     });
     await vi.advanceTimersByTimeAsync(store.AUTOSAVE_MS);
     expect(store.getOpenBoard(REF)?.saveError).toBe("The disk is full.");
-    engine.emit({ type: "board_reloaded", project: P, board: REF.id, state: boardState(P, REF.id, boardDocument([page("page-1")], { title: "Theirs" }), { revision: "r9" }) });
+    engine.emit({ type: "board_reloaded", project: P, board: REF.id, file: { kind: "board", state: boardState(P, REF.id, boardDocument([page("page-1")], { title: "Theirs" }), { revision: "r9" }) } });
     await vi.advanceTimersByTimeAsync(0);
+    expect(store.getOpenBoard(REF)?.paused).toEqual({ kind: "changed" });
     expect(store.getOpenBoard(REF)?.document.title).toBe("Mine");
     expect(store.canUndo(REF)).toBe(true);
     saveFailure = null;
-    await store.saveBoard(REF);
-    expect(engine.callsOf("save_board").at(-1)).toMatchObject({ project: P, id: REF.id, board: { title: "Mine" } });
-    expect(store.getOpenBoard(REF)?.saveError).toBeNull();
+    await store.keepMine(REF);
+    expect(engine.callsOf("save_board").at(-1)).toMatchObject({ project: P, id: REF.id, base: "r1", overwrite: true, board: { title: "Mine" } });
+    expect(store.getOpenBoard(REF)).toMatchObject({ saveError: null, paused: null });
+  });
+
+  it("stops saving when the file on disk isn't a valid board, saying why", async () => {
+    engine.emit({ type: "board_reloaded", project: P, board: REF.id, file: { kind: "invalid", message: "board file is not valid JSON at line 1, column 1" } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getOpenBoard(REF)?.paused).toEqual({ kind: "invalid", message: "board file is not valid JSON at line 1, column 1" });
+    store.editBoard(REF, (document) => {
+      document.title = "Mine";
+    });
+    await vi.advanceTimersByTimeAsync(store.AUTOSAVE_MS);
+    expect(engine.callsOf("save_board")).toEqual([]);
   });
 
   it("sends unsaved edits when the page goes away", () => {

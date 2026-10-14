@@ -397,8 +397,9 @@ pub enum Effect {
 impl BindFacts {
     /// Whether every index in the facts is in range, scope parents and enclosing declarations
     /// come before what they enclose (so walking outwards ends), and the module scope is first.
-    /// Extraction always writes consistent facts; linking checks them once per file because
-    /// they come back from the on-disk cache, where a damaged entry may still decode.
+    /// Extraction always writes consistent facts; reading a payload checks them
+    /// ([`Payload::read`](crate::payload::Payload::read)) because they come back from the
+    /// on-disk cache, where a damaged entry may still decode.
     pub fn is_consistent(&self) -> bool {
         let name = |id: NameId| (id as usize) < self.names.len();
         let scope = |id: ScopeId| (id as usize) < self.scopes.len();

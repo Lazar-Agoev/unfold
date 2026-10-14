@@ -95,7 +95,10 @@ The bar above the canvas shows the page's name and the **Show all calls** switch
 Boards are saved as you edit, as files in `.unfold/boards/`. Undo and Redo are in the Edit menu (⌘Z, ⇧⌘Z), one history
 per board, across its pages. If a save fails, the canvas says **Not saved · Retry**; your work stays in the window.
 If the file changes outside Unfold (an agent, your editor, a `git pull`), the board reloads from it and its undo
-history starts over.
+history starts over. If you have edits that aren't saved yet, Unfold stops saving and asks: **Keep my edits** writes
+yours over the file, and **Load the file** takes the file's version. If the file isn't a valid board, such as after a
+merge conflict, saving stops until you choose **Save my version** or fix the file; once it's a valid board again, the
+board reloads by itself, or asks if you edited meanwhile. Nothing either side wrote is lost without you choosing.
 
 In the sidebar, a folder's menu has **New Board Here**, **Rename…**, and **Delete** (when it's empty).
 

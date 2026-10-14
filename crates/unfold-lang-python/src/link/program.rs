@@ -196,9 +196,7 @@ impl<'a> Program<'a> {
                 file.facts
                     .as_deref()
                     .filter(|_| file.language == Language::Python)
-                    .and_then(|facts| Payload::from_bytes(&facts.payload).ok())
-                    // A damaged cache entry that still decodes is treated like one that doesn't.
-                    .filter(|payload| payload.bind.is_consistent())
+                    .and_then(|facts| Payload::read(&facts.payload))
             })
             .collect();
         for ((id, _), payload) in facts.iter().zip(payloads) {

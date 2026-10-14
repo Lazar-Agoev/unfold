@@ -68,6 +68,8 @@ export {
   editPage,
   getOpenBoard,
   getPageView,
+  keepMine,
+  loadFile,
   redo,
   requestCardFocus,
   saveBoard,

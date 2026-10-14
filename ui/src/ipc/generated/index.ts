@@ -381,7 +381,8 @@ updatedAtMs: number,
  */
 label: string | null, 
 /**
- * Why the file can't be read, if it can't.
+ * Why the file can't be read, if it can't: not a valid board, or a name a board file
+ * can't have (it says which names are allowed).
  */
 error: string | null, };
 
@@ -2926,6 +2927,19 @@ callersOffset?: number,
 callersLimit?: number, };
 
 /**
+ * What an open board's file holds after an outside change (`board_reloaded`).
+ */
+export type ReloadedFile = { "kind": "board", 
+/**
+ * The board as reloaded.
+ */
+state: BoardState, } | { "kind": "deleted" } | { "kind": "invalid", 
+/**
+ * Why it isn't a valid board.
+ */
+message: string, };
+
+/**
  * The arguments of `rename_folder`.
  */
 export type RenameFolderArgs = { 
@@ -2972,6 +2986,11 @@ project: ProjectId,
  * The board's id.
  */
 id: string, 
+/**
+ * The revision of the board's file the window's version builds on, as for `save_board`
+ * (`board_changed` when the file changed since).
+ */
+base: Revision, 
 /**
  * The repair.
  */
@@ -3089,6 +3108,11 @@ signature?: Signature, };
 export type ResourceKind = "table" | "queue" | "cache" | "storage" | "external" | "actor";
 
 /**
+ * What a file's bytes were when the app last loaded or saved it.
+ */
+export type Revision = string;
+
+/**
  * One way from one step (or lane, or the start) to another.
  */
 export type Route = { 
@@ -3141,7 +3165,18 @@ project: ProjectId,
  */
 id: string, 
 /**
- * The edited board, written over the board's file whatever it holds.
+ * The revision of the board's file the edited board builds on: the one last loaded or
+ * saved. A file that changed since, or isn't a valid board, refuses the save
+ * (`board_changed`); a deleted file is written again.
+ */
+base: Revision, 
+/**
+ * Writes the edited board over the file whatever it holds now: the person chose their
+ * version (Save my version, Keep my edits).
+ */
+overwrite?: boolean, 
+/**
+ * The edited board.
  */
 board: BoardEdit, };
 
@@ -4008,7 +4043,8 @@ truncated: boolean, } | { "type": "boards_changed",
  */
 project: ProjectId, 
 /**
- * The boards whose files changed, sorted.
+ * The boards whose files changed, sorted, as `list_boards` lists them (a file whose name
+ * a board file can't have included).
  */
 boards: Array<string>, 
 /**
@@ -4025,10 +4061,9 @@ project: ProjectId,
  */
 board: string, 
 /**
- * The board as reloaded, or `None` when its file was deleted (the session keeps the
- * version last loaded or saved, which the next save writes back).
+ * What the file holds now.
  */
-state: BoardState | null, } | { "type": "config_changed", 
+file: ReloadedFile, } | { "type": "config_changed", 
 /**
  * The project.
  */

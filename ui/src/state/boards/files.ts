@@ -43,7 +43,7 @@ export async function renameBoard(ref: BoardRef, title: string): Promise<void> {
  * adopts the result as one undo step on its page; throws when it can't (`engineStep`).
  */
 export async function repairBoard(ref: BoardRef, repair: RepairSpec): Promise<void> {
-  const outcome = await engineStep(ref, repair.page, () => call("repair_board", { project: ref.project, id: ref.id, repair }));
+  const outcome = await engineStep(ref, repair.page, (base) => call("repair_board", { project: ref.project, id: ref.id, base, repair }));
   if (!outcome.ok) {
     throw outcome.error;
   }
