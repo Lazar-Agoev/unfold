@@ -279,6 +279,16 @@
 }
 
 .selected-relations.link .relation-label { width: 72px; }
+
+/* A relationship's two columns, each a menu, with the arrow between them. */
+.relation-columns {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  font-family: var(--font-code);
+  color: var(--color-subtle);
+}
 .selected-relations.call .relation-label { width: 64px; }
 
 .relation-value {

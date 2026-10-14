@@ -17,6 +17,7 @@ import { boardKey, canUndo, findPage, redo, requestCardFocus, undo, useOpenBoard
 import { useCodePanel } from "../state/codePanel";
 import { BoardBanner } from "./BoardBanner";
 import { Dock } from "./Dock";
+import { LinkDrawing } from "./LinkDrawing";
 import { TopBar } from "./TopBar";
 import "./board.css";
 
@@ -78,6 +79,7 @@ function PageStage({ target }: { readonly target: PageTarget }) {
       <BoardCanvas target={target} cards={cards} frames={frames} resources={resources} notes={notes} links={links} boardArrows={boardArrows} />
       <div className="board-notices">
         <BoardBanner board={board} />
+        <LinkDrawing target={target} />
       </div>
       {cards.length === 0 && resources === undefined && notes === undefined ? <p className="board-empty">Open an entrance or a definition to start this page.</p> : null}
       <Dock hasItems={hasItems} onZoomIn={onZoomIn} onZoomOut={onZoomOut} onFit={onFit} onArrange={onArrange} />

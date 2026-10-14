@@ -4,14 +4,13 @@
  * that draws the block.
  */
 
+import { BLOCK_NAME_FIELD } from "../../canvas/cards/blockMenu";
 import type { Card, Form } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
 import { findPage, itemsFor, nameBlock, select, useOpenBoard, type PageTarget } from "../../state/boards";
 import { cardName, findBlock, useCard } from "../../state/cards";
 import { AuthoredField } from "./AuthoredField";
 
-/** The focus target of the selected block's name field. */
-const NAME_FIELD = "selected.name";
 
 /** What a block of each form is, in a word. */
 const FORM_WORDS: Readonly<Record<Form, string>> = {
@@ -86,7 +85,7 @@ export function SelectedBlock({ target, card, blockKey }: { readonly target: Pag
         label="Name"
         value={name}
         placeholder={block?.label ?? "A plain-language name…"}
-        focusKey={NAME_FIELD}
+        focusKey={BLOCK_NAME_FIELD}
         disabledReason={held ? "Held for review: accept or reconnect it on the card first." : author === null ? "Loading who you are…" : null}
         status={
           <>

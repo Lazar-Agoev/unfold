@@ -17,7 +17,7 @@ import { authorOf } from "../../code/text";
 import { Icon } from "../../icons";
 import type { Frame } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
-import { editFrame, findFrame, findPage, select, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
+import { clickItem, editFrame, findFrame, findPage, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
 import { usePageCards } from "../../state/cards";
 import { CardHandles, HeaderPorts } from "../cards/parts";
 import type { Size } from "../layout";
@@ -149,7 +149,7 @@ export const FrameNode = memo(function FrameNode({ id, data }: NodeProps<FrameNo
   );
   const handlers = {
     onClick: () => {
-      select(target, { kind: "frame", frameId: id });
+      clickItem(target, id, { kind: "frame", frameId: id });
     },
     onDoubleClick: () => {
       setEditing(true);

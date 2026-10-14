@@ -1,13 +1,13 @@
 /**
- * A frame's context menu (design §4, "small controls"): Rename…, Describe…, Collapse or Expand, Copy
- * link, and Remove frame (keep cards). Agents create frames; people adjust them. Each choice that
+ * A frame's context menu (design §4, "small controls"): Rename…, Describe…, Collapse or Expand, Draw
+ * link… (`startLink`), Copy link, and Remove frame (keep cards). Agents create frames; people adjust them. Each choice that
  * changes the page is one board edit, so ⌘Z undoes it.
  */
 
 import type { MouseEvent, ReactNode } from "react";
 import { copyLink } from "../../agent";
 import { useContextMenu, type MenuEntry } from "../../components";
-import { editFrame, findFrame, findPage, getOpenBoard, removeFrame, select, type PageTarget } from "../../state/boards";
+import { editFrame, findFrame, findPage, getOpenBoard, removeFrame, select, startLink, type PageTarget } from "../../state/boards";
 import { showInSelected } from "../cards/cardMenu";
 
 /** The focus target of a frame's description field in Selected. */
@@ -48,6 +48,7 @@ export function useFrameMenu(target: PageTarget, frameId: string, onRename: () =
           editFrame(target, frameId, { collapsed: !collapsed });
         },
       },
+      { id: "draw-link", label: "Draw link…", onSelect: () => { startLink(target, frameId); } },
       { id: "copy-link", label: "Copy link", onSelect: () => void copyLink(target, frameId) },
       { kind: "separator", id: "s1" },
       {

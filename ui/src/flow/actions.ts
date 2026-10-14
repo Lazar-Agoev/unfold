@@ -1,12 +1,12 @@
 /**
- * A card's flow wired to its page: what `FlowView` selects becomes the page's selection, opening a call
- * in place or a combined step edits the board (one undo step each), and a block's or a thin row's `</>`
- * or a gap tick opens its code in the code panel.
+ * A card's flow wired to its page: what `FlowView` selects becomes the page's selection (or ends a link
+ * being drawn at the card), opening a call in place or a combined step edits the board (one undo step
+ * each), and a block's or a thin row's `</>` or a gap tick opens its code in the code panel.
  */
 
 import { viewCode, viewLines, viewRow } from "../code/open";
 import type { CardView, Key, RepoPath, ThinRow } from "../ipc/generated";
-import { editCombined, editPage, select, toggleOpen, type PageTarget, type Selection } from "../state/boards";
+import { clickItem, editCombined, editPage, toggleOpen, type PageTarget, type Selection } from "../state/boards";
 import type { FlowSelection, FlowViewProps } from "./FlowView";
 
 /** The page's selection for what `FlowView` selects in card `cardId`. */
@@ -29,10 +29,10 @@ export function flowActions(
   target: PageTarget,
   cardId: string,
   view: CardView,
-): Pick<FlowViewProps, "onSelect" | "onToggleOpen" | "onToggleCombined" | "onViewCode" | "onViewRow" | "onOpenLines"> {
+): Required<Pick<FlowViewProps, "onSelect" | "onToggleOpen" | "onToggleCombined" | "onViewCode" | "onViewRow" | "onOpenLines">> {
   return {
     onSelect: (selection: FlowSelection) => {
-      select(target, pageSelection(cardId, selection));
+      clickItem(target, cardId, pageSelection(cardId, selection));
     },
     onToggleOpen: (path: readonly Key[]) => {
       editPage(target, (page) => {

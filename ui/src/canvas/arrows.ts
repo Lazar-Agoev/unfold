@@ -13,7 +13,8 @@
  * - **Types.** A type card's fields (and a compact class's) point from a field's row to each card on the
  *   page its written type names, one per field and card.
  *
- * A call in a collapsed combined step draws no arrow: the drawn flow names it only by key.
+ * A call in a collapsed combined step leaves from the combined step's box: the drawn flow lists its
+ * project calls with the definitions they reach.
  */
 
 import type { CallBox, CardView, DrawnFlow, Key, ProjectId, Sequence, TypeDefinition, TypeMember, TypeText, View } from "../ipc/generated";
@@ -85,8 +86,8 @@ interface ProjectCall {
 
 /**
  * The project calls a drawn flow draws, in the order they run: its call boxes (in frames' headers,
- * tests, lanes, exits, and open combined steps), and, with `insets`, those of the calls it opens in
- * place.
+ * tests, lanes, exits, and open combined steps), the calls a collapsed combined step holds, and, with
+ * `insets`, those of the calls it opens in place.
  */
 export function projectCalls(flow: DrawnFlow, insets: boolean): ProjectCall[] {
   const calls: ProjectCall[] = [];
@@ -129,6 +130,8 @@ export function projectCalls(flow: DrawnFlow, insets: boolean): ProjectCall[] {
         case "combined":
           if (step.steps) {
             sequence(step.steps);
+          } else {
+            calls.push(...step.calls.map((held) => ({ call: held.key, to: held.to })));
           }
           break;
         case "thin":

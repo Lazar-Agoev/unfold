@@ -462,7 +462,7 @@ describe("combined steps", () => {
     expect(geometry.items.get("stop")).toBe(stop?.rect);
     expect(geometry.blocks.get("shop/service.py#place_order/if[0]")).toBe(stop?.rect);
     // Arrows from the calls it holds leave from it.
-    expect(geometry.anchors.filter((anchor) => anchor.rect === save?.rect).map((anchor) => anchor.call)).toEqual(save?.step.calls.map((item) => item.key));
+    expect(geometry.anchors.filter((anchor) => anchor.rect === save?.rect).map((anchor) => [anchor.call, anchor.to])).toEqual(save?.step.calls.map((item) => [item.key, item.to]));
     expect(pieces(geometry, "start")[0]).toMatchObject({ label: "Place an order", named: true });
   });
 

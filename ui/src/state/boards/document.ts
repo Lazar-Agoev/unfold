@@ -344,6 +344,20 @@ export function findCombined(page: Page, combinedId: string): Combined | undefin
   return page.combined.find((item) => item.id === combinedId);
 }
 
+/** What a new combined step is: its blocks (consecutive steps of one body, or one whole control block), its title, and who titled it. */
+export interface NewCombined {
+  readonly members: readonly Key[];
+  readonly title: string;
+  readonly author: string;
+}
+
+/** Adds a combined step, collapsed (the next save signs it over its blocks), and returns its id. */
+export function addCombined(page: Page, combined: NewCombined): string {
+  const id = uniqueId(page, combined.title);
+  page.combined.push({ id, title: combined.title, members: [...combined.members], collapsed: true, author: combined.author, signature: "" });
+  return id;
+}
+
 export interface CombinedChange {
   readonly title?: string;
   /** Who wrote a new title. */

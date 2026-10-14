@@ -7,8 +7,8 @@
  * (`PK`, `FK → customers.id`, `unique`); up to 12, then "N more". A relationship (`relates`) leaves
  * and enters at a column's row; other lines at the card's edges.
  *
- * A click selects it; its menu has Describe…, Copy link, and Remove
- * resource card; double-clicking its description edits it in place.
+ * A click selects it (or ends a link being drawn there); its menu has Describe…, Draw link…, Copy link,
+ * and Remove resource card; double-clicking its description edits it in place.
  */
 
 import { Handle, Position, useUpdateNodeInternals, type Node, type NodeProps } from "@xyflow/react";
@@ -18,16 +18,15 @@ import { TypeText } from "../../code/TypeText";
 import { authorOf } from "../../code/text";
 import { useContextMenu } from "../../components";
 import { Icon } from "../../icons";
-import type { ProjectId, Resource } from "../../ipc/generated";
-import { useEngineQuery } from "../../ipc/queries";
-import { describeResource, findPage, findResource, removeItem, select, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
+import { clickItem, describeResource, findPage, findResource, removeItem, select, startLink, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
 import { showInSelected } from "../cards/cardMenu";
 import { CardHandles, DescriptionStrip } from "../cards/parts";
 import { ClaimReviewBanner } from "../cards/ReviewBanner";
 import { useMeasure } from "../measure";
 import { resourceCardWidth } from "../sizing";
-import { columnHandle, listedColumns, markText, tableColumns, type TableColumn } from "./columns";
+import { columnHandle, listedColumns, markText, type TableColumn } from "./columns";
 import { RESOURCE_ICONS, RESOURCE_WORDS } from "./kinds";
+import { useColumns } from "./useColumns";
 import "./resources.css";
 
 interface ResourceNodeData extends Record<string, unknown> {
@@ -109,15 +108,6 @@ function Columns({ columns, handles }: ColumnsProps) {
   );
 }
 
-/** A table's columns, from its type's definition (once loaded) or as it lists them, and whether its type is still loading. */
-function useColumns(project: ProjectId, resource: Resource | undefined): { readonly columns: TableColumn[]; readonly loading: boolean } {
-  const typeKey = resource?.kind === "table" ? resource.type : undefined;
-  const wanted = typeKey !== undefined;
-  const query = useEngineQuery("type_definition", { project, key: typeKey ?? "" }, { enabled: wanted });
-  const columns = useMemo(() => (resource ? tableColumns(resource, query.data) : []), [resource, query.data]);
-  return { columns, loading: wanted && query.isPending };
-}
-
 export const ResourceNode = memo(function ResourceNode({ id, data }: NodeProps<ResourceNodeType>) {
   const { target, columns: relates } = data;
   const resource = useOpenBoard(target.board, (board) => {
@@ -152,7 +142,7 @@ export const ResourceNode = memo(function ResourceNode({ id, data }: NodeProps<R
       style={{ width }}
       aria-label={`${word} ${resource.name}`}
       onClick={() => {
-        select(target, { kind: "resource", resourceId: id });
+        clickItem(target, id, { kind: "resource", resourceId: id });
       }}
       onContextMenu={(event) => {
         event.stopPropagation();
@@ -165,6 +155,7 @@ export const ResourceNode = memo(function ResourceNode({ id, data }: NodeProps<R
               showInSelected(resourceDescriptionField(id));
             },
           },
+          { id: "draw-link", label: "Draw link…", onSelect: () => { startLink(target, id); } },
           { id: "copy-link", label: "Copy link", onSelect: () => void copyLink(target, id) },
           { kind: "separator", id: "s1" },
           {

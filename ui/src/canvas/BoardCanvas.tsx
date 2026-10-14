@@ -9,7 +9,9 @@
  * leaves from its step's call on an expanded card (`lineHandles`), a relationship from a table's
  * column. A collapsed frame is one node: what it holds isn't drawn, and their arrows and connections
  * attach to it, merged (`routeArrows`, `routeLinks`). Dragging a frame moves everything in it, as one
- * undo step; an attached note moves with its item.
+ * undo step; an attached note moves with its item. The canvas's menu has Add resource… (placed where the
+ * menu opened) and Fit; while a link is being drawn, the cursor is a crosshair and a click on the
+ * canvas lets go of it.
  */
 
 import {
@@ -25,12 +27,14 @@ import { useQueries } from "@tanstack/react-query";
 import type { Card, Connection, Frame, Health, Key, Note, Resource } from "../ipc/generated";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useContextMenu } from "../components";
+import { AddResource } from "../explain";
 import { authorOf } from "../code/text";
 import { engineQueryOptions } from "../ipc/queries";
 import { isTyping } from "../lib/typing";
 import { useAuthor } from "../state/author";
 import {
   MAX_FRAME_DEPTH,
+  cancelLink,
   displayedRects,
   editPage,
   findFrame,
@@ -202,6 +206,10 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
   }, [arrows, links, shownAs, drawsStep]);
   const columns = useMemo(() => relatedColumns(links, shownAs), [links, shownAs]);
   const paneMenu = useContextMenu("Board actions");
+  // Add resource… from the canvas's menu: where the menu opened, on the screen and on the canvas.
+  const [addingResource, setAddingResource] = useState<{ readonly point: { readonly x: number; readonly y: number }; readonly at: readonly [number, number] } | null>(null);
+  const [resourceAnchor, setResourceAnchor] = useState<HTMLElement | null>(null);
+  const linking = usePageView(target, (view) => view.linking !== null);
 
   // Positions: saved positions reflowed by measured sizes, frames around what they hold; a dragged
   // card or frame follows the pointer.
@@ -553,6 +561,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
         onNodeDragStop={onNodeDragStop}
         onMoveEnd={onMoveEnd}
         onPaneClick={() => {
+          cancelLink(target);
           select(target, { kind: "none" });
         }}
         onEdgeClick={(_event, edge) => {
@@ -570,7 +579,11 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
         }}
         onPaneContextMenu={(event) => {
           event.preventDefault();
-          paneMenu.open({ x: event.clientX, y: event.clientY }, [
+          const point = { x: event.clientX, y: event.clientY };
+          const at = flow.screenToFlowPosition(point);
+          paneMenu.open(point, [
+            { id: "add-resource", label: "Add resource…", onSelect: () => { setAddingResource({ point, at: [at.x, at.y] }); } },
+            { kind: "separator", id: "s1" },
             { id: "fit", label: "Fit", disabled: cards.length === 0 && resources.length === 0, onSelect: () => { requestCardFocus(target, [], "fit"); } },
           ]);
         }}
@@ -591,9 +604,24 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
         panOnScroll
         proOptions={{ hideAttribution: true }}
         aria-label="Board canvas"
-        className="board-canvas"
+        className={`board-canvas${linking ? " linking" : ""}`}
       />
       {paneMenu.element}
+      {addingResource ? (
+        <>
+          <span ref={setResourceAnchor} className="canvas-point" style={{ left: addingResource.point.x, top: addingResource.point.y }} />
+          {resourceAnchor ? (
+            <AddResource
+              target={target}
+              anchor={resourceAnchor}
+              at={addingResource.at}
+              onClose={() => {
+                setAddingResource(null);
+              }}
+            />
+          ) : null}
+        </>
+      ) : null}
     </LabelLayoutContext.Provider>
   );
 }

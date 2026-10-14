@@ -496,7 +496,7 @@ end: number,
 key: Key, };
 
 /**
- * A call named by another step: a project call in a combined step, the call a call feeds.
+ * The call a call is written in, which it feeds.
  */
 export type CallRef = { 
 /**
@@ -1032,9 +1032,10 @@ conditions: number,
  */
 loops: number, 
 /**
- * The project calls inside, in the order they run.
+ * The project calls inside, in the order they run, with the definitions they reach: an
+ * arrow from a collapsed combined step leaves from it.
  */
-calls: Array<CallRef>, 
+calls: Array<HeldCall>, 
 /**
  * How many library calls it holds.
  */
@@ -1903,6 +1904,27 @@ repairs: Array<RepairKind>, };
  * The kind of a health problem.
  */
 export type HealthKind = "missing" | "outdated" | "review" | "brokenCombined" | "brokenLink";
+
+/**
+ * A project call inside a combined step.
+ */
+export type HeldCall = { 
+/**
+ * The call.
+ */
+key: Key, 
+/**
+ * The written callee.
+ */
+callee: string, 
+/**
+ * The overlay's name.
+ */
+name?: string, 
+/**
+ * The project definition it reaches.
+ */
+to: Key, };
 
 /**
  * A control block with nothing drawn inside, named in its gap tick.

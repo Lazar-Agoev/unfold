@@ -235,10 +235,10 @@ describe("resource cards", () => {
     const card = await waitFor(() => present(resourceCard(container, "orders")?.querySelector<HTMLElement>(".card-review")));
     expect(card.textContent).toContain("Changed since it was drawn");
     fireEvent.click(within(card).getByRole("button", { name: "Review" }));
-    const popover = await screen.findByRole("dialog", { name: "Review" });
-    expect(within(popover).getByText("Remove from page")).not.toBeNull();
+    const menu = await screen.findByRole("menu", { name: "Review" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Accept", "Remove from page"]);
     await act(async () => {
-      fireEvent.click(present(within(popover).getAllByRole("button", { name: "Apply" })[0]));
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Accept" }));
       await Promise.resolve();
     });
     await waitFor(() => {

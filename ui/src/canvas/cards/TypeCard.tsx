@@ -23,7 +23,7 @@ import { TypeText } from "../../code/TypeText";
 import { memberName, memberValue } from "../../code/typeKinds";
 import type { Card, CardView, InheritedGroup, TypeDefinition } from "../../ipc/generated";
 import { useEngineQuery } from "../../ipc/queries";
-import { cardKey, select, usePageView, type PageTarget, type Selection } from "../../state/boards";
+import { cardKey, clickItem, select, usePageView, type PageTarget, type Selection } from "../../state/boards";
 import { isMissing } from "../../state/cards";
 import { useCodeHover } from "../../state/codePanel";
 import { NODE_PORT, fieldPort, fieldRows, type FieldRef, type FieldRow } from "../arrows";
@@ -227,7 +227,7 @@ export function TypeCard({ target, card, drawn, ports, selected }: TypeCardProps
       style={{ width }}
       aria-label={`${text.mark.text} ${text.name}`}
       onClick={() => {
-        select(target, { kind: "card", cardId: card.id, key: null });
+        clickItem(target, card.id, { kind: "card", cardId: card.id, key: null });
       }}
       onContextMenu={menu.onContextMenu}
     >

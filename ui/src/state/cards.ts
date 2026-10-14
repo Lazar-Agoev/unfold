@@ -12,7 +12,7 @@
 import { keepPreviousData, useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { queryClient } from "../ipc/client";
-import type { Actions, CallBox, Card, CardArgs, CardView, DrawnFlow, Form, Key, LinkEnd, OtherCall, OverlayArgs, Page, ProjectId, Sequence } from "../ipc/generated";
+import type { Actions, CallBox, Callback, Card, CardArgs, CardView, DrawnFlow, Form, Key, Lane, LinkEnd, OtherCall, OverlayArgs, Page, ProjectId, Sequence } from "../ipc/generated";
 import { engineKey } from "../ipc/queries";
 import { UnfoldError } from "../ipc/unfold";
 import { cardKey, findCard, findPage } from "./boards/document";
@@ -280,4 +280,100 @@ export function flowBlocks(flow: DrawnFlow): DrawnBlock[] {
 /** The block of a drawn flow with key `key`, if the flow draws it. */
 export function findBlock(flow: DrawnFlow, key: Key): DrawnBlock | undefined {
   return flowBlocks(flow).find((item) => item.key === key);
+}
+
+/** What `visitFlow` hands each part to, with the calls opened in place around it (outermost first). */
+interface FlowVisitor {
+  readonly flow?: (flow: DrawnFlow, around: readonly Key[]) => void;
+  readonly box?: (box: CallBox, around: readonly Key[]) => void;
+  readonly callback?: (callback: Callback, around: readonly Key[]) => void;
+  readonly lane?: (lane: Lane) => void;
+}
+
+/** Walks a drawn flow's parts in the order they run, into the calls and callbacks it opens in place. */
+function visitFlow(flow: DrawnFlow, visitor: FlowVisitor, around: readonly Key[] = []): void {
+  const box = (call: CallBox) => {
+    visitor.box?.(call, around);
+    if (call.inset) {
+      visitFlow(call.inset, visitor, [...around, call.key]);
+    }
+    for (const callback of call.callbacks) {
+      visitor.callback?.(callback, around);
+      if (callback.inset) {
+        visitFlow(callback.inset, visitor, [...around, callback.key]);
+      }
+    }
+  };
+  const sequence = (steps: Sequence) => {
+    for (const step of steps.steps) {
+      switch (step.kind) {
+        case "call":
+          box(step);
+          break;
+        case "decision":
+        case "loop":
+        case "try":
+        case "with":
+          step.headerCalls.forEach(box);
+          for (const lane of step.lanes) {
+            visitor.lane?.(lane);
+            (lane.test?.calls ?? []).forEach(box);
+            sequence(lane.steps);
+          }
+          break;
+        case "exit":
+          if (step.value?.kind === "call") {
+            box(step.value);
+          }
+          break;
+        case "combined":
+          if (step.steps) {
+            sequence(step.steps);
+          }
+          break;
+        case "thin":
+        case "proposed":
+          break;
+      }
+    }
+  };
+  visitor.flow?.(flow, around);
+  sequence(flow.steps);
+}
+
+/**
+ * The open path that opens or closes call or callback `key` of a drawn flow in place: the calls opened
+ * around it, outermost first, then itself. Undefined when the flow draws no such call or callback.
+ */
+export function openPathOf(flow: DrawnFlow, key: Key): readonly Key[] | undefined {
+  let found: readonly Key[] | undefined;
+  const at = (own: Key, around: readonly Key[]) => {
+    if (found === undefined && own === key) {
+      found = [...around, own];
+    }
+  };
+  visitFlow(flow, { box: (box, around) => { at(box.key, around); }, callback: (callback, around) => { at(callback.key, around); } });
+  return found;
+}
+
+/**
+ * The steps of a body that can be combined, in written order, drawn or not (`CombineWith` `steps`): a
+ * definition's own (`DrawnFlow.combinable`) or a part's (`Lane.combinable`), in the calls the flow opens
+ * in place too. Undefined when the flow doesn't draw that body.
+ */
+export function combinableSteps(flow: DrawnFlow, body: Key): readonly Key[] | undefined {
+  let found: readonly Key[] | undefined;
+  visitFlow(flow, {
+    flow: (drawn) => {
+      if (found === undefined && drawn.header.key === body) {
+        found = drawn.combinable;
+      }
+    },
+    lane: (lane) => {
+      if (found === undefined && lane.key === body) {
+        found = lane.combinable;
+      }
+    },
+  });
+  return found;
 }

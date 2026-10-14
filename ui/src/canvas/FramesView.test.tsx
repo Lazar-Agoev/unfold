@@ -167,7 +167,7 @@ describe("frames on the canvas", () => {
     const box = await waitFor(() => present(frameElement(container, "server")));
     fireEvent.contextMenu(present(box.querySelector(".frame-title")));
     const menu = await screen.findByRole("menu", { name: "Frame actions" });
-    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Rename…", "Describe…", "Collapse", "Copy link", "Remove frame (keep cards)"]);
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Rename…", "Describe…", "Collapse", "Draw link…", "Copy link", "Remove frame (keep cards)"]);
     expect(store.getPageView(PAGE).selection).toEqual({ kind: "frame", frameId: "server" });
     act(() => {
       within(menu).getByRole("menuitem", { name: "Rename…" }).click();

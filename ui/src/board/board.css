@@ -119,6 +119,27 @@
 }
 
 .board-banner > .icon { flex-shrink: 0; color: var(--color-muted); }
+
+/* While a link is being drawn: what to click, and Escape. */
+.board-hint {
+  max-width: 100%;
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-float);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+  pointer-events: auto;
+}
+
+.board-hint kbd {
+  padding: 0 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-chip);
+  font: 500 11px/14px var(--font-ui);
+}
 .board-banner-text { min-width: 0; }
 
 .board-empty {

@@ -311,14 +311,15 @@ describe("the code panel", () => {
 
   it("says when the block isn't found in the code, with the card's repairs", async () => {
     answer = () => ({ state: "notFound", lines: [], path: [], definitions: [] });
-    const health: Health = { ...HEALTHY, missing: 1, items: [{ page: "page-1", kind: "missing", target: { card: "create" }, message: "createOrder is missing from the graph.", repairs: ["remove"] }] };
+    const health: Health = { ...HEALTHY, missing: 1, items: [{ page: "page-1", kind: "missing", target: { card: "create" }, message: "createOrder is missing from the graph.", repairs: ["reconnect", "remove"] }] };
     const { container } = renderBoard([EXPANDED], health);
     const card = await loadedCard(container);
     fireEvent.click(need(card.querySelector(".card-view-code"), "</>"));
     const banner = await within(await screen.findByRole("complementary", { name: "Code panel" })).findByRole("status");
     expect(within(banner).getByText("Not found in the code")).not.toBeNull();
     fireEvent.click(within(banner).getByRole("button", { name: "Review" }));
-    expect(await screen.findByText("createOrder is missing from the graph.")).not.toBeNull();
+    const menu = await screen.findByRole("menu", { name: "Review" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Reconnect…", "Remove from page"]);
     expect(within(panel()).getByRole("button", { name: "Open in editor" }).hasAttribute("disabled")).toBe(true);
   });
 
@@ -493,7 +494,7 @@ describe("the panel and the canvas", () => {
     await loadedCard(container);
     fireEvent.contextMenu(need(container.querySelector(`.flow-call[data-key="${PLACE}"]`), "call"));
     const menu = await screen.findByRole("menu", { name: "Block actions" });
-    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["View code"]);
+    expect(within(menu).getAllByRole("menuitem")[0]?.textContent).toBe("View code");
     expect(screen.queryByRole("menu", { name: "Card actions" })).toBeNull();
     fireEvent.click(within(menu).getByRole("menuitem", { name: "View code" }));
     await waitFor(() => {

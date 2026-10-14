@@ -182,7 +182,8 @@
                   "calls": [
                     {
                       "key": "shop/service.py#place_order/try[0]/except[0]/return[0]/call:mark_failed",
-                      "callee": "mark_failed"
+                      "callee": "mark_failed",
+                      "to": "shop/store.py#mark_failed"
                     }
                   ],
                   "library": 0,
@@ -235,11 +236,13 @@
         "calls": [
           {
             "key": "shop/service.py#place_order/call:save_order",
-            "callee": "save_order"
+            "callee": "save_order",
+            "to": "shop/store.py#save_order"
           },
           {
             "key": "shop/service.py#place_order/for[0]/body/call:reserve_stock",
-            "callee": "reserve_stock"
+            "callee": "reserve_stock",
+            "to": "shop/store.py#reserve_stock"
           }
         ],
         "library": 0,

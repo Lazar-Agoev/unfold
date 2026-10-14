@@ -1,6 +1,6 @@
 /**
- * A card's context menu: Show callers and Add as entrance… (a module's or definition's card), Copy
- * link, and Remove from page. Removing is one board edit, so ⌘Z undoes it. Add as entrance… opens its
+ * A card's context menu: Show callers and Add as entrance… (a module's or definition's card), Draw
+ * link… (`startLink`), Copy link, and Remove from page. Removing is one board edit, so ⌘Z undoes it. Add as entrance… opens its
  * popover beside the card, with the card's key as the entrance's `code`.
  */
 
@@ -9,7 +9,7 @@ import { copyLink } from "../../agent";
 import { showToast, useContextMenu, type MenuEntry } from "../../components";
 import { AddEntrance } from "../../entrances";
 import type { Card } from "../../ipc/generated";
-import { cardKey, removeCard, select, type PageTarget } from "../../state/boards";
+import { cardKey, removeCard, select, startLink, type PageTarget } from "../../state/boards";
 import { setSelectedCollapsed } from "../../state/layout";
 import { requestFocus } from "../../lib/focus-targets";
 import { showCallers } from "../showCallers";
@@ -47,6 +47,7 @@ export function useCardMenu(target: PageTarget, card: Card, definition: boolean)
           },
         ]
       : []),
+    { id: "draw-link", label: "Draw link…", onSelect: () => { startLink(target, card.id); } },
     { id: "copy-link", label: "Copy link", onSelect: () => void copyLink(target, card.id) },
     { kind: "separator", id: "s1" },
     {

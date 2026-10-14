@@ -2,21 +2,34 @@
  * Selected for a connection, apart from compiled relations: its kind (changed from a menu, which makes
  * it yours), who drew it, its label and description (edited in place) with what needs review about it
  * (and Review, its repairs), its ends, the call it leaves from (as written, with its line), a
- * relationship's columns and cardinality, its channel, the type it carries, what it cites, and Remove
- * connection.
+ * relationship's columns and cardinality (picked from the two tables' columns), its channel, the type
+ * it carries, what it cites, and Remove connection.
  */
 
 import { useId, useRef } from "react";
 import { Author } from "../../agent";
-import { cardinalityText } from "../../canvas/connections/chip";
 import { LINK_DESCRIPTION_FIELD, LINK_LABEL_FIELD, kindEntries } from "../../canvas/connections/linkMenu";
 import { ReviewButton } from "../../canvas/cards/ReviewBanner";
-import { Button, MenuButton } from "../../components";
+import type { TableColumn } from "../../canvas/resources/columns";
+import { useColumns } from "../../canvas/resources/useColumns";
+import { Button, MenuButton, showToast, type MenuEntry } from "../../components";
 import { useEngineQuery } from "../../ipc";
-import type { Connection } from "../../ipc/generated";
+import type { Cardinality, Connection } from "../../ipc/generated";
 import { useFocusTarget } from "../../lib/focus-targets";
 import { useAuthor } from "../../state/author";
-import { CONNECTION_WORDS, describeLink, findPage, itemsFor, removeLink, setLinkLabel, useOpenBoard, type PageTarget } from "../../state/boards";
+import {
+  CONNECTION_WORDS,
+  describeLink,
+  findPage,
+  findResource,
+  itemsFor,
+  removeLink,
+  setLinkLabel,
+  setRelationship,
+  useOpenBoard,
+  type PageTarget,
+  type RelationshipChange,
+} from "../../state/boards";
 import { useCardNames } from "../../state/cards";
 import { AuthoredField } from "./AuthoredField";
 import { AnchorRows, TypeRow, itemName, selectItem } from "./ClaimRows";
@@ -59,6 +72,96 @@ function LabelRow({ target, link, author }: { readonly target: PageTarget; reado
   );
 }
 
+/** Each cardinality in words, as the menu lists them. */
+const CARDINALITIES: readonly { readonly value: Cardinality; readonly text: string }[] = [
+  { value: "one-to-one", text: "One to one" },
+  { value: "one-to-many", text: "One to many" },
+  { value: "many-to-one", text: "Many to one" },
+  { value: "many-to-many", text: "Many to many" },
+];
+
+/** A column picker: the columns of one table, the chosen one checked. */
+function columnEntries(columns: readonly TableColumn[], chosen: string | undefined, onPick: (name: string) => void): MenuEntry[] {
+  return columns.map((column) => ({
+    id: `column-${column.name}`,
+    label: column.name,
+    checked: column.name === chosen,
+    onSelect: () => {
+      onPick(column.name);
+    },
+  }));
+}
+
+/**
+ * A relationship's columns and cardinality (core-scope.html's A RELATIONSHIP): which column of the
+ * table it starts at holds which column of the other, and how many of each. Each change is saved at
+ * once as one undo step and makes you the one who drew it; what the board refuses comes back as a
+ * message.
+ */
+function RelationshipRows({ target, link, author }: { readonly target: PageTarget; readonly link: Connection; readonly author: string | null }) {
+  const page = useOpenBoard(target.board, (board) => findPage(board.document, target.page));
+  const from = page ? findResource(page, link.from) : undefined;
+  const to = page ? findResource(page, link.to) : undefined;
+  const fromColumns = useColumns(target.board.project, from).columns;
+  const toColumns = useColumns(target.board.project, to).columns;
+  const change = (next: RelationshipChange) => {
+    if (author === null) {
+      return;
+    }
+    void setRelationship(target, link.id, next, author).then((outcome) => {
+      if (!outcome.ok) {
+        showToast({ title: "Couldn't change the relationship", body: outcome.message, tone: "danger" });
+      }
+    });
+  };
+  const cardinality = CARDINALITIES.find((item) => item.value === link.cardinality);
+  return (
+    <>
+      <div className="relation-row">
+        <span className="relation-label">Columns</span>
+        <span className="relation-columns">
+          <MenuButton
+            variant="text"
+            size="sm"
+            label={link.fromColumn ?? "Column"}
+            menuLabel={`Column of ${from?.name ?? "the first table"}`}
+            entries={columnEntries(fromColumns, link.fromColumn, (name) => {
+              change({ fromColumn: name });
+            })}
+          />
+          <span aria-hidden="true">→</span>
+          <MenuButton
+            variant="text"
+            size="sm"
+            label={link.toColumn ?? "Column"}
+            menuLabel={`Column of ${to?.name ?? "the second table"}`}
+            entries={columnEntries(toColumns, link.toColumn, (name) => {
+              change({ toColumn: name });
+            })}
+          />
+        </span>
+      </div>
+      <div className="relation-row">
+        <span className="relation-label">Cardinality</span>
+        <MenuButton
+          variant="text"
+          size="sm"
+          label={cardinality?.text ?? "Choose"}
+          menuLabel="Cardinality"
+          entries={CARDINALITIES.map((item) => ({
+            id: `cardinality-${item.value}`,
+            label: item.text,
+            checked: item.value === link.cardinality,
+            onSelect: () => {
+              change({ cardinality: item.value });
+            },
+          }))}
+        />
+      </div>
+    </>
+  );
+}
+
 export function SelectedConnection({ target, link }: { readonly target: PageTarget; readonly link: Connection }) {
   const author = useAuthor();
   const names = useCardNames(target);
@@ -95,16 +198,7 @@ export function SelectedConnection({ target, link }: { readonly target: PageTarg
         {end("From", link.from)}
         {end("To", link.to)}
         {link.step !== undefined ? <StepRow target={target} step={link.step} /> : null}
-        {link.kind === "relates" && (link.fromColumn !== undefined || link.toColumn !== undefined) ? (
-          <RelationRow label="Columns">
-            <span className="relation-code">{`${link.fromColumn ?? "?"} → ${link.toColumn ?? "?"}`}</span>
-          </RelationRow>
-        ) : null}
-        {link.cardinality !== undefined ? (
-          <RelationRow label="Cardinality">
-            <span className="relation-code">{`${cardinalityText(link.cardinality)} (${link.cardinality.replaceAll("-", " ")})`}</span>
-          </RelationRow>
-        ) : null}
+        {link.kind === "relates" ? <RelationshipRows target={target} link={link} author={author} /> : null}
         {link.channel !== undefined ? (
           <RelationRow label="Channel">
             <span className="relation-code">{link.channel}</span>

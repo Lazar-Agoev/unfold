@@ -4,12 +4,12 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { queryClient } from "../ipc/client";
-import type { Card, CardView, Page } from "../ipc/generated";
+import type { Card, CardView, DrawnFlow, Page } from "../ipc/generated";
 import { fixture, installFakeEngine, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, page } from "../test/workspace";
 import { adoptBoardState, editPage, getOpenBoard, resetBoards } from "./boards/store";
 import { toggleOpen } from "./boards/document";
-import { cardArgs, cardArgsOf, cardName, fetchCard, findBlock, flowBlocks, overlayIds, pageOverlay, useCard } from "./cards";
+import { cardArgs, cardArgsOf, cardName, combinableSteps, fetchCard, findBlock, flowBlocks, openPathOf, overlayIds, pageOverlay, useCard } from "./cards";
 import { setShowAllCalls } from "./showAllCalls";
 
 const P = "p-orders0000";
@@ -153,5 +153,30 @@ describe("a drawn flow's blocks", () => {
     };
     expect(overlayIds(drawn)).toEqual(["reply", "log"]);
     expect(overlayIds(fixture("card", "card_place_an_order"))).toEqual([]);
+  });
+});
+
+describe("where a block opens and combines", () => {
+  const GOLDENS = import.meta.glob<DrawnFlow>("../../../testdata/goldens/drawn/*.json", { eager: true, import: "default" });
+  const cli = GOLDENS["../../../testdata/goldens/drawn/07-cli.json"];
+  if (!cli) {
+    throw new Error("no golden 07-cli");
+  }
+  const MAIN_CALL = "shop/cli.py#/if[0]/then/call:main";
+  const PLACE_CALL = "shop/cli.py#main/call:place_order";
+  const LOAD_CALL = "shop/service.py#place_order/call:load_order";
+
+  it("opens a call along the calls opened around it, outermost first", () => {
+    expect(openPathOf(cli, MAIN_CALL)).toEqual([MAIN_CALL]);
+    expect(openPathOf(cli, PLACE_CALL)).toEqual([MAIN_CALL, PLACE_CALL]);
+    expect(openPathOf(cli, LOAD_CALL)).toEqual([MAIN_CALL, PLACE_CALL, LOAD_CALL]);
+    expect(openPathOf(cli, "nowhere")).toBeUndefined();
+  });
+
+  it("finds the steps of a body drawn anywhere in the flow: a definition's own, a part's, an opened callee's", () => {
+    expect(combinableSteps(cli, "shop/cli.py#main")).toEqual([PLACE_CALL]);
+    expect(combinableSteps(cli, "shop/service.py#place_order")?.slice(0, 2)).toEqual([LOAD_CALL, "shop/service.py#place_order/if[0]"]);
+    expect(combinableSteps(cli, "shop/service.py#place_order/try[0]/body")).toEqual(["shop/service.py#place_order/try[0]/body/call:charge_card"]);
+    expect(combinableSteps(cli, "nowhere")).toBeUndefined();
   });
 });

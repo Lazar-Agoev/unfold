@@ -28,6 +28,8 @@ export {
   usePageKeys,
 } from "./api";
 export { CONNECTION_KINDS, CONNECTION_WORDS } from "./connections";
+export { addResourceCard, combineSteps, drawLink, proposeStep, setRelationship, type RelationshipChange } from "./explain";
+export { cancelLink, clickItem, startLink } from "./linking";
 export { NOTE_MAX, findNote, noteLength, placeNote } from "./notes";
 export {
   PROPOSAL_REASON_MAX,

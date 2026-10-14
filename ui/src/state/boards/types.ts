@@ -89,6 +89,14 @@ export interface PageView {
   /** Measured card sizes, in canvas units. */
   sizes: Record<string, CardSize>;
   focus: FocusRequest | null;
+  /** A link being drawn: the item it starts at, and (once clicked) the item it ends at, waiting for its label. */
+  linking: Linking | null;
+}
+
+/** A link being drawn by hand (`startLink`). */
+interface Linking {
+  readonly from: string;
+  readonly to: string | null;
 }
 
 /** One undo step: the whole document before it, and the page it changed (undo shows that page). */

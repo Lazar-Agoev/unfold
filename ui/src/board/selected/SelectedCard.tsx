@@ -6,6 +6,7 @@
  */
 
 import { showCallers } from "../../canvas";
+import { CARD_DESCRIPTION_FIELD } from "../../canvas/cards/blockMenu";
 import { UsedIn } from "../../code/UsedIn";
 import { shortPath } from "../../code/text";
 import { TextButton } from "../../components";
@@ -19,9 +20,6 @@ import { RelationRow } from "./Relations";
 
 /** How many callers and entrances Selected lists before "N more". */
 const RELATIONS_SHOWN = 3;
-
-/** The focus target of the selected card's description. */
-const DESCRIPTION_FIELD = "selected.description";
 
 /** What an app's or entrance's code key names, when it isn't found. */
 const STATE_WORDS: Readonly<Record<Exclude<TargetState, "found">, string>> = {
@@ -162,7 +160,7 @@ export function SelectedCard({ target, card }: { readonly target: PageTarget; re
         label="Description"
         value={card.description}
         placeholder="What this does, in a sentence…"
-        focusKey={DESCRIPTION_FIELD}
+        focusKey={CARD_DESCRIPTION_FIELD}
         disabledReason={disabledReason}
         status={issues.map((item) => (
           <span key={item.message} className="authored-note">

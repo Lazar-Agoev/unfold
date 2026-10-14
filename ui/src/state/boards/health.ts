@@ -88,10 +88,14 @@ function itemReference(item: HealthItem, page: Page): Key | null {
   return "name" in item.target ? item.target.name : null;
 }
 
+/**
+ * What a repair is called (core-scope.html's A CARD TO REVIEW). Re-signing text written for changed
+ * code is Accept too: no problem offers both, and the tooltip (`repairEffect`) says which it does.
+ */
 const REPAIR_LABELS: Readonly<Record<RepairKind, string>> = {
   reconnect: "Reconnect…",
-  resign: "Keep the text",
-  accept: "Accept the current code",
+  resign: "Accept",
+  accept: "Accept",
   remove: "Remove from page",
   removeDescription: "Remove the description",
 };

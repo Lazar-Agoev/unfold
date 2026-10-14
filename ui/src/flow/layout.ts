@@ -115,8 +115,8 @@ export interface FlowWire {
 interface CallAnchor {
   /** The call. */
   readonly call: Key;
-  /** The definition it reaches (absent for a call a collapsed combined step names: the drawn flow gives only its key). */
-  readonly to?: Key;
+  /** The definition it reaches. */
+  readonly to: Key;
   /** The box it leaves from: the call's box or chip, or the collapsed combined step holding it. */
   readonly rect: Rect;
   /** The box's right edge, level with its first row. */
@@ -386,11 +386,11 @@ class Builder {
     }
   }
 
-  private anchor(call: Key, to: LinkEnd | undefined, rect: Rect, y: number): void {
-    if (to?.outcome !== "project" && to !== undefined) {
-      return;
+  /** Where an arrow leaves for the definition `to` reaches, when it reaches a project definition. */
+  private anchor(call: Key, to: LinkEnd, rect: Rect, y: number): void {
+    if (to.outcome === "project" && to.key !== undefined) {
+      this.anchors.push({ call, to: to.key, rect, at: { x: rect.x + rect.width, y } });
     }
-    this.anchors.push({ call, ...(to?.key !== undefined ? { to: to.key } : {}), rect, at: { x: rect.x + rect.width, y } });
   }
 
   private note(text: string, x: number, y: number, tone: "muted" | "loop" | "faint", dim = false): Rect {
@@ -1252,7 +1252,7 @@ class Builder {
     rect.height = height;
     for (const call of step.calls) {
       this.block(call.key, rect);
-      this.anchor(call.key, undefined, rect, y + 1.5 + COMBINED.padTop + COMBINED.head / 2);
+      this.anchors.push({ call: call.key, to: call.to, rect, at: { x: rect.x + rect.width, y: y + 1.5 + COMBINED.padTop + COMBINED.head / 2 } });
     }
     // The stacked edge drawn 4px behind it.
     return { width: width + 4, height: height + 4, box: rect };

@@ -42,29 +42,29 @@ beforeEach(() => {
 describe("flowActions", () => {
   it("selects a block in the card, a combined step, or a proposed step on the page", () => {
     const actions = flowActions(PAGE, "place-order", VIEW);
-    actions.onSelect?.({ kind: "block", key: CALL });
+    actions.onSelect({ kind: "block", key: CALL });
     expect(store.getPageView(PAGE).selection).toEqual({ kind: "card", cardId: "place-order", key: CALL });
-    actions.onSelect?.({ kind: "combined", item: "stop" });
+    actions.onSelect({ kind: "combined", item: "stop" });
     expect(store.getPageView(PAGE).selection).toEqual({ kind: "combined", combinedId: "stop" });
-    actions.onSelect?.({ kind: "proposed", item: "p-1" });
+    actions.onSelect({ kind: "proposed", item: "p-1" });
     expect(store.getPageView(PAGE).selection).toEqual({ kind: "proposal", proposalId: "p-1" });
   });
 
   it("opens and closes a call in place on the card", () => {
     const actions = flowActions(PAGE, "place-order", VIEW);
-    actions.onToggleOpen?.([CALL]);
+    actions.onToggleOpen([CALL]);
     expect(cards()[0]?.open).toEqual([[CALL]]);
-    actions.onToggleOpen?.([CALL]);
+    actions.onToggleOpen([CALL]);
     expect(cards()[0]?.open).toBeUndefined();
   });
 
   it("opens and collapses a combined step", () => {
-    flowActions(PAGE, "place-order", VIEW).onToggleCombined?.("stop", false);
+    flowActions(PAGE, "place-order", VIEW).onToggleCombined("stop", false);
     expect(store.getOpenBoard(REF)?.document.pages[0]?.combined[0]?.collapsed).toBe(false);
   });
 
   it("selects a block and opens its code from its `</>`", () => {
-    flowActions(PAGE, "place-order", VIEW).onViewCode?.({ kind: "block", key: CALL });
+    flowActions(PAGE, "place-order", VIEW).onViewCode({ kind: "block", key: CALL });
     expect(store.getPageView(PAGE).selection).toEqual({ kind: "card", cardId: "place-order", key: CALL });
     expect(codePanel.getCodeOpen()).toEqual({ project: REF.project, target: { kind: "block", key: CALL }, show: null, cardId: "place-order", gap: null });
   });
@@ -72,14 +72,14 @@ describe("flowActions", () => {
   it("opens a thin row's lines from its `</>`, with nothing selected", () => {
     store.select(PAGE, { kind: "card", cardId: "place-order", key: CALL });
     const row = { calls: [], lines: [21, 23] as [number, number], unknown: 0 };
-    flowActions(PAGE, "place-order", VIEW).onViewRow?.("shop/service.py", row);
+    flowActions(PAGE, "place-order", VIEW).onViewRow("shop/service.py", row);
     expect(store.getPageView(PAGE).selection).toEqual({ kind: "none" });
     expect(codePanel.getCodeOpen()).toEqual({ project: REF.project, target: { kind: "lines", path: "shop/service.py", lines: [21, 23] }, show: null, cardId: "place-order", gap: null });
   });
 
   it("opens a gap tick's lines, outlining the tick", () => {
     store.select(PAGE, { kind: "card", cardId: "place-order", key: CALL });
-    flowActions(PAGE, "place-order", VIEW).onOpenLines?.("shop/service.py", [17, 17]);
+    flowActions(PAGE, "place-order", VIEW).onOpenLines("shop/service.py", [17, 17]);
     expect(store.getPageView(PAGE).selection).toEqual({ kind: "none" });
     expect(codePanel.getCodeOpen()).toEqual({
       project: REF.project,

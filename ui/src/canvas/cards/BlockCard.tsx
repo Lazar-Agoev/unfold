@@ -12,30 +12,33 @@
  * from its step. The body never scrolls: the card sizes itself to its content.
  *
  * Its header's `</>` opens its code in the code panel, and so does a block's, or View code in a block's
- * menu (right-click). While the panel is open, a line hovered in it lights its block here (a compact
+ * menu (right-click), which also opens calls in place, names, describes, combines, and proposes steps as
+ * the block's overlay actions allow (`blockMenuEntries`). While the panel is open, a line hovered in it lights its block here (a compact
  * card lights whole when it holds the block), and a selected block that isn't drawn on its own outlines
  * the gap tick that counts its line.
  */
 
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useUpdateNodeInternals } from "@xyflow/react";
-import { useLayoutEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { CodeButton } from "../../code/CodeButton";
 import { markedLine, useCodeView } from "../../code/view";
 import { viewCode } from "../../code/open";
 import { linkNote } from "../../code/text";
 import { useContextMenu } from "../../components";
+import { CombineSteps, ProposeStep } from "../../explain";
 import { flowActions, flowSelection } from "../../flow/actions";
 import { FlowView, type FlowLine, type FlowSelection } from "../../flow/FlowView";
 import { layoutFlow, type FlowGeometry } from "../../flow/layout";
 import type { Card, CardView, DrawnFlow, Header, Key, LinkEnd } from "../../ipc/generated";
 import type { UnfoldError } from "../../ipc/unfold";
-import { cardKey, select, usePageView, type PageTarget } from "../../state/boards";
+import { cardKey, clickItem, usePageView, type PageTarget } from "../../state/boards";
 import { flowBlocks, isMissing } from "../../state/cards";
 import { useCodeHover, useCodePanel } from "../../state/codePanel";
 import { callPort, stepPort } from "../arrows";
 import { useMeasure } from "../measure";
 import { compactCardWidth, expandedCardWidth, headerText } from "../sizing";
+import { blockMenuEntries, type CombineRequest, type ProposeRequest } from "./blockMenu";
 import { useCardMenu } from "./cardMenu";
 import { CardHandles, CardMark, CardNote, DescriptionStrip, ExpandToggle, HeaderPorts, renderPorts } from "./parts";
 import { ReviewBanner } from "./ReviewBanner";
@@ -53,7 +56,7 @@ export interface BlockCardProps {
 const NO_ROWS: ReadonlySet<Key> = new Set();
 const NO_VIEWS: ReadonlyMap<string, CardView> = new Map();
 
-function stop(event: MouseEvent): void {
+function stop(event: MouseEvent | KeyboardEvent): void {
   event.stopPropagation();
 }
 
@@ -154,7 +157,10 @@ function useOutlineLine(cardId: string, selected: FlowSelection | null, geometry
   return undrawn && view?.file !== undefined && line !== undefined ? { path: view.file, line } : null;
 }
 
-/** An expanded card's drawn flow, with its ports where its calls are, and a block's menu. */
+/** A popover a block's menu opened, beside the block it was opened on. */
+type Explaining = { readonly anchor: HTMLElement } & ({ readonly kind: "combine"; readonly request: CombineRequest } | { readonly kind: "propose"; readonly request: ProposeRequest });
+
+/** An expanded card's drawn flow, with its ports where its calls are, and a block's menu (`blockMenuEntries`). */
 function ExpandedBody({
   target,
   card,
@@ -175,7 +181,21 @@ function ExpandedBody({
   const actions = useMemo(() => flowActions(target, card.id, view), [target, card.id, view]);
   const outline = useOutlineLine(card.id, selected, geometry);
   const hover = useCodeHover();
-  const menu = useContextMenu("Block actions", 200);
+  const menu = useContextMenu("Block actions", 220);
+  const [explaining, setExplaining] = useState<Explaining | null>(null);
+  const flow = view.type === "definition" ? view.flow : undefined;
+  const close = () => {
+    setExplaining(null);
+  };
+  let popover: ReactNode = null;
+  if (explaining && flow) {
+    popover =
+      explaining.kind === "combine" ? (
+        <CombineSteps target={target} anchor={explaining.anchor} flow={flow} block={explaining.request.key} steps={explaining.request.steps} onClose={close} />
+      ) : (
+        <ProposeStep target={target} anchor={explaining.anchor} place={explaining.request.place} label={explaining.request.label} onClose={close} />
+      );
+  }
   return (
     <>
       <FlowView
@@ -186,15 +206,32 @@ function ExpandedBody({
         {...actions}
         onToggleRow={onToggleRow}
         onBlockMenu={(event, block) => {
-          actions.onSelect?.(block);
-          menu.open(event, [{ id: "code", label: "View code", onSelect: () => actions.onViewCode?.(block) }]);
+          if (!flow) {
+            return;
+          }
+          const anchor = event.currentTarget as HTMLElement;
+          actions.onSelect(block);
+          menu.open(
+            event,
+            blockMenuEntries(target, card, flow, block, {
+              onViewCode: actions.onViewCode,
+              onToggleOpen: actions.onToggleOpen,
+              onCombine: (request) => {
+                setExplaining({ kind: "combine", request, anchor });
+              },
+              onPropose: (request) => {
+                setExplaining({ kind: "propose", request, anchor });
+              },
+            }),
+          );
         }}
       />
       {renderPorts([...ports.keys()], ports)}
-      {/* Like the card's menu: a choice never also clicks the card it was opened on. */}
-      {menu.element ? (
-        <span className="card-menu-layer" onClick={stop} onDoubleClick={stop} onContextMenu={stop}>
+      {/* Like the card's menu: a choice never also clicks the card it was opened on, and typing never reaches the canvas. */}
+      {menu.element || popover ? (
+        <span className="card-menu-layer" onClick={stop} onDoubleClick={stop} onContextMenu={stop} onKeyDown={stop}>
           {menu.element}
+          {popover}
         </span>
       ) : null}
     </>
@@ -265,7 +302,7 @@ export function BlockCard({ target, card, expanded, query, ports, selected }: Bl
       style={width !== undefined ? { width } : undefined}
       aria-label={name}
       onClick={() => {
-        select(target, { kind: "card", cardId: card.id, key: null });
+        clickItem(target, card.id, { kind: "card", cardId: card.id, key: null });
       }}
       onContextMenu={menu.onContextMenu}
     >

@@ -40,6 +40,34 @@ function leaf(key: string, kind: DrawnFlow["header"]["kind"] = "function"): Card
   return definition({ ...flow, header: { ...flow.header, key, kind, form: kind === "class" ? "class" : kind === "type" ? "interface" : "function" }, steps: { steps: [] }, routes: [] });
 }
 
+describe("arrows from a collapsed combined step", () => {
+  const SHAPED = drawn("place-order-shaped");
+  const RESERVE = "shop/store.py#reserve_stock";
+  const RESERVE_CALL = `${PLACE}/for[0]/body/call:reserve_stock`;
+  const page = models([
+    [PLACE, definition(SHAPED)],
+    [SAVE, leaf(SAVE)],
+    [RESERVE, leaf(RESERVE)],
+  ]);
+
+  it("leave from the combined step that holds the call, to each callee's card", () => {
+    const arrows = computeArrows([card("place", PLACE, "expanded"), card("save", SAVE), card("reserve", RESERVE)], page);
+    expect(arrows.map((arrow) => [arrow.sourceHandle, arrow.target, arrow.calls])).toEqual([
+      [callPort(SAVE_CALL), "save", [SAVE_CALL]],
+      [callPort(RESERVE_CALL), "reserve", [RESERVE_CALL]],
+    ]);
+    expect(projectCalls(SHAPED, true).map((item) => item.to)).toContain(RESERVE);
+  });
+
+  it("leave a compact card from its edge too", () => {
+    const arrows = computeArrows([card("place", PLACE), card("save", SAVE), card("reserve", RESERVE)], page);
+    expect(arrows.map((arrow) => [arrow.sourceHandle, arrow.target])).toEqual([
+      [NODE_PORT, "save"],
+      [NODE_PORT, "reserve"],
+    ]);
+  });
+});
+
 describe("arrows from call blocks", () => {
   const page = models([
     [PLACE, definition(drawn("01-place-order"))],

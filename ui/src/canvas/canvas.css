@@ -4,6 +4,21 @@
   --xy-background-color: var(--color-canvas);
 }
 
+/* While a link is being drawn, what it can end at takes a crosshair. */
+.board-canvas.linking .react-flow__pane,
+.board-canvas.linking .board-card,
+.board-canvas.linking .frame-title {
+  cursor: crosshair;
+}
+
+/* Where the canvas's menu opened: what Add resource… sits beside. */
+.canvas-point {
+  position: fixed;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
 /* Nodes size themselves; React Flow's default node chrome is not used. */
 .board-canvas .react-flow__node-card {
   padding: 0;

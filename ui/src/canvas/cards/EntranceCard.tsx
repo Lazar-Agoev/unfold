@@ -17,7 +17,7 @@ import { useLayoutEffect, useMemo } from "react";
 import { CodeButton } from "../../code/CodeButton";
 import { viewCode } from "../../code/open";
 import type { Card, StartCard } from "../../ipc/generated";
-import { select, type PageTarget } from "../../state/boards";
+import { clickItem, type PageTarget } from "../../state/boards";
 import { useCodeHover } from "../../state/codePanel";
 import { codePort, NODE_PORT } from "../arrows";
 import { TARGET_STATE_WORDS, startRowName, startRowPlace, startRows, type CardShape } from "../cardText";
@@ -59,7 +59,7 @@ export function EntranceCard({ target, card, start, shape, ports, selected }: En
       style={{ width }}
       aria-label={`${start.app} · ${start.name}`}
       onClick={() => {
-        select(target, { kind: "card", cardId: card.id, key: null });
+        clickItem(target, card.id, { kind: "card", cardId: card.id, key: null });
       }}
       onContextMenu={menu.onContextMenu}
     >

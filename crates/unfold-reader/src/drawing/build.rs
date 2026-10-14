@@ -25,7 +25,7 @@ use unfold_core::{ByteRange, Key, LineSpan, LinkTarget, Node, RepoPath};
 use super::lines::{FileText, candidates, doc_text};
 use super::{
     Actions, CallBox, CallRef, Callback, Combine, CombineWith, CombinedStep, DrawnFlow, ExitStep, ExitTarget,
-    ExitValue, Frame, GapTick, Header, HiddenBlock, Import, Lane, OtherCall, Overlay, ProposedStep,
+    ExitValue, Frame, GapTick, Header, HeldCall, HiddenBlock, Import, Lane, OtherCall, Overlay, ProposedStep,
     RouteState, Sequence, Shape, Step, Test, ThinRow, routes,
 };
 use crate::notes::LinkEnd;
@@ -907,7 +907,7 @@ fn finish(items: Vec<Item>, hidden: &[Hidden], lines: &[u32]) -> Sequence {
 struct Summary {
     conditions: u32,
     loops: u32,
-    calls: Vec<CallRef>,
+    calls: Vec<HeldCall>,
 }
 
 impl Summary {
@@ -946,12 +946,14 @@ impl Summary {
     }
 
     fn call(&mut self, call: &CallBox) {
-        if call.to.outcome == Outcome::Project {
-            self.calls.push(CallRef {
-                key: call.key.clone(),
-                callee: call.callee.clone(),
-                name: call.name.clone(),
-            });
-        }
+        let (Outcome::Project, Some(to)) = (call.to.outcome, &call.to.key) else {
+            return;
+        };
+        self.calls.push(HeldCall {
+            key: call.key.clone(),
+            callee: call.callee.clone(),
+            name: call.name.clone(),
+            to: to.clone(),
+        });
     }
 }

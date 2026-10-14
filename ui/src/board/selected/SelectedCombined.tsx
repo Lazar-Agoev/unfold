@@ -4,9 +4,12 @@
  * blocks one by one again; nothing changes code.
  */
 
+import { useRef } from "react";
 import { Author } from "../../agent";
+import { combinedDescriptionField, combinedTitleField } from "../../canvas/cards/blockMenu";
 import { Button } from "../../components";
 import type { Combined } from "../../ipc/generated";
+import { useFocusTarget } from "../../lib/focus-targets";
 import { plural } from "../../lib/format";
 import { useAuthor } from "../../state/author";
 import { editCombined, itemsFor, uncombine, useOpenBoard, type PageTarget } from "../../state/boards";
@@ -14,12 +17,15 @@ import { AuthoredField } from "./AuthoredField";
 
 export function SelectedCombined({ target, combined }: { readonly target: PageTarget; readonly combined: Combined }) {
   const author = useAuthor();
+  const titleField = useRef<HTMLInputElement>(null);
+  useFocusTarget(combinedTitleField(combined.id), titleField);
   const health = useOpenBoard(target.board, (board) => board.health);
   const issues = itemsFor(health, target.page, { combined: combined.id });
   return (
     <>
       <div className="selected-identity">
         <input
+          ref={titleField}
           className="selected-name ui selected-title-input"
           aria-label="Combined step title"
           value={combined.title}
@@ -38,7 +44,7 @@ export function SelectedCombined({ target, combined }: { readonly target: PageTa
         label="Combined step description"
         value={combined.description}
         placeholder="Why these blocks belong together…"
-        focusKey={`selected.combined:${combined.id}`}
+        focusKey={combinedDescriptionField(combined.id)}
         disabledReason={author === null ? "Loading who you are…" : null}
         status={issues.map((item) => (
           <span key={item.message} className="authored-note">

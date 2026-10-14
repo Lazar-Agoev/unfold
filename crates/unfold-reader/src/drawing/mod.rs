@@ -510,8 +510,9 @@ pub struct CombinedStep {
     pub conditions: u32,
     /// How many loops it holds.
     pub loops: u32,
-    /// The project calls inside, in the order they run.
-    pub calls: Vec<CallRef>,
+    /// The project calls inside, in the order they run, with the definitions they reach: an
+    /// arrow from a collapsed combined step leaves from it.
+    pub calls: Vec<HeldCall>,
     /// How many library calls it holds.
     pub library: u32,
     /// How many unknown calls it holds.
@@ -522,7 +523,24 @@ pub struct CombinedStep {
     pub steps: Option<Sequence>,
 }
 
-/// A call named by another step: a project call in a combined step, the call a call feeds.
+/// A project call inside a combined step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct HeldCall {
+    /// The call.
+    pub key: Key,
+    /// The written callee.
+    pub callee: String,
+    /// The overlay's name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub name: Option<String>,
+    /// The project definition it reaches.
+    pub to: Key,
+}
+
+/// The call a call is written in, which it feeds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
