@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "../test/dom";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { describe, expect, it } from "vitest";
 import { Popover } from "./Popover";
 
@@ -58,5 +58,19 @@ describe("Popover", () => {
       document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
     });
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("focuses its initialFocus element when given one", () => {
+    function Form() {
+      const name = useRef<HTMLInputElement>(null);
+      return (
+        <Popover open anchor={null} label="Add" initialFocus={name} onClose={() => undefined}>
+          <button type="button">First</button>
+          <input ref={name} aria-label="Name" />
+        </Popover>
+      );
+    }
+    render(<Form />);
+    expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Name" }));
   });
 });

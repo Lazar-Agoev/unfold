@@ -268,12 +268,12 @@
 .card-body > .react-flow__handle.card-port { right: 0; }
 
 /*
- * An app's or entrance's card (core-scope.html's entrance; entrance-definitions.md, "On a board"): it looks
- * declared, so it is drawn in the authored style, with the app in small caps, the name, and what starts it
+ * An app's or entrance's card (entrance-definitions.html's board; entrance-definitions.md, "On a board"): it
+ * looks declared, so it is drawn with a dark border, with the app in small caps, the name, and what starts it
  * in mono; then the code it starts at.
  */
 .start-card {
-  border: 1.5px solid var(--color-authored-line);
+  border: 1.5px solid var(--color-text);
 }
 
 .start-head {
@@ -299,7 +299,6 @@
 
 .start-name { font: 600 14px/20px var(--font-ui); }
 .start-on { font: 12px/16px var(--font-code); color: var(--color-muted); overflow-wrap: anywhere; }
-.start-on b { font-weight: 600; color: var(--color-text); }
 .start-about { font: 12px/18px var(--font-ui); color: var(--color-muted); }
 
 .start-codes {

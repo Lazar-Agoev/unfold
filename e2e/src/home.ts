@@ -1,5 +1,6 @@
 /**
- * The window in Home mode: the sidebar's projects, Home's header and state line, and its Boards.
+ * The window in Home mode: the sidebar's projects, Home's header and state line, How it starts, its
+ * Boards, and its Health line.
  * Locators use what a person sees (roles and names); waits are on state.
  */
 
@@ -92,6 +93,23 @@ export function stateLine(page: Page): Locator {
 /** Waits until Home's project reads "Graph current" (after a compile, an update, a reopen). */
 export async function expectGraphCurrent(page: Page, timeout = 60_000): Promise<void> {
   await expect(stateLine(page)).toHaveAttribute("data-state", "current", { timeout });
+}
+
+/** How it starts: the project's apps, each with its entrances, as `unfold.toml` writes them. */
+export function howItStarts(page: Page): Locator {
+  return homeMain(page).getByRole("region", { name: "How it starts" });
+}
+
+/** A row of How it starts (an app's or an entrance's), by its name. */
+export function startRow(page: Page, name: string): Locator {
+  return howItStarts(page)
+    .locator(".home-start-row")
+    .filter({ has: page.locator(".home-start-name", { hasText: new RegExp(`^${escapeRegExp(name)}$`) }) });
+}
+
+/** Home's Health line. */
+export function healthLine(page: Page): Locator {
+  return homeMain(page).getByRole("region", { name: "Health", exact: true });
 }
 
 /** The rows of Home's Boards: the project's boards, most recently edited first. */

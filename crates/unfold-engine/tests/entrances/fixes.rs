@@ -1,7 +1,7 @@
 //! One-candidate fixes for missing keys: offered when exactly one candidate fits, never applied.
 
-use unfold_core::Key;
 use unfold_core::vocab::{NodeKind, TargetState};
+use unfold_core::{Key, RepoPath};
 use unfold_engine::Engine;
 use unfold_engine::entrances::{Fix, FixKind};
 
@@ -24,10 +24,12 @@ fn fix_for(engine: &Engine, code: &str) -> Option<Fix> {
     engine.fixes().get(target).cloned()
 }
 
-fn fix(kind: FixKind, code: &str) -> Option<Fix> {
+/// The fix to `code`, a block in `path`.
+fn fix(kind: FixKind, path: &str, code: &str) -> Option<Fix> {
     Some(Fix {
         kind,
         code: Key::from_text(code),
+        path: RepoPath::new(path).expect("a repo path"),
     })
 }
 
@@ -54,7 +56,11 @@ fn a_moved_definition_is_fixed_when_one_definition_has_its_name() {
     background(&mut engine, &["shop/api.py", "shop/orders.py"]);
     assert_eq!(
         fix_for(&engine, "shop/api.py#create_order"),
-        fix(FixKind::MovedDefinition, "shop/orders.py#create_order")
+        fix(
+            FixKind::MovedDefinition,
+            "shop/orders.py",
+            "shop/orders.py#create_order"
+        )
     );
     let toml = std::fs::read_to_string(folder.path().join("unfold.toml")).expect("read");
     assert!(
@@ -101,7 +107,7 @@ fn an_edited_route_literal_is_fixed_when_one_unnamed_registration_fits() {
     });
     assert_eq!(
         fix_for(&engine, place),
-        fix(FixKind::EditedRoute, renamed.as_str()),
+        fix(FixKind::EditedRoute, "src/routes.ts", renamed.as_str()),
         "the refund route is named by an entrance, so only one registration fits"
     );
 
@@ -138,7 +144,7 @@ fn a_moved_module_is_fixed_when_one_module_has_its_name_and_definitions() {
     folder.remove("jobs/worker.py");
     folder.write("tasks/worker.py", WORKER);
     background(&mut engine, &["jobs/worker.py", "tasks/worker.py"]);
-    let moved = fix(FixKind::MovedModule, "tasks/worker.py#");
+    let moved = fix(FixKind::MovedModule, "tasks/worker.py", "tasks/worker.py#");
     assert_eq!(fix_for(&engine, "jobs/worker.py#"), moved);
 
     folder.write("unrelated.py", "x = 1\n");

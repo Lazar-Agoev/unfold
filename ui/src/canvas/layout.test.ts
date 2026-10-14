@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FOLLOW_GAP, HEADER_PORT, STACK_GAP, arrange, callerPlacement, clearSpot, fallbackSize, followPlacement, reflow } from "./layout";
+import { FOLLOW_GAP, HEADER_PORT, STACK_GAP, arrange, callerPlacement, clearSpot, fallbackSize, followPlacement, reflow, startCodePlacement } from "./layout";
 
 describe("reflow", () => {
   it("pushes a card below a grown card in its column, and never above its saved place", () => {
@@ -55,6 +55,16 @@ describe("Show callers", () => {
     expect(callerPlacement(card, [{ width: 300, height: 200 }, { width: 500, height: 100 }])).toEqual([
       [1000 - FOLLOW_GAP - 300, 100],
       [1000 - FOLLOW_GAP - 500, 100 + 200 + STACK_GAP],
+    ]);
+  });
+});
+
+describe("tracing a start", () => {
+  it("puts its code in a column 80 px right of the start card, in order, stacked from its top", () => {
+    const start = { x: 0, y: 0, width: 236, height: 90 };
+    expect(startCodePlacement(start, [{ width: 300, height: 200 }, { width: 500, height: 100 }])).toEqual([
+      [236 + FOLLOW_GAP, 0],
+      [236 + FOLLOW_GAP, 200 + STACK_GAP],
     ]);
   });
 });

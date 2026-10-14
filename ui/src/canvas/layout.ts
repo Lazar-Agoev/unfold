@@ -1,7 +1,8 @@
 /**
  * Board geometry (TypeScript lays out, docs/ui-shell.md#theme-and-components): reflow when cards change
- * size, where a followed card, a card's callers, and new cards go, and Arrange by call depth. Pure
- * functions over positions and measured sizes, so they are deterministic and testable without a DOM.
+ * size, where a followed card, a card's callers, a traced start's code, and new cards go, and Arrange by
+ * call depth. Pure functions over positions and measured sizes, so they are deterministic and testable
+ * without a DOM.
  */
 
 import type { View } from "../ipc/generated";
@@ -99,6 +100,19 @@ export function callerPlacement(card: Rect, sizes: readonly Size[]): [number, nu
   let y = card.y;
   return sizes.map((size) => {
     const at: [number, number] = [Math.round(card.x - FOLLOW_GAP - size.width), Math.round(y)];
+    y += size.height + STACK_GAP;
+    return at;
+  });
+}
+
+/**
+ * Where tracing an app or entrance puts the cards for its code: a column `FOLLOW_GAP` to the start card's
+ * right, in the order they run, stacked from its top.
+ */
+export function startCodePlacement(start: Rect, sizes: readonly Size[]): [number, number][] {
+  let y = start.y;
+  return sizes.map((size) => {
+    const at: [number, number] = [Math.round(start.x + start.width + FOLLOW_GAP), Math.round(y)];
     y += size.height + STACK_GAP;
     return at;
   });

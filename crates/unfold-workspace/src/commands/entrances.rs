@@ -12,7 +12,7 @@
 use serde::Serialize;
 use ts_rs::TS;
 use unfold_core::vocab::{InputRole, TargetState};
-use unfold_core::{App, ByteRange, ContentHash, EntranceTarget, Graph, Key, LineIndex};
+use unfold_core::{App, ByteRange, ContentHash, EntranceTarget, Graph, Key, LineIndex, RepoPath};
 use unfold_engine::entrances::{FixKind, Fixes};
 use unfold_engine::settings::{AppEntry, EntranceEntry, EntryProblem, EntryProblemKind};
 
@@ -128,6 +128,8 @@ pub struct CodeFix {
     pub kind: FixReason,
     /// The key to write instead.
     pub code: Key,
+    /// The file of the block it names.
+    pub path: RepoPath,
 }
 
 /// Why a [`CodeFix`] fits.
@@ -318,6 +320,7 @@ fn codes(keys: &[Key], resolved: Option<(&[EntranceTarget], &Fixes)>) -> Vec<Ent
                     .map(|fix| CodeFix {
                         kind: fix.kind.into(),
                         code: fix.code.clone(),
+                        path: fix.path.clone(),
                     }),
             }
         })

@@ -3,7 +3,7 @@
  * focus when it opens, closes on Escape or a press outside, and returns focus to where it was.
  */
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { cx, tabbableElements } from "./internal/dom";
 import { useFloatingPosition, type Align, type Side } from "./internal/floating";
 import { Portal, useDismiss, useRestoreFocus } from "./internal/layers";
@@ -27,6 +27,8 @@ export interface PopoverProps {
    * opened.
    */
   readonly placement?: "anchor" | "fixed";
+  /** What takes focus when it opens; defaults to the first focusable element. */
+  readonly initialFocus?: RefObject<HTMLElement | null>;
   readonly className?: string;
   readonly children: ReactNode;
 }
@@ -41,6 +43,7 @@ export function Popover({
   offset = 4,
   width,
   placement = "anchor",
+  initialFocus,
   className,
   children,
 }: PopoverProps) {
@@ -54,9 +57,9 @@ export function Popover({
   useEffect(() => {
     const element = layer.current;
     if (open && element) {
-      (tabbableElements(element)[0] ?? element).focus({ preventScroll: true });
+      (initialFocus?.current ?? tabbableElements(element)[0] ?? element).focus({ preventScroll: true });
     }
-  }, [open, layer]);
+  }, [open, layer, initialFocus]);
 
   if (!open) {
     return null;

@@ -32,6 +32,7 @@ function start(
     handlers: {
       workspace: () => workspace,
       select_project: () => null,
+      entrances: () => ({ resolved: true, apps: [] }),
       ...(row ? { project_summary: () => summaryOf(row) } : {}),
       list_boards: ({ project }) => ({ ...fixture("list_boards", "list_boards"), project, boards: fixture("list_boards", "list_boards").boards.map((board) => ({ ...board, project })) }),
       ...handlers,
@@ -159,12 +160,18 @@ describe("Home's header and state line", () => {
 });
 
 describe("the overview", () => {
-  it("shows Boards and the Health line", async () => {
-    start(workspaceView([projectRow(P, "shop")]));
+  it("shows How it starts, Boards, and the Health line, in that order", async () => {
+    const row = projectRow(P, "shop");
+    start(workspaceView([row]), { entrances: () => fixture("entrances", "entrances"), project_summary: () => summaryOf(row, { health: { doesntParse: 0, boardsNeedingReview: 0, boards: [], entrancesNotFound: 0 } }) });
     renderWithClient(<HomeMain />);
     expect(await screen.findByText("Order placement")).toBeTruthy();
+    const starts = await screen.findByRole("region", { name: "How it starts" });
     const health = screen.getByRole("region", { name: "Health" });
-    expect(health.textContent).toBe("HealthAll files parse");
+    const sections = [starts, screen.getByRole("region", { name: "Boards" }), health];
+    expect(sections.every((section, index) => index === 0 || sections[index - 1]?.compareDocumentPosition(section) === Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    await waitFor(() => {
+      expect(health.textContent).toBe("HealthAll files parseEvery entrance finds its code");
+    });
     expect(within(health).queryByRole("button")).toBeNull();
   });
 
@@ -234,6 +241,37 @@ describe("the Health line", () => {
     await waitFor(() => {
       expect(fake.callsOf("open_board")).toEqual([{ project: P, id: board.id }]);
     });
+  });
+
+  it("says nothing about entrances when the project has no apps", async () => {
+    const row = projectRow(P, "shop");
+    start(workspaceView([row]), health(row, { doesntParse: 0, boardsNeedingReview: 0, boards: [], entrancesNotFound: 0 }));
+    renderWithClient(<HomeMain />);
+    const line = await screen.findByRole("region", { name: "Health" });
+    expect(line.textContent).toBe("HealthAll files parse");
+  });
+
+  it("counts entrances whose code isn't found, and shows How it starts' problems", async () => {
+    const row = projectRow(P, "shop");
+    start(workspaceView([row]), { entrances: () => fixture("entrances", "entrances"), ...health(row, { doesntParse: 0, boardsNeedingReview: 0, boards: [], entrancesNotFound: 3 }) });
+    renderWithClient(<HomeMain />);
+    const line = await screen.findByRole("region", { name: "Health" });
+    expect(line.textContent).toBe("HealthAll files parse3 entrances' code isn't found");
+    const starts = await screen.findByRole("region", { name: "How it starts" });
+    const scrolled = vi.spyOn(starts, "scrollIntoView");
+    fireEvent.click(within(line).getByRole("button", { name: "3 entrances' code isn't found" }));
+    expect(scrolled).toHaveBeenCalled();
+    // The rows with a problem light up: an entrance whose code moved, and code that isn't analyzed.
+    expect([...starts.querySelectorAll(".home-start-row.highlight .home-start-name")].map((name) => name.textContent)).toEqual(["Admin stats", "Build a report", "Legacy export"]);
+    expect(useLayout.getState().home.view).toBe("overview");
+  });
+
+  it("says one entrance's code in the singular", async () => {
+    const row = projectRow(P, "shop");
+    start(workspaceView([row]), health(row, { doesntParse: 0, boardsNeedingReview: 0, boards: [], entrancesNotFound: 1 }));
+    renderWithClient(<HomeMain />);
+    const line = await screen.findByRole("region", { name: "Health" });
+    expect(line.textContent).toBe("HealthAll files parse1 entrance's code isn't found");
   });
 
   it("counts boards and files that need a look, and leads to Health", async () => {

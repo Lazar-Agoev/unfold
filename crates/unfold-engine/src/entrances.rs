@@ -35,6 +35,8 @@ pub struct Fix {
     pub kind: FixKind,
     /// The key to write instead.
     pub code: Key,
+    /// The file of the block it names.
+    pub path: RepoPath,
 }
 
 /// Why a [`Fix`] fits.
@@ -200,22 +202,25 @@ fn fix(graph: &Graph, code: &Key, named: &FxHashSet<&str>, modules: &Modules) ->
             .filter(|file| file.file.path != *block.path())
             .filter(|file| file.file.path.file_name() == block.path().file_name())
             .filter(|file| !file.nodes.is_empty() && top_level(file) == *definitions)
-            .map(|file| file.nodes[0].key.clone()))
-        .map(|code| Fix {
+            .map(|file| (file.nodes[0].key.clone(), file.file.path.clone())))
+        .map(|(code, path)| Fix {
             kind: FixKind::MovedModule,
             code,
+            path,
         });
     }
     if let Some(names) = names(segments) {
-        return one(definitions_named(graph, block.path(), &names)).map(|code| Fix {
+        return one(definitions_named(graph, block.path(), &names)).map(|(code, path)| Fix {
             kind: FixKind::MovedDefinition,
             code,
+            path,
         });
     }
     let file = graph.file(block.path().as_str())?;
     edited_route(file, segments, named).map(|code| Fix {
         kind: FixKind::EditedRoute,
         code,
+        path: file.file.path.clone(),
     })
 }
 
@@ -236,26 +241,27 @@ fn names(segments: &[Segment]) -> Option<Vec<&str>> {
         .collect()
 }
 
-/// The keys of the definitions outside `path` whose qualified names are `names`.
+/// The keys of the definitions outside `path` whose qualified names are `names`, with their
+/// files.
 fn definitions_named<'g>(
     graph: &'g Graph,
     path: &'g RepoPath,
     qualified: &'g [&str],
-) -> impl Iterator<Item = Key> + 'g {
+) -> impl Iterator<Item = (Key, RepoPath)> + 'g {
     let last = qualified.last().copied();
     graph
         .files
         .iter()
         .filter(move |file| file.file.path != *path)
-        .flat_map(|file| &file.nodes)
-        .filter(move |node| {
+        .flat_map(|file| file.nodes.iter().map(move |node| (&file.file.path, node)))
+        .filter(move |(_, node)| {
             node.kind().is_definition() && node.kind() != NodeKind::Module && node.name.as_deref() == last
         })
-        .filter(move |node| match node.key.parse() {
+        .filter(move |(_, node)| match node.key.parse() {
             Ok(ParsedKey::Block(found)) => names(found.segments()).is_some_and(|found| found == qualified),
             _ => false,
         })
-        .map(|node| node.key.clone())
+        .map(|(path, node)| (node.key.clone(), path.clone()))
 }
 
 /// For a key that ends with a call and an inline handler in its arguments, the same handler

@@ -748,7 +748,11 @@ kind: FixReason,
 /**
  * The key to write instead.
  */
-code: Key, };
+code: Key, 
+/**
+ * The file of the block it names.
+ */
+path: RepoPath, };
 
 /**
  * A block's short label and full key.

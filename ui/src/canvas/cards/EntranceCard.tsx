@@ -1,7 +1,7 @@
 /**
- * An app's or entrance's card (entrance-definitions.md, "On a board"; core-scope.html's entrance): it
- * looks declared, so it is drawn in the authored style. It shows the app in small caps, the name, and
- * what starts it in mono: an entrance's `on`, an app's `run`. It points at the cards for its code, in
+ * An app's or entrance's card (entrance-definitions.md, "On a board"; entrance-definitions.html's
+ * board): it looks declared, so it is drawn with the dark border the page draws. It shows the app in
+ * small caps, the name, and what starts it in mono: an entrance's `on`, an app's `run`. It points at the cards for its code, in
  * order (`computeArrows`).
  *
  * Compact, its arrows leave from its edge. Expanded, it says its one sentence and lists its code in
@@ -36,24 +36,10 @@ export interface EntranceCardProps {
   readonly selected: boolean;
 }
 
-/** What starts an entrance, its first word (`POST`) in bold when it has more than one. */
-function OnText({ on, entrance }: { readonly on: string; readonly entrance: boolean }) {
-  const space = on.indexOf(" ");
-  if (!entrance || space < 0) {
-    return <code className="start-on">{on}</code>;
-  }
-  return (
-    <code className="start-on">
-      <b>{on.slice(0, space)}</b>
-      {on.slice(space)}
-    </code>
-  );
-}
-
 export function EntranceCard({ target, card, start, shape, ports, selected }: EntranceCardProps) {
   const measure = useMeasure();
   const updateNodeInternals = useUpdateNodeInternals();
-  const menu = useCardMenu(target, card.id, false);
+  const menu = useCardMenu(target, card, false);
   const expanded = shape === "expanded";
   const width = useMemo(() => startCardWidth(start, shape, measure), [start, shape, measure]);
   const rows = startRows(start, shape);
@@ -84,7 +70,7 @@ export function EntranceCard({ target, card, start, shape, ports, selected }: En
           <small>{start.app}</small>
         </span>
         <strong className="start-name">{start.name}</strong>
-        {start.on !== undefined ? <OnText on={start.on} entrance={start.kind === "entrance"} /> : null}
+        {start.on !== undefined ? <code className="start-on">{start.on}</code> : null}
         {expanded && start.about !== undefined ? <p className="start-about">{start.about}</p> : null}
         <CodeButton
           className="card-view-code"

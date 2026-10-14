@@ -12,6 +12,7 @@ import { setShowAllCalls } from "../state/showAllCalls";
 import { installFakeEngine, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../test/workspace";
 import { BoardView } from "../board/BoardView";
+import { addResult } from "../add/activate";
 import { NODE_PORT, callPort, codePort } from "./arrows";
 
 const P = "p-shop000000";
@@ -328,7 +329,8 @@ describe("app and entrance cards", () => {
     const card = await waitFor(() => present(container.querySelector<HTMLElement>('.start-card[data-card-id="start"]')));
     expect(card.querySelector(".start-app small")?.textContent).toBe("Shop API");
     expect(card.querySelector(".start-name")?.textContent).toBe("Place an order");
-    expect(card.querySelector(".start-on")?.innerHTML).toBe("<b>POST</b> /orders/{order_id}");
+    // What starts it is plain mono, as the page draws the card.
+    expect(card.querySelector(".start-on")?.innerHTML).toBe("POST /orders/{order_id}");
     // Compact: only the code that isn't found is listed; the arrows to its code leave from the edge, in order.
     expect([...card.querySelectorAll(".start-code.unfound")].map((row) => row.textContent)).toEqual(["shop/gone.py#gonemissing"]);
     expect(card.querySelectorAll(".start-code")).toHaveLength(1);
@@ -350,6 +352,65 @@ describe("app and entrance cards", () => {
     await waitFor(() => {
       expect(portsOf(card).sort()).toEqual([codePort(0), codePort(2)]);
     });
+  });
+});
+
+describe("adding entrances", () => {
+  it("Add puts an entrance's card on the current page", async () => {
+    open([{ id: "load", ref: { block: LOAD }, at: [0, 0] }]);
+    const { container } = renderBoard();
+    await waitFor(() => loaded(container, "load"));
+    act(() => {
+      addResult({ kind: "card", id: `entrance:${START}`, hit: { project: P, key: START, name: "Place an order", qualifiedName: "Shop API POST /orders/{order_id}", path: "", kind: "entrance", line: null, app: "Shop API", score: 1 }, ref: { entrance: START } }, PAGE);
+    });
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards.map((card) => card.ref)).toEqual([{ block: LOAD }, { entrance: START }]);
+    const card = await waitFor(() => present(container.querySelector<HTMLElement>(".start-card")));
+    expect(card.querySelector(".start-name")?.textContent).toBe("Place an order");
+  });
+
+  it("Add as entrance… on a definition card's menu writes one line with the card's key", async () => {
+    engine.uninstall();
+    const fake = installFakeEngine({
+      handlers: {
+        card: ({ key }) => present(model(key)),
+        entrances: () => ({ resolved: true, apps: [{ key: "entrance:shop-api", name: "Shop API", entrances: [] }, { key: "entrance:jobs", name: "Background jobs", entrances: [] }] }),
+        update_project_config: () => ({ config: { exists: true, text: "", settings: null, error: null }, diff: "" }),
+        list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
+        save_board: () => boardState(P, ID),
+      },
+    });
+    engine = fake;
+    open([{ id: "load", ref: { block: LOAD }, at: [0, 0] }]);
+    const { container } = renderBoard();
+    fireEvent.contextMenu(await waitFor(() => loaded(container, "load")));
+    act(() => {
+      within(screen.getByRole("menu", { name: "Card actions" })).getByRole("menuitem", { name: "Add as entrance…" }).click();
+    });
+    const popover = screen.getByRole("dialog", { name: "Add as entrance" });
+    expect(document.activeElement).toBe(within(popover).getByRole("textbox", { name: "Name" }));
+    expect(popover.querySelector(".add-entrance-footer code")?.textContent).toBe(LOAD);
+    expect(within(popover).queryByRole("combobox", { name: "Code" })).toBeNull();
+    await waitFor(() => {
+      expect(within(popover).getByRole<HTMLSelectElement>("combobox", { name: "App" }).value).toBe("Shop API");
+    });
+    fireEvent.change(within(popover).getByRole("textbox", { name: "Name" }), { target: { value: "Load an order" } });
+    fireEvent.change(within(popover).getByRole("textbox", { name: "On" }), { target: { value: "GET /orders/{id}" } });
+    fireEvent.click(within(popover).getByRole("button", { name: "Add" }));
+    await waitFor(() => {
+      expect(fake.callsOf("update_project_config")).toEqual([
+        { project: P, edits: [{ op: "set_entrance", app: "Shop API", entrance: { name: "Load an order", on: "GET /orders/{id}", code: [LOAD], about: null } }] },
+      ]);
+    });
+    expect(screen.queryByRole("dialog", { name: "Add as entrance" })).toBeNull();
+  });
+
+  it("isn't on an app's or entrance's card menu", async () => {
+    open([{ id: "start", ref: { entrance: START }, at: [0, 0] }]);
+    const { container } = renderBoard();
+    fireEvent.contextMenu(await waitFor(() => present(container.querySelector<HTMLElement>(".start-card"))));
+    const menu = screen.getByRole("menu", { name: "Card actions" });
+    expect(within(menu).queryByRole("menuitem", { name: "Add as entrance…" })).toBeNull();
+    expect(within(menu).getByRole("menuitem", { name: "Copy link" })).toBeTruthy();
   });
 });
 

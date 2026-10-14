@@ -177,7 +177,7 @@ export function TypeCard({ target, card, drawn, ports, selected }: TypeCardProps
   const measure = useMeasure();
   const updateNodeInternals = useUpdateNodeInternals();
   const [all, setAll] = useState(false);
-  const menu = useCardMenu(target, card.id, header.kind === "class");
+  const menu = useCardMenu(target, card, header.kind === "class");
   const lit = useCodeHover()?.key === key;
   const selectedField = usePageView(target, ({ selection }) => (selection.kind === "field" && selection.cardId === card.id ? selection : null));
   const fieldSelection = (field: FieldRef): Selection => ({ kind: "field", cardId: card.id, ...field });

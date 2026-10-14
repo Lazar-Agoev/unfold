@@ -213,7 +213,7 @@ export function BlockCard({ target, card, expanded, query, ports, selected }: Bl
   const flow = query.data?.type === "definition" ? query.data.flow : undefined;
   const measure = useMeasure();
   const updateNodeInternals = useUpdateNodeInternals();
-  const menu = useCardMenu(target, card.id, flow !== undefined && flow.header.kind !== "type");
+  const menu = useCardMenu(target, card, flow !== undefined && flow.header.kind !== "type");
   // Thin rows listed one call per row (a view of this card only, never saved).
   const [listed, setListed] = useState<ReadonlySet<Key>>(NO_ROWS);
   const geometry = useMemo(() => (expanded && flow ? layoutFlow(flow, { measure, listed }) : null), [expanded, flow, measure, listed]);

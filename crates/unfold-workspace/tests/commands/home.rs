@@ -161,7 +161,11 @@ fn entrances_list_the_apps_as_written_with_states_and_fixes() {
         json!([{
             "key": "src/server.ts#adminStats",
             "state": "missing",
-            "fix": { "kind": "moved_definition", "code": "src/routes/admin.ts#adminStats" }
+            "fix": {
+                "kind": "moved_definition",
+                "code": "src/routes/admin.ts#adminStats",
+                "path": "src/routes/admin.ts"
+            }
         }])
     );
     let lines = admin["lines"].as_array().expect("lines");

@@ -9,6 +9,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type Keyb
 import { createPortal } from "react-dom";
 import { Icon } from "../icons";
 import { engineQueryOptions } from "../ipc";
+import { useDebounced } from "../lib/debounce";
 import type { PageTarget } from "../state/boards";
 import { closeAdd } from "../state/overlays";
 import { addResult } from "./activate";
@@ -21,20 +22,6 @@ import "./add.css";
 const QUERY_DELAY = 120;
 
 const NO_RESULTS: readonly ResultItem[] = [];
-
-/** `value`, once it has stopped changing for `delay` ms. */
-function useDebounced<T>(value: T, delay: number): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setSettled(value);
-    }, delay);
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [value, delay]);
-  return settled;
-}
 
 /**
  * While Add is open: the app behind is inert, and focus returns to where it was when Add closes. (The

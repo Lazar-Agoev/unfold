@@ -1,17 +1,20 @@
 /**
- * A card's context menu: Show callers (a definition's card), Copy link, and Remove from page. Removing
- * is one board edit, so ⌘Z undoes it.
+ * A card's context menu: Show callers and Add as entrance… (a module's or definition's card), Copy
+ * link, and Remove from page. Removing is one board edit, so ⌘Z undoes it. Add as entrance… opens its
+ * popover beside the card, with the card's key as the entrance's `code`.
  */
 
-import type { MouseEvent, ReactNode } from "react";
+import { useState, type MouseEvent, type ReactNode } from "react";
 import { copyLink } from "../../agent";
-import { useContextMenu, type MenuEntry } from "../../components";
-import { removeCard, select, type PageTarget } from "../../state/boards";
+import { showToast, useContextMenu, type MenuEntry } from "../../components";
+import { AddEntrance } from "../../entrances";
+import type { Card } from "../../ipc/generated";
+import { cardKey, removeCard, select, type PageTarget } from "../../state/boards";
 import { setSelectedCollapsed } from "../../state/layout";
 import { requestFocus } from "../../lib/focus-targets";
 import { showCallers } from "../showCallers";
 
-function stop(event: MouseEvent): void {
+function stop(event: { stopPropagation: () => void }): void {
   event.stopPropagation();
 }
 
@@ -26,34 +29,68 @@ interface CardMenu {
   readonly element: ReactNode;
 }
 
-/** The context menu of one card; `callers` offers Show callers (a definition's card). */
-export function useCardMenu(target: PageTarget, cardId: string, callers: boolean): CardMenu {
+/** The context menu of one card; `definition` (a module's or definition's card) offers Show callers and Add as entrance…. */
+export function useCardMenu(target: PageTarget, card: Card, definition: boolean): CardMenu {
   const menu = useContextMenu("Card actions", 220);
-  const entries = (): MenuEntry[] => [
-    ...(callers ? [{ id: "callers", label: "Show callers", onSelect: () => void showCallers(target, cardId) }] : []),
-    { id: "copy-link", label: "Copy link", onSelect: () => void copyLink(target, cardId) },
+  // The card the Add as entrance popover sits beside, while it is open.
+  const [adding, setAdding] = useState<HTMLElement | null>(null);
+  const entries = (element: HTMLElement): MenuEntry[] => [
+    ...(definition
+      ? [
+          { id: "callers", label: "Show callers", onSelect: () => void showCallers(target, card.id) },
+          {
+            id: "entrance",
+            label: "Add as entrance…",
+            onSelect: () => {
+              setAdding(element);
+            },
+          },
+        ]
+      : []),
+    { id: "copy-link", label: "Copy link", onSelect: () => void copyLink(target, card.id) },
     { kind: "separator", id: "s1" },
     {
       id: "remove",
       label: "Remove from page",
       danger: true,
       onSelect: () => {
-        removeCard(target, cardId);
+        removeCard(target, card.id);
       },
     },
   ];
+  const layers = (
+    <>
+      {menu.element}
+      {adding ? (
+        <AddEntrance
+          project={target.board.project}
+          anchor={adding}
+          code={cardKey(card)}
+          side="right"
+          onClose={() => {
+            setAdding(null);
+          }}
+          onAdded={(app, name) => {
+            showToast({ title: `Added ${name} to ${app}` });
+          }}
+        />
+      ) : null}
+    </>
+  );
   return {
     onContextMenu: (event) => {
       event.stopPropagation();
-      select(target, { kind: "card", cardId, key: null });
-      menu.open(event, entries());
+      select(target, { kind: "card", cardId: card.id, key: null });
+      menu.open(event, entries(event.currentTarget as HTMLElement));
     },
-    // The menu renders in a portal, but its events still bubble through the card: a choice never
-    // also clicks (selects) or double-clicks the card it was opened on.
-    element: menu.element ? (
-      <span className="card-menu-layer" onClick={stop} onDoubleClick={stop} onContextMenu={stop}>
-        {menu.element}
-      </span>
-    ) : null,
+    // The menu and the popover render in portals, but their events still bubble through the card: a
+    // choice never also clicks (selects) or double-clicks the card it was opened on, and typing never
+    // reaches the canvas.
+    element:
+      menu.element || adding ? (
+        <span className="card-menu-layer" onClick={stop} onDoubleClick={stop} onContextMenu={stop} onKeyDown={stop}>
+          {layers}
+        </span>
+      ) : null,
   };
 }

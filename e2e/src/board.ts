@@ -48,6 +48,16 @@ export async function arrow(from: Locator, to: Locator): Promise<Locator> {
   return boardView(from.page()).locator(`.board-arrow-hit[data-arrow^='${source}|'][data-arrow$='|${target}']`);
 }
 
+/**
+ * Every arrow drawn from card `from` to card `to`, the arrows that can't be selected (an app's or
+ * entrance's, to its code) included: each one's React Flow edge.
+ */
+export async function drawnArrows(from: Locator, to: Locator): Promise<Locator> {
+  const source = (await from.getAttribute("data-card-id")) ?? "";
+  const target = (await to.getAttribute("data-card-id")) ?? "";
+  return boardView(from.page()).locator(`.react-flow__edge[data-id^='${source}|'][data-id$='|${target}']`);
+}
+
 /** The floating dock (Add, Arrange, the zoom). */
 export function dock(page: Page): Locator {
   return boardView(page).getByRole("toolbar", { name: "Board" });

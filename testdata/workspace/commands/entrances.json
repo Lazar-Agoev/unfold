@@ -137,7 +137,8 @@
               "state": "missing",
               "fix": {
                 "kind": "moved_definition",
-                "code": "src/routes/admin.ts#adminStats"
+                "code": "src/routes/admin.ts#adminStats",
+                "path": "src/routes/admin.ts"
               }
             }
           ],
