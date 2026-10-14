@@ -2,12 +2,14 @@
 //! implement, discovery and scope, the settings model, and the shared backend (the per-file
 //! facts, the value policy and its reason order, module labels, provenance, links and their
 //! outcomes, and argument pairing). `update()` is the single entry point that turns file changes
-//! into a new in-memory graph, with the per-file facts cache, relinking, and diffs.
+//! into a new in-memory graph, with the per-file facts cache, relinking, diffs, and the apps and
+//! entrances `unfold.toml` declares, resolved against the graph.
 
 #![forbid(unsafe_code)]
 
 pub mod cancel;
 pub mod discovery;
+pub mod entrances;
 pub mod error;
 pub mod evidence;
 pub mod facts;
@@ -32,7 +34,7 @@ pub use language::{
 pub use program::{CallRef, DeclRef, FactsSet, FileId, ImportRef, NodeRef, ProgramFile, TypeRef, ValueRef};
 pub use resolve::{Outcome, Resolver};
 pub use update::{
-    ChangeSummary, Changes, Engine, EngineOptions, FactsCache, LinkBasis, MemoryFactsCache, PreparedUpdate,
-    Problem, ProblemKind, Progress, Stage, UpdateError, UpdateKind, UpdateOutcome, UpdateRequest,
-    UpdateStats, Verify,
+    ChangeSummary, Changes, Engine, EngineOptions, EntrancesError, EntrancesOutcome, FactsCache, LinkBasis,
+    MemoryFactsCache, PreparedUpdate, Problem, ProblemKind, Progress, Stage, UpdateError, UpdateKind,
+    UpdateOutcome, UpdateRequest, UpdateStats, Verify,
 };

@@ -1,25 +1,41 @@
 //! The executable database schema and connection settings.
 //!
-//! The tables persist the core graph records and reader projections. In addition to
-//! `edges_by_target` and the `UNIQUE` constraints, these indexes serve specific queries:
+//! The tables persist the graph's records (`docs/designs/diagram-blocks.md`, "Records") and the
+//! reader's definition catalog:
+//!
+//! | Table | One row per |
+//! | --- | --- |
+//! | `files`, `inputs` | file (with its disk stamp), input |
+//! | `keys` | structural key ever written: the intern table every key column points into |
+//! | `nodes` | node, by file and local ID |
+//! | `links` | link, by file, `from`, and `seq` |
+//! | `signatures`, `parameters`, `members`, `arguments` | typed record |
+//! | `apps`, `entrances` | app and entrance of `unfold.toml`, in file order; the row ID is the key's ID |
+//! | `entrance_targets` | `code` key of an app (position 0) or an entrance (in order), with its state |
+//! | `definitions` | entry of the reader's definition catalog |
+//! | `file_facts` | cached per-file facts entry |
+//! | `search` | FTS5 row: a definition, app, entrance, or file ([`crate::search`]) |
+//!
+//! Nodes, links, and typed records refer to nodes of their own file by local ID, as the model
+//! does. A node's optional ranges are pairs of nullable columns. A link's target is in exactly
+//! one of `target_key_id` (`project`), `module` (`library`, `builtin`), or `reason`
+//! (`unknown`), as its `outcome` says.
+//!
+//! Bit sets: a node's `flags` has bit *i* for the *i*-th [`unfold_core::vocab::Flag`]; a
+//! parameter's `flags` has `optional` (1) and `default` (2); a member's `optional` (1),
+//! `readonly` (2), and `default` (4).
+//!
+//! Besides the primary keys and `UNIQUE` constraints, these indexes serve specific queries:
 //!
 //! | Index | Query |
 //! | --- | --- |
-//! | `definitions_by_file` | A file's definitions (outline), and replacing them when the file changes |
-//! | `entrances_by_evidence` | The entrances declared in one file or input |
-//! | `type_links_by_target` | The reverse index of type links: "used in N places" and the list of those places |
-//!
-//! The typed records (`signatures`, `parameters`, `members`, `arguments`, `results`,
-//! `type_links`) are written and replaced per file like slots and edges. Flags are bit sets:
-//! a parameter's `optional` (1) and `default` (2); a member's `optional` (1), `readonly` (2),
-//! and `default` (4).
-//!
-//! The launch records beside the graph (`unfold_core::Launches`) are small and read whole, so
-//! they are one JSON value in `meta`.
+//! | `nodes_by_parent` | A node's children |
+//! | `links_by_target` | The reverse indexes: callers (`calls`, `passes`) and type uses (`types`, `extends`) of a key |
+//! | `definitions_by_file` | A file's definitions, and replacing them when the file changes |
 //!
 //! The search table uses FTS5's `trigram` tokenizer, so a query matches anywhere inside an
-//! identifier (`order` finds `createOrder` and `OrderService`), which word tokenizers cannot do
-//! for camel-case names. Ranking is the workspace's job; the index only supplies candidates.
+//! identifier (`order` finds `place_order` and `OrderService`), which word tokenizers cannot do
+//! for camel-case names.
 //!
 //! The database is a cache: when [`SCHEMA_VERSION`] or the engine version differs from what a
 //! database records, the store discards it and creates a new one. There are no migrations.
@@ -30,7 +46,7 @@ use crate::error::Result;
 
 /// The version of the schema below. Bump it whenever a table, column, index, or the meaning of
 /// a stored value changes; existing databases are then rebuilt.
-pub const SCHEMA_VERSION: u32 = 5;
+pub const SCHEMA_VERSION: u32 = 6;
 
 /// Every table and index, created in one transaction.
 const DDL: &str = r"
@@ -56,103 +72,86 @@ CREATE TABLE inputs (
 
 CREATE TABLE keys (id INTEGER PRIMARY KEY, key TEXT NOT NULL UNIQUE);
 
-CREATE TABLE blocks (
+CREATE TABLE nodes (
   file_id INTEGER NOT NULL, local_id INTEGER NOT NULL,
   key_id INTEGER NOT NULL UNIQUE,
-  parent_local_id INTEGER,
-  kind TEXT NOT NULL, role TEXT, name TEXT,
+  parent INTEGER,
+  form TEXT NOT NULL, name TEXT,
   start_byte INTEGER NOT NULL, end_byte INTEGER NOT NULL,
   start_line INTEGER NOT NULL, end_line INTEGER NOT NULL,
+  head_start INTEGER, head_end INTEGER,
+  body_start INTEGER, body_end INTEGER,
+  doc_start INTEGER, doc_end INTEGER,
+  stmt_start INTEGER, stmt_end INTEGER,
+  value_start INTEGER, value_end INTEGER,
+  binds TEXT, role TEXT, for_node INTEGER, flags INTEGER NOT NULL, target INTEGER,
   PRIMARY KEY (file_id, local_id)
 ) WITHOUT ROWID;
+CREATE INDEX nodes_by_parent ON nodes (file_id, parent);
 
-CREATE TABLE slots (
-  file_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL,
-  slot TEXT NOT NULL, idx INTEGER NOT NULL DEFAULT -1,
-  start_byte INTEGER NOT NULL, end_byte INTEGER NOT NULL,
-  PRIMARY KEY (file_id, block_local_id, slot, idx)
-) WITHOUT ROWID;
-
-CREATE TABLE edges (
-  file_id INTEGER NOT NULL, source_local_id INTEGER NOT NULL, seq INTEGER NOT NULL,
+CREATE TABLE links (
+  file_id INTEGER NOT NULL, from_id INTEGER NOT NULL, seq INTEGER NOT NULL,
   kind TEXT NOT NULL,
-  target_key_id INTEGER,
-  target_text TEXT NOT NULL,
-  resolution TEXT NOT NULL,
-  reason TEXT, module TEXT, position INTEGER,
-  PRIMARY KEY (file_id, source_local_id, seq)
+  start_byte INTEGER NOT NULL, end_byte INTEGER NOT NULL, text TEXT NOT NULL,
+  outcome TEXT NOT NULL, target_key_id INTEGER, module TEXT, reason TEXT,
+  implements INTEGER NOT NULL, bound INTEGER,
+  PRIMARY KEY (file_id, from_id, seq)
 ) WITHOUT ROWID;
-CREATE INDEX edges_by_target ON edges (target_key_id);
+CREATE INDEX links_by_target ON links (target_key_id) WHERE target_key_id IS NOT NULL;
 
 CREATE TABLE signatures (
-  file_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL,
+  file_id INTEGER NOT NULL, node INTEGER NOT NULL,
   returns TEXT, returns_start INTEGER, returns_end INTEGER,
-  PRIMARY KEY (file_id, block_local_id)
+  PRIMARY KEY (file_id, node)
 ) WITHOUT ROWID;
 
 CREATE TABLE parameters (
-  file_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL, idx INTEGER NOT NULL,
+  file_id INTEGER NOT NULL, node INTEGER NOT NULL, idx INTEGER NOT NULL,
+  start_byte INTEGER NOT NULL, end_byte INTEGER NOT NULL,
   kind TEXT NOT NULL, name TEXT, flags INTEGER NOT NULL,
   type TEXT, type_start INTEGER, type_end INTEGER,
-  PRIMARY KEY (file_id, block_local_id, idx)
+  PRIMARY KEY (file_id, node, idx)
 ) WITHOUT ROWID;
 
 CREATE TABLE members (
-  file_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL, idx INTEGER NOT NULL,
+  file_id INTEGER NOT NULL, node INTEGER NOT NULL, idx INTEGER NOT NULL,
   kind TEXT NOT NULL, name TEXT, flags INTEGER NOT NULL,
   type TEXT, type_start INTEGER, type_end INTEGER, value TEXT,
-  PRIMARY KEY (file_id, block_local_id, idx)
+  PRIMARY KEY (file_id, node, idx)
 ) WITHOUT ROWID;
 
 CREATE TABLE arguments (
-  file_id INTEGER NOT NULL, call_local_id INTEGER NOT NULL, idx INTEGER NOT NULL,
+  file_id INTEGER NOT NULL, call INTEGER NOT NULL, idx INTEGER NOT NULL,
+  start_byte INTEGER NOT NULL, end_byte INTEGER NOT NULL,
   expand TEXT, keyword TEXT, parameter INTEGER, unpaired TEXT, bound INTEGER,
-  PRIMARY KEY (file_id, call_local_id, idx)
+  PRIMARY KEY (file_id, call, idx)
 ) WITHOUT ROWID;
 
-CREATE TABLE results (
-  file_id INTEGER NOT NULL, call_local_id INTEGER NOT NULL,
-  binding TEXT NOT NULL, awaited INTEGER NOT NULL, target_local_id INTEGER, position INTEGER,
-  bound INTEGER,
-  PRIMARY KEY (file_id, call_local_id)
-) WITHOUT ROWID;
-
-CREATE TABLE type_links (
-  file_id INTEGER NOT NULL, block_local_id INTEGER NOT NULL, seq INTEGER NOT NULL,
-  start_byte INTEGER NOT NULL, end_byte INTEGER NOT NULL, text TEXT NOT NULL,
-  resolution TEXT NOT NULL, target_key_id INTEGER, reason TEXT, module TEXT, heritage TEXT,
-  PRIMARY KEY (file_id, block_local_id, seq)
-) WITHOUT ROWID;
-CREATE INDEX type_links_by_target ON type_links (target_key_id);
+CREATE TABLE apps (
+  id INTEGER PRIMARY KEY,
+  position INTEGER NOT NULL UNIQUE,
+  name TEXT NOT NULL, run TEXT, about TEXT
+);
 
 CREATE TABLE entrances (
   id INTEGER PRIMARY KEY,
-  key_id INTEGER NOT NULL UNIQUE,
-  kind TEXT NOT NULL, label TEXT, method TEXT, trigger TEXT, trigger_status TEXT NOT NULL,
-  detector TEXT NOT NULL,
-  evidence_path TEXT NOT NULL,
-  evidence_start_byte INTEGER NOT NULL, evidence_end_byte INTEGER NOT NULL,
-  evidence_block_key_id INTEGER,
-  evidence_pointer TEXT,
-  binding_key_id INTEGER
+  app_id INTEGER NOT NULL, position INTEGER NOT NULL,
+  name TEXT NOT NULL, on_text TEXT, about TEXT,
+  UNIQUE (app_id, position)
 );
-CREATE INDEX entrances_by_evidence ON entrances (evidence_path);
 
 CREATE TABLE entrance_targets (
-  entrance_id INTEGER NOT NULL, position INTEGER NOT NULL,
-  role TEXT NOT NULL,
-  target_key_id INTEGER, target_text TEXT NOT NULL,
-  resolution TEXT NOT NULL, reason TEXT, module TEXT,
-  PRIMARY KEY (entrance_id, position)
-);
+  owner_id INTEGER NOT NULL, position INTEGER NOT NULL,
+  code_key_id INTEGER NOT NULL, state TEXT NOT NULL,
+  PRIMARY KEY (owner_id, position)
+) WITHOUT ROWID;
 
-CREATE TABLE definitions (key_id INTEGER PRIMARY KEY, file_id INTEGER, local_id INTEGER,
-                          kind TEXT, qualified_name TEXT);
+CREATE TABLE definitions (
+  key_id INTEGER PRIMARY KEY,
+  file_id INTEGER NOT NULL, local_id INTEGER NOT NULL,
+  kind TEXT NOT NULL, qualified_name TEXT NOT NULL, label TEXT NOT NULL
+);
 CREATE INDEX definitions_by_file ON definitions (file_id, local_id);
-CREATE TABLE applications (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT,
-                           declared INTEGER NOT NULL, category TEXT NOT NULL);
-CREATE TABLE memberships (entrance_id INTEGER NOT NULL, application TEXT NOT NULL, basis TEXT NOT NULL,
-                          PRIMARY KEY (entrance_id, application));
 
 CREATE TABLE file_facts (
   path TEXT NOT NULL, hash BLOB NOT NULL, engine TEXT NOT NULL, settings_hash BLOB NOT NULL,
@@ -175,7 +174,6 @@ pub(crate) mod meta_key {
     pub const COMPILED_AT: &str = "compiled_at";
     pub const COMPLETE: &str = "complete";
     pub const LINK_BASIS: &str = "link_basis";
-    pub const LAUNCHES: &str = "launches";
 }
 
 /// Creates every table in an empty database and records the versions.

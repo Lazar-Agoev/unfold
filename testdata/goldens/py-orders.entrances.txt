@@ -1,0 +1,53 @@
+app	entrance:server	orders-api
+	code	src/orders_playground/server.py#main	found
+entrance	entrance:server/health-check	GET /health
+	code	src/orders_playground/server.py#health_check	found
+entrance	entrance:server/status	GET /v1/status
+	code	src/orders_playground/server.py#status	found
+entrance	entrance:server/list-orders	GET /orders
+	code	src/orders_playground/routes/orders.py#list_orders	found
+entrance	entrance:server/get-an-order	GET /orders/{order_id}
+	code	src/orders_playground/routes/orders.py#get_order	found
+entrance	entrance:server/place-an-order	POST /orders
+	code	src/orders_playground/routes/middleware.py#require_user	found
+	code	src/orders_playground/routes/middleware.py#validate_body	found
+	code	src/orders_playground/routes/orders.py#create_order	found
+entrance	entrance:server/cancel-an-order	DELETE /orders/{order_id}
+	code	src/orders_playground/routes/middleware.py#require_user	found
+	code	src/orders_playground/routes/orders.py#cancel_order	found
+entrance	entrance:server/liveness	GET /health/live
+	code	src/orders_playground/routes/health.py#/call:health_router.get()/callback[0]	found
+entrance	entrance:server/admin-stats	GET /admin/stats
+	code	src/orders_playground/server.py#admin_stats	missing	moved_definition	src/orders_playground/routes/admin.py#admin_stats
+entrance	entrance:server/shut-down	SIGTERM
+	code	src/orders_playground/server.py#shutdown	found
+app	entrance:dev-server	orders-api-dev
+	code	src/orders_playground/server.py#main	found
+app	entrance:worker	orders-worker
+	code	src/orders_playground/worker.py#main	found
+entrance	entrance:worker/send-an-email	queue emails
+	code	src/orders_playground/queues/email_worker.py#email_task	found
+entrance	entrance:worker/process-an-order	queue orders
+	code	src/orders_playground/jobs/process_order.py#process_order	found
+entrance	entrance:worker/build-a-report	queue reports
+	code	src/orders_playground/jobs/report.py#print_report	found
+app	entrance:scheduler	orders-scheduler
+	code	src/orders_playground/scheduler.py#main	found
+entrance	entrance:scheduler/clean-up-expired-orders	0 2 * * *
+	code	src/orders_playground/jobs/cleanup.py#cleanup_expired_orders	found
+entrance	entrance:scheduler/report-metrics	*/15 * * * *
+	code	src/orders_playground/scheduler.py#/call:scheduler.add_job[1]/callback[0]	found
+app	entrance:orders-cli	orders <command>
+	code	src/orders_playground/cli.py#main	found
+entrance	entrance:orders-cli/import-orders	orders import
+	code	src/orders_playground/jobs/import_orders.py#import_orders	found
+entrance	entrance:orders-cli/print-a-report	orders report
+	code	src/orders_playground/cli.py#report_command	found
+entrance	entrance:orders-cli/replay-failed-orders	orders replay
+	code	src/orders_playground/jobs/retry_failed.py#retry_failed	found
+entrance	entrance:orders-cli/retry-failed-orders	orders retry
+	code	src/orders_playground/jobs/retry_failed.py#retry_failed	found
+app	entrance:cli-alias	orders-cli <command>
+	code	src/orders_playground/cli.py#main	found
+app	entrance:legacy-export	orders-legacy-export
+	code	legacy/orders_legacy/export.py#main	not_analyzed

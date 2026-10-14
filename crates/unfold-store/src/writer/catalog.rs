@@ -1,135 +1,100 @@
-//! Writing the folder-wide records: entrances and their targets, inputs, applications,
-//! memberships, launch records, and metadata.
+//! Writing the folder-wide records: apps with their entrances and targets, inputs, and
+//! metadata.
 
 use rusqlite::Connection;
-use rustc_hash::FxHashSet;
-use unfold_core::{Entrance, InputRecord, Key, Launches};
+use unfold_core::{App, EntranceTarget, Input};
 
 use super::graph::Apply;
+use crate::codec::position;
 use crate::error::Result;
 use crate::schema::meta_key;
-use crate::search::{CandidateKind, entrance_text, rowid};
-use crate::update::{Application, EntranceChanges, GraphMeta, Membership};
+use crate::search::{CandidateKind, rowid};
+use crate::update::GraphMeta;
 
 impl Apply<'_, '_> {
-    /// Removes and upserts entrances by key. An entrance's row ID is its key's ID.
-    pub(crate) fn write_entrances(&mut self, conn: &Connection, changes: &EntranceChanges<'_>) -> Result<()> {
-        for key in &changes.removals {
-            if let Some(id) = self.mirror.key_id(key.as_str()) {
-                self.remove_entrance(conn, id)?;
-            }
-        }
-
-        let mut delete_entrance = conn.prepare_cached("DELETE FROM entrances WHERE id = ?1")?;
-        let mut delete_targets =
-            conn.prepare_cached("DELETE FROM entrance_targets WHERE entrance_id = ?1")?;
+    /// Replaces every app, entrance, target, and their search rows with `apps`. An app's or
+    /// entrance's row ID is its key's ID; an app's own `code` is its target at position 0.
+    pub(crate) fn write_apps(&mut self, conn: &Connection, apps: &[App]) -> Result<()> {
+        conn.prepare_cached(
+            "DELETE FROM search WHERE rowid IN (SELECT id * 4 + ?1 FROM apps UNION ALL \
+             SELECT id * 4 + ?2 FROM entrances)",
+        )?
+        .execute((CandidateKind::App.tag(), CandidateKind::Entrance.tag()))?;
+        conn.execute_batch("DELETE FROM apps; DELETE FROM entrances; DELETE FROM entrance_targets;")?;
+        let mut insert_app = conn.prepare_cached(
+            "INSERT INTO apps (id, position, name, run, about) VALUES (?1, ?2, ?3, ?4, ?5)",
+        )?;
         let mut insert_entrance = conn.prepare_cached(
-            "INSERT INTO entrances (id, key_id, kind, label, method, trigger, trigger_status, detector, \
-             evidence_path, evidence_start_byte, evidence_end_byte, evidence_block_key_id, evidence_pointer, \
-             binding_key_id) VALUES (?1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            "INSERT INTO entrances (id, app_id, position, name, on_text, about) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         )?;
-        let mut insert_target = conn.prepare_cached(
-            "INSERT INTO entrance_targets (entrance_id, position, role, target_key_id, target_text, \
-             resolution, reason, module) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        )?;
-        for entrance in &changes.upserts {
-            let id = self.mirror.intern(&entrance.key, &mut self.st.insert_key)?;
-            delete_entrance.execute([id])?;
-            delete_targets.execute([id])?;
-            self.st
-                .delete_search
-                .execute([rowid(CandidateKind::Entrance, id)])?;
-            let evidence = &entrance.evidence;
-            let evidence_block = self
-                .mirror
-                .intern_opt(evidence.block.as_ref(), &mut self.st.insert_key)?;
-            let binding = self
-                .mirror
-                .intern_opt(entrance.binding.as_ref(), &mut self.st.insert_key)?;
-            insert_entrance.execute((
-                id,
-                entrance.kind.as_str(),
-                entrance.label.as_deref(),
-                entrance.method.map(|method| method.as_str()),
-                entrance.trigger.as_deref(),
-                entrance.trigger_status.as_str(),
-                entrance.detector.as_str(),
-                evidence.path.as_str(),
-                evidence.range.start,
-                evidence.range.end,
-                evidence_block,
-                evidence.pointer.as_deref(),
-                binding,
+        for (index, app) in apps.iter().enumerate() {
+            let app_id = self.mirror.intern(&app.key, &mut self.st.insert_key)?;
+            insert_app.execute((
+                app_id,
+                position("app position", index)?,
+                &*app.name,
+                app.run.as_deref(),
+                app.about.as_deref(),
             ))?;
-            for target in &entrance.targets {
-                let target_id = self
-                    .mirror
-                    .intern_opt(target.target.as_ref(), &mut self.st.insert_key)?;
-                insert_target.execute((
+            self.write_targets(conn, app_id, app.code.as_slice())?;
+            self.st.insert_search.execute((
+                rowid(CandidateKind::App, app_id),
+                &*app.name,
+                app.run.as_deref().unwrap_or_default(),
+                "",
+                "app",
+                app.key.as_str(),
+            ))?;
+            for (index, entrance) in app.entrances.iter().enumerate() {
+                let id = self.mirror.intern(&entrance.key, &mut self.st.insert_key)?;
+                insert_entrance.execute((
                     id,
-                    target.position,
-                    target.role.as_str(),
-                    target_id,
-                    &*target.text,
-                    target.resolution.as_str(),
-                    target.reason.map(|reason| reason.as_str()),
-                    target.module.as_ref().map(|module| module.as_str()),
+                    app_id,
+                    position("entrance position", index)?,
+                    &*entrance.name,
+                    entrance.on.as_deref(),
+                    entrance.about.as_deref(),
+                ))?;
+                self.write_targets(conn, id, &entrance.code)?;
+                let qualified = match &entrance.on {
+                    Some(on) => format!("{} {on}", app.name),
+                    None => app.name.to_string(),
+                };
+                self.st.insert_search.execute((
+                    rowid(CandidateKind::Entrance, id),
+                    &*entrance.name,
+                    qualified,
+                    "",
+                    "entrance",
+                    entrance.key.as_str(),
                 ))?;
             }
-            self.insert_entrance_search(id, entrance)?;
-            self.stats.entrances_written += 1;
+            self.stats.apps_written += 1;
+            self.stats.entrances_written += app.entrances.len() as u64;
         }
         Ok(())
     }
 
-    /// Removes every stored entrance whose key is not among `keep` ([`super::Writer::replace`]).
-    pub(crate) fn remove_entrances_except(&mut self, conn: &Connection, keep: &[&Entrance]) -> Result<()> {
-        let keep: FxHashSet<i64> = keep
-            .iter()
-            .filter_map(|entrance| self.mirror.key_id(entrance.key.as_str()))
-            .collect();
-        let stored: Vec<i64> = {
-            let mut statement = conn.prepare_cached("SELECT id FROM entrances ORDER BY id")?;
-            let ids = statement.query_map([], |row| row.get(0))?;
-            ids.collect::<rusqlite::Result<_>>()?
-        };
-        for id in stored.into_iter().filter(|id| !keep.contains(id)) {
-            self.remove_entrance(conn, id)?;
+    /// Writes the `code` targets of the app or entrance with row ID `owner`, in order.
+    fn write_targets(&mut self, conn: &Connection, owner: i64, targets: &[EntranceTarget]) -> Result<()> {
+        let mut insert = conn.prepare_cached(
+            "INSERT INTO entrance_targets (owner_id, position, code_key_id, state) VALUES (?1, ?2, ?3, ?4)",
+        )?;
+        for (index, target) in targets.iter().enumerate() {
+            let code = self.mirror.intern(&target.code, &mut self.st.insert_key)?;
+            insert.execute((
+                owner,
+                position("target position", index)?,
+                code,
+                target.state.as_str(),
+            ))?;
         }
-        Ok(())
-    }
-
-    /// Deletes the entrance with row ID `id`, its targets, memberships, and search row.
-    fn remove_entrance(&mut self, conn: &Connection, id: i64) -> Result<()> {
-        let deleted = conn
-            .prepare_cached("DELETE FROM entrances WHERE id = ?1")?
-            .execute([id])?;
-        conn.prepare_cached("DELETE FROM entrance_targets WHERE entrance_id = ?1")?
-            .execute([id])?;
-        conn.prepare_cached("DELETE FROM memberships WHERE entrance_id = ?1")?
-            .execute([id])?;
-        self.st
-            .delete_search
-            .execute([rowid(CandidateKind::Entrance, id)])?;
-        self.stats.entrances_removed += deleted as u64;
-        Ok(())
-    }
-
-    fn insert_entrance_search(&mut self, id: i64, entrance: &Entrance) -> Result<()> {
-        let (name, qualified) = entrance_text(entrance);
-        self.st.insert_search.execute((
-            rowid(CandidateKind::Entrance, id),
-            name,
-            qualified,
-            entrance.evidence.path.as_str(),
-            entrance.kind.as_str(),
-            entrance.key.as_str(),
-        ))?;
         Ok(())
     }
 
     /// Replaces the input set.
-    pub(crate) fn write_inputs(&mut self, conn: &Connection, inputs: &[InputRecord]) -> Result<()> {
+    pub(crate) fn write_inputs(&mut self, conn: &Connection, inputs: &[Input]) -> Result<()> {
         conn.prepare_cached("DELETE FROM inputs")?.execute([])?;
         let mut insert = conn.prepare_cached("INSERT INTO inputs (path, role, hash) VALUES (?1, ?2, ?3)")?;
         for input in inputs {
@@ -141,57 +106,6 @@ impl Apply<'_, '_> {
         }
         Ok(())
     }
-
-    /// Replaces the applications.
-    pub(crate) fn write_applications(
-        &mut self,
-        conn: &Connection,
-        applications: &[Application],
-    ) -> Result<()> {
-        conn.prepare_cached("DELETE FROM applications")?.execute([])?;
-        let mut insert = conn.prepare_cached(
-            "INSERT INTO applications (id, name, description, declared, category) VALUES (?1, ?2, ?3, ?4, ?5)",
-        )?;
-        for application in applications {
-            insert.execute((
-                &*application.id,
-                &*application.name,
-                application.description.as_deref(),
-                application.declared,
-                application.category.as_str(),
-            ))?;
-        }
-        Ok(())
-    }
-
-    /// Replaces the memberships.
-    pub(crate) fn write_memberships(&mut self, conn: &Connection, memberships: &[Membership]) -> Result<()> {
-        conn.prepare_cached("DELETE FROM memberships")?.execute([])?;
-        let mut insert = conn.prepare_cached(
-            "INSERT INTO memberships (entrance_id, application, basis) VALUES (?1, ?2, ?3)",
-        )?;
-        for membership in memberships {
-            let entrance = self.intern(&membership.entrance)?;
-            insert.execute((entrance, &*membership.application, membership.basis.as_str()))?;
-        }
-        Ok(())
-    }
-
-    fn intern(&mut self, key: &Key) -> Result<i64> {
-        self.mirror.intern(key, &mut self.st.insert_key)
-    }
-}
-
-/// Writes the launch records.
-pub(crate) fn write_launches(conn: &Connection, launches: &Launches) -> Result<()> {
-    // Strings, numbers, and keys: serializing can't fail.
-    let text = serde_json::to_string(launches).unwrap_or_default();
-    conn.prepare_cached(
-        "INSERT INTO meta (key, value) VALUES (?1, ?2) \
-         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-    )?
-    .execute((meta_key::LAUNCHES, text))?;
-    Ok(())
 }
 
 /// Writes the graph metadata.

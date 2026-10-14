@@ -1,7 +1,4 @@
 # Unfold settings for the mixed playground folder (ts-orders and py-orders together).
-# Converted from the proof of concept's root codegraph.json and py-playground/codegraph.json.
-# The PoC root "exclude": ["package.json"] named the graph-compiler repository's own tooling
-# package.json; this folder has no root package.json, so there is nothing to exclude.
 
 # Same indexed set as the PoC's mixed build: 34 TypeScript plus 50 Python sources.
 [scope]
@@ -11,64 +8,134 @@ exclude = ["py-orders/legacy/**", "py-orders/scripts/**", "py-orders/tests/**"]
 root = "py-orders"
 source_roots = ["src", "legacy"]
 
-# TypeScript entrances the detectors can't see: CLI dispatch and a signal handler.
-[[entrance]]
-id = "ts-import"
-kind = "command"
-trigger = "import"
-handler = "ts-orders/src/jobs/import-orders.ts#importOrders"
+# The apps of both playgrounds, as in ts-orders/unfold.toml and py-orders/unfold.toml, with
+# their paths prefixed. `run` and `on` are display text; `code` is a block key.
 
-[[entrance]]
-id = "ts-report"
-kind = "command"
-trigger = "report"
-handler = "ts-orders/src/cli.ts:12"
+[[app]]
+name = "TypeScript server"
+run = "cd ts-orders && npm run start"
+code = "ts-orders/src/server.ts#"
+entrances = [
+  { name = "Health check", on = "GET /health", code = "ts-orders/src/server.ts#healthCheck" },
+  { name = "Status", on = "GET /v1/status", code = "ts-orders/src/server.ts#status" },
+  { name = "List orders", on = "GET /orders", code = "ts-orders/src/routes/orders.ts#listOrders" },
+  { name = "Get an order", on = "GET /orders/:id", code = "ts-orders/src/routes/orders.ts#getOrder" },
+  { name = "Place an order", on = "POST /orders", code = ["ts-orders/src/routes/middleware.ts#requireUser", "ts-orders/src/routes/middleware.ts#validateBody", "ts-orders/src/routes/orders.ts#createOrder"] },
+  { name = "Cancel an order", on = "DELETE /orders/:id", code = ["ts-orders/src/routes/middleware.ts#requireUser", "ts-orders/src/routes/orders.ts#cancelOrder"] },
+  { name = "Liveness", on = "GET /health/live", code = 'ts-orders/src/routes/health.ts#/call:healthRouter.get("/live")/callback[0]' },
+  # Deliberately missing: adminStats moved to ts-orders/src/routes/admin.ts. This keeps the
+  # missing state and its one fix (the moved definition) covered.
+  { name = "Admin stats", on = "GET /admin/stats", code = "ts-orders/src/server.ts#adminStats" },
+  { name = "Shut down", on = "SIGTERM", code = "ts-orders/src/server.ts#shutdown" },
+]
 
-[[entrance]]
-id = "ts-replay"
-kind = "command"
-trigger = "replay"
-handler = "ts-orders/src/jobs/retry-failed.ts#retryFailed"
+[[app]]
+name = "TypeScript dev server"
+run = "cd ts-orders && npm run dev"
+code = "ts-orders/src/server.ts#"
+about = "The server run from source, restarted on every change."
 
-[[entrance]]
-id = "ts-retry"
-kind = "command"
-trigger = "retry"
-handler = "ts-orders/src/jobs/retry-failed.ts#retryFailed"
+[[app]]
+name = "TypeScript worker"
+run = "cd ts-orders && npm run worker"
+code = "ts-orders/src/worker.ts#"
+entrances = [
+  { name = "Send an email", on = "queue emails", code = 'ts-orders/src/queues/email-worker.ts#/call:Worker("emails")/callback[0]' },
+  { name = "Process an order", on = "queue orders", code = "ts-orders/src/jobs/process-order.ts#processOrder" },
+  { name = "Build a report", on = "queue reports", code = "ts-orders/report-processor.js#" },
+]
 
-[[entrance]]
-id = "ts-shutdown"
-kind = "event"
-trigger = "SIGTERM"
-handler = "ts-orders/src/server.ts#shutdown"
+[[app]]
+name = "TypeScript scheduler"
+run = "cd ts-orders && npm run scheduler"
+code = "ts-orders/src/scheduler.ts#"
+entrances = [
+  { name = "Clean up expired orders", on = "0 2 * * *", code = "ts-orders/src/jobs/cleanup.ts#cleanupExpiredOrders" },
+  { name = "Report metrics", on = "*/15 * * * *", code = 'ts-orders/src/scheduler.ts#/call:schedule("*/15 * * * *")/callback[0]' },
+]
 
-# Python entrances the detectors can't see.
-[[entrance]]
-id = "py-import"
-kind = "command"
-trigger = "import"
-handler = "py-orders/src/orders_playground/jobs/import_orders.py#import_orders"
+[[app]]
+name = "TypeScript orders CLI"
+run = "orders <command>"
+code = "ts-orders/src/cli.ts#"
+entrances = [
+  { name = "Import orders", on = "orders import", code = "ts-orders/src/jobs/import-orders.ts#importOrders" },
+  { name = "Print a report", on = "orders report", code = "ts-orders/src/jobs/report.ts#printReport" },
+  { name = "Replay failed orders", on = "orders replay", code = "ts-orders/src/jobs/retry-failed.ts#retryFailed" },
+  { name = "Retry failed orders", on = "orders retry", code = "ts-orders/src/jobs/retry-failed.ts#retryFailed" },
+]
 
-[[entrance]]
-id = "py-report"
-kind = "command"
-trigger = "report"
-handler = "py-orders/src/orders_playground/cli.py#report_command"
+[[app]]
+name = "TypeScript dev CLI"
+run = "cd ts-orders && npm run cli -- <command>"
+code = "ts-orders/src/cli.ts#"
+about = "The orders command run from source."
 
-[[entrance]]
-id = "py-replay"
-kind = "command"
-trigger = "replay"
-handler = "py-orders/src/orders_playground/jobs/retry_failed.py#retry_failed"
+[[app]]
+name = "TypeScript legacy export"
+run = "cd ts-orders && npm run legacy:export"
+code = "ts-orders/scripts/export.js#"
 
-[[entrance]]
-id = "py-retry"
-kind = "command"
-trigger = "retry"
-handler = "py-orders/src/orders_playground/jobs/retry_failed.py#retry_failed"
+[[app]]
+name = "Python server"
+run = "orders-api"
+code = "py-orders/src/orders_playground/server.py#main"
+entrances = [
+  { name = "Health check", on = "GET /health", code = "py-orders/src/orders_playground/server.py#health_check" },
+  { name = "Status", on = "GET /v1/status", code = "py-orders/src/orders_playground/server.py#status" },
+  { name = "List orders", on = "GET /orders", code = "py-orders/src/orders_playground/routes/orders.py#list_orders" },
+  { name = "Get an order", on = "GET /orders/{order_id}", code = "py-orders/src/orders_playground/routes/orders.py#get_order" },
+  { name = "Place an order", on = "POST /orders", code = ["py-orders/src/orders_playground/routes/middleware.py#require_user", "py-orders/src/orders_playground/routes/middleware.py#validate_body", "py-orders/src/orders_playground/routes/orders.py#create_order"] },
+  { name = "Cancel an order", on = "DELETE /orders/{order_id}", code = ["py-orders/src/orders_playground/routes/middleware.py#require_user", "py-orders/src/orders_playground/routes/orders.py#cancel_order"] },
+  { name = "Liveness", on = "GET /health/live", code = "py-orders/src/orders_playground/routes/health.py#/call:health_router.get()/callback[0]" },
+  # Deliberately missing: admin_stats moved to py-orders/src/orders_playground/routes/admin.py.
+  # This keeps the missing state and its one fix (the moved definition) covered.
+  { name = "Admin stats", on = "GET /admin/stats", code = "py-orders/src/orders_playground/server.py#admin_stats" },
+  { name = "Shut down", on = "SIGTERM", code = "py-orders/src/orders_playground/server.py#shutdown" },
+]
 
-[[entrance]]
-id = "py-shutdown"
-kind = "event"
-trigger = "SIGTERM"
-handler = "py-orders/src/orders_playground/server.py#shutdown"
+[[app]]
+name = "Python dev server"
+run = "orders-api-dev"
+code = "py-orders/src/orders_playground/server.py#main"
+
+[[app]]
+name = "Python worker"
+run = "orders-worker"
+code = "py-orders/src/orders_playground/worker.py#main"
+entrances = [
+  { name = "Send an email", on = "queue emails", code = "py-orders/src/orders_playground/queues/email_worker.py#email_task" },
+  { name = "Process an order", on = "queue orders", code = "py-orders/src/orders_playground/jobs/process_order.py#process_order" },
+  { name = "Build a report", on = "queue reports", code = "py-orders/src/orders_playground/jobs/report.py#print_report" },
+]
+
+[[app]]
+name = "Python scheduler"
+run = "orders-scheduler"
+code = "py-orders/src/orders_playground/scheduler.py#main"
+entrances = [
+  { name = "Clean up expired orders", on = "0 2 * * *", code = "py-orders/src/orders_playground/jobs/cleanup.py#cleanup_expired_orders" },
+  { name = "Report metrics", on = "*/15 * * * *", code = "py-orders/src/orders_playground/scheduler.py#/call:scheduler.add_job[1]/callback[0]" },
+]
+
+[[app]]
+name = "Python orders CLI"
+run = "orders <command>"
+code = "py-orders/src/orders_playground/cli.py#main"
+entrances = [
+  { name = "Import orders", on = "orders import", code = "py-orders/src/orders_playground/jobs/import_orders.py#import_orders" },
+  { name = "Print a report", on = "orders report", code = "py-orders/src/orders_playground/cli.py#report_command" },
+  { name = "Replay failed orders", on = "orders replay", code = "py-orders/src/orders_playground/jobs/retry_failed.py#retry_failed" },
+  { name = "Retry failed orders", on = "orders retry", code = "py-orders/src/orders_playground/jobs/retry_failed.py#retry_failed" },
+]
+
+[[app]]
+name = "Python CLI alias"
+run = "orders-cli <command>"
+code = "py-orders/src/orders_playground/cli.py#main"
+about = "The orders command under its longer name."
+
+[[app]]
+name = "Python legacy export"
+run = "orders-legacy-export"
+code = "py-orders/legacy/orders_legacy/export.py#main"

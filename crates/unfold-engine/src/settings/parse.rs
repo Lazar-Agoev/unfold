@@ -1,15 +1,20 @@
-//! Strict parsing of `unfold.toml`: serde rejects unknown keys and wrong types, then each value
-//! is validated with its exact position in the file.
+//! Strict parsing of `unfold.toml`: serde rejects unknown keys and wrong types in the compile
+//! settings, then each value is validated with its exact position in the file. The `[[app]]`
+//! tables are read separately ([`super::apps`]), so a bad entry marks only itself.
 
 use std::ops::Range;
 use std::path::PathBuf;
 
 use serde::Deserialize;
 use toml::Spanned;
+use toml::de::{DeTable, Deserializer};
 use unfold_core::ByteRange;
 use unfold_core::vocab::Language;
 
-use super::{Evidence, FolderPath, PythonProject, PythonVersion, SETTINGS_PATH, Scope, Settings};
+use super::apps;
+use super::{
+    Evidence, FolderPath, PythonProject, PythonVersion, SETTINGS_PATH, Scope, Settings, SettingsFile,
+};
 
 /// Why the settings can't be used. Every validation error carries a one-based line and column
 /// (counted in characters) and the byte span of the offending key or value.
@@ -50,6 +55,10 @@ struct RawSettings {
     scope: Option<RawScope>,
     python: Option<RawPython>,
     evidence: Option<RawEvidence>,
+    /// The `[[app]]` tables, read separately ([`super::apps`]) so a bad entry marks only itself;
+    /// declared here so an unknown table's error names `app` among the known keys.
+    #[serde(rename = "app")]
+    _app: Option<serde::de::IgnoredAny>,
 }
 
 /// `[evidence]`.
@@ -81,14 +90,14 @@ struct RawProject {
 }
 
 /// Positions errors in the original file text.
-struct Source<'a> {
+pub(super) struct Source<'a> {
     text: &'a str,
     /// Bytes skipped before the TOML body (a byte-order mark).
     base: usize,
 }
 
 impl Source<'_> {
-    fn error(&self, span: Range<usize>, message: impl Into<Box<str>>) -> SettingsError {
+    pub(super) fn error(&self, span: Range<usize>, message: impl Into<Box<str>>) -> SettingsError {
         let start = (span.start + self.base).min(self.text.len());
         let end = (span.end + self.base).clamp(start, self.text.len());
         let before = &self.text[..start];
@@ -99,30 +108,45 @@ impl Source<'_> {
             message: message.into(),
             line: u32::try_from(line).unwrap_or(u32::MAX),
             column: u32::try_from(column).unwrap_or(u32::MAX),
-            span: self.range(start..end),
+            span: range(start..end),
         }
     }
 
-    fn range(&self, span: Range<usize>) -> ByteRange {
-        let clamp = |offset: usize| u32::try_from(offset).unwrap_or(u32::MAX);
-        ByteRange {
-            start: clamp(span.start),
-            end: clamp(span.end).max(clamp(span.start)),
-        }
+    /// A span of the TOML body as a range of the file's bytes.
+    pub(super) fn range(&self, span: Range<usize>) -> ByteRange {
+        let start = (span.start + self.base).min(self.text.len());
+        let end = (span.end + self.base).clamp(start, self.text.len());
+        range(start..end)
     }
 }
 
-pub(super) fn parse(text: &str) -> Result<Settings, SettingsError> {
+fn range(span: Range<usize>) -> ByteRange {
+    let clamp = |offset: usize| u32::try_from(offset).unwrap_or(u32::MAX);
+    ByteRange {
+        start: clamp(span.start),
+        end: clamp(span.end).max(clamp(span.start)),
+    }
+}
+
+pub(super) fn parse(text: &str) -> Result<SettingsFile, SettingsError> {
     let (body, base) = match text.strip_prefix('\u{FEFF}') {
         Some(body) => (body, '\u{FEFF}'.len_utf8()),
         None => (text, 0),
     };
     let source = Source { text, base };
-    let raw: RawSettings = toml::from_str(body).map_err(|error| {
+    let invalid = |error: toml::de::Error| {
         let span = error.span().unwrap_or(0..0);
         source.error(span, error.message().trim_end())
-    })?;
-    validate(raw, &source)
+    };
+    let document = DeTable::parse(body).map_err(invalid)?;
+    let apps = document.get_ref().get("app").cloned();
+    let raw = RawSettings::deserialize(Deserializer::from(document)).map_err(invalid)?;
+    let settings = validate(raw, &source)?;
+    let apps = match apps {
+        Some(apps) => apps::parse(apps, &source)?,
+        None => Vec::new(),
+    };
+    Ok(SettingsFile { settings, apps })
 }
 
 fn validate(raw: RawSettings, source: &Source<'_>) -> Result<Settings, SettingsError> {

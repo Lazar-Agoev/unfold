@@ -1,14 +1,15 @@
-//! Writing files: rows, blocks, slots, edges, typed records, definitions, and their search rows.
+//! Writing files: rows, nodes, links, typed records, definitions, and their search rows.
 
+use rusqlite::params;
 use rustc_hash::FxHashSet;
-use unfold_core::{FileTypes, Key, Pairing, RepoPath, WrittenType};
+use unfold_core::{FileTypes, Key, Link, LinkTarget, Node, Pairing, RepoPath, WrittenType};
 
 use super::mirror::Mirror;
 use super::statements::Statements;
-use crate::codec::to_i64;
+use crate::codec::{flag_bits, position, range_columns, to_i64};
 use crate::error::Result;
 use crate::search::{CandidateKind, rowid};
-use crate::update::{Definition, FileChange, Structure};
+use crate::update::{Definition, FileChange};
 use crate::writer::CommitStats;
 
 /// One commit in progress: its statements, the key mirror, and what it has written so far.
@@ -28,15 +29,14 @@ impl Apply<'_, '_> {
         };
         self.delete_definitions(file_id)?;
         self.delete_types(file_id)?;
-        self.st.delete_edges.execute([file_id])?;
-        self.st.delete_slots.execute([file_id])?;
-        self.st.delete_blocks.execute([file_id])?;
+        self.st.delete_links.execute([file_id])?;
+        self.st.delete_nodes.execute([file_id])?;
         self.st.delete_file.execute([file_id])?;
         self.st.delete_facts.execute([path.as_str()])?;
-        if let Some(root) = self.mirror.key_id(Key::file_root(path).as_str()) {
+        if let Some(module) = self.mirror.key_id(Key::module(path).as_str()) {
             self.st
                 .delete_search
-                .execute([rowid(CandidateKind::File, root)])?;
+                .execute([rowid(CandidateKind::File, module)])?;
         }
         self.stats.files_removed += 1;
         Ok(())
@@ -44,7 +44,7 @@ impl Apply<'_, '_> {
 
     /// Removes every stored file that `files` does not name ([`super::Writer::replace`]).
     pub(crate) fn remove_files_except(&mut self, files: &[FileChange<'_>]) -> Result<()> {
-        let keep: FxHashSet<&str> = files.iter().map(|change| change.record.path.as_str()).collect();
+        let keep: FxHashSet<&str> = files.iter().map(|change| change.file.path.as_str()).collect();
         for path in self.mirror.file_paths_except(&keep) {
             self.remove_file(&path)?;
         }
@@ -54,17 +54,17 @@ impl Apply<'_, '_> {
     /// Writes the file's row and replaces each part the change carries.
     pub(crate) fn write_file(&mut self, change: &FileChange<'_>) -> Result<()> {
         let file_id = self.write_row(change)?;
-        if let Some(structure) = change.structure {
-            self.replace_structure(file_id, structure)?;
+        if let Some(nodes) = change.nodes {
+            self.replace_nodes(file_id, nodes)?;
         }
-        if let Some(edges) = change.edges {
-            self.replace_edges(file_id, edges)?;
+        if let Some(links) = change.links {
+            self.replace_links(file_id, links)?;
         }
         if let Some(types) = change.types {
             self.replace_types(file_id, types)?;
         }
         if let Some(definitions) = change.definitions {
-            self.replace_definitions(file_id, &change.record.path, definitions)?;
+            self.replace_definitions(file_id, &change.file.path, definitions)?;
         }
         self.stats.files_written += 1;
         Ok(())
@@ -72,18 +72,18 @@ impl Apply<'_, '_> {
 
     /// Updates or inserts the file's row, returning its ID. A new file also gets its search row.
     fn write_row(&mut self, change: &FileChange<'_>) -> Result<i64> {
-        let record = change.record;
-        let facts_hash = record.hash.as_ref().map(|hash| &hash.as_bytes()[..]);
+        let file = change.file;
+        let facts_hash = file.hash.as_ref().map(|hash| &hash.as_bytes()[..]);
         let disk_hash = change.disk.hash.as_ref().map(|hash| &hash.as_bytes()[..]);
         let size = change
             .disk
             .size
             .map(|size| to_i64("file size", size))
             .transpose()?;
-        let language = record.language.as_str();
-        let state = record.state.as_str();
-        let failure = record.failure.as_deref();
-        if let Some(file_id) = self.mirror.file_id(record.path.as_str()) {
+        let language = file.language.as_str();
+        let state = file.state.as_str();
+        let failure = file.failure.as_deref();
+        if let Some(file_id) = self.mirror.file_id(file.path.as_str()) {
             self.st.update_file.execute((
                 file_id,
                 language,
@@ -96,10 +96,10 @@ impl Apply<'_, '_> {
             ))?;
             return Ok(file_id);
         }
-        let file_id = self.mirror.add_file(&record.path);
+        let file_id = self.mirror.add_file(&file.path);
         self.st.insert_file.execute((
             file_id,
-            record.path.as_str(),
+            file.path.as_str(),
             language,
             state,
             facts_hash,
@@ -108,75 +108,89 @@ impl Apply<'_, '_> {
             size,
             failure,
         ))?;
-        let root = Key::file_root(&record.path);
-        let root_id = self.mirror.intern(&root, &mut self.st.insert_key)?;
+        let module = Key::module(&file.path);
+        let module_id = self.mirror.intern(&module, &mut self.st.insert_key)?;
         self.st.insert_search.execute((
-            rowid(CandidateKind::File, root_id),
-            record.path.file_name(),
+            rowid(CandidateKind::File, module_id),
+            file.path.file_name(),
             "",
-            record.path.as_str(),
-            "file",
-            root.as_str(),
+            file.path.as_str(),
+            "module",
+            module.as_str(),
         ))?;
         Ok(file_id)
     }
 
-    fn replace_structure(&mut self, file_id: i64, structure: Structure<'_>) -> Result<()> {
-        self.st.delete_blocks.execute([file_id])?;
-        self.st.delete_slots.execute([file_id])?;
-        for block in structure.blocks {
-            let key_id = self.mirror.intern(&block.key, &mut self.st.insert_key)?;
-            self.st.insert_block.execute((
+    fn replace_nodes(&mut self, file_id: i64, nodes: &[Node]) -> Result<()> {
+        self.st.delete_nodes.execute([file_id])?;
+        for (local_id, node) in nodes.iter().enumerate() {
+            let key_id = self.mirror.intern(&node.key, &mut self.st.insert_key)?;
+            let (head_start, head_end) = range_columns(node.head);
+            let (body_start, body_end) = range_columns(node.body);
+            let (doc_start, doc_end) = range_columns(node.doc);
+            let (stmt_start, stmt_end) = range_columns(node.stmt);
+            let (value_start, value_end) = range_columns(node.value);
+            self.st.insert_node.execute(params![
                 file_id,
-                block.local_id,
+                position("local ID", local_id)?,
                 key_id,
-                block.parent,
-                block.kind.as_str(),
-                block.role.map(|role| role.as_str()),
-                block.name.as_deref(),
-                block.range.start,
-                block.range.end,
-                block.lines.start,
-                block.lines.end,
-            ))?;
+                node.parent,
+                node.form.as_str(),
+                node.name.as_deref(),
+                node.range.start,
+                node.range.end,
+                node.lines.start,
+                node.lines.end,
+                head_start,
+                head_end,
+                body_start,
+                body_end,
+                doc_start,
+                doc_end,
+                stmt_start,
+                stmt_end,
+                value_start,
+                value_end,
+                node.binds.as_deref(),
+                node.role.map(|role| role.as_str()),
+                node.r#for,
+                flag_bits(node.flags),
+                node.target,
+            ])?;
         }
-        for slot in structure.slots {
-            // A single slot's index is stored as -1, so the primary key never contains NULL.
-            let index = slot.index.map_or(-1, i64::from);
-            self.st.insert_slot.execute((
-                file_id,
-                slot.block,
-                slot.slot.as_str(),
-                index,
-                slot.range.start,
-                slot.range.end,
-            ))?;
-        }
-        self.stats.blocks_written += structure.blocks.len() as u64;
-        self.stats.slots_written += structure.slots.len() as u64;
+        self.stats.nodes_written += nodes.len() as u64;
         Ok(())
     }
 
-    fn replace_edges(&mut self, file_id: i64, edges: &[unfold_core::Edge]) -> Result<()> {
-        self.st.delete_edges.execute([file_id])?;
-        for edge in edges {
-            let target = self
-                .mirror
-                .intern_opt(edge.target.as_ref(), &mut self.st.insert_key)?;
-            self.st.insert_edge.execute((
+    fn replace_links(&mut self, file_id: i64, links: &[Link]) -> Result<()> {
+        self.st.delete_links.execute([file_id])?;
+        for link in links {
+            let (target, module, reason) = match &link.to {
+                LinkTarget::Project(key) => (
+                    Some(self.mirror.intern(key, &mut self.st.insert_key)?),
+                    None,
+                    None,
+                ),
+                LinkTarget::Library(label) | LinkTarget::Builtin(label) => (None, Some(label.as_str()), None),
+                LinkTarget::Unknown(reason) => (None, None, Some(reason.as_str())),
+            };
+            self.st.insert_link.execute(params![
                 file_id,
-                edge.source,
-                edge.seq,
-                edge.kind.as_str(),
+                link.from,
+                link.seq,
+                link.kind.as_str(),
+                link.range.start,
+                link.range.end,
+                &*link.text,
+                link.to.outcome().as_str(),
                 target,
-                &*edge.text,
-                edge.resolution.as_str(),
-                edge.reason.map(|reason| reason.as_str()),
-                edge.module.as_ref().map(|module| module.as_str()),
-                edge.position,
-            ))?;
+                module,
+                reason,
+                link.implements,
+                link.bound,
+            ])?;
         }
-        self.stats.edges_written += edges.len() as u64;
+        self.stats.links_written += links.len() as u64;
         Ok(())
     }
 
@@ -186,8 +200,6 @@ impl Apply<'_, '_> {
         self.st.delete_parameters.execute([file_id])?;
         self.st.delete_members.execute([file_id])?;
         self.st.delete_arguments.execute([file_id])?;
-        self.st.delete_results.execute([file_id])?;
-        self.st.delete_type_links.execute([file_id])?;
         Ok(())
     }
 
@@ -195,44 +207,45 @@ impl Apply<'_, '_> {
         self.delete_types(file_id)?;
         for signature in &types.signatures {
             let returns = signature.returns.as_ref();
-            self.st.insert_signature.execute((
-                file_id,
-                signature.block,
-                text(returns),
-                start(returns),
-                end(returns),
-            ))?;
+            let (start, end) = written_range(returns);
+            self.st
+                .insert_signature
+                .execute((file_id, signature.node, text(returns), start, end))?;
         }
         for parameter in &types.parameters {
             let ty = parameter.ty.as_ref();
+            let (type_start, type_end) = written_range(ty);
             let flags = u8::from(parameter.optional) | (u8::from(parameter.default) << 1);
             self.st.insert_parameter.execute((
                 file_id,
-                parameter.block,
+                parameter.node,
                 parameter.index,
+                parameter.range.start,
+                parameter.range.end,
                 parameter.kind.as_str(),
                 parameter.name.as_deref(),
                 flags,
                 text(ty),
-                start(ty),
-                end(ty),
+                type_start,
+                type_end,
             ))?;
         }
         for member in &types.members {
             let ty = member.ty.as_ref();
+            let (type_start, type_end) = written_range(ty);
             let flags = u8::from(member.optional)
                 | (u8::from(member.readonly) << 1)
                 | (u8::from(member.default) << 2);
             self.st.insert_member.execute((
                 file_id,
-                member.block,
+                member.node,
                 member.index,
                 member.kind.as_str(),
                 member.name.as_deref(),
                 flags,
                 text(ty),
-                start(ty),
-                end(ty),
+                type_start,
+                type_end,
                 member.value.as_deref(),
             ))?;
         }
@@ -246,6 +259,8 @@ impl Apply<'_, '_> {
                 file_id,
                 argument.call,
                 argument.index,
+                argument.range.start,
+                argument.range.end,
                 argument.expand.map(|expand| expand.as_str()),
                 argument.keyword.as_deref(),
                 parameter,
@@ -253,48 +268,9 @@ impl Apply<'_, '_> {
                 argument.bound,
             ))?;
         }
-        for result in &types.results {
-            self.st.insert_result.execute((
-                file_id,
-                result.call,
-                result.binding.as_str(),
-                result.awaited,
-                result.target,
-                result.position,
-                result.bound,
-            ))?;
-        }
-        // A link's sequence number is its position among its block's links.
-        let mut previous: Option<(u32, u32)> = None;
-        for link in &types.type_links {
-            let seq = match previous {
-                Some((block, seq)) if block == link.block => seq + 1,
-                _ => 0,
-            };
-            previous = Some((link.block, seq));
-            let target = self
-                .mirror
-                .intern_opt(link.target.as_ref(), &mut self.st.insert_key)?;
-            self.st.insert_type_link.execute((
-                file_id,
-                link.block,
-                seq,
-                link.range.start,
-                link.range.end,
-                &*link.text,
-                link.resolution.as_str(),
-                target,
-                link.reason.map(|reason| reason.as_str()),
-                link.module.as_ref().map(|module| module.as_str()),
-                link.heritage.map(|heritage| heritage.as_str()),
-            ))?;
-        }
-        self.stats.typed_records_written += (types.signatures.len()
-            + types.parameters.len()
-            + types.members.len()
-            + types.arguments.len()
-            + types.results.len()
-            + types.type_links.len()) as u64;
+        self.stats.typed_records_written +=
+            (types.signatures.len() + types.parameters.len() + types.members.len() + types.arguments.len())
+                as u64;
         Ok(())
     }
 
@@ -311,9 +287,10 @@ impl Apply<'_, '_> {
             self.st.insert_definition.execute((
                 key_id,
                 file_id,
-                definition.local_id,
+                definition.node,
                 kind,
                 &*definition.qualified_name,
+                &*definition.label,
             ))?;
             self.st.insert_search.execute((
                 rowid(CandidateKind::Definition, key_id),
@@ -336,15 +313,12 @@ impl Apply<'_, '_> {
     }
 }
 
-/// A written type's text, start, and end columns.
+/// A written type's text column.
 fn text(written: Option<&WrittenType>) -> Option<&str> {
     written.map(|written| &*written.text)
 }
 
-fn start(written: Option<&WrittenType>) -> Option<u32> {
-    written.map(|written| written.range.start)
-}
-
-fn end(written: Option<&WrittenType>) -> Option<u32> {
-    written.map(|written| written.range.end)
+/// A written type's start and end columns.
+fn written_range(written: Option<&WrittenType>) -> (Option<u32>, Option<u32>) {
+    range_columns(written.map(|written| written.range))
 }

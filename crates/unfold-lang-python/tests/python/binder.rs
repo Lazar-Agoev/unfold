@@ -4,7 +4,7 @@
 
 use unfold_core::vocab::{CallRole, Form, LinkKind, Outcome, Reason};
 use unfold_core::{Key, Link, LinkTarget};
-use unfold_engine::settings::Settings;
+use unfold_engine::settings::{Settings, SettingsFile};
 
 use crate::common::{Compiled, compile_files, compile_files_with, testdata};
 
@@ -13,7 +13,8 @@ fn graph(sources: &[(&str, &str)]) -> Compiled {
 }
 
 fn graph_with(sources: &[(&str, &str)], settings: &str) -> Compiled {
-    compile_files(sources, &Settings::parse(settings).expect("valid settings")).valid()
+    let settings = SettingsFile::parse(settings).expect("valid settings").settings;
+    compile_files(sources, &settings).valid()
 }
 
 fn fixture(name: &str) -> String {

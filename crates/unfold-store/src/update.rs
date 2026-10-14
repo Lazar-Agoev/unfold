@@ -8,54 +8,45 @@
 //!
 //! | Field | Contents | Typical size |
 //! | --- | --- | --- |
-//! | [`Update::files`] | One [`FileChange`] per file whose row, structure, edges, or definitions differ | The edited files, plus files whose edges or definitions changed through linking |
+//! | [`Update::files`] | One [`FileChange`] per file whose row, nodes, links, typed records, or definitions differ | The edited files, plus files whose links changed through linking |
 //! | [`Update::removed_files`] | Paths no longer indexed (deleted or excluded) | Usually empty |
 //! | [`Update::inputs`] | The complete new input set, when any input changed | Usually `None` |
-//! | [`Update::entrances`] | Entrances added or changed (by key), and keys of entrances that disappeared | Usually empty |
-//! | [`Update::applications`], [`Update::memberships`] | The complete new sets, when they changed | Usually `None` |
-//! | [`Update::launches`] | The launch records beside the graph, when they changed | Usually `None` |
+//! | [`Update::apps`] | The complete new apps of `unfold.toml`, with their entrances and target states, when any changed | Usually `None` |
 //! | [`Update::meta`] | The graph metadata (producers, settings, time, completeness) | Every commit |
 //!
-//! A first compile is an update in which every file is new: [`FileChange::full`] for each file
-//! and every entrance in `upserts`. [`FileChange::between`] and [`EntranceChanges::between`]
-//! compute the parts of a change from the previous and new records, so the engine never has to
-//! track which part changed itself.
+//! A first compile is an update in which every file is new: [`FileChange::full`] for each
+//! file. [`FileChange::between`] computes the parts of a change from the previous and new file
+//! graphs, so the engine never has to track which part changed itself.
 //!
 //! # What the store does with each part
 //!
 //! - A [`FileChange`] always rewrites the file's row (record and disk stamp). Each optional
-//!   part replaces that part of the file wholesale: `structure` its blocks and slots, `edges`
-//!   its edges, `types` its typed records (signatures, parameters, members, arguments, results,
-//!   and type links), and `definitions` its reader definitions and their search rows. A part left
-//!   `None` is not touched, so an edit that changes only edges in a file costs one row update
-//!   and that file's edges.
-//! - Local IDs renumber when a file's structure changes. If any definition's `local_id` moved,
-//!   the change must also carry `definitions`; [`FileChange::between`] cannot know that, so the
-//!   engine compares its definition catalog per file.
-//! - Removing a file deletes its row, blocks, slots, edges, typed records, definitions, search
-//!   rows, and cached facts.
-//!   Entrances declared in it are removed only through [`Update::entrances`], because entrances
-//!   are cross-file facts the engine recomputes.
-//! - Entrances are diffed by key rather than replaced as a set. An entrance's row ID is its
-//!   key's ID, so IDs, targets, and memberships stay put for unchanged entrances, and a body edit
-//!   that shifts one route's evidence rewrites that route only. Applications and memberships
-//!   are tiny derived sets and are replaced whole when they change.
+//!   part replaces that part of the file wholesale: `nodes` its nodes, `links` its links,
+//!   `types` its typed records (signatures, parameters, members, and arguments), and
+//!   `definitions` its catalog entries and their search rows. A part left `None` is not
+//!   touched, so an edit that changes only links in a file costs one row update and that
+//!   file's links.
+//! - Links in other files that reach a replaced file's nodes are untouched: they hold the
+//!   target's interned key, not a row of the target's file.
+//! - Local IDs renumber when a file's nodes change. If any definition's local ID moved, the
+//!   change must also carry `definitions`; [`FileChange::between`] cannot know that, so the
+//!   caller compares its definition catalog per file.
+//! - Removing a file deletes its row, nodes, links, typed records, definitions, search rows,
+//!   and cached facts.
+//! - Apps are a small set read from `unfold.toml` and resolved after each compile; they are
+//!   replaced whole when anything in them changes, entrances and target states included.
 //! - Keys are interned as they are written and are never deleted, so a key keeps its ID for
 //!   the life of the database.
 //!
-//! [`crate::Writer::replace`] treats an update as the whole graph instead: stored files and
-//! entrances it does not name are removed too.
+//! [`crate::Writer::replace`] treats an update as the whole graph instead: stored files it
+//! does not name are removed, and absent inputs or apps mean empty sets.
 //!
 //! The whole update is applied in one transaction: readers see the previous graph or the new
 //! one, never a mixture. The store trusts the update: the engine validates the graph before it
 //! commits.
 
-use rustc_hash::{FxHashMap, FxHashSet};
-use unfold_core::vocab::BlockKind;
-use unfold_core::{
-    Block, ContentHash, Edge, Entrance, FileGraph, FileRecord, FileTypes, InputRecord, Key, Launches,
-    RepoPath, Slot,
-};
+use unfold_core::vocab::NodeKind;
+use unfold_core::{App, ContentHash, File, FileGraph, FileTypes, Input, Key, Link, Node, RepoPath};
 
 /// One commit's worth of changes. See the [module documentation](self).
 #[derive(Debug, Clone, Default)]
@@ -65,15 +56,9 @@ pub struct Update<'a> {
     /// Files no longer indexed. Applied before [`Update::files`].
     pub removed_files: Vec<RepoPath>,
     /// The complete new set of inputs, or `None` when the inputs did not change.
-    pub inputs: Option<&'a [InputRecord]>,
-    /// Entrances added, changed, or removed.
-    pub entrances: EntranceChanges<'a>,
-    /// The complete new set of applications, or `None` when unchanged.
-    pub applications: Option<&'a [Application]>,
-    /// The complete new set of memberships, or `None` when unchanged.
-    pub memberships: Option<&'a [Membership]>,
-    /// The new launch records, or `None` when unchanged.
-    pub launches: Option<&'a Launches>,
+    pub inputs: Option<&'a [Input]>,
+    /// The complete new apps in file order, or `None` when they did not change.
+    pub apps: Option<&'a [App]>,
     /// New graph metadata, or `None` to keep what is stored.
     pub meta: Option<GraphMeta>,
 }
@@ -84,10 +69,7 @@ impl Update<'_> {
         self.files.is_empty()
             && self.removed_files.is_empty()
             && self.inputs.is_none()
-            && self.entrances.is_empty()
-            && self.applications.is_none()
-            && self.memberships.is_none()
-            && self.launches.is_none()
+            && self.apps.is_none()
             && self.meta.is_none()
     }
 }
@@ -105,26 +87,17 @@ pub struct DiskStamp {
     pub size: Option<u64>,
 }
 
-/// A file's blocks and slots, written together because slots refer to blocks by local ID.
-#[derive(Debug, Clone, Copy)]
-pub struct Structure<'a> {
-    /// Blocks in preorder.
-    pub blocks: &'a [Block],
-    /// Slots ordered by block, then start.
-    pub slots: &'a [Slot],
-}
-
 /// The changes to one file. The row is always rewritten; each `Some` part replaces that part.
 #[derive(Debug, Clone)]
 pub struct FileChange<'a> {
     /// The file's record. Its `hash` is the hash of the bytes its facts came from.
-    pub record: &'a FileRecord,
+    pub file: &'a File,
     /// The file's state on disk.
     pub disk: DiskStamp,
-    /// New blocks and slots, or `None` to keep the stored ones.
-    pub structure: Option<Structure<'a>>,
-    /// New edges, or `None` to keep the stored ones.
-    pub edges: Option<&'a [Edge]>,
+    /// New nodes in preorder, or `None` to keep the stored ones.
+    pub nodes: Option<&'a [Node]>,
+    /// New links, or `None` to keep the stored ones.
+    pub links: Option<&'a [Link]>,
     /// New typed records, or `None` to keep the stored ones.
     pub types: Option<&'a FileTypes>,
     /// New definitions for this file, or `None` to keep the stored ones.
@@ -136,32 +109,24 @@ impl<'a> FileChange<'a> {
     /// caller.
     pub fn full(file: &'a FileGraph, disk: DiskStamp) -> Self {
         Self {
-            record: &file.file,
+            file: &file.file,
             disk,
-            structure: Some(Structure {
-                blocks: &file.blocks,
-                slots: &file.slots,
-            }),
-            edges: Some(&file.edges),
+            nodes: Some(&file.nodes),
+            links: Some(&file.links),
             types: Some(&file.types),
             definitions: None,
         }
     }
 
-    /// The parts of `current` that differ from `previous`. Blocks and slots are compared
-    /// together, edges and typed records separately; definitions are left to the caller. The row is always part
-    /// of the change, so a file whose only difference is its disk stamp yields a change with
-    /// no parts.
+    /// The parts of `current` that differ from `previous`; definitions are left to the caller.
+    /// The row is always part of the change, so a file whose only difference is its disk stamp
+    /// yields a change with no parts.
     pub fn between(previous: &FileGraph, current: &'a FileGraph, disk: DiskStamp) -> Self {
-        let structure_changed = previous.blocks != current.blocks || previous.slots != current.slots;
         Self {
-            record: &current.file,
+            file: &current.file,
             disk,
-            structure: structure_changed.then_some(Structure {
-                blocks: &current.blocks,
-                slots: &current.slots,
-            }),
-            edges: (previous.edges != current.edges).then_some(&current.edges[..]),
+            nodes: (previous.nodes != current.nodes).then_some(&current.nodes[..]),
+            links: (previous.links != current.links).then_some(&current.links[..]),
             types: (previous.types != current.types).then_some(&current.types),
             definitions: None,
         }
@@ -169,163 +134,32 @@ impl<'a> FileChange<'a> {
 
     /// Whether the change touches anything besides the file's row.
     pub fn has_parts(&self) -> bool {
-        self.structure.is_some() || self.edges.is_some() || self.types.is_some() || self.definitions.is_some()
+        self.nodes.is_some() || self.links.is_some() || self.types.is_some() || self.definitions.is_some()
     }
 }
 
-/// Entrances to write and entrances to delete, by key.
-#[derive(Debug, Clone, Default)]
-pub struct EntranceChanges<'a> {
-    /// Entrances that are new or whose fields or targets changed. Each replaces the stored
-    /// entrance with the same key.
-    pub upserts: Vec<&'a Entrance>,
-    /// Keys of entrances that no longer exist. Their targets and memberships go with them.
-    pub removals: Vec<Key>,
-}
-
-impl<'a> EntranceChanges<'a> {
-    /// Every entrance in `entrances`, as for a first compile.
-    pub fn all(entrances: &'a [Entrance]) -> Self {
-        Self {
-            upserts: entrances.iter().collect(),
-            removals: Vec::new(),
-        }
-    }
-
-    /// The changes that turn `previous` into `current`, matched by key. Removals and upserts
-    /// keep the order of their input lists.
-    pub fn between(previous: &[Entrance], current: &'a [Entrance]) -> Self {
-        let before: FxHashMap<&str, &Entrance> = previous
-            .iter()
-            .map(|entrance| (entrance.key.as_str(), entrance))
-            .collect();
-        let after: FxHashSet<&str> = current.iter().map(|entrance| entrance.key.as_str()).collect();
-        Self {
-            upserts: current
-                .iter()
-                .filter(|entrance| before.get(entrance.key.as_str()) != Some(entrance))
-                .collect(),
-            removals: previous
-                .iter()
-                .filter(|entrance| !after.contains(entrance.key.as_str()))
-                .map(|entrance| entrance.key.clone())
-                .collect(),
-        }
-    }
-
-    /// Whether nothing changes.
-    pub fn is_empty(&self) -> bool {
-        self.upserts.is_empty() && self.removals.is_empty()
-    }
-}
-
-/// A reader definition (docs/reader.md#derived-views): a block in the definition catalog, with its
-/// qualified name and the label search shows. The reader computes these; the store keeps
-/// them and indexes them for search.
+/// An entry of the reader's definition catalog: a definition that can be a card, with its
+/// qualified name and the label search shows. The reader computes these; the store keeps them
+/// and indexes them for search.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Definition {
-    /// The block's structural key.
+    /// The node's structural key.
     pub key: Key,
-    /// The block's local ID in its file.
-    pub local_id: u32,
-    /// The block's kind.
-    pub kind: BlockKind,
-    /// The name with its enclosing classes and callables, such as `OrderService.place`.
+    /// The node's local ID in its file.
+    pub node: u32,
+    /// The node's kind: `module`, `class`, `function`, or `type`.
+    pub kind: NodeKind,
+    /// The name with its enclosing definitions, such as `OrderService.place`.
     pub qualified_name: Box<str>,
-    /// The display label: the block's name, or for an unnamed callback a label taken from its
-    /// callee.
+    /// The display label: the node's name, or for an inline function a label taken from where
+    /// it is written, such as "callback to `ordersRouter.post`".
     pub label: Box<str>,
 }
-
-/// An application (docs/reader.md#derived-views): an `[[application]]` table, or launches that
-/// start the same code.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Application {
-    /// The `[[application]]` ID; for an inferred application, its startup's key, or the key of
-    /// its one launch when that launch starts nothing Unfold resolved.
-    pub id: Box<str>,
-    /// The display name.
-    pub name: Box<str>,
-    /// The description.
-    pub description: Option<Box<str>>,
-    /// Whether an `[[application]]` table declares it.
-    pub declared: bool,
-    /// Its category.
-    pub category: Category,
-}
-
-/// An application's category, in display order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Category {
-    /// Some launch can't be read and has no target set by hand.
-    NeedsLook,
-    /// It has routes or serves an ASGI application.
-    Services,
-    /// Everything else.
-    Workers,
-    /// Some launch has a schedule, or it has scheduled entrances.
-    Scheduled,
-}
-
-/// Why an entrance belongs to an application.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Basis {
-    /// A launch's activation (or, for a route, its application binding) proves it.
-    Proven,
-    /// Configuration says so: an `application` key, or an override.
-    Declared,
-}
-
-/// An entrance (a launch or any other) that belongs to an application.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Membership {
-    /// The entrance's key.
-    pub entrance: Key,
-    /// The application's ID.
-    pub application: Box<str>,
-    /// Why it belongs.
-    pub basis: Basis,
-}
-
-macro_rules! text_vocab {
-    ($name:ident { $($variant:ident = $text:literal),+ $(,)? }) => {
-        impl $name {
-            /// The stored text.
-            pub const fn as_str(self) -> &'static str {
-                match self {
-                    $(Self::$variant => $text,)+
-                }
-            }
-        }
-
-        impl std::str::FromStr for $name {
-            type Err = ();
-
-            fn from_str(text: &str) -> Result<Self, ()> {
-                match text {
-                    $($text => Ok(Self::$variant),)+
-                    _ => Err(()),
-                }
-            }
-        }
-    };
-}
-
-text_vocab!(Category {
-    NeedsLook = "needs_look",
-    Services = "services",
-    Workers = "workers",
-    Scheduled = "scheduled",
-});
-text_vocab!(Basis {
-    Proven = "proven",
-    Declared = "declared",
-});
 
 /// Graph-wide metadata the engine records with each commit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GraphMeta {
-    /// The front ends and detectors that produced the graph, as JSON written by the engine.
+    /// The front ends that produced the graph, as JSON written by the engine.
     pub producers: Box<str>,
     /// The fingerprint of the effective settings.
     pub settings_hash: ContentHash,

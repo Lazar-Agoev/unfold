@@ -6,7 +6,7 @@ use std::path::Path;
 use crate::common::{compile_files, testdata};
 use unfold_core::vocab::{Form, LinkKind};
 use unfold_core::{RepoPath, Snapshot};
-use unfold_engine::settings::{PythonVersion, Settings};
+use unfold_engine::settings::{PythonVersion, Settings, SettingsFile};
 use unfold_engine::{Language, SourceFailure};
 use unfold_lang_python::Python;
 
@@ -62,10 +62,11 @@ fn syntax_newer_than_the_configured_version_fails() {
 
 #[test]
 fn the_configured_project_version_applies_per_file() {
-    let settings = Settings::parse(
+    let settings = SettingsFile::parse(
         "[[python.project]]\nroot = \"old\"\nversion = \"3.12\"\n[[python.project]]\nroot = \"new\"\n",
     )
-    .expect("test input");
+    .expect("test input")
+    .settings;
     let text = "def make[T = int](): pass\n";
     let compiled = compile_files(
         &[("old/a.py", text), ("new/a.py", text), ("loose.py", text)],

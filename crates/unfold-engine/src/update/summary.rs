@@ -20,6 +20,8 @@ pub struct ChangeSummary {
     pub changed_keys: Vec<Key>,
     /// Whether the input set or any input's fingerprint changed.
     pub inputs_changed: bool,
+    /// Whether the apps, their entrances, or the states of their code changed.
+    pub apps_changed: bool,
 }
 
 impl ChangeSummary {
@@ -30,6 +32,7 @@ impl ChangeSummary {
     pub fn between(previous: &Graph, current: &Graph) -> Self {
         let mut summary = Self {
             inputs_changed: previous.inputs != current.inputs,
+            apps_changed: previous.apps != current.apps,
             ..Self::default()
         };
         // Pair the files by path (both lists are in path order), then compare each pair.
@@ -73,7 +76,10 @@ impl ChangeSummary {
 
     /// Whether nothing changed.
     pub fn is_empty(&self) -> bool {
-        self.changed_files.is_empty() && self.removed_files.is_empty() && !self.inputs_changed
+        self.changed_files.is_empty()
+            && self.removed_files.is_empty()
+            && !self.inputs_changed
+            && !self.apps_changed
     }
 }
 

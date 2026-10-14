@@ -1,6 +1,6 @@
 //! The per-file facts cache.
 
-use unfold_core::testkit::sample::sample;
+use unfold_core::testkit::sample::shop;
 use unfold_core::{ContentHash, RepoPath};
 use unfold_store::{FactsStatus, NewFacts, Store, StoreConfig};
 
@@ -99,7 +99,7 @@ fn loads_the_facts_the_stored_graph_was_built_from() {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("graph.sqlite");
     let mut store = Store::open(&db, &StoreConfig::new(ENGINE)).unwrap();
-    let prepared = Prepared::new(sample().build());
+    let prepared = Prepared::new(shop().build());
     store.writer.commit(&prepared.first_compile()).unwrap();
     let settings = hash("settings");
     let mut blobs = Vec::new();
@@ -131,9 +131,14 @@ fn loads_the_facts_the_stored_graph_was_built_from() {
     let paths: Vec<&str> = loaded.iter().map(|entry| entry.path.as_str()).collect();
     assert_eq!(
         paths,
-        ["jobs/tasks.py", "src/helper.ts", "src/orders.ts", "src/server.ts"]
+        [
+            "shop/payments.py",
+            "shop/service.py",
+            "shop/store.py",
+            "src/orders.ts"
+        ]
     );
-    assert_eq!(loaded[2].facts, b"facts of src/orders.ts");
+    assert_eq!(loaded[3].facts, b"facts of src/orders.ts");
     assert!(
         loaded
             .iter()
@@ -149,21 +154,21 @@ fn loads_the_facts_the_stored_graph_was_built_from() {
 #[test]
 fn removing_a_file_prunes_its_facts() {
     let (_dir, mut store) = temp_store();
-    let before = Prepared::new(sample().build());
+    let before = Prepared::new(shop().build());
     store.writer.commit(&before.first_compile()).unwrap();
-    let tasks = RepoPath::new("jobs/tasks.py").unwrap();
-    let helper = RepoPath::new("src/helper.ts").unwrap();
-    put(&mut store, &tasks, "t1", "s", FactsStatus::Parsed);
-    put(&mut store, &tasks, "t2", "s", FactsStatus::Failed);
-    put(&mut store, &helper, "h1", "s", FactsStatus::Parsed);
+    let removed = RepoPath::new("shop/store.py").unwrap();
+    let kept = RepoPath::new("src/orders.ts").unwrap();
+    put(&mut store, &removed, "t1", "s", FactsStatus::Parsed);
+    put(&mut store, &removed, "t2", "s", FactsStatus::Failed);
+    put(&mut store, &kept, "h1", "s", FactsStatus::Parsed);
 
     let mut graph = before.graph.clone();
-    graph.files.retain(|file| file.file.path != tasks);
+    graph.files.retain(|file| file.file.path != removed);
     let after = Prepared::new(graph);
     store.writer.commit(&after.since(&before)).unwrap();
 
-    assert_eq!(cached(&store, &tasks, "t1", "s"), None);
-    assert_eq!(cached(&store, &tasks, "t2", "s"), None);
-    assert!(cached(&store, &helper, "h1", "s").is_some());
+    assert_eq!(cached(&store, &removed, "t1", "s"), None);
+    assert_eq!(cached(&store, &removed, "t2", "s"), None);
+    assert!(cached(&store, &kept, "h1", "s").is_some());
     assert_eq!(store.readers.get().unwrap().stats().unwrap().facts_entries, 1);
 }

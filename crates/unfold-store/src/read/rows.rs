@@ -1,7 +1,7 @@
 //! The small row types reader queries return where no core type fits.
 
-use unfold_core::vocab::{BlockKind, EdgeKind, FileState, Heritage, Language};
-use unfold_core::{Block, ByteRange, ContentHash, FileRecord, Key, RepoPath};
+use unfold_core::vocab::{FileState, Language, NodeKind};
+use unfold_core::{ContentHash, File, Key, Link, Node, RepoPath};
 
 use crate::search::CandidateKind;
 use crate::update::{DiskStamp, GraphMeta};
@@ -25,8 +25,8 @@ pub struct FileRow {
 
 impl FileRow {
     /// The graph-model record.
-    pub fn record(&self) -> FileRecord {
-        FileRecord {
+    pub fn record(&self) -> File {
+        File {
             path: self.path.clone(),
             language: self.language,
             state: self.state,
@@ -36,96 +36,79 @@ impl FileRow {
     }
 }
 
-/// A block with the file it belongs to.
+/// A node with the file it belongs to and its local ID there.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LocatedBlock {
+pub struct LocatedNode {
     /// The file's path.
     pub path: RepoPath,
     /// The file's language.
     pub language: Language,
-    /// The block.
-    pub block: Block,
+    /// The node's local ID: its position in the file's preorder.
+    pub id: u32,
+    /// The node.
+    pub node: Node,
 }
 
-/// A type link resolved to some declaration, seen from the declaration: where it is used.
+/// A link that reaches some project key, seen from that key: a caller, or a use of a type.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TypeUse {
+pub struct IncomingLink {
     /// The link's file.
     pub path: RepoPath,
     /// The file's language.
     pub language: Language,
-    /// The block the link is sourced at (the innermost block around the written name).
-    pub block: Block,
-    /// The written name's byte range.
-    pub range: ByteRange,
-    /// The name as written.
-    pub text: Box<str>,
-    /// When the name is a base its block extends or implements.
-    pub heritage: Option<Heritage>,
+    /// The key of the node the link starts at.
+    pub from: Key,
+    /// The link as stored; its `from` is the local ID of that node in `path`.
+    pub link: Link,
 }
 
-/// A resolved edge into some target, seen from the target: who calls, constructs, imports,
-/// or passes it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IncomingEdge {
-    /// The source occurrence's file.
-    pub source_path: RepoPath,
-    /// The source occurrence's key.
-    pub source: Key,
-    /// The source occurrence's local ID in its file.
-    pub source_local_id: u32,
-    /// The edge's position among the source's edges.
-    pub seq: u32,
-    /// The relationship.
-    pub kind: EdgeKind,
-    /// The written callee, argument, or specifier.
-    pub text: Box<str>,
-    /// The argument position of a reference.
-    pub position: Option<u32>,
-}
-
-/// A stored definition (docs/reader.md#derived-views).
+/// An entry of the definition catalog.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefinitionRow {
-    /// The block's key.
+    /// The node's key.
     pub key: Key,
-    /// The block's file.
+    /// The node's file.
     pub path: RepoPath,
-    /// The block's local ID in its file.
-    pub local_id: u32,
-    /// The block's kind.
-    pub kind: BlockKind,
+    /// The node's local ID in its file.
+    pub node: u32,
+    /// The node's kind.
+    pub kind: NodeKind,
     /// The qualified name.
     pub qualified_name: Box<str>,
     /// The display label.
     pub label: Box<str>,
 }
 
-/// One search candidate. Ranking is the caller's job.
+/// One search candidate, in the index's relevance order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchCandidate {
     /// What the candidate is.
     pub kind: CandidateKind,
-    /// The definition's or entrance's key, or the file's root key.
+    /// The definition's, app's, or entrance's key, or the file's module key.
     pub key: Key,
     /// The indexed name (see [`crate::search`]).
     pub name: Box<str>,
     /// The indexed qualified name.
     pub qualified_name: Box<str>,
-    /// The file or evidence path.
+    /// The file path; empty for apps and entrances.
     pub path: Box<str>,
-    /// The block kind, entrance kind, or `file`.
+    /// The node kind, `app`, `entrance`, or `module`.
     pub item_kind: Box<str>,
 }
 
 /// A position in a paginated result. Opaque: pass back the `next` of the previous page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Cursor(pub(crate) [i64; 3]);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Cursor {
+    /// The path of the last item returned.
+    pub(crate) path: Box<str>,
+    /// Its position within that file: a local ID, and a link's sequence number (0 otherwise).
+    pub(crate) at: [i64; 2],
+}
 
 /// One page of a paginated result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Page<T> {
-    /// The items, in a stable order.
+    /// The items, in path order and then source order within a file.
     pub items: Vec<T>,
     /// Where the next page starts, or `None` after the last page.
     pub next: Option<Cursor>,
@@ -142,40 +125,30 @@ pub struct IndexStats {
     pub files_failed: u64,
     /// Fingerprinted inputs.
     pub inputs: u64,
-    /// Blocks.
-    pub blocks: u64,
-    /// Slots.
-    pub slots: u64,
-    /// Resolved edges.
-    pub edges_resolved: u64,
-    /// External edges.
-    pub edges_external: u64,
-    /// Unresolved edges.
-    pub edges_unresolved: u64,
+    /// Nodes.
+    pub nodes: u64,
+    /// Links to a project definition or module.
+    pub links_project: u64,
+    /// Links to a library.
+    pub links_library: u64,
+    /// Links to the language's builtins.
+    pub links_builtin: u64,
+    /// Links that reach nothing proven.
+    pub links_unknown: u64,
+    /// Typed records (signatures, parameters, members, and arguments).
+    pub typed_records: u64,
+    /// Apps.
+    pub apps: u64,
     /// Entrances.
     pub entrances: u64,
-    /// Definitions.
+    /// Definitions in the catalog.
     pub definitions: u64,
-    /// Applications.
-    pub applications: u64,
     /// Interned keys (never deleted, so at least the live count).
     pub keys: u64,
     /// Cached facts entries.
     pub facts_entries: u64,
     /// The database file's size in bytes (pages in use, excluding the write-ahead log).
     pub database_bytes: u64,
-}
-
-/// The import edges of one language's files.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ImportSummary {
-    /// Imports that resolve to an indexed file.
-    pub resolved: u64,
-    /// Every import.
-    pub total: u64,
-    /// The module labels of external imports with how many imports name each, most named
-    /// first (ties by label).
-    pub external: Vec<(Box<str>, u64)>,
 }
 
 /// The `meta` table.

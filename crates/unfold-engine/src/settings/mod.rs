@@ -1,14 +1,22 @@
-//! Project settings: the validated contents of `unfold.toml` (docs/engine.md#shared-config).
+//! Project settings: the validated contents of `unfold.toml` (docs/engine.md#shared-config), and
+//! edits that keep its comments and formatting ([`edit`]).
 //!
-//! [`Settings::load`] reads the file (defaults when it is absent) and [`Settings::parse`] checks
-//! it strictly: unknown keys, wrong types, and invalid values are errors with a line and column.
-//! The model is plain data plus the compiled scope matcher. Editing the file while preserving
-//! comments is the workspace's job, not this module's.
+//! [`SettingsFile::load`] reads the file (defaults when it is absent) and
+//! [`SettingsFile::parse`] checks it strictly: unknown keys, wrong types, and invalid values are
+//! errors with a line and column. The file holds two things:
+//!
+//! - [`Settings`], which shape the compile: `languages`, `[scope]`, `[[python.project]]`, and
+//!   `[evidence]`. The model is plain data plus the compiled scope matcher.
+//! - The `[[app]]` tables ([`AppEntry`]), which never shape it. A bad app or entrance doesn't
+//!   fail the file: it is listed with its problem and kept out of the graph.
 //!
 //! [`Settings::hash`] fingerprints everything that can change a compile; languages hash only the
 //! part that affects one file, such as [`Settings::python_hash`], so a settings edit re-extracts
-//! only the files it touches.
+//! only the files it touches. Apps are outside [`Settings`], so changing them never recompiles.
 
+mod apps;
+mod diff;
+pub mod edit;
 mod evidence;
 mod folder;
 mod hash;
@@ -21,6 +29,7 @@ use serde::Serialize;
 use unfold_core::RepoPath;
 use unfold_core::vocab::Language;
 
+pub use apps::{AppEntry, EntranceEntry, EntryProblem, EntryProblemKind};
 pub use evidence::Evidence;
 pub use folder::{FolderPath, FolderPathError};
 pub use hash::{SettingsHash, SettingsHasher};
@@ -30,7 +39,45 @@ pub use scope::{Scope, ScopePatternError, ScopeStatus};
 /// Where the settings file lives, relative to the open folder.
 pub const SETTINGS_PATH: &str = "unfold.toml";
 
-/// The validated settings of one open folder. [`Settings::default`] is what an absent file means.
+/// The whole of `unfold.toml`: the compile settings and the apps. [`SettingsFile::default`] is
+/// what an absent file means.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SettingsFile {
+    /// What shapes the compile.
+    pub settings: Settings,
+    /// The `[[app]]` tables in file order, each with its entrances and any problem.
+    pub apps: Vec<AppEntry>,
+}
+
+impl SettingsFile {
+    /// Reads `unfold.toml` under `root`. An absent file means the defaults.
+    pub fn load(root: &Path) -> Result<Self, SettingsError> {
+        let path = root.join(SETTINGS_PATH);
+        match std::fs::read(&path) {
+            Ok(bytes) => Self::parse_bytes(&bytes),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(source) => Err(SettingsError::Read { path, source }),
+        }
+    }
+
+    /// Parses the settings file's bytes, which must be UTF-8. Spans and error positions are
+    /// offsets into these bytes.
+    pub fn parse_bytes(bytes: &[u8]) -> Result<Self, SettingsError> {
+        let text = std::str::from_utf8(bytes).map_err(|error| SettingsError::Encoding {
+            offset: error.valid_up_to(),
+        })?;
+        Self::parse(text)
+    }
+
+    /// Parses and validates the settings file's text. A leading byte-order mark is skipped;
+    /// spans still count it.
+    pub fn parse(text: &str) -> Result<Self, SettingsError> {
+        parse::parse(text)
+    }
+}
+
+/// The settings of one open folder that shape its compile. [`Settings::default`] is what an
+/// absent file means.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct Settings {
     /// The languages to graph, sorted and without duplicates. `None` means every supported
@@ -93,30 +140,6 @@ impl PythonVersion {
 }
 
 impl Settings {
-    /// Reads `unfold.toml` under `root`. An absent file means the defaults.
-    pub fn load(root: &Path) -> Result<Self, SettingsError> {
-        let path = root.join(SETTINGS_PATH);
-        match std::fs::read(&path) {
-            Ok(bytes) => Self::parse_bytes(&bytes),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
-            Err(source) => Err(SettingsError::Read { path, source }),
-        }
-    }
-
-    /// Parses the settings file's bytes, which must be UTF-8. Spans and error positions are
-    /// offsets into these bytes.
-    pub fn parse_bytes(bytes: &[u8]) -> Result<Self, SettingsError> {
-        let text = std::str::from_utf8(bytes).map_err(|error| SettingsError::Encoding {
-            offset: error.valid_up_to(),
-        })?;
-        Self::parse(text)
-    }
-
-    /// Parses and validates the settings file's text.
-    pub fn parse(text: &str) -> Result<Self, SettingsError> {
-        parse::parse(text)
-    }
-
     /// Whether `language` is graphed.
     pub fn language_enabled(&self, language: Language) -> bool {
         self.languages
@@ -140,9 +163,9 @@ impl Settings {
             .unwrap_or_default()
     }
 
-    /// The hash of everything in the settings that can change a compile. Spans and the project
-    /// name are left out, so editing comments, reordering whitespace, or renaming the project
-    /// doesn't change it.
+    /// The hash of everything in the settings, all of which can change a compile. Spans and the
+    /// apps are left out, so editing comments, reordering whitespace, or changing `[[app]]`
+    /// tables doesn't change it.
     pub fn hash(&self) -> SettingsHash {
         let mut hasher = SettingsHasher::new("settings");
         hasher.add(self);

@@ -1,9 +1,8 @@
 # Unfold settings for the py-orders playground.
-# Converted from the proof of concept's py-playground/codegraph.json.
 
 # The proof of concept indexed only the 50 sources under src/. Runtime tests, the smoke
-# script, and the legacy launcher stay outside the graph; legacy/ is still a source root,
-# so the orders-legacy-export console script launches into an unindexed file.
+# script, and the legacy export stay outside the graph; legacy/ is still a source root,
+# so the legacy export's code is a file Unfold doesn't analyze.
 [scope]
 exclude = ["legacy/**", "scripts/**", "tests/**"]
 
@@ -11,33 +10,69 @@ exclude = ["legacy/**", "scripts/**", "tests/**"]
 root = "."
 source_roots = ["src", "legacy"]
 
-# Entrances the detectors can't see: CLI dispatch and a signal handler.
-[[entrance]]
-id = "import"
-kind = "command"
-trigger = "import"
-handler = "src/orders_playground/jobs/import_orders.py#import_orders"
+# One app per console script in pyproject.toml, each with what it handles. `run` and `on` are
+# display text; `code` is a block key.
 
-[[entrance]]
-id = "report"
-kind = "command"
-trigger = "report"
-handler = "src/orders_playground/cli.py#report_command"
+[[app]]
+name = "Server"
+run = "orders-api"
+code = "src/orders_playground/server.py#main"
+entrances = [
+  { name = "Health check", on = "GET /health", code = "src/orders_playground/server.py#health_check" },
+  { name = "Status", on = "GET /v1/status", code = "src/orders_playground/server.py#status" },
+  { name = "List orders", on = "GET /orders", code = "src/orders_playground/routes/orders.py#list_orders" },
+  { name = "Get an order", on = "GET /orders/{order_id}", code = "src/orders_playground/routes/orders.py#get_order" },
+  { name = "Place an order", on = "POST /orders", code = ["src/orders_playground/routes/middleware.py#require_user", "src/orders_playground/routes/middleware.py#validate_body", "src/orders_playground/routes/orders.py#create_order"] },
+  { name = "Cancel an order", on = "DELETE /orders/{order_id}", code = ["src/orders_playground/routes/middleware.py#require_user", "src/orders_playground/routes/orders.py#cancel_order"] },
+  { name = "Liveness", on = "GET /health/live", code = "src/orders_playground/routes/health.py#/call:health_router.get()/callback[0]" },
+  # Deliberately missing: admin_stats moved to routes/admin.py. This keeps the missing state
+  # and its one fix (the moved definition) covered.
+  { name = "Admin stats", on = "GET /admin/stats", code = "src/orders_playground/server.py#admin_stats" },
+  { name = "Shut down", on = "SIGTERM", code = "src/orders_playground/server.py#shutdown" },
+]
 
-[[entrance]]
-id = "replay"
-kind = "command"
-trigger = "replay"
-handler = "src/orders_playground/jobs/retry_failed.py#retry_failed"
+[[app]]
+name = "Dev server"
+run = "orders-api-dev"
+code = "src/orders_playground/server.py#main"
 
-[[entrance]]
-id = "retry"
-kind = "command"
-trigger = "retry"
-handler = "src/orders_playground/jobs/retry_failed.py#retry_failed"
+[[app]]
+name = "Worker"
+run = "orders-worker"
+code = "src/orders_playground/worker.py#main"
+entrances = [
+  { name = "Send an email", on = "queue emails", code = "src/orders_playground/queues/email_worker.py#email_task" },
+  { name = "Process an order", on = "queue orders", code = "src/orders_playground/jobs/process_order.py#process_order" },
+  { name = "Build a report", on = "queue reports", code = "src/orders_playground/jobs/report.py#print_report" },
+]
 
-[[entrance]]
-id = "shutdown"
-kind = "event"
-trigger = "SIGTERM"
-handler = "src/orders_playground/server.py#shutdown"
+[[app]]
+name = "Scheduler"
+run = "orders-scheduler"
+code = "src/orders_playground/scheduler.py#main"
+entrances = [
+  { name = "Clean up expired orders", on = "0 2 * * *", code = "src/orders_playground/jobs/cleanup.py#cleanup_expired_orders" },
+  { name = "Report metrics", on = "*/15 * * * *", code = "src/orders_playground/scheduler.py#/call:scheduler.add_job[1]/callback[0]" },
+]
+
+[[app]]
+name = "Orders CLI"
+run = "orders <command>"
+code = "src/orders_playground/cli.py#main"
+entrances = [
+  { name = "Import orders", on = "orders import", code = "src/orders_playground/jobs/import_orders.py#import_orders" },
+  { name = "Print a report", on = "orders report", code = "src/orders_playground/cli.py#report_command" },
+  { name = "Replay failed orders", on = "orders replay", code = "src/orders_playground/jobs/retry_failed.py#retry_failed" },
+  { name = "Retry failed orders", on = "orders retry", code = "src/orders_playground/jobs/retry_failed.py#retry_failed" },
+]
+
+[[app]]
+name = "CLI alias"
+run = "orders-cli <command>"
+code = "src/orders_playground/cli.py#main"
+about = "The orders command under its longer name."
+
+[[app]]
+name = "Legacy export"
+run = "orders-legacy-export"
+code = "legacy/orders_legacy/export.py#main"

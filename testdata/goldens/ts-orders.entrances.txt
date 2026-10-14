@@ -1,0 +1,53 @@
+app	entrance:server	npm run start
+	code	src/server.ts#	found
+entrance	entrance:server/health-check	GET /health
+	code	src/server.ts#healthCheck	found
+entrance	entrance:server/status	GET /v1/status
+	code	src/server.ts#status	found
+entrance	entrance:server/list-orders	GET /orders
+	code	src/routes/orders.ts#listOrders	found
+entrance	entrance:server/get-an-order	GET /orders/:id
+	code	src/routes/orders.ts#getOrder	found
+entrance	entrance:server/place-an-order	POST /orders
+	code	src/routes/middleware.ts#requireUser	found
+	code	src/routes/middleware.ts#validateBody	found
+	code	src/routes/orders.ts#createOrder	found
+entrance	entrance:server/cancel-an-order	DELETE /orders/:id
+	code	src/routes/middleware.ts#requireUser	found
+	code	src/routes/orders.ts#cancelOrder	found
+entrance	entrance:server/liveness	GET /health/live
+	code	src/routes/health.ts#/call:healthRouter.get("/live")/callback[0]	found
+entrance	entrance:server/admin-stats	GET /admin/stats
+	code	src/server.ts#adminStats	missing	moved_definition	src/routes/admin.ts#adminStats
+entrance	entrance:server/shut-down	SIGTERM
+	code	src/server.ts#shutdown	found
+app	entrance:dev-server	npm run dev
+	code	src/server.ts#	found
+app	entrance:worker	npm run worker
+	code	src/worker.ts#	found
+entrance	entrance:worker/send-an-email	queue emails
+	code	src/queues/email-worker.ts#/call:Worker("emails")/callback[0]	found
+entrance	entrance:worker/process-an-order	queue orders
+	code	src/jobs/process-order.ts#processOrder	found
+entrance	entrance:worker/build-a-report	queue reports
+	code	report-processor.js#	not_analyzed
+app	entrance:scheduler	npm run scheduler
+	code	src/scheduler.ts#	found
+entrance	entrance:scheduler/clean-up-expired-orders	0 2 * * *
+	code	src/jobs/cleanup.ts#cleanupExpiredOrders	found
+entrance	entrance:scheduler/report-metrics	*/15 * * * *
+	code	src/scheduler.ts#/call:schedule("*/15 * * * *")/callback[0]	found
+app	entrance:orders-cli	orders <command>
+	code	src/cli.ts#	found
+entrance	entrance:orders-cli/import-orders	orders import
+	code	src/jobs/import-orders.ts#importOrders	found
+entrance	entrance:orders-cli/print-a-report	orders report
+	code	src/jobs/report.ts#printReport	found
+entrance	entrance:orders-cli/replay-failed-orders	orders replay
+	code	src/jobs/retry-failed.ts#retryFailed	found
+entrance	entrance:orders-cli/retry-failed-orders	orders retry
+	code	src/jobs/retry-failed.ts#retryFailed	found
+app	entrance:dev-cli	npm run cli -- <command>
+	code	src/cli.ts#	found
+app	entrance:legacy-export	npm run legacy:export
+	code	scripts/export.js#	not_analyzed

@@ -12,7 +12,7 @@ use unfold_core::vocab::{InputRole, Language};
 use unfold_engine::discovery::{
     DiscoverOptions, Discovery, DiscoveryError, IgnoreRules, Unindexed, discover, exists_in_root,
 };
-use unfold_engine::settings::Settings;
+use unfold_engine::settings::{Settings, SettingsFile};
 
 fn testdata() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata")
@@ -26,14 +26,14 @@ fn options() -> DiscoverOptions {
 }
 
 fn run(root: &Path) -> Discovery {
-    let settings = Settings::load(root).unwrap();
+    let settings = SettingsFile::load(root).unwrap().settings;
     discover(root, &settings, &options()).unwrap()
 }
 
 /// Discovers `root` with the settings `text`: discovery reads only the scope, so a playground's
 /// scope is restated here and the rest of its `unfold.toml` doesn't matter.
 fn run_with(root: &Path, text: &str) -> Discovery {
-    discover(root, &Settings::parse(text).unwrap(), &options()).unwrap()
+    discover(root, &SettingsFile::parse(text).unwrap().settings, &options()).unwrap()
 }
 
 fn sources(discovery: &Discovery) -> Vec<&str> {

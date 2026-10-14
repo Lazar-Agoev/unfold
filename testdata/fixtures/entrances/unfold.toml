@@ -1,7 +1,17 @@
-# Converted from the proof of concept fixture's codegraph.json.
+# One app per package script that starts a process, each with what it handles.
 
-[[entrance]]
-id = "orders-worker"
-kind = "worker"
-trigger = "orders"
-handler = "src/worker.ts#processOrder"
+[[app]]
+name = "Server"
+run = "npm run start"
+code = "src/server.ts#"
+entrances = [
+  { name = "Place an order", on = "POST /orders", code = "src/orders.ts#createOrder" },
+]
+
+[[app]]
+name = "Worker"
+run = "npm run worker"
+code = "src/worker.ts#"
+entrances = [
+  { name = "Process an order", on = "queue orders", code = "src/worker.ts#processOrder" },
+]

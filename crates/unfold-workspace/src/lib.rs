@@ -70,7 +70,6 @@ pub mod options;
 pub mod problems;
 pub mod projects;
 mod publish;
-pub mod settings_edit;
 mod shared;
 pub mod state;
 pub mod status;
@@ -92,9 +91,6 @@ pub use open_boards::OpenBoards;
 pub use options::{AppConfig, WorkspaceOptions, default_languages, store_version};
 pub use problems::{ProblemCategory, ProblemItem};
 pub use projects::{ProjectHandle, ProjectId, ProjectRow, Projects, WorkspaceView};
-pub use settings_edit::{
-    EditedSettings, EntranceSpec, PythonProjectSpec, ScopeList, SettingsEdit, apply_edits,
-};
 pub use state::{AppData, AppSettings, LocalState, ShownBoard, WindowBounds, WindowState};
 pub use status::{GraphState, GraphStatus, ProjectState, WatchMode};
 pub use workspace::{OpenContext, SettingsEditOutcome, Workspace};

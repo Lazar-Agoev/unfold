@@ -13,7 +13,6 @@
 //!
 //! Run with `UNFOLD_BLESS=1` to rewrite the goldens after an intended change, and review them.
 
-use std::path::Path;
 use std::sync::Arc;
 
 use unfold_core::testkit::{assert_golden, testdata_dir};
@@ -25,7 +24,7 @@ use unfold_engine::update::MemoryFactsCache;
 use unfold_engine::{Engine, EngineOptions, Language, UpdateRequest};
 use unfold_lang_typescript::TypeScript;
 
-use crate::support::{Compiled, Project, compile_source, outcome};
+use crate::support::{Compiled, Project, compile_source, copy_folder, outcome};
 
 const FOLDER: &str = "fixtures/typescript-typed";
 
@@ -335,24 +334,6 @@ fn a_decorated_class_is_not_proven_to_take_nothing() {
         pairings(&compiled, "a.ts", "a.ts#/call:Sealed"),
         [Some(U(R::NoSignature))]
     );
-}
-
-/// Copies `from` into `to`, without `.unfold/local/`.
-fn copy_folder(from: &Path, to: &Path) {
-    std::fs::create_dir_all(to).expect("create folder");
-    for entry in std::fs::read_dir(from).expect("read folder") {
-        let entry = entry.expect("folder entry");
-        let source = entry.path();
-        let target = to.join(entry.file_name());
-        if entry.file_type().expect("file type").is_dir() {
-            if source.ends_with(".unfold/local") {
-                continue;
-            }
-            copy_folder(&source, &target);
-        } else {
-            std::fs::copy(&source, &target).expect("copy file");
-        }
-    }
 }
 
 #[test]

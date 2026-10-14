@@ -1,5 +1,5 @@
 //! Conversions between the graph model and column values: vocabularies as their strings,
-//! hashes as 32-byte blobs, offsets as integers, and paths as text.
+//! hashes as 32-byte blobs, offsets as integers, node flags as bit sets, and paths as text.
 //!
 //! Decoding never panics: a value the model rejects becomes [`StoreError::Invalid`].
 
@@ -7,6 +7,7 @@ use std::str::FromStr;
 
 use rusqlite::Row;
 use rusqlite::types::ValueRef;
+use unfold_core::vocab::{Flag, Flags};
 use unfold_core::{ByteRange, ContentHash, Key, LineSpan, ModuleLabel, RepoPath};
 
 use crate::error::{Result, StoreError};
@@ -116,6 +117,42 @@ pub(crate) fn range(row: &Row<'_>, start: usize) -> Result<ByteRange> {
     ByteRange::new(from, to).map_err(|error| invalid("range", error.to_string()))
 }
 
+/// An optional byte range from two nullable columns: absent when the start is.
+pub(crate) fn opt_range(row: &Row<'_>, start: usize) -> Result<Option<ByteRange>> {
+    match row.get_ref(start)? {
+        ValueRef::Null => Ok(None),
+        _ => range(row, start).map(Some),
+    }
+}
+
+/// The start and end columns of an optional byte range.
+pub(crate) fn range_columns(range: Option<ByteRange>) -> (Option<u32>, Option<u32>) {
+    (range.map(|range| range.start), range.map(|range| range.end))
+}
+
+/// A node's flags as a bit set: bit *i* for the *i*-th [`Flag`].
+pub(crate) fn flag_bits(flags: Flags) -> u32 {
+    Flag::ALL
+        .iter()
+        .enumerate()
+        .filter(|(_, flag)| flags.contains(**flag))
+        .fold(0, |bits, (bit, _)| bits | 1 << bit)
+}
+
+/// Node flags from the bit set in column `index` ([`flag_bits`]).
+pub(crate) fn flags(row: &Row<'_>, index: usize) -> Result<Flags> {
+    let bits = u32_at(row, index)?;
+    if bits >> Flag::ALL.len() != 0 {
+        return Err(invalid("node flags", bits.to_string()));
+    }
+    Ok(Flag::ALL
+        .iter()
+        .enumerate()
+        .filter(|(bit, _)| bits & 1 << bit != 0)
+        .map(|(_, flag)| *flag)
+        .collect())
+}
+
 /// A line span from two columns.
 pub(crate) fn lines(row: &Row<'_>, start: usize) -> Result<LineSpan> {
     Ok(LineSpan {
@@ -133,4 +170,12 @@ pub(crate) fn count(row: &Row<'_>, index: usize) -> Result<u64> {
 /// A `u64` that must fit SQLite's signed 64-bit integers.
 pub(crate) fn to_i64(what: &'static str, value: u64) -> Result<i64> {
     i64::try_from(value).map_err(|_| StoreError::OutOfRange { what, value })
+}
+
+/// A position in a list (a local ID, an app's or target's position) as an integer column.
+pub(crate) fn position(what: &'static str, index: usize) -> Result<i64> {
+    i64::try_from(index).map_err(|_| StoreError::OutOfRange {
+        what,
+        value: index as u64,
+    })
 }

@@ -31,7 +31,7 @@ pub enum StoreError {
     /// modified outside the store or is damaged.
     #[error("invalid stored {what}: `{value}`")]
     Invalid {
-        /// What was being decoded, such as `block kind`.
+        /// What was being decoded, such as `node form`.
         what: &'static str,
         /// The offending value.
         value: String,

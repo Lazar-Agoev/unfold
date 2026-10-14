@@ -2453,7 +2453,11 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
+ "toml_edit",
+ "ts-rs",
  "unfold-core",
+ "unfold-lang-python",
+ "unfold-lang-typescript",
 ]
 
 [[package]]
@@ -2533,7 +2537,6 @@ version = "0.1.0"
 dependencies = [
  "rusqlite",
  "rustc-hash",
- "serde_json",
  "tempfile",
  "thiserror",
  "unfold-core",
@@ -2556,7 +2559,6 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror",
- "toml_edit",
  "ts-rs",
  "unfold-core",
  "unfold-engine",

@@ -10,6 +10,7 @@
 //! | Compile | [`UpdateRequest::compile`] | Every file is re-read and re-hashed; only changed bytes are extracted |
 //! | Background update | [`UpdateRequest::background`] | The watcher's paths, checked by size and modification time first |
 //! | Reopen check | [`UpdateRequest::reopen`] after [`Engine::restore`] | Every file, by size and modification time; the graph is linked again only if something it was linked from changed ([`LinkBasis`]) |
+//! | Entrance edit | [`Engine::resolve_entrances`] | Only the `[[app]]` tables: they are resolved again against the current graph, which isn't linked again |
 //!
 //! Each update runs the stages of [`Stage`] in order: discover (or apply the changed paths),
 //! snapshot the changed files (read and hash once), extract their facts in parallel through the
@@ -52,10 +53,11 @@ pub use summary::ChangeSummary;
 
 use crate::cancel::{CancelToken, Cancelled};
 use crate::discovery::{DiscoverOptions, DiscoveryError};
+use crate::entrances::Fixes;
 use crate::error::BackendError;
 use crate::language::{Language, Producer};
 use crate::program::ProgramError;
-use crate::settings::Settings;
+use crate::settings::{AppEntry, Settings};
 use state::State;
 
 /// Which action an update is.
@@ -260,6 +262,30 @@ pub struct UpdateOutcome {
     pub basis: LinkBasis,
 }
 
+/// Why [`Engine::resolve_entrances`] changed nothing.
+#[derive(Debug, thiserror::Error)]
+pub enum EntrancesError {
+    /// `unfold.toml` changed beyond its `[[app]]` tables; an update applies it.
+    #[error("unfold.toml changed beyond its [[app]] tables; compile to apply it")]
+    CompileNeeded,
+}
+
+/// The result of [`Engine::resolve_entrances`].
+#[derive(Debug, Clone)]
+pub struct EntrancesOutcome {
+    /// The graph before.
+    pub previous: Arc<Graph>,
+    /// The graph with the apps resolved again; its files are the previous graph's.
+    pub graph: Arc<Graph>,
+    /// Whether the apps, their entrances, or the states of their code changed.
+    pub apps_changed: bool,
+    /// Whether the settings file's input record changed.
+    pub inputs_changed: bool,
+    /// The settings, discovery, and input problems, including a settings file that doesn't
+    /// parse (the last good apps then stay).
+    pub problems: Vec<Problem>,
+}
+
 /// An update [`Engine::prepare`] finished and the engine hasn't adopted yet.
 #[derive(Debug)]
 pub struct PreparedUpdate {
@@ -428,6 +454,43 @@ impl Engine {
     /// The effective settings.
     pub fn settings(&self) -> &Settings {
         &self.state.settings.settings
+    }
+
+    /// The `[[app]]` tables as written, each with its problem, if any. The graph's apps are the
+    /// valid ones, resolved.
+    pub fn app_entries(&self) -> &[AppEntry] {
+        &self.state.settings.apps
+    }
+
+    /// The fixes of the graph's apps whose code is missing.
+    pub fn fixes(&self) -> &Fixes {
+        &self.state.fixes
+    }
+
+    /// Reads `unfold.toml` again and resolves its apps and entrances against the current
+    /// graph, without compiling or linking: the call to make after a change to only its
+    /// `[[app]]` tables. A file that doesn't parse keeps the last good apps and is listed in
+    /// the problems. Fails with [`EntrancesError::CompileNeeded`], changing nothing, when the
+    /// compile settings changed too.
+    pub fn resolve_entrances(&mut self) -> Result<EntrancesOutcome, EntrancesError> {
+        let settings = scan::load_settings(&self.root, &self.state.settings, &Changes::All, Verify::Contents);
+        if settings.settings != self.state.settings.settings {
+            return Err(EntrancesError::CompileNeeded);
+        }
+        let mut state = self.state.clone();
+        state.settings = settings;
+        let previous = Arc::clone(&state.graph);
+        let refreshed = run::refresh(self, &previous, &mut state);
+        state.complete = run::is_complete(&state);
+        let outcome = EntrancesOutcome {
+            previous,
+            graph: Arc::clone(&state.graph),
+            apps_changed: refreshed.apps_changed,
+            inputs_changed: refreshed.inputs_changed,
+            problems: run::standing_problems(&state),
+        };
+        self.set_state(state);
+        Ok(outcome)
     }
 
     /// Whether the current graph is complete (see [`UpdateOutcome::complete`]).

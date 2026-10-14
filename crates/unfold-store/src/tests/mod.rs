@@ -4,12 +4,14 @@
 use std::sync::mpsc;
 
 use tempfile::TempDir;
-use unfold_core::testkit::sample::sample;
-use unfold_core::vocab::{Reason, Resolution};
-use unfold_core::{FileGraph, Graph};
+use unfold_core::key::Callee;
+use unfold_core::testkit::GraphBuilder;
+use unfold_core::testkit::sample::shop;
+use unfold_core::vocab::{Language, Reason};
+use unfold_core::{FileGraph, Graph, LinkTarget};
 
 use crate::writer::FaultPoint;
-use crate::{DiskStamp, EntranceChanges, FileChange, Reader, Store, StoreConfig, StoreError, Update, Writer};
+use crate::{DiskStamp, FileChange, Reader, Store, StoreConfig, StoreError, Update, Writer};
 
 fn temp_store() -> (TempDir, Store) {
     let dir = tempfile::tempdir().expect("create a temporary directory");
@@ -25,45 +27,28 @@ fn first_compile(graph: &Graph) -> Update<'_> {
             .map(|file| FileChange::full(file, DiskStamp::default()))
             .collect(),
         inputs: Some(&graph.inputs),
-        entrances: EntranceChanges::all(&graph.entrances),
+        apps: Some(&graph.apps),
         ..Update::default()
     }
 }
 
-/// The sample with `jobs/tasks.py` and its manual entrance removed, an edge in `src/orders.ts`
-/// unresolved, and `src/extra.ts` (with new keys) added.
+/// The sample with `src/orders.ts` and the entrance into it removed, a link in `shop/store.py`
+/// unknown, and `src/extra.ts` (with new keys) added.
 fn changed_sample() -> Graph {
-    let mut graph = sample().build();
+    let mut graph = shop().build();
     graph
         .files
-        .retain(|file| file.file.path.as_str() != "jobs/tasks.py");
-    graph
-        .entrances
-        .retain(|entrance| entrance.evidence.path.as_str() != "unfold.toml");
-    let orders = graph
+        .retain(|file| file.file.path.as_str() != "src/orders.ts");
+    graph.apps[0].entrances.remove(1);
+    let store = graph
         .files
         .iter_mut()
-        .find(|file| file.file.path.as_str() == "src/orders.ts")
-        .expect("the sample has orders.ts");
-    let edge = &mut orders.edges[0];
-    edge.target = None;
-    edge.resolution = Resolution::Unresolved;
-    edge.reason = Some(Reason::Dynamic);
-    edge.module = None;
-    let mut builder = unfold_core::testkit::GraphBuilder::new();
-    let extra = builder.file(
-        "src/extra.ts",
-        unfold_core::vocab::Language::TypeScript,
-        "let x = 1;\n",
-    );
-    let range = builder.find(extra, "let x = 1;");
-    builder.block(
-        extra,
-        unfold_core::vocab::BlockKind::Variable,
-        Some(unfold_core::vocab::Role::Body),
-        Some("x"),
-        range,
-    );
+        .find(|file| file.file.path.as_str() == "shop/store.py")
+        .expect("the sample has store.py");
+    store.links[0].to = LinkTarget::Unknown(Reason::Dynamic);
+    let mut builder = GraphBuilder::new();
+    let extra = builder.file("src/extra.ts", Language::TypeScript, "f();\n");
+    builder.call(extra, &Callee::name("f"), builder.find(extra, "f()"));
     graph.files.extend(builder.build().files);
     graph.normalize();
     graph
@@ -90,7 +75,7 @@ fn delta<'a>(before: &Graph, after: &'a Graph) -> Update<'a> {
             .filter(|file| after.file(file.file.path.as_str()).is_none())
             .map(|file| file.file.path.clone())
             .collect(),
-        entrances: EntranceChanges::between(&before.entrances, &after.entrances),
+        apps: (before.apps != after.apps).then_some(&after.apps[..]),
         ..Update::default()
     }
 }
@@ -103,13 +88,18 @@ fn state(reader: &Reader) -> String {
         .iter()
         .map(|file| reader.file_graph(file.path.as_str()).expect("file graph"))
         .collect();
-    let stats = reader.stats().expect("stats");
+    let mut stats = reader.stats().expect("stats");
+    // The file's size depends on its history.
+    stats.database_bytes = 0;
     format!(
-        "{files:?}\n{:?}\n{:?}\n{stats:?}\n{:?}",
-        reader.entrances().expect("entrances"),
+        "{files:?}\n{:?}\n{:?}\n{stats:?}\n{:?}\n{:?}",
+        reader.apps().expect("apps"),
         reader.inputs().expect("inputs"),
         reader
-            .search("x", crate::CandidateKind::File, &[], 10)
+            .callers("shop/store.py#save_order", None, 10)
+            .expect("callers"),
+        reader
+            .search("ts", crate::CandidateKind::File, &[], 10)
             .expect("search"),
     )
 }
@@ -149,13 +139,13 @@ fn key_id(writer: &Writer, key: &str) -> Option<i64> {
 
 #[test]
 fn a_fault_at_any_point_leaves_the_previous_graph() {
-    let before = sample().build();
+    let before = shop().build();
     let after = changed_sample();
     let points = [
         FaultPoint::AfterRemovals,
         FaultPoint::AfterFiles(1),
         FaultPoint::AfterFiles(2),
-        FaultPoint::AfterEntrances,
+        FaultPoint::AfterApps,
         FaultPoint::BeforeCommit,
     ];
     let mut expected_after = None;
@@ -208,7 +198,7 @@ fn a_fault_at_any_point_leaves_the_previous_graph() {
 
 #[test]
 fn a_fault_during_a_first_compile_leaves_an_empty_database() {
-    let graph = sample().build();
+    let graph = shop().build();
     let (_dir, mut store) = temp_store();
     store.writer.hook = Some(Box::new(|at| match at {
         FaultPoint::AfterFiles(3) => Err(StoreError::Injected(at)),
@@ -226,7 +216,7 @@ fn a_fault_during_a_first_compile_leaves_an_empty_database() {
 
 #[test]
 fn readers_see_the_old_graph_until_the_commit_ends() {
-    let before = sample().build();
+    let before = shop().build();
     let after = changed_sample();
     let (_dir, mut store) = temp_store();
     store
@@ -271,12 +261,12 @@ fn readers_see_the_old_graph_until_the_commit_ends() {
 
     assert_ne!(state(&reader), original);
     assert!(reader.file("src/extra.ts").expect("file").is_some());
-    assert!(reader.file("jobs/tasks.py").expect("file").is_none());
+    assert!(reader.file("src/orders.ts").expect("file").is_none());
 }
 
 #[test]
 fn key_ids_survive_updates() {
-    let before = sample().build();
+    let before = shop().build();
     let after = changed_sample();
     let (_dir, mut store) = temp_store();
     store
@@ -284,31 +274,31 @@ fn key_ids_survive_updates() {
         .commit(&first_compile(&before))
         .expect("first compile");
     let watched = [
-        "src/orders.ts#function:save",
-        "src/helper.ts#function:helper",
-        "jobs/tasks.py#function:run",
-        "src/server.ts#",
+        "shop/store.py#save_order",
+        "shop/payments.py#charge_card",
+        "src/orders.ts#loadOrder",
+        "src/orders.ts#",
     ];
     let ids: Vec<Option<i64>> = watched.iter().map(|key| key_id(&store.writer, key)).collect();
     assert!(ids.iter().all(Option::is_some));
 
     store.writer.commit(&delta(&before, &after)).expect("update");
-    // Removing tasks.py and adding it back reuses its keys' IDs.
+    // Removing orders.ts and adding it back reuses its keys' IDs.
     store.writer.commit(&delta(&after, &before)).expect("restore");
     let again: Vec<Option<i64>> = watched.iter().map(|key| key_id(&store.writer, key)).collect();
     assert_eq!(ids, again);
 
-    // Edges into a definition point at the same key ID throughout.
+    // Links into a definition point at the same key ID throughout.
     let target: i64 = store
         .writer
         .conn()
         .query_row(
-            "SELECT target_key_id FROM edges WHERE target_text = 'helper' AND kind = 'references'",
+            "SELECT target_key_id FROM links WHERE text = 'save_order' AND kind = 'passes'",
             [],
             |row| row.get(0),
         )
-        .expect("reference edge");
-    assert_eq!(Some(target), ids[1]);
+        .expect("a passes link");
+    assert_eq!(Some(target), ids[0]);
 
     // Reopening reloads the same IDs into a fresh mirror.
     let path = store.writer.path().to_path_buf();
@@ -324,7 +314,7 @@ fn key_ids_survive_updates() {
 
 #[test]
 fn a_panic_mid_commit_does_not_wedge_the_writer() {
-    let before = sample().build();
+    let before = shop().build();
     let after = changed_sample();
     let (_dir, mut store) = temp_store();
     store
@@ -335,7 +325,7 @@ fn a_panic_mid_commit_does_not_wedge_the_writer() {
     let original = state(&reader);
 
     store.writer.hook = Some(Box::new(|at| {
-        assert_ne!(at, FaultPoint::AfterEntrances, "a bug panics mid-commit");
+        assert_ne!(at, FaultPoint::AfterApps, "a bug panics mid-commit");
         Ok(())
     }));
     let update = delta(&before, &after);
@@ -369,7 +359,7 @@ fn a_panic_mid_commit_does_not_wedge_the_writer() {
 
 #[test]
 fn a_fault_during_replace_leaves_the_previous_graph() {
-    let before = sample().build();
+    let before = shop().build();
     let after = changed_sample();
     let (_dir, mut store) = temp_store();
     store
@@ -393,6 +383,6 @@ fn a_fault_during_replace_leaves_the_previous_graph() {
     store.writer.hook = None;
     store.writer.replace(&first_compile(&after)).expect("replace");
     assert_mirror_matches(&store.writer);
-    assert!(reader.file("jobs/tasks.py").expect("file").is_none());
+    assert!(reader.file("src/orders.ts").expect("file").is_none());
     assert!(reader.file("src/extra.ts").expect("file").is_some());
 }

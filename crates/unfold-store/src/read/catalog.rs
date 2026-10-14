@@ -1,72 +1,28 @@
-//! Entrances with their targets, definitions, applications, memberships, and launch records.
+//! Apps with their entrances and targets, and the definition catalog.
 
-use rusqlite::{OptionalExtension, Row};
+use rusqlite::Row;
 use rustc_hash::FxHashMap;
-use unfold_core::{Entrance, EntranceTarget, Evidence, Key, Launches, RepoPath};
+use unfold_core::{App, Entrance, EntranceTarget, RepoPath};
 
 use super::Reader;
-use super::graph::collect;
+use super::graph::{collect, fetch, page, start};
 use super::rows::{Cursor, DefinitionRow, Page};
 use crate::codec;
 use crate::error::Result;
-use crate::schema::meta_key;
-use crate::update::{Application, Membership};
 
-/// Which entrances to load.
-enum Which<'a> {
-    All,
-    EvidencePath(&'a str),
-    Key(&'a str),
-}
+const DEFINITION_COLUMNS: &str = "k.key, f.path, d.local_id, d.kind, d.qualified_name, d.label";
 
-fn decode_entrance(row: &Row<'_>) -> Result<(i64, Entrance)> {
-    let entrance = Entrance {
-        key: codec::key(row, 1)?,
-        kind: codec::vocab(row, 2, "entrance kind")?,
-        label: codec::opt_boxed(row, 3)?,
-        method: codec::opt_vocab(row, 4, "HTTP method")?,
-        trigger: codec::opt_boxed(row, 5)?,
-        trigger_status: codec::vocab(row, 6, "trigger status")?,
-        detector: codec::vocab(row, 7, "detector")?,
-        evidence: Evidence {
-            path: codec::path(row, 8)?,
-            range: codec::range(row, 9)?,
-            block: codec::opt_key(row, 11)?,
-            pointer: codec::opt_boxed(row, 12)?,
-        },
-        binding: codec::opt_key(row, 13)?,
-        targets: Vec::new(),
-    };
-    Ok((row.get(0)?, entrance))
-}
-
-fn decode_target(row: &Row<'_>) -> Result<(i64, EntranceTarget)> {
-    let target = EntranceTarget {
-        position: codec::u32_at(row, 1)?,
-        role: codec::vocab(row, 2, "target role")?,
-        target: codec::opt_key(row, 3)?,
-        text: codec::text(row, 4)?.into(),
-        resolution: codec::vocab(row, 5, "resolution")?,
-        reason: codec::opt_vocab(row, 6, "reason")?,
-        module: codec::opt_module(row, 7)?,
-    };
-    Ok((row.get(0)?, target))
-}
-
-const DEFINITION_COLUMNS: &str = "d.key_id, k.key, f.path, d.local_id, d.kind, d.qualified_name, s.name";
-
-/// Definitions joined with their key, file, and search row (which holds the label).
-const DEFINITION_FROM: &str = "definitions d JOIN keys k ON k.id = d.key_id JOIN files f ON f.id = d.file_id \
-     LEFT JOIN search s ON s.rowid = d.key_id * 4";
+/// Definitions joined with their key and file.
+const DEFINITION_FROM: &str = "definitions d JOIN keys k ON k.id = d.key_id JOIN files f ON f.id = d.file_id";
 
 fn decode_definition(row: &Row<'_>) -> Result<DefinitionRow> {
     Ok(DefinitionRow {
-        key: codec::key(row, 1)?,
-        path: codec::path(row, 2)?,
-        local_id: codec::u32_at(row, 3)?,
-        kind: codec::vocab(row, 4, "block kind")?,
-        qualified_name: codec::text(row, 5)?.into(),
-        label: codec::opt_text(row, 6)?.unwrap_or_default().into(),
+        key: codec::key(row, 0)?,
+        path: codec::path(row, 1)?,
+        node: codec::u32_at(row, 2)?,
+        kind: codec::vocab(row, 3, "node kind")?,
+        qualified_name: codec::text(row, 4)?.into(),
+        label: codec::text(row, 5)?.into(),
     })
 }
 
@@ -79,59 +35,67 @@ fn placeholders(count: usize) -> String {
 }
 
 impl Reader {
-    /// Every entrance with its targets, in canonical order.
-    pub fn entrances(&self) -> Result<Vec<Entrance>> {
-        self.load_entrances(Which::All)
-    }
-
-    /// The entrances whose evidence is in the file or input at `path`, in canonical order.
-    pub fn entrances_in(&self, path: &str) -> Result<Vec<Entrance>> {
-        self.load_entrances(Which::EvidencePath(path))
-    }
-
-    /// The entrance with `key`.
-    pub fn entrance(&self, key: &str) -> Result<Option<Entrance>> {
-        Ok(self.load_entrances(Which::Key(key))?.into_iter().next())
-    }
-
-    /// Loads entrances and then all their targets: two queries in one snapshot, never one per
-    /// entrance.
-    fn load_entrances(&self, which: Which<'_>) -> Result<Vec<Entrance>> {
-        let (filter, value) = match which {
-            Which::All => ("?1 IS NULL", None),
-            Which::EvidencePath(path) => ("e.evidence_path = ?1", Some(path)),
-            Which::Key(key) => ("k.key = ?1", Some(key)),
-        };
+    /// Every app in file order, each with its `code` target and its entrances in file order,
+    /// and each entrance with its targets in order. Three queries in one snapshot.
+    pub fn apps(&self) -> Result<Vec<App>> {
         self.snapshot(|reader| {
             let conn = reader.conn();
-            let mut statement = conn.prepare_cached(&format!(
-                "SELECT e.id, k.key, e.kind, e.label, e.method, e.trigger, e.trigger_status, e.detector, \
-                 e.evidence_path, e.evidence_start_byte, e.evidence_end_byte, bk.key, e.evidence_pointer, \
-                 ak.key FROM entrances e JOIN keys k ON k.id = e.key_id \
-                 LEFT JOIN keys bk ON bk.id = e.evidence_block_key_id \
-                 LEFT JOIN keys ak ON ak.id = e.binding_key_id WHERE {filter}"
-            ))?;
-            let mut entrances = collect(&mut statement, [value], decode_entrance)?;
-            let index: FxHashMap<i64, usize> = entrances
+            let mut statement = conn.prepare_cached(
+                "SELECT t.owner_id, k.key, t.state FROM entrance_targets t \
+                 JOIN keys k ON k.id = t.code_key_id ORDER BY t.owner_id, t.position",
+            )?;
+            let mut targets: FxHashMap<i64, Vec<EntranceTarget>> = FxHashMap::default();
+            for (owner, target) in collect(&mut statement, [], |row| {
+                let target = EntranceTarget {
+                    code: codec::key(row, 1)?,
+                    state: codec::vocab(row, 2, "target state")?,
+                };
+                Ok((row.get::<_, i64>(0)?, target))
+            })? {
+                targets.entry(owner).or_default().push(target);
+            }
+            let mut statement = conn.prepare_cached(
+                "SELECT a.id, k.key, a.name, a.run, a.about FROM apps a JOIN keys k ON k.id = a.id \
+                 ORDER BY a.position",
+            )?;
+            let mut apps = collect(&mut statement, [], |row| {
+                let id: i64 = row.get(0)?;
+                let app = App {
+                    key: codec::key(row, 1)?,
+                    name: codec::text(row, 2)?.into(),
+                    run: codec::opt_boxed(row, 3)?,
+                    code: targets.get(&id).and_then(|code| code.first().cloned()),
+                    about: codec::opt_boxed(row, 4)?,
+                    entrances: Vec::new(),
+                };
+                Ok((id, app))
+            })?;
+            let index: FxHashMap<i64, usize> = apps
                 .iter()
                 .enumerate()
                 .map(|(position, (id, _))| (*id, position))
                 .collect();
-            let mut statement = conn.prepare_cached(&format!(
-                "SELECT t.entrance_id, t.position, t.role, tk.key, t.target_text, t.resolution, t.reason, \
-                 t.module FROM entrance_targets t LEFT JOIN keys tk ON tk.id = t.target_key_id \
-                 WHERE t.entrance_id IN (SELECT e.id FROM entrances e JOIN keys k ON k.id = e.key_id \
-                 WHERE {filter}) ORDER BY t.entrance_id, t.position"
-            ))?;
-            for (id, target) in collect(&mut statement, [value], decode_target)? {
-                if let Some(&position) = index.get(&id) {
-                    entrances[position].1.targets.push(target);
-                }
+            let mut statement = conn.prepare_cached(
+                "SELECT e.id, e.app_id, k.key, e.name, e.on_text, e.about FROM entrances e \
+                 JOIN keys k ON k.id = e.id ORDER BY e.app_id, e.position",
+            )?;
+            for (app, entrance) in collect(&mut statement, [], |row| {
+                let entrance = Entrance {
+                    key: codec::key(row, 2)?,
+                    name: codec::text(row, 3)?.into(),
+                    on: codec::opt_boxed(row, 4)?,
+                    about: codec::opt_boxed(row, 5)?,
+                    code: targets.remove(&row.get::<_, i64>(0)?).unwrap_or_default(),
+                };
+                Ok((row.get::<_, i64>(1)?, entrance))
+            })? {
+                let position = index
+                    .get(&app)
+                    .copied()
+                    .ok_or_else(|| codec::invalid("entrance app", app.to_string()))?;
+                apps[position].1.entrances.push(entrance);
             }
-            let mut entrances: Vec<Entrance> = entrances.into_iter().map(|(_, entrance)| entrance).collect();
-            // Canonical order; the key (which carries the duplicate ordinal) breaks full ties.
-            entrances.sort_by(|a, b| a.canonical_cmp(b).then_with(|| a.key.cmp(&b.key)));
-            Ok(entrances)
+            Ok(apps.into_iter().map(|(_, app)| app).collect())
         })
     }
 
@@ -153,26 +117,23 @@ impl Reader {
             .next())
     }
 
-    /// Every definition, one page at a time, in a stable order.
-    pub fn definitions(&self, after: Option<Cursor>, limit: usize) -> Result<Page<DefinitionRow>> {
-        let after = after.map_or(i64::MIN, |cursor| cursor.0[0]);
+    /// Every definition, one page at a time (pass the previous page's `next` as `after`), in
+    /// path order and then source order.
+    pub fn definitions(&self, after: Option<&Cursor>, limit: usize) -> Result<Page<DefinitionRow>> {
+        let (path, local_id, _) = start(after);
         let mut statement = self.conn().prepare_cached(&format!(
-            "SELECT {DEFINITION_COLUMNS} FROM {DEFINITION_FROM} WHERE d.key_id > ?1 ORDER BY d.key_id LIMIT ?2"
+            "SELECT {DEFINITION_COLUMNS} FROM {DEFINITION_FROM} WHERE (f.path, d.local_id) > (?1, ?2) \
+             ORDER BY f.path, d.local_id LIMIT ?3"
         ))?;
-        let fetch = i64::try_from(limit).unwrap_or(i64::MAX).saturating_add(1);
-        let mut items = collect(&mut statement, (after, fetch), |row| {
-            Ok((row.get::<_, i64>(0)?, decode_definition(row)?))
+        let items = collect(&mut statement, (path, local_id, fetch(limit)), |row| {
+            let definition = decode_definition(row)?;
+            let cursor = Cursor {
+                path: definition.path.as_str().into(),
+                at: [i64::from(definition.node), 0],
+            };
+            Ok((cursor, definition))
         })?;
-        let next = if items.len() > limit {
-            items.truncate(limit);
-            items.last().map(|(id, _)| Cursor([*id, 0, 0]))
-        } else {
-            None
-        };
-        Ok(Page {
-            items: items.into_iter().map(|(_, definition)| definition).collect(),
-            next,
-        })
+        Ok(page(items, limit))
     }
 
     /// How many definitions each file of `paths` holds, in one grouped query. A path that isn't
@@ -189,67 +150,5 @@ impl Reader {
         collect(&mut statement, rusqlite::params_from_iter(paths), |row| {
             Ok((codec::path(row, 0)?, codec::u32_at(row, 1)?))
         })
-    }
-
-    /// The name of the first application (by name) each entrance of `keys` belongs to. One
-    /// query; an entrance without an application is left out. Sorted by key.
-    pub fn entrance_applications(&self, keys: &[&str]) -> Result<Vec<(Key, Box<str>)>> {
-        if keys.is_empty() {
-            return Ok(Vec::new());
-        }
-        let mut statement = self.conn().prepare_cached(&format!(
-            "SELECT ek.key, a.name FROM memberships m JOIN keys ek ON ek.id = m.entrance_id \
-             JOIN applications a ON a.id = m.application WHERE ek.key IN ({}) ORDER BY 1, 2",
-            placeholders(keys.len())
-        ))?;
-        let mut rows = collect(&mut statement, rusqlite::params_from_iter(keys), |row| {
-            Ok((codec::key(row, 0)?, codec::text(row, 1)?.into()))
-        })?;
-        rows.dedup_by(|next, first| next.0 == first.0);
-        Ok(rows)
-    }
-
-    /// Every application, ordered by ID.
-    pub fn applications(&self) -> Result<Vec<Application>> {
-        let mut statement = self.conn().prepare_cached(
-            "SELECT id, name, description, declared, category FROM applications ORDER BY id",
-        )?;
-        collect(&mut statement, [], |row| {
-            Ok(Application {
-                id: codec::text(row, 0)?.into(),
-                name: codec::text(row, 1)?.into(),
-                description: codec::opt_boxed(row, 2)?,
-                declared: row.get(3)?,
-                category: codec::vocab(row, 4, "category")?,
-            })
-        })
-    }
-
-    /// Every membership, ordered by entrance key, then application.
-    pub fn memberships(&self) -> Result<Vec<Membership>> {
-        let mut statement = self.conn().prepare_cached(
-            "SELECT ek.key, m.application, m.basis FROM memberships m \
-             JOIN keys ek ON ek.id = m.entrance_id ORDER BY ek.key, m.application",
-        )?;
-        collect(&mut statement, [], |row| {
-            Ok(Membership {
-                entrance: codec::key(row, 0)?,
-                application: codec::text(row, 1)?.into(),
-                basis: codec::vocab(row, 2, "membership basis")?,
-            })
-        })
-    }
-
-    /// The launch records (empty before the first commit).
-    pub fn launches(&self) -> Result<Launches> {
-        let value: Option<String> = self
-            .conn()
-            .prepare_cached("SELECT value FROM meta WHERE key = ?1")?
-            .query_row([meta_key::LAUNCHES], |row| row.get(0))
-            .optional()?;
-        match value {
-            Some(text) => serde_json::from_str(&text).map_err(|_| codec::invalid("launch records", text)),
-            None => Ok(Launches::default()),
-        }
     }
 }

@@ -1,4 +1,4 @@
-//! Search candidates from the FTS5 index (crates/unfold-store/src/read/search.rs).
+//! Search candidates from the FTS5 index: the name search behind Add.
 
 use std::fmt::Write as _;
 
@@ -18,9 +18,10 @@ const WEIGHTS: &str = "8.0, 4.0, 1.0, 0.0, 0.0";
 impl Reader {
     /// Up to `limit` candidates of `kind` whose name, qualified name, or path contains every
     /// whitespace-separated term of `query`, ignoring ASCII case; with `item_kinds`, only those
-    /// whose item kind (a definition's block kind, an entrance's kind) is one of them. The order
-    /// is a rough relevance order (BM25, or shortest name first for very short terms) that the
-    /// caller re-ranks; it is deterministic for a given database.
+    /// whose item kind (a definition's node kind, such as `function`) is one of them. The order
+    /// is a rough relevance order that the caller may re-rank: BM25 with name matches weighted
+    /// over qualified-name and path matches, or shortest name first for terms too short for
+    /// trigrams; ties go by key, so the order depends only on what is stored.
     pub fn search(
         &self,
         query: &str,
@@ -45,7 +46,7 @@ impl Reader {
             Plan::Match(expression) => {
                 let at = bind(&mut values, Value::Text(expression));
                 let _ = write!(sql, "search MATCH ?{at}");
-                format!("bm25(search, {WEIGHTS}), rowid")
+                format!("bm25(search, {WEIGHTS}), key")
             }
             Plan::Like(patterns) => {
                 for (index, pattern) in patterns.into_iter().enumerate() {
@@ -57,7 +58,7 @@ impl Reader {
                         if index > 0 { " AND " } else { "" }
                     );
                 }
-                "length(name), rowid".to_owned()
+                "length(name), key".to_owned()
             }
         };
         let at = bind(&mut values, Value::Integer(kind.tag()));

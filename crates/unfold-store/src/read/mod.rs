@@ -8,13 +8,14 @@
 //!
 //! Under write-ahead logging a reader always sees the last committed graph, even while the
 //! writer is in the middle of a commit. Each query sees one snapshot; queries that combine
-//! several statements (a file with its blocks, slots, and edges; entrances with their targets)
-//! run them in one read transaction. [`Reader::snapshot`] does the same for a caller's own
-//! sequence of queries.
+//! several statements (a file with its nodes, links, and typed records; apps with their
+//! entrances and targets) run them in one read transaction. [`Reader::snapshot`] does the same
+//! for a caller's own sequence of queries.
 //!
-//! Queries are grouped by subject: [`graph`] (files, blocks, edges), [`catalog`] (entrances,
-//! definitions, applications), [`search`], and [`info`] (inputs, metadata, statistics). They
-//! return core types or the small row types in [`rows`]; no SQL leaves the crate.
+//! Queries are grouped by subject: [`graph`] (files, nodes, links, typed records, callers, and
+//! type uses), [`catalog`] (apps and entrances, definitions), [`search`], and [`info`] (inputs,
+//! metadata, statistics). They return core types or the small row types in [`rows`]; no SQL
+//! leaves the crate.
 
 pub mod catalog;
 pub mod graph;

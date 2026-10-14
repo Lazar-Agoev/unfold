@@ -4,14 +4,14 @@
 //! [`Update`] in one `BEGIN IMMEDIATE` transaction, in this order:
 //!
 //! 1. removed files;
-//! 2. changed files (row, then blocks and slots, edges, and definitions as the change says);
-//! 3. entrance removals and upserts;
-//! 4. inputs, applications, memberships, and launch records, when supplied;
-//! 5. metadata.
+//! 2. changed files (row, then nodes, links, typed records, and definitions as the change
+//!    says);
+//! 3. apps and inputs, when supplied;
+//! 4. metadata.
 //!
 //! [`Writer::replace`] applies an update that describes the whole graph the same way, and also
-//! removes every stored file and entrance the update does not name: the full rewrite for a
-//! database whose contents the caller no longer knows (after a failed commit, say).
+//! removes every stored file the update does not name: the full rewrite for a database whose
+//! contents the caller no longer knows (after a failed commit, say).
 //!
 //! Any error rolls the transaction back, and the in-memory mirror of keys and file
 //! IDs forgets what the transaction added, so a failed commit leaves the database and the
@@ -30,7 +30,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use rusqlite::Connection;
-use unfold_core::Launches;
 
 use self::graph::Apply;
 use self::mirror::Mirror;
@@ -46,21 +45,18 @@ pub struct CommitStats {
     pub files_written: u64,
     /// Files removed.
     pub files_removed: u64,
-    /// Blocks written.
-    pub blocks_written: u64,
-    /// Slots written.
-    pub slots_written: u64,
-    /// Edges written.
-    pub edges_written: u64,
-    /// Typed records written (signatures, parameters, members, arguments, results, and type
-    /// links).
+    /// Nodes written.
+    pub nodes_written: u64,
+    /// Links written.
+    pub links_written: u64,
+    /// Typed records written (signatures, parameters, members, and arguments).
     pub typed_records_written: u64,
     /// Definitions written.
     pub definitions_written: u64,
-    /// Entrances inserted or replaced.
+    /// Apps written.
+    pub apps_written: u64,
+    /// Entrances written.
     pub entrances_written: u64,
-    /// Entrances removed.
-    pub entrances_removed: u64,
     /// Wall time of the transaction.
     pub elapsed: Duration,
 }
@@ -73,8 +69,8 @@ pub enum FaultPoint {
     AfterRemovals,
     /// After this many changed files are written.
     AfterFiles(u64),
-    /// After entrances are written.
-    AfterEntrances,
+    /// After apps are written.
+    AfterApps,
     /// Just before `COMMIT`.
     BeforeCommit,
 }
@@ -172,9 +168,8 @@ impl Writer {
     }
 
     /// Makes the stored graph exactly `update`, in one transaction: like [`Writer::commit`],
-    /// and every stored file not in [`Update::files`] and every stored entrance not in
-    /// `entrances.upserts` is removed; `None` inputs, applications, memberships, or launches mean empty
-    /// sets. For a full rewrite of a database whose contents the caller does not track, such as
+    /// and every stored file not in [`Update::files`] is removed; `None` inputs or apps mean
+    /// empty sets. For a full rewrite of a database whose contents the caller does not track, such as
     /// after a failed commit: readers keep the previous graph until this one commits.
     pub fn replace(&mut self, update: &Update<'_>) -> Result<CommitStats> {
         self.run(update, Mode::Replace, &|| false)
@@ -270,24 +265,12 @@ impl Writer {
             apply.write_file(change)?;
             fault!(hook, FaultPoint::AfterFiles(apply.stats.files_written));
         }
-        if mode == Mode::Replace {
-            apply.remove_entrances_except(conn, &update.entrances.upserts)?;
+        if let Some(apps) = mode.set(update.apps) {
+            apply.write_apps(conn, apps)?;
         }
-        apply.write_entrances(conn, &update.entrances)?;
-        fault!(hook, FaultPoint::AfterEntrances);
+        fault!(hook, FaultPoint::AfterApps);
         if let Some(inputs) = mode.set(update.inputs) {
             apply.write_inputs(conn, inputs)?;
-        }
-        if let Some(applications) = mode.set(update.applications) {
-            apply.write_applications(conn, applications)?;
-        }
-        if let Some(memberships) = mode.set(update.memberships) {
-            apply.write_memberships(conn, memberships)?;
-        }
-        match (update.launches, mode) {
-            (Some(launches), _) => catalog::write_launches(conn, launches)?,
-            (None, Mode::Replace) => catalog::write_launches(conn, &Launches::default())?,
-            (None, Mode::Delta) => {}
         }
         if let Some(meta) = &update.meta {
             catalog::write_meta(conn, meta)?;
@@ -304,10 +287,11 @@ impl Writer {
         self.recover()?;
         let tx = self.conn.unchecked_transaction()?;
         tx.execute_batch(
-            "DELETE FROM files; DELETE FROM inputs; DELETE FROM keys; DELETE FROM blocks;
-             DELETE FROM slots; DELETE FROM edges; DELETE FROM entrances;
-             DELETE FROM entrance_targets; DELETE FROM definitions; DELETE FROM applications;
-             DELETE FROM memberships; DELETE FROM file_facts; DELETE FROM search;",
+            "DELETE FROM files; DELETE FROM inputs; DELETE FROM keys; DELETE FROM nodes;
+             DELETE FROM links; DELETE FROM signatures; DELETE FROM parameters;
+             DELETE FROM members; DELETE FROM arguments; DELETE FROM apps; DELETE FROM entrances;
+             DELETE FROM entrance_targets; DELETE FROM definitions; DELETE FROM file_facts;
+             DELETE FROM search;",
         )?;
         tx.execute(
             "DELETE FROM meta WHERE key NOT IN (?1, ?2)",

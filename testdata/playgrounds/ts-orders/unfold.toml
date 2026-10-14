@@ -1,33 +1,69 @@
 # Unfold settings for the ts-orders playground.
-# Converted from the proof of concept's root codegraph.json (paths were "ts-playground/...").
+#
+# One app per process the package starts (its scripts and its `orders` bin), each with what it
+# handles. `run` and `on` are display text; `code` is a block key.
 
-# Entrances the detectors can't see: CLI dispatch and a signal handler.
-[[entrance]]
-id = "import"
-kind = "command"
-trigger = "import"
-handler = "src/jobs/import-orders.ts#importOrders"
+[[app]]
+name = "Server"
+run = "npm run start"
+code = "src/server.ts#"
+entrances = [
+  { name = "Health check", on = "GET /health", code = "src/server.ts#healthCheck" },
+  { name = "Status", on = "GET /v1/status", code = "src/server.ts#status" },
+  { name = "List orders", on = "GET /orders", code = "src/routes/orders.ts#listOrders" },
+  { name = "Get an order", on = "GET /orders/:id", code = "src/routes/orders.ts#getOrder" },
+  { name = "Place an order", on = "POST /orders", code = ["src/routes/middleware.ts#requireUser", "src/routes/middleware.ts#validateBody", "src/routes/orders.ts#createOrder"] },
+  { name = "Cancel an order", on = "DELETE /orders/:id", code = ["src/routes/middleware.ts#requireUser", "src/routes/orders.ts#cancelOrder"] },
+  { name = "Liveness", on = "GET /health/live", code = 'src/routes/health.ts#/call:healthRouter.get("/live")/callback[0]' },
+  # Deliberately missing: adminStats moved to src/routes/admin.ts. This keeps the missing state
+  # and its one fix (the moved definition) covered.
+  { name = "Admin stats", on = "GET /admin/stats", code = "src/server.ts#adminStats" },
+  { name = "Shut down", on = "SIGTERM", code = "src/server.ts#shutdown" },
+]
 
-[[entrance]]
-id = "report"
-kind = "command"
-trigger = "report"
-handler = "src/cli.ts:12"
+[[app]]
+name = "Dev server"
+run = "npm run dev"
+code = "src/server.ts#"
+about = "The server run from source, restarted on every change."
 
-[[entrance]]
-id = "replay"
-kind = "command"
-trigger = "replay"
-handler = "src/jobs/retry-failed.ts#retryFailed"
+[[app]]
+name = "Worker"
+run = "npm run worker"
+code = "src/worker.ts#"
+entrances = [
+  { name = "Send an email", on = "queue emails", code = 'src/queues/email-worker.ts#/call:Worker("emails")/callback[0]' },
+  { name = "Process an order", on = "queue orders", code = "src/jobs/process-order.ts#processOrder" },
+  { name = "Build a report", on = "queue reports", code = "report-processor.js#" },
+]
 
-[[entrance]]
-id = "retry"
-kind = "command"
-trigger = "retry"
-handler = "src/jobs/retry-failed.ts#retryFailed"
+[[app]]
+name = "Scheduler"
+run = "npm run scheduler"
+code = "src/scheduler.ts#"
+entrances = [
+  { name = "Clean up expired orders", on = "0 2 * * *", code = "src/jobs/cleanup.ts#cleanupExpiredOrders" },
+  { name = "Report metrics", on = "*/15 * * * *", code = 'src/scheduler.ts#/call:schedule("*/15 * * * *")/callback[0]' },
+]
 
-[[entrance]]
-id = "shutdown"
-kind = "event"
-trigger = "SIGTERM"
-handler = "src/server.ts#shutdown"
+[[app]]
+name = "Orders CLI"
+run = "orders <command>"
+code = "src/cli.ts#"
+entrances = [
+  { name = "Import orders", on = "orders import", code = "src/jobs/import-orders.ts#importOrders" },
+  { name = "Print a report", on = "orders report", code = "src/jobs/report.ts#printReport" },
+  { name = "Replay failed orders", on = "orders replay", code = "src/jobs/retry-failed.ts#retryFailed" },
+  { name = "Retry failed orders", on = "orders retry", code = "src/jobs/retry-failed.ts#retryFailed" },
+]
+
+[[app]]
+name = "Dev CLI"
+run = "npm run cli -- <command>"
+code = "src/cli.ts#"
+about = "The orders command run from source."
+
+[[app]]
+name = "Legacy export"
+run = "npm run legacy:export"
+code = "scripts/export.js#"

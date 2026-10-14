@@ -143,6 +143,7 @@ fn source_kind(name: &str) -> Option<SourceKind> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings::SettingsFile;
 
     fn class(path: &str, settings: &Settings) -> FileClass {
         classify(&RepoPath::new(path).unwrap(), settings)
@@ -196,8 +197,9 @@ mod tests {
 
     #[test]
     fn applies_scope_and_languages() {
-        let settings =
-            Settings::parse("languages = [\"python\"]\n[scope]\nexclude = [\"legacy\"]\n").unwrap();
+        let settings = SettingsFile::parse("languages = [\"python\"]\n[scope]\nexclude = [\"legacy\"]\n")
+            .unwrap()
+            .settings;
         assert_eq!(
             class("a.ts", &settings),
             FileClass::Unindexed(Unindexed::LanguageOff)
@@ -211,7 +213,9 @@ mod tests {
             class("legacy/pyproject.toml", &settings),
             FileClass::Input(InputRole::Pyproject)
         );
-        let narrowed = Settings::parse("[scope]\ninclude = [\"src\"]\n").unwrap();
+        let narrowed = SettingsFile::parse("[scope]\ninclude = [\"src\"]\n")
+            .unwrap()
+            .settings;
         assert_eq!(
             class("tests/a.py", &narrowed),
             FileClass::Unindexed(Unindexed::NotIncluded)
@@ -221,10 +225,11 @@ mod tests {
 
     #[test]
     fn evidence_files_are_inputs_unless_they_are_something_else() {
-        let settings = Settings::parse(
+        let settings = SettingsFile::parse(
             "[scope]\ninclude = [\"src\"]\n[evidence]\nfiles = [\"db\", \"package.json\", \"src/a.ts\", \"lib/*.js\"]\n",
         )
-        .unwrap();
+        .unwrap()
+        .settings;
         let evidence = FileClass::Input(InputRole::Evidence);
         assert_eq!(
             class("db/migrations/001.sql", &settings),

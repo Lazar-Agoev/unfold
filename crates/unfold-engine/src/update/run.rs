@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use unfold_core::vocab::{FileState, InputRole};
-use unfold_core::{ContentHash, Graph, Input, RepoPath, Snapshot};
+use unfold_core::{App, ContentHash, Graph, Input, RepoPath, Snapshot};
 
 use super::build::{BuildInput, build};
 use super::cache::{CacheEntry, FactsKey, NewCacheEntry, decode_facts};
@@ -21,6 +21,7 @@ use super::{
 };
 use crate::ENGINE_VERSION;
 use crate::discovery::FileStamp;
+use crate::entrances;
 use crate::language::{
     ExtractionOptions, Language, LanguageId, LanguageProblem, ProjectInput, ProjectInputs,
 };
@@ -156,6 +157,8 @@ impl<'e, 'r> Run<'e, 'r> {
             linked: true,
             restored: None,
             graph: Arc::clone(&old.graph),
+            fixes: old.fixes.clone(),
+            modules: old.modules.clone(),
             project: Arc::default(),
             complete: false,
         };
@@ -211,38 +214,31 @@ impl<'e, 'r> Run<'e, 'r> {
             };
             let built = build(&input, &mut self.stats)?;
             cancel.check()?;
-            state.graph = Arc::new(built.graph);
+            let mut graph = built.graph;
+            graph.apps = resolve_apps(engine, &mut state, &old.graph, &graph);
+            state.graph = Arc::new(graph);
             state.link_problems = link_problems(built.problems);
             state.complete = is_complete(&state);
         }
-        // Evidence files shape nothing linking reads: a graph kept as it was takes their new
-        // records as they are.
-        let evidence_changed = !relink && {
-            let records = evidence_records(&state.inputs);
-            let changed = !state
-                .graph
-                .inputs
-                .iter()
-                .filter(|input| input.role == InputRole::Evidence)
-                .eq(&records);
-            if changed {
-                state.graph = Arc::new(with_evidence(&state.graph, records));
-            }
-            changed
-        };
+        // A graph kept as it was takes the new records of the inputs linking never reads, and
+        // the apps resolved again: changing only `[[app]]` tables never relinks.
+        let kept = (!relink).then(|| refresh(engine, &old.graph, &mut state));
         self.stats.relinked = relink;
         self.stats.files_removed = old
             .files
             .keys()
             .filter(|path| !state.files.contains_key(*path))
             .count();
-        let summary = if relink {
-            ChangeSummary::between(&old.graph, &state.graph)
-        } else {
-            ChangeSummary {
-                inputs_changed: evidence_changed,
+        let summary = match kept {
+            None => ChangeSummary::between(&old.graph, &state.graph),
+            Some(Refreshed {
+                inputs_changed,
+                apps_changed,
+            }) => ChangeSummary {
+                inputs_changed,
+                apps_changed,
                 ..ChangeSummary::default()
-            }
+            },
         };
         self.stats.count_graph(&state.graph);
         self.stats.total = started.elapsed();
@@ -749,20 +745,79 @@ pub(super) fn evidence_records(inputs: &BTreeMap<RepoPath, InputEntry>) -> Vec<I
         .collect()
 }
 
-/// `graph` with its evidence input records replaced by `records`.
-fn with_evidence(graph: &Graph, records: Vec<Input>) -> Graph {
-    let mut inputs: Vec<Input> = graph
+/// Whether an input with `role` is one linking never reads: the settings file, whose settings
+/// are compared by value instead, or an evidence file.
+fn unlinked(role: InputRole) -> bool {
+    matches!(role, InputRole::UnfoldConfig | InputRole::Evidence)
+}
+
+/// The graph records of the inputs linking never reads, in path order: the settings file when
+/// the settings came from it, and the evidence files that could be read.
+fn unlinked_records(state: &State) -> Vec<Input> {
+    let mut records: Vec<Input> = state
+        .settings
+        .source
+        .iter()
+        .map(|source| Input {
+            path: source.path().clone(),
+            role: InputRole::UnfoldConfig,
+            hash: source.hash(),
+        })
+        .chain(evidence_records(&state.inputs))
+        .collect();
+    records.sort_by(|a, b| a.path.cmp(&b.path));
+    records
+}
+
+/// Resolves the apps of `state` against `graph`, an update of `previous`, and keeps their fixes
+/// and the modules they name in `state`.
+pub(super) fn resolve_apps(engine: &Engine, state: &mut State, previous: &Graph, graph: &Graph) -> Vec<App> {
+    let apps = &state.settings.apps;
+    state.modules.observe(previous, apps);
+    state.modules.observe(graph, apps);
+    let on_disk = |path: &RepoPath| engine.root.join(path.as_str()).is_file();
+    let (resolved, fixes) = entrances::resolve(graph, apps, &state.modules, &on_disk);
+    state.fixes = fixes;
+    resolved
+}
+
+/// What [`refresh`] changed.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Refreshed {
+    pub(super) inputs_changed: bool,
+    pub(super) apps_changed: bool,
+}
+
+/// For a graph kept as it was (not linked again), an update of `previous`: takes the new
+/// records of the inputs linking never reads, and the apps resolved again.
+pub(super) fn refresh(engine: &Engine, previous: &Graph, state: &mut State) -> Refreshed {
+    let graph = Arc::clone(&state.graph);
+    let apps = resolve_apps(engine, state, previous, &graph);
+    let records = unlinked_records(state);
+    let inputs_changed = !graph
         .inputs
         .iter()
-        .filter(|input| input.role != InputRole::Evidence)
-        .cloned()
-        .chain(records)
-        .collect();
-    inputs.sort_by(|a, b| a.path.cmp(&b.path));
-    Graph {
-        files: graph.files.clone(),
-        inputs,
-        apps: graph.apps.clone(),
+        .filter(|input| unlinked(input.role))
+        .eq(&records);
+    let apps_changed = graph.apps != apps;
+    if inputs_changed || apps_changed {
+        let mut inputs: Vec<Input> = graph
+            .inputs
+            .iter()
+            .filter(|input| !unlinked(input.role))
+            .cloned()
+            .chain(records)
+            .collect();
+        inputs.sort_by(|a, b| a.path.cmp(&b.path));
+        state.graph = Arc::new(Graph {
+            files: graph.files.clone(),
+            inputs,
+            apps,
+        });
+    }
+    Refreshed {
+        inputs_changed,
+        apps_changed,
     }
 }
 
@@ -812,12 +867,11 @@ fn input_entry(role: InputRole, stamp: Option<FileStamp>, read: Read, requested:
 }
 
 /// Whether anything but the files that shapes the graph differs between two states: the
-/// settings, the settings file, the configuration inputs, or the unindexed or context files
-/// (what [`LinkBasis`] fingerprints). Evidence files shape nothing linking reads.
+/// settings, the configuration inputs, or the unindexed or context files (what [`LinkBasis`]
+/// fingerprints). The settings file's bytes, its `[[app]]` tables, and evidence files shape
+/// nothing linking reads.
 fn context_differs(old: &State, new: &State) -> bool {
-    let source_hash = |state: &State| state.settings.source.as_ref().map(Snapshot::hash);
     old.settings.settings != new.settings.settings
-        || source_hash(old) != source_hash(new)
         || old.unindexed != new.unindexed
         || old.context != new.context
         || inputs_differ(&old.inputs, &new.inputs)
@@ -833,7 +887,7 @@ fn files_differ(old: &State, new: &State) -> bool {
             .any(|((a, x), (b, y))| a != b || x.language != y.language || !x.facts.same_as(&y.facts))
 }
 
-fn is_complete(state: &State) -> bool {
+pub(super) fn is_complete(state: &State) -> bool {
     state.settings.problem.is_none()
         && state.discovery_problems.is_empty()
         && state.input_problems.is_empty()

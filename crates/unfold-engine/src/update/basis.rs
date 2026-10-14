@@ -16,8 +16,9 @@ use crate::settings::SettingsHasher;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LinkBasis {
     /// A fingerprint of everything but the files' facts that linking reads: the engine and
-    /// front-end versions, the folder, the effective settings and the settings file, every
-    /// configuration input (not the evidence files), and the unindexed and context files.
+    /// front-end versions, the folder, the effective settings (not the settings file's bytes,
+    /// so not its `[[app]]` tables), every configuration input (not the evidence files), and
+    /// the unindexed and context files.
     fingerprint: ContentHash,
     /// The problems linking found, in order.
     problems: Vec<LinkProblem>,
@@ -94,9 +95,7 @@ fn fingerprint(engine: &Engine, state: &State) -> ContentHash {
             .add(producer.name)
             .add(producer.version);
     }
-    hasher
-        .add_bytes(state.settings.settings.hash().as_bytes())
-        .add(&state.settings.source.as_ref().map(|source| source.hash()));
+    hasher.add_bytes(state.settings.settings.hash().as_bytes());
     for (path, input) in configuration(&state.inputs) {
         let content = input.content.as_ref().ok().map(|snapshot| snapshot.hash());
         hasher.add(path).add(&input.role).add(&content);

@@ -132,15 +132,6 @@ impl Mirror {
         Ok(id)
     }
 
-    /// The ID of an optional key.
-    pub(crate) fn intern_opt(
-        &mut self,
-        key: Option<&Key>,
-        insert: &mut CachedStatement<'_>,
-    ) -> Result<Option<i64>> {
-        key.map(|key| self.intern(key, insert)).transpose()
-    }
-
     /// The ID of the file at `path`, if stored.
     pub(crate) fn file_id(&self, path: &str) -> Option<i64> {
         self.files.get(path).copied()

@@ -5,7 +5,7 @@ use std::path::Path;
 use std::time::SystemTime;
 
 use rusqlite::Connection;
-use unfold_core::testkit::sample::sample;
+use unfold_core::testkit::sample::shop;
 use unfold_store::{Opened, ReadPool, RecreateReason, Store, StoreConfig};
 
 use crate::common::{ENGINE, Prepared, dump};
@@ -24,7 +24,7 @@ fn creates_then_reuses_a_database() {
     let path = dir.path().join("graph.sqlite");
     let mut store = open(&path, ENGINE);
     assert_eq!(store.opened, Opened::Created);
-    let prepared = Prepared::new(sample().build());
+    let prepared = Prepared::new(shop().build());
     store.writer.commit(&prepared.first_compile()).unwrap();
     drop(store);
 
@@ -58,7 +58,7 @@ fn an_engine_change_rebuilds_the_database() {
     let mut store = open(&path, ENGINE);
     store
         .writer
-        .commit(&Prepared::new(sample().build()).first_compile())
+        .commit(&Prepared::new(shop().build()).first_compile())
         .unwrap();
     drop(store);
 
@@ -80,18 +80,39 @@ fn an_engine_change_rebuilds_the_database() {
 fn a_schema_change_rebuilds_the_database() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("graph.sqlite");
-    drop(open(&path, ENGINE));
-    Connection::open(&path)
-        .unwrap()
-        .execute("UPDATE meta SET value = '0' WHERE key = 'schema_version'", [])
+    let mut store = open(&path, ENGINE);
+    store
+        .writer
+        .commit(&Prepared::new(shop().build()).first_compile())
         .unwrap();
-    let store = open(&path, ENGINE);
+    drop(store);
+    // A database another schema version wrote, with tables this one doesn't have.
+    let old = (unfold_store::SCHEMA_VERSION - 1).to_string();
+    let conn = Connection::open(&path).unwrap();
+    conn.execute("UPDATE meta SET value = ?1 WHERE key = 'schema_version'", [&old])
+        .unwrap();
+    conn.execute_batch("CREATE TABLE blocks (key TEXT); INSERT INTO blocks VALUES ('a.py#');")
+        .unwrap();
+    drop(conn);
+
+    let mut store = open(&path, ENGINE);
     assert_eq!(
         store.opened,
-        Opened::Recreated(RecreateReason::SchemaChanged {
-            found: Some("0".into())
-        })
+        Opened::Recreated(RecreateReason::SchemaChanged { found: Some(old) })
     );
+    assert_eq!(file_count(&store), 0);
+    let tables: i64 = Connection::open(&path)
+        .unwrap()
+        .query_row(
+            "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = 'blocks'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(tables, 0, "nothing of the old database is left");
+    let prepared = Prepared::new(shop().build());
+    store.writer.commit(&prepared.first_compile()).unwrap();
+    assert_eq!(store.readers.get().unwrap().graph().unwrap(), prepared.graph);
 }
 
 #[test]
@@ -103,7 +124,7 @@ fn a_file_that_is_not_a_database_is_replaced() {
     assert_eq!(store.opened, Opened::Recreated(RecreateReason::Corrupt));
     store
         .writer
-        .commit(&Prepared::new(sample().build()).first_compile())
+        .commit(&Prepared::new(shop().build()).first_compile())
         .unwrap();
     assert_eq!(file_count(&store), 4);
 }
@@ -115,7 +136,7 @@ fn a_database_with_a_damaged_header_is_replaced() {
     let mut store = open(&path, ENGINE);
     store
         .writer
-        .commit(&Prepared::new(sample().build()).first_compile())
+        .commit(&Prepared::new(shop().build()).first_compile())
         .unwrap();
     drop(store);
     let mut bytes = std::fs::read(&path).unwrap();
@@ -153,7 +174,7 @@ fn recreate_discards_everything() {
     let mut store = open(&path, ENGINE);
     store
         .writer
-        .commit(&Prepared::new(sample().build()).first_compile())
+        .commit(&Prepared::new(shop().build()).first_compile())
         .unwrap();
     drop(store);
     let store = Store::recreate(&path, &StoreConfig::new(ENGINE)).unwrap();
@@ -188,7 +209,7 @@ fn compiled(path: &Path) {
     let mut store = open(path, ENGINE);
     store
         .writer
-        .commit(&Prepared::new(sample().build()).first_compile())
+        .commit(&Prepared::new(shop().build()).first_compile())
         .expect("commit");
 }
 
@@ -266,7 +287,7 @@ fn open_existing_reads_a_current_graph_without_writing_it() {
         .expect("a current graph");
     let reader = pool.get().unwrap();
     let read = dump(&reader);
-    assert!(read.contains("src/orders.ts"), "{read}");
+    assert!(read.contains("shop/service.py"), "{read}");
     // A second reader while the first is in use: the pool opens another connection.
     assert_eq!(dump(&pool.get().unwrap()), read);
     drop(reader);
@@ -294,7 +315,7 @@ fn open_existing_reads_alongside_a_live_writer() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("graph.sqlite");
     let mut store = open(&path, ENGINE);
-    let prepared = Prepared::new(sample().build());
+    let prepared = Prepared::new(shop().build());
     store.writer.commit(&prepared.first_compile()).unwrap();
 
     let pool = ReadPool::open_existing(&path, ENGINE)

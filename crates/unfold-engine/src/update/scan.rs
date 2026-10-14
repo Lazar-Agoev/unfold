@@ -13,7 +13,7 @@ use unfold_core::{RepoPath, Snapshot};
 use super::state::{SettingsState, State};
 use super::{Changes, Engine, Problem, ProblemKind, Verify};
 use crate::discovery::{FileClass, FileStamp, IgnoreRules, classify, discover, is_default_excluded};
-use crate::settings::{SETTINGS_PATH, Settings};
+use crate::settings::{SETTINGS_PATH, Settings, SettingsFile};
 
 /// One indexed source after the scan.
 #[derive(Debug, Clone, Copy)]
@@ -61,7 +61,7 @@ pub(crate) struct Scan {
 }
 
 /// Loads `unfold.toml` when it may have changed. An unreadable or invalid file keeps
-/// `previous`'s settings in effect and records the problem.
+/// `previous`'s settings and apps in effect and records the problem.
 pub(crate) fn load_settings(
     root: &Path,
     previous: &SettingsState,
@@ -104,9 +104,10 @@ pub(crate) fn load_settings(
         Ok(snapshot) => snapshot,
         Err(error) => return keep(stamp, error.to_string()),
     };
-    match Settings::parse(snapshot.text()) {
-        Ok(settings) => SettingsState {
+    match SettingsFile::parse(snapshot.text()) {
+        Ok(SettingsFile { settings, apps }) => SettingsState {
             settings,
+            apps,
             source: Some(snapshot),
             stamp,
             problem: None,

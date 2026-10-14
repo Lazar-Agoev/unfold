@@ -1,14 +1,12 @@
-//! Shared helpers: temporary stores, the reader projections a test graph needs, and a dump of
+//! Shared helpers: temporary stores, the definition catalog a test graph needs, and a dump of
 //! everything a reader can see.
 
 use std::fmt::Write as _;
 
 use tempfile::TempDir;
-use unfold_core::vocab::{BlockKind, EntranceKind, Resolution};
-use unfold_core::{ContentHash, DeclaredApplication, FileGraph, Graph, Launches};
+use unfold_core::{ContentHash, FileGraph, Graph};
 use unfold_store::{
-    Application, Basis, CandidateKind, Category, Definition, DiskStamp, EntranceChanges, FileChange,
-    GraphMeta, Membership, Reader, Store, StoreConfig, Update,
+    CandidateKind, Definition, DiskStamp, FileChange, GraphMeta, Reader, Store, StoreConfig, Update,
 };
 
 pub const ENGINE: &str = "engine-1";
@@ -21,79 +19,16 @@ pub fn temp_store() -> (TempDir, Store) {
     (dir, store)
 }
 
-/// A graph with the projections a commit carries.
+/// A graph with the definition catalog a commit carries, per file.
 pub struct Prepared {
     pub graph: Graph,
     pub definitions: Vec<Vec<Definition>>,
-    pub applications: Vec<Application>,
-    pub memberships: Vec<Membership>,
-    pub launches: Launches,
 }
 
 impl Prepared {
     pub fn new(graph: Graph) -> Self {
         let definitions = graph.files.iter().map(definitions_of).collect();
-        let launches: Vec<_> = graph
-            .entrances
-            .iter()
-            .filter(|entrance| entrance.kind == EntranceKind::Process)
-            .filter_map(|entrance| Some((entrance, entrance.targets.first()?.target.clone()?)))
-            .collect();
-        let applications: Vec<Application> = launches
-            .iter()
-            .map(|(entrance, startup)| Application {
-                id: startup.as_str().into(),
-                name: entrance.trigger.clone().unwrap_or_else(|| "app".into()),
-                description: None,
-                declared: false,
-                category: Category::Workers,
-            })
-            .collect();
-        // Each launch belongs to its application, and every non-process entrance with a resolved
-        // target to every application.
-        let mut memberships: Vec<Membership> = launches
-            .iter()
-            .map(|(entrance, startup)| Membership {
-                entrance: entrance.key.clone(),
-                application: startup.as_str().into(),
-                basis: Basis::Proven,
-            })
-            .collect();
-        memberships.extend(
-            graph
-                .entrances
-                .iter()
-                .filter(|entrance| entrance.kind != EntranceKind::Process)
-                .filter(|entrance| {
-                    entrance
-                        .targets
-                        .iter()
-                        .any(|target| target.resolution == Resolution::Resolved)
-                })
-                .flat_map(|entrance| {
-                    applications.iter().map(|application| Membership {
-                        entrance: entrance.key.clone(),
-                        application: application.id.clone(),
-                        basis: Basis::Proven,
-                    })
-                }),
-        );
-        memberships.sort();
-        let launches = Launches {
-            applications: vec![DeclaredApplication {
-                id: "orders".into(),
-                name: "Orders".into(),
-                description: Some("Takes orders.\nShips them.".into()),
-            }],
-            ..Launches::default()
-        };
-        Self {
-            graph,
-            definitions,
-            applications,
-            memberships,
-            launches,
-        }
+        Self { graph, definitions }
     }
 
     /// The update a first compile commits.
@@ -111,10 +46,7 @@ impl Prepared {
                 .collect(),
             removed_files: Vec::new(),
             inputs: Some(&self.graph.inputs),
-            entrances: EntranceChanges::all(&self.graph.entrances),
-            applications: Some(&self.applications),
-            memberships: Some(&self.memberships),
-            launches: Some(&self.launches),
+            apps: Some(&self.graph.apps),
             meta: Some(meta(1)),
         }
     }
@@ -159,40 +91,42 @@ impl Prepared {
             files,
             removed_files,
             inputs: (previous.graph.inputs != self.graph.inputs).then_some(&self.graph.inputs[..]),
-            entrances: EntranceChanges::between(&previous.graph.entrances, &self.graph.entrances),
-            applications: (previous.applications != self.applications).then_some(&self.applications[..]),
-            memberships: (previous.memberships != self.memberships).then_some(&self.memberships[..]),
-            launches: (previous.launches != self.launches).then_some(&self.launches),
+            apps: (previous.graph.apps != self.graph.apps).then_some(&self.graph.apps[..]),
             meta: Some(meta(2)),
         }
     }
 }
 
-/// Named function-like, class, and type declaration blocks, qualified by their named
-/// function-like and class ancestors.
+/// Every definition node, labeled by its name (an inline function by its form) and qualified
+/// by the named definitions between it and its module.
 pub fn definitions_of(file: &FileGraph) -> Vec<Definition> {
-    let definable = |kind: BlockKind| kind.is_function_like() || kind.is_type_declaration();
-    let qualifies = |kind: BlockKind| kind.is_function_like() || kind == BlockKind::Class;
-    file.blocks
+    file.nodes
         .iter()
-        .filter(|block| definable(block.kind) && block.name.is_some())
-        .map(|block| {
-            let mut names = vec![block.name.as_deref().unwrap_or_default()];
-            let mut parent = block.parent;
-            while let Some(id) = parent {
-                let ancestor = &file.blocks[id as usize];
-                if qualifies(ancestor.kind) {
-                    names.push(ancestor.name.as_deref().unwrap_or("(anonymous)"));
+        .enumerate()
+        .filter(|(_, node)| node.kind().is_definition())
+        .map(|(id, node)| {
+            let label: Box<str> = match &node.name {
+                Some(name) => name.clone(),
+                None if node.parent.is_none() => file.file.path.file_name().into(),
+                None => node.form.as_str().into(),
+            };
+            let mut names = vec![label.to_string()];
+            let mut parent = node.parent;
+            while let Some(ancestor) = parent.map(|id| &file.nodes[id as usize]) {
+                if ancestor.kind().is_definition()
+                    && let Some(name) = &ancestor.name
+                {
+                    names.push(name.to_string());
                 }
                 parent = ancestor.parent;
             }
             names.reverse();
             Definition {
-                key: block.key.clone(),
-                local_id: block.local_id,
-                kind: block.kind,
+                key: node.key.clone(),
+                node: u32::try_from(id).expect("test files are small"),
+                kind: node.kind(),
                 qualified_name: names.join(".").into(),
-                label: block.name.clone().unwrap_or_default(),
+                label,
             }
         })
         .collect()
@@ -203,14 +137,14 @@ pub fn stamp(file: &FileGraph) -> DiskStamp {
     DiskStamp {
         hash: file.file.hash,
         mtime_ns: Some(1_700_000_000_000_000_000),
-        size: file.blocks.first().map(|root| u64::from(root.range.end)),
+        size: file.nodes.first().map(|module| u64::from(module.range.end)),
     }
 }
 
 /// Graph metadata stamped with `compiled_at_ms`.
 pub fn meta(compiled_at_ms: i64) -> GraphMeta {
     GraphMeta {
-        producers: r#"{"typescript":"test"}"#.into(),
+        producers: r#"{"python":"test"}"#.into(),
         settings_hash: ContentHash::of(b"settings"),
         compiled_at_ms,
         complete: true,
@@ -218,12 +152,24 @@ pub fn meta(compiled_at_ms: i64) -> GraphMeta {
     }
 }
 
+/// The keys of every node of every file, for the reverse-index and lookup queries a dump runs.
+fn every_key(reader: &Reader) -> Vec<String> {
+    let mut keys = Vec::new();
+    for file in reader.files().expect("files") {
+        let graph = reader
+            .file_graph(file.path.as_str())
+            .expect("file graph")
+            .expect("a listed file");
+        keys.extend(graph.nodes.iter().map(|node| node.key.to_string()));
+    }
+    keys
+}
+
 /// Everything a reader can see except the metadata's compile time, as text, so two stores can
 /// be compared.
 pub fn dump(reader: &Reader) -> String {
     let mut out = String::new();
-    let files = reader.files().expect("files");
-    for file in &files {
+    for file in &reader.files().expect("files") {
         let _ = writeln!(out, "{file:?}");
         let _ = writeln!(
             out,
@@ -236,10 +182,15 @@ pub fn dump(reader: &Reader) -> String {
             reader.definitions_in(file.path.as_str()).expect("definitions")
         );
     }
+    for key in every_key(reader) {
+        let callers = reader.callers(&key, None, 100).expect("callers");
+        let uses = reader.type_uses(&key, None, 100).expect("type uses");
+        if !callers.items.is_empty() || !uses.items.is_empty() {
+            let _ = writeln!(out, "{key} {callers:?} {uses:?}");
+        }
+    }
     let _ = writeln!(out, "{:?}", reader.inputs().expect("inputs"));
-    let _ = writeln!(out, "{:?}", reader.entrances().expect("entrances"));
-    let _ = writeln!(out, "{:?}", reader.applications().expect("applications"));
-    let _ = writeln!(out, "{:?}", reader.memberships().expect("memberships"));
+    let _ = writeln!(out, "{:?}", reader.apps().expect("apps"));
     let mut stats = reader.stats().expect("stats");
     // Interned keys are never deleted and the file size depends on history.
     stats.keys = 0;
@@ -247,13 +198,12 @@ pub fn dump(reader: &Reader) -> String {
     let _ = writeln!(out, "{stats:?}");
     for kind in [
         CandidateKind::Definition,
+        CandidateKind::App,
         CandidateKind::Entrance,
         CandidateKind::File,
     ] {
-        for query in ["e", "or", "src", "order", "run", "start"] {
-            // Ties are ordered by row ID, which depends on history, so compare as sets.
-            let mut candidates = reader.search(query, kind, &[], 50).expect("search");
-            candidates.sort_by(|a, b| a.key.cmp(&b.key));
+        for query in ["e", "or", "shop", "order", "card", "post"] {
+            let candidates = reader.search(query, kind, &[], 50).expect("search");
             let _ = writeln!(out, "{query} {kind:?} {candidates:?}");
         }
     }

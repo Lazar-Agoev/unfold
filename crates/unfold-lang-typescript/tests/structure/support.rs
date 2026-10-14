@@ -173,6 +173,24 @@ pub fn folder_inputs(root: &Path) -> ProjectInputs {
     inputs
 }
 
+/// Copies `from` into `to`, without `.unfold/local/`.
+pub fn copy_folder(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).expect("create folder");
+    for entry in std::fs::read_dir(from).expect("read folder") {
+        let entry = entry.expect("folder entry");
+        let source = entry.path();
+        let target = to.join(entry.file_name());
+        if entry.file_type().expect("file type").is_dir() {
+            if source.ends_with(".unfold/local") {
+                continue;
+            }
+            copy_folder(&source, &target);
+        } else {
+            std::fs::copy(&source, &target).expect("copy file");
+        }
+    }
+}
+
 /// The TypeScript sources under `root`, as folder-relative paths with their bytes, sorted.
 pub fn sources(root: &Path) -> Vec<(String, Vec<u8>)> {
     walk(root)

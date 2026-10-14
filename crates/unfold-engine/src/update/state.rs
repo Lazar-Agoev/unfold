@@ -12,9 +12,10 @@ use unfold_core::{ContentHash, File, Graph, RepoPath, Snapshot};
 
 use super::{LinkBasis, Problem};
 use crate::discovery::FileStamp;
+use crate::entrances::{Fixes, Modules};
 use crate::facts::FileFacts;
 use crate::language::ProjectInputs;
-use crate::settings::{Settings, SettingsHash};
+use crate::settings::{AppEntry, Settings, SettingsHash};
 
 /// What the engine last saw on disk for a file: the cheap check (size and modification time)
 /// and the hash of the bytes, which differs from the facts' hash for a `last_good` file.
@@ -132,16 +133,18 @@ pub(crate) struct InputEntry {
     pub(crate) requested: bool,
 }
 
-/// The effective settings and where they came from.
+/// The effective settings and apps, and where they came from.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SettingsState {
     pub(crate) settings: Settings,
+    /// The `[[app]]` tables as written.
+    pub(crate) apps: Vec<AppEntry>,
     /// The bytes of `unfold.toml` the settings were parsed from; `None` for defaults.
     pub(crate) source: Option<Snapshot>,
     /// The settings file's stamp at the last check (`None` when absent or unchecked).
     pub(crate) stamp: Option<FileStamp>,
-    /// Why the file on disk couldn't be used. The previous valid settings (or the defaults)
-    /// stay in effect meanwhile.
+    /// Why the file on disk couldn't be used. The previous valid settings and apps (or the
+    /// defaults) stay in effect meanwhile.
     pub(crate) problem: Option<Problem>,
 }
 
@@ -175,7 +178,12 @@ pub(crate) struct State {
     pub(crate) linked: bool,
     /// For a restored graph, what it was linked from, when the store kept it.
     pub(crate) restored: Option<LinkBasis>,
+    /// The graph, with the apps resolved against it.
     pub(crate) graph: Arc<Graph>,
+    /// The fixes of the graph's apps.
+    pub(crate) fixes: Fixes,
+    /// The modules the apps name, as last seen, for the moved-module fix.
+    pub(crate) modules: Modules,
     /// What the languages saw beside the files at the last update or restore.
     pub(crate) project: Arc<ProjectInputs>,
     pub(crate) complete: bool,
