@@ -586,6 +586,10 @@ pub struct Route {
     pub to: RouteEnd,
     /// The `finally` lanes it passes through first, innermost first.
     pub through: Vec<u32>,
+    /// What a `break` or `continue` leaves: its loop's form, or `switch`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub leaves: Option<Form>,
 }
 
 /// What a route is.
@@ -688,6 +692,6 @@ pub enum CombineWith {
         /// The definition or part whose body it is a step of.
         body: Key,
     },
-    /// Only by itself: a whole control block written in an expression.
+    /// Only by itself: a whole control block written in a call's arguments or an exit's value.
     Alone,
 }

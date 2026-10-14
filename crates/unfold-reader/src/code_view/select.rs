@@ -3,7 +3,7 @@
 
 use std::rc::Rc;
 
-use unfold_core::vocab::{CallRole, Form, NodeKind};
+use unfold_core::vocab::{Form, Language, NodeKind};
 use unfold_core::{ByteRange, Input, Key, RepoPath};
 
 use super::{CodeSources, PathStep, Target, settings_input};
@@ -189,7 +189,7 @@ fn block(tree: Rc<FileTree>, id: u32) -> Resolved {
     let (view, mark, region, shows) = match node.kind() {
         NodeKind::Module => (Span::Whole, MarkSpec::default(), MarkSpec::default(), Shows::File),
         NodeKind::Class | NodeKind::Function | NodeKind::Type => {
-            let extent = Span::Bytes(definition_extent(&tree, id));
+            let extent = Span::Bytes(tree.extent(id));
             (extent, MarkSpec::default(), tint(extent), own)
         }
         NodeKind::Decision | NodeKind::Loop | NodeKind::Try | NodeKind::With => {
@@ -231,8 +231,7 @@ fn block(tree: Rc<FileTree>, id: u32) -> Resolved {
     }
 }
 
-/// Member `index` of class or type `id`, shown as its line: the line of its written type.
-/// A member with no written type has no stored range, so it shows its card's lines.
+/// Member `index` of class or type `id`, shown as its line: the whole member as written.
 fn field(tree: Rc<FileTree>, id: u32, index: u32) -> Option<Resolved> {
     let member = tree.members(id).iter().find(|member| member.index == index)?;
     let line = Span::Bytes(member.range);
@@ -254,22 +253,6 @@ fn field(tree: Rc<FileTree>, id: u32, index: u32) -> Option<Resolved> {
     })
 }
 
-/// Definition `id` from its first decorator to its end.
-pub(super) fn definition_extent(tree: &FileTree, id: u32) -> ByteRange {
-    let node = tree.node(id);
-    let siblings = node.parent.map_or(&[][..], |parent| tree.children(parent));
-    let start = siblings
-        .iter()
-        .map(|&sibling| tree.node(sibling))
-        .filter(|sibling| sibling.r#for == Some(id) && sibling.role == Some(CallRole::Decorator))
-        .map(|decorator| decorator.range.start)
-        .fold(node.range.start, u32::min);
-    ByteRange {
-        start,
-        end: node.range.end,
-    }
-}
-
 /// What part `id` marks: the line that opens it and its body. A `body` part has no opening
 /// line of its own, so it starts on its control block's header.
 fn part_lines(tree: &FileTree, id: u32) -> ByteRange {
@@ -285,7 +268,8 @@ fn part_lines(tree: &FileTree, id: u32) -> ByteRange {
 
 /// The statement call `id` is written in: its own `stmt`, or that of the nearest block above it
 /// that has one. A call in a test or a header shows that test or header; a call that runs when
-/// a definition is created (a decorator, a base, a default) shows itself.
+/// a definition is created (a decorator, a base, a default) shows itself. A part of a ternary
+/// or comprehension is inside an expression, so the climb goes on to the statement holding it.
 fn statement(tree: &FileTree, id: u32) -> ByteRange {
     let call = tree.node(id).range;
     let mut at = Some(id);
@@ -298,6 +282,7 @@ fn statement(tree: &FileTree, id: u32) -> ByteRange {
             NodeKind::Call | NodeKind::Exit => {}
             NodeKind::Decision | NodeKind::Loop if is_expression(node.form) => {}
             NodeKind::Function if node.form == Form::Lambda || parent_is_call(tree, current) => {}
+            NodeKind::Part if parent_is_expression(tree, current) => {}
             NodeKind::Decision | NodeKind::Loop | NodeKind::Try | NodeKind::With | NodeKind::Part => {
                 return node.head.filter(|head| head.contains(call)).unwrap_or(call);
             }
@@ -311,6 +296,12 @@ fn statement(tree: &FileTree, id: u32) -> ByteRange {
 /// Whether `form` is a control block written as an expression.
 pub(super) fn is_expression(form: Form) -> bool {
     matches!(form, Form::Ternary | Form::Comprehension)
+}
+
+/// Whether node `id`'s parent is a ternary or comprehension.
+fn parent_is_expression(tree: &FileTree, id: u32) -> bool {
+    tree.parent(id)
+        .is_some_and(|parent| is_expression(tree.node(parent).form))
 }
 
 /// Whether node `id` is written in a call's arguments.
@@ -392,13 +383,17 @@ fn label(tree: &FileTree, id: u32, text: Option<&str>) -> String {
     let keyword = node.form.as_str();
     match node.kind() {
         NodeKind::Module | NodeKind::Class | NodeKind::Function | NodeKind::Type => tree.label(id),
-        NodeKind::Decision | NodeKind::Loop | NodeKind::Try | NodeKind::With => {
-            head.unwrap_or_else(|| keyword.to_owned())
-        }
+        // A `switch` is headed by its discriminant and a `match` by its subject.
+        NodeKind::Decision => match (node.form, head) {
+            (Form::Switch, Some(head)) => format!("{keyword} ({head})"),
+            (Form::Match, Some(head)) => format!("{keyword} {head}"),
+            (_, head) => head.unwrap_or_else(|| keyword.to_owned()),
+        },
+        NodeKind::Loop | NodeKind::Try | NodeKind::With => head.unwrap_or_else(|| keyword.to_owned()),
         NodeKind::Part => match (node.form, head) {
             (Form::Then | Form::Except | Form::Catch, Some(head)) => head,
-            // A Python guardless `case _:` is a `default` whose pattern is its head.
-            (Form::Default, Some(head)) => format!("case {head}"),
+            // A Python `default` is the guardless `case _:`, which has no head.
+            (Form::Default, _) if tree.language() == Language::Python => "case _".to_owned(),
             (Form::Elif | Form::Case, Some(head)) => format!("{keyword} {head}"),
             _ => keyword.to_owned(),
         },

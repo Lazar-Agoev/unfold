@@ -1,9 +1,10 @@
 //! A verified file's text as the drawing reads it: slices on one line, line spans, and which
 //! lines are code a gap tick counts.
 //!
-//! A line is **code** unless it is blank, a comment, only closing punctuation (`});`), a
-//! TypeScript `break;` alone (the end of a `switch` case), or part of an import statement
-//! (imports are links, listed in the module's header).
+//! A line is **code** unless it is blank, a comment (in TypeScript, also any line wholly inside
+//! a `/* … */` block comment), only closing punctuation (`});`), a TypeScript `break;` alone
+//! (the end of a `switch` case), or part of an import statement (imports are links, listed in
+//! the module's header).
 
 use rustc_hash::FxHashSet;
 use unfold_core::vocab::{Language, NodeKind};
@@ -27,8 +28,13 @@ impl FileText {
     pub(super) fn new(source: Source, language: Language) -> Self {
         let mut code = Vec::new();
         let mut import_depth: Option<i32> = None;
+        let mut comments = Comments::default();
         for line in source.text().lines() {
             let trimmed = line.trim();
+            let has_code = match language {
+                Language::Python => !trimmed.starts_with('#'),
+                Language::TypeScript => comments.has_code(trimmed),
+            };
             if let Some(depth) = import_depth.as_mut() {
                 *depth += bracket_balance(trimmed);
                 if *depth <= 0 {
@@ -44,10 +50,7 @@ impl FileText {
                 continue;
             }
             code.push(
-                !trimmed.is_empty()
-                    && !is_comment(trimmed, language)
-                    && !is_closing(trimmed)
-                    && !is_case_end(trimmed, language),
+                !trimmed.is_empty() && has_code && !is_closing(trimmed) && !is_case_end(trimmed, language),
             );
         }
         Self { source, code }
@@ -91,26 +94,30 @@ impl FileText {
 /// control block, and that block's parts start, and their heads), the doc, and the definitions
 /// written inside (with what runs when they are defined), which are cards of their own.
 /// `definition` is the definition being drawn.
+///
+/// A definition whose body is written on its own header's line, such as a one-line callback
+/// `(o) => o.paid`, keeps that line when the body holds more than braces: it is the body's code.
 pub(super) fn candidates(tree: &FileTree, text: &FileText, definition: u32, container: u32) -> Vec<u32> {
     let node = tree.node(container);
     let Some(body) = node.body else {
         return Vec::new();
     };
-    let mut skip = FxHashSet::default();
-    let mut skip_range = |range: ByteRange| {
-        let span = text.lines(range);
-        skip.extend(span.start..=span.end);
-    };
+    let span = text.lines(body);
+    let mut structure = FxHashSet::default();
     let mut skip_structure = |node: &Node| {
         // A part whose range is its suite starts on its first statement, which is not structure.
         if node.body.is_none_or(|body| node.range.start < body.start) {
-            skip_range(ByteRange {
-                start: node.range.start,
-                end: node.range.start,
-            });
+            structure.insert(
+                text.lines(ByteRange {
+                    start: node.range.start,
+                    end: node.range.start,
+                })
+                .start,
+            );
         }
         if let Some(head) = node.head {
-            skip_range(head);
+            let head = text.lines(head);
+            structure.extend(head.start..=head.end);
         }
     };
     if node.kind() != NodeKind::Module {
@@ -126,6 +133,17 @@ pub(super) fn candidates(tree: &FileTree, text: &FileText, definition: u32, cont
             }
         }
     }
+    let one_line = node.kind().is_definition()
+        && (span.start..=span.end).all(|line| structure.contains(&line))
+        && text.slice(body).is_some_and(|body| {
+            body.chars()
+                .any(|character| !character.is_whitespace() && !matches!(character, '{' | '}'))
+        });
+    let mut skip = if one_line { FxHashSet::default() } else { structure };
+    let mut skip_range = |range: ByteRange| {
+        let span = text.lines(range);
+        skip.extend(span.start..=span.end);
+    };
     if let Some(doc) = node.doc {
         skip_range(doc);
     }
@@ -136,7 +154,6 @@ pub(super) fn candidates(tree: &FileTree, text: &FileText, definition: u32, cont
             skip_range(inner.range);
         }
     }
-    let span = text.lines(body);
     (span.start..=span.end)
         .filter(|line| !skip.contains(line) && text.is_code(*line))
         .collect()
@@ -166,11 +183,65 @@ fn starts_import(line: &str, language: Language) -> bool {
     }
 }
 
-fn is_comment(line: &str, language: Language) -> bool {
-    match language {
-        Language::Python => line.starts_with('#'),
-        Language::TypeScript => line.starts_with("//") || line.starts_with("/*") || line.starts_with('*'),
+/// Where a TypeScript file's lines stand against block comments, read line by line.
+#[derive(Debug, Default)]
+struct Comments {
+    /// Inside a `/* … */` comment that an earlier line opened.
+    open: bool,
+}
+
+impl Comments {
+    /// Whether `line` holds code outside comments, and whether a block comment is still open
+    /// after it. A string's quotes hide comment marks inside it.
+    fn has_code(&mut self, line: &str) -> bool {
+        let mut code = false;
+        let mut rest = line;
+        while !rest.is_empty() {
+            if self.open {
+                match rest.find("*/") {
+                    Some(end) => {
+                        self.open = false;
+                        rest = &rest[end + 2..];
+                    }
+                    None => return code,
+                }
+                continue;
+            }
+            if rest.starts_with("//") {
+                return code;
+            }
+            if let Some(after) = rest.strip_prefix("/*") {
+                self.open = true;
+                rest = after;
+                continue;
+            }
+            let mut characters = rest.chars();
+            let Some(first) = characters.next() else {
+                break;
+            };
+            rest = characters.as_str();
+            if matches!(first, '"' | '\'' | '`') {
+                rest = after_string(rest, first);
+            }
+            code |= !first.is_whitespace();
+        }
+        code
     }
+}
+
+/// What follows the string `quote` opened, on this line: after its closing quote, or nothing
+/// when it runs on.
+fn after_string(text: &str, quote: char) -> &str {
+    let mut escaped = false;
+    for (index, character) in text.char_indices() {
+        match character {
+            _ if escaped => escaped = false,
+            '\\' => escaped = true,
+            _ if character == quote => return &text[index + character.len_utf8()..],
+            _ => {}
+        }
+    }
+    ""
 }
 
 /// A TypeScript `break` that ends a `switch` case: the case's structure, not an exit (an exit
@@ -243,6 +314,29 @@ mod tests {
         assert_eq!(one_line(&"x".repeat(90)).chars().count(), MAX_CHARS + 1);
     }
 
+    /// Only the lines of `text` that are code, as TypeScript.
+    fn code_lines(text: &str) -> Vec<&str> {
+        let mut comments = Comments::default();
+        text.lines()
+            .filter(|line| comments.has_code(line.trim()))
+            .collect()
+    }
+
+    #[test]
+    fn typescript_block_comments_are_not_code() {
+        let text = "/**\n * An order.\n * @param id\n */\nconst total = price\n  * count;\n/* one */ save();\nlog(); /* starts\n  ends */\nconst glob = \"src/*\"; // note\n// done\n";
+        assert_eq!(
+            code_lines(text),
+            [
+                "const total = price",
+                "  * count;",
+                "/* one */ save();",
+                "log(); /* starts",
+                "const glob = \"src/*\"; // note",
+            ]
+        );
+    }
+
     #[test]
     fn import_and_punctuation_lines_are_not_code() {
         assert!(starts_import(
@@ -258,8 +352,6 @@ mod tests {
         assert!(!starts_import("export const a = 1;", Language::TypeScript));
         assert!(is_closing("});"));
         assert!(!is_closing("} else {"));
-        assert!(is_comment("# note", Language::Python));
-        assert!(is_comment(" * jsdoc".trim(), Language::TypeScript));
         assert_eq!(bracket_balance("from x import ("), 1);
     }
 }

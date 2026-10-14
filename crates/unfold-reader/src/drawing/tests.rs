@@ -891,9 +891,8 @@ fn unreachable_steps_never_run_and_raises_reach_handlers() {
     );
 }
 
-/// A TypeScript `break` that leaves a `switch` early goes past the switch.
-#[test]
-fn a_break_may_leave_a_switch() {
+/// `pick.ts`: a TypeScript `break` that leaves a `switch` early.
+fn pick() -> GraphBuilder {
     const CODE: &str = r#"function pick(kind: string) {
   switch (kind) {
     case "a":
@@ -942,6 +941,13 @@ fn a_break_may_leave_a_switch() {
     c.set(leave).target = Some(switch.local_id());
     c.call(case, "first", 5, "first()", project(&key("pick.ts#first")));
     c.call(function, "second", 7, "second()", project(&key("pick.ts#second")));
+    g
+}
+
+/// A TypeScript `break` that leaves a `switch` early goes past the switch.
+#[test]
+fn a_break_may_leave_a_switch() {
+    let g = pick();
     let flow = drawn(&g, "pick.ts#pick");
     assert_eq!(
         plain(&flow),
@@ -1190,4 +1196,363 @@ fn the_playgrounds_draw_as_their_goldens() {
     for name in ["ts-orders", "py-orders"] {
         assert_golden(format!("goldens/{name}.flows.txt"), &playground_flows(name));
     }
+}
+
+/// `t.py`: tries whose body only returns or raises, with a `finally` and code after.
+fn finally_after_exit() -> GraphBuilder {
+    const CODE: &str = r#"def f():
+    try:
+        return helper(1)
+    finally:
+        helper(2)
+    helper(3)
+
+
+def g():
+    try:
+        raise Stop()
+    finally:
+        helper(2)
+    helper(3)
+"#;
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "t.py", Language::Python, CODE);
+    let module = c.module;
+    let helper = || project(&key("t.py#helper"));
+    for (name, first, form, value) in [
+        ("f", 1, Form::Return, "helper(1)"),
+        ("g", 9, Form::Raise, "Stop()"),
+    ] {
+        let function = c.function(module, name, first, first + 5, &format!("def {name}()"));
+        let try_block = c.block(function, Form::Try, c.lines(first + 1, first + 4), None, None);
+        let body = c.suite(try_block, Form::Body, first + 2, first + 2);
+        let exit = c.exit(body, form, first + 2, Some(value));
+        let callee = &value[..value.find('(').unwrap()];
+        let to = if form == Form::Return {
+            helper()
+        } else {
+            unknown(Reason::NotFound)
+        };
+        let call = c.call(exit, callee, first + 2, value, to);
+        c.flag(call, Flag::ExitValue);
+        let finally = c.part(try_block, Form::Finally, first + 3, first + 4, None);
+        c.call(finally, "helper", first + 4, "helper(2)", helper());
+        c.call(function, "helper", first + 5, "helper(3)", helper());
+    }
+    g
+}
+
+/// An exit that passes through `finally` runs the lane and goes on to its own target: the
+/// code after the try never runs, and a combined try takes no "on" route to it.
+#[test]
+fn an_exit_through_finally_goes_on_to_its_own_target() {
+    let graph = finally_after_exit();
+    let flow = drawn(&graph, "t.py#f");
+    assert_eq!(
+        plain(&flow),
+        r#"( f )
+  TRY
+      RETURN ▸ helper → finally → End
+  FINALLY
+      ▸ helper
+  ▸ helper · never runs
+( End )
+"#
+    );
+    let raised = drawn(&graph, "t.py#g");
+    assert_eq!(
+        plain(&raised),
+        r#"( g )
+  TRY
+      RAISE Stop ? → finally → the caller
+  FINALLY
+      ▸ helper
+  ▸ helper · never runs
+( End )
+"#
+    );
+
+    let overlay = Overlay {
+        combined: vec![Combine {
+            id: "try".to_owned(),
+            title: "Try it".to_owned(),
+            members: vec![key("t.py#f/try[0]")],
+            collapsed: true,
+        }],
+        ..Overlay::default()
+    };
+    let combined = drawn_with(&graph, "t.py#f", &overlay, &[], false);
+    assert_eq!(
+        plain(&combined),
+        "( f )\n  ⊞ Try it   helper · helper · returns → End\n  ▸ helper · never runs\n( End )\n"
+    );
+    let from_group: Vec<String> = routes(&combined)
+        .into_iter()
+        .filter(|route| route.starts_with("Try it "))
+        .collect();
+    assert_eq!(from_group, ["Try it -Return-> End"]);
+}
+
+/// `h.py`: a comprehension and a ternary written in tests.
+fn expressions_in_tests() -> GraphBuilder {
+    const CODE: &str = r#"def h(xs, b):
+    if [helper(x) for x in xs]:
+        done()
+    if (a() if b else c()):
+        done()
+"#;
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "h.py", Language::Python, CODE);
+    let module = c.module;
+    let to = |name: &str| project(&key(&format!("h.py#{name}")));
+    let function = c.function(module, "h", 1, 5, "def h(xs, b)");
+
+    let first = c.block(function, Form::If, c.lines(2, 3), None, None);
+    let then = c.part(first, Form::Then, 2, 3, Some("[helper(x) for x in xs]"));
+    let written = c.at(2, "[helper(x) for x in xs]");
+    let comprehension = c.block(
+        then,
+        Form::Comprehension,
+        written,
+        Some(c.at(2, "for x in xs")),
+        None,
+    );
+    let body = c.block(comprehension, Form::Body, written, None, Some(written));
+    let helper = c.call(body, "helper", 2, "helper(x)", to("helper"));
+    c.set(helper).stmt = None;
+    c.call(then, "done", 3, "done()", to("done"));
+
+    let second = c.block(function, Form::If, c.lines(4, 5), None, None);
+    let then = c.part(second, Form::Then, 4, 5, Some("(a() if b else c())"));
+    let written = c.at(4, "a() if b else c()");
+    let ternary = c.block(then, Form::Ternary, written, None, None);
+    let yes = c.block(
+        ternary,
+        Form::Then,
+        written,
+        Some(c.at(4, "b else")),
+        Some(written),
+    );
+    let a = c.call(yes, "a", 4, "a()", to("a"));
+    c.set(a).stmt = None;
+    let no = c.block(ternary, Form::Else, written, None, Some(written));
+    let other = c.call(no, "c", 4, "c()", to("c"));
+    c.set(other).stmt = None;
+    c.call(then, "done", 5, "done()", to("done"));
+    g
+}
+
+/// A ternary or comprehension written in a test is part of the test: its boxes are drawn on
+/// the test, the branch starts with what follows, and it is no step of the branch.
+#[test]
+fn expressions_in_a_test_belong_to_the_test() {
+    let graph = expressions_in_tests();
+    let flow = drawn(&graph, "h.py#h");
+    assert_eq!(
+        plain(&flow),
+        r#"( h )
+  IF [helper(x) for x in xs] · ▸ helper
+      ▸ done
+  IF (a() if b else c()) · ▸ a, ▸ c
+      ▸ done
+( End )
+"#
+    );
+    assert_routes(
+        &flow,
+        &[
+            "then [helper(x) for x in xs] -Yes-> done",
+            "then (a() if b else c()) -Yes-> done",
+        ],
+    );
+    let playground = Playground::built(&graph);
+    for block in [
+        "h.py#h/if[0]/then/comprehension[0]",
+        "h.py#h/if[1]/then/ternary[0]",
+    ] {
+        let (tree, id) = playground.block(block);
+        assert!(!crate::overlay::is_step(&tree, id), "{block}");
+        assert_eq!(crate::overlay::combinable(&tree, id), None, "{block}");
+        assert!(!crate::overlay::can_follow(&tree, id), "{block}");
+    }
+    let (tree, then) = playground.block("h.py#h/if[0]/then");
+    assert_eq!(crate::overlay::steps(&tree, then).count(), 1);
+}
+
+/// A thin row counts the unknown calls listed inside its calls too.
+#[test]
+fn a_thin_row_counts_the_unknowns_inside_its_calls() {
+    const CODE: &str = "def log(msg):\n    logger.info(msg.get(\"a\"))\n    logger.debug(msg.get(\"b\"))\n";
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "log.py", Language::Python, CODE);
+    let module = c.module;
+    let function = c.function(module, "log", 1, 3, "def log(msg)");
+    for (line, method, argument) in [(2, "logger.info", "\"a\""), (3, "logger.debug", "\"b\"")] {
+        let written = format!("{method}(msg.get({argument}))");
+        let outer = c.call(function, method, line, &written, unknown(Reason::NotFound));
+        c.call(
+            outer,
+            "msg.get",
+            line,
+            &format!("msg.get({argument})"),
+            unknown(Reason::NotFound),
+        );
+    }
+    let flow = drawn(&g, "log.py#log");
+    assert_eq!(
+        plain(&flow),
+        "( log )\n  · logger.info ? + msg.get ?, logger.debug ? + msg.get ?   2 calls, 4 unknown\n( End )\n"
+    );
+    let Shape::Thin(row) = &flow.steps.steps[0].shape else {
+        panic!("the calls fold into a thin row");
+    };
+    assert_eq!(row.unknown, 4);
+}
+
+/// A combined step that breaks out of a `switch` says where it goes.
+#[test]
+fn a_combined_step_that_leaves_a_switch_says_so() {
+    let overlay = Overlay {
+        combined: vec![Combine {
+            id: "early".to_owned(),
+            title: "Leave early".to_owned(),
+            members: vec![key("pick.ts#pick/switch[0]/case[0]/if[0]")],
+            collapsed: true,
+        }],
+        ..Overlay::default()
+    };
+    let flow = drawn_with(&pick(), "pick.ts#pick", &overlay, &[], false);
+    assert!(
+        plain(&flow).contains("      ⊞ Leave early   1 condition · breaks → after the switch\n"),
+        "{}",
+        plain(&flow)
+    );
+    assert_routes(&flow, &["Leave early -Break-> second", "Leave early -On-> first"]);
+}
+
+/// `poll.ts`: `do … while` loops.
+fn do_loops() -> GraphBuilder {
+    const CODE: &str = r#"function poll() {
+  do {
+    step();
+  } while (more());
+  after();
+}
+function once() {
+  do {
+    return first();
+  } while (more());
+  after();
+}
+"#;
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "poll.ts", Language::TypeScript, CODE);
+    let module = c.module;
+    let to = |name: &str| project(&key(&format!("poll.ts#{name}")));
+    for (name, first) in [("poll", 1), ("once", 7)] {
+        let function = c.def(
+            module,
+            Form::Function,
+            name,
+            c.lines(first, first + 5),
+            c.at(first, &format!("function {name}()")),
+            Code::span(c.at(first, "{"), c.line(first + 5)),
+        );
+        let written = Code::span(c.at(first + 1, "do"), c.line(first + 3));
+        let header = c.at(first + 3, "while (more())");
+        let do_loop = c.block(function, Form::Do, written, Some(header), None);
+        let suite = Code::span(c.at(first + 1, "{"), c.at(first + 3, "}"));
+        let body = c.block(do_loop, Form::Body, suite, None, Some(suite));
+        if name == "poll" {
+            c.call(body, "step", first + 2, "step()", to("step"));
+        } else {
+            let exit = c.exit(body, Form::Return, first + 2, Some("first()"));
+            let call = c.call(exit, "first", first + 2, "first()", to("first"));
+            c.flag(call, Flag::ExitValue);
+        }
+        c.call(do_loop, "more", first + 3, "more()", to("more"));
+        c.call(function, "after", first + 4, "after()", to("after"));
+    }
+    g
+}
+
+/// A `do` loop enters its body first and tests after it, so done can't skip the body.
+#[test]
+fn a_do_loop_runs_its_body_before_its_test() {
+    let graph = do_loops();
+    let flow = drawn(&graph, "poll.ts#poll");
+    assert_eq!(
+        plain(&flow),
+        "( poll )\n  DO\n      ▸ step\n  LOOP while (more()) · ▸ more\n  ▸ after\n( End )\n"
+    );
+    assert_routes(&flow, &["do -On-> body", "step -Next-> do", "step -Done-> after"]);
+    assert!(!routes(&flow).iter().any(|route| route.starts_with("do -Done->")));
+    let once = drawn(&graph, "poll.ts#once");
+    assert_eq!(
+        plain(&once),
+        "( once )\n  DO\n      RETURN ▸ first → End\n  LOOP while (more()) · ▸ more\n  ▸ after · never runs\n( End )\n"
+    );
+}
+
+/// A one-line callback with no blocks draws its gap tick.
+#[test]
+fn a_one_line_callback_draws_its_code() {
+    const CODE: &str = "function paid(orders) {\n  return orders.filter((o) => o.paid);\n}\n";
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "p.ts", Language::TypeScript, CODE);
+    let module = c.module;
+    let function = c.def(
+        module,
+        Form::Function,
+        "paid",
+        c.lines(1, 3),
+        c.at(1, "function paid(orders)"),
+        Code::span(c.at(1, "{"), c.line(3)),
+    );
+    let exit = c.exit(function, Form::Return, 2, Some("orders.filter((o) => o.paid)"));
+    let filter = c.call(
+        exit,
+        "orders.filter",
+        2,
+        "orders.filter((o) => o.paid)",
+        unknown(Reason::NotFound),
+    );
+    c.flag(filter, Flag::ExitValue);
+    let callback = c.callback(
+        filter,
+        0,
+        c.at(2, "(o) => o.paid"),
+        c.at(2, "(o) =>"),
+        c.at(2, "o.paid"),
+    );
+    let callback = c.g.key(callback);
+    let flow = drawn(&g, callback.as_str());
+    assert_eq!(
+        plain(&flow),
+        "( callback to orders.filter )\n  ⋯ 1 line\n( End )\n"
+    );
+}
+
+/// The boxes drawn on a header or a test carry their keys on its line.
+#[test]
+fn boxes_on_headers_and_tests_carry_their_keys() {
+    let definition = "booking/slots.py#reserve_first_free";
+    let text = flow_text(&drawn(&examples::reserve_first_free(), definition));
+    assert!(
+        text.contains(&format!(
+            "LOOP for slot in list_slots(calendar, day) · ▸ list_slots   key={definition}/for[0] {definition}/for[0]/body {definition}/for[0]/call:list_slots\n"
+        )),
+        "{text}"
+    );
+    assert!(
+        text.contains(&format!(
+            "/if[1]/then {definition}/for[0]/body/if[1]/then/call:is_free\n"
+        )),
+        "{text}"
+    );
+    let route = flow_text(&drawn(&examples::route_message(), "mail/route.py#route_message"));
+    assert!(
+        route.contains("WHEN is_relevant(part) · ▸ is_relevant   key=mail/route.py#route_message/comprehension[0]/body/call:is_relevant\n"),
+        "{route}"
+    );
 }

@@ -38,7 +38,8 @@ pub struct ProjectHealth {
     pub boards_needing_review: u32,
     /// The boards with health items, most items first (at most 20).
     pub boards: Vec<BoardHealthCount>,
-    /// The `code` keys of apps and entrances that aren't `found`.
+    /// The `code` keys of apps and entrances whose code isn't there: `missing`, `not_analyzed`,
+    /// or `not_a_start`.
     pub entrances_not_found: u32,
 }
 
@@ -82,7 +83,14 @@ pub fn project_summary(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<Projec
                         .iter()
                         .chain(app.entrances.iter().flat_map(|entrance| &entrance.code))
                 })
-                .filter(|target| target.state != TargetState::Found)
+                // A stale target still shows its last good block, and its file is counted
+                // as one that doesn't parse.
+                .filter(|target| {
+                    matches!(
+                        target.state,
+                        TargetState::Missing | TargetState::NotAnalyzed | TargetState::NotAStart
+                    )
+                })
                 .count();
             Ok((updated, not_found))
         })?,

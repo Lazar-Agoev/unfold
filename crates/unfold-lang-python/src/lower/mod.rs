@@ -5,12 +5,12 @@
 //! | Written | Node |
 //! | --- | --- |
 //! | the module | `module`; its docstring is `doc` |
-//! | `def`, `async def` | `function` (`function`; in a class body `method`, `constructor` for `__init__`, `getter`/`setter` for a proven `@property` and its setter) |
-//! | `class` | `class`; a base written as a name is an `extends` link, any call in its header a `base` call |
+//! | `def`, `async def` | `function` (`function`; in a class body `method`, `constructor` for `__init__`, `getter`/`setter` for a proven `@property` and its setter); the first block of its statement, which runs from its first decorator to its end |
+//! | `class` | `class`, the first block of its statement (from its first decorator to its end); a base written as a name is an `extends` link, any call in its header a `base` call |
 //! | decorators (plain names included), and a `def`'s defaults and annotations | calls in the enclosing body before the definition, role `decorator` or `default` (a class's header: `base`), `for` the definition |
 //! | `lambda` | `function` (`lambda`): named when it is exactly the value of a simple assignment, `callback[n]` in a call's arguments, `lambda[n]` anywhere else; its defaults are `default` calls beside it |
 //! | `if`/`elif`/`else` | `decision` (`if`): `then`, `elif[n]`, `else`; each test is its part's `head`, its calls `test` calls |
-//! | `match`/`case`/`case _:` | `decision` (`match`), headed `match subject`: `case[n]`, `default`; a case's pattern and guard are its test |
+//! | `match`/`case`/`case _:` | `decision` (`match`), headed by its subject: `case[n]` (its pattern and guard are its head), and `default` for the guardless `case _:`, with no head |
 //! | `a if c else b` with a call | `decision` (`ternary`): `then` (test `c`, body `a`), `else` |
 //! | `for`, `async for`, `while`, loop `else` | `loop` (`for`, `while`): header calls, `body`, `else` |
 //! | comprehension or generator with a call | `loop` (`comprehension`): its `for` clauses are the header, its element the body, its `if` clauses the body's test |
@@ -18,7 +18,7 @@
 //! | `with`, `async with` | `with` (flag `async`): header calls, `body` |
 //! | `return`, `raise`, `break`, `continue` | `exit`, with its statement as `stmt` and its value as `value`; `break` and `continue` name their loop as `target` |
 //! | `yield`, `yield from` as a statement or an assignment's whole value | `exit` (`yield`) |
-//! | calls, decorators | `call`, with its normalized callee, `binds`, `exit_value`, `awaited`, `conditional`, `role`, `for`, and `stmt`; the expression blocks in its receiver and arguments are its children |
+//! | calls, decorators | `call`, with its normalized callee, `binds`, `exit_value`, `awaited`, `conditional`, `role`, `for`, and `stmt` (a decorator has none: its definition is its statement's first block); the expression blocks in its receiver and arguments are its children |
 //! | imports, `importlib.import_module("x")` | `imports` links from the definition the import is written in (the module, a class, or a function); the call is also a call |
 //! | assignments, expression statements, `pass`, `assert`, `del`, `global`, `nonlocal` | code: only their calls are blocks, and the first block of a statement records it as `stmt` |
 //!
@@ -127,28 +127,31 @@ struct Place {
     /// Whether this is in the arguments of `parent`, a call: a function written here is a
     /// callback.
     argument: bool,
-    /// Whether code here runs only sometimes: the right side of `and` or `or`.
+    /// Whether code here runs only sometimes inside its expression: on the right side of an
+    /// `and` or `or`, including inside the calls, ternaries, and comprehensions written there.
     conditional: bool,
 }
 
 impl Place {
-    /// Directly inside `node`, a child of this place's parent.
+    /// Directly inside `node`, a child of this place's parent. Code inside a block that runs
+    /// only sometimes runs only sometimes too.
     fn under(self, node: u32) -> Self {
         Self {
             parent: node,
             depth: self.depth + 1,
             role: None,
             argument: false,
-            conditional: false,
             ..self
         }
     }
 
-    /// Inside the definition `node`: a new scope with no loop around it.
+    /// Inside the definition `node`: a new scope with no loop around it, whose code runs when
+    /// the definition is called rather than where it is written.
     fn definition(self, node: u32) -> Self {
         Self {
             definition: node,
             target: None,
+            conditional: false,
             ..self.under(node)
         }
     }
@@ -178,7 +181,7 @@ struct Lowering<'a> {
     proofs: &'a Proofs,
     lines: LineIndex,
     keys: KeyBuilder,
-    /// The `if`, comprehension, and `lambda` expressions (by address) that contain a call.
+    /// The `if` expressions and comprehensions (by address) that contain a call.
     calling: FxHashSet<usize>,
     /// The `def` statements and lambdas (by address) whose own body yields.
     generators: FxHashSet<usize>,

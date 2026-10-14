@@ -348,3 +348,27 @@ fn rejects_values_the_writer_never_writes() {
     let reason = edited(r#""to":"unknown_receiver""#, r#""to":"no_idea""#);
     assert_eq!(error(&reason).message, "unknown reason `no_idea`");
 }
+
+/// The writer leaves an absent field out, so an explicit `null` would read back as absent and
+/// write differently: it is rejected, on any record type.
+#[test]
+fn rejects_explicit_nulls() {
+    let node = edited(
+        r#""kind":"module","form":"module","#,
+        r#""kind":"module","form":"module","name":null,"#,
+    );
+    let failure = error(&node);
+    assert_eq!(failure.line, line_of(r#""kind":"module","form":"module","#));
+    assert!(
+        failure
+            .message
+            .starts_with("invalid record: an absent field is left out, never written as null"),
+        "{failure}"
+    );
+    let flags = edited(r#""flags":["exit_value"]"#, r#""flags":null"#);
+    assert!(error(&flags).message.contains("never written as null"));
+    let link = edited(r#""bound":0}"#, r#""bound":0,"implements":null}"#);
+    assert!(error(&link).message.contains("never written as null"));
+    let file = edited(r#""state":"current","#, r#""state":"current","failure":null,"#);
+    assert!(error(&file).message.contains("never written as null"));
+}

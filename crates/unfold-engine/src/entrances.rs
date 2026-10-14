@@ -189,7 +189,11 @@ fn fix(graph: &Graph, code: &Key, named: &FxHashSet<&str>, modules: &Modules) ->
     };
     let segments = block.segments();
     if segments.is_empty() {
-        let definitions = modules.0.get(code)?;
+        // A module with no definitions matches every other module with none: nothing to go by.
+        let definitions = modules
+            .0
+            .get(code)
+            .filter(|definitions| !definitions.is_empty())?;
         return one(graph
             .files
             .iter()

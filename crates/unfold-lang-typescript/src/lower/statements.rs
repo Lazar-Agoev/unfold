@@ -88,15 +88,7 @@ impl Lowering<'_> {
         ) else {
             return;
         };
-        let discriminant = it.discriminant.span();
-        let head_end = self
-            .tokens
-            .find(discriminant.end, Kind::RParen)
-            .map_or(discriminant.end, |token| token.end());
-        self.node(decision).head = Some(ByteRange {
-            start: span.start,
-            end: head_end,
-        });
+        self.node(decision).head = Some(range(it.discriminant.span()));
         self.within(decision, Within::Header, |lowering| {
             lowering.visit_expression(&it.discriminant);
         });
@@ -428,7 +420,7 @@ impl Lowering<'_> {
         node.value = value.map(|value| range(value.span()));
         node.target = target;
         if let Some(value) = value {
-            if let Some((address, _)) = forms::value_node(value) {
+            if let Some(address) = forms::value_node(value) {
                 self.exit_values.insert(address);
             }
             self.within(exit, Within::Value, |lowering| {
@@ -494,7 +486,7 @@ impl Lowering<'_> {
 
     /// Each declarator's annotation (linked), its binding pattern's code, and its initializer:
     /// a function, class, or object literal it names, or else code whose call or conditional
-    /// expression binds the written target.
+    /// expression binds the written targets (`x = a` in `const x = a = f()`).
     pub(super) fn declarators(&mut self, it: &VariableDeclaration<'_>) {
         for declarator in &it.declarations {
             self.typed.annotation(declarator.type_annotation.as_deref());
@@ -502,17 +494,13 @@ impl Lowering<'_> {
             let Some(init) = &declarator.init else {
                 continue;
             };
+            let (targets, value) = self.chain(self.text(range(declarator.id.span())), init);
+            self.bind_value(value, &targets);
             match &declarator.id {
                 BindingPattern::BindingIdentifier(id) => {
-                    let name = id.name.as_str();
-                    self.bind_value(init, name);
-                    self.named_value(init, name);
+                    self.named_value(init, id.name.as_str());
                 }
-                pattern => {
-                    let target = self.text(range(pattern.span())).to_owned();
-                    self.bind_value(init, &target);
-                    self.visit_expression(init);
-                }
+                _ => self.visit_expression(init),
             }
         }
     }

@@ -398,6 +398,7 @@
 
 === ts/src/payments.ts#total/return[0]/call:cart.items.reduce/callback[0]
 ( callback to cart.items.reduce )   key=ts/src/payments.ts#total/return[0]/call:cart.items.reduce/callback[0]
+  ⋯ 1 line
 ( End )
 
 === ts/src/user.ts#

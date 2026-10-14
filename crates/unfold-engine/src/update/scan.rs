@@ -100,20 +100,22 @@ pub(crate) fn load_settings(
         Ok(bytes) => bytes,
         Err(error) => return keep(stamp, format!("cannot read the settings: {error}")),
     };
-    let snapshot = match Snapshot::new(config, bytes) {
-        Ok(snapshot) => snapshot,
-        Err(error) => return keep(stamp, error.to_string()),
-    };
-    match SettingsFile::parse(snapshot.text()) {
-        Ok(SettingsFile { settings, apps }) => SettingsState {
-            settings,
-            apps,
-            source: Some(snapshot),
-            stamp,
-            problem: None,
-        },
-        Err(error) => keep(stamp, error.to_string()),
-    }
+    parse_settings(bytes, stamp).unwrap_or_else(|message| keep(stamp, message))
+}
+
+/// The settings and apps `bytes` of `unfold.toml` give, or why they give none.
+pub(crate) fn parse_settings(bytes: Vec<u8>, stamp: Option<FileStamp>) -> Result<SettingsState, String> {
+    let config = RepoPath::new(SETTINGS_PATH).expect("the settings path is a valid folder-relative path");
+    let snapshot = Snapshot::new(config, bytes).map_err(|error| error.to_string())?;
+    let SettingsFile { settings, apps } =
+        SettingsFile::parse(snapshot.text()).map_err(|error| error.to_string())?;
+    Ok(SettingsState {
+        settings,
+        apps,
+        source: Some(snapshot),
+        stamp,
+        problem: None,
+    })
 }
 
 pub(crate) fn stamp_of(metadata: &std::fs::Metadata) -> FileStamp {

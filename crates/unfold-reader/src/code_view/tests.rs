@@ -2,8 +2,8 @@
 //! hover, `⊕`, the states, and UTF-16 columns.
 
 use unfold_core::highlight::{HighlightSpan, Highlighter, TokenClass};
-use unfold_core::testkit::{GraphBuilder, sample};
-use unfold_core::vocab::{FileState, Form, InputRole, Language, MemberKind};
+use unfold_core::testkit::{GraphBuilder, NodeRef, sample, unknown};
+use unfold_core::vocab::{FileState, Form, InputRole, Language, LinkKind, MemberKind, Reason};
 use unfold_core::{ByteRange, Callee, Key, Member, RepoPath};
 
 use super::*;
@@ -1006,4 +1006,52 @@ fn the_model_serializes_in_camel_case() {
     assert_eq!(json["path"][3]["showing"], true);
     let changed = serde_json::to_value(CodeState::DoesNotParse).unwrap();
     assert_eq!(changed, "doesNotParse");
+}
+
+/// A call in a part of a ternary or comprehension is inside an expression: it shows the whole
+/// statement that holds the expression, not only its own line.
+#[test]
+fn a_call_in_a_ternary_shows_the_whole_statement() {
+    const STATEMENT: &str = "x = (\n        first()\n        if c\n        else second()\n    )";
+    const CODE: &str =
+        "def pick(c):\n    x = (\n        first()\n        if c\n        else second()\n    )\n";
+    let mut g = GraphBuilder::new();
+    let file = g.file("v.py", Language::Python, CODE);
+    let function = g.def(file, Form::Function, "pick", g.find(file, CODE.trim_end()));
+    let statement = g.find(file, STATEMENT);
+    g.node_mut(function).head = Some(g.find(file, "def pick(c)"));
+    g.node_mut(function).body = Some(statement);
+    let written = g.find(file, "first()\n        if c\n        else second()");
+    let ternary = g.block(function, Form::Ternary, written);
+    g.node_mut(ternary).stmt = Some(statement);
+    g.node_mut(ternary).binds = Some("x".into());
+    let call = |g: &mut GraphBuilder, part: NodeRef, callee: &str| {
+        let call = g.call(part, &Callee::name(callee), g.find(file, &format!("{callee}()")));
+        let head = g.find(file, callee);
+        g.link(call, LinkKind::Calls, head, callee, unknown(Reason::NotFound));
+    };
+    let then = g.block(ternary, Form::Then, written);
+    let test = g.find(file, "if c");
+    g.node_mut(then).head = Some(ByteRange::new(test.end - 1, test.end).unwrap());
+    g.node_mut(then).body = Some(written);
+    call(&mut g, then, "first");
+    let otherwise = g.block(ternary, Form::Else, written);
+    g.node_mut(otherwise).body = Some(written);
+    call(&mut g, otherwise, "second");
+
+    let playground = Playground::built(&g);
+    let first = view(&playground, block("v.py#pick/ternary[0]/then/call:first"));
+    assert_eq!(
+        shown(&first),
+        [
+            "2 x = (",
+            "3     first()",
+            "4     if c",
+            "5     else second()",
+            "6 )"
+        ]
+    );
+    assert_eq!(expression(&first), ["first()"]);
+    let second = view(&playground, block("v.py#pick/ternary[0]/else/call:second"));
+    assert_eq!(numbers(&second), [2, 6]);
 }

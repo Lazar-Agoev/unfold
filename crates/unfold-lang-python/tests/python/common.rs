@@ -301,7 +301,8 @@ pub fn target(to: &LinkTarget) -> String {
 /// A file's nodes as a readable tree, one node per line in preorder, indented by depth: the
 /// key's last step (the whole key for the module), the form, and the notable fields: `name`
 /// when it differs from the step, `head`, `binds`, `role` and `for`, `stmt` and `value` (when
-/// they differ from the node's own text), `target`, flags, and each link (`calls → builtin`,
+/// they differ from the node's own text; a decorated definition's `stmt` is shown as the
+/// decorators before it, `+node`), `target`, flags, and each link (`calls → builtin`,
 /// `types → project shop/payments.py#PaymentDeclined`).
 pub fn tree(file: &FileGraph, text: &str) -> String {
     let text_of = |range: unfold_core::ByteRange| -> String {
@@ -356,6 +357,11 @@ pub fn tree(file: &FileGraph, text: &str) -> String {
         if let Some(stmt) = node.stmt {
             if text_of(stmt) == range_text {
                 line.push_str(" stmt");
+            } else if let Some(decorators) = unfold_core::ByteRange::new(stmt.start, node.range.start)
+                .ok()
+                .filter(|before| stmt.end == node.range.end && text_of(*before).starts_with('@'))
+            {
+                let _ = write!(line, " stmt={}+node", source(decorators));
             } else {
                 let _ = write!(line, " stmt={}", source(stmt));
             }

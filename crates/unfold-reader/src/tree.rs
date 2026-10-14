@@ -11,7 +11,7 @@
 use std::ops::Range;
 
 use rustc_hash::FxHashMap;
-use unfold_core::vocab::{Language, LinkKind, NodeKind};
+use unfold_core::vocab::{CallRole, Language, LinkKind, NodeKind};
 use unfold_core::{
     Argument, ByteRange, File, FileGraph, Key, Link, Member, Node, Parameter, RepoPath, Signature, owner,
 };
@@ -224,6 +224,26 @@ impl FileTree {
             .map(|&index| &links[index as usize])
             .take_while(move |link| link.range.start < range.end)
             .filter(move |link| range.contains(link.range))
+    }
+
+    /// The source block `id` spans: a definition from its first decorator to its end, any
+    /// other block its range. What a card shows and a board signs for a definition.
+    pub fn extent(&self, id: u32) -> ByteRange {
+        let node = self.node(id);
+        if !node.kind().is_definition() {
+            return node.range;
+        }
+        let siblings = node.parent.map_or(&[][..], |parent| self.children(parent));
+        let start = siblings
+            .iter()
+            .map(|&sibling| self.node(sibling))
+            .filter(|sibling| sibling.r#for == Some(id) && sibling.role == Some(CallRole::Decorator))
+            .map(|decorator| decorator.range.start)
+            .fold(node.range.start, u32::min);
+        ByteRange {
+            start,
+            end: node.range.end,
+        }
     }
 
     /// Node `id`'s catalog label ([`catalog::label`]).

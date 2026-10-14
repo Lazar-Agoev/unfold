@@ -1,7 +1,8 @@
 //! Contracts on the sample graph (with its sources written out) and on the playgrounds' goldens.
 
-use unfold_core::testkit::sample;
-use unfold_core::vocab::{Form, Outcome};
+use unfold_core::key::Callee;
+use unfold_core::testkit::{GraphBuilder, project, sample, unknown};
+use unfold_core::vocab::{Flag, Form, Language, LinkKind, Outcome, Reason};
 use unfold_core::{Graph, Key, RepoPath};
 
 use super::*;
@@ -486,4 +487,56 @@ fn an_in_memory_graph_is_a_fact_source() {
     );
     assert_eq!(source.type_use_count("src/orders.ts#Order").unwrap(), 2);
     assert!(source.file_graph("shop/absent.py").unwrap().is_none());
+}
+
+/// Only a clause that writes no type expression catches everything: `except ERRORS[0]:` names
+/// a type the graph can't follow, so it catches nothing proven, and the bare `except:` after it
+/// catches the raise.
+#[test]
+fn only_a_bare_except_catches_everything() {
+    const CODE: &str = "def risky():\n    raise Oops()\n\n\ndef guarded():\n    try:\n        risky()\n    except ERRORS[0]:\n        pass\n    except:\n        pass\n";
+    let mut g = GraphBuilder::new();
+    let file = g.file("g.py", Language::Python, CODE);
+    let risky = g.def(
+        file,
+        Form::Function,
+        "risky",
+        g.find(file, "def risky():\n    raise Oops()"),
+    );
+    let raise = g.block(risky, Form::Raise, g.find(file, "raise Oops()"));
+    g.node_mut(raise).stmt = Some(g.find(file, "raise Oops()"));
+    let oops = g.construction(raise, &Callee::name("Oops"), g.find(file, "Oops()"));
+    g.node_mut(oops).flags.insert(Flag::ExitValue);
+    let head = g.find(file, "Oops");
+    g.link(oops, LinkKind::Calls, head, "Oops", unknown(Reason::NotFound));
+
+    let guarded_text = &CODE[CODE.find("def guarded").unwrap()..CODE.len() - 1];
+    let guarded = g.def(file, Form::Function, "guarded", g.find(file, guarded_text));
+    let attempt = g.block(
+        guarded,
+        Form::Try,
+        g.find_in(guarded, &guarded_text[guarded_text.find("try").unwrap()..]),
+    );
+    let body = g.block(attempt, Form::Body, g.find_in(guarded, "risky()"));
+    let call = g.call(body, &Callee::name("risky"), g.find_in(guarded, "risky()"));
+    g.node_mut(call).stmt = Some(g.find_in(guarded, "risky()"));
+    let head = g.find_in(guarded, "risky");
+    g.link(call, LinkKind::Calls, head, "risky", project(&key("g.py#risky")));
+    let named = g.block(
+        attempt,
+        Form::Except,
+        g.find_in(guarded, "except ERRORS[0]:\n        pass"),
+    );
+    g.node_mut(named).head = Some(g.find_in(guarded, "except ERRORS[0]"));
+    let bare_range = g.find_from(file, "except:\n        pass", g.range(named).end);
+    let bare = g.block(attempt, Form::Except, bare_range);
+    g.node_mut(bare).head = Some(g.find_from(file, "except", bare_range.start));
+
+    let playground = Playground::built(&g);
+    let caught: Vec<Option<Key>> = contract(&playground, "g.py#guarded/try[0]/body/call:risky")
+        .raises
+        .into_iter()
+        .map(|raise| raise.caught_by)
+        .collect();
+    assert_eq!(caught, [Some(key("g.py#guarded/try[0]/except[1]"))]);
 }

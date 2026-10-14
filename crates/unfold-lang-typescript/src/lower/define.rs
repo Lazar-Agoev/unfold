@@ -401,10 +401,10 @@ impl Lowering<'_> {
     }
 
     /// One decorator: its call, or, for a decorator that isn't a call, a call node of its
-    /// expression. Its statement is the decorator.
+    /// expression. A decorator is part of its definition's statement, so none of its calls
+    /// begins one.
     pub(super) fn decorator(&mut self, decorator: &Decorator<'_>) {
-        let enclosing = self.enclosing.replace(range(decorator.span));
-        self.statement = Some(range(decorator.span));
+        let statement = self.statement.take();
         let expression = &decorator.expression;
         if decorator_is_call(expression) {
             self.visit_expression(expression);
@@ -430,14 +430,14 @@ impl Lowering<'_> {
                 });
             }
         }
-        self.statement = None;
-        self.enclosing = enclosing;
+        self.statement = statement;
     }
 
     /// A class, named by `naming`, or by its identifier when it is a declaration or a class
     /// expression written in a body. Its decorators and its base, when that is a call, are calls
-    /// in the enclosing body before it; its members are its code. A class expression with no
-    /// name can't be keyed: it is left out, and the node around it is truncated.
+    /// in the enclosing body before it; its members are its code. It is the first node of its
+    /// statement, which runs from its first decorator. A class expression with no name can't be
+    /// keyed: it is left out, and the node around it is truncated.
     pub(super) fn class(&mut self, it: &Class<'_>, naming: Option<Naming>) -> Option<u32> {
         if it.declare {
             return None;
@@ -471,6 +471,26 @@ impl Lowering<'_> {
             });
             return None;
         };
+        let range_start = match (export, it.decorators.last()) {
+            (Some(export), Some(last)) if export >= last.span.end => export,
+            (Some(export), None) => export,
+            _ => start,
+        };
+        let span = ByteRange {
+            start: range_start,
+            end: it.span.end,
+        };
+        // `@dec export class A {}` is a statement that starts at `export`.
+        let statement = self
+            .statement
+            .take_if(|statement| statement.contains(span))
+            .map(|statement| ByteRange {
+                start: it
+                    .decorators
+                    .first()
+                    .map_or(statement.start, |first| first.span.start.min(statement.start)),
+                end: statement.end,
+            });
         let decorators = self.decorators(&it.decorators, Within::Decorator);
         let bases = match &it.heritage {
             Some(heritage) => self.belonging(Within::Base, |lowering| {
@@ -478,20 +498,11 @@ impl Lowering<'_> {
             }),
             None => Vec::new(),
         };
-        let range_start = match (export, it.decorators.last()) {
-            (Some(export), Some(last)) if export >= last.span.end => export,
-            (Some(export), None) => export,
-            _ => start,
-        };
         let body = range(it.body.span);
         let head_end = self
             .tokens
             .before(body.start)
             .map_or(body.start, |token| token.end());
-        let span = ByteRange {
-            start: range_start,
-            end: it.span.end,
-        };
         let id = self.push(
             self.at.parent,
             Child::Definition(&naming.name),
@@ -507,6 +518,7 @@ impl Lowering<'_> {
         node.head = Some(ByteRange { start, end: head_end });
         node.body = Some(body);
         node.doc = doc;
+        node.stmt = statement;
         self.definitions.insert(it.unstable_address(), id);
         self.typed.class(id, &it.body.body);
         let saved = self.enter(At {
@@ -557,6 +569,11 @@ impl Lowering<'_> {
                 let start = self.after_decorators(it.span, &it.decorators);
                 let written = ByteRange { start, end: span.end };
                 let id = self.method(it.unstable_address(), &it.value, form, naming, None, written);
+                // A member is a statement of the class body, from its first decorator; the method
+                // is its first node.
+                if let Some(id) = id {
+                    self.node(id).stmt = Some(span);
+                }
                 self.belong(decorators, id);
             }
             ClassElement::PropertyDefinition(it) => {
@@ -592,6 +609,8 @@ impl Lowering<'_> {
                         | Expression::ClassExpression(_)
                 )
             });
+        // A field isn't a definition, so its decorators have nothing for `for` to name: they are
+        // plain calls of the class body.
         let within = if defines { Within::Decorator } else { Within::Body };
         let decorators = self.decorators(decorators, within);
         if computed && let Some(key) = key.as_expression() {

@@ -97,6 +97,7 @@ a.ts#Fields.constructor constructor
   range `constructor() {}`
   head `constructor()`
   body `{}`
+  stmt `constructor() {}`
   name `constructor`
 a.ts#wrapped lambda
   range `() => {}`

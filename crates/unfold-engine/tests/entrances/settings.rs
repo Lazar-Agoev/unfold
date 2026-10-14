@@ -41,10 +41,6 @@ fn changing_only_apps_never_recompiles_or_relinks() {
     assert_eq!(changed.stats.files_extracted, 0);
     assert_eq!(changed.stats.files_read, 0);
     assert_eq!(engine.settings().hash(), hash);
-    assert_eq!(
-        changed.basis, first.basis,
-        "the link basis leaves `[[app]]` tables out"
-    );
     assert_eq!(changed.graph.files, first.graph.files);
     assert!(changed.summary.apps_changed && changed.summary.inputs_changed);
     assert!(changed.summary.changed_files.is_empty() && changed.summary.changed_keys.is_empty());

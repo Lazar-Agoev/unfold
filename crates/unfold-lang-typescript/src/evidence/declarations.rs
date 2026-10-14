@@ -72,7 +72,7 @@ impl TypeScriptLinked<'_> {
             return match decl.kind {
                 DeclKind::Class | DeclKind::Interface | DeclKind::TypeAlias | DeclKind::Enum => {
                     Some(ConcreteTarget {
-                        target: Self::node_ref(file, decl.block)?,
+                        target: Self::node_ref(file, decl.node)?,
                         implementation: declaration,
                     })
                 }
@@ -89,7 +89,7 @@ impl TypeScriptLinked<'_> {
                     return None;
                 }
                 Some(ConcreteTarget {
-                    target: Self::node_ref(file, decl.block)?,
+                    target: Self::node_ref(file, decl.node)?,
                     implementation: declaration,
                 })
             }
@@ -104,10 +104,10 @@ impl TypeScriptLinked<'_> {
                                     index: constructor,
                                 })
                             })
-                            .and_then(|constructor| constructor.block);
-                        Self::node_ref(file, constructor.or(decl.block))?
+                            .and_then(|constructor| constructor.node);
+                        Self::node_ref(file, constructor.or(decl.node))?
                     }
-                    ValueContext::Reference => Self::node_ref(file, decl.block)?,
+                    ValueContext::Reference => Self::node_ref(file, decl.node)?,
                     ValueContext::Call | ValueContext::Type => return None,
                 };
                 Some(ConcreteTarget {

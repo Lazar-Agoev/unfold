@@ -11,8 +11,9 @@
 //! | Name | Any block |
 //!
 //! A **body** is the code of a module, class, or function, or of one part (a branch, a loop
-//! body, an `except`). Its **steps** are its children that run in it: calls (except the calls
-//! written in a part's test, which belong to the test), exits, control blocks, and definitions.
+//! body, an `except`). Its **steps** are its children that run in it: calls, exits, control
+//! blocks, and definitions, except what is written in a part's test (its test calls, and the
+//! ternaries and comprehensions inside its head), which belongs to the test.
 //! Decorators, class bases, and Python defaults are steps of the body they are written in.
 //!
 //! Every rule reads the records only (kinds, parents, links, argument ranges), never key text.
@@ -118,15 +119,29 @@ pub fn is_body(tree: &FileTree, id: u32) -> bool {
 }
 
 /// Whether node `id` is a step of the body it is written in: a call (not one in a part's
-/// test), exit, control block, or definition whose parent holds a body.
+/// test), exit, control block (not one in a part's test), or definition whose parent holds a
+/// body.
 pub fn is_step(tree: &FileTree, id: u32) -> bool {
     let node = tree.node(id);
     let runs = match node.kind() {
         NodeKind::Call => node.role != Some(CallRole::Test),
         NodeKind::Exit => true,
-        kind => kind.is_control() || kind.is_definition(),
+        kind if kind.is_control() => !in_test(tree, id),
+        kind => kind.is_definition(),
     };
     runs && tree.parent(id).is_some_and(|parent| is_body(tree, parent))
+}
+
+/// Whether node `id` is a control block written in its part's test: a ternary or comprehension
+/// whose range lies inside the head of the part it is a child of.
+pub fn in_test(tree: &FileTree, id: u32) -> bool {
+    let range = tree.node(id).range;
+    tree.kind(id).is_control()
+        && tree
+            .parent(id)
+            .filter(|&parent| tree.kind(parent) == NodeKind::Part)
+            .and_then(|part| tree.node(part).head)
+            .is_some_and(|head| head.contains(range))
 }
 
 /// The steps of body `container`, in written order. Empty when `container` holds no body.
@@ -147,18 +162,22 @@ pub enum Combinable {
         /// The definition or part whose body it is a step of.
         container: u32,
     },
-    /// Only by itself: a whole control block written in an expression (a ternary or
-    /// comprehension in a call's arguments, an exit's value, or a test).
+    /// Only by itself: a whole control block written in an expression that the drawing draws
+    /// as a step of its own (a ternary or comprehension in a call's arguments or an exit's
+    /// value).
     Alone,
 }
 
-/// What block `id` can be combined with; `None` when it can't be combined.
+/// What block `id` can be combined with; `None` when it can't be combined. A ternary or
+/// comprehension in a test or a header is part of that test or header, so it can't.
 pub fn combinable(tree: &FileTree, id: u32) -> Option<Combinable> {
     if is_step(tree, id) {
-        tree.parent(id).map(|container| Combinable::Steps { container })
-    } else {
-        tree.kind(id).is_control().then_some(Combinable::Alone)
+        return tree.parent(id).map(|container| Combinable::Steps { container });
     }
+    let in_expression = tree
+        .parent(id)
+        .is_some_and(|parent| matches!(tree.kind(parent), NodeKind::Call | NodeKind::Exit));
+    (tree.kind(id).is_control() && in_expression).then_some(Combinable::Alone)
 }
 
 /// Where a proposed step goes.

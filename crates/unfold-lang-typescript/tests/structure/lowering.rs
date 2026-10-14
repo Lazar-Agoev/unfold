@@ -322,6 +322,68 @@ export class Service {
     );
 }
 
+/// Each node's key with the text of its `stmt`, for a source that compiles into a valid graph.
+fn statements_of(source: &str) -> Vec<(String, Option<&str>)> {
+    let compiled = compile_source("a.ts", source).valid();
+    compiled
+        .file("a.ts")
+        .nodes
+        .iter()
+        .skip(1)
+        .map(|node| {
+            let stmt = node
+                .stmt
+                .map(|stmt| &source[stmt.start as usize..stmt.end as usize]);
+            (node.key.to_string(), stmt)
+        })
+        .collect()
+}
+
+/// A decorator is part of its definition's statement: its calls begin none, and the definition
+/// is the statement's first node, from its first decorator to its end. A class member is a
+/// statement of the class body.
+#[test]
+fn a_definition_begins_its_statement_from_its_first_decorator() {
+    let source = r#"@first() @second
+class Plain extends base() {}
+@dec export class Exported {}
+export @dec class Inner {
+  @route("/a") @auth
+  handle() {}
+  helper() {}
+}
+class Bare extends mixin() {}
+"#;
+    assert_eq!(
+        statements_of(source),
+        [
+            ("a.ts#/call:first".to_owned(), None),
+            ("a.ts#/call:second".to_owned(), None),
+            ("a.ts#/call:base".to_owned(), None),
+            (
+                "a.ts#Plain".to_owned(),
+                Some("@first() @second\nclass Plain extends base() {}")
+            ),
+            ("a.ts#/call:dec".to_owned(), None),
+            ("a.ts#Exported".to_owned(), Some("@dec export class Exported {}")),
+            ("a.ts#/call:dec[1]".to_owned(), None),
+            (
+                "a.ts#Inner".to_owned(),
+                Some(&source[source.find("export @dec").unwrap()..source.find("\nclass Bare").unwrap()])
+            ),
+            ("a.ts#Inner/call:route".to_owned(), None),
+            ("a.ts#Inner/call:auth".to_owned(), None),
+            (
+                "a.ts#Inner.handle".to_owned(),
+                Some("@route(\"/a\") @auth\n  handle() {}")
+            ),
+            ("a.ts#Inner.helper".to_owned(), Some("helper() {}")),
+            ("a.ts#/call:mixin".to_owned(), None),
+            ("a.ts#Bare".to_owned(), Some("class Bare extends mixin() {}")),
+        ],
+    );
+}
+
 #[test]
 fn parameter_defaults() {
     assert_tree_at(
@@ -420,7 +482,7 @@ fn switches() {
 "#,
         &[
             "status function head=`function status(order)`",
-            "  /switch[0] switch head=`switch (classify(order))`",
+            "  /switch[0] switch head=`classify(order)`",
             "    /call:classify call head=`classify`",
             "      ↳ calls `classify` → unknown unknown_name",
             "    /case[0] case head=`\"paid\"`",
@@ -784,6 +846,92 @@ fn binds_exit_values_and_statements() {
     );
 }
 
+/// A chain of plain assignments binds all its written targets, as Python does; a target written
+/// inside the value doesn't rebind it.
+#[test]
+fn chained_assignments_bind_every_target() {
+    assert_tree_at(
+        "a.ts",
+        r#"async function flow() {
+  a = b = first();
+  const x = y = await second();
+  total += third();
+  cache ??= fourth();
+}
+"#,
+        &[
+            "flow function async head=`async function flow()`",
+            "  /call:first call binds=`a = b` head=`first`",
+            "    ↳ calls `first` → unknown unknown_name",
+            "  /call:second call awaited binds=`x = y` head=`second`",
+            "    ↳ calls `second` → unknown unknown_name",
+            "  /call:third call head=`third`",
+            "    ↳ calls `third` → unknown unknown_name",
+            "  /call:fourth call conditional head=`fourth`",
+            "    ↳ calls `fourth` → unknown unknown_name",
+        ],
+    );
+}
+
+/// `yield` is an exit only as its statement or the whole value its statement assigns; in a
+/// conditional branch, a test, an argument, or an exit's value, its calls are code where they
+/// are written, and the graph is valid.
+#[test]
+fn yield_is_an_exit_only_as_a_statement_or_an_assigned_value() {
+    let source = r#"function* steps(c) {
+  yield start();
+  const v = c ? yield pick() : other();
+  if (c ? yield probe() : fallback()) {}
+  use(c ? yield : none);
+  x = y = yield both();
+  return yield last();
+}
+"#;
+    assert_tree_at(
+        "a.ts",
+        source,
+        &[
+            "steps function generator head=`function* steps(c)`",
+            "  /yield[0] yield",
+            "    /call:start call exit_value head=`start`",
+            "      ↳ calls `start` → unknown unknown_name",
+            "  /ternary[0] ternary binds=`v`",
+            "    /then then head=`c`",
+            "      /call:pick call head=`pick`",
+            "        ↳ calls `pick` → unknown unknown_name",
+            "    /else else",
+            "      /call:other call head=`other`",
+            "        ↳ calls `other` → unknown unknown_name",
+            "  /if[0] if",
+            "    /then then head=`c ? yield probe() : fallback()`",
+            "      /ternary[0] ternary",
+            "        /then then head=`c`",
+            "          /call:probe call head=`probe`",
+            "            ↳ calls `probe` → unknown unknown_name",
+            "        /else else",
+            "          /call:fallback call head=`fallback`",
+            "            ↳ calls `fallback` → unknown unknown_name",
+            "  /call:use call head=`use`",
+            "    ↳ calls `use` → unknown unknown_name",
+            "  /yield[1] yield",
+            "    /call:both call exit_value head=`both`",
+            "      ↳ calls `both` → unknown unknown_name",
+            "  /return[0] return",
+            "    /call:last call head=`last`",
+            "      ↳ calls `last` → unknown unknown_name",
+        ],
+    );
+    let statements = statements_of(source);
+    let stmt = |key: &str| {
+        statements
+            .iter()
+            .find(|(own, _)| own == key)
+            .and_then(|(_, stmt)| *stmt)
+    };
+    assert_eq!(stmt("a.ts#steps/yield[0]"), Some("yield start();"));
+    assert_eq!(stmt("a.ts#steps/yield[1]"), Some("x = y = yield both();"));
+}
+
 #[test]
 fn labeled_plain_blocks_are_truncated() {
     assert_tree_at(
@@ -828,7 +976,7 @@ fn an_early_break_leaves_its_switch() {
 "#,
         &[
             "pick function head=`function pick(kind, item)`",
-            "  /switch[0] switch head=`switch (kind)`",
+            "  /switch[0] switch head=`kind`",
             "    /case[0] case head=`\"a\"`",
             "      /if[0] if",
             "        /then then head=`item.skip`",
@@ -861,7 +1009,7 @@ fn a_labeled_break_leaves_an_enclosing_switch() {
 "#,
         &[
             "scan function head=`function scan(kind, rows)`",
-            "  /switch[0] switch head=`switch (kind)`",
+            "  /switch[0] switch head=`kind`",
             "    /case[0] case head=`\"rows\"`",
             "      /for[0] for head=`for (const row of rows)`",
             "        /body body",
@@ -985,7 +1133,7 @@ fn place_order_is_an_ordinary_decision() {
             "placeOrder function async head=`async function placeOrder(id: string)`",
             "  /call:loadOrder call awaited binds=`order` head=`loadOrder`",
             "    ↳ calls `loadOrder` → project src/store.ts#loadOrder",
-            "  /switch[0] switch head=`switch (order.status)`",
+            "  /switch[0] switch head=`order.status`",
             "    /case[0] case head=`\"paid\"`",
             "      /return[0] return",
             "    /case[1] case head=`\"cancelled\"`",

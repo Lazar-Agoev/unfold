@@ -88,7 +88,7 @@ impl ChangeSummary {
 struct NodeView<'g> {
     node: &'g Node,
     parent: Option<&'g Key>,
-    owner: Option<&'g Key>,
+    r#for: Option<&'g Key>,
     target: Option<&'g Key>,
     links: &'g [Link],
 }
@@ -119,7 +119,7 @@ impl NodeView<'_> {
         };
         same_node
             && self.parent == other.parent
-            && self.owner == other.owner
+            && self.r#for == other.r#for
             && self.target == other.target
             && self.links.len() == other.links.len()
             && self.links.iter().zip(other.links).all(|(a, b)| same_link(a, b))
@@ -148,7 +148,7 @@ fn views(file: &FileGraph) -> FxHashMap<&Key, NodeView<'_>> {
             NodeView {
                 node,
                 parent: key(node.parent),
-                owner: key(node.r#for),
+                r#for: key(node.r#for),
                 target: key(node.target),
                 links: &file.links[start..link],
             },

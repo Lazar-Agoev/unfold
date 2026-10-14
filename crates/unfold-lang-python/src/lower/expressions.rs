@@ -204,7 +204,7 @@ impl<'a> Lowering<'a> {
             Expr::Named(named) => {
                 let binds = Value {
                     binds: Some(self.slice(named.target.range())),
-                    ..Value::default()
+                    ..value
                 };
                 self.expr(&named.value, place, binds)
             }
@@ -282,10 +282,6 @@ impl<'a> Lowering<'a> {
                 child: None,
             });
         }
-        let inside = Place {
-            conditional: place.conditional,
-            ..inside
-        };
         self.expr(&call.func, inside, Value::default())?;
         let in_arguments = Place {
             argument: true,
@@ -473,6 +469,8 @@ impl<'a> Lowering<'a> {
             (Some(first), Some(last)) => Some(span(first.start(), last.end())),
             _ => None,
         };
+        // The shortest range holding the element and its tests: it covers the `for` clauses
+        // written before the last test (Python writes the element first), never one after it.
         let end = test.map_or(element_end, |test| test.end().max(element_end));
         let parts = place.under(id);
         let body = self.push(

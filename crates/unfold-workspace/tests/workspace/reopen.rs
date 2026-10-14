@@ -154,3 +154,40 @@ fn reopening_an_unchanged_folder_neither_links_nor_commits() {
     drop(reader);
     close(workspace);
 }
+
+#[test]
+fn reopening_with_settings_that_stopped_parsing_keeps_the_last_good_ones() {
+    let playground = Playground::new("ts-orders", false);
+    playground.write("tools/extra.ts", "export function extra() {}\n");
+    playground.write(
+        "unfold.toml",
+        "[scope]\ninclude = [\"src\"]\n\n[[app]]\nname = \"Server\"\ncode = \"src/server.ts#\"\n",
+    );
+    let sink = RecordingSink::new();
+    let workspace = playground.open(&sink, false);
+    compile(&workspace);
+    let (_, graph) = stored(&workspace);
+    assert!(!graph.contains("tools/extra.ts"), "out of scope");
+    close(workspace);
+
+    playground.write("unfold.toml", "[scope]\ninclude = [\"src\"\n");
+    let (workspace, extracted) = reopen(&playground, &sink);
+    assert_eq!(extracted, 0);
+    // Only the graph's completeness changes: the settings have a problem.
+    assert_eq!(
+        stored(&workspace).1,
+        graph,
+        "the last good scope stays: nothing is added"
+    );
+    let reader = workspace.readers().expect("readers").get().expect("reader");
+    let apps = reader.apps().expect("apps");
+    let keys: Vec<&str> = apps.iter().map(|app| app.key.as_str()).collect();
+    assert_eq!(keys, ["entrance:server"], "the last good apps stay");
+    drop(reader);
+    let problems = workspace.problems();
+    assert!(
+        problems.iter().any(|problem| problem.path == "unfold.toml"),
+        "{problems:?}"
+    );
+    close(workspace);
+}

@@ -6,7 +6,7 @@ use std::path::Path;
 
 use unfold_core::key::Callee;
 use unfold_core::testkit::{GraphBuilder, NodeRef, library, project, target, unknown};
-use unfold_core::vocab::{Form, Language, LinkKind, Reason, TargetState};
+use unfold_core::vocab::{CallRole, Form, Language, LinkKind, Reason, TargetState};
 use unfold_core::{ByteRange, Graph, Key};
 
 use super::files::{BoardDirs, BoardFile, Change, MAX_BOARD_BYTES, Revision, slug};
@@ -1047,7 +1047,10 @@ fn descriptions_names_and_combined_steps_are_signed_from_verified_source() {
         page.names[0].name.signature,
         Some(Signature::of(bytes_of("load()")))
     );
-    let span = Signature::of(bytes_of("load();\n  if (first) { console.log(first); }"));
+    // A combined step is signed over its drawn span: from its first block's statement.
+    let span = Signature::of(bytes_of(
+        "const first = load();\n  if (first) { console.log(first); }",
+    ));
     assert_eq!(page.combined[0].signature, Some(span));
     assert_eq!(
         page.combined[0].description.as_ref().unwrap().signature,
@@ -1983,4 +1986,40 @@ fn oversized_board_files_are_refused_before_reading() {
         .unwrap();
     handle.set_len(MAX_BOARD_BYTES + 1).unwrap();
     assert!(matches!(dirs.load(&file), Err(BoardError::Io { .. })));
+}
+
+/// A decorated definition is signed over its decorators too: changing `@router.get` to
+/// `@router.post` makes what was signed over it outdated.
+#[test]
+fn a_definition_is_signed_from_its_first_decorator() {
+    let compiled = |text: &'static str| {
+        let mut builder = GraphBuilder::new();
+        let file = builder.file("api.py", Language::Python, text);
+        let decorator = range(1, text.find('\n').unwrap());
+        let call = builder.call(file, &Callee::name("router"), decorator);
+        let definition = builder.def(
+            file,
+            Form::Function,
+            "a",
+            builder.find(file, "def a():\n    return 1"),
+        );
+        let node = builder.node_mut(call);
+        node.role = Some(CallRole::Decorator);
+        node.r#for = Some(definition.local_id());
+        builder.build()
+    };
+    const BEFORE: &str = "@router.get(\"/a\")\ndef a():\n    return 1\n";
+    const AFTER: &str = "@router.post(\"/a\")\ndef a():\n    return 1\n";
+    let signed = |text: &'static str| {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("api.py"), text).unwrap();
+        let graph = compiled(text);
+        BoardGraph::from_graph(&graph, dir.path()).signature("api.py#a")
+    };
+    // From the decorator's call (after its `@`) to the definition's end.
+    assert_eq!(
+        signed(BEFORE),
+        Some(Signature::of(BEFORE[1..].trim_end().as_bytes()))
+    );
+    assert_ne!(signed(BEFORE), signed(AFTER));
 }

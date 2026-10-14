@@ -17,7 +17,6 @@ use std::path::Path;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::Serialize;
-use unfold_core::key::{ParsedKey, Segment};
 use unfold_core::vocab::{CallRole, Flag, Form, LinkKind, NodeKind, Outcome};
 use unfold_core::{ByteRange, Key, LinkTarget};
 
@@ -169,6 +168,11 @@ fn chips(calls: &[CallBox]) -> String {
     format!(" · {}", titles.join(", "))
 }
 
+/// The keys of the boxes drawn on a header or test, which their line carries.
+fn chip_keys(calls: &[CallBox]) -> impl Iterator<Item = &Key> {
+    calls.iter().map(|call| &call.key)
+}
+
 fn gap_text(gap: &GapTick) -> String {
     let mut text = format!("⋯ {}", plural(gap.count, "line"));
     if !gap.hidden.is_empty() {
@@ -277,6 +281,7 @@ impl<'f> Printer<'f> {
                 );
                 let keys: Vec<&Key> = std::iter::once(&frame.key)
                     .chain(body.map(|lane| &lane.key))
+                    .chain(chip_keys(&frame.header_calls))
                     .collect();
                 line(out, indent, &text, step.state, &keys);
                 self.insets(out, &frame.header_calls, indent + 4);
@@ -344,7 +349,8 @@ impl<'f> Printer<'f> {
         if lane.falls_through {
             text.push_str(" → falls into the next case");
         }
-        line(out, indent, &text, lane.state, keys);
+        let keys: Vec<&Key> = keys.iter().copied().chain(chip_keys(calls)).collect();
+        line(out, indent, &text, lane.state, &keys);
         self.insets(out, calls, indent + 4);
         self.sequence(out, &lane.steps, indent + 4);
     }
@@ -362,7 +368,10 @@ impl<'f> Printer<'f> {
                     named(&[frame.name.as_deref(), frame.header.as_deref()]),
                     chips(&frame.header_calls)
                 );
-                line(out, indent, &text, step.state, &[&frame.key]);
+                let keys: Vec<&Key> = std::iter::once(&frame.key)
+                    .chain(chip_keys(&frame.header_calls))
+                    .collect();
+                line(out, indent, &text, step.state, &keys);
                 self.insets(out, &frame.header_calls, indent + 4);
                 for lane in &frame.lanes {
                     let words = if lane.form == Form::Default {
@@ -405,6 +414,10 @@ impl<'f> Printer<'f> {
     }
 
     fn looping(&self, out: &mut String, step: &Step, frame: &Frame, indent: usize) {
+        if frame.form == Form::Do {
+            self.do_loop(out, step, frame, indent);
+            return;
+        }
         let word = if frame.form == Form::Comprehension {
             "COMPREHENSION"
         } else {
@@ -423,6 +436,7 @@ impl<'f> Printer<'f> {
         text.push_str(&chips(&frame.header_calls));
         let keys: Vec<&Key> = std::iter::once(&frame.key)
             .chain(body.map(|lane| &lane.key))
+            .chain(chip_keys(&frame.header_calls))
             .collect();
         line(out, indent, &text, step.state, &keys);
         self.insets(out, &frame.header_calls, indent + 4);
@@ -433,7 +447,8 @@ impl<'f> Printer<'f> {
                     named(&[body.name.as_deref(), test.text.as_deref()]),
                     chips(&test.calls)
                 );
-                line(out, indent + 4, &text, body.state, &[]);
+                let keys: Vec<&Key> = chip_keys(&test.calls).collect();
+                line(out, indent + 4, &text, body.state, &keys);
                 self.insets(out, &test.calls, indent + 8);
             }
             self.sequence(out, &body.steps, indent + 4);
@@ -442,6 +457,31 @@ impl<'f> Printer<'f> {
             let label = [otherwise.name.as_deref()];
             self.lane(out, otherwise, "LOOP ELSE", &label, &[&otherwise.key], indent);
         }
+    }
+
+    /// A `do` loop: `DO`, its body, then its test as written, which runs after the body.
+    fn do_loop(&self, out: &mut String, step: &Step, frame: &Frame, indent: usize) {
+        let body = frame.lanes.iter().find(|lane| lane.form == Form::Body);
+        let mut text = named(&[
+            Some("DO"),
+            frame.name.as_deref(),
+            body.and_then(|lane| lane.name.as_deref()),
+        ]);
+        let keys: Vec<&Key> = std::iter::once(&frame.key)
+            .chain(body.map(|lane| &lane.key))
+            .collect();
+        line(out, indent, &text, step.state, &keys);
+        if let Some(body) = body {
+            self.sequence(out, &body.steps, indent + 4);
+        }
+        text = "LOOP".to_owned();
+        if let Some(header) = &frame.header {
+            let _ = write!(text, " {header}");
+        }
+        text.push_str(&chips(&frame.header_calls));
+        let keys: Vec<&Key> = chip_keys(&frame.header_calls).collect();
+        line(out, indent, &text, step.state, &keys);
+        self.insets(out, &frame.header_calls, indent + 4);
     }
 
     fn trying(&self, out: &mut String, step: &Step, frame: &Frame, indent: usize) {
@@ -469,7 +509,7 @@ impl<'f> Printer<'f> {
     }
 
     /// Where an exit's (or a combined step's) routes go, in words.
-    fn places(&self, id: u32, leaves: Option<Form>) -> Vec<(RouteKind, String)> {
+    fn places(&self, id: u32) -> Vec<(RouteKind, String)> {
         let mut places: Vec<(RouteKind, String)> = Vec::new();
         for route in self.routes(id) {
             let place = match (route.kind, route.to) {
@@ -477,7 +517,7 @@ impl<'f> Printer<'f> {
                 (RouteKind::Return, _) => "End",
                 (RouteKind::Raise, RouteEnd::Step(_)) => "the handlers",
                 (RouteKind::Raise, _) => "the caller",
-                (RouteKind::Break, _) if leaves == Some(Form::Switch) => "after the switch",
+                (RouteKind::Break, _) if route.leaves == Some(Form::Switch) => "after the switch",
                 (RouteKind::Break, _) => "after the loop",
                 (RouteKind::Continue, _) => "next",
                 (RouteKind::MayContinue, _) => "may continue",
@@ -508,11 +548,7 @@ impl<'f> Printer<'f> {
             text.push(' ');
             text.push_str(&label);
         }
-        let places: Vec<String> = self
-            .places(step.id, exit.target.as_ref().map(|target| target.form))
-            .into_iter()
-            .map(|(_, place)| place)
-            .collect();
+        let places: Vec<String> = self.places(step.id).into_iter().map(|(_, place)| place).collect();
         if !places.is_empty() {
             let _ = write!(text, " → {}", places.join(", "));
         }
@@ -542,7 +578,7 @@ impl<'f> Printer<'f> {
         if combined.unknown > 0 {
             parts.push(format!("{} unknown ?", combined.unknown));
         }
-        for (kind, place) in self.places(step.id, None) {
+        for (kind, place) in self.places(step.id) {
             let verb = match kind {
                 RouteKind::Return => "returns → ",
                 RouteKind::Raise => "raises → ",
@@ -588,24 +624,10 @@ pub struct CodeLabel {
     pub key: Key,
 }
 
-/// `key`'s steps after `definition`'s, read through [`Key::parse`]: the short label agents
-/// read and write.
+/// `key`'s steps after `definition`'s ([`Key::steps_after`]): the short label agents read and
+/// write.
 fn short_label(definition: &Key, key: &Key) -> String {
-    let (Ok(ParsedKey::Block(outer)), Ok(ParsedKey::Block(inner))) = (definition.parse(), key.parse()) else {
-        return key.to_string();
-    };
-    let mut label = String::new();
-    for (index, segment) in inner.segments().iter().skip(outer.segments().len()).enumerate() {
-        if index > 0 {
-            label.push(if matches!(segment, Segment::Name { .. }) {
-                '.'
-            } else {
-                '/'
-            });
-        }
-        let _ = write!(label, "{segment}");
-    }
-    label
+    key.steps_after(definition).unwrap_or_else(|| key.to_string())
 }
 
 /// One line of the compiled tree.

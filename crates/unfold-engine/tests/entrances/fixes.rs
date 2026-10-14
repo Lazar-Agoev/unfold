@@ -153,3 +153,29 @@ fn a_moved_module_is_fixed_when_one_module_has_its_name_and_definitions() {
     background(&mut engine, &["other/worker.py"]);
     assert_eq!(fix_for(&engine, "jobs/worker.py#"), None, "two candidates");
 }
+
+#[test]
+fn a_moved_module_with_no_definitions_has_no_fix() {
+    let folder = Folder::new(&[
+        ("jobs/a/__main__.py", "print(\"a\")\n"),
+        ("tools/b/__main__.py", "print(\"b\")\n"),
+        (
+            "unfold.toml",
+            "[[app]]\nname = \"Job\"\ncode = \"jobs/a/__main__.py#\"\n",
+        ),
+    ]);
+    let mut engine = folder.engine();
+    let first = compile(&mut engine);
+    assert_eq!(
+        states(&first.graph.apps),
+        [("jobs/a/__main__.py#".to_owned(), TargetState::Found)]
+    );
+
+    folder.remove("jobs/a/__main__.py");
+    background(&mut engine, &["jobs/a/__main__.py"]);
+    assert_eq!(
+        fix_for(&engine, "jobs/a/__main__.py#"),
+        None,
+        "an unrelated module with the same file name and no definitions isn't offered"
+    );
+}

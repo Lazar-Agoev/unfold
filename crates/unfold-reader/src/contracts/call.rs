@@ -15,11 +15,14 @@
 //! - **Caught**: for each raise, the first enclosing `except` or `catch` part of the caller
 //!   (inside the caller's own definition, around the `body` of its `try`) that catches it.
 //!
-//! **What a handler catches**, by written facts only: a TypeScript `catch`, or an `except`
-//! whose clause names nothing (no `types` link and no call), catches everything. Otherwise a
-//! handler catches a raise when one of its `types` links reaches the raised class, or a class it
-//! extends through project `extends` links, or (for a library or builtin class, such as
-//! `ValueError`) names the same module and the same written name. A raise whose class is
+//! **What a handler catches**, by written facts only: a TypeScript `catch`, or a bare
+//! `except:`, catches everything. A bare `except` is told by its recorded head, which is the
+//! clause through its type and name: a head that covers only the `except` keyword writes no
+//! type expression. Any other `except` writes one, resolved or not (`except ERRORS[0]:` names
+//! no class the graph can follow, so it catches nothing proven). Otherwise a handler catches a
+//! raise when one of its `types` links reaches the raised class, or a class it extends through
+//! project `extends` links, or (for a library or builtin class, such as `ValueError`) names the
+//! same module and the same written name. A raise whose class is
 //! unknown is caught only by a handler that catches everything.
 
 use std::collections::BTreeSet;
@@ -27,7 +30,7 @@ use std::rc::Rc;
 
 use rustc_hash::FxHashSet;
 use unfold_core::text::short_label;
-use unfold_core::vocab::{CallRole, Flag, Form, LinkKind, NodeKind, Outcome, PairingReason};
+use unfold_core::vocab::{Flag, Form, LinkKind, NodeKind, Outcome, PairingReason};
 use unfold_core::{Key, Link, LinkTarget, ModuleLabel, Pairing, Parameter};
 
 use super::facts::Facts;
@@ -139,23 +142,22 @@ fn lineage(facts: &mut Facts<'_>, raised: Raised) -> Result<Vec<Raised>> {
     Ok(lineage)
 }
 
+/// Whether `except` part `handler` is bare: its head (the clause) covers only its keyword.
+fn is_bare_except(file: &FileTree, handler: u32) -> bool {
+    file.node(handler)
+        .head
+        .is_some_and(|head| head.len() as usize == Form::Except.as_str().len())
+}
+
 /// Whether handler part `handler` of `file` catches a raise whose lineage is `lineage`.
 fn catches(file: &FileTree, handler: u32, lineage: &[Raised]) -> bool {
-    let types: Vec<&Link> = file
-        .links(handler)
-        .iter()
-        .filter(|link| link.kind == LinkKind::Types)
-        .collect();
-    let names_nothing = types.is_empty()
-        && !file
-            .children(handler)
-            .iter()
-            .any(|&child| file.node(child).role == Some(CallRole::Test));
     match file.node(handler).form {
         Form::Catch => true,
-        Form::Except if names_nothing => true,
-        Form::Except => types
+        Form::Except if is_bare_except(file, handler) => true,
+        Form::Except => file
+            .links(handler)
             .iter()
+            .filter(|link| link.kind == LinkKind::Types)
             .any(|link| lineage.iter().any(|raised| names(link, raised))),
         _ => false,
     }

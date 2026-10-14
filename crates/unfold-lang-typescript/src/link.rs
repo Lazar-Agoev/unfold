@@ -512,7 +512,7 @@ impl Linked for TypeScriptLinked<'_> {
         binding.classes.iter().any(|facts| {
             facts.heritage.is_none()
                 && binding.declarations.get(facts.decl as usize).is_some_and(|decl| {
-                    decl.block == Some(class.local) && !decl.flags.has(DeclFlags::DECORATED)
+                    decl.node == Some(class.local) && !decl.flags.has(DeclFlags::DECORATED)
                 })
         })
     }

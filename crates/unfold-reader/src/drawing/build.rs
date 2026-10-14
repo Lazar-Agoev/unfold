@@ -211,6 +211,12 @@ impl<'a> Builder<'_, 'a> {
         self.kind(id) == NodeKind::Call && self.node(id).role == Some(CallRole::Test)
     }
 
+    /// Whether block `id` belongs to its part's test: a test call, or a ternary or
+    /// comprehension written in the part's head.
+    fn belongs_to_test(&self, id: u32) -> bool {
+        self.is_test(id) || overlay::in_test(self.tree, id)
+    }
+
     fn callbacks_of(&self, call: u32) -> impl Iterator<Item = u32> + 'a {
         let tree = self.tree;
         tree.children(call)
@@ -250,7 +256,7 @@ impl<'a> Builder<'_, 'a> {
                     })
             }
             NodeKind::Part => self.children(id).iter().any(|&child| {
-                if self.is_test(child) {
+                if self.belongs_to_test(child) {
                     self.has_box(child)
                 } else {
                     self.draws(child)
@@ -528,7 +534,7 @@ impl<'a> Builder<'_, 'a> {
                 steps.push(self.step(Shape::Call(call_box)));
             } else if self.shown(call) {
                 let other = self.other_call(call, feeds);
-                let unknown = u32::from(other.to.outcome == Outcome::Unknown);
+                let unknown = unknowns(&other);
                 steps.push(self.step(Shape::Thin(ThinRow {
                     calls: vec![other],
                     unknown,
@@ -629,7 +635,7 @@ impl<'a> Builder<'_, 'a> {
             Some(head) if !handler => {
                 let mut calls = Vec::new();
                 for &child in self.children(part) {
-                    if self.is_test(child) {
+                    if self.belongs_to_test(child) {
                         self.boxes(child, &mut calls);
                     }
                 }
@@ -795,6 +801,11 @@ impl<'a> Builder<'_, 'a> {
         let below = self.opened(self.tree.key(callback))?;
         Some(Box::new(self.drawer.flow(self.tree, callback, &below)))
     }
+}
+
+/// How many of `call` and the calls listed inside it, at any depth, are unknown.
+fn unknowns(call: &OtherCall) -> u32 {
+    u32::from(call.to.outcome == Outcome::Unknown) + call.inside.iter().map(unknowns).sum::<u32>()
 }
 
 /// A hidden control block's code name in its gap tick.

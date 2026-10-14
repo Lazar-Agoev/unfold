@@ -587,6 +587,34 @@ fn duplicate_app_keys_mark_the_later_apps() {
 }
 
 #[test]
+fn a_broken_entry_claims_no_key() {
+    let text = r#"[[app]]
+name = "Broken"
+nope = 1
+
+[[app]]
+name = "broken"
+entrances = [
+  { name = "Go", code = "a.py#f", nope = 1 },
+  { name = "go", code = "a.py#g" },
+]
+"#;
+    let file = SettingsFile::parse(text).unwrap();
+    let kinds: Vec<_> = file
+        .apps
+        .iter()
+        .map(|app| app.problem.as_ref().map(|problem| problem.kind))
+        .collect();
+    assert_eq!(kinds, [Some(EntryProblemKind::UnknownField), None]);
+    let kinds: Vec<_> = file.apps[1]
+        .entrances
+        .iter()
+        .map(|entrance| entrance.problem.as_ref().map(|problem| problem.kind))
+        .collect();
+    assert_eq!(kinds, [Some(EntryProblemKind::UnknownField), None]);
+}
+
+#[test]
 fn an_app_without_a_key_gives_its_entrances_none() {
     let app = only_app("[[app]]\nname = \"...\"\nentrances = [{ name = \"Go\", code = \"a.py#\" }]\n");
     assert_eq!(

@@ -14,7 +14,7 @@ use unfold_core::text::ByteRange;
 use unfold_core::vocab::{Expansion, Flag, Form};
 use unfold_engine::facts::{ArgumentFact, CallContext, CallFact, ImportFact};
 
-use super::{Lowering, Within, forms};
+use super::{Lowering, MAX_DEPTH, Within, forms};
 use crate::payload::ImportKind;
 use crate::spans::range;
 use crate::values;
@@ -42,10 +42,13 @@ impl Lowering<'_> {
     /// A call node with its call fact. Written directly in a test, parameter defaults, a
     /// decorator, or a class's base, it has that role.
     pub(super) fn call_node(&mut self, call: CallNode) -> Option<u32> {
+        // A callback sits right under its call. One past the depth limit is cut, and then the
+        // call's key carries no literal.
+        let callback_fits = self.depths[self.at.parent as usize] + 2 <= MAX_DEPTH;
         let child = Child::Call {
             callee: &call.callee,
             first_literal: call.first_literal.as_deref(),
-            takes_callback: call.takes_callback,
+            takes_callback: call.takes_callback && callback_fits,
         };
         let id = self.push(
             self.at.parent,
@@ -328,14 +331,14 @@ impl Lowering<'_> {
     }
 
     /// An assignment: its target's code, then its value, whose call or conditional expression
-    /// binds the written target for a plain `=`; a logical assignment's value runs only
-    /// sometimes.
+    /// binds the written targets of a chain of plain `=` (`a = b` in `a = b = f()`); a logical
+    /// assignment's value runs only sometimes.
     pub(super) fn assignment(&mut self, it: &AssignmentExpression<'_>) {
         self.visit_assignment_target(&it.left);
         match it.operator {
             AssignmentOperator::Assign => {
-                let target = self.text(range(it.left.span())).to_owned();
-                self.bind_value(&it.right, &target);
+                let (targets, value) = self.chain(self.text(range(it.left.span())), &it.right);
+                self.bind_value(value, &targets);
                 self.visit_expression(&it.right);
             }
             AssignmentOperator::LogicalAnd
@@ -347,10 +350,10 @@ impl Lowering<'_> {
         }
     }
 
-    /// `yield`: an exit where the code is a body's; inside another node's expression its value
-    /// is that node's code.
+    /// `yield`: an exit when it is its statement or the whole value the statement assigns
+    /// ([`forms::statement_yields`]); anywhere else its value is code where it is written.
     pub(super) fn yield_expression(&mut self, it: &YieldExpression<'_>) {
-        if self.at.within == Within::Body {
+        if self.yields.remove(&it.unstable_address()) {
             self.exit(Form::Yield, range(it.span), it.argument.as_ref(), None);
         } else {
             walk::walk_yield_expression(self, it);

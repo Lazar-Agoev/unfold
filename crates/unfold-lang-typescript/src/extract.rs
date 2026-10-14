@@ -158,7 +158,7 @@ fn extract_here(
         &parsed.tokens,
         options.verbatim_module_syntax,
     )
-    .map_err(|error| failure(format!("cannot key a block: {error}"), None))?;
+    .map_err(|error| failure(format!("cannot key a node: {error}"), None))?;
     census.cut(&lowered.cuts);
     let jsx = source_type.is_jsx() && module_syntax::uses_jsx(&parsed.program);
     let module = module_syntax::collect(&parsed.program, parsed.module_record.has_module_syntax, jsx);

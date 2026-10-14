@@ -1,4 +1,4 @@
-{"t":"node","key":"a.ts#/call:mixin","parent":"a.ts#","kind":"call","form":"call","name":"mixin","range":[468,479],"lines":[11,11],"head":[468,473],"stmt":[448,482],"role":"base","for":"a.ts#Mixed"}
+{"t":"node","key":"a.ts#/call:mixin","parent":"a.ts#","kind":"call","form":"call","name":"mixin","range":[468,479],"lines":[11,11],"head":[468,473],"role":"base","for":"a.ts#Mixed"}
 {"t":"link","from":"a.ts#Both","seq":0,"kind":"extends","range":[293,297],"text":"Base","outcome":"project","to":"a.ts#Base"}
 {"t":"link","from":"a.ts#Both","seq":1,"kind":"extends","range":[302,307],"text":"Named","outcome":"project","to":"a.ts#Named"}
 {"t":"link","from":"a.ts#Both","seq":2,"kind":"extends","range":[309,316],"text":"Missing","outcome":"unknown","to":"unknown_name"}

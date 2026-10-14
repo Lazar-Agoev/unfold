@@ -229,7 +229,7 @@
             ],
             "collapsed": true,
             "author": "agent:codex",
-            "signature": "sha256:97014cebc63529d3325002b07d854c379585a06e46e8c0b28a111f46de77fc5d"
+            "signature": "sha256:e42f2a6a0487d0fa5e1586477114da6c31fa4f8638d2c3541021e48de602a922"
           },
           {
             "id": "sync-placement",
@@ -243,10 +243,10 @@
             "description": {
               "text": "Place the order, post a Slack notification, and return the created order.",
               "author": "agent:codex",
-              "signature": "sha256:97e866882db48cd0b98497daf8908aaa14e21295016f46217b8044b1d4ef23ff"
+              "signature": "sha256:8b98405b90235fc59bfa0fef880f3ad39715368fcba11dec2fd9f8e1dc5bd048"
             },
             "author": "agent:codex",
-            "signature": "sha256:97e866882db48cd0b98497daf8908aaa14e21295016f46217b8044b1d4ef23ff"
+            "signature": "sha256:8b98405b90235fc59bfa0fef880f3ad39715368fcba11dec2fd9f8e1dc5bd048"
           }
         ],
         "guards": [
@@ -417,7 +417,7 @@
       }
     ]
   },
-  "revision": "fa06277dc796af25e23ab358254751c50a42b27a05817cd99b37f16497de4ceb",
+  "revision": "939ddc4ddc05e35d6d6f1096402267ba2f25a002be1dda4d8eab786d012d2f6a",
   "health": {
     "items": [],
     "missing": 0,

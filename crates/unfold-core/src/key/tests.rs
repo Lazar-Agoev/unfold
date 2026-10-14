@@ -900,3 +900,30 @@ fn rebasing_moves_a_block_and_everything_inside_it() {
     assert_eq!(rebase("a.ts#f", "a.ts#f", "entrance:shop"), None);
     assert_eq!(rebase("not a key", "a.ts#f", "b.ts#g"), None);
 }
+
+#[test]
+fn steps_after_an_outer_block_are_its_short_label() {
+    let after = |key: &str, outer: &str| Key::from_text(key).steps_after(&Key::from_text(outer));
+    assert_eq!(
+        after("a.py#f/try[0]/except[0]", "a.py#f").as_deref(),
+        Some("try[0]/except[0]")
+    );
+    assert_eq!(
+        after("a.py#f.inner/call:g", "a.py#f").as_deref(),
+        Some("inner/call:g")
+    );
+    assert_eq!(
+        after("a.ts#f/call:run/callback[0].onDone", "a.ts#f").as_deref(),
+        Some("call:run/callback[0].onDone")
+    );
+    assert_eq!(
+        after("a.ts#/call:listen", "a.ts#").as_deref(),
+        Some("call:listen")
+    );
+    assert_eq!(after("a.py#f", "a.py#f").as_deref(), Some(""));
+    // Inside is structural.
+    assert_eq!(after("a.py#format/call:g", "a.py#f"), None);
+    assert_eq!(after("a.py#f[1]/call:g", "a.py#f"), None);
+    assert_eq!(after("b.py#f/call:g", "a.py#f"), None);
+    assert_eq!(after("entrance:shop/place", "entrance:shop"), None);
+}

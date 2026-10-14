@@ -255,7 +255,8 @@ impl<'a> Lowering<'a> {
     }
 
     /// `def` and `async def`: its decorators, then what runs when it is defined (type parameter
-    /// bounds, defaults, and annotations, role `default`), then the function and its body.
+    /// bounds, defaults, and annotations, role `default`), then the function and its body. The
+    /// function is its statement's first block: its `stmt` runs from its first decorator.
     fn function(
         &mut self,
         stmt: &'a Stmt,
@@ -292,6 +293,7 @@ impl<'a> Lowering<'a> {
         let head = self.header(keyword, body, signature_end);
         let generator = self.generators.contains(&statement_address(stmt));
         let node = self.node(id);
+        node.stmt = Some(bytes(stmt.range()));
         node.head = Some(bytes(head));
         node.body = Some(bytes(body));
         node.doc = docstring(&function.body).map(bytes);
@@ -311,7 +313,8 @@ impl<'a> Lowering<'a> {
     }
 
     /// `class`: its decorators, then the calls in its header (role `base`), then the class and
-    /// its body. A base written as a name is an `extends` link, which the binder records.
+    /// its body. A base written as a name is an `extends` link, which the binder records. The
+    /// class is its statement's first block: its `stmt` runs from its first decorator.
     fn class(&mut self, stmt: &'a Stmt, class: &'a StmtClassDef, place: Place) -> Result<(), SourceFailure> {
         let start = self.owned.len();
         self.decorators(&class.decorator_list, place)?;
@@ -342,6 +345,7 @@ impl<'a> Lowering<'a> {
             .unwrap_or(class.name.end());
         let head = self.header(keyword, body, signature_end);
         let node = self.node(id);
+        node.stmt = Some(bytes(stmt.range()));
         node.head = Some(bytes(head));
         node.body = Some(bytes(body));
         node.doc = docstring(&class.body).map(bytes);
@@ -411,33 +415,32 @@ impl<'a> Lowering<'a> {
         Ok(())
     }
 
-    /// `match`: a decision headed `match subject`, with a `case[n]` part per case (its pattern
-    /// and guard are its test) and `default` for the guardless `case _:`.
+    /// `match`: a decision headed by its subject, with a `case[n]` part per case (its pattern
+    /// and guard are its test) and `default`, with no test, for the guardless `case _:`.
     fn matching(&mut self, node: &'a StmtMatch, place: Place) -> Result<(), SourceFailure> {
         let id = self.push(place, Child::Form(Form::Match), Form::Match, node.range)?;
-        let first_case = node
-            .cases
-            .first()
-            .map_or_else(|| TextRange::empty(node.range.end()), Ranged::range);
-        let head = self.header(node.range.start(), first_case, node.subject.end());
-        self.node(id).head = Some(bytes(head));
+        self.node(id).head = Some(bytes(node.subject.range()));
         if let Some(inside) = self.inside(id, place) {
             self.expr(&node.subject, inside, Value::default())?;
         }
         for case in &node.cases {
             let body = suite(&case.body, case.range.end());
             let test_end = case.guard.as_deref().map_or(case.pattern.end(), Ranged::end);
+            let (form, head) = if is_default(case) {
+                (Form::Default, None)
+            } else {
+                (
+                    Form::Case,
+                    Some(self.header(case.pattern.start(), body, test_end)),
+                )
+            };
             self.clause(
                 id,
                 place,
                 Clause {
-                    form: if is_default(case) {
-                        Form::Default
-                    } else {
-                        Form::Case
-                    },
+                    form,
                     range: case.range,
-                    head: Some(self.header(case.pattern.start(), body, test_end)),
+                    head,
                     test: case.guard.as_deref(),
                     body: &case.body,
                     target: place.target,

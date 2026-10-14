@@ -166,7 +166,8 @@ pub enum Landing {
         /// The outer call.
         call: Key,
     },
-    /// The code does nothing with it.
+    /// None of the above is written: its value is dropped, or used where the graph records no
+    /// landing (a test, an operand, or part of a larger value).
     Nowhere,
 }
 

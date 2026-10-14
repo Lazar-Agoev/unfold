@@ -45,7 +45,7 @@ fn module_scope_declarations_name_their_nodes() {
     );
     // The binding's module declarations come first, aligned: functions with a body, classes,
     // and type declarations have their nodes; variables and an ambient signature don't.
-    let node = |index: usize| payload.binding.declarations[index].block;
+    let node = |index: usize| payload.binding.declarations[index].node;
     assert!(node(1).is_some(), "f");
     assert!(node(2).is_none() && node(3).is_none(), "g, a");
     assert!(
@@ -160,5 +160,5 @@ fn scripts_and_jsx_are_recorded() {
     // The exported arrow function is the expression declaration's inline function.
     let inline = expression.binding.declarations[index as usize].inline;
     let function = inline.map(|inline| &expression.binding.declarations[inline as usize]);
-    assert!(function.and_then(|function| function.block).is_some());
+    assert!(function.and_then(|function| function.node).is_some());
 }

@@ -59,12 +59,10 @@ impl Engine {
         disks: &FxHashMap<RepoPath, DiskState>,
         basis: Option<LinkBasis>,
     ) -> (State, RestoreStats) {
-        let settings = load_settings(
-            &self.root,
-            &SettingsState::default(),
-            &Changes::All,
-            Verify::Contents,
-        );
+        // A settings file that doesn't parse keeps the settings and apps of the graph
+        // in effect, as it would have in the session that committed the graph.
+        let last_good = basis.as_ref().map(LinkBasis::settings).unwrap_or_default();
+        let settings = load_settings(&self.root, &last_good, &Changes::All, Verify::Contents);
         let (project, inputs) = self.restored_inputs(&settings);
         let mut stats = RestoreStats {
             files: graph.files.len(),

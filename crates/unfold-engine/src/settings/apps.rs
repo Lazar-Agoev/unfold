@@ -112,37 +112,48 @@ pub(super) fn parse(
         return Err(source.error(span, "`app` must be a list of `[[app]]` tables"));
     };
     let mut apps: Vec<AppEntry> = tables.into_iter().map(|table| app(table, source)).collect();
-    // A key already taken marks every later entry with it; the first keeps working.
+    // An entry with no problem claims its key, and marks every later entry with it; an entry
+    // already marked claims nothing, so it never knocks out a valid one.
     let mut seen: Vec<Key> = Vec::new();
     for app in &mut apps {
-        if let Some(key) = &app.key {
-            if seen.contains(key) {
-                let problem = duplicate("app", key, app.span);
-                app.problem.get_or_insert(problem);
-            } else {
-                seen.push(key.clone());
-            }
-        }
+        claim(&mut seen, &app.key, &mut app.problem, app.span, "app");
         let mut seen: Vec<Key> = Vec::new();
         for entrance in &mut app.entrances {
-            if let Some(key) = &entrance.key {
-                if seen.contains(key) {
-                    let problem = duplicate("entrance in this app", key, entrance.span);
-                    entrance.problem.get_or_insert(problem);
-                } else {
-                    seen.push(key.clone());
-                }
-            }
+            claim(
+                &mut seen,
+                &entrance.key,
+                &mut entrance.problem,
+                entrance.span,
+                "entrance in this app",
+            );
         }
     }
     Ok(apps)
 }
 
-fn duplicate(what: &str, key: &Key, span: ByteRange) -> EntryProblem {
-    EntryProblem {
-        kind: EntryProblemKind::DuplicateKey,
-        message: format!("another {what} has the key `{key}`").into(),
-        span,
+/// Claims `key` for an entry with no problem, or marks the entry when an earlier one in `seen`
+/// claimed it.
+fn claim(
+    seen: &mut Vec<Key>,
+    key: &Option<Key>,
+    problem: &mut Option<EntryProblem>,
+    span: ByteRange,
+    what: &str,
+) {
+    let Some(key) = key else {
+        return;
+    };
+    if problem.is_some() {
+        return;
+    }
+    if seen.contains(key) {
+        *problem = Some(EntryProblem {
+            kind: EntryProblemKind::DuplicateKey,
+            message: format!("another {what} has the key `{key}`").into(),
+            span,
+        });
+    } else {
+        seen.push(key.clone());
     }
 }
 

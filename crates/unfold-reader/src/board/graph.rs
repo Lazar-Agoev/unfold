@@ -5,7 +5,8 @@
 //!
 //! | Reference | Source it is signed over | Guard signature |
 //! | --- | --- | --- |
-//! | A block | its range | its range |
+//! | A block | its extent: a definition from its first decorator to its end, any other block its range | the same |
+//! | A combined step | from its first block's statement to the end of its last block's statement (its drawn span) | — |
 //! | An app or entrance | each loaded block of its `code`, in order, each followed by `\n` | its `code` keys, each followed by `\n` |
 //!
 //! An app's or entrance's guard records its `code`, not its source, so a reference to an app or
@@ -247,9 +248,10 @@ impl BoardGraph {
         self.sources.get(block.tree.path())?.source()?.bytes(range)
     }
 
-    /// A block's verified source bytes.
+    /// A block's verified source bytes, over its extent ([`FileTree::extent`]): a decorated
+    /// definition's decorators are part of it.
     pub fn bytes(&self, block: &Block<'_>) -> Option<&[u8]> {
-        self.block_bytes(block, block.node().range)
+        self.block_bytes(block, block.tree.extent(block.id))
     }
 
     /// The loaded blocks of an app's or entrance's `code`, in order.
@@ -323,14 +325,21 @@ impl BoardGraph {
         self.fields.get(key).map(Vec::as_slice)
     }
 
-    /// The signature of the source from the start of `first` to the end of `last` (a combined
-    /// step's span), when both are blocks of one verified file.
+    /// The signature of a combined step's span over blocks `first` to `last`, when both are
+    /// blocks of one verified file: from the start of the first block's statement (its range
+    /// when it begins none) to the end of the last block's statement or range, whichever ends
+    /// later. The drawing spans the same lines.
     pub fn span_signature(&self, first: &str, last: &str) -> Option<Signature> {
         let (first, last) = (self.block(first)?, self.block(last)?);
         if !std::ptr::eq(first.tree, last.tree) {
             return None;
         }
-        let range = ByteRange::new(first.node().range.start, last.node().range.end).ok()?;
+        let (first_node, last_node) = (first.node(), last.node());
+        let start = first_node.stmt.unwrap_or(first_node.range).start;
+        let end = last_node
+            .stmt
+            .map_or(last_node.range.end, |stmt| stmt.end.max(last_node.range.end));
+        let range = ByteRange::new(start, end).ok()?;
         self.block_bytes(&first, range).map(Signature::of)
     }
 

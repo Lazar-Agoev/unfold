@@ -36,23 +36,23 @@ fn functions_in_every_form() {
         "class Account:\n    def __init__(self, owner):\n        self.owner = owner\n\n    @property\n    def balance(self):\n        return total(self)\n\n    @balance.setter\n    def balance(self, value):\n        store(value)\n\n    def close(self):\n        \"\"\"Close it.\"\"\"\n\n    async def sync(self):\n        await push(self)\n\n\ndef helper():\n    def inner():\n        pass\n    yield inner()\n\n\nasync def fetch():\n    return await get()\n",
         r#"
 pkg/main.py# module
-  Account class head=`class Account`
-    __init__ constructor head=`def __init__(self, owner)`
+  Account class head=`class Account` stmt
+    __init__ constructor head=`def __init__(self, owner)` stmt
     call:property call role=decorator for=balance [→ builtin]
-    balance getter head=`def balance(self)`
+    balance getter head=`def balance(self)` stmt=`@property`+node
       return[0] return stmt value=`total(self)`
         call:total call exit_value [→ unknown (unknown_name)]
     call:balance.setter call role=decorator for=balance [→ unknown (unknown_receiver)]
-    balance[1] setter head=`def balance(self, value)`
+    balance[1] setter head=`def balance(self, value)` stmt=`@balance.setter`+node
       call:store call stmt [→ unknown (unknown_name)]
-    close method head=`def close(self)` doc
-    sync method head=`async def sync(self)` async
+    close method head=`def close(self)` stmt doc
+    sync method head=`async def sync(self)` stmt async
       call:push call stmt=`await push(self)` awaited [→ unknown (unknown_name)]
-  helper function head=`def helper()` generator
-    inner function head=`def inner()`
+  helper function head=`def helper()` stmt generator
+    inner function head=`def inner()` stmt
     yield[0] yield stmt value=`inner()`
       call:inner call exit_value [→ project pkg/main.py#helper.inner]
-  fetch function head=`async def fetch()` async
+  fetch function head=`async def fetch()` stmt async
     return[0] return stmt value=`await get()`
       call:get call awaited exit_value [→ unknown (unknown_name)]
 "#
@@ -96,10 +96,10 @@ fn class_bases_are_extends_links_or_base_calls() {
         "class Declined(Exception):\n    pass\n\n\nclass Record(namedtuple(\"Record\", \"a b\"), metaclass=make_meta()):\n    pass\n",
         r#"
 pkg/main.py# module
-  Declined class head=`class Declined(Exception)` [extends Exception → builtin]
+  Declined class head=`class Declined(Exception)` stmt [extends Exception → builtin]
   call:namedtuple call role=base for=Record [→ unknown (unknown_name)]
   call:make_meta call role=base for=Record [→ unknown (unknown_name)]
-  Record class head=`class Record(namedtuple("Record", "a b"), metaclass=make_meta())`
+  Record class head=`class Record(namedtuple("Record", "a b"), metaclass=make_meta())` stmt
 "#
         .trim_start(),
     );
@@ -114,11 +114,11 @@ fn decorators_and_defaults_run_in_the_enclosing_body() {
 pkg/main.py# module
   call:dataclass call role=decorator for=Job [→ unknown (unknown_name)]
   call:app.task call role=decorator for=Job [→ unknown (unknown_receiver)]
-  Job class head=`class Job`
+  Job class head=`class Job` stmt=`@dataclass @app.task(queue="q")`+node
   call:retry call role=decorator for=send [→ unknown (unknown_name)]
   call:default_timeout call role=default for=send [→ unknown (unknown_name)]
   call:Field call role=default for=send [→ unknown (unknown_name)]
-  send function head=`def send(message, timeout=default_timeout(), *, tries: Annotated[int, Field(gt=0)] = 1) -> Result` [types Annotated → unknown (unknown_name)] [types int → builtin] [types Result → unknown (unknown_name)]
+  send function head=`def send(message, timeout=default_timeout(), *, tries: Annotated[int, Field(gt=0)] = 1) -> Result` stmt=`@retry(times=3)`+node [types Annotated → unknown (unknown_name)] [types int → builtin] [types Result → unknown (unknown_name)]
     return[0] return stmt value=`message`
 "#
         .trim_start(),
@@ -132,7 +132,7 @@ fn if_elif_else_is_one_decision() {
         "def choose(order):\n    if order is None:\n        raise ValueError(\"missing\")\n    elif is_paid(order):\n        return order\n    elif order.held:\n        hold(order)\n    else:\n        charge(order)\n",
         r#"
 pkg/main.py# module
-  choose function head=`def choose(order)`
+  choose function head=`def choose(order)` stmt
     if[0] if
       then then head=`order is None`
         raise[0] raise stmt value=`ValueError("missing")`
@@ -149,22 +149,22 @@ pkg/main.py# module
     );
 }
 
-/// `match` is a decision headed by its subject; each case's pattern and guard are its test; the guardless `case _:` is `default`.
+/// `match` is a decision headed by its subject alone; each case's pattern and guard are its head; the guardless `case _:` is `default`, with no head.
 #[test]
 fn match_is_a_decision_with_cases_and_default() {
     lowers(
         "def dispatch(command):\n    match parse(command):\n        case Move(x=x) if valid(x):\n            move(x)\n        case [\"quit\"]:\n            return None\n        case _:\n            unknown(command)\n",
         r#"
 pkg/main.py# module
-  dispatch function head=`def dispatch(command)`
-    match[0] match head=`match parse(command)`
+  dispatch function head=`def dispatch(command)` stmt
+    match[0] match head=`parse(command)`
       call:parse call [→ unknown (unknown_name)]
       case[0] case head=`Move(x=x) if valid(x)`
         call:valid call role=test [→ unknown (unknown_name)]
         call:move call stmt [→ unknown (unknown_name)]
       case[1] case head=`["quit"]`
         return[0] return stmt value=`None`
-      default default head=`_`
+      default default
         call:unknown call stmt [→ unknown (unknown_name)]
 "#
         .trim_start(),
@@ -178,7 +178,7 @@ fn conditional_expressions_with_calls_are_ternaries() {
         "def pick(flag):\n    value = left() if flag else right()\n    plain = 1 if flag else 2\n    return fast() if check() else slow()\n",
         r#"
 pkg/main.py# module
-  pick function head=`def pick(flag)`
+  pick function head=`def pick(flag)` stmt
     ternary[0] ternary binds=value stmt=`value = left() if flag else right()`
       then then head=`flag`
         call:left call [→ unknown (unknown_name)]
@@ -203,7 +203,7 @@ fn loops_and_their_else_parts() {
         "async def work(items):\n    for item in load(items):\n        if skip(item):\n            continue\n        handle(item)\n    else:\n        done()\n    async for event in stream():\n        consume(event)\n    while pending():\n        if stop():\n            break\n        step()\n    else:\n        finish()\n",
         r#"
 pkg/main.py# module
-  work function head=`async def work(items)` async
+  work function head=`async def work(items)` stmt async
     for[0] for head=`for item in load(items)`
       call:load call [→ unknown (unknown_name)]
       body body
@@ -240,7 +240,7 @@ fn comprehensions_with_calls_are_loops() {
         "def build(rows):\n    names = [label(row) for row in fetch(rows) if keep(row)]\n    pairs = {key(row): value(row) for row in rows}\n    total = sum(price(item) for item in rows)\n    plain = [row for row in rows if row]\n    return {convert(row) for row in rows}\n",
         r#"
 pkg/main.py# module
-  build function head=`def build(rows)`
+  build function head=`def build(rows)` stmt
     comprehension[0] comprehension head=`for row in fetch(rows)` binds=names stmt=`names = [label(row) for row in fetch(rows) if keep(row)]`
       call:fetch call [→ unknown (unknown_name)]
       body body head=`keep(row)`
@@ -263,6 +263,68 @@ pkg/main.py# module
     );
 }
 
+/// The right side of `and` and `or` runs only sometimes, so every call written there is `conditional`, including the calls in the parts of a ternary or comprehension; a function's body runs when it is called, so its calls are not.
+#[test]
+fn short_circuits_make_calls_in_expression_blocks_conditional() {
+    lowers(
+        "def pick(x, rows):\n    a = x or (left() if test() else right())\n    b = x and [convert(r) for r in fetch(rows) if keep(r)]\n    c = x or (lambda: later())\n",
+        r#"
+pkg/main.py# module
+  pick function head=`def pick(x, rows)` stmt
+    ternary[0] ternary stmt=`a = x or (left() if test() else right())`
+      then then head=`test()`
+        call:test call role=test conditional [→ unknown (unknown_name)]
+        call:left call conditional [→ unknown (unknown_name)]
+      else else
+        call:right call conditional [→ unknown (unknown_name)]
+    comprehension[0] comprehension head=`for r in fetch(rows)` stmt=`b = x and [convert(r) for r in fetch(rows) if keep(r)]`
+      call:fetch call conditional [→ unknown (unknown_name)]
+      body body head=`keep(r)`
+        call:keep call role=test conditional [→ unknown (unknown_name)]
+        call:convert call conditional [→ unknown (unknown_name)]
+    lambda[0] lambda head=`lambda` stmt=`c = x or (lambda: later())`
+      call:later call [→ unknown (unknown_name)]
+"#
+        .trim_start(),
+    );
+}
+
+/// A walrus binds its target and keeps what the expression around it says of the value: `return (y := f())` returns exactly `f`'s value.
+#[test]
+fn a_walrus_keeps_its_exit_value() {
+    lowers(
+        "def keep():\n    return (y := compute())\n",
+        r#"
+pkg/main.py# module
+  keep function head=`def keep()` stmt
+    return[0] return stmt value=`y := compute()`
+      call:compute call binds=y exit_value [→ unknown (unknown_name)]
+"#
+        .trim_start(),
+    );
+}
+
+/// A comprehension's body part runs from its element to its last `if` test, the shortest range holding both: it never reaches a `for` clause written after the last test, and with no tests it is the element alone.
+#[test]
+fn a_comprehension_body_is_its_element_and_tests() {
+    let path = "pkg/main.py";
+    let source =
+        "a = [f(x) for x in xs() if p(x) for y in ys(x)]\nb = {k(x): v(x) for x in xs() for y in ys(x)}\n";
+    let compiled = compile(&[(path, source)]);
+    let file = compiled.file(path);
+    let text = |range: unfold_core::ByteRange| &source[range.as_usize()];
+    let bodies: Vec<(&str, Option<&str>)> = file
+        .nodes
+        .iter()
+        .filter(|node| node.form == unfold_core::vocab::Form::Body)
+        .map(|node| (text(node.range), node.head.map(text)))
+        .collect();
+    assert_eq!(
+        bodies,
+        [("f(x) for x in xs() if p(x)", Some("p(x)")), ("k(x): v(x)", None)]
+    );
+}
+
 /// `try` has a `body`, an `except[n]` per handler (the clause its head, with `types` links; `group` for `except*`), `else`, and `finally`.
 #[test]
 fn try_has_body_handlers_else_and_finally() {
@@ -270,7 +332,7 @@ fn try_has_body_handlers_else_and_finally() {
         "def guarded():\n    try:\n        risky()\n    except (KeyError, errors.Missing) as error:\n        report(error)\n    except Exception:\n        raise\n    else:\n        succeed()\n    finally:\n        cleanup()\n    try:\n        group()\n    except* OSError:\n        handle_group()\n",
         r#"
 pkg/main.py# module
-  guarded function head=`def guarded()`
+  guarded function head=`def guarded()` stmt
     try[0] try
       body body
         call:risky call stmt [→ unknown (unknown_name)]
@@ -299,7 +361,7 @@ fn with_and_async_with() {
         "async def scoped(path):\n    with open(path) as handle, lock():\n        handle.read()\n    async with session() as client:\n        await client.get()\n",
         r#"
 pkg/main.py# module
-  scoped function head=`async def scoped(path)` async
+  scoped function head=`async def scoped(path)` stmt async
     with[0] with head=`with open(path) as handle, lock()`
       call:open call [→ builtin]
       call:lock call [→ unknown (unknown_name)]
@@ -321,7 +383,7 @@ fn exits_record_their_statement_value_and_target() {
         "def leave(items):\n    for item in items:\n        if item:\n            break\n        continue\n    if items:\n        return compute(items)\n    raise Problem(\"no\") from cause()\n\n\ndef produce():\n    yield first()\n    received = yield\n    yield from rest()\n",
         r#"
 pkg/main.py# module
-  leave function head=`def leave(items)`
+  leave function head=`def leave(items)` stmt
     for[0] for head=`for item in items`
       body body
         if[0] if
@@ -335,7 +397,7 @@ pkg/main.py# module
     raise[0] raise stmt value=`Problem("no") from cause()`
       call:Problem call exit_value [→ unknown (unknown_name)]
       call:cause call [→ unknown (unknown_name)]
-  produce function head=`def produce()` generator
+  produce function head=`def produce()` stmt generator
     yield[0] yield stmt value=`first()`
       call:first call exit_value [→ unknown (unknown_name)]
     yield[1] yield stmt=`received = yield`
@@ -353,7 +415,7 @@ fn every_call_is_a_call_node() {
         "def calls(order):\n    print(order)\n    missing_name()\n    receipt = charge(order)\n    order.receipt = charge(order)\n    email_id, inserted = insert(order)\n    a = b = both()\n    total = base() + extra()\n    total += more()\n    fallback = cached() or fetched() and checked()\n    assert valid(order), explain(order)\n    del cache[key(order)]\n    res.status(500).json(body(order))\n    handlers[kind](order)\n    \", \".join(names(order))\n    (order.get(\"x\") or \"\").strip()\n    if (match := find(order)):\n        use(match)\n",
         r#"
 pkg/main.py# module
-  calls function head=`def calls(order)`
+  calls function head=`def calls(order)` stmt
     call:print call stmt [→ builtin]
     call:missing_name call stmt [→ unknown (unknown_name)]
     call:charge call binds=receipt stmt=`receipt = charge(order)` [→ unknown (unknown_name)]
@@ -396,8 +458,8 @@ pkg/main.py# module [imports importlib → library python:importlib] [imports os
   if[0] if
     then then head=`TYPE_CHECKING`
   call:importlib.import_module call binds=loader stmt=`loader = importlib.import_module("plugins.loader")` [→ library python:importlib] [imports plugins.loader → library plugins]
-  late function head=`def late()` [imports inside → library inside]
-  Holder class head=`class Holder` [imports attribute → library attribute]
+  late function head=`def late()` stmt [imports inside → library inside]
+  Holder class head=`class Holder` stmt [imports attribute → library attribute]
 "#
         .trim_start(),
     );
@@ -410,7 +472,7 @@ fn statements_that_call_nothing_are_code() {
         "total = 0\ntotal += 1\nitems = []\nitems.append\npass\nglobal_value = None\n\n\ndef nothing():\n    global global_value\n    global_value = 2\n    x = [1, 2]\n    y = 1 if x else 2\n    del x\n    assert y\n",
         r#"
 pkg/main.py# module
-  nothing function head=`def nothing()`
+  nothing function head=`def nothing()` stmt
 "#
         .trim_start(),
     );
@@ -438,7 +500,7 @@ fn place_order_is_the_designs_21_blocks() {
     assert_eq!(blocks, 21);
     // `charge_card` is decorated with `@retry(3)`, a wrapper linking can't see through.
     let expected = r#"
-place_order function head=`def place_order(order_id)` doc
+place_order function head=`def place_order(order_id)` stmt doc
   call:load_order call binds=order stmt=`order = load_order(order_id)` [→ project shop/store.py#load_order]
   if[0] if
     then then head=`order is None`
@@ -510,7 +572,7 @@ fn the_design_examples_lower_to_their_trees() {
             "inbox/sync.py",
             r#"
 inbox/sync.py# module [imports inbox.gmail → project inbox/gmail.py#] [imports inbox.locks → project inbox/locks.py#] [imports inbox.notify → project inbox/notify.py#] [imports inbox.retry → project inbox/retry.py#] [imports inbox.store → project inbox/store.py#]
-  sync_inbox function head=`def sync_inbox(account)` doc
+  sync_inbox function head=`def sync_inbox(account)` stmt doc
     with[0] with head=`with mailbox_lock(account)`
       call:mailbox_lock call [→ project inbox/locks.py#mailbox_lock]
       body body
@@ -533,7 +595,7 @@ inbox/sync.py# module [imports inbox.gmail → project inbox/gmail.py#] [imports
             "booking/slots.py",
             r#"
 booking/slots.py# module [imports booking.calendar → project booking/calendar.py#] [imports booking.errors → project booking/errors.py#] [imports booking.notify → project booking/notify.py#]
-  reserve_first_free function head=`def reserve_first_free(calendar, day)`
+  reserve_first_free function head=`def reserve_first_free(calendar, day)` stmt
     for[0] for head=`for slot in list_slots(calendar, day)`
       call:list_slots call [→ project booking/calendar.py#list_slots]
       body body
@@ -555,7 +617,7 @@ booking/slots.py# module [imports booking.calendar → project booking/calendar.
             "mail/route.py",
             r#"
 mail/route.py# module [imports mail.classify → project mail/classify.py#] [imports mail.delivery → project mail/delivery.py#] [imports mail.labels → project mail/labels.py#] [imports mail.profiles → project mail/profiles.py#] [imports mail.routing → project mail/routing.py#]
-  route_message function head=`def route_message(message, override)`
+  route_message function head=`def route_message(message, override)` stmt
     call:cached_profile call stmt=`profile = cached_profile(message.sender) or fetch_profile(message.sender)` [→ project mail/profiles.py#cached_profile]
     call:fetch_profile call conditional [→ project mail/profiles.py#fetch_profile]
     ternary[0] ternary binds=decision stmt=`decision = Routed(override) if override else classify(message, profile)`
@@ -576,7 +638,7 @@ mail/route.py# module [imports mail.classify → project mail/classify.py#] [imp
             r#"
 shop/checkout.py# module [imports json → library python:json] [imports logging → library python:logging] [imports shop.audit → project shop/audit.py#] [imports shop.format → project shop/format.py#] [imports shop.payments → project shop/payments.py#] [imports shop.receipts → project shop/receipts.py#] [imports shop.store → project shop/store.py#]
   call:logging.getLogger call binds=logger stmt=`logger = logging.getLogger(__name__)` [→ library python:logging]
-  checkout function head=`def checkout(order)`
+  checkout function head=`def checkout(order)` stmt
     call:save_order call stmt [→ project shop/store.py#save_order]
       call:build_receipt call [→ project shop/receipts.py#build_receipt]
         call:charge_card call [→ project shop/payments.py#charge_card]
@@ -593,7 +655,7 @@ shop/checkout.py# module [imports json → library python:json] [imports logging
             "shop/cli.py",
             r#"
 shop/cli.py# module [imports sys → library python:sys] [imports shop.service → project shop/service.py#]
-  main function head=`def main()`
+  main function head=`def main()` stmt
     call:place_order call stmt [→ project shop/service.py#place_order]
   if[0] if
     then then head=`__name__ == "__main__"`
@@ -608,7 +670,7 @@ shop/api.py# module [imports fastapi → library fastapi] [imports shop.auth →
   call:APIRouter call binds=router stmt=`router = APIRouter(prefix="/orders")` [→ library fastapi]
   call:router.post call role=decorator for=create_order [→ unknown (unknown_receiver)]
   call:Depends call role=default for=create_order [→ library fastapi] [passes current_user → project shop/auth.py#current_user]
-  create_order function head=`def create_order(order_id: str, user=Depends(current_user))` [types str → builtin]
+  create_order function head=`def create_order(order_id: str, user=Depends(current_user))` stmt=`@router.post("/{order_id}")`+node [types str → builtin]
     return[0] return stmt value=`place_order(order_id)`
       call:place_order call exit_value [→ project shop/service.py#place_order]
   call:app.include_router call stmt [→ unknown (unknown_receiver)]
@@ -628,11 +690,11 @@ fn a_capture_shaped_function_lowers_to_its_tree() {
     let expected = r#"
 pipeline/capture.py# module doc [imports logging → library python:logging] [imports pipeline.errors → project pipeline/errors.py#] [imports pipeline.fetch → project pipeline/fetch.py#] [imports pipeline.routing → project pipeline/routing.py#] [imports pipeline.status → project pipeline/status.py#] [imports pipeline.store → project pipeline/store.py#]
   call:logging.getLogger call binds=logger stmt=`logger = logging.getLogger(__name__)` [→ library python:logging]
-  bind_context function head=`def bind_context(decision)`
-  routing_text function head=`def routing_text(decision)`
+  bind_context function head=`def bind_context(decision)` stmt
+  routing_text function head=`def routing_text(decision)` stmt
     return[0] return stmt value=`str(decision)`
       call:str call exit_value [→ builtin]
-  capture function head=`def capture(run, message_id, override)` doc
+  capture function head=`def capture(run, message_id, override)` stmt doc
     try[0] try
       body body
         call:execute call binds=raw stmt=`raw = execute(run.service.users().messages().get(id=message_id))` [→ project pipeline/fetch.py#execute]
@@ -704,8 +766,8 @@ fn class_body_imports_link_from_the_class() {
         "class Codec:\n    import json\n    from base64 import b64encode\n\n    def encode(self, value):\n        return json.dumps(value)\n",
         r#"
 pkg/main.py# module
-  Codec class head=`class Codec` [imports json → library python:json] [imports base64 → library python:base64]
-    encode method head=`def encode(self, value)`
+  Codec class head=`class Codec` stmt [imports json → library python:json] [imports base64 → library python:base64]
+    encode method head=`def encode(self, value)` stmt
       return[0] return stmt value=`json.dumps(value)`
         call:json.dumps call exit_value [→ unknown (unknown_receiver)]
 "#

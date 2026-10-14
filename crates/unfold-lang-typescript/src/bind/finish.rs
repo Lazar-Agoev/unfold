@@ -45,7 +45,7 @@ impl<'a> Binder<'a> {
                 name: (!module.name.is_empty()).then(|| module.name.clone()),
                 flags: DeclFlags::default().with(DeclFlags::AMBIENT, module.ambient),
                 range: module.range,
-                block: (kind == DeclKind::Module).then_some(0),
+                node: (kind == DeclKind::Module).then_some(0),
                 container: 0,
                 owner: None,
                 symbol: None,

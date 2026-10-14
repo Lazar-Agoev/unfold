@@ -109,7 +109,7 @@
             "src/services/order-service.ts#OrderService.place/call:randomUUID",
             "src/services/order-service.ts#OrderService.place/call:(…).toISOString"
           ],
-          "signature": "sha256:97014cebc63529d3325002b07d854c379585a06e46e8c0b28a111f46de77fc5d",
+          "signature": "sha256:e42f2a6a0487d0fa5e1586477114da6c31fa4f8638d2c3541021e48de602a922",
           "title": "Build the order with an ID and a timestamp"
         },
         {
@@ -117,7 +117,7 @@
           "collapsed": true,
           "description": {
             "author": "agent:codex",
-            "signature": "sha256:97e866882db48cd0b98497daf8908aaa14e21295016f46217b8044b1d4ef23ff",
+            "signature": "sha256:8b98405b90235fc59bfa0fef880f3ad39715368fcba11dec2fd9f8e1dc5bd048",
             "text": "Place the order, post a Slack notification, and return the created order."
           },
           "id": "sync-placement",
@@ -126,7 +126,7 @@
             "src/routes/orders.ts#createOrder/call:slack.post",
             "src/routes/orders.ts#createOrder/call:res.status().json"
           ],
-          "signature": "sha256:97e866882db48cd0b98497daf8908aaa14e21295016f46217b8044b1d4ef23ff",
+          "signature": "sha256:8b98405b90235fc59bfa0fef880f3ad39715368fcba11dec2fd9f8e1dc5bd048",
           "title": "Place and acknowledge"
         }
       ],

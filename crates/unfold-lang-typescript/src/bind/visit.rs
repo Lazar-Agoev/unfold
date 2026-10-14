@@ -133,7 +133,7 @@ impl<'a> Visit<'a> for Binder<'a> {
         let exported = std::mem::take(&mut self.exporting);
         let name = it.id.name.as_str();
         let mut decl = self.blank(DeclKind::Interface, Some(name), range(it.span));
-        decl.block = self.block(it.unstable_address());
+        decl.node = self.node(it.unstable_address());
         let index = self.add(decl, Some(ModuleKey::Interface));
         self.declare(self.scope, name, index, Meanings::TYPE, exported);
         self.link_declaration(range(it.body.span), it.type_parameters.as_deref(), |binder| {
@@ -148,7 +148,7 @@ impl<'a> Visit<'a> for Binder<'a> {
         let exported = std::mem::take(&mut self.exporting);
         let name = it.id.name.as_str();
         let mut decl = self.blank(DeclKind::TypeAlias, Some(name), range(it.span));
-        decl.block = self.block(it.unstable_address());
+        decl.node = self.node(it.unstable_address());
         let index = self.add(decl, Some(ModuleKey::TypeAlias));
         self.declare(self.scope, name, index, Meanings::TYPE, exported);
         let aliased = range(it.type_annotation.span());
@@ -309,7 +309,7 @@ impl<'a> Visit<'a> for Binder<'a> {
             .flags
             .with(DeclFlags::HAS_BODY, has_body)
             .with(DeclFlags::AMBIENT, it.declare);
-        decl.block = self.block(address).filter(|_| has_body);
+        decl.node = self.node(address).filter(|_| has_body);
         let index = self.add(decl, declaration.then_some(ModuleKey::Function));
         if declaration {
             if let Some(id) = &it.id {
@@ -326,7 +326,7 @@ impl<'a> Visit<'a> for Binder<'a> {
         let address = it.unstable_address();
         let mut decl = self.blank(DeclKind::Arrow, None, range(it.span));
         decl.flags = decl.flags.with(DeclFlags::HAS_BODY, true);
-        decl.block = self.block(address);
+        decl.node = self.node(address);
         let index = self.add(decl, None);
         self.inline_decls.insert(address, index);
         self.parameter_decorators(&it.params);
@@ -369,8 +369,8 @@ impl<'a> Visit<'a> for Binder<'a> {
         };
         let mut decl = self.blank(kind, name, range(it.span));
         decl.flags = decl.flags.with(DeclFlags::DECORATED, !it.decorators.is_empty());
-        decl.block = if self.ambient { None } else { self.block(address) };
-        let selected = decl.block.is_some();
+        decl.node = if self.ambient { None } else { self.node(address) };
+        let selected = decl.node.is_some();
         let index = self.add(decl, declaration.then_some(ModuleKey::Class));
         let symbol = match (&it.id, declaration) {
             (Some(id), true) => {
@@ -474,7 +474,7 @@ impl<'a> Visit<'a> for Binder<'a> {
         self.ambient_if(it.declare, |binder| {
             let name = it.id.name.as_str();
             let mut decl = binder.blank(DeclKind::Enum, Some(name), range(it.span));
-            decl.block = binder.block(it.unstable_address());
+            decl.node = binder.node(it.unstable_address());
             let index = binder.add(decl, Some(ModuleKey::Enum));
             let scope = binder.namespace_scope(name, index, exported, ScopeKind::Enum);
             binder.framed(Frame::Boundary, |binder| {

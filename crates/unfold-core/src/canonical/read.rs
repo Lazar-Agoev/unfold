@@ -1,7 +1,8 @@
 //! The canonical export reader.
 
 use rustc_hash::FxHashMap;
-use serde::Deserialize;
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer};
 
 use super::{FORMAT, VERSION};
 use crate::key::Key;
@@ -58,7 +59,9 @@ struct FileIn {
     path: RepoPath,
     language: Language,
     state: FileState,
+    #[serde(default, deserialize_with = "present")]
     hash: Option<ContentHash>,
+    #[serde(default, deserialize_with = "present")]
     failure: Option<Box<str>>,
 }
 
@@ -66,22 +69,33 @@ struct FileIn {
 #[serde(deny_unknown_fields)]
 struct NodeIn {
     key: Key,
+    #[serde(default, deserialize_with = "present")]
     parent: Option<Box<str>>,
     kind: NodeKind,
     form: Form,
+    #[serde(default, deserialize_with = "present")]
     name: Option<Box<str>>,
     range: ByteRange,
     lines: LineSpan,
+    #[serde(default, deserialize_with = "present")]
     head: Option<ByteRange>,
+    #[serde(default, deserialize_with = "present")]
     body: Option<ByteRange>,
+    #[serde(default, deserialize_with = "present")]
     doc: Option<ByteRange>,
+    #[serde(default, deserialize_with = "present")]
     stmt: Option<ByteRange>,
+    #[serde(default, deserialize_with = "present")]
     value: Option<ByteRange>,
+    #[serde(default, deserialize_with = "present")]
     binds: Option<Box<str>>,
+    #[serde(default, deserialize_with = "present")]
     role: Option<CallRole>,
-    #[serde(rename = "for")]
+    #[serde(rename = "for", default, deserialize_with = "present")]
     r#for: Option<Box<str>>,
+    #[serde(default, deserialize_with = "present")]
     flags: Option<Vec<Flag>>,
+    #[serde(default, deserialize_with = "present")]
     target: Option<Box<str>>,
 }
 
@@ -95,7 +109,9 @@ struct LinkIn {
     text: Box<str>,
     outcome: Outcome,
     to: Box<str>,
+    #[serde(default, deserialize_with = "present")]
     implements: Option<bool>,
+    #[serde(default, deserialize_with = "present")]
     bound: Option<u32>,
 }
 
@@ -103,7 +119,9 @@ struct LinkIn {
 #[serde(deny_unknown_fields)]
 struct SignatureIn {
     node: Box<str>,
+    #[serde(default, deserialize_with = "present")]
     returns: Option<Box<str>>,
+    #[serde(default, deserialize_with = "present")]
     returns_range: Option<ByteRange>,
 }
 
@@ -114,11 +132,15 @@ struct ParameterIn {
     index: u32,
     range: ByteRange,
     kind: ParameterKind,
+    #[serde(default, deserialize_with = "present")]
     name: Option<Box<str>>,
+    #[serde(default, deserialize_with = "present")]
     optional: Option<bool>,
+    #[serde(default, deserialize_with = "present")]
     default: Option<bool>,
-    #[serde(rename = "type")]
+    #[serde(rename = "type", default, deserialize_with = "present")]
     ty: Option<Box<str>>,
+    #[serde(default, deserialize_with = "present")]
     type_range: Option<ByteRange>,
 }
 
@@ -129,13 +151,19 @@ struct MemberIn {
     index: u32,
     range: ByteRange,
     kind: MemberKind,
+    #[serde(default, deserialize_with = "present")]
     name: Option<Box<str>>,
+    #[serde(default, deserialize_with = "present")]
     optional: Option<bool>,
+    #[serde(default, deserialize_with = "present")]
     readonly: Option<bool>,
+    #[serde(default, deserialize_with = "present")]
     default: Option<bool>,
-    #[serde(rename = "type")]
+    #[serde(rename = "type", default, deserialize_with = "present")]
     ty: Option<Box<str>>,
+    #[serde(default, deserialize_with = "present")]
     type_range: Option<ByteRange>,
+    #[serde(default, deserialize_with = "present")]
     value: Option<Box<str>>,
 }
 
@@ -145,10 +173,15 @@ struct ArgumentIn {
     call: Box<str>,
     index: u32,
     range: ByteRange,
+    #[serde(default, deserialize_with = "present")]
     expand: Option<Expansion>,
+    #[serde(default, deserialize_with = "present")]
     keyword: Option<Box<str>>,
+    #[serde(default, deserialize_with = "present")]
     parameter: Option<u32>,
+    #[serde(default, deserialize_with = "present")]
     unpaired: Option<PairingReason>,
+    #[serde(default, deserialize_with = "present")]
     bound: Option<u32>,
 }
 
@@ -165,7 +198,9 @@ struct InputIn {
 struct AppIn {
     key: Key,
     name: Box<str>,
+    #[serde(default, deserialize_with = "present")]
     run: Option<Box<str>>,
+    #[serde(default, deserialize_with = "present")]
     about: Option<Box<str>>,
 }
 
@@ -174,7 +209,9 @@ struct AppIn {
 struct EntranceIn {
     key: Key,
     name: Box<str>,
+    #[serde(default, deserialize_with = "present")]
     on: Option<Box<str>>,
+    #[serde(default, deserialize_with = "present")]
     about: Option<Box<str>>,
 }
 
@@ -227,6 +264,21 @@ impl Record {
 const LAST_FILE_PLACE: u8 = 7;
 
 type Fail = String;
+
+/// An optional field that is written: the writer leaves an absent field out, so an explicit
+/// `null` is rejected (read-then-write stays byte-identical).
+fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    match Option::<T>::deserialize(deserializer)? {
+        Some(value) => Ok(Some(value)),
+        None => Err(D::Error::custom(
+            "an absent field is left out, never written as null",
+        )),
+    }
+}
 
 /// A flag, which the export writes only when true.
 fn flag(value: Option<bool>, field: &str) -> Result<bool, Fail> {

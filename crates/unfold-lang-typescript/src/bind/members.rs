@@ -50,7 +50,7 @@ impl<'a> Binder<'a> {
                             DeclFlags::PRIVATE,
                             matches!(it.key, PropertyKey::PrivateIdentifier(_)),
                         );
-                    decl.block = self.block(it.unstable_address()).filter(|_| has_body);
+                    decl.node = self.node(it.unstable_address()).filter(|_| has_body);
                     if kind == DeclKind::Getter {
                         decl.ty = self.annotation(it.value.return_type.as_deref());
                     }
@@ -287,7 +287,7 @@ impl<'a> Binder<'a> {
                 let has_body = function.body.is_some();
                 let mut decl = self.blank(kind, name.as_deref(), range(property.span));
                 decl.flags = decl.flags.with(DeclFlags::HAS_BODY, has_body);
-                decl.block = self.block(property.unstable_address()).filter(|_| has_body);
+                decl.node = self.node(property.unstable_address()).filter(|_| has_body);
                 let index = self.add(decl, None);
                 members.push(index);
                 self.callable(index, function, Frame::Function, None);

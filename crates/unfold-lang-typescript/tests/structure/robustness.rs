@@ -89,6 +89,28 @@ fn nesting_past_the_depth_limit_is_truncated() {
     assert!(nodes.len() < 300);
 }
 
+/// A call that takes a callback is keyed by its first literal only while the callback fits
+/// under the depth limit: one cut there leaves the key without it, and the graph valid.
+#[test]
+fn a_call_whose_callback_is_cut_drops_its_literal() {
+    // 255 functions put the call at the limit, and its callback one past it.
+    let depth = 255;
+    let source = format!(
+        "{}on(\"ready\", () => run());{}\n",
+        "function f() {".repeat(depth),
+        "}".repeat(depth)
+    );
+    let compiled = compile_source("deep.ts", &source).valid();
+    let nodes = &compiled.file("deep.ts").nodes;
+    let call = nodes
+        .iter()
+        .find(|node| node.form == Form::Call)
+        .expect("the call fits");
+    assert!(call.key.to_string().ends_with("/call:on"), "{}", call.key);
+    assert!(call.flags.contains(Flag::Truncated));
+    assert!(nodes.iter().all(|node| node.form != Form::Lambda));
+}
+
 #[test]
 fn truncations_of_real_files_never_panic() {
     let root = testdata_dir().join("playgrounds/ts-orders");

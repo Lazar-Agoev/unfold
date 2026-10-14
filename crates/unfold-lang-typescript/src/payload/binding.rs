@@ -184,7 +184,7 @@ pub struct Decl {
     pub range: ByteRange,
     /// Its node, for a function-like declaration with a body, a class, or a (non-ambient)
     /// interface, type alias, or enum.
-    pub block: Option<u32>,
+    pub node: Option<u32>,
     /// The syntax it is written in (a class, a statement list, an object literal): overload
     /// signatures and their implementation share it.
     pub container: u32,

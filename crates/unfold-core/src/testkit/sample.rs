@@ -468,7 +468,9 @@ fn payments(g: &mut GraphBuilder) -> Payments {
     );
     let head = g.find_in(declined, "class PaymentDeclined(Exception)");
     let doc = g.find_in(declined, "\"\"\"The card was declined.\"\"\"");
+    let range = g.range(declined);
     let node = g.node_mut(declined);
+    node.stmt = Some(range);
     node.head = Some(head);
     node.body = Some(doc);
     node.doc = Some(doc);
@@ -517,6 +519,11 @@ fn payments(g: &mut GraphBuilder) -> Payments {
         "def charge_card(card, amount):\n    if amount <= 0:\n        raise PaymentDeclined(\"nothing to charge\")\n    logger.info(\"charging %s\", card)\n    return {\"card\": card, \"amount\": amount}",
         "def charge_card(card, amount)",
     );
+    let statement = ByteRange {
+        start: g.find(module, "@retry(3)").start,
+        end: g.range(charge_card).end,
+    };
+    g.node_mut(charge_card).stmt = Some(statement);
     let node = g.node_mut(decorator);
     node.role = Some(CallRole::Decorator);
     node.r#for = Some(charge_card.local_id());
@@ -853,7 +860,9 @@ fn orders(g: &mut GraphBuilder) {
     let head = g.find_in(interface, "interface Order");
     let body = g.find_in(interface, "{\n  id: string;\n  total: number;\n}");
     let doc = g.find(module, "/** An order as the API sends it. */");
+    let range = g.range(interface);
     let node = g.node_mut(interface);
+    node.stmt = Some(range);
     node.head = Some(head);
     node.body = Some(body);
     node.doc = Some(doc);
@@ -977,7 +986,9 @@ fn orders(g: &mut GraphBuilder) {
     );
     let head = g.find_in(load_order, "async function loadOrder(id: string): Promise<Order>");
     let body = g.find_in(load_order, "{\n  return { id, total: 0 };\n}");
+    let range = g.range(load_order);
     let node = g.node_mut(load_order);
+    node.stmt = Some(range);
     node.head = Some(head);
     node.body = Some(body);
     node.flags.insert(Flag::Async);
@@ -1015,8 +1026,9 @@ fn orders(g: &mut GraphBuilder) {
     .bound = Some(0);
 }
 
-/// Adds a Python function spanning `source`, with its signature range (`head`), its body (the
-/// suite after the head's `:`), and an empty signature record.
+/// Adds a Python function spanning `source`, its statement's first block (`stmt`, the same range
+/// when undecorated), with its signature range (`head`), its body (the suite after the head's
+/// `:`), and an empty signature record.
 fn function(g: &mut GraphBuilder, parent: NodeRef, name: &str, source: &str, head: &str) -> NodeRef {
     let range = g.find_in(parent, source);
     let function = g.def(parent, Form::Function, name, range);
@@ -1031,6 +1043,7 @@ fn function(g: &mut GraphBuilder, parent: NodeRef, name: &str, source: &str, hea
         end: range.end,
     };
     let node = g.node_mut(function);
+    node.stmt = Some(range);
     node.head = Some(head);
     node.body = Some(body);
     signature(g, function);

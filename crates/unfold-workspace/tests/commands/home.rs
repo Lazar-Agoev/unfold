@@ -90,6 +90,26 @@ fn the_summary_counts_the_graph_and_its_health() {
     assert_eq!(summary["state"], json!({"kind": "problems", "count": 1}));
     let problems = harness.ok(1, "problems", json!({ "project": harness.project }));
     assert_eq!(problems.as_array().map(Vec::len), Some(1));
+
+    // An entrance's file that stops parsing keeps its last good block: the target is stale,
+    // still reachable, and counted once, as a file that doesn't parse.
+    let cleanup = std::fs::read_to_string(harness.root.join("src/jobs/cleanup.ts")).expect("read");
+    harness.write(
+        "src/jobs/cleanup.ts",
+        &format!("{cleanup}\nexport function broken( {{\n"),
+    );
+    harness.ok(1, "compile", json!({ "project": harness.project }));
+    let stale = harness
+        .apps()
+        .iter()
+        .flat_map(|app| app["entrances"].as_array().cloned().unwrap_or_default())
+        .flat_map(|entrance| entrance["code"].as_array().cloned().unwrap_or_default())
+        .filter(|code| code["state"] == "stale")
+        .count();
+    assert_eq!(stale, 1);
+    let summary = harness.ok(1, "project_summary", json!({ "project": harness.project }));
+    assert_eq!(summary["health"]["doesntParse"], 2);
+    assert_eq!(summary["health"]["entrancesNotFound"], 3);
 }
 
 #[test]

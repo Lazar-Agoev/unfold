@@ -1,11 +1,12 @@
 //! Reading the syntactic forms the lowering decides by, without lowering anything: a call's
 //! normalized callee, what a value is through its wrappers, whether a call runs only after an
-//! optional link, and whether an expression reaches an inline function or contains a call.
+//! optional link, which `yield` expressions are exits, and whether an expression reaches an
+//! inline function or contains a call.
 
 use oxc_allocator::{Address, UnstableAddress};
 use oxc_ast::ast::{
     Argument, ArrowFunctionExpression, CallExpression, ChainElement, Class, ConditionalExpression,
-    Expression, Function, ImportExpression, NewExpression, PropertyKey, TaggedTemplateExpression,
+    Expression, Function, ImportExpression, NewExpression, PropertyKey, Statement, TaggedTemplateExpression,
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_syntax::scope::ScopeFlags;
@@ -99,10 +100,8 @@ pub(super) fn first_literal(arguments: &[Argument<'_>]) -> Option<String> {
 }
 
 /// The address of the call, construction, tagged template, dynamic import, or conditional
-/// expression an expression's value is, through parentheses, `!`, type casts, and `await`
-/// (whether one was crossed is the second value).
-pub(super) fn value_node(mut expression: &Expression<'_>) -> Option<(Address, bool)> {
-    let mut awaited = false;
+/// expression an expression's value is, through parentheses, `!`, type casts, and `await`.
+pub(super) fn value_node(mut expression: &Expression<'_>) -> Option<Address> {
     loop {
         expression = match expression {
             Expression::ParenthesizedExpression(it) => &it.expression,
@@ -110,21 +109,52 @@ pub(super) fn value_node(mut expression: &Expression<'_>) -> Option<(Address, bo
             Expression::TSAsExpression(it) => &it.expression,
             Expression::TSSatisfiesExpression(it) => &it.expression,
             Expression::TSTypeAssertion(it) => &it.expression,
-            Expression::AwaitExpression(it) => {
-                awaited = true;
-                &it.argument
-            }
+            Expression::AwaitExpression(it) => &it.argument,
             Expression::ChainExpression(chain) => match &chain.expression {
-                ChainElement::CallExpression(it) => return Some((it.unstable_address(), awaited)),
+                ChainElement::CallExpression(it) => return Some(it.unstable_address()),
                 ChainElement::TSNonNullExpression(it) => &it.expression,
                 _ => return None,
             },
-            Expression::CallExpression(it) => return Some((it.unstable_address(), awaited)),
-            Expression::NewExpression(it) => return Some((it.unstable_address(), awaited)),
-            Expression::TaggedTemplateExpression(it) => return Some((it.unstable_address(), awaited)),
-            Expression::ImportExpression(it) => return Some((it.unstable_address(), awaited)),
-            Expression::ConditionalExpression(it) => return Some((it.unstable_address(), awaited)),
+            Expression::CallExpression(it) => return Some(it.unstable_address()),
+            Expression::NewExpression(it) => return Some(it.unstable_address()),
+            Expression::TaggedTemplateExpression(it) => return Some(it.unstable_address()),
+            Expression::ImportExpression(it) => return Some(it.unstable_address()),
+            Expression::ConditionalExpression(it) => return Some(it.unstable_address()),
             _ => return None,
+        };
+    }
+}
+
+/// The `yield` expressions a statement exits by: its whole expression, the whole value an
+/// assignment statement assigns, or a declarator's whole initializer. A `yield` anywhere else,
+/// such as in a conditional branch, a test, or an argument, is code.
+pub(super) fn statement_yields<'s>(statement: &'s Statement<'_>) -> impl Iterator<Item = Address> + 's {
+    let (expression, declarators) = match statement {
+        Statement::ExpressionStatement(it) => (Some(&it.expression), None),
+        Statement::VariableDeclaration(it) if !it.declare => (None, Some(&it.declarations)),
+        _ => (None, None),
+    };
+    let initializers = declarators
+        .into_iter()
+        .flatten()
+        .filter_map(|declarator| declarator.init.as_ref());
+    expression
+        .into_iter()
+        .chain(initializers)
+        .filter_map(|value| match assigned(value) {
+            Expression::YieldExpression(it) => Some(it.unstable_address()),
+            _ => None,
+        })
+}
+
+/// What an expression assigns, through parentheses and assignments: `yield f()` in
+/// `a = b = yield f()`. A logical assignment's value runs only sometimes, so it ends there.
+fn assigned<'s, 'a>(mut expression: &'s Expression<'a>) -> &'s Expression<'a> {
+    loop {
+        expression = match expression {
+            Expression::ParenthesizedExpression(it) => &it.expression,
+            Expression::AssignmentExpression(it) if !it.operator.is_logical() => &it.right,
+            _ => return expression,
         };
     }
 }

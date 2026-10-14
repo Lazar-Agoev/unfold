@@ -2508,7 +2508,8 @@ boardsNeedingReview: number,
  */
 boards: Array<BoardHealthCount>, 
 /**
- * The `code` keys of apps and entrances that aren't `found`.
+ * The `code` keys of apps and entrances whose code isn't there: `missing`, `not_analyzed`,
+ * or `not_a_start`.
  */
 entrancesNotFound: number, };
 
@@ -3018,7 +3019,11 @@ to: RouteEnd,
 /**
  * The `finally` lanes it passes through first, innermost first.
  */
-through: Array<number>, };
+through: Array<number>, 
+/**
+ * What a `break` or `continue` leaves: its loop's form, or `switch`.
+ */
+leaves?: Form, };
 
 /**
  * Where a route goes.

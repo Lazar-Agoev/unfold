@@ -297,7 +297,7 @@ impl<'a> Binder<'a> {
     }
 
     /// The node lowered from the oxc node at `address`.
-    fn block(&self, address: Address) -> Option<u32> {
+    fn node(&self, address: Address) -> Option<u32> {
         self.nodes.get(&address).copied()
     }
 
@@ -330,7 +330,7 @@ impl<'a> Binder<'a> {
             name: name.map(Box::from),
             flags: DeclFlags::default().with(DeclFlags::AMBIENT, self.ambient),
             range,
-            block: None,
+            node: None,
             container: self.container,
             owner: self.current_class(),
             symbol: None,

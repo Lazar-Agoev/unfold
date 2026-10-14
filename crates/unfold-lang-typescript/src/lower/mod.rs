@@ -11,7 +11,7 @@
 //! | function declarations; methods, constructors, accessors (class or object literal) | `function` (`function`, `method`, `constructor`, `getter`, `setter`) |
 //! | arrow functions, function expressions | `function` (`lambda`): `callback[n]` in a call's arguments; named by `const x = …`, a class property, a property of an object a declaration names, or `export default`; `lambda[n]` anywhere else |
 //! | `class`; `interface`, `type`, `enum` | `class`; `type` (`interface`, `type_alias`, `enum`) |
-//! | decorators | calls in the enclosing body, role `decorator`, `for` the definition |
+//! | decorators | calls in the enclosing body, role `decorator`, `for` the definition, with no `stmt`: the definition's statement runs from its first decorator |
 //! | a class's `extends` call | a call in the enclosing body, role `base`, `for` the class |
 //! | parameter defaults | calls at the start of the function's body, role `default` |
 //! | `if` / `else if` / `else` | `decision` (`if`): `then`, `elif[n]`, `else`; test calls have role `test` |
@@ -20,7 +20,7 @@
 //! | `for`, `for … in`, `for … of`, `while`, `do … while` | `loop` (`for`, `while`, `do`) with `body`; header calls in the loop |
 //! | `try` / `catch` / `finally` | `try` with `body`, `catch`, `finally` |
 //! | `using`, `await using` | `with` (`using`): its header the declaration, its `body` the rest of the block |
-//! | `return`, `throw`, `break`, `continue`, `yield` | `exit`; `break` and `continue` target their loop (a `break` may target its `switch`), labels resolved; a `break` that ends a case is no node |
+//! | `return`, `throw`, `break`, `continue`; `yield` as a statement or an assignment's whole value | `exit`; `break` and `continue` target their loop (a `break` may target its `switch`), labels resolved; a `break` that ends a case is no node |
 //! | calls, tagged templates, `new`, `import()` | `call` (`new` for `new`); `import()` with an `imports` link |
 //! | `&&`, `\|\|`, `??`, `?.` | their calls are `conditional` |
 //! | declarations without a call, expression statements, imports, JSX, type syntax | code: their calls are nodes, imports are links, types are typed records |
@@ -40,17 +40,17 @@ pub(crate) use define::decorator_is_call;
 
 use oxc_allocator::Address;
 use oxc_ast::ast::{
-    ArrowFunctionExpression, AssignmentExpression, AwaitExpression, BreakStatement, CallExpression, Class,
-    Comment, ComputedMemberExpression, ConditionalExpression, ContinueStatement, Decorator, DoWhileStatement,
-    ExportAllDeclaration, ExportDeclaration, ExportDefaultDeclaration, ExportFromDeclaration,
-    ExportNamedDeclaration, Expression, ForInStatement, ForOfStatement, ForStatement, FormalParameter,
-    FormalParameterRest, Function, IfStatement, ImportDeclaration, ImportExpression, LabeledStatement,
-    LogicalExpression, NewExpression, ObjectExpression, Program, ReturnStatement, Statement, SwitchStatement,
-    TSClassImplements, TSEnumDeclaration, TSExportAssignment, TSExternalModuleDeclaration,
-    TSGlobalDeclaration, TSImportEqualsDeclaration, TSIndexSignature, TSInterfaceDeclaration,
-    TSNamespaceDeclaration, TSType, TSTypeAliasDeclaration, TSTypeAnnotation, TSTypeParameterDeclaration,
-    TSTypeParameterInstantiation, TaggedTemplateExpression, ThrowStatement, TryStatement,
-    VariableDeclaration, WhileStatement, YieldExpression,
+    ArrowFunctionExpression, AssignmentExpression, AssignmentOperator, AwaitExpression, BreakStatement,
+    CallExpression, Class, Comment, ComputedMemberExpression, ConditionalExpression, ContinueStatement,
+    Decorator, DoWhileStatement, ExportAllDeclaration, ExportDeclaration, ExportDefaultDeclaration,
+    ExportFromDeclaration, ExportNamedDeclaration, Expression, ForInStatement, ForOfStatement, ForStatement,
+    FormalParameter, FormalParameterRest, Function, IfStatement, ImportDeclaration, ImportExpression,
+    LabeledStatement, LogicalExpression, NewExpression, ObjectExpression, Program, ReturnStatement,
+    Statement, SwitchStatement, TSClassImplements, TSEnumDeclaration, TSExportAssignment,
+    TSExternalModuleDeclaration, TSGlobalDeclaration, TSImportEqualsDeclaration, TSIndexSignature,
+    TSInterfaceDeclaration, TSNamespaceDeclaration, TSType, TSTypeAliasDeclaration, TSTypeAnnotation,
+    TSTypeParameterDeclaration, TSTypeParameterInstantiation, TaggedTemplateExpression, ThrowStatement,
+    TryStatement, VariableDeclaration, WhileStatement, YieldExpression,
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_parser::Token;
@@ -183,6 +183,7 @@ pub(crate) fn lower(
         binds: FxHashMap::default(),
         exit_values: FxHashSet::default(),
         awaited: FxHashSet::default(),
+        yields: FxHashSet::default(),
     };
     lowering.statements(&program.body);
     lowering.nodes[0].doc = lowering.file_doc(program);
@@ -322,6 +323,8 @@ struct Lowering<'s> {
     exit_values: FxHashSet<Address>,
     /// The calls written under `await`.
     awaited: FxHashSet<Address>,
+    /// The `yield` expressions that are exits ([`forms::statement_yields`]).
+    yields: FxHashSet<Address>,
 }
 
 impl Lowering<'_> {
@@ -500,6 +503,7 @@ impl<'a> Visit<'a> for Lowering<'_> {
         let span = range(it.span());
         let enclosing = self.enclosing.replace(span);
         self.statement = Some(span);
+        self.yields.extend(forms::statement_yields(it));
         walk::walk_statement(self, it);
         self.statement = None;
         self.enclosing = enclosing;
@@ -693,7 +697,7 @@ impl<'a> Visit<'a> for Lowering<'_> {
     }
 
     fn visit_await_expression(&mut self, it: &AwaitExpression<'a>) {
-        if let Some((address, _)) = forms::value_node(&it.argument) {
+        if let Some(address) = forms::value_node(&it.argument) {
             self.awaited.insert(address);
         }
         self.visit_expression(&it.argument);
@@ -727,10 +731,25 @@ impl Lowering<'_> {
     }
 
     /// The call, construction, or conditional expression `value` is exactly, through wrappers
-    /// and `await`, records that a statement assigns its value to `target`.
+    /// and `await`, records that a statement assigns its value to `target`. An assignment
+    /// written inside another's value doesn't rebind it: `a = b = f()` binds `a = b`.
     fn bind_value(&mut self, value: &Expression<'_>, target: &str) {
-        if let Some((address, _)) = forms::value_node(value) {
-            self.binds.insert(address, target.into());
+        if let Some(address) = forms::value_node(value) {
+            self.binds.entry(address).or_insert_with(|| target.into());
         }
+    }
+
+    /// What a chain of plain assignments assigns, after the written target `first`: the
+    /// targets joined as `a = b`, and the value at the end of the chain.
+    fn chain<'e, 'a>(&self, first: &str, mut value: &'e Expression<'a>) -> (String, &'e Expression<'a>) {
+        let mut targets = first.to_owned();
+        while let Expression::AssignmentExpression(inner) = value
+            && inner.operator == AssignmentOperator::Assign
+        {
+            targets.push_str(" = ");
+            targets.push_str(self.text(range(inner.left.span())));
+            value = &inner.right;
+        }
+        (targets, value)
     }
 }

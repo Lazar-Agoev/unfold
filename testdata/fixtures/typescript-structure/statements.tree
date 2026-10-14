@@ -128,7 +128,7 @@ a.ts#run/do[0]/call:condition call
   name `condition`
 a.ts#run/switch[0] switch
   range `switch (input()) { case match(): use(); break; default: fallback(); }`
-  head `switch (input())`
+  head `input()`
   stmt `switch (input()) { case match(): use(); break; default: fallback(); }`
 a.ts#run/switch[0]/call:input call
   range `input()`
@@ -158,7 +158,7 @@ a.ts#run/switch[0]/default/call:fallback call
   name `fallback`
 a.ts#run/switch[1] switch
   range `switch (empty) {}`
-  head `switch (empty)`
+  head `empty`
   stmt `switch (empty) {}`
 a.ts#run/try[0] try
   range `try { throw failure(); } catch (error: unknown) { recover(error); } finally { cleanup(); }`

@@ -10,7 +10,7 @@ use unfold_core::highlight::{HighlightSpan, Highlighter};
 use unfold_core::vocab::{Form, NodeKind};
 use unfold_core::{ByteRange, LineIndex, RepoPath, Utf16Index};
 
-use super::select::{MarkSpec, Span, definition_extent, is_expression};
+use super::select::{MarkSpec, Span, is_expression};
 use super::{CallName, CodeLine, DefinitionLine, LineRange, Mark, Token};
 use crate::error::{ReaderError, Result};
 use crate::tree::{FileTree, to_u32};
@@ -259,7 +259,7 @@ impl<'a> Render<'a> {
         (1..to_u32(tree.nodes().len()))
             .filter(|&id| tree.kind(id).is_definition())
             .filter_map(|id| {
-                let line = self.text.lines.line_of(definition_extent(tree, id).start);
+                let line = self.text.lines.line_of(tree.extent(id).start);
                 (first.number..=last.number)
                     .contains(&line)
                     .then(|| DefinitionLine {
@@ -352,9 +352,7 @@ fn hover_extent(tree: &FileTree, id: u32) -> Option<ByteRange> {
     };
     match node.kind() {
         NodeKind::Module => None,
-        NodeKind::Class | NodeKind::Function | NodeKind::Type => {
-            Some(opening(definition_extent(tree, id).start))
-        }
+        NodeKind::Class | NodeKind::Function | NodeKind::Type => Some(opening(tree.extent(id).start)),
         NodeKind::Decision | NodeKind::Loop if is_expression(node.form) => node.stmt,
         NodeKind::Part if node.form == Form::Body => None,
         NodeKind::Decision | NodeKind::Loop | NodeKind::Try | NodeKind::With | NodeKind::Part => {

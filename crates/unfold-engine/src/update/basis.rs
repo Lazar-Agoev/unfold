@@ -1,18 +1,21 @@
 //! What a graph was linked from (docs/engine.md#project-lifecycle): kept with the stored graph so that the
 //! reopen check can trust a restored graph without linking it again when nothing it was linked
-//! from changed while the folder was closed.
+//! from changed while the folder was closed, and so that a settings file that stopped parsing
+//! while it was closed leaves the last good settings and apps in effect.
 
 use serde::{Deserialize, Serialize};
 use unfold_core::ContentHash;
 
 use super::run::configuration;
-use super::state::State;
+use super::scan::parse_settings;
+use super::state::{SettingsState, State};
 use super::{Engine, Problem, ProblemKind};
 use crate::ENGINE_VERSION;
 use crate::settings::SettingsHasher;
 
-/// What a graph was linked from besides its files' facts, and what linking found. Save it with
-/// the graph ([`LinkBasis::encode`]) and hand it back to [`Engine::restore`].
+/// What a graph was linked from besides its files' facts, what linking found, and the settings
+/// file in effect. Save it with the graph ([`LinkBasis::encode`]) and hand it back to
+/// [`Engine::restore`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LinkBasis {
     /// A fingerprint of everything but the files' facts that linking reads: the engine and
@@ -22,6 +25,9 @@ pub struct LinkBasis {
     fingerprint: ContentHash,
     /// The problems linking found, in order.
     problems: Vec<LinkProblem>,
+    /// The text of `unfold.toml` the settings and apps came from: the last that parsed, or
+    /// `None` for the defaults.
+    settings: Option<Box<str>>,
 }
 
 /// One problem linking found ([`crate::Linked::problems`]).
@@ -47,6 +53,7 @@ impl LinkBasis {
                     incomplete: *incomplete,
                 })
                 .collect(),
+            settings: state.settings.source.as_ref().map(|source| source.text().into()),
         }
     }
 
@@ -68,6 +75,15 @@ impl LinkBasis {
                 (listed, problem.incomplete)
             })
             .collect()
+    }
+
+    /// The settings and apps in effect for the graph, parsed again from the text of
+    /// `unfold.toml` they came from; the defaults when they didn't come from one.
+    pub(super) fn settings(&self) -> SettingsState {
+        self.settings
+            .as_deref()
+            .and_then(|text| parse_settings(text.as_bytes().to_vec(), None).ok())
+            .unwrap_or_default()
     }
 
     /// The text the store keeps.

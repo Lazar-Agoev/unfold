@@ -9,7 +9,7 @@
 === src/cli.ts#main
 ( main )   key=src/cli.ts#main
   ⋯ 1 line
-  SWITCH switch (command)   key=src/cli.ts#main/switch[0]
+  SWITCH command   key=src/cli.ts#main/switch[0]
   CASE "import"   key=src/cli.ts#main/switch[0]/case[0]
       ▸ importOrders · AWAIT   key=src/cli.ts#main/switch[0]/case[0]/call:importOrders
   CASE "report"   key=src/cli.ts#main/switch[0]/case[1]
@@ -110,9 +110,10 @@
           · expired.push   key=src/jobs/cleanup.ts#cleanupExpiredOrders/for[0]/body/if[1]/then/call:expired.push
   ⋯ 1 line
   IF expired.length > 0   key=src/jobs/cleanup.ts#cleanupExpiredOrders/if[0] src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then
-      LOOP while (expired.length > 0)   key=src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0] src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0]/body
+      DO   key=src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0] src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0]/body
           · expired.pop → id   key=src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0]/body/call:expired.pop
-          IF orderService.remove(id) · ▸ orderService.remove   key=src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0]/body/if[0] src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0]/body/if[0]/then
+          IF orderService.remove(id) · ▸ orderService.remove   key=src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0]/body/if[0] src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0]/body/if[0]/then src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0]/body/if[0]/then/call:orderService.remove
+      LOOP while (expired.length > 0)
   ▸ logger.info   key=src/jobs/cleanup.ts#cleanupExpiredOrders/call:logger.info
 ( End )
 
@@ -184,14 +185,17 @@
 
 === src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter/callback[0]
 ( callback to orders.filter )   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter/callback[0]
+  ⋯ 1 line
 ( End )
 
 === src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[1]/callback[0]
 ( callback to orders.filter )   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[1]/callback[0]
+  ⋯ 1 line
 ( End )
 
 === src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[2]/callback[0]
 ( callback to orders.filter )   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[2]/callback[0]
+  ⋯ 1 line
 ( End )
 
 === src/jobs/retry-failed.ts#
@@ -443,6 +447,7 @@
 
 === src/routes/admin.ts#adminStats/call:res.json/call:orders.filter/callback[0]
 ( callback to orders.filter )   key=src/routes/admin.ts#adminStats/call:res.json/call:orders.filter/callback[0]
+  ⋯ 1 line
 ( End )
 
 === src/routes/admin.ts#registerAdminRoutes
@@ -724,6 +729,7 @@
 
 === src/services/payment.ts#PaymentProvider.charge/call:order.items.reduce/callback[0]
 ( callback to order.items.reduce )   key=src/services/payment.ts#PaymentProvider.charge/call:order.items.reduce/callback[0]
+  ⋯ 1 line
 ( End )
 
 === src/services/payment.ts#StripeProvider
@@ -772,7 +778,7 @@
 
 === src/worker.ts#purge
 ( purge )   key=src/worker.ts#purge
-  LOOP for (const order of orderService.list()) · ▸ orderService.list   key=src/worker.ts#purge/for[0] src/worker.ts#purge/for[0]/body
+  LOOP for (const order of orderService.list()) · ▸ orderService.list   key=src/worker.ts#purge/for[0] src/worker.ts#purge/for[0]/body src/worker.ts#purge/for[0]/call:orderService.list
       IF order.status === "cancelled"   key=src/worker.ts#purge/for[0]/body/if[0] src/worker.ts#purge/for[0]/body/if[0]/then
           ▸ orderService.remove   key=src/worker.ts#purge/for[0]/body/if[0]/then/call:orderService.remove
 ( End )

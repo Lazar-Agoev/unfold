@@ -119,6 +119,33 @@ impl Key {
             .to_key(),
         )
     }
+
+    /// This key's steps and names after block `outer`'s, as the short label agents read and
+    /// write: `try[0]/except[0]` in `a.py#f` for `a.py#f/try[0]/except[0]`, `inner/call:g` for
+    /// `a.py#f.inner/call:g`. Empty for `outer` itself.
+    ///
+    /// Inside is read from the keys' structure, as [`Key::rebase`] reads it. `None` when this
+    /// key is not `outer` or inside it, or when either is not a block key.
+    pub fn steps_after(&self, outer: &Key) -> Option<String> {
+        let (Ok(ParsedKey::Block(this)), Ok(ParsedKey::Block(outer))) = (self.parse(), outer.parse()) else {
+            return None;
+        };
+        if this.path != outer.path {
+            return None;
+        }
+        let inside = this.segments.strip_prefix(outer.segments.as_slice())?;
+        let mut label = String::new();
+        for (index, segment) in inside.iter().enumerate() {
+            match segment {
+                _ if index == 0 => {}
+                Segment::Name { .. } => label.push('.'),
+                _ => label.push('/'),
+            }
+            // Writing to a String cannot fail.
+            let _ = write!(label, "{segment}");
+        }
+        Some(label)
+    }
 }
 
 impl fmt::Debug for Key {
